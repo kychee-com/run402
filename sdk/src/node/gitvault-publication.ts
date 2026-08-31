@@ -917,6 +917,19 @@ export interface GitvaultMaintenanceLease {
   hard_deadline_at: string | null;
 }
 
+/** `POST …/compaction-grant`'s result (gitvault-checkpoint-cadence design D3). */
+export interface GitvaultCompactionGrant {
+  /** The vault's server-measured `source_bytes` at grant time, capped — never client-declared. */
+  granted_bytes: number;
+  expires_at: string;
+  /** The org's pooled storage already in use, at grant time. */
+  pool_used_bytes: number;
+  /** The org's plain tier storage limit (unraised). */
+  pool_limit_bytes: number;
+  /** `pool_limit_bytes` + this grant's `granted_bytes` — the limit the preflight arithmetic should use while this grant is active. */
+  effective_pool_limit_bytes: number;
+}
+
 export interface GitvaultTransport extends GitvaultCreationTransport {
   /**
    * Read N independent carrier objects (ref_state, retention_roots, WAL/
@@ -1018,6 +1031,28 @@ export interface GitvaultTransport extends GitvaultCreationTransport {
   acquireMaintenanceLease(request: GitvaultMaintenanceLeaseRequest): Promise<GitvaultMaintenanceLease>;
   heartbeatMaintenanceLease(request: { repo_id: string; maintenance_lease_id: string; holder_token: string }): Promise<{ maintenance_lease_id: string; expires_at: string | null }>;
   releaseMaintenanceLease(request: { repo_id: string; maintenance_lease_id: string; holder_token: string }): Promise<{ maintenance_lease_id: string; status: string }>;
+  /**
+   * `POST …/compaction-grant` (gitvault-checkpoint-cadence design D3) — a
+   * short-lived, TTL'd, at-most-one-per-project headroom grant that raises
+   * the org's EFFECTIVE pooled storage limit by at most this vault's
+   * server-measured `source_bytes`, so compaction's own transient ~2x
+   * overshoot (the new checkpoint coexisting with the not-yet-pruned
+   * history) can land without the routine manual override
+   * (`--force-headroom`). Rejects `GITVAULT_COMPACTION_GRANT_ACTIVE` (409)
+   * when this project already holds an active grant — the caller reads
+   * that as "another compaction is already in flight for this vault" and
+   * skips its own cycle rather than racing it. An older gateway 404s/
+   * `ROUTE_NOT_FOUND`s; the caller falls back to compacting without a
+   * grant, exactly as before this route existed.
+   */
+  openCompactionGrant(request: { repo_id: string }): Promise<GitvaultCompactionGrant>;
+  /**
+   * `DELETE …/compaction-grant` — idempotent; `{closed: false}` when
+   * nothing was active (already closed, already expired, or never
+   * opened). Always safe to call best-effort in a `finally`: closing an
+   * absent grant is a no-op, never an error.
+   */
+  closeCompactionGrant(request: { repo_id: string }): Promise<{ closed: boolean }>;
   /**
    * `POST …/prune-intents` — the intent's EXACT BYTES (§7.3).
    *
@@ -1701,6 +1736,11 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
     },
     getVaultRecord: ({ repo_id }) => client.request<GitvaultVaultRecord>(base(repo_id), { context: "reading the gitvault record" }),
     getState: ({ repo_id, since }) => getVaultStateOut(repo_id, since),
+    openCompactionGrant: ({ repo_id }) => client.request<GitvaultCompactionGrant>(`${base(repo_id)}/compaction-grant`, { method: "POST", context: "opening the gitvault compaction headroom grant" }),
+    closeCompactionGrant: async ({ repo_id }) => {
+      const r = await client.request<{ closed?: boolean }>(`${base(repo_id)}/compaction-grant`, { method: "DELETE", context: "closing the gitvault compaction headroom grant" });
+      return { closed: r.closed === true };
+    },
     findVaultByProject: ({ project_id }) => client.request<GitvaultVaultRecord>(`/gitvault/v1/vaults?project_id=${encodeURIComponent(project_id)}`, { context: "resolving the project's gitvault" }),
     findVaultByRepo: ({ org_slug, repo_name }) => client.request<GitvaultVaultRecord>(`/gitvault/v1/vaults?repo=${encodeURIComponent(`${org_slug}/${repo_name}`)}`, { context: "resolving the gitvault by repo address" }),
     listOrgEncryptionKeys: ({ org_id }) => client.request<GitvaultOrgEncryptionKeyDirectory>(`/orgs/v1/${encodeURIComponent(org_id)}/encryption-keys`, { context: "reading the org encryption-key directory" }),
@@ -1932,6 +1972,38 @@ export async function readGitvaultRestoreMarker(targetRepoDir: string): Promise<
 async function writeGitvaultRestoreMarker(targetRepoDir: string, generation: string, headSha256: string): Promise<void> {
   await hardenedGit(targetRepoDir, ["config", "--local", GITVAULT_RESTORE_MARKER_GENERATION_KEY, generation]);
   await hardenedGit(targetRepoDir, ["config", "--local", GITVAULT_RESTORE_MARKER_SHA256_KEY, headSha256]);
+}
+
+// ─── auto-gc cadence threshold (gitvault-checkpoint-cadence design D1) ───────
+//
+// `auto_gc_generations` rides the SAME local-git-config mechanism as the
+// restore marker above — a per-CHECKOUT knob, exactly like git's own
+// `gc.auto` (`git config gc.auto`), not a server-side vault policy. Read
+// fresh every push (a cheap local read, never network); `0` disables;
+// absent reads as the default.
+
+const GITVAULT_AUTO_GC_GENERATIONS_KEY = "r402.autoGcGenerations";
+
+/** Default `auto_gc_generations` — see the change proposal's rationale (≈2-3s over the fresh-checkpoint floor at this backlog, a busy repo compacts roughly once per few dozen pushes). */
+export const GITVAULT_AUTO_GC_GENERATIONS_DEFAULT = 32;
+
+/**
+ * Read this checkout's auto-gc threshold, or the default when unset or
+ * unparseable. Never throws — a corrupt local config value degrades to the
+ * default rather than blocking a push's own auto-gc check.
+ */
+export async function readGitvaultAutoGcThreshold(targetRepoDir: string): Promise<number> {
+  const raw = await readLocalGitConfigValue(targetRepoDir, GITVAULT_AUTO_GC_GENERATIONS_KEY);
+  if (raw === null) return GITVAULT_AUTO_GC_GENERATIONS_DEFAULT;
+  const trimmed = raw.trim();
+  if (!/^\d+$/.test(trimmed)) return GITVAULT_AUTO_GC_GENERATIONS_DEFAULT;
+  const n = Number.parseInt(trimmed, 10);
+  return Number.isSafeInteger(n) && n >= 0 ? n : GITVAULT_AUTO_GC_GENERATIONS_DEFAULT;
+}
+
+/** Set this checkout's auto-gc threshold. `0` disables auto-gc entirely. */
+export async function writeGitvaultAutoGcThreshold(targetRepoDir: string, generations: number): Promise<void> {
+  await hardenedGit(targetRepoDir, ["config", "--local", GITVAULT_AUTO_GC_GENERATIONS_KEY, String(generations)]);
 }
 
 // ─── The vault ───────────────────────────────────────────────────────────────
@@ -4517,13 +4589,32 @@ export class GitvaultVault {
    * verification and retained-refs reconciliation run UNCHANGED on both
    * paths; the marker only advances after they both succeed.
    */
-  async restoreObjectsInto(targetRepoDir: string): Promise<{ refs: GitvaultRefMap; head_target: GitvaultHeadTarget; generation: string; retained_refs: GitvaultRetainedRefsReconcileResult }> {
+  async restoreObjectsInto(
+    targetRepoDir: string,
+    reuse?: { marker: GitvaultRestoreMarker | null; state: GitvaultMaterializedState },
+  ): Promise<{ refs: GitvaultRefMap; head_target: GitvaultHeadTarget; generation: string; retained_refs: GitvaultRetainedRefsReconcileResult }> {
     // gitvault-delta-fetch: the marker is read BEFORE materialize so the
     // state read can carry THIS git dir's applied position as `since` —
     // see tryStateFastPath's own comment on why the pin is the wrong
     // position for a standing clone.
+    //
+    // gitvault-session-state-reuse: `reuse` lets a caller that ALREADY
+    // materialized state for this same target directory — using the SAME
+    // marker `since` this method would itself read — hand that response
+    // in directly, skipping this method's own state read entirely (the
+    // remote-helper session's `list` phase is the caller: see `runFetch`
+    // in `cli/lib/remote-helper-session.mjs`). The marker below is read
+    // regardless (a cheap local `git config` read, never a network call)
+    // and compared against `reuse.marker`: only an EXACT match (both
+    // `null`, or both present with equal `generation`/`head_sha256`) is
+    // trusted — any mismatch (a different push admitted in this same
+    // session, a stale handoff) falls through to this method's own
+    // `materialize()` exactly as if `reuse` had never been passed. A wrong
+    // reuse therefore costs one extra read, never a wrong result.
     const marker = await readGitvaultRestoreMarker(targetRepoDir);
-    const newest = await this.materialize({ ...(marker ? { deltaSince: marker.generation } : {}) });
+    const markerMatches = (a: GitvaultRestoreMarker | null, b: GitvaultRestoreMarker | null): boolean =>
+      a === null ? b === null : b !== null && a.generation === b.generation && a.head_sha256 === b.head_sha256;
+    const newest = reuse && markerMatches(reuse.marker, marker) ? reuse.state : await this.materialize({ ...(marker ? { deltaSince: marker.generation } : {}) });
     if (!newest.head) {
       const retained_refs = await reconcileRetainedTipRefs(targetRepoDir, { refs: {}, roots: [], head_target: newest.head_target });
       return { refs: {}, head_target: newest.head_target, generation: newest.generation, retained_refs };
@@ -4761,6 +4852,18 @@ export class GitvaultVault {
     // WAL pack again is the existing, already-safe wholesale behavior.
     await writeGitvaultRestoreMarker(targetRepoDir, newest.generation, newest.head_sha256);
     return { refs: newest.refs, head_target: newest.head_target, generation: newest.generation, retained_refs };
+  }
+
+  // ── compaction headroom grant (gitvault-checkpoint-cadence design D3) ──
+
+  /** Thin passthrough to the transport — see {@link GitvaultTransport.openCompactionGrant}. */
+  async openCompactionGrant(): Promise<GitvaultCompactionGrant> {
+    return this.transport.openCompactionGrant({ repo_id: this.repoId });
+  }
+
+  /** Thin passthrough to the transport — see {@link GitvaultTransport.closeCompactionGrant}. Always safe best-effort; never throws by construction of the route (idempotent). */
+  async closeCompactionGrant(): Promise<{ closed: boolean }> {
+    return this.transport.closeCompactionGrant({ repo_id: this.repoId });
   }
 }
 

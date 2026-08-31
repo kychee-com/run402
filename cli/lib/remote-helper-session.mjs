@@ -126,7 +126,7 @@ const nodeModP = import("#sdk/node");
 const { getSdk } = await sdkModP;
 const { resolveWalletCore, enforceWalletExistsCore, WalletSelectionError } = await walletModP;
 const { gitvaultRemoteAddressForm, gitvaultSlugReleasedInfo, parseGitvaultRemoteUrl } = await isoModP;
-const { GITVAULT_R402_REF_NAMESPACE, hardenedGit, resolveGitInvocationRepo, readPinnedGitvaultRepo, pinGitvaultRepo } = await nodeModP;
+const { GITVAULT_R402_REF_NAMESPACE, hardenedGit, resolveGitInvocationRepo, readPinnedGitvaultRepo, pinGitvaultRepo, readGitvaultRestoreMarker, readGitvaultAutoGcThreshold } = await nodeModP;
 
 /** The session's input stream — injected per session (daemon: the socket's forwarded stdin). */
 let sessionStdin = process.stdin;
@@ -339,7 +339,20 @@ export function chooseGitvaultHeadTargetForPush({ baseHeadTarget, baseRefs, upda
   return { head_target: { kind: "symref", ref: chosen }, note };
 }
 
-async function main(argv) {
+/**
+ * gitvault-checkpoint-cadence design D1 — the pure post-push auto-gc
+ * threshold decision, exported standalone so the threshold matrix (below /
+ * at / disabled) is directly unit-testable without the session's heavier
+ * closures (network, git, daemon plumbing). `0` (or anything not a
+ * positive finite number — a corrupt local config value) means disabled;
+ * `generationsSinceCheckpoint >= threshold` is the trigger (matches
+ * `gitvaultCheckpointStaleness`'s own `since >= THRESHOLD` shape).
+ */
+export function shouldRunAutoGc(threshold, generationsSinceCheckpoint) {
+  return Number.isFinite(threshold) && threshold > 0 && Number.isFinite(generationsSinceCheckpoint) && generationsSinceCheckpoint >= threshold;
+}
+
+async function main(argv, { onBackgroundWork } = {}) {
   // gitvault-connection-amortization (bench P5) note: the prewarm now fires
   // at the module TOP, before the SDK graph loads (gitvault-startup-
   // amortization D1) — connection dial and signer warmup both race module
@@ -511,13 +524,29 @@ async function main(argv) {
       // checkout) — `list` still works, and there is nothing for `push` to
       // share later in that case.
     }
+    // gitvault-session-state-reuse design D2: read the restore MARKER —
+    // NEVER the chain-trust pin (see `tryStateFastPath`'s own doc comment on
+    // why the pin is the wrong `since` for a standing clone that is
+    // generations behind) — once, here, and thread it to the materialize
+    // call below AND to `fetch`'s reuse below. Best-effort: a marker-read
+    // failure (no repository, no prior restore) just means no `since` is
+    // sent, exactly today's behavior.
+    let fetchMarker = null;
+    if (repoDir) {
+      try {
+        fetchMarker = await readGitvaultRestoreMarker(repoDir);
+      } catch {
+        fetchMarker = null;
+      }
+    }
+    const materializeOpts = fetchMarker ? { deltaSince: fetchMarker.generation } : {};
     let vault;
     let state;
     try {
       const opened = await openVault(repoDir ?? undefined);
       vault = opened.vault;
       try {
-        state = await vault.materialize();
+        state = await vault.materialize(materializeOpts);
       } catch (err) {
         // An OFFLINE (id-carrying pin) resolution discovers a stale pin on
         // its FIRST repo-scoped read (client-surface spec, id-pinning
@@ -532,7 +561,7 @@ async function main(argv) {
         if (!recovered) throw err;
         note(`pinned vault ${opened.resolution.repo_id} no longer resolves — re-resolved to ${recovered.resolution.repo_id}, retrying`);
         vault = recovered.handle.vault;
-        state = await vault.materialize();
+        state = await vault.materialize(materializeOpts);
       }
     } catch (err) {
       // An unallocated vault is not an error here: `list` is the read half of
@@ -549,7 +578,12 @@ async function main(argv) {
       }
       throw err;
     }
-    if (repoDir) sharedListSession = { repoDir, walletName: resolvedWallet?.name ?? null, vault, base: state };
+    // gitvault-session-state-reuse design D1: `fetchState`/`fetchMarker`
+    // extend the SAME session-scoped handoff `push` already reuses (`base`)
+    // — the `fetch` phase of THIS session reuses this response instead of
+    // issuing its own state read. Session-scoped only: dropped the moment a
+    // push admits in this same session (see `runPush`'s reset below).
+    if (repoDir) sharedListSession = { repoDir, walletName: resolvedWallet?.name ?? null, vault, base: state, fetchMarker, fetchState: state };
     const refs = state.refs ?? {};
     for (const ref of Object.keys(refs).sort()) out(`${refs[ref]} ${ref}`);
     // A snapshot-only vault holds protocol refs but no branch heads, so a
@@ -586,7 +620,17 @@ async function main(argv) {
     // wherever clone was run FROM, unrelated to the target repository).
     applyWalletForDir(repoDir);
     if (verbosity >= 1) note(`restoring the vault object database for ${batch.length} ref(s) into ${repoDir}`);
-    const restored = await getSdk().gitvault.restore({ ...target, repo_dir: repoDir, target_dir: repoDir });
+    // gitvault-session-state-reuse design D1/D4: reuse THIS session's `list`
+    // phase state — same resolved repository AND wallet, exactly the same
+    // matching rule `push`'s own reuse uses above — instead of a second
+    // network state read. Any mismatch (no prior `list`, a failed list, a
+    // different repository/wallet, or a push that already admitted in this
+    // same session — see `runPush`'s reset) falls back to the vault's own
+    // read, unchanged.
+    const shared = sharedListSession && sharedListSession.repoDir === repoDir && sharedListSession.walletName === (resolvedWallet?.name ?? null) ? sharedListSession : null;
+    const restored = shared
+      ? await shared.vault.restoreObjectsInto(repoDir, { marker: shared.fetchMarker, state: shared.fetchState })
+      : await getSdk().gitvault.restore({ ...target, repo_dir: repoDir, target_dir: repoDir });
     if (verbosity >= 1) note(`restored generation ${restored.generation}`);
     // clone-installs-retained-refs D3: a bookkeeping failure here degrades to
     // exactly today's (pre-change) behavior — one stderr note, fetch still
@@ -600,8 +644,81 @@ async function main(argv) {
     return 0;
   }
 
+  /**
+   * gitvault-checkpoint-cadence (design D1/D2) — the post-push auto-gc
+   * cadence, `git gc --auto`'s shape: a cheap local threshold check after
+   * every successful push, maintenance only past it.
+   *
+   * MUST be called strictly AFTER the push's own `ok`/`error` lines and
+   * `endBlock()` have already been written — auto-gc can never fail, slow,
+   * or reorder the push it follows (this function itself never throws).
+   * `generationsSinceCheckpoint` comes from `published.checkpoint_staleness`
+   * (the push's own already-materialized chain) — zero extra reads to learn
+   * it.
+   *
+   * Threshold: `repoDir`'s local `auto_gc_generations` (default 32, `0`
+   * disables — `readGitvaultAutoGcThreshold`, design D1's "rides the
+   * existing vault policy surface" as a per-checkout `repos policy` knob).
+   *
+   * Dispatch: with a daemon-supplied `onBackgroundWork`, the compaction is
+   * STARTED immediately and handed off as a promise — the daemon keeps
+   * itself alive until it settles, but THIS call returns immediately so the
+   * client-visible session (and the user's prompt) is not held up. Without
+   * one (the in-process fallback), the SAME cycle is awaited right here,
+   * with one stderr advisory line naming the wait.
+   *
+   * `compact()` (namespace, `sdk/src/namespaces/gitvault.ts`) already owns
+   * the compaction headroom grant's open/close and single-flight refusal
+   * (`GITVAULT_COMPACTION_IN_PROGRESS`) — this function only decides WHETHER
+   * and HOW to run the cycle, never re-implements those. `--force-headroom`
+   * is NEVER passed on this path (design D5) — an insufficient-headroom
+   * refusal, a conflicting in-flight compaction, or any other failure all
+   * degrade identically: one advisory line naming `run402 repos gc`, never
+   * a thrown error, never a retry loop.
+   */
+  async function maybeRunAutoGc({ repoDir, generationsSinceCheckpoint }) {
+    let threshold;
+    try {
+      threshold = await readGitvaultAutoGcThreshold(repoDir);
+    } catch {
+      return; // never let a local-config read failure touch the push it follows
+    }
+    if (!shouldRunAutoGc(threshold, generationsSinceCheckpoint)) return;
+
+    const runCycle = async () => {
+      const sdk = getSdk();
+      const checkpoint = await sdk.gitvault.compact({ ...target });
+      const prune = await sdk.gitvault.prune(target); // PLAN only — never `submit`; see compact()'s own grant-close doc comment for why prune needs no headroom of its own
+      return { checkpoint, prune };
+    };
+
+    if (typeof onBackgroundWork === "function") {
+      // Daemon host: start it now, hand the PROMISE off, return immediately.
+      // Failures are swallowed here (best-effort, matching the fallback
+      // branch's degrade contract) — there is no live client to advise by
+      // the time this settles, and the daemon's own teardown does not
+      // depend on the outcome, only on the promise SETTLING.
+      const cyclePromise = runCycle().catch(() => undefined);
+      onBackgroundWork(cyclePromise);
+      return;
+    }
+
+    // In-process fallback: the extra wall time is real, so name it.
+    note(`gitvault: compacting (${generationsSinceCheckpoint} generations since checkpoint)…`);
+    try {
+      await runCycle();
+    } catch (err) {
+      note(`gitvault: auto-compaction stopped short — ${describeError(err)} — run \`run402 repos gc\` to finish it by hand.`);
+    }
+  }
+
   async function runPush(batch) {
     const specs = batch.map(parsePushSpec);
+    // gitvault-checkpoint-cadence: set ONLY after a successful admission
+    // (never in the catch block) — `null` means "auto-gc has nothing to
+    // do", which is also the correct value for every early-return path
+    // above (nothing pushed, nothing refused-only, dry-run).
+    let autoGcCandidate = null;
     // D4: `refs/r402/*` is client-local — refuse it per-ref, BEFORE any
     // repository/wallet/network work, while unrelated branch updates in the
     // SAME push proceed normally (client-surface spec's own scenario).
@@ -721,14 +838,26 @@ async function main(argv) {
         base,
         ...(headFix.head_target ? { head_target: headFix.head_target } : {}),
       });
+      // gitvault-session-state-reuse design D4: this admission just advanced
+      // the vault, so the `list` phase's handoff (if any) is now stale —
+      // drop it. A `fetch` later in this SAME session (an unusual ordering
+      // git's own protocol does not normally produce) reads fresh rather
+      // than reusing pre-admission state.
+      sharedListSession = null;
       if (verbosity >= 1) note(`published generation ${published.generation} (${published.form})`);
-      // gitvault-clone-scaling (P3): advisory only — never blocks, never
-      // auto-runs compaction, and never fires on a failed push (this line is
-      // unreachable from the catch). Unknown coverage reads as not-advised.
+      // gitvault-clone-scaling (P3): advisory only — informational, always
+      // fires at 25 generations regardless of the SEPARATE auto-gc
+      // threshold below (design D1's `auto_gc_generations`, default 32) —
+      // the two are deliberately different numbers for different purposes.
       if (published.checkpoint_staleness?.advised) {
         note(`${published.checkpoint_staleness.generations_since_checkpoint} generations since the last checkpoint — cold clones re-verify each one; run402 repos gc compacts them`);
       }
       for (const spec of allowed) out(`ok ${spec.dst}`);
+      // gitvault-checkpoint-cadence: captured here (never in the catch
+      // block below — auto-gc must never fire on a failed push) and acted
+      // on AFTER this function's own `endBlock()`, so the auto-gc check
+      // itself can never delay, alter, or reorder the push's own report.
+      autoGcCandidate = { repoDir, generationsSinceCheckpoint: published.checkpoint_staleness?.generations_since_checkpoint ?? 0 };
     } catch (err) {
       // The transaction is atomic, so a failure failed every ref in it. Report
       // it against each one rather than letting some look like they landed.
@@ -742,6 +871,10 @@ async function main(argv) {
       for (const spec of allowed) out(`error ${spec.dst} ${reason}`);
     }
     endBlock();
+    // gitvault-checkpoint-cadence design D1/D2: strictly AFTER the push's
+    // own report — `null` (a failed push, a refused-only batch, dry-run)
+    // is a silent no-op. `maybeRunAutoGc` itself never throws.
+    if (autoGcCandidate) await maybeRunAutoGc(autoGcCandidate);
     return 0;
   }
 
@@ -852,12 +985,21 @@ async function main(argv) {
  * serving sequential sessions never leaks one invocation's resolution into
  * the next (D2). Never throws — the error path is the same
  * note-and-exit-1 the standalone binary always had.
+ *
+ * `onBackgroundWork` (gitvault-checkpoint-cadence design D2): when supplied
+ * (the DAEMON host only — see `gitvault-daemon.mjs`), a successful push's
+ * auto-gc cycle is handed to it as an ALREADY-STARTED promise instead of
+ * being awaited inline, so this call resolves (and the client-visible
+ * session ends) at push speed. The caller is responsible for keeping
+ * whatever this promise needs alive (its own connections, its own process)
+ * until the promise settles. Absent (the in-process fallback host), the
+ * SAME cycle is awaited inline instead — see `maybeRunAutoGc` below.
  */
-export async function runHelperSession(argv, { stdin } = {}) {
+export async function runHelperSession(argv, { stdin, onBackgroundWork } = {}) {
   sessionStdin = stdin ?? process.stdin;
   resolvedWallet = null;
   try {
-    return await main(argv);
+    return await main(argv, { onBackgroundWork });
   } catch (err) {
     note(describeError(err));
     return 1;

@@ -35,7 +35,7 @@ import { randomBytes } from "node:crypto";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { GITVAULT_TRANSPORT_CONCURRENCY, GitvaultVault } from "./gitvault-publication.js";
+import { GITVAULT_TRANSPORT_CONCURRENCY, GitvaultVault, readGitvaultRestoreMarker } from "./gitvault-publication.js";
 import { GitvaultKeystore } from "./gitvault-keystore.js";
 import { pinGitvaultRepo, resolveGitvaultAddress } from "./gitvault-address.js";
 import { commitFile, git, makeVault } from "./gitvault-memory-transport.test.js";
@@ -213,6 +213,63 @@ describe("gitvault round-trip budgets (client-surface spec's counted contract)",
     const restored = await vault.restoreObjectsInto(target);
     assert.deepEqual(restored.refs, { "refs/heads/main": c2 });
     assertOpBudget(counter, 4, "one-generation pull (fallback)");
+  });
+
+  it("EXCHANGE-WIDE list→fetch: one new WAL generation, delta-serving gateway — budget 1 across BOTH phases (gitvault-session-state-reuse)", async (t) => {
+    // The remote-helper session's real shape: `list`'s state read (carrying
+    // the restore marker as `since` — design D2) is reused by `fetch`
+    // instead of a second read. One shared vault instance (like one helper
+    // session), one counter spanning both calls.
+    const f = await makeVault();
+    t.after(() => rmSync(f.root, { recursive: true, force: true }));
+    const c1 = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] } });
+    const target = mkdtempSync(join(tmpdir(), "run402-gitvault-budget-session-pull-"));
+    t.after(() => rmSync(target, { recursive: true, force: true }));
+    mkdirSync(target, { recursive: true });
+    await git(target, ["init", "-q", "--bare", "."]);
+    await f.vault.restoreObjectsInto(target); // warm-up: establishes restored_through at generation 1
+
+    const c2 = await commitFile(f.repoDir, "b.txt", "b\n");
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: c1, new_oid: c2, force: false }] } });
+
+    const counter = new GitvaultOpCounter();
+    const vault = countedVaultFor(f, counter);
+    // list phase: the marker is read ONCE and threaded to materialize.
+    const marker = await readGitvaultRestoreMarker(target);
+    const listState = await vault.materialize({ ...(marker ? { deltaSince: marker.generation } : {}) });
+    // fetch phase: reuses the list phase's response — no second state read.
+    const restored = await vault.restoreObjectsInto(target, { marker, state: listState });
+    assert.deepEqual(restored.refs, { "refs/heads/main": c2 });
+    assertOpBudget(counter, 1, "exchange-wide one-generation pull (list+fetch, state-with-delta)");
+  });
+
+  it("EXCHANGE-WIDE list→fetch: one new WAL generation, NO delta (older gateway) — the fallback budget 4 holds across BOTH phases", async (t) => {
+    const f = await makeVault();
+    t.after(() => rmSync(f.root, { recursive: true, force: true }));
+    f.transport.deltaDisabled = true;
+    const c1 = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] } });
+    const target = mkdtempSync(join(tmpdir(), "run402-gitvault-budget-session-pull-fb-"));
+    t.after(() => rmSync(target, { recursive: true, force: true }));
+    mkdirSync(target, { recursive: true });
+    await git(target, ["init", "-q", "--bare", "."]);
+    await f.vault.restoreObjectsInto(target);
+
+    const c2 = await commitFile(f.repoDir, "b.txt", "b\n");
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: c1, new_oid: c2, force: false }] } });
+
+    const counter = new GitvaultOpCounter();
+    const vault = countedVaultFor(f, counter);
+    const marker = await readGitvaultRestoreMarker(target);
+    const listState = await vault.materialize({ ...(marker ? { deltaSince: marker.generation } : {}) });
+    const restored = await vault.restoreObjectsInto(target, { marker, state: listState });
+    assert.deepEqual(restored.refs, { "refs/heads/main": c2 });
+    // The list phase's OWN state read is the "1" the exchange already paid
+    // (design D5) — the fetch phase reuses it (0 extra state reads) and
+    // still walks its own WAL presign+GET on the no-delta fallback, so the
+    // exchange-wide total stays the SAME ≤4 the single-phase fallback pays.
+    assertOpBudget(counter, 4, "exchange-wide one-generation pull (list+fetch, fallback)");
   });
 
   it("fetch: already up to date — budget 2", async (t) => {

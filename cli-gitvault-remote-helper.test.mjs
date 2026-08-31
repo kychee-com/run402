@@ -35,7 +35,7 @@ import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync,
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { R402_PROTECTED_REF_NAMESPACE_REASON, chooseGitvaultHeadTargetForPush, partitionProtectedRefPushes } from "./cli/lib/remote-helper-session.mjs";
+import { R402_PROTECTED_REF_NAMESPACE_REASON, chooseGitvaultHeadTargetForPush, partitionProtectedRefPushes, shouldRunAutoGc } from "./cli/lib/remote-helper-session.mjs";
 
 const HELPER = fileURLToPath(new URL("./cli/git-remote-run402.mjs", import.meta.url));
 /** A closed port: any network attempt fails loudly and unmistakably. */
@@ -1055,5 +1055,33 @@ describe("entrypoint guard survives symlinked invocation (the npm bin shape)", (
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+// ─── gitvault-checkpoint-cadence: the pure auto-gc threshold decision ────────
+
+describe("shouldRunAutoGc — the post-push auto-gc threshold matrix", () => {
+  it("below threshold: never triggers", () => {
+    assert.equal(shouldRunAutoGc(32, 0), false);
+    assert.equal(shouldRunAutoGc(32, 1), false);
+    assert.equal(shouldRunAutoGc(32, 31), false);
+  });
+
+  it("at or above threshold: triggers", () => {
+    assert.equal(shouldRunAutoGc(32, 32), true);
+    assert.equal(shouldRunAutoGc(32, 33), true);
+    assert.equal(shouldRunAutoGc(1, 1), true);
+  });
+
+  it("disabled (0, negative, or a non-finite/corrupt threshold) never triggers, however far behind", () => {
+    assert.equal(shouldRunAutoGc(0, 1_000_000), false);
+    assert.equal(shouldRunAutoGc(-1, 1_000_000), false);
+    assert.equal(shouldRunAutoGc(NaN, 1_000_000), false);
+    assert.equal(shouldRunAutoGc(undefined, 1_000_000), false);
+  });
+
+  it("a non-finite generations count (unknown coverage) never triggers", () => {
+    assert.equal(shouldRunAutoGc(32, NaN), false);
+    assert.equal(shouldRunAutoGc(32, undefined), false);
   });
 });
