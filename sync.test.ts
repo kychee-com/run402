@@ -1705,6 +1705,13 @@ describe("SDK surface alignment", () => {
       // `restore` is the clone-back path, driven by `git-remote-run402`'s
       // fetch command rather than by a `run402 repos` subcommand.
       "gitvault.restore",
+      // gitvault-byo-primary-bucket (design D4, task 3.4 — degraded read
+      // mode, mirror half): `withDegradedRead` is the network-class-failure
+      // fallback wrapper `git-remote-run402`'s `list`/`fetch` commands
+      // compose around their own live materialize/restore calls — recovery
+      // machinery, not a verb of its own, same family as `recoverStalePin`
+      // below.
+      "gitvault.withDegradedRead",
       // Owner + step-up writes with no MCP tool by design; the CLI reaches
       // them through the repo group's flags rather than dedicated verbs.
       // (`setPolicy` has its own `run402 repos policy` verb — see SURFACE.)

@@ -112,6 +112,23 @@
  *     is refused rather than silently pointed at the current directory. Only
  *     `capabilities`, `option` and `list` work without one, which is exactly
  *     the set `git ls-remote <url>` outside a checkout needs.
+ *
+ * DEGRADED READ MODE (gitvault-byo-primary-bucket, design D4). `list` and
+ * `fetch` each wrap their own live gateway read in
+ * `getSdk().gitvault.withDegradedRead` — on a NETWORK-CLASS failure (never a
+ * 401/403/404 or any other 4xx; one bounded retry runs first so a transient
+ * blip does not flap between sources) with a mirror configured for this
+ * vault, the read is served from it instead via the SAME `r402s-recover`
+ * engine `run402 repos recover` uses — `git fetch`/`clone` keep working
+ * while run402 is down. The result is marked `degraded: true` with source
+ * provenance, and exactly one stderr line names the fallback and its source
+ * (`gitvaultDegradedReadNote`). Local trust pins never advance past what the
+ * mirror copy itself chain-verifies (the fallback engine never touches the
+ * live vault's own keystore pins at all — see `gitvault-degraded-read.ts`'s
+ * own doc comment). A vault with no mirror configured is BYTE-IDENTICAL to
+ * today: the original gateway error surfaces unchanged. `push` is UNTOUCHED
+ * by this — writes are never rerouted; admission always requires the
+ * gateway.
  */
 
 import { createInterface } from "node:readline";
@@ -125,7 +142,7 @@ const isoModP = import("#sdk");
 const nodeModP = import("#sdk/node");
 const { getSdk } = await sdkModP;
 const { resolveWalletCore, enforceWalletExistsCore, WalletSelectionError } = await walletModP;
-const { gitvaultRemoteAddressForm, gitvaultSlugReleasedInfo, parseGitvaultRemoteUrl } = await isoModP;
+const { gitvaultRemoteAddressForm, gitvaultSlugReleasedInfo, parseGitvaultRemoteUrl, gitvaultDegradedReadNote } = await isoModP;
 const { GITVAULT_R402_REF_NAMESPACE, hardenedGit, resolveGitInvocationRepo, readPinnedGitvaultRepo, pinGitvaultRepo } = await nodeModP;
 
 /** The session's input stream — injected per session (daemon: the socket's forwarded stdin). */
@@ -438,7 +455,7 @@ async function main(argv) {
    */
   const openVault = async (repoDir) => {
     const result = await getSdk().gitvault.resolveOrCreateAddress({ address, allow_create: false, ...(repoDir ? { repo_dir: repoDir } : {}) });
-    return { vault: result.handle.vault, resolution: result.resolution };
+    return { vault: result.handle.vault, keystore: result.handle.keystore, repo_id: result.handle.repo_id, resolution: result.resolution };
   };
 
   /**
@@ -514,29 +531,9 @@ async function main(argv) {
       // checkout) — `list` still works, and there is nothing for `push` to
       // share later in that case.
     }
-    let vault;
-    let state;
+    let opened;
     try {
-      const opened = await openVault(repoDir ?? undefined);
-      vault = opened.vault;
-      try {
-        state = await vault.materialize();
-      } catch (err) {
-        // An OFFLINE (id-carrying pin) resolution discovers a stale pin on
-        // its FIRST repo-scoped read (client-surface spec, id-pinning
-        // requirement): recover once — clear the pin, re-resolve — and retry
-        // only when re-resolution lands on a DIFFERENT vault; a same-id
-        // answer means the pin was fine and the refusal below is real. git
-        // always runs `list` first in a helper session, so this one site
-        // heals the pin for the `fetch`/`push` that follows it.
-        const recovered = repoDir && opened.resolution?.offline
-          ? await getSdk().gitvault.recoverStalePin({ address, repo_dir: repoDir, resolution: opened.resolution, error: err })
-          : null;
-        if (!recovered) throw err;
-        note(`pinned vault ${opened.resolution.repo_id} no longer resolves — re-resolved to ${recovered.resolution.repo_id}, retrying`);
-        vault = recovered.handle.vault;
-        state = await vault.materialize();
-      }
+      opened = await openVault(repoDir ?? undefined);
     } catch (err) {
       // An unallocated vault is not an error here: `list` is the read half of
       // the protocol dance and must never create anything on its own (D2
@@ -552,8 +549,76 @@ async function main(argv) {
       }
       throw err;
     }
-    if (repoDir) sharedListSession = { repoDir, walletName: resolvedWallet?.name ?? null, vault, base: state };
-    const refs = state.refs ?? {};
+    let vault = opened.vault;
+
+    // gitvault-byo-primary-bucket (design D4, task 3.4 — mirror half): the
+    // live materialize (with its own stale-pin retry, unchanged from before
+    // this change) is the "attemptLive" `getSdk().gitvault.withDegradedRead`
+    // wraps — on a NETWORK-CLASS failure (never 4xx) with a mirror
+    // configured for this vault, it falls back to `r402s-recover`'s engine
+    // against it instead of failing the whole `list`/`clone`. `repoDir` is
+    // required for the fallback to materialize into (`out_dir`); a
+    // repo-free `list` (bare `git ls-remote`) simply has none, so the
+    // fallback never runs and the original error surfaces exactly as it
+    // always did.
+    const attemptLive = async () => {
+      try {
+        return await vault.materialize();
+      } catch (err) {
+        // An OFFLINE (id-carrying pin) resolution discovers a stale pin on
+        // its FIRST repo-scoped read (client-surface spec, id-pinning
+        // requirement): recover once — clear the pin, re-resolve — and retry
+        // only when re-resolution lands on a DIFFERENT vault; a same-id
+        // answer means the pin was fine and the refusal below is real. git
+        // always runs `list` first in a helper session, so this one site
+        // heals the pin for the `fetch`/`push` that follows it.
+        const recovered = repoDir && opened.resolution?.offline
+          ? await getSdk().gitvault.recoverStalePin({ address, repo_dir: repoDir, resolution: opened.resolution, error: err })
+          : null;
+        if (!recovered) throw err;
+        note(`pinned vault ${opened.resolution.repo_id} no longer resolves — re-resolved to ${recovered.resolution.repo_id}, retrying`);
+        vault = recovered.handle.vault;
+        opened = { ...opened, vault: recovered.handle.vault, keystore: recovered.handle.keystore, repo_id: recovered.handle.repo_id, resolution: recovered.resolution };
+        return await vault.materialize();
+      }
+    };
+
+    let outcome;
+    try {
+      outcome = await getSdk().gitvault.withDegradedRead({ attemptLive, keystore: opened.keystore, repo_id: opened.repo_id, out_dir: repoDir });
+    } catch (err) {
+      // Same "an unallocated vault is not an error" reasoning as above — a
+      // 404 discovered only once materialize actually runs takes this same
+      // empty-ref-set path (network-class errors never reach here at all:
+      // `withDegradedRead` only rethrows them after exhausting its own
+      // fallback, and a 404 is never network-class).
+      if (isVaultNotFound(err)) {
+        endBlock();
+        return;
+      }
+      throw err;
+    }
+
+    let refs;
+    let head;
+    if (outcome.degraded) {
+      // Exactly ONE stderr line naming the degraded read and its source
+      // (design D4) — the validity-not-freshness limit rides inside the
+      // canonical statement this composes, verbatim.
+      note(gitvaultDegradedReadNote(outcome.result.source));
+      refs = outcome.result.refs ?? {};
+      head = outcome.result.head_target;
+      // No live vault instance materialized this pass — nothing safe to
+      // share with a following `push` (design D7's own "unallocated vault"
+      // reasoning applies equally to a degraded one: writes are never
+      // rerouted, so `push` must resolve and materialize live on its own).
+    } else {
+      const state = outcome.live;
+      refs = state.refs ?? {};
+      head = state.head_target;
+      if (repoDir) sharedListSession = { repoDir, walletName: resolvedWallet?.name ?? null, vault, base: state };
+    }
+
     for (const ref of Object.keys(refs).sort()) out(`${refs[ref]} ${ref}`);
     // A snapshot-only vault holds protocol refs but no branch heads, so a
     // plain `git clone` prints "cloned an empty repository" with no hint the
@@ -563,7 +628,6 @@ async function main(argv) {
       note(`this vault has no branch heads yet — its history lives on ${refNames.sort()[0]}`);
       note(`fetch it with: git fetch <remote> '+${refNames.sort()[0]}:${refNames.sort()[0]}' && git checkout -b restored ${refNames.sort()[0]}`);
     }
-    const head = state.head_target;
     // A symref is only advertised when its target is actually present:
     // pointing HEAD at a ref that does not exist is what an empty repository
     // looks like, and git reads the empty list correctly on its own.
@@ -589,12 +653,40 @@ async function main(argv) {
     // wherever clone was run FROM, unrelated to the target repository).
     applyWalletForDir(repoDir);
     if (verbosity >= 1) note(`restoring the vault object database for ${batch.length} ref(s) into ${repoDir}`);
-    const restored = await getSdk().gitvault.restore({ ...target, repo_dir: repoDir, target_dir: repoDir });
+    // gitvault-byo-primary-bucket (design D4, task 3.4 — mirror half):
+    // `getSdk().gitvault.restore(...)` is exactly `open()` followed by
+    // `handle.vault.restoreObjectsInto(target_dir)` (see that method's own
+    // one-line body) — decomposed here so the SECOND half (the actual chain/
+    // payload read) can be wrapped in `withDegradedRead`, with byte-identical
+    // resolution to today on the live-success path. On a NETWORK-CLASS
+    // failure (never 4xx) with a mirror configured for this vault, the fetch
+    // is served from it instead of failing the whole clone; the destination
+    // it materialized into is the SAME `repoDir` git already prepared, so
+    // `git fetch`/`clone` completes exactly as if the live path had run.
+    const handle = await getSdk().gitvault.open({ ...target, repo_dir: repoDir });
+    const outcome = await getSdk().gitvault.withDegradedRead({
+      attemptLive: () => handle.vault.restoreObjectsInto(repoDir),
+      keystore: handle.keystore,
+      repo_id: handle.repo_id,
+      out_dir: repoDir,
+    });
+    let restored;
+    if (outcome.degraded) {
+      // Exactly ONE stderr line naming the degraded read and its source
+      // (design D4) — the validity-not-freshness limit rides inside the
+      // canonical statement this composes, verbatim. A later `git push`
+      // still requires the gateway unchanged — this function only ever
+      // serves reads; `runPush` below is untouched by this change.
+      note(gitvaultDegradedReadNote(outcome.result.source));
+      restored = { generation: outcome.result.generation, retained_refs: outcome.result.retained_refs };
+    } else {
+      restored = { generation: outcome.live.generation, retained_refs: outcome.live.retained_refs };
+    }
     if (verbosity >= 1) note(`restored generation ${restored.generation}`);
     // clone-installs-retained-refs D3: a bookkeeping failure here degrades to
     // exactly today's (pre-change) behavior — one stderr note, fetch still
-    // completes. `restored.retained_refs` is never absent (the SDK always
-    // returns a result, never throws for this step).
+    // completes. `restored.retained_refs` is never absent (both the live and
+    // the degraded path always return a result, never throw for this step).
     if (restored.retained_refs?.warning) note(restored.retained_refs.warning);
     else if (verbosity >= 1 && (restored.retained_refs?.written.length > 0 || restored.retained_refs?.deleted.length > 0)) {
       note(`refs/r402/retain: +${restored.retained_refs.written.length} -${restored.retained_refs.deleted.length} (${restored.retained_refs.retained_count} retained tip(s) total)`);

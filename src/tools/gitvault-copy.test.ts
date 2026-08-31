@@ -120,6 +120,15 @@ const UNMIRRORED_FINDING_PREFIX = "this vault has no customer-held mirror copy y
 const MIRROR_SETUP_HINT =
   "recommended: 'run402 repos mirror <destination>' (an s3:// bucket or a local directory) starts the customer-owned mirror — every later snapshot dual-pushes to it automatically, and it is the copy that stays in your custody";
 
+/**
+ * gitvault-byo-primary-bucket (design D4) — the degraded-read mechanism
+ * sentence (`GITVAULT_DEGRADED_READ_STATEMENT`), the invariant part of the
+ * one stderr line a degraded chain/payload read prints. Mechanism-only —
+ * never a confidentiality claim.
+ */
+const DEGRADED_READ_STATEMENT =
+  "run402 is unreachable — this read is served from your mirror; it proves validity, not freshness; a later push still requires the gateway";
+
 /** Verbatim from the protocol's banned-copy list, plus the two forbidden unqualified patterns (D168). */
 const BANNED_PHRASES = [
   "cannot read your source",
@@ -347,6 +356,31 @@ describe("gitvault copy — the mirror recommended-default vocabulary", () => {
       );
     });
   }
+});
+
+/**
+ * gitvault-byo-primary-bucket (design D4) — the degraded-read mechanism
+ * sentence. Same pattern as the mirror-recommended-default block above: the
+ * SDK's crypto module is the canonical home of the runtime sentence, printed
+ * verbatim by the remote helper rather than hardcoded at the call site.
+ */
+describe("gitvault copy — the degraded-read mechanism sentence", () => {
+  const CRYPTO_SRC = read("../../sdk/src/namespaces/gitvault.crypto.ts");
+
+  it("the SDK crypto module carries the degraded-read statement verbatim", () => {
+    assert.ok(
+      CRYPTO_SRC.includes(DEGRADED_READ_STATEMENT),
+      "GITVAULT_DEGRADED_READ_STATEMENT is the one approved wording for a degraded read's stderr line — do not reword it",
+    );
+  });
+
+  it("gitvaultDegradedReadNote composes the stderr line from the canonical statement, never a hand-rolled one", () => {
+    const SDK_NAMESPACE_SRC = read("../../sdk/src/namespaces/gitvault.ts");
+    assert.ok(
+      SDK_NAMESPACE_SRC.includes("GITVAULT_DEGRADED_READ_STATEMENT"),
+      "gitvaultDegradedReadNote (sdk/src/namespaces/gitvault.ts) must print the canonical constant, not a paraphrase",
+    );
+  });
 });
 
 /**

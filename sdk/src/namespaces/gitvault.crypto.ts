@@ -132,6 +132,22 @@ export const GITVAULT_MIRROR_THREE_COPIES_STATEMENT =
   "the recommended shape is three copies: your working clone, the platform's replicated vault, and a mirror in storage you own" as const;
 
 /**
+ * gitvault-byo-primary-bucket (design D4) — the degraded-read mechanism
+ * sentence: the invariant part of the ONE stderr line a degraded chain/
+ * payload read prints (`formatGitvaultDegradedReadNote`, `gitvault-node-
+ * degraded-read.ts`). Mechanism-only, per the copy rules — never a
+ * confidentiality claim: it names WHY (run402 is unreachable), restates
+ * validity-not-freshness in brief, and states that a write still needs the
+ * gateway (D194 — admission is irreducibly live-server, so writes are never
+ * rerouted). The caller prepends the fallback's own destination (never a
+ * credential); that is data, not part of this claim, so it lives outside
+ * the constant. Never paraphrase — same reviewed-product-commitment voice
+ * as the other statements in this file.
+ */
+export const GITVAULT_DEGRADED_READ_STATEMENT =
+  "run402 is unreachable — this read is served from your mirror; it proves validity, not freshness; a later push still requires the gateway" as const;
+
+/**
  * gitvault-mirror-default — the `vault_unmirrored` standing finding, worded to
  * stay true in BOTH pre-clear states (no mirror configured at all, and a
  * configured mirror with no successful write/sync yet — the finding clears on

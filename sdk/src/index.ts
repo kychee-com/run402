@@ -665,5 +665,6 @@ export {
   gitvaultLossWarningTripped,
   gitvaultLossWarningMessage,
   gitvaultUnmirroredFinding,
+  gitvaultDegradedReadNote,
 } from "./namespaces/gitvault.js";
 export type * from "./namespaces/gitvault.js";

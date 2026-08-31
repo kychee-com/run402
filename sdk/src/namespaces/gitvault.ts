@@ -32,6 +32,7 @@
 import type { Client } from "../kernel.js";
 import { LocalError, isRun402Error } from "../errors.js";
 import {
+  GITVAULT_DEGRADED_READ_STATEMENT,
   GITVAULT_DURABILITY_STATEMENT,
   GITVAULT_MIRROR_KEYSTORE_STILL_REQUIRED_STATEMENT,
   GITVAULT_MIRROR_VALIDITY_NOT_FRESHNESS_STATEMENT,
@@ -56,6 +57,7 @@ import type { GitvaultMirrorConfig, GitvaultMirrorCredential, GitvaultMirrorDest
 import type { GitvaultMirrorPushResult, GitvaultMirrorSyncSummary } from "../node/gitvault-mirror.js";
 import type { GitvaultRecoverResult, GitvaultVerifyReport } from "../node/gitvault-recover.js";
 import type { GitvaultMemberRecoveryBundle } from "../node/gitvault-member-bundle.js";
+import type { GitvaultDegradedReadLive, GitvaultDegradedReadOutcome, GitvaultDegradedReadSource } from "../node/gitvault-degraded-read.js";
 
 // The Node modules are loaded lazily and only ever through these helpers, so
 // the isomorphic entry point stays free of `node:` imports.
@@ -71,6 +73,7 @@ type MirrorModule = typeof import("../node/gitvault-mirror.js");
 type MirrorConfigModule = typeof import("../node/gitvault-mirror-config.js");
 type MirrorBackendModule = typeof import("../node/gitvault-mirror-backend.js");
 type RecoverModule = typeof import("../node/gitvault-recover.js");
+type DegradedReadModule = typeof import("../node/gitvault-degraded-read.js");
 
 /** A keystore path, or `null` when there is no id to derive it from (or it is malformed). */
 function safePath(derive: () => string, repoId: string | null): string | null {
@@ -2727,6 +2730,42 @@ export class Gitvault {
     return { refs: out.refs, generation: out.generation, retained_refs: out.retained_refs };
   }
 
+  // ── degraded read (gitvault-byo-primary-bucket, design D4, task 3.4 — mirror half) ──
+
+  /**
+   * Wrap an ALREADY-RESOLVED vault read with degraded-read fallback: run
+   * `options.attemptLive` (the caller's own live call — its
+   * `vault.materialize()` for a `list`-shaped read, or
+   * `vault.restoreObjectsInto(dir)` for a `fetch`-shaped one), and on a
+   * network-class failure (never on an authorization refusal or any other
+   * 4xx — see `isNetworkClassGitvaultReadError`), fall back to the vault's
+   * configured mirror via the SAME `r402s-recover` engine `recover()` uses.
+   *
+   * Deliberately takes an already-open `vault`/`keystore`/`repo_id` rather
+   * than resolving them itself: named-address resolution (slug-form vs.
+   * id-form), stale-pin recovery, and cross-command vault-instance reuse
+   * within one `git-remote-run402` session are CLI-layer concerns that
+   * already live in `cli/lib/remote-helper-session.mjs` — this method owns
+   * only the trigger discipline and the fallback engine, never vault
+   * resolution, so it composes with that existing flow instead of
+   * duplicating it.
+   *
+   * `out_dir` is REQUIRED for the fallback to ever run — pass the resolved,
+   * git-proven repository directory (`resolveGitInvocationRepo`'s own
+   * `repo_dir`, never a guess from `cwd`). `null` (no resolvable repository,
+   * e.g. a bare `git ls-remote` outside any checkout) disables the fallback
+   * entirely: the original gateway error surfaces exactly as it always did.
+   */
+  async withDegradedRead<T extends GitvaultDegradedReadLive>(options: {
+    attemptLive: () => Promise<T>;
+    keystore: GitvaultKeystore;
+    repo_id: string;
+    out_dir: string | null;
+  }): Promise<GitvaultDegradedReadOutcome<T>> {
+    const { tryGitvaultDegradedRead } = await this.#degradedRead();
+    return tryGitvaultDegradedRead(options);
+  }
+
   // ── mirror (gitvault-mirror-and-recover, design D1/D2/D7) ─────────────────
 
   /**
@@ -2918,6 +2957,9 @@ export class Gitvault {
   #recovery(): Promise<RecoverModule> {
     return nodeOnly(() => import("../node/gitvault-recover.js"), "recover");
   }
+  #degradedRead(): Promise<DegradedReadModule> {
+    return nodeOnly(() => import("../node/gitvault-degraded-read.js"), "list");
+  }
 }
 
 // ─── D7 — progressive terminal-loss warning (repo-first-onramp task 2.7) ────
@@ -3094,6 +3136,18 @@ export function gitvaultUnmirroredFinding(state: {
     message: GITVAULT_UNMIRRORED_FINDING_STATEMENT,
     setup_command: state.configured ? "run402 repos mirror --backfill" : "run402 repos mirror <destination>",
   };
+}
+
+/**
+ * gitvault-byo-primary-bucket (design D4) — the ONE stderr line a degraded
+ * chain/payload read prints: the fallback's own destination (never a
+ * credential) plus the canonical, mechanism-only statement. `list`/`fetch`
+ * degrading in the SAME `git-remote-run402` session each print their own
+ * line (one per degraded READ, not one per session) — see
+ * `Gitvault.withDegradedRead`'s own doc comment.
+ */
+export function gitvaultDegradedReadNote(source: GitvaultDegradedReadSource): string {
+  return `degraded read from ${source.destination}: ${GITVAULT_DEGRADED_READ_STATEMENT}`;
 }
 
 /** `run402::<org_id>/<project_id>` — what `git-remote-run402` resolves. */
