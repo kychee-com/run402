@@ -12,6 +12,7 @@
  */
 
 import { existsSync, statSync } from "node:fs";
+import { GITVAULT_BYO_NO_PAYLOAD_COPY_STATEMENT } from "#sdk";
 import { configDir, readAllowance, loadKeyStore } from "./config.mjs";
 import { resolveGitvaultTarget } from "./gitvault-target.mjs";
 import { getSdk } from "./sdk.mjs";
@@ -665,6 +666,10 @@ export async function run(sub, args = []) {
           project_id: gv.project_id ?? projectId,
           repo_id: gv.repo_id,
           vault: gv.vault === null ? null : "allocated",
+          // gitvault-byo-primary-bucket task 3.5 — absent-or-"managed" is
+          // byte-identical to before this fold for every non-BYO vault.
+          storage_profile: gv.vault?.storage_profile ?? null,
+          byo_destination: gv.vault?.byo_destination ?? null,
           gitvault_policy: gv.gitvault_policy,
           keystore_root: gv.keystore.root,
           can_sign: gv.keystore.can_sign,
@@ -719,7 +724,7 @@ export async function run(sub, args = []) {
         // only, cleared by the first successful mirror write or sync.
         if (gv.vault !== null && value.repo_id) {
           try {
-            const mirrorStatus = await getSdk().gitvault.mirrorStatus({ repo_id: value.repo_id });
+            const mirrorStatus = await getSdk().gitvault.mirrorStatus({ repo_id: value.repo_id, is_byo: value.storage_profile === "byo" });
             value.gitvault_mirror = {
               configured: mirrorStatus.configured,
               destination: mirrorStatus.destination,
@@ -740,15 +745,19 @@ export async function run(sub, args = []) {
           }
         }
 
+        // gitvault-byo-primary-bucket task 3.5 — unconditional, independent
+        // of mirror status (D7); imported from the canonical constants, never
+        // paraphrased.
+        const byoDisclosure = value.storage_profile === "byo" ? ` Storage: byo (${value.byo_destination ?? "(unknown)"}) — ${GITVAULT_BYO_NO_PAYLOAD_COPY_STATEMENT}` : "";
         checks.push({
           name: "gitvault",
           status: gaps.length > 0 ? "warning" : "ok",
           value: gaps.length > 0 ? { ...value, gaps } : value,
-          hint: gv.vault === null
+          hint: (gv.vault === null
             ? `No vault for this project (that is a normal shape). Allocate one with 'run402 repos create --project <id>'. Keystore: ${gv.keystore.root}`
             : gv.durability_statement
               ? `Back up ${gv.keystore.root} anyway — ${gv.durability_statement} (covering_recipients: ${gv.covering_recipients})`
-              : `Back up ${gv.keystore.root} — whole-machine or whole-keystore loss is terminal for vault history.`,
+              : `Back up ${gv.keystore.root} — whole-machine or whole-keystore loss is terminal for vault history.`) + byoDisclosure,
         });
       } catch (err) {
         // A gateway without gitvault, an unreachable API, or a project this

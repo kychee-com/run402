@@ -32,7 +32,13 @@ import { resolveOrgId, resolveOwningOrgId } from "./org-context.mjs";
 import { resolveGitvaultTarget } from "./gitvault-target.mjs";
 import { nextAction, claimOrgSlugAction, claimRepoNameAction } from "./next-actions.mjs";
 import { printKeystoreLocation } from "./gitvault.mjs";
-import { GITVAULT_MIRROR_SETUP_HINT, gitvaultRemoteUrlForRepo } from "#sdk";
+import {
+  GITVAULT_BYO_HEADLINE_STATEMENT,
+  GITVAULT_BYO_NO_PAYLOAD_COPY_STATEMENT,
+  GITVAULT_BYO_UNMIRRORED_REMEDY_STATEMENT,
+  GITVAULT_MIRROR_SETUP_HINT,
+  gitvaultRemoteUrlForRepo,
+} from "#sdk";
 import { sdkStats, printVerboseStats, isVerbose } from "./stats.mjs";
 import {
   normalizeArgv,
@@ -55,6 +61,7 @@ Usage:
 
 Common:
   run402 repos create [name]  [--org <org_id>] [--dir <path>] [--tier <tier>] [--project <id>]
+                              [--byo <s3://bucket/prefix>] [--profile <name> | --ambient] [--region <r>] [--endpoint <url>]
   run402 repos view           [--project <id>] [--repo <repo_id>] [--human]
   run402 repos list           [--org <org_id>] [--human]
 
@@ -99,7 +106,15 @@ Subcommands:
            nothing usable can be derived, this is a structured error naming
            exactly one next_action, never a guess. The response's next_action
            is the exact \`git push\` to run. Nothing is deployed, ever, unless
-           you separately choose to.
+           you separately choose to. \`--byo <s3://bucket/prefix>\` allocates a
+           BYO (bring-your-own-bucket) vault: source ciphertext is written
+           ONLY to your own bucket, never run402's — run402 holds the small
+           signed chain only. The destination is PROBED before anything is
+           allocated (create-only writes honored, versioning disabled, write
+           permitted) and refuses closed on any failed property. Fewer
+           copies than a managed vault by construction (the platform holds
+           no payload copy at all); \`run402 repos mirror <destination>\`
+           still works unchanged as your second customer-held location.
   view     Side-effect-free: what this machine and the control plane each
            believe about the repo — allocation, policy, whether this keystore
            can sign, the authenticated and materialized pins, the mirror
@@ -557,6 +572,13 @@ async function formatRepoHuman(s, mirror) {
   const objectCount = storage?.objects ? Object.values(storage.objects).reduce((sum, n) => sum + Number(n), 0) : null;
   lines.push(storage ? `Storage: ${storage.source_bytes} byte(s)${objectCount != null ? ` across ${objectCount} object(s)` : ""}` : "Storage: unknown");
 
+  // gitvault-byo-primary-bucket task 3.5 — unconditional, independent of
+  // mirror status (D7).
+  if (s.vault.storage_profile === "byo") {
+    lines.push(`Storage profile: byo (${s.vault.byo_destination ?? "(unknown)"}) — ${GITVAULT_BYO_HEADLINE_STATEMENT}`);
+    lines.push(GITVAULT_BYO_NO_PAYLOAD_COPY_STATEMENT);
+  }
+
   const decryptPart = !s.keystore.holds_repo_key
     ? "CANNOT decrypt (no key in this machine's keystore)"
     : s.keystore.can_sign
@@ -669,7 +691,22 @@ async function inferRepoName(dir) {
 
 // ─── create ─────────────────────────────────────────────────────────────────
 
-const CREATE_VALUE_FLAGS = ["--org", "--dir", "--tier", "--idempotency-key", "--project"];
+const CREATE_VALUE_FLAGS = ["--org", "--dir", "--tier", "--idempotency-key", "--project", "--byo", "--profile", "--region", "--endpoint"];
+
+/** gitvault-byo-primary-bucket task 3.5 — `--byo <destination>` + the SAME credential/region/endpoint flags `repos mirror` already uses. `undefined` when `--byo` was not passed (byte-identical to today). */
+function resolveByoOption(a) {
+  const destinationUrl = flagValue(a, "--byo");
+  if (destinationUrl == null) return undefined;
+  const credential = resolveMirrorCredential(a);
+  const region = flagValue(a, "--region");
+  const endpoint = flagValue(a, "--endpoint");
+  return {
+    destination_url: destinationUrl,
+    ...(credential ? { credential } : {}),
+    ...(region != null ? { region } : {}),
+    ...(endpoint != null ? { endpoint } : {}),
+  };
+}
 
 async function printCreateResult({ sdk, projectId, vault, adopted, name, verboseArgv }) {
   let address = null;
@@ -693,10 +730,14 @@ async function printCreateResult({ sdk, projectId, vault, adopted, name, verbose
     ? nextAction("push_repo", { command: `git push -u ${vault.remote.name} HEAD`, why: "Publish the current branch to the encrypted Run402 remote." })
     : null;
   const claimAction = address ? null : orgSlug ? claimRepoNameAction(projectId) : claimOrgSlugAction();
-  // gitvault-mirror-default: teach the door at birth — the mirror one-liner
-  // rides beside the recovery receipt (the two things worth doing in the
-  // first minute, stated in the first minute).
-  const mirrorAction = nextAction("configure_mirror", { command: "run402 repos mirror <destination>", why: GITVAULT_MIRROR_SETUP_HINT });
+  // gitvault-byo-primary-bucket task 3.5: a BYO vault's "add a copy" remedy
+  // names a SECOND customer-held location (D7) — the plain mirror hint
+  // frames the mirror as the FIRST custody-held copy, which is false once
+  // the vault's own primary bucket already is one.
+  const isByo = vault.storage_profile === "byo";
+  const mirrorAction = isByo
+    ? nextAction("configure_mirror", { command: "run402 repos mirror <destination>", why: GITVAULT_BYO_UNMIRRORED_REMEDY_STATEMENT })
+    : nextAction("configure_mirror", { command: "run402 repos mirror <destination>", why: GITVAULT_MIRROR_SETUP_HINT });
   const nextActions = [pushAction, mirrorAction, claimAction].filter(Boolean);
 
   // Secret-bearing (recovery_receipt): built fresh every call, printed once,
@@ -711,6 +752,8 @@ async function printCreateResult({ sdk, projectId, vault, adopted, name, verbose
     genesis_sha256: vault.genesis_sha256,
     recovery_receipt: vault.recovery_receipt,
     terminal_loss_statement: vault.terminal_loss_statement,
+    storage_profile: vault.storage_profile,
+    byo_destination: vault.byo_destination,
     deployed: false,
     next_actions: nextActions,
   };
@@ -724,7 +767,13 @@ async function printCreateResult({ sdk, projectId, vault, adopted, name, verbose
   else console.error(`no address claimed — run 'run402 repos rename <name> --project ${projectId}' to claim one`);
   if (vault.remote) console.error(`remote '${vault.remote.name}' -> ${vault.remote.url} (${vault.remote.reason})`);
   if (pushAction) console.error(`next: ${pushAction.command}`);
-  console.error(GITVAULT_MIRROR_SETUP_HINT);
+  if (isByo) {
+    console.error(`storage: byo (${vault.byo_destination}) — ${GITVAULT_BYO_HEADLINE_STATEMENT}`);
+    console.error(GITVAULT_BYO_NO_PAYLOAD_COPY_STATEMENT);
+    console.error(GITVAULT_BYO_UNMIRRORED_REMEDY_STATEMENT);
+  } else {
+    console.error(GITVAULT_MIRROR_SETUP_HINT);
+  }
   console.error("");
   console.error(vault.terminal_loss_statement);
   await printKeystoreLocation();
@@ -745,7 +794,8 @@ async function createAdopt(projectId, dir, a) {
     });
   }
   try {
-    const vault = await sdk.gitvault.init({ org_id: orgId, project_id: projectId, repo_dir: dir });
+    const byo = resolveByoOption(a);
+    const vault = await sdk.gitvault.init({ org_id: orgId, project_id: projectId, repo_dir: dir, ...(byo ? { byo } : {}) });
     await printCreateResult({ sdk, projectId, vault, adopted: true, name: null, verboseArgv: a });
   } catch (err) {
     reportSdkError(err);
@@ -784,7 +834,8 @@ async function createProvision(name, dir, a) {
   }
 
   try {
-    const vault = await sdk.gitvault.init({ org_id: effectiveOrgId, project_id: provisioned.project_id, repo_dir: dir });
+    const byo = resolveByoOption(a);
+    const vault = await sdk.gitvault.init({ org_id: effectiveOrgId, project_id: provisioned.project_id, repo_dir: dir, ...(byo ? { byo } : {}) });
     await printCreateResult({ sdk, projectId: provisioned.project_id, vault, adopted: false, name, verboseArgv: a });
   } catch (err) {
     reportSdkError(err);
@@ -793,7 +844,7 @@ async function createProvision(name, dir, a) {
 
 async function create(args) {
   const a = normalizeArgv(args);
-  assertKnownFlags(a, [...CREATE_VALUE_FLAGS, "--help", "-h", "-v", "--verbose"], CREATE_VALUE_FLAGS);
+  assertKnownFlags(a, [...CREATE_VALUE_FLAGS, "--ambient", "--help", "-h", "-v", "--verbose"], CREATE_VALUE_FLAGS);
   const positionals = requirePositionalCount(a, CREATE_VALUE_FLAGS, {
     min: 0, max: 1, command: "run402 repos create [name]", missing: "",
   });
@@ -945,10 +996,11 @@ async function view(args) {
     // Design D3: `view` NEVER passes `refs: true` — it is side-effect-free
     // by construction, not by convention. Materialization belongs to `fsck`.
     const s = await sdk.gitvault.status(target);
+    const isByo = s.vault?.storage_profile === "byo";
     let mirror = null;
     if (s.repo_id) {
       try {
-        mirror = await sdk.gitvault.mirrorStatus({ ...target, repo_id: s.repo_id });
+        mirror = await sdk.gitvault.mirrorStatus({ ...target, repo_id: s.repo_id, is_byo: isByo });
       } catch {
         // best-effort — a mirror read failure never fails `view`
       }
@@ -977,6 +1029,14 @@ async function view(args) {
     }
     if (s.pinned) {
       console.error(`pinned: repo_id ${s.pinned.repo_id}` + (s.pinned.resolved_from ? ` (resolved from run402::${s.pinned.resolved_from.org_slug}/${s.pinned.resolved_from.repo_name})` : ""));
+    }
+    // gitvault-byo-primary-bucket task 3.5: the no-payload-copy disclosure —
+    // unconditional and independent of mirror status (D7), never folded
+    // into the mirror finding below (that's a SEPARATE fact: "is there a
+    // second copy", not "is there any platform-held copy at all").
+    if (isByo) {
+      console.error(`storage: byo (${s.vault?.byo_destination ?? "(unknown)"}) — ${GITVAULT_BYO_HEADLINE_STATEMENT}`);
+      console.error(GITVAULT_BYO_NO_PAYLOAD_COPY_STATEMENT);
     }
     if (mirror?.configured) {
       const currency = mirror.is_current === true ? "current" : mirror.is_current === false ? `STALE — ${mirror.closing_command}` : "unknown (mirror unreachable or vault unread)";
