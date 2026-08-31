@@ -679,12 +679,16 @@ export class GitvaultMemoryTransport implements GitvaultTransport {
     if (this.compactionGrantUnsupported) throw err("ROUTE_NOT_FOUND", "compaction-grant is not supported by this gateway");
     const existing = this.compactionGrants.get(repo_id);
     if (existing) throw err("GITVAULT_COMPACTION_GRANT_ACTIVE", "a compaction grant is already active for this project", { expires_at: existing.expires_at });
+    // STRING byte fields, deliberately: the live gateway serializes its
+    // Postgres BIGINTs as strings, and a number-typed mock let the
+    // Number.isFinite(string) bug ship past every unit test (caught only by
+    // the live acceptance run, 2026-08-31). The mock stays wire-faithful.
     const grant: GitvaultCompactionGrant = {
-      granted_bytes: this.compactionGrantBytes,
+      granted_bytes: String(this.compactionGrantBytes),
       expires_at: "2026-01-01T01:00:00.000Z",
-      pool_used_bytes: this.compactionGrantPoolFigures.pool_used_bytes,
-      pool_limit_bytes: this.compactionGrantPoolFigures.pool_limit_bytes,
-      effective_pool_limit_bytes: this.compactionGrantPoolFigures.pool_limit_bytes + this.compactionGrantBytes,
+      pool_used_bytes: String(this.compactionGrantPoolFigures.pool_used_bytes),
+      pool_limit_bytes: String(this.compactionGrantPoolFigures.pool_limit_bytes),
+      effective_pool_limit_bytes: String(this.compactionGrantPoolFigures.pool_limit_bytes + this.compactionGrantBytes),
     };
     this.compactionGrants.set(repo_id, grant);
     return grant;

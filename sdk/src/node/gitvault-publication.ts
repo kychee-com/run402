@@ -919,15 +919,22 @@ export interface GitvaultMaintenanceLease {
 
 /** `POST …/compaction-grant`'s result (gitvault-checkpoint-cadence design D3). */
 export interface GitvaultCompactionGrant {
-  /** The vault's server-measured `source_bytes` at grant time, capped — never client-declared. */
-  granted_bytes: number;
+  /**
+   * The vault's server-measured `source_bytes` at grant time, capped — never
+   * client-declared. NOTE the byte fields arrive as STRINGS on the wire (the
+   * gateway serializes Postgres BIGINTs as strings, verified live) — consumers
+   * MUST `Number(...)` before arithmetic; `Number.isFinite` on the raw value
+   * is false and silently discards the grant (the bug the live acceptance
+   * run caught on 2026-08-31).
+   */
+  granted_bytes: number | string;
   expires_at: string;
   /** The org's pooled storage already in use, at grant time. */
-  pool_used_bytes: number;
+  pool_used_bytes: number | string;
   /** The org's plain tier storage limit (unraised). */
-  pool_limit_bytes: number;
+  pool_limit_bytes: number | string;
   /** `pool_limit_bytes` + this grant's `granted_bytes` — the limit the preflight arithmetic should use while this grant is active. */
-  effective_pool_limit_bytes: number;
+  effective_pool_limit_bytes: number | string;
 }
 
 export interface GitvaultTransport extends GitvaultCreationTransport {

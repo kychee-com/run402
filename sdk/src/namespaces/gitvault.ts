@@ -1889,7 +1889,7 @@ export class Gitvault {
    * tier's own figure (never the raised one), so disclosure never implies
    * the tier grew.
    */
-  async #readCompactHeadroom(repoId: string, effectiveLimitOverride?: number): Promise<GitvaultCompactHeadroom | null> {
+  async #readCompactHeadroom(repoId: string, effectiveLimitOverride?: number | string): Promise<GitvaultCompactHeadroom | null> {
     /** Posture (3): one note, on stderr, and `null` — never a throw. */
     const unanswerable = (why: string): null => {
       globalThis.console?.error?.(`run402: could not check compaction storage headroom (${why}); proceeding — the platform's storage quota remains authoritative.`);
@@ -1918,7 +1918,12 @@ export class Gitvault {
       return unanswerable("tier status carried no usable pooled-storage figures");
     }
 
-    const effectiveLimit = Number.isFinite(effectiveLimitOverride) && (effectiveLimitOverride as number) > 0 ? (effectiveLimitOverride as number) : poolLimit;
+    // The grant's byte fields arrive as STRINGS on the wire (gateway BIGINT
+    // serialization, verified live) — coerce BEFORE the finiteness gate, or
+    // `Number.isFinite("472697418")` (false, no coercion) silently discards
+    // an opened grant and the preflight refuses with the unraised limit.
+    const overrideNum = effectiveLimitOverride === undefined ? Number.NaN : Number(effectiveLimitOverride);
+    const effectiveLimit = Number.isFinite(overrideNum) && overrideNum > 0 ? overrideNum : poolLimit;
     const projected = poolUsed + sourceBytes;
     return {
       pool_used_bytes: poolUsed,
@@ -1932,7 +1937,7 @@ export class Gitvault {
   }
 
   /** The reader plus compaction's policy (refuse / override / proceed). */
-  async #compactHeadroomPreflight(repoId: string, ignore: boolean, effectiveLimitOverride?: number): Promise<GitvaultCompactHeadroom | null> {
+  async #compactHeadroomPreflight(repoId: string, ignore: boolean, effectiveLimitOverride?: number | string): Promise<GitvaultCompactHeadroom | null> {
     const headroom = await this.#readCompactHeadroom(repoId, effectiveLimitOverride);
     if (headroom === null) return null;
     const { pool_used_bytes: poolUsed, pool_limit_bytes: poolLimit, vault_source_bytes: sourceBytes, projected_transient_bytes: projected, ok, effective_pool_limit_bytes: effectiveLimit } = headroom;
@@ -2089,7 +2094,7 @@ export class Gitvault {
         cutoff_bound: cutoffBound,
         covered_refs: Object.keys(published.refs).length,
         covered_roots: base.roots.length,
-        headroom: headroom && grant ? { ...headroom, compaction_grant: { granted_bytes: grant.granted_bytes, expires_at: grant.expires_at } } : headroom,
+        headroom: headroom && grant ? { ...headroom, compaction_grant: { granted_bytes: Number(grant.granted_bytes), expires_at: grant.expires_at } } : headroom,
       };
     } finally {
       if (lease) {

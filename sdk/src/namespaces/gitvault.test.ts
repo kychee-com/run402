@@ -353,6 +353,34 @@ describe("gitvault compaction headroom grant (gitvault-checkpoint-cadence)", () 
     assert.equal(grantCalls.length, 1);
     assert.equal(grantCalls[0]!.method, "POST");
   });
+
+  it("a grant whose byte fields are WIRE STRINGS relieves an otherwise-refused preflight (the 2026-08-31 live bug)", async () => {
+    // The live gateway serializes its BIGINTs as strings. The original guard
+    // — Number.isFinite(effective_pool_limit_bytes) on the RAW value — is
+    // false for "472697418", so an opened grant was silently discarded and
+    // the preflight refused with the unraised limit. Caught only by the live
+    // acceptance run on the bench vault; this pins the coercion.
+    const { sdk, calls } = sdkWith((call) => {
+      if (call.url.includes("/compaction-grant") && call.method === "POST") {
+        return { body: { granted_bytes: "200000000", expires_at: "2026-09-01T00:00:00.000Z", pool_used_bytes: "134000000", pool_limit_bytes: "262144000", effective_pool_limit_bytes: "462144000" } };
+      }
+      if (call.url.includes("/compaction-grant") && call.method === "DELETE") return { body: { closed: true } };
+      if (call.url.includes("/tiers/v1/status")) return { body: tierStatus(134_000_000, 250 * 1024 * 1024) };
+      return { body: withSource("200000000") };
+    });
+    let thrown: unknown;
+    try {
+      await sdk.gitvault.compact({ repo_id: REPO });
+    } catch (e) {
+      thrown = e;
+    }
+    // The mock cannot carry a full compaction to success — what matters is
+    // that the refusal did NOT fire (the raised limit covered the projected
+    // 334 MB) and the grant was still closed on the way out (the finally).
+    assert.notEqual((thrown as { code?: string } | undefined)?.code, "GITVAULT_COMPACT_INSUFFICIENT_HEADROOM", `preflight refused despite a covering grant: ${String((thrown as Error | undefined)?.message)}`);
+    const grantCalls = calls.filter((c) => c.url.includes("/compaction-grant")).map((c) => c.method);
+    assert.deepEqual(grantCalls, ["POST", "DELETE"], "the grant must be opened once and closed once, whatever happened in between");
+  });
 });
 
 describe("gitvault owner writes", () => {

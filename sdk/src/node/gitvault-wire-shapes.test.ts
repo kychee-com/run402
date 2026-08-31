@@ -303,7 +303,8 @@ describe("createGitvaultHttpTransport — compaction headroom grant open/close (
   }
 
   it("opens with a bare POST …/compaction-grant and returns the grant verbatim", async () => {
-    const grant = { granted_bytes: 1024, expires_at: "2026-01-01T01:00:00.000Z", pool_used_bytes: 10, pool_limit_bytes: 1000, effective_pool_limit_bytes: 1024 + 1000 };
+    // Byte fields are STRINGS on the wire (gateway BIGINT serialization, verified live 2026-08-31).
+    const grant = { granted_bytes: "1024", expires_at: "2026-01-01T01:00:00.000Z", pool_used_bytes: "10", pool_limit_bytes: "1000", effective_pool_limit_bytes: "2024" };
     const { transport, calls } = transportOver(() => grant);
     const got = await transport.openCompactionGrant({ repo_id: REPO });
     assert.deepEqual(calls, [{ path: `/gitvault/v1/vaults/${REPO}/compaction-grant`, method: "POST", body: undefined }]);
