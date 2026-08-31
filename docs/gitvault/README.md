@@ -12,13 +12,26 @@ vectors are open; the hosted coordination control plane is not.
 | [`threat-model.md`](threat-model.md) | What the platform can and cannot do to your source — the normative claims vocabulary, trust boundary, observer matrix, terminal-loss table |
 | [`hpke-second-implementation.md`](hpke-second-implementation.md) | The task-1.0 decision selecting rozbb/rust-hpke as the independent second HPKE for [`r402s-verify`](../../r402s-verify/README.md) |
 
-These are **byte-identical mirrors**. The working drafts live in the private
-`run402-private` repo (`docs/strategy/products/gitvault/`), where the freeze
-program's alignment gate hash-pins the protocol text; a protocol revision there
-must re-sync this copy in the same change (`diff` against the source is the
-whole check — do not hand-edit here). The same pattern as the vendored
-[`test-vectors/r402s-v0/`](../../test-vectors/r402s-v0/README.md) set, whose
-schemas these documents are normative for.
+These are **byte-identical mirrors of a frozen snapshot** — the checkpoint
+revision named in each file's own title (protocol rev 41; the threat model's
+own header names its revision), NOT a live tail of the private working drafts.
+The working drafts live in the private `run402-private` repo
+(`docs/strategy/products/gitvault/`), where the freeze program's alignment
+gate hash-pins the protocol text, and they advance ahead of this copy between
+checkpoints. **Snapshot policy (deliberate, recorded 2026-08-31):** this
+vendored set — docs, schemas, AND vectors together, per the re-sync
+discipline — is re-cut wholesale only when the private canonical set cuts a
+new `CONTINUITY.json` checkpoint, which requires the cross-implementation
+vector generator/verifier run (`gen_vectors.py` + `verify_vectors.py`,
+against BOTH reference implementations) to have cleared the entire pending
+vector backlog for every revision since this snapshot. Vectors are never
+hand-authored and the continuity manifest is write-once, so a docs-only
+"catch-up" that outran the frozen vectors would break both disciplines —
+the drift you may observe against the private revision number is therefore
+intentional, bounded, and internally consistent here. Do not hand-edit any
+file in this set; the next checkpoint replaces it whole. The same policy
+governs the vendored [`test-vectors/r402s-v0/`](../../test-vectors/r402s-v0/README.md)
+set, whose schemas these documents are normative for.
 
 Because they are verbatim mirrors of internal working drafts:
 

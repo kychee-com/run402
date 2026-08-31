@@ -6,6 +6,14 @@ them — before this copy existed the SDK suites resolved a hard-coded absolute
 path, found nothing on a CI runner, and **silently skipped ~130 vectors while
 reporting green**.
 
+**Snapshot policy:** this set is a frozen checkpoint, not a live tail — the
+private canonical set advances ahead of it between checkpoints (see the
+vendored docs README at [`docs/gitvault/`](../../docs/gitvault/README.md)
+for the full policy). It is re-cut wholesale — docs + schemas + vectors
+together — only when a new `CONTINUITY.json` checkpoint is produced by the
+cross-implementation generator/verifier run; vectors are never hand-authored,
+so nothing here is ever edited in place.
+
 ## Files
 
 | File | What it is |
