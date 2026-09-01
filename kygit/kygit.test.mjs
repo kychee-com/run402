@@ -11,7 +11,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, symlinkSync, rmSync, realpathSync } from "node:fs";
+import { mkdtempSync, symlinkSync, rmSync, realpathSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,7 +21,9 @@ import {
   renderHelp,
   renderVersion,
   resolveClient,
+  findRemoteHelper,
   RESOLVE_FAIL_MESSAGE,
+  HELPER_MISSING_MESSAGE,
 } from "./kygit.mjs";
 
 const SURFACE = {
@@ -138,7 +140,7 @@ describe("help / version / resolution", () => {
     );
   });
 
-  it("resolution failure is typed, naming the reinstall fix", () => {
+  it("resolution failure is typed, naming a fix that actually works", () => {
     assert.throws(() =>
       resolveClient({
         resolve() {
@@ -146,8 +148,13 @@ describe("help / version / resolution", () => {
         },
       }),
     );
-    assert.match(RESOLVE_FAIL_MESSAGE, /npm i -g @kychee\/kygit/);
+    assert.match(RESOLVE_FAIL_MESSAGE, /npm i -g run402 @kychee\/kygit/);
     assert.match(RESOLVE_FAIL_MESSAGE, /npm i -g run402/);
+    // The advice shown to someone ALREADY stuck must not be the command that
+    // put them there: `npm i -g @kychee/kygit` standalone never links
+    // git-remote-run402 (kychee-com/run402#577). It led this message until
+    // 2026-09-01.
+    assert.doesNotMatch(RESOLVE_FAIL_MESSAGE, /npm i -g @kychee\/kygit/);
   });
 
   it("runs main() when invoked through a bin-style SYMLINK (the 0.1.0 regression)", () => {
@@ -182,5 +189,76 @@ describe("help / version / resolution", () => {
     for (const verb of client.surface.verbs) {
       assert.ok(typeof verb === "string");
     }
+  });
+});
+
+describe("findRemoteHelper — git's own lookup for the run402:: helper", () => {
+  // git spawns `git-remote-run402` FROM PATH; nothing else finds it. These
+  // drive the probe off-platform, so the Windows shape is covered from CI on
+  // Linux and from a mac (kychee-com/run402#577 was found on Windows).
+  // Windows path comparison is case-insensitive (NTFS), which is why a probe
+  // for git-remote-run402.CMD finds npm's lowercase .cmd shim on a real box.
+  const winHas = (probe, actual) => probe.toLowerCase() === actual.toLowerCase();
+
+  const posix = (dirs, present) => ({
+    env: { PATH: dirs.join(":") },
+    platform: "linux",
+    exists: (p) => present.includes(p),
+  });
+
+  it("finds the helper on a posix PATH", () => {
+    assert.equal(
+      findRemoteHelper(posix(["/a/bin", "/usr/local/bin"], ["/usr/local/bin/git-remote-run402"])),
+      "/usr/local/bin/git-remote-run402",
+    );
+  });
+
+  it("returns null when the helper is nowhere on PATH (the #577 install)", () => {
+    assert.equal(findRemoteHelper(posix(["/a/bin", "/usr/local/bin"], ["/usr/local/bin/kygit"])), null);
+  });
+
+  it("returns null for an empty or missing PATH rather than throwing", () => {
+    assert.equal(findRemoteHelper({ env: {}, platform: "linux", exists: () => true }), null);
+    assert.equal(findRemoteHelper({ env: { PATH: "" }, platform: "linux", exists: () => true }), null);
+  });
+
+  it("resolves the Windows .cmd shim through PATHEXT", () => {
+    // npm installs the helper as git-remote-run402.cmd on Windows; probing the
+    // bare name alone would report a false negative on the exact platform the
+    // bug was reported from.
+    const found = findRemoteHelper({
+      env: { Path: "C:\\Users\\v\\AppData\\Roaming\\npm", PATHEXT: ".COM;.EXE;.BAT;.CMD" },
+      platform: "win32",
+      // NTFS is case-insensitive and PATHEXT is conventionally UPPERCASE while
+      // npm writes a lowercase .cmd — so the probe must be allowed to match
+      // either, exactly as existsSync would on a real Windows box.
+      exists: (p) => winHas(p, "C:\\Users\\v\\AppData\\Roaming\\npm\\git-remote-run402.cmd"),
+    });
+    assert.match(found, /git-remote-run402\.cmd$/i);
+  });
+
+  it("splits a Windows PATH on ';' and tolerates quoted entries", () => {
+    const found = findRemoteHelper({
+      env: { PATH: '"C:\\one";C:\\two', PATHEXT: ".CMD" },
+      platform: "win32",
+      exists: (p) => winHas(p, "C:\\two\\git-remote-run402.cmd"),
+    });
+    assert.match(found, /two/);
+  });
+
+  it("the warning names the one command that installs the helper", () => {
+    assert.match(HELPER_MISSING_MESSAGE, /git-remote-run402 is not on PATH/);
+    assert.match(HELPER_MISSING_MESSAGE, /npm i -g run402/);
+    assert.match(HELPER_MISSING_MESSAGE, /Unable to find remote helper/);
+  });
+
+  it("main warns before exec'ing, so the notice precedes the failing git push", () => {
+    // The wiring is one line in main(); main itself is only smoke-tested
+    // (it spawns the real CLI), so pin the line rather than leave it uncovered.
+    const src = readFileSync(fileURLToPath(new URL("./kygit.mjs", import.meta.url)), "utf8");
+    const guard = src.indexOf("HELPER_MISSING_MESSAGE + ");
+    const spawnCall = src.indexOf("spawn(process.execPath");
+    assert.ok(guard > 0, "main() must emit HELPER_MISSING_MESSAGE");
+    assert.ok(guard < spawnCall, "the warning must be written BEFORE the CLI is spawned");
   });
 });

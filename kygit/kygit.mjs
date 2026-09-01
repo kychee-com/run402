@@ -23,8 +23,8 @@
  * No git-remote-kygit, no `kygit::` scheme, ever (design D4).
  */
 import { createRequire } from "node:module";
-import { readFileSync, realpathSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { dirname, join, posix as posixPath, win32 as win32Path } from "node:path";
 import { spawn } from "node:child_process";
 import { pathToFileURL } from "node:url";
 
@@ -32,8 +32,64 @@ const requireFromHere = createRequire(import.meta.url);
 
 export const RESOLVE_FAIL_MESSAGE =
   "kygit: cannot resolve its run402 engine — the install is incomplete.\n" +
-  "  Fix: npm i -g @kychee/kygit   (reinstalls the run402 dependency)\n" +
-  "  Or install the canonical CLI directly: npm i -g run402";
+  "  Fix: npm i -g run402 @kychee/kygit   (engine + shim, in one command)\n" +
+  "  The engine alone repairs it: npm i -g run402";
+
+/**
+ * Warning shown when git could not spawn the `run402::` remote helper.
+ *
+ * kygit deliberately ships ONE binary (`kygit`) — the remote helper
+ * `git-remote-run402` is a bin of the `run402` package, and npm links bins
+ * only for the package you install DIRECTLY, never for its dependencies. So
+ * `npm i -g @kychee/kygit` alone leaves the helper on disk but off PATH, and
+ * the failure lands later, inside git, as an opaque "Unable to find remote
+ * helper for 'run402'" (kychee-com/run402#577, found on Windows in
+ * kychee-com/run402-private#696 — but it is npm bin-linking, not a Windows
+ * quirk, and reproduces on a clean mac).
+ *
+ * kygit CANNOT fix this by declaring the helper in its own bin: npm fails a
+ * global install with EEXIST when a second package claims an already-linked
+ * bin name, so that would break `npm i -g @kychee/kygit` for everyone who
+ * already has run402 — the common case. (It would also break the shim's
+ * "kygit is the only binary" contract.) Naming the one command that works is
+ * the whole fix available here.
+ */
+export const HELPER_MISSING_MESSAGE =
+  "kygit: warning — git-remote-run402 is not on PATH.\n" +
+  "  Plain `git push`/`git fetch` against a run402:: remote will fail with\n" +
+  "  \"fatal: Unable to find remote helper for 'run402'\".\n" +
+  "  Fix: npm i -g run402   (the helper is one of that package's bins)";
+
+/**
+ * Finds the remote helper the way GIT will: a `git-remote-run402` executable
+ * on PATH. Pure — every ambient input is injected so this is testable off the
+ * platform it describes.
+ */
+export function findRemoteHelper({
+  env = process.env,
+  exists = existsSync,
+  platform = process.platform,
+} = {}) {
+  const windows = platform === "win32";
+  const raw = env.PATH ?? env.Path ?? "";
+  const dirs = raw.split(windows ? ";" : ":").filter(Boolean);
+  // On Windows the npm shim is git-remote-run402.cmd; git resolves it through
+  // PATHEXT, so probing the bare name alone would report a false negative.
+  const exts = windows
+    ? ["", ...(env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean)]
+    : [""];
+  // Join with the TARGET platform's rules, not the host's — on a real Windows
+  // box these are the same thing, and off it this is what makes the Windows
+  // shape testable at all.
+  const joinFor = windows ? win32Path.join : posixPath.join;
+  for (const dir of dirs) {
+    for (const ext of exts) {
+      const candidate = joinFor(dir.replace(/^"|"$/g, ""), "git-remote-run402" + ext);
+      if (exists(candidate)) return candidate;
+    }
+  }
+  return null;
+}
 
 /** Resolves the installed run402 package: its dir, package.json, surface, and CLI entry. */
 export function resolveClient(req = requireFromHere) {
@@ -165,6 +221,8 @@ async function main() {
     process.stderr.write(plan.message + "\n");
     process.exit(1);
   }
+  if (!findRemoteHelper()) process.stderr.write(HELPER_MISSING_MESSAGE + "\n");
+
   const child = spawn(process.execPath, [client.cliPath, ...plan.args], { stdio: "inherit" });
   child.on("exit", (code, signal) => {
     if (signal) process.kill(process.pid, signal);

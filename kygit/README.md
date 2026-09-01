@@ -3,10 +3,20 @@
 The encrypted Git remote's command — [kygit.com](https://kygit.com).
 
 ```
-npm i -g @kychee/kygit
+npm i -g run402 @kychee/kygit
 kygit create              # provision the vault, scaffold the remote
 git push origin main      # encrypted on your machine, published as a signed head
 ```
+
+**Install both, in that one command.** `git push` is done by plain git, and
+git reaches a `run402::` remote by spawning `git-remote-run402` **from
+PATH** — a bin of the `run402` package. npm links bins only for the
+package you install directly, never for its dependencies, so
+`npm i -g @kychee/kygit` on its own leaves the helper on disk but off
+PATH and the push fails with `Unable to find remote helper for 'run402'`.
+kygit cannot declare that bin itself: npm refuses a global install with
+`EEXIST` when a second package claims an already-linked bin name, which
+would break installing kygit for everyone who already has run402.
 
 (The package is scoped because npm's typosquat guard reserves the bare
 name — it is one letter from `degit`. The command you get is still
