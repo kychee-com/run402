@@ -212,6 +212,81 @@ describe("gitvault keystore — recordObjectStoreOrigins (gitvault-object-host-p
   });
 });
 
+describe("gitvault keystore — findRepoByProject (gitvault-offline-clone-resolve task 1.1)", () => {
+  const REPO_A = `src_${"a".repeat(32)}`;
+  const REPO_B = `src_${"b".repeat(32)}`;
+
+  function repo(overrides: Partial<Parameters<GitvaultKeystore["saveRepo"]>[0]>) {
+    return {
+      repo_id: REPO_A,
+      org_id: "org_1",
+      project_id: "prj_1",
+      k_repo_hex: "00".repeat(32),
+      epoch: GITVAULT_GENESIS_EPOCH,
+      genesis_sha256: "a".repeat(64),
+      head_pin: null,
+      last_ref_transaction: null,
+      provenance: "created" as const,
+      ...overrides,
+    };
+  }
+
+  it("finds a repo file whose project_id matches", () => {
+    const ks = GitvaultKeystore.open({ rootDir: root, now: fixedNow });
+    ks.saveRepo(repo({}));
+    const found = ks.findRepoByProject("prj_1");
+    assert.equal(found?.repo_id, REPO_A);
+  });
+
+  it("no matching project_id anywhere → null (never throws)", () => {
+    const ks = GitvaultKeystore.open({ rootDir: root, now: fixedNow });
+    ks.saveRepo(repo({}));
+    assert.equal(ks.findRepoByProject("prj_nonexistent"), null);
+  });
+
+  it("an empty keystore (no repos/ directory yet) → null", () => {
+    const ks = GitvaultKeystore.open({ rootDir: root, now: fixedNow });
+    assert.equal(ks.findRepoByProject("prj_1"), null);
+  });
+
+  it("org_id, when supplied, is a hard filter — a project_id match under a DIFFERENT org is a miss, never a guess", () => {
+    const ks = GitvaultKeystore.open({ rootDir: root, now: fixedNow });
+    ks.saveRepo(repo({ org_id: "org_1", project_id: "prj_1" }));
+    assert.equal(ks.findRepoByProject("prj_1", "org_1")?.repo_id, REPO_A);
+    assert.equal(ks.findRepoByProject("prj_1", "org_OTHER"), null, "mismatched org must miss, not guess");
+    assert.equal(ks.findRepoByProject("prj_1")?.repo_id, REPO_A, "omitting org_id still matches on project_id alone");
+  });
+
+  it("a corrupt repo file is skipped silently, not thrown", () => {
+    const ks = GitvaultKeystore.open({ rootDir: root, now: fixedNow });
+    ks.saveRepo(repo({ repo_id: REPO_B, project_id: "prj_1" }));
+    // Hand-corrupt REPO_A's file (wrong version) without ever creating it
+    // through saveRepo — mirrors a partially-written or foreign-tool file.
+    writeFileSync(ks.repoPath(REPO_A), JSON.stringify({ version: 2, repo_id: REPO_A, project_id: "prj_1" }));
+    assert.doesNotThrow(() => ks.findRepoByProject("prj_1"));
+    assert.equal(ks.findRepoByProject("prj_1")?.repo_id, REPO_B, "the corrupt file is skipped; the valid match still answers");
+  });
+
+  it("multiple repo files matching the same project — the most-recently-modified file wins", () => {
+    const ks = GitvaultKeystore.open({ rootDir: root, now: fixedNow });
+    ks.saveRepo(repo({ repo_id: REPO_A, project_id: "prj_1" }));
+    ks.saveRepo(repo({ repo_id: REPO_B, project_id: "prj_1" }));
+    // Force an unambiguous mtime order — REPO_A older, REPO_B newer — since
+    // two back-to-back synchronous writes can otherwise share a filesystem
+    // mtime tick on some filesystems.
+    const older = new Date(Date.now() - 60_000);
+    const newer = new Date();
+    utimesSync(ks.repoPath(REPO_A), older, older);
+    utimesSync(ks.repoPath(REPO_B), newer, newer);
+    assert.equal(ks.findRepoByProject("prj_1")?.repo_id, REPO_B);
+    // Touch REPO_A again (a re-save, as a re-vaulted project's old file being
+    // re-touched would do) — it should now win instead.
+    const newest = new Date(Date.now() + 60_000);
+    utimesSync(ks.repoPath(REPO_A), newest, newest);
+    assert.equal(ks.findRepoByProject("prj_1")?.repo_id, REPO_A);
+  });
+});
+
 describe("gitvault keystore — §5.1 transitions", () => {
   it("whole-keystore loss is VAULT_UNRECOVERABLE with the verbatim statement", () => {
     const ks = GitvaultKeystore.open({ rootDir: root, now: fixedNow });

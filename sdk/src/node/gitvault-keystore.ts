@@ -501,6 +501,59 @@ export class GitvaultKeystore {
     return readdirSync(this.reposDir).filter((n) => n.endsWith(".json")).map((n) => n.slice(0, -5)).filter((id) => GITVAULT_SRC_RE.test(id)).sort();
   }
 
+  /**
+   * gitvault-offline-clone-resolve (design D1/D2/D6, task 1.1): the
+   * keystore's project→repo lookup that lets {@link resolveGitvaultAddress}
+   * (`gitvault-address.ts`) answer an id-form address WITHOUT the network
+   * `findVaultByProject` round trip. D2's completeness argument: decrypting
+   * anything requires exactly this repo file (`k_repo_hex`), so "this
+   * keystore holds a matching file" is exactly the set of clones that can
+   * complete regardless of how resolution went — the network call was only
+   * ever confirming a fact this machine already held.
+   *
+   * `orgId`, when supplied, is a HARD equality filter, never a hint: a
+   * `project_id` match under a different `org_id` is a miss (D1, "mismatched
+   * org → treat as miss, never guess") — an org transfer or an id collision
+   * must never resolve to the wrong vault silently. Passing `undefined`
+   * accepts any org for that project id.
+   *
+   * Multiple repo files can legitimately name the same `project_id` — most
+   * commonly a re-vaulted project that left its old file behind under its
+   * old `repo_id` on THIS machine. D3: the most-recently-modified file (by
+   * filesystem mtime — D6 rules out a maintained on-disk index for v1) wins;
+   * a wrong pick is indistinguishable from an ordinary stale pin and heals
+   * through the same {@link recoverStaleGitvaultPin} first-use-refusal path.
+   *
+   * Cheap by construction (D6): one directory listing plus one JSON read per
+   * candidate — no maintained project→repo index. NEVER throws: a corrupt,
+   * unreadable, or concurrently-deleted repo file is skipped exactly as a
+   * cache miss, because a project-id scan has no single `repo_id` to blame a
+   * throw on (unlike {@link readRepo}'s single-id contract, where throwing on
+   * corruption is the right, attributable failure). Returns `null` on no
+   * match, an empty keystore, or a not-yet-created `repos/` directory.
+   */
+  findRepoByProject(projectId: string, orgId?: string): GitvaultRepoFile | null {
+    let best: { repo: GitvaultRepoFile; mtimeMs: number } | null = null;
+    for (const repoId of this.listRepoIds()) {
+      let repo: GitvaultRepoFile | null;
+      try {
+        repo = this.readRepo(repoId);
+      } catch {
+        continue; // corrupt/unreadable file — skip silently, this is a scan, not a targeted read
+      }
+      if (!repo || repo.project_id !== projectId) continue;
+      if (orgId !== undefined && repo.org_id !== orgId) continue;
+      let mtimeMs: number;
+      try {
+        mtimeMs = statSync(this.repoPath(repoId)).mtimeMs;
+      } catch {
+        continue; // vanished between listing and stat — skip
+      }
+      if (!best || mtimeMs > best.mtimeMs) best = { repo, mtimeMs };
+    }
+    return best?.repo ?? null;
+  }
+
   /** Save (create or replace) a repo file under the per-repo lock. */
   saveRepo(repo: Omit<GitvaultRepoFile, "version" | "updated_at">): GitvaultRepoFile {
     const full: GitvaultRepoFile = { version: 1, ...repo, updated_at: formatGitvaultTimestamp(this.now()) };

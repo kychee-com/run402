@@ -354,7 +354,7 @@ describe("gitvault-restore-recipe: the clone row (client-surface spec's counted 
     });
   }
 
-  it("a fresh-target clone with a qualifying all-inline plan completes in ≤3 counted ops, zero pack fetches", async (t) => {
+  it("a fresh-target clone of a KEYSTORE-KNOWN repo, with a qualifying all-inline plan, completes in ≤2 counted ops, zero resolution ops (gitvault-offline-clone-resolve)", async (t) => {
     const f = await makeVault();
     t.after(() => rmSync(f.root, { recursive: true, force: true }));
     const c1 = await git(f.repoDir, ["rev-parse", "HEAD"]);
@@ -367,18 +367,31 @@ describe("gitvault-restore-recipe: the clone row (client-surface spec's counted 
     const record = await f.transport.getVaultRecord({ repo_id: f.repoId });
     const plan = await buildGenesisFallbackPlan(f.transport, f.repoId, record.newest_generation!);
 
-    const target = mkdtempSync(join(tmpdir(), "run402-gitvault-budget-clone-"));
+    // `makeVault`'s real org/project ids ("org_1"/"proj_1") are not
+    // id-shaped (`gitvaultRemoteAddressForm` needs a UUID org + a `prj_`
+    // project id) — fake them onto the SAME repo file so an id-form address
+    // can name it. Every other field (k_repo_hex, genesis, pins) is
+    // untouched, so the vault itself decrypts and pushes exactly as before.
+    const address = { org_id: "11111111-1111-4111-8111-111111111111", project_id: "prj_1" };
+    const existingRepo = f.keystore.readRepo(f.repoId)!;
+    f.keystore.saveRepo({ ...existingRepo, project_id: address.project_id, org_id: address.org_id });
+
+    const target = mkdtempSync(join(tmpdir(), "run402-gitvault-budget-clone-keystore-"));
     t.after(() => rmSync(target, { recursive: true, force: true }));
     mkdirSync(target, { recursive: true });
     await git(target, ["init", "-q", "--bare", "."]);
 
     const counter = new GitvaultOpCounter();
     const countedTransport = countingGitvaultTransport(planServingTransport(f.transport, () => plan), counter);
-    // Address resolution (design D6): a fresh clone target carries no
-    // git-config pin, so the SAME online project lookup `resolveGitvaultAddress`
-    // would fall through to — one real transport op, counted like any other.
-    const resolved = await countedTransport.findVaultByProject({ project_id: "proj_1" });
-    const vault = GitvaultVault.open({ keystore: f.keystore, transport: countedTransport, repo_id: resolved.repo_id });
+    // gitvault-offline-clone-resolve (design D1/D2): the id-form address
+    // resolves straight from the LOCAL keystore — zero transport
+    // operations — instead of the network `findVaultByProject` read the
+    // keystore-miss scenario below still pays for.
+    const resolution = await resolveGitvaultAddress({ keystore: f.keystore, transport: countedTransport, address, repo_dir: target });
+    assert.equal(resolution.via, "keystore");
+    assert.equal(resolution.offline, true);
+    assert.equal(counter.total, 0, "a keystore-known repo resolves with zero transport operations");
+    const vault = GitvaultVault.open({ keystore: f.keystore, transport: countedTransport, repo_id: resolution.repo_id });
 
     // list → fetch, exactly the remote-helper session's shape (`runList`
     // sends `restore: true` on a marker-absent materialize; `runFetch`
@@ -393,7 +406,59 @@ describe("gitvault-restore-recipe: the clone row (client-surface spec's counted 
     assert.equal(byKind["object-reads-batch(get)"] ?? 0, 0, "an all-inline plan fetches zero pack bytes");
     assert.equal(byKind["object-read(presign+get)"] ?? 0, 0, "an all-inline plan fetches zero pack bytes");
     assert.equal(byKind.getObjects ?? 0, 0, "an all-inline plan never calls getObjects for WAL/checkpoint packs");
-    assertOpBudget(counter, 3, "fresh-target clone with a qualifying all-inline plan");
+    assertOpBudget(counter, 2, "keystore-known fresh-target clone — resolution contributes zero");
+  });
+
+  it("a fresh-target clone of a KEYSTORE-MISS repo still completes in ≤3 counted ops — resolution falls back to the network byte-identically", async (t) => {
+    const f = await makeVault();
+    t.after(() => rmSync(f.root, { recursive: true, force: true }));
+    const c1 = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] } });
+    const c2 = await commitFile(f.repoDir, "b.txt", "b\n");
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: c1, new_oid: c2, force: false }] } });
+    const c3 = await commitFile(f.repoDir, "c.txt", "c\n");
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: c2, new_oid: c3, force: false }] } });
+
+    const record = await f.transport.getVaultRecord({ repo_id: f.repoId });
+    const plan = await buildGenesisFallbackPlan(f.transport, f.repoId, record.newest_generation!);
+
+    // An id-form address that names NOTHING this keystore holds — `proj_1`/
+    // `org_1` (the real repo file's ids) aren't id-shaped at all, so the
+    // keystore scan is a guaranteed miss for any id-form address here.
+    const address = { org_id: "22222222-2222-4222-8222-222222222222", project_id: "prj_2" };
+
+    const target = mkdtempSync(join(tmpdir(), "run402-gitvault-budget-clone-miss-"));
+    t.after(() => rmSync(target, { recursive: true, force: true }));
+    mkdirSync(target, { recursive: true });
+    await git(target, ["init", "-q", "--bare", "."]);
+
+    const counter = new GitvaultOpCounter();
+    const countedTransport = countingGitvaultTransport(planServingTransport(f.transport, () => plan), counter);
+    // Address resolution (design D6, widened by gitvault-offline-clone-
+    // resolve): a fresh clone target carries no git-config pin and the
+    // keystore holds no matching project — the SAME online project lookup
+    // `resolveGitvaultAddress` would fall through to — one real transport
+    // op, counted like any other.
+    const resolution = await resolveGitvaultAddress({ keystore: f.keystore, transport: countedTransport, address, repo_dir: target });
+    assert.equal(resolution.via, "resolved");
+    assert.equal(resolution.offline, false);
+    assert.equal(counter.total, 1, "a keystore miss costs exactly the one findVaultByProject read");
+    const vault = GitvaultVault.open({ keystore: f.keystore, transport: countedTransport, repo_id: resolution.repo_id });
+
+    // list → fetch, exactly the remote-helper session's shape (`runList`
+    // sends `restore: true` on a marker-absent materialize; `runFetch`
+    // reuses that response instead of a second read).
+    const marker = await readGitvaultRestoreMarker(target);
+    assert.equal(marker, null, "a genuinely fresh target has no restore marker");
+    const listState = await vault.materialize({ restore: true });
+    const restored = await vault.restoreObjectsInto(target, { marker, state: listState });
+
+    assert.deepEqual(restored.refs, { "refs/heads/main": c3 });
+    const byKind = counter.byKind();
+    assert.equal(byKind["object-reads-batch(get)"] ?? 0, 0, "an all-inline plan fetches zero pack bytes");
+    assert.equal(byKind["object-read(presign+get)"] ?? 0, 0, "an all-inline plan fetches zero pack bytes");
+    assert.equal(byKind.getObjects ?? 0, 0, "an all-inline plan never calls getObjects for WAL/checkpoint packs");
+    assertOpBudget(counter, 3, "keystore-miss fresh-target clone — unchanged from before this change");
   });
 
   it("a lying restore plan falls back to the ordinary walk — same restored result, no extra counted ops over today's walk", async (t) => {

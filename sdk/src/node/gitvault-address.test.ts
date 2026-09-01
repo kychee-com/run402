@@ -190,6 +190,112 @@ describe("resolveGitvaultAddress — id-form", () => {
   });
 });
 
+// ─── resolveGitvaultAddress — id-form, keystore consult (gitvault-offline-clone-resolve) ───
+
+describe("resolveGitvaultAddress — id-form, keystore consult (gitvault-offline-clone-resolve)", () => {
+  const ID_ORG = "22222222-2222-4222-8222-222222222222";
+  const ID_PROJECT = "prj_keystore1";
+
+  it("a keystore-known repo resolves with ZERO transport operations, marked via 'keystore'", async () => {
+    const transport = new GitvaultMemoryTransport();
+    const { createGitvault } = await import("./gitvault-creation-journal.js");
+    const allocation = await createGitvault({ keystore, transport, org_id: ID_ORG, project_id: ID_PROJECT });
+    const repoDir = await makeRepo(root);
+    const address = { org_id: ID_ORG, project_id: ID_PROJECT };
+
+    const callsBefore = transport.calls.length;
+    const resolution = await resolveGitvaultAddress({ keystore, transport, address, repo_dir: repoDir });
+    assert.equal(resolution.form, "id");
+    assert.equal(resolution.via, "keystore");
+    assert.equal(resolution.offline, true);
+    assert.equal(resolution.repo_id, allocation.repo_id);
+    assert.equal(transport.calls.length, callsBefore, "a keystore-known repo makes zero transport calls");
+    // The git-config pin is written on first successful use — exactly where
+    // the network-resolved branch writes it — so every LATER invocation on
+    // this checkout is a plain pin hit instead of a keystore scan.
+    assert.deepEqual(await readPinnedGitvaultRepo(repoDir), { repo_id: allocation.repo_id, resolved_from: null, project_id: ID_PROJECT, org_id: ID_ORG });
+  });
+
+  it("a keystore hit needs no repo_dir at all — cwd-independent, e.g. a bare `git ls-remote`", async () => {
+    const transport = new GitvaultMemoryTransport();
+    const { createGitvault } = await import("./gitvault-creation-journal.js");
+    const allocation = await createGitvault({ keystore, transport, org_id: ID_ORG, project_id: ID_PROJECT });
+    const address = { org_id: ID_ORG, project_id: ID_PROJECT };
+
+    const callsBefore = transport.calls.length;
+    const resolution = await resolveGitvaultAddress({ keystore, transport, address });
+    assert.equal(resolution.via, "keystore");
+    assert.equal(resolution.offline, true);
+    assert.equal(resolution.repo_id, allocation.repo_id);
+    assert.equal(transport.calls.length, callsBefore);
+  });
+
+  it("a keystore MISS falls back to findVaultByProject byte-identically — exactly one transport call", async () => {
+    const transport = new GitvaultMemoryTransport();
+    const { createGitvault } = await import("./gitvault-creation-journal.js");
+    // Deliberately NOT id-shaped ("org_1" is not a UUID) and a different
+    // project_id than the address below — the keystore's own repo file can
+    // never satisfy the id-form lookup, so this is a guaranteed miss.
+    const allocation = await createGitvault({ keystore, transport, org_id: "org_1", project_id: "prj_1" });
+    const repoDir = await makeRepo(root);
+    const address = { org_id: "33333333-3333-4333-8333-333333333333", project_id: "prj_no_local_match" };
+
+    const resolution = await resolveGitvaultAddress({ keystore, transport, address, repo_dir: repoDir });
+    assert.equal(resolution.via, "resolved");
+    assert.equal(resolution.offline, false);
+    assert.equal(resolution.repo_id, allocation.repo_id, "the memory transport's single-vault fixture answers regardless of the requested project_id");
+    assert.equal(transport.calls.filter((c) => c === "find-vault").length, 1, "a keystore miss costs exactly the one findVaultByProject read");
+  });
+
+  it("a project_id match under a DIFFERENT org_id is a miss, never a guess", async () => {
+    const transport = new GitvaultMemoryTransport();
+    const { createGitvault } = await import("./gitvault-creation-journal.js");
+    const allocation = await createGitvault({ keystore, transport, org_id: ID_ORG, project_id: ID_PROJECT });
+    const repoDir = await makeRepo(root);
+    // Same project_id as the keystore's own repo file, a DIFFERENT (but
+    // still id-shaped) org — the keystore scan must not answer this as a
+    // hit just because the project half matches.
+    const wrongOrgAddress = { org_id: "44444444-4444-4444-8444-444444444444", project_id: ID_PROJECT };
+
+    const resolution = await resolveGitvaultAddress({ keystore, transport, address: wrongOrgAddress, repo_dir: repoDir });
+    assert.equal(resolution.via, "resolved", "org mismatch falls through to the network — the keystore never guesses");
+    assert.equal(resolution.repo_id, allocation.repo_id);
+    assert.equal(transport.calls.filter((c) => c === "find-vault").length, 1);
+  });
+
+  it("the git-config pin is preferred over the keystore once it exists", async () => {
+    const transport = new GitvaultMemoryTransport();
+    const { createGitvault } = await import("./gitvault-creation-journal.js");
+    await createGitvault({ keystore, transport, org_id: ID_ORG, project_id: ID_PROJECT });
+    const repoDir = await makeRepo(root);
+    const address = { org_id: ID_ORG, project_id: ID_PROJECT };
+
+    const first = await resolveGitvaultAddress({ keystore, transport, address, repo_dir: repoDir });
+    assert.equal(first.via, "keystore");
+
+    const callsBefore = transport.calls.length;
+    const second = await resolveGitvaultAddress({ keystore, transport, address, repo_dir: repoDir });
+    assert.equal(second.via, "pin", "once pinned, the git-config pin answers first — the keystore scan is never reached again");
+    assert.equal(second.offline, true);
+    assert.equal(transport.calls.length, callsBefore);
+  });
+
+  it("slug-form addresses never consult the keystore — a miss is still an ordinary not-found refusal", async () => {
+    const transport = new GitvaultMemoryTransport();
+    const repoDir = await makeRepo(root);
+    // Design D5: keystore maps ids, not slugs — slug-form dispatch never
+    // calls findRepoByProject at all, so an empty keystore changes nothing.
+    await assert.rejects(
+      resolveGitvaultAddress({ keystore, transport, address: { org_id: "acme", project_id: "my-notes" }, repo_dir: repoDir, allow_create: false }),
+      (e: unknown) => {
+        assert.ok(e instanceof LocalError);
+        assert.equal((e as LocalError).code, "RESOURCE_NOT_FOUND");
+        return true;
+      },
+    );
+  });
+});
+
 // ─── resolveGitvaultAddress — slug-form, resolve-only (no create) ─────────
 
 describe("resolveGitvaultAddress — slug-form, allow_create: false", () => {
@@ -471,5 +577,86 @@ describe("recoverStaleGitvaultPin — stale-pin discovery moved to first use", (
       error: new LocalError("denied", "materializing", { code: "GITVAULT_ACCESS_DENIED" }),
     });
     assert.equal(fresh, null);
+  });
+});
+
+// ─── recoverStaleGitvaultPin — keystore-sourced offline resolution (gitvault-offline-clone-resolve design D3) ───
+
+describe("recoverStaleGitvaultPin — keystore-sourced offline resolution (gitvault-offline-clone-resolve)", () => {
+  const ID_ORG = "55555555-5555-4555-8555-555555555555";
+  const ID_PROJECT = "prj_keystore_stale";
+
+  /**
+   * A KEYSTORE-sourced offline resolution for a real vault (never a
+   * git-config pin at the moment of resolving — see the `via` assertion
+   * below). Once resolved, the checkout DOES also carry a freshly-written
+   * pin (D1: "written on first successful use") pointing at the SAME stale
+   * repo, so this fixture exercises the case where BOTH a matching keystore
+   * file and a matching pin exist — the scenario where, without the D3
+   * bypass, recovery's re-resolve would just re-consult the same stale
+   * local answer and never reach the network.
+   */
+  async function keystoreFixture() {
+    const transport = new GitvaultMemoryTransport();
+    const { createGitvault } = await import("./gitvault-creation-journal.js");
+    const allocation = await createGitvault({ keystore, transport, org_id: ID_ORG, project_id: ID_PROJECT });
+    const repoDir = await makeRepo(root);
+    const address = { org_id: ID_ORG, project_id: ID_PROJECT };
+    const resolution = await resolveGitvaultAddress({ keystore, transport, address, repo_dir: repoDir });
+    assert.equal(resolution.via, "keystore", "sanity: the fixture's resolution is the keystore-sourced offline shape");
+    assert.equal(resolution.offline, true);
+    return { transport, allocation, repoDir, address, resolution };
+  }
+
+  it("a vault-absent failure re-resolves over the network exactly once and lands on the NEW vault — the stale keystore file is bypassed, not re-consulted", async () => {
+    const f = await keystoreFixture();
+    let findVaultByProjectCalls = 0;
+    const transport = new Proxy(f.transport, {
+      get(target, prop, receiver) {
+        if (prop === "findVaultByProject") {
+          return async () => {
+            findVaultByProjectCalls += 1;
+            return { ...(await target.getVaultRecord({ repo_id: f.allocation.repo_id })), repo_id: "src_recreated_ks" };
+          };
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    });
+    const fresh = await recoverStaleGitvaultPin({
+      keystore, transport, address: f.address, repo_dir: f.repoDir,
+      resolution: f.resolution,
+      error: new LocalError("denied", "materializing", { code: "GITVAULT_ACCESS_DENIED" }),
+    });
+    assert.ok(fresh, "a different repo_id from a real network re-resolve is a recovery");
+    assert.equal(fresh!.repo_id, "src_recreated_ks");
+    assert.equal(fresh!.via, "resolved", "the retry is a genuine network resolution, never another keystore hit");
+    assert.equal(findVaultByProjectCalls, 1, "exactly one network re-resolve — without the D3 bypass this would be zero, because the keystore's own (stale) file would answer first");
+    const pinned = await readPinnedGitvaultRepo(f.repoDir);
+    assert.equal(pinned?.repo_id, "src_recreated_ks", "the pin is rewritten to the new vault");
+  });
+
+  it("re-resolution landing on the SAME repo_id answers null and restores the pin — the refusal is real, never laundered by re-serving the stale keystore file", async () => {
+    const f = await keystoreFixture();
+    let findVaultByProjectCalls = 0;
+    const transport = new Proxy(f.transport, {
+      get(target, prop, receiver) {
+        if (prop === "findVaultByProject") {
+          return async (req: { project_id: string }) => {
+            findVaultByProjectCalls += 1;
+            return target.findVaultByProject(req);
+          };
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    });
+    const fresh = await recoverStaleGitvaultPin({
+      keystore, transport, address: f.address, repo_dir: f.repoDir,
+      resolution: f.resolution,
+      error: new LocalError("denied", "materializing", { code: "GITVAULT_ACCESS_DENIED" }),
+    });
+    assert.equal(fresh, null);
+    assert.equal(findVaultByProjectCalls, 1, "the retry still costs one genuine network call — recovery must never be answered by re-consulting the same keystore file");
+    const pinned = await readPinnedGitvaultRepo(f.repoDir);
+    assert.equal(pinned?.repo_id, f.resolution.repo_id, "the pin is restored so this checkout is offline (via the pin) from here on");
   });
 });

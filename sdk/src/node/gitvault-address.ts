@@ -122,8 +122,17 @@ export interface GitvaultAddressResolution {
   project_id: string;
   org_id: string;
   form: "id" | "slug";
-  /** How this resolution happened: a local pin, a live network resolution, or a fresh push-to-create. */
-  via: "pin" | "resolved" | "created";
+  /**
+   * How this resolution happened: a local git-config pin, the local
+   * keystore's own project→repo file (gitvault-offline-clone-resolve,
+   * id-form only — {@link GitvaultKeystore.findRepoByProject}), a live
+   * network resolution, or a fresh push-to-create. `"pin"` and `"keystore"`
+   * are BOTH zero-transport-operation answers (see {@link offline}); they
+   * are kept distinct only so a caller that cares about provenance can tell
+   * them apart — {@link recoverStaleGitvaultPin}'s generic `offline` check
+   * treats them identically.
+   */
+  via: "pin" | "keystore" | "resolved" | "created";
   /** The `org-slug/name` the address named, when slug-form; `null` for id-form. */
   address: { org_slug: string; repo_name: string } | null;
   /** Set only when THIS call push-to-created the vault (`via === "created"`); `null` otherwise. */
@@ -149,6 +158,17 @@ export interface ResolveGitvaultAddressOptions {
   service_public_key?: Uint8Array | string;
   /** Fires once, only when THIS call allocated the vault (mirrors `Gitvault.push`'s `onVaultCreated`). */
   onVaultCreated?: (created: NonNullable<GitvaultAddressResolution["created"]>) => void | Promise<void>;
+  /**
+   * gitvault-offline-clone-resolve (design D3): recovery-only. Skips BOTH
+   * local answers — the git-config pin AND the id-form keystore consult —
+   * forcing a genuine network resolution. Set exclusively by {@link
+   * recoverStaleGitvaultPin}'s internal re-resolve call: a stale local
+   * answer (a pin or a keystore file naming a repo that no longer resolves
+   * or is no longer ours) must never be allowed to answer the SAME stale
+   * fact back to itself, which is what would happen if recovery re-ran the
+   * ordinary local-first path. Never set by an ordinary caller.
+   */
+  bypass_local_answers?: boolean;
 }
 
 /**
@@ -162,7 +182,7 @@ export interface ResolveGitvaultAddressOptions {
  * rather than failing on a stale local pointer.
  */
 export async function resolveGitvaultAddress(options: ResolveGitvaultAddressOptions): Promise<GitvaultAddressResolution> {
-  if (options.repo_dir) {
+  if (options.repo_dir && !options.bypass_local_answers) {
     const pinned = await readPinnedGitvaultRepo(options.repo_dir);
     if (pinned) {
       // `form` below describes what THIS call was asked to resolve, not how
@@ -194,6 +214,35 @@ export async function resolveGitvaultAddress(options: ResolveGitvaultAddressOpti
 
   const form = gitvaultRemoteAddressForm(options.address);
   if (form === "id") {
+    if (!options.bypass_local_answers) {
+      // gitvault-offline-clone-resolve (design D1/D2): consult the LOCAL
+      // keystore before the network. D2's completeness argument: decrypting
+      // anything from this vault requires exactly the keystore's repo file
+      // (`k_repo_hex`), so a machine without one fails the clone at
+      // `GITVAULT_REPO_STATE_MISSING` no matter how resolution went —
+      // "keystore-known" is therefore exactly the set of clones that can
+      // actually complete, and the network read was only ever confirming a
+      // fact this machine already held (measured 110-530ms of RTT for
+      // 13-22ms of server work, 2026-09-01). An id-form address always
+      // carries a real `org_id` (see `gitvaultRemoteAddressForm`), so the
+      // lookup is always org-scoped — a project-id match under a different
+      // org is a miss, never a guess. Deliberately runs even with NO
+      // `repo_dir` (a repo-free `git ls-remote`): the keystore is
+      // cwd-independent, unlike the git-config pin above.
+      const keystoreMatch = options.keystore.findRepoByProject(options.address.project_id, options.address.org_id);
+      if (keystoreMatch) {
+        // Same offline handle shape the git-config pin branch above builds;
+        // `via: "keystore"` is the only distinguishing mark, so {@link
+        // recoverStaleGitvaultPin}'s generic `resolution.offline` check
+        // covers this source unchanged. The git-config pin is written
+        // immediately — "on first successful use" of this answer, exactly
+        // where the network-resolved branch below writes it — so every
+        // LATER invocation on this checkout short-circuits through the pin
+        // check above instead of this keystore scan.
+        if (options.repo_dir) await pinGitvaultRepo(options.repo_dir, keystoreMatch.repo_id, undefined, { project_id: keystoreMatch.project_id, org_id: keystoreMatch.org_id });
+        return { repo_id: keystoreMatch.repo_id, project_id: keystoreMatch.project_id, org_id: keystoreMatch.org_id, form: "id", via: "keystore", address: null, created: null, offline: true };
+      }
+    }
     const record: GitvaultVaultRecord = await options.transport.findVaultByProject({ project_id: options.address.project_id });
     // Design D4: an id-form address is already rename-proof (a project id
     // never changes), so this pin exists purely to skip the RESOLUTION
@@ -236,10 +285,13 @@ export async function resolveGitvaultAddress(options: ResolveGitvaultAddressOpti
 
 /**
  * Stale-pin recovery for OFFLINE resolutions (client-surface spec,
- * "Id-form remotes pin repo_id like slug-form remotes"): an id-carrying pin
- * resolves with no network read, so the once-in-a-lifetime stale-pin case (a
- * vault deleted and re-allocated out from under this checkout) surfaces as
- * the VERB's first repo-scoped read failing instead of a resolution failure.
+ * "Id-form remotes pin repo_id like slug-form remotes"; widened by
+ * gitvault-offline-clone-resolve design D3 to the keystore-sourced offline
+ * answer too): a pin or a keystore hit resolves with no network read, so the
+ * once-in-a-lifetime stale case (a vault deleted and re-allocated out from
+ * under this checkout, or a keystore file left behind by an old allocation)
+ * surfaces as the VERB's first repo-scoped read failing instead of a
+ * resolution failure.
  *
  * Given that failure, answer the fresh resolution to retry the verb against —
  * or `null` when there is nothing to recover:
@@ -248,12 +300,20 @@ export async function resolveGitvaultAddress(options: ResolveGitvaultAddressOpti
  *     gateway's authorize-before-reveal `GITVAULT_ACCESS_DENIED` fold, which
  *     deliberately makes "gone" and "not yours" one envelope) → `null`,
  *     rethrow yours;
- *   - re-resolution yielding the SAME `repo_id` → the pin was fine and the
- *     refusal is real: the pin is restored (re-resolution re-pins it) and the
- *     answer is `null` — recovery never widens what an unauthorized caller
- *     learns (both probes return the same refusal family it already saw);
+ *   - re-resolution yielding the SAME `repo_id` → the local answer was fine
+ *     and the refusal is real: the pin is restored (re-resolution re-pins
+ *     it) and the answer is `null` — recovery never widens what an
+ *     unauthorized caller learns (both probes return the same refusal
+ *     family it already saw);
  *   - a DIFFERENT `repo_id` → the fresh resolution, pin already rewritten;
  *     the caller retries the verb exactly once.
+ *
+ * The re-resolve MUST bypass every local answer (`bypass_local_answers:
+ * true`) — a stale keystore file (or, before this change, a stale pin) is
+ * exactly the fact recovery exists to get past, so re-running the ordinary
+ * local-first path would just consult the SAME stale local answer again and
+ * never reach the network. This is why the retry always costs one real
+ * transport operation, deliberately outside the counted budgets (D3, D5).
  *
  * Re-resolution failures are swallowed in favor of `null` (the caller's
  * original error is the truthful one to surface).
@@ -274,7 +334,7 @@ export async function recoverStaleGitvaultPin(options: {
   if (!vaultAbsentSignal) return null;
   try {
     await clearPinnedGitvaultRepo(options.repo_dir);
-    const fresh = await resolveGitvaultAddress({ keystore: options.keystore, transport: options.transport, address: options.address, repo_dir: options.repo_dir });
+    const fresh = await resolveGitvaultAddress({ keystore: options.keystore, transport: options.transport, address: options.address, repo_dir: options.repo_dir, bypass_local_answers: true });
     return fresh.repo_id === options.resolution.repo_id ? null : fresh;
   } catch {
     return null;
