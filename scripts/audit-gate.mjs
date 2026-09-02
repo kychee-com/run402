@@ -15,10 +15,17 @@
 // major-only fix is a design decision, not something a red check should force
 // at deploy time. The monthly dependency Routine picks both of those up.
 //
+// Scope: by default the whole install is audited. A root package.json may
+// name `auditGate.workspaces` (an array of workspace paths) to audit only
+// the workspaces that ship in the deployed artifact -- run402-private uses
+// this so infra tooling (aws-cdk-lib and friends, deployed by a different
+// workflow behind its own cdk-diff gate) cannot block a gateway deploy.
+//
 // Emergency bypass for a single advisory: AUDIT_GATE_IGNORE=GHSA-xxxx,GHSA-yyyy
 // (comma-separated advisory ids). Use it in the workflow env with a comment
 // naming why, and remove it the moment the fix lands.
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 
 const ignore = new Set(
   (process.env.AUDIT_GATE_IGNORE ?? "")
@@ -27,7 +34,16 @@ const ignore = new Set(
     .filter(Boolean),
 );
 
-const res = spawnSync("npm", ["audit", "--json", "--omit=dev"], {
+let scoped = [];
+try {
+  const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+  const ws = pkg.auditGate?.workspaces;
+  if (Array.isArray(ws)) scoped = ws.map((w) => `--workspace=${w}`);
+} catch {
+  /* no package.json here: audit the whole install */
+}
+
+const res = spawnSync("npm", ["audit", "--json", "--omit=dev", ...scoped], {
   encoding: "utf8",
   maxBuffer: 64 * 1024 * 1024,
 });
@@ -76,7 +92,7 @@ for (const v of vulns) {
 
 const m = report.metadata?.vulnerabilities ?? {};
 console.log(
-  `audit-gate: production deps — critical ${m.critical ?? 0}, high ${m.high ?? 0}, moderate ${m.moderate ?? 0}, low ${m.low ?? 0}`,
+  `audit-gate: production deps${scoped.length ? ` (${scoped.length} workspaces)` : ""} — critical ${m.critical ?? 0}, high ${m.high ?? 0}, moderate ${m.moderate ?? 0}, low ${m.low ?? 0}`,
 );
 for (const l of info) console.log(`  info     ${l}`);
 for (const l of warnings) console.log(`::warning::audit-gate: ${l}`);
