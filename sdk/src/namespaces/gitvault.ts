@@ -2200,9 +2200,25 @@ export class Gitvault {
   }
 
   /**
-   * Resume a Handoff Key: parse → claim (SIWX wallet, no payment; the
-   * default Node credentials provider creates the allowance file on a
-   * fresh machine automatically — see `createLazyPaidFetch`) → open the
+   * Create this machine's wallet (the allowance file) when the credentials
+   * provider supports one and none exists yet. A keypair on disk — no
+   * faucet, no tier, no payment. Pure no-op for a provider without the
+   * optional allowance methods, or when an allowance already exists.
+   */
+  async #ensureLocalWallet(onLine?: (line: string) => void): Promise<void> {
+    const creds = this.#client.credentials;
+    if (!creds.readAllowance || !creds.createAllowance || !creds.saveAllowance) return;
+    if (await creds.readAllowance()) return;
+    const created = await creds.createAllowance();
+    await creds.saveAllowance(created);
+    onLine?.(`wallet created for this machine: ${created.address} (a keypair on disk — no payment)`);
+  }
+
+  /**
+   * Resume a Handoff Key: parse → ensure this machine has a wallet (the
+   * claim is bare SIWX, so on a fresh machine the allowance file is created
+   * here — a keypair on disk, no faucet, no tier, no payment, ever; design
+   * D5) → claim → open the
    * sealed envelope → write the repo file to the keystore BEFORE touching
    * disk → clone at the base HEAD → `git stash apply --index` → local
    * git-config pins only → the session-start reconcile so a principal
@@ -2215,6 +2231,18 @@ export class Gitvault {
 
     const parsed = parseHandoffKey(options.key);
     const secrets = deriveHandoffSecrets(parsed.handoff_id_bytes, parsed.master_secret);
+
+    // A fresh machine has no wallet, and the claim route accepts ONLY a SIWX
+    // wallet signature (a control-plane session, delegate, or service key is
+    // refused HANDOFF_CLAIM_REQUIRES_WALLET — the keystore key the claim
+    // publishes is what makes the recipient a real key-holder). Nothing
+    // upstream creates the allowance for an unpaid request, so `resume` does
+    // it here, exactly as `repos resume --help` promises: a keypair written
+    // to the allowance file, no faucet, no tier, no payment. The 2026-09-02
+    // rehearsal's Session B hit AUTH_REQUIRED on a bare machine for want of
+    // this. A provider without allowance support (an isomorphic one) is
+    // left alone — it authenticates however it authenticates.
+    await this.#ensureLocalWallet(options.onLine);
 
     const claim = await this.#client.request<{
       handoff_id: string;
