@@ -33,7 +33,7 @@ import {
   getRoomState,
   updateRoomState,
 } from "./rooms-context.mjs";
-import { resolveTaskLabel } from "./harness-context.mjs";
+import { resolveTaskLabel, resolveHarnessLabels } from "./harness-context.mjs";
 
 export const IMPORTANCE = ["normal", "high"];
 
@@ -44,6 +44,7 @@ const HELP = `run402 messages — room-visible messages between agents
 Usage:
   run402 messages send <body> [--to <names>] [--ack] [--thread <id>]
   run402 messages list [--unread] [--cursor <mcr_...>] [--thread <id>]
+  run402 messages wait [--addressed-to me] [--thread <id>] [--timeout <s>] [--cursor <mcr_...>]
   run402 messages get <message_id>
   run402 messages ack <message_id>
 
@@ -62,6 +63,17 @@ Notes:
     your existing presence (no rename) when one is resolvable, and --task —
     or, if omitted, your harness's own thread title — refreshes what the room
     sees you working on.
+  - wait is the session's EAR: it blocks until a message lands past this
+    checkout's stored cursor (or --cursor), using the gateway's held read
+    when available and plain polling when an older gateway answers at once —
+    the output shape never changes. Default timeout 120s, max 600s (a
+    coding harness's own shell-call limit — a wait that outlives the tool
+    call is a wait the agent never hears). Silence is an answer, never an
+    error: it exits 0 with an empty messages[] and \`live_presences[]\`
+    naming who is still in the room, so "did they leave" needs no second
+    call. The returned cursor is persisted, exactly like \`list\` — the next
+    wait resumes right after the last message seen. Join the room first
+    with \`run402 rooms join\` if you want a chosen name.
   - The room itself — arriving, leaving, seeing who is live — is \`run402 rooms\`.
 `;
 
@@ -118,6 +130,10 @@ async function send(args) {
   });
   try {
     const { task } = await resolveTaskLabel({ explicitTask: flagValue(a, "--task") });
+    // kygit-invite design D8: the implicit presence-creation path (no
+    // presenceId cached yet) carries harness-derived labels too — never
+    // guessed, null stays null.
+    const { program, model } = resolveHarnessLabels();
     const result = await withPresenceRetry(room.orgId, room.roomKey, (presenceId, sessionKey) =>
       getSdk().rooms.sendMessage(room.orgId, room.roomKey, {
         body: positionals[0],
@@ -131,6 +147,8 @@ async function send(args) {
         sessionKey,
         requestedName: flagValue(a, "--name") ?? undefined,
         task: task ?? undefined,
+        program: program ?? undefined,
+        model: model ?? undefined,
       }),
       { name: flagValue(a, "--name"), task });
     rememberPresence(room.orgId, room.roomKey, result.sender_presence, flagValue(a, "--name"));
@@ -172,6 +190,66 @@ async function list(args) {
       updateRoomState(room.orgId, room.roomKey, { cursor: page.cursor });
     }
     console.log(JSON.stringify(page, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+/**
+ * `run402 messages wait` — the agent's ear (kygit-invite design D7). Blocks
+ * until a matching message lands past this checkout's stored cursor, or the
+ * timeout elapses, using the shared `rooms.waitForMessages` (held read when
+ * the gateway supports it, bounded polling otherwise). Stdout is ALWAYS one
+ * JSON document — silence is a normal, exit-0 answer, never a thrown error.
+ */
+async function wait(args) {
+  const a = normalizeArgv(args);
+  const valueFlags = [...ROOM_FLAGS, "--thread", "--timeout", "--cursor", "--addressed-to"];
+  assertKnownFlags(a, [...valueFlags, "--help", "-h"], valueFlags);
+  requirePositionalCount(positionalArgs(a, valueFlags), valueFlags, {
+    min: 0, max: 0, command: "run402 messages wait", missing: "",
+  });
+  const addressedTo = flagValue(a, "--addressed-to");
+  if (addressedTo != null) assertAllowedValue(addressedTo, ["me"], "--addressed-to");
+  const timeoutRaw = flagValue(a, "--timeout");
+  // Default 120s, max 600s: a Claude Code shell call dies at 600s, so a wait
+  // that outlives the tool call is a wait the agent never hears (design D7).
+  const timeoutSeconds = timeoutRaw != null ? parseIntegerFlag("--timeout", timeoutRaw, { min: 1, max: 600 }) : 120;
+  const room = await resolveRoom({
+    org: flagValue(a, "--org"), room: flagValue(a, "--room"), project: flagValue(a, "--project"),
+  });
+  const stored = getRoomState(room.orgId, room.roomKey).cursor;
+  const cursor = flagValue(a, "--cursor") ?? (typeof stored === "string" ? stored : undefined);
+  try {
+    const { task } = await resolveTaskLabel({});
+    const me = await ensurePresence(room, { task });
+    console.error(`waiting in ${room.roomKey} as ${me.name} (timeout ${timeoutSeconds}s)…`);
+    const result = await getSdk().rooms.waitForMessages(room.orgId, room.roomKey, {
+      ...(cursor !== undefined ? { cursor } : {}),
+      threadId: flagValue(a, "--thread") ?? undefined,
+      addressedTo: addressedTo === "me" ? "me" : undefined,
+      presenceId: me.presence_id,
+      timeoutMs: timeoutSeconds * 1000,
+    });
+    if (typeof result.cursor === "string") {
+      updateRoomState(room.orgId, room.roomKey, { cursor: result.cursor });
+    }
+    console.log(JSON.stringify({
+      messages: result.messages,
+      cursor: result.cursor,
+      has_more: result.has_more,
+      settled: result.settled,
+      waited_ms: result.waited_ms,
+      live_presences: result.live_presences,
+    }, null, 2));
+    if (result.settled) {
+      console.error(`${result.messages.length} message(s) arrived.`);
+    } else {
+      const live = result.live_presences ?? [];
+      console.error(live.length > 0
+        ? `silence — still live: ${live.map((p) => p.name).join(", ")}.`
+        : "silence — nobody else is currently live in this room.");
+    }
   } catch (err) {
     reportSdkError(err);
   }
@@ -230,6 +308,10 @@ export async function run(sub, args) {
     }
     case "list": {
       await list(argv);
+      break;
+    }
+    case "wait": {
+      await wait(argv);
       break;
     }
     case "get": {

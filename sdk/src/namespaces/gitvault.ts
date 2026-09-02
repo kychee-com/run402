@@ -68,6 +68,8 @@ import type { GitvaultByoMissingObject, GitvaultByoPresenceReport, GitvaultMirro
 import type { GitvaultRecoverResult, GitvaultVerifyReport } from "../node/gitvault-recover.js";
 import type { GitvaultMemberRecoveryBundle } from "../node/gitvault-member-bundle.js";
 import type { GitvaultDegradedReadLive, GitvaultDegradedReadOutcome, GitvaultDegradedReadSource } from "../node/gitvault-degraded-read.js";
+import { Rooms } from "./rooms.js";
+import type { RoomPresence } from "./rooms.types.js";
 
 // The Node modules are loaded lazily and only ever through these helpers, so
 // the isomorphic entry point stays free of `node:` imports.
@@ -197,7 +199,14 @@ export interface GitvaultStatus {
    * `resolveGitvaultAddress`'s doc comment), so a checkout on one always
    * reports `null` here even once its vault is otherwise fully resolved.
    */
-  pinned: { repo_id: string; resolved_from: { org_slug: string; repo_name: string } | null } | null;
+  pinned: { repo_id: string; resolved_from: { org_slug: string; repo_name: string } | null; room: string | null } | null;
+  /**
+   * Whether this checkout's LOCAL `.git/info/exclude` already carries
+   * `.run402/` (kygit-invite design D9's risk list: "`.git/info/exclude`
+   * is per-clone and silent" — this is what makes the state visible).
+   * `null` when no `repo_dir` was given.
+   */
+  messaging_cache_excluded: boolean | null;
   /**
    * The vault's ref map and HEAD target — present only when `refs: true` was
    * requested. Reading them means MATERIALIZING the chain, which is a
@@ -531,6 +540,102 @@ export function handoffVaultFromWire(wire: { repo_id: string; org_id: string; pr
 /** The claim response's `membership` block (`org_id` on the wire) in the SDK's `organization_id` spelling. Pure; exported for tests. */
 export function handoffMembershipFromWire(wire: { org_id: string; role: string; status: string }): GitvaultHandoffResumeResult["membership"] {
   return { organization_id: wire.org_id, role: wire.role, status: wire.status };
+}
+
+// ─── Invite / join result shapes (kygit-invite design D4/D5/D9) ─────────────
+
+/** A room's `(org_id, room_key)` pair, as it rides the invite mint/claim responses. */
+export interface GitvaultInviteRoom {
+  organization_id: string;
+  room_key: string;
+}
+
+/** Best-effort report of whether {@link Gitvault.invite}'s room fact was posted — a failure here (e.g. the daily quota) never voids the mint (design D4). */
+export interface GitvaultInviteRoomFactResult {
+  posted: boolean;
+  message_id?: string;
+  reason?: string;
+}
+
+/** Best-effort report of whether the inviter's own presence was registered before minting (design D4) — the mint still proceeds without one. */
+export interface GitvaultInvitePresenceResult {
+  registered: boolean;
+  presence_id?: string;
+  name?: string;
+  error?: string;
+}
+
+/** {@link Gitvault.invite}'s result. `invite_key` (the assembled `kgi1_…`) is returned exactly ONCE. */
+export interface GitvaultInviteMintResult {
+  invite_key: string;
+  invite_id: string;
+  kind: "invite";
+  minted_role: string;
+  expires_at: string;
+  vault: { vault_id: string; address?: string | null; organization_id: string; project_id: string };
+  room: GitvaultInviteRoom;
+  checkpoint: { generation: string; snapshot_oid_hmac: string };
+  capture: {
+    modified_captured: number;
+    untracked_captured: number;
+    sensitive_excluded: string[];
+    ignored_not_transferred_count: number;
+  };
+  /** The full local capture result, for a caller that wants more than the summarized `capture` block. */
+  snapshot: import("../node/gitvault-snapshot.js").GitvaultHandoffSnapshot;
+  inviter_presence: GitvaultInvitePresenceResult;
+  room_fact: GitvaultInviteRoomFactResult;
+  warnings: { code: string; message: string }[];
+  next_actions: NextAction[];
+}
+
+export interface GitvaultInviteListEntry {
+  invite_id: string;
+  kind: string;
+  state: "issued" | "claimed" | "expired" | "revoked";
+  minted_role: string;
+  minted_by: string;
+  room_key: string;
+  expires_at: string;
+  claimed_by?: string | null;
+}
+
+export interface GitvaultInviteListResult {
+  invites: GitvaultInviteListEntry[];
+}
+
+/** The inviter's presence, resolved live at claim time (design gitvault-invite's own claim requirement) — `null` when the inviter never registered one. */
+export interface GitvaultInviteInviter {
+  presence_id: string;
+  name: string;
+  program: string | null;
+  model: string | null;
+  state: string;
+  last_active: string;
+}
+
+/** {@link Gitvault.join}'s result. */
+export interface GitvaultInviteJoinResult {
+  invite_id: string;
+  kind: "invite";
+  deduplicated: boolean;
+  /** The Invite Note, parsed — `null` when the commit message could not be read/parsed (still restored either way). */
+  note: import("../node/gitvault-handoff.js").KygitInviteNote | null;
+  /** The note's raw commit-message text, for a caller that wants Markdown rendering over the parsed shape. */
+  note_raw: string | null;
+  restored: { dir: string; branch: string; base_head_oid: string; stash_oid: string };
+  membership: { organization_id: string; role: string; status: string };
+  members: unknown[];
+  room: GitvaultInviteRoom;
+  inviter: GitvaultInviteInviter | null;
+  /** This session's OWN presence in the room (what the arrival fact was posted as), or `null` when registration failed. A CLI persists it into the joined checkout so the first `messages wait` there speaks as the same session. */
+  presence: { presence_id: string; name: string } | null;
+  live_presences: RoomPresence[];
+  cursor: string | null;
+  recent_messages: unknown[];
+  expires_at: string;
+  reconcile_recipients: GitvaultReconcileEnvelopeRecipientsPushResult;
+  next_actions: NextAction[];
 }
 
 /** What {@link Gitvault.openOrCreate} did. `created` is `null` exactly when `found` is `true`. */
@@ -1794,10 +1899,15 @@ export class Gitvault {
     // it: the pin is the only LOCAL ground truth a slug-form address's own
     // URL text does not carry.
     let pinned: GitvaultStatus["pinned"] = null;
+    // kygit-invite design D9: whether `.git/info/exclude` already carries
+    // `.run402/` — a pure read, computed alongside the pin.
+    let messagingCacheExcluded: GitvaultStatus["messaging_cache_excluded"] = null;
     if (options.repo_dir) {
       const { readPinnedGitvaultRepo } = await this.#address();
       const p = await readPinnedGitvaultRepo(options.repo_dir);
-      pinned = p ? { repo_id: p.repo_id, resolved_from: p.resolved_from } : null;
+      pinned = p ? { repo_id: p.repo_id, resolved_from: p.resolved_from, room: p.room } : null;
+      const { isMessagingCacheExcludedFromGit } = await this.#restore();
+      messagingCacheExcluded = await isMessagingCacheExcludedFromGit(options.repo_dir);
     }
 
     // The local git remote, when there is a repository to read it from. A
@@ -1893,6 +2003,7 @@ export class Gitvault {
       },
       remote,
       pinned,
+      messaging_cache_excluded: messagingCacheExcluded,
       refs,
       head_target: headTarget,
       pins: { highest_authenticated: authenticated, highest_materialized: materialized },
@@ -2199,6 +2310,254 @@ export class Gitvault {
     return this.#client.request<{ handoff_id: string; state: string }>(`/gitvault/v1/vaults/${encodeURIComponent(repoId)}/handoffs/${encodeURIComponent(handoffId)}`, { method: "DELETE", context: "revoking a handoff" });
   }
 
+  // ── Invite / join (kygit-invite design D1-D10) ─────────────────────────────
+
+  /**
+   * Mint an Invite Key: capture a stash-shaped checkpoint exactly as
+   * {@link Gitvault.handoff} does (design D1), push it (retained, on no
+   * branch), register the INVITER's own presence in the invite's room
+   * (design D4 — before the mint, so the row can carry
+   * `inviter_presence_id`; a registration failure is reported and the mint
+   * proceeds without one), seal the vault's current epoch key under a fresh
+   * `wrap_key`, mint through the gateway at `developer` (or `role`,
+   * attenuated to never exceed the minter's own), and post ONE fact from
+   * the inviter's presence naming the checkpoint and the invite id (never
+   * the key) — a fact-post failure is reported in `room_fact` and never
+   * voids the mint (design D4). The assembled `kgi1_…` key is returned
+   * exactly ONCE — nothing here or downstream persists it. Creating an
+   * invite never touches the inviter's worktree, index, branch, refs, or
+   * access.
+   *
+   * `options.note` omits `capture` — this method fills it with the real
+   * capture figures and runs the client-side secret scan BEFORE the invite
+   * commit is written (design D10/kygit-invite D3: no override flag).
+   */
+  async invite(
+    options: GitvaultVaultHandleOptions & {
+      address?: GitvaultRemoteAddress;
+      role?: string;
+      ttlSeconds?: number;
+      /** Named org room to invite into. Omitted: the project's default room (its own id). */
+      roomKey?: string;
+      note: Omit<import("../node/gitvault-handoff.js").KygitInviteNote, "capture">;
+      includeSensitive?: string[];
+      onCommitLine?: (line: string) => void;
+      /** Harness-derived presence labels (design D8) — never guessed by the SDK itself. */
+      program?: string;
+      model?: string;
+      /** Opaque session identity for the inviter's own presence registration (see {@link RegisterPresenceOptions.sessionKey}). */
+      sessionKey?: string;
+      /** Display-only "what I'm working on" for the inviter's presence. */
+      task?: string;
+    },
+  ): Promise<GitvaultInviteMintResult> {
+    const [{ deployRefTransaction }, { captureHandoffSnapshot, snapshotCommitment }] = await Promise.all([this.#publication(), this.#snapshot()]);
+    const ho = await nodeOnly(() => import("../node/gitvault-handoff.js"), "invite");
+    const { assembleInviteKey, deriveInviteSecrets, sealInviteEnvelope, assertInviteNoteHasNoSecret, INVITE_ENVELOPE_KIND } = ho;
+
+    const handle = options.address ? (await this.resolveOrCreateAddress({ ...options, address: options.address, allow_create: false })).handle : await this.open(options);
+    const repoDir = options.repo_dir ?? process.cwd();
+
+    const repoFile = handle.keystore.readRepo(handle.repo_id);
+    if (!repoFile) {
+      throw new LocalError(
+        `no local key material for ${handle.repo_id} — this principal is not yet a member with a materialized envelope (push once first)`,
+        "minting an invite",
+        { code: "GITVAULT_VAULT_UNRESOLVED" },
+      );
+    }
+    const kRepo = hexToBytes(repoFile.k_repo_hex);
+
+    const snapshot = await captureHandoffSnapshot({
+      dir: repoDir,
+      ...(options.includeSensitive !== undefined ? { includeSensitive: options.includeSensitive } : {}),
+      message: (stats) => {
+        const note: import("../node/gitvault-handoff.js").KygitInviteNote = {
+          ...options.note,
+          capture: {
+            base_head: stats.base_head_oid,
+            branch: stats.branch,
+            modified_captured: stats.modified_captured.length,
+            untracked_captured: stats.untracked_captured.length,
+            sensitive_excluded: stats.sensitive_excluded,
+            ignored_not_transferred_count: stats.ignored_not_transferred_count,
+          },
+        };
+        assertInviteNoteHasNoSecret(note);
+        return JSON.stringify(note);
+      },
+    });
+    options.onCommitLine?.(`invite checkpoint ${snapshot.oid}`);
+
+    const materialized = await handle.vault.materialize();
+    const pushResult = await handle.vault.push({
+      transaction: deployRefTransaction(materialized.refs, snapshot.oid),
+      head_target: snapshot.head,
+      protocol_refs: "allow",
+    }).catch((e) => { throw this.#enrichEpochRotationRequired(e, handle.repo_id); });
+
+    const snapshotOidHmac = snapshotCommitment(kRepo, handle.repo_id, repoFile.epoch, snapshot.oid);
+
+    // design D4: room resolution — the project's default room (its own id)
+    // unless a named org room was given.
+    const roomKey = options.roomKey ?? repoFile.project_id;
+    const rooms = new Rooms(this.#client);
+
+    // design D4: register the inviter's OWN presence BEFORE minting, so the
+    // row can carry `inviter_presence_id` — a failure here is reported and
+    // the mint proceeds without one (never blocks the mint).
+    let inviterPresence: { presence_id: string; name: string } | null = null;
+    let inviterPresenceReport: GitvaultInvitePresenceResult = { registered: false };
+    try {
+      // No default `task`: a session key RESUMES the inviter's existing
+      // presence, and a resumption refreshes `task` — a made-up label here
+      // would overwrite whatever the agent is actually working on. The CLI
+      // passes the harness's own thread title when it has one.
+      const registration = await rooms.registerPresence(repoFile.org_id, roomKey, {
+        ...(options.task !== undefined ? { task: options.task } : {}),
+        ...(options.program !== undefined ? { program: options.program } : {}),
+        ...(options.model !== undefined ? { model: options.model } : {}),
+        ...(options.sessionKey !== undefined ? { sessionKey: options.sessionKey } : {}),
+      });
+      inviterPresence = { presence_id: registration.presence_id, name: registration.name };
+      inviterPresenceReport = { registered: true, presence_id: registration.presence_id, name: registration.name };
+    } catch (e) {
+      inviterPresenceReport = { registered: false, error: e instanceof Error ? e.message : String(e) };
+    }
+
+    const inviteId = randomHandoffUuid();
+    const { key, invite_id_bytes, master_secret } = assembleInviteKey(inviteId, randomBytes(32));
+    const secrets = deriveInviteSecrets(invite_id_bytes, master_secret);
+    const sealed = sealInviteEnvelope(invite_id_bytes, secrets.wrap_key, {
+      v: 1,
+      kind: "invite",
+      repo_id: handle.repo_id,
+      epoch: repoFile.epoch,
+      k_e_hex: repoFile.k_repo_hex,
+      checkpoint: { generation: pushResult.generation, commit_oid: snapshot.oid },
+      note_schema: "kygit.invite-note.v1",
+    });
+
+    // The wire shape mirrors the handoff mint's documented one (llms-full.txt
+    // "Handoff / resume", gitvault-invite spec): `role` (the minted role),
+    // `repo_id` / `org_id` / `project_id`, `room`, a verbatim `warning`
+    // sentence plus its machine-readable `warnings[]` twin.
+    const response = await this.#client.request<{
+      invite_id: string;
+      kind: "invite";
+      role: string;
+      room: { org_id: string; room_key: string };
+      expires_at: string;
+      repo_id: string;
+      org_id: string;
+      project_id: string;
+      checkpoint: { generation: string; snapshot_oid_hmac: string };
+      warning?: string;
+      warnings?: { code: string; message: string }[];
+      next_actions?: NextAction[];
+    }>(`/gitvault/v1/vaults/${encodeURIComponent(handle.repo_id)}/invites`, {
+      method: "POST",
+      body: {
+        invite_id: inviteId,
+        ...(options.role !== undefined ? { role: options.role } : {}),
+        ...(options.ttlSeconds !== undefined ? { expires_in_seconds: options.ttlSeconds } : {}),
+        // An explicit room_key is validated as a slug by the gateway; an
+        // empty one (a keystore file with no project id) is OMITTED so the
+        // gateway applies its own default — the vault's project — instead
+        // of refusing a blank.
+        ...(roomKey ? { room_key: roomKey } : {}),
+        ...(inviterPresence ? { inviter_presence_id: inviterPresence.presence_id } : {}),
+        checkpoint: { generation: pushResult.generation, snapshot_oid_hmac: snapshotOidHmac },
+        sealed_envelope: sealed.sealed_envelope,
+        envelope_kind: sealed.envelope_kind ?? INVITE_ENVELOPE_KIND,
+        auth_hash: secrets.auth_hash_hex,
+      },
+      context: "minting an invite key",
+    });
+    if (response.invite_id !== inviteId) {
+      throw new LocalError(
+        `the gateway minted a different invite_id (${response.invite_id}) than requested (${inviteId}) — the assembled key would not match; retry`,
+        "minting an invite key",
+        { code: "INVITE_ID_MISMATCH", details: { requested: inviteId, minted: response.invite_id } },
+      );
+    }
+
+    // design D4: post the fact AFTER the mint succeeds — a mint refusal must
+    // leave no orphan message, and a fact-post failure never voids a mint
+    // the caller may already have copied the key from.
+    let roomFact: GitvaultInviteRoomFactResult = { posted: false, reason: "inviter presence was not registered" };
+    if (inviterPresence) {
+      const receiptShort = snapshot.oid.slice(0, 12);
+      const inviteShort = response.invite_id.slice(0, 8);
+      try {
+        const sent = await rooms.sendMessage(repoFile.org_id, roomKey, {
+          body: `Invited another agent from checkpoint ${receiptShort} (invite ${inviteShort}, expires ${response.expires_at}).`,
+          presenceId: inviterPresence.presence_id,
+          ...(options.sessionKey !== undefined ? { sessionKey: options.sessionKey } : {}),
+          idempotencyKey: `invite:${response.invite_id}:minted`,
+        });
+        roomFact = { posted: true, message_id: sent.message_id };
+      } catch (e) {
+        roomFact = { posted: false, reason: e instanceof Error ? e.message : String(e) };
+      }
+    }
+
+    const nextActions: NextAction[] = [...(response.next_actions ?? [])];
+    if (!nextActions.some((a) => a.type === "join_invite")) {
+      // design D9: "CLI-synthesized, the recipient's exact command" —
+      // rendered by DOOR, same as every other remote-facing command this
+      // module renders (`gitvaultRemoteScheme()` is the one place that
+      // decides `run402` vs `kygit`, per `RUN402_REMOTE_SCHEME`).
+      const door = gitvaultRemoteScheme();
+      nextActions.push({
+        type: "join_invite",
+        command: door === "kygit" ? `kygit join ${key}` : `run402 repos join ${key}`,
+        why: "Run this on the other agent's machine to claim the invite.",
+        safe_to_auto_execute: false,
+      });
+    }
+    if (!nextActions.some((a) => a.type === "wait_room")) {
+      nextActions.push({ type: "wait_room", command: "run402 messages wait", why: "Block until the joining agent speaks; silence returns who is still here." });
+    }
+
+    return {
+      invite_key: key,
+      invite_id: response.invite_id,
+      kind: response.kind,
+      minted_role: response.role,
+      expires_at: response.expires_at,
+      vault: handoffVaultFromWire(
+        response,
+        options.address && gitvaultRemoteAddressForm(options.address) === "slug" ? `${options.address.org_id}/${options.address.project_id}` : null,
+      ),
+      room: { organization_id: response.room?.org_id ?? repoFile.org_id, room_key: response.room?.room_key ?? roomKey },
+      checkpoint: response.checkpoint,
+      capture: {
+        modified_captured: snapshot.modified_captured.length,
+        untracked_captured: snapshot.untracked_captured.length,
+        sensitive_excluded: snapshot.sensitive_excluded,
+        ignored_not_transferred_count: snapshot.ignored_not_transferred_count,
+      },
+      snapshot,
+      inviter_presence: inviterPresenceReport,
+      room_fact: roomFact,
+      warnings: response.warnings ?? [],
+      next_actions: nextActions,
+    };
+  }
+
+  /** List a vault's invites (ids, kind, state, role, room, expiry, claimed_by — never the hash or envelope). */
+  async listInvites(options: GitvaultVaultHandleOptions): Promise<GitvaultInviteListResult> {
+    const repoId = await this.#resolveRepoId(options);
+    return this.#client.request<GitvaultInviteListResult>(`/gitvault/v1/vaults/${encodeURIComponent(repoId)}/invites`, { context: "listing invites" });
+  }
+
+  /** Revoke an invite (idempotent — a second revoke of an already-revoked/claimed/expired row still answers `200`). */
+  async revokeInvite(inviteId: string, options: GitvaultVaultHandleOptions): Promise<{ invite_id: string; state: string }> {
+    const repoId = await this.#resolveRepoId(options);
+    return this.#client.request<{ invite_id: string; state: string }>(`/gitvault/v1/vaults/${encodeURIComponent(repoId)}/invites/${encodeURIComponent(inviteId)}`, { method: "DELETE", context: "revoking an invite" });
+  }
+
   /**
    * Create this machine's wallet (the allowance file) when the credentials
    * provider supports one and none exists yet. A keypair on disk — no
@@ -2227,7 +2586,7 @@ export class Gitvault {
   async resume(options: { key: string; to?: string; keystore_root?: string; onLine?: (line: string) => void }): Promise<GitvaultHandoffResumeResult> {
     const [ho, { GitvaultKeystore }, { createGitvaultHttpTransport }, restore] = await Promise.all([this.#handoff(), this.#keystore(), this.#publication(), this.#restore()]);
     const { parseHandoffKey, deriveHandoffSecrets, openHandoffEnvelope } = ho;
-    const { cloneGitvaultRemote, applyHandoffCheckpoint, resolveResumeTargetDir, readGitCommitMessage } = restore;
+    const { cloneGitvaultRemote, applyHandoffCheckpoint, resolveResumeTargetDir, readGitCommitMessage, excludeMessagingCacheFromGit } = restore;
 
     const parsed = parseHandoffKey(options.key);
     const secrets = deriveHandoffSecrets(parsed.handoff_id_bytes, parsed.master_secret);
@@ -2325,6 +2684,15 @@ export class Gitvault {
       { project_id: vault.project_id, org_id: vault.organization_id },
     );
 
+    // kygit-invite design D5: restore is kind-agnostic, so the same
+    // `.git/info/exclude` write `join` performs happens on `resume` too —
+    // best-effort, never a `resume()` throw.
+    try {
+      await excludeMessagingCacheFromGit(targetDir);
+    } catch {
+      // Best-effort: an unwritable checkout still completes the resume.
+    }
+
     // The bearer envelope is superseded within minutes of use — run the
     // same reconcile `push()` runs, best-effort (never a `resume()` throw).
     const handle = await this.open({ repo_id: vault.vault_id, repo_dir: targetDir, keystore_root: options.keystore_root });
@@ -2362,6 +2730,244 @@ export class Gitvault {
       restored: { dir: targetDir, branch: restored.branch, base_head_oid: restored.base_head_oid, stash_oid: restored.stash_oid },
       membership: handoffMembershipFromWire(claim.membership),
       members: claim.members ?? [],
+      expires_at: claim.expires_at,
+      reconcile_recipients: reconcile,
+      next_actions: nextActions,
+    };
+  }
+
+  /**
+   * Join an Invite Key: parse (refusing a `kgh1_` handoff key by name,
+   * pointing at `resume` — design D9) → ensure this machine has a wallet
+   * (design D5, mirroring {@link Gitvault.resume}'s own bare-wallet
+   * backstop; the CALLER folds the fuller cold-start chain — allowance,
+   * faucet, one x402 prototype payment — before invoking this, never
+   * blocking the claim itself) → claim → open the sealed envelope → write
+   * the repo file to the keystore BEFORE touching disk → clone at the base
+   * HEAD → `git stash apply --index` → local git-config pins (including
+   * `r402.room` set to the invite's OWN room, never just the project id) →
+   * append `.run402/` to `.git/info/exclude` → the session-start reconcile
+   * → register THIS session's presence in the room and post ONE arrival
+   * fact naming it and the checkpoint (idempotent on the invite id;
+   * best-effort — a presence or fact failure never blocks arrival) → read
+   * the most recent messages for the arrival view.
+   */
+  async join(options: {
+    key: string;
+    to?: string;
+    keystore_root?: string;
+    onLine?: (line: string) => void;
+    /** Harness-derived presence labels (design D8) — never guessed by the SDK itself. */
+    program?: string;
+    model?: string;
+    /** Opaque session identity for this session's own presence registration (see {@link RegisterPresenceOptions.sessionKey}). */
+    sessionKey?: string;
+    /** Display-only "what I'm working on" for this session's presence; defaults to naming the invite. */
+    task?: string;
+    /** How many recent messages to read for the arrival view. Default 10. */
+    recentMessagesLimit?: number;
+  }): Promise<GitvaultInviteJoinResult> {
+    const [ho, { GitvaultKeystore }, { createGitvaultHttpTransport }] = await Promise.all([
+      nodeOnly(() => import("../node/gitvault-handoff.js"), "join"),
+      this.#keystore(),
+      this.#publication(),
+    ]);
+    const restore = await nodeOnly(() => import("../node/gitvault-restore.js"), "join");
+    const { parseInviteKey, deriveInviteSecrets, openInviteEnvelope } = ho;
+    const { cloneGitvaultRemote, applyHandoffCheckpoint, resolveResumeTargetDir, readGitCommitMessage, excludeMessagingCacheFromGit } = restore;
+
+    const parsed = parseInviteKey(options.key);
+    const secrets = deriveInviteSecrets(parsed.invite_id_bytes, parsed.master_secret);
+
+    // Bare-wallet backstop, exactly like `resume` (design D5) — the claim
+    // route accepts ONLY a SIWX wallet signature; the fuller cold-start
+    // chain (faucet + one x402 prototype payment) is the CALLER's to fold
+    // before this call, and never blocks the claim either way.
+    await this.#ensureLocalWallet(options.onLine);
+
+    const claim = await this.#client.request<{
+      invite_id: string;
+      kind: "invite";
+      deduplicated: boolean;
+      sealed_envelope: string;
+      envelope_kind: string;
+      repo_id: string;
+      org_id: string;
+      project_id: string;
+      checkpoint: { generation: string; snapshot_oid_hmac: string };
+      membership: { org_id: string; role: string; status: string };
+      members?: unknown[];
+      room?: { org_id: string; room_key: string };
+      inviter: GitvaultInviteInviter | null;
+      live_presences?: RoomPresence[];
+      cursor?: string | null;
+      expires_at: string;
+      next_actions?: NextAction[];
+    }>(`/gitvault/v1/invites/${encodeURIComponent(parsed.invite_id)}/claim`, {
+      method: "POST",
+      body: { auth_secret: bytesToHex(secrets.auth_secret) },
+      context: "claiming an invite key",
+    });
+
+    // The claim names the vault by id only (no slug-form address rides the
+    // wire), so the default target directory falls back to the vault id —
+    // `--to <dir>` names it explicitly.
+    const vault = handoffVaultFromWire(claim);
+
+    const payload = openInviteEnvelope(parsed.invite_id_bytes, secrets.wrap_key, claim.sealed_envelope, claim.envelope_kind);
+    if (payload.repo_id !== vault.vault_id) {
+      throw new LocalError("the opened envelope's repo_id does not match the claim response's vault — refusing", "joining an invite", { code: "INVITE_ENVELOPE_INVALID" });
+    }
+
+    const keystore = new GitvaultKeystore(options.keystore_root !== undefined ? { rootDir: options.keystore_root } : {});
+    keystore.ensureIdentity();
+
+    // Genesis must be pinned before ANY materialize call can succeed — the
+    // one read that happens BEFORE a keystore repo file exists, via the
+    // transport directly (mirrors `resume`'s own signature check).
+    const transport = createGitvaultHttpTransport(this.#client);
+    const genesisBytes = await transport.getGenesis({ repo_id: vault.vault_id });
+    if (!genesisBytes) {
+      throw new LocalError("the vault has no admitted genesis", "joining an invite", { code: "CHAIN_BROKEN", details: { repo_id: vault.vault_id } });
+    }
+    const genesis = parseGitvaultStrict(new TextDecoder().decode(genesisBytes)) as { creator_signing_pubkey: string };
+    if (!verifyGitvaultObject(genesis as unknown as Parameters<typeof verifyGitvaultObject>[0], genesis.creator_signing_pubkey)) {
+      throw new LocalError("vault_genesis signature does not verify", "joining an invite", { code: "GITVAULT_SIGNATURE_INVALID", details: { repo_id: vault.vault_id } });
+    }
+    const genesisSha = sha256Hex(genesisBytes);
+
+    // Write the repo file to the keystore BEFORE touching disk (design D5).
+    keystore.saveRepo({
+      repo_id: vault.vault_id,
+      org_id: vault.organization_id,
+      project_id: vault.project_id ?? "",
+      k_repo_hex: payload.k_e_hex,
+      epoch: payload.epoch,
+      epoch_keys: { [payload.epoch]: payload.k_e_hex },
+      genesis_sha256: genesisSha,
+      head_pin: null,
+      last_ref_transaction: null,
+      provenance: "restored_from_invite",
+    });
+
+    const targetDir = await resolveResumeTargetDir(options.to, vault.address, vault.vault_id);
+    options.onLine?.(`joining into ${targetDir}`);
+    const remoteUrl = gitvaultRemoteUrl(vault.organization_id, vault.project_id);
+    await cloneGitvaultRemote(remoteUrl, targetDir);
+
+    const restored = await applyHandoffCheckpoint({ dir: targetDir, stash_oid: payload.checkpoint.commit_oid });
+
+    // The ROW's room key — a named room, or the project id when the mint
+    // omitted one — is what makes `messages wait` in the joined checkout
+    // address the right room with zero flags (design D5).
+    const roomKey = claim.room?.room_key ?? vault.project_id ?? "";
+
+    // Local-only pins (design D5) — never a worktree file, never the global
+    // active project. Reuses the SAME pin-writer every other gitvault
+    // resolution path uses, this time with the invite's OWN room key.
+    const { pinGitvaultRepo } = await this.#address();
+    const addressParts = vault.address ? vault.address.split("/") : null;
+    await pinGitvaultRepo(
+      targetDir,
+      vault.vault_id,
+      addressParts && addressParts.length === 2 ? { org_slug: addressParts[0]!, repo_name: addressParts[1]! } : undefined,
+      { project_id: vault.project_id, org_id: vault.organization_id, room_key: roomKey },
+    );
+
+    // design D5/D9 risk list: `.git/info/exclude` rather than `.gitignore`
+    // — the ignore file is part of the captured tree and touching it would
+    // break exact-state on the first `git status`. Best-effort.
+    try {
+      await excludeMessagingCacheFromGit(targetDir);
+    } catch {
+      // Best-effort: an unwritable checkout still completes the join.
+    }
+
+    // The bearer envelope is superseded within minutes of use — run the
+    // same reconcile `push()` runs, best-effort (never a `join()` throw).
+    const handle = await this.open({ repo_id: vault.vault_id, repo_dir: targetDir, keystore_root: options.keystore_root });
+    const reconcile = await this.#tryReconcileEnvelopeRecipients(handle.vault);
+
+    // design D5: register THIS session's presence, then post the ONE
+    // arrival fact — both best-effort, neither ever throws `join()`.
+    const rooms = new Rooms(this.#client);
+    const inviteShort = claim.invite_id.slice(0, 8);
+    let myPresence: { presence_id: string; name: string } | null = null;
+    try {
+      const registration = await rooms.registerPresence(claim.org_id, roomKey, {
+        task: options.task ?? `joined via invite ${inviteShort}`,
+        ...(options.program !== undefined ? { program: options.program } : {}),
+        ...(options.model !== undefined ? { model: options.model } : {}),
+        ...(options.sessionKey !== undefined ? { sessionKey: options.sessionKey } : {}),
+      });
+      myPresence = { presence_id: registration.presence_id, name: registration.name };
+    } catch {
+      // best-effort — arrival still completes without a presence
+    }
+    if (myPresence) {
+      const receiptShort = payload.checkpoint.commit_oid.slice(0, 12);
+      try {
+        await rooms.sendMessage(claim.org_id, roomKey, {
+          body: `Joined as ${myPresence.name} from checkpoint ${receiptShort}.`,
+          presenceId: myPresence.presence_id,
+          ...(options.sessionKey !== undefined ? { sessionKey: options.sessionKey } : {}),
+          idempotencyKey: `invite:${claim.invite_id}:joined`,
+        });
+      } catch {
+        // best-effort — never blocks arrival
+      }
+    }
+
+    let livePresences: RoomPresence[] = claim.live_presences ?? [];
+    let recentMessages: unknown[] = [];
+    let cursor: string | null = claim.cursor ?? null;
+    try {
+      const page = await rooms.listMessages(claim.org_id, roomKey, {
+        order: "desc",
+        limit: options.recentMessagesLimit ?? 10,
+        ...(myPresence ? { presenceId: myPresence.presence_id } : {}),
+      });
+      recentMessages = page.messages ?? [];
+      if (typeof page.cursor === "string") cursor = page.cursor;
+    } catch {
+      // best-effort — arrival still reports the claim's own cursor
+    }
+
+    const nextActions: NextAction[] = [...(claim.next_actions ?? [])];
+    if (!nextActions.some((a) => a.type === "push_repo")) {
+      nextActions.push({ type: "push_repo", command: "git push origin main", why: "Publish continued work back to the vault." });
+    }
+    if (!nextActions.some((a) => a.type === "wait_room")) {
+      nextActions.push({ type: "wait_room", command: "run402 messages wait", why: "Block until the inviter (or anyone else) speaks; silence returns who is still here." });
+    }
+    if (claim.inviter && !nextActions.some((a) => a.type === "send_room_message")) {
+      nextActions.push({ type: "send_room_message", command: `run402 messages send "…" --to ${claim.inviter.name}`, why: `${claim.inviter.name} invited you and may still be live.` });
+    }
+
+    let note: import("../node/gitvault-handoff.js").KygitInviteNote | null = null;
+    let noteRaw: string | null = null;
+    try {
+      noteRaw = (await readGitCommitMessage(targetDir, payload.checkpoint.commit_oid)) ?? null;
+      if (noteRaw) note = JSON.parse(noteRaw) as import("../node/gitvault-handoff.js").KygitInviteNote;
+    } catch {
+      note = null;
+    }
+
+    return {
+      invite_id: claim.invite_id,
+      kind: claim.kind,
+      deduplicated: claim.deduplicated,
+      note,
+      note_raw: noteRaw,
+      restored: { dir: targetDir, branch: restored.branch, base_head_oid: restored.base_head_oid, stash_oid: restored.stash_oid },
+      membership: handoffMembershipFromWire(claim.membership),
+      members: claim.members ?? [],
+      room: { organization_id: claim.room?.org_id ?? claim.org_id, room_key: roomKey },
+      inviter: claim.inviter ?? null,
+      presence: myPresence,
+      live_presences: livePresences,
+      cursor,
+      recent_messages: recentMessages,
       expires_at: claim.expires_at,
       reconcile_recipients: reconcile,
       next_actions: nextActions,

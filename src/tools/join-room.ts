@@ -2,7 +2,7 @@ import { z } from "zod";
 import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
 import { resolveRoomArgs, cachedPresenceId, rememberPresence } from "./rooms-shared.js";
-import { getSessionKey, resolveTaskLabel } from "../harness-context.js";
+import { getSessionKey, resolveTaskLabel, resolveHarnessLabels } from "../harness-context.js";
 
 export const joinRoomSchema = {
   project_id: z.string().optional().describe("Project whose DEFAULT room to join (the room key is the project id — the zero-config rendezvous). Omit when passing org_id + room_key."),
@@ -36,9 +36,14 @@ export async function handleJoinRoom(args: {
       // this process (or an earlier instance of it) registered before, rather
       // than always registering fresh on every server restart.
       const { task } = await resolveTaskLabel({ explicitTask: args.task });
+      // kygit-invite design D8: every registration carries harness-derived
+      // labels — never guessed, null stays null.
+      const { program, model } = resolveHarnessLabels();
       const registration = await sdk.rooms.registerPresence(room.orgId, room.roomKey, {
         ...(args.requested_name !== undefined ? { requestedName: args.requested_name } : {}),
         ...(task !== null ? { task } : {}),
+        ...(program !== null ? { program } : {}),
+        ...(model !== null ? { model } : {}),
         sessionKey: getSessionKey().key,
       });
       rememberPresence(room, registration, args.requested_name);

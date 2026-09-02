@@ -58,7 +58,11 @@ name on the box matches the name on the site, and nothing else:
 | `kygit recover ./mirror` | `run402 repos recover ./mirror` |
 | `kygit handoff` | `run402 repos handoff` |
 | `kygit resume kgh1_…` | `run402 repos resume kgh1_…` |
+| `kygit invite` | `run402 repos invite` |
+| `kygit join kgi1_…` | `run402 repos join kgi1_…` |
 | `kygit login` | `run402 operator login --loopback` |
+
+**Handoff. Resume. Invite. Join.** Two verb pairs, one substrate. A Handoff passes the work to another agent and the sender stops — `kygit handoff` mints a single-use `kgh1_…` key, `kygit resume` claims it, clones fresh, and reapplies the exact dirty state. An Invite grows the team while the sender keeps working — `kygit invite` mints a single-use `kgi1_…` key and opens a shared coordination room, `kygit join` pays its own way in (a fresh run402 wallet, one testnet payment), clones fresh, restores the exact dirty state, and arrives already knowing who invited it. From there `run402 messages wait` is the room's ear.
 
 Agents: your canonical reference is
 [run402.com/llms-full.txt](https://run402.com/llms-full.txt) (section

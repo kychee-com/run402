@@ -13,6 +13,7 @@ export const readRoomMessagesSchema = {
   unread: z.boolean().optional().describe("Only messages addressed to this session's presence that are newer than its read watermark. Requires having joined (or sent) at least once."),
   thread_id: z.string().optional().describe("Only one conversation thread."),
   limit: z.number().int().min(1).max(200).optional().describe("Page size (default 50, max 200)."),
+  wait: z.number().int().min(1).max(25).optional().describe("Hold this ONE read for up to N seconds (1..25) until a matching message lands past `cursor`, or the wait elapses — the gateway's held read, a single server-side hold with no client-side loop. Answers the ordinary page either way, plus `waited_ms` and `live_presences[]` (kygit-invite design D6). Ignored with `message_id`. Not supported for a desc/display read (there is none on this tool)."),
 };
 
 type McpResult = { content: Array<{ type: "text"; text: string }>; isError?: boolean };
@@ -26,6 +27,7 @@ export async function handleReadRoomMessages(args: {
   unread?: boolean;
   thread_id?: string;
   limit?: number;
+  wait?: number;
 }): Promise<McpResult> {
   const addr = await resolveRoomArgs(args).catch(() => null);
   if (!addr || !addr.ok) {
@@ -47,6 +49,7 @@ export async function handleReadRoomMessages(args: {
       ...(presenceId !== undefined ? { presenceId } : {}),
       sessionKey: getSessionKey().key,
       ...(args.limit !== undefined ? { limit: args.limit } : {}),
+      ...(args.wait !== undefined ? { wait: args.wait } : {}),
     });
     return { content: [{ type: "text", text: JSON.stringify(page, null, 2) }] };
   } catch (err) {

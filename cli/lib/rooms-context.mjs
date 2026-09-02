@@ -30,7 +30,7 @@ import { getSdk } from "./sdk.mjs";
 import { resolveOrg } from "./org-context.mjs";
 import { findBindingKey } from "./wallet-context.mjs";
 import { nextAction } from "./next-actions.mjs";
-import { resolveSessionKey } from "./harness-context.mjs";
+import { resolveSessionKey, resolveHarnessLabels } from "./harness-context.mjs";
 import { describeRejectedValue } from "../core-dist/redact.js";
 
 export const ROOM_ENV = "RUN402_ROOM";
@@ -139,13 +139,18 @@ export async function resolveRoom({ org, room, project } = {}) {
   };
 }
 
-function statePath() {
-  return join(process.cwd(), STATE_DIR, STATE_FILE);
+// Every state read/write takes the checkout it belongs to; the default is
+// this process's cwd (the house discipline of one worktree per session).
+// `repos join` is the one caller that writes ANOTHER checkout's state — the
+// clone it just created — so the first `messages wait` there speaks as the
+// session that joined and reads from the arrival cursor (kygit-invite D5).
+function statePath(cwd = process.cwd()) {
+  return join(cwd, STATE_DIR, STATE_FILE);
 }
 
-function loadState() {
+function loadState(cwd = process.cwd()) {
   try {
-    const raw = readFileSync(statePath(), "utf8");
+    const raw = readFileSync(statePath(cwd), "utf8");
     const parsed = JSON.parse(raw);
     return parsed && typeof parsed === "object" && parsed.rooms && typeof parsed.rooms === "object"
       ? parsed
@@ -155,11 +160,11 @@ function loadState() {
   }
 }
 
-function saveState(state) {
+function saveState(state, cwd = process.cwd()) {
   try {
-    const dir = join(process.cwd(), STATE_DIR);
+    const dir = join(cwd, STATE_DIR);
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    writeFileSync(statePath(), `${JSON.stringify(state, null, 2)}\n`);
+    writeFileSync(statePath(cwd), `${JSON.stringify(state, null, 2)}\n`);
   } catch {
     // Best-effort cache: an unwritable checkout degrades to stateless calls.
   }
@@ -167,15 +172,15 @@ function saveState(state) {
 
 const roomStateKey = (orgId, roomKey) => `${orgId}/${roomKey}`;
 
-export function getRoomState(orgId, roomKey) {
-  return loadState().rooms[roomStateKey(orgId, roomKey)] ?? {};
+export function getRoomState(orgId, roomKey, { cwd } = {}) {
+  return loadState(cwd).rooms[roomStateKey(orgId, roomKey)] ?? {};
 }
 
-export function updateRoomState(orgId, roomKey, patch) {
-  const state = loadState();
+export function updateRoomState(orgId, roomKey, patch, { cwd } = {}) {
+  const state = loadState(cwd);
   const key = roomStateKey(orgId, roomKey);
   state.rooms[key] = { ...(state.rooms[key] ?? {}), ...patch };
-  saveState(state);
+  saveState(state, cwd);
 }
 
 /** The session's presence id for a room: env override, else the checkout cache. */
@@ -218,9 +223,14 @@ function mySessionKey() {
  */
 export async function registerFreshPresence(orgId, roomKey, { name, task } = {}) {
   const requestedName = name ?? cachedRequestedName(orgId, roomKey);
+  // kygit-invite design D8: every registration carries harness-derived
+  // labels — never guessed, null stays null.
+  const { program, model } = resolveHarnessLabels();
   const registration = await getSdk().rooms.registerPresence(orgId, roomKey, {
     ...(requestedName ? { requestedName } : {}),
     ...(task ? { task } : {}),
+    ...(program ? { program } : {}),
+    ...(model ? { model } : {}),
     sessionKey: mySessionKey(),
   });
   rememberPresence(orgId, roomKey, registration, requestedName);

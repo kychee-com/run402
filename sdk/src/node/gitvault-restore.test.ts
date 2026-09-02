@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { captureHandoffSnapshot, globMatchesGitPath, isHandoffSensitivePath, GITVAULT_HANDOFF_SENSITIVE_DENYLIST } from "./gitvault-snapshot.js";
-import { applyHandoffCheckpoint, resolveResumeTargetDir, readGitCommitMessage } from "./gitvault-restore.js";
+import { applyHandoffCheckpoint, resolveResumeTargetDir, readGitCommitMessage, excludeMessagingCacheFromGit, isMessagingCacheExcludedFromGit } from "./gitvault-restore.js";
 import { git, makeRepo, commitFile } from "./gitvault-memory-transport.test.js";
 
 let root: string;
@@ -204,5 +204,47 @@ describe("resolveResumeTargetDir", () => {
     const cwd = process.cwd();
     const dir = await resolveResumeTargetDir(undefined, null, "repo_x");
     assert.equal(dir, join(cwd, "repo_x"));
+  });
+});
+
+describe("excludeMessagingCacheFromGit / isMessagingCacheExcludedFromGit (kygit-invite design D5/D9)", () => {
+  it("reports false before it has ever been called, and true immediately after", async () => {
+    const dir = await makeRepo(root, "exclude-fresh");
+    assert.equal(await isMessagingCacheExcludedFromGit(dir), false);
+    await excludeMessagingCacheFromGit(dir);
+    assert.equal(await isMessagingCacheExcludedFromGit(dir), true);
+  });
+
+  it("writes .git/info/exclude, never .gitignore", async () => {
+    const dir = await makeRepo(root, "exclude-writes-info-exclude");
+    await excludeMessagingCacheFromGit(dir);
+    const infoExclude = readFileSync(join(dir, ".git", "info", "exclude"), "utf8");
+    assert.ok(infoExclude.split("\n").some((l) => l.trim() === ".run402/"));
+    assert.ok(!existsSync(join(dir, ".gitignore")), "must never create or touch .gitignore — it is part of the captured tree");
+  });
+
+  it("is idempotent — a second call does not duplicate the entry", async () => {
+    const dir = await makeRepo(root, "exclude-idempotent");
+    await excludeMessagingCacheFromGit(dir);
+    await excludeMessagingCacheFromGit(dir);
+    const infoExclude = readFileSync(join(dir, ".git", "info", "exclude"), "utf8");
+    const occurrences = infoExclude.split("\n").filter((l) => l.trim() === ".run402/").length;
+    assert.equal(occurrences, 1);
+  });
+
+  it("appends to an existing .git/info/exclude without disturbing prior entries", async () => {
+    const dir = await makeRepo(root, "exclude-appends");
+    writeFileSync(join(dir, ".git", "info", "exclude"), "*.local\n");
+    await excludeMessagingCacheFromGit(dir);
+    const infoExclude = readFileSync(join(dir, ".git", "info", "exclude"), "utf8");
+    const lines = infoExclude.split("\n").map((l) => l.trim());
+    assert.ok(lines.includes("*.local"), "the pre-existing entry must survive");
+    assert.ok(lines.includes(".run402/"));
+  });
+
+  it("isMessagingCacheExcludedFromGit never throws on a directory that is not a repository", async () => {
+    const notARepo = join(root, "not-a-repo");
+    mkdirSync(notARepo, { recursive: true });
+    assert.equal(await isMessagingCacheExcludedFromGit(notARepo), false);
   });
 });
