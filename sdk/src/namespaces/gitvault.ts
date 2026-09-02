@@ -514,6 +514,25 @@ export interface GitvaultHandoffResumeResult {
   next_actions: NextAction[];
 }
 
+/**
+ * The gateway names the vault by its three ids on the wire — `repo_id`,
+ * `org_id`, `project_id` (docs/style.md's API-boundary vocabulary) — on
+ * BOTH the handoff mint (`POST /gitvault/v1/vaults/:vault_id/handoffs`) and
+ * claim (`POST /gitvault/v1/handoffs/:handoff_id/claim`) responses. The SDK
+ * groups them under `vault` with the `organization_id` spelling every other
+ * SDK result uses. Neither response carries a slug-form address, so
+ * `address` is `null` unless the caller already knows one (a slug-form
+ * remote at mint time). Pure; exported for tests.
+ */
+export function handoffVaultFromWire(wire: { repo_id: string; org_id: string; project_id: string }, address: string | null = null): GitvaultHandoffMintResult["vault"] {
+  return { vault_id: wire.repo_id, address, organization_id: wire.org_id, project_id: wire.project_id };
+}
+
+/** The claim response's `membership` block (`org_id` on the wire) in the SDK's `organization_id` spelling. Pure; exported for tests. */
+export function handoffMembershipFromWire(wire: { org_id: string; role: string; status: string }): GitvaultHandoffResumeResult["membership"] {
+  return { organization_id: wire.org_id, role: wire.role, status: wire.status };
+}
+
 /** What {@link Gitvault.openOrCreate} did. `created` is `null` exactly when `found` is `true`. */
 /** `run402 repos mirror` (no-arg, a READ) and `repos view`'s mirror summary both compose this — what this machine and the mirror each believe (both honesty statements ride every response). */
 export interface GitvaultMirrorStatus {
@@ -2105,13 +2124,21 @@ export class Gitvault {
       note_schema: "kygit.handoff-note.v1",
     });
 
+    // The wire shape is the gateway's documented one (llms-full.txt
+    // "Handoff / resume"): `role` (the minted role), `repo_id` / `org_id` /
+    // `project_id`, a verbatim `warning` sentence plus its machine-readable
+    // `warnings[]` twin. Read those names exactly — an SDK-side spelling
+    // that the gateway never sends surfaces as "role undefined" at the CLI.
     const response = await this.#client.request<{
       handoff_id: string;
       kind: "handoff";
-      minted_role: string;
+      role: string;
       expires_at: string;
-      vault: { vault_id: string; address?: string | null; organization_id: string; project_id: string };
+      repo_id: string;
+      org_id: string;
+      project_id: string;
       checkpoint: { generation: string; snapshot_oid_hmac: string };
+      warning?: string;
       warnings?: { code: string; message: string }[];
       next_actions?: NextAction[];
     }>(`/gitvault/v1/vaults/${encodeURIComponent(handle.repo_id)}/handoffs`, {
@@ -2139,9 +2166,14 @@ export class Gitvault {
       handoff_key: key,
       handoff_id: response.handoff_id,
       kind: response.kind,
-      minted_role: response.minted_role,
+      minted_role: response.role,
       expires_at: response.expires_at,
-      vault: response.vault,
+      // A slug-form remote is the one address the minter already knows;
+      // an id-form one carries nothing a directory name should be built from.
+      vault: handoffVaultFromWire(
+        response,
+        options.address && gitvaultRemoteAddressForm(options.address) === "slug" ? `${options.address.org_id}/${options.address.project_id}` : null,
+      ),
       checkpoint: response.checkpoint,
       capture: {
         modified_captured: snapshot.modified_captured.length,
@@ -2190,9 +2222,11 @@ export class Gitvault {
       deduplicated: boolean;
       sealed_envelope: string;
       envelope_kind: string;
-      vault: { vault_id: string; address?: string | null; organization_id: string; project_id: string };
+      repo_id: string;
+      org_id: string;
+      project_id: string;
       checkpoint: { generation: string; snapshot_oid_hmac: string };
-      membership: { organization_id: string; role: string; status: string };
+      membership: { org_id: string; role: string; status: string };
       members?: unknown[];
       expires_at: string;
       next_actions?: NextAction[];
@@ -2202,8 +2236,13 @@ export class Gitvault {
       context: "claiming a handoff key",
     });
 
+    // The claim names the vault by id only (no slug-form address rides the
+    // wire), so the default target directory falls back to the vault id —
+    // `--to <dir>` names it explicitly.
+    const vault = handoffVaultFromWire(claim);
+
     const payload = openHandoffEnvelope(parsed.handoff_id_bytes, secrets.wrap_key, claim.sealed_envelope, claim.envelope_kind);
-    if (payload.repo_id !== claim.vault.vault_id) {
+    if (payload.repo_id !== vault.vault_id) {
       throw new LocalError("the opened envelope's repo_id does not match the claim response's vault — refusing", "resuming a handoff", { code: "HANDOFF_ENVELOPE_INVALID" });
     }
 
@@ -2215,21 +2254,21 @@ export class Gitvault {
     // the one read that happens BEFORE one exists, via the transport
     // directly, mirroring `restoreRepoFromEnvelope`'s own signature check).
     const transport = createGitvaultHttpTransport(this.#client);
-    const genesisBytes = await transport.getGenesis({ repo_id: claim.vault.vault_id });
+    const genesisBytes = await transport.getGenesis({ repo_id: vault.vault_id });
     if (!genesisBytes) {
-      throw new LocalError("the vault has no admitted genesis", "resuming a handoff", { code: "CHAIN_BROKEN", details: { repo_id: claim.vault.vault_id } });
+      throw new LocalError("the vault has no admitted genesis", "resuming a handoff", { code: "CHAIN_BROKEN", details: { repo_id: vault.vault_id } });
     }
     const genesis = parseGitvaultStrict(new TextDecoder().decode(genesisBytes)) as { creator_signing_pubkey: string };
     if (!verifyGitvaultObject(genesis as unknown as Parameters<typeof verifyGitvaultObject>[0], genesis.creator_signing_pubkey)) {
-      throw new LocalError("vault_genesis signature does not verify", "resuming a handoff", { code: "GITVAULT_SIGNATURE_INVALID", details: { repo_id: claim.vault.vault_id } });
+      throw new LocalError("vault_genesis signature does not verify", "resuming a handoff", { code: "GITVAULT_SIGNATURE_INVALID", details: { repo_id: vault.vault_id } });
     }
     const genesisSha = sha256Hex(genesisBytes);
 
     // Write the repo file to the keystore BEFORE touching disk (design D10).
     keystore.saveRepo({
-      repo_id: claim.vault.vault_id,
-      org_id: claim.vault.organization_id,
-      project_id: claim.vault.project_id ?? "",
+      repo_id: vault.vault_id,
+      org_id: vault.organization_id,
+      project_id: vault.project_id ?? "",
       k_repo_hex: payload.k_e_hex,
       epoch: payload.epoch,
       epoch_keys: { [payload.epoch]: payload.k_e_hex },
@@ -2239,9 +2278,9 @@ export class Gitvault {
       provenance: "restored_from_handoff",
     });
 
-    const targetDir = await resolveResumeTargetDir(options.to, claim.vault.address, claim.vault.vault_id);
+    const targetDir = await resolveResumeTargetDir(options.to, vault.address, vault.vault_id);
     options.onLine?.(`resuming into ${targetDir}`);
-    const remoteUrl = gitvaultRemoteUrl(claim.vault.organization_id, claim.vault.project_id);
+    const remoteUrl = gitvaultRemoteUrl(vault.organization_id, vault.project_id);
     await cloneGitvaultRemote(remoteUrl, targetDir);
 
     const restored = await applyHandoffCheckpoint({ dir: targetDir, stash_oid: payload.checkpoint.commit_oid });
@@ -2250,17 +2289,17 @@ export class Gitvault {
     // global active project. Reuses the SAME pin-writer every other
     // gitvault resolution path uses, which also writes `r402.room`.
     const { pinGitvaultRepo } = await this.#address();
-    const addressParts = claim.vault.address ? claim.vault.address.split("/") : null;
+    const addressParts = vault.address ? vault.address.split("/") : null;
     await pinGitvaultRepo(
       targetDir,
-      claim.vault.vault_id,
+      vault.vault_id,
       addressParts && addressParts.length === 2 ? { org_slug: addressParts[0]!, repo_name: addressParts[1]! } : undefined,
-      { project_id: claim.vault.project_id, org_id: claim.vault.organization_id },
+      { project_id: vault.project_id, org_id: vault.organization_id },
     );
 
     // The bearer envelope is superseded within minutes of use — run the
     // same reconcile `push()` runs, best-effort (never a `resume()` throw).
-    const handle = await this.open({ repo_id: claim.vault.vault_id, repo_dir: targetDir, keystore_root: options.keystore_root });
+    const handle = await this.open({ repo_id: vault.vault_id, repo_dir: targetDir, keystore_root: options.keystore_root });
     const reconcile = await this.#tryReconcileEnvelopeRecipients(handle.vault);
 
     const senderIsOwner = claim.membership.role === "owner";
@@ -2293,7 +2332,7 @@ export class Gitvault {
       note,
       note_raw: noteRaw,
       restored: { dir: targetDir, branch: restored.branch, base_head_oid: restored.base_head_oid, stash_oid: restored.stash_oid },
-      membership: claim.membership,
+      membership: handoffMembershipFromWire(claim.membership),
       members: claim.members ?? [],
       expires_at: claim.expires_at,
       reconcile_recipients: reconcile,

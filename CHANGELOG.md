@@ -4,6 +4,8 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
 
 ## Unreleased
 
+- **fix(gitvault): `repos handoff` / `repos resume` read the gateway's documented wire names.** The SDK's `handoff()` read `minted_role` and a `vault` block, and `resume()` read `vault.*` and `membership.organization_id` — names the gateway never sends (its mint and claim responses carry `role`, `repo_id`, `org_id`, `project_id`, and `membership.org_id`). The first live rehearsal printed `handoff minted: role undefined` and would have refused every `resume` with `HANDOFF_ENVELOPE_INVALID`. The SDK result shape (`minted_role`, `vault.{vault_id, organization_id, project_id, address}`, `membership.organization_id`) is unchanged; the pure mappers `handoffVaultFromWire` / `handoffMembershipFromWire` are exported and pinned against the documented bodies. `vault.address` is `null` on `resume` (no slug-form address rides the claim), so the default target directory is the vault id — pass `--to <dir>` to name it.
+
 - **gitvault: `repos handoff` / `repos resume` — pass a working tree to another agent, dirty state included, via a single-use bearer key (kygit-handoff).**
   `run402 repos handoff [--note-file <path>] [--role <role>] [--ttl <seconds>] [--include-sensitive <glob>]... [--list] [--revoke <handoff_id>]`
   captures the ACTUAL working tree — staged, unstaged, and untracked — into
