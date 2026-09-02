@@ -414,12 +414,13 @@ function compile(sources: SnippetSource[]): readonly ts.Diagnostic[] {
     incremental: false,
     // Compile against the candidate checkout's declarations, never a sibling
     // worktree reached through a shared node_modules workspace symlink.
-    baseUrl: REPO_ROOT,
+    // Absolute targets rather than baseUrl: TypeScript 6.0 deprecates baseUrl
+    // and 7.0 removes it, and an absolute path needs no base to resolve.
     paths: {
-      "@run402/sdk": ["sdk/dist/index.d.ts"],
-      "@run402/sdk/config": ["sdk/dist/config.d.ts"],
-      "@run402/sdk/node": ["sdk/dist/node/index.d.ts"],
-      "@run402/sdk/node/config": ["sdk/dist/node/config.d.ts"],
+      "@run402/sdk": [resolve(REPO_ROOT, "sdk/dist/index.d.ts")],
+      "@run402/sdk/config": [resolve(REPO_ROOT, "sdk/dist/config.d.ts")],
+      "@run402/sdk/node": [resolve(REPO_ROOT, "sdk/dist/node/index.d.ts")],
+      "@run402/sdk/node/config": [resolve(REPO_ROOT, "sdk/dist/node/config.d.ts")],
     },
     // Bundler resolution lets snippets use bare specifiers without `.js`.
     moduleResolution: ts.ModuleResolutionKind.Bundler,

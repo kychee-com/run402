@@ -72,10 +72,13 @@ test("public type imports compile from package entrypoints", () => {
     );
 
     const program = ts.createProgram([contractPath], {
-      baseUrl: REPO_DIR,
+      // TypeScript 6.0: @types/* are no longer auto-included and baseUrl is
+      // deprecated (removed in 7.0), so name the node types and use absolute
+      // path targets.
+      types: ["node"],
       paths: {
-        "@run402/sdk": ["sdk/src/index.ts"],
-        "@run402/sdk/node": ["sdk/src/node/index.ts"],
+        "@run402/sdk": [resolve(REPO_DIR, "sdk/src/index.ts")],
+        "@run402/sdk/node": [resolve(REPO_DIR, "sdk/src/node/index.ts")],
       },
       lib: ["lib.es2022.d.ts", "lib.dom.d.ts"],
       module: ts.ModuleKind.ESNext,
@@ -112,10 +115,13 @@ test("route method constants are available from package entrypoints", () => {
     );
 
     const program = ts.createProgram([contractPath], {
-      baseUrl: REPO_DIR,
+      // TypeScript 6.0: @types/* are no longer auto-included and baseUrl is
+      // deprecated (removed in 7.0), so name the node types and use absolute
+      // path targets.
+      types: ["node"],
       paths: {
-        "@run402/sdk": ["sdk/src/index.ts"],
-        "@run402/sdk/node": ["sdk/src/node/index.ts"],
+        "@run402/sdk": [resolve(REPO_DIR, "sdk/src/index.ts")],
+        "@run402/sdk/node": [resolve(REPO_DIR, "sdk/src/node/index.ts")],
       },
       lib: ["lib.es2022.d.ts", "lib.dom.d.ts"],
       module: ts.ModuleKind.ESNext,
@@ -156,10 +162,13 @@ test("action constants and discriminated inputs compile from package entrypoints
     );
 
     const program = ts.createProgram([contractPath], {
-      baseUrl: REPO_DIR,
+      // TypeScript 6.0: @types/* are no longer auto-included and baseUrl is
+      // deprecated (removed in 7.0), so name the node types and use absolute
+      // path targets.
+      types: ["node"],
       paths: {
-        "@run402/sdk": ["sdk/src/index.ts"],
-        "@run402/sdk/node": ["sdk/src/node/index.ts"],
+        "@run402/sdk": [resolve(REPO_DIR, "sdk/src/index.ts")],
+        "@run402/sdk/node": [resolve(REPO_DIR, "sdk/src/node/index.ts")],
       },
       lib: ["lib.es2022.d.ts", "lib.dom.d.ts"],
       module: ts.ModuleKind.ESNext,
@@ -204,10 +213,13 @@ test("typed config helpers and execution modes compile from config entrypoints",
     );
 
     const program = ts.createProgram([contractPath], {
-      baseUrl: REPO_DIR,
+      // TypeScript 6.0: @types/* are no longer auto-included and baseUrl is
+      // deprecated (removed in 7.0), so name the node types and use absolute
+      // path targets.
+      types: ["node"],
       paths: {
-        "@run402/sdk/config": ["sdk/src/config.ts"],
-        "@run402/sdk/node/config": ["sdk/src/node/config.ts"],
+        "@run402/sdk/config": [resolve(REPO_DIR, "sdk/src/config.ts")],
+        "@run402/sdk/node/config": [resolve(REPO_DIR, "sdk/src/node/config.ts")],
       },
       lib: ["lib.es2022.d.ts", "lib.dom.d.ts"],
       module: ts.ModuleKind.ESNext,
@@ -251,10 +263,13 @@ test("stable-host deploy resolve diagnostic types are available from package ent
     );
 
     const program = ts.createProgram([contractPath], {
-      baseUrl: REPO_DIR,
+      // TypeScript 6.0: @types/* are no longer auto-included and baseUrl is
+      // deprecated (removed in 7.0), so name the node types and use absolute
+      // path targets.
+      types: ["node"],
       paths: {
-        "@run402/sdk": ["sdk/src/index.ts"],
-        "@run402/sdk/node": ["sdk/src/node/index.ts"],
+        "@run402/sdk": [resolve(REPO_DIR, "sdk/src/index.ts")],
+        "@run402/sdk/node": [resolve(REPO_DIR, "sdk/src/node/index.ts")],
       },
       lib: ["lib.es2022.d.ts", "lib.dom.d.ts"],
       module: ts.ModuleKind.ESNext,
@@ -293,10 +308,13 @@ test("deploy summary helper is available from package entrypoints", () => {
     );
 
     const program = ts.createProgram([contractPath], {
-      baseUrl: REPO_DIR,
+      // TypeScript 6.0: @types/* are no longer auto-included and baseUrl is
+      // deprecated (removed in 7.0), so name the node types and use absolute
+      // path targets.
+      types: ["node"],
       paths: {
-        "@run402/sdk": ["sdk/src/index.ts"],
-        "@run402/sdk/node": ["sdk/src/node/index.ts"],
+        "@run402/sdk": [resolve(REPO_DIR, "sdk/src/index.ts")],
+        "@run402/sdk/node": [resolve(REPO_DIR, "sdk/src/node/index.ts")],
       },
       lib: ["lib.es2022.d.ts", "lib.dom.d.ts"],
       module: ts.ModuleKind.ESNext,

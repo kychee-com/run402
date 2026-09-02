@@ -34,6 +34,9 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
       - run: npm ci
+      # Production-dependency audit: fails only on a high/critical advisory with a
+      # non-major fix available (see scripts/audit-gate.mjs for the policy).
+      - run: node scripts/audit-gate.mjs
       - run: npm run build
       - run: npm run test:skill
       - run: npm run test:sync

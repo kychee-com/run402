@@ -91,7 +91,7 @@
     "@run402/functions": "^3.7.0",
     "@types/node": "^22.0.0",
     "tsx": "^4.19.0",
-    "typescript": "^5.7.0",
+    "typescript": "^6.0.3",
     "yaml": "^2.8.2"
   },
   "license": "MIT"
