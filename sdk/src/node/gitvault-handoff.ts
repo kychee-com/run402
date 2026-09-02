@@ -27,7 +27,7 @@ import { sha256 } from "@noble/hashes/sha2.js";
 import { concatBytes, utf8ToBytes } from "@noble/hashes/utils.js";
 import { xchacha20poly1305 } from "@noble/ciphers/chacha.js";
 import { LocalError } from "../errors.js";
-import { _gitvaultAeadBackend, fromBase64url, randomBytes, sha256Hex, toBase64url } from "../namespaces/gitvault.crypto.js";
+import { _gitvaultAeadBackend, fromBase64url, randomBytes, toBase64url, bytesToHex } from "../namespaces/gitvault.crypto.js";
 
 function fail(code: string, message: string, context: string, details?: unknown): never {
   throw new LocalError(message, context, { code, details });
@@ -134,8 +134,16 @@ export interface HandoffSecrets {
 export function deriveHandoffSecrets(handoffIdBytes: Uint8Array, masterSecret: Uint8Array): HandoffSecrets {
   const authSecret = hkdf(sha256, masterSecret, handoffIdBytes, utf8ToBytes(HANDOFF_AUTH_INFO), 32);
   const wrapKey = hkdf(sha256, masterSecret, handoffIdBytes, utf8ToBytes(HANDOFF_WRAP_INFO), 32);
+  // ONE SHA-256 over (label ‖ auth_secret), hex-encoded — exactly what the
+  // gateway recomputes at claim (`computeAuthHash`). Through 4.68.1 this line
+  // ran the digest through `sha256Hex` (which hashes its input again), so the
+  // stored value was sha256(sha256(label ‖ secret)) and NO key minted by any
+  // published client could ever verify — the mint/claim agreement test above
+  // compared two calls of this same function and could not see it. The
+  // cross-side vector in gitvault-handoff.test.ts now recomputes the
+  // gateway's hash independently.
   const authHash = sha256(concatBytes(utf8ToBytes(HANDOFF_AUTH_HASH_LABEL), authSecret));
-  return { auth_secret: authSecret, wrap_key: wrapKey, auth_hash_hex: sha256Hex(authHash) };
+  return { auth_secret: authSecret, wrap_key: wrapKey, auth_hash_hex: bytesToHex(authHash) };
 }
 
 // ─── The sealed envelope (design D3) ─────────────────────────────────────────

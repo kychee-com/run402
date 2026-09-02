@@ -1,5 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { createHash, randomUUID } from "node:crypto";
 import {
   HANDOFF_ENVELOPE_KIND,
   HANDOFF_KEY_PREFIXES,
@@ -12,8 +13,7 @@ import {
   sealHandoffEnvelope,
   uuidToBytes,
   type HandoffEnvelopePayload,
-  type KygitHandoffNote,
-} from "./gitvault-handoff.js";
+  type KygitHandoffNote, } from "./gitvault-handoff.js";
 import { randomBytes } from "../namespaces/gitvault.crypto.js";
 
 const HANDOFF_ID = "3fa85f64-5717-4562-b3fc-2c963f66afa6";
@@ -71,6 +71,15 @@ describe("assembleHandoffKey / parseHandoffKey — round trip", () => {
 });
 
 describe("deriveHandoffSecrets — HKDF vectors", () => {
+  it("auth_hash_hex is ONE SHA-256 over (label ‖ auth_secret), recomputed here the way the gateway does it (the cross-side vector)", () => {
+    const { handoff_id_bytes, master_secret } = assembleHandoffKey(randomUUID(), randomBytes(32));
+    const secrets = deriveHandoffSecrets(handoff_id_bytes, master_secret);
+    const gatewayHash = createHash("sha256").update(Buffer.concat([Buffer.from("kygit/handoff/auth-hash/v1", "utf8"), Buffer.from(secrets.auth_secret)])).digest("hex");
+    assert.equal(secrets.auth_hash_hex, gatewayHash, "the gateway computes sha256(label ‖ secret) exactly once at claim; through 4.68.1 the SDK stored a double hash at mint and no key could verify");
+    const doubleHash = createHash("sha256").update(Buffer.from(gatewayHash, "hex")).digest("hex");
+    assert.notEqual(secrets.auth_hash_hex, doubleHash);
+  });
+
   it("mint-side and claim-side derivations agree on auth_hash from the same key", () => {
     const { handoff_id_bytes, master_secret } = assembleHandoffKey(HANDOFF_ID, randomBytes(32));
     const mint = deriveHandoffSecrets(handoff_id_bytes, master_secret);
