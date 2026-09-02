@@ -53,6 +53,12 @@ export const GITVAULT_CAPABILITIES = {
   // from `snapshot_dirty_default` above) — two verbs, two defaults, one
   // capture path (design D1).
   handoff_dirty_default: "capture",
+  // kygit-invite (design D10): `repos invite` / `repos join` mint and claim
+  // a second claim kind — a real single-use bearer key against a live
+  // gateway route, admitting the recipient to a shared coordination room
+  // while the inviter keeps working.
+  invite_live: true,
+  join_live: true,
   // Both remote door spellings resolve identically (design D8):
   // `run402::` (canonical, plumbing) and `kygit::` (rendered by
   // `@kychee/kygit` once it sets `RUN402_REMOTE_SCHEME=kygit`).

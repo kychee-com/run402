@@ -143,6 +143,21 @@ describe("r.gitvault.resume — the raw key never appears in a thrown error (des
     assert.equal(JSON.stringify(sentBody).includes(FABRICATED_KEY), false);
   });
 
+  it("a kgi1_ invite key handed to resume() is refused by name, before any network call (kygit-invite design D9)", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({}, 200));
+    const r = makeSdk(fetch);
+    const inviteLookingKey = "kgi1_" + "C".repeat(64);
+
+    await assert.rejects(
+      r.gitvault.resume({ key: inviteLookingKey }),
+      (err: unknown) => {
+        const e = err as { code?: string; details?: { kind?: string; verb?: string } };
+        return e.code === "HANDOFF_KEY_WRONG_KIND" && e.details?.kind === "invite" && e.details?.verb === "join";
+      },
+    );
+    assert.equal(calls.length, 0, "a cross-kind key is refused locally — never reaches the network");
+  });
+
   it("a malformed key's parse refusal names no part of the input", async () => {
     const { fetch } = mockFetch(() => jsonResponse({}, 200));
     const r = makeSdk(fetch);

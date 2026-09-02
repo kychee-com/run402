@@ -593,6 +593,12 @@ const SURFACE: Capability[] = [
   { id: "get_room",                     endpoint: "GET /orgs/v1/:org_id/rooms/:room_key", mcp: null, cli: null, openclaw: null },
   { id: "send_room_message",            endpoint: "POST /orgs/v1/:org_id/rooms/:room_key/messages", mcp: "send_room_message",            cli: "messages:send", openclaw: "messages:send" },
   { id: "read_room_messages",           endpoint: "GET /orgs/v1/:org_id/rooms/:room_key/messages", mcp: "read_room_messages",           cli: "messages:list", openclaw: "messages:list" },
+  // kygit-invite design D6/D7: the agent's ear — a blocking wait built on
+  // the SAME read route as read_room_messages, held query parameter `wait`.
+  // No dedicated MCP tool: `read_room_messages` gains a `wait` parameter
+  // instead (one held read, no client loop — an MCP tool call should
+  // return inside one server hold).
+  { id: "messages_wait",                endpoint: "GET /orgs/v1/:org_id/rooms/:room_key/messages?wait=<1..25>", mcp: null, cli: "messages:wait", openclaw: "messages:wait" },
   { id: "ack_room_message",             endpoint: "POST /orgs/v1/:org_id/rooms/:room_key/messages/:message_id/ack", mcp: "ack_room_message",             cli: "messages:ack", openclaw: "messages:ack" },
   { id: "get_room_message",             endpoint: "GET /orgs/v1/:org_id/rooms/:room_key/messages/:message_id", mcp: null, cli: "messages:get", openclaw: "messages:get" },
   { id: "raise_escalation",             endpoint: "POST /orgs/v1/:org_id/escalations", mcp: "raise_escalation",           cli: "escalations:raise", openclaw: "escalations:raise" },
@@ -809,6 +815,13 @@ const SURFACE: Capability[] = [
   // requirement.
   { id: "repos_handoff", endpoint: "POST /gitvault/v1/vaults/:vault_id/handoffs", mcp: null, cli: "repos:handoff", openclaw: "repos:handoff" },
   { id: "repos_resume", endpoint: "POST /gitvault/v1/handoffs/:handoff_id/claim", mcp: null, cli: "repos:resume", openclaw: "repos:resume" },
+  // kygit-invite design D1/D9: the second claim kind, same law as
+  // handoff/resume above — a bearer secret is minted (`invite`) and
+  // membership + a working tree are mutated (`join`), so `mcp: null` is
+  // pinned by the client-surface spec's own "No MCP tool exists for invite
+  // or join" requirement.
+  { id: "repos_invite", endpoint: "POST /gitvault/v1/vaults/:vault_id/invites", mcp: null, cli: "repos:invite", openclaw: "repos:invite" },
+  { id: "repos_join", endpoint: "POST /gitvault/v1/invites/:invite_id/claim", mcp: null, cli: "repos:join", openclaw: "repos:join" },
   // The gateway's own GITVAULT_CLIENT_UPGRADE_REQUIRED envelope names
   // `run402 repos policy grandfathered --reason <why>` as a next_action, so
   // the verb has to exist: without it a user can allocate themselves into a
@@ -931,6 +944,10 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   // `repos resume` are thin adapters over them.
   repos_handoff: "gitvault.handoff",
   repos_resume: "gitvault.resume",
+  // kygit-invite design D9: the same law, the second claim kind — protocol
+  // logic lives once in the SDK's `Gitvault.invite`/`Gitvault.join`.
+  repos_invite: "gitvault.invite",
+  repos_join: "gitvault.join",
   repos_policy: "gitvault.setPolicy",
   // `mirror` is a compound CLI verb (no-arg read / <dest> upsert / --off /
   // --backfill) that dispatches to four distinct SDK methods internally —
@@ -1157,6 +1174,9 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   join_room: "rooms.registerPresence",
   send_room_message: "rooms.sendMessage",
   read_room_messages: "rooms.listMessages",
+  // kygit-invite design D7: the agent's ear, built on the shared `waitFor`
+  // contract over the held read.
+  messages_wait: "rooms.waitForMessages",
   ack_room_message: "rooms.ackMessage",
   leave_room: "rooms.leave",
   list_rooms: "rooms.list",
@@ -1780,6 +1800,12 @@ describe("SDK surface alignment", () => {
       // mode, not a second verb" shape as `planPush` immediately above.
       "gitvault.listHandoffs",
       "gitvault.revokeHandoff",
+      // kygit-invite design D9: `repos invite --list`/`--revoke` are the
+      // SAME operational sub-flags of the ONE `repos_invite` verb
+      // (SDK_BY_CAPABILITY maps it to `gitvault.invite`, the mint call) —
+      // identical shape to `listHandoffs`/`revokeHandoff` immediately above.
+      "gitvault.listInvites",
+      "gitvault.revokeInvite",
       // repo-surface-consolidation D2: `git gc`'s own two halves, composed by
       // the CLI's `repos gc` (`repos_gc` maps to null in SDK_BY_CAPABILITY
       // above, same "compound-flow" shape as `up`/`init`/`repos_mirror`).

@@ -1825,9 +1825,16 @@ sendMessage(orgId, roomKey, { body, to?, cc?, threadId?, importance?, ackRequire
                               idempotencyKey?, presenceId?, sessionKey?, requestedName?, task? })
   // body: markdown, ≤32 KiB. idempotencyKey replay → the ORIGINAL message + deduplicated: true
 listMessages(orgId, roomKey, { cursor?, order?, before?, threadId?, addressedTo?,
-                               unread?, presenceId?, sessionKey?, limit? })
+                               unread?, presenceId?, sessionKey?, limit?, wait? })
   // ascending catch-up from { cursor }; { order: "desc", before } pages OLDER history;
-  // { addressedTo: "me", unread: true, presenceId } is the unread-inbox read
+  // { addressedTo: "me", unread: true, presenceId } is the unread-inbox read;
+  // wait (1..25s, kygit-invite) holds THIS one read on the gateway's held read
+waitForMessages(orgId, roomKey, { cursor?, threadId?, addressedTo?, presenceId?,
+                                  sessionKey?, timeoutMs?, waitSeconds?, pollMs?, onPoll? })
+  // → { ...page, settled, waited_ms, live_presences } — the agent's EAR (kygit-invite):
+  //   blocks until a matching message lands or timeoutMs elapses (default 120000);
+  //   held read when the gateway supports it, bounded polling otherwise; NEVER throws
+  //   on timeout — silence returns settled:false with the unchanged cursor
 getMessage(orgId, roomKey, messageId)      // FULL body (lists carry snippets) + ack state
 ackMessage(orgId, roomKey, messageId, { presenceId?, sessionKey? })
 createClaim(orgId, roomKey, { resource, mode, ttlSeconds?, note?, presenceId?, sessionKey? })
@@ -1964,7 +1971,11 @@ handoff({ project_id?, repo_id?, note, role?, ttlSeconds?, includeSensitive?, on
 resume({ key, to?, onLine? }): Promise<GitvaultHandoffResumeResult>     // kygit-handoff: claims the key (same-principal replay dedups safely), clones fresh, restores with `git stash apply --index`
 listHandoffs(target): Promise<GitvaultHandoffListResult>               // outstanding handoffs on a vault
 revokeHandoff(handoffId, target): Promise<{ handoff_id, state }>       // kill one before it's claimed
-status(opts?): Promise<GitvaultStatus>                                  // pass { refs: true } to also materialize the ref map + HEAD target; `pinned` reports the D6 id-pin (repo_id + resolved_from) when repo_dir names one. `repos view` never passes `refs: true` (design D3) — it stays side-effect-free by construction
+invite({ project_id?, repo_id?, note, roomKey?, role?, ttlSeconds?, includeSensitive?, onCommitLine?, program?, model?, sessionKey?, task? }): Promise<GitvaultInviteMintResult>  // kygit-invite: same capture as handoff() PLUS registers the inviter's own presence in the invite's room before minting and posts ONE room fact after — mints a single-use bearer kgi1_… key, the ONLY copy is `.invite_key`
+join({ key, to?, onLine?, program?, model?, sessionKey?, recentMessagesLimit? }): Promise<GitvaultInviteJoinResult>  // kygit-invite: claims the key (same-principal replay dedups safely), clones fresh, restores with `git stash apply --index`, pins the invite's OWN room, registers this session's presence, posts ONE arrival fact, returns inviter/live_presences/cursor/recent_messages
+listInvites(target): Promise<GitvaultInviteListResult>                 // outstanding invites on a vault
+revokeInvite(inviteId, target): Promise<{ invite_id, state }>          // kill one before it's claimed
+status(opts?): Promise<GitvaultStatus>                                  // pass { refs: true } to also materialize the ref map + HEAD target; `pinned` reports the D6 id-pin (repo_id + resolved_from + room) when repo_dir names one; `messaging_cache_excluded` (kygit-invite) reports whether `.git/info/exclude` already carries `.run402/`. `repos view` never passes `refs: true` (design D3) — it stays side-effect-free by construction
 compact(opts?): Promise<GitvaultCompactResult>
 prune(opts?): Promise<GitvaultPruneResult>                              // plan; pass { submit } with both verifier receipts to submit
 verify(opts?: { persist? }): Promise<GitvaultVerifiedState>             // persist defaults true; false walks + verifies the same way but writes neither local pin
@@ -2021,6 +2032,24 @@ There is no companion "resolved" check — V0-A cannot detect a second principal
 **D8 (kygit-handoff) — handoff/resume, and the `kygit::` scheme.** `handoff`/`resume` are a session PASS, not a snapshot restore: no shared keystore, no shared allowance, no server-side principal configured ahead of time. The Handoff Key, `kgh1_<base64url(handoff_id[16] ‖ master_secret[32])>` (69 chars), is assembled and parsed by isomorphic helpers exported from `sdk/src/node/gitvault-handoff.ts` — `assembleHandoffKey`/`parseHandoffKey`, `deriveHandoffSecrets` (HKDF-SHA256, salt = `handoff_id` bytes, deriving `auth_secret` — the gateway only ever receives its SHA-256 hash — and `wrap_key`), `sealHandoffEnvelope`/`openHandoffEnvelope` (a small XChaCha20-Poly1305 frame carrying the vault's live epoch key directly to the recipient — deliberately NOT an `r402s/v0` vault object: no JCS, no 7-field frameAad, its own `KGH1` frame format), and `scanHandoffNoteForSecrets`/`assertHandoffNoteHasNoSecret` (a Handoff Note is refused if it contains something that looks like a credential). `captureHandoffSnapshot` (`sdk/src/node/gitvault-snapshot.ts`) builds the synthetic 3-parent stash-shaped commit; `GITVAULT_HANDOFF_SENSITIVE_DENYLIST` is the 22-glob sensitive-path list applied to untracked files. `cloneGitvaultRemote`/`applyHandoffCheckpoint` (`sdk/src/node/gitvault-restore.ts`) do `resume`'s clone-and-restore half — `cloneGitvaultRemote` deliberately does NOT go through `hardenedGit` (whose `-c protocol.allow=never` would block it), because here the clone target IS the trusted vault remote, not an arbitrary caller-supplied URL.
 
 `gitvaultRemoteUrl(orgId, projectId)`/`gitvaultRemoteUrlForRepo(orgSlug, repoName)` render `kygit::` instead of `run402::` whenever `gitvaultRemoteScheme()` reads `process.env.RUN402_REMOTE_SCHEME === "kygit"` — a pure client-side rendering choice; `parseGitvaultRemoteUrl` accepts either prefix into the identical scheme-less `{ org_id, project_id }` address, so every gateway-facing call, resolve, and pin is unaffected by which door a request came through.
+
+**D9 (kygit-invite) — invite/join, a second claim kind beside handoff.** `sdk/src/node/gitvault-handoff.ts` is kind-parameterized (`ClaimKind = "handoff" | "invite"`) without renaming a single shipped export: `HANDOFF_KEY_PREFIXES` gains `kgi1_`/`invite`/`join` as its second row; `parseClaimKey(raw, expectedKind)` is the one parser, with `parseHandoffKey`/`parseInviteKey` as kind-bound aliases; `assembleInviteKey`/`deriveInviteSecrets`/`sealInviteEnvelope`/`openInviteEnvelope`/`scanInviteNoteForSecrets`/`assertInviteNoteHasNoSecret` are the invite-kind siblings of every handoff export, sharing the SAME HKDF/AEAD primitives with kind-embedded domain separation (`kygit/invite/auth/v1`, `kygit/invite/wrap/v1`, `kygit/invite/auth-hash/v1` — an invite secret never verifies as a handoff hash, or the reverse) and a THIRD envelope frame, `KGI1` (payload `kygit-invite-envelope-v1`, `note_schema: "kygit.invite-note.v1"`), distinct from both `r402s/v0`'s object frame and the handoff bridge's own `KGH1`. A recognized prefix of the WRONG kind refuses BY NAME pointing at its own verb (`HANDOFF_KEY_WRONG_KIND` from `join()` handed a `kgh1_…` key; `INVITE_KEY_WRONG_KIND` from `resume()` handed a `kgi1_…` key) — synchronously, before any network call. `Gitvault.invite()` registers the inviter's OWN presence (`new Rooms(this.#client)`, constructed inline since `rooms` is not otherwise exposed on `Gitvault`) BEFORE minting so the row can carry `inviter_presence_id`, and posts the room fact AFTER a successful mint — a presence or fact-post failure is reported (`inviter_presence`/`room_fact` on the result) and never voids the mint. `Gitvault.join()` mirrors `resume()`'s exact shape (bare-wallet backstop via `#ensureLocalWallet`; the caller folds the fuller cold-start chain before calling), additionally pinning the invite's OWN room (`pinGitvaultRepo`'s `ids.room_key`) and appending `.run402/` to `.git/info/exclude` via `excludeMessagingCacheFromGit` (`sdk/src/node/gitvault-restore.ts`, NEVER `.gitignore` — `resume()` gained the identical call, since restore is kind-agnostic). `errors.ts`'s `NextActionType` gains `join_invite` (door-aware via `gitvaultRemoteScheme()` — `kygit join …` vs `run402 repos join …`), `revoke_invite`, `wait_room`, `send_room_message`.
+
+**The wait verb — `rooms.waitForMessages` (kygit-invite design D6/D7).** `Rooms.waitForMessages(orgId, roomKey, opts)` calls `listMessages` with `wait=<1..25>` (gateway-clamped) and decides its next poll interval BY EVIDENCE on every read: a page carrying `waited_ms` proves the gateway held the request, so the next call is a zero-sleep held re-read; a page with NO `waited_ms` proves an older gateway that ignored the parameter, so the client falls back to bounded polling (`pollMs`, default 5000, floored at 1000 — the same anti-hammering floor the shared `waitFor` helper applies) until `timeoutMs` (default 120000) is exhausted. Silence is an answer, never a throw: on timeout the LAST OBSERVED (empty) page returns with `settled: false` and the unchanged cursor. `live_presences` comes from the held page's own rider when present, else one best-effort `listPresences` fallback read. `ScopedRoom.waitForMessages` delegates with `(orgId, roomKey)` pre-bound.
+
+```ts
+const minted = await r.gitvault.invite({
+  project_id: projectId,
+  note: { schema: "kygit.invite-note.v1", created_at: new Date().toISOString(), from: { agent: "claude" }, summary: "bringing in a second agent to pair on the parser" },
+});
+console.log(minted.invite_key); // kgi1_… — print it ALONE, this is the only copy
+
+const joined = await r.gitvault.join({ key: "kgi1_…" });
+console.log(joined.inviter?.name, joined.restored.dir);
+
+const heard = await r.rooms.waitForMessages(joined.membership.organization_id, joined.room.room_key, { presenceId: "prs_…" });
+console.log(heard.settled, heard.live_presences);
+```
 
 ```ts
 import { run402 } from "@run402/sdk/node";

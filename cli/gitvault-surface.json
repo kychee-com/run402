@@ -9,6 +9,8 @@
     "repos snapshot",
     "repos handoff",
     "repos resume",
+    "repos invite",
+    "repos join",
     "repos policy",
     "repos mirror",
     "repos fsck",
@@ -77,6 +79,8 @@
     "snapshot_dirty_default": "refuse",
     "handoff_live": true,
     "handoff_dirty_default": "capture",
+    "invite_live": true,
+    "join_live": true,
     "remote_schemes": [
       "run402",
       "kygit"

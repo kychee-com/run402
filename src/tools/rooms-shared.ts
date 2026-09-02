@@ -19,7 +19,7 @@ import { mapSdkError } from "../errors.js";
 import { findBindingKey } from "../../core/dist/binding-file.js";
 import { getActiveOrgId } from "../../core/dist/profile-state.js";
 import { describeRejectedValue } from "../../core/dist/redact.js";
-import { getSessionKey } from "../harness-context.js";
+import { getSessionKey, resolveHarnessLabels } from "../harness-context.js";
 
 export interface RoomAddressArgs {
   project_id?: string;
@@ -204,8 +204,13 @@ export async function withPresenceRetry<T>(
     if (code === "PRESENCE_EXPIRED" && presenceId) {
       forgetPresence(room);
       const requestedName = requestedNameByRoom.get(roomKeyOf(room));
+      // kygit-invite design D8: a replacement registration carries
+      // harness-derived labels too.
+      const { program, model } = resolveHarnessLabels();
       const replacement = await getSdk().rooms.registerPresence(room.orgId, room.roomKey, {
         ...(requestedName ? { requestedName } : {}),
+        ...(program !== null ? { program } : {}),
+        ...(model !== null ? { model } : {}),
         sessionKey,
       });
       rememberPresence(room, replacement, requestedName);

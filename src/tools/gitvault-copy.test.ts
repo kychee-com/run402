@@ -66,6 +66,13 @@ const DOC_SURFACES = {
   // machine-loss-qualifier gate the moment that's true, same reasoning as
   // llms.txt above.
   "kygit/README.md": read("../../kygit/README.md"),
+  // kygit-invite: the second claim kind's own doc surfaces — `join`
+  // restores a working tree exactly like `resume`, so the SAME
+  // banned-phrase / machine-loss-qualifier discipline applies the moment
+  // either mentions gitvault, and `read_room_messages`' `wait` parameter
+  // (documented here and in its generated flat file) rides alongside.
+  "docs-site mcp/reference.md": read("../../docs-site/src/content/docs/mcp/reference.md"),
+  "llms-mcp.txt": read("../../llms-mcp.txt"),
 } as const;
 
 const GITVAULT_TOOLS = ["repos_view", "repos_list_heads", "repos_fsck"] as const;

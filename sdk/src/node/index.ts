@@ -525,28 +525,49 @@ export type {
 } from "./gitvault-deploy.js";
 // kygit-handoff (design D3) — the Handoff Key: assemble/parse, HKDF
 // derivations, the sealed envelope, the note schema + client-side secret
-// scan. `Gitvault.handoff`/`.resume` delegate to this.
+// scan. `Gitvault.handoff`/`.resume` delegate to this. kygit-invite (design
+// D3) widens the SAME module to a second row, `kgi1_` — the Invite Key —
+// sharing the one parser/HKDF/envelope/scan machinery by kind.
 export {
   HANDOFF_ENVELOPE_KIND,
   HANDOFF_KEY_PREFIXES,
+  HANDOFF_ENVELOPE_V2_KIND,
+  INVITE_ENVELOPE_V2_KIND,
   assembleHandoffKey,
+  assembleInviteKey,
   assertHandoffNoteHasNoSecret,
+  assertInviteNoteHasNoSecret,
   deriveHandoffSecrets,
+  deriveInviteSecrets,
   isKygitHandoffNote,
+  isKygitInviteNote,
   openHandoffEnvelope,
+  openHandoffEnvelopeV2,
+  openInviteEnvelope,
+  parseClaimKey,
   parseHandoffKey,
+  parseInviteKey,
   scanHandoffNoteForSecrets,
+  scanInviteNoteForSecrets,
   sealHandoffEnvelope,
+  sealHandoffEnvelopeV2,
+  sealInviteEnvelope,
   uuidToBytes,
 } from "./gitvault-handoff.js";
 export type {
+  ClaimKeyParts,
+  ClaimKind,
   HandoffEnvelopePayload,
+  HandoffEnvelopePayloadV2,
   HandoffKeyParts,
   HandoffKeyPrefixEntry,
   HandoffNoteSecretFinding,
   HandoffSecrets,
+  InviteEnvelopePayloadV2,
+  InviteKeyParts,
   KygitHandoffNote,
   KygitHandoffNoteCapture,
+  KygitInviteNote,
 } from "./gitvault-handoff.js";
 // gitvault-multi-writer (rev 47, task 5.4/5.10) — the writer-admission grant
 // chain: mint an admission seed from a handoff's own master_secret (never
@@ -558,6 +579,8 @@ export {
   HANDOFF_WRITER_ACCEPT_DOMAIN,
   buildWriterAcceptance,
   buildWriterAdmissionGrant,
+  deriveClaimWriterAdmissionSeed,
+  deriveInviteWriterAdmissionSeed,
   deriveWriterAdmissionSeed,
   verifyWriterAcceptance,
   verifyWriterAdmissionGrant,
@@ -609,8 +632,10 @@ export type {
   WriterStateVerdict,
 } from "./gitvault-writer-state.js";
 // kygit-handoff (design D1) — restore: `git clone` at the base then
-// `git stash apply --index <oid>`. `Gitvault.resume` delegates to this.
-export { applyHandoffCheckpoint, cloneGitvaultRemote, readGitCommitMessage, resolveResumeTargetDir } from "./gitvault-restore.js";
+// `git stash apply --index <oid>`. `Gitvault.resume`/`.join` delegate to
+// this. kygit-invite (design D3/D5) adds the `.git/info/exclude` write both
+// verbs share.
+export { applyHandoffCheckpoint, cloneGitvaultRemote, excludeMessagingCacheFromGit, isMessagingCacheExcludedFromGit, readGitCommitMessage, resolveResumeTargetDir } from "./gitvault-restore.js";
 export type { GitvaultHandoffRestoreOptions, GitvaultHandoffRestoreResult } from "./gitvault-restore.js";
 // gitvault D2 (repo-first-onramp task 2.2) — lazy allocation on first push;
 // the orchestration `Gitvault.openOrCreate` delegates to.

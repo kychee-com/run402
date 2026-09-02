@@ -242,6 +242,54 @@ mock.module("./cli/lib/sdk.mjs", {
             next_actions: [{ type: "push_repo", command: "git push origin main" }],
           })))(input);
         },
+        invite: async (input) => {
+          calls.push({ method: "gitvault.invite", input });
+          return (impl.invite ?? (async () => ({
+            invite_key: "kgi1_" + "A".repeat(64),
+            invite_id: "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+            kind: "invite",
+            minted_role: "developer",
+            expires_at: "2026-09-02T11:00:00.000Z",
+            vault: { vault_id: REPO, address: "acme/notes", organization_id: ORG, project_id: PROJECT },
+            room: { organization_id: ORG, room_key: PROJECT },
+            checkpoint: { generation: "0000000000000002", snapshot_oid_hmac: "aa".repeat(32) },
+            capture: { modified_captured: 1, untracked_captured: 1, sensitive_excluded: [".env"], ignored_not_transferred_count: 0 },
+            snapshot: { oid: "b".repeat(40) },
+            inviter_presence: { registered: true, presence_id: "prs_inviter", name: "Opus" },
+            room_fact: { posted: true, message_id: "msg_1" },
+            warnings: [{ code: "INVITE_KEY_CONFERS_ROLE", message: "Anyone holding this key becomes a developer of this org until first use or 2026-09-02T11:00:00.000Z." }],
+            next_actions: [{ type: "join_invite", command: "kygit join kgi1_…" }, { type: "wait_room", command: "run402 messages wait" }],
+          })))(input);
+        },
+        listInvites: async (target) => {
+          calls.push({ method: "gitvault.listInvites", target });
+          return (impl.listInvites ?? (async () => ({ invites: [] })))(target);
+        },
+        revokeInvite: async (inviteId, target) => {
+          calls.push({ method: "gitvault.revokeInvite", inviteId, target });
+          return (impl.revokeInvite ?? (async () => ({ invite_id: inviteId, state: "revoked" })))(inviteId, target);
+        },
+        join: async (input) => {
+          calls.push({ method: "gitvault.join", input });
+          return (impl.join ?? (async () => ({
+            invite_id: "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+            kind: "invite",
+            deduplicated: false,
+            note: { schema: "kygit.invite-note.v1", created_at: "2026-09-02T00:00:00.000Z", from: { agent: "claude" }, summary: "made progress", capture: { base_head: "a".repeat(40), branch: "main", modified_captured: 1, untracked_captured: 1, sensitive_excluded: [], ignored_not_transferred_count: 0 } },
+            note_raw: JSON.stringify({ schema: "kygit.invite-note.v1", summary: "made progress" }),
+            restored: { dir: "/tmp/notes", branch: "main", base_head_oid: "a".repeat(40), stash_oid: "b".repeat(40) },
+            membership: { organization_id: ORG, role: "developer", status: "active" },
+            members: [],
+            room: { organization_id: ORG, room_key: PROJECT },
+            inviter: { presence_id: "prs_inviter", name: "Opus", program: "claude-code", model: null, state: "active", last_active: "2026-09-02T10:59:00.000Z" },
+            live_presences: [{ presence_id: "prs_inviter", name: "Opus", task: null, program: "claude-code", model: null, state: "active", last_active: "2026-09-02T10:59:00.000Z", expires_at: "2026-09-02T11:59:00.000Z" }],
+            cursor: "mcr_1",
+            recent_messages: [{ message_id: "msg_1", cursor: "mcr_1", room_key: PROJECT, sender: "Opus", body_snippet: "invited another agent from checkpoint b000000000", body_truncated: false, thread_id: null, importance: "normal", ack_required: false, recipients: [], created_at: "2026-09-02T10:59:00.000Z" }],
+            expires_at: "2026-09-02T11:00:00.000Z",
+            reconcile_recipients: { attempted: true, outcome: "reconciled" },
+            next_actions: [{ type: "push_repo", command: "git push origin main" }, { type: "wait_room", command: "run402 messages wait" }],
+          })))(input);
+        },
         planPush: async (input) => {
           calls.push({ method: "gitvault.planPush", input });
           return (impl.planPush ?? (async () => ({ allocation_needed: false, would_admit_generation: "0000000000000001", would_admit_generation_decimal: "1", form: "wal", object_count: 1, encrypted_bytes: "10", raw_bytes: "8" })))(input);
@@ -1763,5 +1811,369 @@ describe("run402 repos create — a machine with NO allowance folds the cold-sta
     const err = await expectFailure("create", ["bare-notes", "--org", ORG, "--no-init"]);
     assert.equal(coldStartCalls.length, 0);
     assert.equal(err.code, "NO_ALLOWANCE");
+  });
+});
+
+// ─── invite / join (kygit-invite) ────────────────────────────────────────────
+
+const INVITE_KEY = "kgi1_" + "A".repeat(64);
+
+describe("run402 repos invite — mint a single-use Invite Key (kygit-invite design D4)", () => {
+  it("mints via gitvault.invite, passing the resolved target + note + a commit-line callback", async () => {
+    const notePath = writeNoteFile({ summary: "made progress on the thing" });
+    const payload = await ok("invite", ["--project", PROJECT, "--note-file", notePath, "--json"]);
+    const call = calls.find((c) => c.method === "gitvault.invite");
+    assert.ok(call, "gitvault.invite must be called");
+    assert.equal(call.input.project_id, PROJECT);
+    assert.equal(call.input.note.summary, "made progress on the thing");
+    assert.equal(call.input.note.schema, "kygit.invite-note.v1");
+    assert.equal(typeof call.input.onCommitLine, "function");
+    assert.equal(payload.invite_key, INVITE_KEY);
+  });
+
+  it("the key ALONE goes to stdout when --json is absent — every other line lands on stderr (key-once contract)", async () => {
+    const notePath = writeNoteFile({ summary: "wip" });
+    const text = await human("invite", ["--project", PROJECT, "--note-file", notePath]);
+    assert.equal(text.trim(), INVITE_KEY, "bare stdout must be exactly the key, so `KEY=$(run402 repos invite ...)` works");
+    assert.ok(stderr.some((l) => l.includes("invite minted: role developer")));
+    assert.ok(stderr.some((l) => l.includes("recipient runs: kygit join")));
+    // The key itself must never be echoed on stderr — only stdout carries it.
+    assert.equal(stderr.some((l) => l.includes(INVITE_KEY)), false, "the Invite Key must never appear on stderr");
+  });
+
+  it("prints every warning from the mint result to stderr verbatim", async () => {
+    const notePath = writeNoteFile({ summary: "wip" });
+    await human("invite", ["--project", PROJECT, "--note-file", notePath]);
+    assert.ok(stderr.some((l) => l === "Anyone holding this key becomes a developer of this org until first use or 2026-09-02T11:00:00.000Z."));
+  });
+
+  it("--room threads through to gitvault.invite as roomKey", async () => {
+    const notePath = writeNoteFile({ summary: "wip" });
+    await ok("invite", ["--project", PROJECT, "--note-file", notePath, "--room", "org-room", "--json"]);
+    const call = calls.find((c) => c.method === "gitvault.invite");
+    assert.equal(call.input.roomKey, "org-room");
+  });
+
+  it("--role threads through to gitvault.invite", async () => {
+    const notePath = writeNoteFile({ summary: "wip" });
+    await ok("invite", ["--project", PROJECT, "--note-file", notePath, "--role", "admin", "--json"]);
+    const call = calls.find((c) => c.method === "gitvault.invite");
+    assert.equal(call.input.role, "admin");
+  });
+
+  it("--ttl threads through to gitvault.invite as ttlSeconds", async () => {
+    const notePath = writeNoteFile({ summary: "wip" });
+    await ok("invite", ["--project", PROJECT, "--note-file", notePath, "--ttl", "600", "--json"]);
+    const call = calls.find((c) => c.method === "gitvault.invite");
+    assert.equal(call.input.ttlSeconds, 600);
+  });
+
+  it("--ttl out of range is refused locally, before the SDK is ever called", async () => {
+    const notePath = writeNoteFile({ summary: "wip" });
+    const envelope = await expectFailure("invite", ["--project", PROJECT, "--note-file", notePath, "--ttl", "10"]);
+    assert.equal(envelope.code, "BAD_FLAG");
+    assert.equal(calls.find((c) => c.method === "gitvault.invite"), undefined);
+  });
+
+  it("repeated --include-sensitive collects into includeSensitive[]", async () => {
+    const notePath = writeNoteFile({ summary: "wip" });
+    await ok("invite", ["--project", PROJECT, "--note-file", notePath, "--include-sensitive", ".env", "--include-sensitive", "secrets.yml", "--json"]);
+    const call = calls.find((c) => c.method === "gitvault.invite");
+    assert.deepEqual(call.input.includeSensitive, [".env", "secrets.yml"]);
+  });
+
+  it("threads harness-derived program/model and a resolvable sessionKey through to gitvault.invite", async () => {
+    const notePath = writeNoteFile({ summary: "wip" });
+    const previous = { CLAUDE_CODE_SESSION_ID: process.env.CLAUDE_CODE_SESSION_ID };
+    process.env.CLAUDE_CODE_SESSION_ID = "sess-abc";
+    try {
+      await ok("invite", ["--project", PROJECT, "--note-file", notePath, "--json"]);
+    } finally {
+      if (previous.CLAUDE_CODE_SESSION_ID === undefined) delete process.env.CLAUDE_CODE_SESSION_ID;
+      else process.env.CLAUDE_CODE_SESSION_ID = previous.CLAUDE_CODE_SESSION_ID;
+    }
+    const call = calls.find((c) => c.method === "gitvault.invite");
+    assert.equal(call.input.program, "claude-code");
+    assert.equal(call.input.sessionKey, "sess-abc");
+  });
+
+  it("--list calls gitvault.listInvites with the resolved target and never mints", async () => {
+    const payload = await ok("invite", ["--project", PROJECT, "--list"]);
+    const listCall = calls.find((c) => c.method === "gitvault.listInvites");
+    assert.ok(listCall);
+    assert.equal(listCall.target.project_id, PROJECT);
+    assert.equal(calls.find((c) => c.method === "gitvault.invite"), undefined);
+    assert.deepEqual(payload.invites, []);
+  });
+
+  it("--revoke <id> calls gitvault.revokeInvite with the resolved target and never mints", async () => {
+    const payload = await ok("invite", ["--project", PROJECT, "--revoke", "inv_abc123"]);
+    const revokeCall = calls.find((c) => c.method === "gitvault.revokeInvite");
+    assert.ok(revokeCall);
+    assert.equal(revokeCall.inviteId, "inv_abc123");
+    assert.equal(revokeCall.target.project_id, PROJECT);
+    assert.equal(calls.find((c) => c.method === "gitvault.invite"), undefined);
+    assert.equal(payload.state, "revoked");
+  });
+
+  it("reports a not-posted room fact on stderr without failing the invite", async () => {
+    impl.invite = async () => ({
+      invite_key: INVITE_KEY, invite_id: "3fa85f64-5717-4562-b3fc-2c963f66afa6", kind: "invite",
+      minted_role: "developer", expires_at: "2026-09-02T11:00:00.000Z",
+      vault: { vault_id: REPO, address: null, organization_id: ORG, project_id: PROJECT },
+      room: { organization_id: ORG, room_key: PROJECT },
+      checkpoint: { generation: "0000000000000002", snapshot_oid_hmac: "aa".repeat(32) },
+      capture: { modified_captured: 0, untracked_captured: 0, sensitive_excluded: [], ignored_not_transferred_count: 0 },
+      snapshot: { oid: "b".repeat(40) },
+      inviter_presence: { registered: true, presence_id: "prs_1", name: "Opus" },
+      room_fact: { posted: false, reason: "daily message quota exceeded" },
+      warnings: [], next_actions: [],
+    });
+    const notePath = writeNoteFile({ summary: "wip" });
+    await human("invite", ["--project", PROJECT, "--note-file", notePath]);
+    assert.ok(stderr.some((l) => l.includes("the room fact was not posted (daily message quota exceeded)")));
+  });
+
+  it("rejects an Invite Note file that is not valid JSON", async () => {
+    const notePath = join(scratch, `note-bad-invite-${noteFileCounter++}.json`);
+    writeFileSync(notePath, "not json{{{");
+    const envelope = await expectFailure("invite", ["--project", PROJECT, "--note-file", notePath]);
+    assert.equal(envelope.code, "BAD_USAGE");
+    assert.equal(calls.find((c) => c.method === "gitvault.invite"), undefined);
+  });
+
+  it("rejects an Invite Note missing `summary`", async () => {
+    const notePath = writeNoteFile({ from: { agent: "claude" } });
+    const envelope = await expectFailure("invite", ["--project", PROJECT, "--note-file", notePath]);
+    assert.equal(envelope.code, "BAD_USAGE");
+  });
+
+  it("-v prints a stats summary line to stderr", async () => {
+    const notePath = writeNoteFile({ summary: "wip" });
+    await human("invite", ["--project", PROJECT, "--note-file", notePath, "-v"]);
+    assert.ok(stderr.some((line) => line.startsWith("stats: round_trips=")));
+  });
+});
+
+describe("run402 repos join — claim an Invite Key and restore the stash-shaped checkpoint (kygit-invite design D5)", () => {
+  it("joins via gitvault.join, passing the key positional and a line callback", async () => {
+    const payload = await ok("join", [INVITE_KEY, "--json"]);
+    const call = calls.find((c) => c.method === "gitvault.join");
+    assert.ok(call, "gitvault.join must be called");
+    assert.equal(call.input.key, INVITE_KEY);
+    assert.equal(typeof call.input.onLine, "function");
+    assert.equal(payload.restored.dir, "/tmp/notes");
+    assert.equal(payload.membership.role, "developer");
+    assert.equal(payload.room.room_key, PROJECT);
+  });
+
+  it("--to threads through to gitvault.join as `to`", async () => {
+    const outDir = join(scratch, "join-target");
+    await ok("join", [INVITE_KEY, "--to", outDir, "--json"]);
+    const call = calls.find((c) => c.method === "gitvault.join");
+    assert.equal(call.input.to, outDir);
+  });
+
+  it("persists this session's presence, the arrival cursor, and a generated session key INTO the clone — so the first `messages wait` there speaks as the joiner (design D5)", async () => {
+    const dir = join(scratch, "joined-clone");
+    mkdirSync(dir, { recursive: true });
+    impl.join = async () => ({
+      invite_id: "3fa85f64-5717-4562-b3fc-2c963f66afa6", kind: "invite", deduplicated: false,
+      note: null, note_raw: null,
+      restored: { dir, branch: "main", base_head_oid: "a".repeat(40), stash_oid: "b".repeat(40) },
+      membership: { organization_id: ORG, role: "developer", status: "active" }, members: [],
+      room: { organization_id: ORG, room_key: PROJECT }, inviter: null,
+      presence: { presence_id: "prs_me", name: "Fable" },
+      live_presences: [], cursor: "mcr_77", recent_messages: [], expires_at: "2026-09-02T11:00:00.000Z",
+      reconcile_recipients: { attempted: false, outcome: "skipped" }, next_actions: [],
+    });
+    // No harness session id in the environment → the session key is GENERATED
+    // (and persisted for THIS cwd by resolveSessionKey); the join must copy it
+    // into the clone, or the clone's first coordination call would mint a
+    // stranger's key and a second, suffixed presence.
+    const previous = { CLAUDE_CODE_SESSION_ID: process.env.CLAUDE_CODE_SESSION_ID, CODEX_THREAD_ID: process.env.CODEX_THREAD_ID, RUN402_SESSION_KEY: process.env.RUN402_SESSION_KEY };
+    delete process.env.CLAUDE_CODE_SESSION_ID;
+    delete process.env.CODEX_THREAD_ID;
+    delete process.env.RUN402_SESSION_KEY;
+    try {
+      await ok("join", [INVITE_KEY, "--to", dir, "--json"]);
+    } finally {
+      for (const [k, v] of Object.entries(previous)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }
+    const call = calls.find((c) => c.method === "gitvault.join");
+    const state = JSON.parse(readFileSync(join(dir, ".run402", "messaging.json"), "utf8"));
+    const roomState = state.rooms[`${ORG}/${PROJECT}`];
+    assert.equal(roomState.presence_id, "prs_me");
+    assert.equal(roomState.name, "Fable");
+    assert.equal(roomState.cursor, "mcr_77");
+    const sessionKeyFile = JSON.parse(readFileSync(join(dir, ".run402", "session-key.json"), "utf8"));
+    assert.equal(sessionKeyFile.session_key, call.input.sessionKey, "the clone must resolve the SAME session key the join registered under");
+  });
+
+  it("default (non-JSON) output renders the Invite Note as Markdown, the inviter line, live presences, recent messages, and next_actions", async () => {
+    const text = await human("join", [INVITE_KEY]);
+    assert.match(text, /^# Invite — claude/);
+    assert.match(text, /made progress/);
+    assert.ok(stderr.some((l) => l === "joined into /tmp/notes (branch main)"));
+    assert.ok(stderr.some((l) => l.includes("invited by Opus") && l.includes("live")));
+    assert.ok(stderr.some((l) => l.includes("recent messages (1)")));
+    assert.ok(stderr.some((l) => l === "next: git push origin main"));
+    assert.ok(stderr.some((l) => l.includes("next: run402 messages wait")));
+  });
+
+  it("reports an unknown inviter when the claim carries none", async () => {
+    impl.join = async () => ({
+      invite_id: "3fa85f64-5717-4562-b3fc-2c963f66afa6", kind: "invite", deduplicated: false,
+      note: null, note_raw: null,
+      restored: { dir: "/tmp/notes", branch: "main", base_head_oid: "a".repeat(40), stash_oid: "b".repeat(40) },
+      membership: { organization_id: ORG, role: "developer", status: "active" }, members: [],
+      room: { organization_id: ORG, room_key: PROJECT }, inviter: null, live_presences: [], cursor: null,
+      recent_messages: [], expires_at: "2026-09-02T11:00:00.000Z",
+      reconcile_recipients: { attempted: false, outcome: "skipped" }, next_actions: [],
+    });
+    await human("join", [INVITE_KEY]);
+    assert.ok(stderr.some((l) => l.includes("invited by: unknown")));
+  });
+
+  it("prints the safe-replay note when the key was already claimed by this same principal (dedup)", async () => {
+    impl.join = async () => ({
+      invite_id: "3fa85f64-5717-4562-b3fc-2c963f66afa6", kind: "invite", deduplicated: true,
+      note: { schema: "kygit.invite-note.v1", from: { agent: "claude" }, summary: "wip", capture: {} },
+      note_raw: "{}",
+      restored: { dir: "/tmp/notes", branch: "main", base_head_oid: "a".repeat(40), stash_oid: "b".repeat(40) },
+      membership: { organization_id: ORG, role: "developer", status: "active" }, members: [],
+      room: { organization_id: ORG, room_key: PROJECT }, inviter: null, live_presences: [], cursor: null,
+      recent_messages: [], expires_at: "2026-09-02T11:00:00.000Z",
+      reconcile_recipients: { attempted: false, outcome: "skipped" }, next_actions: [],
+    });
+    await human("join", [INVITE_KEY]);
+    assert.ok(stderr.some((l) => l.includes("already claimed by this same principal")));
+  });
+
+  it("--json prints the full envelope instead of rendering Markdown", async () => {
+    const payload = await ok("join", [INVITE_KEY, "--json"]);
+    assert.equal(payload.note.schema, "kygit.invite-note.v1");
+    assert.equal(payload.note_raw, JSON.stringify({ schema: "kygit.invite-note.v1", summary: "made progress" }));
+    assert.deepEqual(payload.members, []);
+    assert.equal(payload.inviter.name, "Opus");
+  });
+
+  it("rejects when neither a positional key nor --key-stdin is given", async () => {
+    const envelope = await expectFailure("join", []);
+    assert.equal(envelope.code, "BAD_USAGE");
+    assert.equal(calls.find((c) => c.method === "gitvault.join"), undefined);
+  });
+
+  it("threads harness-derived program/model and a resolvable sessionKey through to gitvault.join", async () => {
+    const previous = { CLAUDE_CODE_SESSION_ID: process.env.CLAUDE_CODE_SESSION_ID };
+    process.env.CLAUDE_CODE_SESSION_ID = "sess-def";
+    try {
+      await ok("join", [INVITE_KEY, "--json"]);
+    } finally {
+      if (previous.CLAUDE_CODE_SESSION_ID === undefined) delete process.env.CLAUDE_CODE_SESSION_ID;
+      else process.env.CLAUDE_CODE_SESSION_ID = previous.CLAUDE_CODE_SESSION_ID;
+    }
+    const call = calls.find((c) => c.method === "gitvault.join");
+    assert.equal(call.input.program, "claude-code");
+    assert.equal(call.input.sessionKey, "sess-def");
+  });
+
+  it("-v prints a stats summary line to stderr", async () => {
+    await human("join", [INVITE_KEY, "-v"]);
+    assert.ok(stderr.some((line) => line.startsWith("stats: round_trips=")));
+  });
+});
+
+// ─── join folds the cold-start chain, exactly like resume (kygit-invite design D5) ──
+
+describe("run402 repos join — a joined agent is a NEW run402 wallet: the cold-start chain runs BEFORE the claim (design D5)", () => {
+  let cfgIndex = 0;
+  /** A config dir with NO allowance file — the fresh-machine case. */
+  function freshConfigDir() {
+    const dir = join(scratch, `join-fresh-cfg-${cfgIndex++}`);
+    mkdirSync(dir, { recursive: true });
+    process.env.RUN402_CONFIG_DIR = dir;
+  }
+  /** A config dir WITH a local allowance (the same helper the create suite uses). */
+  async function fundedConfigDir() {
+    const dir = join(scratch, `join-funded-cfg-${cfgIndex++}`);
+    mkdirSync(dir, { recursive: true });
+    process.env.RUN402_CONFIG_DIR = dir;
+    await createLocalAllowance();
+  }
+
+  it("no allowance file: folds allowance -> faucet -> prototype BEFORE gitvault.join, announcing each step, and reports cold_start in --json", async () => {
+    freshConfigDir();
+    const payload = await ok("join", [INVITE_KEY, "--json"]);
+    assert.equal(coldStartCalls.length, 1, "the chain folds exactly once");
+    assert.ok(calls.find((c) => c.method === "gitvault.join"), "the claim still runs");
+    const foldLine = stderr.findIndex((l) => l.includes("folding the cold-start chain"));
+    const chainLine = stderr.findIndex((l) => l.includes("subscribing to the prototype tier"));
+    assert.ok(foldLine >= 0 && chainLine > foldLine, "the fold is announced, then each chain step");
+    assert.equal(payload.cold_start.performed, true);
+    assert.equal(payload.cold_start.allowance_created, true);
+    assert.equal(payload.cold_start.tier.status, "active");
+    assert.equal(payload.restored.dir, "/tmp/notes", "the join result is otherwise unchanged");
+  });
+
+  it("an allowance whose org already holds an active tier is left alone (one tier.status read, no chain)", async () => {
+    await fundedConfigDir();
+    const payload = await ok("join", [INVITE_KEY, "--json"]);
+    assert.equal(coldStartCalls.length, 0);
+    assert.ok(calls.find((c) => c.method === "tier.status"));
+    assert.deepEqual(payload.cold_start, { performed: false, skipped: "tier_active" });
+  });
+
+  it("--no-init opts out: no status read, no chain, the bare claim (the SDK still creates the wallet it needs)", async () => {
+    freshConfigDir();
+    const payload = await ok("join", [INVITE_KEY, "--no-init", "--json"]);
+    assert.equal(coldStartCalls.length, 0);
+    assert.equal(calls.some((c) => c.method === "tier.status"), false);
+    assert.ok(calls.find((c) => c.method === "gitvault.join"));
+    assert.deepEqual(payload.cold_start, { performed: false, skipped: "no_init" });
+  });
+
+  it("a chain failure (faucet throttle, payment refusal) is reported and NEVER blocks the claim — renew_tier rides next_actions", async () => {
+    freshConfigDir();
+    coldStartImpl = async (announce) => {
+      announce("allowance created: 0xabc");
+      const e = new Error("faucet throttled — retry after 86400s");
+      e.body = { code: "RATE_LIMITED", message: "faucet throttled — retry after 86400s" };
+      throw e;
+    };
+    const payload = await ok("join", [INVITE_KEY, "--json"]);
+    assert.equal(coldStartCalls.length, 1);
+    assert.ok(calls.find((c) => c.method === "gitvault.join"), "the claim runs after the chain fails");
+    assert.equal(payload.cold_start.performed, false);
+    assert.equal(payload.cold_start.error.code, "RATE_LIMITED");
+    assert.ok(payload.next_actions.some((n) => n.type === "renew_tier" && n.command === "run402 tier set prototype"));
+    assert.ok(stderr.some((l) => l.includes("cold-start chain failed (RATE_LIMITED")));
+    assert.equal(payload.restored.dir, "/tmp/notes");
+  });
+});
+
+describe("run402 repos view — reports the room pin and messaging_cache_excluded (kygit-invite design D9)", () => {
+  it("echoes messaging_cache_excluded and the pinned room on stderr and in JSON", async () => {
+    impl.gitvaultStatus = async () => vaultStatus({
+      vault: vaultRecord(),
+      pinned: { repo_id: REPO, resolved_from: null, room: "org-room" },
+      messaging_cache_excluded: true,
+    });
+    const payload = await ok("view", ["--project", PROJECT]);
+    assert.equal(payload.messaging_cache_excluded, true);
+    assert.equal(payload.pinned.room, "org-room");
+  });
+
+  it("--human view shows a repo whose vault is allocated without throwing on the new fields", async () => {
+    impl.gitvaultStatus = async () => vaultStatus({
+      vault: vaultRecord(),
+      pinned: { repo_id: REPO, resolved_from: null, room: PROJECT },
+      messaging_cache_excluded: false,
+    });
+    const text = await human("view", ["--project", PROJECT, "--human"]);
+    assert.ok(text.length > 0);
   });
 });

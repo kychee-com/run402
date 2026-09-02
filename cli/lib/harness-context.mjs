@@ -23,6 +23,8 @@ import { randomBytes } from "node:crypto";
 
 export const SESSION_KEY_OVERRIDE_ENV = "RUN402_SESSION_KEY";
 export const TASK_FROM_TITLE_OPT_OUT_ENV = "RUN402_NO_TASK_FROM_TITLE";
+export const PROGRAM_OVERRIDE_ENV = "RUN402_PROGRAM";
+export const MODEL_OVERRIDE_ENV = "RUN402_MODEL";
 const SESSION_KEY_CACHE_RELATIVE_PATH = ".run402/session-key.json";
 const CLAUDE_SESSIONS_DIR_PARTS = ["Library", "Application Support", "Claude", "claude-code-sessions"];
 const CODEX_STATE_DB_PARTS = [".codex", "state_5.sqlite"];
@@ -79,6 +81,54 @@ export function resolveSessionKey({
     // (if not durable-across-invocations) key for this one run.
   }
   return { key: generated, source: "generated" };
+}
+
+/**
+ * Best-effort presence labels sourced from the harness this CLI invocation
+ * is running under (kygit-invite design D8) — `program`/`model` on
+ * `rooms join`, the implicit registration inside `messages send`, and every
+ * `repos invite`/`repos join` presence registration. Precedence: explicit
+ * env overrides first (`RUN402_PROGRAM`/`RUN402_MODEL`), then `program`
+ * inferred from the SAME harness signals {@link resolveSessionKey} already
+ * trusts (`CLAUDE_CODE_SESSION_ID` or `CLAUDECODE` -> `"claude-code"`;
+ * `CODEX_THREAD_ID` -> `"codex"`). `model` has no harness-exposed signal to
+ * infer from today (open question in kygit-invite design.md) — it is
+ * ALWAYS env-override-or-null, never guessed from `program`. Null stays
+ * null in both fields: a placeholder label would be a Faithful breach.
+ */
+export function resolveHarnessLabels({ env = process.env } = {}) {
+  const programOverride = env[PROGRAM_OVERRIDE_ENV]?.trim();
+  const modelOverride = env[MODEL_OVERRIDE_ENV]?.trim();
+  let program = programOverride || null;
+  if (!program) {
+    if (env.CLAUDE_CODE_SESSION_ID?.trim() || env.CLAUDECODE?.trim()) {
+      program = "claude-code";
+    } else if (env.CODEX_THREAD_ID?.trim()) {
+      program = "codex";
+    }
+  }
+  const model = modelOverride || null;
+  return { program, model };
+}
+
+/**
+ * Persist a session key into ANOTHER checkout's cache. `repos join` uses it
+ * so the freshly cloned checkout resolves the SAME session identity the join
+ * registered its presence under (kygit-invite design D5), instead of
+ * generating a stranger's key on the first `messages wait` run there. Only
+ * meaningful for the generated-key path — a harness-provided id is found in
+ * the environment first regardless of cwd, so callers skip this for those
+ * sources. Best-effort, never throws; returns whether the write landed.
+ */
+export function persistSessionKey(cwd, key, { mkdirSyncImpl = mkdirSync, writeFileSyncImpl = writeFileSync } = {}) {
+  if (typeof key !== "string" || !key) return false;
+  try {
+    mkdirSyncImpl(join(cwd, ".run402"), { recursive: true });
+    writeFileSyncImpl(join(cwd, SESSION_KEY_CACHE_RELATIVE_PATH), `${JSON.stringify({ session_key: key }, null, 2)}\n`);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**

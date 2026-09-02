@@ -59,6 +59,8 @@ describe("cli/gitvault-surface.json", () => {
       "handoff_dirty_default",
       "handoff_live",
       "human_envelope_add_live",
+      "invite_live",
+      "join_live",
       "mirror_live",
       "recover_live",
       "remote_schemes",

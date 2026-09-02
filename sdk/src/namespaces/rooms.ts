@@ -47,11 +47,13 @@ import type {
   RoomLeaveResult,
   RoomList,
   RoomMessagePage,
+  RoomMessageWaitResult,
   RoomPresence,
   RoomPresenceList,
   RoomSummary,
   SendRoomMessageInput,
   SentRoomMessage,
+  WaitForRoomMessagesOptions,
 } from "./rooms.types.js";
 
 function roomPath(orgId: string, roomKey: string): string {
@@ -77,6 +79,7 @@ function messagesQuery(opts: ListRoomMessagesOptions = {}): string {
   if (opts.presenceId !== undefined) params.set("presence_id", opts.presenceId);
   if (opts.sessionKey !== undefined) params.set("session_key", opts.sessionKey);
   if (opts.limit !== undefined) params.set("limit", String(opts.limit));
+  if (opts.wait !== undefined) params.set("wait", String(opts.wait));
   const qs = params.toString();
   return qs ? `?${qs}` : "";
 }
@@ -272,6 +275,8 @@ export class Rooms {
     if (input.presenceId !== undefined) body.presence_id = input.presenceId;
     if (input.requestedName !== undefined) body.requested_name = input.requestedName;
     if (input.task !== undefined) body.task = input.task;
+    if (input.program !== undefined) body.program = input.program;
+    if (input.model !== undefined) body.model = input.model;
     if (input.sessionKey !== undefined) body.session_key = input.sessionKey;
     return this.client.request<SentRoomMessage>(`${roomPath(orgId, roomKey)}/messages`, {
       method: "POST",
@@ -304,6 +309,95 @@ export class Rooms {
       `${roomPath(orgId, roomKey)}/messages${messagesQuery(opts)}`,
       { method: "GET", context: "listing room messages" },
     );
+  }
+
+  /**
+   * Block until at least one matching message lands, or the timeout elapses
+   * (kygit-invite design D6/D7) — the agent's ear. Uses the gateway's held
+   * read (`wait=<seconds>` on the ascending message read) when it is
+   * observed to hold (a page carrying `waited_ms`), and degrades to
+   * client-side polling at `opts.pollMs` (default 5000ms) the instant a
+   * page comes back WITHOUT `waited_ms` — an older gateway that ignored the
+   * parameter. Decided by evidence on every read, not by a version check,
+   * so a single call is safe against either gateway.
+   *
+   * Silence is an answer: on timeout this RETURNS the last observed
+   * (empty) page with `settled: false`, never throws — the same contract as
+   * the shared `waitFor` helper. `live_presences` comes from the last
+   * page's own rider when the gateway held; otherwise it is fetched once at
+   * the end, best-effort (empty on any failure).
+   */
+  async waitForMessages(
+    orgId: string,
+    roomKey: string,
+    opts: WaitForRoomMessagesOptions = {},
+  ): Promise<RoomMessageWaitResult> {
+    if (!orgId) {
+      throw new LocalError("rooms.waitForMessages requires an orgId", "waiting for room messages");
+    }
+    if (!roomKey) {
+      throw new LocalError("rooms.waitForMessages requires a roomKey", "waiting for room messages");
+    }
+    const waitSeconds = Math.min(Math.max(Math.trunc(opts.waitSeconds ?? 25), 1), 25);
+    const timeoutMs = opts.timeoutMs ?? 120_000;
+    const fallbackPollMs = Math.max(opts.pollMs ?? 5000, 1000);
+    const startedAt = Date.now();
+
+    // The hold requested on each read is clamped to the budget that is LEFT,
+    // never the full `waitSeconds`: a held read is the gateway sleeping on
+    // the caller's behalf, so a 25 s hold issued with 5 s of budget remaining
+    // would overshoot `timeoutMs` by 20 s — past a coding harness's own
+    // tool-call limit when the caller sized the timeout to it (design D7).
+    const remainingMs = () => timeoutMs - (Date.now() - startedAt);
+    const holdFor = () => Math.max(1, Math.min(waitSeconds, Math.floor(remainingMs() / 1000)));
+    const fetchPage = (wait: number) => this.listMessages(orgId, roomKey, {
+      ...(opts.cursor !== undefined ? { cursor: opts.cursor } : {}),
+      ...(opts.threadId !== undefined ? { threadId: opts.threadId } : {}),
+      ...(opts.addressedTo !== undefined ? { addressedTo: opts.addressedTo } : {}),
+      ...(opts.presenceId !== undefined ? { presenceId: opts.presenceId } : {}),
+      ...(opts.sessionKey !== undefined ? { sessionKey: opts.sessionKey } : {}),
+      wait,
+    });
+
+    let page = await fetchPage(holdFor());
+    opts.onPoll?.(page, Date.now() - startedAt);
+
+    while (page.messages.length === 0) {
+      const elapsed = Date.now() - startedAt;
+      // Evidence, not version: THIS page decides whether the next read is a
+      // zero-sleep held re-read (the fetch itself already blocked up to
+      // `waitSeconds`) or a throttled poll.
+      const held = typeof page.waited_ms === "number";
+      const sleepMs = held ? 0 : fallbackPollMs;
+      // Look ahead by the upcoming sleep, exactly like the shared `waitFor`
+      // helper's own loop guard — otherwise a budget check made only BEFORE
+      // each sleep lets the total elapsed time overshoot `timeoutMs` by up
+      // to one whole `sleepMs`.
+      if (elapsed + sleepMs >= timeoutMs) break;
+      if (sleepMs > 0) await new Promise((resolve) => setTimeout(resolve, sleepMs));
+      // Less than a full second of budget left cannot be expressed as a
+      // hold (the gateway clamps `wait` to >= 1) — stop rather than overshoot.
+      if (remainingMs() < 1000) break;
+      page = await fetchPage(holdFor());
+      opts.onPoll?.(page, Date.now() - startedAt);
+    }
+
+    let livePresences: RoomPresence[] = Array.isArray(page.live_presences) ? page.live_presences : [];
+    if (!Array.isArray(page.live_presences)) {
+      try {
+        const listed = await this.listPresences(orgId, roomKey);
+        livePresences = opts.presenceId ? listed.presences.filter((p) => p.presence_id !== opts.presenceId) : listed.presences;
+      } catch {
+        livePresences = [];
+      }
+    }
+
+    return {
+      ...page,
+      settled: page.messages.length > 0,
+      waited_ms: Date.now() - startedAt,
+      live_presences: livePresences,
+    };
   }
 
   /**
@@ -526,6 +620,11 @@ export class ScopedRoom {
   /** See {@link Rooms.getMessage}. */
   getMessage(messageId: string): Promise<RoomMessage> {
     return this.rooms.getMessage(this.orgId, this.roomKey, messageId);
+  }
+
+  /** See {@link Rooms.waitForMessages}. */
+  waitForMessages(opts: WaitForRoomMessagesOptions = {}): Promise<RoomMessageWaitResult> {
+    return this.rooms.waitForMessages(this.orgId, this.roomKey, opts);
   }
 
   /** See {@link Rooms.ackMessage}. */

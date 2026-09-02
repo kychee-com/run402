@@ -188,6 +188,10 @@ export interface SendRoomMessageInput {
   requestedName?: string;
   /** Task metadata for the implicit presence-creation case. */
   task?: string;
+  /** Program/harness label for the implicit presence-creation case (kygit-invite design D8) — see {@link RegisterPresenceOptions.program}. */
+  program?: string;
+  /** Model label for the implicit presence-creation case (kygit-invite design D8) — see {@link RegisterPresenceOptions.model}. */
+  model?: string;
   /** Resume as this session (see {@link RegisterPresenceOptions.sessionKey}) instead of registering a fresh presence when no `presenceId` is cached. */
   sessionKey?: string;
 }
@@ -231,6 +235,16 @@ export interface ListRoomMessagesOptions {
   sessionKey?: string;
   /** Page size (server default 50, max 200). */
   limit?: number;
+  /**
+   * Held-read seconds (1..25, gateway-clamped) — kygit-invite design D6/D7.
+   * Ascending reads only (`order: "desc"` + `wait` is refused `400`). The
+   * gateway holds the request until a message matching this read's filters
+   * is visible past the cursor, or `wait` elapses, then answers the
+   * ordinary page plus `waited_ms`/`live_presences`. Prefer
+   * {@link Rooms.waitForMessages} over passing this directly — it degrades
+   * to client-side polling when the gateway does not hold.
+   */
+  wait?: number;
 }
 
 /** One page of room messages (events-feed cursor semantics). */
@@ -250,6 +264,21 @@ export interface RoomMessagePage {
   earliest_cursor?: string;
   /** Desc mode only: keyset cursor for the next-older page; absent on the oldest retained page. */
   before_cursor?: string;
+  /**
+   * Present only when the read carried `wait` — how long (ms) the gateway
+   * held the request before answering (kygit-invite design D6). ABSENT
+   * means an older gateway ignored `wait` and answered immediately; this is
+   * exactly the evidence {@link Rooms.waitForMessages} uses to decide
+   * between a held-read loop and client-side polling.
+   */
+  waited_ms?: number;
+  /**
+   * Present only when the read carried `wait` — the room's other live
+   * presences at answer time (the caller's own excluded when resolvable),
+   * so "is the other agent still here" is answered with no second call
+   * (kygit-invite design D6).
+   */
+  live_presences?: RoomPresence[];
   [key: string]: unknown;
 }
 
@@ -377,4 +406,50 @@ export interface RoomLeaveResult {
   presence_id: string;
   left: boolean;
   [key: string]: unknown;
+}
+
+/**
+ * Options for {@link Rooms.waitForMessages} (kygit-invite design D7) — the
+ * agent's ear. A superset of the ascending-read filters plus the wait
+ * shape's own knobs.
+ */
+export interface WaitForRoomMessagesOptions {
+  /** Resume past this cursor; omit to start from this checkout's own stored/earliest cursor. */
+  cursor?: string;
+  /** Restrict to one thread. */
+  threadId?: string;
+  /** `"me"`: only messages addressed to your presence. */
+  addressedTo?: "me";
+  /** Read as this presence (`prs_…`) when your credential holds several. */
+  presenceId?: string;
+  /** Resolve "you" via this session (see {@link RegisterPresenceOptions.sessionKey}) instead of `presenceId`. */
+  sessionKey?: string;
+  /** Total wait budget in ms, across every held read or poll. Default 120_000. */
+  timeoutMs?: number;
+  /** Held-read seconds requested per gateway call (1..25, clamped). Default 25. */
+  waitSeconds?: number;
+  /**
+   * Poll interval (ms) used ONLY once the gateway is observed NOT to hold
+   * (no `waited_ms` on a page) — design D7's "5 s poll when it does not".
+   * Ignored while the gateway is observed to hold. Default 5000, floor
+   * 1000.
+   */
+  pollMs?: number;
+  /** Called after every read (held or polled) with the latest page. */
+  onPoll?: (page: RoomMessagePage, elapsedMs: number) => void;
+}
+
+/**
+ * Response of {@link Rooms.waitForMessages} — the last observed page plus
+ * the wait's own outcome. Silence is an answer: on timeout this is
+ * RETURNED, never thrown (the shared `waitFor` contract) — `settled: false`
+ * with an empty `messages[]` and the unchanged cursor.
+ */
+export interface RoomMessageWaitResult extends RoomMessagePage {
+  /** True when at least one matching message was returned. */
+  settled: boolean;
+  /** Total elapsed wall-clock time across every read this wait performed — NOT a single page's `waited_ms`. */
+  waited_ms: number;
+  /** The room's other live presences as of the last read (best-effort; empty when unreachable). */
+  live_presences: RoomPresence[];
 }

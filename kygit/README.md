@@ -3,7 +3,7 @@
 The encrypted Git remote's command — [kygit.com](https://kygit.com).
 
 ```
-npm i -g @kychee/kygit
+npm i -g @kychee/kygit run402
 kygit create              # provision the vault, scaffold the remote
 git push origin main      # encrypted on your machine, published as a signed head
 ```
@@ -13,8 +13,12 @@ git push origin main      # encrypted on your machine, published as a signed hea
 including its own remote helper (`git-remote-kygit`, a second bin this
 package installs alongside `kygit`). `git push`/`git fetch` are plain git;
 git finds `kygit::` remotes by spawning `git-remote-kygit` from PATH, and
-npm links every bin of the package you install *directly* — so
-`npm i -g @kychee/kygit` alone is enough. (The underlying vault is the same
+npm links every bin of the package you install *directly*, so no
+separate remote-helper install is ever needed. (Install `run402` alongside
+it, as above: the shim pins its own nested copy and an installed shim
+never sees a newer client's verbs on its own.)
+
+(The underlying vault is the same
 `run402 repos` substrate either way: a checkout made with `kygit create`
 and one made with `run402 repos create` push to the same place, one
 spelled `kygit::`, the other `run402::` — see "What this package is" below.)
@@ -40,7 +44,12 @@ name on the box matches the name on the site, and nothing else:
   package's own `gitvault-surface.json` — the same machine-readable
   contract file that gates the marketing pages — so this shim can never
   drift from the canonical CLI. New client verbs work here without a
-  `kygit` release.
+  `kygit` release. But this package pins its OWN nested `run402`, so a
+  globally installed shim keeps whatever client it resolved at install
+  time: `npm i -g @kychee/kygit run402` upgrades both in one command, and
+  `npx -y @kychee/kygit` resolves the current `run402` on its own. A shim
+  running against an older client answers with THAT client's ordinary
+  unknown-verb refusal naming the upgrade — never a shim-specific error.
 - Anything outside the repo family is refused with the exact `run402 …`
   spelling to use instead. There is no second semantic CLI and no separate
   API — only a second remote scheme.
@@ -58,9 +67,13 @@ name on the box matches the name on the site, and nothing else:
 | `kygit recover ./mirror` | `run402 repos recover ./mirror` |
 | `kygit handoff` | `run402 repos handoff` |
 | `kygit resume kgh1_…` | `run402 repos resume kgh1_…` |
-
-After `kygit resume` you are a writer of the vault under your own key — `git push` works at once, and the sender's machine can be gone.
+| `kygit invite` | `run402 repos invite` |
+| `kygit join kgi1_…` | `run402 repos join kgi1_…` |
 | `kygit login` | `run402 operator login --loopback` |
+
+After `kygit resume` or `kygit join` you are a writer of the vault under your own key — `git push` works at once. After a resume the sender's machine can be gone; after a join the inviter is still pushing beside you.
+
+**Handoff. Resume. Invite. Join.** Two verb pairs, one substrate. A Handoff passes the work to another agent and the sender stops — `kygit handoff` mints a single-use `kgh1_…` key, `kygit resume` claims it, clones fresh, and reapplies the exact dirty state. An Invite grows the team while the sender keeps working — `kygit invite` mints a single-use `kgi1_…` key and opens a shared coordination room, `kygit join` pays its own way in (a fresh run402 wallet, one testnet payment), clones fresh, restores the exact dirty state, and arrives already knowing who invited it. From there `run402 messages wait` is the room's ear.
 
 Agents: your canonical reference is
 [run402.com/llms-full.txt](https://run402.com/llms-full.txt) (section

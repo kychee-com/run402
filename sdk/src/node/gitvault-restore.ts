@@ -25,9 +25,9 @@
  * finishes, `<oid>` is already a loose object in the fresh clone's ODB.
  */
 import { execFile } from "node:child_process";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, existsSync, readFileSync, appendFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { isAbsolute, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { LocalError } from "../errors.js";
 import { hardenedGit, hardenedGitEnv, run402PassthroughEnv } from "./gitvault-snapshot.js";
 
@@ -156,5 +156,61 @@ export async function readGitCommitMessage(dir: string, oid: string): Promise<st
     return (await hardenedGit(dir, ["log", "-1", "--format=%B", oid])).text().replace(/\n$/, "");
   } catch {
     return null;
+  }
+}
+
+/**
+ * `dir`'s real git directory (`git rev-parse --git-dir`, resolved to an
+ * absolute path against `dir` when the answer comes back relative) — the
+ * correct place to write LOCAL, never-committed exclusions even from a
+ * linked worktree, where `.git` is a file rather than a directory.
+ */
+async function resolveGitDir(dir: string): Promise<string> {
+  const raw = (await hardenedGit(dir, ["rev-parse", "--git-dir"])).text().trim();
+  return isAbsolute(raw) ? raw : resolve(dir, raw);
+}
+
+/**
+ * Add `.run402/` to `dir`'s LOCAL `.git/info/exclude` — never `.gitignore`
+ * (kygit-invite design D5): the ignore file is part of the captured tree
+ * and touching it would break exact-state on the first `git status` after
+ * `join`/`resume`. `.git/info/exclude` is local-only, per-clone git state,
+ * exactly like the id-pins in `gitvault-address.ts`. Idempotent — a second
+ * call on an already-excluding checkout is a no-op. Used by BOTH `join` and
+ * `resume` (restore is kind-agnostic, kygit-invite design D5).
+ */
+export async function excludeMessagingCacheFromGit(dir: string): Promise<void> {
+  const gitDir = await resolveGitDir(dir);
+  const excludePath = join(gitDir, "info", "exclude");
+  let existing = "";
+  try {
+    existing = readFileSync(excludePath, "utf-8");
+  } catch {
+    existing = "";
+  }
+  const lines = existing.split("\n");
+  if (lines.some((l) => l.trim() === ".run402/")) return; // already excluded
+  mkdirSync(dirname(excludePath), { recursive: true });
+  const needsLeadingNewline = existing.length > 0 && !existing.endsWith("\n");
+  appendFileSync(excludePath, `${needsLeadingNewline ? "\n" : ""}.run402/\n`);
+}
+
+/**
+ * Read-only counterpart to {@link excludeMessagingCacheFromGit} — whether
+ * `dir`'s LOCAL `.git/info/exclude` already carries `.run402/` (kygit-invite
+ * design D9's risk list: "`.git/info/exclude` is per-clone and silent" →
+ * `repos view` reports `messaging_cache_excluded` so the state is visible).
+ * `false` on any read failure (not a repository, no exclude file yet) —
+ * never throws.
+ */
+export async function isMessagingCacheExcludedFromGit(dir: string): Promise<boolean> {
+  try {
+    const gitDir = await resolveGitDir(dir);
+    const excludePath = join(gitDir, "info", "exclude");
+    if (!existsSync(excludePath)) return false;
+    const existing = readFileSync(excludePath, "utf-8");
+    return existing.split("\n").some((l) => l.trim() === ".run402/");
+  } catch {
+    return false;
   }
 }

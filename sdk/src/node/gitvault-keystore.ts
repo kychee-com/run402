@@ -220,8 +220,8 @@ export interface GitvaultRepoFile {
   pending_writer_admission?: { handoff_id: string; writer_admission_grant: Record<string, unknown>; claimed_writer_key_id: string } | null;
   /** The last ref transaction this principal published (5.4 fills it). */
   last_ref_transaction: Record<string, unknown> | null;
-  /** How this file came to exist — creation, or a §5.1 restore from the principal's own envelope. */
-  provenance: "created" | "restored_from_envelope" | "restored_from_handoff";
+  /** How this file came to exist — creation, a §5.1 restore from the principal's own envelope, or a bearer-key restore (`resume`/`join`, kygit-handoff/kygit-invite). */
+  provenance: "created" | "restored_from_envelope" | "restored_from_handoff" | "restored_from_invite";
   updated_at: string;
 }
 

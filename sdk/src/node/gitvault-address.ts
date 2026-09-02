@@ -103,13 +103,17 @@ export async function readPinnedGitvaultRepo(repoDir: string): Promise<GitvaultP
  * already rename-proof, so this pin exists purely to skip the resolution
  * ROUND TRIP, not to survive a rename.
  */
-export async function pinGitvaultRepo(repoDir: string, repoId: string, resolvedFrom?: { org_slug: string; repo_name: string }, ids?: { project_id: string; org_id: string }): Promise<void> {
+export async function pinGitvaultRepo(repoDir: string, repoId: string, resolvedFrom?: { org_slug: string; repo_name: string }, ids?: { project_id: string; org_id: string; room_key?: string }): Promise<void> {
   await hardenedGit(repoDir, ["config", "--local", CONFIG_KEY_REPO_ID, repoId]);
   if (resolvedFrom) await hardenedGit(repoDir, ["config", "--local", CONFIG_KEY_ADDRESS, `${resolvedFrom.org_slug}/${resolvedFrom.repo_name}`]);
   if (ids) {
     await hardenedGit(repoDir, ["config", "--local", CONFIG_KEY_PROJECT_ID, ids.project_id]);
     await hardenedGit(repoDir, ["config", "--local", CONFIG_KEY_ORG_ID, ids.org_id]);
-    await hardenedGit(repoDir, ["config", "--local", CONFIG_KEY_ROOM, ids.project_id]);
+    // kygit-invite design D3/D5: the room pin defaults to the project id (a
+    // project's default room) but a joiner pins the INVITE's own room key
+    // when the mint named one — `ids.room_key` overrides, never silently
+    // widens what an ordinary resume/push pin writes.
+    await hardenedGit(repoDir, ["config", "--local", CONFIG_KEY_ROOM, ids.room_key ?? ids.project_id]);
   }
 }
 

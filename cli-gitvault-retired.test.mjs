@@ -211,12 +211,16 @@ describe("naming-law conventions gate (task 5.1) — mechanically, from COMMAND_
   // name (`git stash` inspires the restore MECHANISM `resume` uses
   // internally — `git stash apply --index` — but `resume` itself names no
   // git porcelain command), so both are plain-English no-analog verbs.
-  const NO_ANALOG_VERBS = new Set(["snapshot", "policy", "mirror", "access", "recover", "recovery-bundle", "handoff", "resume"]);
+  // `invite`/`join` (kygit-invite): the SECOND claim kind, sharing the same
+  // capture/restore machinery as handoff/resume by kind — a coordination
+  // room invite plus the verb that claims one. Same reasoning: neither
+  // collides with a `gh repo` verb or a real git porcelain command name.
+  const NO_ANALOG_VERBS = new Set(["snapshot", "policy", "mirror", "access", "recover", "recovery-bundle", "handoff", "resume", "invite", "join"]);
 
-  it("the repos verb set is exactly the fifteen the design specifies (create/list/view/rename/delete/snapshot/policy/mirror/fsck/gc/access/recover/recovery-bundle/handoff/resume)", () => {
+  it("the repos verb set is exactly the seventeen the design specifies (create/list/view/rename/delete/snapshot/policy/mirror/fsck/gc/access/recover/recovery-bundle/handoff/resume/invite/join)", () => {
     assert.deepEqual(
       REPOS_VERBS,
-      ["access", "create", "delete", "fsck", "gc", "handoff", "list", "mirror", "policy", "recover", "recovery-bundle", "rename", "resume", "snapshot", "view"],
+      ["access", "create", "delete", "fsck", "gc", "handoff", "invite", "join", "list", "mirror", "policy", "recover", "recovery-bundle", "rename", "resume", "snapshot", "view"],
     );
   });
 

@@ -6,27 +6,52 @@ import {
   HANDOFF_ENVELOPE_V2_KIND,
   HANDOFF_KEY_PREFIXES,
   HANDOFF_WRITER_ACCEPT_DOMAIN,
+  INVITE_ENVELOPE_V2_KIND,
   assembleHandoffKey,
+  assembleInviteKey,
   assertHandoffNoteHasNoSecret,
+  assertInviteNoteHasNoSecret,
   buildWriterAcceptance,
   buildWriterAdmissionGrant,
   deriveHandoffSecrets,
+  deriveInviteSecrets,
+  deriveInviteWriterAdmissionSeed,
   deriveWriterAdmissionSeed,
   openHandoffEnvelope,
   openHandoffEnvelopeV2,
+  openInviteEnvelope,
+  parseClaimKey,
   parseHandoffKey,
+  parseInviteKey,
   scanHandoffNoteForSecrets,
+  scanInviteNoteForSecrets,
   sealHandoffEnvelope,
   sealHandoffEnvelopeV2,
+  sealInviteEnvelope,
   uuidToBytes,
   verifyWriterAcceptance,
   verifyWriterAdmissionGrant,
   type HandoffEnvelopePayload,
   type HandoffEnvelopePayloadV2,
-  type KygitHandoffNote, } from "./gitvault-handoff.js";
+  type InviteEnvelopePayloadV2,
+  type KygitHandoffNote,
+  type KygitInviteNote,
+} from "./gitvault-handoff.js";
 import { randomBytes, ed25519PublicKey, ekFingerprint, toBase64url } from "../namespaces/gitvault.crypto.js";
 
 const HANDOFF_ID = "3fa85f64-5717-4562-b3fc-2c963f66afa6";
+const INVITE_ID = "4fa85f64-5717-4562-b3fc-2c963f66afa7";
+
+function baseInviteNote(overrides: Partial<KygitInviteNote> = {}): KygitInviteNote {
+  return {
+    schema: "kygit.invite-note.v1",
+    created_at: "2026-09-02T00:00:00.000Z",
+    from: { agent: "claude" },
+    summary: "made progress",
+    capture: { base_head: "a".repeat(40), branch: "main", modified_captured: 0, untracked_captured: 0, sensitive_excluded: [], ignored_not_transferred_count: 0 },
+    ...overrides,
+  };
+}
 
 function baseNote(overrides: Partial<KygitHandoffNote> = {}): KygitHandoffNote {
   return {
@@ -468,5 +493,291 @@ describe("scanHandoffNoteForSecrets / assertHandoffNoteHasNoSecret", () => {
 
   it("assertHandoffNoteHasNoSecret does not throw on a clean note", () => {
     assert.doesNotThrow(() => assertHandoffNoteHasNoSecret(baseNote()));
+  });
+});
+
+// ─── kygit-invite (design D3): the second registry row ──────────────────────
+
+describe("HANDOFF_KEY_PREFIXES — kgi1_ is the second row (kygit-invite design D3)", () => {
+  it("kgi1_ is registered as the invite kind, pointing at join", () => {
+    assert.equal(HANDOFF_KEY_PREFIXES.length, 2);
+    assert.equal(HANDOFF_KEY_PREFIXES[1]!.prefix, "kgi1_");
+    assert.equal(HANDOFF_KEY_PREFIXES[1]!.kind, "invite");
+    assert.equal(HANDOFF_KEY_PREFIXES[1]!.verb, "join");
+  });
+});
+
+describe("assembleInviteKey / parseInviteKey — round trip", () => {
+  it("assembles a 69-char kgi1_ key and parses it back to the same id/secret", () => {
+    const secret = randomBytes(32);
+    const { key, invite_id_bytes, master_secret } = assembleInviteKey(INVITE_ID, secret);
+    assert.equal(key.length, 69);
+    assert.ok(key.startsWith("kgi1_"));
+    const parsed = parseInviteKey(key);
+    assert.equal(parsed.kind, "invite");
+    assert.equal(parsed.invite_id, INVITE_ID);
+    assert.deepEqual([...parsed.invite_id_bytes], [...invite_id_bytes]);
+    assert.deepEqual([...parsed.master_secret], [...secret]);
+    assert.deepEqual([...parsed.master_secret], [...master_secret]);
+  });
+
+  it("parseClaimKey(raw, 'invite') is the same parser under its generic name", () => {
+    const { key } = assembleInviteKey(INVITE_ID);
+    const parsed = parseClaimKey(key, "invite");
+    assert.equal(parsed.kind, "invite");
+    assert.equal(parsed.id, INVITE_ID);
+  });
+});
+
+describe("cross-kind refusal by name (design D9 rule 4 / kygit-invite design D3)", () => {
+  it("join refuses a kgh1_ handoff key by name, pointing at resume", () => {
+    const { key } = assembleHandoffKey(HANDOFF_ID);
+    assert.throws(() => parseInviteKey(key), (e: unknown) => {
+      const err = e as { code?: string; details?: { kind?: string; verb?: string } };
+      return err.code === "INVITE_KEY_WRONG_KIND" && err.details?.kind === "handoff" && err.details?.verb === "resume";
+    });
+  });
+
+  it("resume refuses a kgi1_ invite key by name, pointing at join", () => {
+    const { key } = assembleInviteKey(INVITE_ID);
+    assert.throws(() => parseHandoffKey(key), (e: unknown) => {
+      const err = e as { code?: string; details?: { kind?: string; verb?: string } };
+      return err.code === "HANDOFF_KEY_WRONG_KIND" && err.details?.kind === "invite" && err.details?.verb === "join";
+    });
+  });
+
+  it("neither refusal contacts the gateway (parse-only, throws synchronously before any network code path)", () => {
+    const { key } = assembleInviteKey(INVITE_ID);
+    assert.throws(() => parseHandoffKey(key));
+    // Synchronous throw, no Promise involved — parseHandoffKey never awaits
+    // anything, so a caller catching this synchronously proves no network
+    // call was ever reachable on this path.
+  });
+});
+
+describe("deriveInviteSecrets — HKDF vectors, domain-separated from handoff (kygit-invite design D3)", () => {
+  it("mint-side and claim-side derivations agree on auth_hash from the same key", () => {
+    const { invite_id_bytes, master_secret } = assembleInviteKey(INVITE_ID, randomBytes(32));
+    const mint = deriveInviteSecrets(invite_id_bytes, master_secret);
+    const claim = deriveInviteSecrets(invite_id_bytes, master_secret);
+    assert.equal(mint.auth_hash_hex, claim.auth_hash_hex);
+    assert.equal(mint.auth_hash_hex.length, 64);
+    assert.deepEqual([...mint.auth_secret], [...claim.auth_secret]);
+    assert.deepEqual([...mint.wrap_key], [...claim.wrap_key]);
+  });
+
+  it("auth_secret and wrap_key are domain-separated (never equal)", () => {
+    const { invite_id_bytes, master_secret } = assembleInviteKey(INVITE_ID, randomBytes(32));
+    const secrets = deriveInviteSecrets(invite_id_bytes, master_secret);
+    assert.notDeepEqual([...secrets.auth_secret], [...secrets.wrap_key]);
+  });
+
+  it("an invite secret never verifies as a handoff hash, or the reverse, for the SAME id bytes and master secret", () => {
+    const idBytes = uuidToBytes(HANDOFF_ID);
+    const masterSecret = randomBytes(32);
+    const handoff = deriveHandoffSecrets(idBytes, masterSecret);
+    const invite = deriveInviteSecrets(idBytes, masterSecret);
+    assert.notEqual(handoff.auth_hash_hex, invite.auth_hash_hex);
+    assert.notDeepEqual([...handoff.auth_secret], [...invite.auth_secret]);
+    assert.notDeepEqual([...handoff.wrap_key], [...invite.wrap_key]);
+  });
+});
+
+describe("sealInviteEnvelope / openInviteEnvelope — the KGI1 frame (kygit-invite design D3)", () => {
+  const idBytes = uuidToBytes(INVITE_ID, "invite_id");
+  const payload: InviteEnvelopePayloadV2 = {
+    v: 2, kind: "invite", repo_id: "repo_abc", epoch: "0000000000000001",
+    k_e_hex: "aa".repeat(32), checkpoint: { generation: "0000000000000002", commit_oid: "b".repeat(40) },
+    note_schema: "kygit.invite-note.v1",
+    writer_admission_grant_sha256: "c".repeat(64),
+  };
+
+  it("round-trips under the correct wrap_key, tagged kygit-invite-envelope-v2", () => {
+    const { wrap_key } = deriveInviteSecrets(idBytes, randomBytes(32));
+    const sealed = sealInviteEnvelope(idBytes, wrap_key, payload);
+    assert.equal(sealed.envelope_kind, INVITE_ENVELOPE_V2_KIND);
+    const opened = openInviteEnvelope(idBytes, wrap_key, sealed.sealed_envelope, sealed.envelope_kind);
+    assert.deepEqual(opened, payload);
+  });
+
+  it("refuses AEAD authentication under the wrong wrap_key", () => {
+    const { wrap_key } = deriveInviteSecrets(idBytes, randomBytes(32));
+    const sealed = sealInviteEnvelope(idBytes, wrap_key, payload);
+    const wrongKey = randomBytes(32);
+    assert.throws(
+      () => openInviteEnvelope(idBytes, wrongKey, sealed.sealed_envelope, sealed.envelope_kind),
+      (e: unknown) => (e as { code?: string }).code === "INVITE_AEAD_AUTH_FAILURE",
+    );
+  });
+
+  it("refuses AEAD authentication under a different invite_id (AAD mismatch)", () => {
+    const { wrap_key } = deriveInviteSecrets(idBytes, randomBytes(32));
+    const sealed = sealInviteEnvelope(idBytes, wrap_key, payload);
+    const otherIdBytes = uuidToBytes("22222222-2222-4222-8222-222222222222");
+    assert.throws(
+      () => openInviteEnvelope(otherIdBytes, wrap_key, sealed.sealed_envelope, sealed.envelope_kind),
+      (e: unknown) => (e as { code?: string }).code === "INVITE_AEAD_AUTH_FAILURE",
+    );
+  });
+
+  it("refuses a corrupted frame header", () => {
+    const { wrap_key } = deriveInviteSecrets(idBytes, randomBytes(32));
+    assert.throws(
+      () => openInviteEnvelope(idBytes, wrap_key, "not-base64url-!!!", INVITE_ENVELOPE_V2_KIND),
+      (e: unknown) => (e as { code?: string }).code === "INVITE_ENVELOPE_INVALID",
+    );
+  });
+
+  it("an invite envelope sealed under a handoff wrap_key never opens as a handoff envelope (different frame magic)", () => {
+    const { wrap_key } = deriveInviteSecrets(idBytes, randomBytes(32));
+    const sealed = sealInviteEnvelope(idBytes, wrap_key, payload);
+    assert.throws(
+      () => openHandoffEnvelope(idBytes, wrap_key, sealed.sealed_envelope, sealed.envelope_kind),
+      (e: unknown) => (e as { code?: string }).code === "HANDOFF_ENVELOPE_INVALID",
+    );
+  });
+});
+
+describe("deriveInviteWriterAdmissionSeed — the third HKDF output, domain-separated by kind (kygit-invite design D3)", () => {
+  const idBytes = uuidToBytes(INVITE_ID, "invite_id");
+
+  it("reproduces node:crypto.hkdfSync(sha256, master_secret, invite_id[16], 'kygit/invite/writer-admission/v1', 32) byte-for-byte", () => {
+    const masterSecret = randomBytes(32);
+    const seed = deriveInviteWriterAdmissionSeed(idBytes, masterSecret);
+    const reference = new Uint8Array(hkdfSync("sha256", masterSecret, idBytes, Buffer.from("kygit/invite/writer-admission/v1", "utf8"), 32));
+    assert.deepEqual([...seed], [...reference]);
+  });
+
+  it("never equals the handoff admission seed for the SAME id and master secret", () => {
+    const masterSecret = randomBytes(32);
+    assert.notDeepEqual([...deriveInviteWriterAdmissionSeed(idBytes, masterSecret)], [...deriveWriterAdmissionSeed(idBytes, masterSecret)]);
+  });
+
+  it("is domain-separated from the invite's own auth_secret and wrap_key", () => {
+    const masterSecret = randomBytes(32);
+    const { auth_secret, wrap_key } = deriveInviteSecrets(idBytes, masterSecret);
+    const seed = deriveInviteWriterAdmissionSeed(idBytes, masterSecret);
+    assert.notDeepEqual([...seed], [...auth_secret]);
+    assert.notDeepEqual([...seed], [...wrap_key]);
+  });
+});
+
+describe("an invite's writer admission rides the FROZEN handoff bytes (kygit-invite design D11)", () => {
+  const idBytes = uuidToBytes(INVITE_ID, "invite_id");
+
+  it("mint and claim agree: the grant names the INVITE id in handoff_id, and the acceptance verifies under the grant's admission pubkey", () => {
+    const masterSecret = randomBytes(32);
+    const secrets = deriveInviteSecrets(idBytes, masterSecret);
+    const admissionSeed = deriveInviteWriterAdmissionSeed(idBytes, masterSecret);
+    const inviterSeed = randomBytes(32);
+    const grant = buildWriterAdmissionGrant({
+      repo_id: "repo_abc",
+      handoff_id: INVITE_ID,
+      auth_hash: secrets.auth_hash_hex,
+      checkpoint_generation: "0000000000000002",
+      checkpoint_head_sha256: "e".repeat(64),
+      minted_role: "developer",
+      claim_not_after: "2026-09-05T00:00:00.000Z",
+      grantor_signing_seed: inviterSeed,
+      handoff_admission_pubkey: ed25519PublicKey(admissionSeed),
+    });
+    assert.equal(grant.object_kind, "writer_admission_grant");
+    assert.equal(grant.handoff_id, INVITE_ID);
+    assert.ok(verifyWriterAdmissionGrant(grant, ed25519PublicKey(inviterSeed)));
+
+    const joinerSeed = randomBytes(32);
+    const joinerEncryptionPubkey = randomBytes(32);
+    const acceptance = buildWriterAcceptance({
+      handoff_id: INVITE_ID,
+      auth_hash: secrets.auth_hash_hex,
+      admission_seed: admissionSeed,
+      claimant_signing_seed: joinerSeed,
+      claimant_encryption_pubkey_raw: joinerEncryptionPubkey,
+    });
+    assert.equal(acceptance.statement.domain, HANDOFF_WRITER_ACCEPT_DOMAIN);
+    assert.equal(acceptance.statement.handoff_id, INVITE_ID);
+    assert.equal(acceptance.statement.encryption_fingerprint, ekFingerprint(joinerEncryptionPubkey));
+    assert.equal(acceptance.statement.signing_pubkey, toBase64url(ed25519PublicKey(joinerSeed)));
+    assert.ok(verifyWriterAcceptance(acceptance, ed25519PublicKey(admissionSeed)));
+  });
+
+  it("a HANDOFF-derived admission seed never satisfies an invite's acceptance (the kind separation is what stops a cross-kind completion)", () => {
+    const masterSecret = randomBytes(32);
+    const secrets = deriveInviteSecrets(idBytes, masterSecret);
+    const inviteSeed = deriveInviteWriterAdmissionSeed(idBytes, masterSecret);
+    const acceptance = buildWriterAcceptance({
+      handoff_id: INVITE_ID,
+      auth_hash: secrets.auth_hash_hex,
+      admission_seed: deriveWriterAdmissionSeed(idBytes, masterSecret),
+      claimant_signing_seed: randomBytes(32),
+      claimant_encryption_pubkey_raw: randomBytes(32),
+    });
+    assert.equal(verifyWriterAcceptance(acceptance, ed25519PublicKey(inviteSeed)), false);
+  });
+
+  it("the v2 invite envelope binds the grant it was sealed alongside — a substituted grant hash is caught locally", () => {
+    const masterSecret = randomBytes(32);
+    const { wrap_key } = deriveInviteSecrets(idBytes, masterSecret);
+    const grantSha = "f".repeat(64);
+    const sealed = sealInviteEnvelope(idBytes, wrap_key, {
+      v: 2, kind: "invite", repo_id: "repo_abc", epoch: "0000000000000002",
+      k_e_hex: "bb".repeat(32), epoch_keys: { "0000000000000001": "aa".repeat(32), "0000000000000002": "bb".repeat(32) },
+      checkpoint: { generation: "0000000000000003", commit_oid: "b".repeat(40) },
+      note_schema: "kygit.invite-note.v1", writer_admission_grant_sha256: grantSha,
+    });
+    const opened = openInviteEnvelope(idBytes, wrap_key, sealed.sealed_envelope, sealed.envelope_kind);
+    assert.equal(opened.writer_admission_grant_sha256, grantSha);
+    // Every epoch key the inviter held rides along, so a joiner arriving
+    // after a rotation still opens the pre-rotation generations.
+    assert.deepEqual(opened.epoch_keys, { "0000000000000001": "aa".repeat(32), "0000000000000002": "bb".repeat(32) });
+    // The join-side cross-check is a plain hash comparison — a different
+    // grant simply does not match what the envelope names.
+    assert.notEqual(opened.writer_admission_grant_sha256, "0".repeat(64));
+  });
+
+  it("refuses to seal an invite envelope with a malformed writer_admission_grant_sha256", () => {
+    assert.throws(
+      () => sealInviteEnvelope(idBytes, randomBytes(32), {
+        v: 2, kind: "invite", repo_id: "repo_abc", epoch: "0000000000000001",
+        k_e_hex: "aa".repeat(32), checkpoint: { generation: "0000000000000002", commit_oid: "b".repeat(40) },
+        note_schema: "kygit.invite-note.v1", writer_admission_grant_sha256: "not-a-sha256",
+      }),
+      (e: unknown) => (e as { code?: string }).code === "VALIDATION_FAILED",
+    );
+  });
+});
+
+describe("scanInviteNoteForSecrets / assertInviteNoteHasNoSecret", () => {
+  it("passes a clean note", () => {
+    assert.equal(scanInviteNoteForSecrets(baseInviteNote()), null);
+  });
+
+  it("catches a pasted kgi1_ key in next_steps", () => {
+    const note = baseInviteNote({ next_steps: [`paste this: kgi1_${"A".repeat(64)}`] });
+    const finding = scanInviteNoteForSecrets(note);
+    assert.ok(finding);
+    assert.equal(finding!.field, "next_steps[0]");
+  });
+
+  it("also catches a pasted kgh1_ handoff key (the scan covers both prefixes in every note kind)", () => {
+    const note = baseInviteNote({ summary: `careful: kgh1_${"B".repeat(64)}` });
+    assert.ok(scanInviteNoteForSecrets(note));
+  });
+
+  it("does not flag ordinary prose", () => {
+    const note = baseInviteNote({ summary: "Brought a second agent in to help with the auth flow." });
+    assert.equal(scanInviteNoteForSecrets(note), null);
+  });
+
+  it("assertInviteNoteHasNoSecret throws INVITE_NOTE_CONTAINS_SECRET naming the field", () => {
+    const note = baseInviteNote({ failing: [`sk-${"x".repeat(40)}`] });
+    assert.throws(() => assertInviteNoteHasNoSecret(note), (e: unknown) => {
+      const err = e as { code?: string; details?: { field?: string } };
+      return err.code === "INVITE_NOTE_CONTAINS_SECRET" && err.details?.field === "failing[0]";
+    });
+  });
+
+  it("assertInviteNoteHasNoSecret does not throw on a clean note", () => {
+    assert.doesNotThrow(() => assertInviteNoteHasNoSecret(baseInviteNote()));
   });
 });

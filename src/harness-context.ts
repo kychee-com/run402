@@ -35,6 +35,8 @@ import { randomBytes } from "node:crypto";
 
 export const SESSION_KEY_OVERRIDE_ENV = "RUN402_SESSION_KEY";
 export const TASK_FROM_TITLE_OPT_OUT_ENV = "RUN402_NO_TASK_FROM_TITLE";
+export const PROGRAM_OVERRIDE_ENV = "RUN402_PROGRAM";
+export const MODEL_OVERRIDE_ENV = "RUN402_MODEL";
 const SESSION_KEY_CACHE_RELATIVE_PATH = ".run402/session-key.json";
 const CLAUDE_SESSIONS_DIR_PARTS = ["Library", "Application Support", "Claude", "claude-code-sessions"];
 const CODEX_STATE_DB_PARTS = [".codex", "state_5.sqlite"];
@@ -49,6 +51,11 @@ export interface SessionKeyResolution {
 export interface TaskLabelResolution {
   task: string | null;
   source: "explicit" | "opted_out" | "claude_code_thread_title" | "codex_thread_title" | "none";
+}
+
+export interface HarnessLabels {
+  program: string | null;
+  model: string | null;
 }
 
 function isTruthyEnvValue(raw: string | undefined): boolean {
@@ -133,6 +140,31 @@ export function getSessionKey(): SessionKeyResolution {
 /** Reset the cached session key. Test-only (matches `sdk.ts`'s `_resetSdk`). */
 export function _resetSessionKeyForTests(): void {
   sessionKeyMemo = undefined;
+}
+
+/**
+ * Best-effort presence labels sourced from the harness hosting this server
+ * (kygit-invite design D8) — TypeScript port of the CLI's
+ * `resolveHarnessLabels`, byte-identical precedence: explicit env overrides
+ * first (`RUN402_PROGRAM`/`RUN402_MODEL`), then `program` inferred from the
+ * SAME harness signals {@link resolveSessionKey} already trusts. `model` has
+ * no harness-exposed signal to infer from today — it is ALWAYS
+ * env-override-or-null. Null stays null in both fields.
+ */
+export function resolveHarnessLabels(opts: { env?: NodeJS.ProcessEnv } = {}): HarnessLabels {
+  const env = opts.env ?? process.env;
+  const programOverride = env[PROGRAM_OVERRIDE_ENV]?.trim();
+  const modelOverride = env[MODEL_OVERRIDE_ENV]?.trim();
+  let program: string | null = programOverride || null;
+  if (!program) {
+    if (env.CLAUDE_CODE_SESSION_ID?.trim() || env.CLAUDECODE?.trim()) {
+      program = "claude-code";
+    } else if (env.CODEX_THREAD_ID?.trim()) {
+      program = "codex";
+    }
+  }
+  const model: string | null = modelOverride || null;
+  return { program, model };
 }
 
 /**

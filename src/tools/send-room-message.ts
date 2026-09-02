@@ -2,7 +2,7 @@ import { z } from "zod";
 import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
 import { resolveRoomArgs, rememberPresence, withPresenceRetry } from "./rooms-shared.js";
-import { resolveTaskLabel } from "../harness-context.js";
+import { resolveTaskLabel, resolveHarnessLabels } from "../harness-context.js";
 
 export const sendRoomMessageSchema = {
   project_id: z.string().optional().describe("Project whose default room to send in. Omit when passing org_id + room_key."),
@@ -43,6 +43,9 @@ export async function handleSendRoomMessage(args: {
   const room = addr.room;
   try {
     const { task } = await resolveTaskLabel({ explicitTask: args.task });
+    // kygit-invite design D8: the implicit presence-creation path (no
+    // presenceId cached yet) carries harness-derived labels too.
+    const { program, model } = resolveHarnessLabels();
     const result = await withPresenceRetry(room, (presenceId, sessionKey) =>
       getSdk().rooms.sendMessage(room.orgId, room.roomKey, {
         body: args.body,
@@ -56,6 +59,8 @@ export async function handleSendRoomMessage(args: {
         sessionKey,
         ...(args.requested_name !== undefined ? { requestedName: args.requested_name } : {}),
         ...(task !== null ? { task } : {}),
+        ...(program !== null ? { program } : {}),
+        ...(model !== null ? { model } : {}),
       }));
     rememberPresence(room, (result as { sender_presence?: unknown }).sender_presence);
     return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };

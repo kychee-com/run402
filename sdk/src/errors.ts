@@ -741,7 +741,16 @@ export type NextActionType =
   | "revoke_handoff"
   | "remove_member"
   | "sync_writers"
-  | "request_writer_sync";
+  | "request_writer_sync"
+  // kygit-invite design D9 — the second claim kind's own next_actions:
+  // `join_invite` is CLI-synthesized (the recipient's exact `join`
+  // command, never `safe_to_auto_execute`); `revoke_invite` mirrors
+  // `revoke_handoff`; `wait_room` points at the blocking wait verb;
+  // `send_room_message` is addressed to the inviter's name when known.
+  | "join_invite"
+  | "revoke_invite"
+  | "wait_room"
+  | "send_room_message";
 
 /**
  * A single advisory "what to do next" entry. Mirrors the gateway's

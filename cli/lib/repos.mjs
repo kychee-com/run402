@@ -21,7 +21,7 @@
  * spelling with a typed `COMMAND_MOVED` (naming its `repos` successor) or
  * `COMMAND_REMOVED` (for `reconcile`, which has none) error.
  */
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
@@ -31,6 +31,8 @@ import { loadLiveControlPlaneSession } from "../core-dist/control-plane-session.
 import { resolveOrgId, resolveOwningOrgId } from "./org-context.mjs";
 import { resolveGitvaultTarget } from "./gitvault-target.mjs";
 import { nextAction, claimOrgSlugAction, claimRepoNameAction } from "./next-actions.mjs";
+import { resolveHarnessLabels, resolveSessionKey, resolveTaskLabel, persistSessionKey } from "./harness-context.mjs";
+import { updateRoomState } from "./rooms-context.mjs";
 import { printKeystoreLocation } from "./gitvault.mjs";
 import {
   GITVAULT_BYO_HEADLINE_STATEMENT,
@@ -75,6 +77,12 @@ Handoff (pass a working tree to another agent):
                         [--include-sensitive <glob>]... [--note-file <path>] [--json] [--list] [--revoke <handoff_id>]
                         (the Handoff Note is JSON piped on stdin when not using --note-file)
   run402 repos resume  <kgh1_…|--key-stdin> [--to <dir>] [--no-init] [--json]
+
+Invite (bring a second agent into the SAME work, dirty tree included):
+  run402 repos invite  [--project <id>] [--repo <repo_id>] [--room <key>] [--ttl <seconds>] [--role <role>]
+                        [--include-sensitive <glob>]... [--note-file <path>] [--json] [--list] [--revoke <invite_id>]
+                        (the Invite Note is JSON piped on stdin when not using --note-file)
+  run402 repos join    <kgi1_…|--key-stdin> [--to <dir>] [--no-init] [--json]
 
 Occasional:
   run402 repos snapshot [--project <id>] [--repo <repo_id>] [--message <text>] [--checkpoint] [--dry-run] [--allow-dirty] [--manifest-out <path>]
@@ -165,6 +173,35 @@ Subcommands:
            restored distinctly), pins the repo/org/room into the checkout's
            LOCAL git config only, and renders the Handoff Note as Markdown.
            \`<kgh1_…>\` or \`--key-stdin\` (avoids shell mangling).
+  invite   Capture a stash-shaped checkpoint exactly like \`handoff\`, but
+           mint a single-use Invite Key (\`kgi1_…\`) that admits the
+           recipient to a SHARED coordination room while you keep working —
+           your worktree, index, branch, refs, and access are all
+           untouched. Registers your own presence in the room (default: the
+           project's own room; \`--room <key>\` names an org room) and posts
+           ONE message naming the checkpoint and the invite id (never the
+           key). \`--role\` narrows the minted role (defaults to
+           \`developer\`, never wider than your own); \`--ttl <seconds>\`
+           (60..86400, default 3600).
+           \`--list\`/\`--revoke <invite_id>\` read/revoke instead of minting.
+           Minting requires an ACTIVE writer key on this vault: a session
+           whose key is not admitted is refused
+           \`INVITE_MINT_REQUIRES_WRITER\` — have a live writer run
+           \`run402 repos access sync\` (any push does it too), then retry.
+  join     Claim an Invite Key on ANY machine: the SAME cold-start fold
+           \`resume\` runs (allowance → faucet → one x402 prototype payment,
+           announced — \`--no-init\` opts out; a chain failure never blocks
+           the claim), clones the vault at the base HEAD into \`--to <dir>\`
+           (default: the vault's name), restores the stash-shaped
+           checkpoint exactly like \`resume\`, pins \`r402.room\` to the
+           INVITE's own room, adds \`.run402/\` to \`.git/info/exclude\`,
+           registers this session's presence, activates THIS machine's own
+           key as a writer of the vault before returning (so \`git push\`
+           works at once, under your own key, while the inviter keeps
+           pushing), and reports who invited you (name, labels, liveness),
+           who else is live, and the last few messages —
+           \`run402 messages wait\` is your ear from here.
+           \`<kgi1_…>\` or \`--key-stdin\` (avoids shell mangling).
   rename   Claim or rename the repo's per-org-unique, address-form name
            (the <name> half of run402::<org-slug>/<name>). Address by
            --repo or --project (not both).
@@ -1153,7 +1190,13 @@ async function view(args) {
       console.error(`remote '${s.remote.name}': ${s.remote.url}${suffix}`);
     }
     if (s.pinned) {
-      console.error(`pinned: repo_id ${s.pinned.repo_id}` + (s.pinned.resolved_from ? ` (resolved from run402::${s.pinned.resolved_from.org_slug}/${s.pinned.resolved_from.repo_name})` : ""));
+      console.error(`pinned: repo_id ${s.pinned.repo_id}` + (s.pinned.resolved_from ? ` (resolved from run402::${s.pinned.resolved_from.org_slug}/${s.pinned.resolved_from.repo_name})` : "") + (s.pinned.room ? `, room ${s.pinned.room}` : ""));
+    }
+    // kygit-invite design D9's risk list: ".git/info/exclude is per-clone and
+    // silent" — `messaging_cache_excluded` makes the state visible rather
+    // than leaving it a fact only `cat .git/info/exclude` would reveal.
+    if (s.messaging_cache_excluded !== null && s.messaging_cache_excluded !== undefined) {
+      console.error(`messaging cache excluded from git: ${s.messaging_cache_excluded}`);
     }
     // gitvault-byo-primary-bucket task 3.5: the no-payload-copy disclosure —
     // unconditional and independent of mirror status (D7), never folded
@@ -1626,19 +1669,45 @@ async function readHandoffNoteInput(a) {
   return parseHandoffNoteJson(text, "stdin");
 }
 
-function parseHandoffNoteJson(text, source) {
+/** The invite-kind sibling of {@link readHandoffNoteInput} (kygit-invite design D3/D9). */
+async function readInviteNoteInput(a) {
+  const noteFile = flagValue(a, "--note-file");
+  if (noteFile != null) {
+    validateRegularFile(noteFile, "--note-file");
+    return parseInviteNoteJson(readFileSync(noteFile, "utf-8"), noteFile);
+  }
+  if (process.stdin?.isTTY) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing the Invite Note on stdin.",
+      hint: "Pipe the note as JSON (schema kygit.invite-note.v1, minus `capture`), or use --note-file <path>.",
+    });
+  }
+  const text = await readStdinText();
+  if (text.trim().length === 0) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing the Invite Note on stdin.",
+      hint: "Pipe the note as JSON, or use --note-file <path>.",
+    });
+  }
+  return parseInviteNoteJson(text, "stdin");
+}
+
+/** Shared body for `parseHandoffNoteJson`/`parseInviteNoteJson` — `schema`/`kindLabel` name the claim kind's own vocabulary. */
+function parseClaimNoteJson(text, source, schema, kindLabel, helpCommand) {
   let parsed;
   try {
     parsed = JSON.parse(text);
   } catch {
-    fail({ code: "BAD_USAGE", message: `The Handoff Note from ${source} is not valid JSON.`, hint: "Pipe a JSON object matching kygit.handoff-note.v1 (minus `capture`, which is filled in for you)." });
+    fail({ code: "BAD_USAGE", message: `The ${kindLabel} Note from ${source} is not valid JSON.`, hint: `Pipe a JSON object matching ${schema} (minus \`capture\`, which is filled in for you).` });
   }
   if (!parsed || typeof parsed !== "object" || typeof parsed.summary !== "string") {
-    fail({ code: "BAD_USAGE", message: `The Handoff Note from ${source} is missing a \`summary\` string.`, hint: "See `run402 repos handoff --help` for the note shape." });
+    fail({ code: "BAD_USAGE", message: `The ${kindLabel} Note from ${source} is missing a \`summary\` string.`, hint: `See \`${helpCommand}\` for the note shape.` });
   }
   const now = new Date().toISOString();
   return {
-    schema: "kygit.handoff-note.v1",
+    schema,
     created_at: typeof parsed.created_at === "string" ? parsed.created_at : now,
     from: parsed.from ?? { agent: "unspecified" },
     summary: parsed.summary,
@@ -1651,6 +1720,14 @@ function parseHandoffNoteJson(text, source) {
     ...(parsed.decisions !== undefined ? { decisions: parsed.decisions } : {}),
     ...(parsed.open_questions !== undefined ? { open_questions: parsed.open_questions } : {}),
   };
+}
+
+function parseHandoffNoteJson(text, source) {
+  return parseClaimNoteJson(text, source, "kygit.handoff-note.v1", "Handoff", "run402 repos handoff --help");
+}
+
+function parseInviteNoteJson(text, source) {
+  return parseClaimNoteJson(text, source, "kygit.invite-note.v1", "Invite", "run402 repos invite --help");
 }
 
 async function handoff(args) {
@@ -1768,11 +1845,11 @@ async function foldColdStartForResume(sdk) {
   }
 }
 
-/** `kygit.handoff-note.v1` rendered as Markdown — `resume`'s default (non-`--json`) rendering. */
-function renderHandoffNoteMarkdown(note) {
+/** `kygit.handoff-note.v1` / `kygit.invite-note.v1` rendered as Markdown — shared body, `title` names the claim kind ("Handoff" or "Invite"). */
+function renderClaimNoteMarkdown(note, title) {
   if (!note) return null;
   const lines = [];
-  lines.push(`# Handoff — ${note.from?.agent ?? "unknown agent"}${note.from?.model ? ` (${note.from.model})` : ""}`);
+  lines.push(`# ${title} — ${note.from?.agent ?? "unknown agent"}${note.from?.model ? ` (${note.from.model})` : ""}`);
   lines.push("");
   lines.push(note.summary ?? "");
   const section = (title, items) => {
@@ -1804,6 +1881,16 @@ function renderHandoffNoteMarkdown(note) {
     if (note.capture.ignored_not_transferred_count) lines.push(`- ignored (not transferred): ${note.capture.ignored_not_transferred_count}`);
   }
   return lines.join("\n");
+}
+
+/** `resume`'s default (non-`--json`) rendering — the Handoff Note as Markdown. */
+function renderHandoffNoteMarkdown(note) {
+  return renderClaimNoteMarkdown(note, "Handoff");
+}
+
+/** `join`'s default (non-`--json`) rendering — the Invite Note as Markdown (kygit-invite design D5). */
+function renderInviteNoteMarkdown(note) {
+  return renderClaimNoteMarkdown(note, "Invite");
 }
 
 async function resume(args) {
@@ -1848,6 +1935,215 @@ async function resume(args) {
         console.error(`writer: ${result.writer_activation.outcome} (generation ${result.writer_activation.generation})`);
       }
       if (result.deduplicated) console.error("note: this key was already claimed by this same principal — the ORIGINAL envelope was reused (safe replay)");
+      for (const na of result.next_actions ?? []) {
+        if (na.command) console.error(`next: ${na.command}${na.why ? ` — ${na.why}` : ""}`);
+      }
+    }
+    printVerboseStats(a, sdk);
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+// ─── invite / join (kygit-invite) ────────────────────────────────────────────
+
+const INVITE_VALUE_FLAGS = [...COMMON_VALUE_FLAGS, "--ttl", "--role", "--include-sensitive", "--revoke", "--note-file", "--room"];
+const JOIN_VALUE_FLAGS = ["--to"];
+
+/**
+ * `run402 repos invite` — capture a stash-shaped checkpoint (design D1,
+ * identical to `handoff`), register the inviter's own presence in the
+ * invite's room, mint through the gateway, post ONE fact from that
+ * presence, and print the assembled `kgi1_…` key exactly once (kygit-invite
+ * design D4). Never touches the inviter's worktree, index, branch, refs, or
+ * access.
+ */
+async function invite(args) {
+  const a = normalizeArgv(args);
+  assertKnownFlags(a, [...INVITE_VALUE_FLAGS, "--json", "--list", "-v", "--verbose", "--help", "-h"], INVITE_VALUE_FLAGS);
+  const sdk = getSdk();
+  const asJson = a.includes("--json");
+  const verbose = isVerbose(a);
+
+  if (a.includes("--list")) {
+    const target = await vaultTarget(a);
+    try {
+      const result = await sdk.gitvault.listInvites(target);
+      printJson(sdk, result);
+      printVerboseStats(a, sdk);
+    } catch (err) {
+      reportSdkError(err);
+    }
+    return;
+  }
+  const revokeId = flagValue(a, "--revoke");
+  if (revokeId != null) {
+    const target = await vaultTarget(a);
+    try {
+      const result = await sdk.gitvault.revokeInvite(revokeId, target);
+      printJson(sdk, result);
+      printVerboseStats(a, sdk);
+    } catch (err) {
+      reportSdkError(err);
+    }
+    return;
+  }
+
+  const note = await readInviteNoteInput(a);
+  const ttlRaw = flagValue(a, "--ttl");
+  const ttlSeconds = ttlRaw != null ? parseIntegerFlag("--ttl", ttlRaw, { min: 60, max: 86400 }) : undefined;
+  const role = flagValue(a, "--role");
+  const includeSensitive = flagValues(a, "--include-sensitive");
+  const roomKey = flagValue(a, "--room");
+  const target = await vaultTarget(a);
+  // kygit-invite design D4/D8: the inviter's own presence carries
+  // harness-derived labels and this checkout's resumable session identity —
+  // never guessed.
+  const { program, model } = resolveHarnessLabels();
+  const { key: sessionKey } = resolveSessionKey();
+  // The inviter's presence may RESUME an existing one by session key, and a
+  // resumption refreshes `task` — so pass the harness's own thread title
+  // (what `rooms join` / `messages send` already send), never a made-up
+  // label that would overwrite what this session is actually working on.
+  const { task } = await resolveTaskLabel({});
+
+  const opts = {
+    ...target,
+    note,
+    ...(role != null ? { role } : {}),
+    ...(ttlSeconds != null ? { ttlSeconds } : {}),
+    ...(includeSensitive.length > 0 ? { includeSensitive } : {}),
+    ...(roomKey != null ? { roomKey } : {}),
+    ...(program ? { program } : {}),
+    ...(model ? { model } : {}),
+    ...(task ? { task } : {}),
+    sessionKey,
+    onCommitLine: (line) => console.error(line),
+  };
+  try {
+    const result = await sdk.gitvault.invite(opts);
+    for (const w of result.warnings ?? []) {
+      console.error(w.message ?? `${w.code}`);
+    }
+    console.error(`invite minted: role ${result.minted_role}, expires ${result.expires_at}, room ${result.room?.room_key ?? "(unknown)"}`);
+    console.error(`recipient runs: kygit join <key printed below>`);
+    if (result.inviter_presence && result.inviter_presence.registered === false) {
+      console.error(`note: your own presence was not registered (${result.inviter_presence.error}) — the invite still mints and is claimable`);
+    }
+    if (result.room_fact && result.room_fact.posted === false) {
+      console.error(`note: the room fact was not posted (${result.room_fact.reason}) — the invite still mints and remains claimable`);
+    }
+    if (asJson) {
+      printJson(sdk, result);
+    } else {
+      // The key alone, so `KEY=$(run402 repos invite ...)` works — everything
+      // else (the blast-radius warning, the commit line) is on stderr.
+      console.log(result.invite_key);
+    }
+    printVerboseStats(a, sdk);
+    void verbose;
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+/**
+ * `run402 repos join` — the full cold-start chain (SAME fold `resume`
+ * uses), claim, restore exactly as `resume` does, pin `r402.room` to the
+ * invite's OWN room, register this session's presence, post ONE arrival
+ * fact, and report the inviter by name and labels, live presences, the
+ * catch-up cursor, and the last few messages (kygit-invite design D5).
+ */
+async function joinInvite(args) {
+  const a = normalizeArgv(args);
+  assertKnownFlags(a, [...JOIN_VALUE_FLAGS, "--key-stdin", "--no-init", "--json", "-v", "--verbose", "--help", "-h"], JOIN_VALUE_FLAGS);
+  const sdk = getSdk();
+  const keyStdin = a.includes("--key-stdin");
+  const to = flagValue(a, "--to");
+  const positionals = requirePositionalCount(a, [...JOIN_VALUE_FLAGS], { min: keyStdin ? 0 : 1, max: keyStdin ? 0 : 1, command: "run402 repos join <kgi1_…|--key-stdin>", missing: "Missing the Invite Key (positional argument, or --key-stdin)." });
+  let key = positionals[0] ?? null;
+  if (keyStdin) {
+    key = (await readStdinText()).trim();
+    if (!key) fail({ code: "BAD_USAGE", message: "Missing the Invite Key on stdin.", hint: "Pipe the kgi1_… key, or pass it as a positional argument." });
+  }
+  // kygit-invite design D5: a joined agent is a NEW run402 wallet, so `join`
+  // folds the SAME cold-start chain `resume` does (allowance → faucet → one
+  // x402 prototype payment, announced) BEFORE the claim; the claim itself
+  // needs no tier, so the chain never blocks the claim. `--no-init` opts
+  // out entirely.
+  const coldStart = a.includes("--no-init") ? { performed: false, skipped: "no_init" } : await foldColdStartForResume(sdk);
+  const { program, model } = resolveHarnessLabels();
+  const { key: sessionKey, source: sessionKeySource } = resolveSessionKey();
+  const { task } = await resolveTaskLabel({});
+  try {
+    const result = await sdk.gitvault.join({
+      key,
+      ...(to != null ? { to } : {}),
+      ...(program ? { program } : {}),
+      ...(model ? { model } : {}),
+      ...(task ? { task } : {}),
+      sessionKey,
+      onLine: (line) => console.error(line),
+    });
+    if (coldStart.next_action) result.next_actions = [...(result.next_actions ?? []), coldStart.next_action];
+    // kygit-invite design D5: the joined checkout's FIRST `messages wait`
+    // must speak as the session that joined and read from the arrival
+    // cursor — so the per-checkout room state (presence + cursor) is written
+    // into the CLONE, not this cwd, along with the generated session key
+    // when that is what identified this session (a harness-provided id is
+    // found in the environment first, wherever the next command runs).
+    // Best-effort: the join already succeeded; `.run402/` is excluded from
+    // git in the clone by the SDK, so this never shows in `git status`.
+    try {
+      const dir = result.restored?.dir;
+      if (dir && existsSync(dir)) {
+        updateRoomState(result.room.organization_id, result.room.room_key, {
+          ...(result.presence ? { presence_id: result.presence.presence_id, name: result.presence.name } : {}),
+          ...(typeof result.cursor === "string" ? { cursor: result.cursor } : {}),
+        }, { cwd: dir });
+        if (sessionKeySource === "generated" || sessionKeySource === "generated_cached") persistSessionKey(dir, sessionKey);
+      }
+    } catch {
+      // never fails a completed join
+    }
+    if (a.includes("--json")) {
+      printJson(sdk, { ...result, cold_start: coldStart });
+    } else {
+      const rendered = renderInviteNoteMarkdown(result.note) ?? result.note_raw;
+      if (rendered) {
+        console.log(rendered);
+      }
+      console.error("");
+      console.error(`joined into ${result.restored.dir} (branch ${result.restored.branch})`);
+      if (result.deduplicated) console.error("note: this key was already claimed by this same principal — the ORIGINAL envelope was reused (safe replay)");
+      // gitvault-multi-writer (rev 47) / kygit-invite design D5 — this
+      // checkout's own writer activation, printed in the SAME `writer: …`
+      // shape `resume` uses. `pending` is D9's not-stranded path: the key is
+      // a pending writer, and the `request_writer_sync` next action below
+      // names the remedy.
+      if (result.writer_activation) {
+        console.error(
+          result.writer_activation.outcome === "active"
+            ? `writer: active (generation ${result.writer_activation.generation})`
+            : `writer: pending — ${result.writer_activation.reason}`,
+        );
+      }
+      if (result.inviter) {
+        const labels = [result.inviter.program, result.inviter.model].filter(Boolean).join("/");
+        const liveness = result.inviter.state === "active" ? "live" : result.inviter.state;
+        console.error(`invited by ${result.inviter.name}${labels ? ` (${labels})` : ""} — ${liveness}`);
+      } else {
+        console.error("invited by: unknown (the inviter never registered a presence)");
+      }
+      const others = (result.live_presences ?? []).filter((p) => !result.inviter || p.presence_id !== result.inviter.presence_id);
+      if (others.length > 0) console.error(`also live: ${others.map((p) => p.name).join(", ")}`);
+      const recent = result.recent_messages ?? [];
+      if (recent.length > 0) {
+        console.error(`recent messages (${recent.length}):`);
+        for (const m of recent.slice().reverse()) {
+          console.error(`  ${m.sender ?? "?"}: ${m.body_snippet ?? m.body ?? ""}`);
+        }
+      }
       for (const na of result.next_actions ?? []) {
         if (na.command) console.error(`next: ${na.command}${na.why ? ` — ${na.why}` : ""}`);
       }
@@ -2977,6 +3273,14 @@ export async function run(sub, args) {
     }
     case "resume": {
       await resume(argv);
+      break;
+    }
+    case "invite": {
+      await invite(argv);
+      break;
+    }
+    case "join": {
+      await joinInvite(argv);
       break;
     }
     case "policy": {

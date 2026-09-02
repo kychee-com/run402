@@ -21,9 +21,12 @@ import {
   resolveSessionKey,
   getSessionKey,
   resolveTaskLabel,
+  resolveHarnessLabels,
   _resetSessionKeyForTests,
   SESSION_KEY_OVERRIDE_ENV,
   TASK_FROM_TITLE_OPT_OUT_ENV,
+  PROGRAM_OVERRIDE_ENV,
+  MODEL_OVERRIDE_ENV,
 } from "./harness-context.js";
 
 let tempDir: string;
@@ -132,6 +135,50 @@ describe("getSessionKey — server-lifetime memoization (no CLI analog)", () => 
       if (originalOverride === undefined) delete process.env[SESSION_KEY_OVERRIDE_ENV];
       else process.env[SESSION_KEY_OVERRIDE_ENV] = originalOverride;
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveHarnessLabels (kygit-invite design D8)
+// ---------------------------------------------------------------------------
+
+describe("resolveHarnessLabels — env overrides first, then harness inference, null stays null", () => {
+  it("with no env at all, both labels are null", () => {
+    assert.deepEqual(resolveHarnessLabels({ env: {} }), { program: null, model: null });
+  });
+
+  it("infers claude-code from CLAUDE_CODE_SESSION_ID", () => {
+    assert.deepEqual(resolveHarnessLabels({ env: { CLAUDE_CODE_SESSION_ID: "claude-1" } }), { program: "claude-code", model: null });
+  });
+
+  it("infers claude-code from CLAUDECODE alone", () => {
+    assert.deepEqual(resolveHarnessLabels({ env: { CLAUDECODE: "1" } }), { program: "claude-code", model: null });
+  });
+
+  it("infers codex from CODEX_THREAD_ID", () => {
+    assert.deepEqual(resolveHarnessLabels({ env: { CODEX_THREAD_ID: "codex-1" } }), { program: "codex", model: null });
+  });
+
+  it("RUN402_PROGRAM overrides the inferred harness signal", () => {
+    const out = resolveHarnessLabels({ env: { [PROGRAM_OVERRIDE_ENV]: "my-harness", CLAUDE_CODE_SESSION_ID: "claude-1" } });
+    assert.equal(out.program, "my-harness");
+  });
+
+  it("model is ALWAYS env-override-or-null — never inferred from the harness, even when program is", () => {
+    const out = resolveHarnessLabels({ env: { CLAUDE_CODE_SESSION_ID: "claude-1" } });
+    assert.equal(out.model, null);
+  });
+
+  it("RUN402_MODEL sets model independently of program", () => {
+    const out = resolveHarnessLabels({ env: { [MODEL_OVERRIDE_ENV]: "fable-5" } });
+    assert.deepEqual(out, { program: null, model: "fable-5" });
+  });
+
+  it("both overrides together win outright, no harness signals consulted", () => {
+    const out = resolveHarnessLabels({
+      env: { [PROGRAM_OVERRIDE_ENV]: "my-harness", [MODEL_OVERRIDE_ENV]: "my-model", CLAUDE_CODE_SESSION_ID: "claude-1", CODEX_THREAD_ID: "codex-1" },
+    });
+    assert.deepEqual(out, { program: "my-harness", model: "my-model" });
   });
 });
 

@@ -4,6 +4,62 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
 
 ## Unreleased
 
+- **gitvault: `repos invite` / `repos join` — bring a second agent into the exact work, dirty tree included, and talk in a shared room (kygit-invite).**
+  A second claim kind beside `handoff`/`resume`, sharing the same crypto,
+  keystore, restore AND writer-admission machinery by kind: a Handoff
+  passes the work on and the sender stops; an Invite grows the team while
+  the inviter keeps pushing.
+  `run402 repos invite [--room <key>] [--note-file <path>] [--role <role>] [--ttl <seconds>] [--include-sensitive <glob>]... [--list] [--revoke <invite_id>]`
+  captures the checkpoint exactly like `handoff` — the inviter's own
+  worktree, index, branch, refs, and access are all untouched — signs a
+  `writer_admission_grant` under the inviter's OWN active writer key (a
+  session whose key is not an admitted writer is refused
+  `INVITE_MINT_REQUIRES_WRITER`, naming `run402 repos access sync`),
+  registers the inviter's own presence in a coordination room (the
+  project's default room, or `--room <key>` for a named org room) before
+  minting, mints a single-use bearer `kgi1_<69 chars>` key — printed to
+  stdout ALONE, same key-once contract as `kgh1_…` — and posts ONE room
+  message naming the checkpoint and the invite id (never the key); a
+  presence or fact-post failure is reported and never voids the mint.
+  `run402 repos join <kgi1_…>` (or `--key-stdin`) folds the SAME cold-start
+  chain `resume` does before the claim (allowance → faucet → one x402
+  prototype payment, announced; `--no-init` opts out) so the joiner arrives
+  as a paid-up run402 wallet of its own, claims the key with its own
+  two-signature `writer_acceptance` (a same-principal replay is a safe
+  dedup), cross-checks the returned grant against the hash sealed into the
+  envelope at mint time, **completes its own `add_writer_key` so this
+  machine is an admitted writer of the vault BEFORE the command returns** —
+  no seed is ever copied from the inviter — clones a fresh checkout,
+  restores the checkpoint with `git stash apply --index`, pins the invite's
+  OWN room locally (`r402.room`), adds `.run402/` to `.git/info/exclude`
+  (never `.gitignore`), registers this session's presence, posts ONE
+  arrival message, and reports who invited it (name, labels, liveness), who
+  else is live, the catch-up cursor, and the last few messages. Both agents
+  then push, interleaved, each under its own key. An Invite Note
+  (`kygit.invite-note.v1` — same shape as the Handoff Note) rides
+  alongside; the invite envelope is `kygit-invite-envelope-v2`, carrying
+  every epoch key the inviter holds so a joiner arriving after a rotation
+  still opens the pre-rotation generations. A `kgh1_…` key handed to
+  `join`, or a `kgi1_…` key handed to `resume`, is refused BY NAME before
+  any network call, and all three HKDF derivations (auth, wrap,
+  writer-admission) are domain-separated by kind. `run402 messages wait
+  [--addressed-to me] [--thread <id>] [--timeout <seconds>] [--cursor
+  <mcr_…>]` is the agent's ear from there: blocks until a message lands
+  past this checkout's stored cursor or the timeout elapses (default 120s,
+  max 600s), using the gateway's held read when available and bounded
+  polling otherwise, same output shape either way — one JSON document
+  `{ messages, cursor, has_more, settled, waited_ms, live_presences }`,
+  exit 0 on silence, never an error. `run402 rooms join` and every implicit
+  presence registration carry harness-derived `program`/`model` labels
+  (`RUN402_PROGRAM`/`RUN402_MODEL` overrides, else inferred from the
+  harness — Claude Code, Codex — never guessed). `run402 repos view`
+  reports `messaging_cache_excluded` and the pinned `room` alongside
+  `repo_id`. Removing an invited agent is `run402 org member rm`, which
+  rotates the vault's epoch inline. Neither `invite` nor `join` has an MCP
+  tool — the same "mutating verbs are CLI-only" reasoning as
+  `handoff`/`resume`; `read_room_messages` gains a `wait` parameter (one
+  held read, no client loop).
+
 - **fix(sdk): a cold open accepts a key_envelope wrapped by ANY chain-admitted writer, verified under that writer's key (gitvault-multi-writer, rev 47).** With writers plural, whichever key-holder reconciles first wraps a new member's envelope — a handoff-admitted writer as readily as the creator. `restoreRepoFromEnvelope` still enforced the single-writer rule for a non-creator envelope (`created_by` had to be the genesis writer, and the signature was checked with the creator's key only), so the member's first clone died `VAULT_CREATION_CONFLICT` (`problems: ["stored_envelope_created_by"]`); the same rule would refuse every cold open after an epoch rotation performed by a non-genesis writer. The cold open now resolves the vault's admitted writer set from the chain itself — every admitted head hash-checked against the listing, signature-verified under the writer the chain admits at that point, `add_writer_key` / `writer_set_update` transitions applied in order, no decryption — exactly when the wrapper is not the genesis writer, and passes it as `admitted_writers` (new optional input of `restoreRepoFromEnvelope`). Fails closed on any chain defect.
 
 - **fix(sdk): the `git clone` inside `resume` authenticates as THIS session — `RUN402_CONFIG_DIR` / `RUN402_WALLET` / `RUN402_API_BASE` / `RUN402_TRACE` now reach the `git-remote-kygit` helper it spawns.** Every gitvault git process runs under `hardenedGitEnv()` (nothing inherited but PATH); the resume clone is the one invocation that spawns the network helper, and that helper fell back to the machine's DEFAULT config dir — a different wallet, not a member of the vault's org — so `kygit resume` on any machine that selects its identity by env (a laptop with several agent config dirs, CI, a harness with `RUN402_WALLET`) returned claim 200 and then `HANDOFF_CLONE_FAILED` / `GITVAULT_ACCESS_DENIED` "while resolving the project's gitvault". A cloud container never saw it (the default config IS the session's). `run402PassthroughEnv()` (exported from `@run402/sdk/node`) forwards exactly the `RUN402_*` keys; git's hardening is unchanged.
