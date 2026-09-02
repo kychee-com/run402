@@ -159,6 +159,36 @@ describe("sealHandoffEnvelope / openHandoffEnvelope", () => {
       (e: unknown) => (e as { code?: string }).code === "HANDOFF_ENVELOPE_INVALID",
     );
   });
+
+  // The 2026-09-02 rehearsal's sixth cross-side bug: the gateway stores the
+  // frame bytes and echoes them from a claim as STANDARD base64 (openapi
+  // `format: byte`, `Buffer#toString("base64")`); 4.67.0–4.68.2 decoded that
+  // with a canonical-base64url-only decoder, so the first claim that ever
+  // verified died client-side. These three vectors run the bytes through the
+  // gateway's exact transforms rather than through this module twice.
+  it("the wire form is standard base64 (openapi `format: byte`), read byte-for-byte by the gateway's own `Buffer.from(x, \"base64\")`", () => {
+    const { wrap_key } = deriveHandoffSecrets(idBytes, randomBytes(32));
+    const sealed = sealHandoffEnvelope(idBytes, wrap_key, payload);
+    assert.match(sealed.sealed_envelope, /^[A-Za-z0-9+/]+={0,2}$/);
+    const gatewayBytes = Buffer.from(sealed.sealed_envelope, "base64"); // exactly mintHandoff's decode
+    assert.equal(gatewayBytes.toString("base64"), sealed.sealed_envelope);
+    assert.equal(gatewayBytes.subarray(0, 4).toString("utf8"), "KGH1");
+  });
+
+  it("opens the envelope exactly as a claim returns it — the stored bytes re-encoded by `Buffer#toString(\"base64\")` (the cross-side vector)", () => {
+    const { wrap_key } = deriveHandoffSecrets(idBytes, randomBytes(32));
+    const sealed = sealHandoffEnvelope(idBytes, wrap_key, payload);
+    const fromGateway = Buffer.from(sealed.sealed_envelope, "base64").toString("base64");
+    assert.deepEqual(openHandoffEnvelope(idBytes, wrap_key, fromGateway, sealed.envelope_kind), payload);
+  });
+
+  it("still opens the base64url form earlier clients minted, and unpadded standard base64", () => {
+    const { wrap_key } = deriveHandoffSecrets(idBytes, randomBytes(32));
+    const sealed = sealHandoffEnvelope(idBytes, wrap_key, payload);
+    const bytes = Buffer.from(sealed.sealed_envelope, "base64");
+    assert.deepEqual(openHandoffEnvelope(idBytes, wrap_key, bytes.toString("base64url"), sealed.envelope_kind), payload);
+    assert.deepEqual(openHandoffEnvelope(idBytes, wrap_key, sealed.sealed_envelope.replace(/=+$/, ""), sealed.envelope_kind), payload);
+  });
 });
 
 describe("scanHandoffNoteForSecrets / assertHandoffNoteHasNoSecret", () => {

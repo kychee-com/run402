@@ -26,6 +26,7 @@ import { hkdf } from "@noble/hashes/hkdf.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { concatBytes, utf8ToBytes } from "@noble/hashes/utils.js";
 import { xchacha20poly1305 } from "@noble/ciphers/chacha.js";
+import { base64 } from "@scure/base";
 import { LocalError } from "../errors.js";
 import { _gitvaultAeadBackend, fromBase64url, randomBytes, toBase64url, bytesToHex } from "../namespaces/gitvault.crypto.js";
 
@@ -190,7 +191,33 @@ function handoffEnvelopeAad(handoffIdBytes: Uint8Array, envelopeKind: string): U
   return concatBytes(handoffIdBytes, utf8ToBytes(envelopeKind));
 }
 
-/** Seal the handoff payload under `wrap_key`. Returns the base64url wire form + its declared kind tag. */
+/**
+ * `sealed_envelope` on the wire is STANDARD base64 — openapi spells it
+ * `format: byte` in both the mint body and the claim response, and the
+ * gateway echoes the stored bytes with `Buffer#toString("base64")` (`+`,
+ * `/`, `=` padding). Through 4.68.2 the mint sent base64url (which the
+ * gateway's lenient decoder accepted) and the claim side decoded with the
+ * canonical-base64url-only `fromBase64url`, which refuses every `+`/`/`/`=`
+ * — so the first claim that ever verified (2026-09-02, Session B) got a
+ * 200 from the gateway and died client-side with HANDOFF_ENVELOPE_INVALID.
+ * This decoder reads the documented form and, for tolerance, the base64url
+ * form earlier clients minted; padding is optional either way. Anything
+ * outside the two alphabets is a refusal (`null` — the caller raises the
+ * typed HANDOFF_ENVELOPE_INVALID), never a silent partial decode.
+ */
+function decodeSealedEnvelope(value: string): Uint8Array | null {
+  const trimmed = value.trim();
+  if (trimmed.length === 0 || !/^[A-Za-z0-9+/_-]+={0,2}$/.test(trimmed)) return null;
+  const unpadded = trimmed.replace(/=+$/, "").replace(/-/g, "+").replace(/_/g, "/");
+  if (unpadded.length % 4 === 1) return null;
+  try {
+    return base64.decode(unpadded + "=".repeat((4 - (unpadded.length % 4)) % 4));
+  } catch {
+    return null;
+  }
+}
+
+/** Seal the handoff payload under `wrap_key`. Returns the standard-base64 wire form (openapi `format: byte`) + its declared kind tag. */
 export function sealHandoffEnvelope(handoffIdBytes: Uint8Array, wrapKey: Uint8Array, payload: HandoffEnvelopePayload, nonce?: Uint8Array): { sealed_envelope: string; envelope_kind: string } {
   // Plain JSON, NOT the r402s/v0 no-JSON-numbers JCS profile: this envelope
   // is never a vault object and only this SDK ever encodes/decodes it, so
@@ -204,16 +231,14 @@ export function sealHandoffEnvelope(handoffIdBytes: Uint8Array, wrapKey: Uint8Ar
   const aad = handoffEnvelopeAad(handoffIdBytes, HANDOFF_ENVELOPE_KIND);
   const ct = handoffAeadSeal(wrapKey, n, aad, plaintext);
   const frame = concatBytes(utf8ToBytes(HANDOFF_FRAME_MAGIC), new Uint8Array([HANDOFF_FRAME_VERSION_BYTE]), n, ct);
-  return { sealed_envelope: toBase64url(frame), envelope_kind: HANDOFF_ENVELOPE_KIND };
+  return { sealed_envelope: base64.encode(frame), envelope_kind: HANDOFF_ENVELOPE_KIND };
 }
 
-/** Open a sealed handoff envelope under `wrap_key`. Throws `HANDOFF_ENVELOPE_INVALID` on any header mismatch and `HANDOFF_AEAD_AUTH_FAILURE` on a bad key/AAD/ciphertext. */
-export function openHandoffEnvelope(handoffIdBytes: Uint8Array, wrapKey: Uint8Array, sealedEnvelopeB64u: string, envelopeKind: string = HANDOFF_ENVELOPE_KIND): HandoffEnvelopePayload {
-  let frame: Uint8Array;
-  try {
-    frame = fromBase64url(sealedEnvelopeB64u, "sealed_envelope");
-  } catch {
-    fail("HANDOFF_ENVELOPE_INVALID", "sealed_envelope is not valid base64url", "opening handoff envelope");
+/** Open a sealed handoff envelope under `wrap_key` (standard base64 as the claim response carries it, or base64url). Throws `HANDOFF_ENVELOPE_INVALID` on any header mismatch and `HANDOFF_AEAD_AUTH_FAILURE` on a bad key/AAD/ciphertext. */
+export function openHandoffEnvelope(handoffIdBytes: Uint8Array, wrapKey: Uint8Array, sealedEnvelope: string, envelopeKind: string = HANDOFF_ENVELOPE_KIND): HandoffEnvelopePayload {
+  const frame = decodeSealedEnvelope(sealedEnvelope);
+  if (frame === null) {
+    fail("HANDOFF_ENVELOPE_INVALID", "sealed_envelope is not valid base64", "opening handoff envelope");
   }
   if (frame.length < HANDOFF_FRAME_HEADER_BYTES + 16) {
     fail("HANDOFF_ENVELOPE_INVALID", "sealed_envelope is shorter than header + AEAD tag", "opening handoff envelope");
