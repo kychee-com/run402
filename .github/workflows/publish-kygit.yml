@@ -80,6 +80,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # The forwarder test drives the REAL run402 remote helper end to end
+      # (kygit/git-remote-kygit.test.mjs), and that helper imports the built
+      # SDK (cli/sdk/dist). A bare `npm ci` leaves no dist behind — the
+      # 2026-09-02 publish attempt failed here with ERR_MODULE_NOT_FOUND on
+      # cli/sdk/dist/node/gitvault-prewarm.js — so build first.
+      - name: Build run402 (the forwarder test needs cli/sdk/dist)
+        run: npm run build
+
       - name: Run kygit tests
         run: npm test --workspace=kygit
 
