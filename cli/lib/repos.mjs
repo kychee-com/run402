@@ -26,7 +26,7 @@ import { basename, join } from "node:path";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 import { withAutoApprove } from "./operator.mjs";
-import { allowanceAuthHeaders, isCoreApiTarget, resolveProjectId } from "./config.mjs";
+import { allowanceAuthHeaders, isCoreApiTarget, readAllowance, resolveProjectId } from "./config.mjs";
 import { loadLiveControlPlaneSession } from "../core-dist/control-plane-session.js";
 import { resolveOrgId, resolveOwningOrgId } from "./org-context.mjs";
 import { resolveGitvaultTarget } from "./gitvault-target.mjs";
@@ -74,7 +74,7 @@ Handoff (pass a working tree to another agent):
   run402 repos handoff [--project <id>] [--repo <repo_id>] [--ttl <seconds>] [--role <role>]
                         [--include-sensitive <glob>]... [--note-file <path>] [--json] [--list] [--revoke <handoff_id>]
                         (the Handoff Note is JSON piped on stdin when not using --note-file)
-  run402 repos resume  <kgh1_…|--key-stdin> [--to <dir>] [--json]
+  run402 repos resume  <kgh1_…|--key-stdin> [--to <dir>] [--no-init] [--json]
 
 Occasional:
   run402 repos snapshot [--project <id>] [--repo <repo_id>] [--message <text>] [--checkpoint] [--dry-run] [--allow-dirty] [--manifest-out <path>]
@@ -151,9 +151,14 @@ Subcommands:
            <glob>\` re-admits a named untracked path the sensitive denylist
            would otherwise exclude (repeatable). \`--list\`/\`--revoke
            <handoff_id>\` read/revoke instead of minting.
-  resume   Resume a Handoff Key on ANY machine: parses the key, claims it
-           with THIS machine's own wallet (creating the allowance file if
-           absent — no payment, ever), clones the vault at the base HEAD
+  resume   Resume a Handoff Key on ANY machine: parses the key; on a wallet
+           with no active tier first folds the same cold-start chain
+           \`create\` does (allowance → faucet → one x402 prototype payment,
+           each step announced) so the resumed agent arrives as a paid-up
+           run402 wallet of its own — \`--no-init\` opts out, and because the
+           claim itself needs no tier a chain failure is reported (never
+           blocks the resume); then claims the key with THIS machine's own
+           wallet, clones the vault at the base HEAD
            into \`--to <dir>\` (default: the vault's name), applies the
            stash-shaped checkpoint (staged/unstaged/deleted/untracked
            restored distinctly), pins the repo/org/room into the checkout's
@@ -1668,6 +1673,48 @@ async function handoff(args) {
   }
 }
 
+/**
+ * Whether this wallet needs the cold-start chain before a resume: no
+ * allowance file yet (a fresh machine — the viral case), or an allowance
+ * whose org holds no active tier. An unreachable tier status reads as
+ * "no" — the claim needs no tier, and a resume must never wait on a status
+ * read.
+ */
+async function resumeNeedsColdStart(sdk) {
+  if (!readAllowance()) return true;
+  try {
+    const status = await sdk.tier.status();
+    return status?.active === false;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * `resume`'s cold-start fold: the SAME chain `create` runs on
+ * NO_ACTIVE_TIER (`cold-start.mjs`), announced step by step on stderr.
+ * Never throws — a failure is returned as `{ error, next_action }` so the
+ * caller carries it in the result and proceeds with the claim.
+ */
+async function foldColdStartForResume(sdk) {
+  if (!(await resumeNeedsColdStart(sdk))) return { performed: false, skipped: "tier_active" };
+  console.error("no active tier — folding the cold-start chain (allowance -> faucet -> prototype tier) before the claim");
+  try {
+    const { foldColdStartChain } = await import("./cold-start.mjs");
+    const chain = await foldColdStartChain((line) => console.error(`  ${line}`));
+    return { performed: true, ...chain };
+  } catch (err) {
+    const code = err?.body?.code ?? err?.code ?? null;
+    const message = err?.body?.message ?? err?.message ?? String(err);
+    console.error(`cold-start chain failed (${code ?? "error"}: ${message}) — continuing with the claim; run \`run402 tier set prototype\` afterwards`);
+    return {
+      performed: false,
+      error: { code, message },
+      next_action: { type: "renew_tier", command: "run402 tier set prototype", why: "The resume proceeded without a tier of your own; the perpetual prototype tier is what lets this wallet create and deploy projects." },
+    };
+  }
+}
+
 /** `kygit.handoff-note.v1` rendered as Markdown — `resume`'s default (non-`--json`) rendering. */
 function renderHandoffNoteMarkdown(note) {
   if (!note) return null;
@@ -1708,7 +1755,7 @@ function renderHandoffNoteMarkdown(note) {
 
 async function resume(args) {
   const a = normalizeArgv(args);
-  assertKnownFlags(a, [...RESUME_VALUE_FLAGS, "--key-stdin", "--json", "-v", "--verbose", "--help", "-h"], RESUME_VALUE_FLAGS);
+  assertKnownFlags(a, [...RESUME_VALUE_FLAGS, "--key-stdin", "--no-init", "--json", "-v", "--verbose", "--help", "-h"], RESUME_VALUE_FLAGS);
   const sdk = getSdk();
   const keyStdin = a.includes("--key-stdin");
   const to = flagValue(a, "--to");
@@ -1718,10 +1765,22 @@ async function resume(args) {
     key = (await readStdinText()).trim();
     if (!key) fail({ code: "BAD_USAGE", message: "Missing the Handoff Key on stdin.", hint: "Pipe the kgh1_… key, or pass it as a positional argument." });
   }
+  // Decided 2026-09-02 (Tal; amends kygit-handoff design D5's "none on
+  // resume"): a resumed agent is a NEW run402 wallet, and the loop is the
+  // point — so on a wallet with no active tier `resume` folds the same
+  // cold-start chain `create` does (allowance → faucet → one x402
+  // prototype payment, announced) BEFORE the claim. The claim itself needs
+  // no tier, so the chain is never allowed to block a resume: a faucet
+  // throttle or payment failure is reported on stderr, carried in the
+  // result as `cold_start.error` with a `renew_tier` next action, and the
+  // claim proceeds (the SDK still creates the bare wallet it needs).
+  // `--no-init` opts out entirely.
+  const coldStart = a.includes("--no-init") ? { performed: false, skipped: "no_init" } : await foldColdStartForResume(sdk);
   try {
     const result = await sdk.gitvault.resume({ key, ...(to != null ? { to } : {}), onLine: (line) => console.error(line) });
+    if (coldStart.next_action) result.next_actions = [...(result.next_actions ?? []), coldStart.next_action];
     if (a.includes("--json")) {
-      printJson(sdk, result);
+      printJson(sdk, { ...result, cold_start: coldStart });
     } else {
       const rendered = renderHandoffNoteMarkdown(result.note) ?? result.note_raw;
       if (rendered) {

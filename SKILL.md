@@ -932,7 +932,7 @@ From an MCP session you can *answer questions* about a repo — `repos_view`, `r
 
 ```bash
 run402 repos handoff --note-file handoff.json    # captures the tree, mints the key, prints it ALONE
-run402 repos resume kgh1_…                        # on the other machine: claim, clone, restore, print the note
+run402 repos resume kgh1_…                        # on the other machine: cold-start (faucet + prototype) if no tier, then claim, clone, restore, print the note
 ```
 
 **Verify it without trusting our client.** `r402s-verify` is an independent-lineage verifier for the same protocol — separate language, separate authorship, separate primitive stack, deliberately sharing no implementation code with the SDK. A differential verifier that reuses the code it is checking verifies nothing.

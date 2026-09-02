@@ -114,6 +114,12 @@ mock.module("./cli/lib/sdk.mjs", {
           return (impl.projectsGetSchema ?? (async () => ({ schema: "public", tables: [] })))(id);
         },
       },
+      tier: {
+        status: async () => {
+          calls.push({ method: "tier.status" });
+          return (impl.tierStatus ?? (async () => ({ active: true, tier: "prototype" })))();
+        },
+      },
       functions: {
         list: async (id) => {
           calls.push({ method: "functions.list", id });
@@ -1521,5 +1527,90 @@ describe("run402 repos resume — claim a Handoff Key and restore the stash-shap
   it("-v prints a stats summary line to stderr", async () => {
     await human("resume", [HANDOFF_KEY, "-v"]);
     assert.ok(stderr.some((line) => line.startsWith("stats: round_trips=")));
+  });
+});
+
+// ─── resume folds the cold-start chain (decided 2026-09-02, amends design D5) ──
+
+describe("run402 repos resume — a resumed agent is a NEW run402 wallet: the cold-start chain runs BEFORE the claim (amends design D5, 2026-09-02)", () => {
+  let cfgIndex = 0;
+  /** A config dir with NO allowance file — the fresh-machine case. */
+  function freshConfigDir() {
+    const dir = join(scratch, `resume-fresh-cfg-${cfgIndex++}`);
+    mkdirSync(dir, { recursive: true });
+    process.env.RUN402_CONFIG_DIR = dir;
+  }
+  /** A config dir WITH a local allowance (the same helper the create suite uses). */
+  async function fundedConfigDir() {
+    const dir = join(scratch, `resume-funded-cfg-${cfgIndex++}`);
+    mkdirSync(dir, { recursive: true });
+    process.env.RUN402_CONFIG_DIR = dir;
+    await createLocalAllowance();
+  }
+
+  it("no allowance file: folds allowance -> faucet -> prototype BEFORE gitvault.resume, announcing each step, and reports cold_start in --json", async () => {
+    freshConfigDir();
+    const payload = await ok("resume", [HANDOFF_KEY, "--json"]);
+    assert.equal(coldStartCalls.length, 1, "the chain folds exactly once");
+    assert.ok(calls.find((c) => c.method === "gitvault.resume"), "the claim still runs");
+    // Ordering: the fold's announce lines land on stderr BEFORE resume's own "resuming" line.
+    const foldLine = stderr.findIndex((l) => l.includes("folding the cold-start chain"));
+    const chainLine = stderr.findIndex((l) => l.includes("subscribing to the prototype tier"));
+    assert.ok(foldLine >= 0 && chainLine > foldLine, "the fold is announced, then each chain step");
+    assert.equal(payload.cold_start.performed, true);
+    assert.equal(payload.cold_start.allowance_created, true);
+    assert.equal(payload.cold_start.tier.status, "active");
+    assert.equal(payload.restored.dir, "/tmp/notes", "the resume result is otherwise unchanged");
+  });
+
+  it("an allowance whose org already holds an active tier is left alone (one tier.status read, no chain)", async () => {
+    await fundedConfigDir();
+    const payload = await ok("resume", [HANDOFF_KEY, "--json"]);
+    assert.equal(coldStartCalls.length, 0);
+    assert.ok(calls.find((c) => c.method === "tier.status"));
+    assert.deepEqual(payload.cold_start, { performed: false, skipped: "tier_active" });
+  });
+
+  it("an allowance with NO active tier folds the chain too — the loop is about the tier, not the file", async () => {
+    await fundedConfigDir();
+    impl.tierStatus = async () => ({ active: false, tier: null });
+    const payload = await ok("resume", [HANDOFF_KEY, "--json"]);
+    assert.equal(coldStartCalls.length, 1);
+    assert.equal(payload.cold_start.performed, true);
+  });
+
+  it("--no-init opts out: no status read, no chain, the bare claim (the SDK still creates the wallet it needs)", async () => {
+    freshConfigDir();
+    const payload = await ok("resume", [HANDOFF_KEY, "--no-init", "--json"]);
+    assert.equal(coldStartCalls.length, 0);
+    assert.equal(calls.some((c) => c.method === "tier.status"), false);
+    assert.ok(calls.find((c) => c.method === "gitvault.resume"));
+    assert.deepEqual(payload.cold_start, { performed: false, skipped: "no_init" });
+  });
+
+  it("a chain failure (faucet throttle, payment refusal) is reported and NEVER blocks the claim — renew_tier rides next_actions", async () => {
+    freshConfigDir();
+    coldStartImpl = async (announce) => {
+      announce("allowance created: 0xabc");
+      const e = new Error("faucet throttled — retry after 86400s");
+      e.body = { code: "RATE_LIMITED", message: "faucet throttled — retry after 86400s" };
+      throw e;
+    };
+    const payload = await ok("resume", [HANDOFF_KEY, "--json"]);
+    assert.equal(coldStartCalls.length, 1);
+    assert.ok(calls.find((c) => c.method === "gitvault.resume"), "the claim runs after the chain fails");
+    assert.equal(payload.cold_start.performed, false);
+    assert.equal(payload.cold_start.error.code, "RATE_LIMITED");
+    assert.ok(payload.next_actions.some((n) => n.type === "renew_tier" && n.command === "run402 tier set prototype"));
+    assert.ok(stderr.some((l) => l.includes("cold-start chain failed (RATE_LIMITED")));
+    assert.equal(payload.restored.dir, "/tmp/notes");
+  });
+
+  it("an unreachable tier status reads as no chain — a resume never waits on a status read", async () => {
+    await fundedConfigDir();
+    impl.tierStatus = async () => { throw new Error("network down"); };
+    const payload = await ok("resume", [HANDOFF_KEY, "--json"]);
+    assert.equal(coldStartCalls.length, 0);
+    assert.deepEqual(payload.cold_start, { performed: false, skipped: "tier_active" });
   });
 });
