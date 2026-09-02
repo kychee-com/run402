@@ -122,7 +122,7 @@ Subcommands:
            copies than a managed vault by construction (the platform holds
            no payload copy at all); \`run402 repos mirror <destination>\`
            still works unchanged as your second customer-held location.
-           On a fresh wallet with no active tier this folds the cold-start
+           On a machine with no wallet, or a wallet with no active tier, this folds the cold-start
            chain (allowance -> faucet -> one x402 prototype payment,
            announced) before retrying once; \`--no-init\` opts out.
   view     Side-effect-free: what this machine and the control plane each
@@ -853,6 +853,22 @@ async function createProvision(name, dir, a) {
   // `projects provision` itself supports; `--org` targets an existing one.
   const orgId = await resolveOrgId(a, { cmd: "repos", optional: true });
 
+  // A genuinely bare machine has no allowance file at all, and the NO_ALLOWANCE
+  // precheck below would refuse before the provision call could ever answer
+  // NO_ACTIVE_TIER — so the cold-start fold (design D5) never ran for the one
+  // case it was written for. Found 2026-09-02 by driving `repos create` on a
+  // fresh config dir. Fold first when there is no wallet; `--no-init` keeps
+  // the bare refusal.
+  if (!isCoreApiTarget() && !loadLiveControlPlaneSession() && !readAllowance() && !a.includes("--no-init")) {
+    console.error("no wallet on this machine — folding the cold-start chain (allowance -> faucet -> prototype tier)");
+    try {
+      const { foldColdStartChain } = await import("./cold-start.mjs");
+      await foldColdStartChain((line) => console.error(`  ${line}`));
+    } catch (chainErr) {
+      reportSdkError(chainErr);
+      return;
+    }
+  }
   if (!isCoreApiTarget() && !loadLiveControlPlaneSession()) allowanceAuthHeaders("/projects/v1");
 
   const provisionOnce = () =>

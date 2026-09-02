@@ -1614,3 +1614,40 @@ describe("run402 repos resume — a resumed agent is a NEW run402 wallet: the co
     assert.deepEqual(payload.cold_start, { performed: false, skipped: "tier_active" });
   });
 });
+
+// ─── create on a genuinely bare machine (design D5, found 2026-09-02) ────────
+
+describe("run402 repos create — a machine with NO allowance folds the cold-start chain BEFORE the NO_ALLOWANCE precheck (design D5)", () => {
+  let bareDir;
+  before(() => {
+    bareDir = join(scratch, "create-bare-repo");
+    mkdirSync(bareDir, { recursive: true });
+    git(bareDir, ["init", "-q", "-b", "main", "."]);
+  });
+
+  it("folds the chain (which creates the wallet), then provisions", async () => {
+    process.env.RUN402_CONFIG_DIR = join(scratch, "create-bare-cfg");
+    mkdirSync(process.env.RUN402_CONFIG_DIR, { recursive: true });
+    process.chdir(bareDir);
+    // The real chain writes the allowance file as its first step; the mock does the same.
+    coldStartImpl = async (announce) => {
+      await createLocalAllowance();
+      announce("allowance created: 0xabc");
+      return { allowance_created: true, faucet_requested: true, tier: { status: "active" } };
+    };
+    const payload = await ok("create", ["bare-notes", "--org", ORG]);
+    assert.equal(coldStartCalls.length, 1, "the chain folds once, before provisioning");
+    assert.ok(stderr.some((l) => l.includes("no wallet on this machine — folding the cold-start chain")));
+    assert.ok(calls.find((c) => c.method === "projects.provision"), "provision runs after the chain");
+    assert.ok(payload.project_id ?? payload.project, "create still succeeds");
+  });
+
+  it("--no-init on a bare machine keeps the bare NO_ALLOWANCE refusal", async () => {
+    process.env.RUN402_CONFIG_DIR = join(scratch, "create-bare-cfg-2");
+    mkdirSync(process.env.RUN402_CONFIG_DIR, { recursive: true });
+    process.chdir(bareDir);
+    const err = await expectFailure("create", ["bare-notes", "--org", ORG, "--no-init"]);
+    assert.equal(coldStartCalls.length, 0);
+    assert.equal(err.code, "NO_ALLOWANCE");
+  });
+});
