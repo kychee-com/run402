@@ -47,6 +47,7 @@ import {
   randomBytes,
   sha256Hex,
   verifyGitvaultObject,
+  toBase64url,
 } from "./gitvault.crypto.js";
 import type { NextAction } from "../errors.js";
 import type { GitvaultCaptureReceipt, GitvaultHeadsListingPage, GitvaultHeadsListingRequest, GitvaultHeadTarget, GitvaultOpenReceipt, GitvaultRecipientConfirmationReceipt, GitvaultRecoveryReceipt, GitvaultRotationReason } from "./gitvault.types.js";
@@ -2260,7 +2261,14 @@ export class Gitvault {
       next_actions?: NextAction[];
     }>(`/gitvault/v1/handoffs/${encodeURIComponent(parsed.handoff_id)}/claim`, {
       method: "POST",
-      body: { auth_secret: bytesToHex(secrets.auth_secret) },
+      // Base64url, per the documented wire contract (openapi: "Base64url — the
+      // HKDF-derived auth_secret half of the parsed kgh1_ key"). The gateway
+      // decodes base64/base64url and substitutes 32 zero bytes for anything
+      // else, so a hex-encoded secret — what 4.67.0 through 4.68.0 sent — never
+      // matched any stored hash: every claim answered HANDOFF_KEY_INVALID (the
+      // 2026-09-02 rehearsal, Session B). Each side's own tests passed; only
+      // the cross-side vector below catches this class.
+      body: { auth_secret: toBase64url(secrets.auth_secret) },
       context: "claiming a handoff key",
     });
 

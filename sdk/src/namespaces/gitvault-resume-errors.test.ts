@@ -131,7 +131,15 @@ describe("r.gitvault.resume — the raw key never appears in a thrown error (des
     // derived, gateway-verifiable auth_secret hex — never the raw key or
     // the master secret it was derived from.
     const sentBody = JSON.parse(calls[0]!.body as string) as { auth_secret: string };
-    assert.match(sentBody.auth_secret, /^[0-9a-f]{64}$/, "auth_secret must be sent as a hex hash, never the raw key material");
+    // Base64url of exactly 32 bytes — the documented wire contract, and what
+    // the gateway's decoder (base64/base64url, 32 bytes or nothing) accepts.
+    // 4.67.0–4.68.0 sent 64 hex chars here, which that decoder reads as 48
+    // bytes and discards, so EVERY claim answered HANDOFF_KEY_INVALID while
+    // both sides' own unit tests stayed green. This assertion is the
+    // cross-side vector: decode it exactly the way the gateway does.
+    assert.match(sentBody.auth_secret, /^[A-Za-z0-9_-]{43}$/, "auth_secret must be base64url of 32 bytes, never hex and never the raw key material");
+    const gatewayDecoded = Buffer.from(sentBody.auth_secret.replace(/-/g, "+").replace(/_/g, "/"), "base64");
+    assert.equal(gatewayDecoded.length, 32, "the gateway decodes base64/base64url and requires exactly 32 bytes");
     assert.equal(JSON.stringify(sentBody).includes(FABRICATED_KEY), false);
   });
 
