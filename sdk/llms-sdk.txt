@@ -1960,6 +1960,10 @@ init({ repo_dir, project_id, ... }): Promise<GitvaultInitResult>        // alloc
 openOrCreate({ project_id, org_id?, repo_dir?, ... }): Promise<GitvaultOpenOrCreateResult>  // D2: open, or allocate-then-open when org_id is supplied and the project has no vault yet — byte-identical to open() without org_id
 resolveOrCreateAddress({ address, repo_dir?, allow_create?, onVaultCreated?, ... }): Promise<GitvaultOpenOrCreateResult & { resolution }>  // D6: resolve a parsed remote address to an open handle, pinning repo_id in local git state on the first successful SLUG-form resolution (task 4.5); allow_create push-to-creates on a slug-form miss (task 4.4). SLUG_RELEASED never auto-follows.
 push({ org_id?, address?, onVaultCreated?, snapshot?: { message?, ... }, checkpoint?, ... }): Promise<GitvaultPublishResult & { snapshot, gitvault_commit, gitvault_commit_line }>  // composes openOrCreate internally when org_id is passed (D2 lazy allocation); composes resolveOrCreateAddress when address is passed instead (D6)
+handoff({ project_id?, repo_id?, note, role?, ttlSeconds?, includeSensitive?, onCommitLine? }): Promise<GitvaultHandoffMintResult>  // kygit-handoff: captures the working tree into a stash-shaped checkpoint, pushes it as a retention root, mints a single-use bearer kgh1_… key — the ONLY copy is `.handoff_key`
+resume({ key, to?, onLine? }): Promise<GitvaultHandoffResumeResult>     // kygit-handoff: claims the key (same-principal replay dedups safely), clones fresh, restores with `git stash apply --index`
+listHandoffs(target): Promise<GitvaultHandoffListResult>               // outstanding handoffs on a vault
+revokeHandoff(handoffId, target): Promise<{ handoff_id, state }>       // kill one before it's claimed
 status(opts?): Promise<GitvaultStatus>                                  // pass { refs: true } to also materialize the ref map + HEAD target; `pinned` reports the D6 id-pin (repo_id + resolved_from) when repo_dir names one. `repos view` never passes `refs: true` (design D3) — it stays side-effect-free by construction
 compact(opts?): Promise<GitvaultCompactResult>
 prune(opts?): Promise<GitvaultPruneResult>                              // plan; pass { submit } with both verifier receipts to submit
@@ -1992,6 +1996,10 @@ gitvaultLossWarningMessage(trip): string                                // names
 ```
 
 There is no companion "resolved" check — V0-A cannot detect a second principal (another keystore, or later a human envelope) demonstrably able to open the vault, so nothing here ever un-trips a standing warning.
+
+**D8 (kygit-handoff) — handoff/resume, and the `kygit::` scheme.** `handoff`/`resume` are a session PASS, not a snapshot restore: no shared keystore, no shared allowance, no server-side principal configured ahead of time. The Handoff Key, `kgh1_<base64url(handoff_id[16] ‖ master_secret[32])>` (69 chars), is assembled and parsed by isomorphic helpers exported from `sdk/src/node/gitvault-handoff.ts` — `assembleHandoffKey`/`parseHandoffKey`, `deriveHandoffSecrets` (HKDF-SHA256, salt = `handoff_id` bytes, deriving `auth_secret` — the gateway only ever receives its SHA-256 hash — and `wrap_key`), `sealHandoffEnvelope`/`openHandoffEnvelope` (a small XChaCha20-Poly1305 frame carrying the vault's live epoch key directly to the recipient — deliberately NOT an `r402s/v0` vault object: no JCS, no 7-field frameAad, its own `KGH1` frame format), and `scanHandoffNoteForSecrets`/`assertHandoffNoteHasNoSecret` (a Handoff Note is refused if it contains something that looks like a credential). `captureHandoffSnapshot` (`sdk/src/node/gitvault-snapshot.ts`) builds the synthetic 3-parent stash-shaped commit; `GITVAULT_HANDOFF_SENSITIVE_DENYLIST` is the 22-glob sensitive-path list applied to untracked files. `cloneGitvaultRemote`/`applyHandoffCheckpoint` (`sdk/src/node/gitvault-restore.ts`) do `resume`'s clone-and-restore half — `cloneGitvaultRemote` deliberately does NOT go through `hardenedGit` (whose `-c protocol.allow=never` would block it), because here the clone target IS the trusted vault remote, not an arbitrary caller-supplied URL.
+
+`gitvaultRemoteUrl(orgId, projectId)`/`gitvaultRemoteUrlForRepo(orgSlug, repoName)` render `kygit::` instead of `run402::` whenever `gitvaultRemoteScheme()` reads `process.env.RUN402_REMOTE_SCHEME === "kygit"` — a pure client-side rendering choice; `parseGitvaultRemoteUrl` accepts either prefix into the identical scheme-less `{ org_id, project_id }` address, so every gateway-facing call, resolve, and pin is unaffected by which door a request came through.
 
 ```ts
 import { run402 } from "@run402/sdk/node";
@@ -2060,7 +2068,7 @@ The captured set is tracked plus untracked-but-not-ignored — so a build that r
 
 **Nothing here is memoised.** Two of these responses are secret-bearing — the maintenance lease's `holder_token` (returned exactly once) and anything derived from the keystore — and a secret-bearing response is never cached, never persisted into an agent-surface result store, and never logged.
 
-`gitvaultRemoteUrl(orgId, projectId)` and `parseGitvaultRemoteUrl(url)` are exported helpers for the `run402::<org_id>/<project_id>` remote URL form that `git-remote-run402` serves.
+`gitvaultRemoteUrl(orgId, projectId)` and `parseGitvaultRemoteUrl(url)` are exported helpers for the `run402::<org_id>/<project_id>` remote URL form that `git-remote-run402` serves — see D8 above for the `kygit::` door.
 
 **`status()` never mutates and never mints.** It READS the keystore rather than calling `ensureIdentity()`, so observing a vault cannot create the key material it is reporting on. Its `keystore.root` / `keystore.paths` name the directory to back up (see terminal loss below), `remote` reports the local `run402` git remote and whether it points at THIS vault, and `refs` / `head_target` are `null` unless `{ refs: true }` was passed — reading the ref map means materializing the chain, which is a verification and advances the local materialized pin.
 

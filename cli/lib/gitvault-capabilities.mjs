@@ -45,4 +45,16 @@ export const GITVAULT_CAPABILITIES = {
   // `repos snapshot` refuses to capture a dirty working tree
   // (`SNAPSHOT_DIRTY_TREE`) by default; `--allow-dirty` opts in explicitly.
   snapshot_dirty_default: "refuse",
+  // kygit-handoff (design D10): `repos handoff` / `repos resume` mint and
+  // claim a real single-use bearer key against a live gateway route —
+  // shipped, not aspirational.
+  handoff_live: true,
+  // `repos handoff` captures dirty work by DEFAULT (the opposite default
+  // from `snapshot_dirty_default` above) — two verbs, two defaults, one
+  // capture path (design D1).
+  handoff_dirty_default: "capture",
+  // Both remote door spellings resolve identically (design D8):
+  // `run402::` (canonical, plumbing) and `kygit::` (rendered by
+  // `@kychee/kygit` once it sets `RUN402_REMOTE_SCHEME=kygit`).
+  remote_schemes: ["run402", "kygit"],
 };

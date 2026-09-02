@@ -4,14 +4,16 @@
   "description": "KyGit — the encrypted Git remote's command. A thin brand door over `run402 repos`: every kygit command IS a run402 command.",
   "type": "module",
   "bin": {
-    "kygit": "kygit.mjs"
+    "kygit": "kygit.mjs",
+    "git-remote-kygit": "git-remote-kygit.mjs"
   },
   "files": [
     "kygit.mjs",
+    "git-remote-kygit.mjs",
     "README.md"
   ],
   "scripts": {
-    "test": "node --test kygit.test.mjs"
+    "test": "node --test kygit.test.mjs git-remote-kygit.test.mjs"
   },
   "dependencies": {
     "run402": "^4.54.0"

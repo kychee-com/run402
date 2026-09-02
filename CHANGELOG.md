@@ -4,6 +4,47 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
 
 ## Unreleased
 
+- **gitvault: `repos handoff` / `repos resume` — pass a working tree to another agent, dirty state included, via a single-use bearer key (kygit-handoff).**
+  `run402 repos handoff [--note-file <path>] [--role <role>] [--ttl <seconds>] [--include-sensitive <glob>]... [--list] [--revoke <handoff_id>]`
+  captures the ACTUAL working tree — staged, unstaged, and untracked — into
+  a synthetic 3-parent commit shaped exactly like real `git stash push -u`
+  plumbing (outer tree = tracked worktree state, parent1 = base HEAD,
+  parent2 = an index-tree commit, parent3 = a parentless untracked-tree
+  commit), pushes it into the vault as a retention root, and mints a
+  single-use bearer `kgh1_<69 chars>` key — printed to stdout ALONE and
+  never logged anywhere, in any mode. `run402 repos resume <kgh1_…>`
+  (or `--key-stdin`) claims the key (a same-principal replay is a safe,
+  explicit dedup — never a re-mint), clones a fresh checkout, and restores
+  the checkpoint with `git stash apply --index`, so the resumed tree is
+  bit-for-bit what the sender was looking at. A Handoff Note
+  (`kygit.handoff-note.v1` — summary, completed/in-progress/failing,
+  decisions, next steps) rides alongside via `--note-file` or piped stdin,
+  and renders as Markdown by default on `resume` (`--json` for the raw
+  envelope). Sensitive untracked paths (`.env`, `*.pem`, `*.key`,
+  `id_rsa*`, SSH/AWS/GPG directories, 22 globs total — exported as
+  `GITVAULT_HANDOFF_SENSITIVE_DENYLIST`) are excluded from capture by
+  default; `--include-sensitive <glob>` re-admits one explicitly. A
+  minted key confers real org authority (the sender's own role by
+  default) until claimed or its TTL (default 1h) expires — the mint
+  result's `warnings[]` says so verbatim and the CLI echoes it to stderr
+  before the key. No MCP tool for either verb, same "mutating verbs are
+  CLI-only" law as `create`/`delete`.
+
+  **The `kygit::` remote scheme ships (design D8).** `gitvaultRemoteUrl`/
+  `gitvaultRemoteUrlForRepo` render `kygit::<org>/<name>` instead of
+  `run402::<org>/<name>` whenever `RUN402_REMOTE_SCHEME=kygit` is set;
+  `parseGitvaultRemoteUrl` accepts either prefix into the same
+  scheme-less canonical address, so the gateway never sees which door a
+  request came through. The `@kychee/kygit` package sets the env var
+  before every `run402 repos …` call it execs, and now ships a SECOND
+  bin, `git-remote-kygit` — a ~30-line forwarder to the installed
+  `run402` package's own `git-remote-run402.mjs` — so `npm i -g
+  @kychee/kygit` alone is a complete install for `kygit::` remotes
+  (previously `npm i -g run402 @kychee/kygit` was required, because npm
+  links bins only for the directly-installed package). `run402 doctor`
+  and `repos view` detect a `kygit::` remote with no `git-remote-kygit`
+  on PATH and name the fix.
+
 - **gitvault: cold-clone chain walks overlap their reads — sequenced round-trip depth per listing page drops from ~3·G to ~G/6 + 2 (gitvault-clone-scaling, bench P2).**
   `verifyToNewest` now prefetches each verified listing page's
   cache-missing head bytes as bounded-concurrent direct reads (heads

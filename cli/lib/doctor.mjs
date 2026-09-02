@@ -705,6 +705,16 @@ export async function run(sub, args = []) {
         if (gv.remote && gv.remote.matches === false) {
           gaps.push(`the '${gv.remote.name}' git remote points at a different project than ${value.project_id} (${gv.remote.url})`);
         }
+        // kygit-handoff design D8: the mirror of the OLD `npm i -g @kychee/kygit`
+        // bug, pointing the other way — a `kygit::` remote with no
+        // `git-remote-kygit` helper on PATH means every push/clone/fetch
+        // in this checkout fails inside git with an opaque error.
+        if (gv.remote?.url?.startsWith("kygit::")) {
+          const { isExecutableOnPath } = await import("./path-lookup.mjs");
+          if (!isExecutableOnPath("git-remote-kygit")) {
+            gaps.push("this checkout's remote is kygit:: but git-remote-kygit is not on PATH — run `npm i -g @kychee/kygit`");
+          }
+        }
         // Echoed exactly as the SDK reported them — including the
         // doctor-persistent `grandfathered` advisory it owns.
         for (const w of gv.warnings ?? []) gaps.push(`${w.kind}: ${w.message}`);

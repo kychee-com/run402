@@ -601,9 +601,30 @@ type Entry = GitvaultCapturedFile;
 function isExecutable(mode: number): boolean { return (mode & 0o111) !== 0; }
 
 /**
+ * Stat every candidate path, restricted to what is actually present on disk
+ * (a deleted/absent path is silently dropped — that IS the encoding of a
+ * deletion). Sizes ride along so the caller can enforce the per-object cap
+ * before any object is written. Shared by every capture lane (the ordinary
+ * tracked-plus-untracked enumeration below, and the handoff capture's
+ * tracked-only / untracked-only enumerations) so they can never drift into
+ * disagreeing about what "present on disk" means for one path.
+ */
+function statPresentPaths(top: string, candidates: string[]): Array<{ path: string; mode: Entry["mode"]; size: number }> {
+  const present: Array<{ path: string; mode: Entry["mode"]; size: number }> = [];
+  for (const p of candidates) {
+    const abs = join(top, p);
+    let st;
+    try { st = lstatSync(abs); } catch { continue; } // deleted in the work tree → absent from the snapshot
+    if (st.isSymbolicLink()) present.push({ path: p, mode: "120000", size: st.size });
+    else if (st.isFile()) present.push({ path: p, mode: isExecutable(st.mode) ? "100755" : "100644", size: st.size });
+    // directories (e.g. nested repos) and specials are skipped — git would not track them either
+  }
+  return present;
+}
+
+/**
  * Enumerate the captured set: tracked ∪ untracked-but-not-ignored, restricted
- * to what is actually present on disk. Sizes ride along so the caller can
- * enforce the per-object cap before any object is written.
+ * to what is actually present on disk.
  *
  * This is the ONE enumeration both the capture and the correspondence check
  * use, so the two can never drift into disagreeing about what "the captured
@@ -617,16 +638,7 @@ async function enumerateCapturedPaths(
   const others = untracked ?? (await hardenedGit(top, ["ls-files", "-z", "--others", "--exclude-standard", ...excludeArgs])).nul();
   const tracked = (await hardenedGit(top, ["ls-files", "-z", "--cached"])).nul();
   const candidates = [...new Set([...tracked, ...others])].sort();
-  const present: Array<{ path: string; mode: Entry["mode"]; size: number }> = [];
-  for (const p of candidates) {
-    const abs = join(top, p);
-    let st;
-    try { st = lstatSync(abs); } catch { continue; } // deleted in the work tree → absent from the snapshot
-    if (st.isSymbolicLink()) present.push({ path: p, mode: "120000", size: st.size });
-    else if (st.isFile()) present.push({ path: p, mode: isExecutable(st.mode) ? "100755" : "100644", size: st.size });
-    // directories (e.g. nested repos) and specials are skipped — git would not track them either
-  }
-  return present;
+  return statPresentPaths(top, candidates);
 }
 
 /**
@@ -848,6 +860,286 @@ export async function detectActiveFilters(top: string, paths: string[]): Promise
     if (value !== "unspecified" && value !== "unset") active.push({ path: parts[i]!, filter: value });
   }
   return active;
+}
+
+// ─── Handoff capture (kygit-handoff design D1/D10) ──────────────────────────
+
+/**
+ * Sensitive untracked-path denylist (design D10, verbatim). Applies to the
+ * UNTRACKED set only — a tracked file is the user's own committed choice and
+ * is never filtered by this list. `--include-sensitive <glob>` re-admits a
+ * named path by matching the SAME glob grammar against the candidate.
+ */
+export const GITVAULT_HANDOFF_SENSITIVE_DENYLIST: readonly string[] = [
+  ".env",
+  ".env.*",
+  "*.pem",
+  "*.key",
+  "*.p12",
+  "*.pfx",
+  "*.jks",
+  "*.keystore",
+  "id_rsa*",
+  "id_ed25519*",
+  "id_ecdsa*",
+  ".npmrc",
+  ".netrc",
+  ".pypirc",
+  ".git-credentials",
+  "*.tfstate*",
+  "*credentials*.json",
+  ".aws/**",
+  ".ssh/**",
+  ".gnupg/**",
+  "*.secret",
+  "secrets.*",
+];
+
+function escapeGlobLiteral(ch: string): string {
+  return /[.+^${}()|[\]\\]/.test(ch) ? `\\${ch}` : ch;
+}
+
+/** `*` → any run of non-`/` chars, `**` → any run of chars (incl. `/`), `?` → one non-`/` char, everything else literal. */
+function globToRegExpSource(glob: string): string {
+  let out = "";
+  for (let i = 0; i < glob.length; i++) {
+    const c = glob[i]!;
+    if (c === "*") {
+      if (glob[i + 1] === "*") { out += ".*"; i++; } else out += "[^/]*";
+    } else if (c === "?") {
+      out += "[^/]";
+    } else {
+      out += escapeGlobLiteral(c);
+    }
+  }
+  return out;
+}
+
+/**
+ * A slash-free glob matches the path's BASENAME at any depth (gitignore's
+ * "no slash" rule). A glob ending `/**` (e.g. `.aws/**`) matches the named
+ * directory component at ANY depth in the tree, plus everything under it —
+ * a deliberately broader-than-gitignore reading for a credential-directory
+ * denylist, where over-excluding is the safe failure mode. Any other
+ * slash-bearing glob matches the full relative path exactly.
+ */
+export function globMatchesGitPath(glob: string, relPath: string): boolean {
+  if (!glob.includes("/")) {
+    const re = new RegExp(`^${globToRegExpSource(glob)}$`);
+    const base = relPath.slice(relPath.lastIndexOf("/") + 1);
+    return re.test(base);
+  }
+  if (glob.endsWith("/**")) {
+    const dir = glob.slice(0, -3);
+    const dirRe = new RegExp(`(^|/)${globToRegExpSource(dir)}(/|$)`);
+    return dirRe.test(relPath);
+  }
+  const re = new RegExp(`^${globToRegExpSource(glob)}$`);
+  return re.test(relPath);
+}
+
+/** True iff `relPath` (an untracked-not-ignored path) matches the sensitive denylist and is not re-admitted by `includeSensitive`. */
+export function isHandoffSensitivePath(relPath: string, includeSensitive: readonly string[] = []): boolean {
+  if (includeSensitive.some((g) => globMatchesGitPath(g, relPath))) return false;
+  return GITVAULT_HANDOFF_SENSITIVE_DENYLIST.some((g) => globMatchesGitPath(g, relPath));
+}
+
+/** What {@link GitvaultHandoffCaptureOptions.message} learns once capture figures are known — everything a Handoff Note's `capture` block needs, before the outer commit exists. */
+export interface GitvaultHandoffCaptureStats {
+  base_head_oid: string;
+  /** `HEAD`'s symref name (`refs/heads/<branch>`, stripped) — `null` on a detached HEAD. */
+  branch: string | null;
+  modified_captured: string[];
+  untracked_captured: string[];
+  sensitive_excluded: string[];
+  ignored_not_transferred_count: number;
+}
+
+export interface GitvaultHandoffCaptureOptions {
+  /** The work tree (any directory inside it). */
+  dir: string;
+  env?: GitConfigDiscoveryEnv;
+  /**
+   * The outer commit's message (the Handoff Note). A plain string is used
+   * verbatim (the caller has already composed and secret-scanned it). A
+   * FUNCTION is called with the real capture figures right before the
+   * outer `commit-tree` — the one point at which a Handoff Note's
+   * `capture` block can be filled with true numbers, since the note (and
+   * the commit that carries it) cannot exist before those numbers are
+   * known. Throwing inside it (the client-side secret scan) aborts the
+   * capture before the outer commit is written; the two throwaway parent
+   * commits (index/untracked) are already unreachable garbage at that
+   * point, exactly as if the capture had never run.
+   */
+  message: string | ((stats: GitvaultHandoffCaptureStats) => string);
+  now?: () => Date;
+  /** Re-admit named untracked paths the sensitive denylist would otherwise exclude. */
+  includeSensitive?: string[];
+}
+
+/**
+ * A stash-shaped checkpoint (design D1): one synthetic commit, ALWAYS
+ * created (a clean tree still produces it — there is one shape, one code
+ * path). `oid`'s tree is the worktree state of TRACKED paths only; its
+ * three parents are `base_head_oid` (parent 1), `index_commit_oid` (parent
+ * 2, tree = the real index), and `untracked_commit_oid` (parent 3,
+ * parentless, tree = the admitted untracked set — the EMPTY tree when
+ * nothing untracked survives the denylist). Restore is `git clone` at
+ * `base_head_oid` then `git stash apply --index <oid>`.
+ */
+export interface GitvaultHandoffSnapshot {
+  oid: string;
+  tree_oid: string;
+  base_head_oid: string;
+  index_commit_oid: string;
+  untracked_commit_oid: string;
+  head: GitvaultHeadTarget;
+  top_level: string;
+  /** Tracked paths whose on-disk content differs from `base_head_oid`'s tree (staged, unstaged, or both) and are present in `tree_oid`. */
+  modified_captured: string[];
+  /** Untracked-not-ignored paths admitted into `untracked_commit_oid`'s tree (denylist already applied). */
+  untracked_captured: string[];
+  /** Untracked-not-ignored paths excluded by the sensitive denylist (before any `includeSensitive` re-admission). */
+  sensitive_excluded: string[];
+  /** Ignored (gitignore/exclude) files present on disk — never transferred, counted only. */
+  ignored_not_transferred_count: number;
+  captured: GitvaultCapturedFile[];
+  captured_digest: string;
+  global_excludes_path: string | null;
+}
+
+/**
+ * Capture a stash-shaped handoff checkpoint. Reuses every hardened-execution
+ * guarantee `captureSnapshot` already provides (filter-free hashing, frozen
+ * ignore authority, refusal-by-name for conflicted/linked/submodule/sparse/
+ * shallow/LFS layouts) via {@link inspectRepository} + {@link
+ * detectActiveFilters}; the shape below is the ONLY thing new.
+ */
+export async function captureHandoffSnapshot(options: GitvaultHandoffCaptureOptions): Promise<GitvaultHandoffSnapshot> {
+  const repo = await inspectRepository(options.dir);
+  const top = repo.top_level;
+  if (repo.unmerged_paths.length > 0) {
+    fail("SNAPSHOT_CONFLICTED_INDEX", `the index has unmerged paths; resolve the merge conflict, then hand off`, "capturing handoff snapshot", { paths: repo.unmerged_paths });
+  }
+  if (!repo.head.resolved_oid) {
+    fail("HANDOFF_NO_BASE_COMMIT", "the repository has no commits yet (unborn HEAD) — a handoff needs a base commit to clone from; make an initial commit first", "capturing handoff snapshot", { dir: top });
+  }
+  const baseHeadOid = repo.head.resolved_oid;
+  const headTarget: GitvaultHeadTarget = repo.head.kind === "symref" ? { kind: "symref", ref: repo.head.ref } : { kind: "detached", oid: repo.head.oid };
+
+  const excludes = discoverGlobalExcludes(options.env);
+  const excludeArgs = excludes.path ? ["--exclude-from", excludes.path] : [];
+
+  const trackedList = (await hardenedGit(top, ["ls-files", "-z", "--cached"])).nul();
+  const untrackedList = (await hardenedGit(top, ["ls-files", "-z", "--others", "--exclude-standard", ...excludeArgs])).nul();
+  const ignoredList = (await hardenedGit(top, ["ls-files", "-z", "--others", "--ignored", "--exclude-standard", ...excludeArgs])).nul();
+  await hardenedGit(top, ["update-index", "-q", "--refresh"], { okStatuses: [1] });
+  const modified = (await hardenedGit(top, ["diff-index", "--name-only", "-z", "HEAD", "--"])).nul();
+
+  const includeSensitive = options.includeSensitive ?? [];
+  const sensitiveExcluded: string[] = [];
+  const admittedUntracked: string[] = [];
+  for (const p of untrackedList) {
+    if (isHandoffSensitivePath(p, includeSensitive)) sensitiveExcluded.push(p);
+    else admittedUntracked.push(p);
+  }
+
+  const trackedPresent = statPresentPaths(top, trackedList);
+  const untrackedPresent = statPresentPaths(top, admittedUntracked);
+
+  const oversize = [...trackedPresent, ...untrackedPresent].find((e) => e.size > GITVAULT_MAX_GIT_OBJECT_BYTES);
+  if (oversize) {
+    fail("GIT_OBJECT_TOO_LARGE", `${oversize.path} is ${oversize.size} bytes; the per-object cap is ${GITVAULT_MAX_GIT_OBJECT_BYTES} bytes (200 MiB)`, "capturing handoff snapshot", { path: oversize.path, size_bytes: String(oversize.size), cap_bytes: String(GITVAULT_MAX_GIT_OBJECT_BYTES) });
+  }
+  const allIncludedPaths = [...trackedPresent.map((e) => e.path), ...untrackedPresent.map((e) => e.path)];
+  const active = await detectActiveFilters(top, allIncludedPaths);
+  if (active.length > 0) {
+    const lfs = active.filter((a) => a.filter === "lfs");
+    const code = lfs.length > 0 ? "GITVAULT_LFS_UNSUPPORTED" : "GITVAULT_FILTER_ACTIVE";
+    fail(code, `${active.length} captured path(s) have an active clean/smudge filter (${[...new Set(active.map((a) => a.filter))].join(", ")}); gitvault never runs filters, so the capture is refused by name — first: ${active[0]!.path}`, "capturing handoff snapshot", { paths: active });
+  }
+
+  const trackedEntries = await hashCapturedPaths(top, trackedPresent, true, "capturing handoff snapshot");
+  const untrackedEntries = await hashCapturedPaths(top, untrackedPresent, true, "capturing handoff snapshot");
+
+  const when = Math.floor((options.now ?? (() => new Date()))().getTime() / 1000);
+  const dateEnv = { GIT_AUTHOR_DATE: `${when} +0000`, GIT_COMMITTER_DATE: `${when} +0000` };
+
+  async function buildTree(entries: Entry[]): Promise<string> {
+    const tmp = mkdtempSync(join(tmpdir(), "run402-gitvault-handoff-"));
+    try {
+      const indexFile = join(tmp, "index");
+      const info = entries.map((e) => `${e.mode} ${e.oid}\t${e.path}\n`).join("");
+      await hardenedGit(top, ["update-index", "--index-info"], { input: info, env: { GIT_INDEX_FILE: indexFile } });
+      return (await hardenedGit(top, ["write-tree"], { env: { GIT_INDEX_FILE: indexFile } })).text().trim();
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  }
+
+  // parent 1: base HEAD (already exists — no object to build).
+  // parent 2: the index commit — tree = the REAL index (no synthetic
+  // rebuild needed, its blobs are already objects), parent = base HEAD
+  // (matches real `git stash`'s own index-commit shape, verified against
+  // git 2.43's plumbing output).
+  const indexTreeOid = (await hardenedGit(top, ["write-tree"])).text().trim();
+  const indexCommitOid = (await hardenedGit(
+    top,
+    ["commit-tree", indexTreeOid, "-p", baseHeadOid, "-m", "gitvault handoff: index"],
+    { env: dateEnv },
+  )).text().trim();
+
+  // parent 3: the untracked commit — parentless, tree = admitted untracked
+  // set (the empty tree when nothing survives the denylist).
+  const untrackedTreeOid = await buildTree(untrackedEntries);
+  const untrackedCommitOid = (await hardenedGit(
+    top,
+    ["commit-tree", untrackedTreeOid, "-m", "gitvault handoff: untracked"],
+    { env: dateEnv },
+  )).text().trim();
+
+  const trackedPresentSet = new Set(trackedPresent.map((e) => e.path));
+  const untrackedPresentSet = new Set(untrackedPresent.map((e) => e.path));
+  const modifiedCaptured = modified.filter((p) => trackedPresentSet.has(p));
+  const untrackedCaptured = admittedUntracked.filter((p) => untrackedPresentSet.has(p));
+  const stats: GitvaultHandoffCaptureStats = {
+    base_head_oid: baseHeadOid,
+    branch: headTarget.kind === "symref" ? headTarget.ref.replace(/^refs\/heads\//, "") : null,
+    modified_captured: modifiedCaptured,
+    untracked_captured: untrackedCaptured,
+    sensitive_excluded: [...sensitiveExcluded].sort(),
+    ignored_not_transferred_count: ignoredList.length,
+  };
+  const message = typeof options.message === "function" ? options.message(stats) : options.message;
+
+  // The outer commit: tree = tracked worktree state; three parents; the
+  // Handoff Note as its message. ALWAYS created — a clean tree still
+  // produces this commit (one shape, one code path).
+  const worktreeTreeOid = await buildTree(trackedEntries);
+  const outerOid = (await hardenedGit(
+    top,
+    ["commit-tree", worktreeTreeOid, "-p", baseHeadOid, "-p", indexCommitOid, "-p", untrackedCommitOid, "-m", message],
+    { env: dateEnv },
+  )).text().trim();
+
+  const captured = [...trackedEntries, ...untrackedEntries];
+
+  return {
+    oid: outerOid,
+    tree_oid: worktreeTreeOid,
+    base_head_oid: baseHeadOid,
+    index_commit_oid: indexCommitOid,
+    untracked_commit_oid: untrackedCommitOid,
+    head: headTarget,
+    top_level: top,
+    modified_captured: stats.modified_captured,
+    untracked_captured: stats.untracked_captured,
+    sensitive_excluded: stats.sensitive_excluded,
+    ignored_not_transferred_count: stats.ignored_not_transferred_count,
+    captured,
+    captured_digest: capturedSetDigest(captured),
+    global_excludes_path: excludes.path,
+  };
 }
 
 // ─── Materialization (the deploy lane builds from THIS, never the work tree) ─

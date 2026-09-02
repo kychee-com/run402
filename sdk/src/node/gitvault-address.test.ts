@@ -87,7 +87,7 @@ describe("resolveGitvaultAddress — id-form", () => {
     // resolution pins repo_id too — no `resolved_from` (id-form has no
     // org-slug/name pair to record diagnostically). Since the pin fold, it
     // also records the resolved ids so later resolutions are OFFLINE.
-    assert.deepEqual(await readPinnedGitvaultRepo(repoDir), { repo_id: allocation.repo_id, resolved_from: null, project_id: resolution.project_id, org_id: resolution.org_id });
+    assert.deepEqual(await readPinnedGitvaultRepo(repoDir), { repo_id: allocation.repo_id, resolved_from: null, project_id: resolution.project_id, org_id: resolution.org_id, room: resolution.project_id });
     assert.ok(resolution.project_id && resolution.org_id, "the record's ids ride into the pin");
   });
 
@@ -213,7 +213,7 @@ describe("resolveGitvaultAddress — id-form, keystore consult (gitvault-offline
     // The git-config pin is written on first successful use — exactly where
     // the network-resolved branch writes it — so every LATER invocation on
     // this checkout is a plain pin hit instead of a keystore scan.
-    assert.deepEqual(await readPinnedGitvaultRepo(repoDir), { repo_id: allocation.repo_id, resolved_from: null, project_id: ID_PROJECT, org_id: ID_ORG });
+    assert.deepEqual(await readPinnedGitvaultRepo(repoDir), { repo_id: allocation.repo_id, resolved_from: null, project_id: ID_PROJECT, org_id: ID_ORG, room: ID_PROJECT });
   });
 
   it("a keystore hit needs no repo_dir at all — cwd-independent, e.g. a bare `git ls-remote`", async () => {
@@ -364,7 +364,7 @@ describe("resolveGitvaultAddress — slug-form id-pinning", () => {
     assert.equal(await readPinnedGitvaultRepo(repoDir), null);
     await pinGitvaultRepo(repoDir, "src_deadbeef"); // no third argument — the id-form shape
     const pinned = await readPinnedGitvaultRepo(repoDir);
-    assert.deepEqual(pinned, { repo_id: "src_deadbeef", resolved_from: null, project_id: null, org_id: null });
+    assert.deepEqual(pinned, { repo_id: "src_deadbeef", resolved_from: null, project_id: null, org_id: null, room: null });
   });
 
   it("pinGitvaultRepo / readPinnedGitvaultRepo round-trip directly", async () => {
@@ -372,14 +372,14 @@ describe("resolveGitvaultAddress — slug-form id-pinning", () => {
     assert.equal(await readPinnedGitvaultRepo(repoDir), null);
     await pinGitvaultRepo(repoDir, "src_deadbeef", { org_slug: "acme", repo_name: "widgets" });
     const pinned = await readPinnedGitvaultRepo(repoDir);
-    assert.deepEqual(pinned, { repo_id: "src_deadbeef", resolved_from: { org_slug: "acme", repo_name: "widgets" }, project_id: null, org_id: null });
+    assert.deepEqual(pinned, { repo_id: "src_deadbeef", resolved_from: { org_slug: "acme", repo_name: "widgets" }, project_id: null, org_id: null, room: null });
   });
 
   it("pinGitvaultRepo round-trips the resolved ids (the offline-pin schema)", async () => {
     const repoDir = await makeRepo(root);
     await pinGitvaultRepo(repoDir, "src_deadbeef", { org_slug: "acme", repo_name: "widgets" }, { project_id: "prj_1", org_id: "org_1" });
     const pinned = await readPinnedGitvaultRepo(repoDir);
-    assert.deepEqual(pinned, { repo_id: "src_deadbeef", resolved_from: { org_slug: "acme", repo_name: "widgets" }, project_id: "prj_1", org_id: "org_1" });
+    assert.deepEqual(pinned, { repo_id: "src_deadbeef", resolved_from: { org_slug: "acme", repo_name: "widgets" }, project_id: "prj_1", org_id: "org_1", room: "prj_1" });
   });
 });
 

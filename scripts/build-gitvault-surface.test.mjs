@@ -29,6 +29,8 @@ describe("cli/gitvault-surface.json", () => {
     }
     assert.ok(surface.verbs.includes("repos create"));
     assert.ok(surface.verbs.includes("repos access repair"));
+    assert.ok(surface.verbs.includes("repos handoff"));
+    assert.ok(surface.verbs.includes("repos resume"));
   });
 
   it("derives retired_spellings from RESERVED_SUBCOMMANDS' gitvault entries, mechanically", () => {
@@ -54,9 +56,12 @@ describe("cli/gitvault-surface.json", () => {
     assert.deepEqual(Object.keys(surface.capabilities).sort(), [
       "allocation",
       "byo_live",
+      "handoff_dirty_default",
+      "handoff_live",
       "human_envelope_add_live",
       "mirror_live",
       "recover_live",
+      "remote_schemes",
       "revocation_live",
       "snapshot_dirty_default",
     ]);

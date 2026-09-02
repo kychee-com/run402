@@ -359,9 +359,11 @@ export type {
 } from "./gitvault-creation-journal.js";
 export {
   GITVAULT_DEPLOY_REF,
+  GITVAULT_HANDOFF_SENSITIVE_DENYLIST,
   GITVAULT_MAX_GIT_OBJECT_BYTES,
   GITVAULT_MIN_GIT_VERSION,
   HARDENED_GIT_ARGV_PREFIX,
+  captureHandoffSnapshot,
   captureSnapshot,
   capturedSetDigest,
   capturedSetUnchanged,
@@ -371,11 +373,13 @@ export {
   discoverGlobalExcludes,
   findOversizeObjects,
   gitvaultCommitLine,
+  globMatchesGitPath,
   hardenedGit,
   hardenedGitEnv,
   hasObject,
   inspectRepository,
   isAncestor,
+  isHandoffSensitivePath,
   materializeSnapshot,
   parseGitConfigAsData,
   probeGitVersion,
@@ -387,6 +391,9 @@ export type {
   GitInvocationRepo,
   GitvaultCapturedFile,
   GitvaultCapturedSetDrift,
+  GitvaultHandoffCaptureOptions,
+  GitvaultHandoffCaptureStats,
+  GitvaultHandoffSnapshot,
   GitvaultRepositoryInspection,
   GitvaultRepositoryRefusalCode,
   GitvaultSnapshot,
@@ -515,6 +522,35 @@ export type {
   GitvaultOverrideJournal,
   GitvaultSnapshotMovedDetails,
 } from "./gitvault-deploy.js";
+// kygit-handoff (design D3) — the Handoff Key: assemble/parse, HKDF
+// derivations, the sealed envelope, the note schema + client-side secret
+// scan. `Gitvault.handoff`/`.resume` delegate to this.
+export {
+  HANDOFF_ENVELOPE_KIND,
+  HANDOFF_KEY_PREFIXES,
+  assembleHandoffKey,
+  assertHandoffNoteHasNoSecret,
+  deriveHandoffSecrets,
+  isKygitHandoffNote,
+  openHandoffEnvelope,
+  parseHandoffKey,
+  scanHandoffNoteForSecrets,
+  sealHandoffEnvelope,
+  uuidToBytes,
+} from "./gitvault-handoff.js";
+export type {
+  HandoffEnvelopePayload,
+  HandoffKeyParts,
+  HandoffKeyPrefixEntry,
+  HandoffNoteSecretFinding,
+  HandoffSecrets,
+  KygitHandoffNote,
+  KygitHandoffNoteCapture,
+} from "./gitvault-handoff.js";
+// kygit-handoff (design D1) — restore: `git clone` at the base then
+// `git stash apply --index <oid>`. `Gitvault.resume` delegates to this.
+export { applyHandoffCheckpoint, cloneGitvaultRemote, readGitCommitMessage, resolveResumeTargetDir } from "./gitvault-restore.js";
+export type { GitvaultHandoffRestoreOptions, GitvaultHandoffRestoreResult } from "./gitvault-restore.js";
 // gitvault D2 (repo-first-onramp task 2.2) — lazy allocation on first push;
 // the orchestration `Gitvault.openOrCreate` delegates to.
 export { openOrCreateGitvault } from "./gitvault-open-or-create.js";

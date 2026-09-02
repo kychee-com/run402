@@ -41,7 +41,14 @@ import {
   GITVAULT_TERMINAL_LOSS_DOCTOR_TEXT,
   GITVAULT_TERMINAL_LOSS_STATEMENT,
   GITVAULT_UNMIRRORED_FINDING_STATEMENT,
+  bytesToHex,
+  hexToBytes,
+  parseGitvaultStrict,
+  randomBytes,
+  sha256Hex,
+  verifyGitvaultObject,
 } from "./gitvault.crypto.js";
+import type { NextAction } from "../errors.js";
 import type { GitvaultCaptureReceipt, GitvaultHeadsListingPage, GitvaultHeadsListingRequest, GitvaultHeadTarget, GitvaultOpenReceipt, GitvaultRecipientConfirmationReceipt, GitvaultRecoveryReceipt, GitvaultRotationReason } from "./gitvault.types.js";
 import type {
   GitvaultCompactionGrant,
@@ -79,6 +86,8 @@ type RecoverModule = typeof import("../node/gitvault-recover.js");
 type DegradedReadModule = typeof import("../node/gitvault-degraded-read.js");
 type ByoConfigModule = typeof import("../node/gitvault-byo-config.js");
 type ByoProbeModule = typeof import("../node/gitvault-byo-probe.js");
+type HandoffModule = typeof import("../node/gitvault-handoff.js");
+type RestoreModule = typeof import("../node/gitvault-restore.js");
 
 /** A keystore path, or `null` when there is no id to derive it from (or it is malformed). */
 function safePath(derive: () => string, repoId: string | null): string | null {
@@ -105,6 +114,23 @@ async function nodeOnly<T>(load: () => Promise<T>, verb: string): Promise<T> {
 /** Byte counts in the refusal text read as MiB — the unit an operator's tier is quoted in. */
 function mib(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
+}
+
+/**
+ * A client-generated handoff id (RFC 4122 v4), minted BEFORE the mint call
+ * (kygit-handoff design D3): `auth_secret`/`wrap_key` derive off it, so it
+ * cannot be gateway-assigned the way `internal.gitvault_claims.id` alone
+ * would suggest — this SDK supplies it, mirroring the SAME
+ * client_creation_id/client_open_id convention this protocol family
+ * already uses elsewhere for idempotent creation. `handoff()` refuses if
+ * the gateway's minted `handoff_id` disagrees.
+ */
+function randomHandoffUuid(): string {
+  const b = randomBytes(16);
+  b[6] = ((b[6] ?? 0) & 0x0f) | 0x40;
+  b[8] = ((b[8] ?? 0) & 0x3f) | 0x80;
+  const hex = bytesToHex(b);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 // ─── Public result shapes (snake_case on the wire, per docs/style.md) ─────────
@@ -432,6 +458,60 @@ export interface GitvaultReconcileEnvelopeRecipientsPushResult {
   outcome: "reconciled" | "skipped_error";
   result?: GitvaultReconcileEnvelopeRecipientsResult;
   error?: string;
+}
+
+// ─── Handoff / resume result shapes (kygit-handoff design D10) ──────────────
+
+/** {@link Gitvault.handoff}'s result. `handoff_key` (the assembled `kgh1_…`) is returned exactly ONCE. */
+export interface GitvaultHandoffMintResult {
+  handoff_key: string;
+  handoff_id: string;
+  kind: "handoff";
+  minted_role: string;
+  expires_at: string;
+  vault: { vault_id: string; address?: string | null; organization_id: string; project_id: string };
+  checkpoint: { generation: string; snapshot_oid_hmac: string };
+  capture: {
+    modified_captured: number;
+    untracked_captured: number;
+    sensitive_excluded: string[];
+    ignored_not_transferred_count: number;
+  };
+  /** The full local capture result, for a caller that wants more than the summarized `capture` block. */
+  snapshot: import("../node/gitvault-snapshot.js").GitvaultHandoffSnapshot;
+  warnings: { code: string; message: string }[];
+  next_actions: NextAction[];
+}
+
+export interface GitvaultHandoffListEntry {
+  handoff_id: string;
+  kind: string;
+  state: "issued" | "claimed" | "expired" | "revoked";
+  minted_role: string;
+  minted_by: string;
+  expires_at: string;
+  claimed_by?: string | null;
+}
+
+export interface GitvaultHandoffListResult {
+  handoffs: GitvaultHandoffListEntry[];
+}
+
+/** {@link Gitvault.resume}'s result. */
+export interface GitvaultHandoffResumeResult {
+  handoff_id: string;
+  kind: "handoff";
+  deduplicated: boolean;
+  /** The Handoff Note, parsed — `null` when the commit message could not be read/parsed (still restored either way). */
+  note: import("../node/gitvault-handoff.js").KygitHandoffNote | null;
+  /** The note's raw commit-message text, for a caller that wants Markdown rendering over the parsed shape. */
+  note_raw: string | null;
+  restored: { dir: string; branch: string; base_head_oid: string; stash_oid: string };
+  membership: { organization_id: string; role: string; status: string };
+  members: unknown[];
+  expires_at: string;
+  reconcile_recipients: GitvaultReconcileEnvelopeRecipientsPushResult;
+  next_actions: NextAction[];
 }
 
 /** What {@link Gitvault.openOrCreate} did. `created` is `null` exactly when `found` is `true`. */
@@ -1932,6 +2012,293 @@ export class Gitvault {
     // `push()` throw, same non-blocking contract as the mirror hook above.
     const reconcileRecipients = await this.#tryReconcileEnvelopeRecipients(handle.vault);
     return { ...result, snapshot, gitvault_commit: snapshot.oid, gitvault_commit_line: line, mirror_push: mirrorPush, byo_chain_copy: byoChainCopy, reconcile_recipients: reconcileRecipients };
+  }
+
+  // ── Handoff / resume (kygit-handoff design D1-D10) ─────────────────────────
+
+  /**
+   * Mint a Handoff Key: capture a stash-shaped checkpoint (design D1),
+   * push it (retained, on no branch — {@link GITVAULT_DEPLOY_REF} carries
+   * it exactly like an ordinary `push()`, never `refs/heads/*`), seal the
+   * vault's current epoch key under a fresh `wrap_key`, and mint through
+   * the gateway. The assembled `kgh1_…` key is returned exactly ONCE —
+   * nothing here or downstream persists it.
+   *
+   * `options.note` omits `capture` — this method fills it with the real
+   * capture figures and runs the client-side secret scan BEFORE the
+   * handoff commit is written (design D10: no override flag).
+   */
+  async handoff(
+    options: GitvaultVaultHandleOptions & {
+      address?: GitvaultRemoteAddress;
+      role?: string;
+      ttlSeconds?: number;
+      note: Omit<import("../node/gitvault-handoff.js").KygitHandoffNote, "capture">;
+      includeSensitive?: string[];
+      onCommitLine?: (line: string) => void;
+    },
+  ): Promise<GitvaultHandoffMintResult> {
+    const [{ deployRefTransaction }, { captureHandoffSnapshot, snapshotCommitment }, ho] = await Promise.all([this.#publication(), this.#snapshot(), this.#handoff()]);
+    const { assembleHandoffKey, deriveHandoffSecrets, sealHandoffEnvelope, assertHandoffNoteHasNoSecret, HANDOFF_ENVELOPE_KIND } = ho;
+
+    const handle = options.address ? (await this.resolveOrCreateAddress({ ...options, address: options.address, allow_create: false })).handle : await this.open(options);
+    const repoDir = options.repo_dir ?? process.cwd();
+
+    const repoFile = handle.keystore.readRepo(handle.repo_id);
+    if (!repoFile) {
+      throw new LocalError(
+        `no local key material for ${handle.repo_id} — this principal is not yet a member with a materialized envelope (push once first)`,
+        "minting a handoff",
+        { code: "GITVAULT_VAULT_UNRESOLVED" },
+      );
+    }
+    const kRepo = hexToBytes(repoFile.k_repo_hex);
+
+    const snapshot = await captureHandoffSnapshot({
+      dir: repoDir,
+      ...(options.includeSensitive !== undefined ? { includeSensitive: options.includeSensitive } : {}),
+      message: (stats) => {
+        const note: import("../node/gitvault-handoff.js").KygitHandoffNote = {
+          ...options.note,
+          capture: {
+            base_head: stats.base_head_oid,
+            branch: stats.branch,
+            modified_captured: stats.modified_captured.length,
+            untracked_captured: stats.untracked_captured.length,
+            sensitive_excluded: stats.sensitive_excluded,
+            ignored_not_transferred_count: stats.ignored_not_transferred_count,
+          },
+        };
+        assertHandoffNoteHasNoSecret(note);
+        return JSON.stringify(note);
+      },
+    });
+    options.onCommitLine?.(`handoff checkpoint ${snapshot.oid}`);
+
+    const materialized = await handle.vault.materialize();
+    const pushResult = await handle.vault.push({
+      transaction: deployRefTransaction(materialized.refs, snapshot.oid),
+      head_target: snapshot.head,
+      protocol_refs: "allow",
+    }).catch((e) => { throw this.#enrichEpochRotationRequired(e, handle.repo_id); });
+
+    const snapshotOidHmac = snapshotCommitment(kRepo, handle.repo_id, repoFile.epoch, snapshot.oid);
+
+    // Client-generated handoff_id (mirrors this protocol family's own
+    // client_creation_id/client_open_id convention): needed to derive
+    // auth_secret/wrap_key and seal the envelope BEFORE the mint call, so
+    // it cannot be gateway-assigned. The gateway's own `handoff_id` in the
+    // response is authoritative; a disagreement (an id collision the
+    // gateway resolved differently) is refused rather than silently
+    // trusted, since a mismatched id would make the recipient's derived
+    // secrets useless anyway.
+    const handoffId = randomHandoffUuid();
+    const { key, handoff_id_bytes, master_secret } = assembleHandoffKey(handoffId, randomBytes(32));
+    const secrets = deriveHandoffSecrets(handoff_id_bytes, master_secret);
+    const sealed = sealHandoffEnvelope(handoff_id_bytes, secrets.wrap_key, {
+      v: 1,
+      kind: "handoff",
+      repo_id: handle.repo_id,
+      epoch: repoFile.epoch,
+      k_e_hex: repoFile.k_repo_hex,
+      checkpoint: { generation: pushResult.generation, commit_oid: snapshot.oid },
+      note_schema: "kygit.handoff-note.v1",
+    });
+
+    const response = await this.#client.request<{
+      handoff_id: string;
+      kind: "handoff";
+      minted_role: string;
+      expires_at: string;
+      vault: { vault_id: string; address?: string | null; organization_id: string; project_id: string };
+      checkpoint: { generation: string; snapshot_oid_hmac: string };
+      warnings?: { code: string; message: string }[];
+      next_actions?: NextAction[];
+    }>(`/gitvault/v1/vaults/${encodeURIComponent(handle.repo_id)}/handoffs`, {
+      method: "POST",
+      body: {
+        handoff_id: handoffId,
+        ...(options.role !== undefined ? { role: options.role } : {}),
+        ...(options.ttlSeconds !== undefined ? { expires_in_seconds: options.ttlSeconds } : {}),
+        checkpoint: { generation: pushResult.generation, snapshot_oid_hmac: snapshotOidHmac },
+        sealed_envelope: sealed.sealed_envelope,
+        envelope_kind: sealed.envelope_kind ?? HANDOFF_ENVELOPE_KIND,
+        auth_hash: secrets.auth_hash_hex,
+      },
+      context: "minting a handoff key",
+    });
+    if (response.handoff_id !== handoffId) {
+      throw new LocalError(
+        `the gateway minted a different handoff_id (${response.handoff_id}) than requested (${handoffId}) — the assembled key would not match; retry`,
+        "minting a handoff key",
+        { code: "HANDOFF_ID_MISMATCH", details: { requested: handoffId, minted: response.handoff_id } },
+      );
+    }
+
+    return {
+      handoff_key: key,
+      handoff_id: response.handoff_id,
+      kind: response.kind,
+      minted_role: response.minted_role,
+      expires_at: response.expires_at,
+      vault: response.vault,
+      checkpoint: response.checkpoint,
+      capture: {
+        modified_captured: snapshot.modified_captured.length,
+        untracked_captured: snapshot.untracked_captured.length,
+        sensitive_excluded: snapshot.sensitive_excluded,
+        ignored_not_transferred_count: snapshot.ignored_not_transferred_count,
+      },
+      snapshot,
+      warnings: response.warnings ?? [],
+      next_actions: response.next_actions ?? [],
+    };
+  }
+
+  /** List a vault's handoffs (ids, kind, state, role, expiry, claimed_by — never the hash or envelope). */
+  async listHandoffs(options: GitvaultVaultHandleOptions): Promise<GitvaultHandoffListResult> {
+    const repoId = await this.#resolveRepoId(options);
+    return this.#client.request<GitvaultHandoffListResult>(`/gitvault/v1/vaults/${encodeURIComponent(repoId)}/handoffs`, { context: "listing handoffs" });
+  }
+
+  /** Revoke a handoff (idempotent — a second revoke of an already-revoked/claimed/expired row still answers `200`). */
+  async revokeHandoff(handoffId: string, options: GitvaultVaultHandleOptions): Promise<{ handoff_id: string; state: string }> {
+    const repoId = await this.#resolveRepoId(options);
+    return this.#client.request<{ handoff_id: string; state: string }>(`/gitvault/v1/vaults/${encodeURIComponent(repoId)}/handoffs/${encodeURIComponent(handoffId)}`, { method: "DELETE", context: "revoking a handoff" });
+  }
+
+  /**
+   * Resume a Handoff Key: parse → claim (SIWX wallet, no payment; the
+   * default Node credentials provider creates the allowance file on a
+   * fresh machine automatically — see `createLazyPaidFetch`) → open the
+   * sealed envelope → write the repo file to the keystore BEFORE touching
+   * disk → clone at the base HEAD → `git stash apply --index` → local
+   * git-config pins only → the session-start reconcile so a principal
+   * envelope supersedes the bearer one.
+   */
+  async resume(options: { key: string; to?: string; keystore_root?: string; onLine?: (line: string) => void }): Promise<GitvaultHandoffResumeResult> {
+    const [ho, { GitvaultKeystore }, { createGitvaultHttpTransport }, restore] = await Promise.all([this.#handoff(), this.#keystore(), this.#publication(), this.#restore()]);
+    const { parseHandoffKey, deriveHandoffSecrets, openHandoffEnvelope } = ho;
+    const { cloneGitvaultRemote, applyHandoffCheckpoint, resolveResumeTargetDir, readGitCommitMessage } = restore;
+
+    const parsed = parseHandoffKey(options.key);
+    const secrets = deriveHandoffSecrets(parsed.handoff_id_bytes, parsed.master_secret);
+
+    const claim = await this.#client.request<{
+      handoff_id: string;
+      kind: "handoff";
+      deduplicated: boolean;
+      sealed_envelope: string;
+      envelope_kind: string;
+      vault: { vault_id: string; address?: string | null; organization_id: string; project_id: string };
+      checkpoint: { generation: string; snapshot_oid_hmac: string };
+      membership: { organization_id: string; role: string; status: string };
+      members?: unknown[];
+      expires_at: string;
+      next_actions?: NextAction[];
+    }>(`/gitvault/v1/handoffs/${encodeURIComponent(parsed.handoff_id)}/claim`, {
+      method: "POST",
+      body: { auth_secret: bytesToHex(secrets.auth_secret) },
+      context: "claiming a handoff key",
+    });
+
+    const payload = openHandoffEnvelope(parsed.handoff_id_bytes, secrets.wrap_key, claim.sealed_envelope, claim.envelope_kind);
+    if (payload.repo_id !== claim.vault.vault_id) {
+      throw new LocalError("the opened envelope's repo_id does not match the claim response's vault — refusing", "resuming a handoff", { code: "HANDOFF_ENVELOPE_INVALID" });
+    }
+
+    const keystore = new GitvaultKeystore(options.keystore_root !== undefined ? { rootDir: options.keystore_root } : {});
+    keystore.ensureIdentity();
+
+    // Genesis must be pinned before ANY materialize call can succeed
+    // (`GitvaultVault.genesis()` requires a keystore repo file — this is
+    // the one read that happens BEFORE one exists, via the transport
+    // directly, mirroring `restoreRepoFromEnvelope`'s own signature check).
+    const transport = createGitvaultHttpTransport(this.#client);
+    const genesisBytes = await transport.getGenesis({ repo_id: claim.vault.vault_id });
+    if (!genesisBytes) {
+      throw new LocalError("the vault has no admitted genesis", "resuming a handoff", { code: "CHAIN_BROKEN", details: { repo_id: claim.vault.vault_id } });
+    }
+    const genesis = parseGitvaultStrict(new TextDecoder().decode(genesisBytes)) as { creator_signing_pubkey: string };
+    if (!verifyGitvaultObject(genesis as unknown as Parameters<typeof verifyGitvaultObject>[0], genesis.creator_signing_pubkey)) {
+      throw new LocalError("vault_genesis signature does not verify", "resuming a handoff", { code: "GITVAULT_SIGNATURE_INVALID", details: { repo_id: claim.vault.vault_id } });
+    }
+    const genesisSha = sha256Hex(genesisBytes);
+
+    // Write the repo file to the keystore BEFORE touching disk (design D10).
+    keystore.saveRepo({
+      repo_id: claim.vault.vault_id,
+      org_id: claim.vault.organization_id,
+      project_id: claim.vault.project_id ?? "",
+      k_repo_hex: payload.k_e_hex,
+      epoch: payload.epoch,
+      epoch_keys: { [payload.epoch]: payload.k_e_hex },
+      genesis_sha256: genesisSha,
+      head_pin: null,
+      last_ref_transaction: null,
+      provenance: "restored_from_handoff",
+    });
+
+    const targetDir = await resolveResumeTargetDir(options.to, claim.vault.address, claim.vault.vault_id);
+    options.onLine?.(`resuming into ${targetDir}`);
+    const remoteUrl = gitvaultRemoteUrl(claim.vault.organization_id, claim.vault.project_id);
+    await cloneGitvaultRemote(remoteUrl, targetDir);
+
+    const restored = await applyHandoffCheckpoint({ dir: targetDir, stash_oid: payload.checkpoint.commit_oid });
+
+    // Local-only pins (design D10) — never a worktree file, never the
+    // global active project. Reuses the SAME pin-writer every other
+    // gitvault resolution path uses, which also writes `r402.room`.
+    const { pinGitvaultRepo } = await this.#address();
+    const addressParts = claim.vault.address ? claim.vault.address.split("/") : null;
+    await pinGitvaultRepo(
+      targetDir,
+      claim.vault.vault_id,
+      addressParts && addressParts.length === 2 ? { org_slug: addressParts[0]!, repo_name: addressParts[1]! } : undefined,
+      { project_id: claim.vault.project_id, org_id: claim.vault.organization_id },
+    );
+
+    // The bearer envelope is superseded within minutes of use — run the
+    // same reconcile `push()` runs, best-effort (never a `resume()` throw).
+    const handle = await this.open({ repo_id: claim.vault.vault_id, repo_dir: targetDir, keystore_root: options.keystore_root });
+    const reconcile = await this.#tryReconcileEnvelopeRecipients(handle.vault);
+
+    const senderIsOwner = claim.membership.role === "owner";
+    const nextActions: NextAction[] = [...(claim.next_actions ?? [])];
+    if (claim.kind === "handoff" && senderIsOwner && !nextActions.some((a) => a.type === "remove_member")) {
+      nextActions.push({
+        type: "remove_member",
+        why: "The previous agent is still an owner; if its environment is gone for good, remove it.",
+        destructive: true,
+        requires_approval: true,
+      });
+    }
+    if (!nextActions.some((a) => a.type === "push_repo")) {
+      nextActions.push({ type: "push_repo", command: "git push origin main", why: "Publish continued work back to the vault." });
+    }
+
+    let note: import("../node/gitvault-handoff.js").KygitHandoffNote | null = null;
+    let noteRaw: string | null = null;
+    try {
+      noteRaw = (await readGitCommitMessage(targetDir, payload.checkpoint.commit_oid)) ?? null;
+      if (noteRaw) note = JSON.parse(noteRaw) as import("../node/gitvault-handoff.js").KygitHandoffNote;
+    } catch {
+      note = null;
+    }
+
+    return {
+      handoff_id: claim.handoff_id,
+      kind: claim.kind,
+      deduplicated: claim.deduplicated,
+      note,
+      note_raw: noteRaw,
+      restored: { dir: targetDir, branch: restored.branch, base_head_oid: restored.base_head_oid, stash_oid: restored.stash_oid },
+      membership: claim.membership,
+      members: claim.members ?? [],
+      expires_at: claim.expires_at,
+      reconcile_recipients: reconcile,
+      next_actions: nextActions,
+    };
   }
 
   /** Best-effort dual-push: catches EVERYTHING, including the lazy module import itself, so a mirror problem can never surface as a `push()` throw. */
@@ -3437,6 +3804,12 @@ export class Gitvault {
   #recovery(): Promise<RecoverModule> {
     return nodeOnly(() => import("../node/gitvault-recover.js"), "recover");
   }
+  #handoff(): Promise<HandoffModule> {
+    return nodeOnly(() => import("../node/gitvault-handoff.js"), "handoff");
+  }
+  #restore(): Promise<RestoreModule> {
+    return nodeOnly(() => import("../node/gitvault-restore.js"), "resume");
+  }
   #degradedRead(): Promise<DegradedReadModule> {
     return nodeOnly(() => import("../node/gitvault-degraded-read.js"), "list");
   }
@@ -3638,21 +4011,36 @@ export function gitvaultDegradedReadNote(source: GitvaultDegradedReadSource): st
   return `degraded read from ${source.destination}: ${GITVAULT_DEGRADED_READ_STATEMENT}`;
 }
 
-/** `run402::<org_id>/<project_id>` — what `git-remote-run402` resolves. */
+/**
+ * The remote door (kygit-handoff design D8): `"run402"` (the canonical,
+ * plumbing spelling — accepted forever) or `"kygit"` (what the
+ * `@kychee/kygit` shim renders once it sets `RUN402_REMOTE_SCHEME=kygit`
+ * before exec). The gateway never sees this — `address` and every registry
+ * `next_actions` command stay `run402::`; only client-side RENDERING reads
+ * it. Any other value falls back to `"run402"` rather than emitting an
+ * unparseable scheme.
+ */
+export function gitvaultRemoteScheme(): "run402" | "kygit" {
+  return typeof process !== "undefined" && process.env?.RUN402_REMOTE_SCHEME === "kygit" ? "kygit" : "run402";
+}
+
+/** `<door>::<org_id>/<project_id>` — what `git-remote-run402`/`git-remote-kygit` resolves. */
 export function gitvaultRemoteUrl(orgId: string, projectId: string): string {
-  return `run402::${orgId}/${projectId}`;
+  return `${gitvaultRemoteScheme()}::${orgId}/${projectId}`;
 }
 
 /**
- * `run402::<org-slug>/<repo-name>` — the address-form remote builder
+ * `<door>::<org-slug>/<repo-name>` — the address-form remote builder
  * (repo-first-onramp task 4, design D6). Same string shape as
  * {@link gitvaultRemoteUrl} (the wire slot admits both forms undiscriminated
  * — see {@link gitvaultRemoteAddressForm}); kept as its own named function so
  * a call site states which form it means rather than reusing the id-form
- * builder for a semantically different pair of arguments.
+ * builder for a semantically different pair of arguments. Rendered by
+ * {@link gitvaultRemoteScheme} (kygit-handoff design D8) — `run402 repos
+ * create` renders `run402::`, `kygit create` renders `kygit::`.
  */
 export function gitvaultRemoteUrlForRepo(orgSlug: string, repoName: string): string {
-  return `run402::${orgSlug}/${repoName}`;
+  return `${gitvaultRemoteScheme()}::${orgSlug}/${repoName}`;
 }
 
 /** What {@link parseGitvaultRemoteUrl} returns — the two undiscriminated address halves. */
@@ -3661,9 +4049,13 @@ export interface GitvaultRemoteAddress {
   project_id: string;
 }
 
-/** Parse a `run402::<org>/<project>` remote URL. `null` when it is not one. */
+/**
+ * Parse a `run402::<org>/<project>` OR `kygit::<org>/<project>` remote URL
+ * (kygit-handoff design D8) into ONE canonical, scheme-less address — the
+ * door never changes resolution, only rendering. `null` when it is neither.
+ */
 export function parseGitvaultRemoteUrl(url: string): GitvaultRemoteAddress | null {
-  const m = /^run402::([^/]+)\/(.+)$/.exec(url.trim());
+  const m = /^(?:run402|kygit)::([^/]+)\/(.+)$/.exec(url.trim());
   if (!m) return null;
   return { org_id: m[1]!, project_id: m[2]! };
 }

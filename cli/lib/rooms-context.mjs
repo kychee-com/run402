@@ -36,6 +36,18 @@ import { describeRejectedValue } from "../core-dist/redact.js";
 export const ROOM_ENV = "RUN402_ROOM";
 export const PRESENCE_ENV = "RUN402_PRESENCE_ID";
 
+/** `r402.room` from `cwd`'s LOCAL git config (kygit-handoff design D10) — best-effort, `null` on any absence or failure. */
+async function readGitvaultPinnedRoom(cwd) {
+  try {
+    const { readPinnedGitvaultRepo } = await import("#sdk/node");
+    const pinned = await readPinnedGitvaultRepo(cwd);
+    const room = typeof pinned?.room === "string" ? pinned.room.trim() : "";
+    return room.length > 0 ? room : null;
+  } catch {
+    return null;
+  }
+}
+
 const STATE_DIR = ".run402";
 const STATE_FILE = "messaging.json";
 
@@ -78,8 +90,12 @@ export async function resolveRoom({ org, room, project } = {}) {
   // 3. A room key without an org: the org resolves through the shared chain.
   //    (`--room` alone works whenever the org resolves, and fails with
   //    ORG_REQUIRED — naming every way to supply one — when it does not.)
+  //    kygit-handoff design D10: `r402.room` in this checkout's LOCAL git
+  //    config — written by `resume` and every other gitvault pin site — is
+  //    the LAST room-key source before falling to the project default,
+  //    below the binding file's own `room` key.
   const bindingRoom = findBindingKey(process.cwd(), "room");
-  const roomKey = room ?? bindingRoom?.value ?? null;
+  const roomKey = room ?? bindingRoom?.value ?? (await readGitvaultPinnedRoom(process.cwd()));
   if (roomKey) {
     const resolved = await resolveOrg({ org, project }, { cmd: "rooms" });
     return {

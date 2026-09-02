@@ -3,20 +3,21 @@
 The encrypted Git remote's command — [kygit.com](https://kygit.com).
 
 ```
-npm i -g run402 @kychee/kygit
+npm i -g @kychee/kygit
 kygit create              # provision the vault, scaffold the remote
 git push origin main      # encrypted on your machine, published as a signed head
 ```
 
-**Install both, in that one command.** `git push` is done by plain git, and
-git reaches a `run402::` remote by spawning `git-remote-run402` **from
-PATH** — a bin of the `run402` package. npm links bins only for the
-package you install directly, never for its dependencies, so
-`npm i -g @kychee/kygit` on its own leaves the helper on disk but off
-PATH and the push fails with `Unable to find remote helper for 'run402'`.
-kygit cannot declare that bin itself: npm refuses a global install with
-`EEXIST` when a second package claims an already-linked bin name, which
-would break installing kygit for everyone who already has run402.
+**One package, one install.** `kygit create` scaffolds the remote as
+`kygit::<org>/<name>` — a git remote scheme this package owns end to end,
+including its own remote helper (`git-remote-kygit`, a second bin this
+package installs alongside `kygit`). `git push`/`git fetch` are plain git;
+git finds `kygit::` remotes by spawning `git-remote-kygit` from PATH, and
+npm links every bin of the package you install *directly* — so
+`npm i -g @kychee/kygit` alone is enough. (The underlying vault is the same
+`run402 repos` substrate either way: a checkout made with `kygit create`
+and one made with `run402 repos create` push to the same place, one
+spelled `kygit::`, the other `run402::` — see "What this package is" below.)
 
 (The package is scoped because npm's typosquat guard reserves the bare
 name — it is one letter from `degit`. The command you get is still
@@ -41,9 +42,13 @@ name on the box matches the name on the site, and nothing else:
   drift from the canonical CLI. New client verbs work here without a
   `kygit` release.
 - Anything outside the repo family is refused with the exact `run402 …`
-  spelling to use instead. There is no second semantic CLI, no separate
-  API, and no `kygit::` remote scheme — remotes are the canonical
-  `run402::` addresses.
+  spelling to use instead. There is no second semantic CLI and no separate
+  API — only a second remote scheme.
+- `kygit` renders every remote it scaffolds or prints as `kygit::<org>/<name>`;
+  `run402 repos` renders the same address as `run402::<org>/<name>`. Both
+  spellings resolve the same vault, and neither tool ever rewrites a remote
+  the other one wrote — pick whichever spelling you want to see in
+  `git remote -v`.
 
 | kygit | canonical |
 |---|---|
@@ -51,6 +56,8 @@ name on the box matches the name on the site, and nothing else:
 | `kygit view` | `run402 repos view` |
 | `kygit mirror s3://your-bucket` | `run402 repos mirror s3://your-bucket` |
 | `kygit recover ./mirror` | `run402 repos recover ./mirror` |
+| `kygit handoff` | `run402 repos handoff` |
+| `kygit resume kgh1_…` | `run402 repos resume kgh1_…` |
 | `kygit login` | `run402 operator login --loopback` |
 
 Agents: your canonical reference is

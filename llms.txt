@@ -30,7 +30,7 @@ A platform that an AI agent can provision, operate, and pay for through its own 
 - KMS-backed Ethereum signing — provision signers where private keys never leave AWS KMS
 - A hosted Git remote, encrypted before it leaves the machine — Run402 cannot decrypt your gitvault or repository history. The why, plainly: a host that can READ private repositories can index them, train models on them, or hand them to someone who will; GitVault is the remote that structurally cannot — which also makes it the natural encrypted SECOND remote beside a GitHub/GitLab primary (keep your workflow, add one remote). Vault-only is a first-class, zero-deploy-ceremony track: `run402 init` once, then plain `git push origin main` (or `run402 repos create <name>` in one call) hosts encrypted source history with no app, no manifest, nothing deployed.
 
-Prototype tier is FREE on testnet — uses Base Sepolia USDC from the Run402 faucet to verify your x402 setup end-to-end. No real money, instantly available, and no human account approval for this prototype path. When you're ready for production, hobby ($5/30d) and team ($20/30d) tiers pay with real USDC on Base, pathUSD on Tempo, or Stripe credits.
+Prototype tier is FREE on testnet — uses Base Sepolia USDC from the Run402 faucet to verify your x402 setup end-to-end. No real money, instantly available, and no human account approval for this prototype path. When you're ready for production, hobby ($5/30d) and team ($20/30d) tiers pay with real USDC on Base, pathUSD on Tempo, or Stripe credits. The prototype tier never expires: one testnet payment, once, and 1 GB of encrypted git vaults (unlimited repos) comes with it.
 
 ## Vision — people and agents as first-class participants
 
@@ -71,7 +71,7 @@ A fifth distribution — the OpenClaw skill — is a script-based wrapper that r
 
 | Tier | Cost | Lease | Storage | API calls | Functions |
 |---|---|---|---|---|---|
-| Prototype | FREE (testnet USDC) | 7 days | 250 MB | 500K | 5 |
+| Prototype | FREE (testnet USDC) | perpetual (bought once) | 250 MB | 500K | 5 |
 | Hobby | $5 | 30 days | 1 GB | 5M | 25 |
 | Team | $20 | 30 days | 10 GB | 50M | 100 |
 
@@ -113,7 +113,7 @@ You need a wallet with USDC on Base (real or testnet) to pay Run402. Three paths
   // SAVE the private key securely. Then `run402 init` reads it.
   ```
 
-For testnet, `run402 allowance fund` requests 0.25 USDC from the Base Sepolia faucet — enough for two prototype tier subscriptions.
+For testnet, `run402 allowance fund` requests 0.25 USDC from the Base Sepolia faucet — enough for the one-time prototype tier purchase, twice over.
 
 ## Two payment rails — same wallet key
 

@@ -192,12 +192,14 @@ describe("help / version / resolution", () => {
   });
 });
 
-describe("findRemoteHelper — git's own lookup for the run402:: helper", () => {
-  // git spawns `git-remote-run402` FROM PATH; nothing else finds it. These
+describe("findRemoteHelper — git's own lookup for the kygit:: helper (design D8)", () => {
+  // git spawns `git-remote-kygit` FROM PATH; nothing else finds it. These
   // drive the probe off-platform, so the Windows shape is covered from CI on
-  // Linux and from a mac (kychee-com/run402#577 was found on Windows).
-  // Windows path comparison is case-insensitive (NTFS), which is why a probe
-  // for git-remote-run402.CMD finds npm's lowercase .cmd shim on a real box.
+  // Linux and from a mac (kychee-com/run402#577, the transitive-dependency
+  // bin-linking gap this file's helper name change closes, was found on
+  // Windows). Windows path comparison is case-insensitive (NTFS), which is
+  // why a probe for git-remote-kygit.CMD finds npm's lowercase .cmd shim on
+  // a real box.
   const winHas = (probe, actual) => probe.toLowerCase() === actual.toLowerCase();
 
   const posix = (dirs, present) => ({
@@ -208,12 +210,12 @@ describe("findRemoteHelper — git's own lookup for the run402:: helper", () => 
 
   it("finds the helper on a posix PATH", () => {
     assert.equal(
-      findRemoteHelper(posix(["/a/bin", "/usr/local/bin"], ["/usr/local/bin/git-remote-run402"])),
-      "/usr/local/bin/git-remote-run402",
+      findRemoteHelper(posix(["/a/bin", "/usr/local/bin"], ["/usr/local/bin/git-remote-kygit"])),
+      "/usr/local/bin/git-remote-kygit",
     );
   });
 
-  it("returns null when the helper is nowhere on PATH (the #577 install)", () => {
+  it("returns null when the helper is nowhere on PATH (a broken/partial install)", () => {
     assert.equal(findRemoteHelper(posix(["/a/bin", "/usr/local/bin"], ["/usr/local/bin/kygit"])), null);
   });
 
@@ -223,33 +225,33 @@ describe("findRemoteHelper — git's own lookup for the run402:: helper", () => 
   });
 
   it("resolves the Windows .cmd shim through PATHEXT", () => {
-    // npm installs the helper as git-remote-run402.cmd on Windows; probing the
+    // npm installs the helper as git-remote-kygit.cmd on Windows; probing the
     // bare name alone would report a false negative on the exact platform the
-    // bug was reported from.
+    // #577 bug was reported from.
     const found = findRemoteHelper({
       env: { Path: "C:\\Users\\v\\AppData\\Roaming\\npm", PATHEXT: ".COM;.EXE;.BAT;.CMD" },
       platform: "win32",
       // NTFS is case-insensitive and PATHEXT is conventionally UPPERCASE while
       // npm writes a lowercase .cmd — so the probe must be allowed to match
       // either, exactly as existsSync would on a real Windows box.
-      exists: (p) => winHas(p, "C:\\Users\\v\\AppData\\Roaming\\npm\\git-remote-run402.cmd"),
+      exists: (p) => winHas(p, "C:\\Users\\v\\AppData\\Roaming\\npm\\git-remote-kygit.cmd"),
     });
-    assert.match(found, /git-remote-run402\.cmd$/i);
+    assert.match(found, /git-remote-kygit\.cmd$/i);
   });
 
   it("splits a Windows PATH on ';' and tolerates quoted entries", () => {
     const found = findRemoteHelper({
       env: { PATH: '"C:\\one";C:\\two', PATHEXT: ".CMD" },
       platform: "win32",
-      exists: (p) => winHas(p, "C:\\two\\git-remote-run402.cmd"),
+      exists: (p) => winHas(p, "C:\\two\\git-remote-kygit.cmd"),
     });
     assert.match(found, /two/);
   });
 
   it("the warning names the one command that installs the helper", () => {
-    assert.match(HELPER_MISSING_MESSAGE, /git-remote-run402 is not on PATH/);
-    assert.match(HELPER_MISSING_MESSAGE, /npm i -g run402/);
-    assert.match(HELPER_MISSING_MESSAGE, /Unable to find remote helper/);
+    assert.match(HELPER_MISSING_MESSAGE, /git-remote-kygit is not on PATH/);
+    assert.match(HELPER_MISSING_MESSAGE, /npm i -g @kychee\/kygit/);
+    assert.match(HELPER_MISSING_MESSAGE, /Unable to find remote helper for 'kygit'/);
   });
 
   it("main warns before exec'ing, so the notice precedes the failing git push", () => {
@@ -260,5 +262,13 @@ describe("findRemoteHelper — git's own lookup for the run402:: helper", () => 
     const spawnCall = src.indexOf("spawn(process.execPath");
     assert.ok(guard > 0, "main() must emit HELPER_MISSING_MESSAGE");
     assert.ok(guard < spawnCall, "the warning must be written BEFORE the CLI is spawned");
+  });
+
+  it("sets RUN402_REMOTE_SCHEME=kygit on the exec'd run402 CLI (design D8 — the door decides the spelling)", () => {
+    const src = readFileSync(fileURLToPath(new URL("./kygit.mjs", import.meta.url)), "utf8");
+    const spawnCall = src.indexOf("spawn(process.execPath, [client.cliPath");
+    const envLine = src.indexOf('RUN402_REMOTE_SCHEME: "kygit"');
+    assert.ok(spawnCall > 0);
+    assert.ok(envLine > spawnCall, "the env override must be part of the same spawn() call");
   });
 });

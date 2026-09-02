@@ -205,12 +205,18 @@ describe("naming-law conventions gate (task 5.1) — mechanically, from COMMAND_
   // repo/project contents out", and getting a key bundle instead is a
   // trust-surprise. The hyphenated compound has no git/gh analog and names
   // exactly what it produces, next to the verb that consumes it.
-  const NO_ANALOG_VERBS = new Set(["snapshot", "policy", "mirror", "access", "recover", "recovery-bundle"]);
+  // `handoff`/`resume` (kygit-handoff): a session PASS between agents — a
+  // captured working tree plus a single-use bearer key, and the verb that
+  // claims one. Neither collides with a `gh repo` verb or a real git verb
+  // name (`git stash` inspires the restore MECHANISM `resume` uses
+  // internally — `git stash apply --index` — but `resume` itself names no
+  // git porcelain command), so both are plain-English no-analog verbs.
+  const NO_ANALOG_VERBS = new Set(["snapshot", "policy", "mirror", "access", "recover", "recovery-bundle", "handoff", "resume"]);
 
-  it("the repos verb set is exactly the thirteen the design specifies (create/list/view/rename/delete/snapshot/policy/mirror/fsck/gc/access/recover/recovery-bundle)", () => {
+  it("the repos verb set is exactly the fifteen the design specifies (create/list/view/rename/delete/snapshot/policy/mirror/fsck/gc/access/recover/recovery-bundle/handoff/resume)", () => {
     assert.deepEqual(
       REPOS_VERBS,
-      ["access", "create", "delete", "fsck", "gc", "list", "mirror", "policy", "recover", "recovery-bundle", "rename", "snapshot", "view"],
+      ["access", "create", "delete", "fsck", "gc", "handoff", "list", "mirror", "policy", "recover", "recovery-bundle", "rename", "resume", "snapshot", "view"],
     );
   });
 

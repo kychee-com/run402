@@ -261,7 +261,7 @@ export const COMMAND_MANIFEST = [
   // COMMAND_REMOVED) redirect that dispatches nothing — see
   // RESERVED_SUBCOMMANDS below, and "gitvault" in SKIPPED_FAMILIES.
 
-  // ── repos (the consolidated 13-verb family) ─
+  // ── repos (the consolidated 15-verb family) ─
   // Every verb needs a real principal keystore and, for most, an allocated
   // repo and a local git working tree, so the gate runs structural checks
   // only — an in-process behavioral run would either no-op against the
@@ -274,6 +274,11 @@ export const COMMAND_MANIFEST = [
   { path: ["repos", "rename"], positionals: [p("new_name")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["my-notes"], runStyle: "sub", skipBehavioral: "claims a per-org-unique repo name against a live project" },
   { path: ["repos", "delete"], positionals: [], projectScoped: true, legacyPositionalProject: true, minimalArgs: [], runStyle: "sub", skipBehavioral: "irreversibly deletes a project after reading its live non-repo-resource state and vault generation count" },
   { path: ["repos", "snapshot"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "captures the cwd git working tree and publishes a signed head" },
+  // kygit-handoff: `handoff` captures a stash-shaped checkpoint and mints a
+  // single-use bearer key through a live gateway call; `resume` claims one
+  // (a real membership mutation) and writes into a fresh working tree.
+  { path: ["repos", "handoff"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "captures the cwd git working tree and mints a single-use bearer key against a live vault — never run against the gate's own checkout" },
+  { path: ["repos", "resume"], positionals: [p("key")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["kgh1_0000000000000000000000000000000000000000000000000000000000000000"], runStyle: "sub", skipBehavioral: "claims a live handoff (a real org-membership mutation) and clones a fresh working tree" },
   { path: ["repos", "policy"], positionals: [p("repos_policy")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["required"], runStyle: "sub", skipBehavioral: "owner + step-up mutation of the live project's activation policy" },
   // ONE flag-driven verb; `<destination>` is a real attribute (not a
   // sub-verb literal), so this stays a single manifest entry.

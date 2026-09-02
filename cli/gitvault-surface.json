@@ -7,6 +7,8 @@
     "repos rename",
     "repos delete",
     "repos snapshot",
+    "repos handoff",
+    "repos resume",
     "repos policy",
     "repos mirror",
     "repos fsck",
@@ -71,6 +73,12 @@
     "byo_live": true,
     "recover_live": true,
     "allocation": "create_immediate",
-    "snapshot_dirty_default": "refuse"
+    "snapshot_dirty_default": "refuse",
+    "handoff_live": true,
+    "handoff_dirty_default": "capture",
+    "remote_schemes": [
+      "run402",
+      "kygit"
+    ]
   }
 }

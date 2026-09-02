@@ -360,7 +360,7 @@ curl -X POST https://api.run402.com/admin/v1/rest/audit \
 
 ### repos: your repository history, encrypted before it leaves the machine
 
-`run402 repos` is a Git remote whose contents are encrypted on your own machine and stored as a chain of signed, admitted heads. It exists so your repository history outlives the machine it was written on — without that outliving requiring you to hand Run402 the plaintext. The wire protocol is `r402s/v0`. One noun, thirteen verbs (`repo` singular resolves identically): `run402 gitvault <verb>` answers `COMMAND_MOVED`/`COMMAND_REMOVED`, and `r.gitvault` is the SDK's name (`gitvault` stays the protocol/infrastructure name; `repos` is what you type).
+`run402 repos` is a Git remote whose contents are encrypted on your own machine and stored as a chain of signed, admitted heads. It exists so your repository history outlives the machine it was written on — without that outliving requiring you to hand Run402 the plaintext. The wire protocol is `r402s/v0`. One noun, fifteen verbs (`repo` singular resolves identically): `run402 gitvault <verb>` answers `COMMAND_MOVED`/`COMMAND_REMOVED`, and `r.gitvault` is the SDK's name (`gitvault` stays the protocol/infrastructure name; `repos` is what you type). Two of the fifteen, `handoff` and `resume`, hand a checked-out working tree — dirty state included — from one agent to another via a single-use bearer key: see "Handoff / resume" below.
 
 Three claims, three different strengths. These are the entire approved claims vocabulary for this feature:
 
@@ -450,6 +450,15 @@ run402 repos recover s3://acme-vault-mirror --out ./restored --repo src_1a2b3c
 run402 repos recovery-bundle --out ./bundle.json     # the member's no-keystore recovery half
 run402 repos recover ./mirror-copy --out ./restored --receipt ./recovery-receipt.json --bundle ./bundle.json
 ```
+
+**Handoff / resume — pass a working tree to another agent, dirty state and all.** `run402 repos handoff` captures the actual working tree — staged, unstaged, and untracked changes, exactly as `git stash push -u` would — and mints a single-use bearer key, `kgh1_…`, printed to stdout exactly once (`--json` still keeps it off stderr; there is no second place to find it if you lose it). Hand that key to another agent — another machine, another session, no shared keystore, no shared allowance — and `run402 repos resume kgh1_…` claims it, clones a fresh checkout, and reapplies the exact dirty state with `git stash apply --index`. A Handoff Note rides alongside (a short JSON summary: what's done, what's in progress, what's failing, next steps) and renders as Markdown by default on `resume`. The key confers real authority — by default the sender's own org role — until it is claimed or its TTL (default 1h, `--ttl <seconds>`) expires; the mint response says so, and the CLI echoes the warning before printing the key. Sensitive untracked files (`.env`, `*.pem`, `*.key`, SSH/AWS/GPG directories, and 18 more patterns) are excluded from capture by default; opt one back in with `--include-sensitive <glob>`.
+
+```bash
+run402 repos handoff --note-file handoff.json     # captures the working tree, mints the key, prints it ALONE to stdout
+run402 repos resume kgh1_…                         # on the other machine: claim it, clone, restore, print the note
+```
+
+Neither verb has an MCP tool — `handoff` mints a bearer secret and `resume` mutates org membership, the same "mutating verbs are CLI-only" reasoning as `create`/`delete` above.
 
 **Verify it without trusting our client.** `r402s-verify` is an independent-lineage verifier for the same protocol — a separate language, separate authorship, and a separate primitive stack, deliberately sharing no implementation code with the SDK. That non-sharing is the point: a differential verifier that reuses the code it is checking verifies nothing. It lives on the `r402s-verify` branch of this repository with its own workflow, ships prebuilt release binaries, and also builds with `cargo build --release`. The full protocol specification and threat model it verifies against are published in [`docs/gitvault/`](docs/gitvault/README.md), and the frozen conformance vectors in [`test-vectors/r402s-v0/`](test-vectors/r402s-v0/README.md).
 
@@ -862,7 +871,7 @@ One noun across every agent surface: `repos_view` / `repos_list_heads` / `repos_
 | `repos_list_heads` | One page of a repo's heads listing — the admitted generations above a fixed anchor, each with its stored-bytes hash. `after_generation` is the VERIFICATION ANCHOR, not a paging knob, and must stay identical across every page of one sequence; `cursor` is opaque (store and echo, never parse). Listing is not verifying. |
 | `repos_fsck` | Verify the head chain from your authenticated pin up to the newest listed generation, then advance the pin to what was proved. Monotonic and non-destructive. Fails CLOSED, and the refusal is the answer: `GENERATION_REGRESSION` on a rollback, `CHAIN_BROKEN` on a gap, `UPGRADE_REQUIRED` on a transition this client cannot validate, `VERIFICATION_BUDGET_EXCEEDED` when the per-call budget runs out (a pause, not a failure — the verified prefix persists). The CLI's `run402 repos fsck` also materializes the ref map and supports `--no-write`/`--mirror`; this tool is the chain-walk half only. |
 
-The repo's mutating verbs are deliberately CLI-only. `snapshot` / `create` write an IMMUTABLE generation with no undo, and `create` mints the one-shot recovery receipt — an MCP transcript is the wrong place for the only copy of it to exist. `gc` holds a maintenance lease whose `holder_token` is returned exactly once, so a dropped session strands it, and its submit half is destructive by contract. `policy` needs owner membership plus step-up, which the MCP credential path does not carry. All thirteen verbs are reachable as `run402 repos …` (`repo` singular resolves identically).
+The repo's mutating verbs are deliberately CLI-only. `snapshot` / `create` write an IMMUTABLE generation with no undo, and `create` mints the one-shot recovery receipt — an MCP transcript is the wrong place for the only copy of it to exist. `gc` holds a maintenance lease whose `holder_token` is returned exactly once, so a dropped session strands it, and its submit half is destructive by contract. `policy` needs owner membership plus step-up, which the MCP credential path does not carry. `handoff` mints a single-use bearer secret and `resume` mutates org membership — the same reasoning, one MCP transcript is the wrong place for a secret that must be printed exactly once. All fifteen verbs are reachable as `run402 repos …` (`repo` singular resolves identically).
 
 ### Service status (no auth)
 

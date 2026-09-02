@@ -216,11 +216,11 @@ describe("openclaw/SKILL.md (CLI-based)", () => {
       "run402 ci revoke",
       "run402 assets put",
       "run402 tier set",
-      // repo-surface-consolidation: the consolidated 12-verb `repos` family
-      // — CLI/OpenClaw-only surfaces (create/rename/delete/snapshot/policy/
-      // mirror/gc are mutating; view/list/fsck/access are read-only but
-      // still have no MCP tool for this family beyond the three renamed
-      // read-only ones).
+      // repo-surface-consolidation: the consolidated `repos` family — CLI/
+      // OpenClaw-only surfaces (create/rename/delete/snapshot/policy/
+      // mirror/gc/handoff/resume are mutating; view/list/fsck/access are
+      // read-only but still have no MCP tool for this family beyond the
+      // three renamed read-only ones). kygit-handoff adds handoff/resume.
       "run402 repos create",
       "run402 repos list",
       "run402 repos view",
@@ -233,6 +233,8 @@ describe("openclaw/SKILL.md (CLI-based)", () => {
       "run402 repos mirror",
       "run402 repos recover",
       "run402 repos policy",
+      "run402 repos handoff",
+      "run402 repos resume",
     ];
     for (const verb of verbs) {
       it(`references CLI verb: ${verb}`, () => {

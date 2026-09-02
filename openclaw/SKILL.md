@@ -1113,7 +1113,7 @@ Arrive, look, claim, work, hand off. Your presence is this SESSION, not your wal
 
 ## Your source, encrypted before it leaves the machine — repos
 
-`run402 repos` is a Git remote whose contents are encrypted on the machine that wrote them and stored as a chain of signed, admitted heads. It is how a repository's history outlives the machine — without that outliving requiring the plaintext to be handed over. Wire protocol: `r402s/v0`. One noun, twelve verbs (`repo` singular resolves identically). `run402 gitvault <verb>` answers a structured `COMMAND_MOVED`/`COMMAND_REMOVED` error; teach `repos` from here on.
+`run402 repos` is a Git remote whose contents are encrypted on the machine that wrote them and stored as a chain of signed, admitted heads. It is how a repository's history outlives the machine — without that outliving requiring the plaintext to be handed over. Wire protocol: `r402s/v0`. One noun, fourteen verbs (`repo` singular resolves identically). `run402 gitvault <verb>` answers a structured `COMMAND_MOVED`/`COMMAND_REMOVED` error; teach `repos` from here on.
 
 **What Run402 claims, and how strong each claim is.** Three sentences, three different strengths — this is the entire approved vocabulary, and conflating them is the mistake to avoid when you repeat it to a user:
 
@@ -1146,7 +1146,7 @@ run402 repos delete --project prj_xyz --force # refuses without --force while th
 run402 repos rename my-notes --project prj_xyz  # explicit address-form name claim (no fee)
 ```
 
-Every mutating `repos` verb (`create`/`rename`/`delete`/`snapshot`/`policy`/`mirror`/`gc`) is CLI/OpenClaw-only — no MCP tool exists or will exist for them (a `create` mints a one-shot recovery receipt; `delete` is irreversible; `gc`'s submit half is destructive). `repos create` also claims an address-form name automatically, best-effort, when the owning org already has a slug.
+Every mutating `repos` verb (`create`/`rename`/`delete`/`snapshot`/`policy`/`mirror`/`gc`/`handoff`/`resume`) is CLI/OpenClaw-only — no MCP tool exists or will exist for them (a `create` mints a one-shot recovery receipt; `delete` is irreversible; `gc`'s submit half is destructive; `handoff` mints a single-use bearer secret; `resume` mutates org membership). `repos create` also claims an address-form name automatically, best-effort, when the owning org already has a slug.
 
 Run every other verb from inside the git working tree.
 
@@ -1187,6 +1187,13 @@ run402 repos recover s3://acme-vault-mirror --out ./restored --repo src_1a2b3c
 ```
 
 No argument reads the configured destination + a keyless freshness check. `mirror <destination> [--profile <name> | --ambient]` writes only the destination and a credential *name* to a config file beside the keystore — never in `run402.config.json`, never a raw secret. `--off` removes the config only — never touches the mirror's own bytes. `--backfill` (idempotent) copies whatever the mirror is missing. `run402 repos fsck --mirror` is a KEYLESS integrity probe — proves the mirror's VALIDITY, never its FRESHNESS. `run402 repos recover <source> --out <dir>` needs no server at all: it reads the mirror, verifies the chain, and decrypts with the local keystore alone; a mirror without the keystore recovers nothing, so the V0 terminal-loss statement above still applies unchanged.
+
+**`run402 repos handoff` / `run402 repos resume`** hand a working tree to another agent — dirty state included, no shared keystore or allowance. `handoff` captures the actual working tree (staged, unstaged, AND untracked — the same shape real `git stash push -u` produces) and mints a single-use bearer key, `kgh1_…`, printed to stdout ALONE (nothing else this family prints — logs, `--json`, errors — ever carries it). The key confers real authority — by default the sender's own org role — until claimed or its TTL (default 1h, `--ttl <seconds>`) expires. `resume kgh1_…` claims it (a same-principal retry dedups safely), clones a fresh checkout on the OTHER machine, and reapplies the exact dirty state with `git stash apply --index`. A short JSON note rides alongside (`--note-file <path>`, or piped stdin); `resume` renders it as Markdown. Sensitive untracked files (`.env`, `*.pem`, `id_rsa*`, SSH/AWS/GPG directories, 22 patterns total) are excluded from capture by default; `--include-sensitive <glob>` re-admits one.
+
+```bash
+run402 repos handoff --note-file handoff.json    # captures the tree, mints the key, prints it ALONE
+run402 repos resume kgh1_…                        # on the other machine: claim, clone, restore, print the note
+```
 
 **Verify it without trusting our client.** `r402s-verify` is an independent-lineage verifier for the same protocol — separate language, separate authorship, separate primitive stack, deliberately sharing no implementation code with the SDK. A differential verifier that reuses the code it is checking verifies nothing. It ships prebuilt release binaries now, alongside the `cargo build --release` source path.
 

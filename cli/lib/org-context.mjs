@@ -93,6 +93,23 @@ function orgFromRoomEnv(env) {
   return raw.slice(0, slash);
 }
 
+/**
+ * `r402.orgId` from `cwd`'s LOCAL git config (kygit-handoff design D10) —
+ * best-effort, gracefully degrading like `findBindingKey`: no repository,
+ * no pin, or a shape-invalid value all answer `null` rather than throwing,
+ * so a bare directory or a checkout with no gitvault remote costs nothing.
+ */
+async function readGitvaultPinnedOrgId(cwd) {
+  try {
+    const { readPinnedGitvaultRepo } = await import("#sdk/node");
+    const pinned = await readPinnedGitvaultRepo(cwd);
+    const orgId = trimmed(pinned?.org_id);
+    return orgId && ORG_ID_RE.test(orgId) ? orgId : null;
+  } catch {
+    return null;
+  }
+}
+
 function listOrgsAction() {
   return nextAction("edit_request", {
     command: "run402 org list",
@@ -230,6 +247,15 @@ export async function resolveOrg(input = {}, opts = {}) {
     if (orgId) return { orgId, source: "env", sourceDetail: PROJECT_ENV };
   }
   if (bindingOrg) return { orgId: bindingOrg, source: "binding", sourceDetail: bindingHit.file };
+
+  // --- Class 3.5: gitvault local pin (kygit-handoff design D10) ------------
+  // `r402.orgId` in this checkout's LOCAL git config — written by every
+  // gitvault pin site (`repos create`, `resume`, address resolution), a
+  // rung below env/binding and above profile state: a checkout that IS a
+  // resumed/pinned vault should resolve its own org with zero configuration,
+  // but an explicit env var or a committed `.run402.json` binding still wins.
+  const pinnedOrg = await readGitvaultPinnedOrgId(cwd);
+  if (pinnedOrg) return { orgId: pinnedOrg, source: "gitvault_pin", sourceDetail: "r402.orgId (local git config)" };
 
   // --- Class 4: profile state ----------------------------------------------
   const selected = trimmed(coreGetActiveOrgId());

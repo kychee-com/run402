@@ -730,7 +730,10 @@ export type NextActionType =
   | "submit_gc"
   | "use_moved_command"
   | "access_repair_pending"
-  | "configure_mirror";
+  | "configure_mirror"
+  | "resume_handoff"
+  | "revoke_handoff"
+  | "remove_member";
 
 /**
  * A single advisory "what to do next" entry. Mirrors the gateway's

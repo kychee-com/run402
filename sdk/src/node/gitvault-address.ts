@@ -46,6 +46,15 @@ const CONFIG_KEY_ADDRESS = "r402.repoAddress";
  */
 const CONFIG_KEY_PROJECT_ID = "r402.projectId";
 const CONFIG_KEY_ORG_ID = "r402.orgId";
+/**
+ * kygit-handoff design D10: the coordination-room key, written ALONGSIDE
+ * `r402.projectId` (same value — a project's DEFAULT room is keyed by its
+ * project id, p0016) so `cli/lib/org-context.mjs`'s room resolution has a
+ * dedicated config key to read rather than special-casing gitvault's own
+ * `r402.projectId` name. Every existing pin site gets this for free, not
+ * just `resume` — one write, every gitvault checkout benefits.
+ */
+const CONFIG_KEY_ROOM = "r402.room";
 
 export interface GitvaultPinnedRepo {
   repo_id: string;
@@ -55,6 +64,8 @@ export interface GitvaultPinnedRepo {
   project_id: string | null;
   /** `null` on a legacy pin — see `project_id`. */
   org_id: string | null;
+  /** The coordination room key (`r402.room`) — `null` on a pin written before kygit-handoff. Same value as `project_id` for a project's default room. */
+  room: string | null;
 }
 
 async function readLocalGitConfig(repoDir: string, key: string): Promise<string | null> {
@@ -78,7 +89,8 @@ export async function readPinnedGitvaultRepo(repoDir: string): Promise<GitvaultP
   const resolvedFrom = parts.length === 2 && parts[0] && parts[1] ? { org_slug: parts[0], repo_name: parts.slice(1).join("/") } : null;
   const projectId = await readLocalGitConfig(repoDir, CONFIG_KEY_PROJECT_ID);
   const orgId = await readLocalGitConfig(repoDir, CONFIG_KEY_ORG_ID);
-  return { repo_id: repoId, resolved_from: resolvedFrom, project_id: projectId, org_id: orgId };
+  const room = await readLocalGitConfig(repoDir, CONFIG_KEY_ROOM);
+  return { repo_id: repoId, resolved_from: resolvedFrom, project_id: projectId, org_id: orgId, room };
 }
 
 /**
@@ -97,12 +109,13 @@ export async function pinGitvaultRepo(repoDir: string, repoId: string, resolvedF
   if (ids) {
     await hardenedGit(repoDir, ["config", "--local", CONFIG_KEY_PROJECT_ID, ids.project_id]);
     await hardenedGit(repoDir, ["config", "--local", CONFIG_KEY_ORG_ID, ids.org_id]);
+    await hardenedGit(repoDir, ["config", "--local", CONFIG_KEY_ROOM, ids.project_id]);
   }
 }
 
 /** Clear a pin this checkout no longer trusts (design D4: a pinned id that 404s). Tolerates an absent key — `git config --unset` on a key that was never set is not a failure here. */
 async function clearPinnedGitvaultRepo(repoDir: string): Promise<void> {
-  for (const key of [CONFIG_KEY_REPO_ID, CONFIG_KEY_ADDRESS, CONFIG_KEY_PROJECT_ID, CONFIG_KEY_ORG_ID]) {
+  for (const key of [CONFIG_KEY_REPO_ID, CONFIG_KEY_ADDRESS, CONFIG_KEY_PROJECT_ID, CONFIG_KEY_ORG_ID, CONFIG_KEY_ROOM]) {
     try {
       await hardenedGit(repoDir, ["config", "--local", "--unset", key]);
     } catch {

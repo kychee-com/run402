@@ -175,7 +175,7 @@ export interface GitvaultRepoFile {
   /** The last ref transaction this principal published (5.4 fills it). */
   last_ref_transaction: Record<string, unknown> | null;
   /** How this file came to exist — creation, or a §5.1 restore from the principal's own envelope. */
-  provenance: "created" | "restored_from_envelope";
+  provenance: "created" | "restored_from_envelope" | "restored_from_handoff";
   updated_at: string;
 }
 

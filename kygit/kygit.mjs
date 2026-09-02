@@ -11,16 +11,26 @@
  *      canonical CLI is true by construction; there is no generated table
  *      to drift (design D1).
  *   2. Every accepted spelling EXECS the installed run402 CLI with
- *      rewritten argv — stdio inherited, env untouched, exit code
- *      propagated (design D2). A behavior difference between
- *      `kygit create` and `run402 repos create` is definitionally a bug
- *      in this file.
+ *      rewritten argv and `RUN402_REMOTE_SCHEME=kygit` added to the
+ *      environment (nothing else in the environment is touched) — stdio
+ *      inherited, exit code propagated (design D2). A behavior difference
+ *      between `kygit create` and `run402 repos create` is definitionally
+ *      a bug in this file.
  *   3. Anything outside the repo family (plus the one `login` funnel
  *      alias) is REFUSED with the exact `run402 …` spelling to use —
  *      the refusal is what keeps this from becoming a second CLI
  *      (design D3).
  *
- * No git-remote-kygit, no `kygit::` scheme, ever (design D4).
+ * kygit ALSO ships `git-remote-kygit` (see that file) — a second bin, not
+ * product logic here, that is what makes a `kygit::` remote actually push
+ * and fetch with the shim alone installed. `RUN402_REMOTE_SCHEME=kygit`
+ * (set below, at exec) is what makes the canonical CLI RENDER that scheme
+ * in everything it prints for this process — `create`'s origin scaffold,
+ * `view`, rendered `next_actions` commands — while `run402 repos …` keeps
+ * rendering `run402::`. Both spellings resolve the same vault; neither
+ * tool ever rewrites a remote the other one wrote (design D8,
+ * kygit-handoff — supersedes this file's earlier "no scheme, ever" stance
+ * from kygit-standalone-brand D12).
  */
 import { createRequire } from "node:module";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
@@ -36,32 +46,27 @@ export const RESOLVE_FAIL_MESSAGE =
   "  The engine alone repairs it: npm i -g run402";
 
 /**
- * Warning shown when git could not spawn the `run402::` remote helper.
+ * Warning shown when git could not spawn the `kygit::` remote helper.
  *
- * kygit deliberately ships ONE binary (`kygit`) — the remote helper
- * `git-remote-run402` is a bin of the `run402` package, and npm links bins
- * only for the package you install DIRECTLY, never for its dependencies. So
- * `npm i -g @kychee/kygit` alone leaves the helper on disk but off PATH, and
- * the failure lands later, inside git, as an opaque "Unable to find remote
- * helper for 'run402'" (kychee-com/run402#577, found on Windows in
- * kychee-com/run402-private#696 — but it is npm bin-linking, not a Windows
- * quirk, and reproduces on a clean mac).
- *
- * kygit CANNOT fix this by declaring the helper in its own bin: npm fails a
- * global install with EEXIST when a second package claims an already-linked
- * bin name, so that would break `npm i -g @kychee/kygit` for everyone who
- * already has run402 — the common case. (It would also break the shim's
- * "kygit is the only binary" contract.) Naming the one command that works is
- * the whole fix available here.
+ * Every remote this shim scaffolds or renders is spelled `kygit::` (design
+ * D8 — `RUN402_REMOTE_SCHEME=kygit` is set above, at exec), so the helper
+ * git needs on PATH is `git-remote-kygit`, a bin `@kychee/kygit` ships
+ * itself — unlike the pre-D8 world, this is no longer a transitive-dependency
+ * bin-linking gap (kychee-com/run402#577): `npm i -g @kychee/kygit` alone
+ * links BOTH `kygit` and `git-remote-kygit`, because npm links every bin of
+ * the package you install DIRECTLY. This warning is now a defensive check
+ * for a broken or partial install (PATH edited after install, a bin
+ * hand-removed, …) rather than the expected steady state — reaching it at
+ * all means something about THIS install is unusual.
  */
 export const HELPER_MISSING_MESSAGE =
-  "kygit: warning — git-remote-run402 is not on PATH.\n" +
-  "  Plain `git push`/`git fetch` against a run402:: remote will fail with\n" +
-  "  \"fatal: Unable to find remote helper for 'run402'\".\n" +
-  "  Fix: npm i -g run402   (the helper is one of that package's bins)";
+  "kygit: warning — git-remote-kygit is not on PATH.\n" +
+  "  Plain `git push`/`git fetch` against a kygit:: remote will fail with\n" +
+  "  \"fatal: Unable to find remote helper for 'kygit'\".\n" +
+  "  Fix: npm i -g @kychee/kygit   (git-remote-kygit is one of that package's bins)";
 
 /**
- * Finds the remote helper the way GIT will: a `git-remote-run402` executable
+ * Finds the remote helper the way GIT will: a `git-remote-kygit` executable
  * on PATH. Pure — every ambient input is injected so this is testable off the
  * platform it describes.
  */
@@ -73,7 +78,7 @@ export function findRemoteHelper({
   const windows = platform === "win32";
   const raw = env.PATH ?? env.Path ?? "";
   const dirs = raw.split(windows ? ";" : ":").filter(Boolean);
-  // On Windows the npm shim is git-remote-run402.cmd; git resolves it through
+  // On Windows the npm shim is git-remote-kygit.cmd; git resolves it through
   // PATHEXT, so probing the bare name alone would report a false negative.
   const exts = windows
     ? ["", ...(env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean)]
@@ -84,7 +89,7 @@ export function findRemoteHelper({
   const joinFor = windows ? win32Path.join : posixPath.join;
   for (const dir of dirs) {
     for (const ext of exts) {
-      const candidate = joinFor(dir.replace(/^"|"$/g, ""), "git-remote-run402" + ext);
+      const candidate = joinFor(dir.replace(/^"|"$/g, ""), "git-remote-kygit" + ext);
       if (exists(candidate)) return candidate;
     }
   }
@@ -223,7 +228,14 @@ async function main() {
   }
   if (!findRemoteHelper()) process.stderr.write(HELPER_MISSING_MESSAGE + "\n");
 
-  const child = spawn(process.execPath, [client.cliPath, ...plan.args], { stdio: "inherit" });
+  // The one env addition (design D8): every remote address the canonical CLI
+  // renders for THIS process — `create`'s origin scaffold, `view`, rendered
+  // next_actions commands — comes out spelled `kygit::` instead of
+  // `run402::`. Nothing else in the environment is touched.
+  const child = spawn(process.execPath, [client.cliPath, ...plan.args], {
+    stdio: "inherit",
+    env: { ...process.env, RUN402_REMOTE_SCHEME: "kygit" },
+  });
   child.on("exit", (code, signal) => {
     if (signal) process.kill(process.pid, signal);
     else process.exit(code ?? 1);

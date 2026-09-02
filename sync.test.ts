@@ -800,6 +800,13 @@ const SURFACE: Capability[] = [
   // via the SAME service-key credential `projects.delete` itself requires.
   { id: "repos_delete", endpoint: "DELETE /projects/v1/:id (+ reads: GET /projects/v1/:id, /admin/:id/schema, /admin/:id/functions, secrets, subdomains)", mcp: null, cli: "repos:delete", openclaw: "repos:delete" },
   { id: "repos_snapshot", endpoint: "POST /gitvault/v1/vaults/:vault_id/upload-sessions (+ admission)", mcp: null, cli: "repos:snapshot", openclaw: "repos:snapshot" },
+  // kygit-handoff design D7/D10: a bearer secret is minted (`handoff`) and
+  // membership + a working tree are mutated (`resume`) — the same law that
+  // keeps `repos create/delete` off MCP. `mcp: null` is pinned by the
+  // client-surface spec's own "No MCP tool exists for handoff or resume"
+  // requirement.
+  { id: "repos_handoff", endpoint: "POST /gitvault/v1/vaults/:vault_id/handoffs", mcp: null, cli: "repos:handoff", openclaw: "repos:handoff" },
+  { id: "repos_resume", endpoint: "POST /gitvault/v1/handoffs/:handoff_id/claim", mcp: null, cli: "repos:resume", openclaw: "repos:resume" },
   // The gateway's own GITVAULT_CLIENT_UPGRADE_REQUIRED envelope names
   // `run402 repos policy grandfathered --reason <why>` as a next_action, so
   // the verb has to exist: without it a user can allocate themselves into a
@@ -917,6 +924,11 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   repos_rename: "projects.setRepoName",
   repos_delete: null,
   repos_snapshot: "gitvault.push",
+  // kygit-handoff design D7: protocol logic lives once in the SDK's
+  // `Gitvault.handoff`/`Gitvault.resume` — the CLI's `repos handoff`/
+  // `repos resume` are thin adapters over them.
+  repos_handoff: "gitvault.handoff",
+  repos_resume: "gitvault.resume",
   repos_policy: "gitvault.setPolicy",
   // `mirror` is a compound CLI verb (no-arg read / <dest> upsert / --off /
   // --backfill) that dispatches to four distinct SDK methods internally —
@@ -1748,6 +1760,12 @@ describe("SDK surface alignment", () => {
       // `deploy apply --rehearse` is a mode of `deploy` rather than a second
       // capability.
       "gitvault.planPush",
+      // kygit-handoff design D10: `repos handoff --list`/`--revoke` are
+      // operational sub-flags of the ONE `repos_handoff` verb (SDK_BY_CAPABILITY
+      // maps it to `gitvault.handoff`, the mint call) — same "flag-selected
+      // mode, not a second verb" shape as `planPush` immediately above.
+      "gitvault.listHandoffs",
+      "gitvault.revokeHandoff",
       // repo-surface-consolidation D2: `git gc`'s own two halves, composed by
       // the CLI's `repos gc` (`repos_gc` maps to null in SDK_BY_CAPABILITY
       // above, same "compound-flow" shape as `up`/`init`/`repos_mirror`).

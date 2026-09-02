@@ -49,6 +49,7 @@ import {
   requirePositionalCount,
   resolveProjectSelector,
   failUnknownSubcommand,
+  validateRegularFile,
 } from "./argparse.mjs";
 
 /** Value-taking flags every vault-targeting subcommand accepts. */
@@ -57,17 +58,23 @@ const COMMON_VALUE_FLAGS = ["--project", "--repo"];
 export const HELP = `run402 repos — your source, encrypted before it leaves the machine
 
 Usage:
-  run402 repos <verb> [options] — thirteen verbs, tiered by how often you reach for them:
+  run402 repos <verb> [options] — fifteen verbs, tiered by how often you reach for them:
 
 Common:
   run402 repos create [name]  [--org <org_id>] [--dir <path>] [--tier <tier>] [--project <id>]
-                              [--byo <s3://bucket/prefix>] [--profile <name> | --ambient] [--region <r>] [--endpoint <url>]
+                              [--byo <s3://bucket/prefix>] [--profile <name> | --ambient] [--region <r>] [--endpoint <url>] [--no-init]
   run402 repos view           [--project <id>] [--repo <repo_id>] [--human]
   run402 repos list           [--org <org_id>] [--human]
 
 Then plain git, forever:
   git push
   git clone run402::<org>/<repo>
+
+Handoff (pass a working tree to another agent):
+  run402 repos handoff [--project <id>] [--repo <repo_id>] [--ttl <seconds>] [--role <role>]
+                        [--include-sensitive <glob>]... [--note-file <path>] [--json] [--list] [--revoke <handoff_id>]
+                        (the Handoff Note is JSON piped on stdin when not using --note-file)
+  run402 repos resume  <kgh1_…|--key-stdin> [--to <dir>] [--json]
 
 Occasional:
   run402 repos snapshot [--project <id>] [--repo <repo_id>] [--message <text>] [--checkpoint] [--dry-run] [--allow-dirty] [--manifest-out <path>]
@@ -115,6 +122,9 @@ Subcommands:
            copies than a managed vault by construction (the platform holds
            no payload copy at all); \`run402 repos mirror <destination>\`
            still works unchanged as your second customer-held location.
+           On a fresh wallet with no active tier this folds the cold-start
+           chain (allowance -> faucet -> one x402 prototype payment,
+           announced) before retrying once; \`--no-init\` opts out.
   view     Side-effect-free: what this machine and the control plane each
            believe about the repo — allocation, policy, whether this keystore
            can sign, the authenticated and materialized pins, the mirror
@@ -129,6 +139,26 @@ Subcommands:
            404s. Not every project in the org — ones with no vault are
            omitted. \`--human\` renders a compact roster (address,
            generation, bytes, policy) instead of JSON.
+  handoff  Capture a stash-shaped checkpoint (dirty work included, by
+           default — unlike \`snapshot\`) and mint a single-use Handoff Key
+           (\`kgh1_…\`), printed ONCE to stdout; the blast-radius warning
+           ("anyone holding this key becomes a <role> of this org until
+           first use or <expires_at>") and every other line go to stderr.
+           The Handoff Note (what happened / what's next) is JSON on
+           stdin (or \`--note-file <path>\`) — no manifest, it is generated.
+           \`--ttl <seconds>\` (60..86400, default 3600), \`--role <role>\`
+           (defaults to your own, never wider), \`--include-sensitive
+           <glob>\` re-admits a named untracked path the sensitive denylist
+           would otherwise exclude (repeatable). \`--list\`/\`--revoke
+           <handoff_id>\` read/revoke instead of minting.
+  resume   Resume a Handoff Key on ANY machine: parses the key, claims it
+           with THIS machine's own wallet (creating the allowance file if
+           absent — no payment, ever), clones the vault at the base HEAD
+           into \`--to <dir>\` (default: the vault's name), applies the
+           stash-shaped checkpoint (staged/unstaged/deleted/untracked
+           restored distinctly), pins the repo/org/room into the checkout's
+           LOCAL git config only, and renders the Handoff Note as Markdown.
+           \`<kgh1_…>\` or \`--key-stdin\` (avoids shell mangling).
   rename   Claim or rename the repo's per-org-unique, address-form name
            (the <name> half of run402::<org-slug>/<name>). Address by
            --repo or --project (not both).
@@ -820,14 +850,37 @@ async function createProvision(name, dir, a) {
 
   if (!isCoreApiTarget() && !loadLiveControlPlaneSession()) allowanceAuthHeaders("/projects/v1");
 
+  const provisionOnce = () =>
+    withAutoApprove(() => sdk.projects.provision({ tier, name, ...(orgId ? { orgId } : {}), idempotencyKey }));
+
   let provisioned;
   try {
-    provisioned = await withAutoApprove(() =>
-      sdk.projects.provision({ tier, name, ...(orgId ? { orgId } : {}), idempotencyKey }),
-    );
+    provisioned = await provisionOnce();
   } catch (err) {
-    reportSdkError(err);
-    return;
+    // kygit-handoff design D5: `repos create` on a fresh wallet folds the
+    // cold-start chain ONCE — allowance → faucet → one x402 prototype
+    // payment, announced — then retries exactly once. `--no-init` opts
+    // out (the caller wants the bare NO_ACTIVE_TIER refusal).
+    const code = err?.body?.code ?? err?.code;
+    if (code === "NO_ACTIVE_TIER" && !a.includes("--no-init")) {
+      console.error("no active tier — folding the cold-start chain (allowance -> faucet -> prototype tier)");
+      try {
+        const { foldColdStartChain } = await import("./cold-start.mjs");
+        await foldColdStartChain((line) => console.error(`  ${line}`));
+      } catch (chainErr) {
+        reportSdkError(chainErr);
+        return;
+      }
+      try {
+        provisioned = await provisionOnce();
+      } catch (retryErr) {
+        reportSdkError(retryErr);
+        return;
+      }
+    } else {
+      reportSdkError(err);
+      return;
+    }
   }
 
   const effectiveOrgId = orgId ?? (await resolveOwningOrgId(provisioned.project_id));
@@ -852,7 +905,7 @@ async function createProvision(name, dir, a) {
 
 async function create(args) {
   const a = normalizeArgv(args);
-  assertKnownFlags(a, [...CREATE_VALUE_FLAGS, "--ambient", "--help", "-h", "-v", "--verbose"], CREATE_VALUE_FLAGS);
+  assertKnownFlags(a, [...CREATE_VALUE_FLAGS, "--ambient", "--no-init", "--help", "-h", "-v", "--verbose"], CREATE_VALUE_FLAGS);
   const positionals = requirePositionalCount(a, CREATE_VALUE_FLAGS, {
     min: 0, max: 1, command: "run402 repos create [name]", missing: "",
   });
@@ -932,7 +985,7 @@ async function formatRepoListHuman(orgSlug, repos) {
   const { generationToBigInt } = await import("#sdk/node");
   const decimal = (g) => (g ? generationToBigInt(g).toString() : "none");
   const lines = repos.map((r) => {
-    const address = orgSlug && r.repo_name ? `run402::${orgSlug}/${r.repo_name}` : (r.repo_name ?? r.project_id);
+    const address = orgSlug && r.repo_name ? gitvaultRemoteUrlForRepo(orgSlug, r.repo_name) : (r.repo_name ?? r.project_id);
     return `${address}  gen=${decimal(r.newest_generation)}  ${r.source_bytes} byte(s)  policy=${r.gitvault_policy ?? "(none)"}  (${r.repo_id})`;
   });
   return lines.join("\n");
@@ -1020,8 +1073,19 @@ async function view(args) {
     }
     const verifyRefsAction = nextAction("verify_refs", { command: "run402 repos fsck", why: "Walk the signed chain and materialize verified refs." });
     const combinedNextActions = s.vault ? [verifyRefsAction, ...(s.next_actions ?? [])] : (s.next_actions ?? []);
+    // kygit-handoff design D8 — the mirror of the OLD `npm i -g run402`
+    // bug, pointing the other way: a `kygit::` remote with no
+    // `git-remote-kygit` on PATH fails every push/clone/fetch inside git.
+    let warnings = s.warnings ?? [];
+    if (s.remote?.url?.startsWith("kygit::")) {
+      const { isExecutableOnPath } = await import("./path-lookup.mjs");
+      if (!isExecutableOnPath("git-remote-kygit")) {
+        warnings = [...warnings, { kind: "kygit_helper_missing", message: "this checkout's remote is kygit:: but git-remote-kygit is not on PATH", setup_command: "npm i -g @kychee/kygit" }];
+      }
+    }
     const out = {
       ...s,
+      warnings,
       refs: { known: false, reason: "not_materialized" },
       mirror,
       next_actions: combinedNextActions,
@@ -1054,7 +1118,7 @@ async function view(args) {
     // vault warnings below — informational, never blocking, and it clears on
     // the first successful mirror write or sync.
     if (mirror?.finding) console.error(`finding (${mirror.finding.kind}): ${mirror.finding.message} — ${mirror.finding.setup_command}`);
-    for (const w of s.warnings) console.error(`warning (${w.kind}): ${w.message}`);
+    for (const w of warnings) console.error(`warning (${w.kind}): ${w.message}${w.setup_command ? ` — ${w.setup_command}` : ""}`);
     for (const n of combinedNextActions) console.error(`next: ${n.why ?? n.action ?? n.type}${n.command ? ` — ${n.command}` : ""}`);
     printVerboseStats(a, sdk);
   } catch (err) {
@@ -1445,6 +1509,231 @@ async function snapshot(args) {
       console.error(`mirror: dual-push FAILED (deploy is unaffected) — ${result.mirror_push.error ?? "see mirror_push.summary.errors"}`);
     }
     printDirtyDisclosure(result.snapshot);
+    printVerboseStats(a, sdk);
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+// ─── handoff / resume (kygit-handoff) ────────────────────────────────────────
+
+const HANDOFF_VALUE_FLAGS = [...COMMON_VALUE_FLAGS, "--ttl", "--role", "--include-sensitive", "--revoke", "--note-file"];
+const RESUME_VALUE_FLAGS = ["--to"];
+
+/** All occurrences of a repeatable value flag (only `--include-sensitive` needs this today). */
+function flagValues(args, flag) {
+  const out = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === flag) {
+      const v = args[i + 1];
+      if (v == null || (typeof v === "string" && v.startsWith("--"))) {
+        fail({ code: "BAD_FLAG", message: `${flag} requires a value`, details: { flag } });
+      }
+      out.push(v);
+    }
+  }
+  return out;
+}
+
+async function readStdinText() {
+  const chunks = [];
+  for await (const chunk of process.stdin) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
+  }
+  return Buffer.concat(chunks).toString("utf-8");
+}
+
+/**
+ * The Handoff Note has no CLI flags of its own (design: "no manifest — the
+ * note is generated") — the calling harness composes it and pipes it as
+ * JSON on stdin, mirroring `jobs submit --stdin`'s convention but implicit
+ * (no `--stdin` flag needed: a piped, non-TTY stdin IS the note source).
+ * `--note-file <path>` is the explicit, script-friendly alternative.
+ */
+async function readHandoffNoteInput(a) {
+  const noteFile = flagValue(a, "--note-file");
+  if (noteFile != null) {
+    validateRegularFile(noteFile, "--note-file");
+    return parseHandoffNoteJson(readFileSync(noteFile, "utf-8"), noteFile);
+  }
+  if (process.stdin?.isTTY) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing the Handoff Note on stdin.",
+      hint: "Pipe the note as JSON (schema kygit.handoff-note.v1, minus `capture`), or use --note-file <path>.",
+    });
+  }
+  const text = await readStdinText();
+  if (text.trim().length === 0) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing the Handoff Note on stdin.",
+      hint: "Pipe the note as JSON, or use --note-file <path>.",
+    });
+  }
+  return parseHandoffNoteJson(text, "stdin");
+}
+
+function parseHandoffNoteJson(text, source) {
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    fail({ code: "BAD_USAGE", message: `The Handoff Note from ${source} is not valid JSON.`, hint: "Pipe a JSON object matching kygit.handoff-note.v1 (minus `capture`, which is filled in for you)." });
+  }
+  if (!parsed || typeof parsed !== "object" || typeof parsed.summary !== "string") {
+    fail({ code: "BAD_USAGE", message: `The Handoff Note from ${source} is missing a \`summary\` string.`, hint: "See `run402 repos handoff --help` for the note shape." });
+  }
+  const now = new Date().toISOString();
+  return {
+    schema: "kygit.handoff-note.v1",
+    created_at: typeof parsed.created_at === "string" ? parsed.created_at : now,
+    from: parsed.from ?? { agent: "unspecified" },
+    summary: parsed.summary,
+    ...(parsed.completed !== undefined ? { completed: parsed.completed } : {}),
+    ...(parsed.in_progress !== undefined ? { in_progress: parsed.in_progress } : {}),
+    ...(parsed.failing !== undefined ? { failing: parsed.failing } : {}),
+    ...(parsed.tried !== undefined ? { tried: parsed.tried } : {}),
+    ...(parsed.next_steps !== undefined ? { next_steps: parsed.next_steps } : {}),
+    ...(parsed.commands !== undefined ? { commands: parsed.commands } : {}),
+    ...(parsed.decisions !== undefined ? { decisions: parsed.decisions } : {}),
+    ...(parsed.open_questions !== undefined ? { open_questions: parsed.open_questions } : {}),
+  };
+}
+
+async function handoff(args) {
+  const a = normalizeArgv(args);
+  assertKnownFlags(a, [...HANDOFF_VALUE_FLAGS, "--json", "--list", "-v", "--verbose", "--help", "-h"], HANDOFF_VALUE_FLAGS);
+  const sdk = getSdk();
+  const asJson = a.includes("--json");
+  const verbose = isVerbose(a);
+
+  if (a.includes("--list")) {
+    const target = await vaultTarget(a);
+    try {
+      const result = await sdk.gitvault.listHandoffs(target);
+      printJson(sdk, result);
+      printVerboseStats(a, sdk);
+    } catch (err) {
+      reportSdkError(err);
+    }
+    return;
+  }
+  const revokeId = flagValue(a, "--revoke");
+  if (revokeId != null) {
+    const target = await vaultTarget(a);
+    try {
+      const result = await sdk.gitvault.revokeHandoff(revokeId, target);
+      printJson(sdk, result);
+      printVerboseStats(a, sdk);
+    } catch (err) {
+      reportSdkError(err);
+    }
+    return;
+  }
+
+  const note = await readHandoffNoteInput(a);
+  const ttlRaw = flagValue(a, "--ttl");
+  const ttlSeconds = ttlRaw != null ? parseIntegerFlag("--ttl", ttlRaw, { min: 60, max: 86400 }) : undefined;
+  const role = flagValue(a, "--role");
+  const includeSensitive = flagValues(a, "--include-sensitive");
+  const target = await vaultTarget(a);
+
+  const opts = {
+    ...target,
+    note,
+    ...(role != null ? { role } : {}),
+    ...(ttlSeconds != null ? { ttlSeconds } : {}),
+    ...(includeSensitive.length > 0 ? { includeSensitive } : {}),
+    onCommitLine: (line) => console.error(line),
+  };
+  try {
+    const result = await sdk.gitvault.handoff(opts);
+    for (const w of result.warnings ?? []) {
+      console.error(w.message ?? `${w.code}`);
+    }
+    console.error(`handoff minted: role ${result.minted_role}, expires ${result.expires_at}`);
+    console.error(`recipient runs: kygit resume <key printed below>`);
+    if (asJson) {
+      printJson(sdk, result);
+    } else {
+      // The key alone, so `KEY=$(run402 repos handoff)` works — everything
+      // else (the blast-radius warning, the commit line) is on stderr.
+      console.log(result.handoff_key);
+    }
+    printVerboseStats(a, sdk);
+    void verbose;
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+/** `kygit.handoff-note.v1` rendered as Markdown — `resume`'s default (non-`--json`) rendering. */
+function renderHandoffNoteMarkdown(note) {
+  if (!note) return null;
+  const lines = [];
+  lines.push(`# Handoff — ${note.from?.agent ?? "unknown agent"}${note.from?.model ? ` (${note.from.model})` : ""}`);
+  lines.push("");
+  lines.push(note.summary ?? "");
+  const section = (title, items) => {
+    if (!items || items.length === 0) return;
+    lines.push("");
+    lines.push(`## ${title}`);
+    for (const item of items) lines.push(`- ${item}`);
+  };
+  section("Completed", note.completed);
+  section("In progress", note.in_progress);
+  section("Failing", note.failing);
+  section("Tried", note.tried);
+  section("Next steps", note.next_steps);
+  section("Decisions", note.decisions);
+  section("Open questions", note.open_questions);
+  if (note.commands && (note.commands.test || note.commands.build || note.commands.run)) {
+    lines.push("");
+    lines.push("## Commands");
+    if (note.commands.test) lines.push(`- test: \`${note.commands.test}\``);
+    if (note.commands.build) lines.push(`- build: \`${note.commands.build}\``);
+    if (note.commands.run) lines.push(`- run: \`${note.commands.run}\``);
+  }
+  if (note.capture) {
+    lines.push("");
+    lines.push("## Capture");
+    lines.push(`- base: ${note.capture.base_head}${note.capture.branch ? ` (${note.capture.branch})` : ""}`);
+    lines.push(`- modified: ${note.capture.modified_captured}, untracked: ${note.capture.untracked_captured}`);
+    if (note.capture.sensitive_excluded?.length) lines.push(`- excluded (sensitive): ${note.capture.sensitive_excluded.join(", ")}`);
+    if (note.capture.ignored_not_transferred_count) lines.push(`- ignored (not transferred): ${note.capture.ignored_not_transferred_count}`);
+  }
+  return lines.join("\n");
+}
+
+async function resume(args) {
+  const a = normalizeArgv(args);
+  assertKnownFlags(a, [...RESUME_VALUE_FLAGS, "--key-stdin", "--json", "-v", "--verbose", "--help", "-h"], RESUME_VALUE_FLAGS);
+  const sdk = getSdk();
+  const keyStdin = a.includes("--key-stdin");
+  const to = flagValue(a, "--to");
+  const positionals = requirePositionalCount(a, [...RESUME_VALUE_FLAGS], { min: keyStdin ? 0 : 1, max: keyStdin ? 0 : 1, command: "run402 repos resume <kgh1_…|--key-stdin>", missing: "Missing the Handoff Key (positional argument, or --key-stdin)." });
+  let key = positionals[0] ?? null;
+  if (keyStdin) {
+    key = (await readStdinText()).trim();
+    if (!key) fail({ code: "BAD_USAGE", message: "Missing the Handoff Key on stdin.", hint: "Pipe the kgh1_… key, or pass it as a positional argument." });
+  }
+  try {
+    const result = await sdk.gitvault.resume({ key, ...(to != null ? { to } : {}), onLine: (line) => console.error(line) });
+    if (a.includes("--json")) {
+      printJson(sdk, result);
+    } else {
+      const rendered = renderHandoffNoteMarkdown(result.note) ?? result.note_raw;
+      if (rendered) {
+        console.log(rendered);
+      }
+      console.error("");
+      console.error(`resumed into ${result.restored.dir} (branch ${result.restored.branch})`);
+      if (result.deduplicated) console.error("note: this key was already claimed by this same principal — the ORIGINAL envelope was reused (safe replay)");
+      for (const na of result.next_actions ?? []) {
+        if (na.command) console.error(`next: ${na.command}${na.why ? ` — ${na.why}` : ""}`);
+      }
+    }
     printVerboseStats(a, sdk);
   } catch (err) {
     reportSdkError(err);
@@ -2498,6 +2787,14 @@ export async function run(sub, args) {
     }
     case "snapshot": {
       await snapshot(argv);
+      break;
+    }
+    case "handoff": {
+      await handoff(argv);
+      break;
+    }
+    case "resume": {
+      await resume(argv);
       break;
     }
     case "policy": {

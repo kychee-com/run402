@@ -60,6 +60,12 @@ const DOC_SURFACES = {
   // llms.txt gained its first-ever gitvault mention in this change (task 2.8)
   // — a pitch-level bullet, so it belongs under the gate from day one.
   "llms.txt": read("../../llms.txt"),
+  // kygit-handoff: the standalone brand-door package's own README already
+  // carried the confidentiality claim verbatim before this change (kygit is
+  // "the vault under its own name") — belongs under the banned-phrase /
+  // machine-loss-qualifier gate the moment that's true, same reasoning as
+  // llms.txt above.
+  "kygit/README.md": read("../../kygit/README.md"),
 } as const;
 
 const GITVAULT_TOOLS = ["repos_view", "repos_list_heads", "repos_fsck"] as const;

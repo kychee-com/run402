@@ -9,14 +9,14 @@
  * behaviour of their own and therefore inherit every one of these guarantees.
  */
 
-import { describe, it } from "node:test";
+import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { Run402 } from "../index.js";
-import { GITVAULT_BYO_OBJECT_MISSING_LIST_CAP, GITVAULT_CHECKPOINT_ADVISORY_GENERATIONS, computeByoPresenceOutcome, computeOpenProofOutcome, gitvaultCheckpointStaleness, gitvaultRemoteUrl, gitvaultRemoteUrlForRepo, parseGitvaultRemoteUrl } from "./gitvault.js";
+import { GITVAULT_BYO_OBJECT_MISSING_LIST_CAP, GITVAULT_CHECKPOINT_ADVISORY_GENERATIONS, computeByoPresenceOutcome, computeOpenProofOutcome, gitvaultCheckpointStaleness, gitvaultRemoteScheme, gitvaultRemoteUrl, gitvaultRemoteUrlForRepo, parseGitvaultRemoteUrl } from "./gitvault.js";
 import type { GitvaultHandle } from "./gitvault.js";
 import type { GitvaultOpenReceipt, GitvaultSignedObject } from "./gitvault.types.js";
 import { GITVAULT_TERMINAL_LOSS_DOCTOR_TEXT, GITVAULT_TERMINAL_LOSS_STATEMENT, sha256Hex, storedBytes } from "./gitvault.crypto.js";
@@ -111,6 +111,43 @@ describe("gitvault remote URLs", () => {
 
   it("tolerates surrounding whitespace (git hands the URL through argv)", () => {
     assert.deepEqual(parseGitvaultRemoteUrl("  run402::o/p \n"), { org_id: "o", project_id: "p" });
+  });
+
+  // kygit-handoff design D8: the door decides the remote spelling; both
+  // schemes parse to ONE canonical, scheme-less address.
+  describe("kygit:: (design D8)", () => {
+    const originalScheme = process.env.RUN402_REMOTE_SCHEME;
+    afterEach(() => {
+      if (originalScheme === undefined) delete process.env.RUN402_REMOTE_SCHEME;
+      else process.env.RUN402_REMOTE_SCHEME = originalScheme;
+    });
+
+    it("parses a kygit:: remote to the same canonical address as run402::", () => {
+      assert.deepEqual(parseGitvaultRemoteUrl("kygit::acme/notes"), { org_id: "acme", project_id: "notes" });
+      assert.deepEqual(parseGitvaultRemoteUrl("kygit::acme/notes"), parseGitvaultRemoteUrl("run402::acme/notes"));
+    });
+
+    it("gitvaultRemoteScheme defaults to run402 with no env set", () => {
+      delete process.env.RUN402_REMOTE_SCHEME;
+      assert.equal(gitvaultRemoteScheme(), "run402");
+    });
+
+    it("gitvaultRemoteScheme renders kygit only when RUN402_REMOTE_SCHEME=kygit", () => {
+      process.env.RUN402_REMOTE_SCHEME = "kygit";
+      assert.equal(gitvaultRemoteScheme(), "kygit");
+      assert.equal(gitvaultRemoteUrl("org_1", "prj_1"), "kygit::org_1/prj_1");
+      assert.equal(gitvaultRemoteUrlForRepo("acme", "notes"), "kygit::acme/notes");
+    });
+
+    it("any other RUN402_REMOTE_SCHEME value falls back to run402, never an unparseable scheme", () => {
+      process.env.RUN402_REMOTE_SCHEME = "something-else";
+      assert.equal(gitvaultRemoteScheme(), "run402");
+      assert.equal(gitvaultRemoteUrl("org_1", "prj_1"), "run402::org_1/prj_1");
+    });
+
+    it("an unrecognized scheme is refused (returns null) by parseGitvaultRemoteUrl", () => {
+      assert.equal(parseGitvaultRemoteUrl("gitlab::acme/notes"), null);
+    });
   });
 });
 

@@ -14,7 +14,7 @@
 import { after, before, beforeEach, describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -195,6 +195,46 @@ mock.module("./cli/lib/sdk.mjs", {
           calls.push({ method: "gitvault.push", input });
           return (impl.push ?? (async () => ({ generation: "0000000000000001", form: "wal" })))(input);
         },
+        handoff: async (input) => {
+          calls.push({ method: "gitvault.handoff", input });
+          return (impl.handoff ?? (async () => ({
+            handoff_key: "kgh1_" + "A".repeat(64),
+            handoff_id: "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+            kind: "handoff",
+            minted_role: "owner",
+            expires_at: "2026-09-02T11:00:00.000Z",
+            vault: { vault_id: REPO, address: "acme/notes", organization_id: ORG, project_id: PROJECT },
+            checkpoint: { generation: "0000000000000002", snapshot_oid_hmac: "aa".repeat(32) },
+            capture: { modified_captured: 1, untracked_captured: 1, sensitive_excluded: [".env"], ignored_not_transferred_count: 0 },
+            snapshot: { oid: "b".repeat(40) },
+            warnings: [{ code: "HANDOFF_KEY_CONFERS_ROLE", message: "Anyone holding this key becomes a owner of this org until first use or 2026-09-02T11:00:00.000Z." }],
+            next_actions: [{ type: "resume_handoff", command: "kygit resume kgh1_…" }, { type: "revoke_handoff" }],
+          })))(input);
+        },
+        listHandoffs: async (target) => {
+          calls.push({ method: "gitvault.listHandoffs", target });
+          return (impl.listHandoffs ?? (async () => ({ handoffs: [] })))(target);
+        },
+        revokeHandoff: async (handoffId, target) => {
+          calls.push({ method: "gitvault.revokeHandoff", handoffId, target });
+          return (impl.revokeHandoff ?? (async () => ({ handoff_id: handoffId, state: "revoked" })))(handoffId, target);
+        },
+        resume: async (input) => {
+          calls.push({ method: "gitvault.resume", input });
+          return (impl.resume ?? (async () => ({
+            handoff_id: "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+            kind: "handoff",
+            deduplicated: false,
+            note: { schema: "kygit.handoff-note.v1", created_at: "2026-09-02T00:00:00.000Z", from: { agent: "claude" }, summary: "made progress", capture: { base_head: "a".repeat(40), branch: "main", modified_captured: 1, untracked_captured: 1, sensitive_excluded: [], ignored_not_transferred_count: 0 } },
+            note_raw: JSON.stringify({ schema: "kygit.handoff-note.v1", summary: "made progress" }),
+            restored: { dir: "/tmp/notes", branch: "main", base_head_oid: "a".repeat(40), stash_oid: "b".repeat(40) },
+            membership: { organization_id: ORG, role: "owner", status: "active" },
+            members: [],
+            expires_at: "2026-09-02T11:00:00.000Z",
+            reconcile_recipients: { attempted: true, outcome: "reconciled" },
+            next_actions: [{ type: "push_repo", command: "git push origin main" }],
+          })))(input);
+        },
         planPush: async (input) => {
           calls.push({ method: "gitvault.planPush", input });
           return (impl.planPush ?? (async () => ({ allocation_needed: false, would_admit_generation: "0000000000000001", would_admit_generation_decimal: "1", form: "wal", object_count: 1, encrypted_bytes: "10", raw_bytes: "8" })))(input);
@@ -270,6 +310,28 @@ mock.module("./cli/lib/sdk.mjs", {
   },
 });
 
+// `cold-start.mjs`'s REAL implementation makes live Base-Sepolia RPC calls
+// (design D5's own network-facing balance poll) — mocked here so `create`'s
+// NO_ACTIVE_TIER fold-in (kygit-handoff design D5) is testable hermetically.
+// What's under test in THIS file is the WIRING between `repos.mjs` and
+// `cold-start.mjs` (does create() call it, does --no-init skip it), not the
+// chain's own network behavior, which has no test infra of its own to
+// build on here.
+let coldStartCalls = [];
+let coldStartImpl = null;
+mock.module("./cli/lib/cold-start.mjs", {
+  namedExports: {
+    foldColdStartChain: async (announce) => {
+      coldStartCalls.push({ announce });
+      return (coldStartImpl ?? (async (a) => {
+        a?.("allowance created: 0xabc");
+        a?.("subscribing to the prototype tier (one x402 testnet payment, perpetual)");
+        return { allowance_created: true, faucet_requested: false, tier: { status: "active" } };
+      }))(announce);
+    },
+  },
+});
+
 const { run } = await import("./cli/lib/repos.mjs");
 
 function git(cwd, args) {
@@ -317,7 +379,12 @@ async function expectFailure(sub, args = []) {
     captureStop();
     process.exit = originalExit;
   }
-  return JSON.parse(stderr.join("\n"));
+  // `fail()`'s JSON envelope is always the LAST stderr write before
+  // process.exit — parsing only that line (not the whole join) tolerates a
+  // code path that also logged plain informational lines first (e.g. the
+  // cold-start fold's own progress notes), which `stderr.join("\n")` cannot:
+  // a JSON blob concatenated with prose on other lines is not valid JSON.
+  return JSON.parse(stderr[stderr.length - 1]);
 }
 
 async function createLocalAllowance() {
@@ -344,6 +411,8 @@ after(() => {
 beforeEach(() => {
   calls = [];
   impl = {};
+  coldStartCalls = [];
+  coldStartImpl = null;
 });
 
 describe("run402 repos create — provision + allocate + scaffold, zero deploy ceremony", () => {
@@ -430,6 +499,80 @@ describe("run402 repos create — provision + allocate + scaffold, zero deploy c
     const envelope = await expectFailure("create", [""]);
     assert.equal(envelope.code, "BAD_PROJECT_NAME");
     assert.equal(calls.length, 0);
+  });
+});
+
+describe("run402 repos create — cold-start folding on NO_ACTIVE_TIER (kygit-handoff design D5)", () => {
+  function noActiveTierError() {
+    const e = new Error("no active tier");
+    e.body = { code: "NO_ACTIVE_TIER", message: "no active tier" };
+    return e;
+  }
+
+  it("folds the cold-start chain once and retries provision exactly once", async () => {
+    let provisionCalls = 0;
+    impl.provision = async (input) => {
+      provisionCalls += 1;
+      if (provisionCalls === 1) throw noActiveTierError();
+      return { project_id: PROJECT, anon_key: "anon", service_key: "svc", schema_slot: "s1" };
+    };
+    const payload = await ok("create", ["fresh-machine", "--org", ORG]);
+    assert.equal(provisionCalls, 2, "provision must be retried exactly once after the fold");
+    assert.equal(coldStartCalls.length, 1, "the cold-start chain must run exactly once");
+    assert.equal(typeof coldStartCalls[0].announce, "function");
+    assert.equal(payload.repo_id, REPO);
+    assert.ok(stderr.some((l) => l.includes("folding the cold-start chain")));
+    // The chain's own announced steps land on stderr too (via the announce callback).
+    assert.ok(stderr.some((l) => l.includes("allowance created")));
+  });
+
+  it("--no-init skips the fold and lets the bare NO_ACTIVE_TIER refusal through", async () => {
+    impl.provision = async () => {
+      throw noActiveTierError();
+    };
+    const envelope = await expectFailure("create", ["fresh-machine", "--org", ORG, "--no-init"]);
+    assert.equal(envelope.code, "NO_ACTIVE_TIER");
+    assert.equal(coldStartCalls.length, 0, "--no-init must never invoke the cold-start chain");
+  });
+
+  it("a cold-start chain failure (e.g. a throttled faucet) is reported instead of the original NO_ACTIVE_TIER", async () => {
+    impl.provision = async () => {
+      throw noActiveTierError();
+    };
+    const chainError = new Error("faucet throttled");
+    chainError.body = { code: "FAUCET_THROTTLED", message: "faucet throttled", retry_after: 3600 };
+    coldStartImpl = async () => {
+      throw chainError;
+    };
+    const envelope = await expectFailure("create", ["fresh-machine", "--org", ORG]);
+    assert.equal(envelope.code, "FAUCET_THROTTLED");
+    assert.equal(coldStartCalls.length, 1);
+  });
+
+  it("a second NO_ACTIVE_TIER-unrelated provision failure after a successful fold is reported as itself", async () => {
+    let provisionCalls = 0;
+    impl.provision = async () => {
+      provisionCalls += 1;
+      if (provisionCalls === 1) throw noActiveTierError();
+      const e = new Error("payment required");
+      e.body = { code: "PAYMENT_REQUIRED", message: "still no active tier after folding" };
+      throw e;
+    };
+    const envelope = await expectFailure("create", ["fresh-machine", "--org", ORG]);
+    assert.equal(envelope.code, "PAYMENT_REQUIRED");
+    assert.equal(provisionCalls, 2);
+    assert.equal(coldStartCalls.length, 1);
+  });
+
+  it("a non-NO_ACTIVE_TIER provision failure never folds", async () => {
+    impl.provision = async () => {
+      const e = new Error("bad request");
+      e.body = { code: "BAD_FIELD", message: "bad field" };
+      throw e;
+    };
+    const envelope = await expectFailure("create", ["fresh-machine", "--org", ORG]);
+    assert.equal(envelope.code, "BAD_FIELD");
+    assert.equal(coldStartCalls.length, 0);
   });
 });
 
@@ -1201,5 +1344,182 @@ describe("run402 repos snapshot — compact_advised next_action (gitvault-clone-
     });
     const payload = await ok("snapshot", ["--project", PROJECT]);
     assert.equal((payload.next_actions ?? []).find((n) => n.type === "compact_advised"), undefined);
+  });
+});
+
+// ─── handoff / resume (kygit-handoff design D1/D2/D3/D10) ───────────────────
+
+let noteFileCounter = 0;
+/** Write a Handoff Note (JSON, `kygit.handoff-note.v1` minus `capture`) to a
+ * fresh scratch file and return its path — avoids exercising the CLI's
+ * stdin-reading path in tests (a piped stdin has no natural EOF inside the
+ * test runner's own process). */
+function writeNoteFile(note) {
+  const path = join(scratch, `note-${noteFileCounter++}.json`);
+  writeFileSync(path, JSON.stringify(note));
+  return path;
+}
+
+const HANDOFF_KEY = "kgh1_" + "A".repeat(64);
+
+describe("run402 repos handoff — mint a single-use Handoff Key (design D3/D10)", () => {
+  it("mints via gitvault.handoff, passing the resolved target + note + a commit-line callback", async () => {
+    const notePath = writeNoteFile({ summary: "made progress on the thing" });
+    const payload = await ok("handoff", ["--project", PROJECT, "--note-file", notePath, "--json"]);
+    const call = calls.find((c) => c.method === "gitvault.handoff");
+    assert.ok(call, "gitvault.handoff must be called");
+    assert.equal(call.input.project_id, PROJECT);
+    assert.equal(call.input.note.summary, "made progress on the thing");
+    assert.equal(call.input.note.schema, "kygit.handoff-note.v1");
+    assert.equal(typeof call.input.onCommitLine, "function");
+    assert.equal(payload.handoff_key, HANDOFF_KEY);
+  });
+
+  it("the key ALONE goes to stdout when --json is absent — every other line lands on stderr (key-once contract)", async () => {
+    const notePath = writeNoteFile({ summary: "wip" });
+    const text = await human("handoff", ["--project", PROJECT, "--note-file", notePath]);
+    assert.equal(text.trim(), HANDOFF_KEY, "bare stdout must be exactly the key, so `KEY=$(run402 repos handoff ...)` works");
+    assert.ok(stderr.some((l) => l.includes("handoff minted: role owner")));
+    assert.ok(stderr.some((l) => l.includes("recipient runs: kygit resume")));
+    // The key itself must never be echoed on stderr — only stdout carries it.
+    assert.equal(stderr.some((l) => l.includes(HANDOFF_KEY)), false, "the Handoff Key must never appear on stderr");
+  });
+
+  it("prints every warning from the mint result to stderr verbatim", async () => {
+    const notePath = writeNoteFile({ summary: "wip" });
+    await human("handoff", ["--project", PROJECT, "--note-file", notePath]);
+    assert.ok(stderr.some((l) => l === "Anyone holding this key becomes a owner of this org until first use or 2026-09-02T11:00:00.000Z."));
+  });
+
+  it("--role threads through to gitvault.handoff", async () => {
+    const notePath = writeNoteFile({ summary: "wip" });
+    await ok("handoff", ["--project", PROJECT, "--note-file", notePath, "--role", "admin", "--json"]);
+    const call = calls.find((c) => c.method === "gitvault.handoff");
+    assert.equal(call.input.role, "admin");
+  });
+
+  it("--ttl threads through to gitvault.handoff as ttlSeconds", async () => {
+    const notePath = writeNoteFile({ summary: "wip" });
+    await ok("handoff", ["--project", PROJECT, "--note-file", notePath, "--ttl", "600", "--json"]);
+    const call = calls.find((c) => c.method === "gitvault.handoff");
+    assert.equal(call.input.ttlSeconds, 600);
+  });
+
+  it("--ttl out of range is refused locally, before the SDK is ever called", async () => {
+    const notePath = writeNoteFile({ summary: "wip" });
+    const envelope = await expectFailure("handoff", ["--project", PROJECT, "--note-file", notePath, "--ttl", "10"]);
+    assert.equal(envelope.code, "BAD_FLAG");
+    assert.equal(calls.find((c) => c.method === "gitvault.handoff"), undefined);
+  });
+
+  it("repeated --include-sensitive collects into includeSensitive[]", async () => {
+    const notePath = writeNoteFile({ summary: "wip" });
+    await ok("handoff", ["--project", PROJECT, "--note-file", notePath, "--include-sensitive", ".env", "--include-sensitive", "secrets.yml", "--json"]);
+    const call = calls.find((c) => c.method === "gitvault.handoff");
+    assert.deepEqual(call.input.includeSensitive, [".env", "secrets.yml"]);
+  });
+
+  it("--list calls gitvault.listHandoffs with the resolved target and never mints", async () => {
+    const payload = await ok("handoff", ["--project", PROJECT, "--list"]);
+    const listCall = calls.find((c) => c.method === "gitvault.listHandoffs");
+    assert.ok(listCall);
+    assert.equal(listCall.target.project_id, PROJECT);
+    assert.equal(calls.find((c) => c.method === "gitvault.handoff"), undefined);
+    assert.deepEqual(payload.handoffs, []);
+  });
+
+  it("--revoke <id> calls gitvault.revokeHandoff with the resolved target and never mints", async () => {
+    const payload = await ok("handoff", ["--project", PROJECT, "--revoke", "hnd_abc123"]);
+    const revokeCall = calls.find((c) => c.method === "gitvault.revokeHandoff");
+    assert.ok(revokeCall);
+    assert.equal(revokeCall.handoffId, "hnd_abc123");
+    assert.equal(revokeCall.target.project_id, PROJECT);
+    assert.equal(calls.find((c) => c.method === "gitvault.handoff"), undefined);
+    assert.equal(payload.state, "revoked");
+  });
+
+  it("rejects a Handoff Note file that is not valid JSON", async () => {
+    const notePath = join(scratch, `note-bad-${noteFileCounter++}.json`);
+    writeFileSync(notePath, "not json{{{");
+    const envelope = await expectFailure("handoff", ["--project", PROJECT, "--note-file", notePath]);
+    assert.equal(envelope.code, "BAD_USAGE");
+    assert.equal(calls.find((c) => c.method === "gitvault.handoff"), undefined);
+  });
+
+  it("rejects a Handoff Note missing `summary`", async () => {
+    const notePath = writeNoteFile({ from: { agent: "claude" } });
+    const envelope = await expectFailure("handoff", ["--project", PROJECT, "--note-file", notePath]);
+    assert.equal(envelope.code, "BAD_USAGE");
+  });
+
+  it("rejects a --note-file path that does not exist", async () => {
+    const envelope = await expectFailure("handoff", ["--project", PROJECT, "--note-file", join(scratch, "does-not-exist.json")]);
+    assert.equal(envelope.code, "FILE_NOT_FOUND");
+  });
+
+  it("-v prints a stats summary line to stderr", async () => {
+    const notePath = writeNoteFile({ summary: "wip" });
+    await human("handoff", ["--project", PROJECT, "--note-file", notePath, "-v"]);
+    assert.ok(stderr.some((line) => line.startsWith("stats: round_trips=")));
+  });
+});
+
+describe("run402 repos resume — claim a Handoff Key and restore the stash-shaped checkpoint (design D1/D2)", () => {
+  it("resumes via gitvault.resume, passing the key positional and a line callback", async () => {
+    const payload = await ok("resume", [HANDOFF_KEY, "--json"]);
+    const call = calls.find((c) => c.method === "gitvault.resume");
+    assert.ok(call, "gitvault.resume must be called");
+    assert.equal(call.input.key, HANDOFF_KEY);
+    assert.equal(typeof call.input.onLine, "function");
+    assert.equal(payload.restored.dir, "/tmp/notes");
+    assert.equal(payload.membership.role, "owner");
+  });
+
+  it("--to threads through to gitvault.resume as `to`", async () => {
+    const outDir = join(scratch, "resume-target");
+    await ok("resume", [HANDOFF_KEY, "--to", outDir, "--json"]);
+    const call = calls.find((c) => c.method === "gitvault.resume");
+    assert.equal(call.input.to, outDir);
+  });
+
+  it("default (non-JSON) output renders the Handoff Note as Markdown, then the restored-into line and next_actions on stderr", async () => {
+    const text = await human("resume", [HANDOFF_KEY]);
+    assert.match(text, /^# Handoff — claude/);
+    assert.match(text, /made progress/);
+    assert.match(text, /## Capture/);
+    assert.ok(stderr.some((l) => l === "resumed into /tmp/notes (branch main)"));
+    assert.ok(stderr.some((l) => l === "next: git push origin main"));
+  });
+
+  it("prints the safe-replay note when the key was already claimed by this same principal (dedup)", async () => {
+    impl.resume = async () => ({
+      handoff_id: "3fa85f64-5717-4562-b3fc-2c963f66afa6", kind: "handoff", deduplicated: true,
+      note: { schema: "kygit.handoff-note.v1", from: { agent: "claude" }, summary: "wip", capture: {} },
+      note_raw: "{}",
+      restored: { dir: "/tmp/notes", branch: "main", base_head_oid: "a".repeat(40), stash_oid: "b".repeat(40) },
+      membership: { organization_id: ORG, role: "owner", status: "active" }, members: [],
+      expires_at: "2026-09-02T11:00:00.000Z", reconcile_recipients: { attempted: false, outcome: "skipped" },
+      next_actions: [],
+    });
+    await human("resume", [HANDOFF_KEY]);
+    assert.ok(stderr.some((l) => l.includes("already claimed by this same principal")));
+  });
+
+  it("--json prints the full envelope instead of rendering Markdown", async () => {
+    const payload = await ok("resume", [HANDOFF_KEY, "--json"]);
+    assert.equal(payload.note.schema, "kygit.handoff-note.v1");
+    assert.equal(payload.note_raw, JSON.stringify({ schema: "kygit.handoff-note.v1", summary: "made progress" }));
+    assert.deepEqual(payload.members, []);
+  });
+
+  it("rejects when neither a positional key nor --key-stdin is given", async () => {
+    const envelope = await expectFailure("resume", []);
+    assert.equal(envelope.code, "BAD_USAGE");
+    assert.equal(calls.find((c) => c.method === "gitvault.resume"), undefined);
+  });
+
+  it("-v prints a stats summary line to stderr", async () => {
+    await human("resume", [HANDOFF_KEY, "-v"]);
+    assert.ok(stderr.some((line) => line.startsWith("stats: round_trips=")));
   });
 });
