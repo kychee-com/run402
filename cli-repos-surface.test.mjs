@@ -207,7 +207,7 @@ mock.module("./cli/lib/sdk.mjs", {
             checkpoint: { generation: "0000000000000002", snapshot_oid_hmac: "aa".repeat(32) },
             capture: { modified_captured: 1, untracked_captured: 1, sensitive_excluded: [".env"], ignored_not_transferred_count: 0 },
             snapshot: { oid: "b".repeat(40) },
-            warnings: [{ code: "HANDOFF_KEY_CONFERS_ROLE", message: "Anyone holding this key becomes a owner of this org until first use or 2026-09-02T11:00:00.000Z." }],
+            warnings: [{ code: "HANDOFF_KEY_CONFERS_ROLE", message: "Anyone holding this key becomes an owner of this org until first use or 2026-09-02T11:00:00.000Z." }],
             next_actions: [{ type: "resume_handoff", command: "kygit resume kgh1_…" }, { type: "revoke_handoff" }],
           })))(input);
         },
@@ -1388,7 +1388,7 @@ describe("run402 repos handoff — mint a single-use Handoff Key (design D3/D10)
   it("prints every warning from the mint result to stderr verbatim", async () => {
     const notePath = writeNoteFile({ summary: "wip" });
     await human("handoff", ["--project", PROJECT, "--note-file", notePath]);
-    assert.ok(stderr.some((l) => l === "Anyone holding this key becomes a owner of this org until first use or 2026-09-02T11:00:00.000Z."));
+    assert.ok(stderr.some((l) => l === "Anyone holding this key becomes an owner of this org until first use or 2026-09-02T11:00:00.000Z."));
   });
 
   it("--role threads through to gitvault.handoff", async () => {
