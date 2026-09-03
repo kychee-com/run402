@@ -19,6 +19,7 @@ import {
   discoverGlobalExcludes,
   gitvaultCommitLine,
   hardenedGitEnv,
+  run402PassthroughEnv,
   inspectRepository,
   materializeSnapshot,
   parseGitConfigAsData,
@@ -64,6 +65,28 @@ describe("hardened git execution", () => {
     assert.equal(e.GIT_CONFIG_GLOBAL, "/dev/null");
     assert.equal(e.GIT_NO_REPLACE_OBJECTS, "1");
     assert.ok(!Object.keys(e).some((k) => k.startsWith("GIT_") && !["GIT_CONFIG_NOSYSTEM", "GIT_CONFIG_GLOBAL", "GIT_NO_REPLACE_OBJECTS", "GIT_TERMINAL_PROMPT", "GIT_OPTIONAL_LOCKS", "GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL"].includes(k)));
+  });
+});
+
+describe("run402PassthroughEnv — the remote helper authenticates as this session", () => {
+  it("passes exactly the RUN402_* selection through hardenedGitEnv and nothing else inherited", () => {
+    const source = { RUN402_CONFIG_DIR: "/tmp/agent-b", RUN402_WALLET: "b", RUN402_TRACE: "1", HOME: "/home/x", GIT_DIR: "/evil", SSH_AUTH_SOCK: "/s" };
+    const passthrough = run402PassthroughEnv(source);
+    assert.deepEqual(passthrough, { RUN402_CONFIG_DIR: "/tmp/agent-b", RUN402_WALLET: "b", RUN402_TRACE: "1" });
+    const e = hardenedGitEnv(passthrough);
+    assert.equal(e.RUN402_CONFIG_DIR, "/tmp/agent-b");
+    assert.equal(e.RUN402_WALLET, "b");
+    assert.equal(e.GIT_CONFIG_GLOBAL, "/dev/null");
+    assert.ok(!("GIT_DIR" in e) && !("SSH_AUTH_SOCK" in e));
+  });
+  it("defaults to process.env and ignores undefined values", () => {
+    const prev = process.env.RUN402_PASSTHROUGH_PROBE;
+    process.env.RUN402_PASSTHROUGH_PROBE = "yes";
+    try {
+      assert.equal(run402PassthroughEnv().RUN402_PASSTHROUGH_PROBE, "yes");
+    } finally {
+      if (prev === undefined) delete process.env.RUN402_PASSTHROUGH_PROBE; else process.env.RUN402_PASSTHROUGH_PROBE = prev;
+    }
   });
 });
 

@@ -118,6 +118,28 @@ export function hardenedGitEnv(extra: Record<string, string> = {}): Record<strin
   return env;
 }
 
+/**
+ * The `RUN402_*` environment this process was configured with — for the ONE
+ * gitvault git invocation that touches the network (`cloneGitvaultRemote`):
+ * that clone spawns the `git-remote-kygit` / `git-remote-run402` helper,
+ * which must authenticate as THIS session's wallet and config dir. Under the
+ * bare {@link hardenedGitEnv} the helper saw no `RUN402_CONFIG_DIR` /
+ * `RUN402_WALLET` / `RUN402_API_BASE` and fell back to the machine's default
+ * config — a different wallet, not a member of the vault's org — so a
+ * `resume` on any machine that selects its identity by env (a laptop with
+ * several agent config dirs, a CI job, a harness with `RUN402_WALLET`) died
+ * `GITVAULT_ACCESS_DENIED` "while resolving the project's gitvault" right
+ * after a successful claim (kygit-handoff live rerun, 2026-09-03). Only
+ * `RUN402_*` keys pass; git's own hardening is untouched.
+ */
+export function run402PassthroughEnv(source: NodeJS.ProcessEnv = process.env): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(source)) {
+    if (k.startsWith("RUN402_") && typeof v === "string") out[k] = v;
+  }
+  return out;
+}
+
 /** The argv prefix that neutralizes hooks, fsmonitor, replace refs, and filter autodetection for every invocation. */
 export const HARDENED_GIT_ARGV_PREFIX = (): string[] => [
   "--no-replace-objects",

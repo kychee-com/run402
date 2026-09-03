@@ -376,6 +376,7 @@ export {
   globMatchesGitPath,
   hardenedGit,
   hardenedGitEnv,
+  run402PassthroughEnv,
   hasObject,
   inspectRepository,
   isAncestor,

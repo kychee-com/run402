@@ -29,7 +29,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { LocalError } from "../errors.js";
-import { hardenedGit, hardenedGitEnv } from "./gitvault-snapshot.js";
+import { hardenedGit, hardenedGitEnv, run402PassthroughEnv } from "./gitvault-snapshot.js";
 
 function fail(code: string, message: string, context: string, details?: unknown): never {
   throw new LocalError(message, context, { code, details });
@@ -53,7 +53,9 @@ export function cloneGitvaultRemote(remoteUrl: string, targetDir: string): Promi
     execFile(
       "git",
       argv,
-      { cwd: tmpdir(), env: hardenedGitEnv(), encoding: "buffer", maxBuffer: 1024 * 1024 * 1024, windowsHide: true },
+      // The remote helper this clone spawns authenticates as THIS session: pass
+      // the RUN402_* selection through (config dir, wallet, api base, trace).
+      { cwd: tmpdir(), env: hardenedGitEnv(run402PassthroughEnv()), encoding: "buffer", maxBuffer: 1024 * 1024 * 1024, windowsHide: true },
       (error, _stdout, stderr) => {
         if (error) {
           const stderrText = Buffer.from(stderr as Buffer).toString("utf8");
