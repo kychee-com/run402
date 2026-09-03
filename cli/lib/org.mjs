@@ -53,6 +53,7 @@ Usage:
 omit it and the org comes from --org, then RUN402_ORG, then the .run402.json
 binding, then 'run402 org use'. Inside a bound checkout two agents add each
 other with nothing to look up: run402 org member add <wallet_address> --role developer.
+A developer-or-above add REFUSES (GITVAULT_WRITER_NOT_ADMITTED) unless this session's key is an admitted writer on every vault of the org, so the new member can push at once; a current writer admits your key with run402 repos access sync.
 The second attribute may also be passed positionally (run402 org member add <wallet_address>).
 
 Subcommands:
@@ -202,6 +203,7 @@ Usage:
 omit it and the org comes from --org, then RUN402_ORG, then the .run402.json
 binding, then 'run402 org use'. Inside a bound checkout two agents add each
 other with nothing to look up: run402 org member add <wallet_address> --role developer.
+A developer-or-above add REFUSES (GITVAULT_WRITER_NOT_ADMITTED) unless this session's key is an admitted writer on every vault of the org, so the new member can push at once; a current writer admits your key with run402 repos access sync.
 The second attribute may also be passed positionally (run402 org member add <wallet_address>).
 
 An invite is claimed at the recipient's first login. Mutations require an active owner
@@ -219,6 +221,50 @@ Requires an admin+ membership on the org. Newest-first. Page forward with --afte
 };
 
 // ── Top-level: create / list / get / rename / whoami / audit ────────────────────
+
+
+/**
+ * gitvault-multi-writer (rev 47) task 6.3 / design D3 — decided 2026-09-03
+ * (Tal): `org member add` REFUSES a writer-eligible add (developer or
+ * above) when this session's own key is not an admitted writer on EVERY
+ * vault of the org, because a developer who cannot push is not the member
+ * the caller meant, and a half-usable membership is exactly the silent
+ * failure the multi-writer change exists to end. No warn path, no escape
+ * flag: the fix is for a current writer of the named vault(s) to admit this
+ * key (`run402 repos access sync`, or any push) and re-run — or to run
+ * the add themselves. Viewer/billing adds never reach this gate; an org
+ * with no vaults has nothing to admit; a vault in the read-only terminal
+ * state (its last writer gone) is skipped, since nobody can admit there.
+ * Every read failure REFUSES too (an unverifiable gate is not a passed one).
+ */
+async function assertCallerCanAdmitWritersEverywhere(sdk, orgId, effectiveRole) {
+  const listing = await sdk.gitvault.listByOrg(orgId);
+  const vaults = listing?.vaults ?? [];
+  const blocked = [];
+  for (const v of vaults) {
+    const st = await sdk.gitvault.status({ repo_id: v.repo_id, reconcile: "forbidden" });
+    const vault = st?.vault ?? null;
+    if (!vault || vault.read_only_terminal) continue;
+    const me = st?.keystore?.identity_fingerprint ?? null;
+    const writers = vault.writer_set?.writers ?? [];
+    if (!me || !writers.some((w) => w.writer_key_id === me)) blocked.push({ repo_id: v.repo_id, repo_name: v.repo_name ?? null, project_id: v.project_id ?? null });
+  }
+  if (blocked.length > 0) {
+    fail({
+      code: "GITVAULT_WRITER_NOT_ADMITTED",
+      message: `refusing to add a ${effectiveRole}: this session's key is not an admitted writer on ${blocked.length} of this org's ${vaults.length} vault(s), so the new member could not push there`,
+      details: { role: effectiveRole, vaults: blocked, checked: vaults.length },
+      next_actions: [
+        {
+          type: "request_writer_sync",
+          why: "A current writer of the named vault(s) admits YOUR key by running `run402 repos access sync` there (any push does it too); then re-run this command — or have that writer run it.",
+          safe_to_auto_execute: false,
+        },
+      ],
+    });
+  }
+  return { checked: vaults.length };
+}
 
 async function create(args) {
   const a = normalizeArgv(args);
@@ -556,6 +602,12 @@ async function runMember(args) {
     const wallet = walletFlag ?? pos[0];
     try {
       const sdk = getSdk();
+      // The gateway's own default role for a wallet add is developer — a
+      // writer-eligible role — so an add with no --role is gated too.
+      const effectiveRole = role || "developer";
+      if (["owner", "admin", "developer"].includes(effectiveRole)) {
+        await assertCallerCanAdmitWritersEverywhere(sdk, org, effectiveRole);
+      }
       const res = await sdk.org(org).members.add({ wallet, role: role || undefined });
       // gitvault-multi-writer (rev 47) task 6.3 — the gateway names which of
       // this org's vaults now have a pending writer candidate (D3: there is
@@ -564,10 +616,11 @@ async function runMember(args) {
       // reconcile against each one now, so a single `org member add` finishes
       // the whole job when the caller can. `reconcile()` is ALREADY a
       // fast, network-free no-op per vault when this session's own key
-      // isn't a writer there (task 5.7's own `eligible` gate) — never
-      // refuses, only warns, so a non-writer caller's member-add still
-      // succeeds; a current writer's next vault touch (push/deploy/
-      // `repos access sync`) finishes it instead.
+      // isn't a writer there (task 5.7's own `eligible` gate). For a
+      // writer-eligible add the gate above already proved this session IS
+      // a writer on every vault, so `not_eligible` here can only name a
+      // vault that changed under us in the meantime — reported, never
+      // silently dropped.
       const syncTarget = res.next_actions?.find((n) => n?.type === "sync_writers");
       let writerSync = null;
       if (syncTarget?.vault_ids?.length > 0) {
