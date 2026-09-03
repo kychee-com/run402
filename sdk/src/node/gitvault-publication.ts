@@ -4244,6 +4244,55 @@ export class GitvaultVault {
 
   private writerKeyId(): string { return this.keystore.ensureIdentity().signing_fingerprint; }
 
+  /**
+   * gitvault-multi-writer (task 5.8) — the push pre-check: before signing an
+   * ORDINARY head (any operation that expects this session to already be an
+   * active writer), refuse EARLY and LOCALLY when this session's own key is
+   * not (or is no longer) an active writer, rather than let real
+   * crypto/upload work run only to be refused by the gateway with a less
+   * specific message once the head finally reaches it. Reads the FRESHLY-
+   * pinned `writer_set_pin`; every call site below calls this immediately
+   * after its own `materialize()`/`verifyToNewest()` (same generation the
+   * caller is about to build against), so this performs no verification of
+   * its own — it only reads what the caller already froze.
+   *
+   * `removedMidRace` (design D8/D10) distinguishes the two shapes this
+   * refusal takes: `false` (the default) is the ORDINARY pre-check — this
+   * session was never (or is not currently) an admitted writer, thrown as
+   * `GITVAULT_WRITER_NOT_ADMITTED`. `true` is the CAS-LOSER path
+   * specifically: a retry, after re-materializing from the winner, that
+   * discovers THIS session's own key was removed by whatever won the race —
+   * "stop if removed" in D8's loser-rule sequence (fetch winner → verify →
+   * apply writer transition → stop if removed → rebase → rebuild → bounded
+   * backoff) — thrown as the more specific, client-local
+   * `GITVAULT_WRITER_REMOVED` (D10) instead: a real prior attempt just lost
+   * to a removal, not a caller who was never eligible.
+   *
+   * Deliberately NOT called for a "handoff"-door `add_writer_key` head
+   * ({@link submitWriterActivationHead}): there the signer is BY DESIGN not
+   * yet a writer — becoming one is what that exact head does.
+   */
+  private assertCallerIsWriter(context: string, removedMidRace = false): void {
+    const pin = this.repoFile().writer_set_pin;
+    const myKey = this.writerKeyId();
+    if (pin && pin.writers.some((w) => w.writer_key_id === myKey)) return;
+    const code = removedMidRace ? "GITVAULT_WRITER_REMOVED" : "GITVAULT_WRITER_NOT_ADMITTED";
+    fail(
+      code,
+      removedMidRace
+        ? `this session's writer key (${myKey}) was removed while a conflicting head was admitted first`
+        : `this session's writer key (${myKey}) is not an active writer on this vault`,
+      context,
+      {},
+      [
+        {
+          type: "request_writer_sync",
+          why: "This session's key is not (yet, or no longer) an admitted writer on this vault. If you were just added as an org member, any current writer's next gitvault operation (push, deploy, or r.gitvault.reconcile()) admits pending writers automatically.",
+        },
+      ],
+    );
+  }
+
   /** The owner's full signing keypair, or `GITVAULT_READ_ONLY` — same refusal path as {@link signer}, which returns only the seed; {@link sealKeyEnvelope} needs both halves. */
   private signingKeypair(): GitvaultSigningKeypair {
     const identity = this.keystore.ensureIdentity();
@@ -4703,6 +4752,14 @@ export class GitvaultVault {
     let conflicts = 0;
     let base = options.base ?? (await this.materialize());
     for (;;) {
+      // gitvault-multi-writer (task 5.8) — checked fresh on EVERY attempt
+      // (including a CAS-loser retry, design D8's "stop if removed"): a
+      // concurrent rotation could remove this session's own writer key
+      // between one attempt and the next. `conflicts > 0` is exactly the
+      // CAS-loser path (this iteration only runs after losing a race and
+      // re-materializing from the winner) — GITVAULT_WRITER_REMOVED there,
+      // the ordinary GITVAULT_WRITER_NOT_ADMITTED on the first attempt.
+      this.assertCallerIsWriter("publishing gitvault head", conflicts > 0);
       const evaluation = await evaluateRefTransaction(base.refs, options.transaction, { isAncestor: (a, d) => isAncestor(this.git(), a, d), protocol_refs: options.protocol_refs });
       const published = await this.publishGeneration({
         base, refs: evaluation.refs, dropped: evaluation.dropped, head_target: options.head_target ?? base.head_target,
@@ -5031,6 +5088,7 @@ export class GitvaultVault {
     let conflicts = 0;
     for (;;) {
       const base = await this.materialize();
+      this.assertCallerIsWriter("publishing a recipient_pin_manifest update", conflicts > 0); // gitvault-multi-writer task 5.8
       const prior = await this.loadEffectivePinManifest(base.generation);
       const { nextVersion, manifestSha, upload: manifestUpload, pins } = this.buildPinManifestUpdate(prior, [input]);
       await this.uploadAll([manifestUpload]);
@@ -5133,6 +5191,7 @@ export class GitvaultVault {
     let conflicts = 0;
     for (;;) {
       const base = await this.materialize();
+      this.assertCallerIsWriter("driving an epoch rotation", conflicts > 0); // gitvault-multi-writer task 5.8
       const repo = this.repoFile();
       const currentEpoch = base.head?.epoch ?? this.epoch();
       const newEpoch = nextEpoch(currentEpoch);
@@ -5471,6 +5530,10 @@ export class GitvaultVault {
           input.acceptance,
         ),
       "submitting a writer activation head",
+      // gitvault-multi-writer task 5.8: the handoff door is signed by the
+      // ADDED key itself, which is by design NOT YET a writer — the pre-
+      // check must be SKIPPED here, or this call could never succeed.
+      false,
     );
   }
 
@@ -5482,12 +5545,14 @@ export class GitvaultVault {
    * `add_writer_key{"writer"}` head. No grant/acceptance — the carrying
    * head's own signer being an active writer at the predecessor generation
    * IS the authorization (`validateAddWriterKeyPayload`'s `"writer"`
-   * branch), re-verified admission-side by `checkTransitionAdmissible`. If
-   * THIS session's own key is not (or is no longer) an active writer, the
-   * gateway refuses the head — surfaced as an ordinary `publishGeneration`
-   * throw, not a special case here (the same "let the chain be the
-   * authority" posture {@link push} already takes for an ordinary
-   * `GITVAULT_WRITER_NOT_ADMITTED`).
+   * branch), re-verified admission-side by `checkTransitionAdmissible`.
+   * Task 5.8 adds the SAME local pre-check every other head-signing path
+   * gets: if THIS session's own key is not (or is no longer) an active
+   * writer, refuse EARLY and LOCALLY (`GITVAULT_WRITER_NOT_ADMITTED` /
+   * `GITVAULT_WRITER_REMOVED`) rather than let the head reach the gateway
+   * only to be refused there — redundant with `reconcileWriterAdmissions`'s
+   * own upfront gate for that caller, but this method is public and a
+   * direct caller should get the same fast, specific refusal.
    */
   async admitPendingWriter(input: {
     addedWriterKeyId: string;
@@ -5498,6 +5563,7 @@ export class GitvaultVault {
       input.addedWriterKeyId,
       (pin) => buildWriterDoorAddWriterKeyPayload(this.repoId, pin, { writer_key_id: input.addedWriterKeyId, signing_pubkey: input.addedSigningPubkeyB64u, principal_id: input.addedPrincipalId }),
       "admitting a pending writer",
+      true,
     );
   }
 
@@ -5512,15 +5578,21 @@ export class GitvaultVault {
    * `addedWriterKeyId` is ALREADY in the freshly-verified writer set before
    * anything is built, returns `{outcome:"already_admitted"}` instead of
    * attempting a resubmission the chain would refuse.
+   *
+   * `requireCallerIsWriter` (task 5.8) gates {@link assertCallerIsWriter} —
+   * `false` for the handoff door (the signer is deliberately not yet a
+   * writer), `true` for the writer door (the signer must already be one).
    */
   async #publishAddWriterKeyTransition(
     addedWriterKeyId: string,
     buildPayload: (pin: { version: string; sha256: string; writers: readonly import("./gitvault-writer-state.js").WriterKeyEntry[] }) => import("./gitvault-writer-state.js").AddWriterKeyPayload,
     errorContext: string,
+    requireCallerIsWriter: boolean,
   ): Promise<{ outcome: "activated"; result: GitvaultPublishResult } | { outcome: "already_admitted"; generation: string }> {
     let conflicts = 0;
     for (;;) {
       const base = await this.materialize();
+      if (requireCallerIsWriter) this.assertCallerIsWriter(errorContext, conflicts > 0);
       const pin = this.repoFile().writer_set_pin;
       if (!pin) {
         fail(
@@ -5637,6 +5709,14 @@ export class GitvaultVault {
    */
   async repair(input: { base_generation: string; reason: GitvaultRepairDescriptor["reason"] }): Promise<GitvaultPublishResult> {
     const newest = await this.verifyToNewest();
+    // gitvault-multi-writer task 5.8 — repair requires OWNER+step-up
+    // server-side (`authority.repair`), but that is layered ON TOP of the
+    // baseline writer requirement every head needs (`authority.writer`,
+    // confirmed against the gateway's own admission fixture: an owner who
+    // is not also a chain-recognized writer is refused just the same). No
+    // retry loop here (a losing repair is a hard failure below, not a
+    // rebuild-and-retry), so there is no CAS-loser variant to distinguish.
+    this.assertCallerIsWriter("preparing repair");
     const baseGen = generationToBigInt(input.base_generation);
     const newestGen = generationToBigInt(newest.generation);
     if (baseGen >= newestGen) fail("REPAIR_TARGET_UNPRESERVABLE", `base_generation ${input.base_generation} must be below the newest ${newest.generation}`, "preparing repair");

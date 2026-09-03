@@ -1531,6 +1531,83 @@ describe("gitvault-multi-writer rev 47 — a second writer's head is accepted, a
   });
 });
 
+describe("gitvault-multi-writer (task 5.8) — the push pre-check refuses locally, before any network work", () => {
+  const fixtures: VaultFixture[] = [];
+  const open = async (): Promise<VaultFixture> => {
+    const f = await makeVault();
+    fixtures.push(f);
+    return f;
+  };
+  const cleanup = () => {
+    for (const f of fixtures.splice(0)) rmSync(f.root, { recursive: true, force: true });
+  };
+
+  it("a stranger's own push() is refused GITVAULT_WRITER_NOT_ADMITTED, with zero objects uploaded and zero heads admitted", async (t) => {
+    t.after(cleanup);
+    const f = await open();
+    const main = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    // Genesis creator is an active writer from the moment the vault exists;
+    // one ordinary push proves it and gives the vault a real generation 1.
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: main, force: false }] } });
+
+    // A COLD second identity, never admitted as a writer on this vault —
+    // the "stranger" (same shape as gitvault-clone-scaling's coldFixture).
+    const strangerKeystore = GitvaultKeystore.open({ rootDir: join(f.root, "ks-stranger") });
+    strangerKeystore.ensureIdentity();
+    const repo = f.keystore.readRepo(f.repoId)!;
+    strangerKeystore.saveRepo({
+      repo_id: f.repoId, org_id: repo.org_id, project_id: repo.project_id,
+      k_repo_hex: repo.k_repo_hex, epoch: repo.epoch, genesis_sha256: repo.genesis_sha256,
+      head_pin: null, last_ref_transaction: null, provenance: "restored_from_envelope",
+    });
+    const stranger = GitvaultVault.open({ keystore: strangerKeystore, transport: f.transport, repo_id: f.repoId, repo_dir: f.repoDir });
+
+    const objectsBefore = f.transport.objects.size;
+    const admissionsBefore = (await f.transport.listHeads({ repo_id: f.repoId, after_generation: "0000000000000000", limit: "50" })).heads.length;
+
+    let thrown: unknown;
+    try {
+      await stranger.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: main, new_oid: main, force: false }] } });
+    } catch (e) {
+      thrown = e;
+    }
+    assert.equal(codeOf(thrown), "GITVAULT_WRITER_NOT_ADMITTED");
+    // The refusal fires BEFORE `evaluateRefTransaction`/`publishGeneration`
+    // — no pack was built, nothing was uploaded, no head was admitted. If
+    // this regresses to firing only after real work runs, these counts move.
+    assert.equal(f.transport.objects.size, objectsBefore, "no object was uploaded before the refusal");
+    const admissionsAfter = (await f.transport.listHeads({ repo_id: f.repoId, after_generation: "0000000000000000", limit: "50" })).heads.length;
+    assert.equal(admissionsAfter, admissionsBefore, "no head was admitted before the refusal");
+
+    const nextActions = (thrown as { nextActions?: Array<{ type?: string; why?: string }> }).nextActions ?? [];
+    assert.ok(
+      nextActions.some((a) => a.type === "request_writer_sync" && typeof a.why === "string" && a.why.length > 0),
+      `expected a request_writer_sync next action, got ${JSON.stringify(nextActions)}`,
+    );
+  });
+
+  it("an ADMITTED writer surviving an ORDINARY CAS conflict (nothing removed) is not falsely refused on retry", async (t) => {
+    t.after(cleanup);
+    const f = await open();
+    const identity = f.keystore.ensureIdentity();
+    const main = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    const gen1 = await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: main, force: false }] } });
+    assert.equal(gen1.head.writer_key_id, identity.signing_fingerprint);
+
+    // Materialize a base SNAPSHOT now, then let an ordinary (unrelated ref)
+    // push land BEHIND this session's back — the classic CAS-conflict shape,
+    // nothing to do with writer removal.
+    const staleBase = await f.vault.materialize();
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/other", expected_old_oid: null, new_oid: main, force: false }] } });
+
+    // Pushing against the now-stale base conflicts on attempt 1 and must
+    // retry — the SAME writer is still active the whole time, so neither
+    // attempt should throw GITVAULT_WRITER_NOT_ADMITTED/GITVAULT_WRITER_REMOVED.
+    const result = await f.vault.push({ base: staleBase, transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: main, new_oid: main, force: false }] } });
+    assert.ok(result.conflicts_retried >= 1, "the stale base should have lost at least one race, exercising the retry path this test is actually about");
+  });
+});
+
 // ─── Coverage tally ──────────────────────────────────────────────────────────
 
 vectors("vector coverage tally", () => {
