@@ -679,6 +679,8 @@ const SURFACE: Capability[] = [
   { id: "add_org_member",      endpoint: "POST /orgs/v1/:org_id/members",                     mcp: "add_org_member",        cli: "org:member:add",    openclaw: "org:member:add" },
   { id: "set_org_member_role", endpoint: "PATCH /orgs/v1/:org_id/members/:principal_id",      mcp: "set_org_member_role",   cli: "org:member:role",   openclaw: "org:member:role" },
   { id: "remove_org_member",   endpoint: "DELETE /orgs/v1/:org_id/members/:principal_id",     mcp: "remove_org_member",     cli: "org:member:rm",     openclaw: "org:member:rm" },
+  // gitvault-agent-envelopes D3: the owner's independent-credential rotation path — no MCP tool by design (owner + step-up mutation, CLI-only like every other gitvault mutating verb).
+  { id: "revoke_org_member_encryption_key", endpoint: "DELETE /orgs/v1/:org_id/members/:principal_id/encryption-key", mcp: null, cli: "org:member:revoke-key", openclaw: "org:member:revoke-key" },
   { id: "org_audit",           endpoint: "GET /orgs/v1/:org_id/audit",                        mcp: null,                    cli: "org:audit",         openclaw: "org:audit" },
   // Current-org selection (add-cli-current-org): LOCAL state, like wallets:use
   // and the local half of projects:use. No endpoint — the org id is resolved
@@ -1229,6 +1231,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   add_org_member: "org.members.add",
   set_org_member_role: "org.members.setRole",
   remove_org_member: "org.members.revoke",
+  revoke_org_member_encryption_key: "org.members.revokeEncryptionKey",
   org_audit: "org.audit",
   org_invite_list: "org.invites.list",
   org_invite_create: "org.invites.create",
@@ -1632,16 +1635,21 @@ describe("SDK surface alignment", () => {
       // repinRecipient/publishPinManifestUpdate above.
       "gitvault.submitProofOfOpen",
       // rotateEpoch/rotateEpochForKeyRevocation/declareEpochSecretExposed/
-      // declareRecipientKeyRevoked share the ONE `repos:access` CLI
-      // dispatch (`access repair`/`revoke-key`/`declare-exposure` sub-verbs)
-      // — same "shares the parent command, no row of its own" pattern as
-      // `errors.get`/`errors.watch` above. declareRecipientKeyRevoked is
-      // additionally an internal step `rotateEpochForKeyRevocation` composes
-      // (declare, then rotate off the declaration's own returned counters).
+      // declareRecipientKeyRevoked/acceptRecipientKeyChange share the ONE
+      // `repos:access` CLI dispatch (`access repair`/`revoke-key`/
+      // `declare-exposure`/`repin` sub-verbs) — same "shares the parent
+      // command, no row of its own" pattern as `errors.get`/`errors.watch`
+      // above. declareRecipientKeyRevoked is additionally an internal step
+      // `rotateEpochForKeyRevocation` composes (declare, then rotate off
+      // the declaration's own returned counters). acceptRecipientKeyChange
+      // (gitvault-agent-envelopes, `access repin`) moves the TOFU pin and
+      // records the D197 confirmation receipt when a key-holder explicitly
+      // accepts a recipient's changed key.
       "gitvault.rotateEpoch",
       "gitvault.rotateEpochForKeyRevocation",
       "gitvault.declareEpochSecretExposed",
       "gitvault.declareRecipientKeyRevoked",
+      "gitvault.acceptRecipientKeyChange",
       // gitvault-client-round-trips design D3 (task 4.2): the local
       // object-cache eviction sweep `repos gc` calls as a best-effort side
       // effect — purely local housekeeping, no dedicated CLI verb/MCP tool.
