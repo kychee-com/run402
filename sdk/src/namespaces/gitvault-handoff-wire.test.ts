@@ -30,8 +30,8 @@ const MINT_RESPONSE = {
   org_id: "7c524d76-208f-42de-aba7-a9f0f1c4f8b0",
   project_id: "prj_1788360609776_0053",
   checkpoint: { generation: "0000000000000005", snapshot_oid_hmac: "ab".repeat(32) },
-  warning: "Anyone holding this key becomes an owner of this org until first use or 2026-09-02T16:11:58.419Z.",
-  warnings: [{ code: "HANDOFF_KEY_CONFERS_ROLE", message: "Anyone holding this key becomes an owner of this org until first use or 2026-09-02T16:11:58.419Z." }],
+  warning: "Whoever claims this key first becomes an owner of this org and a writer of this vault, permanently. The key works once and expires at 2026-09-02T16:11:58.419Z.",
+  warnings: [{ code: "HANDOFF_KEY_CONFERS_ROLE", message: "Whoever claims this key first becomes an owner of this org and a writer of this vault, permanently. The key works once and expires at 2026-09-02T16:11:58.419Z." }],
   next_actions: [{ type: "revoke_handoff", why: "…", method: "DELETE", path: "/gitvault/v1/vaults/src_777c3254203e2ae80cfb302a2810791b/handoffs/a3266fe6-31ca-4ed0-b3b8-cbe41525e472" }],
 };
 
