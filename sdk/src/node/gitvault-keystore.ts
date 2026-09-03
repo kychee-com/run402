@@ -172,6 +172,43 @@ export interface GitvaultRepoFile {
    * Absent/`null` until this principal has published its first manifest.
    */
   known_pin_manifest?: { pin_manifest_version: string; stored_bytes_sha256: string; pins: { principal_id: string; ek_fingerprint: string }[] } | null;
+  /**
+   * gitvault-multi-writer rev 47 (protocol §4.15) — the writer-set analog of
+   * {@link head_pin}: the chain-replayed writer state as of THIS repo's own
+   * `head_pin`/`verified_prefix` generation, persisted so `GitvaultVault.verifyToNewest`
+   * never has to re-walk the writer set from genesis on every call. Advances
+   * in lockstep with `head_pin`/`verified_prefix` — always at the SAME
+   * generation, never ahead or behind. `null` until the first `verifyToNewest`
+   * call on this checkout (equivalent to the genesis-only singleton, which
+   * that call derives for free without needing this field yet).
+   */
+  writer_set_pin?: { version: string; sha256: string; writers: { writer_key_id: string; signing_pubkey: string }[]; pinned_at: string } | null;
+  /**
+   * gitvault-multi-writer rev 47 — THIS principal's own relationship to the
+   * chain-verified `writer_set_pin` above, as of the last time it was
+   * computed (`repos view`/`doctor`/reconcile — task 5.7). `"pending"`: a
+   * claimed handoff or a directory publish is waiting on the actual
+   * `add_writer_key` push (see `pending_writer_admission` below).
+   * `"active"`: this principal's own signing key IS in `writer_set_pin.writers`.
+   * `"not_admitted"`: an active, eligible org member whose key has never
+   * been added. `"removed"`: a key that WAS a writer and was chain-removed
+   * (permanently — see `writer-state.ts`'s `burnedWriterKeyIds`). `null`
+   * until first computed (e.g. a checkout with no local signing key at all).
+   */
+  writer_status?: "pending" | "active" | "not_admitted" | "removed" | null;
+  /**
+   * gitvault-multi-writer rev 47 (task 5.6) — set by `resume()` the moment a
+   * handoff claim response's `writer_admission_grant` is verified and
+   * persisted, BEFORE the recipient's own `add_writer_key{"handoff"}`
+   * activation push lands on-chain; cleared once that push is admitted
+   * (`writer_status` flips to `"active"` at the same time). Surviving this
+   * field across a crash is exactly what makes the activation push
+   * idempotently resumable (task 5.6's "crash replay") — the grant + the
+   * writer_key_id it names are the only state a retry needs, and both are
+   * already locally held (the grant was echoed verbatim in the claim
+   * response; nothing here is ever re-derived from a network call).
+   */
+  pending_writer_admission?: { handoff_id: string; writer_admission_grant: Record<string, unknown>; claimed_writer_key_id: string } | null;
   /** The last ref transaction this principal published (5.4 fills it). */
   last_ref_transaction: Record<string, unknown> | null;
   /** How this file came to exist — creation, or a §5.1 restore from the principal's own envelope. */
