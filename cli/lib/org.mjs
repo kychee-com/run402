@@ -555,8 +555,43 @@ async function runMember(args) {
     });
     const wallet = walletFlag ?? pos[0];
     try {
-      const res = await getSdk().org(org).members.add({ wallet, role: role || undefined });
-      console.log(JSON.stringify(res, null, 2));
+      const sdk = getSdk();
+      const res = await sdk.org(org).members.add({ wallet, role: role || undefined });
+      // gitvault-multi-writer (rev 47) task 6.3 — the gateway names which of
+      // this org's vaults now have a pending writer candidate (D3: there is
+      // no server-side writer admission — the client holds the keys) via a
+      // `sync_writers` next_action carrying `vault_ids[]`. Run the ACTUAL
+      // reconcile against each one now, so a single `org member add` finishes
+      // the whole job when the caller can. `reconcile()` is ALREADY a
+      // fast, network-free no-op per vault when this session's own key
+      // isn't a writer there (task 5.7's own `eligible` gate) — never
+      // refuses, only warns, so a non-writer caller's member-add still
+      // succeeds; a current writer's next vault touch (push/deploy/
+      // `repos access sync`) finishes it instead.
+      const syncTarget = res.next_actions?.find((n) => n?.type === "sync_writers");
+      let writerSync = null;
+      if (syncTarget?.vault_ids?.length > 0) {
+        const admitted = [];
+        const notEligible = [];
+        const errors = [];
+        for (const vaultId of syncTarget.vault_ids) {
+          try {
+            const r = await sdk.gitvault.reconcile({ repo_id: vaultId });
+            if (!r.eligible) notEligible.push(vaultId);
+            else if (r.admitted.length > 0) admitted.push({ repo_id: vaultId, admitted: r.admitted });
+          } catch (err) {
+            errors.push({ repo_id: vaultId, error: err?.message ?? String(err) });
+          }
+        }
+        writerSync = { attempted: syncTarget.vault_ids.length, admitted, not_eligible: notEligible, errors };
+      }
+      console.log(JSON.stringify(writerSync ? { ...res, writer_sync: writerSync } : res, null, 2));
+      if (writerSync?.not_eligible.length > 0) {
+        console.error(`writer sync: this session is not (yet) a writer on ${writerSync.not_eligible.length} vault(s) — the new member is a pending writer candidate there until a CURRENT writer's next gitvault operation admits them.`);
+      }
+      if (writerSync?.errors.length > 0) {
+        for (const e of writerSync.errors) console.error(`writer sync: ${e.repo_id} — ${e.error}`);
+      }
     } catch (err) {
       reportSdkError(err);
     }

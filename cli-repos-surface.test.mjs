@@ -238,6 +238,7 @@ mock.module("./cli/lib/sdk.mjs", {
             members: [],
             expires_at: "2026-09-02T11:00:00.000Z",
             reconcile_recipients: { attempted: true, outcome: "reconciled" },
+            writer_activation: { outcome: "active", writer_key_id: "vk_" + "a".repeat(64), generation: "0000000000000002" },
             next_actions: [{ type: "push_repo", command: "git push origin main" }],
           })))(input);
         },
@@ -301,6 +302,11 @@ mock.module("./cli/lib/sdk.mjs", {
         declareEpochSecretExposed: async (repoId) => {
           calls.push({ method: "gitvault.declareEpochSecretExposed", repoId });
           return (impl.declareEpochSecretExposed ?? (async () => ({ epoch_secret_exposure_version: "1" })))(repoId);
+        },
+        // gitvault-multi-writer (rev 47) task 6.4 — `repos access sync`.
+        reconcile: async (target) => {
+          calls.push({ method: "gitvault.reconcile", target });
+          return (impl.reconcile ?? (async () => ({ repo_id: REPO, org_id: ORG, eligible: true, admitted: [], already_covered: [], skipped: [] })))(target);
         },
         recover: async (input) => {
           calls.push({ method: "gitvault.recover", input });
@@ -666,6 +672,44 @@ describe("run402 repos view — side-effect-free (design D3)", () => {
   it("--human renders a summary instead of JSON, and is rejected with --json", async () => {
     const envelope = await expectFailure("view", ["--project", PROJECT, "--human", "--json"]);
     assert.equal(envelope.code, "BAD_USAGE");
+  });
+
+  // gitvault-multi-writer (rev 47) task 6.1 — the --human writer roster.
+  it("--human renders a writer roster line per writer, a pending-writers hint, and the read-only-terminal warning when set", async () => {
+    impl.gitvaultStatus = async () => vaultStatus({
+      vault: vaultRecord({
+        writer_set: {
+          version: "0000000000000002", sha256: "a".repeat(64),
+          writers: [
+            { writer_key_id: "vk_creator", principal_id: "prin_1", authorization_kind: "writer", admitted_generation: "0000000000000000", admitted_head_sha256: "b".repeat(64) },
+            { writer_key_id: "vk_bob", principal_id: "prin_2", authorization_kind: "handoff", admitted_generation: "0000000000000002", admitted_head_sha256: "c".repeat(64) },
+          ],
+        },
+        pending_writers: [{ principal_id: "prin_3", writer_key_id: "vk_carol" }],
+        read_only_terminal: false,
+      }),
+    });
+    const text = await human("view", ["--project", PROJECT, "--human"]);
+    assert.match(text, /Writers \(2\):/);
+    assert.match(text, /vk_creator — admitted generation 0 \(writer\)/);
+    assert.match(text, /vk_bob — admitted generation 2 \(handoff\)/);
+    assert.match(text, /Pending writers \(1, eligible but not yet admitted\): vk_carol/);
+    assert.doesNotMatch(text, /read-only terminal/);
+  });
+
+  it("--human surfaces the read-only-terminal warning when the vault has lost its last writer (D228)", async () => {
+    impl.gitvaultStatus = async () => vaultStatus({
+      vault: vaultRecord({ writer_set: { version: "0000000000000003", sha256: "a".repeat(64), writers: [] }, read_only_terminal: true }),
+    });
+    const text = await human("view", ["--project", PROJECT, "--human"]);
+    assert.match(text, /Writers \(0\):/);
+    assert.match(text, /read-only terminal: the last writer was removed/);
+  });
+
+  it("--human omits the writer roster entirely for a pre-rev-47 gateway (writer_set absent from the record)", async () => {
+    impl.gitvaultStatus = async () => vaultStatus({ vault: vaultRecord() }); // no writer_set override — absent, not empty
+    const text = await human("view", ["--project", PROJECT, "--human"]);
+    assert.doesNotMatch(text, /Writers \(/);
   });
 
   it("prints the terminal-loss statement verbatim when the SDK reports a single (or unknown) covering principal", async () => {
@@ -1291,6 +1335,35 @@ describe("run402 repos access — read-only; repair/revoke-key/declare-exposure 
     const call = calls.find((c) => c.method === "gitvault.declareEpochSecretExposed");
     assert.equal(call.repoId, REPO);
   });
+
+  // gitvault-multi-writer (rev 47) task 6.4 — `repos access sync`.
+  describe("access sync — the on-demand writer reconcile", () => {
+    it("drives gitvault.reconcile with the resolved target and admits a pending candidate", async () => {
+      impl.reconcile = async () => ({ repo_id: REPO, org_id: ORG, eligible: true, admitted: [{ writer_key_id: "vk_bob", principal_id: "prin_bob", generation: "0000000000000003" }], already_covered: [], skipped: [] });
+      const payload = await ok("access", ["sync", "--project", PROJECT]);
+      assert.deepEqual(payload.admitted.map((a) => a.writer_key_id), ["vk_bob"]);
+      assert.ok(stderr.some((l) => l.includes("admitted vk_bob (prin_bob) at generation 0000000000000003")));
+      const call = calls.find((c) => c.method === "gitvault.reconcile");
+      assert.equal(call.target.project_id, PROJECT);
+    });
+
+    it("nothing pending: reports it on stderr rather than a silent success", async () => {
+      await ok("access", ["sync", "--project", PROJECT]); // default mock: eligible:true, admitted:[]
+      assert.ok(stderr.some((l) => l === "no pending writer candidates — nothing to sync."));
+    });
+
+    it("this session is not itself a writer: reports it on stderr, never throws", async () => {
+      impl.reconcile = async () => ({ repo_id: REPO, org_id: ORG, eligible: false, admitted: [], already_covered: [], skipped: [] });
+      const payload = await ok("access", ["sync", "--project", PROJECT]);
+      assert.equal(payload.eligible, false);
+      assert.ok(stderr.some((l) => l.includes("not an active writer on this vault — nothing to sync")));
+    });
+
+    it("--human renders a compact roster instead of JSON, and is rejected with --json", async () => {
+      const envelope = await expectFailure("access", ["sync", "--project", PROJECT, "--human", "--json"]);
+      assert.equal(envelope.code, "BAD_USAGE");
+    });
+  });
 });
 
 describe("run402 repos recover — kept, D10 confirms the name", () => {
@@ -1397,6 +1470,13 @@ describe("run402 repos handoff — mint a single-use Handoff Key (design D3/D10)
     assert.ok(stderr.some((l) => l === "Anyone holding this key becomes an owner of this org until first use or 2026-09-02T11:00:00.000Z."));
   });
 
+  // gitvault-multi-writer (rev 47) task 6.4.
+  it("prints the writer-admission sentence to stderr — a handoff mints a NEW writer, not just a checkout pass", async () => {
+    const notePath = writeNoteFile({ summary: "wip" });
+    await human("handoff", ["--project", PROJECT, "--note-file", notePath]);
+    assert.ok(stderr.some((l) => l.includes("becomes a WRITER on this vault")));
+  });
+
   it("--role threads through to gitvault.handoff", async () => {
     const notePath = writeNoteFile({ summary: "wip" });
     await ok("handoff", ["--project", PROJECT, "--note-file", notePath, "--role", "admin", "--json"]);
@@ -1495,6 +1575,12 @@ describe("run402 repos resume — claim a Handoff Key and restore the stash-shap
     assert.match(text, /## Capture/);
     assert.ok(stderr.some((l) => l === "resumed into /tmp/notes (branch main)"));
     assert.ok(stderr.some((l) => l === "next: git push origin main"));
+  });
+
+  // gitvault-multi-writer (rev 47) task 6.4.
+  it("prints this checkout's own writer activation to stderr: `writer: active (generation N)`", async () => {
+    await human("resume", [HANDOFF_KEY]);
+    assert.ok(stderr.some((l) => l === "writer: active (generation 0000000000000002)"));
   });
 
   it("prints the safe-replay note when the key was already claimed by this same principal (dedup)", async () => {

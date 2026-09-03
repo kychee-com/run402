@@ -683,8 +683,30 @@ export async function run(sub, args = []) {
           // to the durability sentence instead of the terminal-loss claim.
           covering_recipients: gv.covering_recipients ?? null,
           daemon: daemonInfo,
+          // gitvault-multi-writer (rev 47) task 6.2 — this machine's own
+          // standing on the vault's chain-verified writer set. `null` only
+          // when there is no vault at all (nothing to be a writer OF).
+          // `read_only_vault` takes priority over the caller's own standing
+          // — the D228 terminal state blocks EVERY push regardless of who
+          // is asking.
+          writer: gv.vault === null
+            ? null
+            : gv.vault.read_only_terminal
+              ? "read_only_vault"
+              : gv.vault.writer_set?.writers.some((w) => w.writer_key_id === gv.keystore.identity_fingerprint)
+                ? "active"
+                : gv.vault.pending_writers?.some((p) => p.writer_key_id === gv.keystore.identity_fingerprint)
+                  ? "pending"
+                  : "not_admitted",
         };
         const gaps = [];
+        if (value.writer === "read_only_vault") {
+          gaps.push("this vault has lost its last writer (D228 read-only terminal) — it still serves reads, but no push can be admitted until a new writer is admitted through a recovery path");
+        } else if (value.writer === "pending") {
+          gaps.push("this machine's key is an eligible writer candidate but not yet admitted — run 'run402 repos access sync' if you already hold writer standing on this vault, or ask a current writer to run any gitvault operation");
+        } else if (value.writer === "not_admitted") {
+          gaps.push("this machine's key is not an active writer on this vault — a push from here is refused GITVAULT_WRITER_NOT_ADMITTED; ask a current writer to admit you (org membership at role developer+ and a published signing key make you eligible)");
+        }
         // The one that actually breaks the next deploy: the project demands a
         // vaulted capture and THIS machine cannot produce one.
         if (gv.gitvault_policy === "required" && !gv.keystore.holds_repo_key) {

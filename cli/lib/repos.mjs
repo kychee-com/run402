@@ -634,6 +634,29 @@ async function formatRepoHuman(s, mirror) {
       : "can decrypt (read-only — no signing key)";
   lines.push(`This machine: ${decryptPart}. Policy: ${s.gitvault_policy ?? "(none)"}`);
 
+  // gitvault-multi-writer (rev 47) task 6.1 — the writer roster, one line
+  // per writer: `writer_set` is the chain-verified set exactly as `verify`/
+  // `fsck` would derive it (never re-verified here — this is `view`'s own
+  // side-effect-free read of the vault RECORD's already-verified pointer).
+  // `pending_writers` is the reverse direction (eligible org members not
+  // yet admitted); `read_only_terminal` (D228) is the forced sole-writer-
+  // removal terminal — surfaced prominently since a vault in that state
+  // still serves reads but can never accept another push until recovered.
+  const writerSet = s.vault.writer_set;
+  if (writerSet) {
+    lines.push(`Writers (${writerSet.writers.length}):`);
+    for (const w of writerSet.writers) {
+      lines.push(`  ${w.writer_key_id} — admitted generation ${decimal(w.admitted_generation)} (${w.authorization_kind})`);
+    }
+    if (s.vault.read_only_terminal) {
+      lines.push("  ⚠ read-only terminal: the last writer was removed — this vault serves reads but cannot accept a push until a new writer is admitted through a recovery path.");
+    }
+    const pendingWriters = s.vault.pending_writers ?? [];
+    if (pendingWriters.length > 0) {
+      lines.push(`Pending writers (${pendingWriters.length}, eligible but not yet admitted): ${pendingWriters.map((p) => p.writer_key_id).join(", ")} — run 'run402 repos access sync' if this machine is already a writer.`);
+    }
+  }
+
   // gitvault-mirror-default: the SDK-computed vault_unmirrored finding is
   // echoed verbatim (never rephrased here) — informational, never blocking.
   if (mirror?.finding) {
@@ -1679,6 +1702,12 @@ async function handoff(args) {
       console.error(w.message ?? `${w.code}`);
     }
     console.error(`handoff minted: role ${result.minted_role}, expires ${result.expires_at}`);
+    // gitvault-multi-writer (rev 47) task 6.4 — a handoff is now also a
+    // WRITER admission, not just a checkout pass: the recipient signs its
+    // own future pushes with a NEW key this vault's chain recognizes as a
+    // writer the moment `resume` claims it (design D4 — a grant minted here,
+    // a two-signature acceptance the recipient's own resume completes).
+    console.error(`the recipient becomes a WRITER on this vault the moment they resume — their own key signs future pushes, not yours.`);
     console.error(`recipient runs: kygit resume <key printed below>`);
     if (asJson) {
       printJson(sdk, result);
@@ -1809,6 +1838,13 @@ async function resume(args) {
       }
       console.error("");
       console.error(`resumed into ${result.restored.dir} (branch ${result.restored.branch})`);
+      // gitvault-multi-writer (rev 47) task 6.4 — this checkout's own writer
+      // activation (design D5): the outcome is "active" either way, whether
+      // this call submitted a fresh activation head or a prior attempt's
+      // already landed (crash-resumable, task 5.6's own idempotent-skip).
+      if (result.writer_activation) {
+        console.error(`writer: ${result.writer_activation.outcome} (generation ${result.writer_activation.generation})`);
+      }
       if (result.deduplicated) console.error("note: this key was already claimed by this same principal — the ORIGINAL envelope was reused (safe replay)");
       for (const na of result.next_actions ?? []) {
         if (na.command) console.error(`next: ${na.command}${na.why ? ` — ${na.why}` : ""}`);
@@ -2593,12 +2629,48 @@ async function accessDeclareExposure(args) {
   }
 }
 
+// gitvault-multi-writer (rev 47) task 6.4 — an on-demand tail on the
+// existing `access` family: `r.gitvault.reconcile()` admits every eligible
+// `pending_writers[]` candidate right now, rather than waiting for this
+// machine's next push/deploy to do it as a side effect. Same shape as
+// `accessRepin` above — one SDK call, echo the result, a next_action
+// pointing at the normal follow-up.
+async function accessSync(args) {
+  const a = normalizeArgv(args);
+  assertKnownFlags(a, [...COMMON_VALUE_FLAGS, "--human", "-v", "--verbose", "--help", "-h"], COMMON_VALUE_FLAGS);
+  requirePositionalCount(a, COMMON_VALUE_FLAGS, { min: 0, max: 0, command: "run402 repos access sync", missing: "" });
+  const human = a.includes("--human");
+  if (human && a.includes("--json")) {
+    fail({ code: "BAD_USAGE", message: "--human cannot be combined with --json.", details: { flags: a.filter((arg) => arg === "--human" || arg === "--json") } });
+  }
+  const sdk = getSdk();
+  const target = await vaultTarget(a);
+  try {
+    const result = await sdk.gitvault.reconcile(target);
+    if (!human) console.log(JSON.stringify(result, null, 2));
+    if (!result.eligible) {
+      console.error("this machine's key is not an active writer on this vault — nothing to sync. Ask a current writer to admit you (org membership at role developer+ and a published signing key make you eligible).");
+    } else if (result.admitted.length === 0) {
+      console.error("no pending writer candidates — nothing to sync.");
+    } else {
+      for (const w of result.admitted) console.error(`admitted ${w.writer_key_id} (${w.principal_id}) at generation ${w.generation}.`);
+    }
+    if (result.skipped.length > 0) {
+      for (const s of result.skipped) console.error(`skipped ${s.writer_key_id} (${s.principal_id}): ${s.reason}`);
+    }
+    printVerboseStats(a, sdk);
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
 async function access(args) {
   const a = normalizeArgv(args);
   if (a[0] === "repair") return accessRepair(a.slice(1));
   if (a[0] === "revoke-key") return accessRevokeKey(a.slice(1));
   if (a[0] === "declare-exposure") return accessDeclareExposure(a.slice(1));
   if (a[0] === "repin") return accessRepin(a.slice(1));
+  if (a[0] === "sync") return accessSync(a.slice(1));
   return accessRead(a);
 }
 
