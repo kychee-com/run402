@@ -547,6 +547,66 @@ export type {
   KygitHandoffNote,
   KygitHandoffNoteCapture,
 } from "./gitvault-handoff.js";
+// gitvault-multi-writer (rev 47, task 5.4/5.10) — the writer-admission grant
+// chain: mint an admission seed from a handoff's own master_secret (never
+// auth_secret/wrap_key), the grantor-signed grant, and the two-signature
+// acceptance a claimant builds. `Gitvault.handoff`/`.resume` delegate to
+// these; exported here so an external programmatic consumer can build or
+// verify the SAME objects without reaching into the node-only module path.
+export {
+  HANDOFF_WRITER_ACCEPT_DOMAIN,
+  buildWriterAcceptance,
+  buildWriterAdmissionGrant,
+  deriveWriterAdmissionSeed,
+  verifyWriterAcceptance,
+  verifyWriterAdmissionGrant,
+} from "./gitvault-handoff.js";
+export type {
+  BuildWriterAcceptanceInput,
+  BuildWriterAdmissionGrantInput,
+  GitvaultWriterMintedRole,
+  HandoffWriterAcceptStatement,
+  WriterAcceptance,
+  WriterAdmissionGrant,
+} from "./gitvault-handoff.js";
+// gitvault-multi-writer (rev 47, task 5.1/5.10) — the writer set as CHAIN
+// STATE (protocol §4.15), the pure cryptographic half of `add_writer_key` /
+// `rotate_epoch{writer_set_update}` admission (§4.16-§4.18). Deliberately
+// isomorphic (no Node-only APIs) despite living under `node/` — a
+// recovering client, the browser viewer, and `r402s-verify` all replay
+// writer state from nothing but genesis + admitted chain objects using
+// these SAME functions; `GitvaultVault`'s own writer-door/handoff-door
+// admission and reconcile methods delegate to this module already.
+// `WriterChainState` is this module's own name for what the task list
+// calls `GitvaultWriterState` — exported under its established name rather
+// than introduced as a redundant alias.
+export {
+  MAX_VAULT_WRITERS,
+  ORG_ROLE_RANK,
+  WRITER_ELIGIBLE_ROLE_RANK,
+  applyAddWriterKey,
+  applyWriterSetUpdate,
+  buildAddWriterKeyActivationPayload,
+  buildWriterDoorAddWriterKeyPayload,
+  initialWriterState,
+  meetsWriterEligibleRole,
+  predictMintedRole,
+  replayWriterState,
+  resolveActiveWriter,
+  validateAddWriterKeyPayload,
+  validateWriterSetUpdate,
+  writerKeyIdOf,
+  writerSetSha256,
+} from "./gitvault-writer-state.js";
+export type {
+  AddWriterKeyPayload,
+  AdmittedWriterTransition,
+  WriterChainState,
+  WriterKeyEntry,
+  WriterSetUpdatePayload,
+  WriterStateRefusalCode,
+  WriterStateVerdict,
+} from "./gitvault-writer-state.js";
 // kygit-handoff (design D1) — restore: `git clone` at the base then
 // `git stash apply --index <oid>`. `Gitvault.resume` delegates to this.
 export { applyHandoffCheckpoint, cloneGitvaultRemote, readGitCommitMessage, resolveResumeTargetDir } from "./gitvault-restore.js";

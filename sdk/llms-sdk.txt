@@ -1984,6 +1984,25 @@ recover({ source, out_dir, repo_id?, credential?, region?, endpoint?, recovery_r
   // sidecars as UNVERIFIED availability hints in member_recovery_bundles[].
 ```
 
+**Multi-writer vaults (gitvault-multi-writer rev 47, protocol §4.15-§4.18).** A vault's writer set is CHAIN STATE, not a fixed genesis-creator key — `writer_set_pin` (in `GitvaultVaultRecord.writer_set` / the keystore's own local pin) is the freshly chain-verified set every read/push/rotation re-derives. Two doors admit a NEW writer: `add_writer_key{"writer"}` (an ALREADY-active writer admits an eligible org member — no grant/acceptance, the carrying head's own signer IS the authorization) and `add_writer_key{"handoff"}` (bearer-completable via `handoff()`/`resume()`, D4 of that change's own design — a grant minted at handoff time, a two-signature acceptance at claim time, self-signed by the NEW key). A key is NEVER re-addable once removed (`burnedWriterKeyIds`, protocol §4.15).
+
+```
+reconcile(opts?): Promise<GitvaultReconcileWriterAdmissionsResult>
+  // Admits every eligible pending_writers[] candidate (active org membership at role
+  // developer+, a published possession-verified signing key, not yet a writer) via a
+  // fresh add_writer_key{"writer"} head per candidate. THIS session's own key must
+  // already be an active writer — checked locally first (no network call otherwise);
+  // { eligible: false, admitted: [], already_covered: [], skipped: [] } distinguishes
+  // "I have no authority here" from "there was nothing pending" (both otherwise all-empty).
+  // ALSO wired onto session-start/read (open()'s own reconcile, unless reconcile:"forbidden"),
+  // push, snapshot, and deploy — best-effort there, reported on the result's own
+  // `writer_reconcile` field, never a throw.
+```
+
+The push pre-check (every head-signing path — `push`, `deploy`, `rotateEpoch`, `repair`, `publishPinManifestUpdate`, and the `git-remote-run402` remote helper, which inherits it through `push()`) refuses LOCALLY, before any crypto/upload work, when this session's own key is not an active writer: `GITVAULT_WRITER_NOT_ADMITTED` (never was, or is no longer, admitted) or the more specific `GITVAULT_WRITER_REMOVED` (a CAS-loser retry that discovers removal by whatever won the race) — both carry a `request_writer_sync` next action ("any current writer's next gitvault operation admits pending writers automatically").
+
+Writer removal rides `rotateEpoch` (never a standalone transition — a rekey and a removal are one atomic head, so a removed writer can never decrypt the epoch it was cut from): whenever `getVaultRecord`'s `ineligible_members[]` (a chain-recognized writer the gateway has flagged for removal — membership revoked, role dropped below developer, key revoked) is non-empty, `rotateEpoch` folds a `writer_set_update` into the SAME rotation head automatically, regardless of `reason` — closing the analogous `EPOCH_ROTATION_REQUIRED` deadlock `pending_confirmations` already closes on the recipient side. `reason: "writer_key_revoked"` is the new owner+step-up reason for a rotation whose PURPOSE is clearing an outstanding writer block. Removing the vault's LAST writer is refused (`EPOCH_ROTATION_WOULD_LEAVE_VAULT_UNCOVERED`) unless the caller passes `force_empty_writer_set: true` — the explicit acknowledgment for the declared read-only terminal (the vault keeps serving reads; nothing can push until a new writer is admitted through a recovery path). The result's `writers_removed[]` reports what a rotation removed (always present, empty when nothing needed removing).
+
 **D6 — named addressing (repo-first-onramp task 4).** `parseGitvaultRemoteUrl` already splits `run402::<a>/<b>`; `gitvaultRemoteAddressForm(address): "id" | "slug"` discriminates the two forms — id-form requires the org half to be a UUID AND the name half to be `prj_`-prefixed (real orgs/projects always satisfy both at once), anything else is slug-form. `gitvaultRemoteUrlForRepo(orgSlug, repoName)` builds the slug-form address string. `gitvaultSlugReleasedInfo(err): { successor_slug, released_at, cooldown_until } | null` extracts a `SLUG_RELEASED` refusal's typed detail — never auto-follow it. All four are pure, isomorphic exports of `gitvault.ts`.
 
 **D7 — the progressive terminal-loss warning, as pure functions.** `status()` folds these into `warnings[]` automatically (a `terminal_loss_risk` entry once tripped), but they are exported for any caller building its own surface:

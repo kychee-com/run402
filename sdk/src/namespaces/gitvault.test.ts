@@ -19,7 +19,7 @@ import { Run402 } from "../index.js";
 import { GITVAULT_BYO_OBJECT_MISSING_LIST_CAP, GITVAULT_CHECKPOINT_ADVISORY_GENERATIONS, computeByoPresenceOutcome, computeOpenProofOutcome, gitvaultCheckpointStaleness, gitvaultRemoteScheme, gitvaultRemoteUrl, gitvaultRemoteUrlForRepo, parseGitvaultRemoteUrl } from "./gitvault.js";
 import type { GitvaultHandle } from "./gitvault.js";
 import type { GitvaultOpenReceipt, GitvaultSignedObject } from "./gitvault.types.js";
-import { GITVAULT_TERMINAL_LOSS_DOCTOR_TEXT, GITVAULT_TERMINAL_LOSS_STATEMENT, sha256Hex, storedBytes } from "./gitvault.crypto.js";
+import { GITVAULT_TERMINAL_LOSS_DOCTOR_TEXT, GITVAULT_TERMINAL_LOSS_STATEMENT, generateSigningKeypair, sha256Hex, storedBytes, toBase64url } from "./gitvault.crypto.js";
 import { hardenedGit } from "../node/gitvault-snapshot.js";
 import { pinGitvaultRepo } from "../node/gitvault-address.js";
 import { GitvaultKeystore } from "../node/gitvault-keystore.js";
@@ -27,6 +27,7 @@ import type { CredentialsProvider } from "../credentials.js";
 import { commitFile, makeVault } from "../node/gitvault-memory-transport.test.js";
 import { gitvaultPaths } from "../node/gitvault-publication.js";
 import { buildVerifierReceipt } from "../node/gitvault-prune.js";
+import { writerKeyIdOf } from "../node/gitvault-writer-state.js";
 
 interface Call {
   url: string;
@@ -1496,5 +1497,44 @@ describe("gitvaultCheckpointStaleness — pure, never-throwing, threshold in one
     assert.deepEqual(staleness("not-hex", "0000000000000001"), { generations_since_checkpoint: 0, advised: false });
     assert.deepEqual(staleness("0000000000000005", "xyz"), { generations_since_checkpoint: 0, advised: false });
     assert.deepEqual(staleness("", ""), { generations_since_checkpoint: 0, advised: false });
+  });
+});
+
+/**
+ * `Gitvault.reconcile()` (gitvault-multi-writer task 5.7/5.10) — the public
+ * namespace entry point had no dedicated test of its own: `gitvault-
+ * publication.test.ts` covers `GitvaultVault.reconcileWriterAdmissions()`
+ * (the method this delegates to) thoroughly, but never through `open()` +
+ * the namespace wrapper together. Same override-open pattern the `prune`
+ * suite above already established — a REAL vault on `GitvaultMemoryTransport`,
+ * `sdk.gitvault.open` handed back a wrapping handle, fetch never reached.
+ */
+describe("Gitvault.reconcile() — the public namespace entry point (gitvault-multi-writer task 5.7/5.10)", () => {
+  it("admits an eligible pending_writers[] candidate end to end, through open() + the namespace wrapper", async (t) => {
+    const root = mkdtempSync(join(tmpdir(), "run402-gitvault-reconcile-ns-"));
+    t.after(() => rmSync(root, { recursive: true, force: true }));
+    const f = await makeVault(root);
+    const main = await commitFile(f.repoDir, "a.txt", "one");
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: main, force: false }] } });
+
+    const candidate = generateSigningKeypair();
+    const candidatePubB64u = toBase64url(candidate.public_key);
+    const candidateKeyId = writerKeyIdOf(candidatePubB64u)!;
+    const orgRecord = await f.vault.transport.getVaultRecord({ repo_id: f.repoId });
+    f.transport.vaultRecord = { pending_writers: [{ principal_id: "prin_bob", writer_key_id: candidateKeyId }] };
+    f.transport.orgEncryptionKeys.set(orgRecord.org_id, [
+      { principal_id: "prin_bob", display_name: "Bob", ek_fingerprint: "ek_placeholder", suite: "r402s-1", created_at: "2026-09-03T00:00:00.000Z", signing_pubkey: candidatePubB64u, signing_fingerprint: candidateKeyId, signing_possession_verified_at: "2026-09-03T00:00:00.000Z" },
+    ]);
+
+    const { sdk } = sdkWith(() => ({ body: {} })); // fetch is never reached — open() is overridden below
+    sdk.gitvault.open = async (): Promise<GitvaultHandle> => ({ repo_id: f.repoId, keystore: f.keystore, transport: f.transport, vault: f.vault, restored: null, reconcile_recipients: null, writer_reconcile: null, enrollment: { outcome: "skipped_error", ek_fingerprint: null, signing_fingerprint: null } });
+
+    const result = await sdk.gitvault.reconcile({ repo_id: f.repoId });
+    assert.equal(result.eligible, true, "the creator's own key is an active writer — eligible to admit others");
+    assert.deepEqual(result.admitted.map((a) => a.writer_key_id), [candidateKeyId]);
+    assert.deepEqual(result.skipped, []);
+
+    const pin = f.keystore.readRepo(f.repoId)!.writer_set_pin;
+    assert.ok(pin!.writers.some((w) => w.writer_key_id === candidateKeyId), "the local writer_set_pin advanced to include the newly-admitted candidate");
   });
 });

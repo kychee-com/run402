@@ -703,7 +703,14 @@ export class TransferFreezeError extends Run402Error {
  * consolidation's own additions — see `cli/lib/repos.mjs` for where each is
  * emitted. `configure_mirror` (gitvault-mirror-default) rides `repos create`'s
  * result beside the recovery receipt — the customer-owned mirror taught at
- * vault birth.
+ * vault birth. `sync_writers` / `request_writer_sync` (gitvault-multi-writer
+ * rev 47, D10) are the writer dimension's own pair — `sync_writers` rides
+ * `POST /orgs/v1/:org_id/members`'s own gateway response (the caller's next
+ * `org members add`/`repos access sync` admits a just-added member as a
+ * writer on every vault it can reach); `request_writer_sync` is CLIENT-
+ * constructed (`GitvaultVault#assertCallerIsWriter`, task 5.8) when a local
+ * push pre-check refuses because this session's own key is not (or is no
+ * longer) an admitted writer.
  * Tolerates unknown future gateway types via the `(string & {})` fallback.
  */
 export type NextActionType =
@@ -733,7 +740,9 @@ export type NextActionType =
   | "configure_mirror"
   | "resume_handoff"
   | "revoke_handoff"
-  | "remove_member";
+  | "remove_member"
+  | "sync_writers"
+  | "request_writer_sync";
 
 /**
  * A single advisory "what to do next" entry. Mirrors the gateway's
