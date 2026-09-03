@@ -123,6 +123,25 @@ export async function handleGetGitvaultStatus(args: { project_id?: string; repo_
       if (v.maintenance.open_cycle) {
         lines.push(`  open cycle             ${v.maintenance.open_cycle.maintenance_cycle_id} (${v.maintenance.open_cycle.state})`);
       }
+      // gitvault-multi-writer (rev 47): the chain-verified writer roster,
+      // read-only — this tool never mints or reconciles admissions itself;
+      // `run402 repos access sync` is the CLI-only mutating counterpart.
+      if (v.writer_set) {
+        lines.push(`  writers                ${v.writer_set.writers.length}`);
+        for (const w of v.writer_set.writers) {
+          lines.push(`    ${w.writer_key_id} — admitted generation ${w.admitted_generation} (${w.authorization_kind})`);
+        }
+        if (v.read_only_terminal) {
+          lines.push("    ⚠ read-only terminal: the last writer was removed — this vault serves reads but cannot accept a push until a new writer is admitted through a recovery path.");
+        }
+        const pendingWriters = v.pending_writers ?? [];
+        if (pendingWriters.length > 0) {
+          lines.push(
+            `  pending writers        ${pendingWriters.length} (eligible, not yet admitted): ${pendingWriters.map((p) => p.writer_key_id).join(", ")}`,
+            "                         run 'run402 repos access sync' if this machine is already a writer.",
+          );
+        }
+      }
     }
 
     lines.push(

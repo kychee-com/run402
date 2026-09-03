@@ -217,6 +217,51 @@ describe("get_gitvault_status", () => {
     assert.match(out, /read_only: the signing key is missing/);
     assert.match(out, /can sign {2,}no — read-only/);
   });
+
+  // gitvault-multi-writer (rev 47) task 6.5: this read-only tool renders the
+  // chain-verified writer roster + pending candidates, but stays read-only —
+  // there is no MCP counterpart to the CLI-only `repos access sync`.
+  it("renders the writer roster and any pending candidates, without offering a way to admit them", async () => {
+    statusBehavior = async () => ({
+      ...STATUS,
+      vault: {
+        ...VAULT_RECORD,
+        writer_set: {
+          writers: [
+            { writer_key_id: "vk_abc", admitted_generation: "0000000000000001", authorization_kind: "writer" as const },
+            { writer_key_id: "vk_bob", admitted_generation: "0000000000000007", authorization_kind: "handoff" as const },
+          ],
+        },
+        pending_writers: [{ writer_key_id: "vk_carol", principal_id: "prn_carol" }],
+      },
+    });
+    const out = textOf(await handleGetGitvaultStatus({ project_id: "prj_demo" }));
+    assert.match(out, /writers {2,}2/);
+    assert.match(out, /vk_abc — admitted generation 0000000000000001 \(writer\)/);
+    assert.match(out, /vk_bob — admitted generation 0000000000000007 \(handoff\)/);
+    assert.match(out, /pending writers {2,}1 \(eligible, not yet admitted\): vk_carol/);
+    assert.match(out, /run402 repos access sync/);
+    assert.equal(calls.length, 1, "reading the roster must never itself call anything beyond the one status read");
+  });
+
+  it("names the read-only terminal when the vault's last writer was removed", async () => {
+    statusBehavior = async () => ({
+      ...STATUS,
+      vault: {
+        ...VAULT_RECORD,
+        writer_set: { writers: [] as unknown[] },
+        read_only_terminal: true,
+      },
+    });
+    const out = textOf(await handleGetGitvaultStatus({ project_id: "prj_demo" }));
+    assert.match(out, /writers {2,}0/);
+    assert.match(out, /read-only terminal: the last writer was removed/);
+  });
+
+  it("prints nothing writer-related for a vault with no writer_set at all (pre-multi-writer)", async () => {
+    const out = textOf(await handleGetGitvaultStatus({ project_id: "prj_demo" }));
+    assert.doesNotMatch(out, /writers|pending writers|read-only terminal/i);
+  });
 });
 
 describe("list_gitvault_heads", () => {
