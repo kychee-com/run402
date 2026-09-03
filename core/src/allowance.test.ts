@@ -102,7 +102,7 @@ describe("allowance", () => {
   });
 
   // ──────────────────────────────────────────────────────────────────────────
-  // GH-194: malformed-shape (valid JSON, wrong fields) must throw a structured
+  // malformed-shape (valid JSON, wrong fields) must throw a structured
   // error instead of returning a partial object that crashes downstream when
   // callers reach for `.toLowerCase()` on a missing address or pass a too-short
   // privateKey to noble curves. The CLI/MCP wrappers convert this throw into

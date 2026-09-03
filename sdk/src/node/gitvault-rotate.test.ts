@@ -407,8 +407,7 @@ describe("epoch rotation — producer end-to-end (rotateEpochForKeyRevocation)",
   });
 
   /**
-   * The exact ceremony deadlock reproduced live in production 2026-08-27
-   * (vault `src_7f7933b3…`, its first-ever `epoch_secret_exposed` rekey):
+   * The ceremony deadlock on a vault's `epoch_secret_exposed` rekey:
    * `declareEpochSecretExposed` gates every ordinary admission
    * (`EPOCH_ROTATION_REQUIRED`) — including a pin-manifest-only publish,
    * since that publish carries `transition: null` and is therefore an
@@ -518,9 +517,8 @@ describe("epoch rotation — producer end-to-end (rotateEpochForKeyRevocation)",
 
       // publishPinManifestUpdate carries `transition: null` — an ORDINARY
       // admission, refused by the SAME D193 gate as any other ordinary push
-      // for as long as exposure stays outstanding. This is the exact
-      // deadlock reproduced live in production 2026-08-27: the receipt
-      // exists, but nothing can admit it standalone.
+      // for as long as exposure stays outstanding. That is the deadlock:
+      // the receipt exists, but nothing can admit it standalone.
       await assert.rejects(
         vault.publishPinManifestUpdate({ principal_id: "principal_2", ek_fingerprint: p2Ek, confirmed_by: "operator_confirmation", receipt: receipt2 }),
         (e: unknown) => (e as { code?: string }).code === "EPOCH_ROTATION_REQUIRED",

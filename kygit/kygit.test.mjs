@@ -152,8 +152,7 @@ describe("help / version / resolution", () => {
     assert.match(RESOLVE_FAIL_MESSAGE, /npm i -g run402/);
     // The advice shown to someone ALREADY stuck must not be the command that
     // put them there: `npm i -g @kychee/kygit` standalone never links
-    // git-remote-run402 (kychee-com/run402#577). It led this message until
-    // 2026-09-01.
+    // git-remote-run402.
     assert.doesNotMatch(RESOLVE_FAIL_MESSAGE, /npm i -g @kychee\/kygit/);
   });
 
@@ -195,9 +194,9 @@ describe("help / version / resolution", () => {
 describe("findRemoteHelper — git's own lookup for the kygit:: helper (design D8)", () => {
   // git spawns `git-remote-kygit` FROM PATH; nothing else finds it. These
   // drive the probe off-platform, so the Windows shape is covered from CI on
-  // Linux and from a mac (kychee-com/run402#577, the transitive-dependency
-  // bin-linking gap this file's helper name change closes, was found on
-  // Windows). Windows path comparison is case-insensitive (NTFS), which is
+  // Linux and from a mac — the transitive-dependency bin-linking gap this
+  // helper name closes shows up on Windows. Windows path comparison is
+  // case-insensitive (NTFS), which is
   // why a probe for git-remote-kygit.CMD finds npm's lowercase .cmd shim on
   // a real box.
   const winHas = (probe, actual) => probe.toLowerCase() === actual.toLowerCase();
@@ -226,8 +225,8 @@ describe("findRemoteHelper — git's own lookup for the kygit:: helper (design D
 
   it("resolves the Windows .cmd shim through PATHEXT", () => {
     // npm installs the helper as git-remote-kygit.cmd on Windows; probing the
-    // bare name alone would report a false negative on the exact platform the
-    // #577 bug was reported from.
+    // bare name alone would report a false negative on the exact platform
+    // the bin-linking gap shows up on.
     const found = findRemoteHelper({
       env: { Path: "C:\\Users\\v\\AppData\\Roaming\\npm", PATHEXT: ".COM;.EXE;.BAT;.CMD" },
       platform: "win32",

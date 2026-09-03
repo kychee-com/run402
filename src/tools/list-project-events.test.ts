@@ -5,8 +5,8 @@
  * opts (event_type -> eventType, source 1:1), calls
  * `getSdk().events.list` / `.listForOrg`, and returns the SDK page as
  * `JSON.stringify(page, null, 2)` in a single text block — no reshaping.
- * These tests prove the arg->opts mapping (including the new source/
- * event_type filters from kychee-com/run402#497) and that the emitted text
+ * These tests prove the arg->opts mapping (including the source/
+ * event_type filters) and that the emitted text
  * is BYTE-EQUAL to JSON.stringify of the exact SDK return value (MCP<->SDK
  * parity). The gateway envelope itself is passed through untouched by the
  * SDK (covered in sdk/src/namespaces/events.test.ts).

@@ -891,7 +891,7 @@ async function mergeAstroReleaseSlice(spec, dirArg) {
  * (inline bytes). Only `{ path }` entries with no `data` resolve to a disk
  * file; inline entries are skipped (nothing to scan on disk). Returns a
  * de-duped list of absolute paths. Existence + extension filtering is the
- * caller's job (GH-409). Defensive: tolerates missing/odd shapes silently —
+ * caller's job. Defensive: tolerates missing/odd shapes silently —
  * the manifest normalizer is the authority on shape validity, not this
  * best-effort extractor.
  */
@@ -1017,7 +1017,7 @@ async function applyCmd(args) {
     await mergeAstroReleaseSlice(spec, opts.dir);
   }
 
-  // GH-232: Reject empty specs client-side. Without this guard,
+  // Reject empty specs client-side. Without this guard,
   // `run402 deploy apply --spec '{}'` (and `--manifest <empty>`) would silently
   // send an empty ReleaseSpec to /apply/v1/plans with no signal that nothing
   // was deployed.
@@ -1117,7 +1117,7 @@ async function applyCmd(args) {
   // the scanner has a false positive that the operator has confirmed
   // is fine. Hits with severity `error` fail the deploy.
   //
-  // Scope (GH-409): a `--dir` (Astro SSR build) deploy walks that dir —
+  // Scope: a `--dir` (Astro SSR build) deploy walks that dir —
   // it IS the artifact. A manifest/spec/stdin deploy scans ONLY the
   // on-disk source files the manifest actually references, resolved
   // against the manifest's baseDir. We must NOT walk cwd/src for a

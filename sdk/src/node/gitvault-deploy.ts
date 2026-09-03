@@ -283,8 +283,8 @@ export function epochRotationRequiredNextActions(e: unknown): { action: string; 
 }
 
 /**
- * The correspondence refusal. CLIENT-LOCAL by decision (design open question,
- * resolved 2026-08-23): the moved tree is detected before any plan is
+ * The correspondence refusal. CLIENT-LOCAL by design: the moved tree is
+ * detected before any plan is
  * committed, so this code never crosses the wire and is deliberately absent
  * from the protocol's frozen §11 wire registry. The accepted cost is
  * discoverability — which is why it is named here, in the client's own error

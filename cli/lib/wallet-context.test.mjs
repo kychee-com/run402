@@ -175,10 +175,9 @@ describe("resolveWallet — conflict + validation", () => {
   // The WALLET_SELECTION_CONFLICT check runs BEFORE assertValidNameCore, so a
   // secret-shaped RUN402_WALLET reaches it unvalidated whenever a directory
   // binding also exists — routine for any checkout following this repo's own
-  // fleet-coordination convention (`.run402.json`). This is a stricter variant
-  // of kychee-com/run402-private#640: no BAD_WALLET_NAME format check ever
-  // gets a chance to run first, so the redaction has to happen at this site
-  // too, not just at assertValidNameCore.
+  // fleet-coordination convention (`.run402.json`). No BAD_WALLET_NAME
+  // format check ever gets a chance to run first, so the redaction has to
+  // happen at this site too, not just at assertValidNameCore.
   it("never echoes a secret-shaped RUN402_WALLET via the conflict path", () => {
     const dir = bindingDir("client-a"); // a real, differently-named binding
     const privateKey = "0x" + "22a3f0".repeat(11); // 66 chars
@@ -201,7 +200,7 @@ describe("resolveWallet — conflict + validation", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  // kychee-com/run402-private#640: a live Base-mainnet private key was pasted
+  // a live Base-mainnet private key was pasted
   // into RUN402_WALLET (a NAME field, not a key field), failed this exact
   // check, and got echoed verbatim into a terminal, a log, and a session
   // transcript. A value that fails validation is a value the CLI knows
@@ -254,8 +253,8 @@ describe("enforceWalletExists — fail closed", () => {
   // A bare (no "0x" prefix) 64-char lowercase-hex private key satisfies the
   // wallet-name CHARSET (lowercase letters/digits/'_'/'-'), so it sails past
   // assertValidNameCore's format check and only fails HERE, on existence —
-  // the second, easy-to-miss half of kychee-com/run402-private#640's blast
-  // radius. It must still never be echoed.
+  // the second, easy-to-miss half of the blast radius. It must still never
+  // be echoed.
   it("redacts a bare-hex value that passes the name format check but not existence", () => {
     const bareKey = "22a3f0".repeat(10) + "aabb"; // 64 lowercase-hex chars
     assert.match(bareKey, /^[a-z0-9][a-z0-9_-]{0,63}$/); // sanity: really does pass the name regex

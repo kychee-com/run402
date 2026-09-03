@@ -783,7 +783,7 @@ export function createLazyPaidFetch(options: PaidFetchOptions = {}): LazyPaidFet
   const lazy = async (input: Parameters<FetchFn>[0], init?: Parameters<FetchFn>[1]) => {
     await initialize();
     // `sdkFetch` (used below) defers to an overridden `globalThis.fetch`,
-    // preserving the test seam this comment used to guard.
+    // preserving the test seam.
     if (cached) {
       if (refreshBeforeNextCall) {
         await cached.refreshBalances();
@@ -1719,8 +1719,8 @@ function isProvenNoSettlementFailure(failure: UpstreamPaymentFailure): boolean {
   // Without this the outcome fell through to `ambiguous`, telling callers their
   // funds might have moved when they provably had not — and because correct
   // policy on ambiguity is stop-and-reconcile with safe_to_retry false, an
-  // unattended agent stranded permanently on a payment that never happened.
-  // (kychee-com/run402-private#623, reproduced live against our own seller.)
+  // unattended agent is stranded permanently on a payment that never
+  // happened.
   //
   // Distinct from the replay case: a consumed authorization reports
   // TENANT_X402_PAYMENT_INVALID with "nonce already used", which stays
@@ -1854,7 +1854,6 @@ async function paymentRequestFingerprint(
  * A real proof is ~2.4 KB, so it essentially always contains a `+` or `/`.
  * Verified against our own seller: the SAME signed authorization, re-encoded as
  * standard base64 and presented once, settles 200 with the paid response.
- * (kychee-com/run402-private#623.)
  *
  * `decodeBase64Json` deliberately stays on `base64url`: Node's base64url decoder
  * accepts BOTH alphabets, so it reads standard-base64 seller headers correctly

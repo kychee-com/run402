@@ -6,7 +6,7 @@
  * is mocked so we can capture the spec the MCP layer constructs and assert
  * on the byte sources passed through.
  *
- * Regression coverage for GH-136: bare-string file entries (the natural
+ * Regression coverage: bare-string file entries (the natural
  * shape) must be accepted by both the schema and the translator, and must
  * be forwarded to the SDK as-is. Previously the schema required
  * `{ data: string, encoding?: ... }` and the translator crashed on bare

@@ -539,12 +539,10 @@ describe("assertCiDeployableSpec", () => {
   });
 
   it("accepts assets in CI preflight because the gateway enforces asset_key_scopes", () => {
-    // Regression test for kychee-com/run402-private#403 — v1.48
-    // unified-apply added the assets slice and the gateway's
-    // V1_CI_DEPLOY_SPEC_ALLOWLIST permits it (gated per-entry by the
-    // binding's asset_key_scopes). The SDK pre-validation used to omit
-    // `assets` from its allowed-keys set, which broke every CI consumer
-    // of `client.assets.put` (including @run402/astro).
+    // The gateway's V1_CI_DEPLOY_SPEC_ALLOWLIST permits the assets slice
+    // (gated per-entry by the binding's asset_key_scopes). SDK
+    // pre-validation that omits `assets` from its allowed-keys set breaks
+    // every CI consumer of `client.assets.put` (including @run402/astro).
     assert.doesNotThrow(() => assertCiDeployableSpec({ project: "prj_abc", assets: null }));
     assert.doesNotThrow(() =>
       assertCiDeployableSpec({

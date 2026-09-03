@@ -12,21 +12,21 @@ That returns a complete `AstroUserConfig` with:
 
 - `output: 'server'` (per-route prerender via `export const prerender = true;`)
 - The Run402 SSR adapter — Lambda-backed with SnapStart, AsyncLocalStorage-wrapped request context, ISR cache layer with sub-second invalidation
-- The build-time image integration — `<Image>` upload pipeline + v1.49 WebP variant ladder + HEIC `display_jpeg` + blurhash + CDN-served immutable URLs
+- The build-time image integration — `<Image>` upload pipeline + WebP variant ladder + HEIC `display_jpeg` + blurhash + CDN-served immutable URLs
 - Build-time hard-fail detectors for unsupported Astro features (dynamic `<Image src={expr}>`, server islands, sessions API) with structured `R402_ASTRO_*` errors
 
-## v1.0 vs v0.2.x
+## Two entry shapes
 
-| | v0.2.x | v1.0.0-alpha.1 |
+| | image integration only | full preset |
 |---|---|---|
-| Default export | named `run402` (returns `AstroIntegration`) | default `run402` (returns `AstroUserConfig`) |
+| Export | named `run402` (returns `AstroIntegration`) | default `run402` (returns `AstroUserConfig`) |
 | What you get | image integration only | image integration + SSR adapter + Run402-aware defaults |
 | `astro.config.mjs` shape | `integrations: [run402()]` | `export default run402();` |
-| v0.2.x users | — | named `run402` is aliased to `run402Image` — existing `integrations: [run402()]` keeps working |
+| Compatibility | — | named `run402` is aliased to `run402Image`, so `integrations: [run402()]` keeps working |
 
-If you only want the image integration without SSR, the `run402Image()` named export is still available and unchanged.
+If you only want the image integration without SSR, use the `run402Image()` named export.
 
-## The SSR runtime (v1.0+)
+## The SSR runtime
 
 When the preset runs in default mode (`output: 'server'`), every `.astro` page is server-rendered by an AWS Lambda function with full Run402 backend access in scope. Inside frontmatter:
 
@@ -87,7 +87,7 @@ Astro supports four rendering modes; `auth.*` calls have different semantics in 
 
 | Mode             | How to opt in                                  | When to use                                                       | Auth + cache                                                                                              |
 | ---------------- | ---------------------------------------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| SSR (default)    | The default in v1.0; no flag needed.           | Personalized pages that read the actor.                          | `auth.user()` returns the actor; `auth.*` helpers taint the response so cache bypasses on Set-Cookie / auth. |
+| SSR (default)    | The default; no flag needed.                 | Personalized pages that read the actor.                          | `auth.user()` returns the actor; `auth.*` helpers taint the response so cache bypasses on Set-Cookie / auth. |
 | Prerendered      | `export const prerender = true;` in the page.  | Pure marketing / docs pages that never see the actor.            | `auth.*` throws `R402_AUTH_PRERENDERED`. The page is built once and served as a static asset.              |
 | Server island    | `<Component server:defer />` inside a page.    | Mostly-static page with a personalized slot (e.g. user dropdown). | `auth.*` is available **inside** the island. The shell is still cacheable.                                  |
 | Client hydrate   | `<SignedIn client:load>…</SignedIn>`.          | Cookie-aware visibility without an SSR pass at all.              | Component fetches `/auth/v1/session` from the browser. No server `auth.*` call.                            |
@@ -354,12 +354,12 @@ Behavior:
 
 For static template-literal images (e.g., `<Image src="./hero.jpg">`), use the build-time `<Image>` — same upload pipeline, build-time srcset emission, no runtime data needed.
 
-## `<Run402Image>` — pre-decoded placeholders + strict-mode degradation detection (v1.51+)
+## `<Run402Image>` — pre-decoded placeholders + strict-mode degradation detection
 
-`<Run402Image>` is the v1.51 sibling of `<Run402Picture>` — same shape (`asset={AssetRef}` + `alt` + `sizes`), but with three additions that matter at scale:
+`<Run402Image>` is the sibling of `<Run402Picture>` — same shape (`asset={AssetRef}` + `alt` + `sizes`), but with three additions that matter at scale:
 
-1. **Pre-decoded blurhash placeholder.** The v1.54 gateway pipeline pre-computes the blurhash → PNG data URL at upload time and stamps it on `AssetRef.blurhash_data_url`. `<Run402Image>` emits it as the `<img>` element's `background-image` so the placeholder is visible during fetch with zero client-side decode + zero SSR-render CPU cost.
-2. **Strict mode.** `imageDefaults: { strict: { onSchema: ">=v1.49" } }` makes the component hard-fail when an AssetRef would render below the full v1.49+ target — catches the "28 of 30 assets render correctly and 2 silently degrade" failure mode at build time rather than at user-visible time. The schema-filter form skips legacy pre-v1.49 AssetRefs, so mixed-vintage CMS projects can adopt safely.
+1. **Pre-decoded blurhash placeholder.** The gateway pipeline pre-computes the blurhash → PNG data URL at upload time and stamps it on `AssetRef.blurhash_data_url`. `<Run402Image>` emits it as the `<img>` element's `background-image` so the placeholder is visible during fetch with zero client-side decode + zero SSR-render CPU cost.
+2. **Strict mode.** `imageDefaults: { strict: { onSchema: ">=v1.49" } }` makes the component hard-fail when an AssetRef would render below that schema target — catches the "28 of 30 assets render correctly and 2 silently degrade" failure mode at build time rather than at user-visible time. The schema-filter form skips AssetRefs below the target, so mixed-vintage CMS projects can adopt safely.
 3. **React entry point.** Same component shape, importable from `@run402/astro/react` for React islands or React-only consumers. Byte-identical HTML output to the Astro path.
 
 ### Quick start
@@ -384,7 +384,7 @@ export function Hero({ asset }: { asset: AssetRef }) {
 
 ### When to use `<Run402Image>` vs `<Run402Picture>`
 
-| | `<Run402Picture>` (v1.0) | `<Run402Image>` (v1.51+) |
+| | `<Run402Picture>` | `<Run402Image>` |
 |---|---|---|
 | Pre-decoded blurhash placeholder | ✗ | ✅ |
 | Strict-mode degradation detection | ✗ | ✅ |
@@ -412,7 +412,7 @@ export default run402({
 
 ### HEIC precondition
 
-If your tenant has legacy HEIC AssetRefs (uploaded before the v1.49 `display_jpeg` transcode landed) and you want to enable schema-filtered strict mode, run the `asset-image-variants-v1-51` backfill with `--regenerate-heic-transcodes` **first**. Without it, `<Run402Image>` hard-fails with `R402_ASTRO_IMAGE_HEIC_NO_TRANSCODE` on every legacy HEIC render. See the run402-private repo's `docs/migrations/asset-image-variants-v1-51-backfill.md` for the operator workflow.
+If your tenant has HEIC AssetRefs with no `display_jpeg` variant and you want to enable schema-filtered strict mode, run the `asset-image-variants-v1-51` backfill with `--regenerate-heic-transcodes` **first**. Without it, `<Run402Image>` hard-fails with `R402_ASTRO_IMAGE_HEIC_NO_TRANSCODE` on every such HEIC render. See the run402-private repo's `docs/migrations/asset-image-variants-v1-51-backfill.md` for the operator workflow.
 
 ### Error codes
 
@@ -467,7 +467,7 @@ await run402().project(projectId).apply({
 - bundles the SSR entry into a single `class: "ssr"` function;
 - **omits `routes`** (it is not in the returned object) so base-release routes — e.g. a separately-declared `/api/*` function — carry forward instead of being cleared, and the slice stays safe to submit from a CI OIDC session that has no route scopes.
 
-**Anti-pattern (the cause of [kychee-com/run402#411](https://github.com/kychee-com/run402/issues/411)):** do not point `fileSetFromDir`/`dir()` at `dist/` and build `public_paths` by hand. That ships the adapter build tree (`run402/adapter.json`, `run402/server/**`) as static assets and lands every page under a `run402/client/` path prefix — so the static manifest has no reachable pages, every URL falls through to the SSR catchall and 404s, and the SSR bundle becomes publicly downloadable. The SDK now rejects this locally with `ASTRO_ADAPTER_TREE_IN_SITE` before any upload, and the gateway warns (`SITE_NO_REACHABLE_HTML`) when a release ships HTML that isn't reachable at any public path.
+**Anti-pattern:** do not point `fileSetFromDir`/`dir()` at `dist/` and build `public_paths` by hand. That ships the adapter build tree (`run402/adapter.json`, `run402/server/**`) as static assets and lands every page under a `run402/client/` path prefix — so the static manifest has no reachable pages, every URL falls through to the SSR catchall and 404s, and the SSR bundle becomes publicly downloadable. The SDK now rejects this locally with `ASTRO_ADAPTER_TREE_IN_SITE` before any upload, and the gateway warns (`SITE_NO_REACHABLE_HTML`) when a release ships HTML that isn't reachable at any public path.
 
 **Full vs CI/patch deploys use the same slice.** CI sessions are content-only (no subdomains/routes/i18n) — the slice already omits `routes`, so just don't add `routes`/`subdomains`/`i18n` to the spec in CI. The CAS substrate dedupes unchanged bytes, so a `site.replace` from the slice uploads only what actually changed; you don't need a hand-rolled `site.patch` diff to get incremental uploads.
 
@@ -498,9 +498,9 @@ Every code has a `suggestedFix` field that an AI coding agent can act on directl
 
 ---
 
-## v0.2.x: Image integration only
+## Image integration only
 
-The rest of this README covers the v0.2.x build-time image integration. It still works under the v1.0 preset (which composes it automatically) AND remains available as the standalone `run402Image()` named export for users who want it without the SSR adapter.
+The rest of this README covers the build-time image integration. It works under the full preset (which composes it automatically) AND is available as the standalone `run402Image()` named export for users who want it without the SSR adapter.
 
 ## Before you start
 
@@ -573,7 +573,7 @@ A real Astro site usually has both. Set both options; they share the same upload
 
 ## Why
 
-Run402 v1.49 pre-encodes 3 WebP variants (320w / 800w / 1920w) + a display-friendly JPEG for HEIC sources + a blurhash placeholder for every image uploaded via the assets slice. Variants serve from CloudFront like any other static URL. This package wires that pipeline into Astro's build: walk your `<Image>` references, upload each unique source, render `<picture>` markup that consumes the variants.
+Run402 pre-encodes 3 WebP variants (320w / 800w / 1920w) + a display-friendly JPEG for HEIC sources + a blurhash placeholder for every image uploaded via the assets slice. Variants serve from CloudFront like any other static URL. This package wires that pipeline into Astro's build: walk your `<Image>` references, upload each unique source, render `<picture>` markup that consumes the variants.
 
 Compared to Next.js's `<Image>` model: Vercel transforms images lazily via Lambda on cache miss. Run402's variants are encoded once at upload time and served as static immutable assets - **no per-request transform cost**.
 
@@ -636,7 +636,7 @@ For sites where image references live in runtime values (CMS-backed content, DB-
 
 ### Persistence pattern: store the AssetRef, not the URL (recommended)
 
-`r.assets.put` already returns the full v1.49 `AssetRef` — `cdn_url`, intrinsic `width_px` / `height_px`, `blurhash`, the WebP variant ladder, the HEIC `display_jpeg` when present. **Persist the whole ref in the same row as everything else about the asset**, instead of keeping only the URL string. At render time the row IS the variant data: no manifest, no lookup, no cache, no synchronization layer between the row and the manifest. The row is internally consistent with what gets rendered.
+`r.assets.put` returns the full `AssetRef` — `cdn_url`, intrinsic `width_px` / `height_px`, `blurhash`, the WebP variant ladder, the HEIC `display_jpeg` when present. **Persist the whole ref in the same row as everything else about the asset**, instead of keeping only the URL string. At render time the row IS the variant data: no manifest, no lookup, no cache, no synchronization layer between the row and the manifest. The row is internally consistent with what gets rendered.
 
 This pattern covers both runtime-uploaded media (admin MediaPicker calling `r.assets.put` directly) and static seed data (a build step that walks `assetsDir` and writes the resolved ref into the seed JSON instead of, or alongside, the URL string).
 
@@ -831,7 +831,7 @@ If you need to list every asset uploaded to a project (admin gallery, "show me e
 
 ## Generated HTML
 
-For an image source with v1.49 variants (≥ 320 pixels on both axes), the component emits:
+For an image source with variants (≥ 320 pixels on both axes), the component emits:
 
 ```html
 <picture>
@@ -903,7 +903,7 @@ Or programmatically:
 run402({ dryRun: true })
 ```
 
-Walks the project, lists every `<Image>` reference with its sha256 prefix and file size, estimates upload duration based on the v1.49 encoder semaphore (2 concurrent, ~10s per encode), and exits without uploading.
+Walks the project, lists every `<Image>` reference with its sha256 prefix and file size, estimates upload duration based on the encoder semaphore (2 concurrent, ~10s per encode), and exits without uploading.
 
 ## Error handling
 
@@ -920,7 +920,7 @@ Each error names the offending file path so the build log points you at the righ
 ## What this package does NOT do (v0.1)
 
 - **Dynamic `src` expressions.** Only string literals are extracted. `<Image src={myImage}>` emits a build warning and skips that reference. v0.1 is for build-time-known image references; runtime-dynamic images (CMS-driven) keep using `r.assets.put` server-side.
-- **Arbitrary widths.** The variant ladder is the v1.49 fixed set (320 / 800 / 1920). No `?w=437` lazy transforms.
+- **Arbitrary widths.** The variant ladder is a fixed set (320 / 800 / 1920). No `?w=437` lazy transforms.
 - **Edge content negotiation.** No CloudFront-side variant routing. The `<picture>` element does the negotiation client-side via standard HTML semantics.
 
 ## Known limitations

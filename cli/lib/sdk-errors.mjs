@@ -6,8 +6,7 @@
  * `process.exit(1)`. Preserves specific behaviors:
  *   - `ProjectCredentialNotFound` → preserves
  *     `code: "PROJECT_CREDENTIAL_NOT_FOUND"` and local-cache provenance.
- *   - HTML / non-JSON error bodies → `body_preview` field (first 500 chars),
- *     matching GH-84 behavior.
+ *   - HTML / non-JSON error bodies → `body_preview` field (first 500 chars).
  *   - Network errors → `{status: "error", message: "..."}`.
  *
  * For client-side validation failures (missing flags, bad JSON, no-op

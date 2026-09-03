@@ -1,5 +1,5 @@
 /**
- * errors_list MCP tool — the MCP↔SDK parity leg of kychee-com/run402#493.
+ * errors_list MCP tool — the MCP↔SDK parity leg.
  *
  * The tool is a thin shim: it maps snake_case args → the SDK's camelCase opts,
  * calls `getSdk().errors.list` / `.get`, and returns the SDK page/detail as

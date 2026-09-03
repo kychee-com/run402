@@ -50,7 +50,7 @@ Astro middleware at `src/middleware.ts` is supported by Run402, but a specific m
 
 ### `R402_ASTRO_SERVER_ISLAND_UNSUPPORTED`
 
-Found a `server:defer` or `server:only` directive. Server islands are deferred to v1.5.
+Found a `server:defer` or `server:only` directive. Server islands are unsupported.
 
 **Suggested fix:** use client islands (`client:load`, `client:idle`, `client:visible`) instead, OR move the rendering into the page's frontmatter at SSR time.
 
@@ -58,7 +58,7 @@ Found a `server:defer` or `server:only` directive. Server islands are deferred t
 
 ### `R402_ASTRO_SESSIONS_UNSUPPORTED`
 
-Found `Astro.session.*` access OR `experimental: { session: ... }` in `astro.config.mjs`. Sessions API deferred to v1.5+.
+Found `Astro.session.*` access OR `experimental: { session: ... }` in `astro.config.mjs`. The Astro Sessions API is unsupported.
 
 **Suggested fix:** use signed HTTP-only cookies via `Astro.cookies` OR a custom DB-backed session via `db()` to persist session state.
 
@@ -92,7 +92,7 @@ The deploy bundler couldn't resolve an `import` in a function file.
 
 The function bundle includes a package with native binary components (e.g., `sharp`, `better-sqlite3`, `node-gyp`-built packages). Lambda's Node.js runtime cannot load arbitrary native binaries.
 
-**Suggested fix:** remove the native dependency OR replace with a Run402 primitive — `r.assets.put` for image processing (returns the v1.49 variant ladder + blurhash + display URLs), `r.ai.*` for ML, `r.email.send` for emails, `db()` for SQLite-style storage.
+**Suggested fix:** remove the native dependency OR replace with a Run402 primitive — `r.assets.put` for image processing (returns the variant ladder + blurhash + display URLs), `r.ai.*` for ML, `r.email.send` for emails, `db()` for SQLite-style storage.
 
 ---
 

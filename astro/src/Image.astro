@@ -32,7 +32,7 @@
  * buildStart populates registry in the build realm; the render realm
  * sees an empty Map and the component throws MissingAssetRefError.
  *
- * The fix (kychee-com/run402-private#401): a `virtual:run402-assetmap`
+ * The fix: a `virtual:run402-assetmap`
  * Vite virtual module that the plugin populates with the AssetRef map
  * as a JS literal during build. Vite bundles the literal into every
  * realm's output, so each render realm has the same baked-in data.

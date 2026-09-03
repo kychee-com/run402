@@ -152,7 +152,7 @@ async function update(args) {
   if (!url && !eventsRaw) {
     fail({ code: "BAD_USAGE", message: "Provide at least --url or --events" });
   }
-  // GH-192: scheme-only local validation. Server-side SSRF defenses are out
+  // scheme-only local validation. Server-side SSRF defenses are out
   // of scope for the CLI (private-IP / DNS rebinding / IMDS belongs on the
   // gateway). `validateWebhookUrl` is a no-op when `url` is null/undefined,
   // so partial updates that change only `--events` still work.
@@ -186,7 +186,7 @@ async function register(args) {
       hint: "run402 email webhooks register --url <url> --events <e1,e2>",
     });
   }
-  // GH-192: validate scheme locally before any network call. Catches
+  // validate scheme locally before any network call. Catches
   // javascript:/file:/http:/data: schemes that the gateway would reject
   // anyway, but with a friendlier round-trip-free error.
   validateWebhookUrl(url, "--url");

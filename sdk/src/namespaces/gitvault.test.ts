@@ -87,7 +87,7 @@ const VAULT_RECORD = {
  * `prj_`-prefixed project id). `VAULT_RECORD.org_id` above ("org_demo") is
  * deliberately NOT this shape — it is a control-plane response field the
  * remote-matching logic never reads — but a URL built for these tests must
- * be, or `status()`'s new tri-state logic (kychee-com/run402#562) correctly
+ * be, or `status()`'s tri-state logic correctly
  * classifies it as slug-form instead and these id-form-only tests would be
  * exercising the wrong code path.
  */
@@ -438,7 +438,7 @@ describe("gitvault compaction headroom grant (gitvault-checkpoint-cadence)", () 
 });
 
 /**
- * `prune({ submit })` end-to-end (kychee-com/run402#578, fixes 2 + 3).
+ * `prune({ submit })` end-to-end.
  *
  * `sdk.gitvault.open()` always builds the REAL HTTP transport
  * (`createGitvaultHttpTransport(this.#client)`) — there is no injection
@@ -524,7 +524,7 @@ describe("gitvault prune({ submit }) — receipt idempotency + compaction headro
     const verifierReceipt = verifierReceiptFor(f, planned, { object_id: FIXED_ID });
 
     // Simulate: a prior attempt already landed this EXACT receipt (a failed
-    // submit after a successful upload — issue #578's core scenario).
+    // submit after a successful upload).
     const bytes = storedBytes(verifierReceipt as unknown as GitvaultSignedObject);
     await f.transport.uploadObjects({
       repo_id: f.repoId,
@@ -796,11 +796,10 @@ describe("gitvault status — the terminal-loss statement is normative copy", ()
     const status = await sdk.gitvault.status({ project_id: "prj_none", keystore_root: join(tmpdir(), "gitvault-absent-keystore-fixture") });
     assert.equal(status.vault, null);
     assert.equal(status.repo_id, null);
-    // The command named here must be one that ACTUALLY ALLOCATES. This
-    // assertion used to pin `run402 init`, which scaffolds the git remote and
-    // deliberately allocates nothing — so status sent every user with no vault
-    // to a command that silently did not do what status promised, and the test
-    // enshrined it (gitvault dogfood #1, finding A).
+    // The command named here must be one that ACTUALLY ALLOCATES.
+    // `run402 init` scaffolds the git remote and deliberately allocates
+    // nothing, so naming it here would send every user with no vault to a
+    // command that does not do what status promises.
     assert.ok(
       status.next_actions.some((a) => a.command === "run402 repos create --project <id>"),
       `expected the allocation verb, got ${JSON.stringify(status.next_actions)}`,
@@ -932,11 +931,11 @@ describe("gitvault status — the terminal-loss statement is normative copy", ()
     });
   });
 
-  // ─── remote.matches tri-state for SLUG-FORM remotes (kychee-com/run402#562) ──
+  // ─── remote.matches tri-state for SLUG-FORM remotes ──
   //
-  // THE DEFECT. `status()` used to compare `parsed.project_id` (the parsed
+  // THE DEFECT this guards. Comparing `parsed.project_id` (the parsed
   // second half of the remote URL) against the real `prj_...` id for EVERY
-  // remote form. For an id-form remote that second half genuinely IS the
+  // remote form is wrong. For an id-form remote that second half genuinely IS the
   // project id, so the comparison is correct. For a SLUG-FORM remote
   // (`run402::<org-slug>/<name>`) that second half is a repo NAME, never a
   // project id — so a correctly-configured slug-form remote always failed

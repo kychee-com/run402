@@ -72,7 +72,7 @@ function out(obj) {
   console.log(JSON.stringify(obj, null, 2));
 }
 
-// See core-dist/redact.js's doc comment (kychee-com/run402-private#640): a
+// See core-dist/redact.js's doc comment: a
 // value that fails this check may be a secret pasted into a name argument
 // by mistake, so it must never be echoed verbatim — describeRejectedValue()
 // still shows a short/plain typo in full.
@@ -176,7 +176,7 @@ function cmdUse(args) {
   if (name !== DEFAULT && !profileExists(name)) {
     // `name` already passed requireName's charset check, but a bare (no
     // "0x") 64-hex private key satisfies that charset too — describeRejectedValue()
-    // is the backstop against echoing it here (kychee-com/run402-private#640).
+    // is the backstop against echoing it here.
     fail({ code: "WALLET_NOT_FOUND", message: `No local wallet named '${describeRejectedValue(name)}'.`, hint: "run402 wallets list", details: { name: describeRejectedValue(name) } });
   }
   setDefaultWallet(name);

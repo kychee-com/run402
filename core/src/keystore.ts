@@ -251,15 +251,15 @@ export function removeProject(
  * bucket, not "unknown") and PERMANENTLY shadows every later wallet-scoped
  * activation for every caller that reads through this module: `resolveProjectId`
  * / `resolveProject` (cli/lib/config.mjs), `projects current`, and every
- * gitvault-verb target resolution. That is the root cause behind
- * kychee-com/run402#559(a) — `repos create` DID call `projects.provision`,
- * whose `creds.setActiveProject` correctly persisted the new project under
- * the real wallet's scoped bucket AND the flat fallback, but every CLI read
- * of "the active project" kept resolving the OLD "unknown"-bucket entry
- * first and never fell through to the freshly-updated flat value.
+ * gitvault-verb target resolution. The failure it causes: `repos create`
+ * calls `projects.provision`, whose `creds.setActiveProject` correctly
+ * persists the new project under the real wallet's scoped bucket AND the
+ * flat fallback, yet every CLI read of "the active project" resolves the
+ * stale "unknown"-bucket entry first and never falls through to the
+ * freshly-updated flat value.
  *
  * Best-effort: an unreadable/malformed allowance degrades to `null` (the
- * same "unknown" bucket callers already tolerated before this fix), never a
+ * "unknown" bucket callers tolerate), never a
  * throw — this is a read-scoping concern, not an allowance-validity one.
  */
 function currentPrincipal(): string | null {

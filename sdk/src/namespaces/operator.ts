@@ -15,7 +15,7 @@
  * `device*` endpoints are unauthenticated (the `device_code` in the body is the
  * credential), so they send no auth headers.
  *
- * Gateway contract: kychee-com/run402-private#443 (RFC 8628 device-auth bridge).
+ * Gateway contract: the RFC 8628 device-auth bridge.
  */
 
 import type { Client } from "../kernel.js";

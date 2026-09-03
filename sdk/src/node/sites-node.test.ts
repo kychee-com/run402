@@ -8,7 +8,7 @@
  * `urls = { project, release }` (no `urls.site` key), and the legacy
  * `result.url` field must be populated from `urls.project` so the downstream
  * UX (clipboard buttons, status pages, CLI prints) does not get an empty
- * string. See bug GH-130.
+ * string.
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";

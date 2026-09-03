@@ -70,7 +70,7 @@ export function deployAction() {
 /**
  * `repos create` (and `gitvault init`) on an org with no claimed slug: the
  * response's `address: null` had no pointer to WHY, or to the named-addressing
- * feature at all (kychee-com/run402#560). Owner-only. Wording deliberately
+ * feature at all. Owner-only. Wording deliberately
  * omits a price: the first slug per org is free, and renames/re-claims cost
  * $1 — a gateway change lands the fee separately, so this stays true under
  * both the old and new pricing rule.

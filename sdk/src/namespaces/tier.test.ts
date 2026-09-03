@@ -1,6 +1,6 @@
 /**
  * Unit tests for the `tier` namespace. Verifies URL, method, SIWX auth, and
- * runtime payload shape per method (GH-173 type alignment).
+ * runtime payload shape per method.
  */
 
 import { describe, it } from "node:test";

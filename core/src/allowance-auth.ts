@@ -148,7 +148,7 @@ export function buildSIWxAuthHeaders(opts: SIWxAuthOptions): SIWxAuthHeaders {
  * @param path - API path (e.g. "/projects/v1") used to build the SIWE uri field.
  */
 export function getAllowanceAuthHeaders(path: string, allowancePath?: string): SIWxAuthHeaders | null {
-  // GH-194: readAllowance throws on a malformed-shape allowance file. The
+  // readAllowance throws on a malformed-shape allowance file. The
   // CLI's higher-level readAllowance wrapper surfaces this as a structured
   // BAD_ALLOWANCE_FILE envelope; here we preserve the public contract that
   // this helper returns SIWxAuthHeaders | null. Re-throw so callers above

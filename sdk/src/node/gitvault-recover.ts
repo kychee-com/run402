@@ -486,9 +486,9 @@ async function resolveGenesisEpochKey(backend: GitvaultMirrorBackend, genesis: G
     ]);
   }
   if (genesis.envelopes.length === 0) fail("VAULT_CREATION_CONFLICT", "genesis carries no key envelope", "materializing gitvault recovery");
-  // Task 5.3 follow-up (gateway diagnosis confirmed 2026-08-26: a real vault
-  // can carry MORE than one key_envelope ledger row — a foreign recipient's
-  // envelope is the norm on a multi-recipient vault, never an anomaly). A
+  // A real vault can carry MORE than one key_envelope ledger row — a
+  // foreign recipient's envelope is the norm on a multi-recipient vault,
+  // never an anomaly. A
   // genesis's own `envelopes[]` has always had exactly one entry so far (the
   // creator's, minted at the six-stage creation — later reconcile-added
   // envelopes are separate ledger rows, never appended to the SIGNED
@@ -626,15 +626,12 @@ async function openCarrier<T>(backend: GitvaultMirrorBackend, kRepo: Uint8Array,
  * a typed non-zero exit (throws) — never a partial, silently-accepted repo.
  */
 export async function recoverGitvaultMirror(options: GitvaultRecoverOptions): Promise<GitvaultRecoverResult> {
-  // Task 5.3 follow-up (found via the live drill 2026-08-26): `out_dir` is
-  // "where to materialize the recovered repository" — the CLI's own
+  // `out_dir` is "where to materialize the recovered repository" — the CLI's own
   // documented example (`--out ./restored`) is a path that naturally does
   // NOT already exist, same expectation as `git clone <url> restored-dir`.
-  // Every unit test happened to pass an already-`mkdtempSync`'d directory,
-  // which is exactly why nothing ever created it here. Create it FIRST,
-  // before any discovery/decrypt work, so a bad `out_dir` fails fast with a
-  // truthful, typed error instead of the misleading `GIT_UNAVAILABLE` the
-  // first `hardenedGit` call used to throw (see that function's own
+  // Create it FIRST, before any discovery/decrypt work, so a bad `out_dir`
+  // fails fast with a truthful, typed error instead of the misleading
+  // `GIT_UNAVAILABLE` the first `hardenedGit` call would throw (see that function's own
   // `GIT_CWD_MISSING` disambiguation in `gitvault-snapshot.ts` — this is the
   // belt; that is the suspenders).
   try {

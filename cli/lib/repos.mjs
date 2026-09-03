@@ -883,10 +883,9 @@ async function createProvision(name, dir, a) {
 
   // A genuinely bare machine has no allowance file at all, and the NO_ALLOWANCE
   // precheck below would refuse before the provision call could ever answer
-  // NO_ACTIVE_TIER — so the cold-start fold (design D5) never ran for the one
-  // case it was written for. Found 2026-09-02 by driving `repos create` on a
-  // fresh config dir. Fold first when there is no wallet; `--no-init` keeps
-  // the bare refusal.
+  // NO_ACTIVE_TIER, so the cold-start fold would never reach the one case it
+  // exists for. Fold first when there is no wallet; `--no-init` keeps the
+  // bare refusal.
   if (!isCoreApiTarget() && !loadLiveControlPlaneSession() && !readAllowance() && !a.includes("--no-init")) {
     console.error("no wallet on this machine — folding the cold-start chain (allowance -> faucet -> prototype tier)");
     try {
@@ -1521,8 +1520,7 @@ async function snapshot(args) {
     if (manifestOutPath != null) writeManifestOut(manifestOutPath, result);
     // Snapshot-only vault (no branch head published): a plain `git clone`
     // of this vault prints "cloned an empty repository" with no hint the
-    // snapshot exists (blind-acceptance finding, 2026-08-28). Name the
-    // restore path in the result itself.
+    // snapshot exists. Name the restore path in the result itself.
     const resultRefNames = Object.keys(result.refs ?? {});
     const snapshotOnly = resultRefNames.length > 0 && !resultRefNames.some((r) => r.startsWith("refs/heads/"));
     const payload = summarizeSnapshotPayload(result, { verbose, manifestPath: manifestOutPath });
@@ -1815,8 +1813,7 @@ async function resume(args) {
     key = (await readStdinText()).trim();
     if (!key) fail({ code: "BAD_USAGE", message: "Missing the Handoff Key on stdin.", hint: "Pipe the kgh1_… key, or pass it as a positional argument." });
   }
-  // Decided 2026-09-02 (Tal; amends kygit-handoff design D5's "none on
-  // resume"): a resumed agent is a NEW run402 wallet, and the loop is the
+  // A resumed agent is a NEW run402 wallet, and the loop is the
   // point — so on a wallet with no active tier `resume` folds the same
   // cold-start chain `create` does (allowance → faucet → one x402
   // prototype payment, announced) BEFORE the claim. The claim itself needs
@@ -2564,8 +2561,8 @@ async function accessRevokeKey(args) {
  * self-contained; the FOLLOW-UP rotation it authorizes is NOT auto-run
  * here, because — same confirmed gap as `access repair` — the D194
  * counters it must be fenced against have no client-visible read for this
- * reason value either. This is the rekey remedy the exposed-key incident
- * needs: declare here, then rotate (via `--recipient-state-version`/
+ * reason value either. This is the rekey remedy for an exposed key:
+ * declare here, then rotate (via `--recipient-state-version`/
  * `--recipient-revocation-version` once known, e.g. from platform staff).
  *
  * **If a `/confirm`/`/repin` receipt is already pending** (a directory
@@ -2573,7 +2570,7 @@ async function accessRevokeKey(args) {
  * the rotation is outstanding), do NOT call `publishPinManifestUpdate`
  * separately — that call is itself an ORDINARY admission and is itself
  * refused `EPOCH_ROTATION_REQUIRED` for as long as this declaration stays
- * outstanding (reproduced live in production 2026-08-27). Pass the receipt
+ * outstanding. Pass the receipt
  * to `r.gitvault.rotateEpoch({..., pending_confirmations: [{principal_id,
  * ek_fingerprint, receipt}]})` instead — it rides the SAME head as the
  * rotation this declaration requires, publishing durably without needing a

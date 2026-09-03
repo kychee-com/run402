@@ -5,13 +5,13 @@
  * DEFAULT room — the zero-config path) OR org_id + room_key (named org rooms)
  * OR, when neither is passed, the checkout's own ambient context — RUN402_ROOM,
  * or a `room`/`org` binding in .run402.json, or the wallet profile's selected
- * organization (run402-public#550). Both explicit forms outrank the ambient
+ * organization. Both explicit forms outrank the ambient
  * chain, so a call that names a room still reaches exactly that room.
  * The MCP server is a long-lived process, so the session's presence per room
  * lives in an in-memory map — tool calls after the first reuse it. The cache is
  * what makes those calls ONE session: the gateway never infers a session from
  * the credential (a bare call registers a fresh presence rather than adopting a
- * sibling session's — run402-private#663), so a lost cache means a new presence
+ * sibling session's), so a lost cache means a new presence
  * with a new, honestly-suffixed name, not silent reuse of an old one.
  */
 import { getSdk } from "../sdk.js";
@@ -73,7 +73,7 @@ function resolveAmbientRoom(cwd: string, env: NodeJS.ProcessEnv): RoomAddressRes
     const slash = envRoom.indexOf("/");
     if (slash <= 0 || slash === envRoom.length - 1) {
       // A malformed env value is a value we know nothing about — see
-      // core/dist/redact.js's doc comment (kychee-com/run402-private#640):
+      // core/dist/redact.js's doc comment:
       // it must not be echoed raw, since the same class of mistake that put
       // a private key into RUN402_WALLET can put one into RUN402_ROOM.
       return { ok: false, error: `${ROOM_ENV} must be "<org_id>/<room_key>" — got ${JSON.stringify(describeRejectedValue(envRoom))}.` };

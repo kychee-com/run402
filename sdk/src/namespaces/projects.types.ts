@@ -338,7 +338,7 @@ export interface UsageReport {
   /**
    * Optional: the `/projects/v1/admin/:id/usage` endpoint does not currently
    * include the lease expiry. Read it from `tier.status()` if you need it.
-   * `null` is reserved for unleased accounts (see GH-163).
+   * `null` is reserved for unleased accounts.
    */
   lease_expires_at?: string | null;
   /** Derived effective status — see {@link EffectiveProjectStatus}. */

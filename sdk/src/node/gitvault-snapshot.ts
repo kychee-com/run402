@@ -133,8 +133,7 @@ export const HARDENED_GIT_ARGV_PREFIX = (): string[] => [
  * Run git with explicit args (no shell) in `cwd` under the hardened env.
  * Throws `GIT_COMMAND_FAILED` on a non-ok exit.
  *
- * Task 5.3 follow-up (found via the live drill 2026-08-26): Node's
- * `execFile` reports a MISSING `cwd` with the exact same `ENOENT` as a
+ * Node's `execFile` reports a MISSING `cwd` with the exact same `ENOENT` as a
  * missing `git` binary, so a caller that forgot to create its working
  * directory (e.g. `recover`'s `out_dir` before this fix) saw the misleading
  * `GIT_UNAVAILABLE: git could not be executed` even though git itself was

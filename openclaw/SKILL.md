@@ -515,17 +515,17 @@ Each response includes:
 | `sri` | `sha256-<base64>` for `<script integrity="…">` if you build tags by hand |
 | `etag` | Strong `"sha256-<hex>"` ETag |
 | `cache_kind` | `immutable` / `mutable` / `private` |
-| `metadata` (v1.50) | Echo of your `--meta` bag, or `null` |
-| `image_format` (v1.50) | Decoded format (`jpeg`/`png`/`webp`/…) or `null` for non-images |
-| `image_info` (v1.50) | `has_alpha`, `color_space`, `animated`, `frame_count`, `bit_depth`, `orientation` |
-| `image_exif` (v1.50) | EXIF block (`null` when stripped or no EXIF) |
-| `image_exif_policy` (v1.50) | `keep` or `strip`, echoing the applied policy |
+| `metadata` | Echo of your `--meta` bag, or `null` |
+| `image_format` | Decoded format (`jpeg`/`png`/`webp`/…) or `null` for non-images |
+| `image_info` | `has_alpha`, `color_space`, `animated`, `frame_count`, `bit_depth`, `orientation` |
+| `image_exif` | EXIF block (`null` when stripped or no EXIF) |
+| `image_exif_policy` | `keep` or `strip`, echoing the applied policy |
 
-Immutable upload is the default since v1.45 — the SDK computes the SHA-256 client-side and pairs the URL with SRI. The browser refuses execution on byte mismatch. No invalidation choreography.
+Immutable upload is the default — the SDK computes the SHA-256 client-side and pairs the URL with SRI. The browser refuses execution on byte mismatch. No invalidation choreography.
 
 `blob put` infers MIME type from the destination key. Use `--content-type <mime>` for extensionless assets, unusual file types, or deliberate overrides.
 
-**v1.50 `--meta` coercion:** pure digits become a number, `true`/`false` become a boolean, values containing `,` become a `string[]`, everything else is a string. ≤4 KB serialized; bad shapes are rejected client-side with `INVALID_ASSET_METADATA` before any HTTP call.
+**`--meta` coercion:** pure digits become a number, `true`/`false` become a boolean, values containing `,` become a `string[]`, everything else is a string. ≤4 KB serialized; bad shapes are rejected client-side with `INVALID_ASSET_METADATA` before any HTTP call.
 
 ### List, fetch, remove, sign
 
@@ -538,7 +538,7 @@ run402 assets rm images/old.png
 run402 assets sign secrets/report.pdf --ttl 3600    # presigned URL for private blobs
 ```
 
-`--sort` (v1.50) takes `key:asc` (default), `createdAt:asc`, or `createdAt:desc`. Cursors are sort-pinned — cross-sort reuse returns `INVALID_CURSOR_FOR_SORT`. `--filter k=v` is repeatable; allowed keys: `uploaded_by`, `tag`, `format`, `is_image`, `min_width`/`max_width`/`min_height`/`max_height`. Unknown keys are rejected client-side with `INVALID_FILTER_KEY`.
+`--sort` takes `key:asc` (default), `createdAt:asc`, or `createdAt:desc`. Cursors are sort-pinned — cross-sort reuse returns `INVALID_CURSOR_FOR_SORT`. `--filter k=v` is repeatable; allowed keys: `uploaded_by`, `tag`, `format`, `is_image`, `min_width`/`max_width`/`min_height`/`max_height`. Unknown keys are rejected client-side with `INVALID_FILTER_KEY`.
 
 ### Diagnose a stale CDN
 
@@ -646,7 +646,7 @@ export default async (req: Request) => {
 - `adminDb().sql(query, params?)` — raw parameterized SQL. Always bypass.
 - `ai.generateImage({ prompt, aspect? })` — live image generation from deployed functions, billed/rate-limited against the project organization through `RUN402_SERVICE_KEY`. Aspects: `square`, `landscape`, `portrait`; result: `{ image, content_type, aspect }`. For public routed functions, authenticate/rate-limit app users before calling it.
 - `assets.put(key, source, opts?)` — upload runtime bytes through the same CAS-backed apply substrate as deploy-time assets. `source` is a string, `Uint8Array`, or `{ content | bytes }`; returns an SDK-compatible `AssetRef`.
-- `auth.*` — canonical cookie/session auth namespace (`auth.user`, `auth.requireUser`, `auth.requireRole`, `auth.requireMembership`, `auth.fetch`, `auth.sessions.*`, `auth.identities.link`). Bare legacy helpers such as `getUser`, `getUserId`, and `getRole` were retired in `@run402/functions` v3.0 and fail `run402 doctor`.
+- `auth.*` — canonical cookie/session auth namespace (`auth.user`, `auth.requireUser`, `auth.requireRole`, `auth.requireMembership`, `auth.fetch`, `auth.sessions.*`, `auth.identities.link`). Bare helpers such as `getUser`, `getUserId`, and `getRole` are not exported — they throw `R402_AUTH_UNKNOWN_EXPORT` and fail `run402 doctor`.
 - Function-level gate headers — when `FunctionSpec.requireAuth` / `requireRole` passes, read `req.headers.get("x-run402-user-id")` and `req.headers.get("x-run402-user-role")` directly. Use these inside a gated function instead of re-decoding the JWT; the gate already verified the caller and resolved the application role.
 - `getRoutedPaymentContext(req)` (`@run402/functions` 3.7+) — confirmed x402 payment context for priced routed function requests. Returns `{ scheme, paymentId, amountUsdMicros, payer, network, asset, payTo, transaction, settledAt }` or `null`; key app-side idempotency by `payment.paymentId`.
 
@@ -657,7 +657,7 @@ Fluent surface on both `db(req).from(t)` and `adminDb().from(t)`:
 
 For TypeScript autocomplete in your editor: `npm install @run402/functions` in your project. Also works at build time for static-site generation if you set `RUN402_SERVICE_KEY` + `RUN402_PROJECT_ID` in `.env`.
 
-### Function-level auth gates (v1.51+)
+### Function-level auth gates
 
 Skip the hand-rolled "decode JWT → query members table → return 403" boilerplate. Declare the gate on your `FunctionSpec` and the gateway enforces it before invoking the function. Unauthorized callers get `401`/`403` without your code running, and the gateway injects the resolved identity into request headers your function can trust.
 
@@ -724,7 +724,7 @@ Rules and footnotes:
 - Cache TTL. Default 60s, max 600s. A demoted user keeps the cached role until expiry — for instant revocation, set `cacheTtl: 0` (fresh lookup per request).
 - Gate applies to both routed (`/your/route`) and direct (`POST /functions/v1/:name` with API key) invocation. Direct invocation still requires the API key at the edge; the gate runs after API-key auth, against the user JWT.
 
-### Astro SSR runtime + ISR cache (v1.52+)
+### Astro SSR runtime + ISR cache
 
 For Astro apps, scaffold with `run402 init astro` (sets up `astro.config.mjs` with the `@run402/astro` 1.0+ preset, `[slug].astro` SSR template wired to the DB, layouts, `.env.example`). Run `run402 dev` to start `astro dev` with project credentials in scope.
 
@@ -1043,7 +1043,7 @@ The grace clock ticks per **organization**, not per project — every project on
 
 Operator moderation actions (independent of lifecycle): `run402 admin archive <project_id> [--reason "..."]` sets `archived_at`; `run402 admin reactivate <project_id>` flips it back. Both are scoped to a single project — siblings on the same organization keep serving.
 
-## Project transfer (unified noun, owned-org recipient v1.96+)
+## Project transfer (unified noun, owned-org recipient)
 
 Hand off or move a project without redeploying — one noun, three recipient shapes. `--to` routes by value: a **wallet** is a two-party SIWX transfer (recipient completes with `accept`); an **email** is an email→org transfer (recipient completes with `claim`, claiming into an org they own). `--to-org` moves the project into another org you already own; same-actor owned-org moves complete immediately in the first gateway release. Owner-side mutations on pending wallet/email transfers freeze for the 72-hour window so the recipient reviews exactly what they will own.
 
@@ -1176,7 +1176,7 @@ Allocation is `run402 repos create --project <id>`. `run402 init` scaffolds the 
 
 **Tell the user this before they rely on it.** The vault protects source history from host-side loss while a principal keystore survives. The "while" clause is load-bearing: in V0-A, **whole-machine or whole-keystore loss is terminal for vault history until human envelopes ship**, and `run402 repos view` prints that sentence verbatim. Back up the keystore directory `run402 repos view` reports as `keystore.root` and prints under the terminal-loss statement — `~/.config/run402/gitvault` for the default wallet, `~/.config/run402/profiles/<wallet>/gitvault` for a named one. The recovery receipt is an integrity anchor, not a decryption key — it proves the vault you are served is the one you created, and decrypts nothing; it is not a secret, and the more copies the better. The reminder gets louder as the vault gets more valuable: quiet at genesis, a STANDING `run402 doctor` warning once the vault crosses any of ≥10 generations / ≥10 MB / ≥14 days since genesis — cleared only by adding a second principal, never by an attestation, because V0 cannot verify one is true.
 
-**`run402 repos access`** is READ-ONLY: the org's directory of encryption-key-holding members, which of the vault's current envelope-recipient fingerprints are covered, and (best-effort, this machine only) each principal's local TOFU pin. States an honest gap rather than inventing one — per-recipient `envelope_state`/`history_scope` are not yet exposed by the gateway, landing with `gitvault-human-envelopes`' epoch-rotation work. **`access repair` is not yet available** and refuses cleanly, gated on that same work. Epoch coverage still runs internally, best-effort, from `deploy`/`snapshot`'s own hooks.
+**`run402 repos access`** is READ-ONLY: the org's directory of encryption-key-holding members, which of the vault's current envelope-recipient fingerprints are covered, and (best-effort, this machine only) each principal's local TOFU pin. States an honest gap rather than inventing one — per-recipient `envelope_state`/`history_scope` are not exposed by the gateway. **`access repair` does not exist** and refuses cleanly. Epoch coverage runs internally, best-effort, from `deploy`/`snapshot`'s own hooks.
 
 **`run402 repos mirror`** is ONE flag-driven verb for the exit ramp: a second, customer-owned copy of the vault's ciphertext in an S3 bucket or a plain directory, kept current automatically.
 
@@ -1195,7 +1195,7 @@ run402 repos handoff --note-file handoff.json    # captures the tree, mints the 
 run402 repos resume kgh1_…                        # on the other machine: cold-start (faucet + prototype) if no tier, then claim, clone, restore, print the note
 ```
 
-**Verify it without trusting our client.** `r402s-verify` is an independent-lineage verifier for the same protocol — separate language, separate authorship, separate primitive stack, deliberately sharing no implementation code with the SDK. A differential verifier that reuses the code it is checking verifies nothing. It ships prebuilt release binaries now, alongside the `cargo build --release` source path.
+**Verify it without trusting our client.** `r402s-verify` is an independent-lineage verifier for the same protocol — separate language, separate authorship, separate primitive stack, deliberately sharing no implementation code with the SDK. A differential verifier that reuses the code it is checking verifies nothing. It ships prebuilt release binaries alongside the `cargo build --release` source path.
 
 There is no separate repos price: a vault's bytes count against the same organization-pooled storage budget the project already has, charged once per unique object with a 4 KiB per-object accounting floor and a 1 MiB per-vault minimum.
 

@@ -19,7 +19,7 @@ export interface AllowanceStatusResult {
    * True once the faucet has been invoked on this allowance. This tracks
    * "faucet has been used," not "account can pay right now" — the two diverge
    * once funds are spent or expire. Callers wanting a real pay-readiness
-   * check should call `allowance balance` (see GH-109).
+   * check should call `allowance balance`.
    */
   faucet_used?: boolean;
   lastFaucet?: string;
@@ -161,7 +161,7 @@ export class Allowance {
     }
 
     // Wire shape is snake_case (`transaction_hash`, `amount_usd_micros`);
-    // normalize to the typed camelCase surface (regression: GH-163).
+    // normalize to the typed camelCase surface.
     const wire = await this.client.request<FaucetWireBody>("/faucet/v1", {
       method: "POST",
       ...(opts.idempotencyKey ? { headers: { "Idempotency-Key": opts.idempotencyKey } } : {}),

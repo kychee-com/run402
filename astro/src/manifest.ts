@@ -16,10 +16,8 @@
  * what the static `<Image>` component produces.
  *
  * Both static `<Image>` users and runtime-manifest users hit the same
- * upload pipeline, the same v1.49 variants, the same CDN — they just
+ * upload pipeline, the same variants, the same CDN — they just
  * differ in WHERE the image references live.
- *
- * Closes kychee-com/run402-private#406.
  */
 
 import { buildPictureHtml } from "./picture-builder.js";

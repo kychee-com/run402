@@ -137,7 +137,7 @@ export async function run(args = []) {
   const walletName = getActiveProfile();
   const walletMeta = readMeta(walletName);
 
-  // GH-32 follow-up: balances are grouped under one object so the on-chain and
+  // Balances are grouped under one object so the on-chain and
   // prepaid-credit numbers are unambiguous and rail-legible.
   //   - on_chain_usd_micros / on_chain_token: on-chain USDC (x402) or pathUSD
   //     (mpp), null if the RPC read failed

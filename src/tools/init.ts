@@ -30,7 +30,7 @@ export async function handleInit(args: { rail?: "x402" | "mpp" }): Promise<McpRe
   mkdirSync(configDir, { recursive: true });
 
   // 2. Allowance — create or reuse (via SDK when possible)
-  // GH-194: readAllowance throws on a malformed-shape file; surface a friendly
+  // readAllowance throws on a malformed-shape file; surface a friendly
   // error rather than crashing the tool.
   let allowance;
   try {

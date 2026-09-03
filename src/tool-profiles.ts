@@ -7,7 +7,7 @@
  * kept naming tools from the full surface, so a buyer following our own advice
  * was sent to tools that do not exist for them.
  *
- * Found 2026-07-30 cold-walking the buyer profile (kychee-com/run402-private#635):
+ * Cold-walking the buyer profile:
  *
  *   allowance_status  ->  "Use `allowance_create` ..."   NOT in the buyer profile
  *   init              ->  "Next: Use `set_tier` ..."     NOT in the buyer profile

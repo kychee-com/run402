@@ -55,7 +55,7 @@ export const API = getApiBase();
 
 /**
  * Wraps core's `readAllowance()` and converts the malformed-shape throw
- * (GH-194) into the canonical CLI failure envelope. Without this guard, every
+ * into the canonical CLI failure envelope. Without this guard, every
  * CLI subcommand that touches the allowance leaks a Node stack trace and
  * source paths the moment a user has a malformed `allowance.json`.
  *

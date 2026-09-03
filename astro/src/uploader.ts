@@ -30,12 +30,11 @@ import type { AssetRef } from "./types.js";
  * Minimal shape of the SDK we depend on. We use BOTH:
  *  - `assets.put(...)` for cache-miss single-file uploads (back-compat /
  *    edge cases / tests).
- *  - `assets.putMany(items, opts)` (v0.2.2+, kychee-com/run402-private#408
- *    follow-up) — the right architectural primitive for batch uploads:
- *    ONE plan + ONE commit + parallel S3 PUTs internally + the gateway
- *    encoder's 2-concurrent semaphore fully utilized at activate time.
- *    Per-file `put` did N separate plans which serialized everything
- *    behind the apply substrate; that was the v0.2.1 stopgap.
+ *  - `assets.putMany(items, opts)` — the right primitive for batch
+ *    uploads: ONE plan + ONE commit + parallel S3 PUTs internally + the
+ *    gateway encoder's 2-concurrent semaphore fully utilized at activate
+ *    time. Per-file `put` costs N separate plans, which serializes
+ *    everything behind the apply substrate.
  */
 export interface ProjectAssetsClient {
   assets: {
@@ -118,12 +117,11 @@ export interface UploaderSummary {
   durationMs: number;
 }
 
-// v0.2.1 (closes kychee-com/run402-private#408): default concurrency
-// dropped from 4 → 1 because every `client.assets.put` routes through
-// the apply substrate (per SDK ≥2.1) — each put is its own
+// Default concurrency is 1 because every `client.assets.put` routes
+// through the apply substrate (per SDK ≥2.1) — each put is its own
 // plan-against-base + commit. Parallel puts race on the same base
-// release and ALL but the first throw BASE_RELEASE_CONFLICT, so
-// concurrency=4 made every multi-file `assetsDir` build fail on the
+// release and ALL but the first throw BASE_RELEASE_CONFLICT, so a
+// higher concurrency makes every multi-file `assetsDir` build fail on the
 // first race. Serial puts (concurrency=1) plan against the LATEST
 // committed release each time, no conflict possible.
 //
@@ -171,12 +169,10 @@ export async function uploadAll(
   let bytesUploaded = 0;
   let bytesReused = 0;
 
-  // v0.2.2: prefer the SDK's putMany batch path when available AND a
+  // Prefer the SDK's putMany batch path when available AND a
   // projectId is supplied. ONE plan + ONE commit + parallel S3 PUTs
   // internally + the gateway encoder's 2-concurrent semaphore fully
-  // utilized at activate time. For 50 files: ~3 min wall-clock vs.
-  // ~6-10 min serial (v0.2.1). See kychee-com/run402-private#408
-  // follow-up.
+  // utilized at activate time.
   if (options.projectId && typeof client.assets.putMany === "function") {
     const summary = await uploadAllBatched({
       paths,
@@ -509,7 +505,7 @@ function extractErrorCode(err: unknown): string | undefined {
     // The only discriminator is the OAuth-style `error` field. Map it to a
     // dedicated code so the operator gets the re-link remediation instead of
     // the misleading asset-scope hint (set-asset-scopes 409s on a revoked
-    // binding). See kychee-com/run402#473.
+    // binding).
     if (e.body && typeof e.body === "object" && e.body.error === "binding_revoked") {
       return "CI_BINDING_REVOKED";
     }

@@ -2,9 +2,8 @@
 
 The frozen task-1.2 vector set for the gitvault wire protocol `r402s/v0`, at
 **protocol rev 41**. Vendored here so the public repo's CI actually replays
-them — before this copy existed the SDK suites resolved a hard-coded absolute
-path, found nothing on a CI runner, and **silently skipped ~130 vectors while
-reporting green**.
+them: a suite that resolves vectors from a path outside the repo finds nothing
+on a CI runner and **silently skips them while reporting green**.
 
 **Snapshot policy:** this set is a frozen checkpoint, not a live tail — the
 private canonical set advances ahead of it between checkpoints (see the

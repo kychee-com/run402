@@ -84,12 +84,12 @@
  *     no per-ref object selection, so one batch = one full restore. That is a
  *     superset of what git asked for (git writes the refs itself from `list`),
  *     never a subset — but it is not incremental.
- *   - `push` REPAIRS a DANGLING vault HEAD and otherwise never moves it
- *     (kychee-com/run402#568). A fresh vault defaults its HEAD symref to
- *     `refs/heads/main`; before this fix, a first push of any OTHER branch
- *     left that symref naming a ref that would never exist, and the first
- *     `git clone` warned "remote HEAD refers to nonexistent ref" and checked
- *     out an EMPTY tree — publishing landed, but nothing was reachable from
+ *   - `push` REPAIRS a DANGLING vault HEAD and otherwise never moves it.
+ *     A fresh vault defaults its HEAD symref to `refs/heads/main`. Without
+ *     the repair, a first push of any OTHER branch would leave that symref
+ *     naming a ref that never exists, and the first
+ *     `git clone` warns "remote HEAD refers to nonexistent ref" and checks
+ *     out an EMPTY tree — publishing lands, but nothing is reachable from
  *     it. Now: when the vault's current HEAD target is unset, or is a
  *     symref naming a ref this push's own batch does not leave present, the
  *     helper points it at one of the branches THIS push is publishing — the
@@ -98,7 +98,7 @@
  *     which and why (see `chooseGitvaultHeadTargetForPush`). A HEALTHY HEAD
  *     (one that already names a ref this push leaves present) is NEVER
  *     touched — push moving history never means push moving HEAD.
- *   - `option dry-run true` (kychee-com/run402#565) runs the REAL local
+ *   - `option dry-run true` runs the REAL local
  *     pipeline — pack building, encryption sizing, via `vault.planPush` — and
  *     reports the per-ref `ok` lines a real push would, plus a stderr summary
  *     (objects, encrypted bytes, refs, the generation it would admit as,
@@ -210,12 +210,11 @@ const endBlock = () => process.stdout.write("\n");
 const note = (line) => process.stderr.write(`git-remote-run402: ${line}\n`);
 
 /**
- * Wallet selection (kychee-com/run402#558). Before this, this file called
- * `getSdk()` directly and ran NO wallet selection at all — a `.run402.json`
- * binding, and even the global `wallets use` default, silently never
- * reached it; only the `RUN402_WALLET` env layer worked, so a bound
- * checkout's very next `git push run402 main` after a correctly-bound
- * `run402 repos create` used the WRONG wallet's (usually empty) allowance.
+ * Wallet selection. Calling `getSdk()` directly here would run NO wallet
+ * selection at all — a `.run402.json` binding, and even the global
+ * `wallets use` default, would silently never reach it; only the
+ * `RUN402_WALLET` env layer would work, so a bound checkout's `git push
+ * run402 main` would use the WRONG wallet's (usually empty) allowance.
  *
  * Shares `resolveWalletCore`/`enforceWalletExistsCore` with the CLI
  * (`cli/lib/wallet-context.mjs`) — ONE implementation, minus the CLI's
@@ -261,7 +260,7 @@ function walletSourceLabel(resolved) {
  * an env var or a binding DID name one, the remedy is actively harmful —
  * `run402 init` recreates the DEFAULT wallet's allowance, a DIFFERENT
  * wallet than the one that was actually resolved and whose allowance is
- * actually missing/broken (kychee-com/run402#558's second defect). Replace
+ * actually missing/broken. Replace
  * it with the resolved wallet's name and how selection works, so the fix is
  * "correct the selection" rather than "recreate the wrong wallet".
  */
@@ -358,7 +357,7 @@ export function partitionProtectedRefPushes(specs) {
 
 /**
  * Decide whether THIS push must repair a DANGLING vault HEAD, and to what
- * (kychee-com/run402#568 — the first-clone empty-tree hazard). The rule:
+ * — the first-clone empty-tree hazard. The rule:
  *
  *   WHEN the vault's current materialized HEAD target is absent, OR is a
  *   symref naming a ref this push's own batch does not leave present, set
@@ -432,11 +431,10 @@ export function shouldRunAutoGc(threshold, generationsSinceCheckpoint) {
  * `process.cwd()` only in CALLER convention, never inside the SDK's own
  * `open()` (which sets it ONLY when `options.repo_dir !== undefined`).
  * Building the auto-gc target from `{ ...target }` alone — omitting
- * `repo_dir` — made every real post-push auto-gc cycle fail closed with
+ * `repo_dir` — makes every real post-push auto-gc cycle fail closed with
  * `GITVAULT_REPO_DIR_REQUIRED`, silently degrading to the advisory on
- * EVERY push, live in production shape, until a push-latency guard bench
- * finally drove the real trigger path (found 2026-08-31; `repos gc`'s CLI
- * wrapper passes repo_dir explicitly and never hit this).
+ * EVERY push. `repos gc`'s CLI wrapper passes repo_dir explicitly, so it
+ * never exercises this path.
  */
 export function buildAutoGcCompactionTarget(target, repoDir) {
   return { ...target, repo_dir: repoDir };
@@ -462,10 +460,8 @@ async function main(argv, { onBackgroundWork } = {}) {
   const addressForm = gitvaultRemoteAddressForm(address);
   const target = { project_id: address.project_id, org_id: address.org_id };
   let verbosity = 1;
-  // kychee-com/run402#565: `option dry-run true` used to be honestly
-  // `unsupported` (this helper could not rehearse a publication, and
-  // reporting a fake success would be worse than refusing). It now IS
-  // real — see `handleOption`'s `dry-run` case and `runPush` below.
+  // `option dry-run true` is a REAL dry run — see `handleOption`'s
+  // `dry-run` case and `runPush` below. It never reports a fake success.
   let dryRun = false;
 
   /**
@@ -533,8 +529,8 @@ async function main(argv, { onBackgroundWork } = {}) {
   }
 
   /**
-   * What to tell a human when we refuse. `git clone` is the case that used to
-   * fail; naming the working alternative beats a bare error.
+   * What to tell a human when we refuse. `git clone` is the case that
+   * fails here; naming the working alternative beats a bare error.
    */
   function repoRefusalNote(err) {
     note(describeError(err));
@@ -757,7 +753,7 @@ async function main(argv, { onBackgroundWork } = {}) {
     for (const ref of Object.keys(refs).sort()) out(`${refs[ref]} ${ref}`);
     // A snapshot-only vault holds protocol refs but no branch heads, so a
     // plain `git clone` prints "cloned an empty repository" with no hint the
-    // history exists (blind-acceptance finding, 2026-08-28). Say where it is.
+    // history exists. Say where it is.
     const refNames = Object.keys(refs);
     if (refNames.length > 0 && !refNames.some((r) => r.startsWith("refs/heads/"))) {
       note(`this vault has no branch heads yet — its history lives on ${refNames.sort()[0]}`);
@@ -898,9 +894,7 @@ async function main(argv, { onBackgroundWork } = {}) {
     // convention, not an SDK fallback (`open()` only sets repo_dir when
     // `options.repo_dir !== undefined`). Omitting it here made every real
     // post-push auto-gc cycle fail closed with GITVAULT_REPO_DIR_REQUIRED,
-    // silently degrading to the advisory on every push (found live,
-    // 2026-08-31, via a push-latency guard bench that finally drove the
-    // ACTUAL trigger path instead of a synthetic `repos gc` invocation).
+    // silently degrading to the advisory on every push.
     const compactionTarget = buildAutoGcCompactionTarget(target, repoDir);
     const runCycle = async () => {
       const sdk = getCachedSdk();
@@ -966,7 +960,7 @@ async function main(argv, { onBackgroundWork } = {}) {
       }
 
       if (dryRun) {
-        // kychee-com/run402#565: READ-ONLY resolution — `openVault`, never
+        // READ-ONLY resolution — `openVault`, never
         // `openOrCreateVault` — so a push-to-create dry run allocates
         // NOTHING. An unresolved vault means there is nothing to preview a
         // push against yet (no repo_id ⇒ no encryption key ⇒ sizing is
@@ -1034,7 +1028,7 @@ async function main(argv, { onBackgroundWork } = {}) {
           force: spec.force && expectedOld !== null,
         });
       }
-      // Repair a DANGLING HEAD from this batch's own branches (#568) — see
+      // Repair a DANGLING HEAD from this batch's own branches — see
       // `chooseGitvaultHeadTargetForPush`'s own doc comment for the exact
       // rule. `localHeadRef` is read from THIS repository (never cwd, same
       // fail-closed resolution as everything else in this function).
@@ -1114,7 +1108,7 @@ async function main(argv, { onBackgroundWork } = {}) {
         out("ok");
         return;
       case "dry-run":
-        // kychee-com/run402#565: a REAL dry run — `runPush` runs the actual
+        // a REAL dry run — `runPush` runs the actual
         // local pipeline (pack building, encryption sizing) and stops before
         // the two network mutations. `value` is git's own boolean spelling
         // ("true"/"false"); anything else is refused rather than guessed.

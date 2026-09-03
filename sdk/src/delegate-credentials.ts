@@ -13,7 +13,7 @@
  * project-create and never re-issued. An agent that loses local state (fresh
  * container, new sandbox) therefore has no cached apikey and no way to deploy
  * to a project it owns. The owner still holds the wallet, so they can mint a
- * delegate with SIWX and hand it to the agent. See kychee-com/run402-private#624.
+ * delegate with SIWX and hand it to the agent.
  */
 
 import type { CredentialsProvider } from "./credentials.js";

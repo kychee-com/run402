@@ -936,7 +936,7 @@ async function applyOnce(
             }
             if (ref.variants !== undefined) existing.variants = ref.variants;
             // v1.50 — image-intrinsic + caller-metadata columns surfaced by
-            // the gateway plan-path enrichment (kychee-com/run402-private #415).
+            // the gateway plan-path enrichment.
             // The first plan ran BEFORE the encoder; the re-plan picks them up.
             // Without this merge, the SDK's buildAssetRef widens them back
             // to null in the final result.
@@ -1972,7 +1972,7 @@ async function uploadMissing(
   // Surface CAS dedup hits so agents can distinguish "N files were already
   // present" from "nothing happened". The gateway reports both present and
   // missing refs in `missing_content`; emit a skipped event for each present
-  // one before short-circuiting on a fully-deduped plan. (#124, #134)
+  // one before short-circuiting on a fully-deduped plan.
   const skipped = presence.filter((p) => p.present);
   for (const p of skipped) {
     const reader = byteReaders.get(p.sha256);
@@ -2101,7 +2101,7 @@ async function uploadCoreContent(
 // drops and 5xx/403 responses; one network blip should not fail the entire
 // deploy. Cap at 3 attempts (1 initial + 2 retries) with delays 1s, 2s.
 // Non-retryable errors (4xx other than 403, internal SDK invariants) bubble
-// up on the first attempt. See GH-140.
+// up on the first attempt.
 interface UploadedPart {
   part_number: number;
   etag: string;
@@ -2354,7 +2354,7 @@ async function pollSnapshotUntilReady(
   // emitting the next phase's `started` event. Skips when there's no prior
   // phase, when the prior emission wasn't a `started` event (e.g. the
   // `activation_pending` path which already emits `failed`), or when the
-  // prior phase string equals the next phase. (#135)
+  // prior phase string equals the next phase.
   const closePreviousPhase = (
     nextPhase?: string,
     closeStatus: "done" | "failed" = "done",
@@ -3090,8 +3090,8 @@ function siteFileSetKeysForGuard(container: unknown): string[] {
 
 /**
  * Reject a site slice that ships the `@run402/astro` adapter build tree as
- * static content. This is the mis-rooting behind kychee-com/run402#411: a
- * deploy pointed `fileSetFromDir`/`dir()` at `dist/` (not `dist/run402/client/`),
+ * static content. The mis-rooting: a deploy points
+ * `fileSetFromDir`/`dir()` at `dist/` (not `dist/run402/client/`),
  * so every page landed under a `run402/client/` path prefix while
  * `run402/adapter.json` + `run402/server/**` leaked in as assets — producing a
  * release that 404'd every URL and exposed the SSR bundle. Fail fast, locally,
@@ -4308,7 +4308,7 @@ async function normalizeFileSet(
   // before iterating — otherwise Object.entries would walk the sentinel's
   // own keys (__source, path, prefix, ignore, …) and feed each value to
   // resolveContent, throwing "Unsupported byte source for prefix" on the
-  // first `undefined` option (kychee-com/run402-private#409).
+  // first `undefined` option.
   const fileSet = isLocalDirRef(set) ? await expandLocalDirRef(set) : set;
   const out: Record<string, ContentRef> = {};
   for (const [path, source] of Object.entries(fileSet)) {
@@ -4928,8 +4928,7 @@ async function uploadInlineCas(
  * `/apply/v1/plans*` use SIWX, which the kernel's getAuth provides
  * automatically — only the apikey-gated paths need this helper.
  *
- * COLD-RESTART RECOVERY (gitvault-deploy-lane 6.5a, the #624 class one layer
- * in): when the local credential cache has no entry for the project — the
+ * COLD-RESTART RECOVERY: when the local credential cache has no entry for the project — the
  * returning-agent case, where the wallet survives but the once-issued project
  * keys did not — this helper mints a SHORT-LIVED anon token via
  * `POST /projects/v1/:project_id/tokens` (the route the platform built as

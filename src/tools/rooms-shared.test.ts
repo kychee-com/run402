@@ -1,6 +1,5 @@
 /**
- * Room addressing for the MCP tools, including the ambient fallback added for
- * run402-public#550.
+ * Room addressing for the MCP tools, including the ambient fallback.
  *
  * Two properties matter beyond the precedence itself:
  *
@@ -74,7 +73,7 @@ describe("resolveRoomArgs — the ambient chain (#550)", () => {
     assert.match((r as { error: string }).error, /no-slash/);
   });
 
-  // kychee-com/run402-private#640: RUN402_WALLET took a name field and got a
+  // RUN402_WALLET took a name field and got a
   // private key by mistake. RUN402_ROOM is the same shape of risk — a value
   // that fails this check must never be echoed, however long or key-shaped.
   it("never echoes a secret-shaped RUN402_ROOM", async () => {
@@ -129,8 +128,7 @@ describe("resolveRoomArgs — the ambient chain (#550)", () => {
 
   // This resolver does no shape validation on RUN402_ORG (unlike the CLI's
   // assertOrgIdShape) — it only compares against the binding — so a
-  // secret-shaped env value reaches this echo completely unvalidated. Same
-  // risk class as #640.
+  // secret-shaped env value reaches this echo completely unvalidated.
   it("never echoes a secret-shaped RUN402_ORG via the ambiguity path", async () => {
     bind({ org: ORG_A, room: "run402-dev" });
     const privateKey = "0x" + "22a3f0".repeat(11); // 66 chars, disagrees with ORG_A

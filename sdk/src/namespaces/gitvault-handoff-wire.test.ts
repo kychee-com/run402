@@ -6,10 +6,9 @@
  * `project_id` (docs/style.md vocabulary) — and the minted role as `role`;
  * the claim's `membership` block spells the org `org_id` too. The SDK groups
  * the ids under `vault` and uses `organization_id` like every other SDK
- * result. The 2026-09-02 live handoff rehearsal caught the SDK reading
- * `minted_role` / `vault` / `membership.organization_id` off the wire —
- * names the gateway never sends — which printed "handoff minted: role
- * undefined" at the CLI and would have refused every `resume`. The fixtures
+ * result. Reading `minted_role` / `vault` / `membership.organization_id`
+ * off the wire — names the gateway never sends — prints "handoff minted:
+ * role undefined" at the CLI and refuses every `resume`. The fixtures
  * below are the documented response bodies (llms-full.txt "Handoff /
  * resume"), so a drift on either side fails here first.
  *

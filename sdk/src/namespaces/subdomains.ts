@@ -104,7 +104,7 @@ export class Subdomains {
     const project = await requireProjectCredentials(this.client, projectId, "listing subdomains");
 
     // Gateway responds `{ subdomains: [...] }`; unwrap so callers get the
-    // array shape the type promises (regression: GH-163).
+    // array shape the type promises.
     const body = await this.client.request<{ subdomains: SubdomainSummary[] }>(
       "/subdomains/v1",
       {

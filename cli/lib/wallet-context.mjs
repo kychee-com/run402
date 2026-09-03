@@ -133,10 +133,10 @@ export class WalletSelectionError extends Error {
 }
 
 // A rejected name is a value we know nothing about — the most likely
-// mistake is a typo, but kychee-com/run402-private#640 was a live
-// Base-mainnet private key pasted into RUN402_WALLET (a NAME field, not a
-// key field), and the raw value used to be echoed straight into this error
-// — printed to a terminal, a log, and a session transcript. Route it
+// mistake is a typo, but a live Base-mainnet private key pasted into
+// RUN402_WALLET (a NAME field, not a key field) is a demonstrated case, and
+// echoing the raw value prints it to a terminal, a log, and a session
+// transcript. Route it
 // through describeRejectedValue() so a short/plain typo still shows in
 // full (that's what makes the error useful) while anything long or
 // hex-shaped enough to be a secret is redacted instead.
@@ -167,11 +167,11 @@ function assertValidName(name, origin) {
  * Shared verbatim by `resolveWallet` below (the CLI wrapper: `--wallet` flag
  * layered on top, failures routed through `fail()`) AND by
  * `git-remote-run402` (no flag layer — the helper has no argv flags at all
- * — failures routed through its own protocol-safe error reporting). This is
- * THE fix for kychee-com/run402#558: before it, `git-remote-run402` called
- * `getSdk()` directly and ran no wallet selection at all, so a `.run402.json`
- * binding — and even the global `wallets use` default — silently never
- * reached it; only the `RUN402_WALLET` env layer worked.
+ * — failures routed through its own protocol-safe error reporting). Calling
+ * `getSdk()` directly instead would run no wallet selection at all, so a
+ * `.run402.json` binding — and even the global `wallets use` default —
+ * would silently never reach the helper; only the `RUN402_WALLET` env layer
+ * would work.
  *
  * Precedence beneath an optional flag (highest first): `RUN402_WALLET` /
  * `RUN402_PROFILE` env > nearest `.run402.local.json`/`.run402.json` binding
@@ -197,7 +197,7 @@ export function resolveWalletCore({ walletFlag, env = {}, cwd = process.cwd(), c
 
   if (envName && binding && envName !== binding.wallet && !CONFLICT_EXEMPT.has(cmd)) {
     // This conflict check runs BEFORE assertValidNameCore below, so an
-    // unvalidated (possibly secret-shaped — kychee-com/run402-private#640)
+    // unvalidated (possibly secret-shaped)
     // RUN402_WALLET reaches here first whenever a directory binding exists
     // (routine per this repo's own fleet-coordination convention). Redact
     // the env side the same way the format check would; `binding.wallet`

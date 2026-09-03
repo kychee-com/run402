@@ -296,7 +296,7 @@ export default async (req: Request) => {
 - `adminDb().sql(query, params?)` — raw parameterized SQL, always bypass RLS.
 - `ai.generateImage({ prompt, aspect? })` — live image generation from deployed functions, billed/rate-limited against the project organization through `RUN402_SERVICE_KEY`. Aspects: `square`, `landscape`, `portrait`; result: `{ image, content_type, aspect }`. For public routed functions, authenticate/rate-limit app users before calling it.
 - `assets.put(key, source, opts?)` — upload runtime bytes through the same CAS-backed apply substrate as deploy-time assets. `source` is a string, `Uint8Array`, or `{ content | bytes }`; returns an SDK-compatible `AssetRef`.
-- `auth.*` — canonical cookie/session auth namespace (`auth.user`, `auth.requireUser`, `auth.requireRole`, `auth.requireMembership`, `auth.fetch`, `auth.sessions.*`, `auth.identities.link`). Bare legacy helpers such as `getUser`, `getUserId`, and `getRole` were retired in `@run402/functions` v3.0 and fail `run402 doctor`.
+- `auth.*` — canonical cookie/session auth namespace (`auth.user`, `auth.requireUser`, `auth.requireRole`, `auth.requireMembership`, `auth.fetch`, `auth.sessions.*`, `auth.identities.link`). Bare helpers such as `getUser`, `getUserId`, and `getRole` are not exported — they throw `R402_AUTH_UNKNOWN_EXPORT` and fail `run402 doctor`.
 - Function-level gate headers — when `FunctionSpec.requireAuth` / `requireRole` passes, read `req.headers.get("x-run402-user-id")` and `req.headers.get("x-run402-user-role")` directly. Use these inside a gated function instead of re-decoding the JWT. See "Function-level auth gates" below for declaring the gate on the deploy spec.
 - `getRoutedPaymentContext(req)` (`@run402/functions` 3.7+) — confirmed x402 payment context for priced routed function requests. Returns `{ scheme, paymentId, amountUsdMicros, payer, network, asset, payTo, transaction, settledAt }` or `null`; key app-side idempotency by `payment.paymentId`.
 
@@ -457,7 +457,7 @@ No `route_scopes` means no CI route-declaration authority. Route scopes are exac
 - `invoke_function` — invoke over the direct `/functions/v1/:name` API-key-protected path. Free functions return the direct response. Paid functions require `idempotency_key`; reuse it for the same paid intent. A 202 response carries `run_id`/`operation_id` and `next_actions[]`; pass `wait`, `timeout_ms`, and `poll_interval_ms` to poll the run and replay the same key for the retained result. Params: `project_id`, `name`, `method?`, `body?`, `headers?`, `idempotency_key?`, `wait?`, `timeout_ms?`, `poll_interval_ms?`.
 - `get_function_logs` — recent logs (CloudWatch). Params: `project_id`, `name`, `tail?` (default 50, max 1000), `since?` (ISO 8601, locally validated), `request_id?` (`req_...`, `fnrun_...`, or `fnatt_...` for routed/function/run correlation). Returned lines include optional metadata e.g. `request_id`, `event_id`, log stream, and ingestion time.
 - `update_function` — change timeout / memory without redeploying code. Legacy schedule mutation exists for old simple-function surfaces; new background work should be declared as ReleaseSpec `triggers[]`.
-- `functions_rebuild` — opt-in refresh onto the platform's current entry wrapper + bundled runtime WITHOUT changing source (gateway v1.69+). Params: `project_id`, `name?` (omit to rebuild every function in the project). Re-bundles from each function's STORED source with deps pinned to the recorded exact versions, so the source `code_hash` is unchanged and no new release is created — this is how a gateway-side wrapper fix (e.g. an SSR `auth.*` fix) reaches an already-deployed function; a plain redeploy with unchanged source does NOT pick it up. Wallet-authed (project ownership; no service key) and allowed during billing grace. Functions deployed before dependency locking fail with `CANNOT_REBUILD_UNLOCKED_DEPS` — redeploy them from source via `deploy_function`.
+- `functions_rebuild` — opt-in refresh onto the platform's current entry wrapper + bundled runtime WITHOUT changing source. Params: `project_id`, `name?` (omit to rebuild every function in the project). Re-bundles from each function's STORED source with deps pinned to the recorded exact versions, so the source `code_hash` is unchanged and no new release is created — this is how a gateway-side wrapper fix (e.g. an SSR `auth.*` fix) reaches an already-deployed function; a plain redeploy with unchanged source does NOT pick it up. Wallet-authed (project ownership; no service key) and allowed during billing grace. Functions deployed before dependency locking fail with `CANNOT_REBUILD_UNLOCKED_DEPS` — redeploy them from source via `deploy_function`.
 - `create_function_run` — create a durable function request. Params: `project_id`, `name`, `event_type`, required `idempotency_key`, optional `payload` JSON object, `delay` or `delay_seconds` or `run_at`, `expires_at` or `expires_after`, `retry` (`preset`, `max_attempts`, `min_delay_seconds`, `max_delay_seconds`), and optional `wait` / `timeout_ms` / `poll_interval_ms`.
 - `list_function_runs` / `get_function_run` / `get_function_run_logs` — inspect durable function runs by function name or `fnrun_...`; logs use the run correlation path.
 - `cancel_function_run` / `redrive_function_run` — cancel queued/scheduled work or redrive a terminal run. Redrive accepts the same retry override and optional wait fields.
@@ -561,7 +561,7 @@ For agents that sign Ethereum transactions. Private keys never leave AWS KMS. $0
 - `rename_project` — rename a project (project-findability, `PATCH /projects/v1/:id`) to fix an auto-generated name. Org `admin`+ (or a `project:write` grant) on the owning org; authorize-before-reveal (unauthorized/guessed id → 403, never a not-found oracle). Uses the wallet's SIWX auth, not a service key, so it works even if the project isn't in the local key store.
 - `admin_set_lease_perpetual` — operator escape hatch. Toggles `lease_perpetual` on a organization; when `true`, the organization never advances past `active`. Platform-admin only.
 - `admin_archive_project` — operator moderation. Sets `projects.archived_at = NOW()` on a single project; siblings on the same organization keep serving. Platform-admin only.
-- `admin_reactivate_project` — un-archive a project (flips `archived_at` to NULL). In v1.57 this no longer touches organization lifecycle. Platform-admin only.
+- `admin_reactivate_project` — un-archive a project (flips `archived_at` to NULL). It does not touch organization lifecycle. Platform-admin only.
 - `project_info` / `project_keys` / `project_use` — inspect / set the active project.
 - `send_feedback` — feedback to the Run402 team. Free with active tier. WRITE-ONLY: no inbox to read, no reply path — use `raise_escalation` when you need an answer from a human, or `send_room_message` to reach the other agents.
 - `set_agent_contact` — register agent contact info. New or changed emails start an operator reply challenge and return `assurance_level`.
@@ -581,7 +581,7 @@ Self-serve Telegram push on top of the operator-notifications substrate: connect
 
 **Connecting and revoking a Telegram binding are CLI/SDK-only in this MCP server** — `connect` blocks on a human tapping a Telegram deep link out-of-band (the CLI polls `notifications channels list` for the flip to `active`; a single MCP tool call can't sensibly block on that), and neither tool was in scope for the initial MCP cascade. Use `run402 notifications channels connect telegram` / `channels revoke <binding_id>`, or `r.admin.channels.connectTelegram()` / `.revokeTelegram()` on the SDK, then come back to `list_notification_channels` here to read the resulting binding id.
 
-### Project transfer (unified noun, owned-org recipient v1.96+)
+### Project transfer (unified noun, owned-org recipient)
 
 Hand off or move a project without redeploying — one noun, three recipient shapes. A **wallet** recipient completes via `accept_project_transfer` (both sides sign SIWX); an **email** recipient completes via `claim_project_transfer` (the recipient claims into an org); an **owned org** recipient (`to_org_id`) is a same-actor move into another org the caller already owns and completes immediately in the first gateway release. Owner-side mutations on pending wallet/email transfers return `409 PROJECT_HAS_PENDING_TRANSFER` for the 72h pending window, so the recipient reviews exactly what they take on.
 
@@ -599,7 +599,7 @@ What does NOT transfer: tier lease (stays with the original owner's organization
 
 After accept, `tier_status` surfaces `projects[].secrets_rotation_advised: { advised_at, reason }` on the transferred project, and `incoming_transfers[]` at the top level lists pending offers (each with `preview_path`) so the inbox is visible without a separate `list_incoming_transfers` fetch.
 
-### Organization, membership & grants (v1.77+ org-owned control plane)
+### Organization, membership & grants (org-owned control plane)
 
 A wallet **authenticates**; the **org (organization)** owns projects. Authorization is an org membership role (`owner > admin > developer > billing > viewer`) or a per-project grant. Member/grant mutations require an active `owner`.
 
@@ -679,7 +679,7 @@ Project rate limit: 100 req/sec. Exceeding returns 429 with `retry_after`. Each 
 
 ## Project lifecycle (~104-day soft delete)
 
-Gateway v1.57 moved the lifecycle state machine from `internal.projects` to `internal.organizations`. The grace clock now ticks per **organization** — every project on the same organization inherits the same `organization_lifecycle_state`. The live data plane keeps serving the whole time; only the owner's control plane gets gated:
+The lifecycle state machine lives on `internal.organizations`. The grace clock ticks per **organization** — every project on the same organization inherits the same `organization_lifecycle_state`. The live data plane keeps serving the whole time; only the owner's control plane gets gated:
 
 | State | When | What happens |
 |---|---|---|

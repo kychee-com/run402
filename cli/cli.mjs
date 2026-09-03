@@ -533,8 +533,8 @@ switch (cmd) {
     ]);
     const closest = typeof cmd === "string" ? closestWord(cmd, [...families]) : null;
     // `cmd` is the first bare positional — could be anything a script passes
-    // by mistake (kychee-com/run402-private#640 is the demonstrated risk for
-    // this shape of value), so it must not be echoed verbatim.
+    // by mistake, and a secret is a demonstrated risk for this shape of
+    // value, so it must not be echoed verbatim.
     const shownCmd = describeRejectedValue(cmd);
     fail({
       code: "UNKNOWN_COMMAND",

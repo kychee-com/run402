@@ -428,7 +428,7 @@ export async function loadExecutableDeployConfig(
     mod = await importConfigModule(manifestPath, extension);
   } catch (err) {
     let message = `Failed to load executable deploy config '${path}': ${(err as Error).message}`;
-    // GH-509: a .ts manifest in a project whose nearest package.json lacks
+    // a .ts manifest in a project whose nearest package.json lacks
     // `"type": "module"` is compiled as CommonJS by the tsx loader, so its
     // imports resolve with require conditions. Against an @run402/sdk older
     // than 4.11.1 (import-only exports map) that fails with the misleading
@@ -1044,7 +1044,7 @@ async function importConfigModule(
     try {
       return await tsx.tsImport(url, { parentURL: import.meta.url }) as Record<string, unknown>;
     } catch (err) {
-      // GH-509 option (b): tsx picks the module format from the manifest's
+      // tsx picks the module format from the manifest's
       // NEAREST package.json. In a project without `"type": "module"` (the
       // `npm init` default) a .ts manifest compiles to CommonJS, so its
       // imports resolve with require conditions — and an import-only exports

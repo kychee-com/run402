@@ -121,9 +121,8 @@ function resolveManifestPath(projectRoot: string, spec: string | undefined): str
  * it returns a complete `AstroUserConfig` that wires the image
  * integration AND the Run402 SSR adapter together.
  *
- * @since v0.3.0-alpha.1 — renamed from `run402` (which now refers to
- *   the default-export preset). The v0.2.x named export `run402` is
- *   aliased to this function for backwards compatibility.
+ * The named export `run402` is aliased to this function, so
+ * `integrations: [run402()]` keeps working.
  */
 export function run402Image(options: Run402AstroOptions = {}): AstroIntegration {
   const projectId = options.projectId ?? process.env.RUN402_PROJECT_ID;
@@ -218,14 +217,13 @@ export function run402Image(options: Run402AstroOptions = {}): AstroIntegration 
  * `state.client`. The Vite plugin's `buildStart` is the only consumer; by
  * then npm has resolved `@run402/sdk` and the credential chain can run.
  *
- * **Credential resolution order** (v0.1.5):
+ * **Credential resolution order**:
  *   1. If `userCredentials` was passed via `run402({ credentials: ... })`
  *      → use it as-is. Power-user escape hatch for non-GitHub CI,
  *      vault-backed providers, or test fixtures.
  *   2. Else if `process.env.GITHUB_ACTIONS === "true"` → use
- *      `githubActionsCredentials({ projectId })`. This is what the
- *      README has always claimed; v0.1.5 makes the claim true.
- *      Closes kychee-com/run402-private#402.
+ *      `githubActionsCredentials({ projectId })`.
+ *
  *   3. Else → bare `run402()`. The SDK's own `NodeCredentialsProvider`
  *      reads the developer's `~/.config/run402/projects.json` keystore
  *      (laptop / dev path).
@@ -327,11 +325,11 @@ function configRootToPath(root: URL | string | undefined): string {
 
 // <Image> is intentionally NOT re-exported from this module.
 //
-// We tried in v0.1.2 (kychee-com/run402-private#399):
+// Re-exporting it —
 //
 //     export { default as Image } from "./Image.astro";
 //
-// That broke the entire package (kychee-com/run402-private#400). The
+// breaks the entire package. The
 // Astro CLI loads `astro.config.mjs` via Node's ESM loader BEFORE Vite
 // is alive. The user's config does `import { run402 } from
 // '@run402/astro'`. Node evaluates this module top-to-bottom, hits the
@@ -359,9 +357,9 @@ function configRootToPath(root: URL | string | undefined): string {
 
 // Type re-exports for consumers.
 //
-// v1.0.3 (GH #401) — `AssetRef` from this entry now resolves to the SDK's
+// `AssetRef` from this entry resolves to the SDK's
 // `AssetRef` from `@run402/functions`, matching what `@run402/astro/react`
-// and `@run402/astro/components` already export. This lets consumers write
+// and `@run402/astro/components` export. This lets consumers write
 // `import type { AssetRef } from "@run402/astro"` and get the same shape
 // `<Run402Image asset={…}>` and `r.assets.put` use, without dual-importing.
 // The narrower manifest-pipeline shape (what `resolveVariants` returns and
@@ -384,11 +382,10 @@ export type { AssetVariant, ImageProps, Run402AstroOptions } from "./types.js";
 // (createRun402Adapter). For users who only want one piece, the named
 // exports `run402Image` and `createRun402Adapter` remain available.
 //
-// The v0.2.x named export `run402` (image integration only) is aliased
-// to `run402Image` for the migration window — existing users can still
-// write `import { run402 } from '@run402/astro'; integrations: [run402()]`
-// without a breaking change, but the recommended path is the default
-// export preset.
+// The named export `run402` (image integration only) is aliased
+// to `run402Image`, so `import { run402 } from '@run402/astro';
+// integrations: [run402()]` keeps working. The recommended path is the
+// default export preset.
 // --------------------------------------------------------------------------
 
 import type { AstroIntegration as RealAstroIntegration, AstroUserConfig } from "astro";
@@ -425,7 +422,6 @@ export interface Run402PresetOptions extends Run402AstroOptions {
  * `integrations: [...]`.
  *
  * @see https://docs.run402.com/astro
- * @since v0.3.0-alpha.1
  */
 function preset(options: Run402PresetOptions = {}): AstroUserConfig {
   // The local AstroIntegration interface in this file is a hand-rolled

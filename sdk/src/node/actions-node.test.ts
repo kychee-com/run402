@@ -1270,7 +1270,7 @@ test("up runs deploy-manifest verify.http checks after apply and surfaces verifi
 });
 
 test("up verify.http prefers the deploy result's own site url over a missing keystore site_url", async (t) => {
-  // Live regression (2026-07-19): a project provisioned in another workspace
+  // A project provisioned in another workspace
   // has keys WITHOUT a cached site_url; verification resolved the origin
   // from the keystore only, fetched against null, and every check failed
   // with an unexplained actual_status: null. The deploy result's urls are
@@ -1310,7 +1310,7 @@ test("up verify.http prefers the deploy result's own site url over a missing key
 
 test("up verify.http with no resolvable origin fails loudly with a missing_public_origin diagnostic", async (t) => {
   // The failure must explain itself — an entry with actual_status: null and
-  // no diagnostic reads as a mystery network error (2026-07-19 live find).
+  // no diagnostic reads as a mystery network error.
   const dir = mkdtempSync(join(process.cwd(), ".tmp-run402-up-deploy-verify-noorigin-"));
   writeFileSync(join(dir, "run402.deploy.json"), JSON.stringify({
     project_id: "prj_ready",

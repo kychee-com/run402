@@ -625,7 +625,7 @@ export type { PushToCreateGitvaultOptions, PushToCreateGitvaultResult } from "./
 export { readPinnedGitvaultRepo, pinGitvaultRepo, resolveGitvaultAddress } from "./gitvault-address.js";
 export type { GitvaultPinnedRepo, GitvaultAddressResolution, ResolveGitvaultAddressOptions } from "./gitvault-address.js";
 export { prewarmGitvaultConnection, predialGitvaultObjectStore } from "./gitvault-prewarm.js";
-// gitvault cross-profile repo-key scan (kychee-com/run402#564) — shared by
+// gitvault cross-profile repo-key scan — shared by
 // every keystore-miss enrichment point; see the module doc for why this is
 // a directory/filename read, never key material.
 export { findLocalProfilesHoldingGitvaultRepo, crossProfileGitvaultHint } from "./gitvault-profile-scan.js";

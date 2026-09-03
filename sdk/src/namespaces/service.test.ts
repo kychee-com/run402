@@ -1,6 +1,6 @@
 /**
  * Unit tests for the `service` namespace. Verifies URL, method, auth omission,
- * and runtime payload shape per method (GH-173 type alignment).
+ * and runtime payload shape per method.
  */
 
 import { describe, it } from "node:test";

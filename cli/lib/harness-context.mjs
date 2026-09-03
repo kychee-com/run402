@@ -11,8 +11,7 @@
  * long its TTL has silently decayed, so a session that can re-derive its OWN
  * key independently of any local file needs no cache at all to pick up where
  * it left off. Two genuinely concurrent sessions must NEVER derive the same
- * key — that would be the #663 regression this design exists to avoid (see
- * run402-private's agent-presence.ts, resolvePresence's own comment) — so
+ * key — that is the regression this design exists to avoid — so
  * every source below is either a value the harness itself guarantees is
  * unique per session, or a value generated here and persisted only for THIS
  * checkout.

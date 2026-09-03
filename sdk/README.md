@@ -309,7 +309,7 @@ The `CredentialsProvider` interface has two required methods (`getAuth`, `getPro
 | `ci` | GitHub Actions OIDC federation over `/ci/v1/*`: `createBinding`, `listBindings`, `getBinding`, `revokeBinding`, `exchangeToken`; plus canonical delegation helpers. `createBinding` accepts `asset_key_scopes` for per-key CI write authorization. |
 | `r.project(id).sites` | `deployDir` — Node entry only (`@run402/sdk/node`); thin wrapper over `r.project(id).apply({ site: dir(...) })` |
 | `r.project(id).assets` | `put` (single asset), `putMany`, `uploadDir` (Node, additive), `syncDir` (Node, destructive only with `prune: true` + confirm token), `prepareDir` (returns `{ manifest, applySlice }` for pre-commit URL injection), `get`, `ls`, `rm`, `sign`, `diagnoseUrl`, `waitFresh`, `diff`. Returns `AssetRef` (single) or `AssetManifest` (batch). |
-| `cache` (v1.52+) | SSR origin ISR cache: `invalidate(url)`, `invalidatePrefix({ host, prefix })`, `invalidateAll({ host })`, `invalidateMany(urls)`, `inspect(url)`. Project-scoped (host ownership validated server-side; cross-project hosts throw `R402_CACHE_INVALIDATION_HOST_FORBIDDEN`). Generation-guarded — in-flight MISS renders started before an invalidate cannot overwrite the freshly-cleared state. |
+| `cache` | SSR origin ISR cache: `invalidate(url)`, `invalidatePrefix({ host, prefix })`, `invalidateAll({ host })`, `invalidateMany(urls)`, `inspect(url)`. Project-scoped (host ownership validated server-side; cross-project hosts throw `R402_CACHE_INVALIDATION_HOST_FORBIDDEN`). Generation-guarded — in-flight MISS renders started before an invalidate cannot overwrite the freshly-cleared state. |
 | `functions` | `deploy`, `invoke`, `logs`, `update`, `list`, `delete`, `rebuild`, `rebuildAll`, `runs.*` durable function requests |
 | `jobs` | `submit`, `get`, `logs`, `cancel`, `purge` for platform-managed jobs |
 | `secrets` | `set`, `list`, `delete` |
@@ -330,7 +330,7 @@ The `CredentialsProvider` interface has two required methods (`getAuth`, `getPro
 | `identityLinks` | Public human/agent external identity attribution with a discriminated proof protocol. Agent `nostr.begin`/`complete` uses EOA + kind 1; human creation/revocation is browser-canonical. `list`, `getProof`, and `revoke` preserve multiple active and revoked records. Never accepts a Nostr secret and never grants authority. |
 | `buzz` | Capability-detecting Buzz control plane. `offerAdoption` plus `humanAdoptionOffers` creates/reads/cancels durable HTTPS handoffs and creates human-bound attempts; direct `humanAdoptions` is advanced compatibility. `install/enroll` and typed community/enrollment methods preserve separate principals, bounded named-project grants, drift, and scoped revocation. `notifications` routes project events into a Buzz channel (`createRoute`/`list`/`get`/`update`/`pause`/`resume`/`rotate`/`revoke`/`test`/`deliveries`/`testAndWait` — configure → authorize → test → live; the signing secret never leaves the gateway). Buzz signing stays outside the SDK. |
 | `wallet(address)` | `getLabel()`, `setLabel(label)` — the signed server-side wallet label (gateway `/wallets/v1/:address/label`) surfaced in the operator console; pushed on `wallets use` unless `RUN402_WALLET_LABEL_SYNC=0`. Use the `r.wallet(address)` handle; `r.wallets.getLabel(address)` remains a bare read |
-| `orgs` | **Org-owned control plane** (v1.77+; first-class orgs v1.82). `create`, `list`, `whoami` (the gateway-resolved control-plane identity) on the collection; the scoped `r.org(id)` sub-client (org analog of `r.project(id)`) adds `get`, `rename`, `setPayoutWallet`, `members.*` (`list`/`add`/`setRole`/`revoke`), `invites.*` (`list`/`create`/`revoke`), `audit`. Org create/read/rename summaries include `tier`, `lease_started_at`, and `lease_expires_at`. |
+| `orgs` | **Org-owned control plane** (first-class orgs). `create`, `list`, `whoami` (the gateway-resolved control-plane identity) on the collection; the scoped `r.org(id)` sub-client (org analog of `r.project(id)`) adds `get`, `rename`, `setPayoutWallet`, `members.*` (`list`/`add`/`setRole`/`revoke`), `invites.*` (`list`/`create`/`revoke`), `audit`. Org create/read/rename summaries include `tier`, `lease_started_at`, and `lease_expires_at`. |
 | `grants` | `create`, `revoke` — per-project capability grants (e.g. `"deploy"`, `"functions:write"`) for agent/CI principals; owner-gated, also reachable project-scoped as `r.project(id).grants` |
 | `events` | `list`, `listForOrg` — the cursored project events feed ("what happened since I last looked"): deploy activations, suspensions, transfers, lifecycle cliffs, each with platform-suggested `next_actions`, plus app-emitted business facts (`source: "app"`) alongside the platform's own (`source: "platform"`) — filter with `{ source?, eventType? }`. Opaque store-and-echo cursor; `reset: true` + `earliest_cursor` instead of errors on expiry. Also reachable project-scoped as `r.project(id).events` |
 | `rooms` | `registerPresence`, `listPresences`, `getPresence`, `sendMessage`, `listMessages`, `getMessage`, `ackMessage`, `createClaim`, `listClaims`, `releaseClaim`, plus `scoped(orgId, roomKey)` (sync) and `forProject(projectId)` (async — resolves the project's org; the default room's key IS the project id) returning a room-bound `ScopedRoom`. Org-scoped agent coordination rooms: per-session presence (~1h silence decays LIVENESS only — an opaque `sessionKey` on every call RESUMES the same presence no matter how long it was silent, reported via `resumed: true`; `requestedName` honored-or-suffixed on a fresh registration, reported via `requested_name` + `renamed` + a plain-language `why` when a collision was task-qualified), room-visible ≤32 KiB markdown messages (`to`/`cc` route attention, not access control; `idempotencyKey` replay returns the ORIGINAL + `deduplicated: true`) with opaque `mcr_…` cursors (`reset: true` + `earliest_cursor` on expiry, never an error), and ADVISORY claims — `createClaim` always succeeds with a complete `conflicts[]`; nothing is ever blocked by a claim |
@@ -398,7 +398,7 @@ const logo = await (await r.project(projectId)).assets.put("logo.png", { bytes }
 //   logo.cacheKind  → "immutable" | "mutable" | "private"
 ```
 
-`immutable: true` is the default since v1.45. The SDK always computes and sends the object SHA-256; pass `false` only when you specifically need mutable URL/cache semantics.
+`immutable: true` is the default. The SDK always computes and sends the object SHA-256; pass `false` only when you specifically need mutable URL/cache semantics.
 
 **Binary files are bytes, never strings.** In Node, call `readFile(path)`
 without an encoding; in a browser, read `File.arrayBuffer()`. Do not use
@@ -422,7 +422,7 @@ Raw `/content/v1` clients have the same obligation: compute `sha256` and
 correctly. Prefer `assets.put`, `fileSetFromDir`, `dir`, or `assets.uploadDir`
 so the byte-safe path is automatic.
 
-### Image variants (v1.49)
+### Image variants
 
 Image uploads (jpeg/png/webp/heic/heif) trigger automatic generation of three WebP variants — `thumb` 320w, `medium` 800w, `large` 1920w — plus dimensions, a blurhash placeholder, and (for HEIC/HEIF sources) a JPEG display variant. Everything ships on the returned `AssetRef`:
 
@@ -905,7 +905,7 @@ All failures throw subclasses of `Run402Error`. Every subclass carries a stable
 | `PaymentAttemptError` | `"payment_attempt_error"` | Automatic x402 setup/signing/submission failed | `code`, `phase`, `paymentAttemptId`, `safeToRetry`, `mutationState`, `nextActions` |
 | `LocalError` | `"local_error"` | Local-host issues (filesystem, signing) | `cause` |
 | `X402BalanceError` (Node entry) | `"local_error"` | x402 USDC balance preflight could not be confirmed, or confirmed funds are insufficient | `code`, `safeToRetry`, `mutationState="not_started"`, `details`, `nextActions` |
-| `Run402DeployError` | `"deploy_error"` | Structured envelope from the deploy state machine (v1.34+) | `code`, `phase`, `operationId`, `safeToRetry`, `mutationState`, `nextActions` |
+| `Run402DeployError` | `"deploy_error"` | Structured envelope from the deploy state machine | `code`, `phase`, `operationId`, `safeToRetry`, `mutationState`, `nextActions` |
 
 Project credential codes are deliberately distinct from project existence/authz. Branch on `isProjectCredentialNotFound`, `isProjectCredentialInvalid`, `isProjectCredentialExpired`, `isProjectCredentialProjectMismatch`, or the broad `isProjectCredentialError`. Gateway-returned `PROJECT_CREDENTIAL_INVALID`, `PROJECT_CREDENTIAL_EXPIRED`, and `PROJECT_CREDENTIAL_PROJECT_MISMATCH` pass through unchanged; the SDK does not rewrite them to `PROJECT_CREDENTIAL_NOT_FOUND`.
 

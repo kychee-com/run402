@@ -609,7 +609,7 @@ describe("createX402BuyerFetch", () => {
   });
 
   it("encodes the payment proof as STANDARD base64, not base64url", async () => {
-    // Regression for kychee-com/run402-private#623 — the defect that stopped the
+    // Regression coverage: the defect that stopped the
     // SDK from paying ANY x402 seller. The proof header was encoded base64url,
     // which substitutes `-` for `+` and `_` for `/` and drops `=` padding, so a
     // seller decoding standard base64 saw no payment at all and re-issued its
@@ -646,8 +646,7 @@ describe("createX402BuyerFetch", () => {
   });
 
   it("reports a bare PAYMENT_REQUIRED re-challenge as a proven non-settlement", async () => {
-    // Regression for kychee-com/run402-private#623, reproduced live against our
-    // own seller. When the paid retry comes back as a plain 402 re-challenge,
+    // When the paid retry comes back as a plain 402 re-challenge,
     // the seller has NOT accepted the payment and has NOT settled — the payer's
     // on-chain balance is unchanged (verified).
     //

@@ -1,5 +1,5 @@
 /**
- * gitvault cross-profile repo-key scan (kychee-com/run402#564) — a purely
+ * gitvault cross-profile repo-key scan — a purely
  * local directory/filename read: which OTHER wallet profiles on this
  * machine hold a `repos/<repo_id>.json` file for a given repo_id. Never
  * touches file CONTENTS.

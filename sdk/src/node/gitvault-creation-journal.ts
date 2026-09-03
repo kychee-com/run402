@@ -528,7 +528,7 @@ export class GitvaultCreation {
   }
 
   /**
-   * kychee-com/run402#563 — init idempotence. Reached only from a FRESH
+   * Init idempotence. Reached only from a FRESH
    * attempt's `allocate()` call (never a resumed one — that path is
    * `verifyAllocation`/the mid-journal refusals below), so nothing has been
    * journaled past LOCAL_KEYS_PREPARED and no ciphertext or K_repo exists to
@@ -652,7 +652,7 @@ export class GitvaultCreation {
           const details = (e as { details?: Record<string, unknown> } | null)?.details;
           this.refuse("REPO_CREATION_CONFLICT", "lost the push-to-create name-claim race to a concurrent pusher", details);
         }
-        // kychee-com/run402#563 — init idempotence: a fresh creation attempt
+        // Init idempotence: a fresh creation attempt
         // (no local journal to resume, e.g. because the ORIGINAL journal
         // already completed and is long gone) allocates under a BRAND NEW
         // client_creation_id, and the gateway's allocate route is unique

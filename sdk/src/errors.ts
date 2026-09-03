@@ -127,7 +127,7 @@ export abstract class Run402Error extends Error {
     if (Array.isArray(envelope?.next_actions) && envelope.next_actions.length > 0) {
       this.nextActions = envelope.next_actions as NextAction[];
     } else {
-      // Verified gateway gap (2026-06-24): `POST /apply/v1/plans` 401 and some
+      // Gateway gap: `POST /apply/v1/plans` 401 and some
       // validation 400s return `next_actions: []`. Synthesize the canonical
       // action for known codes so the relay never hands an agent an empty array.
       // Only fills gaps — never overrides gateway-authored actions.
@@ -188,8 +188,7 @@ function extractQuotaScope(
  * the request can proceed. style.md reserves 402 for exactly this; quota,
  * lifecycle (frozen/dormant lease expiry), and budget-cap denials return
  * 403 instead with their own canonical `code` (see the api-error-envelope
- * `HTTP 402 is reserved for protocol payment challenges` requirement,
- * kychee-com/run402#497).
+ * `HTTP 402 is reserved for protocol payment challenges` requirement).
  */
 export class PaymentRequired extends Run402Error {
   static readonly DEFAULT_CODE = "PAYMENT_REQUIRED";

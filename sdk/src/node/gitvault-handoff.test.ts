@@ -319,12 +319,11 @@ describe("sealHandoffEnvelope / openHandoffEnvelope", () => {
     );
   });
 
-  // The 2026-09-02 rehearsal's sixth cross-side bug: the gateway stores the
-  // frame bytes and echoes them from a claim as STANDARD base64 (openapi
-  // `format: byte`, `Buffer#toString("base64")`); 4.67.0–4.68.2 decoded that
-  // with a canonical-base64url-only decoder, so the first claim that ever
-  // verified died client-side. These three vectors run the bytes through the
-  // gateway's exact transforms rather than through this module twice.
+  // The gateway stores the frame bytes and echoes them from a claim as
+  // STANDARD base64 (openapi `format: byte`, `Buffer#toString("base64")`).
+  // A canonical-base64url-only decoder refuses that, killing the claim
+  // client-side. These three vectors run the bytes through the gateway's
+  // exact transforms rather than through this module twice.
   it("the wire form is standard base64 (openapi `format: byte`), read byte-for-byte by the gateway's own `Buffer.from(x, \"base64\")`", () => {
     const { wrap_key } = deriveHandoffSecrets(idBytes, randomBytes(32));
     const sealed = sealHandoffEnvelope(idBytes, wrap_key, payload);

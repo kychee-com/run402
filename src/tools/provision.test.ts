@@ -122,7 +122,7 @@ describe("provision tool", () => {
     assert.equal(stored!.anon_key, "ak-new");
   });
 
-  // GH-110: tier description must reflect actual $0.10 price, not "free/testnet"
+  // tier description must reflect actual $0.10 price, not "free/testnet"
   it("tier schema description shows prototype as $0.10/7d (GH-110)", () => {
     const desc = provisionSchema.tier.description || "";
     assert.doesNotMatch(

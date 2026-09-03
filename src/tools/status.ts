@@ -10,7 +10,7 @@ type McpResult = { content: Array<{ type: "text"; text: string }>; isError?: boo
 export async function handleStatus(
   _args: Record<string, never>,
 ): Promise<McpResult> {
-  // GH-194: readAllowance throws on a malformed-shape file — translate to a
+  // readAllowance throws on a malformed-shape file — translate to a
   // friendly MCP error rather than crashing with a noble-curves stack trace.
   let allowance;
   try {

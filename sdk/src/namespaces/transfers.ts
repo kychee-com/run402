@@ -182,9 +182,9 @@ export interface AcceptTransferResult {
   to_wallet: string;
   new_organization_id: string | null;
   completed_at: string;
-  /** New owner's project anon key (stateless JWT) — #428. The SDK persists it on accept. */
+  /** New owner's project anon key (stateless JWT). The SDK persists it on accept. */
   anon_key: string;
-  /** New owner's project service key (stateless JWT) — #428. Full project access; persisted on accept. */
+  /** New owner's project service key (stateless JWT). Full project access; persisted on accept. */
   service_key: string;
   secrets_rotation_advised: true;
   /** Names of secrets that carried over with the project. Values are never returned. */
@@ -511,8 +511,7 @@ export class Transfers {
    * Claim an incoming EMAIL transfer into an org. Omit `organizationId` to claim
    * into a brand-new org. The claim atomically flips ownership (the email analog
    * of {@link Transfers.accept}) and returns the new owner's project keys, which
-   * `claim` persists to the keystore — symmetric with `accept` (#428 /
-   * `project-transfer-claim-credentials`) — so the claimant can operate the
+   * `claim` persists to the keystore — symmetric with `accept` — so the claimant can operate the
    * project immediately. Note the claim auth model is principal-based (a
    * control-plane session or a verified-email SIWX match), so — unlike `accept`
    * — a wallet is not assumed to be present.

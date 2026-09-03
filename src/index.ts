@@ -389,7 +389,7 @@ const server = new McpServer({
 /**
  * Optional tool profiles — opt-in, default unchanged.
  *
- * Measured 2026-07-28 against the published server: the full surface is 198
+ * The full surface is 198
  * tools / ~169 KiB, which costs an agent roughly 43,000 tokens of context
  * before it makes a single request. An agent that found us searching "x402" and
  * wants ONE tool — buy an image for three cents — pays that for 197 tools it

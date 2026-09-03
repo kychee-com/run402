@@ -16,13 +16,9 @@
  * **Do NOT import this from `astro.config.mjs`.** The module imports
  * from a Vite virtual module that only exists after Vite is alive;
  * Astro CLI loads `astro.config.mjs` via vanilla Node before Vite
- * starts (the same boundary that closed kychee-com/run402-private#400).
- * Importing this module from the config file dies with "Unknown file
- * extension" or similar. Pages and lib modules used by pages are fine.
- *
- * Closes kychee-com/run402-private#406 follow-up — the user-land
- * conversion pattern (iterate the virtual module's Map, hand-derive
- * manifest keys) is now a one-line import.
+ * starts. Importing this module from the config file dies with "Unknown
+ * file extension" or similar. Pages and lib modules used by pages are
+ * fine.
  */
 
 import type { AssetManifest } from "./manifest.js";

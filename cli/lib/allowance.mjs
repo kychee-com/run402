@@ -92,10 +92,9 @@ async function status() {
         address: data.address,
         created: data.created,
         configured: data.configured,
-        // GH-109: `funded` used to leak an on-disk marker that only tracks
-        // faucet invocation, not actual pay-readiness. Renamed to `faucet_used`
-        // to match its real semantics. For a true "can this account pay right
-        // now" check, use `run402 allowance balance`.
+        // `faucet_used` is named for what it is: an on-disk marker that
+        // tracks faucet invocation, not pay-readiness. For a true "can this
+        // account pay right now" check, use `run402 allowance balance`.
         faucet_used: !!data.faucet_used,
         rail: w?.rail || "x402",
         path: data.path ?? allowanceFile(),

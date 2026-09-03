@@ -113,7 +113,7 @@ describe("uploader", () => {
   });
 
   it("uses batched putMany when client exposes it and projectId is set", async () => {
-    // kychee-com/run402-private#408 follow-up: ONE plan + ONE commit
+    // ONE plan + ONE commit
     // for all cache-miss files instead of N per-file plans. Verifies
     // putMany is called exactly once with all items.
     const p1 = join(root, "images", "a.jpg");

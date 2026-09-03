@@ -18,7 +18,7 @@ own header names its revision), NOT a live tail of the private working drafts.
 The working drafts live in the private `run402-private` repo
 (`docs/strategy/products/gitvault/`), where the freeze program's alignment
 gate hash-pins the protocol text, and they advance ahead of this copy between
-checkpoints. **Snapshot policy (deliberate, recorded 2026-08-31):** this
+checkpoints. **Snapshot policy:** this
 vendored set — docs, schemas, AND vectors together, per the re-sync
 discipline — is re-cut wholesale only when the private canonical set cuts a
 new `CONTINUITY.json` checkpoint, which requires the cross-implementation

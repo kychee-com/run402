@@ -1,6 +1,6 @@
 /**
  * `GitvaultVault.repoFile()` keystore-miss refusals, enriched with the
- * cross-profile hint (kychee-com/run402#564): `KEYSTORE_MISSING` (no local
+ * cross-profile hint: `KEYSTORE_MISSING` (no local
  * identity at all) and `GITVAULT_REPO_STATE_MISSING` (identity present, but
  * no repo file for this repo_id) both point at whichever OTHER local wallet
  * profile actually holds the key, when the scan finds one — and carry their

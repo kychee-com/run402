@@ -96,10 +96,9 @@ export async function handleGenerateImage(args: {
       }
       lines.push(``);
       // This is the moment of intent: the agent wants the image and now knows
-      // it costs three cents. The previous text — "the user's agent allowance or
-      // payment agent must send the required amount" — named no mechanism, so a
-      // cold agent had nothing it could execute. Verified 2026-07-28 by running
-      // the published server from a clean config: it is a dead end at exactly
+      // it costs three cents. Text that names no mechanism — "the user's
+      // agent allowance or payment agent must send the required amount" —
+      // leaves a cold agent nothing it can execute: a dead end at exactly
       // the step that converts.
       //
       // The remedy ships in this same server, so name the tools. `init` funds on

@@ -4,11 +4,10 @@
  * A value rejected by a format/existence check is a value we know nothing
  * about — the CLI has only established what it is NOT. The likeliest
  * failure is an ordinary typo, but the second likeliest, demonstrated in
- * practice, is a credential pasted into the wrong slot:
- * kychee-com/run402-private#640 — a Base-mainnet private key holding real
- * funds landed in `RUN402_WALLET` (which takes a wallet NAME, not a key),
- * failed the name check, and was printed verbatim to a terminal, a log, and
- * a session transcript.
+ * practice, is a credential pasted into the wrong slot: a Base-mainnet
+ * private key holding real funds lands in `RUN402_WALLET` (which takes a
+ * wallet NAME, not a key), fails the name check, and is printed verbatim to
+ * a terminal, a log, and a session transcript.
  *
  * `describeRejectedValue` is the one place that decides what a rejected
  * value is safe to show, so every call site — wallet names, org ids, room
@@ -36,12 +35,12 @@
 // canonical shape of an org id, and *itself* a public, harmless-to-echo
 // identifier even when it's the "wrong" one in a conflict, not a secret).
 // Secrets that land in the wrong slot (private keys, API tokens, JWTs) are
-// almost always well past it — the private key in #640 was 64-66 characters.
+// almost always well past it — a private key runs 64-66 characters.
 const MAX_SAFE_ECHO_LENGTH = 40;
 
 // A contiguous hex run (with or without a `0x` prefix) reads as key
 // material or a hash rather than a human-typed identifier, even when short
-// enough to pass the length check above — the exact shape of #640.
+// enough to pass the length check above.
 const HEX_RUN_RE = /^(0x)?[0-9a-fA-F]{16,}$/;
 
 function looksSecretShaped(str: string): boolean {

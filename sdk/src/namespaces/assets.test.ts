@@ -1299,12 +1299,12 @@ describe("assets.ls — v1.50 sort + filter surface", () => {
   });
 });
 
-// ─── Issue #415 follow-up — re-plan merge drops v1.50 + v1.54 fields ─────────
+// ─── re-plan merge must not drop the image-shape fields ─────────────────────
 //
 // On a fresh image upload, the FIRST `/apply/v1/plans` happens before the blob
 // row exists, so the asset_ref has no image fields. After commit, the SDK
 // re-plans (`dry_run=true`) to pick up post-commit variant data — at which
-// point the gateway's read-side fix (kychee-com/run402-private #415) surfaces
+// point the gateway's read-side fix surfaces
 // all v1.50 + v1.54 fields. The SDK's merge then has to actually copy those
 // fields onto the existing manifest entry; otherwise they fall off and
 // `buildAssetRef`'s `?? null` widens them back to null in the final result.

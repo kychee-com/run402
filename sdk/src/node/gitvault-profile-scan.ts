@@ -1,5 +1,5 @@
 /**
- * gitvault — cross-profile repo-key scan (kychee-com/run402#564).
+ * gitvault — cross-profile repo-key scan.
  *
  * A keystore-miss refusal (`KEYSTORE_MISSING`, `GITVAULT_REPO_STATE_MISSING`,
  * or the non-holder half of a `VAULT_CREATION_CONFLICT` reconciliation

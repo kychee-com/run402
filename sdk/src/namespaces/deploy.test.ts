@@ -4072,7 +4072,7 @@ describe("cold-restart apikey recovery — auto-minted anon token (gitvault-depl
 
 describe("Deploy.apply (gateway error translation)", () => {
   it("preserves operation_id and plan_id from the gateway error body (#127)", async () => {
-    // Regression for GH-127: when the gateway returns a structured deploy
+    // Regression coverage: when the gateway returns a structured deploy
     // error with operation_id/plan_id in the body (e.g.
     // MIGRATION_CHECKSUM_MISMATCH), the resulting Run402DeployError must
     // surface them — even though the call site for the plan request passes
@@ -4922,12 +4922,12 @@ describe("Deploy.apply (safe race retry)", () => {
   });
 });
 
-// ─── GH-140: retry retryable CONTENT_UPLOAD_FAILED with backoff ─────────────
+// ─── retry retryable CONTENT_UPLOAD_FAILED with backoff ─────────────────────
 //
 // When `uploadOne` throws Run402DeployError with `retryable: true` (e.g. a
 // transient network drop on a presigned-PUT), the SDK must retry with
 // exponential backoff up to MAX_ATTEMPTS (1 initial + 2 retries). A single
-// network blip should not fail the whole deploy. See GH-140.
+// network blip should not fail the whole deploy.
 describe("Deploy.apply (retry on retryable CONTENT_UPLOAD_FAILED)", () => {
   // Helper that wires a deploy with one missing file and lets the test
   // control how each PUT attempt resolves.
@@ -5796,7 +5796,7 @@ describe("Deploy release observability", () => {
   // Capability `routed-locale-context`. Surfaces the gateway's i18n
   // readback on `ReleaseInventoryBase` so callers can verify a deploy
   // shipped the spec.i18n they intended — `apply()` not throwing is
-  // necessary but not sufficient. See run402#395 comment for context.
+  // necessary but not sufficient.
   it("surfaces the i18n slice on the active release inventory", async () => {
     const w = makeWiring();
     const activeInventory = {

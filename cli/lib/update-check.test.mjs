@@ -448,7 +448,7 @@ describe("CLI update notices and scheduler", () => {
     assert.equal(check.status, "skipped");
   }));
 
-  // ─── the real TTL, and what happens at every edge of it (kychee-com/run402#561) ──
+  // ─── the real TTL, and what happens at every edge of it ──
   //
   // THE DEFECT (grok dogfood, 4.38.0 installed): `run402 doctor` reported
   // the latest CLI as 4.17.5 from a cache dated Aug 1 — three minor versions

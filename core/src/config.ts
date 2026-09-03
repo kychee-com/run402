@@ -105,10 +105,10 @@ function assertSafeProfileName(name: string): void {
   if (name === DEFAULT_PROFILE) return;
   if (!isValidProfileName(name)) {
     // A value that failed this check is a value we know nothing about — the
-    // most likely mistake is a typo, but kychee-com/run402-private#640 was a
-    // Base-mainnet private key pasted into RUN402_WALLET (a NAME field), and
-    // the raw value used to be echoed straight into this message and
-    // wherever it propagated (terminal, logs, session transcripts).
+    // most likely mistake is a typo, but a Base-mainnet private key pasted
+    // into RUN402_WALLET (a NAME field) is a demonstrated case, and echoing
+    // the raw value propagates it into terminals, logs, and session
+    // transcripts.
     // describeRejectedValue() shows short/plain values in full (useful for
     // an actual typo) and redacts anything long or hex-shaped enough to be
     // a secret instead of a name.

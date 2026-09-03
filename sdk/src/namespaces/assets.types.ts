@@ -55,7 +55,7 @@ export type AssetImageFormat =
  *
  * The shorthand forms exist because every other `ContentSource`-shaped
  * surface in the SDK accepts bare strings/Uint8Arrays — `{ content: ... }`
- * was an outlier that surprised callers (GH-126).
+ * was an outlier that surprised callers.
  */
 export type BlobPutSource =
   | string

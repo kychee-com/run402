@@ -50,11 +50,10 @@ import {
   type SourceAttrs,
 } from "./types.js";
 
-// v1.0.3 — `<Run402Image>` declares what it consumes, not the broader SDK
+// `<Run402Image>` declares what it consumes, not the broader SDK
 // `AssetRef`. `Run402ImageAsset` (in types.ts) is a structural supertype of
 // both the SDK's `AssetRef` (broader) and the manifest pipeline's `AssetRef`
 // (narrower) so both flow into `<Run402Image asset={…}>` without casting.
-// See GH #401.
 
 // =============================================================================
 // Error-code constants (single source — all references go through these)

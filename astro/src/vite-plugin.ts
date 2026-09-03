@@ -59,17 +59,17 @@ export interface VitePluginState {
    * AssetRef-by-absolute-path map serialized into the
    * `virtual:run402-assetmap` virtual module. Populated alongside the
    * uploader's run; consumed by the virtual-module `load` hook to ferry
-   * the data into every SSR/static-render realm Vite spawns. See
-   * kychee-com/run402-private#401 for why a module-level singleton in
-   * registry.ts alone is insufficient.
+   * the data into every SSR/static-render realm Vite spawns. A
+   * module-level singleton in registry.ts alone is insufficient: each
+   * realm gets its own empty copy.
    */
   virtualEntries: Map<string, import("./types.js").AssetRef>;
   /**
-   * v0.2+: directories to walk for the data-driven manifest path. Each
+   * Directories to walk for the data-driven manifest path. Each
    * file is mapped to a manifest key (path relative to the directory)
    * and an absolute path. The same absolute path may be discovered via
    * `<Image>` scan too; CAS dedup handles it. Empty when `assetsDir`
-   * is unset. See kychee-com/run402-private#406 for the use case.
+   * is unset.
    */
   assetsDirs: { absolutePath: string; baseDir: string }[];
   /**
@@ -164,12 +164,10 @@ export function createVitePlugin(state: VitePluginState): MinimalVitePlugin {
       // typed errors with file + path context for any unrecoverable
       // case (leading slash, missing file, unsupported extension).
       //
-      // v0.2.1: do NOT early-return on `discovery.length === 0` here.
-      // That early-return was correct in v0.1.x when the only upload
-      // path was template scanning, but v0.2's `assetsDir` walk runs
-      // independently — a pure-data-driven consumer with no <Image>
-      // template literals still expects the manifest to be emitted.
-      // Closes kychee-com/run402-private#407.
+      // Do NOT early-return on `discovery.length === 0` here: the
+      // `assetsDir` walk runs independently of template scanning, and a
+      // pure-data-driven consumer with no <Image> template literals
+      // still expects the manifest to be emitted.
       const refMap = state.refMap;
       const publicDirRefs = state.publicDirRefs;
       const publicDir = pathResolve(state.projectRoot, "public");
@@ -275,7 +273,7 @@ export function createVitePlugin(state: VitePluginState): MinimalVitePlugin {
       //   - default: Map<absolutePath, AssetRef> — used by Image.astro at
       //     SSR-render time, keyed by the absolute file path the source-
       //     rewrite step substituted.
-      //   - manifest: AssetManifest | null (v0.2.4+) — same shape as the
+      //   - manifest: AssetManifest | null — same shape as the
       //     file emitted at closeBundle, keyed by path relative to
       //     `assetsDir`. Used by `@run402/astro/build-manifest`'s
       //     `getBuildTimeManifest()` for build-time-bake consumers that
@@ -283,7 +281,6 @@ export function createVitePlugin(state: VitePluginState): MinimalVitePlugin {
       //     null when no `assetsDir` was configured (no manifest keys to
       //     emit) — distinct from "empty manifest" so consumers can
       //     branch on the presence of the integration's data-driven path.
-      //     Closes kychee-com/run402-private#406 follow-up.
       if (id === RESOLVED_VIRTUAL_ASSETMAP_ID) {
         // Defensive: stringify each entry independently so a single
         // bad value can't break the whole bundle. AssetRef is pure
@@ -358,10 +355,9 @@ export function createVitePlugin(state: VitePluginState): MinimalVitePlugin {
         }
       }
 
-      // (b) v0.2 — emit the asset manifest JSON. The manifest lets
-      // data-driven consumers (CMS, DB-backed sites, typed seed files)
-      // resolve runtime image URLs to v1.49 variants at render time.
-      // See kychee-com/run402-private#406 + manifest.ts.
+      // (b) Emit the asset manifest JSON. The manifest lets data-driven
+      // consumers (CMS, DB-backed sites, typed seed files) resolve runtime
+      // image URLs to variants at render time. See manifest.ts.
       if (state.manifestKeyByAbsPath.size > 0) {
         try {
           const manifest = buildManifest(state);

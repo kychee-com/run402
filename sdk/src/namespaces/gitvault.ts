@@ -344,9 +344,9 @@ export interface GitvaultCompactResult {
  * Compaction publishes a checkpoint pack roughly the size of the vault's live
  * content while every superseded object stays stored until prune completes —
  * a transient footprint of roughly TWICE `source_bytes`, counted against the
- * ORG's pooled tier storage. The client used to say nothing about this, so an
- * org near its cap paid the full encrypt+upload cost and then took a
- * mid-flight quota refusal naming a quota rather than the mechanism.
+ * ORG's pooled tier storage. Saying nothing about this leaves an org near
+ * its cap paying the full encrypt+upload cost and then taking a mid-flight
+ * quota refusal that names a quota rather than the mechanism.
  *
  * This is advisory-grade by construction: it can only refuse EARLIER and more
  * legibly than the platform's own storage-quota enforcement, never admit
@@ -2817,8 +2817,8 @@ export class Gitvault {
     // real key-holder). Nothing upstream creates the allowance for an
     // unpaid request, so `resume` does it here, exactly as `repos resume
     // --help` promises: a keypair written to the allowance file, no
-    // faucet, no tier, no payment. The 2026-09-02 rehearsal's Session B hit
-    // AUTH_REQUIRED on a bare machine for want of this. A provider without
+    // faucet, no tier, no payment. Without it a bare machine answers
+    // AUTH_REQUIRED. A provider without
     // allowance support (an isomorphic one) is left alone — it
     // authenticates however it authenticates.
     await this.#ensureLocalWallet(options.onLine);
@@ -2874,10 +2874,9 @@ export class Gitvault {
       // Base64url, per the documented wire contract (openapi: "Base64url — the
       // HKDF-derived auth_secret half of the parsed kgh1_ key"). The gateway
       // decodes base64/base64url and substitutes 32 zero bytes for anything
-      // else, so a hex-encoded secret — what 4.67.0 through 4.68.0 sent — never
-      // matched any stored hash: every claim answered HANDOFF_KEY_INVALID (the
-      // 2026-09-02 rehearsal, Session B). Each side's own tests passed; only
-      // the cross-side vector below catches this class.
+      // else, so a hex-encoded secret never matches any stored hash and every
+      // claim answers HANDOFF_KEY_INVALID. Each side's own tests can pass
+      // independently; only the cross-side vector below catches this class.
       body: { auth_secret: toBase64url(secrets.auth_secret), writer_acceptance: toBase64url(jcs(acceptance as unknown as Record<string, unknown>)) },
       context: "claiming a handoff key",
     });
@@ -3177,7 +3176,7 @@ export class Gitvault {
   }
 
   /**
-   * A REAL preview of what {@link push} would publish (kychee-com/run402#565)
+   * A REAL preview of what {@link push} would publish
    * — never publishes anything, and never allocates. `run402 gitvault
    * snapshot --dry-run` and `git-remote-run402`'s `option dry-run true` are
    * both thin adapters over this method.
@@ -3398,7 +3397,7 @@ export class Gitvault {
 
   /**
    * Open this vault's compaction headroom grant, shared by `compact()` and
-   * `prune({ submit })` (kychee-com/run402#578 fix 3) — both write ceremony
+   * `prune({ submit })` — both write ceremony
    * objects into the vault and both need the same single-flight-per-vault
    * headroom slot. Four outcomes:
    *   - opened: the grant is returned, carrying `effective_pool_limit_bytes`.
@@ -3731,7 +3730,7 @@ export class Gitvault {
     );
     const intent = prune.buildPruneIntent(core, [ours, options.submit.verifier_receipt], handle.vault.signer());
 
-    // kychee-com/run402#578 fix 3: the submission writes ~8 KB of ceremony
+    // The submission writes ~8 KB of ceremony
     // objects (both verifier receipts + the intent) into the vault — on a
     // vault that is over-quota BECAUSE it just compacted, that write is
     // refused QUOTA_EXCEEDED, so the deletion's own paperwork is blocked by
@@ -3791,7 +3790,7 @@ export class Gitvault {
     try {
       await handle.vault.transport.uploadObjects({ repo_id: handle.repo_id, objects });
     } catch (e) {
-      // kychee-com/run402#578 fix 2: receipt object ids are DETERMINISTIC —
+      // Receipt object ids are DETERMINISTIC —
       // the same core + the same signer produce the same id on every retry —
       // and Ed25519 signing is deterministic too, so the SAME id can only
       // mean the SAME bytes when nothing about the receipt's content
@@ -3882,11 +3881,10 @@ export class Gitvault {
 
   /**
    * `repos fsck` (repo-surface-consolidation D2/D3): walk the head chain
-   * (what `verify()` did) AND materialize the ref map (what `status({refs:
-   * true})` used to do before `--refs` was removed from `view`), reporting
+   * AND materialize the ref map, reporting
    * BOTH local trust pins — authenticated and materialized — before and
    * after, with an explicit `local_state_changed` flag. This is the one
-   * place chain materialization and pin advance live now; `view` never
+   * place chain materialization and pin advance live; `view` never
    * calls it.
    *
    * `options.write` (default `true`) is the inverse of the CLI's
@@ -4074,12 +4072,10 @@ export class Gitvault {
    * gateway `public_key` gap, and why this is a workaround rather than the
    * eventual epoch-rotation design).
    *
-   * `run402 gitvault reconcile` was this method's explicit standalone CLI
-   * surface (design D5's "session start" hook); repo-surface-consolidation
-   * D5/D7/D10 REMOVED it (no `repos` equivalent — `reconcile` is a
-   * workaround, not a permanent verb) and it now answers `COMMAND_REMOVED`
-   * pointing at `repos access` for inspection. This method itself is
-   * unchanged and un-retired: `deploy()` still runs it, best-effort,
+   * `run402 gitvault reconcile` has no `repos` equivalent — `reconcile` is
+   * a workaround, not a permanent verb — and answers `COMMAND_REMOVED`
+   * pointing at `repos access` for inspection. This method itself stays:
+   * `deploy()` runs it, best-effort,
    * whenever a deploy lands a new generation in the vault — design D5's
    * "deploy time" hook, "the same 'one command every agent runs' argument
    * that decided deploy-implies-capture." `push()` (capture-and-publish
@@ -4162,8 +4158,8 @@ export class Gitvault {
    *
    * **This publish is an ORDINARY admission** and is therefore itself
    * refused `EPOCH_ROTATION_REQUIRED` while this vault has a migration/
-   * revocation/exposure condition outstanding (D193) — reproduced live in
-   * production 2026-08-27. `#enrichEpochRotationRequiredForPinManifest`
+   * revocation/exposure condition outstanding (D193).
+   * `#enrichEpochRotationRequiredForPinManifest`
    * below decorates that refusal with the remedy: fold the SAME receipt
    * into `rotateEpoch({..., pending_confirmations: [...]})` instead, which
    * durably publishes it on a `rotate_epoch` admission (the gate's own

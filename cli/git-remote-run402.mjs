@@ -20,8 +20,8 @@
  *     builtins + `./lib/daemon-path.mjs` only, pinned by a source-level
  *     gate test (design D7). The heavy graph loads only on fallback.
  *   - `RUN402_DAEMON=0` disables the daemon entirely (dev/CI toggle,
- *     approved 2026-08-30 — positively named, default on, only "0"
- *     disables); any other value behaves as unset.
+ *     positively named, default on, only "0" disables); any other value
+ *     behaves as unset.
  *
  * The remote-helper doctrine (fail-closed repository resolution, wallet
  * selection, protocol semantics) lives with the session implementation in

@@ -319,7 +319,7 @@ async function provision(args) {
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--tier" && args[i + 1]) opts.tier = args[++i];
     // Use !== undefined so an empty-string value is captured (and rejected
-    // below) rather than silently dropped by the falsy-check pattern (GH-176).
+    // below) rather than silently dropped by the falsy-check pattern.
     if (args[i] === "--name" && args[i + 1] !== undefined) opts.name = args[++i];
     // --org targets an EXISTING org (v1.82); caller needs developer+ on it.
     // Omitted = cold-start. Tier is org-governed, so --tier is irrelevant here
@@ -345,7 +345,7 @@ async function provision(args) {
     });
   }
   // Validate --name when provided. Omitted --name lets the server pick a
-  // default. The same envelope should also be enforced server-side (GH-176).
+  // default. The same envelope should also be enforced server-side.
   if (opts.name !== undefined) {
     if (opts.name === "") {
       fail({

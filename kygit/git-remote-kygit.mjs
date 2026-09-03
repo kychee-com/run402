@@ -8,8 +8,7 @@
  * never `git-remote-run402`. `@kychee/kygit` can never ship a bin literally
  * named `git-remote-run402` — npm links bins only for the DIRECTLY
  * installed package, and refuses a global install outright when two
- * packages both claim one bin name (kychee-com/run402#577,
- * kychee-com/run402-private#696) — so `npm i -g @kychee/kygit` alone would
+ * packages both claim one bin name — so `npm i -g @kychee/kygit` alone would
  * leave every `kygit::` push failing inside git with an opaque "Unable to
  * find remote helper for 'kygit'". A DIFFERENTLY NAMED bin is the only
  * install that works, which is exactly what this file is.

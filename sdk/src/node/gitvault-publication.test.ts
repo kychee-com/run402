@@ -704,7 +704,7 @@ describe("§6.2 push — the complete publication path", () => {
   });
 });
 
-// ─── planPush — the REAL dry run (kychee-com/run402#565) ─────────────────────
+// ─── planPush — the REAL dry run ─────────────────────
 //
 // The claim under test: planPush computes EXACTLY what push WOULD compute at
 // the same base — same generation, same form, same refs, same object sizes —

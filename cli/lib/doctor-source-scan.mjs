@@ -425,7 +425,7 @@ export function scanSourceTree(srcDir, opts = {}) {
 /** Scan an explicit list of on-disk file paths — no directory walk.
  *  Used by `run402 deploy apply` for manifest/spec/stdin deploys, where
  *  the artifact is exactly the set of files the manifest references, NOT
- *  whatever happens to live under cwd/src (GH-409). Files without a
+ *  whatever happens to live under cwd/src. Files without a
  *  scannable extension are ignored; unreadable files become a WARN
  *  finding (never throw). Returns the combined findings list, sorted by
  *  file + line for stable output, exactly like `scanSourceTree`. */

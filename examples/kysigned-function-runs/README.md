@@ -35,4 +35,4 @@ curl -X POST "https://api.run402.com/projects/v1/admin/$PROJECT_ID/functions/wor
   -H "apikey: $SERVICE_KEY"
 ```
 
-The important architecture point: Kysigned no longer needs its own cron table or polling loop. Run402 stores each durable request, retries retryable attempts, exposes `fnrun_...` logs, and lets the app redrive a terminal item without inventing a queue noun.
+The important architecture point: Kysigned needs no cron table or polling loop of its own. Run402 stores each durable request, retries retryable attempts, exposes `fnrun_...` logs, and lets the app redrive a terminal item without inventing a queue noun.

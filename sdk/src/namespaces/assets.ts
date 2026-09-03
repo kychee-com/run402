@@ -545,7 +545,7 @@ export class Assets {
     source: BlobPutSource,
     opts: BlobPutOptions = {},
   ): Promise<BlobPutResult> {
-    // Normalize the polymorphic source shape (GH-126). Bare strings and
+    // Normalize the polymorphic source shape. Bare strings and
     // Uint8Arrays are accepted as a shorthand for `{ content }` / `{ bytes }`
     // so callers don't need to know about the wrapper object — every other
     // ContentSource-shaped surface in the SDK accepts the bare form.

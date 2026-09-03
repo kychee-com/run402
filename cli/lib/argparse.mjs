@@ -141,9 +141,8 @@ export function validateEvmAddress(value, fieldName = "address") {
   }
 }
 
-// A rejected positional could be anything the caller typed or piped in — see
-// core-dist/redact.js's doc comment (kychee-com/run402-private#640) — so it
-// is never safe to echo verbatim.
+// A rejected positional could be anything the caller typed or piped in (see
+// core-dist/redact.js's doc comment), so it is never safe to echo verbatim.
 export function failBadProjectId(value) {
   fail({
     code: "BAD_PROJECT_ID",
@@ -156,7 +155,7 @@ export function failBadProjectId(value) {
 /**
  * Validate a webhook URL: parse it locally and reject non-https:// schemes.
  *
- * Scope (GH-192): scheme-only validation. Reject `javascript:`, `file:`,
+ * Scope: scheme-only validation. Reject `javascript:`, `file:`,
  * `http:`, `data:`, `ftp:`, etc. before the request leaves the CLI process.
  * Server-side SSRF defenses (private-IP filtering, DNS rebinding, IMDS
  * blocking) live on the gateway, not here — this helper is the cheap
@@ -198,9 +197,8 @@ export function validateWebhookUrl(url, fieldName = "--url") {
 
 /**
  * Validate that a CLI flag pointing at a filesystem path resolves to an
- * existing regular file. Replaces the GH-195 inline pattern that was
- * duplicated across `functions deploy`, `secrets set`, `projects sql`,
- * and `projects apply-expose` (GH-233).
+ * existing regular file. Shared by `functions deploy`, `secrets set`,
+ * `projects sql`, and `projects apply-expose`.
  *
  * Without this guard, `readFileSync` against a missing path leaks a raw
  * `node:fs` ENOENT/EISDIR stack to stderr (with the V8 source pointer),
@@ -439,8 +437,8 @@ export function failUnknownSubcommand(family, sub, { hint, label, extraSubcomman
   const known = [...new Set([...knownSubcommands(family), ...extraSubcommands])].sort();
   // closestWord() itself never echoes — it only ever returns one of the
   // known, safe `known` candidates — but `sub` is an arbitrary positional
-  // (could be anything piped or mistyped in; kychee-com/run402-private#640
-  // is the demonstrated risk), so the ECHO of `sub` below still needs
+  // (could be anything piped or mistyped in, a leaked secret included),
+  // so the ECHO of `sub` below still needs
   // redaction even though the matching runs on the raw value.
   const closest = typeof sub === "string" ? closestWord(sub, known) : null;
   const shownSub = describeRejectedValue(sub);

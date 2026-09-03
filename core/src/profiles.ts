@@ -193,7 +193,7 @@ export function removeProfile(name: string): void {
  */
 export function renameProfile(oldName: string, newName: string): void {
   if (!isValidProfileName(newName)) {
-    // See describeRejectedValue()'s doc comment (kychee-com/run402-private#640):
+    // See describeRejectedValue()'s doc comment:
     // a rejected value may be a secret pasted into a name field, so it is
     // never safe to echo verbatim here.
     throw new Error(`Invalid wallet name ${JSON.stringify(describeRejectedValue(newName))}.`);

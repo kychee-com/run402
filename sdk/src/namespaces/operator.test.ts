@@ -1,6 +1,6 @@
 /**
  * Unit tests for the `operator` namespace. Contract-first: the device + revoke
- * endpoints (kychee-com/run402-private#443) 404 against the live gateway until
+ * endpoints 404 against the live gateway until
  * that ships, so these exercise the client against mocked fetch — URL, method,
  * auth header selection (bearer vs SIWX vs none), and the RFC 8628 poll state
  * machine (pending/slow_down are data, not exceptions).

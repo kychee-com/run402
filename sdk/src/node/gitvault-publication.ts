@@ -951,8 +951,7 @@ export interface GitvaultCompactionGrant {
    * client-declared. NOTE the byte fields arrive as STRINGS on the wire (the
    * gateway serializes Postgres BIGINTs as strings, verified live) — consumers
    * MUST `Number(...)` before arithmetic; `Number.isFinite` on the raw value
-   * is false and silently discards the grant (the bug the live acceptance
-   * run caught on 2026-08-31).
+   * is false and silently discards the grant.
    */
   granted_bytes: number | string;
   expires_at: string;
@@ -1210,8 +1209,8 @@ export interface GitvaultTransport extends GitvaultCreationTransport {
  *
  * The gateway route (`GET /orgs/v1/:org_id/encryption-keys`, `routes/org.ts`
  * in run402-private) returns `public_key` on every row — the raw key
- * material is what makes the directory usable for wrapping at all
- * (deployed 2026-08-26). The field stays OPTIONAL in this wire type the
+ * material is what makes the directory usable for wrapping at all.
+ * The field stays OPTIONAL in this wire type the
  * same way `desired[]` does on {@link GitvaultEnvelopeRecipientsResponse}:
  * a response is network data, and an older/rolling-deploy gateway that
  * omits the field must degrade to a per-entry `skipped` report
@@ -1696,12 +1695,9 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
       if (isRun402Error(e) && (e as { status?: number }).status === 404) return null;
       if (isRun402Error(e) && (e as { code?: string }).code === "RESOURCE_NOT_FOUND") return null;
       // The gateway accepts `{object_kind: "recipient_pin_manifest",
-      // pin_manifest_version}` reads (fixed 2026-08-28; before that its
-      // null-idScalar validation was hardcoded to key_envelope's
-      // `{epoch, recipient_fingerprint}` shape and 400'd every such read
-      // with "epoch must be 16 hex"). A VALIDATION_FAILED here therefore
+      // pin_manifest_version}` reads. A VALIDATION_FAILED here therefore
       // indicates a genuinely malformed request and propagates as-is —
-      // EXCEPT the pre-fix epoch-shape complaint, which a fixed gateway can
+      // EXCEPT the epoch-shape complaint, which a current gateway can
       // never emit for this kind: that signature can only mean an unfixed
       // (older/staging) gateway behind RUN402_API_BASE, so name it rather
       // than letting it read as a client validation bug.
@@ -2234,7 +2230,7 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
         parsed = null;
       }
       if (!r.ok) {
-        // kychee-com/run402#578 fix 1: the gateway's error envelope is FLAT
+        // The gateway's error envelope is FLAT
         // (docs/style.md §Errors — `buildErrorEnvelope` in the gateway) —
         // `code`, `message`, `details`, `trace_id`, and `next_actions` all
         // ride at the TOP level, never nested under an `error` object (that
@@ -2779,7 +2775,7 @@ export interface GitvaultRotationResult {
 }
 
 /**
- * What {@link GitvaultVault.planPush} reports (kychee-com/run402#565) — a REAL
+ * What {@link GitvaultVault.planPush} reports — a REAL
  * local computation, not an estimate: every number here comes from actually
  * building the packs (or checkpoint set) and actually sealing/encrypting
  * them, exactly as a real `push` would. `would_admit_generation` is what this
@@ -2920,7 +2916,7 @@ export class GitvaultVault {
   }
 
   repoFile(): GitvaultRepoFile {
-    // Cross-profile hint (kychee-com/run402#564): a keystore-miss on the
+    // Cross-profile hint: a keystore-miss on the
     // ACTIVE profile is enriched, when the scan finds one, with which OTHER
     // local wallet profile holds this repo's key — a purely local
     // directory/filename read, appended after the existing remedy rather
@@ -3408,10 +3404,9 @@ export class GitvaultVault {
     // gitvault-multi-writer rev 47: `writerKey`/`writerKeyId` (kept for the
     // rotation-envelope open below, which is signed by whoever DROVE that
     // specific rotation — resolved per-rotation from `writerState`, not this
-    // fallback) used to be the vault's ONLY writer. They now name just the
-    // genesis creator, retained as the seed for `writerState` and as the
-    // pre-rev-47 fallback signer for methods this pass didn't reach (see the
-    // module's own follow-up note on the restore/clone/mirror subsystem).
+    // fallback) name just the genesis creator, retained as the seed for
+    // `writerState` and as the fallback signer for methods that do not
+    // resolve a per-rotation writer.
     const writerKey = genesis.creator_signing_pubkey;
     const writerKeyId = genesis.writer_key_id;
     const repo = this.repoFile();
@@ -4073,10 +4068,9 @@ export class GitvaultVault {
    * **This is task 1.1's residual WORKAROUND, not the design D5 ideal.** D5
    * describes a recipient-set change as an epoch rotation — "history epochs
    * stay wrapped as they were; a new member reads from their first covered
-   * epoch forward" — which needs a protocol revision (task 1, BLOCKED as of
-   * 2026-08-26: V0 pins `epoch` to the single constant
-   * `GITVAULT_GENESIS_EPOCH` on every head, so there is no "forward" to
-   * speak of yet). What this method actually does, legally, without any
+   * epoch forward" — which needs a protocol revision: V0 pins `epoch` to
+   * the single constant `GITVAULT_GENESIS_EPOCH` on every head, so there
+   * is no "forward" to speak of. What this method actually does, legally, without any
    * protocol change: `key_envelope` objects are never head-referenced (not
    * even genesis's own envelope is), so uploading an ADDITIONAL one at
    * `envelopes/<current epoch>/<recipient fingerprint>` for a missing
@@ -4099,7 +4093,7 @@ export class GitvaultVault {
    * this SDK does not make unattended.
    *
    * **The gateway directory route carries `public_key` on every row**
-   * (`GET /orgs/v1/:org_id/encryption-keys`, deployed 2026-08-26 — see the
+   * (`GET /orgs/v1/:org_id/encryption-keys` — see the
    * doc comment on {@link GitvaultOrgEncryptionKeyEntry}), so against a
    * current gateway entries actually wrap. A directory entry that arrives
    * WITHOUT the field (an older/rolling-deploy gateway) is still tolerated
@@ -4677,7 +4671,7 @@ export class GitvaultVault {
     // -run call site) is the honest shape.
     capture_binding?: GitvaultPushOptions["capture_binding"];
     /**
-     * kychee-com/run402#565 — a REAL dry run. Every step above this flag's
+     * A REAL dry run. Every step above this flag's
      * check is identical to a real push: the same `evolveRetentionRoots`, the
      * same `buildRefState`/`buildRetentionRoots` (real signing), the same
      * `buildPacks`/`buildCheckpoint` (real pack building), the same `seal`
@@ -4733,7 +4727,7 @@ export class GitvaultVault {
         rawPackBytes += pack.length;
       }
     }
-    // kychee-com/run402#565: everything above this point is REAL local work —
+    // everything above this point is REAL local work —
     // real signing, real pack building, real encryption. Stopping HERE is what
     // makes the dry run honest: nothing below this line has run yet, so
     // nothing was uploaded and no generation was admitted.
@@ -4801,7 +4795,7 @@ export class GitvaultVault {
   }
 
   /**
-   * A REAL preview of what {@link push} would publish (kychee-com/run402#565)
+   * A REAL preview of what {@link push} would publish
    * — runs the SAME local pipeline `push` runs (materialize → evaluate →
    * evolve retention roots → build refState/retentionRoots → build packs or a
    * checkpoint set → seal/encrypt) and stops BEFORE the two network
@@ -5011,9 +5005,9 @@ export class GitvaultVault {
    * `POST …/object-reads` rejected every `recipient_pin_manifest` read
    * (its null-`idScalar` validation was hardcoded to `key_envelope`'s
    * `{epoch, recipient_fingerprint}` shape, never generalized when D197
-   * shipped the second path-addressed kind), so the network fallback below
-   * always 400'd. That gateway bug is fixed (deployed and live-verified
-   * 2026-08-28): the network path works for any keystore, including
+   * shipped the second path-addressed kind), which 400'd the network
+   * fallback below. That gateway bug is fixed: the network path works for
+   * any keystore, including
    * §4.11's fresh-client "SEEDS its local pin file from it" onboarding.
    * The cache stays purely as the round-trip saver described above.
    */
@@ -5181,10 +5175,10 @@ export class GitvaultVault {
    * `publishPinManifestUpdate` is an ORDINARY admission (`transition:
    * null`) and is therefore itself refused `EPOCH_ROTATION_REQUIRED` while
    * this vault has an urgent/migration condition outstanding — the exact
-   * state a `rotateEpoch` call is being made to clear. Reproduced live in
-   * production 2026-08-27 (a vault's first `epoch_secret_exposed` rekey:
-   * `/confirm` minted a receipt server-side, but the ordinary push that
-   * would publish it never admitted). Pass the pending receipted updates
+   * state a `rotateEpoch` call is being made to clear. On an
+   * `epoch_secret_exposed` rekey `/confirm` mints a receipt server-side,
+   * but the ordinary push that would publish it never admits. Pass the
+   * pending receipted updates
    * here instead — they ride the SAME head as this rotation's `transition`,
    * which IS `EPOCH_ROTATION_REQUIRED`'s own escape valve, so the publish
    * is no longer blocked. **This does NOT include these principals in
@@ -5450,11 +5444,10 @@ export class GitvaultVault {
       // EPOCH_ROTATION_SELF_OPEN_UNPROVEN on any rotate_epoch admission
       // that omits this or whose claim disagrees with its own
       // server-computed writer-in-envelopes biconditional — this call site
-      // is the fix for the exact gap the 2026-08-28 drill found (production
-      // clients could not READ a rotated vault because the reader had never
-      // implemented rotation traversal, while the write side was green on
-      // its own tests). This SUPERSEDES the old post-commit self-check
-      // below (which called openKeyEnvelope directly, bypassing the
+      // closes the gap where a client can WRITE a rotated vault it cannot
+      // READ, because the reader never implements rotation traversal while
+      // the write side stays green on its own tests. It replaces a bare
+      // post-commit self-check (calling openKeyEnvelope directly, bypassing the
       // membership lookup, the envelope_path callback derivation, and the
       // reader's own error framing) — moving the round-trip BEFORE
       // admission means a genuine failure aborts this call before anything

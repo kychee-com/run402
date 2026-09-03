@@ -328,7 +328,7 @@ export async function requestWithResponse<T>(
     // Blanket-wrapping them as NetworkError destroyed all of it: a buyer whose
     // wallet ran dry was told `NETWORK_ERROR` / `retryable: true` and given no
     // remedy, so a retrying agent would loop forever on a condition that only
-    // funding can clear. Verified 2026-07-29 against a zero-balance wallet.
+    // funding can clear.
     //
     // Anything already carrying the Run402 brand is a classified SDK error and
     // is strictly more informative than the wrapper — pass it through untouched.

@@ -76,10 +76,7 @@ describe("gitvaultWireRefForPath — every §3 storage path maps to a control-pl
     // ("VERSION-ADDRESSED: ... recipient_pin_manifest by (repo_id,
     // pin_manifest_version)") and the gateway's own upload-side
     // `UPLOADABLE_KINDS.recipient_pin_manifest.pathFields` — and the
-    // gateway's object-reads route accepts it (fixed and live-verified
-    // 2026-08-28; before that its null-idScalar validation was hardcoded
-    // to key_envelope's `{epoch, recipient_fingerprint}` shape and 400'd
-    // this read with "epoch must be 16 hex"). A change that reshapes this
+    // gateway's object-reads route accepts it. A change that reshapes this
     // call to send epoch/recipient_fingerprint would be the regression
     // this test exists to catch. See GitvaultVault.readPinManifestObject's
     // doc comment (gitvault-publication.ts) for the local cache that lets
@@ -304,7 +301,7 @@ describe("createGitvaultHttpTransport — compaction headroom grant open/close (
   }
 
   it("opens with a bare POST …/compaction-grant and returns the grant verbatim", async () => {
-    // Byte fields are STRINGS on the wire (gateway BIGINT serialization, verified live 2026-08-31).
+    // Byte fields are STRINGS on the wire (gateway BIGINT serialization).
     const grant = { granted_bytes: "1024", expires_at: "2026-01-01T01:00:00.000Z", pool_used_bytes: "10", pool_limit_bytes: "1000", effective_pool_limit_bytes: "2024" };
     const { transport, calls } = transportOver(() => grant);
     const got = await transport.openCompactionGrant({ repo_id: REPO });
@@ -346,13 +343,13 @@ describe("createGitvaultHttpTransport — compaction headroom grant open/close (
  * strict-parses + signature-verifies the exact bytes sent, so it goes out
  * over `client.fetch` directly. That means its error handling hand-rolls its
  * own envelope parsing instead of inheriting `client.request`'s (which
- * already reads the gateway's FLAT envelope correctly). kychee-com/run402#578
- * fix 1: the hand-rolled parser read `envelope.error.code`/`.message`/
- * `.details` — as if the envelope were `{error: {code, message, details}}` —
- * but the real gateway envelope (`buildErrorEnvelope` in the gateway) is
+ * already reads the gateway's FLAT envelope correctly). A hand-rolled
+ * parser reading `envelope.error.code`/`.message`/`.details` — as if the
+ * envelope were `{error: {code, message, details}}` — is wrong: the real
+ * gateway envelope (`buildErrorEnvelope` in the gateway) is
  * FLAT: `code`, `message`, `details`, `trace_id` all ride at the TOP level,
- * and `error` is a human-readable STRING alias for `message`. Every real
- * refusal therefore collapsed to the opaque `GITVAULT_PRUNE_SUBMIT_FAILED
+ * and `error` is a human-readable STRING alias for `message`. Such a parser
+ * collapses every real refusal to the opaque `GITVAULT_PRUNE_SUBMIT_FAILED
  * {details: null}` fallback.
  */
 describe("createGitvaultHttpTransport — submitPruneIntent surfaces the gateway's refusal verbatim (kychee-com/run402#578 fix 1)", () => {

@@ -32,7 +32,7 @@ import {
 import type { GitvaultMirrorBackend } from "./gitvault-mirror-backend.js";
 import { utf8ToBytes } from "@noble/hashes/utils.js";
 
-// ─── Golden fixture (sealed by apps/git/public/lib/r402s-crypto.js, 2026-08-29) ─
+// ─── Golden fixture (sealed by apps/git/public/lib/r402s-crypto.js) ─────────
 const GOLDEN = {
   code_display: "SRC1-E21A-Z619-AK42-T962-5H61-XNEV-089A-27QC-Q",
   code_core: "E21AZ619AK42T9625H61XNEV089A27QC",

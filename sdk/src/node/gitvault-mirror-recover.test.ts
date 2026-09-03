@@ -389,10 +389,9 @@ describe("gitvault mirror reader — inline object-reads bytes (gitvault-small-o
 // ─── source/<repo_id>/ prefix handling (task 5.3 finding (b)) ────────────────
 //
 // The gateway's REAL objects listing always carries the full
-// `source/<repo_id>/…` prefix (live-confirmed 2026-08-26). This is the
-// standing guard against the exact bug that made `mirror sync` fail on every
-// listed object against a real vault: the SDK previously assumed a
-// repo-relative wire key and either rejected every entry outright
+// `source/<repo_id>/…` prefix. This is the standing guard against the bug
+// that makes `mirror sync` fail on every listed object against a real vault:
+// assuming a repo-relative wire key either rejects every entry outright
 // (`key_envelope`) or mismatched the repo id itself out of the prefix as if
 // it were the object id (every other kind, via an unanchored fallback
 // regex — see `NON_GENERATION_KEY_SPECS`'s doc comment in gitvault-mirror.ts).
@@ -479,11 +478,10 @@ describe("gitvault recovery engine (task 3.6)", () => {
     rmSync(outDir, { recursive: true, force: true });
   });
 
-  // ── task 5.3 follow-up (found via the live drill 2026-08-26): `out_dir`
-  // never got created before this fix, and the resulting Node `ENOENT`
-  // (missing cwd) was indistinguishable from a missing `git` binary. Every
-  // OTHER test in this file passes an already-`mkdtempSync`'d directory,
-  // which is exactly why this was never caught — these two pin the fix at
+  // ── `out_dir` must be created here: an uncreated one makes Node report
+  // `ENOENT` (missing cwd) indistinguishably from a missing `git` binary.
+  // Every OTHER test in this file passes an already-`mkdtempSync`'d
+  // directory, which is why this needs its own coverage — these two pin it at
   // both layers named in the coordinator's diagnosis. ──
   it("recover creates a non-pre-existing --out directory (the CLI's own documented usage) instead of crashing GIT_UNAVAILABLE", async () => {
     const f = await makeVault();
@@ -838,9 +836,9 @@ describe("gitvault mirror writer + sync engine (task 2.5)", () => {
 
 // ─── foreign-recipient key_envelope handling (task 5.3 follow-up) ────────────
 //
-// Gateway diagnosis 2026-08-26 (production): a real vault's own `mirror
-// sync` 403 on a `key_envelope` was NOT a bug — it was the recipient-only
-// read gate correctly refusing a genuinely foreign recipient's envelope. A
+// A real vault's own `mirror sync` 403 on a `key_envelope` is NOT a bug —
+// it is the recipient-only read gate correctly refusing a genuinely foreign
+// recipient's envelope. A
 // mirror machine can only ever hold ITS OWN envelope; a foreign one is the
 // NORM on a multi-recipient vault (gitvault-human-envelopes), never a
 // failure. These tests pin the fix: classification happens BEFORE any

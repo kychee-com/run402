@@ -366,9 +366,8 @@ function mailboxIdFromSelector(envelope, selector, flag) {
   if (/^mbx_/.test(selector)) return selector;
   const hit = (envelope.mailboxes ?? []).find((m) => m.mailbox_id === selector || m.slug === selector);
   if (!hit) {
-    // A selector that matches nothing is a value we know nothing about — see
-    // core-dist/redact.js's doc comment (kychee-com/run402-private#640) —
-    // so it must not be echoed verbatim.
+    // A selector that matches nothing is a value we know nothing about (see
+    // core-dist/redact.js's doc comment), so it must not be echoed verbatim.
     fail({
       code: "MAILBOX_NOT_FOUND",
       message: `No mailbox matching ${JSON.stringify(describeRejectedValue(selector))} for ${flag}.`,

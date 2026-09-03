@@ -93,7 +93,7 @@ async function contact(args) {
   if (!name) {
     fail({ code: "BAD_USAGE", message: "Missing --name <name>" });
   }
-  // GH-192: validate webhook scheme locally BEFORE the allowance check so
+  // validate webhook scheme locally BEFORE the allowance check so
   // bad URLs fail fast even without an allowance configured. No-op when
   // --webhook is omitted (it's optional).
   validateWebhookUrl(webhook, "--webhook");

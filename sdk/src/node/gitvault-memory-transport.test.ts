@@ -84,8 +84,8 @@ export class GitvaultMemoryTransport implements GitvaultTransport {
    * `findVaultByProject`/`findVaultByRepo`/`getVaultRecord` resolve through
    * for a multi-repo fixture instance (D6 push-to-create tests hold more
    * than one repo per transport). Promoted from `pendingOwners` in
-   * `uploadObjects`, matching the SAME "objects exist" gate this fixture has
-   * always used to mean "a vault is resolvable" (its pre-existing
+   * `uploadObjects`, matching the SAME "objects exist" gate this fixture
+   * uses to mean "a vault is resolvable" (its
    * single-vault fallback reads `[...this.objects.keys()]`) — a fresh
    * ALLOCATION alone does NOT make a vault resolvable here, which is exactly
    * what the D2 resumability test below depends on (a local journal, not a
@@ -305,8 +305,8 @@ export class GitvaultMemoryTransport implements GitvaultTransport {
     });
     if (this.tamperReceiptAt !== null) this.tamperReceiptAt = null;
     // Promote the pending owner NOW — the SAME "objects exist" instant this
-    // fixture's own single-vault fallback (`[...objects.keys()]`) has always
-    // used to mean "a vault is resolvable." A fresh allocation alone must
+    // fixture's own single-vault fallback (`[...objects.keys()]`) uses to
+    // mean "a vault is resolvable." A fresh allocation alone must
     // NOT make `findVaultByProject`/`findVaultByRepo` succeed (see the class
     // doc comment on `projectRepoIds`).
     const owner = this.pendingOwners.get(repo_id);
@@ -388,9 +388,9 @@ export class GitvaultMemoryTransport implements GitvaultTransport {
     // `rotate_epoch` head (the `pending_confirmations` fold). Track it
     // unconditionally so `confirmRecipient`/`repinRecipient`'s
     // `base_pin_manifest_sha256` stamp reflects the REAL currently-effective
-    // predecessor after an ordinary pin-manifest-only publish too — this was
-    // previously nested inside the `rotate_epoch` branch above, which meant
-    // this fixture never observed an ordinary publish's manifest at all.
+    // predecessor after an ordinary pin-manifest-only publish too. Nesting
+    // it inside the `rotate_epoch` branch above would leave this fixture
+    // never observing an ordinary publish's manifest at all.
     if (head.pin_manifest) this.effectivePinManifest.set(req.repo_id, { version: head.pin_manifest.pin_manifest_version, sha256: head.pin_manifest.stored_bytes_sha256 });
     const stored = this.tamperReadback ? new TextEncoder().encode(new TextDecoder().decode(req.stored_bytes) + " ") : req.stored_bytes;
     this.objects.set(this.key(req.repo_id, gitvaultPaths.head(req.generation)), stored);
@@ -631,9 +631,9 @@ export class GitvaultMemoryTransport implements GitvaultTransport {
 
   async findVaultByProject({ project_id }: { project_id: string }): Promise<GitvaultVaultRecord> {
     this.calls.push("find-vault");
-    // `key()` joins with `/` (`${repoId}/${path}`), never `|` — this used to
-    // split on the wrong separator and return the whole compound key as
-    // `repo_id` whenever `vaultRecord.repo_id` was not pre-set by hand.
+    // `key()` joins with `/` (`${repoId}/${path}`), never `|` — splitting
+    // on the wrong separator returns the whole compound key as `repo_id`
+    // whenever `vaultRecord.repo_id` is not pre-set by hand.
     const repoId = this.vaultRecord.repo_id ?? this.projectRepoIds.get(project_id) ?? [...this.objects.keys()][0]?.split("/")[0];
     if (!repoId) throw err("RESOURCE_NOT_FOUND", `no gitvault for ${project_id}`);
     return { ...(await this.getVaultRecord({ repo_id: repoId })), project_id };
@@ -694,8 +694,8 @@ export class GitvaultMemoryTransport implements GitvaultTransport {
     if (existing) throw err("GITVAULT_COMPACTION_GRANT_ACTIVE", "a compaction grant is already active for this project", { expires_at: existing.expires_at });
     // STRING byte fields, deliberately: the live gateway serializes its
     // Postgres BIGINTs as strings, and a number-typed mock let the
-    // Number.isFinite(string) bug ship past every unit test (caught only by
-    // the live acceptance run, 2026-08-31). The mock stays wire-faithful.
+    // Number.isFinite(string) bug ship past every unit test. The mock stays
+    // wire-faithful.
     const grant: GitvaultCompactionGrant = {
       granted_bytes: String(this.compactionGrantBytes),
       expires_at: "2026-01-01T01:00:00.000Z",

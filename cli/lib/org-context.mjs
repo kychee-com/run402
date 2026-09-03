@@ -69,7 +69,7 @@ const trimmed = (v) => (typeof v === "string" && v.trim() ? v.trim() : null);
  * NEVER checked here — only that the value could be an org id at all.
  *
  * A rejected value is a value we know nothing about — see
- * core-dist/redact.js's doc comment (kychee-com/run402-private#640): the
+ * core-dist/redact.js's doc comment: the
  * same class of mistake that put a private key into RUN402_WALLET can put
  * one into RUN402_ORG / --org, so this must never echo the raw value.
  */

@@ -213,8 +213,7 @@ describe("formatApiError", () => {
 
   it("renders full lifecycle fields on a 403 with a reactivate hint", () => {
     // Lifecycle (frozen/dormant/past_due) denials are 403 — style.md reserves
-    // 402 for genuine payment challenges (see the app-events-emit-lane 402->403
-    // migration, kychee-com/run402#497).
+    // 402 for genuine payment challenges.
     const result = formatApiError(
       {
         status: 403,

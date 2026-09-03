@@ -25,7 +25,7 @@ const PRIVATE_KEY_RE = /^0x[a-fA-F0-9]{64}$/;
  *   - the file exists but is not parseable JSON (preserve existing UX —
  *     consumers print "no_allowance" and tell the user to run init)
  *
- * Throws a structured `Error` (GH-194) when the file parses as JSON but the
+ * Throws a structured `Error` when the file parses as JSON but the
  * shape is wrong (missing/wrong-type/wrong-length fields). Without this guard
  * downstream callers crash with raw stack traces:
  *   - `cli/lib/status.mjs` reaches for `allowance.address.toLowerCase()`

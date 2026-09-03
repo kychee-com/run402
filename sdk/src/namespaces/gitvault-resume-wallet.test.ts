@@ -3,10 +3,10 @@
  * (kygit-handoff design D5).
  *
  * The claim route accepts ONLY a SIWX wallet signature, and nothing upstream
- * creates the allowance file for an unpaid request — so on a bare machine
- * 4.67.1 answered `AUTH_REQUIRED` and never touched disk (the 2026-09-02
- * rehearsal, Session B). `resume` now creates the keypair itself when the
- * provider supports one and none exists: no faucet, no tier, no payment.
+ * creates the allowance file for an unpaid request, so a bare machine would
+ * answer `AUTH_REQUIRED` without ever touching disk. `resume` creates the
+ * keypair itself when the provider supports one and none exists: no faucet,
+ * no tier, no payment.
  *
  * These tests drive `resume()` up to its first network call with a mocked
  * fetch (the claim is refused so nothing downstream runs) and assert the

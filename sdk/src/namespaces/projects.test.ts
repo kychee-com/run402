@@ -619,7 +619,7 @@ describe("projects.listTenantPayments", () => {
 describe("projects.getUsage", () => {
   it("GETs /projects/v1/admin/:id/usage with service key", async () => {
     // Mirrors the live gateway shape — `lease_expires_at` is intentionally
-    // absent because the endpoint doesn't compute it (see GH-163). v1.57:
+    // absent because the endpoint doesn't compute it. v1.57:
     // effective_status / organization_lifecycle_state replace the legacy `status`.
     const { fetch, calls } = mockFetch(() =>
       jsonResponse({

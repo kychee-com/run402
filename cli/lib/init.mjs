@@ -404,7 +404,7 @@ export async function run(args = []) {
         const data = await res.json();
         if (data.result) {
           // Tempo faucet is "instant" on-chain, but the client RPC read can be
-          // racy relative to faucet settlement — poll up to 30s (GH-81), mirroring
+          // racy relative to faucet settlement — poll up to 30s, mirroring
           // the x402 path below.
           for (let i = 0; i < 30; i++) {
             await new Promise(r => setTimeout(r, 1000));

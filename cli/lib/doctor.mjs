@@ -27,12 +27,12 @@ import { queueBuzzDoctorTelemetry } from "./diagnostic-telemetry.mjs";
 import { fail } from "./sdk-errors.mjs";
 import { normalizeArgv, assertKnownFlags, flagValue } from "./argparse.mjs";
 
-/** Value-taking flags (kychee-com/run402#566 — the flag set doctor actually parses; anything else is BAD_USAGE via assertKnownFlags, never silently ignored). */
+/** Value-taking flags — the flag set doctor actually parses; anything else is BAD_USAGE via assertKnownFlags, never silently ignored. */
 const DOCTOR_VALUE_FLAGS = ["--scan-dir", "--buzz-agent", "--project", "--only"];
 
 /**
- * The stable, complete registry of ordinary-mode check names (kychee-com/run402#566,
- * the remaining half). One entry per `checks.push({ name: ... })` call below,
+ * The stable, complete registry of ordinary-mode check names. One entry
+ * per `checks.push({ name: ... })` call below,
  * in the order each check normally runs. This is the ONE place `--only`
  * validates its argument against and the ONE place its help text is derived
  * from, so a check can never be selectable-but-undocumented or
@@ -195,11 +195,10 @@ export async function run(sub, args = []) {
     console.log(HELP);
     return;
   }
-  // kychee-com/run402#566 (--project half): doctor used to accept ANY flag
-  // silently — an unrecognized one (a typo, or --project before this fix)
-  // was simply never looked at. Any flag doctor actually parses is listed
-  // here; anything else is now a structured BAD_USAGE/UNKNOWN_FLAG rejection
-  // instead of quietly doing nothing.
+  // Accepting ANY flag silently means an unrecognized one (a typo) is
+  // never looked at. Any flag doctor actually parses is listed here;
+  // anything else is a structured BAD_USAGE/UNKNOWN_FLAG rejection instead
+  // of quietly doing nothing.
   assertKnownFlags(all, ["--verbose", "--refresh", "--no-scan", "--buzz", ...DOCTOR_VALUE_FLAGS], DOCTOR_VALUE_FLAGS);
   const verbose = all.includes("--verbose");
   const refresh = all.includes("--refresh");
@@ -210,11 +209,10 @@ export async function run(sub, args = []) {
   // wallet/machine-wide, not per-project.
   const projectOverride = flagValue(all, "--project");
 
-  // kychee-com/run402#566 (the remaining half): --only <check>, repeatable.
-  // Validated against the stable registry ABOVE the buzz early-return, so an
-  // unknown name is BAD_USAGE regardless of which mode was also requested —
-  // the same "every accepted flag must work or BAD_USAGE" bar #569 named for
-  // doctor's own --human bug.
+  // --only <check>, repeatable. Validated against the stable registry
+  // ABOVE the buzz early-return, so an unknown name is BAD_USAGE regardless
+  // of which mode was also requested — the same "every accepted flag must
+  // work or BAD_USAGE" bar as every other doctor flag.
   const onlyChecks = collectRepeatableFlag(all, "--only");
   for (const name of onlyChecks) {
     if (!DOCTOR_CHECK_NAMES.includes(name)) {
@@ -227,9 +225,8 @@ export async function run(sub, args = []) {
     }
   }
   // Buzz mode is a wholly separate, always-complete report shape — an --only
-  // that named ordinary-mode checks would be silently ignored under --buzz,
-  // exactly the class of bug #569 flagged for --human. Reject the
-  // combination instead.
+  // that named ordinary-mode checks would be silently ignored under --buzz
+  // — an accepted-but-inert flag. Reject the combination instead.
   if (onlyChecks.length > 0 && all.includes("--buzz")) {
     fail({
       code: "BAD_USAGE",
@@ -594,8 +591,7 @@ export async function run(sub, args = []) {
   // deployed is a first-class shape (protocol D183), so its mere absence of a
   // deploy raises nothing.
   //
-  // TARGETING (repo-first-onramp follow-up, kychee-com/run402#559d, extended
-  // by kychee-com/run402#566's --project half): when cwd is a repository
+  // TARGETING: when cwd is a repository
   // with its own pinned repo id or run402/origin remote, doctor checks THAT
   // vault, not the profile's active project — the same pin > remote >
   // RUN402_PROJECT_ID env > active-project order every other gitvault verb
@@ -720,15 +716,14 @@ export async function run(sub, args = []) {
         if (gv.pending_overrides > 0) {
           gaps.push(`${gv.pending_overrides} unvaulted-override journal(s) are still open — run 'run402 repos snapshot' to drain them`);
         }
-        // `matches` is a TRI-STATE (kychee-com/run402#562): `false` alone is
+        // `matches` is a TRI-STATE: `false` alone is
         // a real mismatch. `null` (a slug-form remote not yet resolved on
-        // this machine) is not evidence of anything wrong — `!gv.remote.matches`
-        // used to treat null the same as false and would have warned here.
+        // this machine) is not evidence of anything wrong — a bare
+        // `!gv.remote.matches` would treat null the same as false and warn.
         if (gv.remote && gv.remote.matches === false) {
           gaps.push(`the '${gv.remote.name}' git remote points at a different project than ${value.project_id} (${gv.remote.url})`);
         }
-        // kygit-handoff design D8: the mirror of the OLD `npm i -g @kychee/kygit`
-        // bug, pointing the other way — a `kygit::` remote with no
+        // A `kygit::` remote with no
         // `git-remote-kygit` helper on PATH means every push/clone/fetch
         // in this checkout fails inside git with an opaque error.
         if (gv.remote?.url?.startsWith("kygit::")) {
@@ -808,8 +803,8 @@ export async function run(sub, args = []) {
   // direct mutation of internal.sessions.authz_version. Hits with severity
   // `error` block deploy (`run402 deploy` wraps doctor and respects exit
   // code). Skipped via --no-scan when the user wants config-only checks, and
-  // by any --only that omits it (kychee-com/run402#566 — this is the check
-  // that used to bury the gitvault diagnosis under ~1,800 monorepo findings).
+  // by any --only that omits it — on a monorepo this check's findings can
+  // otherwise bury the gitvault diagnosis under thousands of hits.
   if (!skipScan && wanted("source_scan")) {
     try {
       const scanRoot = scanDirOverride ?? resolveScanRoot(process.cwd());

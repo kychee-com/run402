@@ -1,6 +1,6 @@
 /**
  * Unit tests for the `allowance` namespace — focused on `status()` output
- * shape. Regression test for GH-109: `status()` must surface a
+ * shape. Regression coverage: `status()` must surface a
  * `faucet_used` boolean rather than `funded`, because the on-disk `funded`
  * flag only tracks "faucet was invoked on this allowance," not "account can
  * pay right now." Users wanting real pay-readiness should call
@@ -76,7 +76,7 @@ describe("allowance.status", () => {
 });
 
 describe("allowance.faucet", () => {
-  // Regression test for GH-163: the live gateway responds with snake_case keys
+  // Regression coverage: the live gateway responds with snake_case keys
   // and `amount_usd_micros` (number). The SDK must normalize to the typed
   // camelCase shape so callers don't see `undefined` for transactionHash/amount.
   it("normalizes the snake_case + micros wire shape into the typed camelCase result", async () => {

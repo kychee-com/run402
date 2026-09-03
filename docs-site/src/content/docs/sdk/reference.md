@@ -483,7 +483,7 @@ Neither key expires. Lease enforcement happens server-side. Server project reads
 
 ### Rotatable project credentials — the replacement for the derived pair
 
-The `anon_key`/`service_key` above are DERIVED from the platform signing key: they never expire, cannot be revoked individually, and the signing key behind them is being retired. A **project credential** (`r402_…`) is a ROW instead — named, listable, expiring, individually revocable — and several may be live per kind at once, which is exactly how you rotate with no downtime.
+The `anon_key`/`service_key` above are DERIVED from the platform signing key: they never expire and cannot be revoked individually. A **project credential** (`r402_…`) is a ROW instead — named, listable, expiring, individually revocable — and several may be live per kind at once, which is exactly how you rotate with no downtime.
 
 `r.credentials` carries both surfaces, and they do not overlap: `r.credentials.<verb>` is the gateway's rows, `r.credentials.projectKeys.<verb>` is the local cache on this machine.
 
@@ -595,7 +595,7 @@ single-copy single-realm callers as a back-compat path.
 | `PaymentRequired` | `"payment_required"` | HTTP 402 | x402 payment requirements in `body` |
 | `ProjectNotFound` | `"project_not_found"` | Project ID not in the credential provider | `projectId` |
 | `Unauthorized` | `"unauthorized"` | HTTP 401 / 403 — authentication missing or invalid | — |
-| `NotAuthorizedError` | `"not_authorized"` | HTTP 403 with `code: "NOT_AUTHORIZED"` — org-owned control-plane denial (gateway v1.77+): authenticated, but the principal lacks the required org membership/role or per-project grant | `requiredRole`, `requiredCapability`, `reason`, `action` |
+| `NotAuthorizedError` | `"not_authorized"` | HTTP 403 with `code: "NOT_AUTHORIZED"` — org-owned control-plane denial: authenticated, but the principal lacks the required org membership/role or per-project grant | `requiredRole`, `requiredCapability`, `reason`, `action` |
 | `ApiError` | `"api_error"` | Other non-2xx responses | `status`, `body` |
 | `NetworkError` | `"network_error"` | Fetch rejected with no HTTP response | `cause` |
 | `PaymentAttemptError` | `"payment_attempt_error"` | Automatic x402 setup/signing/submission failed | `code`, `phase`, `paymentAttemptId`, `providerStarted`, `safeToRetry`, `mutationState`, `nextActions` |
@@ -603,7 +603,7 @@ single-copy single-realm callers as a back-compat path.
 | `LocalError` | `"local_error"` | Local-host issues (filesystem, signing) | `cause` |
 | `X402BalanceError` (Node entry) | `"local_error"` | x402 USDC balance preflight could not be confirmed, or confirmed funds are insufficient | `code`, `safeToRetry`, `mutationState="not_started"`, `details`, `nextActions` |
 | `Run402DeployError` | `"deploy_error"` | Structured envelope from the deploy state machine | `code`, `phase`, `operationId`, `safeToRetry`, `mutationState`, `nextActions` |
-| `TransferFreezeError` | `"transfer_freeze"` | HTTP 409 with `code: "PROJECT_HAS_PENDING_TRANSFER"` from the v1.59 transfer-freeze middleware blocking owner-side mutations during a pending transfer | `transferId`, `projectId`, `cancelPath`, `previewPath` |
+| `TransferFreezeError` | `"transfer_freeze"` | HTTP 409 with `code: "PROJECT_HAS_PENDING_TRANSFER"` from the transfer-freeze middleware blocking owner-side mutations during a pending transfer | `transferId`, `projectId`, `cancelPath`, `previewPath` |
 
 The exported `Run402ErrorKind` union type (`"payment_required" | "payment_buyer_error" | "project_not_found" | "unauthorized" | "not_authorized" | "api_error" | "network_error" | "payment_attempt_error" | "local_error" | "deploy_error" | "transfer_freeze" | "step_up_required" | "operator_approval_required"`) supports exhaustive `switch` statements with TypeScript exhaustiveness checking.
 
@@ -808,7 +808,7 @@ The full type is exported as `ReleaseSpec` from `@run402/sdk` and `@run402/sdk/n
 - Function-level auth gates. Each `FunctionSpec` carries two optional declarative fields enforced by the gateway before invocation:
   - `requireAuth?: boolean` — when `true`, gateway rejects callers without a valid project user JWT with `Run402DeployError`-shaped envelope or `401` at request time. No DB lookup. Independent from `requireRole`.
   - `requireRole?: RequireRoleSpec | null` — gateway resolves the caller's role from the project-schema table and rejects callers whose role is not in `allowed` with `403`. Implies authentication (no JWT → 401). Pass `null` in patch mode to remove an existing gate. `RequireRoleSpec` is `{ table: string; idColumn: string; roleColumn: string; allowed: string[]; cacheTtl?: number }`. All identifiers are unqualified; `cacheTtl` is seconds (default 60, max 600, 0 disables caching for instant-revocation paths).
-  When a gate passes, the gateway injects `x-run402-user-id` (always when any gate ran) and `x-run402-user-role` (only when `requireRole` ran) into the request. In-function code reads them directly from `req.headers.get("x-run402-user-id")` / `req.headers.get("x-run402-user-role")`. The legacy `getUserId(req)` / `getRole(req)` bare exports were retired in `@run402/functions` v3.0 — they now throw `R402_AUTH_UNKNOWN_EXPORT`. For the canonical cookie-session flow, use the `auth.*` namespace (see below). All `requireRole` blocks in a single release must share the same `(table, idColumn, roleColumn)` triple; mixed-table specs are rejected at plan time with `Run402DeployError.code === "INVALID_SPEC"`. The SDK does not validate gate shape — the gateway is authoritative. Missing table or column at activation throws `Run402DeployError.code === "DEPLOY_INVALID_ROLE_GATE"` (HTTP 422) before flipping the live release.
+  When a gate passes, the gateway injects `x-run402-user-id` (always when any gate ran) and `x-run402-user-role` (only when `requireRole` ran) into the request. In-function code reads them directly from `req.headers.get("x-run402-user-id")` / `req.headers.get("x-run402-user-role")`. The bare `getUserId(req)` / `getRole(req)` exports throw `R402_AUTH_UNKNOWN_EXPORT`. For the canonical cookie-session flow, use the `auth.*` namespace (see below). All `requireRole` blocks in a single release must share the same `(table, idColumn, roleColumn)` triple; mixed-table specs are rejected at plan time with `Run402DeployError.code === "INVALID_SPEC"`. The SDK does not validate gate shape — the gateway is authoritative. Missing table or column at activation throws `Run402DeployError.code === "DEPLOY_INVALID_ROLE_GATE"` (HTTP 422) before flipping the live release.
 - Routes. `ReleaseRoutesSpec` is `undefined | null | { replace: RouteSpec[] }`. Omitted and `null` carry forward base routes; `{ replace: [] }` clears dynamic routes; `{ replace: [...] }` replaces the route table. `RouteSpec` is one entry: `{ pattern: string, methods?: RouteHttpMethod[], target: RouteTarget }`. Function targets are `{ type: "function", name: string }`; static route targets are `{ type: "static", file: string }` for exact method-aware static aliases, not ordinary clean URLs, rewrites, or redirects. Prefer `site.public_paths` for clean static URLs e.g. `/events -> events.html`; use static routes for cases like static `GET /login` plus function `POST /login`. Static targets require exact patterns only, methods `["GET"]` or `["GET","HEAD"]`, and a relative deployed asset path with no leading slash, wildcard, directory shorthand, query, or fragment. `methods` omitted means all supported methods for function routes; `methods: []` is invalid. Supported methods are exported as `ROUTE_HTTP_METHODS` and `RouteHttpMethod` (`GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`). Function target names are materialized release function names.
 - Strict validation is SDK-owned. `apply.plan/start/apply` reject unknown raw `ReleaseSpec` fields before normalization can drop them; only top-level `$schema` metadata is tolerated and stripped before the plan request. `project_id`, `subdomain`, `site.replcae`, `functions.replace.api.deps`, `functions.replace.api.config.schedule`, and similar typos are `Run402DeployError.code === "INVALID_SPEC"` before any hash/upload/plan request. Use `loadDeployManifest` / `normalizeDeployManifest` for CLI/MCP JSON that legitimately uses `project_id`, `{ path }`, base64 file entries, or migration `sql_path`.
 - No-op specs fail locally. A spec with only `project` / `base`, or empty containers e.g. `site.replace: {}`, `functions.patch.delete: []`, `secrets.require: []`, or `subdomains.set: []`, throws `Run402DeployError.code === "MANIFEST_EMPTY"` before any network call. Delete-only patches with non-empty `delete` arrays still count as deployable.
@@ -833,7 +833,7 @@ The full type is exported as `ReleaseSpec` from `@run402/sdk` and `@run402/sdk/n
 }
 ```
 - All bytes ride through CAS. Plan request bodies never carry inline bytes — only `ContentRef` objects. When the spec exceeds 5 MB JSON, the SDK uploads the manifest itself as a CAS object and references it (`manifest_ref` escape hatch — no body-size cliff).
-- Server-authoritative manifest digest. The gateway returns the canonical digest; the SDK no longer requires byte-for-byte canonicalize agreement.
+- Server-authoritative manifest digest. The gateway returns the canonical digest; the SDK does not require byte-for-byte canonicalize agreement.
 
 The Node entry adds `fileSetFromDir(path)` for filesystem byte sources:
 
@@ -1126,7 +1126,7 @@ export default async (req: Request) => {
 - `db(req)` — caller-context. Forwards Authorization header. RLS applies.
 - `adminDb()` — bypass RLS. Routes to `/admin/v1/rest/*`.
 - `adminDb().sql(query, params?)` — raw parameterized SQL.
-- `auth.user()` / `auth.requireUser()` — read the verified actor from the SSR runtime context. `auth.user()` returns `Actor | null`; `auth.requireUser()` returns `Actor` and throws (303 redirect for HTML / 401 envelope for JSON, decided by the gateway from the `Accept` header). `Actor` has `id`, `projectId`, `sessionId`, `email`, `emailVerified`, `authTime`, `amr`, `amrTimes`. Calling either taints the SSR ISR cache (the response now depends on per-request actor state). Do NOT catch the throw from `auth.requireUser()` — the platform decides response shape. Bare `getUser` / `getUserId` / `getRole` / `getSession` / `currentUser` / `getCurrentUser` / `getServerSession` exports were retired in `@run402/functions` v3.0 — they throw `R402_AUTH_UNKNOWN_EXPORT` at runtime AND fail `run402 doctor` source scan at deploy.
+- `auth.user()` / `auth.requireUser()` — read the verified actor from the SSR runtime context. `auth.user()` returns `Actor | null`; `auth.requireUser()` returns `Actor` and throws (303 redirect for HTML / 401 envelope for JSON, decided by the gateway from the `Accept` header). `Actor` has `id`, `projectId`, `sessionId`, `email`, `emailVerified`, `authTime`, `amr`, `amrTimes`. Calling either taints the SSR ISR cache (the response now depends on per-request actor state). Do NOT catch the throw from `auth.requireUser()` — the platform decides response shape. Bare `getUser` / `getUserId` / `getRole` / `getSession` / `currentUser` / `getCurrentUser` / `getServerSession` exports throw `R402_AUTH_UNKNOWN_EXPORT` at runtime AND fail `run402 doctor` source scan at deploy.
 - For per-user gating in functions OUTSIDE the cookie-session flow (a `requireAuth` / `requireRole` deploy-spec gate, not the SSR auth namespace), read the gateway-injected headers directly: `req.headers.get("x-run402-user-id")` / `req.headers.get("x-run402-user-role")`. The gateway strips inbound `x-run402-*` headers before injection, so the values are trustworthy. Returns `null` when no corresponding gate ran (function has no gate, only `requireAuth` declared without `requireRole`, or local-invoke outside the gateway).
 - `getRoutedPaymentContext(req)` (`@run402/functions` 3.7+) — confirmed x402 payment context for priced routed function requests. Returns `{ scheme, paymentId, amountUsdMicros, payer, network, asset, payTo, transaction, settledAt }` or `null` for unpriced/direct/malformed calls. Use `payment.paymentId` for app-side idempotency.
 - `ai.generateImage({ prompt, aspect? })` — project-billed runtime image generation for deployed functions. `aspect` is `"square" | "landscape" | "portrait"`; result is `{ image, content_type, aspect }` with base64 image bytes. Uses `RUN402_SERVICE_KEY` against `/ai/v1/generate-image`, not the wallet/x402 `/generate-image/v1` endpoint. Gateway rate limits and spend caps are project-owned; public routed functions should add app auth or their own rate limiting before calling it.
@@ -1194,7 +1194,7 @@ promoteUser(id, email): Promise<void> // project-admin role helper
 demoteUser(id, email): Promise<void>
 ```
 
-**Tier and lifecycle are per-organization, not per project.** The state machine lives on `internal.organizations` (v1.46 / v1.57). Read it from `r.tier.status()`:
+**Tier and lifecycle are per-organization, not per project.** The state machine lives on `internal.organizations`. Read it from `r.tier.status()`:
 
 - `organization_lifecycle_state: "active" | "past_due" | "frozen" | "dormant" | "purged" | null` — the organization's lifecycle state; `null` only for orphan wallets with no organization row.
 - `lease_perpetual: boolean | null` — operator escape hatch flag. When `true`, the organization never advances past `active` regardless of lease expiry.
@@ -1437,7 +1437,7 @@ operator.revoke({ token }): Promise<void>
   // 204. Server-side revoke is instant (no positive-validity cache).
 ```
 
-**Control-plane session (v1.78 — `passkey-principals-onboarding`).** The human's write-capable session (the gateway's 5th principal, `control_plane_session`). Distinct from the read-only operator session above. It authorizes most control-plane ops, but since v1.85/v1.87 it is **not** sufficient on its own for `provision` / `deploy` / secret-writes — those additionally require a passkey-fresh **operator approval** (see below). High-stakes control ops (invite, membership, handoff, delete) require a **fresh passkey** — a magic-link/OAuth session raises `StepUpRequiredError` until it runs a step-up ceremony.
+**Control-plane session.** The human's write-capable session (the gateway's 5th principal, `control_plane_session`). Distinct from the read-only operator session above. It authorizes most control-plane ops, but it is **not** sufficient on its own for `provision` / `deploy` / secret-writes — those additionally require a passkey-fresh **operator approval** (see below). High-stakes control ops (invite, membership, handoff, delete) require a **fresh passkey** — a magic-link/OAuth session raises `StepUpRequiredError` until it runs a step-up ceremony.
 
 The CLI mints it headlessly via loopback-PKCE (RFC 8252, the `aws sso login` localhost-redirect model). The SDK exposes the two isomorphic seams:
 
@@ -1451,7 +1451,7 @@ operator.exchangeCliToken({ code, codeVerifier, redirectUri, state }): Promise<C
   // provenance:"loopback_pkce", principal_id, amr[] }.
 ```
 
-**Operator approval (write-auth, v1.85/v1.87).** A wallet-less human's control-plane session is read-capable on the high-stakes routes; `provision` / `deploy` / secret-writes also need a passkey-fresh approval scoped to one `(action, target)`, carried as an `X-Run402-Write-Auth` token. The isomorphic seams (`r.operator.approval`) mirror the login seams; the Node CLI (`run402 operator approve`) runs the loopback + PKCE around them:
+**Operator approval (write-auth).** A wallet-less human's control-plane session is read-capable on the high-stakes routes; `provision` / `deploy` / secret-writes also need a passkey-fresh approval scoped to one `(action, target)`, carried as an `X-Run402-Write-Auth` token. The isomorphic seams (`r.operator.approval`) mirror the login seams; the Node CLI (`run402 operator approve`) runs the loopback + PKCE around them:
 
 ```
 operator.approval.requestChallenge({ action, orgId?, projectId?, cliRedirectUri, codeChallenge, state, token? }): Promise<ApprovalChallengeResult>
@@ -1541,7 +1541,7 @@ pass their original bytes.
 
 `AssetRef` (return type of single-asset `put`; legacy alias `BlobPutResult`
 still exported) extends snake_case fields (`key`, `size_bytes`, `sha256`,
-`visibility`, `url`, `immutable_url`) with the v1.45+ camelCase helpers
+`visibility`, `url`, `immutable_url`) with the camelCase helpers
 used by paste-and-go HTML emitters: `cdnUrl`, `cdnMutableUrl`,
 `immutableUrl`, `etag`, `sri`, `contentDigest`, `cacheKind` (`"immutable" |
 "mutable" | "private"`), `contentSha256`, `contentType`, plus `scriptTag()`,
@@ -1704,7 +1704,7 @@ Durable function runs are service-key authed function requests that survive proc
 
 `FunctionLogEntry` includes `timestamp` and `message`, plus optional `event_id`, `log_stream_name`, `ingestion_time`, and `request_id` metadata when the gateway can provide it. Use `requestId` to follow a routed browser failure exposed as `X-Run402-Request-Id` / JSON `request_id`, or to filter by durable run/attempt ids (`fnrun_...`, `fnatt_...`); SDK calls reject invalid `since` timestamps, invalid request ids, and `tail` values outside 1..1000 locally instead of forwarding them.
 
-`rebuild` / `rebuildAll` (capability `function-runtime-rebuild`, gateway v1.69+) refresh a deployed function onto the platform's CURRENT entry wrapper + bundled runtime WITHOUT changing source: they re-bundle from the stored source with dependencies pinned to the recorded exact versions, so the source `code_hash` is unchanged and no new release is created — only the platform wrapper/runtime changes. This is how a gateway-side wrapper fix (e.g. an SSR `auth.*` fix) reaches an already-deployed function; a plain redeploy with unchanged source does not pick it up. Strictly opt-in. Both are **wallet-authed** (project ownership; no service key) and allowed during billing grace (`past_due` / `frozen` / `dormant`). Functions deployed before dependency locking are refused with `CANNOT_REBUILD_UNLOCKED_DEPS` (single: HTTP 409 `ApiError`; `rebuildAll`: a `{ rebuilt: false, code: "CANNOT_REBUILD_UNLOCKED_DEPS", error }` entry that never aborts the batch) — redeploy those from source. Runtime compatibility is surfaced per function as recorded `runtime_version?`, gateway `runtime_current_version?`, guaranteed `runtime_minimum_version?`, and `runtime_stale?`; the current `3.7.0` minimum includes `getRoutedPaymentContext()` for priced routes. Operator status also carries `{ stale_function_count, stale_functions: [{ project_id, name }] }`. The scoped client exposes `r.project(id).functions.rebuild(name)` / `.rebuildAll()`.
+`rebuild` / `rebuildAll` (capability `function-runtime-rebuild`) refresh a deployed function onto the platform's CURRENT entry wrapper + bundled runtime WITHOUT changing source: they re-bundle from the stored source with dependencies pinned to the recorded exact versions, so the source `code_hash` is unchanged and no new release is created — only the platform wrapper/runtime changes. This is how a gateway-side wrapper fix (e.g. an SSR `auth.*` fix) reaches an already-deployed function; a plain redeploy with unchanged source does not pick it up. Strictly opt-in. Both are **wallet-authed** (project ownership; no service key) and allowed during billing grace (`past_due` / `frozen` / `dormant`). Functions deployed before dependency locking are refused with `CANNOT_REBUILD_UNLOCKED_DEPS` (single: HTTP 409 `ApiError`; `rebuildAll`: a `{ rebuilt: false, code: "CANNOT_REBUILD_UNLOCKED_DEPS", error }` entry that never aborts the batch) — redeploy those from source. Runtime compatibility is surfaced per function as recorded `runtime_version?`, gateway `runtime_current_version?`, guaranteed `runtime_minimum_version?`, and `runtime_stale?`; the current `3.7.0` minimum includes `getRoutedPaymentContext()` for priced routes. Operator status also carries `{ stale_function_count, stale_functions: [{ project_id, name }] }`. The scoped client exposes `r.project(id).functions.rebuild(name)` / `.rebuildAll()`.
 
 `deps` accepts npm specs: bare names → latest at deploy time, pinned (`lodash@4.17.21`) and ranges (`date-fns@^3.0.0`) honored verbatim. Max 30 entries / 200 chars each; empty or whitespace-only entries are rejected. **Native binary modules are rejected.** Don't list `@run402/functions` (auto-bundled).
 
@@ -1954,7 +1954,7 @@ setPolicy(repoId, { gitvault_policy, reason? }): Promise<{ gitvault_policy, gitv
 completeOverride(repoId, { operation_id, capture_receipt }): Promise<{ operation_id, advisory_cleared, generation, head_sha256 }>
 acquireMaintenanceLease(request): Promise<GitvaultMaintenanceLease>
 listByOrg(orgId): Promise<GitvaultOrgVaultsListing>                 // repo-surface-consolidation task 2.4: every vault the org owns, one round trip — `repos list`'s bulk read, FROZEN response shape
-access(opts?): Promise<GitvaultAccessResult>                        // repo-surface-consolidation D5/D10: READ-ONLY recipients + coverage + per-recipient envelope_state (converged/pending/pending_removal, from the gateway's desired-recipient-state substrate) + stale_access (removed members not yet revoked) + (Node-only, best-effort) this machine's local TOFU pins; never wraps a key. envelope_state_available is `true` against a gateway that ships desired[]; history_scope_available stays `false` — gitvault v0 pins one fixed epoch, so there is no per-epoch scope to report until gitvault-human-envelopes' epoch-rotation work lands. Honest `gap` string always explains exactly what's missing.
+access(opts?): Promise<GitvaultAccessResult>                        // READ-ONLY recipients + coverage + per-recipient envelope_state (converged/pending/pending_removal, from the gateway's desired-recipient-state substrate) + stale_access (removed members not yet revoked) + (Node-only, best-effort) this machine's local TOFU pins; never wraps a key. envelope_state_available is `true` against a gateway that ships desired[]; history_scope_available is `false` — gitvault v0 pins one fixed epoch, so there is no per-epoch scope to report. Honest `gap` string always explains exactly what's missing.
 ```
 
 Write side (Node only — `@run402/sdk/node`; every one of these takes `{ repo_dir?, repo_id?, project_id? }`):
@@ -2259,7 +2259,7 @@ just the requesting wallet. Use the returned `pool_usage` as the authoritative q
 enforcement view; per-project `r.projects.getUsage(id)` reports the same organization-level
 caps alongside that project's slice of the pool.
 
-**v1.57:** `TierStatusResult` also surfaces two optional organization fields:
+`TierStatusResult` also surfaces two optional organization fields:
 
 - `organization_lifecycle_state?: "active" | "past_due" | "frozen" | "dormant" | "purged"` — mirror of the owning organization's lifecycle state. Identical to the per-project `organization_lifecycle_state` on every `list()` entry.
 - `lease_perpetual?: boolean` — operator escape hatch flag. When `true`, the organization never advances past `active`.
@@ -2276,8 +2276,7 @@ Quota-related error envelopes carry `details.scope: "organization" | "project"` 
 can distinguish organization-pooled denials from the orphan fallback (project whose billing
 organization row was purged but cascade has not yet run). The SDK lifts this onto every
 `Run402Error` subclass as `e.quotaScope`, and exports a `getQuotaScope(e)` helper for
-non-`Run402Error` `unknown` inputs. Absent for non-quota errors and for pre-v1.46
-gateways.
+non-`Run402Error` `unknown` inputs. Absent for non-quota errors.
 
 ### `r.billing`
 
@@ -2433,7 +2432,7 @@ label is pushed automatically on `run402 wallets use` unless
 bare read. For org/grants control-plane identity, see "Org membership & project
 grants" below.)
 
-### `r.cache` (gateway v1.52+, paired with `@run402/astro` v1.0+)
+### `r.cache` (paired with `@run402/astro` v1.0+)
 
 SSR origin-cache inspection + invalidation for the Astro SSR Runtime. Capability `ssr-isr-cache`.
 
@@ -2507,7 +2506,7 @@ declare const slug: string;
 await cache.invalidate(new URL(`https://eagles.kychon.com/${slug}`));
 ```
 
-Tag-based invalidation deferred to v1.5. Client-side (browser) invalidation NOT in v1 — server-side function context only.
+There is no tag-based invalidation and no client-side (browser) invalidation — server-side function context only.
 
 ### `r.admin`
 
@@ -2538,11 +2537,11 @@ platform-admin gated; a project `service_key` is not enough. In Node operator
 scripts, use an admin allowance wallet or pass
 `cookie: process.env.RUN402_ADMIN_COOKIE` for browser-session auth.
 
-**v1.57 — operator-only project + organization actions.** Gateway v1.57 moved the lifecycle state machine from `internal.projects` to `internal.organizations` and dropped the per-project `pin` / `unpin` endpoints. The replacements:
+**Operator-only project + organization actions.** The lifecycle state machine lives on `internal.organizations`; there are no per-project `pin` / `unpin` endpoints.
 
-- `r.admin.org(orgId).pinLease()` / `.unpinLease()` — toggle the organization-level escape hatch. When `lease_perpetual` is `true`, the organization never advances past `active` regardless of lease expiry; every project on the organization is pinned. Pinning a grace-state organization (`past_due` / `frozen` / `dormant`) reactivates inline — the response carries `reactivated: true`. This also replaces the v1.56 `projects.pin(id)` method (removed in v2.x SDK).
+- `r.admin.org(orgId).pinLease()` / `.unpinLease()` — toggle the organization-level escape hatch. When `lease_perpetual` is `true`, the organization never advances past `active` regardless of lease expiry; every project on the organization is pinned. Pinning a grace-state organization (`past_due` / `frozen` / `dormant`) reactivates inline — the response carries `reactivated: true`.
 - `archiveProject(projectId, { reason? })` — operator moderation. Sets `projects.archived_at = NOW()` on a single project; sibling projects on the same organization keep serving. No-op when already archived (returns `note: "already archived"`).
-- `r.admin.project(projectId).reactivate()` — un-archive a project (flips `archived_at` back to NULL). In v1.57 this was narrowed: it does NOT touch organization-level lifecycle. To reactivate a grace-state organization, either call `r.tier.set(tier)` (the tier flow runs the lifecycle advance inline) or `r.admin.org(org_id).pinLease()`.
+- `r.admin.project(projectId).reactivate()` — un-archive a project (flips `archived_at` back to NULL). It does NOT touch organization-level lifecycle. To reactivate a grace-state organization, either call `r.tier.set(tier)` (the tier flow runs the lifecycle advance inline) or `r.admin.org(org_id).pinLease()`.
 
 All three require platform-admin auth. Result envelopes:
 
@@ -2554,7 +2553,7 @@ ReactivateProjectResult: { status, project_id, reactivated?: true, note? }      
 
 ### `r.admin.channels` + `r.admin.rules` (Telegram notification channel + routing rules)
 
-Self-serve Telegram push on top of the v1.55 operator-notifications substrate: connect a chat, then add filter rules so ONLY matching events page that chat. Two sub-namespaces on `r.admin`, same shape as `r.admin.transfers`.
+Self-serve Telegram push on top of the operator-notifications substrate: connect a chat, then add filter rules so ONLY matching events page that chat. Two sub-namespaces on `r.admin`, same shape as `r.admin.transfers`.
 
 ```
 r.admin.channels.connectTelegram(opts?: { label?: string }): Promise<ConnectTelegramResult>
@@ -2575,9 +2574,9 @@ r.admin.rules.delete(ruleId: string): Promise<DeleteRoutingRuleResult>
 
 `rules.create`/`rules.update` reject an unusable or foreign `telegramBindingId` (revoked, not yours, or nonexistent) with the SAME 404 either way (authorize-before-reveal) — call `r.admin.channels.list()` first to confirm the binding is `"active"`.
 
-`admin.testNotification(opts?: { source?, eventType? })` (v1.55, extended) fires the sample event through the FULL pipeline — email/webhook AND Telegram — and its result carries `telegram: { destinations: [...] }`, one delivered/failed outcome per matched Telegram binding (empty when no rule matches — Faithful, not an error). Pass `opts.source` / `opts.eventType` to exercise a specific rule's filters precisely instead of the default sample event.
+`admin.testNotification(opts?: { source?, eventType? })` fires the sample event through the FULL pipeline — email/webhook AND Telegram — and its result carries `telegram: { destinations: [...] }`, one delivered/failed outcome per matched Telegram binding (empty when no rule matches — Faithful, not an error). Pass `opts.source` / `opts.eventType` to exercise a specific rule's filters precisely instead of the default sample event.
 
-### `r.admin.transfers` (unified project transfer, owned-org recipient v1.96+)
+### `r.admin.transfers` (unified project transfer, owned-org recipient)
 
 Project transfer is exposed as a sub-namespace at `r.admin.transfers` — one noun, three recipient shapes. A **wallet** recipient completes via `accept` (both sides sign SIWX); an **email** recipient completes via `claim` (the recipient claims into an org); an **owned org** recipient completes immediately at initiate time in the same-actor first release. `initiate` is body-discriminated (`toWallet` XOR `toEmail` XOR `toOrgId`); `preview` / `cancel` / `listIncoming` / `listOutgoing` are kind-agnostic for pending rows and tag each row with `recipient_kind`. (The pre-v1.93 `*Handoff` methods and `/handoffs` routes are gone.)
 
@@ -2614,7 +2613,7 @@ listOutgoing(opts?: { limit?, offset? }): Promise<TransferSummary[]>   // pendin
 
 `billingPolicy` defaults to `"migrate"` on wallet transfers (the only Phase 1A policy — the project moves into the recipient's organization). The `kysignedRecordId` field is wallet-only and stored verbatim in Phase 1A; Phase 1B will verify it against the canonical terms hash. Owned-org `toOrgId` moves are same-actor only in the first gateway release: caller must be an active owner of both source and destination orgs. Initiate authority is owner-OR-admin.
 
-**Email recipient — retain-collaborator (v1.91).** Pass `retainCollaborator: { role: "developer" }` on the email `initiate` to keep a `developer` membership in the recipient's org after the transfer (only `developer` is valid; the subject is always the initiating owner — gateway rejects with `INVALID_RETAIN_ROLE` / `RETAIN_SUBJECT_REQUIRED`). The recipient sees the offer as `ProjectTransferPreview.retain_collaborator` (a `RetainCollaboratorPreview` `{ principal_id, role, sender_label, scope, note, accept_field }`, or `null`) and accepts by passing `acceptRetainedCollaborator: true` to `claim`; the result then carries `retained_collaborator_principal_id` (or `null`). Omitting the accept (the default) is a full severance.
+**Email recipient — retain-collaborator.** Pass `retainCollaborator: { role: "developer" }` on the email `initiate` to keep a `developer` membership in the recipient's org after the transfer (only `developer` is valid; the subject is always the initiating owner — gateway rejects with `INVALID_RETAIN_ROLE` / `RETAIN_SUBJECT_REQUIRED`). The recipient sees the offer as `ProjectTransferPreview.retain_collaborator` (a `RetainCollaboratorPreview` `{ principal_id, role, sender_label, scope, note, accept_field }`, or `null`) and accepts by passing `acceptRetainedCollaborator: true` to `claim`; the result then carries `retained_collaborator_principal_id` (or `null`). Omitting the accept (the default) is a full severance.
 
 While a transfer is `pending` (72h TTL), every owner-side mutation against the project throws `TransferFreezeError` (status 409, code `PROJECT_HAS_PENDING_TRANSFER`). The error carries `transferId`, `projectId`, `cancelPath`, and `previewPath` lifted from the gateway's `next_actions[]`, so agents can present an actionable resolution:
 
@@ -2646,7 +2645,7 @@ After `accept`, the project carries a persistent `secrets_rotation_advised` advi
 
 What does NOT transfer: tier lease (stays with the original owner's organization; no Phase 1A proration), KMS signers (`r.contracts.*` — wallet-scoped), GitHub repo ownership (handle out of band), on-chain balance on any wallet.
 
-## Org membership & project grants (`r.orgs`, `r.org(id)`, `r.grants` — v1.77+ org-owned control plane; first-class orgs v1.82)
+## Org membership & project grants (`r.orgs`, `r.org(id)`, `r.grants` — org-owned control plane; first-class orgs)
 
 A wallet **authenticates** (SIWX → a control-plane *principal*); an **org** owns projects, and what a principal may do is decided by its org membership role (`owner > admin > developer > billing > viewer`) or a per-project grant — never `wallet_address == signer`. The collection + identity lives on `r.orgs`; per-org operations on the scoped sub-client **`r.org(id)`** (the org analog of `r.project(id)` — the id is bound once). Memberships carry `org_id` + `display_name`.
 

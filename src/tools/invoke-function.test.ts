@@ -142,7 +142,7 @@ describe("invoke_function tool", () => {
     // The gateway migrated the paid-function insufficient_allowance gate off
     // HTTP 402 (style.md reserves 402 for genuine x402 protocol payment
     // challenges) — a non-inline-payable denial is now 403 with the same
-    // canonical code/next_actions (kychee-com/run402#497).
+    // canonical code/next_actions.
     globalThis.fetch = (async () =>
       new Response(
         JSON.stringify({

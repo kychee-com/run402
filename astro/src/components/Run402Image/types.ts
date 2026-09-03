@@ -34,9 +34,9 @@ import type { CSSProperties } from "react";
 // =============================================================================
 
 /**
- * Minimal asset shape consumed by `<Run402Image>`. v1.0.3 — see GH #401.
+ * Minimal asset shape consumed by `<Run402Image>`.
  *
- * `Run402ImageProps.asset` used to be typed as `AssetRef` from `@run402/functions`,
+ * `Run402ImageProps.asset` is deliberately NOT `AssetRef` from `@run402/functions`,
  * which is the broad SDK-side shape (`visibility`, `immutable`, `content_digest`,
  * camelCase mirrors, …). Two real callers — values returned by `r.assets.put` /
  * `r.assets.fromRef` AND values returned by `resolveVariants(manifest, key)`
@@ -182,11 +182,11 @@ export interface Run402ImageProps extends DataAttributes {
    *  placeholder `background-image`; use longhand (`background-color`,
    *  `background-size`, etc.) to preserve it.
    *
-   *  v1.0.3 — accepts `React.CSSProperties` directly so consumers of the
+   *  Accepts `React.CSSProperties` directly so consumers of the
    *  React entry can pass strongly-typed style objects (`{ objectFit:
    *  'cover' }`) without casting through `Record<string, string | number>`.
    *  Astro consumers may still pass the looser string / object-of-strings
-   *  shape — both serialize identically. See GH #401. */
+   *  shape — both serialize identically. */
   style?: string | CSSProperties | Record<string, string | number>;
   /** Forwarded to the outermost element. */
   id?: string;
@@ -273,7 +273,7 @@ export type AstroComponent<P> = ((props: P) => unknown) & {
 // what JSX expects + survives the brand intersection.
 //
 // `CSSProperties` is imported at the top of this file for the
-// `Run402ImageProps.style` widening (v1.0.3, GH #401).
+// `Run402ImageProps.style` widening.
 
 import type { ReactElement } from "react";
 

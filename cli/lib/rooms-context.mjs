@@ -54,7 +54,7 @@ const STATE_FILE = "messaging.json";
 /**
  * Resolve the addressed room to { orgId, roomKey } (one SDK lookup at most).
  *
- * A room is a PAIR, and this function owns the pair. What it no longer owns is
+ * A room is a PAIR, and this function owns the pair. It does NOT own
  * the org half of its own fallback: below the explicit forms, the org comes
  * from the shared chain in `org-context.mjs` (flag → env → binding → profile
  * selection → active project) while the room key comes from `--room`, the
@@ -71,8 +71,8 @@ export async function resolveRoom({ org, room, project } = {}) {
   if (envRoom) {
     const slash = envRoom.indexOf("/");
     if (slash <= 0 || slash === envRoom.length - 1) {
-      // Same class as kychee-com/run402-private#640: a malformed RUN402_ROOM
-      // is a value we know nothing about, so it must not be echoed raw.
+      // A malformed RUN402_ROOM is a value we know nothing about (a leaked
+      // secret included), so it must not be echoed raw.
       fail({
         code: "BAD_USAGE",
         message: `${ROOM_ENV} must be "<org_id>/<room_key>".`,
@@ -239,8 +239,8 @@ export async function registerFreshPresence(orgId, roomKey, { name, task } = {})
  * REGISTER a replacement, and retry ONCE with it. The registration is
  * explicit on purpose: a bare call cannot mean "me" from the credential
  * alone, because the server cannot tell one credential's concurrent sessions
- * apart — it would either guess (adopting a sibling session's presence,
- * run402-private#663) or refuse. Asking — by session identity when we have
+ * apart — it would either guess (adopting a sibling session's presence)
+ * or refuse. Asking — by session identity when we have
  * one, by explicit (re-)registration when we don't — is unambiguous.
  */
 export async function withPresenceRetry(orgId, roomKey, call, { name, task } = {}) {

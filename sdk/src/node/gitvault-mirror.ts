@@ -37,9 +37,8 @@
  *
  * MIRROR LAYOUT (task 5.3 fix — do not lose this again). The gateway's real
  * bucket key for every stored artifact is FULLY QUALIFIED under the vault's
- * own prefix (`storage-keys.ts` `vaultPrefix`): `source/<repo_id>/<rest>`,
- * confirmed live 2026-08-26 (`gitvault-mirror-drill.mjs` against
- * `api.run402.com`). The gateway's own `GET …/objects` listing (task 1.2)
+ * own prefix (`storage-keys.ts` `vaultPrefix`): `source/<repo_id>/<rest>`.
+ * The gateway's own `GET …/objects` listing
  * echoes that FULL key back on every entry — it never returns a
  * repo-relative key. This module's own working representation, and the
  * mirror BACKEND's key space (`gitvault-mirror-backend.ts`
@@ -326,8 +325,7 @@ export function objectReadRequestForEntry(entry: GitvaultObjectEntry): { object_
 }
 
 /**
- * Task 5.3 follow-up (found via the live drill 2026-08-26, gateway diagnosis
- * confirmed correct — NOT a bug): the recipient-only read gate on
+ * NOT a bug: the recipient-only read gate on
  * `key_envelope` means a mirror can only ever hold envelopes wrapped for
  * THIS machine's own identity. A multi-recipient vault (gitvault-human-
  * envelopes) makes a foreign-recipient envelope the NORM, not an anomaly —

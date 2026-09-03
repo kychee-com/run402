@@ -390,7 +390,7 @@ export class NodeActions implements Run402Actions {
     // left its full checkout in the OS temp dir — silently, on success and on
     // failure alike. An agent looping deploys (CI, retries) grows /tmp without
     // bound, and on a fixed-allowance container that eventually fails writes
-    // with no hint at the cause. Measured 2026-07-29: 22 stale checkouts, 17 MB.
+    // with no hint at the cause.
     // Local-directory sources set no cleanupDir and are never touched here.
     try {
       return await this.#runUpFromWorkspace(input, run, source, startedAt);
@@ -578,7 +578,7 @@ export class NodeActions implements Run402Actions {
       // The deploy result's own urls are the authoritative origin for THIS
       // release (fresh subdomain claims included); the keystore's cached
       // site_url is only a fallback. Resolving from the stale keystore alone
-      // produced silent null-origin check failures (2026-07-19 live find).
+      // produces silent null-origin check failures.
       const publicOrigin =
         deploy.urls?.site ?? deploy.urls?.subdomain ?? projectKeys.site_url ?? null;
       const verification = await this.#verifyHttpChecks(verifyChecks, publicOrigin, run, {
@@ -691,8 +691,7 @@ export class NodeActions implements Run402Actions {
       // — and it was the one hop with no next_actions, while its sibling
       // EXECUTABLE_CONFIG_REQUIRES_EXPLICIT_MANIFEST (above) had them. Naming
       // the missing filenames is not an executable step; the agent has no
-      // scaffold verb to reach for, so hand it bytes it can write. Found
-      // 2026-07-29 walking the builder path from a clean machine.
+      // scaffold verb to reach for, so hand it bytes it can write.
       const starterManifest = {
         site: {
           replace: {

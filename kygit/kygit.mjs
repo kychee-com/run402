@@ -51,10 +51,9 @@ export const RESOLVE_FAIL_MESSAGE =
  * Every remote this shim scaffolds or renders is spelled `kygit::` (design
  * D8 — `RUN402_REMOTE_SCHEME=kygit` is set above, at exec), so the helper
  * git needs on PATH is `git-remote-kygit`, a bin `@kychee/kygit` ships
- * itself — unlike the pre-D8 world, this is no longer a transitive-dependency
- * bin-linking gap (kychee-com/run402#577): `npm i -g @kychee/kygit` alone
+ * itself: `npm i -g @kychee/kygit` alone
  * links BOTH `kygit` and `git-remote-kygit`, because npm links every bin of
- * the package you install DIRECTLY. This warning is now a defensive check
+ * the package you install DIRECTLY. This warning is a defensive check
  * for a broken or partial install (PATH edited after install, a bin
  * hand-removed, …) rather than the expected steady state — reaching it at
  * all means something about THIS install is unusual.
@@ -249,8 +248,7 @@ async function main() {
 // Guard so tests can import without executing — but npm installs the bin as
 // a SYMLINK (node_modules/.bin/kygit -> kygit.mjs), while import.meta.url is
 // the REAL path, so the comparison must realpath argv[1] or every installed
-// invocation is a silent no-op (the 0.1.0 bug, caught by the cold-install
-// smoke on 2026-08-30).
+// invocation would be a silent no-op.
 function invokedDirectly() {
   if (!process.argv[1]) return false;
   try {

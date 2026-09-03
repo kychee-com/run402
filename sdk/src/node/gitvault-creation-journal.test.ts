@@ -68,7 +68,7 @@ class MemoryTransport implements GitvaultCreationTransport {
    * admitted for that project — simulates the real gateway's allocate route
    * being unique PER PROJECT, not per `client_creation_id`: a brand new
    * `client_creation_id` allocating against an already-completed project
-   * 409s here instead of minting a second allocation (kychee-com/run402#563).
+   * 409s here instead of minting a second allocation.
    */
   completedProjects = new Map<string, string>();
   supersedeOnAllocate = false;
@@ -92,8 +92,8 @@ class MemoryTransport implements GitvaultCreationTransport {
     }
     let a = this.allocations.get(req.client_creation_id);
     if (!a) {
-      // Real-gateway behavior this mock did not simulate before #563: the
-      // allocate route is unique PER PROJECT, not per client_creation_id. A
+      // Real-gateway behavior: the allocate route is unique PER PROJECT,
+      // not per client_creation_id. A
       // brand new attempt against a project that already completed 409s
       // instead of quietly minting a second allocation.
       const projectKey = "org_id" in req ? `${req.org_id}/${req.project_id}` : null;
@@ -102,8 +102,8 @@ class MemoryTransport implements GitvaultCreationTransport {
         throw new LocalError("a vault already exists for this project", "memory control plane allocate", {
           code: "VAULT_CREATION_CONFLICT",
           details: { repo_id: existingRepoId, genesis_exists: true },
-          // Mirrors the gateway's own raw envelope shape (issue #563's repro)
-          // — the SDK fix must not depend on the gateway's own next_actions.
+          // Mirrors the gateway's own raw envelope shape — the SDK must
+          // not depend on the gateway's own next_actions.
           next_actions: [{ type: "edit_request", why: "a foreign genesis exists; adopt it or choose a new project" }],
         });
       }

@@ -51,12 +51,10 @@ const CI_DEPLOY_SPEC_ALLOWED_KEYS = new Set([
   "site",
   "base",
   "routes",
-  // v1.48 unified-apply added the `assets` slice and the gateway's
-  // V1_CI_DEPLOY_SPEC_ALLOWLIST permits it (gated per-entry by the
-  // binding's `asset_key_scopes`). This SDK-side allowlist used to omit
-  // it, which made the local pre-validation reject CI asset uploads
-  // before the gateway ever saw them. Closes
-  // kychee-com/run402-private#403.
+  // The gateway's V1_CI_DEPLOY_SPEC_ALLOWLIST permits the `assets` slice
+  // (gated per-entry by the binding's `asset_key_scopes`). Omitting it from
+  // this SDK-side allowlist would make the local pre-validation reject CI
+  // asset uploads before the gateway ever saw them.
   "assets",
 ]);
 

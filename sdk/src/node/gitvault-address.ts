@@ -235,8 +235,8 @@ export async function resolveGitvaultAddress(options: ResolveGitvaultAddressOpti
       // `GITVAULT_REPO_STATE_MISSING` no matter how resolution went —
       // "keystore-known" is therefore exactly the set of clones that can
       // actually complete, and the network read was only ever confirming a
-      // fact this machine already held (measured 110-530ms of RTT for
-      // 13-22ms of server work, 2026-09-01). An id-form address always
+      // fact this machine already held (110-530ms of RTT for 13-22ms of
+      // server work). An id-form address always
       // carries a real `org_id` (see `gitvaultRemoteAddressForm`), so the
       // lookup is always org-scoped — a project-id match under a different
       // org is a miss, never a guess. Deliberately runs even with NO

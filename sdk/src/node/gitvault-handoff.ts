@@ -406,13 +406,11 @@ function handoffEnvelopeAad(handoffIdBytes: Uint8Array, envelopeKind: string): U
  * `sealed_envelope` on the wire is STANDARD base64 — openapi spells it
  * `format: byte` in both the mint body and the claim response, and the
  * gateway echoes the stored bytes with `Buffer#toString("base64")` (`+`,
- * `/`, `=` padding). Through 4.68.2 the mint sent base64url (which the
- * gateway's lenient decoder accepted) and the claim side decoded with the
- * canonical-base64url-only `fromBase64url`, which refuses every `+`/`/`/`=`
- * — so the first claim that ever verified (2026-09-02, Session B) got a
- * 200 from the gateway and died client-side with HANDOFF_ENVELOPE_INVALID.
- * This decoder reads the documented form and, for tolerance, the base64url
- * form earlier clients minted; padding is optional either way. Anything
+ * `/`, `=` padding). Decoding it with the canonical-base64url-only
+ * `fromBase64url`, which refuses every `+`/`/`/`=`, takes a 200 from the
+ * gateway and dies client-side with HANDOFF_ENVELOPE_INVALID. This decoder
+ * reads the documented form and, for tolerance, the base64url form other
+ * clients mint; padding is optional either way. Anything
  * outside the two alphabets is a refusal (`null` — the caller raises the
  * typed HANDOFF_ENVELOPE_INVALID), never a silent partial decode.
  */
