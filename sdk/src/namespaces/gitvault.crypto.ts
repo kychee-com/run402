@@ -39,6 +39,7 @@ import { CipherSuite, DhkemX25519HkdfSha256, HkdfSha256 } from "@hpke/core";
 import { Chacha20Poly1305 } from "@hpke/chacha20poly1305";
 import { LocalError } from "../errors.js";
 import type {
+  GitvaultAddWriterKeyPayload,
   GitvaultAllocation,
   GitvaultDigestLabel,
   GitvaultEncryptedObjectKind,
@@ -1019,6 +1020,43 @@ export function parseRotateEpochPayload(head: { generation: string; epoch: strin
   }
   if (!GITVAULT_SHA256_RE.test(payload.rotation_id)) fail("CHAIN_BROKEN", `head ${head.generation}: rotate_epoch_payload.rotation_id is not a 64-hex digest`, "parsing rotate_epoch_payload");
   if (!Array.isArray(payload.envelopes)) fail("CHAIN_BROKEN", `head ${head.generation}: rotate_epoch_payload.envelopes is not an array`, "parsing rotate_epoch_payload");
+  return payload;
+}
+
+/**
+ * Decode + validate one head's `transition.payload` as an
+ * `add_writer_key_payload` (gitvault-multi-writer rev 47, protocol §4.16):
+ * base64url-jcs decode, `payload_sha256` self-check, strict JSON parse, and
+ * the payload's OWN `repo_id` agreeing with the carrying head's — mirrors
+ * {@link parseRotateEpochPayload} exactly, `repo_id` in place of `epoch`
+ * (this transition never changes the epoch). Pure and keyless: the FULL
+ * cryptographic + structural validation (signatures, base/next writer-set
+ * commitments, handoff-grant binding) is `validateAddWriterKeyPayload`'s job
+ * (`../node/gitvault-writer-state.js`) — this function only gets the bytes
+ * off the wire safely, so every reader can call it before any key material
+ * is needed.
+ */
+export function parseAddWriterKeyPayload(head: { generation: string; repo_id: string; transition: { kind: string; payload_format: string; payload: string; payload_sha256: string } | null }): GitvaultAddWriterKeyPayload {
+  const t = head.transition;
+  if (!t || t.kind !== "add_writer_key") fail("GITVAULT_NOT_A_WRITER_ADD", `head ${head.generation} does not carry an add_writer_key transition`, "parsing add_writer_key_payload");
+  if (t.payload_format !== "base64url-jcs") fail("CHAIN_BROKEN", `head ${head.generation}: unsupported transition payload_format "${t.payload_format}"`, "parsing add_writer_key_payload");
+  let raw: Uint8Array;
+  try {
+    raw = fromBase64url(t.payload, "transition.payload");
+  } catch {
+    fail("CHAIN_BROKEN", `head ${head.generation}: transition.payload is not canonical base64url`, "parsing add_writer_key_payload");
+  }
+  if (sha256Hex(raw) !== t.payload_sha256) fail("CHAIN_BROKEN", `head ${head.generation}: transition.payload_sha256 does not match the payload bytes`, "parsing add_writer_key_payload");
+  let payload: GitvaultAddWriterKeyPayload;
+  try {
+    payload = parseGitvaultStrict(new TextDecoder().decode(raw)) as GitvaultAddWriterKeyPayload;
+  } catch {
+    fail("CHAIN_BROKEN", `head ${head.generation}: transition.payload is not strict-parseable r402s/v0 JSON`, "parsing add_writer_key_payload");
+  }
+  if (payload.schema !== "r402s.add-writer-key/v1") fail("CHAIN_BROKEN", `head ${head.generation}: add_writer_key_payload.schema is not r402s.add-writer-key/v1`, "parsing add_writer_key_payload");
+  if (payload.repo_id !== head.repo_id) {
+    fail("CHAIN_BROKEN", `head ${head.generation}: add_writer_key_payload.repo_id (${payload.repo_id}) does not equal the carrying head's own repo_id (${head.repo_id})`, "parsing add_writer_key_payload");
+  }
   return payload;
 }
 

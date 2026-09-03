@@ -602,7 +602,7 @@ export class GitvaultKeystore {
   }
 
   /** Update the dual pins / last ref transaction without touching key material. */
-  updateRepo(repoId: string, patch: Partial<Pick<GitvaultRepoFile, "head_pin" | "materialized_pin" | "verified_prefix" | "last_ref_transaction" | "epoch" | "envelope_recipient_pins" | "k_repo_hex" | "epoch_keys" | "known_pin_manifest" | "checkpoint_covers_through" | "object_store_origins">>): GitvaultRepoFile {
+  updateRepo(repoId: string, patch: Partial<Pick<GitvaultRepoFile, "head_pin" | "materialized_pin" | "verified_prefix" | "last_ref_transaction" | "epoch" | "envelope_recipient_pins" | "k_repo_hex" | "epoch_keys" | "known_pin_manifest" | "checkpoint_covers_through" | "object_store_origins" | "writer_set_pin" | "writer_status" | "pending_writer_admission">>): GitvaultRepoFile {
     return this.withRepoLock(repoId, () => {
       const existing = this.readRepo(repoId);
       if (!existing) fail("GITVAULT_REPO_STATE_MISSING", `no repo file for ${repoId}`, "updating gitvault repo file", { repo_id: repoId });

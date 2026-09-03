@@ -73,6 +73,7 @@ import {
   openEpochRotationForRecipient,
   openFrame,
   openKeyEnvelope,
+  parseAddWriterKeyPayload,
   parseGitvaultStrict,
   parseRotateEpochPayload,
   pinManifestLedgerId,
@@ -90,6 +91,7 @@ import { GITVAULT_ZERO_SHA256_SENTINEL } from "../namespaces/gitvault.types.js";
 import { gitvaultCheckpointStaleness, type GitvaultCheckpointStaleness } from "../namespaces/gitvault.js";
 import type {
   GitvaultActivationToken,
+  GitvaultAddWriterKeyPayload,
   GitvaultAllocation,
   GitvaultCaptureBinding,
   GitvaultCaptureReceipt,
@@ -139,6 +141,15 @@ import type {
 } from "./gitvault-creation-journal.js";
 import { GitvaultKeystore, type GitvaultHeadPin, type GitvaultRepoFile } from "./gitvault-keystore.js";
 import { crossProfileGitvaultHint } from "./gitvault-profile-scan.js";
+import {
+  applyAddWriterKey,
+  applyWriterSetUpdate,
+  initialWriterState,
+  resolveActiveWriter,
+  validateAddWriterKeyPayload,
+  validateWriterSetUpdate,
+  type WriterChainState,
+} from "./gitvault-writer-state.js";
 // Type-only: erased at build, so the prune module stays a LEAF (it imports the
 // crypto core and nothing from here) and no runtime import cycle exists.
 import type { GitvaultPruneIntentRecord } from "./gitvault-prune.js";
@@ -712,13 +723,19 @@ export function checkChainLink(input: GitvaultChainLinkInput): void {
  * rotation is ACTIVATED") — `checkChainLink`'s own D194 epoch-continuity
  * check already validates its structural admissibility, and
  * {@link parseRotateEpochPayload} / the caller's own envelope-open step
- * (`GitvaultVault.verifyToNewest`) handle it fully. The other three kinds
- * (`add_envelope`, `add_writer_key`, `transfer_binding`) remain genuinely
- * unactivated and stay fail-closed exactly as before.
+ * (`GitvaultVault.verifyToNewest`) handle it fully. `add_writer_key` is
+ * EXEMPT as of rev 47 (gitvault-multi-writer) the same way — {@link
+ * parseAddWriterKeyPayload} + `validateAddWriterKeyPayload`
+ * (`gitvault-writer-state.js`) handle it fully, INSIDE `verifyToNewest`'s
+ * own loop, BEFORE this function ever runs on that head (so a transition
+ * that fails writer validation never reaches here at all — this function
+ * only ever sees ones that already passed). The other two kinds
+ * (`add_envelope`, `transfer_binding`) remain genuinely unactivated and stay
+ * fail-closed exactly as before.
  */
 export function assertNoTransition(head: GitvaultHead): void {
   if (head.transition === null) return;
-  if (head.transition.kind === "rotate_epoch") return;
+  if (head.transition.kind === "rotate_epoch" || head.transition.kind === "add_writer_key") return;
   const kinds = ["add_envelope", "rotate_epoch", "add_writer_key", "transfer_binding"];
   if (!kinds.includes(head.transition.kind)) fail("CHAIN_BROKEN", `head ${head.generation}: unknown transition kind ${String(head.transition.kind)} (closed enum)`, "verifying head chain");
   fail("UPGRADE_REQUIRED", `head ${head.generation} carries an admitted "${head.transition.kind}" transition this client cannot validate; staying read-only at the materialized pin and refusing to publish past it`, "verifying head chain", { generation: head.generation, kind: head.transition.kind }, [{ action: "upgrade the client; the vault stays readable at the materialized pin" }]);
@@ -2385,6 +2402,19 @@ export interface GitvaultEncounteredRotation {
   /** == `payload.new_epoch` == the head's own `epoch`. */
   epoch: string;
   payload: GitvaultRotateEpochPayload;
+  /**
+   * gitvault-multi-writer rev 47 — the writer who actually signed THIS
+   * rotation head (already resolved + signature-verified by the forward
+   * chain walk at the point this was collected — never the vault's fixed
+   * genesis creator in a multi-writer vault). Optional: the BACKWARD
+   * catch-up walk in `verifyToNewest` (decrypt-lag recovery) does not yet
+   * resolve this for a rotation it discovers walking `prev_sha256`
+   * backward from `lastHead` — a documented, narrower remaining gap
+   * distinct from the forward walk's own full fix; `openEpochRotationForRecipient`
+   * falls back to the vault's genesis-creator key when absent, byte-identical
+   * to this field's pre-rev-47 non-existence.
+   */
+  signing_pubkey?: string;
 }
 
 /** Named detail for a reader's own `GITVAULT_EPOCH_NOT_OPENABLE` / decrypt stop point (Part C: `repos fsck`'s honest `chain_verified_to` vs `decryptable_to` split). */
@@ -3040,10 +3070,44 @@ export class GitvaultVault {
     const decryptValidate = options.decryptValidate ?? false;
     const strict = options.strict ?? true;
     const { genesis, sha256: genesisSha } = await this.genesis();
+    // gitvault-multi-writer rev 47: `writerKey`/`writerKeyId` (kept for the
+    // rotation-envelope open below, which is signed by whoever DROVE that
+    // specific rotation — resolved per-rotation from `writerState`, not this
+    // fallback) used to be the vault's ONLY writer. They now name just the
+    // genesis creator, retained as the seed for `writerState` and as the
+    // pre-rev-47 fallback signer for methods this pass didn't reach (see the
+    // module's own follow-up note on the restore/clone/mirror subsystem).
     const writerKey = genesis.creator_signing_pubkey;
     const writerKeyId = genesis.writer_key_id;
     const repo = this.repoFile();
     let pin: GitvaultHeadPin = repo.verified_prefix ?? repo.head_pin ?? { generation: GITVAULT_GENESIS_GENERATION, head_sha256: genesisSha, pinned_at: formatGitvaultTimestamp(this.now()) };
+    // gitvault-multi-writer rev 47 (task 5.1): the writer set as chain state.
+    // Trusted as the starting point at `pin`'s generation exactly the same
+    // way `pin` itself is trusted as the starting point for the head chain —
+    // `writer_set_pin` advances in LOCKSTEP with `head_pin`/`verified_prefix`
+    // (see `GitvaultRepoFile.writer_set_pin`'s own doc comment), so a repeat
+    // call never re-walks the writer set from genesis. `initialWriterState`
+    // covers the true first-ever call (no persisted pin yet).
+    //
+    // `burnedWriterKeyIds`/`consumedHandoffIds` are NOT persisted and reset
+    // to empty on every resume — deliberately, not an oversight. This is safe
+    // for THIS function's own job (verifying an ALREADY-ADMITTED chain):
+    // the gateway is the sole admission authority, so a burned key or a
+    // consumed handoff_id can never appear in a real `add_writer_key`
+    // transition on the actual chain — the gateway already refused it before
+    // it could be admitted. These two sets only matter as a CLIENT-SIDE
+    // pre-check before PROPOSING a new transition (tasks 5.4/5.5), where an
+    // incomplete local set costs at most a wasted round trip — the gateway's
+    // own fence-time re-check (which DOES hold the complete history) is the
+    // real backstop either way. If a future caller ever needs these complete
+    // across a resume, persist them on `writer_set_pin` too; not needed yet.
+    let writerState: WriterChainState = repo.writer_set_pin
+      ? { version: repo.writer_set_pin.version, writers: repo.writer_set_pin.writers, sha256: repo.writer_set_pin.sha256, burnedWriterKeyIds: new Set(), consumedHandoffIds: new Set() }
+      : initialWriterState(this.repoId, genesis);
+    const persistWriterSetPin = (): void => {
+      if (!persist) return;
+      this.keystore.updateRepo(this.repoId, { writer_set_pin: { version: writerState.version, sha256: writerState.sha256, writers: [...writerState.writers], pinned_at: formatGitvaultTimestamp(this.now()) } });
+    };
     // gitvault-composite-state-read design D1: try the pin-current fast path
     // FIRST — see {@link tryStateFastPath}'s own doc comment. `null` means
     // ineligible (genuinely more than one generation behind, or the pin's
@@ -3132,7 +3196,11 @@ export class GitvaultVault {
             payload: rot.payload,
             own_fingerprint: ownFingerprint,
             own_encryption_keypair: ownKeypair,
-            writer_signing_public_key: writerKey,
+            // gitvault-multi-writer rev 47: the writer who actually drove
+            // THIS rotation (resolved by the forward walk when it collected
+            // `rot` — see `GitvaultEncounteredRotation.signing_pubkey`'s own
+            // doc comment for the one narrower gap this falls back for).
+            writer_signing_public_key: rot.signing_pubkey ?? writerKey,
             get_envelope_bytes: (path) => this.transport.getObject({ repo_id: this.repoId, path }),
             envelope_path: (epoch, fp, rotationId) => gitvaultPaths.envelope(epoch, fp, rotationId),
           });
@@ -3148,7 +3216,12 @@ export class GitvaultVault {
         // Design D2: ref_state + retention_roots both ride `head`, so one
         // batched presign (or a cache hit) serves both instead of two
         // independent presign-then-GET round trips.
-        const { refState, roots } = await this.openMaterializeCarriers(head.ref_state, gitvaultPaths.refState(head.ref_state.object_id), head.retention_roots, gitvaultPaths.retentionRoots(head.retention_roots.object_id), writerKey, { epoch: head.epoch, k_repo: kRepo });
+        // gitvault-multi-writer rev 47: `head`'s OWN signer, resolved from
+        // the writer state — by the time this runs, `writerState` already
+        // reflects `head`'s own transition (if any), so this correctly finds
+        // a just-self-admitted handoff writer too, not only a pre-existing one.
+        const headSigner = resolveActiveWriter(writerState, head.writer_key_id)?.signing_pubkey ?? writerKey;
+        const { refState, roots } = await this.openMaterializeCarriers(head.ref_state, gitvaultPaths.refState(head.ref_state.object_id), head.retention_roots, gitvaultPaths.retentionRoots(head.retention_roots.object_id), headSigner, { epoch: head.epoch, k_repo: kRepo });
         if (refState.generation !== head.generation || roots.generation !== head.generation) fail("CHAIN_UNUSABLE", "carrier generation does not match the head", "materializing gitvault head");
         decryptedRefState = refState;
         decryptedRoots = roots;
@@ -3248,6 +3321,7 @@ export class GitvaultVault {
       for (const entry of page.heads) {
         if (verified >= this.budget) {
           if (persist) this.keystore.updateRepo(this.repoId, { verified_prefix: pin });
+          persistWriterSetPin();
           persistMaterializedIfAny();
           fail(
             "VERIFICATION_BUDGET_EXCEEDED",
@@ -3262,12 +3336,56 @@ export class GitvaultVault {
         const bytes = await this.readCachedHeadBytes(entry.generation, entry.stored_bytes_sha256);
         if (!bytes) fail("CHAIN_BROKEN", `listed head ${entry.generation} is absent from storage`, "verifying gitvault chain", { generation: entry.generation });
         const head = parseGitvaultStrict(new TextDecoder().decode(bytes)) as GitvaultHead;
-        checkChainLink({ head, stored_bytes: bytes, listed_sha256: entry.stored_bytes_sha256, expected_generation: nextGeneration(pin.generation), prev_sha256: pin.head_sha256, repo_id: this.repoId, writer_public_key: writerKey, writer_key_id: writerKeyId, prev_epoch: prevEpoch });
+
+        // gitvault-multi-writer rev 47 (task 5.1): resolve WHO must have
+        // signed this specific head from the writer state as of the
+        // PREDECESSOR generation (`writerState`, not yet advanced past this
+        // head) — never the single fixed genesis key. A head carrying an
+        // admitted `add_writer_key` transition is the one case the signer
+        // might NOT already be in `writerState`: the "handoff" door is
+        // self-signed by the key being added, which is only proven legitimate
+        // by `validateAddWriterKeyPayload` succeeding on THIS SAME payload —
+        // so that validation runs BEFORE signature verification, not after,
+        // and its own success is what licenses trusting `added_writer.signing_pubkey`
+        // as the correct verification key.
+        const failClosedTransition = (code: string, detail: string): never => {
+          if (persist) this.keystore.updateRepo(this.repoId, { head_pin: pin, verified_prefix: null });
+          persistWriterSetPin();
+          persistMaterializedIfAny();
+          fail(code, `head ${head.generation}: ${detail}`, "verifying gitvault chain", { generation: head.generation });
+        };
+        const isWriterAdd = head.transition !== null && head.transition.kind === "add_writer_key";
+        let addWriterKeyPayload: GitvaultAddWriterKeyPayload | null = null;
+        let resolvedWriterPubkey: string = writerKey;
+        let resolvedWriterKeyId: string = writerKeyId;
+        if (isWriterAdd) {
+          addWriterKeyPayload = parseAddWriterKeyPayload(head); // throws CHAIN_BROKEN on any wire-shape defect
+          const v = validateAddWriterKeyPayload(this.repoId, writerState, addWriterKeyPayload, head.writer_key_id);
+          if (!v.ok) failClosedTransition(v.code, v.detail);
+          if (addWriterKeyPayload.authorization.kind === "writer") {
+            // The head's own signer is an EXISTING writer — same resolution as the ordinary case below.
+            const signer = resolveActiveWriter(writerState, head.writer_key_id)!; // non-null: v.ok already proved it
+            resolvedWriterPubkey = signer.signing_pubkey;
+            resolvedWriterKeyId = signer.writer_key_id;
+          } else {
+            // "handoff" door: self-signed by the key being admitted — validated above, not yet in writerState.
+            resolvedWriterPubkey = addWriterKeyPayload.added_writer.signing_pubkey;
+            resolvedWriterKeyId = addWriterKeyPayload.added_writer.writer_key_id;
+          }
+        } else {
+          const signer = resolveActiveWriter(writerState, head.writer_key_id);
+          if (!signer) failClosedTransition("GITVAULT_WRITER_NOT_ADMITTED", `writer_key_id ${head.writer_key_id} is not a currently admitted writer`);
+          resolvedWriterPubkey = signer!.signing_pubkey;
+          resolvedWriterKeyId = signer!.writer_key_id;
+        }
+
+        checkChainLink({ head, stored_bytes: bytes, listed_sha256: entry.stored_bytes_sha256, expected_generation: nextGeneration(pin.generation), prev_sha256: pin.head_sha256, repo_id: this.repoId, writer_public_key: resolvedWriterPubkey, writer_key_id: resolvedWriterKeyId, prev_epoch: prevEpoch });
         try {
           assertNoTransition(head);
         } catch (e) {
           // fail closed: pin stays BELOW the transition head; the verified prefix is cleared (this is the final state, not a budget pause)
           if (persist) this.keystore.updateRepo(this.repoId, { head_pin: pin, verified_prefix: null });
+          persistWriterSetPin();
           persistMaterializedIfAny();
           throw e;
         }
@@ -3280,7 +3398,32 @@ export class GitvaultVault {
           // later `materialize()` call over an already-chain-verified prefix
           // can still resolve the epoch keys it needs.
           rotationPayload = parseRotateEpochPayload(head);
-          rotations.push({ generation: head.generation, epoch: head.epoch, payload: rotationPayload });
+          rotations.push({ generation: head.generation, epoch: head.epoch, payload: rotationPayload, signing_pubkey: resolvedWriterPubkey });
+          // gitvault-multi-writer rev 47 (D227): writer REMOVAL rides
+          // rotate_epoch as an additive `writer_set_update` field. The
+          // "blocked set" gate inside `validateWriterSetUpdate` is a
+          // gateway-only, live-state fact this reader cannot independently
+          // re-derive (the module's own header doc names this boundary) —
+          // trusting the update's OWN declared `removed[]` as the "blocked
+          // set" input makes that ONE check a structural no-op while every
+          // OTHER invariant (base/next commitments, the writers-array
+          // arithmetic, the signer-survives-or-explicit-terminal rule) is
+          // still independently re-verified in full. Honest: this reader
+          // trusts the GATEWAY already answered "were these the right keys
+          // to remove" at admission time, same as it already trusts every
+          // other admission decision it did not itself make.
+          if (rotationPayload.writer_set_update) {
+            const wsu = rotationPayload.writer_set_update;
+            const declaredBlocked = new Set(wsu.removed.map((r) => r.writer_key_id));
+            const allowEmpty = wsu.writers.length === 0;
+            const wv = validateWriterSetUpdate(this.repoId, writerState, wsu, head.writer_key_id, declaredBlocked, allowEmpty);
+            if (!wv.ok) failClosedTransition(wv.code, wv.detail);
+            writerState = applyWriterSetUpdate(this.repoId, writerState, wsu.removed.map((r) => r.writer_key_id));
+          }
+        }
+        if (isWriterAdd && addWriterKeyPayload) {
+          const consumedHandoffId = addWriterKeyPayload.authorization.kind === "handoff" ? (addWriterKeyPayload.authorization.grant.handoff_id as string | undefined) ?? null : null;
+          writerState = applyAddWriterKey(this.repoId, writerState, { writer_key_id: addWriterKeyPayload.added_writer.writer_key_id, signing_pubkey: addWriterKeyPayload.added_writer.signing_pubkey }, consumedHandoffId);
         }
         prevEpoch = head.epoch;
         pin = { generation: head.generation, head_sha256: entry.stored_bytes_sha256, pinned_at: formatGitvaultTimestamp(this.now()) };
@@ -3297,6 +3440,7 @@ export class GitvaultVault {
       }
       // verified prefix persists per page (resumable) — skipped entirely in no-write mode
       if (persist) this.keystore.updateRepo(this.repoId, { verified_prefix: pin });
+      persistWriterSetPin();
       persistMaterializedIfAny();
       const next = nextListingRequest(request, page);
       if (!next) break;
@@ -3330,8 +3474,15 @@ export class GitvaultVault {
       while (cur && !epochKeys[cur.epoch]) {
         if (cur.transition !== null && cur.transition.kind === "rotate_epoch") {
           const payload = parseRotateEpochPayload(cur);
-          backwardRotations.unshift({ generation: cur.generation, epoch: cur.epoch, payload });
-          if (!rotations.some((r) => r.generation === cur!.generation)) rotations.push({ generation: cur.generation, epoch: cur.epoch, payload });
+          // gitvault-multi-writer rev 47: best-effort resolution against the
+          // FINAL (post-forward-walk) writer state — correct unless `cur`'s
+          // own signer was removed by a LATER rotation between `cur` and
+          // `lastHead`, the one documented residual gap (falls back to the
+          // genesis-creator key at the `openEpochRotationForRecipient`
+          // call site when this resolves to `undefined`).
+          const curSigner = resolveActiveWriter(writerState, cur.writer_key_id)?.signing_pubkey;
+          backwardRotations.unshift({ generation: cur.generation, epoch: cur.epoch, payload, signing_pubkey: curSigner });
+          if (!rotations.some((r) => r.generation === cur!.generation)) rotations.push({ generation: cur.generation, epoch: cur.epoch, payload, signing_pubkey: curSigner });
         }
         if (cur.generation === "0000000000000001") { cur = null; break; }
         const prevGen = bigIntToGeneration(generationToBigInt(cur.generation) - 1n);
@@ -3359,6 +3510,7 @@ export class GitvaultVault {
       if (!decryptFailure) await tryDecrypt(lastHead, pin, backwardRotations);
     }
     if (persist) this.keystore.updateRepo(this.repoId, { head_pin: pin, verified_prefix: null });
+    persistWriterSetPin();
     persistMaterializedIfAny();
     // `strict` (materialize()'s ordinary, fail-closed read path) is enforced
     // HERE, once, after the full keyless chain walk has already run to
@@ -3952,7 +4104,17 @@ export class GitvaultVault {
     const block = head.checkpoint;
     if (!block) fail("CHECKPOINT_INCOMPLETE", `head ${head.generation} carries no checkpoint to verify`, "verifying a stored checkpoint", { generation: head.generation });
     const { genesis } = await this.genesis();
-    const writerKey = genesis.creator_signing_pubkey;
+    // gitvault-multi-writer rev 47: `head` may have been signed by any
+    // CURRENTLY-KNOWN writer, not just the genesis creator — resolved from
+    // the keystore's persisted `writer_set_pin` (the same substrate
+    // `verifyToNewest` maintains), falling back to the genesis-creator key
+    // for a pre-rev-47 keystore or one that hasn't run `verifyToNewest` yet
+    // (byte-identical to this method's own pre-rev-47 behavior in that case).
+    // A writer removed SINCE this checkpoint's own head was admitted is the
+    // same documented residual as the backward-catch-up decrypt path above —
+    // `writer_set_pin` only remembers currently-active writers, not burned ones.
+    const pinnedWriters = this.repoFile().writer_set_pin?.writers ?? [];
+    const writerKey = pinnedWriters.find((w) => w.writer_key_id === head.writer_key_id)?.signing_pubkey ?? genesis.creator_signing_pubkey;
     const claimBytes = await this.transport.getObject({ repo_id: this.repoId, path: gitvaultPaths.claimSet(block.claim_set.object_id), expected_sha256: block.claim_set.stored_bytes_sha256 });
     if (!claimBytes || sha256Hex(claimBytes) !== block.claim_set.stored_bytes_sha256) {
       fail("CHECKPOINT_INCOMPLETE", `checkpoint claim set ${block.claim_set.object_id} is absent or does not match the head's receipt`, "verifying a stored checkpoint", { object_id: block.claim_set.object_id });
@@ -4019,11 +4181,17 @@ export class GitvaultVault {
     const generations = [...chain.keys()].sort();
     const out: Array<{ head: GitvaultHead; head_sha256: string; claim_set: GitvaultCheckpointClaimSet | null }> = [];
     const { genesis } = await this.genesis();
+    // gitvault-multi-writer rev 47: `verifyToNewest()` above already
+    // persisted the current `writer_set_pin` — same per-head resolution as
+    // `verifyStoredCheckpoint`, same documented residual (a writer removed
+    // since falls back to the genesis-creator key).
+    const pinnedWriters = this.repoFile().writer_set_pin?.writers ?? [];
     for (const gen of generations) {
       const entry = chain.get(gen)!;
       let claimSet: GitvaultCheckpointClaimSet | null = null;
       const block = entry.head.checkpoint;
       if (block) {
+        const writerKey = pinnedWriters.find((w) => w.writer_key_id === entry.head.writer_key_id)?.signing_pubkey ?? genesis.creator_signing_pubkey;
         // Plaintext-structured and stored-bytes-receipted: no decryption, but
         // the hash and the owner signature are still checked before a single
         // pack receipt inside it is believed.
@@ -4032,7 +4200,7 @@ export class GitvaultVault {
           fail("CHECKPOINT_INCOMPLETE", `checkpoint claim set ${block.claim_set.object_id} (generation ${gen}) is absent or altered`, "walking the gitvault chain", { generation: gen, object_id: block.claim_set.object_id });
         }
         claimSet = parseGitvaultStrict(new TextDecoder().decode(bytes)) as GitvaultCheckpointClaimSet;
-        if (!verifyGitvaultObject(claimSet as unknown as GitvaultSignedObject, genesis.creator_signing_pubkey)) {
+        if (!verifyGitvaultObject(claimSet as unknown as GitvaultSignedObject, writerKey)) {
           fail("CHECKPOINT_INCOMPLETE", `checkpoint claim set ${claimSet.object_id} signature fails`, "walking the gitvault chain", { generation: gen });
         }
       }
@@ -4427,7 +4595,11 @@ export class GitvaultVault {
     }
     const manifest = parseGitvaultStrict(new TextDecoder().decode(bytes)) as { pins: GitvaultRecipientPinManifestEntry[]; writer_key_id: string; signature: string; object_kind: string };
     const { genesis } = await this.genesis();
-    if (!verifyGitvaultObject(manifest as unknown as GitvaultSignedObject, genesis.creator_signing_pubkey)) {
+    // gitvault-multi-writer rev 47: resolve the manifest's OWN declared
+    // signer against the persisted writer set (same pattern + same
+    // documented residual as `verifyStoredCheckpoint`/`chainEntries` above).
+    const manifestSigner = this.repoFile().writer_set_pin?.writers.find((w) => w.writer_key_id === manifest.writer_key_id)?.signing_pubkey ?? genesis.creator_signing_pubkey;
+    if (!verifyGitvaultObject(manifest as unknown as GitvaultSignedObject, manifestSigner)) {
       fail("GITVAULT_SIGNATURE_INVALID", `recipient_pin_manifest ${receipt.pin_manifest_version} signature does not verify`, "resolving the effective recipient pin manifest", { pin_manifest_version: receipt.pin_manifest_version });
     }
     const pinnedFingerprintOf = new Map(manifest.pins.map((p) => [p.principal_id, p.ek_fingerprint] as const));

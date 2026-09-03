@@ -738,6 +738,39 @@ export interface GitvaultRotateEpochPayload {
    * always populates it on every submitted rotation.
    */
   self_open_attestation?: GitvaultEpochRotationSelfOpen;
+  /**
+   * D227 (rev 47, gitvault-multi-writer, NEW field). SCHEMA-OPTIONAL, present
+   * IFF this rotation ALSO removes one or more writers — writer removal
+   * rides `rotate_epoch`, writer addition never does (that is
+   * `add_writer_key`'s own transition kind). Mirrors the gateway's
+   * `WriterSetUpdatePayload` (services/gitvault/writer-state.ts) exactly.
+   */
+  writer_set_update?: {
+    base_version: string;
+    base_sha256: string;
+    next_version: string;
+    next_sha256: string;
+    removed: { writer_key_id: string; principal_id: string; reason: string }[];
+    writers: { writer_key_id: string; signing_pubkey: string }[];
+  };
+}
+
+/**
+ * `add_writer_key_payload` (schema `add_writer_key_payload.json`,
+ * gitvault-multi-writer rev 47, protocol §4.16/§4.17) — the JCS bytes
+ * carried (base64url-encoded, hash-pinned) inside `head.transition.payload`
+ * when `transition.kind == "add_writer_key"`. Byte-identical field names to
+ * the gateway's own `AddWriterKeyPayload` (services/gitvault/writer-state.ts)
+ * and this SDK's `gitvault-writer-state.ts` port of it — this is the WIRE
+ * type the parser below decodes into that same shape.
+ */
+export interface GitvaultAddWriterKeyPayload {
+  schema: "r402s.add-writer-key/v1";
+  repo_id: string;
+  base_writer_set: { version: string; sha256: string };
+  next_writer_set: { version: string; writers: { writer_key_id: string; signing_pubkey: string }[]; sha256: string };
+  added_writer: { writer_key_id: string; signing_pubkey: string; principal_id: string };
+  authorization: { kind: "writer" } | { kind: "handoff"; grant: Record<string, unknown>; acceptance: Record<string, unknown> };
 }
 
 /** One `recipient_pin_manifest.pins[]` entry (D197). */

@@ -322,7 +322,12 @@ export class GitvaultMemoryTransport implements GitvaultTransport {
     this.calls.push(`admit:${req.generation}`);
     if (this.competitor) { const c = this.competitor; this.competitor = null; await c(req.generation); }
     const head = parseGitvaultStrict(new TextDecoder().decode(req.stored_bytes)) as GitvaultHead;
-    if (head.transition !== null && head.transition.kind !== "rotate_epoch") throw err("TRANSITION_NOT_ACTIVE", "V0 admission rejects every non-null, non-rotate_epoch transition");
+    // gitvault-multi-writer rev 47: add_writer_key ACTIVATED, same precedent
+    // as rotate_epoch's own D193 activation above (add_envelope/transfer_binding
+    // remain genuinely unactivated and still refuse here).
+    if (head.transition !== null && head.transition.kind !== "rotate_epoch" && head.transition.kind !== "add_writer_key") {
+      throw err("TRANSITION_NOT_ACTIVE", "V0 admission rejects every non-null, non-rotate_epoch, non-add_writer_key transition");
+    }
     const owner = this.repoOwners.get(req.repo_id) ?? this.pendingOwners.get(req.repo_id);
     const orgId = owner?.orgId ?? "org_memory";
     if (head.transition === null) {
@@ -337,7 +342,7 @@ export class GitvaultMemoryTransport implements GitvaultTransport {
       if (migrationRequired || revocationOutstanding || exposureOutstanding) {
         throw err("EPOCH_ROTATION_REQUIRED", "this vault requires a rotate_epoch admission before an ordinary push is admissible", { migration_required: migrationRequired, revocation_outstanding: revocationOutstanding, exposure_outstanding: exposureOutstanding });
       }
-    } else {
+    } else if (head.transition.kind === "rotate_epoch") {
       // rotate_epoch: fenced re-derivation of the SAME facts createRotationAttempt already bound (D194/D195 self-consistency, simplified for this fixture — the real gateway's full H-partition bijection check (D196) lives server-side and is NOT re-implemented here; this models the fields a client-side test can meaningfully exercise: descriptor existence, bound-field agreement, and the frozen-counter comparison).
       const payloadObj = JSON.parse(new TextDecoder().decode(fromBase64url(head.transition.payload))) as Record<string, unknown>;
       const rotationId = String(payloadObj.rotation_id);
@@ -352,6 +357,11 @@ export class GitvaultMemoryTransport implements GitvaultTransport {
         throw err("RECIPIENT_SET_MISMATCH", "desired-recipient state has advanced since this rotation attempt was created; rebuild and resubmit");
       }
     }
+    // gitvault-multi-writer rev 47: add_writer_key needs none of the
+    // rotate_epoch-specific descriptor/counter machinery above — this
+    // fixture deliberately does not model writer-authorization admission
+    // rules at all (unlike the real gateway); it falls straight through to
+    // the generation-CAS + receipt-existence checks common to every kind.
     const newest = this.newestGeneration(req.repo_id);
     const expected = bigIntToGeneration(generationToBigInt(newest) + 1n);
     if (req.generation !== expected || head.generation !== expected) {

@@ -21,7 +21,7 @@ import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { LocalError } from "../errors.js";
-import { sha256Hex } from "../namespaces/gitvault.crypto.js";
+import { generateSigningKeypair, hexToBytes, jcs, parseGitvaultStrict, sha256Hex, signGitvaultObject, toBase64url } from "../namespaces/gitvault.crypto.js";
 import type { GitvaultHead, GitvaultHeadsListingPage, GitvaultHeadsListingRequest, GitvaultRetentionRoot } from "../namespaces/gitvault.types.js";
 import {
   GITVAULT_MAX_CANONICAL_REFS,
@@ -57,6 +57,7 @@ import {
 import { GITVAULT_DEPLOY_REF, hardenedGit, hasObject } from "./gitvault-snapshot.js";
 import { commitFile, git, makeVault, type VaultFixture } from "./gitvault-memory-transport.test.js";
 import { GitvaultKeystore } from "./gitvault-keystore.js";
+import { applyAddWriterKey, initialWriterState, writerKeyIdOf } from "./gitvault-writer-state.js";
 
 // ─── Vector loading (same contract as the crypto suite) ──────────────────────
 
@@ -419,7 +420,7 @@ vectors("§6.4 pins + transitions — vector classes `chain` (005) and `transiti
     checkGenerationRegression(v.inputs.pinned_generation, v.inputs.pinned_generation); // equal is not a regression
   });
 
-  it("an ADMITTED non-null transition fails a V0 client CLOSED with UPGRADE_REQUIRED; an unknown kind is a closed-enum reject — EXCEPT rotate_epoch, ACTIVATED at rev 42 (D193) after this frozen vector set was authored", () => {
+  it("an ADMITTED non-null transition fails a V0 client CLOSED with UPGRADE_REQUIRED; an unknown kind is a closed-enum reject — EXCEPT rotate_epoch (D193, rev 42) and add_writer_key (gitvault-multi-writer, rev 47), both ACTIVATED after this frozen vector set was authored", () => {
     for (const v of byClass("transition-fail-closed")) {
       mark(v);
       if (v.id === "transition-007") {
@@ -443,6 +444,10 @@ vectors("§6.4 pins + transitions — vector classes `chain` (005) and `transiti
       }
       if (head.transition.kind === "rotate_epoch") {
         assertNoTransition(head); // D193, rev 42: no longer fail-closed — this vector predates activation
+        continue;
+      }
+      if (head.transition.kind === "add_writer_key") {
+        assertNoTransition(head); // gitvault-multi-writer, rev 47: no longer fail-closed — this vector (transition-003) predates activation, same precedent as rotate_epoch above
         continue;
       }
       const expected = v.reject_reason === "schema" ? "CHAIN_BROKEN" : "UPGRADE_REQUIRED";
@@ -1415,6 +1420,114 @@ describe("clone-installs-retained-refs — refs/r402/retain/* reconciliation", (
       head_target: { kind: "symref", ref: "refs/heads/main" },
     });
     assert.deepEqual(result, { written: [], deleted: [], retained_count: 0, warning: null });
+  });
+});
+
+// ─── gitvault-multi-writer rev 47 — verifyToNewest actually accepts a second writer ──
+//
+// Hand-builds `add_writer_key{"writer"}` / ordinary heads reusing the prior
+// generation's OWN ref_state/retention_roots receipts verbatim (a
+// ref-neutral push — task 5.7's own eventual submission shape; no real
+// "mint a writer transition" capability exists yet, so this constructs the
+// wire bytes directly, the same way the file's OWN tampering tests inject
+// raw bytes into the fixture). Proves the WIRING (verifyToNewest's per-head
+// resolution + writer_set_pin persistence), not just the pure module
+// (already covered exhaustively in gitvault-writer-state.test.ts).
+describe("gitvault-multi-writer rev 47 — a second writer's head is accepted, a stranger's is not", () => {
+  const fixtures: VaultFixture[] = [];
+  const open = async (): Promise<VaultFixture> => {
+    const f = await makeVault();
+    fixtures.push(f);
+    return f;
+  };
+  const cleanup = () => {
+    for (const f of fixtures.splice(0)) rmSync(f.root, { recursive: true, force: true });
+  };
+
+  /** A ref-neutral ordinary head at the next generation, reusing `base`'s own carriers verbatim, signed by `seed`/`writerKeyId`, optionally carrying `transition`. */
+  function buildNextHead(base: { generation: string; head_sha256: string; head: GitvaultHead }, seed: Uint8Array, writerKeyId: string, transition: GitvaultHead["transition"]): { stored_bytes: Uint8Array; stored_bytes_sha256: string; generation: string } {
+    const generation = nextGeneration(base.generation);
+    const headWithoutSig = {
+      format: base.head.format,
+      object_kind: "head" as const,
+      suite: base.head.suite,
+      repo_id: base.head.repo_id,
+      generation,
+      prev_sha256: base.head_sha256,
+      epoch: base.head.epoch,
+      wal_entries: [],
+      ref_state: base.head.ref_state,
+      retention_roots: base.head.retention_roots,
+      checkpoint: null,
+      checkpoint_purpose: null,
+      capture_binding: null,
+      repair: null,
+      transition,
+      writer_key_id: writerKeyId,
+      created_at: new Date().toISOString(),
+    };
+    const signed = signGitvaultObject(headWithoutSig, seed);
+    const bytes = jcs(signed);
+    return { stored_bytes: bytes, stored_bytes_sha256: sha256Hex(bytes), generation };
+  }
+
+  it("an existing writer adds a second writer; the second writer's OWN later push is then accepted; a stranger's push is not", async (t) => {
+    t.after(cleanup);
+    const f = await open();
+    const identity = f.keystore.ensureIdentity();
+    if (!identity.signing_seed_hex) throw new Error("test fixture identity has no local signing seed");
+    const creatorSeed = hexToBytes(identity.signing_seed_hex);
+    const creatorWriterKeyId = identity.signing_fingerprint;
+
+    const main = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    const gen1 = await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: main, force: false }] } });
+    assert.equal(gen1.head.writer_key_id, creatorWriterKeyId);
+
+    // ── generation 2: creator (an existing writer) adds writer B ──
+    const base = initialWriterState(f.repoId, { creator_signing_pubkey: identity.signing_pubkey });
+    const writerB = generateSigningKeypair();
+    const writerBPubB64u = toBase64url(writerB.public_key);
+    const writerBKeyId = writerKeyIdOf(writerBPubB64u)!;
+    const next = applyAddWriterKey(f.repoId, base, { writer_key_id: writerBKeyId, signing_pubkey: writerBPubB64u }, null);
+    const addPayload = {
+      schema: "r402s.add-writer-key/v1",
+      repo_id: f.repoId,
+      base_writer_set: { version: base.version, sha256: base.sha256 },
+      next_writer_set: { version: next.version, writers: [...next.writers], sha256: next.sha256 },
+      added_writer: { writer_key_id: writerBKeyId, signing_pubkey: writerBPubB64u, principal_id: "22222222-2222-4222-8222-222222222222" },
+      authorization: { kind: "writer" as const },
+    };
+    const payloadBytes = jcs(addPayload);
+    const gen2 = buildNextHead(gen1, creatorSeed, creatorWriterKeyId, { kind: "add_writer_key", payload_format: "base64url-jcs", payload: toBase64url(payloadBytes), payload_sha256: sha256Hex(payloadBytes) });
+    const admitted2 = await f.transport.admitHead({ repo_id: f.repoId, generation: gen2.generation, stored_bytes: gen2.stored_bytes, stored_bytes_sha256: gen2.stored_bytes_sha256 });
+    assert.equal(admitted2.outcome, "admitted", "the fixture's own admission gate accepts add_writer_key (activated, same precedent as rotate_epoch)");
+
+    const verified2 = await f.vault.verifyToNewest();
+    assert.equal(verified2.generation, gen2.generation);
+    const pin2 = f.keystore.readRepo(f.repoId)!.writer_set_pin;
+    assert.ok(pin2, "writer_set_pin was persisted");
+    assert.deepEqual(
+      [...pin2!.writers].map((w) => w.writer_key_id).sort(),
+      [creatorWriterKeyId, writerBKeyId].sort(),
+      "both writers are now in the chain-verified writer set",
+    );
+
+    // ── generation 3: writer B (just admitted) pushes on its OWN — accepted ──
+    const gen2Result = { generation: gen2.generation, head_sha256: gen2.stored_bytes_sha256, head: parseGitvaultStrict(new TextDecoder().decode(gen2.stored_bytes)) as GitvaultHead };
+    const gen3 = buildNextHead(gen2Result, writerB.seed, writerBKeyId, null);
+    const admitted3 = await f.transport.admitHead({ repo_id: f.repoId, generation: gen3.generation, stored_bytes: gen3.stored_bytes, stored_bytes_sha256: gen3.stored_bytes_sha256 });
+    assert.equal(admitted3.outcome, "admitted");
+    const verified3 = await f.vault.verifyToNewest();
+    assert.equal(verified3.generation, gen3.generation, "writer B's own signature verifies — B is a real writer now, not just a bystander");
+
+    // ── generation 4: a total stranger's push — accepted by the (authorization-blind) fixture, but REJECTED by the client's own chain verification ──
+    const gen3Result = { generation: gen3.generation, head_sha256: gen3.stored_bytes_sha256, head: parseGitvaultStrict(new TextDecoder().decode(gen3.stored_bytes)) as GitvaultHead };
+    const stranger = generateSigningKeypair();
+    const strangerKeyId = writerKeyIdOf(toBase64url(stranger.public_key))!;
+    const gen4 = buildNextHead(gen3Result, stranger.seed, strangerKeyId, null);
+    const admitted4 = await f.transport.admitHead({ repo_id: f.repoId, generation: gen4.generation, stored_bytes: gen4.stored_bytes, stored_bytes_sha256: gen4.stored_bytes_sha256 });
+    assert.equal(admitted4.outcome, "admitted", "the fixture itself enforces no writer authorization — that is the CLIENT's job, which is what this test is actually proving");
+    await rejectsCode(f.vault.verifyToNewest(), "GITVAULT_WRITER_NOT_ADMITTED");
   });
 });
 
