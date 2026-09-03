@@ -68,6 +68,25 @@ export function meetsWriterEligibleRole(role: string | null | undefined): boolea
   return !!role && (ORG_ROLE_RANK[role] ?? -1) >= WRITER_ELIGIBLE_ROLE_RANK;
 }
 
+/**
+ * gitvault-multi-writer rev 47 (task 5.5) — predicts the role a handoff mint
+ * will actually confer, mirroring the gateway's OWN attenuation exactly
+ * (`services/gitvault/claims.ts mintHandoff`: `requestedRole &&
+ * roleRank(requestedRole) < roleRank(minterRole) ? requestedRole :
+ * minterRole`). The mint's `writer_admission_grant.minted_role` must equal
+ * this prediction byte-for-byte or the gateway refuses VALIDATION_FAILED —
+ * after the checkpoint push has already been paid for — so getting the
+ * comparison direction right matters. An unrecognized `requestedRole`
+ * (never a legal `OrgRole` server-side either) is treated as "no request":
+ * a garbage role string fails the gateway's OWN mint validation before its
+ * attenuation logic — and therefore before this grant-mismatch check —
+ * ever runs, so predicting `minterRole` for that case is never observed as
+ * wrong, only moot.
+ */
+export function predictMintedRole(requestedRole: string | undefined, minterRole: string): string {
+  return requestedRole !== undefined && requestedRole in ORG_ROLE_RANK && ORG_ROLE_RANK[requestedRole]! < ORG_ROLE_RANK[minterRole]! ? requestedRole : minterRole;
+}
+
 // ─── Writer chain state ──────────────────────────────────────────────────────
 
 export interface WriterKeyEntry {

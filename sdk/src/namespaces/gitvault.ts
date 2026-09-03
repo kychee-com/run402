@@ -44,7 +44,9 @@ import {
   bytesToHex,
   computeKeystorePossessionProof,
   computeSigningKeyPossessionSignature,
+  ed25519PublicKey,
   hexToBytes,
+  jcs,
   parseGitvaultStrict,
   randomBytes,
   sha256Hex,
@@ -117,6 +119,7 @@ type ByoConfigModule = typeof import("../node/gitvault-byo-config.js");
 type ByoProbeModule = typeof import("../node/gitvault-byo-probe.js");
 type HandoffModule = typeof import("../node/gitvault-handoff.js");
 type RestoreModule = typeof import("../node/gitvault-restore.js");
+type WriterStateModule = typeof import("../node/gitvault-writer-state.js");
 
 /** A keystore path, or `null` when there is no id to derive it from (or it is malformed). */
 function safePath(derive: () => string, repoId: string | null): string | null {
@@ -2471,7 +2474,7 @@ export class Gitvault {
     },
   ): Promise<GitvaultHandoffMintResult> {
     const [{ deployRefTransaction }, { captureHandoffSnapshot, snapshotCommitment }, ho] = await Promise.all([this.#publication(), this.#snapshot(), this.#handoff()]);
-    const { assembleHandoffKey, deriveHandoffSecrets, sealHandoffEnvelope, assertHandoffNoteHasNoSecret, HANDOFF_ENVELOPE_KIND } = ho;
+    const { assembleHandoffKey, deriveHandoffSecrets, sealHandoffEnvelope, assertHandoffNoteHasNoSecret, HANDOFF_ENVELOPE_KIND, buildWriterAdmissionGrant, deriveWriterAdmissionSeed } = ho;
 
     const handle = options.address ? (await this.resolveOrCreateAddress({ ...options, address: options.address, allow_create: false })).handle : await this.open(options);
     const repoDir = options.repo_dir ?? process.cwd();
@@ -2485,6 +2488,44 @@ export class Gitvault {
       );
     }
     const kRepo = hexToBytes(repoFile.k_repo_hex);
+
+    // gitvault-multi-writer rev 47 (task 5.5, design D4): only an ACTIVE
+    // WRITER may mint — the gateway enforces this authoritatively at mint
+    // time (`403 HANDOFF_MINT_REQUIRES_WRITER`), but failing that late
+    // would mean this call already paid for a checkpoint capture + push +
+    // envelope seal for nothing. `writer_set_pin` is freshly set by the
+    // `verifyToNewest` this vault's `open()` above just ran (never stale by
+    // more than this session's own most recent verify), so checking it
+    // here is a cheap, typed, LOCAL fail-fast — never the check's source of
+    // truth, which stays server-side.
+    const identity = handle.keystore.readIdentity();
+    const localWriterKeyId = identity?.signing_fingerprint ?? null;
+    if (!localWriterKeyId || !repoFile.writer_set_pin?.writers.some((w) => w.writer_key_id === localWriterKeyId)) {
+      throw new LocalError(
+        "this keystore's signing key is not an admitted writer of this vault — minting a handoff requires an ACTIVE writer (design D4); an existing writer must add this key first (`run402 org members add` / repos access sync), or push once to reconcile if a pending admission already exists",
+        "minting a handoff",
+        { code: "GITVAULT_WRITER_NOT_ADMITTED" },
+      );
+    }
+
+    // The grant's `minted_role` must EXACTLY predict what the gateway's own
+    // role-attenuation (`services/gitvault/claims.ts mintHandoff`) will
+    // compute, or the grant fails VALIDATION_FAILED after this call has
+    // already paid for the checkpoint push below — `predictMintedRole`
+    // mirrors that formula against the SAME `ORG_ROLE_RANK` lattice
+    // `gitvault-writer-state.ts` already uses elsewhere in this codebase.
+    const { predictMintedRole } = await this.#writerState();
+    const vaultRecord = await this.get(handle.repo_id);
+    const who = await this.#client.request<{ memberships: { org_id: string; role: string; status: string }[] }>("/agent/v1/whoami", { context: "resolving this principal's org role for the handoff grant" });
+    const membership = who.memberships.find((m) => m.org_id === vaultRecord.org_id && m.status === "active");
+    if (!membership) {
+      throw new LocalError(
+        `this principal has no active membership on ${vaultRecord.org_id} — an active writer must also be an active org member to mint a handoff`,
+        "minting a handoff",
+        { code: "GITVAULT_ACCESS_DENIED" },
+      );
+    }
+    const grantMintedRole = predictMintedRole(options.role, membership.role);
 
     const snapshot = await captureHandoffSnapshot({
       dir: repoDir,
@@ -2537,6 +2578,40 @@ export class Gitvault {
       note_schema: "kygit.handoff-note.v1",
     });
 
+    // gitvault-multi-writer rev 47 (task 5.5, design D4) — the MINTER's own
+    // writer key signs `writer_admission_grant`, authorizing whoever claims
+    // this handoff to become a writer (D224/D225). This is a HARD
+    // requirement distinct from the earlier `writer_set_pin` presence
+    // check: that check only proves the fingerprint is admitted, not that
+    // THIS checkout still holds the seed to sign with — a read-only
+    // recovery identity (no local `signing_seed_hex`) can be an admitted
+    // writer's fingerprint yet be structurally unable to mint from here.
+    const signingKeypair = handle.keystore.signingKeypair(identity!); // non-null: the writer precheck above already required identity.signing_fingerprint
+    if (!signingKeypair) {
+      throw new LocalError(
+        "this keystore has no local signing seed — it can read the vault's writer identity but cannot sign a writer_admission_grant from here (a read-only recovery identity); mint from a checkout that holds the full signing seed",
+        "minting a handoff",
+        { code: "VAULT_UNRECOVERABLE" },
+      );
+    }
+    const handoffAdmissionSeed = deriveWriterAdmissionSeed(handoff_id_bytes, master_secret);
+    const grant = buildWriterAdmissionGrant({
+      repo_id: handle.repo_id,
+      handoff_id: handoffId,
+      auth_hash: secrets.auth_hash_hex,
+      checkpoint_generation: pushResult.generation,
+      checkpoint_head_sha256: pushResult.head_sha256,
+      minted_role: grantMintedRole as import("../node/gitvault-handoff.js").GitvaultWriterMintedRole,
+      // Mirrors the gateway's own HANDOFF_DEFAULT_TTL_SECONDS (3600) —
+      // `claim_not_after` is NOT cross-validated against the mint's actual
+      // TTL server-side (only well-formedness is checked), so this only
+      // needs to be a reasonable bound, not an exact prediction.
+      claim_not_after: new Date(Date.now() + (options.ttlSeconds ?? 3600) * 1000).toISOString(),
+      grantor_signing_seed: signingKeypair.seed,
+      handoff_admission_pubkey: ed25519PublicKey(handoffAdmissionSeed),
+    });
+    const grantSha256Local = sha256Hex(jcs(grant));
+
     // The wire shape is the gateway's documented one (llms-full.txt
     // "Handoff / resume"): `role` (the minted role), `repo_id` / `org_id` /
     // `project_id`, a verbatim `warning` sentence plus its machine-readable
@@ -2551,6 +2626,7 @@ export class Gitvault {
       org_id: string;
       project_id: string;
       checkpoint: { generation: string; snapshot_oid_hmac: string };
+      writer_admission_grant_sha256: string;
       warning?: string;
       warnings?: { code: string; message: string }[];
       next_actions?: NextAction[];
@@ -2564,6 +2640,7 @@ export class Gitvault {
         sealed_envelope: sealed.sealed_envelope,
         envelope_kind: sealed.envelope_kind ?? HANDOFF_ENVELOPE_KIND,
         auth_hash: secrets.auth_hash_hex,
+        writer_admission_grant: toBase64url(jcs(grant)),
       },
       context: "minting a handoff key",
     });
@@ -2572,6 +2649,17 @@ export class Gitvault {
         `the gateway minted a different handoff_id (${response.handoff_id}) than requested (${handoffId}) — the assembled key would not match; retry`,
         "minting a handoff key",
         { code: "HANDOFF_ID_MISMATCH", details: { requested: handoffId, minted: response.handoff_id } },
+      );
+    }
+    // The gateway names back the SHA-256 of the EXACT writer_admission_grant
+    // bytes it stored — verified against this call's own local computation
+    // (never the other way around) so a gateway that silently altered the
+    // grant is caught here, before the key is ever handed to a recipient.
+    if (response.writer_admission_grant_sha256 !== grantSha256Local) {
+      throw new LocalError(
+        `the gateway echoed a writer_admission_grant_sha256 (${response.writer_admission_grant_sha256}) that does not match what this call sent (${grantSha256Local}) — the stored grant may not be the one this call signed; do not distribute this handoff key`,
+        "minting a handoff key",
+        { code: "HANDOFF_MINT_GRANT_MISMATCH", details: { expected: grantSha256Local, received: response.writer_admission_grant_sha256 } },
       );
     }
 
@@ -4354,6 +4442,9 @@ export class Gitvault {
   }
   #handoff(): Promise<HandoffModule> {
     return nodeOnly(() => import("../node/gitvault-handoff.js"), "handoff");
+  }
+  #writerState(): Promise<WriterStateModule> {
+    return nodeOnly(() => import("../node/gitvault-writer-state.js"), "handoff");
   }
   #restore(): Promise<RestoreModule> {
     return nodeOnly(() => import("../node/gitvault-restore.js"), "resume");

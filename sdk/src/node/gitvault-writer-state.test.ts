@@ -542,4 +542,36 @@ describe("gitvault writer-state (protocol §4.15-§4.18, D221-D228) — client m
       for (const r of ["billing", "viewer", "superuser", "", null, undefined]) assert.equal(meetsWriterEligibleRole(r), false);
     });
   });
+
+  describe("predictMintedRole (gitvault-multi-writer task 5.5 — mirrors mintHandoff's own attenuation formula)", () => {
+    it("no requested role: predicts the minter's own role, for every role", async () => {
+      const { predictMintedRole } = await import("./gitvault-writer-state.js");
+      for (const minter of ["owner", "admin", "developer", "billing", "viewer"]) {
+        assert.equal(predictMintedRole(undefined, minter), minter);
+      }
+    });
+
+    it("requested role BELOW the minter's own: honored (narrower is fine) — matches mintHandoff's own attenuation test precedent", async () => {
+      const { predictMintedRole } = await import("./gitvault-writer-state.js");
+      assert.equal(predictMintedRole("developer", "owner"), "developer");
+      assert.equal(predictMintedRole("viewer", "admin"), "viewer");
+    });
+
+    it("requested role ABOVE the minter's own: clamped to the minter's role, never widened", async () => {
+      const { predictMintedRole } = await import("./gitvault-writer-state.js");
+      assert.equal(predictMintedRole("owner", "developer"), "developer");
+      assert.equal(predictMintedRole("admin", "viewer"), "viewer");
+    });
+
+    it("requested role EQUAL to the minter's own: predicts that same role (the tie is not \"below\", so it is honored either way)", async () => {
+      const { predictMintedRole } = await import("./gitvault-writer-state.js");
+      assert.equal(predictMintedRole("developer", "developer"), "developer");
+    });
+
+    it("an unrecognized requested role string is never predicted verbatim — falls back to the minter's own role", async () => {
+      const { predictMintedRole } = await import("./gitvault-writer-state.js");
+      assert.equal(predictMintedRole("superuser", "developer"), "developer");
+      assert.equal(predictMintedRole("", "owner"), "owner");
+    });
+  });
 });
