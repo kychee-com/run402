@@ -1,20 +1,30 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, hkdfSync, randomUUID } from "node:crypto";
 import {
   HANDOFF_ENVELOPE_KIND,
+  HANDOFF_ENVELOPE_V2_KIND,
   HANDOFF_KEY_PREFIXES,
+  HANDOFF_WRITER_ACCEPT_DOMAIN,
   assembleHandoffKey,
   assertHandoffNoteHasNoSecret,
+  buildWriterAcceptance,
+  buildWriterAdmissionGrant,
   deriveHandoffSecrets,
+  deriveWriterAdmissionSeed,
   openHandoffEnvelope,
+  openHandoffEnvelopeV2,
   parseHandoffKey,
   scanHandoffNoteForSecrets,
   sealHandoffEnvelope,
+  sealHandoffEnvelopeV2,
   uuidToBytes,
+  verifyWriterAcceptance,
+  verifyWriterAdmissionGrant,
   type HandoffEnvelopePayload,
+  type HandoffEnvelopePayloadV2,
   type KygitHandoffNote, } from "./gitvault-handoff.js";
-import { randomBytes } from "../namespaces/gitvault.crypto.js";
+import { randomBytes, ed25519PublicKey, ekFingerprint, toBase64url } from "../namespaces/gitvault.crypto.js";
 
 const HANDOFF_ID = "3fa85f64-5717-4562-b3fc-2c963f66afa6";
 
@@ -116,6 +126,155 @@ describe("deriveHandoffSecrets — HKDF vectors", () => {
   });
 });
 
+describe("deriveWriterAdmissionSeed — the third HKDF output, cross-checked against node:crypto's OWN HKDF (design D4)", () => {
+  it("reproduces node:crypto.hkdfSync(sha256, master_secret, handoff_id[16], 'kygit/handoff/writer-admission/v1', 32) byte-for-byte", () => {
+    const idBytes = uuidToBytes(HANDOFF_ID);
+    const masterSecret = randomBytes(32);
+    const seed = deriveWriterAdmissionSeed(idBytes, masterSecret);
+    const reference = new Uint8Array(hkdfSync("sha256", masterSecret, idBytes, Buffer.from("kygit/handoff/writer-admission/v1", "utf8"), 32));
+    assert.deepEqual([...seed], [...reference]);
+    assert.equal(seed.length, 32);
+  });
+
+  it("is domain-separated from auth_secret and wrap_key (same ikm/salt, different info — never equal to either)", () => {
+    const idBytes = uuidToBytes(HANDOFF_ID);
+    const masterSecret = randomBytes(32);
+    const { auth_secret, wrap_key } = deriveHandoffSecrets(idBytes, masterSecret);
+    const admissionSeed = deriveWriterAdmissionSeed(idBytes, masterSecret);
+    assert.notDeepEqual([...admissionSeed], [...auth_secret]);
+    assert.notDeepEqual([...admissionSeed], [...wrap_key]);
+  });
+
+  it("mint-side and claim-side derivations agree from the same key (B derives the SAME seed A did)", () => {
+    const idBytes = uuidToBytes(HANDOFF_ID);
+    const masterSecret = randomBytes(32);
+    const a = deriveWriterAdmissionSeed(idBytes, masterSecret);
+    const b = deriveWriterAdmissionSeed(idBytes, masterSecret);
+    assert.deepEqual([...a], [...b]);
+  });
+});
+
+describe("buildWriterAdmissionGrant / verifyWriterAdmissionGrant (design D4/§4.17)", () => {
+  function fixture() {
+    const idBytes = uuidToBytes(HANDOFF_ID);
+    const masterSecret = randomBytes(32);
+    const { auth_hash_hex } = deriveHandoffSecrets(idBytes, masterSecret);
+    const admissionSeed = deriveWriterAdmissionSeed(idBytes, masterSecret);
+    const grantorSeed = randomBytes(32);
+    const grant = buildWriterAdmissionGrant({
+      repo_id: "src_repo",
+      handoff_id: HANDOFF_ID,
+      auth_hash: auth_hash_hex,
+      checkpoint_generation: "0000000000000003",
+      checkpoint_head_sha256: "c".repeat(64),
+      minted_role: "developer",
+      claim_not_after: "2026-09-10T00:00:00.000Z",
+      grantor_signing_seed: grantorSeed,
+      handoff_admission_pubkey: ed25519PublicKey(admissionSeed),
+    });
+    return { idBytes, masterSecret, grantorSeed, grant };
+  }
+
+  it("round-trips: a grant built here verifies under the grantor's own pubkey", () => {
+    const { grantorSeed, grant } = fixture();
+    assert.equal(grant.object_kind, "writer_admission_grant");
+    assert.ok(grant.grantor_writer_key_id.startsWith("vk_"));
+    assert.equal(verifyWriterAdmissionGrant(grant, ed25519PublicKey(grantorSeed)), true);
+  });
+
+  it("refuses verification under a DIFFERENT signing pubkey than the one that signed it", () => {
+    const { grant } = fixture();
+    assert.equal(verifyWriterAdmissionGrant(grant, ed25519PublicKey(randomBytes(32))), false);
+  });
+
+  it("a single-byte tamper on any field invalidates the signature", () => {
+    const { grantorSeed, grant } = fixture();
+    const tampered = { ...grant, minted_role: "owner" as const };
+    assert.equal(verifyWriterAdmissionGrant(tampered, ed25519PublicKey(grantorSeed)), false);
+  });
+
+  it("refuses a grantor_writer_key_id that does not match the supplied verification pubkey (self-consistency)", () => {
+    const { grant } = fixture();
+    const otherPubkey = ed25519PublicKey(randomBytes(32));
+    // Even ignoring the signature check, grantor_writer_key_id itself must equal vkFingerprint(the pubkey passed in).
+    assert.equal(verifyWriterAdmissionGrant(grant, otherPubkey), false);
+  });
+
+  it("refuses malformed field shapes before ever reaching the signature", () => {
+    assert.throws(
+      () =>
+        buildWriterAdmissionGrant({
+          repo_id: "src_repo",
+          handoff_id: HANDOFF_ID,
+          auth_hash: "not-a-sha256",
+          checkpoint_generation: "0000000000000003",
+          checkpoint_head_sha256: "c".repeat(64),
+          minted_role: "developer",
+          claim_not_after: "2026-09-10T00:00:00.000Z",
+          grantor_signing_seed: randomBytes(32),
+          handoff_admission_pubkey: ed25519PublicKey(randomBytes(32)),
+        }),
+      (e: unknown) => (e as { code?: string }).code === "VALIDATION_FAILED" && (e as { details?: { field?: string } }).details?.field === "auth_hash",
+    );
+  });
+});
+
+describe("buildWriterAcceptance / verifyWriterAcceptance (design D4/§4.17 — ONE statement, TWO signatures)", () => {
+  function fixture() {
+    const idBytes = uuidToBytes(HANDOFF_ID);
+    const masterSecret = randomBytes(32);
+    const { auth_hash_hex } = deriveHandoffSecrets(idBytes, masterSecret);
+    const admissionSeed = deriveWriterAdmissionSeed(idBytes, masterSecret);
+    const claimantSigningSeed = randomBytes(32);
+    const claimantEncryptionPubkey = ed25519PublicKey(randomBytes(32)); // stand-in raw 32 bytes; shape only, not a real X25519 key
+    const acceptance = buildWriterAcceptance({
+      handoff_id: HANDOFF_ID,
+      auth_hash: auth_hash_hex,
+      admission_seed: admissionSeed,
+      claimant_signing_seed: claimantSigningSeed,
+      claimant_encryption_pubkey_raw: claimantEncryptionPubkey,
+    });
+    return { admissionSeed, claimantSigningSeed, claimantEncryptionPubkey, acceptance };
+  }
+
+  it("round-trips: both signatures verify under their respective keys", () => {
+    const { admissionSeed, acceptance } = fixture();
+    assert.equal(acceptance.statement.domain, HANDOFF_WRITER_ACCEPT_DOMAIN);
+    assert.equal(verifyWriterAcceptance(acceptance, ed25519PublicKey(admissionSeed)), true);
+  });
+
+  it("the statement binds writer_key_id to signing_pubkey and encryption_fingerprint to encryption_pubkey", () => {
+    const { claimantSigningSeed, claimantEncryptionPubkey, acceptance } = fixture();
+    assert.equal(acceptance.statement.signing_pubkey, toBase64url(ed25519PublicKey(claimantSigningSeed)));
+    assert.equal(acceptance.statement.encryption_fingerprint, ekFingerprint(claimantEncryptionPubkey));
+  });
+
+  it("acceptance_signature and possession_signature are TWO DIFFERENT signatures over the SAME preimage — refuses under the wrong admission key even when possession_signature is fine", () => {
+    const { acceptance } = fixture();
+    assert.equal(verifyWriterAcceptance(acceptance, ed25519PublicKey(randomBytes(32))), false);
+  });
+
+  it("refuses when the statement's signing_pubkey does not match the possession_signature's actual signer (a replayed statement about someone else's key)", () => {
+    const { admissionSeed, acceptance } = fixture();
+    const foreignPubkey = toBase64url(ed25519PublicKey(randomBytes(32)));
+    const tampered = { ...acceptance, statement: { ...acceptance.statement, signing_pubkey: foreignPubkey } };
+    // writer_key_id no longer derives from signing_pubkey, so this must fail before any signature check even matters.
+    assert.equal(verifyWriterAcceptance(tampered, ed25519PublicKey(admissionSeed)), false);
+  });
+
+  it("a tamper on any statement field invalidates BOTH signatures (they cover the same bytes)", () => {
+    const { admissionSeed, acceptance } = fixture();
+    const tampered = { ...acceptance, statement: { ...acceptance.statement, handoff_id: randomUUID() } };
+    assert.equal(verifyWriterAcceptance(tampered, ed25519PublicKey(admissionSeed)), false);
+  });
+
+  it("refuses a wrong domain on the statement (a different signed-object family entirely)", () => {
+    const { admissionSeed, acceptance } = fixture();
+    const tampered = { ...acceptance, statement: { ...acceptance.statement, domain: "r402s/v0/something-else" as typeof HANDOFF_WRITER_ACCEPT_DOMAIN } };
+    assert.equal(verifyWriterAcceptance(tampered, ed25519PublicKey(admissionSeed)), false);
+  });
+});
+
 describe("sealHandoffEnvelope / openHandoffEnvelope", () => {
   const idBytes = uuidToBytes(HANDOFF_ID);
   const payload: HandoffEnvelopePayload = {
@@ -188,6 +347,62 @@ describe("sealHandoffEnvelope / openHandoffEnvelope", () => {
     const bytes = Buffer.from(sealed.sealed_envelope, "base64");
     assert.deepEqual(openHandoffEnvelope(idBytes, wrap_key, bytes.toString("base64url"), sealed.envelope_kind), payload);
     assert.deepEqual(openHandoffEnvelope(idBytes, wrap_key, sealed.sealed_envelope.replace(/=+$/, ""), sealed.envelope_kind), payload);
+  });
+});
+
+describe("sealHandoffEnvelopeV2 / openHandoffEnvelopeV2 (gitvault-multi-writer D4 — 'no hash cycle: grant first, then seal')", () => {
+  const idBytes = uuidToBytes(HANDOFF_ID);
+  const payloadV2: HandoffEnvelopePayloadV2 = {
+    v: 2, kind: "handoff", repo_id: "repo_abc", epoch: "0000000000000001",
+    k_e_hex: "aa".repeat(32), checkpoint: { generation: "0000000000000002", commit_oid: "b".repeat(40) },
+    note_schema: "kygit.handoff-note.v1",
+    writer_admission_grant_sha256: "d".repeat(64),
+  };
+
+  it("round-trips under the correct wrap_key, tagged kygit-handoff-envelope-v2", () => {
+    const { wrap_key } = deriveHandoffSecrets(idBytes, randomBytes(32));
+    const sealed = sealHandoffEnvelopeV2(idBytes, wrap_key, payloadV2);
+    assert.equal(sealed.envelope_kind, HANDOFF_ENVELOPE_V2_KIND);
+    const opened = openHandoffEnvelopeV2(idBytes, wrap_key, sealed.sealed_envelope, sealed.envelope_kind);
+    assert.deepEqual(opened, payloadV2);
+  });
+
+  it("refuses to build with a malformed writer_admission_grant_sha256", () => {
+    assert.throws(
+      () => sealHandoffEnvelopeV2(idBytes, randomBytes(32), { ...payloadV2, writer_admission_grant_sha256: "not-a-sha256" }),
+      (e: unknown) => (e as { code?: string }).code === "VALIDATION_FAILED",
+    );
+  });
+
+  it("a v1-tagged envelope is refused HANDOFF_ENVELOPE_UNSUPPORTED by openHandoffEnvelopeV2, WITHOUT even attempting to decrypt it", () => {
+    const { wrap_key } = deriveHandoffSecrets(idBytes, randomBytes(32));
+    const v1Payload: HandoffEnvelopePayload = { v: 1, kind: "handoff", repo_id: "repo_abc", epoch: "0000000000000001", k_e_hex: "aa".repeat(32), checkpoint: { generation: "0000000000000002", commit_oid: "b".repeat(40) }, note_schema: "kygit.handoff-note.v1" };
+    const sealedV1 = sealHandoffEnvelope(idBytes, wrap_key, v1Payload);
+    assert.throws(
+      // Even under a WRONG key, the refusal is HANDOFF_ENVELOPE_UNSUPPORTED,
+      // never HANDOFF_AEAD_AUTH_FAILURE — proving the version check runs
+      // strictly before any AEAD attempt, exactly as documented.
+      () => openHandoffEnvelopeV2(idBytes, randomBytes(32), sealedV1.sealed_envelope, sealedV1.envelope_kind),
+      (e: unknown) => (e as { code?: string }).code === "HANDOFF_ENVELOPE_UNSUPPORTED" && (e as { details?: { received?: string; required?: string } }).details?.received === HANDOFF_ENVELOPE_KIND && (e as { details?: { received?: string; required?: string } }).details?.required === HANDOFF_ENVELOPE_V2_KIND,
+    );
+  });
+
+  it("openHandoffEnvelope (v1) refuses a v2 payload's SHAPE even when the AAD/kind matches and AEAD succeeds — v:2 is not v:1, and that mismatch is the whole point of the field", () => {
+    const { wrap_key } = deriveHandoffSecrets(idBytes, randomBytes(32));
+    const sealed = sealHandoffEnvelopeV2(idBytes, wrap_key, payloadV2);
+    assert.throws(
+      () => openHandoffEnvelope(idBytes, wrap_key, sealed.sealed_envelope, sealed.envelope_kind),
+      (e: unknown) => (e as { code?: string }).code === "HANDOFF_ENVELOPE_INVALID",
+    );
+  });
+
+  it("v1 and v2 envelopes of the SAME handoff_id are cryptographically distinct (different AAD) — a v2 open under the v1 tag fails AEAD, not just a version mismatch", () => {
+    const { wrap_key } = deriveHandoffSecrets(idBytes, randomBytes(32));
+    const sealed = sealHandoffEnvelopeV2(idBytes, wrap_key, payloadV2);
+    assert.throws(
+      () => openHandoffEnvelope(idBytes, wrap_key, sealed.sealed_envelope, HANDOFF_ENVELOPE_KIND),
+      (e: unknown) => (e as { code?: string }).code === "HANDOFF_AEAD_AUTH_FAILURE",
+    );
   });
 });
 
