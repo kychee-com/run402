@@ -59,6 +59,23 @@ import type { NextAction } from "../errors.js";
  * (a `git push` runs several verbs) reconciles and enrolls once.
  */
 const SESSION_RECONCILED = new Set<string>();
+
+/**
+ * Round 3 blocker 2: integrity verdicts must PROPAGATE through every
+ * best-effort reconcile boundary — converting tampering evidence into
+ * `skipped_error` at the outer catch is exactly the swallow the inner
+ * verifier exists to prevent. Availability and local-policy failures stay
+ * best-effort.
+ */
+const RECONCILE_FATAL_CODES = new Set([
+  "GITVAULT_ENVELOPE_ALTERED",
+  "GITVAULT_SIGNATURE_INVALID",
+  "VAULT_CREATION_CONFLICT",
+]);
+
+function rethrowFatalReconcile(e: unknown): void {
+  if (isRun402Error(e) && RECONCILE_FATAL_CODES.has(String((e as { code?: string }).code))) throw e;
+}
 /** The cold open's own verdicts — surfaced from `open()`; anything else leaves the handle lazy (see `open`). */
 import type { GitvaultCaptureReceipt, GitvaultHeadsListingPage, GitvaultHeadsListingRequest, GitvaultHeadTarget, GitvaultOpenReceipt, GitvaultRecipientConfirmationReceipt, GitvaultRecoveryReceipt, GitvaultRotationReason } from "./gitvault.types.js";
 import type {
@@ -1489,6 +1506,7 @@ export class Gitvault {
           reconcileRecipients = { attempted: true, outcome: "reconciled", result };
           SESSION_RECONCILED.add(sessionKey);
         } catch (e) {
+          rethrowFatalReconcile(e);
           reconcileRecipients = { attempted: true, outcome: "skipped_error", error: e instanceof Error ? e.message : String(e) };
         }
       }
@@ -2780,12 +2798,13 @@ export class Gitvault {
     }
   }
 
-  /** Best-effort envelope-recipient reconcile: catches EVERYTHING so a reconcile problem can never surface as a `push()` throw (mirrors {@link #tryMirrorPush}'s contract exactly). */
+  /** Best-effort envelope-recipient reconcile: availability and local-policy failures never surface as a `push()` throw (mirroring {@link #tryMirrorPush}), but INTEGRITY verdicts do — `RECONCILE_FATAL_CODES` propagates tampering evidence instead of demoting it to `skipped_error` (round 3 blocker 2). */
   async #tryReconcileEnvelopeRecipients(vault: import("../node/gitvault-publication.js").GitvaultVault): Promise<GitvaultReconcileEnvelopeRecipientsPushResult> {
     try {
       const result = await vault.reconcileEnvelopeRecipients();
       return { attempted: true, outcome: "reconciled", result };
     } catch (e) {
+      rethrowFatalReconcile(e);
       return { attempted: false, outcome: "skipped_error", error: e instanceof Error ? e.message : String(e) };
     }
   }
