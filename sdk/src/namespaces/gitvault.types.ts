@@ -625,8 +625,16 @@ export type GitvaultStrictParseReason =
 
 // ─── Epoch rotation (D193-D203, rev 42, change gitvault-human-envelopes) ───
 
-/** The four `rotate_epoch_payload.reason` values (D199) — three urgent + one elective. */
-export type GitvaultRotationReason = "member_removed" | "recipient_key_revoked" | "epoch_secret_exposed" | "elective_rekey";
+/**
+ * The `rotate_epoch_payload.reason` values (D199) — four urgent + one
+ * elective. `writer_key_revoked` (D6/D227, gitvault-multi-writer rev 47,
+ * task 5.9) is the NEW owner + step-up reason for a DELIBERATE, caller-
+ * initiated writer-key removal — distinct from `recipient_key_revoked`
+ * (the pre-existing ENCRYPTION-side reason) and from the reasons carried
+ * per-entry on `writer_set_update.removed[]` (a narrower 3-value vocabulary
+ * — see that field's own doc comment below).
+ */
+export type GitvaultRotationReason = "member_removed" | "recipient_key_revoked" | "epoch_secret_exposed" | "elective_rekey" | "writer_key_revoked";
 
 /**
  * `rotation_attempt_descriptor` (schema `rotation_attempt_descriptor.json`,
@@ -653,6 +661,17 @@ export interface GitvaultRotationAttemptDescriptor {
   client_idempotency_key: string;
   /** `HMAC-SHA-256(K_digest("epoch_rotation_attempt"), JCS(this object's own fields minus this field), ikm=K_e)`. */
   attempt_key_commitment: string;
+  /**
+   * D227 (rev 47, gitvault-multi-writer, task 5.9, NEW fields).
+   * SCHEMA-OPTIONAL, present together IFF this attempt's co-riding
+   * `rotate_epoch_payload` carries a `writer_set_update` — frozen at THIS
+   * attempt's own admission fence, the SAME D194 discipline
+   * `recipient_state_version`/`recipient_revocation_version` already get,
+   * extended to the writer dimension.
+   */
+  writer_revocation_version?: string;
+  writer_set_base_sha256?: string;
+  writer_set_next_sha256?: string;
   writer_key_id: string;
   signature: string;
 }
@@ -750,7 +769,15 @@ export interface GitvaultRotateEpochPayload {
     base_sha256: string;
     next_version: string;
     next_sha256: string;
-    removed: { writer_key_id: string; principal_id: string; reason: string }[];
+    /**
+     * A NARROWER 3-value vocabulary than {@link GitvaultRotationReason}
+     * above (this rotation's own top-level `reason`) — the gateway's
+     * `writer_set_update` schema (`common.json#/$defs/writer_set_update`)
+     * accepts only these three per-removed-writer reasons, deliberately
+     * excluding the encryption-only/elective top-level values that make no
+     * sense for a WRITER removal.
+     */
+    removed: { writer_key_id: string; principal_id: string; reason: "member_removed" | "writer_key_revoked" | "epoch_secret_exposed" }[];
     writers: { writer_key_id: string; signing_pubkey: string }[];
   };
 }

@@ -156,6 +156,7 @@ import {
   validateWriterSetUpdate,
   writerKeyIdOf,
   type WriterChainState,
+  type WriterSetUpdatePayload,
 } from "./gitvault-writer-state.js";
 // Type-only: erased at build, so the prune module stays a LEAF (it imports the
 // crypto core and nothing from here) and no runtime import cycle exists.
@@ -1334,6 +1335,17 @@ export interface GitvaultVaultRecord {
   ineligible_members?: GitvaultVaultIneligibleMember[];
   /** `gitvault_vaults.read_only_terminal_at IS NOT NULL` — the D228 forced sole-writer-removal terminal state: no further writer-authenticated push is admissible. Absent (never `undefined`-checked as `true`) on an older gateway — treat as `false`. */
   read_only_terminal?: boolean;
+  /**
+   * gitvault-multi-writer (rev 47) D6/D227, task 5.9 — decimal-string
+   * uint64 counter, bumped by the gateway every time a membership/role/key
+   * change gateway-blocks one or more writer keys. A client building a
+   * `writer_set_update` freezes THIS value into `rotation_attempt_
+   * descriptor.writer_revocation_version` at its own admission fence —
+   * there is no writer-side "declare" round-trip (unlike the encryption
+   * side's `declareRecipientKeyRevoked`), so this read is the only source.
+   * Absent on an older gateway that predates this field.
+   */
+  writer_revocation_version?: string;
   warnings: { kind: string; message: string }[];
   created_at: string | null;
   /**
@@ -2755,6 +2767,15 @@ export interface GitvaultRotationResult {
    * rotation (or the next ordinary push, once the flag clears).
    */
   pin_manifest_published: { pin_manifest_version: string; stored_bytes_sha256: string; principal_ids: string[] } | null;
+  /**
+   * gitvault-multi-writer (task 5.9, D6/D227) — writer keys this SAME head
+   * removed via a folded `writer_set_update`, each with the reason it was
+   * removed for. Empty (never omitted) when nothing needed removing — the
+   * common case, matching `excluded_keyless_principal_ids`' own
+   * always-present-possibly-empty shape rather than `pin_manifest_published`'s
+   * `| null`.
+   */
+  writers_removed: { writer_key_id: string; principal_id: string; reason: "member_removed" | "writer_key_revoked" | "epoch_secret_exposed" }[];
 }
 
 /**
@@ -5187,7 +5208,27 @@ export class GitvaultVault {
    * currently-open protocol gap (not something this parameter can paper
    * over) and needs an operator-side decision, not a client workaround.
    */
-  async rotateEpoch(options: { reason: GitvaultRotationReason; recipient_state_version: string; recipient_revocation_version: string; client_idempotency_key?: string; ikm_e?: Uint8Array; pending_confirmations?: { principal_id: string; ek_fingerprint: string; receipt: GitvaultRecipientConfirmationReceipt }[] }): Promise<GitvaultRotationResult> {
+  async rotateEpoch(options: {
+    reason: GitvaultRotationReason;
+    recipient_state_version: string;
+    recipient_revocation_version: string;
+    client_idempotency_key?: string;
+    ikm_e?: Uint8Array;
+    pending_confirmations?: { principal_id: string; ek_fingerprint: string; receipt: GitvaultRecipientConfirmationReceipt }[];
+    /**
+     * gitvault-multi-writer (task 5.9, D7/D228) — an outstanding
+     * gateway-blocked writer set (`ineligible_members`, checked fresh on
+     * every call — see the `writer_set_update` fold-in below) is ALWAYS
+     * folded into this rotation automatically; this flag is the EXPLICIT
+     * owner + step-up acknowledgment D7 requires ONLY when that fold-in
+     * would empty the vault's writer set entirely (the sole surviving
+     * writer was itself gateway-blocked) — the declared read-only terminal.
+     * Every OTHER case that would empty the writer set is refused
+     * `EPOCH_ROTATION_WOULD_LEAVE_VAULT_UNCOVERED` regardless of this flag;
+     * it widens nothing beyond that one specific, named exception.
+     */
+    force_empty_writer_set?: boolean;
+  }): Promise<GitvaultRotationResult> {
     let conflicts = 0;
     for (;;) {
       const base = await this.materialize();
@@ -5294,6 +5335,70 @@ export class GitvaultVault {
         excluded_unconfirmed_principal_ids: excludedUnconfirmed,
       });
 
+      // gitvault-multi-writer (task 5.9, D6/D227) — fold in a writer_set_update
+      // whenever the gateway's own blocked set (`ineligible_members`, read
+      // fresh) is non-empty. This is what closes D6's "ordinary
+      // admissions... refuse EPOCH_ROTATION_REQUIRED... until a rotate_epoch
+      // carries writer_set_update" deadlock, automatically, on EVERY
+      // rotation regardless of `options.reason` — the SAME "self-healing"
+      // shape `pending_confirmations` already gives the recipient side.
+      //
+      // Deliberately NO caller-supplied "also remove this OTHER writer key"
+      // option: the gateway's own admission rule requires `removed[]` to
+      // equal the gateway-computed blocked set EXACTLY (D6's own words,
+      // confirmed against `validateWriterSetUpdate`'s identical
+      // RECIPIENT_SET_MISMATCH check) — a client-named superset would be
+      // refused, not honored. A genuinely NEW, deliberate writer-key
+      // revocation (the "repos access revoke-key" aspiration this task's
+      // own text names) needs a gateway-side "declare this writer key
+      // revoked" mutation FIRST (the writer-dimension analog of
+      // `declareRecipientKeyRevoked`) to populate `ineligible_members` in
+      // the first place — confirmed absent from every gateway route as of
+      // this task (`grep -rn "declareWriterKeyRevoked|revoke-key"
+      // packages/gateway/src/routes/` — zero hits). That server-side
+      // mutation is real, new, owner+step-up-gated authorization logic, not
+      // a client-side gap this task can close — filed as a residual rather
+      // than half-built against a route that doesn't exist. Once it ships,
+      // this SAME automatic fold-in picks up whatever it gateway-blocks
+      // with zero client changes — the fold-in doesn't care WHY a key
+      // is blocked, only THAT it is.
+      const writerPin = this.repoFile().writer_set_pin;
+      const vaultRecord = await this.transport.getVaultRecord({ repo_id: this.repoId });
+      const ineligible = vaultRecord.ineligible_members ?? [];
+      let writerSetUpdate: NonNullable<GitvaultRotateEpochPayload["writer_set_update"]> | null = null;
+      if (ineligible.length > 0) {
+        if (!writerPin) {
+          fail("GITVAULT_WRITER_STATE_UNAVAILABLE", "no locally verified writer_set_pin for this vault — the chain must be verified (materialize/verifyToNewest) before a writer_set_update can be built against a known base writer set", "computing the writer_set_update");
+        }
+        const predecessorState: WriterChainState = { version: writerPin.version, writers: writerPin.writers, sha256: writerPin.sha256, burnedWriterKeyIds: new Set(), consumedHandoffIds: new Set() };
+        // A rotation's own top-level `reason:"epoch_secret_exposed"` is the
+        // one unambiguous signal worth carrying down to each removed entry
+        // (a genuinely distinct, meaningful narrative); everything else —
+        // including the gateway's own finer-grained `ineligible_members[].
+        // reason` taxonomy (membership_revoked/role_below_developer/
+        // encryption_key_revoked/gateway_blocked_pending_removal), which
+        // has no clean mapping onto this field's narrower 3-value wire
+        // vocabulary — collapses to the safe, generic "member_removed".
+        const perEntryReason: "member_removed" | "epoch_secret_exposed" = options.reason === "epoch_secret_exposed" ? "epoch_secret_exposed" : "member_removed";
+        const removed = ineligible.map((m) => ({ writer_key_id: m.writer_key_id, principal_id: m.principal_id, reason: perEntryReason }));
+        const removedIds = removed.map((r) => r.writer_key_id);
+        const nextState = applyWriterSetUpdate(this.repoId, predecessorState, removedIds);
+        const update: WriterSetUpdatePayload = {
+          base_version: writerPin.version, base_sha256: writerPin.sha256,
+          next_version: nextState.version, next_sha256: nextState.sha256,
+          removed, writers: nextState.writers,
+        };
+        const wsuCheck = validateWriterSetUpdate(
+          this.repoId, predecessorState, update, this.writerKeyId(),
+          new Set(removedIds),
+          options.force_empty_writer_set === true,
+        );
+        if (!wsuCheck.ok) {
+          fail(wsuCheck.code, `internal: the writer_set_update this producer built is not valid (${wsuCheck.detail}) — refusing to submit a rotation the gateway would refuse`, "computing the writer_set_update", { removed: removedIds });
+        }
+        writerSetUpdate = { base_version: update.base_version, base_sha256: update.base_sha256, next_version: update.next_version, next_sha256: update.next_sha256, removed, writers: [...update.writers] };
+      }
+
       // D195: build + sign the rotation_attempt_descriptor, derive rotation_id, submit the create-only CAS BEFORE any envelope upload.
       const clientIdempotencyKey = options.client_idempotency_key ?? newHex32();
       const descriptorFields = {
@@ -5302,6 +5407,8 @@ export class GitvaultVault {
         recipient_state_version: options.recipient_state_version, recipient_revocation_version: options.recipient_revocation_version,
         pin_manifest_sha256: pinManifest.pinManifestSha256, target_partition_digest: targetPartitionDigest,
         client_idempotency_key: clientIdempotencyKey, writer_key_id: this.writerKeyId(),
+        // D227 (rev 47): present together IFF this rotation carries a writer_set_update — frozen at THIS attempt's own admission fence, mirroring recipient_state_version/recipient_revocation_version's existing discipline.
+        ...(writerSetUpdate ? { writer_revocation_version: vaultRecord.writer_revocation_version ?? "0", writer_set_base_sha256: writerSetUpdate.base_sha256, writer_set_next_sha256: writerSetUpdate.next_sha256 } : {}),
       };
       const attemptCommitment = attemptKeyCommitment(kE, this.repoId, newEpoch, descriptorFields);
       const signedDescriptor = signGitvaultObject({ ...descriptorFields, attempt_key_commitment: attemptCommitment }, this.signer()) as GitvaultRotationAttemptDescriptor;
@@ -5331,6 +5438,8 @@ export class GitvaultVault {
         pin_manifest_sha256: pinManifest.pinManifestSha256, target_partition_digest: targetPartitionDigest,
         epoch_key_commitment: epochKeyCommitmentValue, excluded_keyless_principal_ids: excludedKeyless, excluded_unconfirmed_principal_ids: excludedUnconfirmed,
         recipient_authority_attestation: null, envelopes: sealedReceipts,
+        // gitvault-multi-writer (task 5.9, D227): present IFF this rotation ALSO removes one or more writers.
+        ...(writerSetUpdate ? { writer_set_update: writerSetUpdate } : {}),
       };
 
       // D209 (rev 44) — round-trip THIS principal's own new-epoch
@@ -5459,6 +5568,13 @@ export class GitvaultVault {
       if (pinManifestFold) {
         this.keystore.updateRepo(this.repoId, { known_pin_manifest: { pin_manifest_version: pinManifestFold.nextVersion, stored_bytes_sha256: pinManifestFold.manifestSha, pins: pinManifestFold.pins } });
       }
+      // gitvault-multi-writer (task 5.9) — the SAME local-pin advance
+      // #publishAddWriterKeyTransition performs on ITS success path: this
+      // head just admitted a writer_set_update, so the locally-pinned
+      // writer set is now stale until refreshed here.
+      if (writerSetUpdate) {
+        this.keystore.updateRepo(this.repoId, { writer_set_pin: { version: writerSetUpdate.next_version, sha256: writerSetUpdate.next_sha256, writers: [...writerSetUpdate.writers], pinned_at: formatGitvaultTimestamp(this.now()) } });
+      }
 
       return {
         outcome: "admitted", generation, head_sha256: admitted.head_sha256, new_epoch: newEpoch, rotation_id: rotationId, reason: options.reason,
@@ -5466,6 +5582,7 @@ export class GitvaultVault {
         excluded_keyless_principal_ids: excludedKeyless, excluded_unconfirmed_principal_ids: excludedUnconfirmed,
         admission_record_sha256: admitted.admission_record_sha256, capture_receipt: admitted.capture_receipt, self_check: selfCheck,
         pin_manifest_published: pinManifestFold ? { pin_manifest_version: pinManifestFold.nextVersion, stored_bytes_sha256: pinManifestFold.manifestSha, principal_ids: pendingConfirmations.map((p) => p.principal_id) } : null,
+        writers_removed: writerSetUpdate ? writerSetUpdate.removed.map((r) => ({ writer_key_id: r.writer_key_id, principal_id: r.principal_id, reason: r.reason })) : [],
       };
     }
   }

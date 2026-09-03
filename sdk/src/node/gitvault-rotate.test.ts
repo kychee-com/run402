@@ -664,3 +664,100 @@ describe("epoch rotation — D209 self_open_attestation (rev 44)", () => {
     }
   });
 });
+
+/**
+ * gitvault-multi-writer (task 5.9, D6/D227) — the writer_set_update fold-in:
+ * `rotateEpoch` checks `ineligible_members` (the vault record's own
+ * gateway-blocked-writer read, mocked here via `transport.vaultRecord`) on
+ * EVERY call and folds a `writer_set_update` in automatically whenever it is
+ * non-empty — the SAME "self-healing" shape `pending_confirmations` already
+ * gives the recipient-side EPOCH_ROTATION_REQUIRED deadlock.
+ */
+describe("epoch rotation — writer_set_update fold-in (gitvault-multi-writer task 5.9)", () => {
+  it("an empty ineligible_members set is byte-identical to pre-5.9 behavior: no writer_set_update on the wire, writers_removed: [] on the result", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "run402-gitvault-rotate-wsu-noop-"));
+    try {
+      const { transport, vault } = await makeVault(dir);
+      const orgId = (await vault.transport.getVaultRecord({ repo_id: vault.repoId })).org_id;
+      const identity = vault.keystore.ensureIdentity();
+      const ownEk = ekFingerprint((vault.keystore.encryptionKeypair(identity)!).public_key);
+      transport.desiredRecipients.set(orgId, [
+        { principal_id: "principal_1", display_name: "Creator", status: "active", ek_fingerprint: ownEk, public_key: Buffer.from((vault.keystore.encryptionKeypair(identity)!).public_key).toString("base64url"), suite: "r402s-1", covered: false },
+      ]);
+      await bootstrapPin(vault, "principal_1", ownEk);
+
+      const result = await vault.rotateEpochForKeyRevocation("principal_1");
+      assert.equal(result.outcome, "admitted");
+      assert.deepEqual(result.writers_removed, []);
+
+      const payload = await readAdmittedRotatePayload(transport, vault.repoId, result.generation);
+      assert.equal((payload as { writer_set_update?: unknown }).writer_set_update, undefined, "writer_set_update is OMITTED, never an empty object, when there is nothing to remove");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("the sole writer's own key gateway-blocked: refused EPOCH_ROTATION_WOULD_LEAVE_VAULT_UNCOVERED without force_empty_writer_set; succeeds to an empty writer set WITH it", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "run402-gitvault-rotate-wsu-sole-"));
+    try {
+      const { transport, vault } = await makeVault(dir);
+      const orgId = (await vault.transport.getVaultRecord({ repo_id: vault.repoId })).org_id;
+      const identity = vault.keystore.ensureIdentity();
+      const ownEk = ekFingerprint((vault.keystore.encryptionKeypair(identity)!).public_key);
+      transport.desiredRecipients.set(orgId, [
+        { principal_id: "principal_1", display_name: "Creator", status: "active", ek_fingerprint: ownEk, public_key: Buffer.from((vault.keystore.encryptionKeypair(identity)!).public_key).toString("base64url"), suite: "r402s-1", covered: false },
+      ]);
+      await bootstrapPin(vault, "principal_1", ownEk);
+
+      const myWriterKeyId = identity.signing_fingerprint;
+      transport.vaultRecord = { ineligible_members: [{ principal_id: "principal_1", writer_key_id: myWriterKeyId, gateway_blocked_at: "2026-09-03T00:00:00.000Z", reason: "membership_revoked" }], writer_revocation_version: "3" };
+
+      await assert.rejects(
+        vault.rotateEpochForKeyRevocation("principal_1"),
+        (e: unknown) => (e as { code?: string }).code === "EPOCH_ROTATION_WOULD_LEAVE_VAULT_UNCOVERED",
+      );
+      assert.equal(transport.newestGeneration(vault.repoId), "0000000000000001", "the refused attempt admitted no head");
+
+      const result = await vault.rotateEpoch({ reason: "writer_key_revoked", recipient_state_version: "1", recipient_revocation_version: "1", force_empty_writer_set: true });
+      assert.equal(result.outcome, "admitted");
+      assert.deepEqual(result.writers_removed, [{ writer_key_id: myWriterKeyId, principal_id: "principal_1", reason: "member_removed" }]);
+
+      const payload = await readAdmittedRotatePayload(transport, vault.repoId, result.generation);
+      const wsu = (payload as { writer_set_update?: { writers: unknown[]; removed: unknown[] } }).writer_set_update;
+      assert.ok(wsu, "writer_set_update is present on the wire");
+      assert.deepEqual(wsu!.writers, [], "the next writer set is genuinely empty — the read-only terminal");
+
+      // The local writer_set_pin advanced to reflect the empty set too.
+      const pin = vault.keystore.readRepo(vault.repoId)!.writer_set_pin;
+      assert.deepEqual(pin!.writers, []);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("epoch_secret_exposed carries its reason down to each removed writer entry; every other top-level reason collapses to member_removed", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "run402-gitvault-rotate-wsu-reason-"));
+    try {
+      const { transport, vault } = await makeVault(dir);
+      const orgId = (await vault.transport.getVaultRecord({ repo_id: vault.repoId })).org_id;
+      const identity = vault.keystore.ensureIdentity();
+      const ownEk = ekFingerprint((vault.keystore.encryptionKeypair(identity)!).public_key);
+      transport.desiredRecipients.set(orgId, [
+        { principal_id: "principal_1", display_name: "Creator", status: "active", ek_fingerprint: ownEk, public_key: Buffer.from((vault.keystore.encryptionKeypair(identity)!).public_key).toString("base64url"), suite: "r402s-1", covered: false },
+      ]);
+      await bootstrapPin(vault, "principal_1", ownEk);
+      const myWriterKeyId = identity.signing_fingerprint;
+      transport.vaultRecord = { ineligible_members: [{ principal_id: "principal_1", writer_key_id: myWriterKeyId, gateway_blocked_at: "2026-09-03T00:00:00.000Z", reason: "encryption_key_revoked" }], writer_revocation_version: "1" };
+
+      // Fresh counters the SAME way rotateEpochForKeyRevocation gets them
+      // internally — an arbitrary literal "1" is what left this test racing
+      // the fixture's own desired-recipient-state counter (RECIPIENT_SET_
+      // MISMATCH), unrelated to the writer_set_update logic under test.
+      const counters = await transport.declareRecipientKeyRevoked({ repo_id: vault.repoId, principal_id: "principal_1" });
+      const result = await vault.rotateEpoch({ reason: "epoch_secret_exposed", recipient_state_version: counters.recipient_state_version, recipient_revocation_version: counters.recipient_revocation_version, force_empty_writer_set: true });
+      assert.equal(result.writers_removed[0]!.reason, "epoch_secret_exposed", "the top-level reason's own security-incident signal reaches the per-entry reason");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
