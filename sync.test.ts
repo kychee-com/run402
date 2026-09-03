@@ -1803,6 +1803,17 @@ describe("SDK surface alignment", () => {
       // best-effort, from `push`/`deploy`'s own hooks.
       "gitvault.verify",
       "gitvault.reconcileEnvelopeRecipients",
+      // gitvault-multi-writer (rev 47) task 5.7 — the writer-admission twin
+      // of `reconcileEnvelopeRecipients` above, but UNLIKE that permanently
+      // CLI-less sibling this one is TEMPORARILY uncovered: its CLI/MCP
+      // surface is task 6.x (openspec/changes/gitvault-multi-writer tasks.md
+      // §6 — `org members add`'s writer+envelope reconcile and `repos access
+      // sync`'s new tail are both planned to compose it, likely without a
+      // standalone verb of its own, mirroring how `gitvault.compactHeadroom`
+      // above composes into `repos gc` rather than getting its own spelling)
+      // — reachable via `r.gitvault.reconcile()` in the meantime. Remove
+      // this entry once §6 lands and references it from SDK_BY_CAPABILITY.
+      "gitvault.reconcile",
       // ─── function-runtime-rebuild (v1.69) — project-wide variant ──────────
       // `functions.rebuild` (single) is the canonical capability; `rebuildAll`
       // shares the `run402 functions rebuild --all` CLI verb (and the
