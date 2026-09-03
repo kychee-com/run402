@@ -1729,3 +1729,31 @@ export function computeKeystorePossessionProof(input: {
   const message = concatBytes(utf8ToBytes(GITVAULT_KEYSTORE_POSSESSION_PREFIX), utf8ToBytes(jcs));
   return toBase64url(hmac(sha256, shared, message));
 }
+
+/**
+ * gitvault-multi-writer rev 47 (design D9) — the writer-signing-key
+ * possession message. Byte-identical to the gateway's own
+ * `signingKeyPossessionMessage` (services/principal-encryption-keys.ts) —
+ * `JSON.stringify({domain, principal_id, signing_pubkey, encryption_pubkey})`
+ * in EXACTLY this field order, verified by reading that function's source
+ * directly rather than trusting its own comment (which claims "sorted
+ * keys" — this order is NOT alphabetically sorted; only the byte-for-byte
+ * match to what the gateway actually re-derives at verify time matters, and
+ * `JSON.stringify` is deterministic for a fixed insertion order regardless
+ * of whether that order happens to be alphabetical). Deliberately plain
+ * `JSON.stringify`, not `jcs()` — the RFC 8785 canonicalizer would SORT
+ * these four keys into a DIFFERENT order (`domain, encryption_pubkey,
+ * principal_id, signing_pubkey`) and silently produce a signature that
+ * never verifies.
+ */
+export const GITVAULT_SIGNING_KEY_POSSESSION_DOMAIN = "r402s/v0/signing-key-possession/v1";
+
+export function signingKeyPossessionMessage(fields: { principal_id: string; signing_pubkey: string; encryption_pubkey: string }): Uint8Array {
+  const json = JSON.stringify({ domain: GITVAULT_SIGNING_KEY_POSSESSION_DOMAIN, principal_id: fields.principal_id, signing_pubkey: fields.signing_pubkey, encryption_pubkey: fields.encryption_pubkey });
+  return utf8ToBytes(json);
+}
+
+/** Ed25519 signature over {@link signingKeyPossessionMessage} — proves possession of the signing half's private key over this specific (principal, signing key, encryption key) binding. */
+export function computeSigningKeyPossessionSignature(input: { signing_seed: Uint8Array; principal_id: string; signing_pubkey: string; encryption_pubkey: string }): string {
+  return toBase64url(ed25519Sign(signingKeyPossessionMessage(input), input.signing_seed));
+}

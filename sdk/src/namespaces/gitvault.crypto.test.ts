@@ -662,3 +662,43 @@ describe("computeKeystorePossessionProof (gitvault-agent-envelopes D2)", () => {
     assert.notEqual(other, proof);
   });
 });
+
+// ── gitvault-multi-writer: signing-key possession proof (client half, D9) ──
+import { GITVAULT_SIGNING_KEY_POSSESSION_DOMAIN, computeSigningKeyPossessionSignature, signingKeyPossessionMessage } from "./gitvault.crypto.js";
+import { ed25519 as _ed25519 } from "@noble/curves/ed25519.js";
+
+describe("computeSigningKeyPossessionSignature (gitvault-multi-writer D9)", () => {
+  it("reproduces the gateway's JSON.stringify({domain, principal_id, signing_pubkey, encryption_pubkey}) preimage byte-for-byte — field order matters, this is NOT jcs()", () => {
+    // The gateway side, inline (packages/gateway/src/services/principal-encryption-keys.ts
+    // signingKeyPossessionMessage): a plain JSON.stringify in this EXACT,
+    // hand-written field order. It is deliberately NOT RFC-8785 jcs() —
+    // using this file's own jcs() here would sort `encryption_pubkey`
+    // before `signing_pubkey` and silently produce a signature the
+    // gateway's own re-derivation would never verify.
+    const seed = new Uint8Array(32).fill(5);
+    const signingPub = Buffer.from(_ed25519.getPublicKey(seed)).toString("base64url");
+    const encryptionPub = Buffer.from(_x25519.getPublicKey(new Uint8Array(32).fill(7))).toString("base64url");
+    const principalId = "prin_alice";
+    const expectedJson = `{"domain":"${GITVAULT_SIGNING_KEY_POSSESSION_DOMAIN}","principal_id":"${principalId}","signing_pubkey":"${signingPub}","encryption_pubkey":"${encryptionPub}"}`;
+    const message = signingKeyPossessionMessage({ principal_id: principalId, signing_pubkey: signingPub, encryption_pubkey: encryptionPub });
+    assert.equal(Buffer.from(message).toString("utf8"), expectedJson);
+    assert.equal(GITVAULT_SIGNING_KEY_POSSESSION_DOMAIN, "r402s/v0/signing-key-possession/v1");
+
+    const expectedSig = Buffer.from(_ed25519.sign(message, seed)).toString("base64url");
+    const proof = computeSigningKeyPossessionSignature({ signing_seed: seed, principal_id: principalId, signing_pubkey: signingPub, encryption_pubkey: encryptionPub });
+    assert.equal(proof, expectedSig);
+
+    // And it is a REAL signature the gateway's own verifier accepts: it
+    // must check out against ed25519 verify over the exact message bytes,
+    // not merely match this file's own (re-)computation.
+    assert.equal(ed25519VerifyStrict(fromBase64url(proof), message, fromBase64url(signingPub)), true);
+
+    // Binding is real: a different signing seed cannot reproduce it, and a
+    // signature over someone else's principal_id does not verify here.
+    const otherSeed = new Uint8Array(32).fill(9);
+    const otherProof = computeSigningKeyPossessionSignature({ signing_seed: otherSeed, principal_id: principalId, signing_pubkey: signingPub, encryption_pubkey: encryptionPub });
+    assert.notEqual(otherProof, proof);
+    const wrongPrincipalProof = computeSigningKeyPossessionSignature({ signing_seed: seed, principal_id: "prin_mallory", signing_pubkey: signingPub, encryption_pubkey: encryptionPub });
+    assert.equal(ed25519VerifyStrict(fromBase64url(wrongPrincipalProof), message, fromBase64url(signingPub)), false);
+  });
+});

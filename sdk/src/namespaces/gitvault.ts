@@ -43,6 +43,7 @@ import {
   GITVAULT_UNMIRRORED_FINDING_STATEMENT,
   bytesToHex,
   computeKeystorePossessionProof,
+  computeSigningKeyPossessionSignature,
   hexToBytes,
   parseGitvaultStrict,
   randomBytes,
@@ -525,9 +526,23 @@ export interface GitvaultSessionReconcileResult {
 
 /** The enroll-if-absent step's outcome (gitvault-agent-envelopes D3). Never a rotation. */
 export interface GitvaultEnrollmentOutcome {
-  /** `already_active`: the directory holds this keystore's key. `enrolled`: published + possession-proven in this call. `activated_pending`: an earlier unfinished publish was completed. `skipped_no_identity`: no local keystore identity (nothing to enroll — vault creation mints one). `skipped_no_principal`: whoami resolved no enrolling principal (e.g. a service key). `skipped_not_enrollable`: the principal's type is not custody-eligible (ci/system) — no identity is minted. `skipped_error`: whoami/publish/activate failed (older gateway, transport) — the verb still ran, but custody continuity is UNVERIFIED, so no automatic reconcile follows; `error` says why. */
-  outcome: "already_active" | "enrolled" | "activated_pending" | "skipped_no_identity" | "skipped_no_principal" | "skipped_not_enrollable" | "skipped_error";
+  /** `already_active`: the directory holds this keystore's key (BOTH halves current — encryption active AND signing_fingerprint already matches, gitvault-multi-writer rev 47). `enrolled`: published + possession-proven in this call. `activated_pending`: an earlier unfinished publish was completed. `signing_republished` (rev 47): the encryption half was ALREADY active and needed no work; only the signing half was (re)published this call — never a rotation, the signing half is always freely republishable. `skipped_no_identity`: no local keystore identity (nothing to enroll — vault creation mints one). `skipped_no_principal`: whoami resolved no enrolling principal (e.g. a service key). `skipped_not_enrollable`: the principal's type is not custody-eligible (ci/system) — no identity is minted. `skipped_error`: whoami/publish/activate failed (older gateway, transport) — the verb still ran, but custody continuity is UNVERIFIED, so no automatic reconcile follows; `error` says why. */
+  outcome: "already_active" | "enrolled" | "activated_pending" | "signing_republished" | "skipped_no_identity" | "skipped_no_principal" | "skipped_not_enrollable" | "skipped_error";
   ek_fingerprint: string | null;
+  /**
+   * gitvault-multi-writer rev 47 (task 5.3) — the keystore's vault-WRITER
+   * signing half, published in the SAME call as the encryption half
+   * whenever this keystore holds a signing seed. `null` when the identity
+   * has no local signing seed (a read-only recovery identity — see
+   * `GitvaultIdentityFile.signing_seed_hex`'s own doc comment) or when the
+   * publish itself was never attempted (`skipped_no_identity`/
+   * `skipped_no_principal`/`skipped_not_enrollable`). UNLIKE the encryption
+   * half, the signing half is NEVER rotation-gated — a differing published
+   * signing key is simply refreshed in place, never a `KEY_ROTATION_REQUIRED`
+   * refusal, so this field's presence says nothing about whether a
+   * publish actually happened this call vs. was already current.
+   */
+  signing_fingerprint: string | null;
   error?: string;
 }
 
@@ -1478,7 +1493,12 @@ export class Gitvault {
     // only when this open VERIFIED custody continuity against the gateway
     // (whoami answered and the current key is this keystore's). A transport
     // fault or unresolved principal is never fail-open into a wrap.
-    const custodyVerified = enrollment.outcome === "already_active" || enrollment.outcome === "enrolled" || enrollment.outcome === "activated_pending";
+    // `signing_republished` (rev 47) belongs in this allowlist too: it is
+    // reached only when the ENCRYPTION half was already active (continuity
+    // already held) and a fresh, gateway-verified Ed25519 possession
+    // signature was just proven for the signing half — strictly MORE
+    // evidence of custody than `already_active` alone, not less.
+    const custodyVerified = enrollment.outcome === "already_active" || enrollment.outcome === "enrolled" || enrollment.outcome === "activated_pending" || enrollment.outcome === "signing_republished";
     // Scoped to what was actually verified: keystore + vault + the exact
     // fingerprint whose continuity this open proved. Marked ONLY after a
     // successful reconcile — a transient failure stays retryable, and a
@@ -1536,7 +1556,7 @@ export class Gitvault {
    */
   async #ensureEnrolled(keystore: GitvaultKeystore): Promise<GitvaultEnrollmentOutcome> {
     let identity = keystore.readIdentity();
-    let whoami: { principal: { id: string; type: string } | null; encryption_key: { encryption_key_id: string; ek_fingerprint: string; custody_scheme: string; state: string } | null };
+    let whoami: { principal: { id: string; type: string } | null; encryption_key: { encryption_key_id: string; ek_fingerprint: string; custody_scheme: string; state: string; signing_fingerprint?: string | null; signing_possession_verified_at?: string | null } | null };
     try {
       whoami = await this.#client.request("/agent/v1/whoami", { context: "resolving the enrolling principal" });
     } catch (e) {
@@ -1545,16 +1565,16 @@ export class Gitvault {
       // (and a cold open will say `GITVAULT_ENVELOPE_PENDING` honestly if it
       // needed an envelope this principal never enrolled for). A keystore
       // with no identity reaches the ordinary KEYSTORE_MISSING wall unchanged.
-      return { outcome: identity ? "skipped_error" : "skipped_no_identity", ek_fingerprint: identity?.encryption_fingerprint ?? null, error: e instanceof Error ? e.message : String(e) };
+      return { outcome: identity ? "skipped_error" : "skipped_no_identity", ek_fingerprint: identity?.encryption_fingerprint ?? null, signing_fingerprint: identity?.signing_fingerprint ?? null, error: e instanceof Error ? e.message : String(e) };
     }
     if (!whoami.principal) {
-      return { outcome: "skipped_no_principal", ek_fingerprint: identity?.encryption_fingerprint ?? null };
+      return { outcome: "skipped_no_principal", ek_fingerprint: identity?.encryption_fingerprint ?? null, signing_fingerprint: identity?.signing_fingerprint ?? null };
     }
     if (whoami.principal.type !== "human" && whoami.principal.type !== "agent") {
       // Only custody-eligible principal types enroll (consult round 2 §4):
       // the gateway would refuse the publish anyway, but by then an orphan
       // identity would already exist on disk.
-      return { outcome: "skipped_not_enrollable", ek_fingerprint: identity?.encryption_fingerprint ?? null };
+      return { outcome: "skipped_not_enrollable", ek_fingerprint: identity?.encryption_fingerprint ?? null, signing_fingerprint: identity?.signing_fingerprint ?? null };
     }
     if (identity?.enrolled_principal_id && identity.enrolled_principal_id !== whoami.principal.id) {
       throw new LocalError(
@@ -1602,18 +1622,45 @@ export class Gitvault {
         },
       );
     }
-    if (current && current.state === "active") {
+    // gitvault-multi-writer rev 47 (task 5.3, design D9) — the signing half's
+    // OWN continuity check, parallel to the encryption half's: does the
+    // directory's currently-published signing_fingerprint already equal
+    // this keystore's? UNLIKE the encryption half this is never a rotation
+    // refusal (D9: the signing half is always freely republishable) — a
+    // mismatch just means the publish call below is still needed, even
+    // when the encryption half is already fully active.
+    const needsSigningPublish = identity.signing_fingerprint !== (current?.signing_fingerprint ?? null);
+    if (current && current.state === "active" && !needsSigningPublish) {
       keystore.bindIdentityPrincipal(whoami.principal.id);
-      return { outcome: "already_active", ek_fingerprint: current.ek_fingerprint };
+      return { outcome: "already_active", ek_fingerprint: current.ek_fingerprint, signing_fingerprint: identity.signing_fingerprint };
     }
     const keypair = keystore.encryptionKeypair(identity);
     if (!keypair) {
       throw new LocalError("the keystore identity has no X25519 private key — it cannot enroll or open envelopes", "enrolling the keystore encryption key", { code: "VAULT_UNRECOVERABLE", details: { statement: GITVAULT_TERMINAL_LOSS_STATEMENT } });
     }
+    // The signing half rides the SAME publish call as the encryption half
+    // (task 4.1's gateway contract: one round trip, both halves, all-or-
+    // none). `keystore.signingKeypair` is `null` only for a read-only
+    // recovery identity that lost its signing seed — that keystore can
+    // still enroll its encryption half (existing behavior, unchanged); it
+    // simply cannot become a vault writer until the seed is recovered.
+    const signingKeypair = keystore.signingKeypair(identity);
+    const signingFields = signingKeypair
+      ? {
+          signing_pubkey: identity.signing_pubkey,
+          signing_fingerprint: identity.signing_fingerprint,
+          possession_signature: computeSigningKeyPossessionSignature({
+            signing_seed: signingKeypair.seed,
+            principal_id: whoami.principal.id,
+            signing_pubkey: identity.signing_pubkey,
+            encryption_pubkey: identity.encryption_pubkey,
+          }),
+        }
+      : {};
     try {
-      const published = await this.#client.request<{ encryption_key_id: string; ek_fingerprint: string; state: string; activation: { challenge_id: string; epk: string; expires_at: string } | null }>(
+      const published = await this.#client.request<{ encryption_key_id: string; ek_fingerprint: string; state: string; activation: { challenge_id: string; epk: string; expires_at: string } | null; signing_fingerprint?: string | null }>(
         "/agent/v1/whoami/encryption-key",
-        { method: "POST", body: { public_key: identity.encryption_pubkey, ek_fingerprint: identity.encryption_fingerprint, custody_scheme: "keystore_v1" }, context: "publishing the keystore encryption key" },
+        { method: "POST", body: { public_key: identity.encryption_pubkey, ek_fingerprint: identity.encryption_fingerprint, custody_scheme: "keystore_v1", ...signingFields }, context: "publishing the keystore encryption key" },
       );
       if (published.state !== "active") {
         if (!published.activation) {
@@ -1637,10 +1684,18 @@ export class Gitvault {
       // different current key than whoami just reported — a race with a
       // concurrent publish); everything else stays best-effort.
       if (isRun402Error(e) && (e as { code?: string }).code === "KEY_ROTATION_REQUIRED") throw e;
-      return { outcome: "skipped_error", ek_fingerprint: identity.encryption_fingerprint, error: e instanceof Error ? e.message : String(e) };
+      return { outcome: "skipped_error", ek_fingerprint: identity.encryption_fingerprint, signing_fingerprint: identity.signing_fingerprint ?? null, error: e instanceof Error ? e.message : String(e) };
     }
     keystore.bindIdentityPrincipal(whoami.principal.id);
-    return { outcome: current ? "activated_pending" : "enrolled", ek_fingerprint: identity.encryption_fingerprint };
+    // The early `already_active` return above only fires when NEITHER half
+    // needs work, so reaching here with `current.state === "active"` means
+    // specifically that the ENCRYPTION half was already fine and only the
+    // signing half triggered this publish — `signing_republished`, not
+    // `activated_pending` (which would wrongly imply an ECDH activation
+    // challenge was just completed; none was, `published.state` was
+    // already `"active"` and the activation branch above never ran).
+    const outcome = !current ? "enrolled" : current.state === "active" ? "signing_republished" : "activated_pending";
+    return { outcome, ek_fingerprint: identity.encryption_fingerprint, signing_fingerprint: identity.signing_fingerprint ?? null };
   }
 
   /**
