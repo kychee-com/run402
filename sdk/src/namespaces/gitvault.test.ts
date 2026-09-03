@@ -265,6 +265,15 @@ describe("gitvault compaction headroom preflight (gitvault-compaction-headroom-p
 
   const REPO = VAULT_RECORD.repo_id;
   const withSource = (bytes: string): Record<string, unknown> => ({ ...VAULT_RECORD, storage: { ...VAULT_RECORD.storage, source_bytes: bytes } });
+  // `compact()` (unlike the read-only `compactHeadroom()` below) calls
+  // `this.open(...)`, which needs a keystore. An explicit, isolated root
+  // matches every other test in this file that reaches `open()` — the
+  // real, unisolated default `getConfigDir()`-based path is shared
+  // process-wide, and a same-machine test file elsewhere in this glob
+  // minting an identity there (unrelated to this describe block) makes
+  // `ensureRepoState()`'s cold-open genesis-fetch trigger against this
+  // block's own unrelated mock, failing GITVAULT_STRICT_PARSE.
+  const KEYSTORE_ROOT = join(tmpdir(), "gitvault-compaction-headroom-preflight-ks");
 
   it("reports the arithmetic when the projection fits", async () => {
     const { sdk } = sdkWith(route(withSource("50"), { body: tierStatus(100, 1000) }));
@@ -308,7 +317,7 @@ describe("gitvault compaction headroom preflight (gitvault-compaction-headroom-p
     const { sdk, calls } = sdkWith(route(withSource("200000000"), { body: tierStatus(134_000_000, 250 * 1024 * 1024) }));
     let thrown: unknown;
     try {
-      await sdk.gitvault.compact({ repo_id: REPO });
+      await sdk.gitvault.compact({ repo_id: REPO, keystore_root: KEYSTORE_ROOT });
     } catch (e) {
       thrown = e;
     }
@@ -341,6 +350,9 @@ describe("gitvault compaction headroom preflight (gitvault-compaction-headroom-p
 describe("gitvault compaction headroom grant (gitvault-checkpoint-cadence)", () => {
   const REPO = VAULT_RECORD.repo_id;
   const withSource = (bytes: string): Record<string, unknown> => ({ ...VAULT_RECORD, storage: { ...VAULT_RECORD.storage, source_bytes: bytes } });
+  // See the sibling describe block above for why compact() needs an
+  // explicit, isolated keystore root.
+  const KEYSTORE_ROOT = join(tmpdir(), "gitvault-compaction-headroom-grant-ks");
   function tierStatus(used: number, limit: number): Record<string, unknown> {
     return { tier: "prototype", active: true, pool_usage: { projects: 1, total_api_calls: 0, total_storage_bytes: used, api_calls_limit: 500_000, storage_bytes_limit: limit } };
   }
@@ -354,7 +366,7 @@ describe("gitvault compaction headroom grant (gitvault-checkpoint-cadence)", () 
     });
     let thrown: unknown;
     try {
-      await sdk.gitvault.compact({ repo_id: REPO });
+      await sdk.gitvault.compact({ repo_id: REPO, keystore_root: KEYSTORE_ROOT });
     } catch (e) {
       thrown = e;
     }
@@ -378,7 +390,7 @@ describe("gitvault compaction headroom grant (gitvault-checkpoint-cadence)", () 
     });
     let thrown: unknown;
     try {
-      await sdk.gitvault.compact({ repo_id: REPO });
+      await sdk.gitvault.compact({ repo_id: REPO, keystore_root: KEYSTORE_ROOT });
     } catch (e) {
       thrown = e;
     }
@@ -411,7 +423,7 @@ describe("gitvault compaction headroom grant (gitvault-checkpoint-cadence)", () 
     });
     let thrown: unknown;
     try {
-      await sdk.gitvault.compact({ repo_id: REPO });
+      await sdk.gitvault.compact({ repo_id: REPO, keystore_root: KEYSTORE_ROOT });
     } catch (e) {
       thrown = e;
     }
