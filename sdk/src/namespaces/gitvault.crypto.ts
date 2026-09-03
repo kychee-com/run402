@@ -469,12 +469,23 @@ export function gitvaultWithoutSignature<T extends { signature?: unknown }>(obje
   return withoutSignature(object);
 }
 
-/** Signature preimage = `"r402s/v0/" + object_kind + "\n" + JCS(object without its single top-level signature)`. */
-export function signaturePreimage(objectKind: GitvaultObjectKind, objectWithoutSignature: Record<string, unknown>): Uint8Array {
+/**
+ * Signature preimage = `"r402s/v0/" + domain + "\n" + JCS(object without its
+ * single top-level signature)`. `domain` is USUALLY a `GitvaultObjectKind`
+ * (an actual `object_kind`-carrying signed object), but the type accepts any
+ * string: gitvault-multi-writer rev 47's `writer_acceptance.statement` reuses
+ * this exact byte-construction under the ad-hoc domain
+ * `"handoff-writer-accept/v1"` for a sub-object that is NOT itself a
+ * `GitvaultSignedObject` (no `object_kind`/`signature` fields of its own —
+ * both signatures over it live on the PARENT `writer_acceptance`). Matches
+ * the gateway's own `signaturePreimage(objectKind: string, ...)`, which was
+ * never narrower than `string` to begin with.
+ */
+export function signaturePreimage(domain: GitvaultObjectKind | string, objectWithoutSignature: Record<string, unknown>): Uint8Array {
   if ("signature" in objectWithoutSignature) {
     fail("GITVAULT_PREIMAGE_HAS_SIGNATURE", "preimage input must not carry a signature member", "building r402s/v0 signature preimage");
   }
-  return concatBytes(utf8ToBytes(`${GITVAULT_FORMAT}/${objectKind}\n`), jcs(objectWithoutSignature));
+  return concatBytes(utf8ToBytes(`${GITVAULT_FORMAT}/${domain}\n`), jcs(objectWithoutSignature));
 }
 
 // ─── Ed25519 strict (RFC 8032, zip215:false) ─────────────────────────────────

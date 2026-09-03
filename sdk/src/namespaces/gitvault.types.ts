@@ -51,7 +51,9 @@ export type GitvaultObjectKind =
   | "rotation_attempt_descriptor"
   | "recipient_pin_manifest"
   | "recipient_confirmation_receipt"
-  | "recipient_open_receipt";
+  | "recipient_open_receipt"
+  /** gitvault-multi-writer rev 47 (protocol §4.17) — a writer's signed grant authorizing a handoff recipient to become a vault writer. */
+  | "writer_admission_grant";
 
 /** Kinds whose stored bytes are an AEAD frame (protocol §2 framing), keyed by `k_obj`. */
 export type GitvaultEncryptedObjectKind =
