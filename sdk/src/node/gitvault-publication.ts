@@ -149,10 +149,12 @@ import {
   applyAddWriterKey,
   applyWriterSetUpdate,
   buildAddWriterKeyActivationPayload,
+  buildWriterDoorAddWriterKeyPayload,
   initialWriterState,
   resolveActiveWriter,
   validateAddWriterKeyPayload,
   validateWriterSetUpdate,
+  writerKeyIdOf,
   type WriterChainState,
 } from "./gitvault-writer-state.js";
 // Type-only: erased at build, so the prune module stays a LEAF (it imports the
@@ -1223,6 +1225,16 @@ export interface GitvaultOrgEncryptionKeyEntry {
   created_at: string;
   /** Raw base64url X25519 public key. Present on every current-gateway row; tolerated as absent (per-entry `missing_public_key` skip) for wire robustness only. */
   public_key?: string;
+  /**
+   * gitvault-multi-writer (rev 47) D9 — the SAME row's vault-WRITER signing
+   * half (`routes/org.ts` in run402-private, deployed alongside `public_key`
+   * D9). Raw base64url Ed25519 public key; `null` when this principal has
+   * never published a signing half (a pre-rev47 or encryption-only
+   * enrollment), absent entirely on an older gateway that predates D9.
+   */
+  signing_pubkey?: string | null;
+  signing_fingerprint?: string | null;
+  signing_possession_verified_at?: string | null;
   [key: string]: unknown;
 }
 
@@ -1303,6 +1315,25 @@ export interface GitvaultVaultRecord {
     open_cycle: { maintenance_cycle_id: string; state: string; last_cycle_progress_at: string | null } | null;
     pending_repair_attempt_id: string | null;
   };
+  /**
+   * gitvault-multi-writer (rev 47) task 3.7 — the writer chain state's read
+   * surface, mirrored client-side from the gateway's `VaultRecord` (see
+   * `services/gitvault/reads.ts` in run402-private for the authoritative doc
+   * comment). `writer_set` is the on-chain-recognized set exactly as the
+   * chain itself would verify (regardless of any gateway-only block — that's
+   * `ineligible_members`). `pending_writers` is the reverse direction:
+   * active org members at role developer+ with a published,
+   * possession-verified signing key who are NOT yet in `writer_set.writers`
+   * — candidates for the "writer"-door `add_writer_key` (task 5.7's
+   * `reconcile()`). `ineligible_members` is a chain-recognized active writer
+   * the gateway has flagged for removal, still active on-chain pending the
+   * next `rotate_epoch{writer_set_update}`.
+   */
+  writer_set?: { version: string; sha256: string | null; writers: GitvaultVaultWriterSetEntry[] };
+  pending_writers?: GitvaultVaultPendingWriter[];
+  ineligible_members?: GitvaultVaultIneligibleMember[];
+  /** `gitvault_vaults.read_only_terminal_at IS NOT NULL` — the D228 forced sole-writer-removal terminal state: no further writer-authenticated push is admissible. Absent (never `undefined`-checked as `true`) on an older gateway — treat as `false`. */
+  read_only_terminal?: boolean;
   warnings: { kind: string; message: string }[];
   created_at: string | null;
   /**
@@ -1319,6 +1350,29 @@ export interface GitvaultVaultRecord {
     service_key_id?: string;
     [key: string]: unknown;
   } | null;
+}
+
+/** One chain-recognized active writer on {@link GitvaultVaultRecord.writer_set} — the on-chain shape only; `gateway_blocked_at` (gateway-only) rides {@link GitvaultVaultIneligibleMember} instead. */
+export interface GitvaultVaultWriterSetEntry {
+  writer_key_id: string;
+  principal_id: string;
+  authorization_kind: "writer" | "handoff";
+  admitted_generation: string;
+  admitted_head_sha256: string;
+}
+
+/** An org member eligible to become a writer (active membership at role developer+, a published possession-verified signing key) who is NOT yet in {@link GitvaultVaultRecord.writer_set}'s `writers` — a candidate for the "writer"-door `add_writer_key` ({@link GitvaultVault.reconcileWriterAdmissions}). */
+export interface GitvaultVaultPendingWriter {
+  principal_id: string;
+  writer_key_id: string;
+}
+
+/** A chain-recognized active writer the gateway has flagged for removal — still active on-chain, pending the next `rotate_epoch{writer_set_update}`. */
+export interface GitvaultVaultIneligibleMember {
+  principal_id: string;
+  writer_key_id: string;
+  gateway_blocked_at: string | null;
+  reason: "membership_revoked" | "role_below_developer" | "encryption_key_revoked" | "gateway_blocked_pending_removal";
 }
 
 /**
@@ -2546,6 +2600,55 @@ export interface GitvaultReconcileEnvelopeRecipientsResult {
   already_covered: string[];
   /** Directory entries this call could not (or, for `pinned_key_mismatch`, would not) wrap. */
   skipped: GitvaultReconcileEnvelopeRecipientsSkipped[];
+}
+
+/** One `pending_writers[]` entry {@link GitvaultVault.reconcileWriterAdmissions} admitted via a fresh `add_writer_key{"writer"}` head. */
+export interface GitvaultReconcileWriterAdmissionsAdmitted {
+  principal_id: string;
+  writer_key_id: string;
+  generation: string;
+}
+
+/** Why {@link GitvaultVault.reconcileWriterAdmissions} did NOT admit a `pending_writers[]` entry it otherwise would have. */
+export type GitvaultReconcileWriterAdmissionsSkipReason = "missing_signing_pubkey" | "invalid_signing_pubkey";
+
+export interface GitvaultReconcileWriterAdmissionsSkipped {
+  principal_id: string;
+  writer_key_id: string;
+  reason: GitvaultReconcileWriterAdmissionsSkipReason;
+}
+
+/**
+ * {@link GitvaultVault.reconcileWriterAdmissions}'s full per-candidate
+ * breakdown (task 5.7). Structurally parallel to
+ * {@link GitvaultReconcileEnvelopeRecipientsResult} (same repo/wrapped-or-
+ * admitted/already-covered/skipped shape), but this reconcile submits a REAL
+ * chain head per admission (one `add_writer_key{"writer"}` transition per
+ * candidate — the protocol allows only one added writer per head) rather
+ * than an out-of-band object upload, so it is never fully parallel: each
+ * admission materializes fresh against the PRIOR admission's own updated
+ * writer set.
+ */
+export interface GitvaultReconcileWriterAdmissionsResult {
+  repo_id: string;
+  org_id: string;
+  /**
+   * `false` exactly when THIS session's own key is not (or is no longer) an
+   * active writer — the "writer" door's authorization is the carrying
+   * head's own signer, so an ineligible session cannot admit anyone, and
+   * this call returns immediately with every other field empty. Distinct
+   * from a genuinely empty `pending_writers[]` (still `eligible: true`,
+   * there was simply nothing to do) — otherwise both cases produce the
+   * SAME all-empty shape and a caller could not tell "nothing needed
+   * doing" from "I have no authority to do anything here."
+   */
+  eligible: boolean;
+  /** `pending_writers[]` entries this call admitted this call, each via its own head. */
+  admitted: GitvaultReconcileWriterAdmissionsAdmitted[];
+  /** `writer_key_id`s already active before (or, for a raced admission, as of) this call — no action taken. */
+  already_covered: string[];
+  /** `pending_writers[]` entries this call could not admit. */
+  skipped: GitvaultReconcileWriterAdmissionsSkipped[];
 }
 
 export interface GitvaultPushOptions {
@@ -5356,6 +5459,65 @@ export class GitvaultVault {
     grant: Record<string, unknown>;
     acceptance: Record<string, unknown>;
   }): Promise<{ outcome: "activated"; result: GitvaultPublishResult } | { outcome: "already_admitted"; generation: string }> {
+    return this.#publishAddWriterKeyTransition(
+      input.addedWriterKeyId,
+      (pin) =>
+        buildAddWriterKeyActivationPayload(
+          this.repoId,
+          pin,
+          { writer_key_id: input.addedWriterKeyId, signing_pubkey: input.addedSigningPubkeyB64u, principal_id: input.addedPrincipalId },
+          input.handoffId,
+          input.grant,
+          input.acceptance,
+        ),
+      "submitting a writer activation head",
+    );
+  }
+
+  /**
+   * gitvault-multi-writer (task 5.7) — the "writer"-door twin of {@link
+   * submitWriterActivationHead}: an ALREADY-ACTIVE writer (this vault
+   * session's own key) admits `input`, an eligible org member with a
+   * published signing key but no writer standing yet, via a fresh
+   * `add_writer_key{"writer"}` head. No grant/acceptance — the carrying
+   * head's own signer being an active writer at the predecessor generation
+   * IS the authorization (`validateAddWriterKeyPayload`'s `"writer"`
+   * branch), re-verified admission-side by `checkTransitionAdmissible`. If
+   * THIS session's own key is not (or is no longer) an active writer, the
+   * gateway refuses the head — surfaced as an ordinary `publishGeneration`
+   * throw, not a special case here (the same "let the chain be the
+   * authority" posture {@link push} already takes for an ordinary
+   * `GITVAULT_WRITER_NOT_ADMITTED`).
+   */
+  async admitPendingWriter(input: {
+    addedWriterKeyId: string;
+    addedSigningPubkeyB64u: string;
+    addedPrincipalId: string;
+  }): Promise<{ outcome: "activated"; result: GitvaultPublishResult } | { outcome: "already_admitted"; generation: string }> {
+    return this.#publishAddWriterKeyTransition(
+      input.addedWriterKeyId,
+      (pin) => buildWriterDoorAddWriterKeyPayload(this.repoId, pin, { writer_key_id: input.addedWriterKeyId, signing_pubkey: input.addedSigningPubkeyB64u, principal_id: input.addedPrincipalId }),
+      "admitting a pending writer",
+    );
+  }
+
+  /**
+   * Shared publish+retry+pin-update tail for BOTH doors of `add_writer_key`
+   * ({@link submitWriterActivationHead}'s handoff door, task 5.6; {@link
+   * admitPendingWriter}'s writer door, task 5.7). `buildPayload` constructs
+   * a fresh {@link AddWriterKeyPayload} against whatever `writer_set_pin`
+   * the CURRENT attempt's freshly-materialized base carries, so a
+   * conflict-retry rebuilds against the winner's own pin, never a stale
+   * one. Crash/race-resumable the same way for both doors: if
+   * `addedWriterKeyId` is ALREADY in the freshly-verified writer set before
+   * anything is built, returns `{outcome:"already_admitted"}` instead of
+   * attempting a resubmission the chain would refuse.
+   */
+  async #publishAddWriterKeyTransition(
+    addedWriterKeyId: string,
+    buildPayload: (pin: { version: string; sha256: string; writers: readonly import("./gitvault-writer-state.js").WriterKeyEntry[] }) => import("./gitvault-writer-state.js").AddWriterKeyPayload,
+    errorContext: string,
+  ): Promise<{ outcome: "activated"; result: GitvaultPublishResult } | { outcome: "already_admitted"; generation: string }> {
     let conflicts = 0;
     for (;;) {
       const base = await this.materialize();
@@ -5364,29 +5526,13 @@ export class GitvaultVault {
         fail(
           "GITVAULT_WRITER_STATE_UNAVAILABLE",
           "no locally verified writer_set_pin for this vault — the chain must be verified (materialize/verifyToNewest) before an activation head can be built against a known base writer set",
-          "submitting a writer activation head",
+          errorContext,
         );
       }
-      // Crash-resumability's OTHER half (`resume()`'s own doc comment): the
-      // chain burns `handoff_id` single-use, so a retry that already landed
-      // on a prior attempt must NEVER resubmit — it would be refused
-      // VALIDATION_FAILED ("handoff_id already consumed") by the chain's
-      // own admission logic. Checking "is my key already a writer" here,
-      // BEFORE building anything, is simpler and more robust than parsing
-      // that refusal after the fact: it is the exact same idempotent-
-      // precheck shape `handoff()`'s writer precheck already uses (task
-      // 5.5), just inverted (there "not yet" refuses; here "already" skips).
-      if (pin.writers.some((w) => w.writer_key_id === input.addedWriterKeyId)) {
+      if (pin.writers.some((w) => w.writer_key_id === addedWriterKeyId)) {
         return { outcome: "already_admitted", generation: base.generation };
       }
-      const payload = buildAddWriterKeyActivationPayload(
-        this.repoId,
-        pin,
-        { writer_key_id: input.addedWriterKeyId, signing_pubkey: input.addedSigningPubkeyB64u, principal_id: input.addedPrincipalId },
-        input.handoffId,
-        input.grant,
-        input.acceptance,
-      );
+      const payload = buildPayload(pin);
       const nextState = payload.next_writer_set;
       const payloadBytes = jcs(payload as unknown as Record<string, unknown>);
       const transition: GitvaultTransitionEnvelope = { kind: "add_writer_key", payload_format: "base64url-jcs", payload: toBase64url(payloadBytes), payload_sha256: sha256Hex(payloadBytes) };
@@ -5396,16 +5542,88 @@ export class GitvaultVault {
       });
       if (published.outcome === "conflict") {
         conflicts += 1;
-        if (conflicts > this.retries) fail("HEAD_CAS_CONFLICT", `the writer activation lost ${conflicts} races at generation ${published.generation}; giving up`, "submitting a writer activation head", { generation: published.generation, winner: published.winner });
+        if (conflicts > this.retries) fail("HEAD_CAS_CONFLICT", `the writer activation lost ${conflicts} races at generation ${published.generation}; giving up`, errorContext, { generation: published.generation, winner: published.winner });
         continue;
       }
-      if (published.outcome === "dry_run") fail("GIT_COMMAND_FAILED", "internal: submitWriterActivationHead() received a dry-run result it never requested", "submitting a writer activation head");
+      if (published.outcome === "dry_run") fail("GIT_COMMAND_FAILED", "internal: #publishAddWriterKeyTransition() received a dry-run result it never requested", errorContext);
       this.keystore.updateRepo(this.repoId, { writer_set_pin: { version: nextState.version, sha256: nextState.sha256, writers: [...nextState.writers], pinned_at: formatGitvaultTimestamp(this.now()) } });
       return {
         outcome: "activated",
         result: { generation: published.generation, head_sha256: published.head_sha256, head: published.head, admission_record_sha256: published.admission_record_sha256, capture_receipt: published.capture_receipt, form: published.form, conflicts_retried: conflicts, refs: published.refs, checkpoint_staleness: this.checkpointStalenessNow(published.generation) },
       };
     }
+  }
+
+  /**
+   * gitvault-multi-writer (task 5.7) — the vault's OWN writer-admission
+   * reconcile: reads `pending_writers[]` off the vault record (eligible org
+   * members with no writer standing yet), resolves each candidate's
+   * published signing key off the org's encryption-key directory (the SAME
+   * `/orgs/v1/:org_id/encryption-keys` row {@link
+   * reconcileEnvelopeRecipients} reads, widened D9 to also carry the
+   * signing half), and admits each via {@link admitPendingWriter} — one
+   * `add_writer_key{"writer"}` head per candidate, sequentially: each
+   * admission materializes fresh against the PRIOR one's own updated writer
+   * set, so there is no batched/parallel form.
+   *
+   * Requires THIS session's own key to already be an active writer (the
+   * chain's own authorization rule for the "writer" door) — checked ONCE,
+   * upfront, off the locally-pinned `writer_set_pin` (no network call),
+   * rather than discovered N times over from N identical gateway refusals:
+   * a session that reached this call already pushed successfully as an
+   * active writer in every wired call site (push/snapshot/deploy) OR is a
+   * member that simply is not one yet (session-start/read) — the SAME
+   * "not yet admitted" case {@link Gitvault.push}'s own pre-push check
+   * (task 5.8) names, not a new refusal shape. Returns `{eligible: false}`
+   * with every other field empty (never throws) for that case: every OTHER
+   * `pending_writers[]` entry would fail identically, so there is nothing
+   * this call can usefully do, and "I am not a writer" is not this vault's
+   * fault — but it is distinguishable from "there was nothing pending"
+   * (`eligible: true`, still all empty), which matters to a caller trying
+   * to explain an all-empty result to a human.
+   */
+  async reconcileWriterAdmissions(): Promise<GitvaultReconcileWriterAdmissionsResult> {
+    const repo = this.repoFile();
+    const admitted: GitvaultReconcileWriterAdmissionsAdmitted[] = [];
+    const alreadyCovered: string[] = [];
+    const skipped: GitvaultReconcileWriterAdmissionsSkipped[] = [];
+    const assembleResult = (eligible: boolean): GitvaultReconcileWriterAdmissionsResult => ({ repo_id: this.repoId, org_id: repo.org_id, eligible, admitted, already_covered: alreadyCovered, skipped });
+
+    const myWriterKeyId = this.writerKeyId();
+    const startingPin = repo.writer_set_pin;
+    if (!startingPin || !startingPin.writers.some((w) => w.writer_key_id === myWriterKeyId)) return assembleResult(false);
+
+    const record = await this.transport.getVaultRecord({ repo_id: this.repoId });
+    const pending = record.pending_writers ?? [];
+    if (pending.length === 0) return assembleResult(true);
+
+    const directory = await this.transport.listOrgEncryptionKeys({ org_id: repo.org_id });
+    const byPrincipal = new Map(directory.keys.map((k) => [k.principal_id, k]));
+
+    for (const candidate of pending) {
+      const currentPin = this.repoFile().writer_set_pin;
+      if (currentPin?.writers.some((w) => w.writer_key_id === candidate.writer_key_id)) {
+        alreadyCovered.push(candidate.writer_key_id);
+        continue;
+      }
+      const entry = byPrincipal.get(candidate.principal_id);
+      const signingPubkey = entry?.signing_pubkey;
+      if (typeof signingPubkey !== "string" || signingPubkey.length === 0) {
+        skipped.push({ principal_id: candidate.principal_id, writer_key_id: candidate.writer_key_id, reason: "missing_signing_pubkey" });
+        continue;
+      }
+      if (writerKeyIdOf(signingPubkey) !== candidate.writer_key_id) {
+        skipped.push({ principal_id: candidate.principal_id, writer_key_id: candidate.writer_key_id, reason: "invalid_signing_pubkey" });
+        continue;
+      }
+      const outcome = await this.admitPendingWriter({ addedWriterKeyId: candidate.writer_key_id, addedSigningPubkeyB64u: signingPubkey, addedPrincipalId: candidate.principal_id });
+      if (outcome.outcome === "already_admitted") {
+        alreadyCovered.push(candidate.writer_key_id);
+      } else {
+        admitted.push({ principal_id: candidate.principal_id, writer_key_id: candidate.writer_key_id, generation: outcome.result.generation });
+      }
+    }
+    return assembleResult(true);
   }
 
   // ── repair (owner-only; mandatory fresh checkpoint; repair resource lane server-side) ──

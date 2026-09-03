@@ -6,6 +6,7 @@ import {
   applyAddWriterKey,
   applyWriterSetUpdate,
   buildAddWriterKeyActivationPayload,
+  buildWriterDoorAddWriterKeyPayload,
   initialWriterState,
   MAX_VAULT_WRITERS,
   replayWriterState,
@@ -623,6 +624,77 @@ describe("gitvault writer-state (protocol §4.15-§4.18, D221-D228) — client m
       // Simulates reading `repoFile().writer_set_pin` directly: a plain object with no burnedWriterKeyIds/consumedHandoffIds.
       const pin = { version: base.version, sha256: base.sha256, writers: base.writers };
       const payload = buildAddWriterKeyActivationPayload(REPO_ID, pin, { writer_key_id: added.writerKeyId, signing_pubkey: added.pubB64u, principal_id: "prin_bob" }, "some-handoff-id", {}, {});
+      assert.equal(payload.base_writer_set.sha256, base.sha256);
+    });
+  });
+
+  describe("buildWriterDoorAddWriterKeyPayload (gitvault-multi-writer task 5.7 — GitvaultVault.admitPendingWriter's pure assembly step)", () => {
+    it("round-trips through validateAddWriterKeyPayload: an existing writer's own head admits a new candidate — accepted end to end", () => {
+      const creator = keypair();
+      const added = keypair();
+      const base = initialWriterState(REPO_ID, genesisFor(creator));
+
+      const payload = buildWriterDoorAddWriterKeyPayload(REPO_ID, base, { writer_key_id: added.writerKeyId, signing_pubkey: added.pubB64u, principal_id: "prin_bob" });
+
+      assert.equal(payload.schema, "r402s.add-writer-key/v1");
+      assert.equal(payload.base_writer_set.version, base.version);
+      assert.equal(payload.base_writer_set.sha256, base.sha256);
+      assert.equal(payload.next_writer_set.version, "0000000000000001");
+      assert.deepEqual(
+        [...payload.next_writer_set.writers].map((w) => w.writer_key_id).sort(),
+        [creator.writerKeyId, added.writerKeyId].sort(),
+      );
+      assert.equal(payload.added_writer.writer_key_id, added.writerKeyId);
+      assert.equal(payload.added_writer.principal_id, "prin_bob");
+      assert.deepEqual(payload.authorization, { kind: "writer" });
+
+      // The ACTING writer's own head carries this transition — protocol §4.16's "writer" door, unlike "handoff", is never self-signed by the added key.
+      const v = validateAddWriterKeyPayload(REPO_ID, base, payload, creator.writerKeyId);
+      assert.deepEqual(v, { ok: true });
+    });
+
+    it("rejects when the carrying head's own signer IS the added key — a writer-door admission can never be self-signed (protocol §4.16)", () => {
+      const creator = keypair();
+      const added = keypair();
+      const base = initialWriterState(REPO_ID, genesisFor(creator));
+      const payload = buildWriterDoorAddWriterKeyPayload(REPO_ID, base, { writer_key_id: added.writerKeyId, signing_pubkey: added.pubB64u, principal_id: "prin_bob" });
+
+      const v = validateAddWriterKeyPayload(REPO_ID, base, payload, added.writerKeyId);
+      assert.equal(v.ok, false);
+      if (!v.ok) assert.equal(v.code, "VALIDATION_FAILED");
+    });
+
+    it("rejects when the carrying head's signer is not an active writer at the predecessor generation", () => {
+      const creator = keypair();
+      const added = keypair();
+      const stranger = keypair();
+      const base = initialWriterState(REPO_ID, genesisFor(creator));
+      const payload = buildWriterDoorAddWriterKeyPayload(REPO_ID, base, { writer_key_id: added.writerKeyId, signing_pubkey: added.pubB64u, principal_id: "prin_bob" });
+
+      const v = validateAddWriterKeyPayload(REPO_ID, base, payload, stranger.writerKeyId);
+      assert.equal(v.ok, false);
+      if (!v.ok) assert.equal(v.code, "GITVAULT_WRITER_NOT_ADMITTED");
+    });
+
+    it("computes the SAME next_writer_set a manual application of applyAddWriterKey would (no drift between this function and the chain-replay logic it wraps)", () => {
+      const creator = keypair();
+      const added = keypair();
+      const base = initialWriterState(REPO_ID, genesisFor(creator));
+      const expected = applyAddWriterKey(REPO_ID, base, { writer_key_id: added.writerKeyId, signing_pubkey: added.pubB64u }, null);
+
+      const payload = buildWriterDoorAddWriterKeyPayload(REPO_ID, base, { writer_key_id: added.writerKeyId, signing_pubkey: added.pubB64u, principal_id: "prin_bob" });
+
+      assert.equal(payload.next_writer_set.version, expected.version);
+      assert.equal(payload.next_writer_set.sha256, expected.sha256);
+      assert.deepEqual([...payload.next_writer_set.writers], [...expected.writers]);
+    });
+
+    it("accepts a bare {version, sha256, writers} predecessor pin — the exact shape GitvaultRepoFile.writer_set_pin persists, no WriterChainState (with its Sets) required", () => {
+      const creator = keypair();
+      const added = keypair();
+      const base = initialWriterState(REPO_ID, genesisFor(creator));
+      const pin = { version: base.version, sha256: base.sha256, writers: base.writers };
+      const payload = buildWriterDoorAddWriterKeyPayload(REPO_ID, pin, { writer_key_id: added.writerKeyId, signing_pubkey: added.pubB64u, principal_id: "prin_bob" });
       assert.equal(payload.base_writer_set.sha256, base.sha256);
     });
   });

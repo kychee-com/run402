@@ -91,7 +91,7 @@ import type {
   GitvaultVaultRecord,
 } from "../node/gitvault-publication.js";
 import type { GitvaultDeployOptions, GitvaultDeployResult } from "../node/gitvault-deploy.js";
-import type { GitvaultPublishResult, GitvaultPushOptions, GitvaultRefMap, GitvaultReconcileEnvelopeRecipientsResult, GitvaultVerifiedState } from "../node/gitvault-publication.js";
+import type { GitvaultPublishResult, GitvaultPushOptions, GitvaultRefMap, GitvaultReconcileEnvelopeRecipientsResult, GitvaultReconcileWriterAdmissionsResult, GitvaultVerifiedState } from "../node/gitvault-publication.js";
 import type { GitvaultCreationResult } from "../node/gitvault-creation-journal.js";
 import type { GitvaultKeystore } from "../node/gitvault-keystore.js";
 import type { GitvaultSnapshot } from "../node/gitvault-snapshot.js";
@@ -514,6 +514,18 @@ export interface GitvaultHandle {
    * folded into it.
    */
   reconcile_recipients: GitvaultSessionReconcileResult | null;
+  /**
+   * gitvault-multi-writer (task 5.7) — the session-start writer-admission
+   * reconcile's outcome. `null` exactly when `reconcile: "forbidden"` — this
+   * reconcile carries no disclosure risk (it wraps nothing), so unlike
+   * {@link reconcile_recipients} it is otherwise ALWAYS attempted, no
+   * custody-verification gate and no once-per-process memoization: {@link
+   * import("../node/gitvault-publication.js").GitvaultVault.
+   * reconcileWriterAdmissions} is already a fast no-op (one local pin check,
+   * no network call) whenever this session's own key is not an active
+   * writer.
+   */
+  writer_reconcile: GitvaultReconcileWriterAdmissionsPushResult | null;
   /** gitvault-agent-envelopes D3: what the enroll-if-absent step did for this keystore's key on this open. */
   enrollment: GitvaultEnrollmentOutcome;
 }
@@ -555,6 +567,26 @@ export interface GitvaultReconcileEnvelopeRecipientsPushResult {
   attempted: boolean;
   outcome: "reconciled" | "skipped_error";
   result?: GitvaultReconcileEnvelopeRecipientsResult;
+  error?: string;
+}
+
+/**
+ * gitvault-multi-writer (task 5.7) — the writer-admission twin of {@link
+ * GitvaultReconcileEnvelopeRecipientsPushResult}: best-effort, reported
+ * beside (never folded into) the vault result. ONE shape used at every
+ * wiring site (push/snapshot/deploy/session-start/read) — unlike the
+ * envelope reconcile's split between this push-result shape and the
+ * richer {@link GitvaultSessionReconcileResult}, `"forbidden"` is included
+ * here too since this reconcile's session-start policy (task 5.7's own,
+ * deliberately simpler than the envelope reconcile's custody-gated one —
+ * see {@link GitvaultHandle.writer_reconcile}) honors only that one value;
+ * it is simply unreachable at the push/snapshot/deploy sites, which never
+ * check `options.reconcile` for this hook.
+ */
+export interface GitvaultReconcileWriterAdmissionsPushResult {
+  attempted: boolean;
+  outcome: "reconciled" | "skipped_error" | "forbidden";
+  result?: GitvaultReconcileWriterAdmissionsResult;
   error?: string;
 }
 
@@ -1537,7 +1569,12 @@ export class Gitvault {
         }
       }
     }
-    return { repo_id: repoId, keystore, transport, vault, restored, reconcile_recipients: reconcileRecipients, enrollment };
+    // gitvault-multi-writer (task 5.7) — the SAME "session-start"/"read"
+    // wiring point as the envelope reconcile above, but a genuinely simpler
+    // policy: no disclosure risk, so only `forbidden` is honored — no
+    // custody gate, no `deferred`/memoization branch.
+    const writerReconcile = policy === "forbidden" ? { attempted: false as const, outcome: "forbidden" as const } : await this.#tryReconcileWriterAdmissions(vault);
+    return { repo_id: repoId, keystore, transport, vault, restored, reconcile_recipients: reconcileRecipients, writer_reconcile: writerReconcile, enrollment };
   }
 
   /**
@@ -2398,7 +2435,7 @@ export class Gitvault {
       onCommitLine?: (line: string) => void;
       checkpoint?: boolean;
     },
-  ): Promise<GitvaultPublishResult & { snapshot: GitvaultSnapshot; gitvault_commit: string; gitvault_commit_line: string; mirror_push: GitvaultMirrorPushResult; byo_chain_copy: GitvaultMirrorPushResult; reconcile_recipients: GitvaultReconcileEnvelopeRecipientsPushResult }> {
+  ): Promise<GitvaultPublishResult & { snapshot: GitvaultSnapshot; gitvault_commit: string; gitvault_commit_line: string; mirror_push: GitvaultMirrorPushResult; byo_chain_copy: GitvaultMirrorPushResult; reconcile_recipients: GitvaultReconcileEnvelopeRecipientsPushResult; writer_reconcile: GitvaultReconcileWriterAdmissionsPushResult }> {
     const [{ deployRefTransaction }, { captureSnapshot, gitvaultCommitLine }] = await Promise.all([this.#publication(), this.#snapshot()]);
     const openedByAddress = options.address ? await this.resolveOrCreateAddress({ ...options, address: options.address, allow_create: true }) : null;
     const opened = openedByAddress ?? (await this.openOrCreate(options));
@@ -2449,7 +2486,13 @@ export class Gitvault {
     // with no signing key) is reported BESIDE the vault result, never a
     // `push()` throw, same non-blocking contract as the mirror hook above.
     const reconcileRecipients = await this.#tryReconcileEnvelopeRecipients(handle.vault);
-    return { ...result, snapshot, gitvault_commit: snapshot.oid, gitvault_commit_line: line, mirror_push: mirrorPush, byo_chain_copy: byoChainCopy, reconcile_recipients: reconcileRecipients };
+    // gitvault-multi-writer (task 5.7) — the SAME best-effort contract,
+    // fired right beside the encryption-recipient reconcile above: a fresh
+    // push proves this session's own key is an active writer, so this is
+    // the natural place a just-admitted member's own next push clears
+    // whatever candidacy it left behind for OTHER pending members too.
+    const writerReconcile = await this.#tryReconcileWriterAdmissions(handle.vault);
+    return { ...result, snapshot, gitvault_commit: snapshot.oid, gitvault_commit_line: line, mirror_push: mirrorPush, byo_chain_copy: byoChainCopy, reconcile_recipients: reconcileRecipients, writer_reconcile: writerReconcile };
   }
 
   // ── Handoff / resume (kygit-handoff design D1-D10) ─────────────────────────
@@ -3099,6 +3142,33 @@ export class Gitvault {
   async #tryReconcileEnvelopeRecipients(vault: import("../node/gitvault-publication.js").GitvaultVault): Promise<GitvaultReconcileEnvelopeRecipientsPushResult> {
     try {
       const result = await vault.reconcileEnvelopeRecipients();
+      return { attempted: true, outcome: "reconciled", result };
+    } catch (e) {
+      rethrowFatalReconcile(e);
+      return { attempted: false, outcome: "skipped_error", error: e instanceof Error ? e.message : String(e) };
+    }
+  }
+
+  /**
+   * gitvault-multi-writer (task 5.7) — best-effort writer-admission
+   * reconcile, the SAME non-blocking contract as {@link
+   * #tryReconcileEnvelopeRecipients} beside it: availability failures
+   * (network, an older gateway missing `pending_writers`/`signing_pubkey`,
+   * a CAS-conflict-exhausted admission) never surface as a `push()`/
+   * `deploy()`/`open()` throw — `GitvaultVault.reconcileWriterAdmissions()`
+   * ALREADY returns an empty result rather than throwing for the ordinary
+   * "I am not a writer yet" case, so `skipped_error` here is reserved for
+   * genuinely unexpected failures (a transport fault mid-loop, a thrown
+   * chain-integrity verdict from the `materialize()` this reconcile's own
+   * admission attempts re-run). `rethrowFatalReconcile` is reused as-is:
+   * its `RECONCILE_FATAL_CODES` set is envelope-specific today (no writer-
+   * chain-integrity code is in it yet), so this call is a no-op unless a
+   * future code is added there — cheap, forward-compatible, and consistent
+   * with the sibling method rather than a silently different policy.
+   */
+  async #tryReconcileWriterAdmissions(vault: import("../node/gitvault-publication.js").GitvaultVault): Promise<GitvaultReconcileWriterAdmissionsPushResult> {
+    try {
+      const result = await vault.reconcileWriterAdmissions();
       return { attempted: true, outcome: "reconciled", result };
     } catch (e) {
       rethrowFatalReconcile(e);
@@ -4025,6 +4095,28 @@ export class Gitvault {
   }
 
   /**
+   * gitvault-multi-writer (task 5.7) — admit every eligible `pending_writers[]`
+   * candidate (active org membership at role developer+, a published,
+   * possession-verified signing key, not yet in the writer set) via a fresh
+   * `add_writer_key{"writer"}` head per candidate. This session's OWN key
+   * must already be an active writer — see {@link
+   * import("../node/gitvault-publication.js").GitvaultVault.
+   * reconcileWriterAdmissions}'s doc comment for why that is checked
+   * locally, once, rather than surfaced as N identical gateway refusals.
+   *
+   * The explicit standalone entry point for the SAME reconcile task 5.7
+   * also wires onto session-start/push/snapshot/deploy — calling it here
+   * is idempotent-safe alongside whatever `open()` above already ran
+   * internally (an already-admitted candidate is simply reported under
+   * `already_covered`, never re-admitted), mirroring {@link
+   * reconcileEnvelopeRecipients}'s own identical redundancy-tolerant shape.
+   */
+  async reconcile(options: GitvaultVaultHandleOptions = {}): Promise<GitvaultReconcileWriterAdmissionsResult> {
+    const handle = await this.open(options);
+    return handle.vault.reconcileWriterAdmissions();
+  }
+
+  /**
    * Drive one epoch rotation (D193-D203, rev 42) — the client half of
    * epoch rotation: sample a fresh `K_e`, compute the H-partition from live
    * desired-recipient state + the effective pin manifest, seal one
@@ -4318,7 +4410,7 @@ export class Gitvault {
    */
   async deploy(
     options: Omit<GitvaultDeployOptions, "vault"> & GitvaultVaultHandleOptions,
-  ): Promise<GitvaultDeployResult & { mirror_push?: GitvaultMirrorPushResult; byo_chain_copy?: GitvaultMirrorPushResult; reconcile_recipients?: GitvaultReconcileEnvelopeRecipientsPushResult }> {
+  ): Promise<GitvaultDeployResult & { mirror_push?: GitvaultMirrorPushResult; byo_chain_copy?: GitvaultMirrorPushResult; reconcile_recipients?: GitvaultReconcileEnvelopeRecipientsPushResult; writer_reconcile?: GitvaultReconcileWriterAdmissionsPushResult }> {
     const { runGitvaultDeploy } = await this.#deploy();
     const handle = await this.open(options);
     const result = await runGitvaultDeploy({ ...options, vault: handle.vault, repo_dir: options.repo_dir ?? process.cwd() });
@@ -4332,13 +4424,14 @@ export class Gitvault {
       () => this.#tryMirrorPush(handle.repo_id, handle.keystore),
       () => this.#tryReconcileEnvelopeRecipients(handle.vault),
     );
-    // gitvault-byo-primary-bucket task 3.3 — composed AFTER, not inside,
-    // `attachGitvaultDeployHooks` (kept untouched so its own unit-tested
-    // outcome-gating contract stays byte-for-byte): the SAME "did this
-    // deploy actually land a generation" gate `mirror_push`'s presence
-    // already encodes, so no new outcome-inspection logic here.
+    // gitvault-byo-primary-bucket task 3.3 / gitvault-multi-writer task 5.7
+    // — composed AFTER, not inside, `attachGitvaultDeployHooks` (kept
+    // untouched so its own unit-tested outcome-gating contract stays
+    // byte-for-byte): the SAME "did this deploy actually land a generation"
+    // gate `mirror_push`'s presence already encodes, so no new
+    // outcome-inspection logic here.
     if (hooked.mirror_push === undefined) return hooked;
-    return { ...hooked, byo_chain_copy: await this.#tryByoChainCopyPush(handle.repo_id, handle.keystore) };
+    return { ...hooked, byo_chain_copy: await this.#tryByoChainCopyPush(handle.repo_id, handle.keystore), writer_reconcile: await this.#tryReconcileWriterAdmissions(handle.vault) };
   }
 
   /**

@@ -211,6 +211,34 @@ export function buildAddWriterKeyActivationPayload(
   };
 }
 
+/**
+ * gitvault-multi-writer (task 5.7) — builds a well-formed `writer`-door
+ * `add_writer_key` payload from a predecessor writer-set pin and the
+ * candidate's own published signing key. Unlike {@link
+ * buildAddWriterKeyActivationPayload} (the handoff door), this authorization
+ * carries no grant/acceptance — `validateAddWriterKeyPayload`'s `"writer"`
+ * branch licenses it purely by the CARRYING HEAD's own signer already being
+ * an active writer (checked at admission time, both client-side replay and
+ * gateway-side `checkTransitionAdmissible`), so the acting writer's identity
+ * never appears IN the payload itself, only in the head that carries it.
+ */
+export function buildWriterDoorAddWriterKeyPayload(
+  repoId: string,
+  predecessorPin: { version: string; sha256: string; writers: readonly WriterKeyEntry[] },
+  addedWriter: WriterKeyEntry & { principal_id: string },
+): AddWriterKeyPayload {
+  const predecessorState: WriterChainState = { version: predecessorPin.version, writers: predecessorPin.writers, sha256: predecessorPin.sha256, burnedWriterKeyIds: new Set(), consumedHandoffIds: new Set() };
+  const nextState = applyAddWriterKey(repoId, predecessorState, { writer_key_id: addedWriter.writer_key_id, signing_pubkey: addedWriter.signing_pubkey }, null);
+  return {
+    schema: "r402s.add-writer-key/v1",
+    repo_id: repoId,
+    base_writer_set: { version: predecessorPin.version, sha256: predecessorPin.sha256 },
+    next_writer_set: { version: nextState.version, writers: [...nextState.writers], sha256: nextState.sha256 },
+    added_writer: { writer_key_id: addedWriter.writer_key_id, signing_pubkey: addedWriter.signing_pubkey, principal_id: addedWriter.principal_id },
+    authorization: { kind: "writer" },
+  };
+}
+
 export function applyAddWriterKey(
   repoId: string,
   state: WriterChainState,

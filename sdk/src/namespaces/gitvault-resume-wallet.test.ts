@@ -17,6 +17,8 @@
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { Run402 } from "../index.js";
 import type { AllowanceData, CredentialsProvider } from "../credentials.js";
@@ -63,7 +65,16 @@ describe("r.gitvault.resume — wallet bootstrap before the claim (design D5)", 
     const lines: string[] = [];
     const r = new Run402({ apiBase: "https://api.example.test", credentials: providerWithAllowance(order, null), fetch });
 
-    await assert.rejects(r.gitvault.resume({ key: FABRICATED_KEY, onLine: (l) => lines.push(l) }), (err: unknown) => (err as { code?: string }).code === CLAIM_REFUSAL.code);
+    // An unscoped keystore_root resolves to the process-wide default
+    // (getConfigDir()/gitvault), which every OTHER test in this suite that
+    // reaches ensureIdentity() also shares — running the full glob together
+    // races two tests writing the SAME identity.json ("identity.json
+    // appeared concurrently"). This is the same isolation gap task 5.6 fixed
+    // for gitvault.test.ts's compact() calls (gitvault-multi-writer task 5.7).
+    await assert.rejects(
+      r.gitvault.resume({ key: FABRICATED_KEY, keystore_root: join(tmpdir(), "gitvault-resume-wallet-fresh-ks"), onLine: (l) => lines.push(l) }),
+      (err: unknown) => (err as { code?: string }).code === CLAIM_REFUSAL.code,
+    );
 
     assert.equal(order[0], "readAllowance");
     assert.equal(order[1], "createAllowance");
@@ -79,7 +90,10 @@ describe("r.gitvault.resume — wallet bootstrap before the claim (design D5)", 
     const { fetch, order } = mockFetch();
     const r = new Run402({ apiBase: "https://api.example.test", credentials: providerWithAllowance(order, CREATED), fetch });
 
-    await assert.rejects(r.gitvault.resume({ key: FABRICATED_KEY }), (err: unknown) => (err as { code?: string }).code === CLAIM_REFUSAL.code);
+    await assert.rejects(
+      r.gitvault.resume({ key: FABRICATED_KEY, keystore_root: join(tmpdir(), "gitvault-resume-wallet-existing-ks") }),
+      (err: unknown) => (err as { code?: string }).code === CLAIM_REFUSAL.code,
+    );
 
     assert.equal(order[0], "readAllowance");
     assert.match(order[1]!, /^fetch \/gitvault\/v1\/handoffs\/.+\/claim$/);
@@ -98,7 +112,10 @@ describe("r.gitvault.resume — wallet bootstrap before the claim (design D5)", 
     };
     const r = new Run402({ apiBase: "https://api.example.test", credentials: creds, fetch });
 
-    await assert.rejects(r.gitvault.resume({ key: FABRICATED_KEY }), (err: unknown) => (err as { code?: string }).code === CLAIM_REFUSAL.code);
+    await assert.rejects(
+      r.gitvault.resume({ key: FABRICATED_KEY, keystore_root: join(tmpdir(), "gitvault-resume-wallet-no-allowance-support-ks") }),
+      (err: unknown) => (err as { code?: string }).code === CLAIM_REFUSAL.code,
+    );
 
     assert.equal(order.length, 1);
     assert.match(order[0]!, /^fetch \/gitvault\/v1\/handoffs\/.+\/claim$/);
