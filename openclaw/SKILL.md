@@ -1146,7 +1146,7 @@ run402 repos delete --project prj_xyz --force # refuses without --force while th
 run402 repos rename my-notes --project prj_xyz  # explicit address-form name claim (no fee)
 ```
 
-Every mutating `repos` verb (`create`/`rename`/`delete`/`snapshot`/`policy`/`mirror`/`gc`/`handoff`/`resume`) is CLI/OpenClaw-only — no MCP tool exists or will exist for them (a `create` mints a one-shot recovery receipt; `delete` is irreversible; `gc`'s submit half is destructive; `handoff` mints a single-use bearer secret; `resume` mutates org membership). `repos create` also claims an address-form name automatically, best-effort, when the owning org already has a slug.
+Every mutating `repos` verb (`create`/`rename`/`delete`/`snapshot`/`policy`/`mirror`/`gc`/`access sync`/`handoff`/`resume`) is CLI/OpenClaw-only — no MCP tool exists or will exist for them (a `create` mints a one-shot recovery receipt; `delete` is irreversible; `gc`'s submit half is destructive; `handoff` mints a single-use bearer secret; `resume` mutates org membership). `repos create` also claims an address-form name automatically, best-effort, when the owning org already has a slug.
 
 Run every other verb from inside the git working tree.
 

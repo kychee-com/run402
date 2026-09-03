@@ -58,6 +58,8 @@ name on the box matches the name on the site, and nothing else:
 | `kygit recover ./mirror` | `run402 repos recover ./mirror` |
 | `kygit handoff` | `run402 repos handoff` |
 | `kygit resume kgh1_…` | `run402 repos resume kgh1_…` |
+
+After `kygit resume` you are a writer of the vault under your own key — `git push` works at once, and the sender's machine can be gone.
 | `kygit login` | `run402 operator login --loopback` |
 
 Agents: your canonical reference is
