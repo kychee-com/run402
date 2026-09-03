@@ -22,6 +22,7 @@ import {
   hexToBytes,
   sealKeyEnvelope,
   storedBytesSha256,
+  toBase64url,
   vkFingerprint,
 } from "../namespaces/gitvault.crypto.js";
 import type { GitvaultSignedObject } from "../namespaces/gitvault.types.js";
@@ -312,6 +313,25 @@ describe("gitvault keystore — §5.1 transitions", () => {
     assert.equal(repo.provenance, "restored_from_envelope");
     assert.equal(ks.assess(REPO).state, "ready");
     assert.ok(ks.readAuditLog().some((e) => e.event === "repo_restored_from_envelope"));
+  });
+
+  it("rev 47: a MEMBER's envelope wrapped by an ADMITTED non-genesis writer restores; without the admitted set it is refused as stored_envelope_created_by", async () => {
+    // creator (genesis writer) = ks; a second admitted writer = ks2; the restoring member = ks3 (its own recipient key).
+    const ks = GitvaultKeystore.open({ rootDir: root, now: fixedNow });
+    const v = await sealedVault(ks);
+    const ks2 = GitvaultKeystore.open({ rootDir: mkdtempSync(join(tmpdir(), "run402-ks2-")), now: fixedNow });
+    const writer2 = ks2.signingKeypair(ks2.ensureIdentity())!;
+    const ks3 = GitvaultKeystore.open({ rootDir: mkdtempSync(join(tmpdir(), "run402-ks3-")), now: fixedNow });
+    const member = ks3.encryptionKeypair(ks3.ensureIdentity())!;
+    const wrapped = await sealKeyEnvelope({ k_repo: v.kRepo, repo_id: REPO, epoch: GITVAULT_GENESIS_EPOCH, recipient_public_key: member.public_key, signer: writer2, created_at: "2026-09-04T00:00:00.000Z" });
+    const admitted = [{ writer_key_id: vkFingerprint(writer2.public_key), signing_pubkey: toBase64url(writer2.public_key) }];
+    await assert.rejects(
+      ks3.restoreRepoFromEnvelope({ genesis: v.genesis, envelope: wrapped.envelope }),
+      (e: unknown) => e instanceof LocalError && e.code === "VAULT_CREATION_CONFLICT" && JSON.stringify(e.details).includes("stored_envelope_created_by"),
+    );
+    const { repo } = await ks3.restoreRepoFromEnvelope({ genesis: v.genesis, envelope: wrapped.envelope, admitted_writers: admitted });
+    assert.equal(repo.k_repo_hex, bytesToHex(v.kRepo));
+    assert.equal(repo.provenance, "restored_from_envelope");
   });
 
   it("a restore without any receipt or pin is labeled unauthenticated salvage; a substituted vault is refused", async () => {

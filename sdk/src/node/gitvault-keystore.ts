@@ -942,6 +942,16 @@ export class GitvaultKeystore {
      * for the first time.
      */
     allocation_attested?: boolean;
+    /**
+     * gitvault-multi-writer (rev 47): the vault's CURRENTLY admitted writers,
+     * resolved by the caller from the chain-verified writer set (the admitted
+     * heads' `add_writer_key` / `writer_set_update` transitions). A
+     * non-creator envelope may be wrapped by ANY admitted writer — whichever
+     * key-holder reconciled first — so `created_by` must name the genesis
+     * writer OR one of these, and the envelope's signature is verified under
+     * THAT writer's key. Omitted: only the genesis writer is accepted (V0).
+     */
+    admitted_writers?: readonly { writer_key_id: string; signing_pubkey: string }[];
   }): Promise<{ repo: GitvaultRepoFile; trust: "receipt" | "platform_attested" | "unauthenticated_salvage"; continuity: "first_seen" | "pinned"; independently_verified: boolean }> {
     const identity = this.readIdentity();
     if (!identity) fail("VAULT_UNRECOVERABLE", GITVAULT_TERMINAL_LOSS_DOCTOR_TEXT, "restoring gitvault repo state", { statement: GITVAULT_TERMINAL_LOSS_STATEMENT });
@@ -961,10 +971,17 @@ export class GitvaultKeystore {
     const creatorEk = ekFingerprint(fromBase64url(genesis.creator_encryption_pubkey, "creator_encryption_pubkey"));
     const isCreatorEnvelope = envelope.recipient_fingerprint === creatorEk;
     const bindings = isCreatorEnvelope ? checkGenesisKeyBindings(genesis, envelope) : checkGenesisKeyBindings(genesis);
+    // The key that must have signed this envelope: the genesis writer, or —
+    // rev 47, writers plural — the admitted writer `created_by` names.
+    let envelopeSignerPubkey: string = genesis.creator_signing_pubkey;
     if (!isCreatorEnvelope) {
       if (envelope.repo_id !== genesis.repo_id) bindings.push("stored_envelope_repo_id");
       if (envelope.epoch !== genesis.epoch) bindings.push("stored_envelope_epoch");
-      if (envelope.created_by !== genesis.writer_key_id) bindings.push("stored_envelope_created_by");
+      if (envelope.created_by !== genesis.writer_key_id) {
+        const wrapper = (input.admitted_writers ?? []).find((w) => w.writer_key_id === envelope.created_by);
+        if (!wrapper) bindings.push("stored_envelope_created_by");
+        else envelopeSignerPubkey = wrapper.signing_pubkey;
+      }
     }
     if (bindings.length > 0) {
       fail("VAULT_CREATION_CONFLICT", "genesis key bindings do not hold for the stored envelope", "restoring gitvault repo state", { repo_id: genesis.repo_id, problems: bindings });
@@ -991,7 +1008,7 @@ export class GitvaultKeystore {
     if (envelope.recipient_fingerprint !== identity.encryption_fingerprint) {
       fail("GITVAULT_ENVELOPE_NOT_FOR_RECIPIENT", "the stored envelope is addressed to another principal", "restoring gitvault repo state", { recipient_fingerprint: envelope.recipient_fingerprint });
     }
-    const kRepo = await openKeyEnvelope({ envelope, recipient, signer_public_key: genesis.creator_signing_pubkey });
+    const kRepo = await openKeyEnvelope({ envelope, recipient, signer_public_key: envelopeSignerPubkey });
     const repo = this.saveRepo({
       repo_id: genesis.repo_id,
       org_id: genesis.org_id,

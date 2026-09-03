@@ -2969,6 +2969,77 @@ export class GitvaultVault {
    *
    * Returns `null` when the repo file already existed (nothing restored).
    */
+  /**
+   * gitvault-multi-writer (rev 47) — the vault's CURRENT admitted writer set
+   * for a cold open, computed from the chain itself: every admitted head is
+   * hash-checked against the listing, signature-verified under the writer
+   * the chain admits at that point, and its `add_writer_key` /
+   * `writer_set_update` transitions applied in order — the same rules the
+   * full verifying walk enforces, minus decryption (a cold open holds no
+   * K_repo yet). Fails closed on any defect: a non-genesis wrapper is only
+   * trusted when the chain vouches for it.
+   */
+  private async resolveAdmittedWritersForColdOpen(genesis: GitvaultVaultGenesis, genesisBytes: Uint8Array): Promise<WriterChainState> {
+    let writerState: WriterChainState = initialWriterState(this.repoId, genesis);
+    let prevSha256 = sha256Hex(genesisBytes);
+    let prevEpoch: string = genesis.epoch;
+    let expectedGeneration = nextGeneration(GITVAULT_GENESIS_GENERATION);
+    let progress: GitvaultListingProgress = { after_generation: GITVAULT_GENESIS_GENERATION, last_generation: GITVAULT_GENESIS_GENERATION, delivered: 0 };
+    let request: GitvaultHeadsListingRequest = { after_generation: GITVAULT_GENESIS_GENERATION, limit: String(GITVAULT_MAX_HEADS_PER_LISTING_PAGE) };
+    for (;;) {
+      const page = await this.transport.listHeads({ repo_id: this.repoId, ...request });
+      progress = verifyHeadsListingPage(page, request, progress, this.repoId);
+      for (const entry of page.heads) {
+        const bytes = await this.readCachedHeadBytes(entry.generation, entry.stored_bytes_sha256);
+        if (!bytes) fail("CHAIN_BROKEN", `listed head ${entry.generation} is absent from storage`, "resolving the vault's writer set for a cold open", { generation: entry.generation });
+        const head = parseGitvaultStrict(new TextDecoder().decode(bytes)) as GitvaultHead;
+        const isWriterAdd = head.transition !== null && head.transition.kind === "add_writer_key";
+        let addWriterKeyPayload: GitvaultAddWriterKeyPayload | null = null;
+        let signerPubkey: string;
+        let signerKeyId: string;
+        if (isWriterAdd) {
+          addWriterKeyPayload = parseAddWriterKeyPayload(head);
+          const v = validateAddWriterKeyPayload(this.repoId, writerState, addWriterKeyPayload, head.writer_key_id);
+          if (!v.ok) fail(v.code, `head ${head.generation}: ${v.detail}`, "resolving the vault's writer set for a cold open", { generation: head.generation });
+          if (addWriterKeyPayload.authorization.kind === "writer") {
+            const signer = resolveActiveWriter(writerState, head.writer_key_id)!;
+            signerPubkey = signer.signing_pubkey;
+            signerKeyId = signer.writer_key_id;
+          } else {
+            signerPubkey = addWriterKeyPayload.added_writer.signing_pubkey;
+            signerKeyId = addWriterKeyPayload.added_writer.writer_key_id;
+          }
+        } else {
+          const signer = resolveActiveWriter(writerState, head.writer_key_id);
+          if (!signer) fail("GITVAULT_WRITER_NOT_ADMITTED", `head ${head.generation}: writer_key_id ${head.writer_key_id} is not a currently admitted writer`, "resolving the vault's writer set for a cold open", { generation: head.generation });
+          signerPubkey = signer!.signing_pubkey;
+          signerKeyId = signer!.writer_key_id;
+        }
+        checkChainLink({ head, stored_bytes: bytes, listed_sha256: entry.stored_bytes_sha256, expected_generation: expectedGeneration, prev_sha256: prevSha256, repo_id: this.repoId, writer_public_key: signerPubkey, writer_key_id: signerKeyId, prev_epoch: prevEpoch });
+        if (head.transition !== null && head.transition.kind === "rotate_epoch") {
+          const rotationPayload = parseRotateEpochPayload(head);
+          if (rotationPayload.writer_set_update) {
+            const wsu = rotationPayload.writer_set_update;
+            const declaredBlocked = new Set(wsu.removed.map((r) => r.writer_key_id));
+            const wv = validateWriterSetUpdate(this.repoId, writerState, wsu, head.writer_key_id, declaredBlocked, wsu.writers.length === 0);
+            if (!wv.ok) fail(wv.code, `head ${head.generation}: ${wv.detail}`, "resolving the vault's writer set for a cold open", { generation: head.generation });
+            writerState = applyWriterSetUpdate(this.repoId, writerState, wsu.removed.map((r) => r.writer_key_id));
+          }
+        }
+        if (isWriterAdd && addWriterKeyPayload) {
+          const consumedHandoffId = addWriterKeyPayload.authorization.kind === "handoff" ? ((addWriterKeyPayload.authorization.grant.handoff_id as string | undefined) ?? null) : null;
+          writerState = applyAddWriterKey(this.repoId, writerState, { writer_key_id: addWriterKeyPayload.added_writer.writer_key_id, signing_pubkey: addWriterKeyPayload.added_writer.signing_pubkey }, consumedHandoffId);
+        }
+        prevSha256 = entry.stored_bytes_sha256;
+        prevEpoch = head.epoch;
+        expectedGeneration = nextGeneration(head.generation);
+      }
+      if (!page.has_more) break;
+      request = { ...request, cursor: page.next_cursor! };
+    }
+    return writerState;
+  }
+
   async ensureRepoState(): Promise<GitvaultColdOpenResult | null> {
     if (this.keystore.readRepo(this.repoId)) return null;
     const identity = this.keystore.readIdentity();
@@ -3078,7 +3149,12 @@ export class GitvaultVault {
         { repo_id: this.repoId, epoch: genesis.epoch, recipient_fingerprint: ownFingerprint, envelope: { repo_id: envelope.repo_id, epoch: envelope.epoch, recipient_fingerprint: envelope.recipient_fingerprint } },
       );
     }
-    const restored = await this.keystore.restoreRepoFromEnvelope({ genesis, envelope, allocation_attested: allocationAttested });
+    // rev 47 (writers plural): an envelope wrapped by a non-genesis writer is
+    // verified under THAT writer's key, which only the chain can vouch for —
+    // walk the admitted heads (signatures + writer transitions, no
+    // decryption) exactly when the wrapper is not the genesis writer.
+    const admittedWriters = envelope.created_by === genesis.writer_key_id ? [] : (await this.resolveAdmittedWritersForColdOpen(genesis, genesisBytes)).writers;
+    const restored = await this.keystore.restoreRepoFromEnvelope({ genesis, envelope, allocation_attested: allocationAttested, admitted_writers: admittedWriters });
     this.keystore.writeCachedGenesis(this.repoId, restored.repo.genesis_sha256, genesisBytes);
     this.genesisCache = { genesis, sha256: restored.repo.genesis_sha256 };
     return {
