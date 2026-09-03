@@ -148,6 +148,7 @@ import { crossProfileGitvaultHint } from "./gitvault-profile-scan.js";
 import {
   applyAddWriterKey,
   applyWriterSetUpdate,
+  buildAddWriterKeyActivationPayload,
   initialWriterState,
   resolveActiveWriter,
   validateAddWriterKeyPayload,
@@ -4495,6 +4496,8 @@ export class GitvaultVault {
     head_target: GitvaultHeadTarget;
     force_checkpoint: boolean;
     cutoff: GitvaultCutoffOptions | null;
+    /** gitvault-multi-writer (task 5.6) — rides this generation's head verbatim; `undefined` for every ordinary push. */
+    transition?: GitvaultTransitionEnvelope;
     // Optional (not just optional-VALUED): `planPush` never needs a binding —
     // it stops before `signHead` is reached, so omitting the key entirely
     // (rather than threading `capture_binding: undefined` through every dry
@@ -4566,12 +4569,20 @@ export class GitvaultVault {
     }
     await this.uploadAll(objects);
     const binding = typeof input.capture_binding === "function" ? await input.capture_binding() : input.capture_binding ?? null;
-    const head = this.signHead({
-      generation, prev_sha256: base.head_sha256, wal_entries: walEntries,
-      ref_state: { object_id: refState.object.object_id, object_kind: "ref_state", ciphertext_sha256: refState.upload.sha256, size_bytes: refState.upload.size_bytes },
-      retention_roots: { object_id: rootsObj.object.object_id, object_kind: "retention_roots", ciphertext_sha256: rootsObj.upload.sha256, size_bytes: rootsObj.upload.size_bytes },
-      checkpoint, checkpoint_purpose: checkpoint ? "ordinary_push" : null, capture_binding: binding, repair: null,
-    });
+    const head = this.signHead(
+      {
+        generation, prev_sha256: base.head_sha256, wal_entries: walEntries,
+        ref_state: { object_id: refState.object.object_id, object_kind: "ref_state", ciphertext_sha256: refState.upload.sha256, size_bytes: refState.upload.size_bytes },
+        retention_roots: { object_id: rootsObj.object.object_id, object_kind: "retention_roots", ciphertext_sha256: rootsObj.upload.sha256, size_bytes: rootsObj.upload.size_bytes },
+        checkpoint, checkpoint_purpose: checkpoint ? "ordinary_push" : null, capture_binding: binding, repair: null,
+      },
+      // gitvault-multi-writer (task 5.6) — an `add_writer_key` activation
+      // head rides THIS same content-neutral machinery: `input.transition`
+      // is undefined for every pre-existing caller (push/publishCheckpoint),
+      // so their heads are byte-for-byte unchanged; `submitWriterActivationHead`
+      // below is the one caller that passes it.
+      input.transition !== undefined ? { transition: input.transition } : undefined,
+    );
     const admitted = await this.admit(head);
     if (admitted.outcome === "conflict") return { outcome: "conflict", generation, winner: admitted.winner };
     return { outcome: "admitted", generation, head, head_sha256: admitted.head_sha256, admission_record_sha256: admitted.admission_record_sha256, capture_receipt: admitted.capture_receipt, form, refs: input.refs };
@@ -5306,6 +5317,95 @@ export class GitvaultVault {
   async rotateEpochForKeyRevocation(principalId: string, options: { client_idempotency_key?: string } = {}): Promise<GitvaultRotationResult> {
     const counters = await this.transport.declareRecipientKeyRevoked({ repo_id: this.repoId, principal_id: principalId });
     return this.rotateEpoch({ reason: "recipient_key_revoked", recipient_state_version: counters.recipient_state_version, recipient_revocation_version: counters.recipient_revocation_version, client_idempotency_key: options.client_idempotency_key });
+  }
+
+  // ── writer activation (gitvault-multi-writer task 5.6, design D4/D5) ──────
+
+  /**
+   * Submit a REF-NEUTRAL `add_writer_key{authorization.kind:"handoff"}`
+   * activation head — no ref/checkpoint/repair changes ride it (protocol
+   * §4.17's own "ref-neutral head shape... for the activation head" rule),
+   * built by `publishGeneration` the SAME way every ordinary no-op push
+   * would be (`refs`/`head_target` carried forward from `base` UNCHANGED),
+   * just with `transition` set. Retries `HEAD_CAS_CONFLICT` like every
+   * other publish path here. The caller (`resume()`) has already built and
+   * locally sanity-checked the grant + acceptance; this method only reads
+   * the FRESHLY-verified `writer_set_pin` (set by the `materialize()` this
+   * same call performs, mirroring `push()`'s own base-then-retry shape) to
+   * compute `base_writer_set`/`next_writer_set`, signs the head under
+   * `this.signer()` (the ADDED key itself — protocol §4.17's "head signed
+   * by the added key" — since `signer()` reads straight from THIS
+   * keystore's identity, and `resume()` mints/loads that identity before
+   * ever reaching this call), and advances the local `writer_set_pin` on
+   * success so a subsequent read reflects the new writer without a second
+   * chain walk.
+   *
+   * Crash-resumable (task 5.6): the chain burns `handoff_id` single-use, so
+   * a naive resubmission after a crash between a prior attempt's successful
+   * admission and this checkout learning about it would be refused
+   * VALIDATION_FAILED. Returns `{outcome:"already_admitted", generation}`
+   * instead of submitting anything whenever the freshly-verified writer set
+   * ALREADY contains `input.addedWriterKeyId` — the caller treats both
+   * outcomes as success (the writer IS active either way) and proceeds.
+   */
+  async submitWriterActivationHead(input: {
+    addedWriterKeyId: string;
+    addedSigningPubkeyB64u: string;
+    addedPrincipalId: string;
+    handoffId: string;
+    grant: Record<string, unknown>;
+    acceptance: Record<string, unknown>;
+  }): Promise<{ outcome: "activated"; result: GitvaultPublishResult } | { outcome: "already_admitted"; generation: string }> {
+    let conflicts = 0;
+    for (;;) {
+      const base = await this.materialize();
+      const pin = this.repoFile().writer_set_pin;
+      if (!pin) {
+        fail(
+          "GITVAULT_WRITER_STATE_UNAVAILABLE",
+          "no locally verified writer_set_pin for this vault — the chain must be verified (materialize/verifyToNewest) before an activation head can be built against a known base writer set",
+          "submitting a writer activation head",
+        );
+      }
+      // Crash-resumability's OTHER half (`resume()`'s own doc comment): the
+      // chain burns `handoff_id` single-use, so a retry that already landed
+      // on a prior attempt must NEVER resubmit — it would be refused
+      // VALIDATION_FAILED ("handoff_id already consumed") by the chain's
+      // own admission logic. Checking "is my key already a writer" here,
+      // BEFORE building anything, is simpler and more robust than parsing
+      // that refusal after the fact: it is the exact same idempotent-
+      // precheck shape `handoff()`'s writer precheck already uses (task
+      // 5.5), just inverted (there "not yet" refuses; here "already" skips).
+      if (pin.writers.some((w) => w.writer_key_id === input.addedWriterKeyId)) {
+        return { outcome: "already_admitted", generation: base.generation };
+      }
+      const payload = buildAddWriterKeyActivationPayload(
+        this.repoId,
+        pin,
+        { writer_key_id: input.addedWriterKeyId, signing_pubkey: input.addedSigningPubkeyB64u, principal_id: input.addedPrincipalId },
+        input.handoffId,
+        input.grant,
+        input.acceptance,
+      );
+      const nextState = payload.next_writer_set;
+      const payloadBytes = jcs(payload as unknown as Record<string, unknown>);
+      const transition: GitvaultTransitionEnvelope = { kind: "add_writer_key", payload_format: "base64url-jcs", payload: toBase64url(payloadBytes), payload_sha256: sha256Hex(payloadBytes) };
+      const published = await this.publishGeneration({
+        base, refs: base.refs, dropped: [], head_target: base.head_target,
+        force_checkpoint: false, cutoff: null, transition,
+      });
+      if (published.outcome === "conflict") {
+        conflicts += 1;
+        if (conflicts > this.retries) fail("HEAD_CAS_CONFLICT", `the writer activation lost ${conflicts} races at generation ${published.generation}; giving up`, "submitting a writer activation head", { generation: published.generation, winner: published.winner });
+        continue;
+      }
+      if (published.outcome === "dry_run") fail("GIT_COMMAND_FAILED", "internal: submitWriterActivationHead() received a dry-run result it never requested", "submitting a writer activation head");
+      this.keystore.updateRepo(this.repoId, { writer_set_pin: { version: nextState.version, sha256: nextState.sha256, writers: [...nextState.writers], pinned_at: formatGitvaultTimestamp(this.now()) } });
+      return {
+        outcome: "activated",
+        result: { generation: published.generation, head_sha256: published.head_sha256, head: published.head, admission_record_sha256: published.admission_record_sha256, capture_receipt: published.capture_receipt, form: published.form, conflicts_retried: conflicts, refs: published.refs, checkpoint_staleness: this.checkpointStalenessNow(published.generation) },
+      };
+    }
   }
 
   // ── repair (owner-only; mandatory fresh checkpoint; repair resource lane server-side) ──

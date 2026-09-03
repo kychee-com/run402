@@ -5,6 +5,7 @@ import { gitvaultWithoutSignature, jcs, keyFingerprintHex, sha256Hex, signatureP
 import {
   applyAddWriterKey,
   applyWriterSetUpdate,
+  buildAddWriterKeyActivationPayload,
   initialWriterState,
   MAX_VAULT_WRITERS,
   replayWriterState,
@@ -572,6 +573,57 @@ describe("gitvault writer-state (protocol §4.15-§4.18, D221-D228) — client m
       const { predictMintedRole } = await import("./gitvault-writer-state.js");
       assert.equal(predictMintedRole("superuser", "developer"), "developer");
       assert.equal(predictMintedRole("", "owner"), "owner");
+    });
+  });
+
+  describe("buildAddWriterKeyActivationPayload (gitvault-multi-writer task 5.6 — GitvaultVault.submitWriterActivationHead's pure assembly step)", () => {
+    it("round-trips through validateAddWriterKeyPayload: a real grantor, a real grant+acceptance (task 5.4's own builders), and this function's payload — accepted end to end", () => {
+      const grantor = keypair();
+      const added = keypair();
+      const base = initialWriterState(REPO_ID, genesisFor(grantor));
+      const handoffId = "3fa85f64-5717-4562-b3fc-2c963f66afa6";
+      const authHash = sha256Hex(new Uint8Array(32));
+      const authorization = buildHandoffAuthorization({ grantor, added, handoffId, authHash });
+
+      const payload = buildAddWriterKeyActivationPayload(REPO_ID, base, { writer_key_id: added.writerKeyId, signing_pubkey: added.pubB64u, principal_id: "prin_bob" }, handoffId, authorization.grant, authorization.acceptance);
+
+      assert.equal(payload.schema, "r402s.add-writer-key/v1");
+      assert.equal(payload.base_writer_set.version, base.version);
+      assert.equal(payload.base_writer_set.sha256, base.sha256);
+      assert.equal(payload.next_writer_set.version, "0000000000000001");
+      assert.deepEqual(
+        [...payload.next_writer_set.writers].map((w) => w.writer_key_id).sort(),
+        [grantor.writerKeyId, added.writerKeyId].sort(),
+      );
+      assert.equal(payload.added_writer.writer_key_id, added.writerKeyId);
+      assert.equal(payload.added_writer.principal_id, "prin_bob");
+
+      // The added key itself signs the carrying head in the real flow — "handoff" doors are self-signed by the added key (protocol §4.17).
+      const v = validateAddWriterKeyPayload(REPO_ID, base, payload, added.writerKeyId);
+      assert.deepEqual(v, { ok: true });
+    });
+
+    it("computes the SAME next_writer_set a manual application of applyAddWriterKey would (no drift between this function and the chain-replay logic it wraps)", () => {
+      const grantor = keypair();
+      const added = keypair();
+      const base = initialWriterState(REPO_ID, genesisFor(grantor));
+      const expected = applyAddWriterKey(REPO_ID, base, { writer_key_id: added.writerKeyId, signing_pubkey: added.pubB64u }, "some-handoff-id");
+
+      const payload = buildAddWriterKeyActivationPayload(REPO_ID, base, { writer_key_id: added.writerKeyId, signing_pubkey: added.pubB64u, principal_id: "prin_bob" }, "some-handoff-id", {}, {});
+
+      assert.equal(payload.next_writer_set.version, expected.version);
+      assert.equal(payload.next_writer_set.sha256, expected.sha256);
+      assert.deepEqual([...payload.next_writer_set.writers], [...expected.writers]);
+    });
+
+    it("accepts a bare {version, sha256, writers} predecessor pin — the exact shape GitvaultRepoFile.writer_set_pin persists, no WriterChainState (with its Sets) required", () => {
+      const grantor = keypair();
+      const added = keypair();
+      const base = initialWriterState(REPO_ID, genesisFor(grantor));
+      // Simulates reading `repoFile().writer_set_pin` directly: a plain object with no burnedWriterKeyIds/consumedHandoffIds.
+      const pin = { version: base.version, sha256: base.sha256, writers: base.writers };
+      const payload = buildAddWriterKeyActivationPayload(REPO_ID, pin, { writer_key_id: added.writerKeyId, signing_pubkey: added.pubB64u, principal_id: "prin_bob" }, "some-handoff-id", {}, {});
+      assert.equal(payload.base_writer_set.sha256, base.sha256);
     });
   });
 });

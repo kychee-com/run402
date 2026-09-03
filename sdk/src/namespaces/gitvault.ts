@@ -45,6 +45,7 @@ import {
   computeKeystorePossessionProof,
   computeSigningKeyPossessionSignature,
   ed25519PublicKey,
+  fromBase64url,
   hexToBytes,
   jcs,
   parseGitvaultStrict,
@@ -607,6 +608,8 @@ export interface GitvaultHandoffResumeResult {
   membership: { organization_id: string; role: string; status: string };
   members: unknown[];
   expires_at: string;
+  /** gitvault-multi-writer rev 47 (task 5.6, design D5) — this checkout's own writer activation. `outcome: "active"` covers BOTH a fresh submission this call made and the idempotent-skip case (a prior attempt's activation already landed) — the writer IS active either way. */
+  writer_activation: { outcome: "active"; writer_key_id: string; generation: string };
   reconcile_recipients: GitvaultReconcileEnvelopeRecipientsPushResult;
   next_actions: NextAction[];
 }
@@ -2474,7 +2477,7 @@ export class Gitvault {
     },
   ): Promise<GitvaultHandoffMintResult> {
     const [{ deployRefTransaction }, { captureHandoffSnapshot, snapshotCommitment }, ho] = await Promise.all([this.#publication(), this.#snapshot(), this.#handoff()]);
-    const { assembleHandoffKey, deriveHandoffSecrets, sealHandoffEnvelope, assertHandoffNoteHasNoSecret, HANDOFF_ENVELOPE_KIND, buildWriterAdmissionGrant, deriveWriterAdmissionSeed } = ho;
+    const { assembleHandoffKey, deriveHandoffSecrets, sealHandoffEnvelopeV2, assertHandoffNoteHasNoSecret, buildWriterAdmissionGrant, deriveWriterAdmissionSeed } = ho;
 
     const handle = options.address ? (await this.resolveOrCreateAddress({ ...options, address: options.address, allow_create: false })).handle : await this.open(options);
     const repoDir = options.repo_dir ?? process.cwd();
@@ -2568,15 +2571,6 @@ export class Gitvault {
     const handoffId = randomHandoffUuid();
     const { key, handoff_id_bytes, master_secret } = assembleHandoffKey(handoffId, randomBytes(32));
     const secrets = deriveHandoffSecrets(handoff_id_bytes, master_secret);
-    const sealed = sealHandoffEnvelope(handoff_id_bytes, secrets.wrap_key, {
-      v: 1,
-      kind: "handoff",
-      repo_id: handle.repo_id,
-      epoch: repoFile.epoch,
-      k_e_hex: repoFile.k_repo_hex,
-      checkpoint: { generation: pushResult.generation, commit_oid: snapshot.oid },
-      note_schema: "kygit.handoff-note.v1",
-    });
 
     // gitvault-multi-writer rev 47 (task 5.5, design D4) — the MINTER's own
     // writer key signs `writer_admission_grant`, authorizing whoever claims
@@ -2586,6 +2580,12 @@ export class Gitvault {
     // THIS checkout still holds the seed to sign with — a read-only
     // recovery identity (no local `signing_seed_hex`) can be an admitted
     // writer's fingerprint yet be structurally unable to mint from here.
+    //
+    // Built BEFORE the envelope is sealed — design D4's "no hash cycle:
+    // grant first, then seal" — so the v2 envelope below can embed this
+    // grant's own stored-bytes SHA-256, letting the claimant's `resume()`
+    // (task 5.6) cross-check the claim response's grant against what this
+    // call actually sealed, independent of anything the gateway could alter.
     const signingKeypair = handle.keystore.signingKeypair(identity!); // non-null: the writer precheck above already required identity.signing_fingerprint
     if (!signingKeypair) {
       throw new LocalError(
@@ -2611,6 +2611,17 @@ export class Gitvault {
       handoff_admission_pubkey: ed25519PublicKey(handoffAdmissionSeed),
     });
     const grantSha256Local = sha256Hex(jcs(grant));
+
+    const sealed = sealHandoffEnvelopeV2(handoff_id_bytes, secrets.wrap_key, {
+      v: 2,
+      kind: "handoff",
+      repo_id: handle.repo_id,
+      epoch: repoFile.epoch,
+      k_e_hex: repoFile.k_repo_hex,
+      checkpoint: { generation: pushResult.generation, commit_oid: snapshot.oid },
+      note_schema: "kygit.handoff-note.v1",
+      writer_admission_grant_sha256: grantSha256Local,
+    });
 
     // The wire shape is the gateway's documented one (llms-full.txt
     // "Handoff / resume"): `role` (the minted role), `repo_id` / `org_id` /
@@ -2638,7 +2649,7 @@ export class Gitvault {
         ...(options.ttlSeconds !== undefined ? { expires_in_seconds: options.ttlSeconds } : {}),
         checkpoint: { generation: pushResult.generation, snapshot_oid_hmac: snapshotOidHmac },
         sealed_envelope: sealed.sealed_envelope,
-        envelope_kind: sealed.envelope_kind ?? HANDOFF_ENVELOPE_KIND,
+        envelope_kind: sealed.envelope_kind,
         auth_hash: secrets.auth_hash_hex,
         writer_admission_grant: toBase64url(jcs(grant)),
       },
@@ -2725,26 +2736,80 @@ export class Gitvault {
    * git-config pins only → the session-start reconcile so a principal
    * envelope supersedes the bearer one.
    */
+  /**
+   * gitvault-multi-writer rev 47 (task 5.6, design D4/D5) — order: parse →
+   * ensure wallet → ensure identity → derive auth/wrap/admission → build
+   * acceptance → claim → verify grant → open envelope → check the grant
+   * hash → persist repo file with `pending_writer_admission` → clone →
+   * verify chain → submit the ref-neutral activation head → reconcile
+   * principal envelope → apply the checkpoint. Reported as
+   * `writer_activation` and `reconcile_recipients` (D5's "recipient
+   * coverage"), two blocks, because they are two properties.
+   *
+   * Crash-resumable by construction, not by a special-cased retry branch:
+   * the acceptance is derived fresh every call from the (deterministic)
+   * admission seed + this checkout's own identity, so re-running this
+   * ENTIRE method after a crash anywhere before activation lands is safe —
+   * the claim route is itself idempotent (same-claimant replay returns the
+   * SAME grant). The one step that is NOT safely repeatable is submitting
+   * the activation head a second time (the chain burns `handoff_id`
+   * single-use) — `submitWriterActivationHead` handles that by checking
+   * whether this checkout's own key is ALREADY in the freshly-verified
+   * writer set before ever building a transition, exactly mirroring
+   * `handoff()`'s own writer precheck (task 5.5), just inverted: there
+   * "not yet a writer" refuses; here "already a writer" means skip.
+   */
   async resume(options: { key: string; to?: string; keystore_root?: string; onLine?: (line: string) => void }): Promise<GitvaultHandoffResumeResult> {
-    const [ho, { GitvaultKeystore }, { createGitvaultHttpTransport }, restore] = await Promise.all([this.#handoff(), this.#keystore(), this.#publication(), this.#restore()]);
-    const { parseHandoffKey, deriveHandoffSecrets, openHandoffEnvelope } = ho;
+    const [ho, { GitvaultKeystore }, restore] = await Promise.all([this.#handoff(), this.#keystore(), this.#restore()]);
+    const { parseHandoffKey, deriveHandoffSecrets, deriveWriterAdmissionSeed, buildWriterAcceptance, openHandoffEnvelopeV2 } = ho;
     const { cloneGitvaultRemote, applyHandoffCheckpoint, resolveResumeTargetDir, readGitCommitMessage } = restore;
 
+    // parse
     const parsed = parseHandoffKey(options.key);
-    const secrets = deriveHandoffSecrets(parsed.handoff_id_bytes, parsed.master_secret);
 
-    // A fresh machine has no wallet, and the claim route accepts ONLY a SIWX
-    // wallet signature (a control-plane session, delegate, or service key is
-    // refused HANDOFF_CLAIM_REQUIRES_WALLET — the keystore key the claim
-    // publishes is what makes the recipient a real key-holder). Nothing
-    // upstream creates the allowance for an unpaid request, so `resume` does
-    // it here, exactly as `repos resume --help` promises: a keypair written
-    // to the allowance file, no faucet, no tier, no payment. The 2026-09-02
-    // rehearsal's Session B hit AUTH_REQUIRED on a bare machine for want of
-    // this. A provider without allowance support (an isomorphic one) is
-    // left alone — it authenticates however it authenticates.
+    // ensure wallet — A fresh machine has no wallet, and the claim route
+    // accepts ONLY a SIWX wallet signature (a control-plane session,
+    // delegate, or service key is refused HANDOFF_CLAIM_REQUIRES_WALLET —
+    // the keystore key the claim publishes is what makes the recipient a
+    // real key-holder). Nothing upstream creates the allowance for an
+    // unpaid request, so `resume` does it here, exactly as `repos resume
+    // --help` promises: a keypair written to the allowance file, no
+    // faucet, no tier, no payment. The 2026-09-02 rehearsal's Session B hit
+    // AUTH_REQUIRED on a bare machine for want of this. A provider without
+    // allowance support (an isomorphic one) is left alone — it
+    // authenticates however it authenticates.
     await this.#ensureLocalWallet(options.onLine);
 
+    // ensure identity — BEFORE claim (D5): the acceptance below needs this
+    // checkout's own signing key, which the claim REQUEST body carries.
+    const keystore = new GitvaultKeystore(options.keystore_root !== undefined ? { rootDir: options.keystore_root } : {});
+    const identity = keystore.ensureIdentity();
+    const signingKeypair = keystore.signingKeypair(identity);
+    if (!signingKeypair) {
+      throw new LocalError(
+        "this keystore has no local signing seed — resuming a gitvault-multi-writer handoff requires signing writer_acceptance with a full Ed25519 seed, which a read-only recovery identity does not hold",
+        "resuming a handoff",
+        { code: "VAULT_UNRECOVERABLE" },
+      );
+    }
+    const claimantEncryptionPubkeyRaw = fromBase64url(identity.encryption_pubkey, "identity.encryption_pubkey");
+
+    // derive auth/wrap/admission
+    const secrets = deriveHandoffSecrets(parsed.handoff_id_bytes, parsed.master_secret);
+    const admissionSeed = deriveWriterAdmissionSeed(parsed.handoff_id_bytes, parsed.master_secret);
+
+    // build acceptance — before claim: design D4's own point is that the
+    // claimant can construct BOTH signatures before ever seeing the stored
+    // grant, since `handoff_id`/`auth_hash` are already independently known.
+    const acceptance = buildWriterAcceptance({
+      handoff_id: parsed.handoff_id,
+      auth_hash: secrets.auth_hash_hex,
+      admission_seed: admissionSeed,
+      claimant_signing_seed: signingKeypair.seed,
+      claimant_encryption_pubkey_raw: claimantEncryptionPubkeyRaw,
+    });
+
+    // claim
     const claim = await this.#client.request<{
       handoff_id: string;
       kind: "handoff";
@@ -2758,6 +2823,8 @@ export class Gitvault {
       membership: { org_id: string; role: string; status: string };
       members?: unknown[];
       expires_at: string;
+      writer_admission_grant: string;
+      writer_activation: { state: string };
       next_actions?: NextAction[];
     }>(`/gitvault/v1/handoffs/${encodeURIComponent(parsed.handoff_id)}/claim`, {
       method: "POST",
@@ -2768,7 +2835,7 @@ export class Gitvault {
       // matched any stored hash: every claim answered HANDOFF_KEY_INVALID (the
       // 2026-09-02 rehearsal, Session B). Each side's own tests passed; only
       // the cross-side vector below catches this class.
-      body: { auth_secret: toBase64url(secrets.auth_secret) },
+      body: { auth_secret: toBase64url(secrets.auth_secret), writer_acceptance: toBase64url(jcs(acceptance as unknown as Record<string, unknown>)) },
       context: "claiming a handoff key",
     });
 
@@ -2777,18 +2844,55 @@ export class Gitvault {
     // `--to <dir>` names it explicitly.
     const vault = handoffVaultFromWire(claim);
 
-    const payload = openHandoffEnvelope(parsed.handoff_id_bytes, secrets.wrap_key, claim.sealed_envelope, claim.envelope_kind);
+    // verify grant — a light structural/binding check, NOT the full
+    // cryptographic verification (which needs the vault's writer set to
+    // resolve the grantor's pubkey, and therefore waits until the chain is
+    // walked below — protocol §4.17's own admission ordering, not skipped,
+    // just not reachable from here yet).
+    let grantBytes: Uint8Array;
+    try {
+      grantBytes = fromBase64url(claim.writer_admission_grant, "writer_admission_grant");
+    } catch {
+      throw new LocalError("the claim response's writer_admission_grant is not valid base64url", "resuming a handoff", { code: "VALIDATION_FAILED", details: { field: "writer_admission_grant" } });
+    }
+    let grant: Record<string, unknown>;
+    try {
+      grant = JSON.parse(new TextDecoder().decode(grantBytes)) as Record<string, unknown>;
+    } catch {
+      throw new LocalError("the claim response's writer_admission_grant does not decode to valid JSON", "resuming a handoff", { code: "VALIDATION_FAILED", details: { field: "writer_admission_grant" } });
+    }
+    if (grant.handoff_id !== parsed.handoff_id || grant.auth_hash !== secrets.auth_hash_hex || grant.repo_id !== vault.vault_id) {
+      throw new LocalError("the claim response's writer_admission_grant does not bind this handoff — refusing", "resuming a handoff", { code: "VALIDATION_FAILED", details: { field: "writer_admission_grant" } });
+    }
+    const grantSha256 = sha256Hex(grantBytes);
+
+    // open envelope — v2 (task 5.4): the v2 payload's own
+    // writer_admission_grant_sha256 is what the next step cross-checks;
+    // opening under the SAME v1/v2-requiring rule that refuses a
+    // pre-gitvault-multi-writer mint's envelope outright.
+    const payload = openHandoffEnvelopeV2(parsed.handoff_id_bytes, secrets.wrap_key, claim.sealed_envelope, claim.envelope_kind);
     if (payload.repo_id !== vault.vault_id) {
       throw new LocalError("the opened envelope's repo_id does not match the claim response's vault — refusing", "resuming a handoff", { code: "HANDOFF_ENVELOPE_INVALID" });
     }
 
-    const keystore = new GitvaultKeystore(options.keystore_root !== undefined ? { rootDir: options.keystore_root } : {});
-    keystore.ensureIdentity();
+    // check the grant hash — design D4's own integrity binding: the SEALED
+    // envelope (wrap_key-authenticated, the gateway never holds wrap_key)
+    // names the grant it was minted alongside; if the claim response's
+    // grant doesn't match, something between mint and claim substituted a
+    // different one — refuse before spending anything on this handoff.
+    if (payload.writer_admission_grant_sha256 !== grantSha256) {
+      throw new LocalError(
+        `the claim response's writer_admission_grant (sha256 ${grantSha256}) does not match the hash sealed into the envelope at mint time (${payload.writer_admission_grant_sha256}) — refusing to activate under a substituted grant`,
+        "resuming a handoff",
+        { code: "HANDOFF_CLAIM_WRITER_KEY_MISMATCH", details: { expected: payload.writer_admission_grant_sha256, received: grantSha256 } },
+      );
+    }
 
     // Genesis must be pinned before ANY materialize call can succeed
     // (`GitvaultVault.genesis()` requires a keystore repo file — this is
     // the one read that happens BEFORE one exists, via the transport
     // directly, mirroring `restoreRepoFromEnvelope`'s own signature check).
+    const { createGitvaultHttpTransport } = await this.#publication();
     const transport = createGitvaultHttpTransport(this.#client);
     const genesisBytes = await transport.getGenesis({ repo_id: vault.vault_id });
     if (!genesisBytes) {
@@ -2800,7 +2904,13 @@ export class Gitvault {
     }
     const genesisSha = sha256Hex(genesisBytes);
 
-    // Write the repo file to the keystore BEFORE touching disk (design D10).
+    // persist repo file with pending_writer_admission — BEFORE clone/chain
+    // work below (design D10's "write to keystore before touching disk",
+    // extended): a crash from here on leaves a durable record of the
+    // ALREADY-VERIFIED grant, so a retry never needs to re-claim (the
+    // acceptance is trivially re-derivable from data already in hand, per
+    // this method's own doc comment above; only the grant is not).
+    const myWriterKeyId = identity.signing_fingerprint;
     keystore.saveRepo({
       repo_id: vault.vault_id,
       org_id: vault.organization_id,
@@ -2812,14 +2922,13 @@ export class Gitvault {
       head_pin: null,
       last_ref_transaction: null,
       provenance: "restored_from_handoff",
+      pending_writer_admission: { handoff_id: parsed.handoff_id, writer_admission_grant: grant, claimed_writer_key_id: myWriterKeyId },
     });
 
     const targetDir = await resolveResumeTargetDir(options.to, vault.address, vault.vault_id);
     options.onLine?.(`resuming into ${targetDir}`);
     const remoteUrl = gitvaultRemoteUrl(vault.organization_id, vault.project_id);
     await cloneGitvaultRemote(remoteUrl, targetDir);
-
-    const restored = await applyHandoffCheckpoint({ dir: targetDir, stash_oid: payload.checkpoint.commit_oid });
 
     // Local-only pins (design D10) — never a worktree file, never the
     // global active project. Reuses the SAME pin-writer every other
@@ -2833,10 +2942,54 @@ export class Gitvault {
       { project_id: vault.project_id, org_id: vault.organization_id },
     );
 
-    // The bearer envelope is superseded within minutes of use — run the
-    // same reconcile `push()` runs, best-effort (never a `resume()` throw).
-    const handle = await this.open({ repo_id: vault.vault_id, repo_dir: targetDir, keystore_root: options.keystore_root });
+    // verify chain — `open()` here mainly constructs the `GitvaultVault`
+    // instance: its own `ensureRepoState()` (the cold-open restore path)
+    // no-ops the instant it sees a repo file already on disk — and the
+    // `saveRepo` call above just wrote one. The chain walk this method
+    // actually needs happens a moment later, the FIRST time
+    // `submitWriterActivationHead` calls `materialize()` on `handle.vault`
+    // below — `materialize()` unconditionally runs `verifyToNewest()` on
+    // every call, cold-open or not, which is what freshly pins
+    // `writer_set_pin`. `options.reconcile: "forbidden"` here: the
+    // encryption-envelope reconcile is deliberately deferred to its own
+    // explicit step AFTER activation (D5's ordering), not run implicitly
+    // and possibly twice.
+    const handle = await this.open({ repo_id: vault.vault_id, repo_dir: targetDir, keystore_root: options.keystore_root, reconcile: "forbidden" });
+
+    // `added_writer.principal_id` names the claimant's OWN control-plane
+    // principal — the claim response never carries it (its `membership`
+    // block names the ORG, not the principal), so resolve it fresh here,
+    // the same one-call pattern `handoff()` already uses for its own role
+    // resolution (task 5.5).
+    const who = await this.#client.request<{ principal: { id: string } }>("/agent/v1/whoami", { context: "resolving this principal's id for the writer activation head" });
+
+    // submit the ref-neutral activation head
+    const activation = await handle.vault.submitWriterActivationHead({
+      addedWriterKeyId: myWriterKeyId,
+      addedSigningPubkeyB64u: identity.signing_pubkey,
+      addedPrincipalId: who.principal.id,
+      handoffId: parsed.handoff_id,
+      grant,
+      acceptance: acceptance as unknown as Record<string, unknown>,
+    });
+    const activationGeneration = activation.outcome === "activated" ? activation.result.generation : activation.generation;
+
+    // Clearing pending_writer_admission now that the activation head is
+    // (or already was — the idempotent-skip case) admitted mirrors
+    // writer_status flipping to "active" at the same moment, per this
+    // field's own doc comment in gitvault-keystore.ts.
+    keystore.updateRepo(vault.vault_id, { pending_writer_admission: null });
+
+    // reconcile principal envelope — the bearer envelope is superseded
+    // within minutes of use; run the same reconcile `push()` runs,
+    // best-effort (never a `resume()` throw), NOW that this checkout is an
+    // admitted writer and the reconcile's own wrap step is meaningful.
     const reconcile = await this.#tryReconcileEnvelopeRecipients(handle.vault);
+
+    // apply the checkpoint — LAST (D5): a failure anywhere above this line
+    // leaves the working tree untouched (freshly cloned, nothing stashed),
+    // the cleanest possible state to retry `resume()` from.
+    const restored = await applyHandoffCheckpoint({ dir: targetDir, stash_oid: payload.checkpoint.commit_oid });
 
     const senderIsOwner = claim.membership.role === "owner";
     const nextActions: NextAction[] = [...(claim.next_actions ?? [])];
@@ -2871,6 +3024,7 @@ export class Gitvault {
       membership: handoffMembershipFromWire(claim.membership),
       members: claim.members ?? [],
       expires_at: claim.expires_at,
+      writer_activation: { outcome: "active", writer_key_id: myWriterKeyId, generation: activationGeneration },
       reconcile_recipients: reconcile,
       next_actions: nextActions,
     };

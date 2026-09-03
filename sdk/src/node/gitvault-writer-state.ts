@@ -179,6 +179,38 @@ export function initialWriterState(repoId: string, genesis: { creator_signing_pu
  * Caller MUST have validated it first (`validateAddWriterKeyPayload`) — this
  * function performs no checks, it only advances state.
  */
+/**
+ * gitvault-multi-writer (task 5.6) — builds a well-formed `handoff`-door
+ * `add_writer_key` payload (schema `r402s.add-writer-key/v1`) from a
+ * predecessor writer-set pin and the claimant's own key — the pure
+ * assembly step `GitvaultVault.submitWriterActivationHead` delegates to,
+ * kept separate so it can be unit-tested directly against
+ * {@link validateAddWriterKeyPayload} without a full vault/keystore/git
+ * harness. `predecessorPin` needs only `{version, sha256, writers}` — the
+ * caller's persisted `writer_set_pin` shape already matches, no
+ * `WriterChainState` (with its Sets) is required to build an OUTGOING
+ * payload; only to VALIDATE an incoming one.
+ */
+export function buildAddWriterKeyActivationPayload(
+  repoId: string,
+  predecessorPin: { version: string; sha256: string; writers: readonly WriterKeyEntry[] },
+  addedWriter: WriterKeyEntry & { principal_id: string },
+  handoffId: string,
+  grant: Record<string, unknown>,
+  acceptance: Record<string, unknown>,
+): AddWriterKeyPayload {
+  const predecessorState: WriterChainState = { version: predecessorPin.version, writers: predecessorPin.writers, sha256: predecessorPin.sha256, burnedWriterKeyIds: new Set(), consumedHandoffIds: new Set() };
+  const nextState = applyAddWriterKey(repoId, predecessorState, { writer_key_id: addedWriter.writer_key_id, signing_pubkey: addedWriter.signing_pubkey }, handoffId);
+  return {
+    schema: "r402s.add-writer-key/v1",
+    repo_id: repoId,
+    base_writer_set: { version: predecessorPin.version, sha256: predecessorPin.sha256 },
+    next_writer_set: { version: nextState.version, writers: [...nextState.writers], sha256: nextState.sha256 },
+    added_writer: { writer_key_id: addedWriter.writer_key_id, signing_pubkey: addedWriter.signing_pubkey, principal_id: addedWriter.principal_id },
+    authorization: { kind: "handoff", grant, acceptance },
+  };
+}
+
 export function applyAddWriterKey(
   repoId: string,
   state: WriterChainState,
