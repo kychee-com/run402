@@ -1,0 +1,794 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Run402 Passkeys</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #17201c;
+      --muted: #5a655f;
+      --line: #cfd8d0;
+      --panel: #ffffff;
+      --wash: #f4f7f3;
+      --accent: #1f7a55;
+      --accent-2: #2f5ea8;
+      --warn: #9b5d12;
+      --bad: #9b2431;
+      --good: #146b43;
+      --shadow: 0 18px 48px rgba(36, 50, 42, 0.12);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: radial-gradient(circle at 20% 0%, #e9f4ed 0, transparent 32rem), var(--wash);
+      color: var(--ink);
+    }
+    button, input {
+      font: inherit;
+    }
+    button {
+      border: 1px solid transparent;
+      border-radius: 7px;
+      background: var(--ink);
+      color: #fff;
+      min-height: 42px;
+      padding: 0 14px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: transform .15s ease, background .15s ease, border-color .15s ease;
+    }
+    button:hover { transform: translateY(-1px); }
+    button:disabled {
+      opacity: .55;
+      cursor: wait;
+      transform: none;
+    }
+    button.secondary {
+      background: #fff;
+      border-color: var(--line);
+      color: var(--ink);
+    }
+    button.danger {
+      background: #fff;
+      border-color: #e4b4bb;
+      color: var(--bad);
+    }
+    input {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      min-height: 42px;
+      padding: 0 12px;
+      color: var(--ink);
+      background: #fff;
+    }
+    input:focus {
+      outline: 2px solid rgba(31, 122, 85, .2);
+      border-color: var(--accent);
+    }
+    .wrap {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 28px 18px 44px;
+    }
+    header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 20px;
+      align-items: center;
+      margin-bottom: 18px;
+    }
+    h1, h2, h3, p { margin: 0; }
+    h1 {
+      font-size: clamp(28px, 4vw, 52px);
+      line-height: 1.02;
+      letter-spacing: 0;
+    }
+    h2 {
+      font-size: 18px;
+      letter-spacing: 0;
+    }
+    h3 {
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+    .subtitle {
+      max-width: 720px;
+      margin-top: 10px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .identity-card {
+      width: 210px;
+      min-height: 132px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #fff, #e8f2ef);
+      border: 1px solid rgba(23, 32, 28, .12);
+      box-shadow: var(--shadow);
+      padding: 16px;
+      display: grid;
+      gap: 14px;
+    }
+    .chip {
+      width: 56px;
+      height: 42px;
+      border-radius: 7px;
+      background:
+        linear-gradient(90deg, transparent 45%, rgba(23,32,28,.2) 45%, rgba(23,32,28,.2) 55%, transparent 55%),
+        linear-gradient(#d1b46b, #f4da8d);
+      border: 1px solid #987b32;
+    }
+    .bars {
+      display: grid;
+      gap: 8px;
+    }
+    .bars span {
+      display: block;
+      height: 8px;
+      border-radius: 8px;
+      background: #c3d1ca;
+    }
+    .bars span:nth-child(1) { width: 86%; }
+    .bars span:nth-child(2) { width: 62%; }
+    .topline {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin: 16px 0 22px;
+    }
+    .pill {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 7px 11px;
+      background: rgba(255,255,255,.72);
+      color: var(--muted);
+      font-size: 13px;
+      white-space: nowrap;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(300px, .78fr);
+      gap: 18px;
+      align-items: start;
+    }
+    .panel {
+      background: rgba(255,255,255,.88);
+      border: 1px solid rgba(23, 32, 28, .1);
+      border-radius: 8px;
+      box-shadow: 0 10px 34px rgba(36, 50, 42, 0.08);
+      padding: 18px;
+    }
+    .stack {
+      display: grid;
+      gap: 14px;
+    }
+    .two {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    label {
+      display: grid;
+      gap: 7px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+    .session {
+      display: grid;
+      grid-template-columns: 12px minmax(0, 1fr);
+      gap: 10px;
+      align-items: start;
+      padding: 12px;
+      border-radius: 8px;
+      background: #f6f8f6;
+      border: 1px solid var(--line);
+    }
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #8a958e;
+      margin-top: 5px;
+    }
+    .dot.good { background: var(--good); }
+    .session strong {
+      display: block;
+      font-size: 15px;
+      overflow-wrap: anywhere;
+    }
+    .session small {
+      color: var(--muted);
+      display: block;
+      margin-top: 4px;
+      overflow-wrap: anywhere;
+    }
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin: 18px 0;
+    }
+    .step {
+      min-height: 86px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: #fff;
+    }
+    .step b { display: block; font-size: 14px; margin-bottom: 8px; }
+    .step span { color: var(--muted); font-size: 13px; }
+    .step.active {
+      border-color: rgba(31, 122, 85, .5);
+      box-shadow: inset 0 0 0 1px rgba(31, 122, 85, .15);
+    }
+    .log {
+      height: 220px;
+      overflow: auto;
+      border-radius: 8px;
+      background: #101513;
+      color: #dce8df;
+      padding: 12px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: 12px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+    }
+    .passkey-list {
+      display: grid;
+      gap: 10px;
+    }
+    .passkey-item {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: #fff;
+      display: grid;
+      gap: 10px;
+    }
+    .passkey-item strong,
+    .passkey-item small {
+      overflow-wrap: anywhere;
+    }
+    .empty {
+      color: var(--muted);
+      border: 1px dashed var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      background: #fff;
+    }
+    .ok { color: var(--good); }
+    .warn { color: var(--warn); }
+    .bad { color: var(--bad); }
+    @media (max-width: 820px) {
+      header, .grid, .two, .steps { grid-template-columns: 1fr; }
+      .identity-card { width: 100%; }
+      .topline { align-items: flex-start; flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>Run402 Passkeys</h1>
+        <p class="subtitle">Create a project user, attach a passkey, sign out, and come back with the passkey session that Run402 returns from <code>/auth/v1/passkeys/login/verify</code>.</p>
+      </div>
+      <div class="identity-card" aria-hidden="true">
+        <div class="chip"></div>
+        <div class="bars"><span></span><span></span><span></span></div>
+      </div>
+    </header>
+
+    <div class="topline">
+      <div class="row">
+        <span class="pill" id="origin-pill">origin</span>
+        <span class="pill" id="project-pill">project</span>
+      </div>
+      <div class="row">
+        <button class="secondary" id="refresh-user">Refresh</button>
+        <button class="secondary" id="clear-local">Clear local session</button>
+      </div>
+    </div>
+
+    <section class="steps" aria-label="Passkey flow">
+      <div class="step active" id="step-account"><b>1. Account</b><span>Email and password session</span></div>
+      <div class="step" id="step-register"><b>2. Register</b><span>WebAuthn create</span></div>
+      <div class="step" id="step-signout"><b>3. Sign out</b><span>Drop password session</span></div>
+      <div class="step" id="step-passkey"><b>4. Passkey</b><span>WebAuthn get</span></div>
+    </section>
+
+    <main class="grid">
+      <div class="stack">
+        <section class="panel stack">
+          <h2>Session</h2>
+          <div class="session">
+            <span class="dot" id="session-dot"></span>
+            <div>
+              <strong id="session-title">Signed out</strong>
+              <small id="session-detail">No token in local storage.</small>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel stack">
+          <h2>Password Bootstrap</h2>
+          <div class="two">
+            <label>Email
+              <input id="email" type="email" autocomplete="username" placeholder="you+passkey@example.com">
+            </label>
+            <label>Password
+              <input id="password" type="password" autocomplete="new-password" placeholder="at least 8 characters">
+            </label>
+          </div>
+          <div class="row">
+            <button id="signup">Create account</button>
+            <button class="secondary" id="password-login">Password login</button>
+          </div>
+        </section>
+
+        <section class="panel stack">
+          <h2>Passkey</h2>
+          <div class="two">
+            <label>Label
+              <input id="label" type="text" value="Demo passkey">
+            </label>
+            <label>Email hint
+              <input id="passkey-email" type="email" autocomplete="username" placeholder="optional">
+            </label>
+          </div>
+          <div class="row">
+            <button id="register-passkey">Register passkey</button>
+            <button class="secondary" id="signout">Sign out</button>
+            <button id="passkey-login">Passkey login</button>
+          </div>
+        </section>
+      </div>
+
+      <aside class="stack">
+        <section class="panel stack">
+          <div class="row" style="justify-content: space-between;">
+            <h2>Passkeys</h2>
+            <button class="secondary" id="list-passkeys">List</button>
+          </div>
+          <div id="passkey-list" class="passkey-list">
+            <div class="empty">No passkeys loaded.</div>
+          </div>
+        </section>
+
+        <section class="panel stack">
+          <h2>Event Log</h2>
+          <div id="log" class="log"></div>
+        </section>
+      </aside>
+    </main>
+  </div>
+
+  <script>
+    const API_BASE = window.__API_BASE__ || "";
+    const ANON_KEY = window.__ANON_KEY__ || "";
+    const PROJECT_ID = window.__PROJECT_ID__ || "";
+    const BUILD_ID = "passkeys-demo-2026-05-05.2";
+    const STORE_KEY = "run402_passkeys_demo_session";
+
+    let session = null;
+
+    const el = (id) => document.getElementById(id);
+
+    el("origin-pill").textContent = location.origin;
+    el("project-pill").textContent = PROJECT_ID || "project";
+
+    function log(message, kind = "info") {
+      const ts = new Date().toLocaleTimeString();
+      const prefix = kind === "error" ? "ERROR" : kind === "ok" ? "OK" : "INFO";
+      el("log").textContent += `[${ts}] ${prefix} ${message}\n`;
+      el("log").scrollTop = el("log").scrollHeight;
+    }
+
+    function setBusy(button, busy) {
+      button.disabled = busy;
+      button.dataset.oldText = button.dataset.oldText || button.textContent;
+      button.textContent = busy ? "Working..." : button.dataset.oldText;
+    }
+
+    function saveSession(data) {
+      session = data;
+      localStorage.setItem(STORE_KEY, JSON.stringify(data));
+      updateSessionUI();
+    }
+
+    function loadSession() {
+      try {
+        const raw = localStorage.getItem(STORE_KEY);
+        if (!raw) return null;
+        const data = JSON.parse(raw);
+        const payload = decodeJwt(data.access_token);
+        if (!payload || payload.exp * 1000 < Date.now()) {
+          localStorage.removeItem(STORE_KEY);
+          return null;
+        }
+        return data;
+      } catch {
+        localStorage.removeItem(STORE_KEY);
+        return null;
+      }
+    }
+
+    function clearSession() {
+      session = null;
+      localStorage.removeItem(STORE_KEY);
+      updateSessionUI();
+      renderPasskeys([]);
+    }
+
+    function decodeJwt(token) {
+      if (!token) return null;
+      const part = token.split(".")[1];
+      if (!part) return null;
+      const json = atob(part.replace(/-/g, "+").replace(/_/g, "/"));
+      return JSON.parse(json);
+    }
+
+    function updateSessionUI() {
+      const dot = el("session-dot");
+      const title = el("session-title");
+      const detail = el("session-detail");
+      document.querySelectorAll(".step").forEach((node) => node.classList.remove("active"));
+
+      if (!session?.access_token) {
+        dot.className = "dot";
+        title.textContent = "Signed out";
+        detail.textContent = "No token in local storage.";
+        el("step-account").classList.add("active");
+        return;
+      }
+
+      const claims = decodeJwt(session.access_token);
+      const amr = Array.isArray(claims?.amr) ? claims.amr.join(", ") : "unknown";
+      dot.className = "dot good";
+      title.textContent = session.user?.email || claims?.sub || "Signed in";
+      detail.textContent = `role=${claims?.role || "unknown"} aal=${claims?.aal || "unknown"} amr=${amr}`;
+
+      if (claims?.amr?.includes("passkey")) {
+        el("step-passkey").classList.add("active");
+      } else if (session.user?.has_passkey_for_current_rp || session.user?.has_passkeys) {
+        el("step-signout").classList.add("active");
+      } else {
+        el("step-register").classList.add("active");
+      }
+    }
+
+    async function api(path, options = {}) {
+      const headers = {
+        "Content-Type": "application/json",
+        apikey: ANON_KEY,
+        ...(options.headers || {}),
+      };
+      if (options.auth) {
+        if (!session?.access_token) throw new Error("Sign in first.");
+        headers.Authorization = `Bearer ${session.access_token}`;
+      }
+      const res = await fetch(`${API_BASE}${path}`, {
+        method: options.method || "GET",
+        headers,
+        body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      });
+      const text = await res.text();
+      let data = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        data = { message: text };
+      }
+      if (!res.ok) {
+        throw new Error(data.error_description || data.error || data.message || text || `${res.status}`);
+      }
+      return data;
+    }
+
+    async function signup() {
+      const button = el("signup");
+      setBusy(button, true);
+      try {
+        const email = el("email").value.trim();
+        const password = el("password").value;
+        await api("/auth/v1/signup", { method: "POST", body: { email, password } });
+        log(`Created ${email}`, "ok");
+        await passwordLogin();
+      } catch (err) {
+        log(err.message, "error");
+      } finally {
+        setBusy(button, false);
+      }
+    }
+
+    async function passwordLogin() {
+      const button = el("password-login");
+      setBusy(button, true);
+      try {
+        const email = el("email").value.trim();
+        const password = el("password").value;
+        const data = await api("/auth/v1/token?grant_type=password", {
+          method: "POST",
+          body: { email, password },
+        });
+        saveSession(data);
+        el("passkey-email").value = email;
+        log(`Password session for ${email}`, "ok");
+        await refreshUser();
+      } catch (err) {
+        log(err.message, "error");
+      } finally {
+        setBusy(button, false);
+      }
+    }
+
+    async function refreshUser() {
+      if (!session?.access_token) {
+        updateSessionUI();
+        return;
+      }
+      try {
+        const user = await api(`/auth/v1/user?app_origin=${encodeURIComponent(location.origin)}`, { auth: true });
+        session.user = user;
+        saveSession(session);
+        log(`User passkeys: ${user.passkey_count}`, "ok");
+      } catch (err) {
+        log(err.message, "error");
+      }
+    }
+
+    async function registerPasskey() {
+      const button = el("register-passkey");
+      setBusy(button, true);
+      try {
+        const start = await api("/auth/v1/passkeys/register/options", {
+          method: "POST",
+          auth: true,
+          body: { app_origin: location.origin },
+        });
+        const publicKey = normalizeCreationOptions(start.options);
+        const credential = await navigator.credentials.create({ publicKey });
+        const response = credentialToJSON(credential);
+        const passkey = await api("/auth/v1/passkeys/register/verify", {
+          method: "POST",
+          auth: true,
+          body: {
+            challenge_id: start.challenge_id,
+            response,
+            label: el("label").value.trim() || null,
+          },
+        });
+        log(`Registered passkey ${passkey.id}`, "ok");
+        await refreshUser();
+        await listPasskeys();
+      } catch (err) {
+        log(err.message, "error");
+      } finally {
+        setBusy(button, false);
+      }
+    }
+
+    async function passkeyLogin() {
+      const button = el("passkey-login");
+      setBusy(button, true);
+      try {
+        const email = el("passkey-email").value.trim();
+        const start = await api("/auth/v1/passkeys/login/options", {
+          method: "POST",
+          body: {
+            app_origin: location.origin,
+            ...(email ? { email } : {}),
+          },
+        });
+        const publicKey = normalizeRequestOptions(start.options);
+        const assertion = await navigator.credentials.get({ publicKey });
+        const data = await api("/auth/v1/passkeys/login/verify", {
+          method: "POST",
+          body: {
+            challenge_id: start.challenge_id,
+            response: credentialToJSON(assertion),
+          },
+        });
+        saveSession(data);
+        log("Passkey session established", "ok");
+        await refreshUser();
+        await listPasskeys();
+      } catch (err) {
+        log(err.message, "error");
+      } finally {
+        setBusy(button, false);
+      }
+    }
+
+    async function listPasskeys() {
+      try {
+        const data = await api("/auth/v1/passkeys", { auth: true });
+        renderPasskeys(data.passkeys || []);
+        log(`Loaded ${data.passkeys?.length || 0} passkey(s)`, "ok");
+      } catch (err) {
+        log(err.message, "error");
+      }
+    }
+
+    async function deletePasskey(id) {
+      try {
+        await api(`/auth/v1/passkeys/${encodeURIComponent(id)}`, {
+          method: "DELETE",
+          auth: true,
+        });
+        log(`Deleted passkey ${id}`, "ok");
+        await refreshUser();
+        await listPasskeys();
+      } catch (err) {
+        log(err.message, "error");
+      }
+    }
+
+    function renderPasskeys(passkeys) {
+      const list = el("passkey-list");
+      if (!passkeys.length) {
+        list.innerHTML = '<div class="empty">No passkeys for this user on this project.</div>';
+        return;
+      }
+      list.innerHTML = "";
+      for (const key of passkeys) {
+        const node = document.createElement("div");
+        node.className = "passkey-item";
+        node.innerHTML = `
+          <div>
+            <strong>${escapeHtml(key.label || "Untitled passkey")}</strong>
+            <small>${escapeHtml(key.rp_id)} ${key.last_used_at ? "last used " + escapeHtml(new Date(key.last_used_at).toLocaleString()) : ""}</small>
+          </div>
+          <div class="row">
+            <span class="pill">${escapeHtml(key.credential_device_type || "device")}</span>
+            <button class="danger" data-delete="${escapeHtml(key.id)}">Delete</button>
+          </div>
+        `;
+        node.querySelector("button").addEventListener("click", () => deletePasskey(key.id));
+        list.appendChild(node);
+      }
+    }
+
+    function normalizeCreationOptions(options) {
+      return {
+        ...options,
+        challenge: b64urlToBuffer(options.challenge),
+        user: {
+          ...options.user,
+          id: b64urlToBuffer(options.user.id),
+        },
+        excludeCredentials: (options.excludeCredentials || []).map((credential) => ({
+          ...credential,
+          id: b64urlToBuffer(credential.id),
+        })),
+      };
+    }
+
+    function normalizeRequestOptions(options) {
+      return {
+        ...options,
+        challenge: b64urlToBuffer(options.challenge),
+        allowCredentials: (options.allowCredentials || []).map((credential) => ({
+          ...credential,
+          id: b64urlToBuffer(credential.id),
+        })),
+      };
+    }
+
+    function credentialToJSON(credential) {
+      if (!credential) throw new Error("No credential returned.");
+      const response = {};
+      const fields = [
+        "clientDataJSON",
+        "attestationObject",
+        "authenticatorData",
+        "signature",
+        "userHandle",
+      ];
+      for (const key of fields) {
+        const value = credential.response[key];
+        if (isBufferLike(value)) response[key] = bufferToB64url(value);
+        if (typeof value === "string" && value) response[key] = value;
+        if (value === null) response[key] = null;
+      }
+      if (credential.response.getTransports) {
+        response.transports = credential.response.getTransports();
+      }
+      const missing = missingCredentialFields(credential, response);
+      if (missing.length) {
+        throw new Error(`Browser returned an incomplete passkey response (${missing.join(", ")}). Reload this page and try again. Build ${BUILD_ID}`);
+      }
+      return {
+        id: credential.id,
+        rawId: bufferToB64url(credential.rawId),
+        type: credential.type,
+        response,
+        authenticatorAttachment: credential.authenticatorAttachment || undefined,
+        clientExtensionResults: credential.getClientExtensionResults(),
+      };
+    }
+
+    function missingCredentialFields(credential, response) {
+      const isRegistration =
+        (typeof AuthenticatorAttestationResponse !== "undefined" &&
+          credential.response instanceof AuthenticatorAttestationResponse) ||
+        "attestationObject" in credential.response;
+      const required = isRegistration
+        ? ["clientDataJSON", "attestationObject"]
+        : ["clientDataJSON", "authenticatorData", "signature"];
+      return required.filter((field) => typeof response[field] !== "string" || response[field].length === 0);
+    }
+
+    function isBufferLike(value) {
+      return value instanceof ArrayBuffer || ArrayBuffer.isView(value);
+    }
+
+    function b64urlToBuffer(value) {
+      const padded = value.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
+      const binary = atob(padded);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      return bytes.buffer;
+    }
+
+    function bufferToB64url(buffer) {
+      const bytes = new Uint8Array(buffer || []);
+      let binary = "";
+      for (let i = 0; i < bytes.length; i += 0x8000) {
+        const chunk = bytes.subarray(i, i + 0x8000);
+        binary += String.fromCharCode.apply(null, chunk);
+      }
+      return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      })[char]);
+    }
+
+    el("signup").addEventListener("click", signup);
+    el("password-login").addEventListener("click", passwordLogin);
+    el("register-passkey").addEventListener("click", registerPasskey);
+    el("passkey-login").addEventListener("click", passkeyLogin);
+    el("list-passkeys").addEventListener("click", listPasskeys);
+    el("refresh-user").addEventListener("click", refreshUser);
+    el("signout").addEventListener("click", () => {
+      clearSession();
+      el("step-signout").classList.add("active");
+      log("Local session cleared", "ok");
+    });
+    el("clear-local").addEventListener("click", () => {
+      clearSession();
+      log("Local session cleared", "ok");
+    });
+
+    if (!window.PublicKeyCredential) {
+      log("This browser does not expose WebAuthn PublicKeyCredential.", "error");
+    }
+    session = loadSession();
+    updateSessionUI();
+    log(`Ready (${BUILD_ID})`);
+  </script>
+</body>
+</html>
