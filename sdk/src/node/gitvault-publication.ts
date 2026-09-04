@@ -4425,10 +4425,23 @@ export class GitvaultVault {
   /** Plaintext, independently non-thin packs covering `reachable(tips) ∖ reachable(base)`, split at the multi-object target. */
   async buildPacks(tips: string[], base: string[]): Promise<Uint8Array[]> {
     const dir = this.git();
-    const uniqueTips = [...new Set(tips)].filter((t) => GITVAULT_OID40_RE.test(t));
+    const baseSet = new Set(base);
+    // A tip this object store does not hold: on a multi-writer vault another
+    // writer's tip (a handoff checkpoint minted elsewhere, a retained root it
+    // displaced) is routinely absent here. If the vault ALREADY covers it
+    // (it is in `base`), it contributes nothing new to this pack — skip it,
+    // never `pack-objects: fatal: bad object`. A NEW tip that is absent is a
+    // genuine local gap and is named as such.
+    const uniqueTips: string[] = [];
+    for (const t of new Set(tips)) {
+      if (!GITVAULT_OID40_RE.test(t)) continue;
+      if (await hasObject(dir, t)) { uniqueTips.push(t); continue; }
+      if (baseSet.has(t)) continue;
+      fail("GIT_COMMAND_FAILED", `tip ${t} is not in this checkout's object store and the vault does not cover it yet — fetch it before publishing`, "building gitvault packs", { oid: t });
+    }
     if (uniqueTips.length === 0) return [];
     const presentBase: string[] = [];
-    for (const b of new Set(base)) if (GITVAULT_OID40_RE.test(b) && (await hasObject(dir, b))) presentBase.push(b);
+    for (const b of baseSet) if (GITVAULT_OID40_RE.test(b) && (await hasObject(dir, b))) presentBase.push(b);
     const tmp = mkdtempSync(join(tmpdir(), "run402-gitvault-packs-"));
     try {
       const revs = [...uniqueTips, ...presentBase.map((b) => `^${b}`)].join("\n") + "\n";

@@ -1211,9 +1211,18 @@ export async function findOversizeObjects(repoDir: string, tips: string[], cap =
   return over;
 }
 
-/** True iff `ancestor` is reachable from `descendant` (`merge-base --is-ancestor`). */
+/**
+ * True iff `ancestor` is reachable from `descendant` (`merge-base --is-ancestor`).
+ * A commit this object store does not hold at all (git exits 128, "Not a
+ * valid commit name") answers FALSE, never throws: on a multi-writer vault a
+ * ref can name a commit only another writer's clone has (a handoff
+ * checkpoint minted elsewhere), and the callers use this answer to decide
+ * what to RETAIN — "not provably reachable" keeps the tip as a root, the
+ * conservative outcome, whereas a throw refused every push and mint from a
+ * checkout that had not seen the other writer's objects.
+ */
 export async function isAncestor(repoDir: string, ancestor: string, descendant: string): Promise<boolean> {
-  const r = await hardenedGit(repoDir, ["merge-base", "--is-ancestor", ancestor, descendant], { okStatuses: [1] });
+  const r = await hardenedGit(repoDir, ["merge-base", "--is-ancestor", ancestor, descendant], { okStatuses: [1, 128] });
   return r.status === 0;
 }
 
