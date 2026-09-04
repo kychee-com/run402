@@ -152,6 +152,7 @@ import {
   buildWriterDoorAddWriterKeyPayload,
   initialWriterState,
   resolveActiveWriter,
+  resolveKnownWriter,
   validateAddWriterKeyPayload,
   validateWriterSetUpdate,
   writerKeyIdOf,
@@ -3516,12 +3517,22 @@ export class GitvaultVault {
     // own fence-time re-check (which DOES hold the complete history) is the
     // real backstop either way. If a future caller ever needs these complete
     // across a resume, persist them on `writer_set_pin` too; not needed yet.
-    let writerState: WriterChainState = repo.writer_set_pin
-      ? { version: repo.writer_set_pin.version, writers: repo.writer_set_pin.writers, sha256: repo.writer_set_pin.sha256, burnedWriterKeyIds: new Set(), consumedHandoffIds: new Set() }
+    //
+    // `retired_writers` (the keys of writers a later `writer_set_update`
+    // removed) IS persisted: a head such a writer signed while active is
+    // re-read later by the decrypt catch-up, a restore, or a checkpoint
+    // walk, and only its own key verifies it. A pin written before that
+    // field existed cannot vouch for those heads, so the walk starts over
+    // from genesis once (the same walk a fresh clone runs) and re-pins with
+    // the complete bookkeeping.
+    const legacyWriterPin = repo.writer_set_pin != null && repo.writer_set_pin.retired_writers === undefined;
+    if (legacyWriterPin) pin = { generation: GITVAULT_GENESIS_GENERATION, head_sha256: genesisSha, pinned_at: formatGitvaultTimestamp(this.now()) };
+    let writerState: WriterChainState = repo.writer_set_pin && !legacyWriterPin
+      ? { version: repo.writer_set_pin.version, writers: repo.writer_set_pin.writers, sha256: repo.writer_set_pin.sha256, burnedWriterKeyIds: new Set(), consumedHandoffIds: new Set(), retiredWriters: repo.writer_set_pin.retired_writers ?? [] }
       : initialWriterState(this.repoId, genesis);
     const persistWriterSetPin = (): void => {
       if (!persist) return;
-      this.keystore.updateRepo(this.repoId, { writer_set_pin: { version: writerState.version, sha256: writerState.sha256, writers: [...writerState.writers], pinned_at: formatGitvaultTimestamp(this.now()) } });
+      this.keystore.updateRepo(this.repoId, { writer_set_pin: { version: writerState.version, sha256: writerState.sha256, writers: [...writerState.writers], retired_writers: [...(writerState.retiredWriters ?? [])], pinned_at: formatGitvaultTimestamp(this.now()) } });
     };
     // gitvault-composite-state-read design D1: try the pin-current fast path
     // FIRST — see {@link tryStateFastPath}'s own doc comment. `null` means
@@ -3635,7 +3646,9 @@ export class GitvaultVault {
         // the writer state — by the time this runs, `writerState` already
         // reflects `head`'s own transition (if any), so this correctly finds
         // a just-self-admitted handoff writer too, not only a pre-existing one.
-        const headSigner = resolveActiveWriter(writerState, head.writer_key_id)?.signing_pubkey ?? writerKey;
+        // Historical read: the head is already admitted, so a writer removed
+        // SINCE it was signed still verifies it (retired keys are kept).
+        const headSigner = resolveKnownWriter(writerState, head.writer_key_id)?.signing_pubkey ?? writerKey;
         const { refState, roots } = await this.openMaterializeCarriers(head.ref_state, gitvaultPaths.refState(head.ref_state.object_id), head.retention_roots, gitvaultPaths.retentionRoots(head.retention_roots.object_id), headSigner, { epoch: head.epoch, k_repo: kRepo });
         if (refState.generation !== head.generation || roots.generation !== head.generation) fail("CHAIN_UNUSABLE", "carrier generation does not match the head", "materializing gitvault head");
         decryptedRefState = refState;
@@ -3851,7 +3864,10 @@ export class GitvaultVault {
         // WASTING further decrypt attempts once one has failed, since every
         // later generation shares the same unopenable epoch until (if ever)
         // a LATER rotation this principal CAN open supersedes it.
-        if (decryptValidate && !decryptFailure) await tryDecrypt(head, pin, rotationPayload ? [{ generation: head.generation, epoch: head.epoch, payload: rotationPayload }] : []);
+        // The inline open carries the SAME resolved writer the collected entry
+        // above does — a rotation driven by a non-genesis writer is opened under
+        // that writer, never the creator fallback.
+        if (decryptValidate && !decryptFailure) await tryDecrypt(head, pin, rotationPayload ? [{ generation: head.generation, epoch: head.epoch, payload: rotationPayload, signing_pubkey: resolvedWriterPubkey }] : []);
       }
       // verified prefix persists per page (resumable) — skipped entirely in no-write mode
       if (persist) this.keystore.updateRepo(this.repoId, { verified_prefix: pin });
@@ -3895,7 +3911,7 @@ export class GitvaultVault {
           // `lastHead`, the one documented residual gap (falls back to the
           // genesis-creator key at the `openEpochRotationForRecipient`
           // call site when this resolves to `undefined`).
-          const curSigner = resolveActiveWriter(writerState, cur.writer_key_id)?.signing_pubkey;
+          const curSigner = resolveKnownWriter(writerState, cur.writer_key_id)?.signing_pubkey;
           backwardRotations.unshift({ generation: cur.generation, epoch: cur.epoch, payload, signing_pubkey: curSigner });
           if (!rotations.some((r) => r.generation === cur!.generation)) rotations.push({ generation: cur.generation, epoch: cur.epoch, payload, signing_pubkey: curSigner });
         }
@@ -4530,7 +4546,20 @@ export class GitvaultVault {
    */
   async buildCheckpoint(input: { generation: string; ref_state: GitvaultRefState; retention_roots: GitvaultRetentionRoots }): Promise<GitvaultBuiltCheckpoint> {
     const tips = GitvaultVault.coverageTips(input.ref_state.refs, input.retention_roots.roots, input.ref_state.head_target);
-    for (const t of tips) if (!(await hasObject(this.git(), t))) fail("CHECKPOINT_INCOMPLETE", `covered tip ${t} is not present locally; the checkpoint cannot be built from this repository`, "building checkpoint set", { oid: t });
+    const absent: string[] = [];
+    for (const t of tips) if (!(await hasObject(this.git(), t))) absent.push(t);
+    if (absent.length > 0) {
+      // Another writer's coverage is routinely absent from this checkout: a
+      // handoff's retention root, or a ref only that writer pushed, reaches a
+      // standing clone only when git runs the remote helper's fetch verb, and
+      // git runs it only for a ref in the clone's refspec that moved — a
+      // retention root moves none. The vault holds every covered object, so
+      // restore its retained set into THIS repository (the same walk the
+      // fetch verb runs; it writes objects and refs/r402/retain/* only, never
+      // a branch), then re-check. What is still absent is a real gap.
+      await this.restoreObjectsInto(this.git());
+      for (const t of absent) if (!(await hasObject(this.git(), t))) fail("CHECKPOINT_INCOMPLETE", `covered tip ${t} is not present locally and the vault did not supply it; the checkpoint cannot be built from this repository`, "building checkpoint set", { oid: t });
+    }
     const packs = await this.buildPacks(tips, []);
     if (packs.length > GITVAULT_MAX_CHECKPOINT_PACKS) fail("CHECKPOINT_SET_LIMIT_EXCEEDED", `${packs.length} packs exceed the ${GITVAULT_MAX_CHECKPOINT_PACKS}-pack V0 checkpoint maximum`, "building checkpoint set", undefined, [{ action: "compact or prune before adding coverage" }]);
     const entries: GitvaultCheckpointManifestPack[] = [];
@@ -4620,8 +4649,7 @@ export class GitvaultVault {
     // A writer removed SINCE this checkpoint's own head was admitted is the
     // same documented residual as the backward-catch-up decrypt path above —
     // `writer_set_pin` only remembers currently-active writers, not burned ones.
-    const pinnedWriters = this.repoFile().writer_set_pin?.writers ?? [];
-    const writerKey = pinnedWriters.find((w) => w.writer_key_id === head.writer_key_id)?.signing_pubkey ?? genesis.creator_signing_pubkey;
+    const writerKey = this.writerKeyForHead(head, genesis.creator_signing_pubkey);
     const claimBytes = await this.transport.getObject({ repo_id: this.repoId, path: gitvaultPaths.claimSet(block.claim_set.object_id), expected_sha256: block.claim_set.stored_bytes_sha256 });
     if (!claimBytes || sha256Hex(claimBytes) !== block.claim_set.stored_bytes_sha256) {
       fail("CHECKPOINT_INCOMPLETE", `checkpoint claim set ${block.claim_set.object_id} is absent or does not match the head's receipt`, "verifying a stored checkpoint", { object_id: block.claim_set.object_id });
@@ -4684,21 +4712,19 @@ export class GitvaultVault {
   async chainEntries(): Promise<Array<{ head: GitvaultHead; head_sha256: string; claim_set: GitvaultCheckpointClaimSet | null }>> {
     const newest = await this.verifyToNewest();
     if (!newest.head) return [];
-    const chain = await this.chainFrom("0000000000000001", newest);
+    const chain = await this.chainFrom("0000000000000001", newest, "activated");
     const generations = [...chain.keys()].sort();
     const out: Array<{ head: GitvaultHead; head_sha256: string; claim_set: GitvaultCheckpointClaimSet | null }> = [];
     const { genesis } = await this.genesis();
     // gitvault-multi-writer rev 47: `verifyToNewest()` above already
-    // persisted the current `writer_set_pin` — same per-head resolution as
-    // `verifyStoredCheckpoint`, same documented residual (a writer removed
-    // since falls back to the genesis-creator key).
-    const pinnedWriters = this.repoFile().writer_set_pin?.writers ?? [];
+    // persisted the current `writer_set_pin` (active AND retired writers) —
+    // same per-head resolution as `verifyStoredCheckpoint`.
     for (const gen of generations) {
       const entry = chain.get(gen)!;
       let claimSet: GitvaultCheckpointClaimSet | null = null;
       const block = entry.head.checkpoint;
       if (block) {
-        const writerKey = pinnedWriters.find((w) => w.writer_key_id === entry.head.writer_key_id)?.signing_pubkey ?? genesis.creator_signing_pubkey;
+        const writerKey = this.writerKeyForHead(entry.head, genesis.creator_signing_pubkey);
         // Plaintext-structured and stored-bytes-receipted: no decryption, but
         // the hash and the owner signature are still checked before a single
         // pack receipt inside it is believed.
@@ -5511,7 +5537,7 @@ export class GitvaultVault {
         if (!writerPin) {
           fail("GITVAULT_WRITER_STATE_UNAVAILABLE", "no locally verified writer_set_pin for this vault — the chain must be verified (materialize/verifyToNewest) before a writer_set_update can be built against a known base writer set", "computing the writer_set_update");
         }
-        const predecessorState: WriterChainState = { version: writerPin.version, writers: writerPin.writers, sha256: writerPin.sha256, burnedWriterKeyIds: new Set(), consumedHandoffIds: new Set() };
+        const predecessorState: WriterChainState = { version: writerPin.version, writers: writerPin.writers, sha256: writerPin.sha256, burnedWriterKeyIds: new Set(), consumedHandoffIds: new Set(), retiredWriters: writerPin.retired_writers ?? [] };
         // A rotation's own top-level `reason:"epoch_secret_exposed"` is the
         // one unambiguous signal worth carrying down to each removed entry
         // (a genuinely distinct, meaningful narrative); everything else —
@@ -6014,9 +6040,11 @@ export class GitvaultVault {
     const newestGen = generationToBigInt(newest.generation);
     if (baseGen >= newestGen) fail("REPAIR_TARGET_UNPRESERVABLE", `base_generation ${input.base_generation} must be below the newest ${newest.generation}`, "preparing repair");
     if (baseGen === 0n) fail("REPAIR_TARGET_UNPRESERVABLE", "a repair cannot base on the genesis", "preparing repair");
-    const writerKey = newest.genesis.creator_signing_pubkey;
-    const chain = await this.chainFrom(input.base_generation, newest);
+    const chain = await this.chainFrom(input.base_generation, newest, "refuse");
     const baseEntry = chain.get(input.base_generation)!;
+    // The base head's carriers were sealed by the writer that carried THAT
+    // head (rev 47: any admitted writer, not only the creator).
+    const writerKey = this.writerKeyForHead(baseEntry.head, newest.genesis.creator_signing_pubkey);
     const baseRefState = await this.openCarrier<GitvaultRefState>("ref_state", baseEntry.head.ref_state, gitvaultPaths.refState(baseEntry.head.ref_state.object_id), writerKey);
     const baseRoots = await this.openCarrier<GitvaultRetentionRoots>("retention_roots", baseEntry.head.retention_roots, gitvaultPaths.retentionRoots(baseEntry.head.retention_roots.object_id), writerKey);
     const repairGen = nextGeneration(newest.generation);
@@ -6066,7 +6094,17 @@ export class GitvaultVault {
   }
 
   /** Heads `base..newest` (already chain-verified by `verifyToNewest`) re-read + hash-checked from storage. */
-  private async chainFrom(baseGeneration: string, newest: GitvaultVerifiedState): Promise<Map<string, { head: GitvaultHead; sha256: string }>> {
+  /**
+   * Re-read heads `baseGeneration..newest` and hash-check each against the
+   * verified chain. `transitions` says what an admitted transition head on
+   * the walk means: a repair walks with `"refuse"` (a repair never crosses
+   * one), a whole-chain read such as compaction planning walks with
+   * `"activated"` (`verifyToNewest` already validated every head, so the
+   * only rule left is {@link assertNoTransition}'s fail-closed one — a
+   * `rotate_epoch` or `add_writer_key` head is ordinary chain state a
+   * rev-47 vault with any handoff or member change carries).
+   */
+  private async chainFrom(baseGeneration: string, newest: GitvaultVerifiedState, transitions: "refuse" | "activated"): Promise<Map<string, { head: GitvaultHead; sha256: string }>> {
     const out = new Map<string, { head: GitvaultHead; sha256: string }>();
     let g = generationToBigInt(newest.generation);
     let expected = newest.head_sha256;
@@ -6076,7 +6114,11 @@ export class GitvaultVault {
       const bytes = await this.transport.getObject({ repo_id: this.repoId, path: gitvaultPaths.head(gen) });
       if (!bytes || sha256Hex(bytes) !== expected) fail("CHAIN_BROKEN", `head ${gen} no longer matches the verified chain`, "re-reading gitvault chain", { generation: gen });
       const head = parseGitvaultStrict(new TextDecoder().decode(bytes)) as GitvaultHead;
-      if (head.transition !== null) fail("UPGRADE_REQUIRED", "a repair must not cross an admitted transition", "re-reading gitvault chain", { generation: gen });
+      if (transitions === "refuse") {
+        if (head.transition !== null) fail("UPGRADE_REQUIRED", "a repair must not cross an admitted transition", "re-reading gitvault chain", { generation: gen });
+      } else {
+        assertNoTransition(head);
+      }
       out.set(gen, { head, sha256: expected });
       expected = head.prev_sha256;
       g -= 1n;
@@ -6309,8 +6351,9 @@ export class GitvaultVault {
    * recipient died CHECKPOINT_INCOMPLETE "claim set signature fails".
    */
   private writerKeyForHead(head: GitvaultHead, fallback: string): string {
-    const pinned = this.repoFile().writer_set_pin?.writers ?? [];
-    return pinned.find((w) => w.writer_key_id === head.writer_key_id)?.signing_pubkey ?? fallback;
+    const pin = this.repoFile().writer_set_pin;
+    const known = [...(pin?.writers ?? []), ...(pin?.retired_writers ?? [])];
+    return known.find((w) => w.writer_key_id === head.writer_key_id)?.signing_pubkey ?? fallback;
   }
 
   private async applyRestoreHeads(

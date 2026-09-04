@@ -55,7 +55,7 @@ import {
   type GitvaultRefMap,
 } from "./gitvault-publication.js";
 import { GITVAULT_DEPLOY_REF, hardenedGit, hasObject } from "./gitvault-snapshot.js";
-import { commitFile, git, makeVault, type VaultFixture } from "./gitvault-memory-transport.test.js";
+import { commitFile, git, makeRepo, makeVault, type VaultFixture } from "./gitvault-memory-transport.test.js";
 import { GitvaultKeystore } from "./gitvault-keystore.js";
 import { applyAddWriterKey, initialWriterState, writerKeyIdOf } from "./gitvault-writer-state.js";
 
@@ -1914,5 +1914,30 @@ describe("delta-first pull — a lying delta falls back with identical outcomes"
     const restored = await vault.restoreObjectsInto(target);
     assert.deepEqual(restored.refs, { "refs/heads/main": c2 }, "the lying delta must degrade to the ordinary reads, same result");
     assert.equal(await hasObject(target, c2), true);
+  });
+});
+
+describe("checkpoint coverage another writer pushed (gitvault-multi-writer)", () => {
+  it("a checkpoint built from a checkout that lacks a covered tip restores it from the vault first", async () => {
+    const root = mkdtempSync(join(tmpdir(), "run402-gitvault-ckpt-restore-"));
+    try {
+      const f = await makeVault(root);
+      const c1 = await commitFile(f.repoDir, "a.txt", "one");
+      await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] } });
+
+      // A second checkout of the SAME vault under the same identity, with an
+      // empty object database — the shape of a standing clone that never
+      // fetched the tip another writer pushed (git runs the helper's fetch
+      // verb only for a moved ref in its refspec; a retention root moves none).
+      const other = await makeRepo(root, "other");
+      assert.equal(await hasObject(other, c1), false);
+      const vault2 = GitvaultVault.open({ keystore: f.keystore, transport: f.transport, repo_id: f.repoId, repo_dir: other });
+      const published = await vault2.publishCheckpoint({ cutoff: false });
+      assert.ok(published.head.checkpoint, "the published head is checkpoint-bearing");
+      assert.equal(published.head.checkpoint.covers_through_generation, published.head.generation);
+      assert.equal(await hasObject(other, c1), true, "the covered tip was restored from the vault into the builder's own repository");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

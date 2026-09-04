@@ -377,6 +377,14 @@ describe("epoch rotation — producer end-to-end (rotateEpochForKeyRevocation)",
       const materialized2 = await vault.materialize();
       const push = await vault.push({ transaction: { updates: [{ ref: "refs/heads/main", new_oid: c1, expected_old_oid: null, force: false }] }, head_target: materialized2.head_target });
       assert.equal(push.head.epoch, rotated.new_epoch);
+
+      // A whole-chain read (what compaction planning walks, from genesis)
+      // crosses the admitted rotate_epoch head as ordinary chain state — it
+      // is an ACTIVATED transition, never UPGRADE_REQUIRED.
+      const entries = await vault.chainEntries();
+      const kinds = entries.map((e) => e.head.transition?.kind ?? null);
+      assert.ok(kinds.includes("rotate_epoch"), "the walk returns the rotation head itself");
+      assert.equal(entries[entries.length - 1].head.generation, push.head.generation, "…through the newest head");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

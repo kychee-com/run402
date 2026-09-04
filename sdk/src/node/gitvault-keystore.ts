@@ -191,7 +191,7 @@ export interface GitvaultRepoFile {
    * call on this checkout (equivalent to the genesis-only singleton, which
    * that call derives for free without needing this field yet).
    */
-  writer_set_pin?: { version: string; sha256: string; writers: { writer_key_id: string; signing_pubkey: string }[]; pinned_at: string } | null;
+  writer_set_pin?: { version: string; sha256: string; writers: { writer_key_id: string; signing_pubkey: string }[]; retired_writers?: { writer_key_id: string; signing_pubkey: string }[]; pinned_at: string } | null;
   /**
    * gitvault-multi-writer rev 47 — THIS principal's own relationship to the
    * chain-verified `writer_set_pin` above, as of the last time it was

@@ -103,6 +103,14 @@ export interface WriterChainState {
   burnedWriterKeyIds: ReadonlySet<string>;
   /** Permanently consumed handoff_ids — protocol §4.17, a writer_admission_grant is single-use. */
   consumedHandoffIds: ReadonlySet<string>;
+  /**
+   * Writers a `writer_set_update` REMOVED, with their keys — never part of
+   * the hashed writer set (`writers`/`sha256` are the chain state), only
+   * local bookkeeping so a head those writers signed WHILE active can still
+   * be re-read and verified later (a decrypt catch-up, a restore, a
+   * checkpoint walk). Admission of a NEW head consults `writers` alone.
+   */
+  retiredWriters?: readonly WriterKeyEntry[];
 }
 
 const WRITER_SET_FORMAT = "r402s/writer-set/v1";
@@ -254,6 +262,7 @@ export function applyAddWriterKey(
     burnedWriterKeyIds: state.burnedWriterKeyIds,
     consumedHandoffIds:
       consumedHandoffId === null ? state.consumedHandoffIds : new Set([...state.consumedHandoffIds, consumedHandoffId]),
+    retiredWriters: state.retiredWriters ?? [],
   };
 }
 
@@ -271,12 +280,15 @@ export function applyWriterSetUpdate(
   const removed = new Set(removedWriterKeyIds);
   const writers = sortWriters(state.writers.filter((w) => !removed.has(w.writer_key_id)));
   const version = nextVersionHex16(state.version);
+  const retiredNow = state.writers.filter((w) => removed.has(w.writer_key_id));
+  const retiredWriters = sortWriters([...(state.retiredWriters ?? []).filter((w) => !removed.has(w.writer_key_id)), ...retiredNow]);
   return {
     version,
     writers,
     sha256: writerSetSha256(repoId, version, writers),
     burnedWriterKeyIds: new Set([...state.burnedWriterKeyIds, ...removed]),
     consumedHandoffIds: state.consumedHandoffIds,
+    retiredWriters,
   };
 }
 
@@ -289,6 +301,16 @@ export function applyWriterSetUpdate(
  */
 export function resolveActiveWriter(state: WriterChainState, headWriterKeyId: string): WriterKeyEntry | null {
   return state.writers.find((w) => w.writer_key_id === headWriterKeyId) ?? null;
+}
+
+/**
+ * The HISTORICAL lookup: a writer that is active OR was removed by a later
+ * `writer_set_update` (`retiredWriters`). For re-reading a head the chain
+ * ALREADY admitted — never for admitting a new one, which is
+ * {@link resolveActiveWriter}'s job alone.
+ */
+export function resolveKnownWriter(state: WriterChainState, headWriterKeyId: string): WriterKeyEntry | null {
+  return resolveActiveWriter(state, headWriterKeyId) ?? (state.retiredWriters ?? []).find((w) => w.writer_key_id === headWriterKeyId) ?? null;
 }
 
 export interface AddWriterKeyPayload {

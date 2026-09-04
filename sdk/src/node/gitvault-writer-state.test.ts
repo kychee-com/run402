@@ -16,6 +16,7 @@ import {
   writerSetSha256,
   type AddWriterKeyPayload,
   type WriterChainState,
+  resolveKnownWriter,
 } from "./gitvault-writer-state.js";
 
 // --------------------------------------------------------------- fixtures ---
@@ -363,6 +364,22 @@ describe("gitvault writer-state (protocol §4.15-§4.18, D221-D228) — client m
   });
 
   describe("rotate_epoch{writer_set_update} — removal (D227/D228)", () => {
+    it("a removed writer leaves the hashed set but stays resolvable for the heads it signed while active", () => {
+      const creator = keypair();
+      const b = keypair();
+      let state = initialWriterState(REPO_ID, genesisFor(creator));
+      state = applyAddWriterKey(REPO_ID, state, { writer_key_id: b.writerKeyId, signing_pubkey: b.pubB64u }, null);
+      const before = state.sha256;
+      state = applyWriterSetUpdate(REPO_ID, state, [b.writerKeyId]);
+      assert.notEqual(state.sha256, before, "the hashed writer set changed");
+      assert.equal(resolveActiveWriter(state, b.writerKeyId), null, "no longer admits a NEW head");
+      assert.deepEqual(resolveKnownWriter(state, b.writerKeyId), { writer_key_id: b.writerKeyId, signing_pubkey: b.pubB64u }, "still verifies an already-admitted head");
+      assert.deepEqual(resolveKnownWriter(state, creator.writerKeyId), { writer_key_id: creator.writerKeyId, signing_pubkey: creator.pubB64u });
+      assert.equal(resolveKnownWriter(state, "vk_00000000000000000000000000000000"), null);
+      // Re-adding is refused by the burn set; the retired entry never re-enters the hashed set by itself.
+      assert.equal(state.writers.some((w) => w.writer_key_id === b.writerKeyId), false);
+    });
+
     it("accepts: the survivor's rotation removes exactly the blocked key", () => {
       const creator = keypair();
       const b = keypair();
