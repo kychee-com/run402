@@ -131,6 +131,27 @@ describe("epoch rotation — pure decisive vectors (D193-D203)", () => {
     assert.equal(verdict.ok, false);
   });
 
+  it("kygit-handoff member removal: an unpinned SURVIVING WRITER is included on its directory fingerprint, never parked in excluded_unconfirmed", () => {
+    const fpW = "ek_" + "cc".repeat(16);
+    const fpR = "ek_" + "dd".repeat(16);
+    const base = {
+      desiredPrincipalIds: new Set(["writer", "reader"]),
+      keyedPrincipalIds: new Set(["writer", "reader"]),
+      pinnedFingerprintOf: new Map<string, string>(),
+      excludedKeylessPrincipalIds: [] as string[],
+      survivingWriterPrincipalIds: new Set(["writer"]),
+      directoryFingerprintOf: new Map([["writer", fpW], ["reader", fpR]]),
+    };
+    assert.deepEqual(checkHPartition({ ...base, included: [{ principal_id: "writer", ek_fingerprint: fpW }], excludedUnconfirmedPrincipalIds: ["reader"] }), { ok: true });
+    const parked = checkHPartition({ ...base, included: [], excludedUnconfirmedPrincipalIds: ["writer", "reader"] });
+    assert.equal(parked.ok, false);
+    const wrongKey = checkHPartition({ ...base, included: [{ principal_id: "writer", ek_fingerprint: fpR }], excludedUnconfirmedPrincipalIds: ["reader"] });
+    assert.equal(wrongKey.ok, false);
+    // Without the writer inputs the pin-only rule stands: the unpinned writer cannot be included.
+    const pinOnly = checkHPartition({ desiredPrincipalIds: base.desiredPrincipalIds, keyedPrincipalIds: base.keyedPrincipalIds, pinnedFingerprintOf: base.pinnedFingerprintOf, included: [{ principal_id: "writer", ek_fingerprint: fpW }], excludedKeylessPrincipalIds: [], excludedUnconfirmedPrincipalIds: ["reader"] });
+    assert.equal(pinOnly.ok, false);
+  });
+
   it("D196 H-partition: exact coverage (included ⊎ excluded_keyless ⊎ excluded_unconfirmed == H) is accepted", () => {
     const verdict = checkHPartition({
       desiredPrincipalIds: new Set(["p1", "p2", "p3"]),
@@ -374,6 +395,45 @@ describe("epoch rotation — producer end-to-end (rotateEpochForKeyRevocation)",
         (e: unknown) => (e as { code?: string }).code === "EPOCH_ROTATION_INCOMPLETE_ENROLLMENT",
       );
       assert.equal(transport.calls.filter((c) => c.startsWith("rotation-attempt")).length, 0, "refused BEFORE ever submitting a rotation-attempt descriptor");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  // kygit-handoff's member-removal decision: with NO pin manifest at all (the
+  // state every agent-built vault is in), a surviving WRITER is still an
+  // includable recipient, so the survivors' rotation goes through. The same
+  // vault without the writer roster on its record is the pre-decision dead end.
+  it("member removal with no pins: a surviving writer is included on its directory key; without the writer roster the rotation is refused UNCOVERED", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "run402-gitvault-rotate-writer-incl-"));
+    try {
+      const { transport, vault } = await makeVault(dir);
+      const orgId = (await vault.transport.getVaultRecord({ repo_id: vault.repoId })).org_id;
+      const identity = vault.keystore.ensureIdentity();
+      const ownPub = (vault.keystore.encryptionKeypair(identity)!).public_key;
+      const ownEk = ekFingerprint(ownPub);
+      const outsider = generateEncryptionKeypair();
+      transport.desiredRecipients.set(orgId, [
+        { principal_id: "principal_1", display_name: "Survivor", status: "active", ek_fingerprint: ownEk, public_key: Buffer.from(ownPub).toString("base64url"), suite: "x25519-hkdf-sha256-xchacha20poly1305", covered: true },
+        { principal_id: "principal_removed", display_name: "Removed", status: "pending_removal", ek_fingerprint: ekFingerprint(outsider.public_key), public_key: Buffer.from(outsider.public_key).toString("base64url"), suite: "x25519-hkdf-sha256-xchacha20poly1305", covered: true },
+      ]);
+      // No bootstrapPin: the pin manifest stays empty. Without the roster, the old dead end.
+      await assert.rejects(
+        vault.rotateEpochForKeyRevocation("principal_removed"),
+        (e: unknown) => (e as { code?: string }).code === "EPOCH_ROTATION_WOULD_LEAVE_VAULT_UNCOVERED",
+      );
+      // With the roster naming this principal as an active, unblocked writer, it is included on its directory key.
+      transport.vaultRecord = {
+        writer_set: {
+          version: "0000000000000000", sha256: "0".repeat(64),
+          writers: [{ writer_key_id: identity.signing_fingerprint, principal_id: "principal_1", authorization_kind: "writer", admitted_generation: "0", admitted_head_sha256: "0".repeat(64) }],
+        },
+      };
+      const result = await vault.rotateEpochForKeyRevocation("principal_removed");
+      assert.equal(result.outcome, "admitted");
+      assert.deepEqual(result.included.map((p) => p.principal_id), ["principal_1"]);
+      assert.deepEqual(result.excluded_unconfirmed_principal_ids, []);
+      assert.equal(result.self_check, "passed", "the survivor round-trips its own new-epoch envelope");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

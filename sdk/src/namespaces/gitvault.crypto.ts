@@ -1468,7 +1468,20 @@ export function checkHPartition(input: {
   included: readonly GitvaultIncludedPair[];
   excludedKeylessPrincipalIds: readonly string[];
   excludedUnconfirmedPrincipalIds: readonly string[];
+  /**
+   * Rotation inclusion by writer set (kygit-handoff's member-removal
+   * decision, mirrored from the gateway's own check): a keyed principal in
+   * H whose signing key is an active writer on the chain and survives this
+   * rotation is included on its CURRENT directory fingerprint, pin or no
+   * pin, and may never sit in `excluded_unconfirmed`. A live pin still
+   * governs a pinned principal exactly as before. Absent means the pin-only
+   * rule.
+   */
+  survivingWriterPrincipalIds?: ReadonlySet<string>;
+  directoryFingerprintOf?: ReadonlyMap<string, string>;
 }): GitvaultHPartitionVerdict {
+  const writerIncluded = (principalId: string): boolean =>
+    input.survivingWriterPrincipalIds !== undefined && input.survivingWriterPrincipalIds.has(principalId) && !input.pinnedFingerprintOf.has(principalId);
   const includedIds = input.included.map((p) => p.principal_id);
   const includedFps = input.included.map((p) => p.ek_fingerprint);
   if (new Set(includedIds).size !== includedIds.length) return { ok: false, detail: "envelopes[].principal_id are not pairwise-distinct" };
@@ -1496,7 +1509,12 @@ export function checkHPartition(input: {
   for (const pair of input.included) {
     if (!input.keyedPrincipalIds.has(pair.principal_id)) return { ok: false, detail: `included principal ${pair.principal_id} has no enrolled key` };
     const pinned = input.pinnedFingerprintOf.get(pair.principal_id);
-    if (pinned === undefined) return { ok: false, detail: `included principal ${pair.principal_id} has no live pin-manifest entry` };
+    if (pinned === undefined) {
+      if (!writerIncluded(pair.principal_id)) return { ok: false, detail: `included principal ${pair.principal_id} has no live pin-manifest entry and is not a surviving writer` };
+      const directory = input.directoryFingerprintOf?.get(pair.principal_id);
+      if (directory === undefined || directory !== pair.ek_fingerprint) return { ok: false, detail: `included writer ${pair.principal_id}'s envelope fingerprint does not match the directory's current key` };
+      continue;
+    }
     if (pinned !== pair.ek_fingerprint) return { ok: false, detail: `included principal ${pair.principal_id}'s envelope fingerprint does not match the effective pin manifest's binding` };
   }
   for (const id of input.excludedKeylessPrincipalIds) {
@@ -1505,6 +1523,7 @@ export function checkHPartition(input: {
   for (const id of input.excludedUnconfirmedPrincipalIds) {
     if (!input.keyedPrincipalIds.has(id)) return { ok: false, detail: `excluded-unconfirmed principal ${id} is keyless, not unconfirmed` };
     if (input.pinnedFingerprintOf.has(id)) return { ok: false, detail: `excluded-unconfirmed principal ${id} actually has a live pin-manifest entry` };
+    if (writerIncluded(id)) return { ok: false, detail: `excluded-unconfirmed principal ${id} is a surviving writer and must be included` };
   }
   return { ok: true };
 }

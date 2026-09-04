@@ -266,6 +266,48 @@ async function assertCallerCanAdmitWritersEverywhere(sdk, orgId, effectiveRole) 
   return { checked: vaults.length };
 }
 
+/**
+ * `org member rm`'s inline epoch rotation (gitvault-multi-writer D6, the
+ * kygit-handoff member-removal decision): for every vault of the org where
+ * this session's key is an admitted writer, drive
+ * `rotateEpochForKeyRevocation(principalId)` — the one self-contained
+ * rotation entry point — so the removed member is out of the next epoch and
+ * the survivors' pushes are admissible again. Returns null when the org holds
+ * no vault (nothing to rotate, nothing to report).
+ */
+async function rotateOrgVaultsAfterRemoval(sdk, orgId, principalId) {
+  const listing = await sdk.gitvault.listByOrg(orgId);
+  const vaults = listing?.vaults ?? [];
+  if (vaults.length === 0) return null;
+  const rotated = [];
+  const notWriter = [];
+  const errors = [];
+  for (const v of vaults) {
+    let st;
+    try {
+      st = await sdk.gitvault.status({ repo_id: v.repo_id, reconcile: "forbidden" });
+    } catch (err) {
+      errors.push({ repo_id: v.repo_id, code: err?.code ?? null, error: err?.message ?? String(err) });
+      continue;
+    }
+    const vault = st?.vault ?? null;
+    if (!vault || vault.read_only_terminal) continue;
+    const me = st?.keystore?.identity_fingerprint ?? null;
+    const writers = vault.writer_set?.writers ?? [];
+    if (!me || !writers.some((w) => w.writer_key_id === me)) {
+      notWriter.push(v.repo_id);
+      continue;
+    }
+    try {
+      const r = await sdk.gitvault.rotateEpochForKeyRevocation(principalId, { repo_id: v.repo_id });
+      rotated.push({ repo_id: v.repo_id, new_epoch: r.new_epoch, generation: r.generation, included: r.included.length, writers_removed: r.writers_removed?.length ?? 0, self_check: r.self_check });
+    } catch (err) {
+      errors.push({ repo_id: v.repo_id, code: err?.code ?? null, error: err?.message ?? String(err) });
+    }
+  }
+  return { attempted: vaults.length, rotated, not_writer: notWriter, errors };
+}
+
 async function create(args) {
   const a = normalizeArgv(args);
   const valueFlags = ["--name"];
@@ -708,7 +750,24 @@ async function runMember(args) {
     });
     const principalId = principalFlag ?? pos[0];
     try {
-      console.log(JSON.stringify(await getSdk().org(org).members.revoke(principalId), null, 2));
+      const sdk = getSdk();
+      const res = await sdk.org(org).members.revoke(principalId);
+      // gitvault-multi-writer D6 — a removal rides `rotate_epoch`: the gateway
+      // has just blocked the principal's writer keys and flipped its desired
+      // row to pending_removal, so every ordinary push on every vault of this
+      // org now refuses EPOCH_ROTATION_REQUIRED until a surviving writer
+      // rotates. Do that HERE, on every vault where this session's key IS a
+      // writer (the same "one command finishes the job" shape `member add`'s
+      // inline writer sync has), so the survivors keep pushing. A vault this
+      // session cannot rotate is named; a writer there runs
+      // `run402 repos access revoke-key <principal_id>` (the next push names it).
+      const rotation = await rotateOrgVaultsAfterRemoval(sdk, org, principalId);
+      console.log(JSON.stringify(rotation ? { ...res, epoch_rotation: rotation } : res, null, 2));
+      if (rotation) {
+        for (const r of rotation.rotated) console.error(`rotated ${r.repo_id} to epoch ${r.new_epoch} at generation ${r.generation}: ${r.included} recipient(s) included, ${r.writers_removed} writer key(s) removed.`);
+        if (rotation.not_writer.length > 0) console.error(`epoch rotation: this session's key is not a writer on ${rotation.not_writer.length} vault(s) (${rotation.not_writer.join(", ")}) — pushes there refuse EPOCH_ROTATION_REQUIRED until a writer runs \`run402 repos access revoke-key ${principalId}\` in that checkout.`);
+        for (const e of rotation.errors) console.error(`epoch rotation: ${e.repo_id} — ${e.code ? `${e.code}: ` : ""}${e.error}`);
+      }
     } catch (err) {
       reportSdkError(err);
     }

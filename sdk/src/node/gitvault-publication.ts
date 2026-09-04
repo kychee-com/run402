@@ -5325,6 +5325,20 @@ export class GitvaultVault {
         fail("GITVAULT_DESIRED_STATE_UNAVAILABLE", "the gateway did not report desired-recipient state (desired[]) for this vault — an epoch rotation cannot compute its H-partition without it", "computing the epoch-rotation H-partition");
       }
       const pinManifest = await this.loadEffectivePinManifest(base.generation);
+      // The vault record: `writer_set` (the chain's active writers, by
+      // principal) and `ineligible_members` (the gateway-blocked writers this
+      // rotation's writer_set_update must remove). Read ONCE here; both the
+      // H-partition below and the writer_set_update fold-in further down use it.
+      const vaultRecord = await this.transport.getVaultRecord({ repo_id: this.repoId });
+      const ineligible = vaultRecord.ineligible_members ?? [];
+      // kygit-handoff's member-removal decision: a keyed desired recipient
+      // whose signing key is an active writer AND survives this rotation is
+      // included on its current directory fingerprint, pin or no pin (the
+      // writer set is client-signed chain state — the same authority that
+      // lets it sign heads). Mirrors the gateway's own rule under its fence.
+      const blockedWriterPrincipalIds = new Set(ineligible.map((m) => m.principal_id));
+      const survivingWriterPrincipalIds = new Set((vaultRecord.writer_set?.writers ?? []).map((w) => w.principal_id).filter((id) => !blockedWriterPrincipalIds.has(id)));
+      const directoryFingerprintOf = new Map(desired.filter((d) => d.status === "active" && d.ek_fingerprint).map((d) => [d.principal_id, d.ek_fingerprint as string]));
 
       // D196's H-partition: included / excluded_keyless / excluded_unconfirmed.
       // A `pending_removal` desired-recipient row is EXCLUDED from H entirely
@@ -5342,6 +5356,20 @@ export class GitvaultVault {
         }
         const pinned = pinManifest.pinnedFingerprintOf.get(d.principal_id);
         if (pinned === undefined) {
+          if (survivingWriterPrincipalIds.has(d.principal_id)) {
+            // A surviving writer without a pin: included on the directory key.
+            let pub: Uint8Array;
+            try {
+              pub = fromBase64url(d.public_key, "public_key");
+            } catch {
+              fail("VALIDATION_FAILED", `surviving writer ${d.principal_id}'s directory public key is not valid base64url`, "computing the epoch-rotation H-partition");
+            }
+            if (ekFingerprint(pub) !== d.ek_fingerprint) {
+              fail("VALIDATION_FAILED", `surviving writer ${d.principal_id}'s directory public key does not hash to its declared fingerprint`, "computing the epoch-rotation H-partition");
+            }
+            included.push({ principal_id: d.principal_id, ek_fingerprint: d.ek_fingerprint, public_key: pub });
+            continue;
+          }
           excludedUnconfirmed.push(d.principal_id);
           continue;
         }
@@ -5392,7 +5420,7 @@ export class GitvaultVault {
       // Self-consistency (defense in depth — the gateway's own recomputation under its live lock is authoritative).
       const desiredIds = new Set(desired.filter((d) => d.status === "active").map((d) => d.principal_id));
       const keyedIds = new Set(desired.filter((d) => d.status === "active" && d.ek_fingerprint).map((d) => d.principal_id));
-      const hCheck = checkHPartition({ desiredPrincipalIds: desiredIds, keyedPrincipalIds: keyedIds, pinnedFingerprintOf: pinManifest.pinnedFingerprintOf, included, excludedKeylessPrincipalIds: excludedKeyless, excludedUnconfirmedPrincipalIds: excludedUnconfirmed });
+      const hCheck = checkHPartition({ desiredPrincipalIds: desiredIds, keyedPrincipalIds: keyedIds, pinnedFingerprintOf: pinManifest.pinnedFingerprintOf, included, excludedKeylessPrincipalIds: excludedKeyless, excludedUnconfirmedPrincipalIds: excludedUnconfirmed, survivingWriterPrincipalIds, directoryFingerprintOf });
       if (!hCheck.ok) fail("VALIDATION_FAILED", `internal: the H-partition this producer built is not a valid bijection over H (${hCheck.detail}) — refusing to submit a rotation the gateway would refuse`, "computing the epoch-rotation H-partition");
 
       const targetPartitionDigest = computeTargetPartitionDigest({
@@ -5433,8 +5461,6 @@ export class GitvaultVault {
       // with zero client changes — the fold-in doesn't care WHY a key
       // is blocked, only THAT it is.
       const writerPin = this.repoFile().writer_set_pin;
-      const vaultRecord = await this.transport.getVaultRecord({ repo_id: this.repoId });
-      const ineligible = vaultRecord.ineligible_members ?? [];
       let writerSetUpdate: NonNullable<GitvaultRotateEpochPayload["writer_set_update"]> | null = null;
       if (ineligible.length > 0) {
         if (!writerPin) {
