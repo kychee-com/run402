@@ -624,6 +624,34 @@ describe("run402 repos list — bulk read with graceful fallback", () => {
     assert.deepEqual(payload.stats, { round_trips: 0, wire_ms: 0, bytes_up: 0, bytes_down: 0 });
   });
 
+  // gitvault-multi-writer (rev 47): `writer_set.writers[].admitted_generation`
+  // is a DECIMAL string on the wire (it is part of the JCS-hashed writer set),
+  // unlike the hex16 generations everywhere else — the first live `view
+  // --human` on a rev-47 vault died CHAIN_BROKEN "malformed generation: 0"
+  // because the roster line hex-parsed it.
+  it("view --human renders the writer roster's decimal admitted generations without hex-parsing them", async () => {
+    impl.gitvaultStatus = async () =>
+      vaultStatus({
+        vault: vaultRecord({
+          newest_generation: "000000000000000a",
+          writer_set: {
+            version: "0000000000000008",
+            sha256: "0".repeat(64),
+            writers: [
+              { writer_key_id: "vk_genesis", principal_id: "prn_a", authorization_kind: "genesis", admitted_generation: "0", admitted_head_sha256: null },
+              { writer_key_id: "vk_member", principal_id: "prn_d", authorization_kind: "writer", admitted_generation: "10", admitted_head_sha256: "1".repeat(64) },
+            ],
+          },
+        }),
+      });
+    const text = await human("view", ["--project", PROJECT, "--human"]);
+    assert.throws(() => JSON.parse(text), "human output must not itself be valid JSON");
+    assert.match(text, /Writers \(2\):/);
+    assert.match(text, /vk_genesis — admitted generation 0 \(genesis\)/);
+    assert.match(text, /vk_member — admitted generation 10 \(writer\)/);
+    assert.doesNotMatch(text, /CHAIN_BROKEN|malformed generation/);
+  });
+
   it("--human renders a compact roster instead of JSON, and is rejected with --json", async () => {
     impl.gitvaultListByOrg = async () => ({
       vaults: [{ repo_id: REPO, project_id: PROJECT, project_name: "fresh", repo_name: "fresh", org_slug: "acme", gitvault_policy: "required", newest_generation: null, source_bytes: "0", genesis_admitted_at: null, created_at: "2026-01-01T00:00:00.000Z" }],
@@ -681,8 +709,8 @@ describe("run402 repos view — side-effect-free (design D3)", () => {
         writer_set: {
           version: "0000000000000002", sha256: "a".repeat(64),
           writers: [
-            { writer_key_id: "vk_creator", principal_id: "prin_1", authorization_kind: "writer", admitted_generation: "0000000000000000", admitted_head_sha256: "b".repeat(64) },
-            { writer_key_id: "vk_bob", principal_id: "prin_2", authorization_kind: "handoff", admitted_generation: "0000000000000002", admitted_head_sha256: "c".repeat(64) },
+            { writer_key_id: "vk_creator", principal_id: "prin_1", authorization_kind: "writer", admitted_generation: "0", admitted_head_sha256: "b".repeat(64) },
+            { writer_key_id: "vk_bob", principal_id: "prin_2", authorization_kind: "handoff", admitted_generation: "2", admitted_head_sha256: "c".repeat(64) },
           ],
         },
         pending_writers: [{ principal_id: "prin_3", writer_key_id: "vk_carol" }],

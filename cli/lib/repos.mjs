@@ -646,7 +646,7 @@ async function formatRepoHuman(s, mirror) {
   if (writerSet) {
     lines.push(`Writers (${writerSet.writers.length}):`);
     for (const w of writerSet.writers) {
-      lines.push(`  ${w.writer_key_id} — admitted generation ${decimal(w.admitted_generation)} (${w.authorization_kind})`);
+      lines.push(`  ${w.writer_key_id} — admitted generation ${w.admitted_generation} (${w.authorization_kind})`);
     }
     if (s.vault.read_only_terminal) {
       lines.push("  ⚠ read-only terminal: the last writer was removed — this vault serves reads but cannot accept a push until a new writer is admitted through a recovery path.");
