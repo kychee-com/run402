@@ -116,7 +116,7 @@ export class GitvaultMemoryTransport implements GitvaultTransport {
   /** `repo_id -> the currently-effective pin manifest's {version, sha256}`. Absent = the zero-value sentinel (no manifest ever admitted). */
   readonly effectivePinManifest = new Map<string, { version: string; sha256: string }>();
 
-  private counters(orgId: string): { state: bigint; revocation: bigint } {
+  counters(orgId: string): { state: bigint; revocation: bigint } {
     let c = this.recipientStateCounters.get(orgId);
     if (!c) { c = { state: 0n, revocation: 0n }; this.recipientStateCounters.set(orgId, c); }
     return c;
@@ -488,11 +488,16 @@ export class GitvaultMemoryTransport implements GitvaultTransport {
     const owner = this.repoOwners.get(repo_id) ?? this.pendingOwners.get(repo_id);
     const orgId = owner?.orgId ?? "org_memory";
     const desired = this.desiredRecipients.get(orgId);
+    const c = this.counters(orgId);
     return {
       vault_id: repo_id,
       recipient_fingerprints: [...fingerprints].sort(),
       ...(desired ? { desired } : {}),
       ...(this.desiredStateVersions.has(orgId) ? { desired_state_version: this.desiredStateVersions.get(orgId) } : {}),
+      // D194's org counters ride the read (the live route does the same) so
+      // `rotateEpochForMemberRemoval` can fence a writer-capable rotation.
+      recipient_state_version: c.state.toString(),
+      recipient_revocation_version: c.revocation.toString(),
     };
   }
 

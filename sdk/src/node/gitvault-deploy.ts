@@ -277,7 +277,7 @@ export function epochRotationRequiredNextActions(e: unknown): { action: string; 
   const details = isRun402Error(e) ? ((e as { details?: { migration_required?: boolean; revocation_outstanding?: boolean; exposure_outstanding?: boolean } }).details ?? {}) : {};
   const out: { action: string; why: string }[] = [];
   if (details.migration_required) out.push({ action: "run402 repos access repair", why: "this vault predates rev-42 epoch rotation and must complete one first-ever rotation (owner + step-up)" });
-  if (details.revocation_outstanding) out.push({ action: "run402 repos access revoke-key <principal_id>", why: "an org membership removal or key revocation is outstanding for this vault (owner + step-up)" });
+  if (details.revocation_outstanding) out.push({ action: "run402 repos access revoke-key <principal_id>", why: "an org membership removal or key revocation is outstanding for this vault; a surviving writer's push completes a membership removal automatically (reason member_removed), so this push was refused because that rotation could not run here — an owner can rotate explicitly with this command (owner + step-up)" });
   if (details.exposure_outstanding) out.push({ action: "run402 repos access declare-exposure", why: "this vault's own epoch secret has been declared exposed (owner + step-up)" });
   return out;
 }

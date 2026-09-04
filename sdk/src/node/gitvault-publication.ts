@@ -1280,6 +1280,15 @@ export interface GitvaultEnvelopeRecipientsResponse {
   desired?: GitvaultDesiredRecipientEntry[];
   /** The desired-recipient substrate's own monotonic version, for cheap client-side diffing. Present iff `desired` is present. */
   desired_state_version?: number;
+  /**
+   * D194's two org-level rotation counters, read (never locked) alongside
+   * `desired` so a writer can drive the writer-capable
+   * `reason:"member_removed"` rotation from the same read it partitions H
+   * from ({@link GitvaultVault.rotateEpochForMemberRemoval}). OPTIONAL:
+   * absent on a gateway that predates them.
+   */
+  recipient_state_version?: string;
+  recipient_revocation_version?: string;
 }
 
 /** `GET /gitvault/v1/vaults/:vault_id` — the shape `reads.ts:getVaultRecord` returns. */
@@ -4841,6 +4850,7 @@ export class GitvaultVault {
    */
   async push(options: GitvaultPushOptions): Promise<GitvaultPublishResult> {
     let conflicts = 0;
+    let removalRotated = false;
     let base = options.base ?? (await this.materialize());
     for (;;) {
       // gitvault-multi-writer (task 5.8) — checked fresh on EVERY attempt
@@ -4852,10 +4862,32 @@ export class GitvaultVault {
       // the ordinary GITVAULT_WRITER_NOT_ADMITTED on the first attempt.
       this.assertCallerIsWriter("publishing gitvault head", conflicts > 0);
       const evaluation = await evaluateRefTransaction(base.refs, options.transaction, { isAncestor: (a, d) => isAncestor(this.git(), a, d), protocol_refs: options.protocol_refs });
-      const published = await this.publishGeneration({
-        base, refs: evaluation.refs, dropped: evaluation.dropped, head_target: options.head_target ?? base.head_target,
-        force_checkpoint: options.checkpoint === true, cutoff: options.cutoff ?? null, capture_binding: options.capture_binding,
-      });
+      let published;
+      try {
+        published = await this.publishGeneration({
+          base, refs: evaluation.refs, dropped: evaluation.dropped, head_target: options.head_target ?? base.head_target,
+          force_checkpoint: options.checkpoint === true, cutoff: options.cutoff ?? null, capture_binding: options.capture_binding,
+        });
+      } catch (e) {
+        // gitvault-human-envelopes D5 ("Remove: next capture rotates the
+        // epoch key to the remaining set") / gitvault-multi-writer D6: an
+        // outstanding MEMBERSHIP REMOVAL is completed by the next push of any
+        // surviving writer — rotate under the writer-capable
+        // reason:"member_removed", re-materialize on the rotated chain, and
+        // retry this push once. Every OTHER cause the gate names (a
+        // migration bootstrap, an epoch-secret exposure) stays THROWN, with
+        // the enriched next_actions naming its owner + step-up remedy.
+        const details = isRun402Error(e) && (e as { code?: string }).code === "EPOCH_ROTATION_REQUIRED"
+          ? ((e as { details?: { migration_required?: boolean; revocation_outstanding?: boolean; exposure_outstanding?: boolean; writer_removal_outstanding?: boolean } }).details ?? {})
+          : null;
+        const removalOnly = details !== null && (details.revocation_outstanding === true || details.writer_removal_outstanding === true)
+          && details.migration_required !== true && details.exposure_outstanding !== true;
+        if (!removalOnly || removalRotated) throw e;
+        removalRotated = true;
+        await this.rotateEpochForMemberRemoval();
+        base = await this.materialize();
+        continue;
+      }
       if (published.outcome === "conflict") {
         conflicts += 1;
         if (conflicts > this.retries) fail("HEAD_CAS_CONFLICT", `admission lost ${conflicts} races at generation ${published.generation}; giving up`, "publishing gitvault head", { generation: published.generation, winner: published.winner }, [{ action: "verify the attached winner from storage, rebase, retry" }]);
@@ -5680,6 +5712,32 @@ export class GitvaultVault {
         writers_removed: writerSetUpdate ? writerSetUpdate.removed.map((r) => ({ writer_key_id: r.writer_key_id, principal_id: r.principal_id, reason: r.reason })) : [],
       };
     }
+  }
+
+  /**
+   * The writer-capable rotation that completes an org membership removal
+   * (gitvault-multi-writer D6: "`member_removed` keeps its automatic
+   * writer-capable path"). The removal itself already advanced the org's
+   * D194 counters and flipped the member to `pending_removal`, so there is
+   * nothing to declare: read the counters off the envelope-recipients read
+   * (the same read the H-partition uses) and rotate under
+   * `reason:"member_removed"`, which needs `gitvault.writer` only — any
+   * surviving writer can run it, no owner step-up. Refuses
+   * `GITVAULT_ROTATION_COUNTERS_UNAVAILABLE` on a gateway that does not yet
+   * carry the counters on that read.
+   */
+  async rotateEpochForMemberRemoval(options: { client_idempotency_key?: string } = {}): Promise<GitvaultRotationResult> {
+    const recipients = await this.transport.listEnvelopeRecipients({ repo_id: this.repoId });
+    const state = recipients.recipient_state_version;
+    const revocation = recipients.recipient_revocation_version;
+    if (typeof state !== "string" || typeof revocation !== "string") {
+      fail(
+        "GITVAULT_ROTATION_COUNTERS_UNAVAILABLE",
+        "the gateway did not report the org's rotation counters on the envelope-recipients read — a member-removal rotation cannot be fenced without them; an owner can run `run402 repos access revoke-key <principal_id>` instead",
+        "reading the rotation counters",
+      );
+    }
+    return this.rotateEpoch({ reason: "member_removed", recipient_state_version: state, recipient_revocation_version: revocation, client_idempotency_key: options.client_idempotency_key });
   }
 
   /**

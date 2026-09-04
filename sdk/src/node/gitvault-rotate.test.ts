@@ -439,6 +439,82 @@ describe("epoch rotation — producer end-to-end (rotateEpochForKeyRevocation)",
     }
   });
 
+  // gitvault-multi-writer D6 / human-envelopes D5: a membership removal is
+  // completed by the SURVIVORS with no declaration and no owner step-up —
+  // the removal already advanced the org counters, the envelope-recipients
+  // read carries them, and reason:"member_removed" is writer-capable. A
+  // plain push does it automatically (rotate, re-materialize, retry once).
+  it("member removal completes on the survivors' side: a plain push auto-rotates under member_removed and then lands; the removed key is not in the new epoch", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "run402-gitvault-rotate-member-removed-"));
+    try {
+      const { transport, vault, repoDir } = await makeVault(dir);
+      const orgId = (await vault.transport.getVaultRecord({ repo_id: vault.repoId })).org_id;
+      const identity = vault.keystore.ensureIdentity();
+      const ownPub = (vault.keystore.encryptionKeypair(identity)!).public_key;
+      const ownEk = ekFingerprint(ownPub);
+      const outsider = generateEncryptionKeypair();
+
+      const c1 = await commitFile(repoDir, "a.txt", "a\n");
+      const m1 = await vault.materialize();
+      const push1 = await vault.push({ transaction: { updates: [{ ref: "refs/heads/main", new_oid: c1, expected_old_oid: null, force: false }] }, head_target: m1.head_target });
+      assert.equal(push1.generation, "0000000000000001");
+
+      // The gateway-side effect of `org member rm`: the member's desired row
+      // flips to pending_removal and BOTH org counters advance.
+      transport.desiredRecipients.set(orgId, [
+        { principal_id: "principal_1", display_name: "Survivor", status: "active", ek_fingerprint: ownEk, public_key: Buffer.from(ownPub).toString("base64url"), suite: "x25519-hkdf-sha256-xchacha20poly1305", covered: true },
+        { principal_id: "principal_removed", display_name: "Removed", status: "pending_removal", ek_fingerprint: ekFingerprint(outsider.public_key), public_key: Buffer.from(outsider.public_key).toString("base64url"), suite: "x25519-hkdf-sha256-xchacha20poly1305", covered: true },
+      ]);
+      const counters = transport.counters(orgId);
+      counters.state += 1n;
+      counters.revocation += 1n;
+      transport.vaultRecord = {
+        writer_set: {
+          version: "0000000000000000", sha256: "0".repeat(64),
+          writers: [{ writer_key_id: identity.signing_fingerprint, principal_id: "principal_1", authorization_kind: "writer", admitted_generation: "0", admitted_head_sha256: "0".repeat(64) }],
+        },
+      };
+
+      // No pins anywhere. A plain push: the gate refuses (revocation_outstanding), push() rotates under member_removed, re-materializes, retries.
+      const c2 = await commitFile(repoDir, "b.txt", "b\n");
+      const m2 = await vault.materialize();
+      const declaresBefore = transport.calls.filter((c) => c === "declare-key-revoked").length;
+      const push2 = await vault.push({ transaction: { updates: [{ ref: "refs/heads/main", new_oid: c2, expected_old_oid: c1, force: false }] }, head_target: m2.head_target });
+      assert.equal(push2.generation, "0000000000000003", "generation 2 is the member_removed rotation, generation 3 the retried push");
+      assert.equal(transport.calls.filter((c) => c === "declare-key-revoked").length, declaresBefore, "no declaration was made — member_removed is fenced on the counters the removal itself advanced");
+      const rotatePayload = await readAdmittedRotatePayload(transport, vault.repoId, "0000000000000002");
+      assert.equal((rotatePayload as { reason?: string }).reason, "member_removed");
+      const included = ((rotatePayload as { envelopes?: { principal_id: string }[] }).envelopes ?? []).map((p) => p.principal_id);
+      assert.deepEqual(included, ["principal_1"], "the survivor (an unpinned writer) is the new epoch's only recipient; the removed principal is out");
+
+      // A second push needs no rotation: the removal is discharged.
+      const c3 = await commitFile(repoDir, "c.txt", "c\n");
+      const m3 = await vault.materialize();
+      const push3 = await vault.push({ transaction: { updates: [{ ref: "refs/heads/main", new_oid: c3, expected_old_oid: c2, force: false }] }, head_target: m3.head_target });
+      assert.equal(push3.generation, "0000000000000004");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("rotateEpochForMemberRemoval refuses GITVAULT_ROTATION_COUNTERS_UNAVAILABLE when the read carries no counters (older gateway), never guessing a fence", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "run402-gitvault-rotate-member-removed-old-gw-"));
+    try {
+      const { transport, vault } = await makeVault(dir);
+      const real = transport.listEnvelopeRecipients.bind(transport);
+      transport.listEnvelopeRecipients = async (req) => {
+        const out = await real(req);
+        delete (out as { recipient_state_version?: string }).recipient_state_version;
+        delete (out as { recipient_revocation_version?: string }).recipient_revocation_version;
+        return out;
+      };
+      await assert.rejects(vault.rotateEpochForMemberRemoval(), (e: unknown) => (e as { code?: string }).code === "GITVAULT_ROTATION_COUNTERS_UNAVAILABLE");
+      assert.equal(transport.calls.filter((c) => c.startsWith("rotation-attempt")).length, 0, "nothing was submitted");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("a pending_removal principal is excluded from H entirely — never wrapped into the new epoch (the forward-revocation point of member_removed)", async () => {
     const dir = mkdtempSync(join(tmpdir(), "run402-gitvault-rotate-removal-"));
     try {

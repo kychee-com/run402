@@ -299,7 +299,9 @@ async function rotateOrgVaultsAfterRemoval(sdk, orgId, principalId) {
       continue;
     }
     try {
-      const r = await sdk.gitvault.rotateEpochForKeyRevocation(principalId, { repo_id: v.repo_id });
+      // reason:"member_removed" — writer-capable (no owner step-up); the
+      // removal itself advanced the counters this rotation is fenced on.
+      const r = await sdk.gitvault.rotateEpochForMemberRemoval({ repo_id: v.repo_id });
       rotated.push({ repo_id: v.repo_id, new_epoch: r.new_epoch, generation: r.generation, included: r.included.length, writers_removed: r.writers_removed?.length ?? 0, self_check: r.self_check });
     } catch (err) {
       errors.push({ repo_id: v.repo_id, code: err?.code ?? null, error: err?.message ?? String(err) });

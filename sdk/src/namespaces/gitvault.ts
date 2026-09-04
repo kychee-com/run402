@@ -3102,7 +3102,7 @@ export class Gitvault {
     const details = (e as { details?: { migration_required?: boolean; revocation_outstanding?: boolean; exposure_outstanding?: boolean } }).details ?? {};
     const nextActions: { action: string; why: string }[] = [];
     if (details.migration_required) nextActions.push({ action: "run402 repos access repair", why: "this vault predates rev-42 epoch rotation and must complete one first-ever rotation (owner + step-up)" });
-    if (details.revocation_outstanding) nextActions.push({ action: "run402 repos access revoke-key <principal_id>", why: "an org membership removal or key revocation is outstanding for this vault (owner + step-up)" });
+    if (details.revocation_outstanding) nextActions.push({ action: "run402 repos access revoke-key <principal_id>", why: "an org membership removal or key revocation is outstanding for this vault; a surviving writer's push completes a membership removal automatically (reason member_removed), so this push was refused because that rotation could not run here — an owner can rotate explicitly with this command (owner + step-up)" });
     if (details.exposure_outstanding) nextActions.push({ action: "run402 repos access declare-exposure", why: "this vault's own epoch secret has been declared exposed (owner + step-up)" });
     return new LocalError(
       `this vault requires a rotate_epoch admission before an ordinary push is admissible (repo_id ${repoId})`,
@@ -4144,6 +4144,19 @@ export class Gitvault {
    * task 5.0 records: a specific member's key is compromised/should no
    * longer be trusted.
    */
+  /**
+   * The writer-capable rotation that completes an org membership removal
+   * (`reason:"member_removed"`, gitvault-multi-writer D6): counters come off
+   * the envelope-recipients read, no declaration, no owner step-up — any
+   * surviving writer can run it. `push()` runs it automatically when the
+   * gate names an outstanding removal; this is the explicit entry point
+   * (`run402 org member rm` drives it on every vault the caller can).
+   */
+  async rotateEpochForMemberRemoval(options: GitvaultVaultHandleOptions & { client_idempotency_key?: string } = {}): Promise<import("../node/gitvault-publication.js").GitvaultRotationResult> {
+    const handle = await this.open(options);
+    return handle.vault.rotateEpochForMemberRemoval(options);
+  }
+
   async rotateEpochForKeyRevocation(principalId: string, options: GitvaultVaultHandleOptions & { client_idempotency_key?: string } = {}): Promise<import("../node/gitvault-publication.js").GitvaultRotationResult> {
     const handle = await this.open(options);
     return handle.vault.rotateEpochForKeyRevocation(principalId, options);
