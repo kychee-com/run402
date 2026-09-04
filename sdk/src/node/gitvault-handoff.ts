@@ -369,6 +369,14 @@ export interface HandoffEnvelopePayload {
   epoch: string;
   /** `K_e` for `epoch`, lowercase hex — the vault's own symmetric key, delivered directly. */
   k_e_hex: string;
+  /**
+   * Every epoch key the minter holds (`epoch` → lowercase hex), so a handoff
+   * minted after an epoch rotation lets the recipient open the pre-rotation
+   * generations too. Optional: absent on an envelope minted before this
+   * field existed, in which case `k_e_hex` for `epoch` is all the recipient
+   * gets (a vault that never rotated needs nothing more).
+   */
+  epoch_keys?: Record<string, string>;
   checkpoint: { generation: string; commit_oid: string };
   note_schema: "kygit.handoff-note.v1";
 }

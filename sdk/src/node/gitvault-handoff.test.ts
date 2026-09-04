@@ -366,6 +366,18 @@ describe("sealHandoffEnvelopeV2 / openHandoffEnvelopeV2 (gitvault-multi-writer D
     assert.deepEqual(opened, payloadV2);
   });
 
+  it("carries every epoch key the minter holds (a handoff minted after a rotation lets the recipient open pre-rotation generations)", () => {
+    const { wrap_key } = deriveHandoffSecrets(idBytes, randomBytes(32));
+    const withHistory = { ...payloadV2, epoch: "0000000000000002", k_e_hex: "bb".repeat(32), epoch_keys: { "0000000000000001": "aa".repeat(32), "0000000000000002": "bb".repeat(32) } };
+    const sealed = sealHandoffEnvelopeV2(idBytes, wrap_key, withHistory);
+    const opened = openHandoffEnvelopeV2(idBytes, wrap_key, sealed.sealed_envelope, sealed.envelope_kind);
+    assert.deepEqual(opened.epoch_keys, withHistory.epoch_keys);
+    assert.equal(opened.k_e_hex, "bb".repeat(32));
+    // An envelope minted before the field existed still opens — the current epoch's key is all it carries.
+    const legacy = openHandoffEnvelopeV2(idBytes, wrap_key, sealHandoffEnvelopeV2(idBytes, wrap_key, payloadV2).sealed_envelope, HANDOFF_ENVELOPE_V2_KIND);
+    assert.equal(legacy.epoch_keys, undefined);
+  });
+
   it("refuses to build with a malformed writer_admission_grant_sha256", () => {
     assert.throws(
       () => sealHandoffEnvelopeV2(idBytes, randomBytes(32), { ...payloadV2, writer_admission_grant_sha256: "not-a-sha256" }),

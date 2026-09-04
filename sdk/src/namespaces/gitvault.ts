@@ -2661,6 +2661,13 @@ export class Gitvault {
       repo_id: handle.repo_id,
       epoch: repoFile.epoch,
       k_e_hex: repoFile.k_repo_hex,
+      // Every epoch key this keystore holds, not only the current one: a
+      // handoff minted AFTER an epoch rotation must let the recipient open
+      // the pre-rotation generations too ("membership grants FULL history"),
+      // and no rotation ever re-wraps old epochs to a principal that did not
+      // exist then. Found live: a recipient claimed a post-removal handoff
+      // and its clone died GITVAULT_EPOCH_NOT_OPENABLE at generation 1.
+      epoch_keys: { ...(repoFile.epoch_keys ?? {}), [repoFile.epoch]: repoFile.k_repo_hex },
       checkpoint: { generation: pushResult.generation, commit_oid: snapshot.oid },
       note_schema: "kygit.handoff-note.v1",
       writer_admission_grant_sha256: grantSha256Local,
@@ -2959,7 +2966,9 @@ export class Gitvault {
       project_id: vault.project_id ?? "",
       k_repo_hex: payload.k_e_hex,
       epoch: payload.epoch,
-      epoch_keys: { [payload.epoch]: payload.k_e_hex },
+      // Prior epochs ride the envelope (a minter that predates them holds
+      // them all); the current epoch's key is always the authoritative one.
+      epoch_keys: { ...(payload.epoch_keys ?? {}), [payload.epoch]: payload.k_e_hex },
       genesis_sha256: genesisSha,
       head_pin: null,
       last_ref_transaction: null,
