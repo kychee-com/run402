@@ -876,10 +876,15 @@ async function createAdopt(projectId, dir, a) {
 async function createProvision(name, dir, a) {
   const sdk = getSdk();
   const tier = flagValue(a, "--tier") ?? "prototype";
-  const idempotencyKey = flagValue(a, "--idempotency-key") ?? `repos-create:${name}`;
   // `optional: true` — a fresh wallet with no org yet is the cold-start path
   // `projects provision` itself supports; `--org` targets an existing one.
   const orgId = await resolveOrgId(a, { cmd: "repos", optional: true });
+  // The idempotency key names the ORG as well as the name: a provision replay
+  // is scoped to the wallet, so a key of the name alone answers a second
+  // `repos create` in a different org (same directory basename) with the
+  // FIRST org's project — and writes a remote URL that mixes the new org id
+  // with the old project id.
+  const idempotencyKey = flagValue(a, "--idempotency-key") ?? `repos-create:${orgId ?? "org-of-one"}:${name}`;
 
   // A genuinely bare machine has no allowance file at all, and the NO_ALLOWANCE
   // precheck below would refuse before the provision call could ever answer
