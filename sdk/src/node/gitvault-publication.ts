@@ -5529,10 +5529,19 @@ export class GitvaultVault {
 
       // D195: build + sign the rotation_attempt_descriptor, derive rotation_id, submit the create-only CAS BEFORE any envelope upload.
       const clientIdempotencyKey = options.client_idempotency_key ?? newHex32();
+      // D204 (rev 43): `migration_bootstrap` is schema-optional but the
+      // gateway's fence requires the boolean on BOTH the descriptor and the
+      // payload, and requires the two to agree with its own locked branch
+      // value (the vault's migration flag AND no predecessor manifest). This
+      // producer never drives the bootstrap branch — that is the pre-rev-42
+      // repair ceremony, which co-rides a first manifest — so it declares
+      // `false`; omitting the field is refused RECIPIENT_SET_MISMATCH.
+      const migrationBootstrap = false;
       const descriptorFields = {
         format: GITVAULT_FORMAT, object_kind: "rotation_attempt_descriptor" as const, suite: GITVAULT_SUITE,
         repo_id: this.repoId, base_head_sha256: base.head_sha256, new_epoch: newEpoch,
         recipient_state_version: options.recipient_state_version, recipient_revocation_version: options.recipient_revocation_version,
+        migration_bootstrap: migrationBootstrap,
         pin_manifest_sha256: pinManifest.pinManifestSha256, target_partition_digest: targetPartitionDigest,
         client_idempotency_key: clientIdempotencyKey, writer_key_id: this.writerKeyId(),
         // D227 (rev 47): present together IFF this rotation carries a writer_set_update — frozen at THIS attempt's own admission fence, mirroring recipient_state_version/recipient_revocation_version's existing discipline.
@@ -5563,6 +5572,7 @@ export class GitvaultVault {
       const payloadBase: GitvaultRotateEpochPayload = {
         new_epoch: newEpoch, rotation_id: rotationId, reason: options.reason,
         recipient_state_version: options.recipient_state_version, recipient_revocation_version: options.recipient_revocation_version,
+        migration_bootstrap: migrationBootstrap,
         pin_manifest_sha256: pinManifest.pinManifestSha256, target_partition_digest: targetPartitionDigest,
         epoch_key_commitment: epochKeyCommitmentValue, excluded_keyless_principal_ids: excludedKeyless, excluded_unconfirmed_principal_ids: excludedUnconfirmed,
         recipient_authority_attestation: null, envelopes: sealedReceipts,

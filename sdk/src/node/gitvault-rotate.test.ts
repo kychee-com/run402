@@ -484,6 +484,9 @@ describe("epoch rotation — producer end-to-end (rotateEpochForKeyRevocation)",
       assert.equal(transport.calls.filter((c) => c === "declare-key-revoked").length, declaresBefore, "no declaration was made — member_removed is fenced on the counters the removal itself advanced");
       const rotatePayload = await readAdmittedRotatePayload(transport, vault.repoId, "0000000000000002");
       assert.equal((rotatePayload as { reason?: string }).reason, "member_removed");
+      // D204 (rev 43): the live gateway refuses a rotate_epoch payload (and its
+      // attempt descriptor) that omits the migration_bootstrap boolean.
+      assert.equal((rotatePayload as { migration_bootstrap?: boolean }).migration_bootstrap, false);
       const included = ((rotatePayload as { envelopes?: { principal_id: string }[] }).envelopes ?? []).map((p) => p.principal_id);
       assert.deepEqual(included, ["principal_1"], "the survivor (an unpinned writer) is the new epoch's only recipient; the removed principal is out");
 

@@ -655,6 +655,8 @@ export interface GitvaultRotationAttemptDescriptor {
   recipient_state_version: string;
   /** Decimal-string uint64 — D194's frozen org-wide revocation watermark. */
   recipient_revocation_version: string;
+  /** D204 (rev 43): whether this attempt is the pre-rev-42 migration-bootstrap rotation (co-rides a first manifest). Schema-optional; the gateway's fence requires it and requires it to equal the payload's. */
+  migration_bootstrap?: boolean;
   pin_manifest_sha256: string;
   target_partition_digest: string;
   /** 32-hex CSPRNG — client resume identity (D195). */
@@ -738,6 +740,8 @@ export interface GitvaultRotateEpochPayload {
   reason: GitvaultRotationReason;
   recipient_state_version: string;
   recipient_revocation_version: string;
+  /** D204 (rev 43): must be present and equal the referenced attempt descriptor's own; `false` for every rotation but the pre-rev-42 repair bootstrap. */
+  migration_bootstrap?: boolean;
   pin_manifest_sha256: string;
   target_partition_digest: string;
   /** `HMAC-SHA-256(K_digest("epoch_rotation"), JCS({rotation_id, fingerprints:[sorted]}), ikm=K_e)` — a per-recipient self-check only (D200). */
