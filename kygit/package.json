@@ -16,7 +16,7 @@
     "test": "node --test kygit.test.mjs git-remote-kygit.test.mjs"
   },
   "dependencies": {
-    "run402": "^4.69.7"
+    "run402": "^4.69.6"
   },
   "engines": {
     "node": ">=22"
