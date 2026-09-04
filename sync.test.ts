@@ -1647,6 +1647,12 @@ describe("SDK surface alignment", () => {
       // accepts a recipient's changed key.
       "gitvault.rotateEpoch",
       "gitvault.rotateEpochForKeyRevocation",
+      // rotateEpochForMemberRemoval (gitvault-multi-writer D6): the
+      // writer-capable reason:"member_removed" rotation `org member rm`
+      // drives inline on every vault the caller can, and `push()` runs
+      // automatically on an outstanding removal — no dedicated CLI verb/MCP
+      // tool of its own.
+      "gitvault.rotateEpochForMemberRemoval",
       "gitvault.declareEpochSecretExposed",
       "gitvault.declareRecipientKeyRevoked",
       "gitvault.acceptRecipientKeyChange",
