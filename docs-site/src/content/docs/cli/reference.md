@@ -266,7 +266,7 @@ Minting codes is not an agent operation — it needs an issuer key no tenant hol
 ## Step 3: Subscribe to a Tier
 
 ```bash
-run402 tier set prototype    # FREE on testnet — faucet USDC verifies your x402 setup ($0 real money); 7-day lease
+run402 tier set prototype    # FREE on testnet — faucet USDC verifies your x402 setup ($0 real money); perpetual, paid once
 run402 tier set hobby        # $5 for 30 days (real money)
 run402 tier set team         # $20 for 30 days (real money)
 ```
@@ -1127,7 +1127,7 @@ run402 repos resume kgh1_…                       # on the other machine: claim
 
 **Cost.** There is no separate repos price. A repo's bytes count against the same organization-pooled `storage_bytes` budget your projects already share, charged once per unique object, with a 4 KiB per-object accounting floor and a 1 MiB per-vault minimum.
 
-**One thing to know before you rely on this: V0 is single-principal.** Exactly one machine (this keystore) can open the vault until human envelopes ship. This is stated plainly, not buried: back up the keystore directory the moment you have something in it worth keeping.
+**One thing to know before you rely on this: a vault has a writer set, not a single key.** Every admitted member or handoff recipient opens the vault and pushes under its OWN keystore key (`repos access` lists them; a member whose key is not yet admitted gets `GITVAULT_WRITER_NOT_ADMITTED` until any live writer's next operation admits it). A vault whose only admitted principal is this keystore is exactly as safe as this keystore: back up the keystore directory the moment you have something in it worth keeping, or admit a second principal.
 
 **Terminal loss (protocol §0).** In V0-A, **whole-machine or whole-keystore loss is terminal for vault history until human envelopes ship**. `view` prints the full statement verbatim on stderr and carries it in its JSON — read it before you rely on this. The vault protects source history from host-side loss while a principal keystore survives.
 
@@ -1218,7 +1218,7 @@ Wallet authenticates; org owns projects. Authorization = org role (`owner > admi
 - `run402 org member list [<org>]` — members + roles of an org.
 - `run402 org member add [<org>] <wallet> [--role <role>]` — add a member BY WALLET (a new wallet is provisioned as a `human` principal); `--role` defaults to `developer`. When the response names any of the org's gitvault vaults as having a new pending writer candidate, this also runs the SAME writer reconcile `repos access sync` does on each one (best-effort; a `writer_sync` block reports what happened; warns rather than refuses when the caller isn't a writer anywhere yet — see "Multi-writer vaults" below). A developer-or-above add is REFUSED up front with `GITVAULT_WRITER_NOT_ADMITTED` (`next_actions: [request_writer_sync]`, naming the vaults) unless this session's own key is an admitted writer on EVERY vault of the org — so a member you add can push at once, never half-usable; a current writer admits your key with `run402 repos access sync` (any push does it too), then re-run, or have that writer run the add. Viewer/billing adds never hit the gate; an org with no vaults has nothing to admit.
 - `run402 org member role [<org>] <principal_id> <role>` — change a member's role.
-- `run402 org member rm [<org>] <principal_id>` — revoke a member.
+- `run402 org member rm [<org>] <principal_id>` — revoke a member. A removal rides an epoch rotation: the gateway blocks the member's writer keys and every ordinary push on the org's vaults refuses `EPOCH_ROTATION_REQUIRED` until a surviving writer rotates, so this command rotates INLINE on every vault where this session's key is a writer (`reason:"member_removed"`, writer-capable — no owner step-up; the rotation includes every surviving writer, pin or no pin) and prints `epoch_rotation: { rotated, not_writer, errors }`. A vault it cannot rotate is completed by any surviving writer's next plain `git push` (the push rotates, then lands); an owner can also rotate explicitly with `run402 repos access revoke-key <principal_id>`.
 - `run402 org member revoke-key <org> --principal <principal_id> [--reason <why>]` — owner + step-up: revoke the member's current gitvault encryption key (gitvault-agent-envelopes). The rotation path for a member whose keystore was lost or rebuilt — `GITVAULT_KEY_ROTATION_REQUIRED` points here; the member's next gitvault operation then enrolls its current keystore key afresh and any key-holder's next operation wraps each vault to it. Audited + mandatory security notification.
 - `run402 org invite list [<org>]` — pending email invites.
 - `run402 org invite create [<org>] <email> [--role <role>] [--ttl-hours N]` — invite a person by email; `--role` defaults to `developer`. The invite is **claimed automatically** when the recipient first signs in via that verified email (`run402 operator login --loopback`, or any hosted email/OAuth login) — it then surfaces as an active membership in the login output and `org member list`. There's no invitee-side "accept" step. Owner/admin invites only claim once the recipient has enrolled a passkey; lower roles claim on any login.
