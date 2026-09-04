@@ -55,7 +55,13 @@ export function cloneGitvaultRemote(remoteUrl: string, targetDir: string): Promi
       argv,
       // The remote helper this clone spawns authenticates as THIS session: pass
       // the RUN402_* selection through (config dir, wallet, api base, trace).
-      { cwd: tmpdir(), env: hardenedGitEnv(run402PassthroughEnv()), encoding: "buffer", maxBuffer: 1024 * 1024 * 1024, windowsHide: true },
+      // In-process helper, never the resident daemon: the keystore this clone
+      // must read was written moments ago by the same resume, and a daemon
+      // that predates that write serves the vault from what it loaded then
+      // (live: a post-rotation resume opened only the newest epoch and died
+      // GITVAULT_EPOCH_NOT_OPENABLE at generation 1). One clone gains nothing
+      // from a daemon; every later fetch/push in the restored checkout does.
+      { cwd: tmpdir(), env: { ...hardenedGitEnv(run402PassthroughEnv()), RUN402_DAEMON: "0" }, encoding: "buffer", maxBuffer: 1024 * 1024 * 1024, windowsHide: true },
       (error, _stdout, stderr) => {
         if (error) {
           const stderrText = Buffer.from(stderr as Buffer).toString("utf8");

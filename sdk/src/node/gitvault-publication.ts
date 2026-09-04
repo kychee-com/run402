@@ -6298,6 +6298,21 @@ export class GitvaultVault {
    * walk path, in which case every line below is byte-identical to the
    * pre-gitvault-restore-recipe shape.
    */
+  /**
+   * gitvault-multi-writer (rev 47): the key a head's own checkpoint claim set
+   * and carriers were signed under — the head's writer, resolved against the
+   * keystore's persisted `writer_set_pin` (maintained by the chain walk that
+   * always precedes a restore), falling back to `fallback` (the genesis
+   * creator) for a pre-rev-47 keystore or a writer the pin no longer lists.
+   * Before this, a restore verified every checkpoint under the creator key
+   * and a clone of any vault whose newest checkpoint was minted by a handoff
+   * recipient died CHECKPOINT_INCOMPLETE "claim set signature fails".
+   */
+  private writerKeyForHead(head: GitvaultHead, fallback: string): string {
+    const pinned = this.repoFile().writer_set_pin?.writers ?? [];
+    return pinned.find((w) => w.writer_key_id === head.writer_key_id)?.signing_pubkey ?? fallback;
+  }
+
   private async applyRestoreHeads(
     targetRepoDir: string,
     heads: GitvaultHead[],
@@ -6409,8 +6424,8 @@ export class GitvaultVault {
         const claimBytes = await this.transport.getObject({ repo_id: this.repoId, path: gitvaultPaths.claimSet(first.checkpoint.claim_set.object_id), expected_sha256: first.checkpoint.claim_set.stored_bytes_sha256 });
         if (!claimBytes || sha256Hex(claimBytes) !== first.checkpoint.claim_set.stored_bytes_sha256) fail("CHECKPOINT_INCOMPLETE", "claim set absent or altered", "restoring gitvault objects");
         claimSet = parseGitvaultStrict(new TextDecoder().decode(claimBytes)) as GitvaultCheckpointClaimSet;
-        if (!verifyGitvaultObject(claimSet as unknown as GitvaultSignedObject, writerKey)) fail("CHECKPOINT_INCOMPLETE", "claim set signature fails", "restoring gitvault objects");
-        manifest = await this.openCarrier<GitvaultCheckpointManifest>("checkpoint_manifest", claimSet.manifest_receipt, gitvaultPaths.checkpointManifest(claimSet.manifest_receipt.object_id), writerKey, { epoch: first.epoch, k_repo: kRepoForEpoch(first.epoch) });
+        if (!verifyGitvaultObject(claimSet as unknown as GitvaultSignedObject, this.writerKeyForHead(first, writerKey))) fail("CHECKPOINT_INCOMPLETE", "claim set signature fails", "restoring gitvault objects");
+        manifest = await this.openCarrier<GitvaultCheckpointManifest>("checkpoint_manifest", claimSet.manifest_receipt, gitvaultPaths.checkpointManifest(claimSet.manifest_receipt.object_id), this.writerKeyForHead(first, writerKey), { epoch: first.epoch, k_repo: kRepoForEpoch(first.epoch) });
         checkClaimSetEquality(claimSet, manifest, first.checkpoint.covers_through_generation);
       }
       // Design D2 + gitvault-pipelined-restore D1: every checkpoint pack is
@@ -6572,13 +6587,13 @@ export class GitvaultVault {
         if (plan.checkpoint.claim_set.object_id !== claimReceipt.object_id) return null; // claim set id mismatch
         if (sha256Hex(plan.checkpoint.claim_set.stored_bytes) !== claimReceipt.stored_bytes_sha256) return null; // claim set hash mismatch
         const claimSet = parseGitvaultStrict(new TextDecoder().decode(plan.checkpoint.claim_set.stored_bytes)) as GitvaultCheckpointClaimSet;
-        if (!verifyGitvaultObject(claimSet as unknown as GitvaultSignedObject, writerKey)) return null; // claim set signature fails
+        if (!verifyGitvaultObject(claimSet as unknown as GitvaultSignedObject, this.writerKeyForHead(first.head, writerKey))) return null; // claim set signature fails
         if (claimSet.manifest_receipt.object_id !== plan.checkpoint.manifest.object_id) return null; // manifest id mismatch
         // Reuses `decodeCarrierFrame` verbatim — ciphertext hash, AEAD open,
         // and identity/signature checks all run exactly as they would for a
         // network-fetched manifest frame; the only difference is where the
         // ciphertext bytes came from.
-        const manifest = this.decodeCarrierFrame<GitvaultCheckpointManifest>("checkpoint_manifest", claimSet.manifest_receipt, plan.checkpoint.manifest.stored_bytes, writerKey, { epoch: first.head.epoch, k_repo: this.epochKeyFor(newest, first.head.epoch) });
+        const manifest = this.decodeCarrierFrame<GitvaultCheckpointManifest>("checkpoint_manifest", claimSet.manifest_receipt, plan.checkpoint.manifest.stored_bytes, this.writerKeyForHead(first.head, writerKey), { epoch: first.head.epoch, k_repo: this.epochKeyFor(newest, first.head.epoch) });
         checkClaimSetEquality(claimSet, manifest, first.head.checkpoint.covers_through_generation);
         checkpoint = { claimSet, manifest };
       }
