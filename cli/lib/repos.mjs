@@ -2033,6 +2033,11 @@ async function invite(args) {
     if (result.room_fact && result.room_fact.posted === false) {
       console.error(`note: the room fact was not posted (${result.room_fact.reason}) — the invite still mints and remains claimable`);
     }
+    // The inviter's own fact must not wake the inviter's next `messages wait`:
+    // advance this checkout's stored cursor past it (best-effort).
+    if (result.room?.room_key && result.room_fact?.posted && typeof result.room_fact.cursor === "string") {
+      try { updateRoomState(result.room.organization_id, result.room.room_key, { cursor: result.room_fact.cursor }); } catch { /* never fails a mint */ }
+    }
     if (asJson) {
       printJson(sdk, result);
     } else {
@@ -2127,6 +2132,9 @@ async function joinInvite(args) {
             ? `writer: active (generation ${result.writer_activation.generation})`
             : `writer: pending — ${result.writer_activation.reason}`,
         );
+      }
+      if (!result.presence) {
+        console.error(`note: your own presence was not registered (${result.presence_failure ?? "unknown"}) — the arrival fact was not posted; your first \`run402 messages wait\` registers one`);
       }
       if (result.inviter) {
         const labels = [result.inviter.program, result.inviter.model].filter(Boolean).join("/");

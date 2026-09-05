@@ -697,6 +697,8 @@ export interface GitvaultInviteRoom {
 export interface GitvaultInviteRoomFactResult {
   posted: boolean;
   message_id?: string;
+  /** The posted fact's room cursor — a CLI advances the inviter's stored cursor past it, so the inviter's own `messages wait` is woken by the joiner's arrival, never by its own fact. */
+  cursor?: string;
   reason?: string;
 }
 
@@ -773,6 +775,8 @@ export interface GitvaultInviteJoinResult {
   inviter: GitvaultInviteInviter | null;
   /** This session's OWN presence in the room (what the arrival fact was posted as), or `null` when registration failed. A CLI persists it into the joined checkout so the first `messages wait` there speaks as the same session. */
   presence: { presence_id: string; name: string } | null;
+  /** Why `presence` is null (the registration refusal, verbatim), else null. A joined checkout without a presence still works — its first `messages wait` registers one — but the reason is never silent. */
+  presence_failure: string | null;
   live_presences: RoomPresence[];
   cursor: string | null;
   recent_messages: unknown[];
@@ -3176,7 +3180,7 @@ export class Gitvault {
           ...(options.sessionKey !== undefined ? { sessionKey: options.sessionKey } : {}),
           idempotencyKey: `invite:${response.invite_id}:minted`,
         });
-        roomFact = { posted: true, message_id: sent.message_id };
+        roomFact = { posted: true, message_id: sent.message_id, cursor: sent.cursor };
       } catch (e) {
         roomFact = { posted: false, reason: e instanceof Error ? e.message : String(e) };
       }
@@ -3852,6 +3856,7 @@ export class Gitvault {
     const rooms = new Rooms(this.#client);
     const inviteShort = claim.invite_id.slice(0, 8);
     let myPresence: { presence_id: string; name: string } | null = null;
+    let presenceFailure: string | null = null;
     try {
       const registration = await rooms.registerPresence(claim.org_id, roomKey, {
         task: options.task ?? `joined via invite ${inviteShort}`,
@@ -3860,8 +3865,9 @@ export class Gitvault {
         ...(options.sessionKey !== undefined ? { sessionKey: options.sessionKey } : {}),
       });
       myPresence = { presence_id: registration.presence_id, name: registration.name };
-    } catch {
-      // best-effort — arrival still completes without a presence
+    } catch (e) {
+      // best-effort — arrival still completes without a presence, and says why
+      presenceFailure = e instanceof Error ? e.message : String(e);
     }
     if (myPresence) {
       const receiptShort = payload.checkpoint.commit_oid.slice(0, 12);
@@ -3935,6 +3941,7 @@ export class Gitvault {
       room: { organization_id: claim.room?.org_id ?? claim.org_id, room_key: roomKey },
       inviter: claim.inviter ?? null,
       presence: myPresence,
+      presence_failure: presenceFailure,
       live_presences: livePresences,
       cursor,
       recent_messages: recentMessages,
