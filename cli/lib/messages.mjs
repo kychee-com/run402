@@ -152,6 +152,9 @@ async function send(args) {
       }),
       { name: flagValue(a, "--name"), task });
     rememberPresence(room.orgId, room.roomKey, result.sender_presence, flagValue(a, "--name"));
+    // A sender never needs to hear its own message: advance this checkout's
+    // stored cursor past it so the next `messages wait` is woken by a reply.
+    if (typeof result.cursor === "string") updateRoomState(room.orgId, room.roomKey, { cursor: result.cursor });
     console.log(JSON.stringify(result, null, 2));
   } catch (err) {
     reportSdkError(err);

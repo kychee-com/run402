@@ -3869,15 +3869,17 @@ export class Gitvault {
       // best-effort — arrival still completes without a presence, and says why
       presenceFailure = e instanceof Error ? e.message : String(e);
     }
+    let arrivalCursor: string | null = null;
     if (myPresence) {
       const receiptShort = payload.checkpoint.commit_oid.slice(0, 12);
       try {
-        await rooms.sendMessage(claim.org_id, roomKey, {
+        const posted = await rooms.sendMessage(claim.org_id, roomKey, {
           body: `Joined as ${myPresence.name} from checkpoint ${receiptShort}.`,
           presenceId: myPresence.presence_id,
           ...(options.sessionKey !== undefined ? { sessionKey: options.sessionKey } : {}),
           idempotencyKey: `invite:${claim.invite_id}:joined`,
         });
+        if (typeof posted.cursor === "string") arrivalCursor = posted.cursor;
       } catch {
         // best-effort — never blocks arrival
       }
@@ -3893,9 +3895,17 @@ export class Gitvault {
         ...(myPresence ? { presenceId: myPresence.presence_id } : {}),
       });
       recentMessages = page.messages ?? [];
-      if (typeof page.cursor === "string") cursor = page.cursor;
+      // The page is newest-first, so its continuation cursor is the OLDEST
+      // position; the cursor a joined checkout stores must be the NEWEST —
+      // its own arrival fact when posted, else the newest message read —
+      // so the joiner's first `messages wait` is woken by what comes NEXT,
+      // never by its own arrival.
+      const newestRead = (recentMessages[0] as { cursor?: unknown } | undefined)?.cursor;
+      if (arrivalCursor) cursor = arrivalCursor;
+      else if (typeof newestRead === "string") cursor = newestRead;
     } catch {
-      // best-effort — arrival still reports the claim's own cursor
+      // best-effort — arrival still reports the arrival fact's cursor, else the claim's own
+      if (arrivalCursor) cursor = arrivalCursor;
     }
 
     const nextActions: NextAction[] = [...(claim.next_actions ?? [])];
