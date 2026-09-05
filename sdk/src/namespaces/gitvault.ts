@@ -1616,6 +1616,7 @@ export class Gitvault {
     // never serves object reads) covers every read path.
     const transport = createGitvaultHttpTransport(this.#client, {
       onObjectStoreOriginObserved: (rid, origins) => keystore.recordObjectStoreOrigins(rid, origins),
+      byoBackend: await this.#byoBackendResolver(keystore),
     });
     // gitvault-agent-envelopes D3: enroll the keystore's key if this principal
     // has none (publish + possession proof, one round trip each); a differing
@@ -1912,7 +1913,7 @@ export class Gitvault {
 
     const [{ createGitvaultHttpTransport }, { GitvaultKeystore }, { openOrCreateGitvault }] = await Promise.all([this.#publication(), this.#keystore(), this.#openOrCreate()]);
     const keystore = new GitvaultKeystore(options.keystore_root !== undefined ? { rootDir: options.keystore_root } : {});
-    const transport = createGitvaultHttpTransport(this.#client);
+    const transport = createGitvaultHttpTransport(this.#client, { byoBackend: await this.#byoBackendResolver(keystore) });
     const result = await openOrCreateGitvault({
       keystore,
       transport,
@@ -1954,7 +1955,7 @@ export class Gitvault {
   ): Promise<GitvaultOpenOrCreateResult & { resolution: import("../node/gitvault-address.js").GitvaultAddressResolution }> {
     const [{ createGitvaultHttpTransport }, { GitvaultKeystore }, { resolveGitvaultAddress }] = await Promise.all([this.#publication(), this.#keystore(), this.#address()]);
     const keystore = new GitvaultKeystore(options.keystore_root !== undefined ? { rootDir: options.keystore_root } : {});
-    const transport = createGitvaultHttpTransport(this.#client);
+    const transport = createGitvaultHttpTransport(this.#client, { byoBackend: await this.#byoBackendResolver(keystore) });
     const resolution = await resolveGitvaultAddress({
       keystore,
       transport,
@@ -1998,7 +1999,7 @@ export class Gitvault {
   ): Promise<(GitvaultOpenOrCreateResult & { resolution: import("../node/gitvault-address.js").GitvaultAddressResolution }) | null> {
     const [{ createGitvaultHttpTransport }, { GitvaultKeystore }, { recoverStaleGitvaultPin }] = await Promise.all([this.#publication(), this.#keystore(), this.#address()]);
     const keystore = new GitvaultKeystore(options.keystore_root !== undefined ? { rootDir: options.keystore_root } : {});
-    const transport = createGitvaultHttpTransport(this.#client);
+    const transport = createGitvaultHttpTransport(this.#client, { byoBackend: await this.#byoBackendResolver(keystore) });
     const fresh = await recoverStaleGitvaultPin({
       keystore,
       transport,
@@ -2057,7 +2058,7 @@ export class Gitvault {
     const [{ createGitvaultHttpTransport }, { GitvaultKeystore }, { createGitvault }] = await Promise.all([this.#publication(), this.#keystore(), this.#creation()]);
     const { parseMirrorDestinationUrl, formatMirrorDestination } = await this.#mirrorConfig();
     const keystore = new GitvaultKeystore(options.keystore_root !== undefined ? { rootDir: options.keystore_root } : {});
-    const transport = createGitvaultHttpTransport(this.#client);
+    const transport = createGitvaultHttpTransport(this.#client, { byoBackend: await this.#byoBackendResolver(keystore) });
     let byoWriteTarget: { destination: import("../node/gitvault-mirror-config.js").GitvaultMirrorDestination; credential?: import("../node/gitvault-mirror-config.js").GitvaultMirrorCredential } | undefined;
     let byoDestinationAddress: string | undefined;
     if (options.byo) {
@@ -5600,6 +5601,22 @@ export class Gitvault {
   }
   #byoConfig(): Promise<ByoConfigModule> {
     return nodeOnly(() => import("../node/gitvault-byo-config.js"), "init");
+  }
+  /**
+   * gitvault-byo-primary-bucket: the transport's `byoBackend` option — where
+   * THIS machine reads a BYO vault's payload from (its `byo/<repo_id>.json`
+   * config; destination + credential NAME). One backend per vault per
+   * transport; `null` for a vault this machine has no config for, so the
+   * transport refuses `GITVAULT_BYO_NOT_CONFIGURED` by name rather than
+   * reporting a false absence. Managed vaults never reach it.
+   */
+  async #byoBackendResolver(keystore: import("../node/gitvault-keystore.js").GitvaultKeystore): Promise<(repoId: string) => import("../node/gitvault-mirror-backend.js").GitvaultMirrorBackend | null> {
+    const [{ readByoConfig }, { openByoBackendFromConfig }] = await Promise.all([this.#byoConfig(), this.#mirror()]);
+    const cache = new Map<string, import("../node/gitvault-mirror-backend.js").GitvaultMirrorBackend | null>();
+    return (repoId) => {
+      if (!cache.has(repoId)) cache.set(repoId, readByoConfig(keystore, repoId) ? openByoBackendFromConfig(keystore, repoId) : null);
+      return cache.get(repoId)!;
+    };
   }
   #byoProbe(): Promise<ByoProbeModule> {
     return nodeOnly(() => import("../node/gitvault-byo-probe.js"), "init");

@@ -616,7 +616,7 @@ const GITVAULT_BYO_PAYLOAD_OBJECT_KINDS: ReadonlySet<string> = new Set([
   "key_envelope",
 ]);
 
-function openByoBackendFromConfig(keystore: GitvaultKeystore, repoId: string): GitvaultMirrorBackend {
+export function openByoBackendFromConfig(keystore: GitvaultKeystore, repoId: string): GitvaultMirrorBackend {
   const config = readByoConfig(keystore, repoId);
   if (!config) fail("GITVAULT_BYO_NOT_CONFIGURED", `no local BYO write config for ${repoId}`, "opening the gitvault BYO destination", { repo_id: repoId }, [{ action: "run402 repos create --byo <destination> allocated this vault; this machine needs the same destination + credential configured locally to write or dual-push its chain" }]);
   if (config.destination.kind === "s3" && config.credential) {

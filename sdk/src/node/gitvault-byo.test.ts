@@ -612,3 +612,114 @@ describe("managed vaults are byte-identical — uploadObjects with no `byo` arg 
     assert.equal(receipts[0]!.sha256, entry.sha256);
   });
 });
+
+// ─── C. BYO payload READ path (gitvault-byo-primary-bucket task 5.1 finding) ─
+//
+// The gateway holds no payload copy of a BYO vault, so `object-reads` entries
+// and `GET …/state` carriers for the payload kinds carry `byo_key` instead of
+// a presign. The transport must read that key from the vault's locally
+// configured destination — never from run402 — and a machine WITHOUT a local
+// config must refuse by name rather than report a false absence (which is
+// exactly what a clean machine's cold open did before this path existed:
+// "base key_envelope could not be retrieved").
+
+describe("gitvault BYO payload read path: byo_key entries are read from the local destination backend", () => {
+  const KEY = `source/${REPO}/wal/${WAL}.pack.enc`;
+  const BYTES = new Uint8Array([7, 7, 7, 7]);
+
+  function fakeBackend(store: Map<string, Uint8Array>, gets: string[]) {
+    return {
+      describe: () => "fake://byo",
+      head: async () => null,
+      get: async (key: string) => {
+        gets.push(key);
+        return store.get(key) ?? null;
+      },
+      putCreateOnly: async () => ({ created: true }),
+    } as unknown as import("./gitvault-mirror-backend.js").GitvaultMirrorBackend;
+  }
+
+  function client(handler: (path: string, opts: { method?: string; body?: unknown }) => unknown, fetched: string[]) {
+    return {
+      apiBase: "https://api.example.test",
+      credentials: { getAuth: async () => ({}) },
+      async request<T>(path: string, opts: { method?: string; body?: unknown } = {}): Promise<T> {
+        return handler(path, opts) as T;
+      },
+      async fetch(url: string) {
+        fetched.push(url);
+        throw new Error(`a BYO payload read reached client.fetch (run402 or a presign) instead of the customer bucket: ${url}`);
+      },
+    } as unknown as Parameters<typeof createGitvaultHttpTransport>[0];
+  }
+
+  it("getObject resolves a byo_key entry through byoBackend and never dials run402 for the bytes", async () => {
+    const gets: string[] = [];
+    const fetched: string[] = [];
+    const store = new Map([[KEY, BYTES]]);
+    const transport = createGitvaultHttpTransport(
+      client((path) => {
+        if (path.endsWith("/object-reads")) return { reads: [{ object_kind: "wal_pack", object_id: WAL, byo_key: KEY, stored_bytes_sha256: sha256Hex(BYTES), size_bytes: String(BYTES.length) }] };
+        throw new Error(`unexpected request ${path}`);
+      }, fetched),
+      { byoBackend: () => fakeBackend(store, gets) },
+    );
+    const got = await transport.getObject({ repo_id: REPO, path: gitvaultPaths.wal(WAL) });
+    assert.deepEqual(got, BYTES);
+    assert.deepEqual(gets, [KEY]);
+    assert.deepEqual(fetched, []);
+  });
+
+  it("an absent key in the customer bucket is `null` (absence adjudication takes over), not an error", async () => {
+    const transport = createGitvaultHttpTransport(
+      client((path) => {
+        if (path.endsWith("/object-reads")) return { reads: [{ object_kind: "wal_pack", object_id: WAL, byo_key: KEY, stored_bytes_sha256: "0".repeat(64), size_bytes: "4" }] };
+        throw new Error(`unexpected request ${path}`);
+      }, []),
+      { byoBackend: () => fakeBackend(new Map(), []) },
+    );
+    assert.equal(await transport.getObject({ repo_id: REPO, path: gitvaultPaths.wal(WAL) }), null);
+  });
+
+  it("a machine with no local BYO config refuses GITVAULT_BYO_NOT_CONFIGURED by name — never a false absence", async () => {
+    for (const opts of [{}, { byoBackend: () => null }]) {
+      const transport = createGitvaultHttpTransport(
+        client((path) => {
+          if (path.endsWith("/object-reads")) return { reads: [{ object_kind: "wal_pack", object_id: WAL, byo_key: KEY, stored_bytes_sha256: "0".repeat(64), size_bytes: "4" }] };
+          throw new Error(`unexpected request ${path}`);
+        }, []),
+        opts,
+      );
+      await assert.rejects(
+        transport.getObject({ repo_id: REPO, path: gitvaultPaths.wal(WAL) }),
+        (e: unknown) => (e as { code?: string }).code === "GITVAULT_BYO_NOT_CONFIGURED",
+      );
+    }
+  });
+
+  it("GET …/state byo_key carriers resolve through the same backend", async () => {
+    const gets: string[] = [];
+    const refKey = `source/${REPO}/refs/rs_${"1".repeat(32)}.enc`;
+    const rrKey = `source/${REPO}/retention/rr_${"2".repeat(32)}.enc`;
+    const store = new Map([[refKey, new Uint8Array([1])], [rrKey, new Uint8Array([2])]]);
+    const headBytes = new TextEncoder().encode("{}");
+    const transport = createGitvaultHttpTransport(
+      client((path) => {
+        if (path.includes("/state")) {
+          return {
+            vault: { repo_id: REPO },
+            newest_generation: "0000000000000003",
+            head: { stored_bytes: Buffer.from(headBytes).toString("base64url"), stored_bytes_sha256: sha256Hex(headBytes) },
+            carriers: { ref_state: { byo_key: refKey }, retention_roots: { byo_key: rrKey } },
+          };
+        }
+        throw new Error(`unexpected request ${path}`);
+      }, []),
+      { byoBackend: () => fakeBackend(store, gets) },
+    );
+    const state = await transport.getState({ repo_id: REPO });
+    assert.deepEqual(state.carriers?.ref_state, new Uint8Array([1]));
+    assert.deepEqual(state.carriers?.retention_roots, new Uint8Array([2]));
+    assert.deepEqual(gets.sort(), [refKey, rrKey].sort());
+  });
+});

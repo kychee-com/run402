@@ -40,7 +40,7 @@ import { join } from "node:path";
 import { LocalError, isRun402Error } from "../errors.js";
 import type { Client } from "../kernel.js";
 import { fetchGitvaultObjectBytes } from "./gitvault-edge-fetch.js";
-import { openGitvaultDestinationBackend } from "./gitvault-mirror-backend.js";
+import { openGitvaultDestinationBackend, type GitvaultMirrorBackend } from "./gitvault-mirror-backend.js";
 import type { GitvaultMirrorCredential, GitvaultMirrorDestination } from "./gitvault-mirror-config.js";
 import {
   GITVAULT_FORMAT,
@@ -1459,6 +1459,20 @@ export interface GitvaultHttpTransportOptions {
   /** Wire shape: every vault-scoped route is `/gitvault/v1/vaults/:vault_id/...`; `vault_id` is the `repo_id` unless a mapping is supplied (D185). */
   vaultIdFor?: (repoId: string) => string;
   /**
+   * gitvault-byo-primary-bucket: where THIS machine reads a BYO vault's
+   * payload from. The gateway holds no payload copy of a `storage_profile:
+   * "byo"` vault, so its `object-reads` entries and `GET …/state` carriers
+   * for the payload kinds carry `byo_key` (the object's relative key under
+   * the vault's `byo_destination`) instead of a presign; the transport then
+   * asks this resolver for the vault's locally configured destination
+   * backend (`byo/<repo_id>.json` in the keystore — destination + credential
+   * NAME, never material) and reads the key from it. `null` means this
+   * machine has no such config, and the read fails
+   * `GITVAULT_BYO_NOT_CONFIGURED` by name — never a silent "absent". Absent
+   * option: same as `null`. Managed vaults never consult it.
+   */
+  byoBackend?: (repoId: string) => GitvaultMirrorBackend | null;
+  /**
    * gitvault-object-host-predial (design D1, task 1.2): called with the
    * ORIGIN(s) (`scheme://host`) of an object-store URL this transport just
    * completed a round trip against — the presigned `url`'s origin, and the
@@ -1549,7 +1563,7 @@ interface ObjectReadsResponse {
    * caller supplied no expectation), never re-verified by this type or by
    * the server that sent it.
    */
-  reads: Array<GitvaultObjectReadRequest & { url: string; edge_url?: string; inline?: string; stored_bytes_sha256: string; size_bytes: string }>;
+  reads: Array<GitvaultObjectReadRequest & { url?: string; edge_url?: string; inline?: string; byo_key?: string; stored_bytes_sha256: string; size_bytes: string }>;
 }
 /**
  * `GET …/state` wire shape (gitvault-composite-state-read design D1) —
@@ -1558,7 +1572,7 @@ interface ObjectReadsResponse {
  * `ObjectReadsResponse.reads[].edge_url` (gitvault-read-edge-cache design
  * D5) — absent when the platform's edge is unconfigured.
  */
-type VaultStateCarrierWire = { inline: string } | { presigned_url: string; edge_url?: string; expires_at: string };
+type VaultStateCarrierWire = { inline: string } | { presigned_url: string; edge_url?: string; expires_at: string } | { byo_key: string };
 interface VaultStateResponse {
   vault: GitvaultVaultRecord;
   newest_generation: string | null;
@@ -1676,12 +1690,36 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
    * target's origin(s) via `options.onObjectStoreOriginObserved`. Never
    * fired for the `inline` short-circuit above — no URL was dialed.
    */
+  /**
+   * gitvault-byo-primary-bucket: a payload object of a BYO vault, named by
+   * the key the gateway handed back. Read from the vault's locally configured
+   * destination — never from run402, which holds no copy. `null` when the
+   * key is absent there (the caller's absence adjudication takes over,
+   * `GITVAULT_BYO_OBJECT_MISSING`); a machine with no local BYO config for
+   * the vault refuses by name instead of reporting a false absence.
+   */
+  async function readByoObject(repoId: string, key: string, what: string): Promise<Uint8Array | null> {
+    const backend = options.byoBackend?.(repoId) ?? null;
+    if (!backend) {
+      fail(
+        "GITVAULT_BYO_NOT_CONFIGURED",
+        `vault ${repoId} keeps its payload in its own bucket and this machine has no local BYO config for it — ${what} cannot be read`,
+        "reading gitvault object",
+        { repo_id: repoId, key },
+        [{ action: "this vault was allocated with `run402 repos create --byo <destination> --profile <name>|--ambient`; this machine needs the same destination and a credential NAME for it in the keystore's byo/<repo_id>.json (copy that file from the allocating machine — it carries no secret material)" }],
+      );
+    }
+    return backend.get(key);
+  }
+
   async function resolveObjectReadTarget(repoId: string, target: ObjectReadsResponse["reads"][number], expectedSha256: string | undefined, path: string): Promise<Uint8Array | null> {
+    if (target.byo_key !== undefined) return readByoObject(repoId, target.byo_key, path);
     if (target.inline !== undefined) {
       const bytes = fromBase64url(target.inline, "reads[].inline");
       if (expectedSha256 === undefined || sha256Hex(bytes) === expectedSha256) return bytes;
     }
-    const r = await fetchGitvaultObjectBytes(client, target);
+    if (target.url === undefined) fail("GITVAULT_OBJECT_READ_FAILED", `object-reads entry for ${path} carries neither a presign nor a byo_key`, "reading gitvault object", { path });
+    const r = await fetchGitvaultObjectBytes(client, { url: target.url, ...(target.edge_url ? { edge_url: target.edge_url } : {}) });
     try {
       options.onObjectStoreOriginObserved?.(repoId, gitvaultObjectStoreOrigins([target.url, target.edge_url]));
     } catch {
@@ -1863,6 +1901,7 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
 
   /** Resolve ONE `GET …/state` carrier arm to raw bytes — inline decode, or a plain GET on the presigned URL (preferring its `edge_url` companion, gitvault-read-edge-cache design D5), `null` on a 404 (mirrors {@link getObjectBytes}'s absent reading; both arms indistinguishable after this). Origin observation (gitvault-object-host-predial task 1.2) mirrors `resolveObjectReadTarget`'s. */
   async function resolveVaultStateCarrier(repoId: string, carrier: VaultStateCarrierWire): Promise<Uint8Array | null> {
+    if ("byo_key" in carrier) return readByoObject(repoId, carrier.byo_key, "vault-state carrier");
     if ("inline" in carrier) return fromBase64url(carrier.inline, "carriers.inline");
     const r = await fetchGitvaultObjectBytes(client, { url: carrier.presigned_url, edge_url: carrier.edge_url });
     try {

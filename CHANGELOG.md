@@ -4,6 +4,8 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
 
 ## Unreleased
 
+- **gitvault: a BYO vault can be read from a second machine while run402 is up.** The gateway answers a BYO vault's payload reads with `byo_key` (the object's key under the vault's `byo_destination`) instead of a presign it cannot mint; the transport reads that key from the vault's locally configured destination (`byo/<repo_id>.json`, destination + credential name) and refuses `GITVAULT_BYO_NOT_CONFIGURED` by name on a machine without it. A clean machine's cold open used to fail "base key_envelope could not be retrieved" and `repos fsck` answered 404 on a BYO vault's retention roots.
+
 - **CLI: `repos create --byo … --profile <name>`, `repos mirror --profile`, and `repos recover --profile` now receive their AWS credential profile.** The global wallet alias `--profile` was stripped from every command before dispatch, so under `repos` the documented s3 credential flag selected a wallet instead (`WALLET_NOT_FOUND`). Under `repos`, only `--wallet` (or `RUN402_WALLET` / the directory binding) selects the wallet.
 
 - **gitvault: `repos invite` / `repos join` — bring a second agent into the exact work, dirty tree included, and talk in a shared room (kygit-invite).**
