@@ -4483,6 +4483,30 @@ export class Gitvault {
     const prune = await this.#prune();
     const { isRootEligibleForRemoval, GITVAULT_RETENTION_MIN_DAYS } = pub;
     const handle = await this.open(options);
+    // gitvault-byo-primary-bucket: prune deletion on a BYO vault is not
+    // shipped (the gateway's worker deletes from run402's own storage, which
+    // holds none of this vault's payload; client-executed deletion is the
+    // open design item), and the gateway refuses an intent by name
+    // (GITVAULT_BYO_PRUNE_NOT_SUPPORTED). Say so before any planning or
+    // ceremony — a plan here would only invite a refused submit.
+    const record = await handle.vault.transport.getVaultRecord({ repo_id: handle.repo_id });
+    if (record.storage_profile === "byo") {
+      return {
+        candidates: [],
+        eligible_count: 0,
+        retained_count: 0,
+        object_candidates: [],
+        deferred_object_count: 0,
+        blocked_reason: "this vault keeps its payload in your own bucket (storage_profile byo); run402 cannot delete from a bucket it holds no credential to, and client-executed prune deletion has not shipped — the gateway refuses a prune intent on a BYO vault by name (GITVAULT_BYO_PRUNE_NOT_SUPPORTED); compaction still works and superseded history stays in your bucket",
+        intent_core: null,
+        intent_core_sha256: null,
+        attestation: null,
+        submitted: false,
+        intent: null,
+        confirmation: null,
+        note: "prune is not available on a bring-your-own-bucket vault yet",
+      };
+    }
     const base = await handle.vault.materialize();
     const cutoffAt = (options.now ?? (() => new Date()))().toISOString();
     const resolve = options.effective_admitted_at ?? (() => null);
@@ -4553,7 +4577,6 @@ export class Gitvault {
       };
     }
 
-    const record = await handle.vault.transport.getVaultRecord({ repo_id: handle.repo_id });
     const gcRootSetHmac = handle.vault.keyedDigest("gcrootset", { receipts: plan.root_set.receipts });
     const core =
       options.submit?.core ??
