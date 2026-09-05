@@ -1,5 +1,5 @@
 {
-  "surface_version": "4.70.5",
+  "surface_version": "4.70.6",
   "verbs": [
     "repos create",
     "repos list",
