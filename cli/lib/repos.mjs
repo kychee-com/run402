@@ -1918,6 +1918,13 @@ async function resume(args) {
   try {
     const result = await sdk.gitvault.resume({ key, ...(to != null ? { to } : {}), onLine: (line) => console.error(line) });
     if (coldStart.next_action) result.next_actions = [...(result.next_actions ?? []), coldStart.next_action];
+    // The restored checkout's first git command needs the remote helper on
+    // PATH; an npx-run resume/join has it only in the npx cache. Name it.
+    try {
+      const { remoteHelperNextAction } = await import("./path-lookup.mjs");
+      const helperAction = result.restored?.dir ? remoteHelperNextAction(result.restored.dir) : null;
+      if (helperAction) result.next_actions = [...(result.next_actions ?? []), helperAction];
+    } catch { /* never fails a completed claim */ }
     if (a.includes("--json")) {
       printJson(sdk, { ...result, cold_start: coldStart });
     } else {
@@ -2111,6 +2118,13 @@ async function joinInvite(args) {
     } catch {
       // never fails a completed join
     }
+    // The restored checkout's first git command needs the remote helper on
+    // PATH; an npx-run resume/join has it only in the npx cache. Name it.
+    try {
+      const { remoteHelperNextAction } = await import("./path-lookup.mjs");
+      const helperAction = result.restored?.dir ? remoteHelperNextAction(result.restored.dir) : null;
+      if (helperAction) result.next_actions = [...(result.next_actions ?? []), helperAction];
+    } catch { /* never fails a completed claim */ }
     if (a.includes("--json")) {
       printJson(sdk, { ...result, cold_start: coldStart });
     } else {

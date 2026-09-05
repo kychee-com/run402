@@ -6,10 +6,10 @@
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, chmodSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, chmodSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { isExecutableOnPath } from "./path-lookup.mjs";
+import { isExecutableOnPath, remoteHelperNextAction } from "./path-lookup.mjs";
 
 describe("isExecutableOnPath", () => {
   it("finds an executable file on PATH", () => {
@@ -63,4 +63,30 @@ describe("isExecutableOnPath", () => {
     assert.equal(isExecutableOnPath("git-remote-kygit", {}), false);
     assert.equal(isExecutableOnPath("git-remote-kygit", { PATH: "" }), false);
   });
+});
+
+describe("remoteHelperNextAction", () => {
+it("names the missing helper for the checkout's remote scheme, and nothing when it is on PATH or the checkout is unreadable", () => {
+  const dir = mkdtempSync(join(tmpdir(), "run402-remote-helper-"));
+  try {
+    mkdirSync(join(dir, ".git"));
+    writeFileSync(join(dir, ".git", "config"), `[core]\n\trepositoryformatversion = 0\n[remote "origin"]\n\turl = kygit::org/name\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n`);
+    const emptyPath = { PATH: dir };
+    const missing = remoteHelperNextAction(dir, emptyPath);
+    assert.equal(missing?.type, "install_remote_helper");
+    assert.match(missing.why, /git-remote-kygit/);
+    assert.equal(missing.command, "npm i -g @kychee/kygit run402");
+    // present on PATH → nothing to say
+    const bin = join(dir, "bin"); mkdirSync(bin);
+    writeFileSync(join(bin, "git-remote-kygit"), "#!/bin/sh\n"); chmodSync(join(bin, "git-remote-kygit"), 0o755);
+    assert.equal(remoteHelperNextAction(dir, { PATH: bin }), null);
+    // run402:: scheme names the other helper
+    writeFileSync(join(dir, ".git", "config"), `[remote "origin"]\n\turl = run402::org/name\n`);
+    assert.match(remoteHelperNextAction(dir, emptyPath).why, /git-remote-run402/);
+    // no checkout → null, never a throw
+    assert.equal(remoteHelperNextAction(join(dir, "nope"), emptyPath), null);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 });
