@@ -22,6 +22,7 @@
  * are PATH-scoped and must keep naming the real routes.
  */
 import { allowanceAuthHeaders } from "./config.mjs";
+import { operatorProofs } from "./operator-proofs.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 import {
@@ -103,7 +104,7 @@ async function preferences(args) {
     }
   }
   try {
-    const data = await getSdk().admin.setNotificationPreferences(patch);
+    const data = await getSdk().admin.setNotificationPreferences(patch, operatorProofs("/agent/v1/notifications/preferences"));
     console.log(JSON.stringify(data, null, 2));
   } catch (err) {
     reportSdkError(err);
@@ -184,10 +185,10 @@ async function channelsConnect(args) {
     fail({ code: "BAD_USAGE", message: `Unexpected argument for notifications channels connect: ${positionals[1]}` });
   }
 
-  allowanceAuthHeaders("/agent/v1/notifications/channels/telegram");
+  const proofs = operatorProofs("/agent/v1/notifications/channels/telegram");
   let pending;
   try {
-    pending = await getSdk().admin.channels.connectTelegram(label ? { label } : {});
+    pending = await getSdk().admin.channels.connectTelegram(label ? { label } : {}, proofs);
   } catch (err) {
     reportSdkError(err);
     return;
@@ -233,7 +234,7 @@ async function channelsRevoke(args) {
   });
   allowanceAuthHeaders("/agent/v1/notifications/channels/telegram");
   try {
-    console.log(JSON.stringify(await getSdk().admin.channels.revokeTelegram(bindingId), null, 2));
+    console.log(JSON.stringify(await getSdk().admin.channels.revokeTelegram(bindingId, operatorProofs("/agent/v1/notifications/channels/telegram")), null, 2));
   } catch (err) {
     reportSdkError(err);
   }

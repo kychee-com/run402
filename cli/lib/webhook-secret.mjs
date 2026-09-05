@@ -7,6 +7,7 @@
  */
 
 import { allowanceAuthHeaders } from "./config.mjs";
+import { operatorProofs } from "./operator-proofs.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError } from "./sdk-errors.mjs";
 import { assertKnownFlags, normalizeArgv, failUnknownSubcommand } from "./argparse.mjs";
@@ -38,9 +39,9 @@ export async function run(sub, args = []) {
   }
   const parsedArgs = normalizeArgv(args);
   assertKnownFlags(parsedArgs, ["--help", "-h"]);
-  allowanceAuthHeaders("/agent/v1/webhook-secret/rotate");
+  const proofs = operatorProofs("/agent/v1/webhook-secret/rotate");
   try {
-    const data = await getSdk().admin.rotateWebhookSecret();
+    const data = await getSdk().admin.rotateWebhookSecret(proofs);
     console.log(JSON.stringify(data, null, 2));
     console.error(""); // separator
     console.error("⚠  Store this secret NOW — it will not be shown again.");

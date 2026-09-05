@@ -18,6 +18,7 @@
  * headers are PATH-scoped and must keep naming the real route.
  */
 import { allowanceAuthHeaders } from "./config.mjs";
+import { operatorProofs } from "./operator-proofs.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 import {
@@ -89,7 +90,7 @@ async function rulesAdd(args) {
 
   allowanceAuthHeaders("/agent/v1/notifications/rules");
   try {
-    console.log(JSON.stringify(await getSdk().admin.rules.create(input), null, 2));
+    console.log(JSON.stringify(await getSdk().admin.rules.create(input, operatorProofs("/agent/v1/notifications/rules")), null, 2));
   } catch (err) {
     reportSdkError(err);
   }
@@ -115,7 +116,7 @@ async function rulesRm(args) {
   });
   allowanceAuthHeaders("/agent/v1/notifications/rules");
   try {
-    console.log(JSON.stringify(await getSdk().admin.rules.delete(ruleId), null, 2));
+    console.log(JSON.stringify(await getSdk().admin.rules.delete(ruleId, operatorProofs("/agent/v1/notifications/rules")), null, 2));
   } catch (err) {
     reportSdkError(err);
   }

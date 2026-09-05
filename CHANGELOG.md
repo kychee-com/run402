@@ -4,6 +4,8 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
 
 ## Unreleased
 
+- **One person, one passkey.** `run402 contacts connect telegram`, `contacts rm`, `contacts preferences set` (webhook URL), `notifications rules` mutations, and `webhook-secret rotate` now send your cached `run402 operator login --loopback` session beside the wallet auth, and the gateway accepts a passkey-fresh session for the wallet contact's verified email as `operator_passkey` assurance. Nobody is asked to enroll a second passkey; the emailed enrollment remains for an operator with no run402 login. `run402 operator whoami` now shows `amr: ["passkey"]` for a loopback login (the token response carries it).
+
 - **gitvault: `repos gc` compacts a BYO vault.** The checkpoint claim set (writer-signed plaintext receipts, never source bytes) is chain-adjacent: gateway-held so head admission can adjudicate the checkpoint, and copied into your bucket with the rest of the chain. A BYO vault has six payload kinds in the bucket only, not seven.
 - **gitvault: a degraded `git fetch`/`clone` works even when opening the vault needs the gateway.** When run402 is unreachable and the checkout already knows the vault (a pinned repo id or the keystore's own record), the read is served from the BYO destination or mirror; before, the open failed first and the fallback never ran. The degraded materialization leaves an existing checkout's `.git` non-bare.
 

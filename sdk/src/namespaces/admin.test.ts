@@ -331,6 +331,32 @@ describe("admin.reactivateProject (v1.57)", () => {
 // notification-channel-routing-telegram — r.admin.channels / r.admin.rules.
 // ---------------------------------------------------------------------------
 
+describe("one-passkey-per-person: operator proofs ride beside the wallet proof", () => {
+  const hdr = (h: Record<string, string>, name: string) => Object.entries(h).find(([k]) => k.toLowerCase() === name.toLowerCase())?.[1];
+
+  it("connectTelegram(opts, proofs) sends SIGN-IN-WITH-X and the session bearer on ONE request, and no provider auth", async () => {
+    const { fetch, calls } = mockFetch(() => json({ binding_id: "bnd_1", status: "pending", connect_url: "u", connect_group_url: "g", code_expires_at: "2026-07-16T12:15:00.000Z", label: null, next_actions: [] }));
+    await sdk(fetch).admin.channels.connectTelegram({ label: "tal" }, { siwx: "siwx-proof", token: "cps-token" });
+    assert.equal(hdr(calls[0]!.headers, "SIGN-IN-WITH-X"), "siwx-proof");
+    assert.equal(hdr(calls[0]!.headers, "Authorization"), "Bearer cps-token");
+  });
+
+  it("without proofs the request is byte-identical to before: provider auth only", async () => {
+    const { fetch, calls } = mockFetch(() => json({ binding_id: "bnd_1", status: "pending", connect_url: "u", connect_group_url: "g", code_expires_at: "2026-07-16T12:15:00.000Z", label: null, next_actions: [] }));
+    await sdk(fetch).admin.channels.connectTelegram({ label: "tal" });
+    assert.equal(hdr(calls[0]!.headers, "Authorization"), undefined);
+  });
+
+  it("rotateWebhookSecret and rules.create accept the same proofs", async () => {
+    const { fetch, calls } = mockFetch(() => json({ ok: true }));
+    const r = sdk(fetch);
+    await r.admin.rotateWebhookSecret({ siwx: "s", token: "t" });
+    await r.admin.rules.create({ telegramBindingId: "bnd_1" }, { siwx: "s", token: "t" });
+    assert.equal(hdr(calls[0]!.headers, "Authorization"), "Bearer t");
+    assert.equal(hdr(calls[1]!.headers, "Authorization"), "Bearer t");
+  });
+});
+
 describe("admin.channels.connectTelegram", () => {
   it("POSTs /agent/v1/notifications/channels/telegram with the label", async () => {
     const { fetch, calls } = mockFetch(() =>

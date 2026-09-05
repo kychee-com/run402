@@ -245,6 +245,29 @@ export interface ConnectTelegramOptions {
   label?: string;
 }
 
+/**
+ * one-passkey-per-person: the two proofs a wallet-authenticated notification
+ * mutation may carry on ONE request — the `SIGN-IN-WITH-X` wallet signature
+ * (which contact) and the human's control-plane session bearer (the passkey
+ * assurance). A person who logged in with `run402 operator login --loopback`
+ * never enrolls a second passkey: the gateway accepts a passkey-fresh session
+ * for the wallet contact's verified email as `operator_passkey` assurance.
+ * When omitted, the request carries the provider's wallet auth alone — byte-
+ * identical to before.
+ */
+export interface OperatorProofs {
+  /** The `SIGN-IN-WITH-X` header value for the target path. */
+  siwx: string;
+  /** The control-plane session token (`Authorization: Bearer`). */
+  token: string;
+}
+
+/** Request options carrying both proofs, or nothing when no session is at hand. */
+export function operatorProofRequest(proofs?: OperatorProofs): { headers?: Record<string, string>; withAuth?: boolean } {
+  if (!proofs) return {};
+  return { headers: { "SIGN-IN-WITH-X": proofs.siwx, Authorization: `Bearer ${proofs.token}` }, withAuth: false };
+}
+
 export interface ConnectTelegramNextAction {
   type: string;
   method?: string;
@@ -378,12 +401,12 @@ export class Channels {
    * notification bot is provisioned, and HTTP 412
    * `OPERATOR_EMAIL_NOT_VERIFIED` when the caller has no verified email yet.
    */
-  async connectTelegram(opts: ConnectTelegramOptions = {}): Promise<ConnectTelegramResult> {
+  async connectTelegram(opts: ConnectTelegramOptions = {}, proofs?: OperatorProofs): Promise<ConnectTelegramResult> {
     const body: Record<string, unknown> = {};
     if (opts.label !== undefined) body.label = opts.label;
     return this.client.request<ConnectTelegramResult>(
       "/agent/v1/notifications/channels/telegram",
-      { method: "POST", body, context: "connecting a Telegram notification channel" },
+      { method: "POST", body, context: "connecting a Telegram notification channel", ...operatorProofRequest(proofs) },
     );
   }
 
@@ -401,10 +424,10 @@ export class Channels {
    * operator's binding id all return the SAME not-found error
    * (authorize-before-reveal) — no existence oracle.
    */
-  async revokeTelegram(bindingId: string): Promise<RevokeTelegramResult> {
+  async revokeTelegram(bindingId: string, proofs?: OperatorProofs): Promise<RevokeTelegramResult> {
     return this.client.request<RevokeTelegramResult>(
       `/agent/v1/notifications/channels/telegram/${encodeURIComponent(bindingId)}`,
-      { method: "DELETE", context: "revoking a Telegram notification channel" },
+      { method: "DELETE", context: "revoking a Telegram notification channel", ...operatorProofRequest(proofs) },
     );
   }
 }
@@ -433,7 +456,7 @@ export class Rules {
    * unusable or foreign binding id returns the same 404 as a nonexistent one
    * (authorize-before-reveal).
    */
-  async create(input: CreateRoutingRuleInput): Promise<CreateRoutingRuleResult> {
+  async create(input: CreateRoutingRuleInput, proofs?: OperatorProofs): Promise<CreateRoutingRuleResult> {
     const body: Record<string, unknown> = { telegram_binding_id: input.telegramBindingId };
     if (input.projectId !== undefined) body.project_id = input.projectId;
     if (input.source !== undefined) body.source = input.source;
@@ -441,7 +464,7 @@ export class Rules {
     if (input.classes !== undefined) body.classes = input.classes;
     return this.client.request<CreateRoutingRuleResult>(
       "/agent/v1/notifications/rules",
-      { method: "POST", body, context: "creating a notification routing rule" },
+      { method: "POST", body, context: "creating a notification routing rule", ...operatorProofRequest(proofs) },
     );
   }
 
@@ -451,7 +474,7 @@ export class Rules {
    * wildcard; omitting a field leaves it unchanged (see
    * {@link UpdateRoutingRulePatch}).
    */
-  async update(ruleId: string, patch: UpdateRoutingRulePatch): Promise<RoutingRule> {
+  async update(ruleId: string, patch: UpdateRoutingRulePatch, proofs?: OperatorProofs): Promise<RoutingRule> {
     const body: Record<string, unknown> = {};
     if ("projectId" in patch) body.project_id = patch.projectId;
     if ("source" in patch) body.source = patch.source;
@@ -461,15 +484,15 @@ export class Rules {
     if ("enabled" in patch) body.enabled = patch.enabled;
     return this.client.request<RoutingRule>(
       `/agent/v1/notifications/rules/${encodeURIComponent(ruleId)}`,
-      { method: "PATCH", body, context: "updating a notification routing rule" },
+      { method: "PATCH", body, context: "updating a notification routing rule", ...operatorProofRequest(proofs) },
     );
   }
 
   /** Delete a routing rule. */
-  async delete(ruleId: string): Promise<DeleteRoutingRuleResult> {
+  async delete(ruleId: string, proofs?: OperatorProofs): Promise<DeleteRoutingRuleResult> {
     return this.client.request<DeleteRoutingRuleResult>(
       `/agent/v1/notifications/rules/${encodeURIComponent(ruleId)}`,
-      { method: "DELETE", context: "deleting a notification routing rule" },
+      { method: "DELETE", context: "deleting a notification routing rule", ...operatorProofRequest(proofs) },
     );
   }
 }
@@ -719,6 +742,7 @@ export class Admin {
   /** Patch operator notification preferences (assurance ladder applies). */
   async setNotificationPreferences(
     patch: NotificationPreferencesPatch,
+    proofs?: OperatorProofs,
   ): Promise<NotificationPreferences> {
     return this.client.request<NotificationPreferences>(
       "/agent/v1/notifications/preferences",
@@ -726,6 +750,7 @@ export class Admin {
         method: "PATCH",
         body: patch as unknown as Record<string, unknown>,
         context: "updating notification preferences",
+        ...operatorProofRequest(proofs),
       },
     );
   }
@@ -755,10 +780,10 @@ export class Admin {
    * is returned EXACTLY once. The previous secret remains valid for 24
    * hours (dual-secret grace window). Requires `operator_passkey` assurance.
    */
-  async rotateWebhookSecret(): Promise<RotateWebhookSecretResult> {
+  async rotateWebhookSecret(proofs?: OperatorProofs): Promise<RotateWebhookSecretResult> {
     return this.client.request<RotateWebhookSecretResult>(
       "/agent/v1/webhook-secret/rotate",
-      { method: "POST", context: "rotating webhook signing secret" },
+      { method: "POST", context: "rotating webhook signing secret", ...operatorProofRequest(proofs) },
     );
   }
 
