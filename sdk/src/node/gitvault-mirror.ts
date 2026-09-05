@@ -592,7 +592,7 @@ export async function mirrorPushForGeneration(client: Client, repoId: string, op
 // ─── BYO chain-copy dual-write (gitvault-byo-primary-bucket task 3.3) ─────────
 
 /**
- * The SAME seven payload kinds the gateway's `GITVAULT_BYO_PAYLOAD_KINDS`
+ * The SAME six payload kinds the gateway's `GITVAULT_BYO_PAYLOAD_KINDS`
  * names (`services/gitvault/upload-sessions.ts`) — client-written directly
  * to the BYO destination at push time (task 3.2), so the chain-copy below
  * MUST skip them (re-copying them here would try to READ them back from
@@ -601,10 +601,11 @@ export async function mirrorPushForGeneration(client: Client, repoId: string, op
  * (`head`/`vault_genesis`, `admission_record`) AND the remaining
  * chain-adjacent uploadable/gateway-only kinds (`maintenance_stage_*`,
  * `verifier_receipt`, `retention_cutoff`, `prune_intent`/`prune_completion`,
- * `maintenance_cycle_*`) — stays run402-authoritative on EVERY vault
- * regardless of storage_profile (design D1/D9) and is exactly what this
- * dual-write copies, so the customer bucket alone becomes a complete
- * `r402s-recover` source.
+ * `maintenance_cycle_*`, and the writer-signed `checkpoint_claim_set`,
+ * plaintext receipts the gateway must read to admit a checkpoint) — stays
+ * run402-authoritative on EVERY vault regardless of storage_profile (design
+ * D1/D9) and is exactly what this dual-write copies, so the customer bucket
+ * alone becomes a complete `r402s-recover` source.
  */
 const GITVAULT_BYO_PAYLOAD_OBJECT_KINDS: ReadonlySet<string> = new Set([
   "wal_pack",
@@ -612,11 +613,10 @@ const GITVAULT_BYO_PAYLOAD_OBJECT_KINDS: ReadonlySet<string> = new Set([
   "retention_roots",
   "checkpoint_manifest",
   "checkpoint_pack",
-  "checkpoint_claim_set",
   "key_envelope",
 ]);
 
-export function openByoBackendFromConfig(keystore: GitvaultKeystore, repoId: string): GitvaultMirrorBackend {
+function openByoBackendFromConfig(keystore: GitvaultKeystore, repoId: string): GitvaultMirrorBackend {
   const config = readByoConfig(keystore, repoId);
   if (!config) fail("GITVAULT_BYO_NOT_CONFIGURED", `no local BYO write config for ${repoId}`, "opening the gitvault BYO destination", { repo_id: repoId }, [{ action: "run402 repos create --byo <destination> allocated this vault; this machine needs the same destination + credential configured locally to write or dual-push its chain" }]);
   if (config.destination.kind === "s3" && config.credential) {

@@ -68,6 +68,11 @@ import type { GitvaultRetainedRefsReconcileResult } from "./gitvault-publication
 export function isNetworkClassGitvaultReadError(e: unknown): boolean {
   if (!isRun402Error(e)) return true;
   if (e.kind === "network_error") return true;
+  // The payment-capable client (paid-fetch) reports a request that failed
+  // BEFORE any response existed as X402_INITIAL_REQUEST_FAILED — the same
+  // connection/DNS failure an unbranded TypeError carries, wrapped. No
+  // response, no status: network-class.
+  if (e.kind === "payment_attempt_error" && (e as { code?: string }).code === "X402_INITIAL_REQUEST_FAILED") return true;
   const status = gitvaultReadErrorStatus(e);
   return typeof status === "number" && status >= 500;
 }

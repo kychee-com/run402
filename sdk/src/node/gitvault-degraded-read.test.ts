@@ -14,9 +14,10 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ApiError, LocalError, NetworkError, Unauthorized } from "../errors.js";
+import { ApiError, LocalError, NetworkError, PaymentAttemptError, Unauthorized } from "../errors.js";
 import { GITVAULT_MIRROR_VALIDITY_NOT_FRESHNESS_STATEMENT } from "../namespaces/gitvault.crypto.js";
 import { commitFile, makeVault } from "./gitvault-memory-transport.test.js";
 import { DirectoryMirrorBackend, openGitvaultMirrorBackend, type GitvaultMirrorBackend } from "./gitvault-mirror-backend.js";
@@ -81,6 +82,13 @@ describe("gitvault degraded read — trigger discipline (design D4)", () => {
   it("an unbranded raw throw (the shape a DNS/connect failure ACTUALLY takes through gitvault's own direct-fetch reads) is network-class", () => {
     assert.equal(isNetworkClassGitvaultReadError(new TypeError("fetch failed")), true);
     assert.equal(isNetworkClassGitvaultReadError("a plain string throw"), true);
+  });
+
+  it("the payment-capable client's X402_INITIAL_REQUEST_FAILED (no response ever existed) is network-class; a later-phase payment failure is not", () => {
+    const mk = (code: string) =>
+      new PaymentAttemptError({ code, message: "m", phase: "initial_request" as never, paymentAttemptId: "pat_x", providerStarted: false, mutationState: "not_started" as never, safeToRetry: true, cause: new TypeError("fetch failed") });
+    assert.equal(isNetworkClassGitvaultReadError(mk("X402_INITIAL_REQUEST_FAILED")), true);
+    assert.equal(isNetworkClassGitvaultReadError(mk("X402_PAYMENT_SIGNING_FAILED")), false);
   });
 
   it("a typed 5xx ApiError is network-class", () => {
@@ -226,6 +234,36 @@ describe("gitvault degraded read — served from a real DirectoryMirrorBackend",
 
     rmSync(mirrorRoot, { recursive: true, force: true });
     rmSync(outDir, { recursive: true, force: true });
+  });
+
+  it("materializing into a checkout's OWN .git (the remote helper's degraded fetch) leaves it a non-bare repository with its working tree intact", async () => {
+    const f = await makeVault();
+    const c1 = await commitFile(f.repoDir, "a.txt", "a\n");
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] } });
+    const destination: GitvaultMirrorDestination = { kind: "directory", path: scratchDir("run402-degraded-mirror-wt-") };
+    await seedBackend(openGitvaultMirrorBackend(destination, f.repoId), transportEntries(f.transport, f.repoId));
+    saveMirrorConfig(f.keystore, { repo_id: f.repoId, destination });
+
+    // A checkout git already prepared: non-bare, with a working tree.
+    const worktree = scratchDir("run402-degraded-checkout-");
+    execFileSync("git", ["init", "-q", "-b", "main", worktree]);
+    const gitDir = join(worktree, ".git");
+    assert.equal(execFileSync("git", ["-C", worktree, "config", "--get", "core.bare"]).toString().trim(), "false");
+
+    const outcome = await tryGitvaultDegradedRead({
+      attemptLive: async () => {
+        throw new NetworkError("run402 is unreachable", new Error("ECONNREFUSED"), "restoring gitvault objects");
+      },
+      keystore: f.keystore,
+      repo_id: f.repoId,
+      out_dir: gitDir,
+    });
+    assert.equal(outcome.degraded, true);
+    if (!outcome.degraded) throw new Error("unreachable");
+    assert.equal(outcome.result.refs["refs/heads/main"], c1);
+    assert.equal(execFileSync("git", ["-C", worktree, "config", "--get", "core.bare"]).toString().trim(), "false", "the checkout's git dir must stay non-bare");
+    assert.equal(execFileSync("git", ["-C", worktree, "rev-parse", "--is-inside-work-tree"]).toString().trim(), "true");
+    assert.equal(execFileSync("git", ["-C", worktree, "cat-file", "-t", c1]).toString().trim(), "commit", "the recovered objects landed in the checkout's own object database");
   });
 
   it("pins bounded: a mirror missing a later generation's own wal pack (a torn/behind copy) yields the earlier valid generation — never the unmaterializable newest one", async () => {

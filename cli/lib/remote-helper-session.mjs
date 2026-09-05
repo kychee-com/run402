@@ -657,6 +657,7 @@ async function main(argv, { onBackgroundWork } = {}) {
     // at all, so neither `since` nor `restore` is sent — same gate as today.
     const materializeOpts = fetchMarker ? { deltaSince: fetchMarker.generation } : repoDir ? { restore: true } : {};
     let opened;
+    let outcome;
     try {
       opened = await openVault(repoDir ?? undefined);
     } catch (err) {
@@ -672,9 +673,16 @@ async function main(argv, { onBackgroundWork } = {}) {
         endBlock();
         return;
       }
-      throw err;
+      // gitvault-byo-primary-bucket (design D4): the OPEN itself needed the
+      // gateway. On a network-class failure, with this checkout already
+      // knowing the vault and holding a local copy source (its BYO destination
+      // or a mirror), the listing is served from that copy — `null` means the
+      // fallback cannot help and the original error surfaces unchanged.
+      const fallback = repoDir ? await getCachedSdk().gitvault.degradedOpenFallback?.({ address, repo_dir: repoDir, error: err }).catch(() => null) : null;
+      if (!fallback) throw err;
+      outcome = fallback;
     }
-    let vault = opened.vault;
+    let vault = opened?.vault;
 
     // gitvault-byo-primary-bucket (design D4, task 3.4 — mirror half): the
     // live materialize (with its own stale-pin retry, unchanged from before
@@ -707,7 +715,7 @@ async function main(argv, { onBackgroundWork } = {}) {
       }
     };
 
-    let outcome;
+    if (!outcome) {
     try {
       outcome = await getCachedSdk().gitvault.withDegradedRead({ attemptLive, keystore: opened.keystore, repo_id: opened.repo_id, out_dir: repoDir });
     } catch (err) {
@@ -721,6 +729,7 @@ async function main(argv, { onBackgroundWork } = {}) {
         return;
       }
       throw err;
+    }
     }
 
     let refs;
@@ -807,22 +816,36 @@ async function main(argv, { onBackgroundWork } = {}) {
     let attemptLive;
     let degradedKeystore;
     let degradedRepoId;
+    let outcome;
     if (shared) {
       attemptLive = () => shared.vault.restoreObjectsInto(repoDir, { marker: shared.fetchMarker, state: shared.fetchState });
       degradedKeystore = shared.keystore;
       degradedRepoId = shared.repo_id;
     } else {
-      const handle = await getCachedSdk().gitvault.open({ ...target, repo_dir: repoDir });
-      attemptLive = () => handle.vault.restoreObjectsInto(repoDir);
-      degradedKeystore = handle.keystore;
-      degradedRepoId = handle.repo_id;
+      let handle = null;
+      try {
+        handle = await getCachedSdk().gitvault.open({ ...target, repo_dir: repoDir });
+      } catch (err) {
+        // gitvault-byo-primary-bucket (design D4): the open needed the
+        // gateway — see runList's identical fallback.
+        const fallback = await getCachedSdk().gitvault.degradedOpenFallback?.({ address, repo_dir: repoDir, error: err }).catch(() => null);
+        if (!fallback) throw err;
+        outcome = fallback;
+      }
+      if (handle) {
+        attemptLive = () => handle.vault.restoreObjectsInto(repoDir);
+        degradedKeystore = handle.keystore;
+        degradedRepoId = handle.repo_id;
+      }
     }
-    const outcome = await getCachedSdk().gitvault.withDegradedRead({
-      attemptLive,
-      keystore: degradedKeystore,
-      repo_id: degradedRepoId,
-      out_dir: repoDir,
-    });
+    if (!outcome) {
+      outcome = await getCachedSdk().gitvault.withDegradedRead({
+        attemptLive,
+        keystore: degradedKeystore,
+        repo_id: degradedRepoId,
+        out_dir: repoDir,
+      });
+    }
     let restored;
     if (outcome.degraded) {
       // Exactly ONE stderr line naming the degraded read and its source
@@ -1056,6 +1079,15 @@ async function main(argv, { onBackgroundWork } = {}) {
       // than reusing pre-admission state.
       sharedListSession = null;
       if (verbosity >= 1) note(`published generation ${published.generation} (${published.form})`);
+      // The copies push()/deploy() make after a generation lands — the
+      // opt-in mirror dual-push and a BYO vault's signed-chain copy into the
+      // customer bucket. Best-effort: never alters the push above, one
+      // stderr line per outcome worth knowing.
+      const copies = await getCachedSdk().gitvault.postPublishCopies?.({ repo_id: vault.repoId, keystore: vault.keystore }).catch(() => null);
+      if (copies?.mirror_push?.outcome === "pushed") note(`mirror: pushed generation ${published.generation} (${copies.mirror_push.summary?.objects_copied ?? 0} object(s) copied)`);
+      else if (copies?.mirror_push?.outcome === "failed") note(`mirror: dual-push FAILED (the push is unaffected) — ${copies.mirror_push.error ?? "see run402 repos fsck --mirror"}`);
+      if (copies?.byo_chain_copy?.outcome === "pushed") note(`byo: signed-chain copy written to your bucket (${copies.byo_chain_copy.summary?.objects_copied ?? 0} object(s))`);
+      else if (copies?.byo_chain_copy?.outcome === "failed") note(`byo: signed-chain copy FAILED (the push is unaffected) — ${copies.byo_chain_copy.error ?? copies.byo_chain_copy.summary?.errors?.[0]?.error ?? "see run402 repos fsck"}`);
       // gitvault-clone-scaling (P3): advisory only — informational, always
       // fires at 25 generations regardless of the SEPARATE auto-gc
       // threshold below (design D1's `auto_gc_generations`, default 32) —

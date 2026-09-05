@@ -4002,6 +4002,23 @@ export class Gitvault {
     );
   }
 
+  /**
+   * The capture-time copies a plain `git push` through the remote helper
+   * owes exactly as {@link push} and {@link deploy} do: the opt-in mirror
+   * dual-push and, on a BYO vault, the signed-chain copy into the customer
+   * bucket (gitvault-byo-primary-bucket task 3.3). The helper publishes
+   * through `GitvaultVault.push` directly, so it calls this right after a
+   * generation lands. Same contract as the private hooks it composes:
+   * best-effort, NEVER throws, never alters the push already committed —
+   * each outcome is reported on its own field (`skipped_no_mirror` costs no
+   * network call).
+   */
+  async postPublishCopies(input: { repo_id: string; keystore: GitvaultKeystore }): Promise<{ mirror_push: GitvaultMirrorPushResult; byo_chain_copy: GitvaultMirrorPushResult }> {
+    const mirror_push = await this.#tryMirrorPush(input.repo_id, input.keystore);
+    const byo_chain_copy = await this.#tryByoChainCopyPush(input.repo_id, input.keystore);
+    return { mirror_push, byo_chain_copy };
+  }
+
   async #tryMirrorPush(repoId: string, keystore: GitvaultKeystore): Promise<GitvaultMirrorPushResult> {
     try {
       const { mirrorPushForGeneration } = await this.#mirror();
@@ -5415,6 +5432,49 @@ export class Gitvault {
     return tryGitvaultDegradedRead(options);
   }
 
+  /**
+   * gitvault-byo-primary-bucket (design D4): the degraded read for the OPEN
+   * itself. {@link withDegradedRead} wraps a handle's live read, but a plain
+   * `git fetch`/`clone` needs the gateway once BEFORE any read — to open the
+   * handle (enrollment, the vault record). When that open fails
+   * network-class and this checkout already knows the vault — a pinned
+   * `repo_id`, or the keystore's own project→repo file for an id-form
+   * address (gitvault-offline-clone-resolve) — the whole read is served from
+   * the vault's BYO destination or configured mirror, exactly as
+   * `withDegradedRead` would have after a failed live read. `null` when this
+   * cannot help (a non-network failure, no local identity for the vault, no
+   * local copy source), so the caller rethrows its ORIGINAL error unchanged.
+   * Writes are never rerouted.
+   */
+  async degradedOpenFallback(input: { repo_dir: string; error: unknown; address?: import("../node/gitvault-address.js").ResolveGitvaultAddressOptions["address"]; repo_id?: string }): Promise<GitvaultDegradedReadOutcome<GitvaultDegradedReadLive> | null> {
+    const [{ isNetworkClassGitvaultReadError, tryGitvaultDegradedRead }, { GitvaultKeystore }, { readPinnedGitvaultRepo, resolveGitvaultAddress }, { createGitvaultHttpTransport }] = await Promise.all([this.#degradedRead(), this.#keystore(), this.#address(), this.#publication()]);
+    if (!isNetworkClassGitvaultReadError(input.error)) return null;
+    const keystore = new GitvaultKeystore({});
+    let repoId: string | null = input.repo_id ?? null;
+    if (!repoId) {
+      const pinned = await readPinnedGitvaultRepo(input.repo_dir).catch(() => null);
+      repoId = pinned?.repo_id ?? null;
+    }
+    if (!repoId && input.address) {
+      // Offline-first resolution: the git-config pin, then the keystore's own
+      // project→repo file. A resolution that had to reach the gateway throws
+      // here for the same reason the open did, and that is the answer: no
+      // local identity, nothing to serve from.
+      try {
+        const resolution = await resolveGitvaultAddress({ keystore, transport: createGitvaultHttpTransport(this.#client), address: input.address, repo_dir: input.repo_dir, allow_create: false });
+        if (resolution.offline) repoId = resolution.repo_id;
+      } catch {
+        return null;
+      }
+    }
+    if (!repoId) return null;
+    try {
+      return await tryGitvaultDegradedRead<GitvaultDegradedReadLive>({ attemptLive: () => Promise.reject(input.error), keystore, repo_id: repoId, out_dir: input.repo_dir });
+    } catch {
+      return null;
+    }
+  }
+
   // ── mirror (gitvault-mirror-and-recover, design D1/D2/D7) ─────────────────
 
   /**
@@ -5634,10 +5694,18 @@ export class Gitvault {
    * reporting a false absence. Managed vaults never reach it.
    */
   async #byoBackendResolver(keystore: import("../node/gitvault-keystore.js").GitvaultKeystore): Promise<(repoId: string) => import("../node/gitvault-mirror-backend.js").GitvaultMirrorBackend | null> {
-    const [{ readByoConfig }, { openByoBackendFromConfig }] = await Promise.all([this.#byoConfig(), this.#mirror()]);
+    const [{ readByoConfig }, { openGitvaultDestinationBackend }] = await Promise.all([this.#byoConfig(), this.#mirrorBackend()]);
     const cache = new Map<string, import("../node/gitvault-mirror-backend.js").GitvaultMirrorBackend | null>();
     return (repoId) => {
-      if (!cache.has(repoId)) cache.set(repoId, readByoConfig(keystore, repoId) ? openByoBackendFromConfig(keystore, repoId) : null);
+      if (!cache.has(repoId)) {
+        // The RAW destination backend, keyed by the gateway's full
+        // `source/<repo_id>/…` key — the same pairing the write path uses
+        // (`openGitvaultDestinationBackend` + the session's `key`). The
+        // repo-scoped backend the mirror engine opens would prefix
+        // `source/<repo_id>/` a second time.
+        const config = readByoConfig(keystore, repoId);
+        cache.set(repoId, config ? openGitvaultDestinationBackend(config.destination, config.credential) : null);
+      }
       return cache.get(repoId)!;
     };
   }

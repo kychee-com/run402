@@ -18,7 +18,7 @@
  * offline subset of machinery that already exists."
  */
 import { createHash } from "node:crypto";
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { LocalError, isRun402Error } from "../errors.js";
 import {
   GITVAULT_GENESIS_EPOCH,
@@ -750,7 +750,14 @@ export async function recoverGitvaultMirror(options: GitvaultRecoverOptions): Pr
     heads.unshift(chainUpTo[i]!);
     if (chainUpTo[i]!.head.checkpoint) break;
   }
-  await hardenedGit(options.out_dir, ["init", "-q", "--bare", "--object-format=sha1", "."]);
+  // A fresh output directory becomes a bare repository. An EXISTING git
+  // directory — the degraded read materializes straight into a checkout's
+  // own `.git` (gitvault-byo-primary-bucket design D4), and a re-run lands
+  // on a prior recovery — is used as it is: `git init --bare .` on a
+  // checkout's git dir would rewrite `core.bare = true` and leave the
+  // working tree unusable ("this operation must be run in a work tree").
+  const isGitDirAlready = existsSync(`${options.out_dir}/HEAD`) && existsSync(`${options.out_dir}/objects`);
+  if (!isGitDirAlready) await hardenedGit(options.out_dir, ["init", "-q", "--bare", "--object-format=sha1", "."]);
   let manifest: GitvaultCheckpointManifest | null = null;
   const first = heads[0]!;
   // Every object below is decrypted under ITS OWN carrying head's `epoch`

@@ -4,6 +4,11 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
 
 ## Unreleased
 
+- **gitvault: `repos gc` compacts a BYO vault.** The checkpoint claim set (writer-signed plaintext receipts, never source bytes) is chain-adjacent: gateway-held so head admission can adjudicate the checkpoint, and copied into your bucket with the rest of the chain. A BYO vault has six payload kinds in the bucket only, not seven.
+- **gitvault: a degraded `git fetch`/`clone` works even when opening the vault needs the gateway.** When run402 is unreachable and the checkout already knows the vault (a pinned repo id or the keystore's own record), the read is served from the BYO destination or mirror; before, the open failed first and the fallback never ran. The degraded materialization leaves an existing checkout's `.git` non-bare.
+
+- **gitvault: a plain `git push` now makes the same capture-time copies `run402 repos push`/`deploy` make.** The remote helper runs the opt-in mirror dual-push and, on a BYO vault, the signed-chain copy into the customer bucket right after a generation lands (`sdk.gitvault.postPublishCopies`); before, only the SDK-level push/deploy verbs did, so a BYO vault written through git had payload but no chain copy in the bucket (`repos fsck` reported the heads and admission records missing, and a degraded read had nothing to serve). A BYO payload read is keyed under the destination exactly as the write path keys it, never doubly prefixed.
+
 - **gitvault: `repos gc` on a BYO vault says up front that prune is not available yet.** `prune()` returns a `blocked_reason` naming `GITVAULT_BYO_PRUNE_NOT_SUPPORTED` before any planning (the gateway refuses the intent by the same name); compaction is unaffected.
 
 - **gitvault: a BYO vault can be read from a second machine while run402 is up.** The gateway answers a BYO vault's payload reads with `byo_key` (the object's key under the vault's `byo_destination`) instead of a presign it cannot mint; the transport reads that key from the vault's locally configured destination (`byo/<repo_id>.json`, destination + credential name) and refuses `GITVAULT_BYO_NOT_CONFIGURED` by name on a machine without it. A clean machine's cold open used to fail "base key_envelope could not be retrieved" and `repos fsck` answered 404 on a BYO vault's retention roots.
