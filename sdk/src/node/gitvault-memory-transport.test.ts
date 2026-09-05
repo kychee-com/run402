@@ -95,8 +95,28 @@ export class GitvaultMemoryTransport implements GitvaultTransport {
   readonly repoOwners = new Map<string, { orgId: string; projectId: string }>();
   /** `repo_id -> {orgId, projectId}` from `allocate()`, promoted into the maps above once `uploadObjects` proves the repo has real content. */
   readonly pendingOwners = new Map<string, { orgId: string; projectId: string }>();
-  /** `repo_id -> creator_signing_pubkey` (raw base64url) — what `createRotationAttempt` verifies a descriptor's signature against (the SAME writer-key model `admitHead`'s own signature checks would need, modelled once here since a rotation attempt is signed BEFORE any head). */
+  /** `repo_id -> creator_signing_pubkey` (raw base64url) — the genesis writer, and `createRotationAttempt`'s fallback signer when a descriptor names a `writer_key_id` this fixture never saw admitted. */
   readonly signingPubkeyByRepo = new Map<string, string>();
+  /**
+   * gitvault-multi-writer rev 47 — `repo_id -> (writer_key_id ->
+   * signing_pubkey b64u)` for the vault's ACTIVE writer set, maintained from
+   * the chain this fixture itself admits: seeded with the creator at
+   * `allocate()`, extended by every admitted `add_writer_key`, and narrowed
+   * by every admitted `rotate_epoch{writer_set_update}`. `createRotationAttempt`
+   * verifies a descriptor under the writer it NAMES, resolved against this
+   * set — the live gateway's own rule ("the attempt descriptor is verified
+   * under the carrying head's writer, resolved against the active writer
+   * set"), so a handoff recipient or a second writer can rotate. This is
+   * signature resolution only; the fixture still models no writer
+   * AUTHORIZATION (see `admitHead`'s own note).
+   */
+  readonly activeWriterPubkeysByRepo = new Map<string, Map<string, string>>();
+
+  private activeWriters(repoId: string): Map<string, string> {
+    let m = this.activeWriterPubkeysByRepo.get(repoId);
+    if (!m) { m = new Map(); this.activeWriterPubkeysByRepo.set(repoId, m); }
+    return m;
+  }
 
   // ── epoch rotation (D193-D203, rev 42) ──
   /** `org_id -> desired-recipient rows`. Tests set this directly. `undefined` (never queried) models an older gateway with no `desired[]` field at all. */
@@ -208,6 +228,7 @@ export class GitvaultMemoryTransport implements GitvaultTransport {
       // completed creation (this fixture's proxy: objects uploaded) does.
       this.pendingOwners.set(a.repo_id, { orgId, projectId });
       this.signingPubkeyByRepo.set(a.repo_id, signingPubkey);
+      this.activeWriters(a.repo_id).set(vkFingerprint(fromBase64url(signingPubkey, "creator_signing_pubkey")), signingPubkey);
       this.allocations.set(req.client_creation_id, a);
     }
     return a;
@@ -374,10 +395,21 @@ export class GitvaultMemoryTransport implements GitvaultTransport {
       if (!this.objects.has(this.key(req.repo_id, path))) throw err("GITVAULT_RECEIPT_UNKNOWN", `receipted object ${id} was never finalized`);
     }
     if (head.checkpoint && !this.objects.has(this.key(req.repo_id, gitvaultPaths.claimSet(head.checkpoint.claim_set.object_id)))) throw err("GITVAULT_RECEIPT_UNKNOWN", "claim set never finalized");
+    // rev 47: the committed chain moves the ACTIVE writer set — an
+    // `add_writer_key` adds the named key, a `rotate_epoch{writer_set_update}`
+    // drops every key it removes. Kept here (not in the branches above) so
+    // both kinds land at the same "this head is now committed" instant.
+    if (head.transition?.kind === "add_writer_key") {
+      const payloadObj = JSON.parse(new TextDecoder().decode(fromBase64url(head.transition.payload))) as { added_writer?: { writer_key_id?: string; signing_pubkey?: string } };
+      const added = payloadObj.added_writer;
+      if (added?.writer_key_id && added.signing_pubkey) this.activeWriters(req.repo_id).set(added.writer_key_id, added.signing_pubkey);
+    }
     if (head.transition?.kind === "rotate_epoch") {
       // D194's discharge-at-commit: EXACTLY the frozen value the winning
       // attempt was fenced against — never a value re-read at commit time.
       const payloadObj = JSON.parse(new TextDecoder().decode(fromBase64url(head.transition.payload))) as Record<string, unknown>;
+      const wsu = payloadObj.writer_set_update as { removed?: { writer_key_id?: string }[] } | undefined;
+      for (const r of wsu?.removed ?? []) if (r.writer_key_id) this.activeWriters(req.repo_id).delete(r.writer_key_id);
       this.dischargedRevocationVersion.set(req.repo_id, BigInt(String(payloadObj.recipient_revocation_version)));
       this.migrationRotationRequired.set(req.repo_id, false);
       const exposure = this.epochSecretExposure.get(req.repo_id);
@@ -817,7 +849,12 @@ export class GitvaultMemoryTransport implements GitvaultTransport {
   /** `POST …/rotation-attempts` (D195) — writer-signature check, then the create-only CAS by content-derived `rotation_id`. */
   async createRotationAttempt({ repo_id, descriptor }: { repo_id: string; descriptor: GitvaultRotationAttemptDescriptor }): Promise<{ rotation_id: string; descriptor: GitvaultRotationAttemptDescriptor; deduplicated: boolean }> {
     this.calls.push("rotation-attempt-create");
-    const writerPub = this.signingPubkeyByRepo.get(repo_id);
+    // rev 47: resolve the DECLARED writer against the vault's active writer
+    // set (creator + every admitted add_writer_key, minus every removal) —
+    // the creator key is only the fallback for a descriptor naming a writer
+    // this fixture never saw, which is the pre-rev-47 single-writer case.
+    const declared = (descriptor as unknown as { writer_key_id?: string }).writer_key_id;
+    const writerPub = (declared ? this.activeWriterPubkeysByRepo.get(repo_id)?.get(declared) : undefined) ?? this.signingPubkeyByRepo.get(repo_id);
     if (!writerPub || !verifyGitvaultObject(descriptor as never, writerPub)) throw err("GITVAULT_ACCESS_DENIED", "Not authorized for this vault");
     const { signature: _sig, ...rest } = descriptor as unknown as Record<string, unknown>;
     const rotationId = sha256Hex(jcs(rest));
