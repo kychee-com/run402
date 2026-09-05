@@ -71,6 +71,18 @@ describe("splitWalletFlag", () => {
     assert.deepEqual(r.argv, ["deploy", "apply", "--manifest", "x"]);
     assert.equal(r.walletFlag.value, "foo");
   });
+  it("leaves --profile to `repos`, which owns it as the AWS credential profile", () => {
+    const r = splitWalletFlag(["repos", "create", "byo-1", "--byo", "s3://b/p", "--profile", "acme", "--region", "us-east-1"]);
+    assert.equal(r.walletFlag, null);
+    assert.deepEqual(r.argv, ["repos", "create", "byo-1", "--byo", "s3://b/p", "--profile", "acme", "--region", "us-east-1"]);
+    const m = splitWalletFlag(["--wallet", "w", "repos", "mirror", "s3://m", "--profile=acme"]);
+    assert.deepEqual(m.walletFlag, { flag: "--wallet", value: "w" });
+    assert.deepEqual(m.argv, ["repos", "mirror", "s3://m", "--profile=acme"]);
+    const rec = splitWalletFlag(["repos", "recover", "s3://m", "--out", "./r", "--profile", "acme"]);
+    assert.equal(rec.walletFlag, null);
+    assert.ok(rec.argv.includes("--profile") && rec.argv.includes("acme"));
+  });
+
   it("accepts --profile as an alias", () => {
     const r = splitWalletFlag(["--profile", "p", "status"]);
     assert.equal(r.walletFlag.flag, "--profile");

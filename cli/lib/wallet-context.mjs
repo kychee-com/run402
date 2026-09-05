@@ -9,7 +9,8 @@
  * into the env var here, at the edge.
  *
  * Precedence (highest first):
- *   1. --wallet <name> / --profile <name>   (flag)
+ *   1. --wallet <name> / --profile <name>   (flag; under `repos`, only --wallet —
+ *      `repos create|mirror|recover --profile <name>` is the AWS credential profile)
  *   2. RUN402_WALLET / RUN402_PROFILE        (env)
  *   3. nearest .run402.local.json/.run402.json (directory binding, walk up)
  *   4. config.json active_wallet              (global `wallets use`)
@@ -41,6 +42,11 @@ export { findBindingKey, bindingFilePath, readBindingFile };
 
 const DEFAULT = "default";
 const GLOBAL_FLAGS = new Set(["--wallet", "--profile"]);
+// `repos` owns `--profile` itself (the AWS credential profile for a BYO
+// destination, a mirror, or a recovery source), so under that command only
+// `--wallet` selects the wallet; RUN402_WALLET and the directory binding still
+// apply. Stripping `--profile` there made the documented s3 flags unreachable.
+const OWNS_PROFILE_FLAG = new Set(["repos"]);
 // The `wallets` group is the management + escape surface — it must work even
 // when selection is ambiguous (so you can `wallets unbind`), and it validates
 // its own positional targets. `init` creates wallets, so it must not fail
@@ -50,7 +56,8 @@ const EXISTENCE_EXEMPT = new Set(["wallets", "init", "doctor"]);
 
 /**
  * Split the global --wallet/--profile flag (and its value) out of argv so the
- * subcommand never sees it. Pure: no core imports, no side effects. Returns
+ * subcommand never sees it — except `--profile` under a command that owns the
+ * flag (OWNS_PROFILE_FLAG), which is passed through untouched. Pure: no core imports, no side effects. Returns
  * the cleaned argv and the selected flag (`{ flag, value }` or null). Last
  * occurrence wins. A missing value is left as `value: undefined` for
  * resolveWallet to reject with a precise error.
@@ -58,16 +65,26 @@ const EXISTENCE_EXEMPT = new Set(["wallets", "init", "doctor"]);
 export function splitWalletFlag(rawArgv = []) {
   const argv = [];
   let flag = null;
+  // The command word: the first positional that is not the value of a global flag.
+  let first;
+  for (let i = 0; i < rawArgv.length && first === undefined; i++) {
+    const a = rawArgv[i];
+    if (typeof a !== "string" || a.startsWith("-")) continue;
+    if (i > 0 && GLOBAL_FLAGS.has(rawArgv[i - 1])) continue;
+    first = a;
+  }
+  const ownsProfile = OWNS_PROFILE_FLAG.has(first);
+  const isGlobal = (name) => GLOBAL_FLAGS.has(name) && !(ownsProfile && name === "--profile");
   for (let i = 0; i < rawArgv.length; i++) {
     const a = rawArgv[i];
     if (typeof a === "string" && a.startsWith("--") && a.includes("=")) {
       const name = a.slice(0, a.indexOf("="));
-      if (GLOBAL_FLAGS.has(name)) {
+      if (isGlobal(name)) {
         flag = { flag: name, value: a.slice(a.indexOf("=") + 1) };
         continue;
       }
     }
-    if (typeof a === "string" && GLOBAL_FLAGS.has(a)) {
+    if (typeof a === "string" && isGlobal(a)) {
       const next = rawArgv[i + 1];
       if (next === undefined || (typeof next === "string" && next.startsWith("-"))) {
         flag = { flag: a, value: undefined };

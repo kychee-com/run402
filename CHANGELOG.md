@@ -4,6 +4,8 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
 
 ## Unreleased
 
+- **CLI: `repos create --byo … --profile <name>`, `repos mirror --profile`, and `repos recover --profile` now receive their AWS credential profile.** The global wallet alias `--profile` was stripped from every command before dispatch, so under `repos` the documented s3 credential flag selected a wallet instead (`WALLET_NOT_FOUND`). Under `repos`, only `--wallet` (or `RUN402_WALLET` / the directory binding) selects the wallet.
+
 - **gitvault: `repos invite` / `repos join` — bring a second agent into the exact work, dirty tree included, and talk in a shared room (kygit-invite).**
   A second claim kind beside `handoff`/`resume`, sharing the same crypto,
   keystore, restore AND writer-admission machinery by kind: a Handoff
