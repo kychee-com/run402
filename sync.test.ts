@@ -1766,6 +1766,14 @@ describe("SDK surface alignment", () => {
       // machinery, not a verb of its own, same family as `recoverStalePin`
       // below.
       "gitvault.withDegradedRead",
+      // Same family, same composer: `degradedOpenFallback` is the open-time
+      // half of the degraded read (the gateway was needed before any wrapped
+      // read), and `postPublishCopies` is the capture-time mirror dual-push +
+      // BYO chain copy `push()`/`deploy()` make, exposed so a plain `git push`
+      // through the remote helper makes them too — recovery/copy machinery,
+      // never verbs of their own.
+      "gitvault.degradedOpenFallback",
+      "gitvault.postPublishCopies",
       // Owner + step-up writes with no MCP tool by design; the CLI reaches
       // them through the repo group's flags rather than dedicated verbs.
       // (`setPolicy` has its own `run402 repos policy` verb — see SURFACE.)
