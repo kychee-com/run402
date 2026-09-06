@@ -14,6 +14,14 @@
  * untouched; this module does not replace it, only the one path `repos
  * create` needs when it discovers there is no tier and nothing else has
  * set one up yet.
+ *
+ * add-room-invite design D9 splits the funded-wallet half (allowance →
+ * faucet-if-empty → brief settlement poll) out as {@link ensureFundedWallet}
+ * — `rooms join <key>` needs exactly that half, with NO tier purchase and NO
+ * project creation (the claim itself is the one x402 payment that funds the
+ * onboarding). {@link foldColdStartChain} is now their composition —
+ * `ensureFundedWallet` followed by the tier step — so every EXISTING caller
+ * (`repos create`/`resume`/`join`) is unchanged.
  */
 import { readAllowance, saveAllowance } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
@@ -22,13 +30,16 @@ const USDC_ABI = [{ name: "balanceOf", type: "function", stateMutability: "view"
 const USDC_SEPOLIA = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
 
 /**
+ * Allowance → faucet-if-empty → brief settlement poll. NO tier purchase, no
+ * project creation — the caller decides what (if anything) to pay for next.
+ *
  * @param {(line: string) => void} announce Called once per step, so the
  *   caller can print each one it took (client-surface spec: "announcing
  *   each step").
- * @returns {Promise<{allowance_created: boolean, faucet_requested: boolean, tier: object|null}>}
+ * @returns {Promise<{allowance_created: boolean, faucet_requested: boolean, address: string}>}
  */
-export async function foldColdStartChain(announce = () => {}) {
-  const out = { allowance_created: false, faucet_requested: false, tier: null };
+export async function ensureFundedWallet(announce = () => {}) {
+  const out = { allowance_created: false, faucet_requested: false, address: "" };
 
   let allowance = readAllowance();
   if (!allowance) {
@@ -40,6 +51,7 @@ export async function foldColdStartChain(announce = () => {}) {
     out.allowance_created = true;
     announce(`allowance created: ${allowance.address}`);
   }
+  out.address = allowance.address;
 
   const { createPublicClient, http } = await import("viem");
   const { baseSepolia } = await import("viem/chains");
@@ -48,7 +60,7 @@ export async function foldColdStartChain(announce = () => {}) {
   try {
     balance = Number(await client.readContract({ address: USDC_SEPOLIA, abi: USDC_ABI, functionName: "balanceOf", args: [allowance.address] }));
   } catch {
-    /* an RPC hiccup here is not fatal — the tier purchase below will surface a real payment failure if the balance really is zero */
+    /* an RPC hiccup here is not fatal — the payment below will surface a real failure if the balance really is zero */
   }
   if (balance === 0) {
     announce("balance is 0 — requesting the testnet faucet");
@@ -70,8 +82,22 @@ export async function foldColdStartChain(announce = () => {}) {
     saveAllowance({ ...allowance, funded: true, lastFaucet: new Date().toISOString() });
   }
 
-  announce("subscribing to the prototype tier (one x402 testnet payment, perpetual)");
-  out.tier = await getSdk().tier.set("prototype");
-  announce(`prototype tier active${out.tier?.status === "already_active" ? " (already active)" : ""}`);
   return out;
+}
+
+/**
+ * `ensureFundedWallet` + the tier step. Unchanged from before the split —
+ * every existing caller (`repos create`/`resume`/`join`) keeps working with
+ * no edits.
+ *
+ * @param {(line: string) => void} announce Called once per step.
+ * @returns {Promise<{allowance_created: boolean, faucet_requested: boolean, tier: object|null}>}
+ */
+export async function foldColdStartChain(announce = () => {}) {
+  const funded = await ensureFundedWallet(announce);
+
+  announce("subscribing to the prototype tier (one x402 testnet payment, perpetual)");
+  const tier = await getSdk().tier.set("prototype");
+  announce(`prototype tier active${tier?.status === "already_active" ? " (already active)" : ""}`);
+  return { allowance_created: funded.allowance_created, faucet_requested: funded.faucet_requested, tier };
 }

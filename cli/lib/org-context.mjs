@@ -98,13 +98,19 @@ function orgFromRoomEnv(env) {
  * best-effort, gracefully degrading like `findBindingKey`: no repository,
  * no pin, or a shape-invalid value all answer `null` rather than throwing,
  * so a bare directory or a checkout with no gitvault remote costs nothing.
+ * Checks a real vault checkout's pin first (gated on `r402.repoId`), then
+ * falls back to the bare org/room pin a room-only `rooms join <key>` writes
+ * in a directory with no vault at all (add-room-invite design D10).
  */
 async function readGitvaultPinnedOrgId(cwd) {
   try {
-    const { readPinnedGitvaultRepo } = await import("#sdk/node");
+    const { readPinnedGitvaultRepo, readPinnedRoomBinding } = await import("#sdk/node");
     const pinned = await readPinnedGitvaultRepo(cwd);
     const orgId = trimmed(pinned?.org_id);
-    return orgId && ORG_ID_RE.test(orgId) ? orgId : null;
+    if (orgId && ORG_ID_RE.test(orgId)) return orgId;
+    const bare = await readPinnedRoomBinding(cwd);
+    const bareOrgId = trimmed(bare?.org_id);
+    return bareOrgId && ORG_ID_RE.test(bareOrgId) ? bareOrgId : null;
   } catch {
     return null;
   }

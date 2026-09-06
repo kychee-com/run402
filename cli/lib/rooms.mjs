@@ -10,6 +10,7 @@
  * Gateway subsystem: add-agent-messaging (/orgs/v1/:org_id/rooms/:room_key/*).
  * Session presence cache: ./.run402/messaging.json (gitignore).
  */
+import { readFileSync } from "node:fs";
 import { getSdk } from "./sdk.mjs";
 import { fail, reportSdkError } from "./sdk-errors.mjs";
 import {
@@ -22,6 +23,7 @@ import {
   positionalArgs,
   requirePositionalCount,
   failUnknownSubcommand,
+  validateRegularFile,
 } from "./argparse.mjs";
 import {
   resolveRoom,
@@ -33,15 +35,20 @@ import {
   updateRoomState,
 } from "./rooms-context.mjs";
 import { resolveTaskLabel } from "./harness-context.mjs";
+import { ensureFundedWallet } from "./cold-start.mjs";
 
 export const IMPORTANCE = ["normal", "high"];
 
 const ROOM_FLAGS = ["--project", "--org", "--room"];
+const INVITE_VALUE_FLAGS = [...ROOM_FLAGS, "--note", "--note-file", "--expires-in"];
 
 const HELP = `run402 rooms — arrive in a room, see who is live, leave when done
 
 Usage:
   run402 rooms join [--name <name>] [--task <text>]
+  run402 rooms join <kri1_…> [--json]
+  run402 rooms invite [--note <text> | --note-file <path> | stdin]
+                      [--room <key>] [--expires-in <seconds>] [--json]
   run402 rooms leave [<presence_id>]
 
 Addressing:
@@ -49,6 +56,27 @@ Addressing:
   --org <id> --room <key>   A named org room
   (omit both)       Resolved from RUN402_ROOM, a .run402.json binding, or the
                     wallet profile's selected org
+
+Room Invite (mint a key from the room you stand in, join through one):
+  - \`rooms invite\` mints a single-use \`kri1_…\` bearer key. Whoever claims it
+    FIRST becomes a permanent \`viewer\` of this org — the narrowest membership
+    that can message, and NEVER wider: there is no --role, and a viewer can
+    never be auto-admitted as a vault writer. To bring a collaborator into the
+    CODE (a vault, a checkpoint, write access), use \`run402 repos invite\`
+    instead — this door is talk-only.
+  - The key is printed to stdout EXACTLY ONCE (\`--json\` still keeps it out of
+    stderr). It is not recoverable if lost — mint a new one.
+  - \`rooms join <kri1_…>\` folds a funded-wallet chain (allowance → faucet if
+    empty → briefly wait for settlement) and pays a $0.01 testnet seat via
+    x402 to claim it — the payment IS the join, so a joiner with no funds
+    fails closed rather than joining unpaid. No tier is purchased, no project
+    is created. A same-payer replay never pays twice.
+  - After a key-form join: the host org becomes this wallet's current org,
+    and the binding is written where the next \`run402 messages wait\` reads
+    it from — \`.run402.json\` in a plain directory, or local git config
+    (\`r402.orgId\`/\`r402.room\`, excluded from git via .git/info/exclude) when
+    standing inside a git repository (never a .run402.json committed into a
+    stranger's clone).
 
 Notes:
   - join registers this session's presence and returns who else is live, what
@@ -194,6 +222,253 @@ async function leave(argv) {
   }
 }
 
+async function readStdinTextLocal() {
+  const chunks = [];
+  for await (const chunk of process.stdin) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
+  }
+  return Buffer.concat(chunks).toString("utf-8");
+}
+
+/**
+ * `rooms invite`'s note is a PLAIN STRING, ≤4 KiB (design D7) — not the
+ * structured `kygit.invite-note.v1` JSON `run402 repos invite` reads: the
+ * gateway already reads every room message in plaintext, so there is
+ * nothing to seal and nothing to schema-validate beyond a length cap.
+ * Optional — `undefined` when nothing was supplied and stdin is a TTY.
+ */
+async function readRoomInviteNote(a) {
+  const inline = flagValue(a, "--note");
+  const noteFile = flagValue(a, "--note-file");
+  if (inline != null && noteFile != null) {
+    fail({ code: "BAD_USAGE", message: "Pass either --note or --note-file, not both.", hint: "run402 rooms invite --help" });
+  }
+  if (inline != null) return inline;
+  if (noteFile != null) {
+    validateRegularFile(noteFile, "--note-file");
+    return readFileSync(noteFile, "utf-8");
+  }
+  if (process.stdin?.isTTY) return undefined; // no note source given — the note is optional
+  const text = await readStdinTextLocal();
+  return text.trim().length > 0 ? text : undefined;
+}
+
+/**
+ * `run402 rooms invite` (add-room-invite design D7) — mint from the room
+ * this checkout stands in: register-or-resume the inviter's OWN presence
+ * FIRST (reusing {@link ensurePresence}, the same logic `rooms join`'s
+ * no-key form already runs) so the row carries `inviter_presence_id`, mint,
+ * post ONE room fact naming the invite id (never the key), echo the
+ * gateway's blast-radius warning to stderr, and print the `kri1_` key to
+ * stdout EXACTLY ONCE. A presence or fact failure is reported on the result
+ * and never voids the mint.
+ */
+async function invite(argv) {
+  const a = normalizeArgv(argv);
+  assertKnownFlags(a, [...INVITE_VALUE_FLAGS, "--json", "--help", "-h"], INVITE_VALUE_FLAGS);
+  requirePositionalCount(positionalArgs(a, INVITE_VALUE_FLAGS), INVITE_VALUE_FLAGS, {
+    min: 0, max: 0, command: "run402 rooms invite",
+  });
+
+  const room = await resolveRoom({
+    org: flagValue(a, "--org"), room: flagValue(a, "--room"), project: flagValue(a, "--project"),
+  });
+  const note = await readRoomInviteNote(a);
+  const expiresRaw = flagValue(a, "--expires-in");
+  const expiresInSeconds = expiresRaw != null ? parseIntegerFlag("--expires-in", expiresRaw, { min: 60, max: 86400 }) : undefined;
+  const asJson = a.includes("--json");
+
+  const sdk = getSdk();
+  try {
+    const { task } = await resolveTaskLabel({});
+    // design D7: register (or resume) the inviter's OWN presence BEFORE
+    // minting, so the row carries `inviter_presence_id`. A failure here is
+    // reported, never thrown — the mint proceeds without one.
+    let inviterPresence = null;
+    let inviterPresenceReport = { registered: false };
+    try {
+      const presence = await ensurePresence(room, { task });
+      inviterPresence = presence;
+      inviterPresenceReport = { registered: true, presence_id: presence.presence_id, name: presence.name };
+    } catch (e) {
+      inviterPresenceReport = { registered: false, error: e instanceof Error ? e.message : String(e) };
+    }
+
+    const result = await sdk.rooms.invite(room.orgId, room.roomKey, {
+      ...(note !== undefined ? { note } : {}),
+      ...(inviterPresence ? { inviterPresenceId: inviterPresence.presence_id } : {}),
+      ...(expiresInSeconds != null ? { expiresInSeconds } : {}),
+    });
+
+    for (const w of result.warnings ?? []) {
+      console.error(w.message ?? `${w.code}`);
+    }
+    console.error(`invite minted: role ${result.role}, expires ${result.expires_at}, room ${result.room?.room_key ?? room.roomKey}`);
+    console.error("recipient runs: run402 rooms join <key printed below>");
+
+    // design D7: post ONE room fact AFTER the mint succeeds — never before
+    // (a mint refusal must leave no orphan message), and never naming the
+    // key, only the invite id.
+    let roomFact = { posted: false, reason: "inviter presence was not registered" };
+    if (inviterPresence) {
+      const inviteShort = result.invite_id.slice(0, 8);
+      try {
+        const sent = await sdk.rooms.sendMessage(room.orgId, room.roomKey, {
+          body: `Invited another agent to this room (invite ${inviteShort}, expires ${result.expires_at}).`,
+          presenceId: inviterPresence.presence_id,
+          idempotencyKey: `room-invite:${result.invite_id}:minted`,
+        });
+        roomFact = { posted: true, message_id: sent.message_id, cursor: sent.cursor };
+        // The inviter's own fact must not wake the inviter's next `messages
+        // wait` — advance this checkout's stored cursor past it (best-effort).
+        try { updateRoomState(room.orgId, room.roomKey, { cursor: sent.cursor }); } catch { /* never fails a mint */ }
+      } catch (e) {
+        roomFact = { posted: false, reason: e instanceof Error ? e.message : String(e) };
+      }
+    }
+    if (inviterPresenceReport.registered === false) {
+      console.error(`note: your own presence was not registered (${inviterPresenceReport.error}) — the invite still mints and is claimable`);
+    }
+    if (roomFact.posted === false && inviterPresence) {
+      console.error(`note: the room fact was not posted (${roomFact.reason}) — the invite still mints and remains claimable`);
+    }
+
+    const finalResult = { ...result, inviter_presence: inviterPresenceReport, room_fact: roomFact };
+    if (asJson) {
+      printInviteResultJson(finalResult);
+    } else {
+      printInviteResultKeyOnly(result);
+    }
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+/** The key rides the JSON result — still stdout, still exactly once. */
+function printInviteResultJson(finalResult) {
+  console.log(JSON.stringify(finalResult, null, 2));
+}
+
+/** The key alone, so `KEY=$(run402 rooms invite ...)` works — everything else (the warning, the mint summary) is on stderr. */
+function printInviteResultKeyOnly(result) {
+  console.log(result.key);
+}
+
+/**
+ * `run402 rooms join <kri1_…>` (add-room-invite design D9/D10) — parse the
+ * key CLIENT-SIDE first (a wrong-kind vault key refuses by name before ANY
+ * network call, including the faucet), fold `ensureFundedWallet` (allowance
+ * → faucet-if-empty → brief settlement poll, announced on stderr), claim
+ * through the SDK's paid fetch, then leave arrival state exactly where
+ * `run402 messages wait` reads it: the host org as this wallet's current
+ * org; the binding written to `.run402.json` outside a git repository, or
+ * pinned in local git config (and `.run402/` excluded from git) inside one;
+ * the returned cursor persisted. There is no `--no-init` — the payment IS
+ * the claim.
+ */
+async function joinWithKey(key, a) {
+  const asJson = a.includes("--json");
+
+  // Parse-only pre-check (design D9): refuses a `kgh1_`/`kgi1_` vault key by
+  // name, synchronously, before `ensureFundedWallet` ever touches the
+  // network — the gateway (faucet included) must never be contacted for a
+  // wrong-kind key.
+  const { parseRoomInviteKey } = await import("#sdk/node");
+  try {
+    parseRoomInviteKey(key);
+  } catch (err) {
+    reportSdkError(err);
+    return;
+  }
+
+  try {
+    await ensureFundedWallet((line) => console.error(line));
+    const result = await getSdk().rooms.join(key);
+
+    // Arrival state (design D10) — best-effort throughout: the claim already
+    // succeeded, and none of this may fail a completed join.
+    try {
+      const { setSelectedOrgId } = await import("./org-context.mjs");
+      setSelectedOrgId(result.org_id);
+    } catch { /* best-effort */ }
+
+    const cwd = process.cwd();
+    let insideGitRepo = false;
+    try {
+      const { hardenedGit } = await import("#sdk/node");
+      await hardenedGit(cwd, ["rev-parse", "--git-dir"]);
+      insideGitRepo = true;
+    } catch {
+      insideGitRepo = false;
+    }
+    if (!insideGitRepo) {
+      try {
+        const { updateBindingFile } = await import("./wallet-context.mjs");
+        updateBindingFile(cwd, { org: result.org_id, room: result.room.room_key });
+      } catch { /* best-effort */ }
+    } else {
+      try {
+        const { pinRoomBinding, excludeMessagingCacheFromGit } = await import("#sdk/node");
+        await pinRoomBinding(cwd, { org_id: result.org_id, room_key: result.room.room_key });
+        await excludeMessagingCacheFromGit(cwd);
+      } catch { /* best-effort */ }
+    }
+    if (typeof result.cursor === "string") {
+      try { updateRoomState(result.org_id, result.room.room_key, { cursor: result.cursor }); } catch { /* best-effort */ }
+    }
+
+    const nextActions = [...(result.next_actions ?? [])];
+    if (!nextActions.some((na) => na.type === "wait_room")) {
+      nextActions.push({ type: "wait_room", command: "run402 messages wait", why: "Block until the other agent speaks; silence returns who is still here." });
+    }
+
+    if (asJson) {
+      printClaimResultJson(result, nextActions);
+    } else {
+      renderClaimResultText(result, nextActions);
+    }
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+function printClaimResultJson(result, nextActions) {
+  console.log(JSON.stringify({ ...result, next_actions: nextActions }, null, 2));
+}
+
+function renderClaimResultText(result, nextActions) {
+  // The note is plain text, not a structured schema — printed verbatim as
+  // Markdown (it may already contain Markdown formatting the inviter wrote).
+  if (result.note) {
+    console.log(result.note);
+    console.error("");
+  }
+  console.error(`joined org ${result.org_id}, room ${result.room.room_key} — role ${result.membership.role}`);
+  if (result.deduplicated) {
+    console.error("note: this key was already claimed by this same payer — no second payment was made (safe replay)");
+  }
+  console.error(`seat: $${(result.seat.amount_usd_micros / 1_000_000).toFixed(2)} on ${result.seat.network}${result.seat.charge_id ? ` (charge ${result.seat.charge_id})` : ""}`);
+  if (result.inviter) {
+    const labels = [result.inviter.program, result.inviter.model].filter(Boolean).join("/");
+    const liveness = result.inviter.state === "active" ? "live" : result.inviter.state;
+    console.error(`invited by ${result.inviter.name}${labels ? ` (${labels})` : ""} — ${liveness}`);
+  } else {
+    console.error("invited by: unknown (the inviter never registered a presence)");
+  }
+  const others = (result.live_presences ?? []);
+  if (others.length > 0) console.error(`also live: ${others.map((p) => p.name).join(", ")}`);
+  const recent = result.recent_messages ?? [];
+  if (recent.length > 0) {
+    console.error(`recent messages (${recent.length}):`);
+    for (const m of recent.slice().reverse()) {
+      console.error(`  ${m.sender ?? "?"}: ${m.body_snippet ?? m.body ?? ""}`);
+    }
+  }
+  for (const na of nextActions) {
+    if (na.command) console.error(`next: ${na.command}${na.why ? ` — ${na.why}` : ""}`);
+  }
+}
+
 export async function run(sub, args) {
   const argv = Array.isArray(args) ? args : [];
   if (!sub || hasHelp([sub, ...argv])) {
@@ -202,7 +477,22 @@ export async function run(sub, args) {
   }
   switch (sub) {
     case "join": {
-      await who(argv);
+      // `run402 rooms join <kri1_…>` (add-room-invite design D9): a
+      // positional key form claims a seat and arrives; no positional keeps
+      // the existing arrive-and-look behavior unchanged.
+      const a = normalizeArgv(argv);
+      const positionals = positionalArgs(a, ["--name", "--task", ...ROOM_FLAGS]);
+      if (positionals.length === 0) {
+        await who(argv);
+        break;
+      }
+      assertKnownFlags(a, ["--json", "--help", "-h"], []);
+      requirePositionalCount(positionals, [], { min: 1, max: 1, command: "run402 rooms join [<kri1_…>]" });
+      await joinWithKey(positionals[0], a);
+      break;
+    }
+    case "invite": {
+      await invite(argv);
       break;
     }
     case "leave": {

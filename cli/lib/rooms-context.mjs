@@ -36,13 +36,24 @@ import { describeRejectedValue } from "../core-dist/redact.js";
 export const ROOM_ENV = "RUN402_ROOM";
 export const PRESENCE_ENV = "RUN402_PRESENCE_ID";
 
-/** `r402.room` from `cwd`'s LOCAL git config (kygit-handoff design D10) — best-effort, `null` on any absence or failure. */
+/**
+ * `r402.room` from `cwd`'s LOCAL git config (kygit-handoff design D10) —
+ * best-effort, `null` on any absence or failure. Checks a real vault
+ * checkout's pin first (`readPinnedGitvaultRepo`, gated on `r402.repoId`
+ * being present), then falls back to the bare room/org pin `rooms join
+ * <key>` writes in a directory with NO vault at all (add-room-invite design
+ * D10) — `readPinnedGitvaultRepo` would otherwise see that pin as absent,
+ * since it never sets `r402.repoId`.
+ */
 async function readGitvaultPinnedRoom(cwd) {
   try {
-    const { readPinnedGitvaultRepo } = await import("#sdk/node");
+    const { readPinnedGitvaultRepo, readPinnedRoomBinding } = await import("#sdk/node");
     const pinned = await readPinnedGitvaultRepo(cwd);
     const room = typeof pinned?.room === "string" ? pinned.room.trim() : "";
-    return room.length > 0 ? room : null;
+    if (room.length > 0) return room;
+    const bare = await readPinnedRoomBinding(cwd);
+    const bareRoom = typeof bare?.room === "string" ? bare.room.trim() : "";
+    return bareRoom.length > 0 ? bareRoom : null;
   } catch {
     return null;
   }

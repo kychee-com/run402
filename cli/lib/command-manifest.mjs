@@ -257,7 +257,14 @@ export const COMMAND_MANIFEST = [
   { path: ["subscriptions", "add"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
   { path: ["subscriptions", "list"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
   { path: ["subscriptions", "rm"], positionals: [p("subscription_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["r_1"], runStyle: "sub" },
-  { path: ["rooms", "join"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
+  // add-room-invite design D9: `rooms join` is one verb, two forms — no
+  // positional registers a presence (the behaviorally-tested path, unchanged
+  // by the optional positional below since minimalArgs stays empty); a
+  // `kri1_…` positional claims a room seat first (a real x402 payment + an
+  // org-membership mutation), so that form is never behaviorally exercised
+  // here — the same reasoning `repos join`'s own row states.
+  { path: ["rooms", "join"], positionals: [p("key", { required: false })], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
+  { path: ["rooms", "invite"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "mints a single-use bearer key from a live room, registering the inviter's presence and posting a real room message — never run against the gate's own checkout" },
   { path: ["rooms", "leave"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
   { path: ["messages", "send"], positionals: [p("body")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["hello"], runStyle: "sub" },
   { path: ["messages", "list"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
