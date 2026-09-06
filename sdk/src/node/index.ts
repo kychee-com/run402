@@ -554,6 +554,19 @@ export {
   sealInviteEnvelope,
   uuidToBytes,
 } from "./gitvault-handoff.js";
+// add-room-invite (design D3) — the Room Invite Key: `kri1_`, its own
+// registry row, and its own (single-secret, envelope-free) HKDF derivation.
+// Lives directly in `bearer-claim-key.ts` rather than riding the vault-
+// shaped `gitvault-handoff.js` re-export above, since a room invite is not a
+// vault kind. `r.rooms.invite`/`.join` delegate to this module internally.
+export {
+  assembleRoomInviteKey,
+  computeRoomInviteAuthHash,
+  deriveRoomInviteAuthSecret,
+  parseRoomInviteKey,
+  randomClaimId,
+} from "./bearer-claim-key.js";
+export type { RoomInviteKeyParts } from "./bearer-claim-key.js";
 export type {
   ClaimKeyParts,
   ClaimKind,
@@ -648,7 +661,7 @@ export type { PushToCreateGitvaultOptions, PushToCreateGitvaultResult } from "./
 // gitvault D6 — named-address resolution + id-pinning (repo-first-onramp
 // task 4.5): local git-config pin read/write, and the resolve-or-create
 // orchestrator `Gitvault.resolveOrCreateAddress` delegates to.
-export { readPinnedGitvaultRepo, pinGitvaultRepo, resolveGitvaultAddress } from "./gitvault-address.js";
+export { readPinnedGitvaultRepo, pinGitvaultRepo, resolveGitvaultAddress, pinRoomBinding, readPinnedRoomBinding } from "./gitvault-address.js";
 export type { GitvaultPinnedRepo, GitvaultAddressResolution, ResolveGitvaultAddressOptions } from "./gitvault-address.js";
 export { prewarmGitvaultConnection, predialGitvaultObjectStore } from "./gitvault-prewarm.js";
 // gitvault cross-profile repo-key scan — shared by

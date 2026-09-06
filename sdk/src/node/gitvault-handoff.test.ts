@@ -500,7 +500,9 @@ describe("scanHandoffNoteForSecrets / assertHandoffNoteHasNoSecret", () => {
 
 describe("HANDOFF_KEY_PREFIXES — kgi1_ is the second row (kygit-invite design D3)", () => {
   it("kgi1_ is registered as the invite kind, pointing at join", () => {
-    assert.equal(HANDOFF_KEY_PREFIXES.length, 2);
+    // add-room-invite design D3 adds a THIRD row (kri1_/room/join) — see
+    // sdk/src/node/bearer-claim-key.test.ts for its own registry assertions.
+    assert.equal(HANDOFF_KEY_PREFIXES.length, 3);
     assert.equal(HANDOFF_KEY_PREFIXES[1]!.prefix, "kgi1_");
     assert.equal(HANDOFF_KEY_PREFIXES[1]!.kind, "invite");
     assert.equal(HANDOFF_KEY_PREFIXES[1]!.verb, "join");

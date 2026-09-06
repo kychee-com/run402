@@ -453,3 +453,85 @@ export interface RoomMessageWaitResult extends RoomMessagePage {
   /** The room's other live presences as of the last read (best-effort; empty when unreachable). */
   live_presences: RoomPresence[];
 }
+
+// ─── Room Invite — mint a Room Invite Key, join through one (add-room-invite) ─
+//
+// A room invite mints a single-use `kri1_…` bearer key from the room the
+// inviter stands in; claiming it is an x402-paid seat (the `room_seat` SKU)
+// whose VERIFIED PAYER becomes a permanent `viewer` of the org — the
+// narrowest membership that can message, and one that can never be
+// auto-admitted as a vault writer. See `sdk/src/node/bearer-claim-key.ts`
+// for the key format itself (`kri1_`, one derived secret, no envelope).
+
+/** {@link Rooms.invite}'s machine-readable blast-radius warning (design D7) — the seat's own next to `warning`'s human sentence. */
+export interface RoomInviteWarning {
+  code: "ROOM_INVITE_KEY_CONFERS_SEAT" | (string & {});
+  message: string;
+}
+
+/** Options for {@link Rooms.invite}. */
+export interface RoomInviteMintOptions {
+  /** Plaintext, at most 4 KiB — stored and returned verbatim to the claimant. Not secret: the gateway already reads every room message. */
+  note?: string;
+  /** The inviter's own presence id (`prs_…`), best-effort — stored opaquely so the claim response can resolve who invited the claimant. */
+  inviterPresenceId?: string;
+  /** 60..86400 seconds; gateway default 3600. */
+  expiresInSeconds?: number;
+}
+
+/** Response of {@link Rooms.invite} — the assembled `kri1_…` key plus the gateway's mint result. */
+export interface RoomInviteMintResult {
+  /** The assembled `kri1_…` bearer key. Returned exactly ONCE — the SDK persists nothing. */
+  key: string;
+  invite_id: string;
+  kind: "room";
+  role: "viewer";
+  room: { org_id: string; room_key: string };
+  expires_at: string;
+  /** The human sentence — identical to `warnings[0].message` (design D7). */
+  warning: string;
+  warnings: RoomInviteWarning[];
+  next_actions?: RoomNextAction[];
+  [key: string]: unknown;
+}
+
+/** The minting presence, resolved live at claim time (design D11) — `null` when it never registered one. */
+export interface RoomInviteInviter {
+  presence_id: string;
+  name: string;
+  program: string | null;
+  model: string | null;
+  state: string;
+  last_active: string;
+  [key: string]: unknown;
+}
+
+/** The settled seat charge (design D5/D11) — `charge_id` is `null` for a genuine on-chain/MPP settlement, which carries no local ledger row to reference. */
+export interface RoomInviteSeat {
+  sku: "room_seat" | (string & {});
+  amount_usd_micros: number;
+  network: string;
+  charge_id: string | null;
+}
+
+/** Response of {@link Rooms.join}'s key form (design D11) — arrival needs no further lookup. */
+export interface RoomInviteJoinResult {
+  invite_id: string;
+  kind: "room";
+  /** True on a same-payer replay — the ORIGINAL claim result, no second payment. */
+  deduplicated: boolean;
+  org_id: string;
+  membership: { org_id: string; role: string; status: string };
+  room: { org_id: string; room_key: string };
+  inviter: RoomInviteInviter | null;
+  live_presences: RoomPresence[];
+  /** Catch-up cursor for `messages wait`/`messages list` in this room. */
+  cursor: string;
+  /** The room's last few messages, up to `cursor`. */
+  recent_messages: RoomMessage[];
+  note: string | null;
+  seat: RoomInviteSeat;
+  expires_at: string;
+  next_actions?: RoomNextAction[];
+  [key: string]: unknown;
+}

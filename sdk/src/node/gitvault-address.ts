@@ -117,6 +117,28 @@ export async function pinGitvaultRepo(repoDir: string, repoId: string, resolvedF
   }
 }
 
+/**
+ * add-room-invite design D10: a bare `rooms join <key>` arrival standing
+ * inside a git repository pins `r402.orgId`/`r402.room` in this checkout's
+ * LOCAL git config — the SAME two keys {@link pinGitvaultRepo} writes
+ * alongside a vault's `r402.repoId` — but WITHOUT one, since a room-only
+ * join has no vault to pin. Read back by {@link readPinnedRoomBinding},
+ * independent of {@link readPinnedGitvaultRepo}'s own gate on `r402.repoId`
+ * being present (a room-only checkout never sets it, so that reader would
+ * otherwise see this pin as absent).
+ */
+export async function pinRoomBinding(repoDir: string, ids: { org_id: string; room_key: string }): Promise<void> {
+  await hardenedGit(repoDir, ["config", "--local", CONFIG_KEY_ORG_ID, ids.org_id]);
+  await hardenedGit(repoDir, ["config", "--local", CONFIG_KEY_ROOM, ids.room_key]);
+}
+
+/** Read `r402.orgId`/`r402.room` directly, with NO gate on `r402.repoId` (design D10) — the counterpart read for {@link pinRoomBinding}. Either field is `null` when unset (no repository, or never pinned). */
+export async function readPinnedRoomBinding(repoDir: string): Promise<{ org_id: string | null; room: string | null }> {
+  const org_id = await readLocalGitConfig(repoDir, CONFIG_KEY_ORG_ID);
+  const room = await readLocalGitConfig(repoDir, CONFIG_KEY_ROOM);
+  return { org_id, room };
+}
+
 /** Clear a pin this checkout no longer trusts (design D4: a pinned id that 404s). Tolerates an absent key — `git config --unset` on a key that was never set is not a failure here. */
 async function clearPinnedGitvaultRepo(repoDir: string): Promise<void> {
   for (const key of [CONFIG_KEY_REPO_ID, CONFIG_KEY_ADDRESS, CONFIG_KEY_PROJECT_ID, CONFIG_KEY_ORG_ID, CONFIG_KEY_ROOM]) {

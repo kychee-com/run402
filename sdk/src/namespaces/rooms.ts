@@ -31,6 +31,7 @@
 
 import type { Client } from "../kernel.js";
 import { LocalError } from "../errors.js";
+import { toBase64url } from "./gitvault.crypto.js";
 import type {
   AckRoomMessageOptions,
   CreatedRoomClaim,
@@ -43,6 +44,9 @@ import type {
   RoomAckResult,
   RoomClaimList,
   RoomClaimReleaseResult,
+  RoomInviteJoinResult,
+  RoomInviteMintOptions,
+  RoomInviteMintResult,
   RoomMessage,
   RoomLeaveResult,
   RoomList,
@@ -55,6 +59,28 @@ import type {
   SentRoomMessage,
   WaitForRoomMessagesOptions,
 } from "./rooms.types.js";
+
+/**
+ * The room-invite key format (`kri1_…`) is pure crypto (HKDF/SHA-256) that
+ * lives Node-only, per design D2's "a move, not a copy" — mirrors
+ * `gitvault.ts`'s own `nodeOnly()` seam for its Node-only submodules, so
+ * every OTHER `Rooms`/`ScopedRoom` method stays isomorphic and only
+ * `invite`/`join` (the two verbs that touch a bearer key) ever pay this
+ * dynamic-import cost.
+ */
+type BearerClaimKeyModule = typeof import("../node/bearer-claim-key.js");
+
+async function nodeOnlyBearerClaimKey(verb: string): Promise<BearerClaimKeyModule> {
+  try {
+    return await import("../node/bearer-claim-key.js");
+  } catch (e) {
+    throw new LocalError(
+      `\`r.rooms.${verb}\` needs the Node runtime for its bearer-key cryptography; import it from a Node process.`,
+      `running rooms ${verb}`,
+      { code: "ROOMS_NODE_ONLY", details: { cause: e instanceof Error ? e.message : String(e) } },
+    );
+  }
+}
 
 function roomPath(orgId: string, roomKey: string): string {
   return `/orgs/v1/${encodeURIComponent(orgId)}/rooms/${encodeURIComponent(roomKey)}`;
@@ -525,6 +551,112 @@ export class Rooms {
     );
   }
 
+  // ── Room Invite — mint / join (add-room-invite design D1-D11) ────────────
+
+  /**
+   * Mint a Room Invite Key from the room the caller stands in
+   * (`POST /orgs/v1/:org_id/rooms/:room_key/invites`) — a single-use bearer
+   * key (`kri1_…`) whose claimant becomes a permanent `viewer` of the org,
+   * the narrowest membership that can message (design D4: never `--role`,
+   * never wider, never auto-admitted as a vault writer). Requires
+   * `developer`+ (session, wallet, or admin credential — a delegate is
+   * refused, since a room invite confers org membership).
+   *
+   * `invite_id` and `master_secret` are generated LOCALLY (design D3): the
+   * gateway never sees `master_secret`, only the SHA-256 `auth_hash` this
+   * call derives and sends. The assembled key is returned exactly ONCE —
+   * nothing here or downstream persists it.
+   */
+  async invite(orgId: string, roomKey: string, opts: RoomInviteMintOptions = {}): Promise<RoomInviteMintResult> {
+    if (!orgId) {
+      throw new LocalError("rooms.invite requires an orgId", "minting a room invite");
+    }
+    if (!roomKey) {
+      throw new LocalError("rooms.invite requires a roomKey", "minting a room invite");
+    }
+    const { assembleRoomInviteKey, deriveRoomInviteAuthSecret, computeRoomInviteAuthHash, randomClaimId } = await nodeOnlyBearerClaimKey("invite");
+
+    const inviteId = randomClaimId();
+    const { key, invite_id_bytes, master_secret } = assembleRoomInviteKey(inviteId);
+    const authHash = computeRoomInviteAuthHash(deriveRoomInviteAuthSecret(invite_id_bytes, master_secret));
+
+    const body: Record<string, unknown> = { invite_id: inviteId, auth_hash: authHash };
+    if (opts.note !== undefined) body.note = opts.note;
+    if (opts.inviterPresenceId !== undefined) body.inviter_presence_id = opts.inviterPresenceId;
+    if (opts.expiresInSeconds !== undefined) body.expires_in_seconds = opts.expiresInSeconds;
+
+    interface RoomInviteMintWireResult {
+      invite_id: string;
+      kind: "room";
+      role: "viewer";
+      room: { org_id: string; room_key: string };
+      expires_at: string;
+      warning: string;
+      warnings: RoomInviteMintResult["warnings"];
+      next_actions?: RoomInviteMintResult["next_actions"];
+    }
+    const result = await this.client.request<RoomInviteMintWireResult>(`/orgs/v1/${encodeURIComponent(orgId)}/rooms/${encodeURIComponent(roomKey)}/invites`, {
+      method: "POST",
+      body,
+      context: "minting a room invite",
+    });
+    if (result.invite_id !== inviteId) {
+      // Mirrors gitvault's own `INVITE_ID_MISMATCH` fail-fast (design D3):
+      // the printed key is assembled from the id THIS call generated, so a
+      // gateway that echoed a different one would hand out a key that does
+      // not match the stored row.
+      throw new LocalError(
+        `the gateway minted a different invite_id (${result.invite_id}) than requested (${inviteId}) — the assembled key would not match; retry`,
+        "minting a room invite",
+        { code: "ROOM_INVITE_ID_MISMATCH", details: { requested: inviteId, minted: result.invite_id } },
+      );
+    }
+    return {
+      key,
+      invite_id: result.invite_id,
+      kind: result.kind,
+      role: result.role,
+      room: result.room,
+      expires_at: result.expires_at,
+      warning: result.warning,
+      warnings: result.warnings,
+      ...(result.next_actions !== undefined ? { next_actions: result.next_actions } : {}),
+    };
+  }
+
+  /**
+   * Claim a Room Invite Key (`POST /rooms/v1/invites/:invite_id/claim`) —
+   * parses the key CLIENT-SIDE first, refusing a `kgh1_`/`kgi1_` vault key
+   * BY NAME (pointing at `run402 repos resume`/`run402 repos join`) before
+   * any network call (design D3). The claim is an x402-PAID resource (the
+   * `room_seat` SKU, testnet only): the VERIFIED PAYER of that payment
+   * becomes the claimant, so this call is sent through the client's paid
+   * fetch WITHOUT a bearer credential (`withAuth: false`) — no
+   * `SIGN-IN-WITH-X` header, and any cached control-plane session is
+   * deliberately not attached, exactly matching the gateway's own
+   * `403 ROOM_INVITE_CLAIM_REQUIRES_WALLET` refusal for a bearer-credentialed
+   * request at this route. A same-payer replay never pays twice
+   * (`deduplicated: true`, no second charge).
+   */
+  async join(key: string): Promise<RoomInviteJoinResult> {
+    if (!key) {
+      throw new LocalError("rooms.join requires a key", "claiming a room invite");
+    }
+    const { parseRoomInviteKey, deriveRoomInviteAuthSecret } = await nodeOnlyBearerClaimKey("join");
+    const parsed = parseRoomInviteKey(key); // throws ROOM_INVITE_KEY_WRONG_KIND/_KEY_INVALID synchronously — never contacts the gateway on a bad key
+    const authSecret = deriveRoomInviteAuthSecret(parsed.invite_id_bytes, parsed.master_secret);
+
+    return this.client.request<RoomInviteJoinResult>(`/rooms/v1/invites/${encodeURIComponent(parsed.invite_id)}/claim`, {
+      method: "POST",
+      // Base64url — the gateway decodes base64/base64url and substitutes 32
+      // zero bytes for anything else, so a malformed value never matches
+      // any stored hash rather than raising a distinguishing error.
+      body: { auth_secret: toBase64url(authSecret) },
+      withAuth: false,
+      context: "claiming a room invite",
+    });
+  }
+
   /**
    * Return a room-scoped sub-client with `(orgId, roomKey)` pre-bound.
    * Synchronous — both ids are explicit. For a project's default room
@@ -645,5 +777,10 @@ export class ScopedRoom {
   /** See {@link Rooms.releaseClaim}. */
   releaseClaim(claimId: string): Promise<RoomClaimReleaseResult> {
     return this.rooms.releaseClaim(this.orgId, this.roomKey, claimId);
+  }
+
+  /** See {@link Rooms.invite} — pre-bound to this room. */
+  invite(opts: RoomInviteMintOptions = {}): Promise<RoomInviteMintResult> {
+    return this.rooms.invite(this.orgId, this.roomKey, opts);
   }
 }

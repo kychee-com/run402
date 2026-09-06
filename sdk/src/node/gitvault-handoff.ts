@@ -45,7 +45,6 @@ import {
   fromBase64url,
   randomBytes,
   toBase64url,
-  bytesToHex,
   GITVAULT_FORMAT,
   GITVAULT_SUITE,
   GITVAULT_HEX16_RE,
@@ -57,207 +56,54 @@ import {
   vkFingerprint,
   ekFingerprint,
 } from "../namespaces/gitvault.crypto.js";
+// add-room-invite design D2: the pure key-format primitives (the registry,
+// uuidToBytes, assemble/parse, the HKDF derive) moved to
+// `bearer-claim-key.ts` — a move, not a copy — so the room kind (`kri1_`)
+// can share them without teaching THIS vault-shaped module a room-shaped
+// kind. Every symbol this module previously exported is re-exported here
+// under its existing name, so nothing importing it changes.
+import {
+  type ClaimKind,
+  type HandoffKeyPrefixEntry,
+  type ClaimKeyParts,
+  type HandoffKeyParts,
+  type InviteKeyParts,
+  type HandoffSecrets,
+  HANDOFF_KEY_PREFIXES,
+  uuidToBytes,
+  assembleHandoffKey,
+  assembleInviteKey,
+  parseClaimKey,
+  parseHandoffKey,
+  parseInviteKey,
+  deriveHandoffSecrets,
+  deriveInviteSecrets,
+} from "./bearer-claim-key.js";
+
+export {
+  HANDOFF_KEY_PREFIXES,
+  uuidToBytes,
+  assembleHandoffKey,
+  assembleInviteKey,
+  parseClaimKey,
+  parseHandoffKey,
+  parseInviteKey,
+  deriveHandoffSecrets,
+  deriveInviteSecrets,
+};
+export type { ClaimKind, HandoffKeyPrefixEntry, ClaimKeyParts, HandoffKeyParts, InviteKeyParts, HandoffSecrets };
 
 function fail(code: string, message: string, context: string, details?: unknown): never {
   throw new LocalError(message, context, { code, details });
 }
 
-// ─── Key prefix / claim-kind registry (design D9 rule 4; kygit-invite D3) ────
-
-export type ClaimKind = "handoff" | "invite";
-
-export interface HandoffKeyPrefixEntry {
-  prefix: string;
-  kind: ClaimKind;
-  verb: string;
-  /** Error-code prefix for this kind (`HANDOFF` | `INVITE`) — every client-side code this module throws is `${errorPrefix}_…`. */
-  errorPrefix: string;
-  /**
-   * The sealed-envelope `envelope_kind` tag this kind's mint seals TODAY —
-   * the v2 shape for both kinds (`v: 2`, `writer_admission_grant_sha256`,
-   * `epoch_keys`), since writer admission rides the envelope for every claim
-   * kind (gitvault-multi-writer D4). `kygit-handoff-envelope-v1` survives
-   * only as a legacy OPENER constant ({@link HANDOFF_ENVELOPE_KIND}); no
-   * invite v1 ever existed.
-   */
-  envelopeKind: string;
-  /** This kind's note schema tag. */
-  noteSchema: string;
-  /** This kind's envelope frame magic (4 ASCII bytes). */
-  frameMagic: string;
-}
-
-/**
- * `kgh1_` is the first row (handoff); `kgi1_` is the second (invite,
- * kygit-invite design D3). A future third kind is a SIBLING row here, never
- * a branch on either existing one's parser.
- */
-export const HANDOFF_KEY_PREFIXES: readonly HandoffKeyPrefixEntry[] = [
-  { prefix: "kgh1_", kind: "handoff", verb: "resume", errorPrefix: "HANDOFF", envelopeKind: "kygit-handoff-envelope-v2", noteSchema: "kygit.handoff-note.v1", frameMagic: "KGH1" },
-  { prefix: "kgi1_", kind: "invite", verb: "join", errorPrefix: "INVITE", envelopeKind: "kygit-invite-envelope-v2", noteSchema: "kygit.invite-note.v1", frameMagic: "KGI1" },
-];
-
-const HANDOFF_ENTRY: HandoffKeyPrefixEntry = HANDOFF_KEY_PREFIXES[0]!;
-const INVITE_ENTRY: HandoffKeyPrefixEntry = HANDOFF_KEY_PREFIXES[1]!;
-
-const CLAIM_ID_BYTES = 16;
-const MASTER_SECRET_BYTES = 32;
-const CLAIM_KEY_BODY_BYTES = CLAIM_ID_BYTES + MASTER_SECRET_BYTES;
-
-export interface ClaimKeyParts {
-  kind: ClaimKind;
-  id_bytes: Uint8Array;
-  /** Canonical lowercase-hyphenated UUID form of `id_bytes` — the wire id (`handoff_id`/`invite_id`). */
-  id: string;
-  master_secret: Uint8Array;
-}
-
-/** {@link parseHandoffKey}'s legacy field names, preserved byte-identical. */
-export interface HandoffKeyParts {
-  kind: "handoff";
-  handoff_id_bytes: Uint8Array;
-  handoff_id: string;
-  master_secret: Uint8Array;
-}
-
-/** {@link parseInviteKey}'s field names — the invite-kind sibling of {@link HandoffKeyParts}. */
-export interface InviteKeyParts {
-  kind: "invite";
-  invite_id_bytes: Uint8Array;
-  invite_id: string;
-  master_secret: Uint8Array;
-}
-
-function bytesToUuid(bytes: Uint8Array): string {
-  const h = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
-}
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-export function uuidToBytes(uuid: string, field = "handoff_id"): Uint8Array {
-  if (!UUID_RE.test(uuid)) fail("HANDOFF_ID_INVALID", `${field} is not a canonical UUID`, "parsing handoff id", { field });
-  const hex = uuid.replace(/-/g, "").toLowerCase();
-  const out = new Uint8Array(16);
-  for (let i = 0; i < 16; i++) out[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
-  return out;
-}
-
-/** Assemble a printed claim key from a fresh 32-byte master secret and the gateway-minted claim id, for `entry`'s kind. */
-function assembleClaimKey(entry: HandoffKeyPrefixEntry, claimId: string, masterSecret: Uint8Array): { key: string; id_bytes: Uint8Array; master_secret: Uint8Array } {
-  if (masterSecret.length !== MASTER_SECRET_BYTES) fail(`${entry.errorPrefix}_KEY_INVALID`, "master_secret must be 32 bytes", `assembling ${entry.kind} key`);
-  const idBytes = uuidToBytes(claimId, `${entry.kind}_id`);
-  const body = concatBytes(idBytes, masterSecret);
-  return { key: `${entry.prefix}${toBase64url(body)}`, id_bytes: idBytes, master_secret: masterSecret };
-}
-
-/**
- * Assemble the printed key from a fresh 32-byte master secret and the
- * gateway-minted `handoff_id`. The gateway never sees `master_secret` — the
- * caller derives `auth_hash` (via {@link deriveHandoffSecrets}) and sends
- * ONLY that.
- */
-export function assembleHandoffKey(handoffId: string, masterSecret: Uint8Array = randomBytes(MASTER_SECRET_BYTES)): { key: string; handoff_id_bytes: Uint8Array; master_secret: Uint8Array } {
-  const { key, id_bytes, master_secret } = assembleClaimKey(HANDOFF_ENTRY, handoffId, masterSecret);
-  return { key, handoff_id_bytes: id_bytes, master_secret };
-}
-
-/** The invite-kind sibling of {@link assembleHandoffKey} (kygit-invite design D3). */
-export function assembleInviteKey(inviteId: string, masterSecret: Uint8Array = randomBytes(MASTER_SECRET_BYTES)): { key: string; invite_id_bytes: Uint8Array; master_secret: Uint8Array } {
-  const { key, id_bytes, master_secret } = assembleClaimKey(INVITE_ENTRY, inviteId, masterSecret);
-  return { key, invite_id_bytes: id_bytes, master_secret };
-}
-
-/**
- * Parse ANY `kg**_` claim-family key by its prefix registry against the
- * `expectedKind` the calling verb accepts. A recognized prefix of a
- * DIFFERENT kind (a `kgi1_` invite key handed to `resume`, or a `kgh1_`
- * handoff key handed to `join`) refuses BY NAME pointing at its own verb —
- * never misread as a malformed key of the expected kind, and never
- * contacting the gateway (design D9 rule 4 / kygit-invite design D3).
- */
-export function parseClaimKey(raw: string, expectedKind: ClaimKind): ClaimKeyParts {
-  const expectedEntry = expectedKind === "handoff" ? HANDOFF_ENTRY : INVITE_ENTRY;
-  const trimmed = raw.trim();
-  const entry = HANDOFF_KEY_PREFIXES.find((e) => trimmed.startsWith(e.prefix));
-  if (!entry) {
-    fail(`${expectedEntry.errorPrefix}_KEY_INVALID`, `not a recognized kygit key (expected a key starting ${expectedEntry.prefix})`, "parsing claim key");
-  }
-  if (entry.kind !== expectedKind) {
-    fail(
-      `${expectedEntry.errorPrefix}_KEY_WRONG_KIND`,
-      `this key is a ${entry.kind} key — use \`kygit ${entry.verb}\` instead of ${expectedEntry.verb}`,
-      "parsing claim key",
-      { kind: entry.kind, verb: entry.verb },
-    );
-  }
-  const body = trimmed.slice(entry.prefix.length);
-  let bytes: Uint8Array;
-  try {
-    bytes = fromBase64url(body, `${entry.kind} key body`);
-  } catch {
-    fail(`${entry.errorPrefix}_KEY_INVALID`, "the key body is not valid base64url", "parsing claim key");
-  }
-  if (bytes.length !== CLAIM_KEY_BODY_BYTES) {
-    fail(`${entry.errorPrefix}_KEY_INVALID`, `the key decodes to ${bytes.length} bytes; expected ${CLAIM_KEY_BODY_BYTES}`, "parsing claim key");
-  }
-  const idBytes = bytes.subarray(0, CLAIM_ID_BYTES);
-  const masterSecret = bytes.subarray(CLAIM_ID_BYTES);
-  return { kind: entry.kind, id_bytes: idBytes, id: bytesToUuid(idBytes), master_secret: masterSecret };
-}
-
-/**
- * Parse ANY `kg**_` handoff-family key by its prefix registry. A recognized
- * prefix of a DIFFERENT kind (an invite key handed to `resume`) refuses BY
- * NAME pointing at its own verb — never misread as a malformed handoff key
- * (design D9 rule 4). Kind-bound alias of {@link parseClaimKey}.
- */
-export function parseHandoffKey(raw: string): HandoffKeyParts {
-  const parsed = parseClaimKey(raw, "handoff");
-  return { kind: "handoff", handoff_id_bytes: parsed.id_bytes, handoff_id: parsed.id, master_secret: parsed.master_secret };
-}
-
-/** The invite-kind sibling of {@link parseHandoffKey} (kygit-invite design D3). */
-export function parseInviteKey(raw: string): InviteKeyParts {
-  const parsed = parseClaimKey(raw, "invite");
-  return { kind: "invite", invite_id_bytes: parsed.id_bytes, invite_id: parsed.id, master_secret: parsed.master_secret };
-}
-
-// ─── HKDF derivations (design D3; kind-parameterized by kygit-invite D3) ────
-
-export interface HandoffSecrets {
-  auth_secret: Uint8Array;
-  wrap_key: Uint8Array;
-  /** `SHA-256(auth-hash-label ‖ auth_secret)`, lowercase hex — the ONLY thing the gateway ever stores. */
-  auth_hash_hex: string;
-}
-
-/** `HKDF-SHA256(ikm=master_secret, salt=id[16], info=…)` per D3, domain-separated by kind, for both `auth_secret` and `wrap_key`. */
-function deriveClaimSecrets(kind: ClaimKind, idBytes: Uint8Array, masterSecret: Uint8Array): HandoffSecrets {
-  const authInfo = `kygit/${kind}/auth/v1`;
-  const wrapInfo = `kygit/${kind}/wrap/v1`;
-  const authHashLabel = `kygit/${kind}/auth-hash/v1`;
-  const authSecret = hkdf(sha256, masterSecret, idBytes, utf8ToBytes(authInfo), 32);
-  const wrapKey = hkdf(sha256, masterSecret, idBytes, utf8ToBytes(wrapInfo), 32);
-  const authHash = sha256(concatBytes(utf8ToBytes(authHashLabel), authSecret));
-  // ONE SHA-256 over (label ‖ auth_secret), hex-encoded — exactly what the
-  // gateway recomputes at claim (`computeAuthHash`). Through 4.68.1 this line
-  // ran the digest through `sha256Hex` (which hashes its input again), so the
-  // stored value was sha256(sha256(label ‖ secret)) and NO key minted by any
-  // published client could ever verify. The cross-side vector in
-  // gitvault-handoff.test.ts now recomputes the gateway's hash independently.
-  return { auth_secret: authSecret, wrap_key: wrapKey, auth_hash_hex: bytesToHex(authHash) };
-}
-
-/** `HKDF-SHA256(ikm=master_secret, salt=handoff_id[16], info=kygit/handoff/…)` per D3, for both `auth_secret` and `wrap_key`. */
-export function deriveHandoffSecrets(handoffIdBytes: Uint8Array, masterSecret: Uint8Array): HandoffSecrets {
-  return deriveClaimSecrets("handoff", handoffIdBytes, masterSecret);
-}
-
-/** The invite-kind sibling of {@link deriveHandoffSecrets}, domain-separated under `kygit/invite/…` info strings (kygit-invite design D3) — an invite secret never verifies as a handoff hash, or the reverse. */
-export function deriveInviteSecrets(inviteIdBytes: Uint8Array, masterSecret: Uint8Array): HandoffSecrets {
-  return deriveClaimSecrets("invite", inviteIdBytes, masterSecret);
-}
+// `HANDOFF_KEY_PREFIXES[0]`/`[1]` — the vault kinds, which (unlike the room
+// kind at `[2]`) always carry `envelopeKind`/`noteSchema`/`frameMagic`; this
+// narrowing is what lets `sealClaimEnvelope`/`openClaimEnvelope` below keep
+// those fields required without widening the shared registry's own type.
+type VaultClaimKeyEntry = HandoffKeyPrefixEntry & { envelopeKind: string; noteSchema: string; frameMagic: string };
+const HANDOFF_ENTRY = HANDOFF_KEY_PREFIXES[0] as VaultClaimKeyEntry;
+const INVITE_ENTRY = HANDOFF_KEY_PREFIXES[1] as VaultClaimKeyEntry;
 
 // ─── Writer-admission grant + acceptance (gitvault-multi-writer D4/§4.17) ───
 //
@@ -559,7 +405,7 @@ function decodeSealedEnvelope(value: string): Uint8Array | null {
  * byte-layout lives in exactly one place — a kind or version divergence here
  * would be invisible to either side until a cross-open failed.
  */
-function sealClaimEnvelope(entry: HandoffKeyPrefixEntry, idBytes: Uint8Array, wrapKey: Uint8Array, payload: unknown, envelopeKind: string, nonce?: Uint8Array): { sealed_envelope: string; envelope_kind: string } {
+function sealClaimEnvelope(entry: VaultClaimKeyEntry, idBytes: Uint8Array, wrapKey: Uint8Array, payload: unknown, envelopeKind: string, nonce?: Uint8Array): { sealed_envelope: string; envelope_kind: string } {
   const plaintext = utf8ToBytes(JSON.stringify(payload));
   const n = nonce ?? randomBytes(CLAIM_NONCE_BYTES);
   if (n.length !== CLAIM_NONCE_BYTES) fail(`${entry.errorPrefix}_ENVELOPE_INVALID`, "nonce must be 24 bytes", `sealing ${entry.kind} envelope`);
@@ -581,7 +427,7 @@ function sealClaimEnvelope(entry: HandoffKeyPrefixEntry, idBytes: Uint8Array, wr
  * on any header mismatch and `${errorPrefix}_AEAD_AUTH_FAILURE` on a bad
  * key/AAD/ciphertext.
  */
-function openClaimEnvelope(entry: HandoffKeyPrefixEntry, idBytes: Uint8Array, wrapKey: Uint8Array, sealedEnvelope: string, envelopeKind: string): unknown {
+function openClaimEnvelope(entry: VaultClaimKeyEntry, idBytes: Uint8Array, wrapKey: Uint8Array, sealedEnvelope: string, envelopeKind: string): unknown {
   const frame = decodeSealedEnvelope(sealedEnvelope);
   if (frame === null) {
     fail(`${entry.errorPrefix}_ENVELOPE_INVALID`, "sealed_envelope is not valid base64", `opening ${entry.kind} envelope`);
