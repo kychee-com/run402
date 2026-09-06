@@ -580,7 +580,14 @@ const SURFACE: Capability[] = [
   // into the single arrival call; read_room_messages folds list + get-one
   // (message_id param). Org-scoped addressing (org_id + room_key) and the
   // default-room resolution (rooms.forProject) ride the same tools/commands.
-  { id: "join_room",                    endpoint: "POST /orgs/v1/:org_id/rooms/:room_key/presences", mcp: "join_room",                    cli: "rooms:join", openclaw: "rooms:join" },
+  // add-room-invite: `run402 rooms join` is ONE CLI verb with two forms — no
+  // positional registers a presence (the route below); a `kri1_…` positional
+  // claims a room-seat FIRST (`POST /rooms/v1/invites/:invite_id/claim`,
+  // x402-paid, folded in the same way `operator_login`'s endpoint parenthetically
+  // names its own second route) and only then arrives. The claim's own SDK
+  // method (`rooms.join`) has no capability row of its own — same law as
+  // `operator.devicePoll` sharing the `login` verb — see SDK_ONLY_METHODS.
+  { id: "join_room",                    endpoint: "POST /orgs/v1/:org_id/rooms/:room_key/presences (+ POST /rooms/v1/invites/:invite_id/claim)", mcp: "join_room",                    cli: "rooms:join", openclaw: "rooms:join" },
   { id: "leave_room",                   endpoint: "DELETE /orgs/v1/:org_id/rooms/:room_key/presences/:presence_id", mcp: null, cli: "rooms:leave", openclaw: "rooms:leave" },
   // list_rooms / get_room ship on the API and the SDK but NOT as CLI
   // spellings: `rooms list` and `rooms get` were freed from meaning "list/get
@@ -616,6 +623,15 @@ const SURFACE: Capability[] = [
   { id: "claim_room_resource",          endpoint: "POST /orgs/v1/:org_id/rooms/:room_key/claims",  mcp: "claim_room_resource",          cli: "claims:create", openclaw: "claims:create" },
   { id: "list_room_claims",             endpoint: "GET /orgs/v1/:org_id/rooms/:room_key/claims", mcp: null, cli: "claims:list", openclaw: "claims:list" },
   { id: "release_room_claim",           endpoint: "DELETE /orgs/v1/:org_id/rooms/:room_key/claims/:claim_id", mcp: "release_room_claim",           cli: "claims:release", openclaw: "claims:release" },
+
+  // add-room-invite: a copy-paste door into an org and a room with no vault
+  // and no human — mint a single-use `kri1_…` bearer key from the room the
+  // inviter stands in; joining through one is `join_room`'s own row above
+  // (the claim route rides its endpoint parenthetically, and `rooms.join`
+  // is in SDK_ONLY_METHODS — one CLI verb, no second SURFACE row, no
+  // duplicate `cli` string). `mcp: null` here for the same law as gitvault's
+  // `repos_invite`/`repos_join`: a bearer secret is minted, no MCP tool.
+  { id: "rooms_invite",                 endpoint: "POST /orgs/v1/:org_id/rooms/:room_key/invites", mcp: null, cli: "rooms:invite", openclaw: "rooms:invite" },
 
   // ── Release error rollup (release-error-rollup) ─────────────────────────
   // One CLI command (`run402 errors`) + one MCP tool (`errors_list`) cover the
@@ -1185,6 +1201,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   release_room_claim: "rooms.releaseClaim",
   get_room_message: "rooms.getMessage",
   list_room_claims: "rooms.listClaims",
+  rooms_invite: "rooms.invite",
   raise_escalation: "escalations.raise",
   get_escalation: "escalations.get",
   list_escalations: "escalations.list",
@@ -1587,6 +1604,12 @@ describe("SDK surface alignment", () => {
       // so it is not a second capability - it is the same one, spelled the
       // way it used to be. Delete it when the `message` vocabulary is reused.
       "admin.sendMessage",
+      // add-room-invite: the key-form claim `rooms join <kri1_…>` runs —
+      // it has no capability row of its own, the same law as
+      // `operator.devicePoll` sharing the `login` verb above: `join_room`'s
+      // own CLI spelling (`rooms:join`) already covers both forms, and a
+      // second row here would collide on that one `cli` string.
+      "rooms.join",
       // escalations: the capability rows above cover raise/get/list/ack/
       // resolve/contacts-list. These are the rest of the namespace.
       // addContact/removeContact ride the one `manage_escalation_contacts`
