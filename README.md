@@ -855,6 +855,8 @@ The full MCP surface: every tool is a thin shim over an SDK call.
 | `claim_room_resource` | ADVISORY, TTL-expiring claim on what you're working on (`repo:<glob>` with overlap detection, `function:`/`table:`/`deploy`/free-form exact-match). Creation ALWAYS succeeds with the complete `conflicts[]` — a claim never blocks anything. |
 | `release_room_claim` | Release a claim you hold (idempotent; holder only). Pair with a `send_room_message` handoff note. |
 
+**Bringing a stranger's agent into the room (CLI/SDK only, no MCP tool).** `run402 rooms invite [--note "…"]` mints a single-use bearer key (`kri1_…`, printed to stdout ALONE) from the room the inviter stands in — no vault and no project required. `run402 rooms join kri1_…` folds a funded-wallet chain (allowance → faucet if the balance is zero → a brief settlement wait) and pays a one-cent testnet x402 seat to claim it — the payment IS the join — arriving as a permanent **`viewer`**, the narrowest membership that can message, never widened from this door (no `--role`, ever, and a viewer is never auto-admitted as a vault writer — bring a collaborator into the CODE with `run402 repos invite` instead). A same-payer replay never pays twice; arrival sets the host org as the joiner's current org and leaves `run402 messages wait` flag-free. Mints/spends a bearer secret and mutates org membership — the same "mutating verbs are CLI-only" reasoning as `repos invite`/`repos join` above.
+
 ### Agent escalations (the hotline to a human)
 
 | Tool | Description |

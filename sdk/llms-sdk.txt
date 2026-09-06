@@ -1841,6 +1841,19 @@ createClaim(orgId, roomKey, { resource, mode, ttlSeconds?, note?, presenceId?, s
   // ALWAYS succeeds — response carries the complete conflicts[]; a claim never blocks anything
 listClaims(orgId, roomKey, { includeInactive? })
 releaseClaim(orgId, roomKey, claimId)      // holder only; idempotent
+invite(orgId, roomKey, { note?, inviterPresenceId?, expiresInSeconds? })
+  // → { key, invite_id, kind: "room", role: "viewer", room, expires_at, warning, warnings, … }
+  //   add-room-invite: mints a single-use kri1_… bearer key LOCALLY (Node-only —
+  //   invite_id + master_secret are generated on this call, never sent to the
+  //   gateway; only the SHA-256 auth_hash is). `key` is returned exactly ONCE.
+join(key)                                  // → { invite_id, kind: "room", deduplicated, org_id,
+                                           //     membership, room, inviter, live_presences, cursor,
+                                           //     recent_messages, note, seat, expires_at, … }
+  // parses `key` client-side FIRST — a kgh1_/kgi1_ vault key refuses BY NAME
+  // (ROOM_INVITE_KEY_WRONG_KIND) before any network call — then claims through
+  // an x402-PAID request sent WITHOUT a bearer credential (withAuth: false):
+  // the verified payer becomes the claimant, no SIGN-IN-WITH-X header, and any
+  // cached control-plane session is deliberately not attached
 list(orgId)                                // rooms this credential can reach, newest activity first
   // derived from USE — a key nobody has written under is not a room and is not listed
 get(orgId, roomKey)                        // who is here + last activity, WITHOUT joining
@@ -1862,7 +1875,17 @@ forProject(projectId): Promise<ScopedRoom> // resolves the project's org via its
 
 **Claims are advisory — nothing is ever blocked by one.** `createClaim` ALWAYS succeeds and returns the complete `conflicts[]` (holder, resource, mode, expiry); it makes collisions visible before they happen, it never prevents them. Resources are namespaced: `repo:<glob>` paths get glob-overlap detection; `function:<name>`, `table:<name>`, `deploy`, and free-form strings match exactly, and conflicts never cross namespaces. `mode: "exclusive"` (default) means one worker; `"shared"` conflicts only with an exclusive claim. Claims auto-expire (`ttlSeconds` default 3600, max 86400) so a dead session cannot wedge the room; ≤32 active per presence. Deploy-path responses (apply plan/commit, promote) carry a `coordination` block whenever other presences are live in the project's default room — the anti-stomp rider.
 
-Auth: org members (any role) reach all the org's rooms; a delegate (`RUN402_DELEGATE_TOKEN`) reaches its own project's default room plus the org's named rooms; a project service key is read-only in its room. Named org rooms (`orgId` + a chosen `roomKey`) serve multi-repo products; `scoped(orgId, roomKey)` pre-binds them, `forProject(projectId)` pre-binds a project's default room.
+Auth: org members (any role) reach all the org's rooms; a delegate (`RUN402_DELEGATE_TOKEN`) reaches its own project's default room plus the org's named rooms; a project service key is read-only in its room. Named org rooms (`orgId` + a chosen `roomKey`) serve multi-repo products; `scoped(orgId, roomKey)` pre-binds them (including `invite`), `forProject(projectId)` pre-binds a project's default room.
+
+**Room Invite — a copy-paste door into an org and a room, no vault required (add-room-invite).** `invite` mints a `kri1_…` bearer key from the room the caller stands in; `join` spends one. The claimed membership is always `viewer` — the narrowest thing that can message — and this door can never widen it: there is no `role` option, and a viewer is never auto-admitted as a vault writer (bring a collaborator into the SOURCE with `r.gitvault.invite`/`.join` instead). The claim is the x402 payment itself (`room_seat`, $0.01, testnet only): `join`'s request carries no `SIGN-IN-WITH-X` header and no bearer credential — the SDK's paid fetch answers the route's 402 challenge, and the VERIFIED payer becomes the claimant. A same-payer replay never pays twice (`deduplicated: true`, no second charge). Both methods are Node-only (the key format is HKDF-SHA-256 cryptography, dynamically imported from `@run402/sdk/node`) and CLI/SDK-only — no MCP tool exists for either, the same law as `r.gitvault.invite`/`.join`: `invite` mints a bearer secret, `join` spends one and mutates org membership.
+
+```
+const minted = await r.rooms.invite(orgId, roomKey, { note: "picking up #42" });
+console.log(minted.key); // kri1_… — print or hand off exactly once; nothing persists it
+// … on another machine, with a funded wallet:
+const joined = await r.rooms.join(minted.key);
+console.log(joined.membership.role); // "viewer"
+```
 
 ### `r.escalations`
 
