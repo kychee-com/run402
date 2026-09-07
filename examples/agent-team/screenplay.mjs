@@ -18,7 +18,7 @@ const ACCEPT = "printf 'slate\\ncrane\\n' | node wordle.mjs --answer crane --no-
 
 export const BEATS = [
   {
-    who: "grok", to: ["claude", "codex"], think: 1200,
+    who: "grok", to: ["claude", "codex"], think: 2600,
     do: [["branch", "grok-work"], ["claim", ["words.mjs", "README.md", "package.json"]]],
     text:
       "Job just landed: a terminal Wordle. Node 22, zero deps, tests, README, ships today. " +
@@ -30,7 +30,7 @@ export const BEATS = [
     },
   },
   {
-    who: "claude", to: ["grok", "codex"], think: 3500,
+    who: "claude", to: ["grok", "codex"], think: 7700,
     do: [["branch", "claude-work"], ["claim", ["engine.mjs", "engine.test.mjs"]]],
     text:
       "Engine's mine. So nobody guesses: engine.mjs exports scoreGuess(guess, answer) → five marks, " +
@@ -41,7 +41,7 @@ export const BEATS = [
     },
   },
   {
-    who: "codex", to: ["claude"], think: 3000,
+    who: "codex", to: ["claude"], think: 6600,
     do: [["branch", "codex-work"], ["claim", ["wordle.mjs", "wordle.test.mjs"]]],
     text:
       "One amendment: give me 'green' | 'yellow' | 'gray', not letters. You score, I render — the " +
@@ -49,14 +49,14 @@ export const BEATS = [
       "I'd rather hand you exactly what the human typed.",
   },
   {
-    who: "claude", to: ["codex"], think: 2200,
+    who: "claude", to: ["codex"], think: 4800,
     text:
       "Both fair. Colours it is, and the engine normalises — send me whatever they typed, including " +
       "the trailing newline they will definitely leave in. Building.",
     react: { codex: "Interface agreed. Now I can build against something that won't move." },
   },
   {
-    who: "grok", to: ["claude", "codex"], think: 1500,
+    who: "grok", to: ["claude", "codex"], think: 3300,
     do: [
       ["write", [["grok/words.mjs", "words.mjs"], ["grok/package.json", "package.json"], ["grok/README.md", "README.md"]]],
       ["cmd", "node -e \"import('./words.mjs').then(m => console.log(m.WORDS.length + ' words, all ' + (m.WORDS.every(w => w.length === 5) ? '5 letters' : 'WRONG')))\""],
@@ -69,7 +69,7 @@ export const BEATS = [
       "Handing off: import { WORDS } from './words.mjs'.",
   },
   {
-    who: "claude", to: ["codex", "grok"], think: 2500,
+    who: "claude", to: ["codex", "grok"], think: 5500,
     do: [
       ["merge", ["grok-work"]],
       ["write", [["claude/engine.mjs", "engine.mjs"], ["claude/engine.test.mjs", "engine.test.mjs"]]],
@@ -85,19 +85,19 @@ export const BEATS = [
     react: { codex: "Engine landed. Pulling both branches and wiring the board to it." },
   },
   {
-    who: "codex", to: ["grok"], think: 4000,
+    who: "codex", to: ["grok"], think: 8800,
     text:
       "Question for whoever owns the README: --no-color — print G/Y/. per row as it goes, or a legend " +
       "at the end? Scripts are going to parse this.",
   },
   {
-    who: "grok", to: ["codex"], think: 1800,
+    who: "grok", to: ["codex"], think: 4000,
     text:
       "Per row, no legend. --no-color is for scripts; humans get colours. If it can't be grepped it " +
       "isn't done.",
   },
   {
-    who: "codex", to: ["claude", "grok"], think: 2500,
+    who: "codex", to: ["claude", "grok"], think: 5500,
     do: [
       ["merge", ["grok-work", "claude-work"]],
       ["write", [["codex/wordle.mjs", "wordle.mjs"], ["codex/wordle.test.mjs", "wordle.test.mjs"]]],
@@ -112,7 +112,7 @@ export const BEATS = [
     react: { claude: "All three branches are up. Merging to main and running it for real, not just the tests." },
   },
   {
-    who: "claude", to: ["codex"], think: 2000,
+    who: "claude", to: ["codex"], think: 4400,
     do: [
       ["cmd", "git checkout -q main"],
       ["merge", ["grok-work", "claude-work", "codex-work"]],
@@ -127,11 +127,11 @@ export const BEATS = [
     react: { grok: "Good catch. That's exactly the thing a test doesn't notice and a script would choke on." },
   },
   {
-    who: "codex", to: ["claude"], think: 1600,
+    who: "codex", to: ["claude"], think: 3500,
     text: "Mine — I own it, and I can see it from here. Newest row only in --no-color; the colour path keeps the clear-screen and the full board. Thirty seconds.",
   },
   {
-    who: "codex", to: ["claude"], think: 1200,
+    who: "codex", to: ["claude"], think: 2600,
     do: [
       ["write", [["codex-fixed/wordle.mjs", "wordle.mjs"]]],
       ["test", 26],
@@ -142,7 +142,7 @@ export const BEATS = [
     text: "pushed codex-work: --no-color prints just the new row. 26/26, and this time I looked at the output before I said so.",
   },
   {
-    who: "claude", to: ["grok", "codex"], think: 1800,
+    who: "claude", to: ["grok", "codex"], think: 4000,
     do: [
       ["merge", ["codex-work"]],
       ["test", 26],
@@ -153,7 +153,7 @@ export const BEATS = [
     react: { grok: "Pulling main. Running exactly what I promised, not a variation of it." },
   },
   {
-    who: "grok", to: ["claude", "codex"], think: 1200,
+    who: "grok", to: ["claude", "codex"], think: 2600,
     do: [
       ["cmd", "git checkout -q main && git pull -q origin main && git log --oneline | head -8"],
       ["cmd", ACCEPT],
@@ -164,11 +164,11 @@ export const BEATS = [
       "Three agents, three vendors, one room, no meetings. Same room tomorrow?",
   },
   {
-    who: "claude", to: ["grok", "codex"], think: 1800,
+    who: "claude", to: ["grok", "codex"], think: 4000,
     text: "Anytime. The next one gets a --hard flag.",
   },
   {
-    who: "codex", to: ["grok", "claude"], think: 1400,
+    who: "codex", to: ["grok", "claude"], think: 3100,
     text: "Only if Claude scores it.",
   },
 ];
