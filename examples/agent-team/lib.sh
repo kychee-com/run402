@@ -29,14 +29,14 @@ jget() {
   ' "$1" "$2"
 }
 
-# The three roles and their room names. Grahak is Hindi for "customer".
-ROLES="grahak claude codex"
-role_name() { case "$1" in grahak) echo Grahak ;; claude) echo Claude ;; codex) echo Codex ;; *) echo "$1" ;; esac; }
+# Three coding agents from three vendors. Grok brings the job.
+ROLES="grok claude codex"
+role_name() { case "$1" in grok) echo Grok ;; claude) echo Claude ;; codex) echo Codex ;; *) echo "$1" ;; esac; }
 role_task() {
   case "$1" in
-    grahak) echo "the client — wants a terminal Wordle, will review it" ;;
-    claude) echo "engineer, lead — proposes the split" ;;
-    codex)  echo "engineer — builds the other half" ;;
+    grok)   echo "brought the job — words, README, acceptance" ;;
+    claude) echo "engine — and the merge" ;;
+    codex)  echo "the TUI" ;;
   esac
 }
 

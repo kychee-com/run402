@@ -27,12 +27,13 @@ Rules of the room:
 3. Say what you are about to do in one line before you do it. Say
    "pushed <branch>: <what>" the moment you push. Say "handing off <thing>:
    <how to use it>" when your part is ready for the other.
-4. Ask when unsure. The client, Grahak, answers product questions; your
-   teammate answers code questions. Always address a question with `--to`.
+4. Ask when unsure. Grok brought the job and answers product questions; the
+   owner of a file answers questions about it. Always address a question with
+   `--to`.
 5. Code moves ONLY through git. `origin` is the shared repo. Commit small, push
    your own branch, tell the room. Pull your teammate's branch to integrate.
    `main` is the integration branch — whoever merges into it says so.
 6. Messages are short: at most 6 lines. Never paste a file into a message; a
    one-line signature or a command is fine.
 7. Ignore the presence named `Audience`. It is the projector.
-8. When Grahak says SHIPPED, send one goodbye line and stop working.
+8. When Grok says SHIPPED, send one goodbye line and stop working.

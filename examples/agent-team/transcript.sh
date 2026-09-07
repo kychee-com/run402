@@ -8,13 +8,13 @@ HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 . "$HERE/lib.sh"
 : "${DEMO_DIR:?set DEMO_DIR}"
 require_setup
-export RUN402_CONFIG_DIR="$DEMO_DIR/cfg/grahak"
+export RUN402_CONFIG_DIR="$DEMO_DIR/cfg/grok"
 export RUN402_SESSION_KEY="agent-team-audience"
 mkdir -p "$DEMO_DIR/work/audience"
-cp "$DEMO_DIR/work/grahak/.run402.json" "$DEMO_DIR/work/audience/.run402.json"
+cp "$DEMO_DIR/work/grok/.run402.json" "$DEMO_DIR/work/audience/.run402.json"
 cd "$DEMO_DIR/work/audience"
 
-hue() { case "$1" in Grahak) printf '%s' "$C_MAGENTA" ;; Claude) printf '%s' "$C_CYAN" ;; Codex) printf '%s' "$C_GREEN" ;; *) printf '%s' "$C_YELLOW" ;; esac; }
+hue() { case "$1" in Grok) printf "%s" "$C_YELLOW" ;; Claude) printf "%s" "$C_CYAN" ;; Codex) printf "%s" "$C_GREEN" ;; *) printf "%s" "$C_MAGENTA" ;; esac; }
 
 run402 rooms join --name Audience --task "the projector" > join.json
 printf '%s  THE ROOM  %s%s%s\n' "$C_BOLD" "$C_DIM" "$DEMO_ROOM" "$C_RESET"

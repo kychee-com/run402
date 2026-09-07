@@ -2,8 +2,8 @@
 # One-time plumbing for the agent-team demo. Nothing here is the show; it is
 # the part a platform does so the agents never have to:
 #
-#   • three wallets in isolated config dirs (Grahak, Claude, Codex)
-#   • Grahak's org-of-one gets the two engineers as developers
+#   • three wallets in isolated config dirs (Grok, Claude, Codex)
+#   • Grok's org-of-one gets the other two as developers
 #   • a fresh room key, and each actor's directory bound to it
 #   • a shared bare git repo (the "GitHub") with an empty main, one clone each
 #   • each actor's presence registered under its name
@@ -19,7 +19,7 @@ need run402; need node; need git
 if [ -f "$DEMO_DIR/env.sh" ] && [ "${1:-}" != "--force" ]; then
   note "already set up at $DEMO_DIR (pass --force to redo)"; exit 0
 fi
-rm -rf "$DEMO_DIR/cfg" "$DEMO_DIR/work" "$DEMO_DIR/origin.git" "$DEMO_DIR/seed" "$DEMO_DIR/env.sh" "$DEMO_DIR/prompts"
+rm -rf "$DEMO_DIR/cfg" "$DEMO_DIR/work" "$DEMO_DIR/origin.git" "$DEMO_DIR/seed" "$DEMO_DIR/env.sh" "$DEMO_DIR/prompts" "$DEMO_DIR/transcript.txt"
 mkdir -p "$DEMO_DIR/cfg" "$DEMO_DIR/work"
 
 note "── wallets"
@@ -31,13 +31,13 @@ done
 ADDR_CLAUDE=$(jget "$DEMO_DIR/cfg/claude.json" address)
 ADDR_CODEX=$(jget "$DEMO_DIR/cfg/codex.json" address)
 
-note "── organization (Grahak's, created on first contact)"
-RUN402_CONFIG_DIR="$DEMO_DIR/cfg/grahak" run402 org list > "$DEMO_DIR/cfg/orgs.json"
+note "── organization (Grok's, created on first contact)"
+RUN402_CONFIG_DIR="$DEMO_DIR/cfg/grok" run402 org list > "$DEMO_DIR/cfg/orgs.json"
 ORG=$(jget "$DEMO_DIR/cfg/orgs.json" orgs.0.org_id)
-[ -n "$ORG" ] || die "could not resolve Grahak's org"
+[ -n "$ORG" ] || die "could not resolve Grok's org"
 ok "  org $ORG"
 for a in "$ADDR_CLAUDE" "$ADDR_CODEX"; do
-  RUN402_CONFIG_DIR="$DEMO_DIR/cfg/grahak" run402 org member add "$ORG" "$a" --role developer > /dev/null
+  RUN402_CONFIG_DIR="$DEMO_DIR/cfg/grok" run402 org member add "$ORG" "$a" --role developer > /dev/null
   ok "  + developer $a"
 done
 
@@ -46,7 +46,7 @@ ok "  room $ROOM"
 
 note "── the shared repo (a bare git repo standing in for GitHub)"
 git init -q -b main "$DEMO_DIR/seed"
-printf '# wordle\n\nBuilt by a team of agents coordinating in a run402 room.\n' > "$DEMO_DIR/seed/README.md"
+printf '# wordle\n' > "$DEMO_DIR/seed/README.md"
 git -C "$DEMO_DIR/seed" -c user.name=setup -c user.email=setup@example.invalid add README.md
 git -C "$DEMO_DIR/seed" -c user.name=setup -c user.email=setup@example.invalid commit -q -m "seed"
 # A bare clone of the seed, rather than init + push: pushing into an empty
@@ -64,6 +64,7 @@ for r in $ROLES; do
   git clone -q "$DEMO_DIR/origin.git" "$ROLE_WORK"
   git -C "$ROLE_WORK" config user.name "$NAME"
   git -C "$ROLE_WORK" config user.email "$r@agent-team.invalid"
+  git -C "$ROLE_WORK" config push.negotiate false
   printf '{\n  "org": "%s",\n  "room": "%s"\n}\n' "$ORG" "$ROOM" > "$ROLE_WORK/.run402.json"
   printf '.run402.json\n.run402/\n' >> "$ROLE_WORK/.git/info/exclude"
   ( cd "$ROLE_WORK" && run402 rooms join --name "$NAME" --task "$(role_task "$r")" > "$DEMO_DIR/cfg/$r.presence.json" )

@@ -1,0 +1,14 @@
+{
+  "name": "wordle",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Terminal Wordle in Node 22, zero dependencies.",
+  "main": "wordle.mjs",
+  "scripts": {
+    "test": "node --test",
+    "start": "node wordle.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

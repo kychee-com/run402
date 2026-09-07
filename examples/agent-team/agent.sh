@@ -1,19 +1,25 @@
 #!/usr/bin/env bash
-# Launch one actor: agent.sh <grahak|claude|codex>
+# LIVE mode — launch one improvising seat: agent.sh <grok|claude|codex>
 #
-# Grahak and Claude are real headless Claude Code sessions. Codex is a real
-# `codex exec` session — or, with ENGINE_B=claude, a Claude Code session
-# wearing the Codex persona (for machines without the codex CLI, and for
-# proving the choreography). Each actor gets its own wallet, session key and
-# clone (see setup.sh) and is handed its persona plus the shared protocol.
+# Each seat is a real headless coding-agent session handed its persona plus
+# the shared protocol, in its own clone, with its own wallet and session key
+# (see setup.sh). Which CLI plays which seat:
+#
+#   Claude  claude -p                       (always)
+#   Codex   codex exec        or ENGINE_CODEX=claude → Claude Code wearing the persona
+#   Grok    grok (xAI CLI)    or ENGINE_GROK=claude  → Claude Code wearing the persona
+#
+# A seat played by Claude Code says so in its pane header. The choreography is
+# identical either way — the room does not know or care which model is typing.
 set -euo pipefail
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=lib.sh
 . "$HERE/lib.sh"
 : "${DEMO_DIR:?set DEMO_DIR}"
-: "${ENGINE_B:=codex}"
+: "${ENGINE_CODEX:=codex}"
+: "${ENGINE_GROK:=grok}"
 : "${AGENT_WALL:=30m}"
-ROLE="${1:?agent.sh <grahak|claude|codex>}"
+ROLE="${1:?agent.sh <grok|claude|codex>}"
 require_setup
 role_env "$ROLE"
 NAME=$(role_name "$ROLE")
@@ -40,21 +46,24 @@ run_claude() {
 
 run_codex() {
   need codex
-  # codex reads the prompt as an argument; --full-auto approves edits and
-  # commands inside a workspace-write sandbox; the clone is a git repo so no
-  # --skip-git-repo-check is needed, but it is harmless if a future codex
-  # tightens the check on a fresh clone.
+  # --full-auto approves edits and commands inside a workspace-write sandbox.
   timeout "$AGENT_WALL" codex exec --full-auto --skip-git-repo-check -C "$ROLE_WORK" "$(cat "$PROMPT")"
 }
 
+run_grok() {
+  need grok
+  # xAI's CLI takes the prompt as its argument; auto-approve inside the clone.
+  timeout "$AGENT_WALL" grok --auto-approve -p "$(cat "$PROMPT")"
+}
+
+persona_by_claude() {
+  warn "$NAME seat is a Claude Code session wearing the $NAME persona (ENGINE_$(echo "$ROLE" | tr a-z A-Z)=claude)"
+  run_claude
+}
+
 case "$ROLE" in
-  grahak|claude) run_claude ;;
-  codex)
-    if [ "$ENGINE_B" = "claude" ]; then
-      warn "Codex pane is a Claude Code session wearing the Codex persona (ENGINE_B=claude)"
-      run_claude
-    else
-      run_codex
-    fi ;;
+  claude) run_claude ;;
+  codex)  [ "$ENGINE_CODEX" = claude ] && persona_by_claude || run_codex ;;
+  grok)   [ "$ENGINE_GROK"  = claude ] && persona_by_claude || run_grok ;;
   *) die "unknown role $ROLE" ;;
 esac
