@@ -189,6 +189,7 @@ describe("rooms.join (key form)", () => {
         membership: { org_id: ORG, role: "viewer", status: "active" },
         room: { org_id: ORG, room_key: ROOM_KEY },
         inviter: { presence_id: "prs_1", name: "Opus", program: "claude-code", model: "fable-5", state: "active", last_active: "2026-09-06T00:00:00.000Z" },
+        presence: { presence_id: "prs_2", name: "Sonnet" },
         live_presences: [],
         cursor: "mcr_1",
         recent_messages: [],
@@ -203,6 +204,9 @@ describe("rooms.join (key form)", () => {
     assert.equal(result.membership.role, "viewer");
     assert.equal(result.deduplicated, false);
     assert.equal(result.seat.sku, "room_seat");
+    // Live-proof defect A: the claimant's OWN presence passes through,
+    // distinct from `inviter` (the minter's).
+    assert.deepEqual(result.presence, { presence_id: "prs_2", name: "Sonnet" });
   });
 
   it("sends auth_secret as base64url, matching the key's own derivation", async () => {
@@ -276,5 +280,24 @@ describe("ScopedRoom.invite", () => {
     const result = await scoped.invite({ note: "hi" });
     assert.equal(calls[0]!.url, `https://api.example.test/orgs/v1/${ORG}/rooms/${ROOM_KEY}/invites`);
     assert.deepEqual(result.room, { org_id: ORG, room_key: ROOM_KEY });
+  });
+});
+
+describe("isTerminalRoomInviteRefusal (live-proof defect B)", () => {
+  it("recognizes every one of the five terminal room-invite refusal codes", async () => {
+    const { isTerminalRoomInviteRefusal, ROOM_INVITE_TERMINAL_REFUSAL_CODES } = await import("./rooms.js");
+    for (const code of ROOM_INVITE_TERMINAL_REFUSAL_CODES) {
+      assert.equal(isTerminalRoomInviteRefusal({ code }), true, code);
+    }
+    assert.equal(ROOM_INVITE_TERMINAL_REFUSAL_CODES.size, 5);
+  });
+
+  it("refuses an unrelated code, a missing code, and a non-string code", async () => {
+    const { isTerminalRoomInviteRefusal } = await import("./rooms.js");
+    assert.equal(isTerminalRoomInviteRefusal({ code: "PAYMENT_INTENT_PENDING" }), false);
+    assert.equal(isTerminalRoomInviteRefusal({}), false);
+    assert.equal(isTerminalRoomInviteRefusal(null), false);
+    assert.equal(isTerminalRoomInviteRefusal(undefined), false);
+    assert.equal(isTerminalRoomInviteRefusal({ code: 42 }), false);
   });
 });

@@ -506,6 +506,22 @@ export interface RoomInviteInviter {
   [key: string]: unknown;
 }
 
+/**
+ * The CLAIMANT's own presence, registered by the claim itself (live-proof
+ * defect A fix) — as distinct from {@link RoomInviteInviter}, which is the
+ * MINTER's. Naming it top-level means the joiner never has to guess which
+ * entry of `live_presences[]` is itself. A `deduplicated: true` replay
+ * carries the SAME value as the original claim, never a freshly
+ * re-registered one — the gateway resolves it from a value stored at claim
+ * time. `null` only when it no longer resolves (or against an older
+ * gateway that predates this field).
+ */
+export interface RoomInviteClaimedPresence {
+  presence_id: string;
+  name: string;
+  [key: string]: unknown;
+}
+
 /** The settled seat charge (design D5/D11) — `charge_id` is `null` for a genuine on-chain/MPP settlement, which carries no local ledger row to reference. */
 export interface RoomInviteSeat {
   sku: "room_seat" | (string & {});
@@ -524,6 +540,8 @@ export interface RoomInviteJoinResult {
   membership: { org_id: string; role: string; status: string };
   room: { org_id: string; room_key: string };
   inviter: RoomInviteInviter | null;
+  /** The claimant's OWN presence, registered by this claim — absent/null against an older gateway that predates it. */
+  presence?: RoomInviteClaimedPresence | null;
   live_presences: RoomPresence[];
   /** Catch-up cursor for `messages wait`/`messages list` in this room. */
   cursor: string;

@@ -693,6 +693,37 @@ export class Rooms {
 }
 
 /**
+ * Terminal room-invite claim refusals the gateway's own x402 paywall NEVER
+ * settles for (design D5 — the paywall buffers and settles only on a
+ * sub-400 response, so any of these five codes means no payment ever
+ * completed, refunded or otherwise). Live-proof defect B: without this, a
+ * spent/expired/revoked key, or a bearer credential presented to the claim
+ * route, surfaced as a generic `X402_PAYMENT_OUTCOME_AMBIGUOUS` — alarming
+ * and wrong, since the gateway had already answered with one of these and
+ * moved no funds. `node/paid-fetch.ts`'s default paid fetch recognizes a
+ * response carrying one of these codes, FROM this SDK's own configured API
+ * origin, as `"failed"` rather than `"ambiguous"` — letting the gateway's
+ * own typed envelope (not a synthesized payment-attempt error) reach the
+ * caller. Scoped by CODE, never by route: an arbitrary third-party paid URL
+ * — even one that echoes one of these exact strings — is never treated as
+ * this SDK's own origin, so its non-2xx after dispatch stays genuinely
+ * ambiguous, unchanged.
+ */
+export const ROOM_INVITE_TERMINAL_REFUSAL_CODES: ReadonlySet<string> = new Set([
+  "ROOM_INVITE_KEY_INVALID",
+  "ROOM_INVITE_KEY_EXPIRED",
+  "ROOM_INVITE_KEY_REVOKED",
+  "ROOM_INVITE_KEY_ALREADY_CLAIMED",
+  "ROOM_INVITE_CLAIM_REQUIRES_WALLET",
+]);
+
+/** True when `envelope.code` is one of {@link ROOM_INVITE_TERMINAL_REFUSAL_CODES}. */
+export function isTerminalRoomInviteRefusal(envelope: Record<string, unknown> | null | undefined): boolean {
+  const code = envelope?.code;
+  return typeof code === "string" && ROOM_INVITE_TERMINAL_REFUSAL_CODES.has(code);
+}
+
+/**
  * A room-scoped sub-client returned by {@link Rooms.scoped} /
  * {@link Rooms.forProject}. The `(orgId, roomKey)` pair is bound at
  * construction; instance operations drop both leading arguments.

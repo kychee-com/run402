@@ -157,6 +157,7 @@ export function run402(opts: NodeRun402Options = {}): NodeRun402 {
       allowancePath: opts.allowancePath,
       credentials: opts.credentials ? credentials : undefined,
       paymentSigner: opts.paymentSigner,
+      apiBase,
     });
   }
   const runOpts: Run402Options = {

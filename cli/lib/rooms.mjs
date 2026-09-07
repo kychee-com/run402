@@ -31,7 +31,6 @@ import {
   withPresenceRetry,
   registerFreshPresence,
   rememberPresence,
-  getRoomState,
   updateRoomState,
 } from "./rooms-context.mjs";
 import { resolveTaskLabel } from "./harness-context.mjs";
@@ -416,6 +415,14 @@ async function joinWithKey(key, a) {
     if (typeof result.cursor === "string") {
       try { updateRoomState(result.org_id, result.room.room_key, { cursor: result.cursor }); } catch { /* best-effort */ }
     }
+    // Live-proof defect A: cache the presence the CLAIM ITSELF registered,
+    // exactly the way `registerFreshPresence`'s no-key `join` already does
+    // via `rememberPresence` — without this, the joiner's very next
+    // coordination call (no cached presence_id) registers a SECOND presence
+    // for the same arrival. Guarded for an older gateway that predates the
+    // `presence` field: `rememberPresence` itself no-ops on anything that
+    // isn't `{presence_id: string, ...}`, so this never throws either way.
+    try { rememberPresence(result.org_id, result.room.room_key, result.presence); } catch { /* best-effort */ }
 
     const nextActions = [...(result.next_actions ?? [])];
     if (!nextActions.some((na) => na.type === "wait_room")) {

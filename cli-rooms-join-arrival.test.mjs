@@ -39,6 +39,7 @@ function claimResult(overrides = {}) {
     membership: { org_id: ORG, role: "viewer", status: "active" },
     room: { org_id: ORG, room_key: ROOM },
     inviter: null,
+    presence: { presence_id: "prs_claimant1", name: "ClaimantOne" },
     live_presences: [],
     cursor: "mcr_arrival_1",
     recent_messages: [],
@@ -129,6 +130,31 @@ describe("arrival outside a git repository", () => {
     // The returned cursor is persisted for messages wait/list.
     const state = getRoomState(ORG, ROOM, { cwd: dir });
     assert.equal(state.cursor, "mcr_arrival_1");
+
+    // Live-proof defect A: the claim's OWN presence is cached too, so the
+    // joiner's next coordination call resolves it instead of registering a
+    // second, orphaned presence for the same arrival.
+    assert.equal(state.presence_id, "prs_claimant1");
+    assert.equal(state.name, "ClaimantOne");
+  });
+
+  it("an older gateway's cursor-only response (no `presence` field) still arrives, with no presence cached and no crash", async () => {
+    impl.join = async () => {
+      const result = claimResult();
+      delete result.presence;
+      return result;
+    };
+    const { key } = assembleRoomInviteKey("dddddddd-4444-4444-8444-444444444444");
+    captureStart();
+    try {
+      await run("join", [key]);
+    } finally {
+      captureStop();
+    }
+
+    const state = getRoomState(ORG, ROOM, { cwd: dir });
+    assert.equal(state.cursor, "mcr_arrival_1");
+    assert.equal(state.presence_id, undefined);
   });
 
   it("no .run402.json is left behind on a wrong-kind-key refusal (arrival never runs)", async () => {
@@ -189,5 +215,9 @@ describe("arrival inside a git repository", () => {
     // The cursor is persisted the same way as the non-git case.
     const state = getRoomState(ORG, ROOM, { cwd: dir });
     assert.equal(state.cursor, "mcr_arrival_1");
+
+    // Live-proof defect A: same presence caching inside a git repository.
+    assert.equal(state.presence_id, "prs_claimant1");
+    assert.equal(state.name, "ClaimantOne");
   });
 });

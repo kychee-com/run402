@@ -17,6 +17,8 @@
  */
 
 import { readAllowance } from "../../core-dist/allowance.js";
+import { getApiBase } from "../../core-dist/config.js";
+import { isTerminalRoomInviteRefusal } from "../namespaces/rooms.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
 import type { AllowanceData, CredentialsProvider } from "../credentials.js";
@@ -266,6 +268,14 @@ export interface PaidFetchOptions {
   credentials?: Pick<CredentialsProvider, "readAllowance">;
   /** Explicit opaque x402 signer. Mutually exclusive with allowancePath. */
   paymentSigner?: EvmPaymentSignerProvider;
+  /**
+   * The run402 API origin this fetch is wired to (defaults to
+   * `getApiBase()`). Used ONLY to recognize a same-origin gateway response
+   * carrying one of its own terminal, never-settled refusal codes (live-proof
+   * defect B — see {@link isTerminalRoomInviteRefusal}) — never to route or
+   * validate requests. A response from any other origin is unaffected.
+   */
+  apiBase?: string;
 }
 
 const USDC_ABI = [
@@ -567,8 +577,31 @@ async function balanceState(
   }
 }
 
+/**
+ * True when `response` genuinely came back from `configuredApiBase`'s
+ * origin — never redirected, and never merely a matching string (an actual
+ * `fetch` return carries the real settled URL in `.url`). Deliberately NOT
+ * `isTrustedRun402PaymentUrl`'s tenant-hostname classifier: that function
+ * exists for `r.pay.fetch`'s arbitrary-URL buyer (a DIFFERENT trust
+ * question — "is this some run402-hosted tenant's own paid resource?") and
+ * excludes `api.run402.com` by name (a reserved label). This is the
+ * SIMPLER, narrower question the default fetch actually needs: "is this
+ * response from the one origin this SDK instance is configured to talk
+ * to?" — true for `api.run402.com` in production and for whatever
+ * `RUN402_API_BASE`/`apiBase` names in a test or staging environment.
+ */
+function isConfiguredApiOrigin(configuredApiBase: string, response: Response): boolean {
+  if (!response.url || response.redirected) return false;
+  try {
+    return new URL(configuredApiBase).origin === new URL(response.url).origin;
+  } catch {
+    return false;
+  }
+}
+
 export async function setupPaidFetch(options: PaidFetchOptions = {}): Promise<ConfiguredPaidFetch | null> {
   validatePaymentSource(options);
+  const configuredApiBase = options.apiBase ?? getApiBase();
 
   // Malformed or missing selected local state degrades to an unwrapped 402,
   // but it never falls back to a different wallet source.
@@ -664,6 +697,20 @@ export async function setupPaidFetch(options: PaidFetchOptions = {}): Promise<Co
         };
       },
       client,
+      {
+        // Live-proof defect B: recognize this SDK's own gateway's terminal,
+        // never-settled refusal codes (see isTerminalRoomInviteRefusal) so
+        // the caller gets the gateway's own typed envelope instead of a
+        // synthesized X402_PAYMENT_OUTCOME_AMBIGUOUS. Scoped to responses
+        // genuinely from the configured API origin — an arbitrary
+        // third-party paid URL (this default fetch's other callers) stays
+        // ambiguous, unchanged, exactly as today.
+        async classifyPaymentResponse(response) {
+          if (!isConfiguredApiOrigin(configuredApiBase, response)) return "ambiguous";
+          const envelope = await readPaymentErrorEnvelope(response);
+          return isTerminalRoomInviteRefusal(envelope) ? "failed" : "ambiguous";
+        },
+      },
     );
     const supportedNetworks = [
       ...(mainnetSigner ? ["eip155:8453"] : []),

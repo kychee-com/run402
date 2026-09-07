@@ -220,6 +220,73 @@ describe("setupPaidFetch", () => {
     assert.equal(records[0]?.state, "completed");
     assert.equal(records[0]?.mutation_state, "completed");
   });
+
+  it("live-proof defect B: a terminal room-invite refusal from the configured API origin surfaces as the gateway's own envelope, not an ambiguous payment attempt", async () => {
+    simulatePaymentChallenge = true;
+    let call = 0;
+    globalThis.fetch = (async () => {
+      call += 1;
+      if (call === 1) return new Response("payment required", { status: 402 });
+      const body = JSON.stringify({
+        code: "ROOM_INVITE_KEY_ALREADY_CLAIMED",
+        error: "ROOM_INVITE_KEY_ALREADY_CLAIMED",
+        message: "this room invite was already claimed by a different principal",
+        category: "conflict",
+        mutation_state: "none",
+        claimed_at: "2026-01-01T00:00:00.000Z",
+      });
+      const response = new Response(body, { status: 409, headers: { "content-type": "application/json" } });
+      Object.defineProperty(response, "url", { value: "https://api.run402.test/rooms/v1/invites/inv_1/claim" });
+      return response;
+    }) as typeof globalThis.fetch;
+
+    const f = await setupPaidFetch({
+      paymentSigner: { async getSigner() { return signer(ADDRESS_B); } },
+      apiBase: "https://api.run402.test",
+    });
+    assert.ok(f);
+
+    const response = await f("https://api.run402.test/rooms/v1/invites/inv_1/claim", { method: "POST" });
+    assert.equal(response.status, 409);
+    const parsed = await response.json();
+    assert.equal(parsed.code, "ROOM_INVITE_KEY_ALREADY_CLAIMED");
+    assert.equal(parsed.mutation_state, "none");
+
+    // The on-disk journal shape is unchanged: the existing "failed"
+    // classification's redacted record, never a new field or state.
+    const records = listPaymentAttempts();
+    assert.equal(records.length, 1);
+    assert.equal(records[0]?.state, "failed");
+    assert.equal(records[0]?.mutation_state, "not_started");
+    assert.doesNotMatch(JSON.stringify(records[0]), /claimed_at|ROOM_INVITE/);
+  });
+
+  it("keeps an arbitrary non-run402 paid URL's non-success response ambiguous, unchanged — even if its body echoes a room-invite-shaped code", async () => {
+    simulatePaymentChallenge = true;
+    let call = 0;
+    globalThis.fetch = (async () => {
+      call += 1;
+      if (call === 1) return new Response("payment required", { status: 402 });
+      const body = JSON.stringify({ code: "ROOM_INVITE_KEY_ALREADY_CLAIMED", message: "spoofed" });
+      const response = new Response(body, { status: 409, headers: { "content-type": "application/json" } });
+      Object.defineProperty(response, "url", { value: "https://tenant.example/paid" });
+      return response;
+    }) as typeof globalThis.fetch;
+
+    const f = await setupPaidFetch({
+      paymentSigner: { async getSigner() { return signer(ADDRESS_B); } },
+      apiBase: "https://api.run402.test",
+    });
+    assert.ok(f);
+
+    await assert.rejects(f("https://tenant.example/paid", { method: "POST" }), (err) => {
+      assert.ok(err instanceof PaymentAttemptError);
+      assert.equal(err.code, "X402_PAYMENT_OUTCOME_AMBIGUOUS");
+      assert.equal(err.mutationState, "ambiguous");
+      assert.equal(err.safeToRetry, false);
+      return true;
+    });
+  });
 });
 
 describe("x402 balance preflight", () => {

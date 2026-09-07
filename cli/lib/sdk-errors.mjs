@@ -63,6 +63,20 @@ export function parseFlagJson(name, value) {
   }
 }
 
+// Live-proof defect B — the gateway's own terminal room-invite claim
+// refusals (never settled; see `sdk/src/namespaces/rooms.ts`'s
+// `ROOM_INVITE_TERMINAL_REFUSAL_CODES`, the source of truth this mirrors).
+// A small, deliberate duplication rather than an import, so this
+// dependency-free error reporter stays that way — these five strings are
+// gateway-owned and stable.
+const ROOM_INVITE_TERMINAL_REFUSAL_CODES = new Set([
+  "ROOM_INVITE_KEY_INVALID",
+  "ROOM_INVITE_KEY_EXPIRED",
+  "ROOM_INVITE_KEY_REVOKED",
+  "ROOM_INVITE_KEY_ALREADY_CLAIMED",
+  "ROOM_INVITE_CLAIM_REQUIRES_WALLET",
+]);
+
 export function reportSdkError(err) {
   if (err?.name === "ProjectCredentialNotFound" || err?.code === "PROJECT_CREDENTIAL_NOT_FOUND") {
     fail({
@@ -135,6 +149,17 @@ export function reportSdkError(err) {
       payload.hint =
         "The project credential was present but rejected by the server. Re-import or rotate the project key, or use a principal-auth command when available.";
     }
+  }
+
+  // Live-proof defect B: a terminal room-invite claim refusal is the
+  // gateway's OWN typed envelope by the time it reaches here (the SDK's
+  // default paid fetch classifies these five codes as `"failed"`, never
+  // `"ambiguous"` — see `sdk/src/node/paid-fetch.ts` and
+  // `isTerminalRoomInviteRefusal`), so the truthful, reassuring fact —
+  // no payment was charged — is worth stating explicitly rather than
+  // leaving the caller to infer it from `mutation_state`.
+  if (ROOM_INVITE_TERMINAL_REFUSAL_CODES.has(payload.code) && payload.hint === undefined) {
+    payload.hint = "This key was not claimable (already used, expired, revoked, or this route requires a wallet, not a session) — you were not charged; no payment was made for this attempt.";
   }
 
   // Keep `status: "error"` as the outer envelope even if the response body
