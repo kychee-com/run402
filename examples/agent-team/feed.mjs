@@ -11,7 +11,7 @@ const NAME = process.argv[2] ?? "agent";
 const tty = process.stdout.isTTY && !process.env.NO_COLOR;
 const c = (code, s) => (tty ? `\x1b[${code}m${s}\x1b[0m` : s);
 const dim = (s) => c("2", s), bold = (s) => c("1", s);
-const hue = { Grahak: "35", Claude: "36", Codex: "32" }[NAME] ?? "33";
+const hue = { Grok: "33", Claude: "36", Codex: "32" }[NAME] ?? "35";
 const me = (s) => c(`1;${hue}`, s);
 
 const stamp = () => new Date().toISOString().slice(11, 19);
