@@ -124,6 +124,8 @@ for (let i = 0; i < BEATS.length; i++) {
     if (beat.react?.[ROLE]) { await sleep(FAST ? 100 : 900); await say(beat.react[ROLE]); }
     continue;
   }
+  // The pause reads as the seat working, not as a dead pane.
+  if (!FAST) process.stdout.write(`${dim(stamp())} ${dim(`● ${ME} is thinking…`)}\n`);
   await sleep(FAST ? 100 : beat.think ?? 1800);
   for (const [action, arg] of beat.do ?? []) await ACTIONS[action](arg);
   const to = beat.to?.map((r) => CAST[r].name).join(",");
