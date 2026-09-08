@@ -1017,6 +1017,55 @@ describe("Deploy.apply (happy path)", () => {
     assert(pollCount >= 1, "polled at least once");
   });
 
+  it("passes the ready snapshot's gateway riders through on the polled path", async () => {
+    const w = makeWiring();
+    const plan: PlanResponse = {
+      plan_id: "plan_async_riders",
+      operation_id: "op_async_riders",
+      base_release_id: null,
+      manifest_digest: "ff",
+      missing_content: [],
+      diff: {},
+    };
+    let pollCount = 0;
+    w.setHandler((req) => {
+      if (req.path === "/apply/v1/plans") return plan;
+      if (req.path === "/apply/v1/plans/plan_async_riders/commit") {
+        return { operation_id: "op_async_riders", status: "running" } satisfies CommitResponse;
+      }
+      if (req.path === "/apply/v1/operations/op_async_riders") {
+        pollCount += 1;
+        const ready = pollCount >= 2;
+        const snap: OperationSnapshot = {
+          operation_id: "op_async_riders",
+          project_id: "prj_test",
+          plan_id: "plan_async_riders",
+          status: ready ? "ready" : "activating",
+          base_release_id: null,
+          target_release_id: "rel_async",
+          release_id: ready ? "rel_async" : null,
+          urls: ready ? { site: "https://prj.run402.test", console: "https://console.run402.com/orgs/o/projects/prj_test" } : null,
+          payment_required: null,
+          error: null,
+          activate_attempts: 0,
+          last_activate_attempt_at: null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          ...(ready
+            ? { next_actions: [{ type: "watch_errors" }, { type: "hand_to_operator", path: "/feedback/v1", credited_as: null }] }
+            : {}),
+        };
+        return snap;
+      }
+      throw new Error(`unexpected ${req.path}`);
+    });
+
+    const deploy = new Deploy(w.client);
+    const result = await deploy.apply({ project: "prj_test", site: { replace: { "x.html": "x" } } });
+    assert.equal(result.urls.console, "https://console.run402.com/orgs/o/projects/prj_test");
+    assert.deepEqual((result.next_actions ?? []).map((a) => a.type), ["watch_errors", "hand_to_operator"]);
+  });
+
   it("normalizes schedule triggers into the planned ReleaseSpec", async () => {
     const w = makeWiring();
     const fnSha = "a".repeat(64);

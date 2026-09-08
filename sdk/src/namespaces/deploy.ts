@@ -2432,6 +2432,12 @@ async function pollSnapshotUntilReady(
         warnings,
         ...(snapshot.subdomain_bindings ? { subdomain_bindings: snapshot.subdomain_bindings } : {}),
         ...(snapshot.edge ? { edge: snapshot.edge } : {}),
+        // The gateway now attaches the same riders to a ready operation
+        // snapshot as to a synchronous ready commit (poll / watch_errors /
+        // hand_to_operator) — pass them through exactly as the fast path does.
+        ...(Array.isArray(snapshot.next_actions) && snapshot.next_actions.length > 0
+          ? { next_actions: snapshot.next_actions }
+          : {}),
       };
     }
 

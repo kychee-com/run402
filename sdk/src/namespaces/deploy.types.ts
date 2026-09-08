@@ -2296,6 +2296,10 @@ export interface OperationSnapshot {
   updated_at: string;
   rehearsal_report?: ApplyRehearsalReport;
   actor?: OperationActorSnapshot | null;
+  /** Present on a `ready` snapshot only: the same gateway riders a synchronous
+   *  ready commit carries (`poll`, `watch_errors`, `hand_to_operator`). A
+   *  polled deploy is never a weaker contract than the commit response. */
+  next_actions?: NextAction[];
 }
 
 export type RehearsalTeardownPolicy = "keep" | "on_pass" | "always";
@@ -2635,8 +2639,8 @@ export interface DeployResult {
    * plus the one shape the deploy itself synthesizes:
    * `gitvault_policy_required`, offered on every deploy of a vaulted project
    * whose `gitvault_policy` was never set (repo-first-onramp D3). Absent when
-   * there is nothing to offer. A commit that went asynchronous (polled to
-   * `ready`) carries only the synthesized shape today.
+   * there is nothing to offer. A commit that went asynchronous and was polled to
+   * `ready` carries the same gateway riders from the ready snapshot.
    */
   next_actions?: NextAction[];
   /** Freshness hints for stable hosts affected by this deploy. Managed
