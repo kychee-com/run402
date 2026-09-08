@@ -252,6 +252,56 @@ describe("Deploy.apply (happy path)", () => {
     assert.equal(new TextDecoder().decode(w.puts[0].body), html);
   });
 
+  it("passes the gateway's ready riders (poll, watch_errors, hand_to_operator) through to the result", async () => {
+    const w = makeWiring();
+    const plan: PlanResponse = {
+      plan_id: "plan_riders",
+      operation_id: "op_riders",
+      base_release_id: null,
+      manifest_digest: "riders",
+      missing_content: [],
+      diff: { resources: { site: { added: 0 } } },
+    };
+    const commit: CommitResponse = {
+      operation_id: "op_riders",
+      status: "ready",
+      release_id: "rel_riders",
+      urls: {
+        site: "https://prj.run402.test",
+        console: "https://console.run402.com/orgs/org_1/projects/prj_test",
+      },
+      next_actions: [
+        { type: "poll", method: "GET", path: "/projects/v1/prj_test/events?cursor=evc_10" },
+        { type: "watch_errors", command: "run402 errors --project prj_test --new-in rel_riders --watch 10m --fail-on-new" },
+        {
+          type: "hand_to_operator",
+          method: "POST",
+          path: "/feedback/v1",
+          body: { project_id: "prj_test", message: "promote: yes", handle: "@…" },
+          credited_as: "SnowyJim32",
+          why: "Show your human the site and the console link…",
+        },
+      ],
+    };
+    w.setHandler((req) => {
+      if (req.path === "/apply/v1/plans") return plan;
+      if (req.path === "/content/v1/plans") return { plan_id: "cplan_riders", expires_at: new Date(Date.now() + 3600_000).toISOString(), missing: [], entries: [] };
+      if (req.path === "/content/v1/plans/cplan_riders/commit") return {};
+      if (req.path === "/apply/v1/plans/plan_riders/commit") return commit;
+      throw new Error(`unexpected path ${req.path}`);
+    });
+
+    const deploy = new Deploy(w.client);
+    const result = await deploy.apply({ project: "prj_test", subdomains: { set: ["prj-test"] } });
+
+    assert.equal(result.urls.console, "https://console.run402.com/orgs/org_1/projects/prj_test");
+    assert.ok(result.next_actions, "gateway riders survive into the deploy result");
+    assert.deepEqual(result.next_actions!.map((a) => a.type), ["poll", "watch_errors", "hand_to_operator"]);
+    const offer = result.next_actions!.find((a) => a.type === "hand_to_operator")!;
+    assert.equal(offer.credited_as, "SnowyJim32");
+    assert.equal(offer.path, "/feedback/v1");
+  });
+
   it("applies to Core with inline migrations and direct content staging", async () => {
     const w = makeWiring();
     (w.client as { apiBase: string }).apiBase = "http://core.example:4020";

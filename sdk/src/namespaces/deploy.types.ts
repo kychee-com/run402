@@ -2266,6 +2266,10 @@ export interface CommitResponse {
   restore_point?: CommitRestorePoint;
   snapshot_skipped_reason?: string;
   actor?: OperationActorSnapshot | null;
+  /** Gateway riders on a synchronous `ready` commit: the events-feed `poll`
+   *  entry, `watch_errors`, and the `hand_to_operator` offer. Passed through
+   *  to {@link DeployResult.next_actions} verbatim. */
+  next_actions?: NextAction[];
 }
 
 export interface CommitRestorePoint {
@@ -2623,11 +2627,16 @@ export interface DeployResult {
   /** Structured plan warnings that were observed before commit. */
   warnings: WarningEntry[];
   /**
-   * Advisory follow-ups the deploy itself synthesized — never a gateway plan
-   * warning (those stay in {@link warnings}). Today this carries exactly one
-   * shape: `gitvault_policy_required`, offered on every deploy of a vaulted
-   * project whose `gitvault_policy` was never set (repo-first-onramp D3).
-   * Absent when there is nothing to offer.
+   * Advisory follow-ups — never a gateway plan warning (those stay in
+   * {@link warnings}). Carries the gateway's own riders from a synchronous
+   * `ready` commit verbatim (`poll` positioned at this deploy's activation
+   * event, `watch_errors`, and `hand_to_operator` — the offer to hand your
+   * human the site and console links and relay Run402's free promotion),
+   * plus the one shape the deploy itself synthesizes:
+   * `gitvault_policy_required`, offered on every deploy of a vaulted project
+   * whose `gitvault_policy` was never set (repo-first-onramp D3). Absent when
+   * there is nothing to offer. A commit that went asynchronous (polled to
+   * `ready`) carries only the synthesized shape today.
    */
   next_actions?: NextAction[];
   /** Freshness hints for stable hosts affected by this deploy. Managed

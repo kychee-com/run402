@@ -2294,6 +2294,12 @@ async function pollUntilReady(
       warnings,
       ...(commit.subdomain_bindings ? { subdomain_bindings: commit.subdomain_bindings } : {}),
       ...(commit.edge ? { edge: commit.edge } : {}),
+      // The gateway's riders (poll / watch_errors / hand_to_operator) ride the
+      // synchronous ready response and nowhere else — dropping them here is
+      // how an agent never learns the offer existed (builder-promotion).
+      ...(Array.isArray(commit.next_actions) && commit.next_actions.length > 0
+        ? { next_actions: commit.next_actions }
+        : {}),
     };
   }
 
