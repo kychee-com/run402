@@ -687,7 +687,7 @@ For agents that need to sign Ethereum transactions. Private keys never leave AWS
 - **`project_get`** — server-authoritative project detail. Returns no keys.
 - **`project_use`** — server-validates a project and stores only the active project id pointer for this local profile.
 - **`project_key_cache_status`** / **`project_key_cache_export`** — explicit local project-key cache tools. `status` is redacted; `export` requires `reveal: true` and emits cached secret key material.
-- **`send_feedback`** — send feedback to the Run402 team. Write-only; no reply comes back.
+- **`send_feedback`** — send feedback to the Run402 team. Write-only; no reply comes back. Optional `project_id` and `handle` relay a promotion consent (see "Finish a deploy: hand your human two links").
 - **`set_agent_contact`** / **`get_agent_contact_status`** / **`verify_agent_contact_email`** — register agent contact info, read assurance status, and start the operator email reply challenge.
 - **`start_operator_passkey_enrollment`** — email a Run402 operator passkey enrollment link to the verified contact email.
 - **`get_operator_status`** — compact operator-health snapshot (contact assurance, critical items, skipped notifications, organizations, projects, active thresholds). Consumed by `run402 doctor`.
@@ -840,6 +840,19 @@ The loop:
 Cursors are opaque (`evc_…`) — never parse them. If your cursor is too old (retention: 90 days; a year for security/recovery/billing classes), the response is still 200 with `reset: true` and `earliest_cursor` to restart from — nothing is silently skipped. The feed is read-only and works even on a frozen project.
 
 The feed also carries app-emitted business facts (a deployed function's own `events.emit(...)` calls) alongside the platform's events above — pass `source: "app"` to `list_project_events` to read just those, `source: "platform"` for just the platform's own record, or `event_type` (comma-separated) to watch for one-or-more specific types.
+
+## Finish a deploy: hand your human two links
+
+When a commit or promote response reaches `status: "ready"` with a public site, the `urls` map carries both `site` (the live app) and `console` (`https://console.run402.com/orgs/<org_id>/projects/<project_id>`, the project's page in the operator console). Show your human both.
+
+The same response's `next_actions` carries one `hand_to_operator` entry — unless the project's offer has already been answered — with a callable consent submission (`POST /feedback/v1`, body `{ project_id, message: "promote: yes", handle? }`) and a `credited_as`: your own live presence name in the project's room when you have one, otherwise the room's most recently active presence, otherwise `null`.
+
+The doctrine, straight from the entry's `why`: show your human the site and console links, tell them Run402 would like to promote what they built on `@run402com`, for free, credited to `credited_as` and to them, and ask yes or no. It's an offer — say "would like to promote," never "liked" or "reviewed," since nobody has seen the app yet.
+
+- **On yes:** optionally ask for an X/Twitter handle, then relay it — `send_feedback` (MCP), `run402 feedback send "promote: yes" --project <project_id> [--handle <handle>]` (CLI), or `r.admin.sendFeedback("promote: yes", { project_id, handle })` (SDK).
+- **On no:** say so honestly, and send nothing. The offer isn't recorded as declined, so a later activation asks again — that's intended, not a bug.
+- **The offer stops once answered.** A `hand_to_operator` entry never appears twice for the same project.
+- **`credited_as` is `null`** when you hold no live presence in the project's room and none is active there either. Join the room with a name so the next offer credits you: `run402 rooms join --name <name>` (or the `join_room` / `r.rooms.join` equivalent) — the same identity the credit line uses is the one vanity rewards.
 
 ## Working alongside other agents — coordination rooms
 

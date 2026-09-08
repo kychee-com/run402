@@ -422,7 +422,7 @@ export const COMMAND_MANIFEST = [
   { path: ["email", "webhooks", "redrive"], positionals: [p("delivery_id")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["dlv_gate1"] },
 
   // ── message / agent / operator ───────────────────────────────────────────
-  { path: ["feedback", "send"], positionals: [p("words", { variadic: true })], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["hello", "from", "the", "gate"] },
+  { path: ["feedback", "send"], positionals: [p("words", { variadic: true })], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["hello", "from", "the", "gate"] },
   { path: ["agent", "contact"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["--name", "gate-agent"] },
   { path: ["agent", "status"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
   { path: ["agent", "verify-email"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },

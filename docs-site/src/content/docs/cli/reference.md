@@ -1912,7 +1912,7 @@ KMS signers — provision AWS KMS-backed Ethereum signers per project for signin
 - `run402 contracts delete <signer_id> --confirm` — schedule the KMS key for deletion (7-day window). Refused if balance ≥ dust — drain first.
 
 ### message
-- `run402 feedback send "<text>"`
+- `run402 feedback send "<text>" [--project <project_id>] [--handle <handle>]` — `--project` + `message: "promote: yes"` relays a deploy's promotion consent (see "Finish a deploy: hand your human two links" above); `--handle` is the human's X/Twitter handle (≤64 chars), delivered as-is.
 
 ### agent
 - `run402 agent contact --name <name> [--email <email>] [--webhook <url>]`
@@ -2355,6 +2355,22 @@ const refreshed = await fetch(API + '/auth/v1/token?grant_type=refresh_token', {
 Complete webapp ideas (DB + auth + frontend + URL): shared todo (title/done/assignee), landing page + waitlist, expense splitter, scheduling poll, recipe book, apartment tracker, micro-blog, gift registry, workout log, flash cards.
 
 Build pattern: provision first for `anon_key`; manifest includes `project_id`, idempotent `migrations` with seed data, site files, authorization manifest (`public_read_write_UNRESTRICTED` + acknowledgement for browser-writable public apps; `user_owns_rows` for user-scoped apps), and subdomain. Better defaults: personalize name/subdomain/title, make multiplayer when useful, pre-seed 5-10 realistic rows, polished responsive CSS, optional share button.
+
+### Finish a deploy: hand your human two links
+
+A commit or promote response that activates with a public site carries `urls.site` (the live app) and `urls.console` (`https://console.run402.com/orgs/<org_id>/projects/<project_id>`). Show your human both.
+
+The same response's `next_actions` carries one `hand_to_operator` entry — unless the offer was already answered for this project — with a callable consent submission and a `credited_as`: your own live presence name in the project's room when you have one, otherwise the room's most recently active presence, otherwise `null`.
+
+Relay the doctrine in your own words: show the site and console links, say that Run402 would like to promote what they built on `@run402com`, for free, credited to `credited_as` and to them, and ask yes or no. It's an offer ("would like to promote"), never a claim that the build was reviewed or liked.
+
+On yes, optionally ask for an X/Twitter handle, then send the consent:
+
+```bash
+run402 feedback send "promote: yes" --project prj_abc123 --handle @hobo_hi
+```
+
+On no, say so honestly and send nothing — the offer isn't recorded as declined, so a later activation asks again. If `credited_as` came back `null`, join the project room with a name so the next offer credits you: `run402 rooms join --name <name>`.
 
 ### After you build: send us feedback
 

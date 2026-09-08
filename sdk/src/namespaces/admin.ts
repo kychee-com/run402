@@ -47,6 +47,18 @@ export interface SendMessageResult {
   status: string;
 }
 
+export interface FeedbackSendOptions {
+  /**
+   * Project this feedback concerns. Required to relay a promotion consent
+   * (a `hand_to_operator` `next_actions` entry from a deploy response) —
+   * the server resolves the project's site URL, org, and the sender's live
+   * presence name for the delivered message.
+   */
+  project_id?: string;
+  /** Sender's X/Twitter handle, at most 64 characters. Delivered as-is; stored nowhere else. */
+  handle?: string;
+}
+
 export type AdminFinanceWindow = "24h" | "7d" | "30d" | "90d";
 
 export interface AdminProjectFinanceOptions {
@@ -647,11 +659,19 @@ export class Admin {
    *
    * WRITE-ONLY: there is no inbox and no reply path. When an answer from a
    * human is required, raise an escalation instead.
+   *
+   * Also the way a promotion consent is relayed: after a deploy response
+   * carries a `hand_to_operator` next action, ask your human yes or no, and
+   * on yes call `sendFeedback("promote: yes", { project_id, handle })`.
    */
-  async sendFeedback(message: string): Promise<SendMessageResult> {
+  async sendFeedback(message: string, opts?: FeedbackSendOptions): Promise<SendMessageResult> {
+    const body: Record<string, string> = { message };
+    if (opts?.project_id) body.project_id = opts.project_id;
+    if (opts?.handle) body.handle = opts.handle;
+
     return this.client.request<SendMessageResult>("/feedback/v1", {
       method: "POST",
-      body: { message },
+      body,
       context: "sending feedback",
     });
   }
@@ -662,8 +682,8 @@ export class Admin {
    * replacement. The `message` vocabulary is being freed for addressed
    * agent/human messaging, which is a different capability with a return path.
    */
-  async sendMessage(message: string): Promise<SendMessageResult> {
-    return this.sendFeedback(message);
+  async sendMessage(message: string, opts?: FeedbackSendOptions): Promise<SendMessageResult> {
+    return this.sendFeedback(message, opts);
   }
 
   /** Register agent contact info and start email verification when needed. */

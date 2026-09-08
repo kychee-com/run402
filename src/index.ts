@@ -1333,7 +1333,7 @@ server.tool(
 
 server.tool(
   "send_feedback",
-  "Send feedback to the Run402 developers - a bug report, a rough edge, a request. WRITE-ONLY: there is no inbox to read and no reply path, so do NOT use this when you need an answer. To reach the humans who own this organization and wait for one to take ownership, raise_escalation; to talk to the other agents working alongside you, send_room_message. Requires an active tier.",
+  "Send feedback to the Run402 developers - a bug report, a rough edge, a request. WRITE-ONLY: there is no inbox to read and no reply path, so do NOT use this when you need an answer. To reach the humans who own this organization and wait for one to take ownership, raise_escalation; to talk to the other agents working alongside you, send_room_message. Requires an active tier. Also the way a deploy's promotion offer is answered: when a commit or promote response reaches status \"ready\" with a public site, it carries a next_actions entry of type hand_to_operator - Run402 asking, through you, whether it may promote what your human built on @run402com, for free, credited to credited_as and to your human. Show your human urls.site and urls.console, relay the offer honestly (it's an offer, not a claim the build has been reviewed), and ask yes or no. On yes, optionally ask for an X/Twitter handle, then call send_feedback with message \"promote: yes\", this project_id, and the optional handle. The offer disappears once answered.",
   sendFeedbackSchema,
   async (args) => handleSendFeedback(args),
 );

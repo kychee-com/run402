@@ -2567,7 +2567,7 @@ There is no tag-based invalidation and no client-side (browser) invalidation —
 Operator/admin endpoints. Most agents won't reach for these — they're for platform operators.
 
 ```
-sendMessage(message: string): Promise<SendMessageResult>
+sendFeedback(message: string, opts?: FeedbackSendOptions): Promise<SendMessageResult>
 setAgentContact({ name, email?, webhook? }): Promise<AgentContactResult>
 getAgentContactStatus(): Promise<AgentContactResult>
 verifyAgentContactEmail(): Promise<AgentContactResult>
@@ -2583,6 +2583,8 @@ r.admin.project(projectId).archive(opts?: { reason?: string }): Promise<ArchiveP
 r.admin.project(projectId).reactivate(): Promise<ReactivateProjectResult>
 r.admin.project(projectId).finance(opts?): Promise<AdminProjectFinanceResult>
 ```
+
+`sendFeedback` is WRITE-ONLY (no inbox, no reply path); `opts.project_id` + `message: "promote: yes"` relay a deploy's promotion consent — the `hand_to_operator` next action a commit/promote response carries once it activates with a public site (unless the offer was already answered for that project). Show your human `urls.site` and `urls.console` from that response, relay that Run402 would like to promote what they built on `@run402com` for free, credited to the response's `credited_as` and to them, and ask yes or no. On yes, optionally collect `opts.handle` (≤64 chars, an X/Twitter handle) and send it along; `FeedbackSendOptions` is `{ project_id?: string; handle?: string }`. `sendMessage` is a deprecated alias kept for compatibility — it now posts to the same route and forwards `opts` too.
 
 `AgentContactResult` includes `email_verification_status`, `passkey_binding_status`, `assurance_level`, proof timestamps, and cooldown fields. Assurance labels are `wallet_only`, `email_pending`, `email_verified`, `passkey_pending`, and `operator_passkey`; they describe mailbox/passkey continuity, not a humanhood or uniqueness claim. `startOperatorPasskeyEnrollment()` requires `email_verified` and emails the token to the verified contact email instead of returning it.
 

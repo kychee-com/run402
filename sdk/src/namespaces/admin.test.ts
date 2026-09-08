@@ -76,6 +76,34 @@ describe("admin.sendFeedback", () => {
     await sdk(fetch).admin.sendMessage("via the alias");
     assert.equal(calls[0]!.url, "https://api.test/feedback/v1");
   });
+
+  it("includes project_id and handle when relaying a promotion consent", async () => {
+    const { fetch, calls } = mockFetch(() => json({ status: "sent" }));
+    await sdk(fetch).admin.sendFeedback("promote: yes", {
+      project_id: "prj_abc123",
+      handle: "@hobo_hi",
+    });
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), {
+      message: "promote: yes",
+      project_id: "prj_abc123",
+      handle: "@hobo_hi",
+    });
+  });
+
+  it("omits project_id and handle when not given", async () => {
+    const { fetch, calls } = mockFetch(() => json({ status: "sent" }));
+    await sdk(fetch).admin.sendFeedback("hello there", {});
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), { message: "hello there" });
+  });
+
+  it("the deprecated sendMessage alias forwards opts too", async () => {
+    const { fetch, calls } = mockFetch(() => json({ status: "sent" }));
+    await sdk(fetch).admin.sendMessage("promote: yes", { project_id: "prj_abc123" });
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), {
+      message: "promote: yes",
+      project_id: "prj_abc123",
+    });
+  });
 });
 
 describe("admin agent contact assurance", () => {

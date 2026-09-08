@@ -1,12 +1,12 @@
 import { allowanceAuthHeaders } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
-import { assertKnownFlags, normalizeArgv, failUnknownSubcommand } from "./argparse.mjs";
+import { assertKnownFlags, normalizeArgv, failUnknownSubcommand, flagValue, positionalArgs } from "./argparse.mjs";
 
 const HELP = `run402 feedback — Send feedback to the Run402 developers
 
 Usage:
-  run402 feedback send <text>
+  run402 feedback send <text> [--project <project_id>] [--handle <handle>]
 
 Notes:
   - WRITE-ONLY: there is no inbox to read and no reply path. If you need an
@@ -18,8 +18,24 @@ Notes:
     inbox useful and prevent payload-dump misuse. Trim or summarize long
     content (e.g. stack traces) before sending.
 
+Finishing a deploy — the promotion consent flow:
+  When a commit or promote response reaches status "ready" with a public
+  site, it carries a next_actions entry of type hand_to_operator. That is
+  Run402 asking, through you, whether it may promote what your human built
+  on @run402com — for free, credited to your presence name (credited_as)
+  and to your human. Show your human both links (urls.site, urls.console),
+  relay the offer in your own words ("Run402 would like to promote what you
+  built..."), and ask yes or no. On yes, optionally ask for an X/Twitter
+  handle, then:
+    run402 feedback send "promote: yes" --project <project_id> [--handle <handle>]
+  Say no honestly if your human declines; nothing is sent. The offer is
+  asked once per project and stops after a "promote: yes" lands. If
+  credited_as is missing, join the project room with a name so future
+  offers credit you: run402 rooms join --name <name>
+
 Examples:
   run402 feedback send "Hello from my agent!"
+  run402 feedback send "promote: yes" --project prj_abc123 --handle @hobo_hi
 `;
 
 // Cap message body at a Twitter-ish but engineer-generous size: enough for
@@ -33,25 +49,45 @@ const SUB_HELP = {
   send: `run402 feedback send — Send feedback to the Run402 developers
 
 Usage:
-  run402 feedback send <text>
+  run402 feedback send <text> [--project <project_id>] [--handle <handle>]
 
 Arguments:
-  <text>              Message body (quote it; remaining args are joined with
-                      spaces if multiple positional words are provided)
+  <text>              Message body (quote it; remaining positional words are
+                      joined with spaces if multiple are provided)
+
+Flags:
+  --project <id>      Project this feedback concerns. Required to relay a
+                      promotion consent (the hand_to_operator next action
+                      from a deploy response) — the server resolves the
+                      project's site URL, org, and your presence name for
+                      the delivered message.
+  --handle <handle>   Your human's X/Twitter handle, at most 64 characters.
+                      Only used with --project; delivered as-is, stored
+                      nowhere else.
 
 Notes:
   - Requires an active tier (run402 tier set <tier>)
   - Requires an allowance (run402 allowance create)
   - Messages are capped at 8 KB (8192 bytes UTF-8) to keep the developer
     inbox useful and prevent payload-dump misuse.
+  - Finishing a deploy: when a commit/promote response carries a
+    hand_to_operator next action, show your human urls.site and
+    urls.console, relay that Run402 would like to promote what they built
+    on @run402com for free (credited to credited_as and to them), and ask
+    yes or no. On yes: run402 feedback send "promote: yes" --project <id>
+    [--handle <handle>]
 
 Examples:
   run402 feedback send "Hello from my agent!"
+  run402 feedback send "promote: yes" --project prj_abc123 --handle @hobo_hi
 `,
 };
 
-async function send(text) {
-  if (!text || typeof text !== "string") {
+async function send(args) {
+  const valueFlags = ["--project", "--handle"];
+  assertKnownFlags(args, [...valueFlags, "--help", "-h"], valueFlags);
+  const text = positionalArgs(args, valueFlags).join(" ");
+  if (!text) {
     fail({ code: "BAD_USAGE", message: "Missing message text." });
   }
   // Cap check runs BEFORE the allowance check so oversized payloads surface
@@ -66,11 +102,24 @@ async function send(text) {
       details: { bytes, max_bytes: MESSAGE_MAX_BYTES },
     });
   }
+  const projectId = flagValue(args, "--project");
+  const handle = flagValue(args, "--handle");
+  if (handle && handle.length > 64) {
+    fail({
+      code: "BAD_FLAG",
+      message: `--handle must be at most 64 characters, got ${handle.length}.`,
+      details: { flag: "--handle", length: handle.length, max: 64 },
+    });
+  }
   // Preserve the aggressive early exit when no allowance is configured.
   allowanceAuthHeaders("/feedback/v1");
 
+  const opts = {};
+  if (projectId) opts.project_id = projectId;
+  if (handle) opts.handle = handle;
+
   try {
-    await getSdk().admin.sendFeedback(text);
+    await getSdk().admin.sendFeedback(text, opts);
     console.log(JSON.stringify({
       bytes_sent: bytes,
       sent: true,
@@ -90,6 +139,5 @@ export async function run(sub, args) {
     failUnknownSubcommand("feedback", sub);
   }
   const parsedArgs = normalizeArgv(args);
-  assertKnownFlags(parsedArgs, ["--help", "-h"]);
-  await send(parsedArgs.join(" "));
+  await send(parsedArgs);
 }
