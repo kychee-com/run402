@@ -656,13 +656,26 @@ async function composeRepoPushStep({ sdk, workDir, projectId, createdRepository 
   }
   try {
     let vaultCreated = null;
+    // A repository `up` itself just created has, by definition, nothing
+    // committed yet — every file is untracked, so a clean-tree capture would
+    // refuse SNAPSHOT_DIRTY_TREE on every fresh directory. Capture it as the
+    // synthetic first commit the dirty-tree lane produces (disclosed under
+    // first_push.snapshot); an EXISTING repository keeps the clean-tree rule
+    // and its refusal is reported, never overridden.
     const pushed = await sdk.gitvault.push({
       project_id: projectId,
       org_id: orgId,
       repo_dir: workDir,
+      ...(createdRepository ? { snapshot: { allowDirty: true } } : {}),
       onVaultCreated: (created) => { vaultCreated = created; },
     });
-    out.first_push = { generation: pushed.generation, form: pushed.form, gitvault_commit: pushed.gitvault_commit, vault_created: vaultCreated };
+    out.first_push = {
+      generation: pushed.generation,
+      form: pushed.form,
+      gitvault_commit: pushed.gitvault_commit,
+      vault_created: vaultCreated,
+      ...(createdRepository ? { captured_dirty: true, modified_captured: pushed.snapshot?.modified_captured ?? null, untracked_captured: pushed.snapshot?.untracked_captured ?? null } : {}),
+    };
   } catch (err) {
     out.first_push_error = { code: err?.body?.code ?? err?.code ?? "GITVAULT_PUSH_FAILED", message: err?.message ?? String(err) };
   }

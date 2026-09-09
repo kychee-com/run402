@@ -140,6 +140,11 @@ describe("run402 up — default apply composes the repo as a best-effort additio
     assert.equal(payload.result.repo.status, "scaffolded");
     assert.equal(payload.result.repo.gitvault.name, "run402");
     assert.ok(payload.result.repo.first_push, "first_push is attached to the result");
+    // A repository up just created is all-untracked by definition: the first
+    // push captures it as a synthetic commit instead of refusing SNAPSHOT_DIRTY_TREE.
+    const pushCall = calls.find((c) => c.method === "gitvault.push");
+    assert.equal(pushCall.input.snapshot?.allowDirty, true);
+    assert.equal(payload.result.repo.first_push.captured_dirty, true);
     // gitvault.scaffoldRemote is mocked (returns canned data, touches no real
     // git config); what is under test is that the CLI called it with the
     // right target and reported its answer, not the SDK's own git plumbing
@@ -149,10 +154,12 @@ describe("run402 up — default apply composes the repo as a best-effort additio
     assert.equal(scaffoldCall.input.project_id, PROJECT);
   });
 
-  it("a second run against the now-existing repository does not re-run git init", async () => {
+  it("a second run against the now-existing repository does not re-run git init and keeps the clean-tree rule", async () => {
     await runJson(["-y", "--json"]);
     const scaffoldCall = calls.find((c) => c.method === "gitvault.scaffoldRemote");
     assert.ok(scaffoldCall);
+    const pushCall = calls.find((c) => c.method === "gitvault.push");
+    assert.equal(pushCall.input.snapshot, undefined, "an existing repository is never captured dirty behind the agent's back");
   });
 
   it("a scaffold/push failure never fails an otherwise-successful deploy", async () => {

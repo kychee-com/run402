@@ -104,7 +104,7 @@ Approval and recursion:
 - Run402 Cloud `up` can create/fund an allowance, ensure a prototype tier by default, create a project from `--name`, write the workspace link, make sure this principal has a display name, join the project room under it, then apply the manifest.
 - Identity: an existing display name is kept (a `display_name` equal to the wallet subject, or any bare `0x` address, counts as unset — it was assigned at creation, not chosen); otherwise `up` sets the detected client name (`claude-code`, `codex`, `cursor`, or `agent`) — approved by `-y`, or asked once — and reports `result.identity: { display_name, source: "existing" | "explicit" | "detected" | "unavailable", presence }`. Promotion credit (`hand_to_operator.credited_as`) is this name. Set it explicitly with `run402 init --name <name>` or `run402 org whoami --set-name <name>`.
 - Rehearsal: `result.deploy.rehearsal` is `{ status: "passed", report, … }` when the plan was rehearsed on a contained branch first, or `{ status: "skipped", reason: "no_live_release" | "no_migrations" | "disabled" | "reviewed_plan" | "unsupported" }`. A failed rehearsal exits non-zero with `REHEARSAL_FAILED` and the report; nothing is committed. `--no-rehearse` skips it.
-- Git: on a local directory `up` scaffolds git on the APP ROOT only (the manifest's directory): `git init` when it is not a repository, a `run402` remote (`origin` is never claimed), and a first vault push. An app root that lies inside ANOTHER repository is left untouched — `result.repo` is `{ status: "skipped", reason: "inside_other_repository", toplevel }`. `projects provision` never touches git.
+- Git: on a local directory `up` scaffolds git on the APP ROOT only (the manifest's directory): `git init` when it is not a repository, a `run402` remote (`origin` is never claimed), and a first vault push. A repository `up` just created is all-untracked by definition, so that first push captures it as a synthetic commit (`first_push.captured_dirty: true` with the `modified_captured` / `untracked_captured` disclosure); an existing repository keeps the clean-tree rule and a `SNAPSHOT_DIRTY_TREE` refusal is reported under `first_push_error`, never overridden. An app root that lies inside ANOTHER repository is left untouched — `result.repo` is `{ status: "skipped", reason: "inside_other_repository", toplevel }`. `projects provision` never touches git.
 - Run402 Core `up` skips Cloud allowance/tier prerequisites and fails closed if no Core project is selected by `--project`, workspace link, or manifest.
 - The SDK derives child idempotency keys for recursive gateway mutations from the root action key; pass `--idempotency-key` when you need a stable external key.
 - Deploy warnings use the same review surface as `deploy apply`: prefer repeatable `--allow-warning <code>` and reserve broad `--allow-warnings` for reviewed exceptional cases.
@@ -1084,7 +1084,7 @@ All admin subcommands require a platform-admin allowance wallet (or an admin OAu
 
 ### apply, rehearsal, snapshots, branches
 - `run402 apply --manifest app.json [--project <id>] [--no-rehearse] [--json]` — alias for `run402 deploy apply`; rehearsal is automatic for a migration-bearing plan against a project with a live release (see "Protecting a live database"), `--no-rehearse` skips it.
-- `run402 deploy rehearse <plan_id> [--project <id>] [--teardown keep|on_pass|always] [--json]` — ADVANCED: rehearse an already-persisted plan without committing. Source project data and the original plan stay untouched; a project with no live release rehearses on an empty branch.
+- `run402 deploy rehearse <plan_id> [--project <id>] [--teardown keep|on_pass|always] [--json]` — ADVANCED: rehearse an already-persisted plan without committing. Source project data and the original plan stay untouched; a project with no live release rehearses on an empty branch. The plan's bytes must already be uploaded (a `--plan`-only plan has none): a rehearse before that step is refused `409 REHEARSAL_CONTENT_MISSING` listing `missing_content`, before any snapshot or branch is spent.
 - `run402 snapshots create [project-id] [--json]` — capture a manual internal restore point.
 - `run402 snapshots list [project-id] [--kind manual|pre_migration|pre_restore|scheduled] [--limit <n>] [--after <cursor>] [--json]` — keyset-paginated snapshot list.
 - `run402 snapshots get [project-id] <snapshot-id> [--json]` — inspect one snapshot and its next actions.
@@ -2029,8 +2029,8 @@ PostgREST query syntax: `?select=col1,col2`, `?column=eq.value`, `?order=col.des
 Frontend fetch examples:
 
 ```javascript
-const API = 'https://api.run402.com';
-const ANON_KEY = 'your_anon_key';  // from run402 projects list
+// Every Run402 host serves /_run402/config.js: <script src="/_run402/config.js"></script>
+const { api_base: API, anon_key: ANON_KEY } = window.RUN402;
 
 // Read rows (public, uses anon_key)
 const items = await fetch(API + '/rest/v1/items?select=id,title&done=eq.false&order=id.desc&limit=20', {
@@ -2096,8 +2096,8 @@ A working single-file app. Uses `public_read_write_UNRESTRICTED` RLS so the `ano
   <div id="entries"></div>
 
   <script>
-    const API = 'https://api.run402.com';
-    const ANON_KEY = 'YOUR_ANON_KEY';  // safe to embed — read-only by default, write-enabled here via public_read_write_UNRESTRICTED RLS
+    // served by the host you are on — never paste a key: <script src="/_run402/config.js"></script> above this block
+    const { api_base: API, anon_key: ANON_KEY } = window.RUN402;  // anon_key is public; write-enabled here via public_read_write_UNRESTRICTED RLS
 
     async function loadEntries() {
       const rows = await fetch(API + '/rest/v1/guestbook?order=created_at.desc&limit=50', {
@@ -2148,8 +2148,8 @@ Two auth methods: password (email + password) and Google OAuth (social login). B
 ### Password auth
 
 ```javascript
-const API = 'https://api.run402.com';
-const ANON_KEY = 'your_anon_key';
+// Every Run402 host serves /_run402/config.js: <script src="/_run402/config.js"></script>
+const { api_base: API, anon_key: ANON_KEY } = window.RUN402;
 
 // Sign up
 await fetch(API + '/auth/v1/signup', {
@@ -2180,8 +2180,8 @@ Flow: Frontend generates PKCE verifier + challenge → calls `/auth/v1/oauth/goo
 Full JavaScript example:
 
 ```javascript
-const API = 'https://api.run402.com';
-const ANON_KEY = 'your_anon_key';
+// Every Run402 host serves /_run402/config.js: <script src="/_run402/config.js"></script>
+const { api_base: API, anon_key: ANON_KEY } = window.RUN402;
 
 // --- PKCE helpers ---
 function generateVerifier() {
