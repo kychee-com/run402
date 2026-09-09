@@ -1694,21 +1694,19 @@ function contentTypeFromManifestRecord(
   rec: Record<string, unknown>,
   label: string,
 ): string | undefined {
-  const camel = rec.contentType;
-  const snake = rec.content_type;
-  if (camel !== undefined && typeof camel !== "string") {
-    throw new LocalError(`${label}.contentType must be a string`, CONTEXT);
-  }
-  if (snake !== undefined && typeof snake !== "string") {
-    throw new LocalError(`${label}.content_type must be a string`, CONTEXT);
-  }
-  if (typeof camel === "string" && typeof snake === "string" && camel !== snake) {
+  // A manifest is a wire document: one spelling, `content_type`. `contentType`
+  // is the in-function JS option name only (first-deploy-agent-dx).
+  if (rec.contentType !== undefined) {
     throw new LocalError(
-      `${label} must not set both contentType and content_type with different values`,
+      `${label}.contentType is not a manifest field — spell it content_type (wire fields are snake_case; contentType is only the in-function JS option)`,
       CONTEXT,
     );
   }
-  return typeof camel === "string" ? camel : typeof snake === "string" ? snake : undefined;
+  const snake = rec.content_type;
+  if (snake !== undefined && typeof snake !== "string") {
+    throw new LocalError(`${label}.content_type must be a string`, CONTEXT);
+  }
+  return typeof snake === "string" ? snake : undefined;
 }
 
 function base64ToBytes(value: string): Uint8Array {

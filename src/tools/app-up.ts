@@ -16,6 +16,8 @@ export const appUpSchema = {
   build_mode: z.enum(["local", "remote", "sandbox"]).optional().describe("Override app build mode."),
   allow_shell_build: z.boolean().optional().describe("Approve shell-string build commands after review."),
   idempotency_key: z.string().optional().describe("Root idempotency key for resumable app-up graph mutations."),
+  no_rehearse: z.boolean().optional().describe("Skip the automatic rehearsal. By default a migration-bearing deploy against a project with a live release is rehearsed on a contained branch and committed only on a passing report; a first deploy has nothing to protect and commits directly (result.deploy.rehearsal says which)."),
+  display_name: z.string().min(1).max(64).optional().describe("Display name to set on this principal when it has none yet (promotion credit and room presence use it). Omitted: the detected client name (claude-code, codex, cursor, or agent) is set and reported as identity.source \"detected\"."),
 };
 
 type McpResult = { content: Array<{ type: "text"; text: string }>; isError?: boolean };
@@ -34,10 +36,14 @@ export async function handleAppUp(args: {
   build_mode?: "local" | "remote" | "sandbox";
   allow_shell_build?: boolean;
   idempotency_key?: string;
+  no_rehearse?: boolean;
+  display_name?: string;
 }): Promise<McpResult> {
   try {
     const result = await getSdk().up({
       source: args.source,
+      ...(args.no_rehearse ? { noRehearse: true } : {}),
+      ...(args.display_name ? { identityName: args.display_name } : {}),
       name: args.name,
       projectId: args.project_id,
       manifest: args.manifest,

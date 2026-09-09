@@ -299,12 +299,18 @@ export interface GitvaultStatus {
  * printed to stderr by every CLI caller, never synthesized twice.
  */
 export interface GitvaultScaffoldRemoteResult {
+  /** `scaffolded`: the remote is in place (added now or already present). `skipped`: `repo_dir` lies inside
+   *  another repository, which is never touched — `toplevel` names it. */
+  status: "scaffolded" | "skipped";
+  /** Always `run402` unless an explicit `remote_name` was given; `origin` is never claimed. */
   name: string;
   url: string;
   created_repository: boolean;
   already_present: boolean;
   existing_url: string | null;
   reason: string;
+  /** The enclosing repository's toplevel when `status` is `skipped`. */
+  toplevel?: string;
 }
 
 export interface GitvaultInitResult {
@@ -2154,9 +2160,35 @@ export class Gitvault {
     const { hardenedGit } = await this.#snapshot();
     const url = options.remote_url ?? gitvaultRemoteUrl(options.org_id, options.project_id);
     let createdRepository = false;
+    // The scaffold acts on the APP ROOT only (first-deploy-agent-dx, design
+    // D3): a directory that is not a repository is initialized; a directory
+    // that is itself a git toplevel gets the remote; a directory that merely
+    // lies INSIDE some other repository is left exactly as it was — nobody
+    // asked for a remote on that repository. The result says which.
+    let insideRepository = true;
     try {
       await hardenedGit(options.repo_dir, ["rev-parse", "--git-dir"]);
     } catch {
+      insideRepository = false;
+    }
+    if (insideRepository) {
+      const toplevel = (await hardenedGit(options.repo_dir, ["rev-parse", "--show-toplevel"])).text().trim();
+      const { realpathSync } = await import("node:fs");
+      const here = realpathSync(options.repo_dir);
+      if (realpathSync(toplevel) !== here) {
+        return {
+          status: "skipped",
+          name: options.remote_name ?? "run402",
+          url,
+          created_repository: false,
+          already_present: false,
+          existing_url: null,
+          reason: `${options.repo_dir} is inside the repository at ${toplevel} — an enclosing repository is never touched; run from the app root, or make the app root its own repository`,
+          toplevel,
+        };
+      }
+    }
+    if (!insideRepository) {
       // `main`, not whatever `init.defaultBranch` (or the pre-2.28 hardcoded
       // `master`) happens to be — the docs and this helper's own remedy text
       // (`repoRefusalNote` in git-remote-run402) teach `git push origin main`,
@@ -2190,58 +2222,26 @@ export class Gitvault {
       await hardenedGit(options.repo_dir, ["remote", "add", name, url]);
     };
 
-    if (options.remote_name) {
-      const name = options.remote_name;
-      const existing = await readRemote(name);
-      if (existing) {
-        return {
-          name,
-          url,
-          created_repository: createdRepository,
-          already_present: true,
-          existing_url: existing,
-          reason: existing === url ? `'${name}' already points here — nothing to add` : `'${name}' points at ${existing} — left unchanged, nothing was added`,
-        };
-      }
-      await add(name);
-      return { name, url, created_repository: createdRepository, already_present: false, existing_url: null, reason: `no existing '${name}' remote — added` };
-    }
-
-    // D1: claim `origin` when it is free.
-    const existingOrigin = await readRemote("origin");
-    if (!existingOrigin) {
-      await add("origin");
-      return { name: "origin", url, created_repository: createdRepository, already_present: false, existing_url: null, reason: "no existing 'origin' remote — claimed it" };
-    }
-    if (existingOrigin === url) {
-      // Idempotent: a prior scaffold already claimed `origin` for this exact vault.
-      return { name: "origin", url, created_repository: createdRepository, already_present: true, existing_url: existingOrigin, reason: "'origin' already points here — nothing to add" };
-    }
-    // `origin` is taken by something else — never touched. Fall back to `run402`.
-    const existingRun402 = await readRemote("run402");
-    if (existingRun402) {
+    // The remote is ALWAYS `run402` (or the explicit `remote_name`). `origin`
+    // is never claimed, even when free: a repository with no remotes is
+    // exactly the one whose owner is about to add their own `origin`.
+    const name = options.remote_name ?? "run402";
+    const existing = await readRemote(name);
+    if (existing) {
       return {
-        name: "run402",
+        status: "scaffolded",
+        name,
         url,
         created_repository: createdRepository,
         already_present: true,
-        existing_url: existingRun402,
-        reason:
-          existingRun402 === url
-            ? `'origin' points at ${existingOrigin} — 'run402' already points here, nothing to add`
-            : `'origin' points at ${existingOrigin}; 'run402' points at ${existingRun402} — neither remote was touched`,
+        existing_url: existing,
+        reason: existing === url ? `'${name}' already points here — nothing to add` : `'${name}' points at ${existing} — left unchanged, nothing was added`,
       };
     }
-    await add("run402");
-    return {
-      name: "run402",
-      url,
-      created_repository: createdRepository,
-      already_present: false,
-      existing_url: null,
-      reason: `'origin' points at ${existingOrigin} — added as 'run402' instead`,
-    };
+    await add(name);
+    return { status: "scaffolded", name, url, created_repository: createdRepository, already_present: false, existing_url: null, reason: `no existing '${name}' remote — added` };
   }
+
 
   /**
    * What this machine and the control plane each believe about the vault.

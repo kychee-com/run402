@@ -142,7 +142,7 @@ describe("handleDeploy bare-string file entries (GH-136)", () => {
         replace: {
           "a.html": "<h1>a</h1>" as never,
           "b.html": { data: "<h1>b</h1>" },
-          "c.css": { data: "body{}", contentType: "text/css" },
+          "c.css": { data: "body{}", content_type: "text/css" },
         } as never,
       } as never,
     });

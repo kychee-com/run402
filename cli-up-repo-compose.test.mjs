@@ -56,9 +56,9 @@ mock.module("./cli/lib/sdk.mjs", {
         scaffoldRemote: async (input) => {
           calls.push({ method: "gitvault.scaffoldRemote", input });
           return (impl.scaffoldRemote ?? (async () => ({
-            name: "origin", url: `run402::${input.org_id}/${input.project_id}`,
+            status: "scaffolded", name: "run402", url: `run402::${input.org_id}/${input.project_id}`,
             created_repository: false, already_present: false, existing_url: null,
-            reason: "no existing 'origin' remote — claimed it",
+            reason: "no existing 'run402' remote — added",
           })))(input);
         },
         push: async (input) => {
@@ -137,7 +137,8 @@ describe("run402 up — default apply composes the repo as a best-effort additio
     assert.ok(calls.find((c) => c.method === "up"), "the existing deploy flow still ran unchanged");
     assert.ok(calls.find((c) => c.method === "gitvault.scaffoldRemote"), "the remote was scaffolded after deploy");
     assert.ok(calls.find((c) => c.method === "gitvault.push"), "the first push ran after deploy");
-    assert.equal(payload.result.repo.gitvault.name, "origin");
+    assert.equal(payload.result.repo.status, "scaffolded");
+    assert.equal(payload.result.repo.gitvault.name, "run402");
     assert.ok(payload.result.repo.first_push, "first_push is attached to the result");
     // gitvault.scaffoldRemote is mocked (returns canned data, touches no real
     // git config); what is under test is that the CLI called it with the
@@ -158,8 +159,32 @@ describe("run402 up — default apply composes the repo as a best-effort additio
     impl.scaffoldRemote = async () => { throw new Error("network unreachable"); };
     const payload = await runJson(["-y", "--json"]);
     assert.equal(payload.result.project_id, PROJECT, "the deploy result is unaffected");
+    assert.equal(payload.result.repo.status, "error");
     assert.equal(payload.result.repo.gitvault, null);
     assert.match(payload.result.repo.gitvault_error.message, /network unreachable/);
+  });
+
+  it("an app root inside ANOTHER repository is reported skipped and never pushed from (first-deploy-agent-dx)", async () => {
+    impl.scaffoldRemote = async (input) => ({
+      status: "skipped", name: "run402", url: `run402::${input.org_id}/${input.project_id}`,
+      created_repository: false, already_present: false, existing_url: null,
+      reason: `${input.repo_dir} is inside the repository at /somewhere/monorepo — an enclosing repository is never touched`,
+      toplevel: "/somewhere/monorepo",
+    });
+    const payload = await runJson(["-y", "--json"]);
+    assert.equal(payload.result.project_id, PROJECT, "the deploy result is unaffected");
+    assert.equal(payload.result.repo.status, "skipped");
+    assert.equal(payload.result.repo.reason, "inside_other_repository");
+    assert.equal(payload.result.repo.toplevel, "/somewhere/monorepo");
+    assert.equal(payload.result.repo.gitvault, null);
+    assert.equal(payload.result.repo.first_push, null);
+    assert.equal(calls.find((c) => c.method === "gitvault.push"), undefined, "no push from a repository we did not set up");
+  });
+
+  it("--no-rehearse is forwarded to the SDK up action", async () => {
+    await runJson(["-y", "--json", "--no-rehearse"]);
+    const upCall = calls.find((c) => c.method === "up");
+    assert.equal(upCall.input.noRehearse, true);
   });
 });
 

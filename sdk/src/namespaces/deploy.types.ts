@@ -1641,8 +1641,30 @@ export interface PlanResponse {
 }
 
 export interface PlanRehearsalEnvelope {
+  /** True for a persisted, migration-bearing plan on a project with a live
+   *  release to protect. `apply()` rehearses automatically when true. */
   available: boolean;
   rehearse_url: string | null;
+  /** Why rehearsal is not offered: `no_migrations` (nothing to rehearse) or
+   *  `no_live_release` (a first deploy has nothing to branch from — commit
+   *  directly). `null` when available. */
+  reason: null | "no_migrations" | "no_live_release";
+  /** Present with `reason: "no_live_release"`: one `commit_plan` entry. */
+  next_actions?: Array<{ type: string; command?: string; why: string }>;
+}
+
+/** How `apply()` handled rehearsal for this deploy (first-deploy-agent-dx). */
+export interface DeployRehearsalBlock {
+  status: "passed" | "skipped" | "failed";
+  /** Set when `status` is `skipped`. `no_live_release`: first deploy;
+   *  `no_migrations`: nothing to rehearse; `disabled`: `noRehearse`;
+   *  `reviewed_plan`: a `requiredPlan` was supplied (already reviewed);
+   *  `unsupported`: the target (Core) has no branches. */
+  reason?: "no_migrations" | "no_live_release" | "disabled" | "reviewed_plan" | "unsupported";
+  /** The gateway's rehearsal report when a rehearsal ran. */
+  report?: ApplyRehearsalReport;
+  operation_id?: string;
+  branch_project_id?: string | null;
 }
 
 /** Resolved AssetRef envelope per `assets.put` entry at plan time. */
@@ -2354,7 +2376,11 @@ export interface ApplyRehearsalReport {
     type: "commit_plan" | "discard_branch" | "keep_branch" | (string & {});
     command?: string;
     method?: string;
+    path?: string;
     url?: string;
+    /** `commit_plan` carries the bound commit body: a rehearsed plan commits
+     *  only with this `required_plan`. */
+    body?: { required_plan: { plan_id: string; plan_fingerprint: string } };
     message: string;
   }>;
   error?: GatewayDeployError;
@@ -2533,6 +2559,9 @@ export type NormalizedSiteSpec =
 
 export type DeployEvent =
   | { type: "plan.started" }
+  | { type: "rehearsal.started"; planId: string }
+  | { type: "rehearsal.finished"; planId: string; status: "passed" | "failed"; operationId: string; branchProjectId: string | null; durationMs: number }
+  | { type: "rehearsal.skipped"; reason: NonNullable<DeployRehearsalBlock["reason"]> }
   | { type: "plan.diff"; diff: DeployDiff }
   | { type: "plan.warnings"; warnings: WarningEntry[] }
   | {
@@ -2620,6 +2649,11 @@ export interface DeployResult {
   release_id: string;
   operation_id: string;
   urls: Record<string, string>;
+  /** How rehearsal was handled: `passed` (rehearsed on a branch, then
+   *  committed), or `skipped` with a `reason`. A failed rehearsal never
+   *  reaches a result — `apply()` throws `REHEARSAL_FAILED` carrying the
+   *  report. Cloud only; absent on Core. */
+  rehearsal?: DeployRehearsalBlock;
   /** Public-edge coherence/convergence hint returned by the gateway. When
    *  `state` is `converging`, call `p.apply.edgeCoherence(operationId)` or
    *  `p.apply.waitEdgeCoherent(operationId)` before declaring mutable public
@@ -2759,6 +2793,11 @@ export interface ApplyOptions {
   /** Continue past specific confirmation-required warning codes. Every
    *  blocking warning must be covered by this list or by `allowWarnings`. */
   allowWarningCodes?: string[];
+  /** Skip the automatic rehearsal `apply()` runs for a migration-bearing plan
+   *  against a project with a live release. Default false: when the plan's
+   *  `rehearsal.available` is true the plan is rehearsed on a contained
+   *  branch and committed only on a passing report. */
+  noRehearse?: boolean;
   /** Bind this apply to a reviewed plan returned by `plan(..., { mode: "reviewedPlan" })`. */
   requiredPlan?: {
     planId: string;

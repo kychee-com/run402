@@ -522,8 +522,10 @@ describe("CLI --help contract", () => {
       assertHelp(result, "run402 apply --help", {
         expectHeadingStartsWith: "run402 deploy apply",
       });
-      assert.match(result.stdout, /--rehearse/,
-        `run402 apply --help must document the --rehearse gate\nstdout:\n${result.stdout}`);
+      assert.match(result.stdout, /--no-rehearse/,
+        `run402 apply --help must document automatic rehearsal and its --no-rehearse escape\nstdout:\n${result.stdout}`);
+      assert.doesNotMatch(result.stdout, /\s--rehearse\s/,
+        `run402 apply --help must not offer a --rehearse flag any more (rehearsal is automatic)\nstdout:\n${result.stdout}`);
     });
     it("apply -h prints the deploy-apply help", async () => {
       assertHelp(await runCli(["apply", "-h"]), "run402 apply -h", {

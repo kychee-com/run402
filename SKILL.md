@@ -31,7 +31,7 @@ Six tool calls, zero-to-deployed:
 
 1. **`init`** — set up the local allowance, request the testnet faucet, snapshot tier + projects.
 2. **`set_tier`** with `tier: "prototype"` — free on testnet; verifies x402 setup end-to-end.
-3. **`provision_postgres_project`** with `name` — returns `project_id`, `anon_key`, `service_key`. Embed `anon_key` in your HTML before deploying.
+3. **`provision_postgres_project`** with `name` — returns `project_id`, `anon_key`, `service_key`. Your HTML never needs the key pasted in: load `/_run402/config.js` and read `window.RUN402.anon_key` (every Run402 host serves it for the project it resolves to).
 4. **`run_sql`** with `sql: "CREATE TABLE …"` — set up your schema. Make migrations idempotent.
 5. **`validate_manifest`**, then **`apply_expose`** with a manifest — check and declare which tables are reachable via PostgREST. Tables are dark by default.
 6. **`deploy_site_dir`** with `dir` (or `deploy_site` with inline files) — incremental upload, only PUTs bytes the gateway doesn't already have. Returns a live URL plus auto-claimed subdomain on subsequent deploys.
@@ -499,7 +499,7 @@ Reference: [`astro/README.md`](./astro/README.md) (top section), [`cli/llms-cli.
 
 ## Rehearsals, snapshots, and branches
 
-For database-bearing deploys, rehearse before commit. Use **`deploy_rehearse`** when you already have a persisted apply plan id; it snapshots the source project, creates a contained branch, applies the candidate plan to that branch, runs built-in and plan-declared checks, and returns a report with `commit_plan`, `discard_branch`, or `keep_branch` next actions. CI sessions cannot rehearse in v1; run the rehearse step from a local allowance/control-plane session.
+Rehearsal is automatic. A migration-bearing **`deploy`** / **`app_up`** against a project with a live release is rehearsed on a contained branch and committed only on a passing report; the result's `rehearsal` block says `passed`, or `skipped` with a reason (`no_live_release` on a first deploy — nothing to protect, so it just ships; `no_migrations`; `disabled` when you passed `no_rehearse`). A failed rehearsal returns `REHEARSAL_FAILED` with the report and commits nothing. ADVANCED: **`deploy_rehearse`** rehearses an already-persisted plan id without committing (a project with no live release rehearses on an empty branch — never a refusal). CI sessions cannot rehearse in v1; run from a local allowance/control-plane session.
 
 Snapshot tools are the restore surface, not the portability surface:
 
@@ -558,7 +558,7 @@ Archive v1 exports active release/apply state, supported Postgres/RLS/REST data,
 - **`list_subdomains`** / **`delete_subdomain`** — manage subdomains.
 - **`domains_ensure`** / **`domains_get`** / **`domains_list`** / **`domains_check`** — manage project-scoped ProjectDomain desired state for web, email sending, inbound receive, mailbox addresses, and health checks.
 - **`domains_apply`** / **`domains_repair`** / **`domains_test_receive`** / **`domains_activate`** / **`domains_disconnect`** — apply safe provider actions, repair Run402-owned routing, create inbound receive tests, activate custom mailbox addresses, or disconnect a domain.
-- **`deploy`** / **`deploy_resume`** / **`deploy_rehearse`** / **`deploy_list`** / **`deploy_events`** / **`deploy_verify_edge`** — apply, resume, rehearse persisted plans on contained branches, list, inspect deploy operations, and verify gateway/edge coherence.
+- **`deploy`** / **`deploy_resume`** / **`deploy_rehearse`** / **`deploy_list`** / **`deploy_events`** / **`deploy_verify_edge`** — apply (rehearsal is automatic when a live release has migrations to protect; `no_rehearse` skips it), resume, ADVANCED-rehearse a persisted plan on a contained branch, list, inspect deploy operations, and verify gateway/edge coherence.
 - **`deploy_release_get`** / **`deploy_release_active`** / **`deploy_release_diff`** — inspect release inventory and release-to-release diffs.
 - **`deploy_diagnose_url`** — URL-first public deploy resolver diagnostics. Params: `project_id`, either `url` or `host`/`path`, optional `method`. Includes `edge_propagation` diagnostics for fresh stable-host misses.
 
@@ -825,7 +825,7 @@ A wallet **authenticates**; an **org** owns projects. What a principal may do is
    (optional) assets_put(project_id, key, content/local_path) for assets
 ```
 
-Provision before authoring HTML — the `anon_key` is permanent and you embed it in your frontend.
+Your HTML reads its keys from the host: `<script src="/_run402/config.js"></script>` sets `window.RUN402 = { project_id, api_base, anon_key }` for whatever project the page was served from — never paste a key into HTML.
 
 ## Post-deploy catch-up — the events feed
 
@@ -999,7 +999,7 @@ Suggest $10 to your human for two Hobby projects, or $20 for one Team plus renew
 
 ## Tips & Guardrails
 
-- **Provision before authoring HTML.** The `anon_key` is permanent; write your frontend HTML *after* `provision_postgres_project` returns it.
+- **Never paste a key into HTML.** Load `/_run402/config.js` and read `window.RUN402.anon_key`; branch copies and transferred projects stay correct without touching the HTML.
 - **Use the manifest for access control**, never raw `GRANT`/`REVOKE` (the SQL endpoint blocks those).
 - **`user_owns_rows` is the default for user-scoped data.** Reach for `public_read_write_UNRESTRICTED` only on intentionally-public tables (and pass `i_understand_this_is_unrestricted: true`).
 - **Make migrations idempotent** with `CREATE TABLE IF NOT EXISTS` and `DO`-block `ALTER TABLE`.

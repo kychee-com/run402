@@ -6,7 +6,6 @@ import { withAutoApprove } from "./operator.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail, parseFlagJson } from "./sdk-errors.mjs";
 import { stampOrgFromProject } from "./org-context.mjs";
-import { scaffoldGitvaultRemote } from "./gitvault-scaffold.mjs";
 import { assertKnownFlags, failBadProjectId, flagValue, hasHelp, normalizeArgv, positionalArgs, resolveProjectSelector, validateRegularFile, failUnknownSubcommand } from "./argparse.mjs";
 
 const HELP = `run402 projects — Manage your deployed Run402 projects
@@ -300,19 +299,9 @@ async function quote() {
   }
 }
 
-/**
- * D4 (repo-first-onramp task 2.4): `projects provision` already knows the
- * project and (usually) the org, and just set the active project —
- * scaffolding the git remote here is a pure Anticipatory fold, zero extra
- * round-trips beyond the one org lookup provision needed anyway when `--org`
- * was not given explicitly. `provision` has no `--git-remote` opt-in, so a
- * directory that is not already a repository is left untouched, exactly like
- * `run402 init`'s own scaffold (shared via `gitvault-scaffold.mjs`, which
- * emits the SAME `gitvault` / `gitvault_skipped` / `gitvault_error` keys).
- */
-async function foldGitvaultScaffold(out, projectId, explicitOrgId) {
-  Object.assign(out, await scaffoldGitvaultRemote({ repoDir: process.cwd(), projectId, orgId: explicitOrgId }));
-}
+// `projects provision` is the provisioning PRIMITIVE and has no local side
+// effects: it never inspects or mutates git (first-deploy-agent-dx). Git
+// scaffolding lives in `run402 up` and `run402 init`, on the app root only.
 
 async function provision(args) {
   const opts = { tier: "prototype", name: undefined, orgId: undefined, idempotencyKey: undefined };
@@ -388,7 +377,6 @@ async function provision(args) {
       out.note = `active project changed: ${activeBefore} -> ${activeAfter}`;
       out.previous_active_project_id = activeBefore;
     }
-    await foldGitvaultScaffold(out, data.project_id, opts.orgId);
     console.log(JSON.stringify(out, null, 2));
   } catch (err) {
     reportSdkError(err);

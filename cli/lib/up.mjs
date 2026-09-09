@@ -51,6 +51,11 @@ Options:
   --no-propagation-wait
                       Return propagation_pending immediately when the edge is
                       still settling.
+  --no-rehearse       Skip the automatic rehearsal. By default a migration-
+                      bearing deploy against a project with a live release is
+                      rehearsed on a contained branch and committed only on a
+                      passing report; a first deploy has nothing to protect and
+                      commits directly (result.deploy.rehearsal says which).
   --repo-only         Provision + scaffold the run402 remote + first push,
                       and stop there — no deploy. The vault-only track
                       (D8), composed through up instead of run402 repos
@@ -58,12 +63,22 @@ Options:
                       --require-plan/--verify.
 
 Repo composition (D4): against a local directory (not a git URL source), up
-composes git init (only when not already a repository) + provision + a
-run402 remote scaffold (D1: claims origin when free, falls back to run402)
-+ a first gitvault push — one command, the fly-launch shape. The scaffold
-and first push are best-effort: a git or vault hiccup never turns an
-otherwise-successful deploy into a failure, and is reported under
-result.repo (default apply) or result (--repo-only) instead.
+composes git init (only when the app root is not already a repository) +
+provision + a run402 remote scaffold (origin is never claimed) + a first
+gitvault push — one command, the fly-launch shape. The app root is the
+manifest's directory; an app root that lies INSIDE another repository is
+left untouched (result.repo.status "skipped", reason
+"inside_other_repository", toplevel named). The scaffold and first push are
+best-effort: a git or vault hiccup never turns an otherwise-successful deploy
+into a failure, and is reported under result.repo (default apply) or result
+(--repo-only) instead.
+
+Identity: up makes sure this principal has a display name before the deploy
+that will be credited to it — an existing name is kept, otherwise the
+detected client name (claude-code, codex, cursor, or agent) is set (approved
+by -y, or asked once) — and joins the project room under it. Change it any
+time with 'run402 org whoami --set-name <name>'. Reported under
+result.identity.
   --json              Emit one final JSON object on stdout (default; compatibility no-op).
   --human             Emit the legacy human success/blocking summary on stdout.
   --json-stream       Emit NDJSON progress events on stdout and a final result event.
@@ -149,6 +164,7 @@ export async function run(args = []) {
       "--human",
       "--json-stream",
       "--repo-only",
+      "--no-rehearse",
     ],
     [
       "--name",
@@ -309,6 +325,7 @@ export async function run(args = []) {
         allowWarningCodes,
         propagationBudgetSeconds,
         propagationWait: parsed.includes("--no-propagation-wait") ? false : undefined,
+        noRehearse: parsed.includes("--no-rehearse") ? true : undefined,
       }, {
         ...(mode !== undefined ? { mode } : {}),
         dryRun,
@@ -627,6 +644,12 @@ async function composeRepoPushStep({ sdk, workDir, projectId, createdRepository 
   const scaffold = await scaffoldGitvaultRemote({ repoDir: workDir, projectId, orgId: orgId ?? undefined, createRepoIfMissing: false });
   if (createdRepository && scaffold.gitvault) scaffold.gitvault.created_repository = true;
   const out = { ...scaffold, first_push: null, first_push_error: null };
+  if (scaffold.status !== "scaffolded") {
+    // Nothing was scaffolded (the app root is inside another repository, or
+    // the org could not be resolved): never push from a repository we did
+    // not set up. `status`/`reason` already say why.
+    return out;
+  }
   if (!orgId) {
     out.first_push_error = { code: "GITVAULT_ORG_UNRESOLVED", message: `could not resolve the owning org for ${projectId} — the first push was skipped` };
     return out;

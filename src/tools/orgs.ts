@@ -169,11 +169,22 @@ export async function handleSetOrgPayoutWallet(args: {
 
 // ─── whoami ─────────────────────────────────────────────────────────────────
 
-export const whoamiSchema = {};
+export const whoamiSchema = {
+  set_display_name: z
+    .string()
+    .min(1)
+    .max(64)
+    .optional()
+    .describe(
+      "Set this principal's display name (PATCH /agent/v1/me) before reading it back. The name promotion credit (`hand_to_operator.credited_as`), `app_up`'s room presence, and audit surfaces show for this principal; `app_up` sets a detected default when it is empty.",
+    ),
+};
 
-export async function handleWhoami(): Promise<ToolResult> {
+export async function handleWhoami(args: { set_display_name?: string } = {}): Promise<ToolResult> {
   try {
-    const me = await getSdk().orgs.whoami();
+    const me = args.set_display_name
+      ? await getSdk().orgs.setDisplayName(args.set_display_name)
+      : await getSdk().orgs.whoami();
     const lines = [
       `Principal \`${me.principal.id}\` (${me.principal.type}${me.principal.display_name ? `, ${me.principal.display_name}` : ""}).`,
       `- authenticator_id: \`${me.authenticator_id}\``,

@@ -27,6 +27,7 @@ import type {
   Run402UpActionInput,
   Run402UpResult,
   Run402UpVerificationHttpEntry,
+  Run402UpIdentity,
 } from "../actions.js";
 import { Run402Action } from "../actions.js";
 import {
@@ -59,6 +60,7 @@ import type {
 import type { ProjectSummary, ProvisionResult } from "../namespaces/projects.types.js";
 import type { TierName, TierSetResult } from "../namespaces/tier.js";
 import { loadDeployManifest, normalizeDeployManifest } from "./deploy-manifest.js";
+import { detectClientName } from "./client-detect.js";
 
 export type NodeActionTargetKind = "cloud" | "core" | "unknown";
 
@@ -527,6 +529,9 @@ export class NodeActions implements Run402Actions {
 
     run.setState(deployStep, "running");
     const projectKeys = await this.#assertLocalProjectKeys(resolved.projectId, run);
+    const identity = run.executionMode === "plan"
+      ? undefined
+      : await this.#ensureIdentity(input, resolved.projectId, run);
     const scoped = await this.sdk.project(resolved.projectId);
     const explicitDeployIdempotencyKey = input.idempotencyKey ?? normalized.idempotencyKey ?? manifest.idempotencyKey;
     if (run.executionMode === "plan") {
@@ -551,6 +556,7 @@ export class NodeActions implements Run402Actions {
       idempotencyKey: explicitDeployIdempotencyKey,
       allowWarnings: input.allowWarnings,
       allowWarningCodes: input.allowWarningCodes,
+      ...(input.noRehearse ? { noRehearse: true } : {}),
       ...(requiredPlan ? { requiredPlan } : {}),
       target: this.#targetKind() === "core" ? "core" : "cloud",
       onEvent: (event: DeployEvent) => {
@@ -599,9 +605,74 @@ export class NodeActions implements Run402Actions {
       project_id: resolved.projectId,
       manifest_path: manifest.manifestPath,
       ...(resolved.shouldWriteLink ? { workspace_link_path: resolved.linkPath } : {}),
+      ...(identity ? { identity } : {}),
       deploy,
       ...verifyBlock,
     });
+  }
+
+  /**
+   * principal-display-name (first-deploy-agent-dx): make sure the deploying
+   * principal has a display name before the deploy that will be credited to
+   * it, then join the project's room under that name. Explicit
+   * `identityName` wins; otherwise the detected client name is set and
+   * reported as `detected`. Best-effort end to end: a whoami, PATCH, or
+   * room hiccup never fails the deploy — it reports `source: "unavailable"`.
+   */
+  async #ensureIdentity(
+    input: Run402UpActionInput,
+    projectId: string,
+    run: ActionRun,
+  ): Promise<Run402UpIdentity> {
+    if (this.#targetKind() === "core") {
+      return { display_name: null, source: "unavailable" };
+    }
+    let current: string | null = null;
+    try {
+      const me = await this.sdk.orgs.whoami();
+      current = me.principal?.display_name ?? null;
+    } catch {
+      return { display_name: null, source: "unavailable" };
+    }
+    let displayName = current;
+    let source: Run402UpIdentity["source"] = "existing";
+    if (!displayName || (input.identityName && input.identityName !== displayName)) {
+      const desired = input.identityName?.trim() || detectClientName();
+      source = input.identityName ? "explicit" : "detected";
+      const step = run.addStep({
+        action: "identity.name.set",
+        description: `Set this principal's display name to ${desired}`,
+        mutation: true,
+        auto: true,
+        details: { display_name: desired, source },
+      });
+      await run.approve(
+        step,
+        ["identity.name.set"],
+        `Name this principal "${desired}" (promotion credit and room presence use it; change any time with run402 whoami --set-name).`,
+      );
+      run.setState(step, "running");
+      try {
+        const updated = await this.sdk.orgs.setDisplayName(desired);
+        displayName = updated.principal?.display_name ?? desired;
+        run.setState(step, "succeeded", { display_name: displayName });
+      } catch (err) {
+        run.setState(step, "failed", { error: err instanceof Error ? err.message : String(err) });
+        return { display_name: current, source: "unavailable" };
+      }
+    }
+    let presence: Run402UpIdentity["presence"] = null;
+    try {
+      const room = await this.sdk.rooms.forProject(projectId);
+      const registered = await this.sdk.rooms.registerPresence(room.orgId, room.roomKey, {
+        requestedName: displayName ?? undefined,
+        task: "run402 up",
+      });
+      presence = { presence_id: registered.presence_id, name: registered.name };
+    } catch {
+      presence = null;
+    }
+    return { display_name: displayName, source, presence };
   }
 
   async #verifyDeployManifestOnly(

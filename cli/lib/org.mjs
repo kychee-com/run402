@@ -34,6 +34,7 @@ Usage:
   run402 org payout-wallet [<org_id>] <wallet_address>  (or: --clear to remove the explicit default)
   run402 org slug   <slug> [--org <org_id>]
   run402 org whoami
+  run402 org whoami --set-name <name>
   run402 org use     <org_id>
   run402 org current
   run402 org clear
@@ -171,12 +172,14 @@ explicit default; a single active org wallet may still resolve automatically.
 The JSON response includes recovery.status, active_wallet_count, and
 next_actions for PAYOUT_WALLET_REQUIRED / PAYOUT_WALLET_AMBIGUOUS setup.
 `,
-  whoami: `run402 org whoami — resolved principal + org memberships
+  whoami: `run402 org whoami — resolved principal + org memberships (and set your display name)
 
 Usage:
   run402 org whoami
 
-Calls GET /agent/v1/whoami. Returns the control-plane principal (id/type/display_name/created_at),
+Calls GET /agent/v1/whoami (or PATCH /agent/v1/me with --set-name, 1-64 chars: the name promotion
+credit, \`run402 up\`'s room presence, and audit surfaces show for this principal — \`up\` sets a
+detected default when it is empty). Returns the control-plane principal (id/type/display_name/created_at),
 authenticator_id, and every org membership (org_id, display_name, role, status). REMOTE identity;
 for local wallet/profile state use 'run402 status'.
 `,
@@ -336,10 +339,23 @@ async function list(args) {
 
 async function whoami(args) {
   const a = normalizeArgv(args);
-  assertKnownFlags(a, ["--help", "-h"]);
-  requirePositionalCount(a, [], { min: 0, max: 0, command: "run402 org whoami" });
+  assertKnownFlags(a, ["--help", "-h", "--set-name"], ["--set-name"]);
+  requirePositionalCount(positionalArgs(a, ["--set-name"]), ["--set-name"], { min: 0, max: 0, command: "run402 org whoami" });
+  const setName = flagValue(a, "--set-name");
+  if (setName !== null && setName.trim() === "") {
+    fail({
+      code: "BAD_USAGE",
+      message: "--set-name must not be empty.",
+      details: { field: "--set-name" },
+      hint: "Pass a 1-64 character display name.",
+    });
+  }
   try {
-    console.log(JSON.stringify(await getSdk().orgs.whoami(), null, 2));
+    // principal-display-name (first-deploy-agent-dx): `--set-name` is the
+    // explicit setter (PATCH /agent/v1/me); the name is what promotion credit,
+    // `up`'s room presence, and audit surfaces show for this principal.
+    const me = setName !== null ? await getSdk().orgs.setDisplayName(setName.trim()) : await getSdk().orgs.whoami();
+    console.log(JSON.stringify(me, null, 2));
   } catch (err) {
     reportSdkError(err);
   }

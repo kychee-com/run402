@@ -38,6 +38,11 @@ Options:
   --switch-rail   Confirm switching the persisted payment rail. Re-running
                   init with the SAME rail as the existing allowance is always
                   idempotent and does not need this flag.
+  --name <name>   Set this principal's display name (1-64 chars) — what promotion
+                  credit, \`run402 up\`'s room presence, and audit surfaces show
+                  for you. \`run402 up\` sets a detected default (claude-code,
+                  codex, cursor, or agent) when it is empty; change it any time
+                  with \`run402 org whoami --set-name <name>\`.
   --git-remote    Also 'git init' the current directory when it is not a
                   repository yet, so the gitvault remote can be added there.
                   Opt-in on purpose: init is often run outside a project
@@ -144,6 +149,26 @@ function parseVoucherFlag(args) {
  * runs, so `run402 init --git-remote mpp` still selects the mpp rail (the same
  * reason `--voucher` is stripped first).
  */
+/** Pull `--flag <value>` (or `--flag=<value>`) out of argv; returns { args, value }. */
+function parseValueFlag(args, flag) {
+  const out = [];
+  let value;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === flag) {
+      value = args[i + 1] ?? "";
+      i += 1;
+      continue;
+    }
+    if (typeof arg === "string" && arg.startsWith(`${flag}=`)) {
+      value = arg.slice(flag.length + 1);
+      continue;
+    }
+    out.push(arg);
+  }
+  return { args: out, value };
+}
+
 function parseGitRemoteFlag(args) {
   const idx = args.indexOf("--git-remote");
   if (idx === -1) return { value: false, args };
@@ -232,6 +257,16 @@ export async function run(args = []) {
   const parsedGitRemote = parseGitRemoteFlag(args);
   args = parsedGitRemote.args;
   const scaffoldGitRemote = parsedGitRemote.value;
+
+  // principal-display-name (first-deploy-agent-dx): `--name <name>` sets this
+  // principal's display name once (PATCH /agent/v1/me). Stripped here so the
+  // rail/positional logic never sees it.
+  const parsedName = parseValueFlag(args, "--name");
+  args = parsedName.args;
+  const displayName = parsedName.value;
+  if (displayName !== undefined && displayName.trim() === "") {
+    fail({ code: "BAD_USAGE", message: "--name requires a non-empty value.", details: { flag: "--name" } });
+  }
 
   const parsedApiBase = parseApiBaseFlag(args);
   if (parsedApiBase.value) {
@@ -667,6 +702,19 @@ export async function run(args = []) {
     write("  Ready to deploy. Run: run402 deploy apply --manifest app.json");
   }
   write("");
+
+  // 5c. Display name (principal-display-name). Best-effort: a hiccup never
+  // fails init — the summary says what happened.
+  if (displayName !== undefined) {
+    try {
+      const me = await getSdk().orgs.setDisplayName(displayName.trim());
+      summary.display_name = me?.principal?.display_name ?? displayName.trim();
+      line("Name", summary.display_name);
+    } catch (err) {
+      summary.display_name = null;
+      summary.display_name_error = { code: err?.body?.code ?? err?.code ?? "DISPLAY_NAME_FAILED", message: err?.message ?? String(err) };
+    }
+  }
 
   console.log(JSON.stringify(summary, null, 2));
 }

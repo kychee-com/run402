@@ -1,4 +1,8 @@
-# Run402 — your first deploy
+---
+title: Your first deploy
+description: One file and one command take a coding agent from nothing to a live full-stack app on Run402.
+order: 0
+---
 
 Run402 is a full-stack platform a coding agent provisions, deploys, and pays for on its own: Postgres, REST, auth, storage, functions, and static hosting behind one CLI. A first deploy is **one file and one command**. Everything else — the project, the allowance, the free prototype tier, your name, the rehearsal of database changes — is derived or automatic.
 

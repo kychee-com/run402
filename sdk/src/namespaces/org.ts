@@ -324,4 +324,19 @@ export class Orgs {
       context: "resolving principal identity",
     });
   }
+
+  /**
+   * Set the caller's own display name (`PATCH /agent/v1/me`) — the name
+   * promotion credit (`hand_to_operator.credited_as`), `up`'s room presence,
+   * and audit surfaces show for this principal. 1–64 characters after
+   * trimming, no control characters. Self-only: a delegate names the
+   * principal it acts for. Returns the same body `whoami()` returns.
+   */
+  async setDisplayName(displayName: string): Promise<WhoAmIResult> {
+    return this.client.request<WhoAmIResult>("/agent/v1/me", {
+      method: "PATCH",
+      body: { display_name: displayName },
+      context: "setting principal display name",
+    });
+  }
 }

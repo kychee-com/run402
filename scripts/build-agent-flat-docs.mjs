@@ -25,17 +25,58 @@
  */
 import { readFileSync, writeFileSync, readdirSync, statSync } from "node:fs";
 import { join, dirname, relative } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const CONTENT_ROOT = join(ROOT, "docs-site", "src", "content", "docs");
 
 /** Each bundle maps a content section to one generated flat file. */
 const BUNDLES = [
+  // The FRONT DOOR (first-deploy-front-door spec): the first thing an agent
+  // reads. One command, one file, two links — and a line budget so it stays
+  // that way. Served at run402.com/llms.txt and docs.run402.com/llms.txt.
+  { id: "front-door", section: "start", out: "llms.txt", flatHeader: "# Run402 — your first deploy", lineBudget: 180 },
   { id: "cli", section: "cli", out: "cli/llms-cli.txt", flatHeader: "# Run402 CLI -- Agent Reference" },
   { id: "sdk", section: "sdk", out: "sdk/llms-sdk.txt", flatHeader: "# @run402/sdk — comprehensive reference" },
   { id: "mcp", section: "mcp", out: "llms-mcp.txt", flatHeader: "# Run402 MCP Server — comprehensive tool reference" },
 ];
+
+/**
+ * Expert sections a first deploy never needs. In `llms-cli.txt` every one
+ * of them MUST come after the command reference (first-deploy-front-door
+ * spec, "The full CLI reference puts first-deploy material before expert
+ * material"); the generator refuses to emit a file where one precedes it.
+ */
+const CLI_COMMAND_REFERENCE_HEADING = "## Command Reference";
+const CLI_EXPERT_HEADING_PATTERNS = [
+  /^## .*Buzz/im,
+  /^## .*Nostr/im,
+  /^## .*Portable Project Archives/im,
+  /^## .*Run402 Core/im,
+  /^## R402_\*/im,
+];
+
+export function assertCliSectionOrder(text) {
+  const refIndex = text.indexOf(`\n${CLI_COMMAND_REFERENCE_HEADING}`);
+  if (refIndex < 0) throw new Error(`[build-agent-flat-docs] llms-cli.txt has no '${CLI_COMMAND_REFERENCE_HEADING}' section`);
+  const before = text.slice(0, refIndex);
+  const offending = CLI_EXPERT_HEADING_PATTERNS.map((re) => before.match(re)?.[0]).filter(Boolean);
+  if (offending.length > 0) {
+    throw new Error(
+      `[build-agent-flat-docs] llms-cli.txt: expert section(s) precede the command reference — move them after it: ${offending.join(" | ")}`,
+    );
+  }
+}
+
+export function assertLineBudget(bundle, text) {
+  if (!bundle.lineBudget) return;
+  const lines = text.replace(/\n$/, "").split("\n").length;
+  if (lines > bundle.lineBudget) {
+    throw new Error(
+      `[build-agent-flat-docs] ${bundle.out} is ${lines} lines; the front-door budget is ${bundle.lineBudget}. Move detail into the references and link to it.`,
+    );
+  }
+}
 
 /** Recursively list *.md / *.mdx files under a directory (sorted by path). */
 function listMarkdown(dir) {
@@ -96,11 +137,14 @@ function renderBundle(bundle) {
   return normalize(joined);
 }
 
+const isMain = !!process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 const check = process.argv.includes("--check");
 let stale = [];
 
-for (const bundle of BUNDLES) {
+for (const bundle of isMain ? BUNDLES : []) {
   const next = renderBundle(bundle);
+  assertLineBudget(bundle, next);
+  if (bundle.id === "cli") assertCliSectionOrder(next);
   const outPath = join(ROOT, bundle.out);
   let current = "";
   try {
@@ -118,7 +162,7 @@ for (const bundle of BUNDLES) {
   }
 }
 
-if (check) {
+if (isMain && check) {
   if (stale.length) {
     console.error(
       `agent flat docs are stale — run: node scripts/build-agent-flat-docs.mjs\n  stale: ${stale.join(", ")}`,

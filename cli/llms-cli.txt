@@ -19,31 +19,19 @@ Agent-critical facts:
 - No platform token: local allowance (`~/.config/run402/allowance.json`) signs requests. Per-project `anon_key` / `service_key` are runtime data-plane keys (PostgREST/Storage/Functions), permanent, and embeddable/server-side respectively.
 - Agent-paid usage: x402 USDC on Base or MPP pathUSD on Tempo, signed by allowance. Humans may fund via Stripe credits; CLI behavior is unchanged.
 
-Install + deploy:
+Install + deploy — the only first-deploy path (the front door at <https://run402.com/llms.txt> is the same three lines with a full manifest):
 
 ```bash
 npm install -g run402@latest
-run402 up --name "my-app" -y                 # validates manifest, bootstraps prerequisites, deploys
-run402 apply --manifest app.json --rehearse --json
+run402 up --name "my-app" -y                 # allowance, tier, project, your name, rehearsal when warranted, deploy
 run402 redeem <code>                         # only if you were given a promo code — see Promo codes below
 ```
 
-`up` is the agent-first path when the repo has `run402.deploy.json` or `app.json`. It is a thin CLI shim over the SDK action runner; the SDK owns manifest validation, project resolution, recursive prerequisites, idempotency-key derivation, and deploy apply. Provision before writing frontend code when you need the real `anon_key` embedded. `prototype` is free with the testnet faucet; use `hobby` / `team` for mainnet.
+`up` is a thin CLI shim over the SDK action runner; the SDK owns manifest validation, project resolution, recursive prerequisites, idempotency-key derivation, and deploy apply. A static page never needs a key copied into it: every Run402 host serves `/_run402/config.js` (`window.RUN402 = { project_id, api_base, anon_key }`) — see "Runtime config on every host" below. `prototype` is free with the testnet faucet; use `hobby` / `team` for mainnet.
 
-For database-bearing deploys, rehearse before commit. `run402 apply --manifest app.json --rehearse --json` plans, uploads missing CAS bytes, creates a contained branch, applies migrations and checks there, and prints a rehearsal report without touching the source project. If the report passes, re-run with `--commit` or commit the reviewed plan with `run402 deploy apply --require-plan <plan_id>`. Manual restore points live under `run402 snapshots`; contained, expiring data branches live under `run402 branches`.
+Rehearsal is `up`'s decision, not a flag: a migration-bearing plan against a project with a live release is rehearsed on a contained branch and committed only on a passing report; a first deploy has nothing to protect and commits directly — see "Protecting a live database" below. `run402 apply`, `run402 deploy apply`, `run402 projects provision`, and `run402 deploy rehearse` are the primitives underneath `up`.
 
 CLI update awareness is advisory and fail-open. Normal commands never wait for npm; they use cached update state and keep success stdout as the command payload. Stale notices appear as structured JSON on stderr, or as `{"type":"cli.update_available",...}` in `--json-stream`. `RUN402_NO_UPDATE_CHECK=1` suppresses notices/checks; CI skips live checks unless `RUN402_UPDATE_CHECK=1`; `run402 doctor --refresh` is the explicit bounded live check.
-
-Self-hosted Run402 Core target:
-
-```bash
-npm install -g run402@latest
-run402 init --api-base=http://my-core:4020
-run402 projects provision --name "my-app"    # returns anon_key, service_key, project_id
-run402 deploy apply --manifest app.json      # uses the active Core project
-```
-
-`init --api-base` stores the API base in the active profile (`target.json`) so the CLI, Node SDK, and MCP use the same target by default. Against Core, `projects provision` and `deploy apply` do not require Cloud tier, allowance, or x402 setup. Unsupported Cloud-only manifest slices fail as Core capability errors; they are not silently deployed to Run402 Cloud.
 
 App build scripts should read the same target/profile store through `resolveRun402TargetProfile()` from `@run402/sdk/node`, not by parsing `target.json` or local project-key cache files themselves.
 
@@ -59,46 +47,6 @@ App build scripts should read the same target/profile store through `resolveRun4
 - Projects, sites, subdomains, forks, functions, secrets, blob storage: free with active tier. Only image generation ($0.03) is per-call
 - Env overrides: `RUN402_API_BASE` (overrides stored target; default `https://api.run402.com`), `RUN402_CONFIG_DIR` (base credential dir, default `~/.config/run402`), `RUN402_WALLET` (active named wallet/profile, default `default`; alias `RUN402_PROFILE`), `RUN402_ALLOWANCE_PATH` (custom allowance file path, default `{config_dir}/allowance.json`), `RUN402_TRACE` (any non-empty value: one stderr trace line per SDK request — see Observability below), `RUN402_GITVAULT_TRACE` (debug-only, `1`: one stderr line per gitvault transport operation — see Observability below). `run402 init --api-base=<url>` persists the active target in `{config_dir}/target.json` or `{config_dir}/profiles/<name>/target.json`.
 - Wallets: `run402 wallets` manages named profiles. Select via `--wallet <name>` (`--profile`), `RUN402_WALLET`, or nearest `.run402.json` binding (commit-safe name only). Precedence: flag > env > `.run402.json`/`.run402.local.json` > `wallets use` default > `default`. Env/binding conflict hard-fails unless flag passed. `default` stays at config root; named wallets live under `{base}/profiles/<name>/`. Non-default active wallet is echoed on stderr and shown in `status` / `wallets current`.
-
-## Public Buzz/Nostr identity links
-
-Human and agent principals use one common public identity-link resource with a discriminated proof protocol. A principal may have multiple active Nostr subjects; one active subject belongs to only one principal. Links are attribution only. They never change authentication, organization ownership, grants, delegates, spending, deployment authority, or transfer targeting.
-
-For a human account, open <https://console.run402.com/identity-links/connect>. That normal browser flow requires the direct Run402 session, fresh passkey, explicit public-correlation disclosure, and released Buzz approval UI. It never asks the human to paste a raw event, handle an `idlnk_…`, or provide a passkey/session/private key. Human link revocation is also browser-canonical. Revoking a public link never removes an organization membership, and removing membership never revokes the link.
-
-The CLI begin/complete ceremony below is for an agent's Run402 EOA:
-
-```bash
-run402 identity link nostr begin \
-  --pubkey <canonical-npub-or-64-lowercase-hex> \
-  --visibility public > challenge.json
-
-# Publish challenge.json's proof_content as a standalone Buzz kind-1 message.
-# Fetch the raw event, preserving exactly id,pubkey,created_at,kind,tags,content,sig.
-run402 identity link nostr complete --event-file raw-event.json
-# Or: buzz social event --event <event-id> | run402 identity link nostr complete --event-stdin
-
-run402 identity link list
-run402 identity link show idlnk_...
-run402 identity link revoke idlnk_...
-```
-
-`begin` uses the active Run402 wallet to EIP-191-sign the exact server payload and prints `proof_content`; it never handles a Nostr secret. Sign and publish that content through Buzz with `buzz social publish --content`, then recover the raw seven-field envelope with `buzz social event --event`. `identity link list` uses the active CLI identity (agent wallet when present, otherwise the signed-in human control-plane session) and preserves every active/revoked record plus `proof_protocol`. Do not use the desktop `buzz://nostr-bind` owner flow for an agent link: it signs as the human Buzz principal.
-
-## Buzz community control plane
-
-```sh
-run402 buzz status
-run402 buzz adopt offer --org <org_id> --identity-link <idlnk_id> [--deployment-context-file <json>]
-run402 buzz adopt offer show <buzzhao_id>
-run402 buzz adopt offer cancel <buzzhao_id>
-run402 buzz install --org <org_id> --community <buzz:community:host> --authority <hex-pubkey>
-run402 buzz enroll --installation <buzzci_id> --identity-link <idlnk_id> --grants-file <json> --expires-at <ISO-8601>
-```
-
-The status response preserves independent inert skill installation, durable human-adoption offers, completed/attempted human adoption, Buzz-community ↔ Run402-organization installation, and this distinct agent's enrollment. `buzz adopt offer` capability-checks before mutation and creates no challenge or authority; its `handoff_url` is the normal browser/passkey path. `--org` takes the Run402 organization id exactly as `run402 org whoami` and `run402 projects get` return it — a UUID, never transformed. `--deployment-context-file` takes a JSON object of exactly these five non-empty strings and no others: `project_id`, `release_id`, `live_url` (public HTTPS origin, no credentials or fragment), `source_revision`, `verified_at` (ISO-8601, not in the future); the gateway checks them against the org's active release and its claimed subdomain, custom domain, or deployment host, and a rejection names the offending fields. Poll authoritative state with `offer show`; a click is not completion. A completed poll reports a terminal consent receipt, public human `idlnk_…`, and ordinary owner membership separately. The membership alone grants organization authority; link and membership revocation are independent and the receipt remains completed. `run402 buzz adopt direct --org … --identity-link …`, raw `complete`, and clipboard/event handling are advanced compatibility paths. Other consent/decision commands are `buzz install activate|update|revoke` and `buzz approve|deny|revoke`; `buzz install discover --community <buzz:community:host>` is the unauthenticated descriptor index. MCP intentionally omits Buzz signing/passkey mutations and renders exact HTTPS/CLI handoffs. JSON is stdout, advice is stderr, every action has zero spend impact, and secret-shaped request fields fail locally. Older gateways fail the offer capability check without mutation and name the advanced direct fallback. Enrollment grants only finite named existing-project scopes and never agent org membership, future-project creation, owner role, delegates, or payment authority. On failure, branch on the stable code and preserve the exact repair `field` and complete `next_actions`; retry an unchanged command only when `safe_to_retry: true`, never through a generic edit fallback.
-
-The CLI rejects `--nostr-key`, `--nsec`, private-key, mnemonic, seed, derivation, display-name, label, and signed-label inputs locally before network access. It accepts raw events only through `--event-file` or `--event-stdin`, verifies the event id and BIP-340 signature locally, and sends no workspace/channel context. The event must be standalone kind 1 with either no tags or exactly one valid NIP-OA `auth` tag. Public proof bytes remain available after revocation.
 
 ## Output Contract
 
@@ -130,7 +78,7 @@ MCP tool output is markdown, not the `stats` envelope field — this is a CLI/SD
 
 ## `run402 up` (SDK action runner)
 
-`run402 up [repo-or-path] [--name <name>] [--project <id>] [--manifest <path>] [--dir <path>] [--tier <prototype|hobby|team>] [-y|--yes] [--check|--print-spec|--plan|--require-plan <id>] [--verify] [--propagation-budget-s <seconds>] [--no-propagation-wait] [--json|--json-stream|--human] [--quiet] [--allow-warning <code> ...] [--allow-warnings]`
+`run402 up [repo-or-path] [--name <name>] [--project <id>] [--manifest <path>] [--dir <path>] [--tier <prototype|hobby|team>] [-y|--yes] [--check|--print-spec|--plan|--require-plan <id>] [--no-rehearse] [--verify] [--propagation-budget-s <seconds>] [--no-propagation-wait] [--json|--json-stream|--human] [--quiet] [--allow-warning <code> ...] [--allow-warnings]`
 
 `run402 up verify [repo-or-path] [--project <id>] [--manifest <path>] [--dir <path>] [--propagation-budget-s <seconds>] [--no-propagation-wait] [--json|--json-stream|--human] [--quiet]`
 
@@ -153,7 +101,10 @@ Approval and recursion:
 - `--print-spec` performs the same local validation and prints normalized `ReleaseSpec` JSON.
 - `--plan` calls the gateway reviewed-plan mode without upload or commit; it does not provision projects or write workspace links. The response includes a require-able `plan_id`, `plan_fingerprint`, expiration, warnings, diff, and `next_actions[]`.
 - `--require-plan <plan_id>` applies only if the reviewed plan still matches; optional `--plan-fingerprint <fingerprint>` tightens the check.
-- Run402 Cloud `up` can create/fund an allowance, ensure a prototype tier by default, create a project from `--name`, write the workspace link, then apply the manifest.
+- Run402 Cloud `up` can create/fund an allowance, ensure a prototype tier by default, create a project from `--name`, write the workspace link, make sure this principal has a display name, join the project room under it, then apply the manifest.
+- Identity: an existing display name is kept; otherwise `up` sets the detected client name (`claude-code`, `codex`, `cursor`, or `agent`) — approved by `-y`, or asked once — and reports `result.identity: { display_name, source: "existing" | "explicit" | "detected" | "unavailable", presence }`. Promotion credit (`hand_to_operator.credited_as`) is this name. Set it explicitly with `run402 init --name <name>` or `run402 org whoami --set-name <name>`.
+- Rehearsal: `result.deploy.rehearsal` is `{ status: "passed", report, … }` when the plan was rehearsed on a contained branch first, or `{ status: "skipped", reason: "no_live_release" | "no_migrations" | "disabled" | "reviewed_plan" | "unsupported" }`. A failed rehearsal exits non-zero with `REHEARSAL_FAILED` and the report; nothing is committed. `--no-rehearse` skips it.
+- Git: on a local directory `up` scaffolds git on the APP ROOT only (the manifest's directory): `git init` when it is not a repository, a `run402` remote (`origin` is never claimed), and a first vault push. An app root that lies inside ANOTHER repository is left untouched — `result.repo` is `{ status: "skipped", reason: "inside_other_repository", toplevel }`. `projects provision` never touches git.
 - Run402 Core `up` skips Cloud allowance/tier prerequisites and fails closed if no Core project is selected by `--project`, workspace link, or manifest.
 - The SDK derives child idempotency keys for recursive gateway mutations from the root action key; pass `--idempotency-key` when you need a stable external key.
 - Deploy warnings use the same review surface as `deploy apply`: prefer repeatable `--allow-warning <code>` and reserve broad `--allow-warnings` for reviewed exceptional cases.
@@ -163,6 +114,28 @@ Approval and recursion:
 - `run402 up verify` reruns the manifest HTTP verification (app or deploy manifest) without resource mutation, upload, deploy, or project creation. It resolves the project from `--project`, `.run402/project.json`, the manifest project id, then active project, and is the recovery command to run after propagation settles. A manifest without `verify.http[]` fails `VERIFY_CHECKS_REQUIRED`.
 
 Output: stdout is the action result, e.g. `{ "action": "up", "dry_run": false, "target": "cloud", "steps": [...], "result": { "project_id": "prj_...", "manifest_path": "...", "deploy": {...} } }`. Stderr carries JSON action-step events unless `--quiet`.
+
+## Protecting a live database (rehearsal is automatic)
+
+When a plan carries migrations and the target project already has a live release, `run402 up` and `run402 deploy apply` rehearse it before committing: a snapshot of the project becomes a contained branch, the candidate plan is applied there, built-in checks run (static 200s, function invocability, migration registry) plus any `checks` the spec declares, and only a `passed` report is committed — bound to the report's `required_plan`, so the plan that was rehearsed is the plan that ships. A first deploy has no live release to protect, so nothing is rehearsed and the result says `rehearsal: { status: "skipped", reason: "no_live_release" }`. `--no-rehearse` opts out for speed.
+
+The gateway decides, in the plan response: `rehearsal: { available, rehearse_url, reason: null | "no_migrations" | "no_live_release", next_actions? }`. Clients never re-derive it.
+
+Primitives, for when you want the pieces: `run402 deploy rehearse <plan_id>` rehearses an already-persisted plan without committing (a project with no live release rehearses on an EMPTY branch — never a refusal); `run402 snapshots …` are manual restore points; `run402 branches …` are contained, expiring data copies.
+
+## Runtime config on every host (`/_run402/config.js`)
+
+Every host that serves a project's site — managed subdomain, branch host, custom domain — answers `GET /_run402/config.js` with `window.RUN402 = { project_id, api_base, anon_key };` and `GET /_run402/config.json` with the same object, for the project that host resolves to at request time. A branch host answers for the branch; a transferred project answers with its rotated anon key; the HTML never changes. `Cache-Control: public, max-age=60`. The service key is never served.
+
+```html
+<script src="/_run402/config.js"></script>
+<script>
+  const { api_base, anon_key } = window.RUN402;
+  fetch(`${api_base}/rest/v1/items`, { headers: { apikey: anon_key } });
+</script>
+```
+
+`/_run402/` is reserved: a route pattern, static alias, public path, or site file under it is rejected at plan time.
 
 ## Error JSON and Safe Retry
 
@@ -286,62 +259,13 @@ run402 tier status
 With active tier: unlimited projects/sites/forks/functions/secrets/storage subject to org-pooled `api_calls`/`storage_bytes`; only image generation is per-call ($0.03/image).
 
 ---
-## Portable Project Archives (Cloud -> Core)
-
-Portable archives are the vendor-lock-in escape hatch: Cloud is the easiest place to start, not the only place the supported application can run. This is separate from allowance/spend-cap financial-risk controls. Archive v1 exports the supported Run402 Core runtime slice of a Cloud project, not an entire Cloud project.
-
-Canonical agent path:
-
-```bash
-run402 cloud archives create prj_... \
-  --scope portable-runtime-v1 \
-  --auth stubs \
-  --consistency pause-writes \
-  --wait \
-  --output ./project.r402ar \
-  --json
-
-run402 archives inspect ./project.r402ar --json
-run402 archives verify ./project.r402ar --json
-
-# Create ./required.env from required_secrets or secrets/required.env.template.
-run402 core projects import ./project.r402ar \
-  --name imported-project \
-  --env-file ./required.env \
-  --json
-```
-
-`cloud archives create` creates an operation-backed Cloud export, waits when `--wait` or `--output` is present, downloads bytes when `--output` is set, and returns `archive_id`, `operation_id`, `archive_status`, `sha256`, `expires_at`, `portability_report`, `export_report`, `verify_command`, and `import_command`. Use `--idempotency-key <key>` for safe retries, `--poll-interval <ms>` and `--timeout <ms>` for waits, and `--json-stream` for NDJSON progress.
-
-Progress events are one JSON object per line:
-
-```json
-{"event":"archive_export_created","stage":"create","resource_type":"project_archive","resource_id":"arc_...","project_id":"prj_...","status":"running","completed_units":0,"total_units":1,"code":null,"message":"Archive export status: running","next_action":{"type":"none"},"retryable":true}
-```
-
-Every event and diagnostic uses stable agent fields: `code`, `severity`, `resource_type`, `resource_id`, `message`, `next_action`, `retryable`, and safe `context`.
-
-`archives inspect` and `archives verify` are local and offline. They do not require Cloud credentials. `verify` checks descriptor/blob integrity, format compatibility, required capabilities, size/path safety, required secrets, auth stub counts, and portability diagnostics. Verification means integrity and compatibility, not trust; archives remain untrusted input.
-
-`core projects import` verifies before import, targets a new Core project only, and calls a local Core gateway (`RUN402_CORE_URL` or `--core-url`, default `http://127.0.0.1:4020`). It supports `--dry-run`, `--require-runnable`, `--env-file`, and repeated `--secret KEY=VALUE` overrides. Required secret names are reported by inspect/verify and in the archive's `secrets/required.env.template`; secret values are never exported.
-
-Expected v1 exclusions: secret values, password hashes, sessions, refresh/access/OAuth tokens, MFA secrets, signed URLs, logs, billing/allowance/spend state, fleet/Aurora/global-routing/provider operations, managed backups, monitoring, abuse/compliance/support metadata, Cloud import, and existing-project merge import.
-
-Stable archive codes include `EXPORT_CONSISTENCY_UNAVAILABLE`, `EXPORT_SCOPE_UNSUPPORTED`, `ARCHIVE_EXPIRED`, `ARCHIVE_DIGEST_MISMATCH`, `ARCHIVE_UNSUPPORTED_VERSION`, `ARCHIVE_UNSUPPORTED_REQUIRED_CAPABILITY`, `ARCHIVE_PATH_UNSAFE`, `ARCHIVE_BLOB_MISSING`, `SECRET_VALUES_REQUIRED`, `AUTH_CREDENTIALS_NOT_EXPORTED`, `AUTH_SUBJECT_STUBS_IMPORTED`, `CLOUD_ONLY_FEATURE_EXCLUDED`, `PROJECT_ALREADY_EXISTS`, `IMPORT_VERIFY_FAILED`, and `IMPORT_CONFORMANCE_FAILED`.
-
----
 ## Deploying Apps
 
 ### Unified Apply
 
 Canonical deploy primitive: CAS bytes (no inline-body cap), per-resource `replace`/`patch`, atomic multi-resource activation, resumable failures. SDK: `r.project(id).apply(...)`.
 
-⚠️ You still need the `anon_key` BEFORE writing your manifest -- provision first, then embed the real key in your HTML.
-
-```bash
-run402 projects provision --name "my-app"
-# → copy anon_key from output into your HTML
-```
+Your HTML never needs a pasted key: load `/_run402/config.js` and read `window.RUN402.anon_key` (see "Runtime config on every host"). Wire fields — manifests, plan and commit bodies — are `snake_case` (`content_type`, never `contentType`; `contentType` is only the in-function `assets.put` JS option).
 
 Manifest format mirrors a v2 `ReleaseSpec`. For editor autocomplete, use top-level `"$schema": "https://run402.com/schemas/release-spec.v1.json"`; the CLI accepts that metadata and strips it before planning.
 
@@ -1159,21 +1083,21 @@ Pushing (or `snapshot`/`deploy`/any other head-signing operation) from a machine
 All admin subcommands require a platform-admin allowance wallet (or an admin OAuth session). Project owners with a non-admin wallet receive `403 admin_required`.
 
 ### apply, rehearsal, snapshots, branches
-- `run402 apply --manifest app.json [--project <id>] [--rehearse] [--teardown keep|on_pass|always] [--commit] [--json]` — alias for `run402 deploy apply`; `--rehearse` runs the reviewed plan on a contained branch first and does not commit unless `--commit` is present.
-- `run402 deploy rehearse <plan_id> [--project <id>] [--teardown keep|on_pass|always] [--json]` — rehearse an already-persisted reviewed plan. Source project data and the original plan stay untouched.
+- `run402 apply --manifest app.json [--project <id>] [--no-rehearse] [--json]` — alias for `run402 deploy apply`; rehearsal is automatic for a migration-bearing plan against a project with a live release (see "Protecting a live database"), `--no-rehearse` skips it.
+- `run402 deploy rehearse <plan_id> [--project <id>] [--teardown keep|on_pass|always] [--json]` — ADVANCED: rehearse an already-persisted plan without committing. Source project data and the original plan stay untouched; a project with no live release rehearses on an empty branch.
 - `run402 snapshots create [project-id] [--json]` — capture a manual internal restore point.
 - `run402 snapshots list [project-id] [--kind manual|pre_migration|pre_restore|scheduled] [--limit <n>] [--after <cursor>] [--json]` — keyset-paginated snapshot list.
 - `run402 snapshots get [project-id] <snapshot-id> [--json]` — inspect one snapshot and its next actions.
 - `run402 snapshots restore [project-id] <snapshot-id> [--include-auth] [--json]` — plan a restore and print `restore_plan.confirm.token`; no mutation.
 - `run402 snapshots restore [project-id] <snapshot-id> --confirm <token> [--include-auth] [--json]` — execute the atomic offline-materialize-then-flip restore. Auth users/passkeys are restored only with `--include-auth`; sessions and tokens are never restored.
 - `run402 snapshots delete [project-id] <snapshot-id> [--json]` — delete a snapshot and release its CAS references.
-- `run402 branches create [project-id] [--from-snapshot <snapshot-id>] [--name <label>] [--email-mode sandbox|off] [--enable-cron] [--ttl-days <1..30>] [--json]` — create a contained branch project. Email defaults to sandboxed, scheduled functions default off, and TTL defaults to 7 days.
+- `run402 branches create [project-id] [--from-snapshot <snapshot-id>] [--name <label>] [--email-mode sandbox|off] [--enable-cron] [--ttl-days <1..30>] [--json]` — create a contained branch project. Email defaults to sandboxed, scheduled functions default off, and TTL defaults to 7 days. A parent with no live release yields an EMPTY branch (`branch_url: null`, no cloned release) whose host comes up on its first activation.
 - `run402 branches list [project-id] [--json]` — list active branches for the parent project.
 - `run402 branches renew [project-id] <branch-project-id> [--ttl-days <1..30>] [--json]` — extend a branch TTL.
 - `run402 branches delete [project-id] <branch-project-id> [--json]` — delete a branch project and purge its resources.
 
 ### deploy
-- `run402 deploy apply --manifest app.json [--project <id>] [--check|--print-spec|--plan|--rehearse|--require-plan <id>] [--teardown keep|on_pass|always] [--commit] [--json] [--quiet|--final-only] [--allow-warning <code> ...] [--allow-warnings] [--allow-dirty] [-v|--verbose]` — unified apply primitive with `assets` slice support; accepts JSON data manifests and explicit executable typed configs through the same `--manifest` flag. `--rehearse` runs migrations/checks against a contained branch first; `--json` is accepted as a no-op because success output is always JSON. Against a `gitvault_policy: required` project, the deploy-lane capture applies the SAME dirty-tree rule `repos snapshot` does: a dirty work tree refuses `SNAPSHOT_DIRTY_TREE` before any capture, and `--allow-dirty` captures it as-is with the same `modified_captured`/`untracked_captured` disclosure (see the `repos` section above and [Observability](#observability)). The final result always carries a `stats` block; `-v`/`--verbose` also prints a one-line stderr summary.
+- `run402 deploy apply --manifest app.json [--project <id>] [--check|--print-spec|--plan|--require-plan <id>] [--no-rehearse] [--json] [--quiet|--final-only] [--allow-warning <code> ...] [--allow-warnings] [--allow-dirty] [-v|--verbose]` — unified apply primitive with `assets` slice support; accepts JSON data manifests and explicit executable typed configs through the same `--manifest` flag. rehearsal against a contained branch is automatic when there is a live release to protect (`--no-rehearse` skips it); `--json` is accepted as a no-op because success output is always JSON. Against a `gitvault_policy: required` project, the deploy-lane capture applies the SAME dirty-tree rule `repos snapshot` does: a dirty work tree refuses `SNAPSHOT_DIRTY_TREE` before any capture, and `--allow-dirty` captures it as-is with the same `modified_captured`/`untracked_captured` disclosure (see the `repos` section above and [Observability](#observability)). The final result always carries a `stats` block; `-v`/`--verbose` also prints a one-line stderr summary.
 - `run402 deploy resume <operation_id> [--project <id>] [--quiet]` — re-run a stuck operation forward
 - `run402 deploy promote <release-id> [--project <id>] [--allow-warning <code>] [--allow-warnings]` — operator pointer-swap (re-point live release without re-running the apply pipeline)
 - `run402 deploy list [--project <id>] [--limit <n>]` — list recent deploy operations
@@ -1216,6 +1140,7 @@ Wallet authenticates; org owns projects. Authorization = org role (`owner > admi
 - `run402 org rename <org> <display_name>` (or `--clear`) — owner-only; set or clear the org's free-text label. Response includes `tier`, `lease_started_at`, and `lease_expires_at`.
 - `run402 org slug <slug> [--org <org_id>]` — owner-only; claim or rename the org's globally-unique, address-form slug (repo-first-onramp design D6, task 4.1) — the `<org-slug>` half of `run402::<org-slug>/<name>`. Grammar: lowercase `[a-z0-9-]`, no leading/trailing/double hyphen, ≤39 chars. A genesis claim (no prior slug) debits a small one-time claim fee; a rename is free but releases the OLD slug into a ~90-day cooldown — it stops resolving with a typed `SLUG_RELEASED` refusal naming the new slug as successor, never a redirect. Paid + side-effecting: requires `Idempotency-Key`, generated client-side unless `--idempotency-key` is passed, so a retried call after a dropped response cannot double-bill. CLI/SDK only — no MCP tool.
 - `run402 org whoami` — resolve your control-plane principal + org memberships (GET `/agent/v1/whoami`). The REMOTE identity; for local wallet/profile state use `run402 status`.
+- `run402 org whoami --set-name <name>` — set this principal's display name (1–64 chars; `PATCH /agent/v1/me`): what promotion credit, `up`'s room presence, and audit surfaces show for you. `run402 up` sets a detected default when it is empty; `run402 init --name <name>` sets it at init.
 - `run402 org list` — orgs you are a member of (`org_id`, `display_name`, role, status each).
 - `run402 org bind [--org <org_id>] [--room <key>]` — **the bootstrap.** Writes this checkout's org (and room) into `.run402.json`, which you COMMIT; every later command in that tree resolves flag-free, and worktrees inherit it. Omit `--org` and it uses your organization when you have exactly one, or lists them and stops when you have several. Omit `--room` and the room key is your directory name, slugified. This picking-for-you is deliberately NOT the same act as the resolution chain, which never infers: `bind` runs once because you asked, and WRITES THE ANSWER DOWN — nothing is inferred on any later command. `run402 org unbind` removes the org/room keys (a `wallet` key in the same file survives, and vice versa).
 - `run402 org use <org_id>` / `run402 org current` / `run402 org clear` — the CURRENT org, the org tier's answer to `projects use`. The selection is per WALLET PROFILE, not global: the chain is wallet -> principal -> memberships, so a global selection would survive `wallets use other` and then either 403 or silently resolve to a valid-but-wrong org. `org current` reports the resolved org plus `org_source` / `org_source_detail`, and an empty selection as an explicit `null` rather than a guess.
@@ -1403,7 +1328,7 @@ Built-in helper: `import { auth, db, adminDb, email, ai, assets, getRoutedPaymen
 - `getRoutedPaymentContext(req)` (`@run402/functions` 3.7+) — confirmed x402 payment context for priced routed function requests. Returns `{ scheme, paymentId, amountUsdMicros, payer, network, asset, payTo, transaction, settledAt }` or `null`; key app-side idempotency by `payment.paymentId`.
 - `email.send(opts)` — send email from the project's mailbox (see email section below)
 - `ai.generateImage({ prompt, aspect? })` — live image generation from deployed functions using project billing authority, not local allowance/x402 signing. Aspects: `square`, `landscape`, `portrait`; result: `{ image, content_type, aspect }`. Add app auth/rate limits before calling it from public routed functions.
-- `assets.put(key, source, opts?)` — upload bytes to the project's blob store from inside a deployed function. Uses the same CAS substrate as deploy-time assets. `source` is a string, `Uint8Array`, or `{ content | bytes }` object. Options: `contentType`, `visibility` (`"public"` | `"private"`, default `"public"`), `immutable` (default `true`). Returns an `AssetRef` with `url`, `immutableUrl`, `cdnUrl`, `sha256`, `size_bytes`, etc. (camelCase aliases included). Use for user-uploaded content, generated images, runtime-produced files.
+- `assets.put(key, source, opts?)` — upload bytes to the project's blob store from inside a deployed function. (`opts.contentType` is a JS option and stays camelCase; every WIRE field — manifests, plan/commit bodies — is snake_case: `content_type`.) Uses the same CAS substrate as deploy-time assets. `source` is a string, `Uint8Array`, or `{ content | bytes }` object. Options: `contentType`, `visibility` (`"public"` | `"private"`, default `"public"`), `immutable` (default `true`). Returns an `AssetRef` with `url`, `immutableUrl`, `cdnUrl`, `sha256`, `size_bytes`, etc. (camelCase aliases included). Use for user-uploaded content, generated images, runtime-produced files.
 - `assets.fromRef(raw)` — local rehydrate stored AssetRef JSONB into typed shape with camelCase aliases + variants. Store full `AssetRef` from `r.assets.put` in JSONB; variant SHAs/immutable URLs cannot be re-derived from `(source_sha,key)`. Tolerates partial legacy inputs; throws only on null/undefined/non-object.
 - `getRun402Context(req)` — reads `x-run402-*` context headers across `Request`/`Headers`/plain objects. Returns `{ requestId, projectId, releaseId, host, locale, defaultLocale }` (`string|null`), same as `Astro.locals.run402`; never throws.
 
@@ -2397,3 +2322,99 @@ run402 feedback send "My human said: 'The todo app was great!' Deploy was smooth
 | Messages | Free with tier | -- |
 
 Prototype uses free testnet USDC on Base Sepolia. Hobby/Team require real money: Stripe credits or real USDC on Base; CLI handles payment automatically.
+
+## Self-hosted Run402 Core target
+
+```bash
+npm install -g run402@latest
+run402 init --api-base=http://my-core:4020
+run402 projects provision --name "my-app"    # returns anon_key, service_key, project_id
+run402 deploy apply --manifest app.json      # uses the active Core project
+```
+
+`init --api-base` stores the API base in the active profile (`target.json`) so the CLI, Node SDK, and MCP use the same target by default. Against Core, `projects provision` and `deploy apply` do not require Cloud tier, allowance, or x402 setup. Unsupported Cloud-only manifest slices fail as Core capability errors; they are not silently deployed to Run402 Cloud.
+
+
+## Portable Project Archives (Cloud -> Core)
+
+Portable archives are the vendor-lock-in escape hatch: Cloud is the easiest place to start, not the only place the supported application can run. This is separate from allowance/spend-cap financial-risk controls. Archive v1 exports the supported Run402 Core runtime slice of a Cloud project, not an entire Cloud project.
+
+Canonical agent path:
+
+```bash
+run402 cloud archives create prj_... \
+  --scope portable-runtime-v1 \
+  --auth stubs \
+  --consistency pause-writes \
+  --wait \
+  --output ./project.r402ar \
+  --json
+
+run402 archives inspect ./project.r402ar --json
+run402 archives verify ./project.r402ar --json
+
+# Create ./required.env from required_secrets or secrets/required.env.template.
+run402 core projects import ./project.r402ar \
+  --name imported-project \
+  --env-file ./required.env \
+  --json
+```
+
+`cloud archives create` creates an operation-backed Cloud export, waits when `--wait` or `--output` is present, downloads bytes when `--output` is set, and returns `archive_id`, `operation_id`, `archive_status`, `sha256`, `expires_at`, `portability_report`, `export_report`, `verify_command`, and `import_command`. Use `--idempotency-key <key>` for safe retries, `--poll-interval <ms>` and `--timeout <ms>` for waits, and `--json-stream` for NDJSON progress.
+
+Progress events are one JSON object per line:
+
+```json
+{"event":"archive_export_created","stage":"create","resource_type":"project_archive","resource_id":"arc_...","project_id":"prj_...","status":"running","completed_units":0,"total_units":1,"code":null,"message":"Archive export status: running","next_action":{"type":"none"},"retryable":true}
+```
+
+Every event and diagnostic uses stable agent fields: `code`, `severity`, `resource_type`, `resource_id`, `message`, `next_action`, `retryable`, and safe `context`.
+
+`archives inspect` and `archives verify` are local and offline. They do not require Cloud credentials. `verify` checks descriptor/blob integrity, format compatibility, required capabilities, size/path safety, required secrets, auth stub counts, and portability diagnostics. Verification means integrity and compatibility, not trust; archives remain untrusted input.
+
+`core projects import` verifies before import, targets a new Core project only, and calls a local Core gateway (`RUN402_CORE_URL` or `--core-url`, default `http://127.0.0.1:4020`). It supports `--dry-run`, `--require-runnable`, `--env-file`, and repeated `--secret KEY=VALUE` overrides. Required secret names are reported by inspect/verify and in the archive's `secrets/required.env.template`; secret values are never exported.
+
+Expected v1 exclusions: secret values, password hashes, sessions, refresh/access/OAuth tokens, MFA secrets, signed URLs, logs, billing/allowance/spend state, fleet/Aurora/global-routing/provider operations, managed backups, monitoring, abuse/compliance/support metadata, Cloud import, and existing-project merge import.
+
+Stable archive codes include `EXPORT_CONSISTENCY_UNAVAILABLE`, `EXPORT_SCOPE_UNSUPPORTED`, `ARCHIVE_EXPIRED`, `ARCHIVE_DIGEST_MISMATCH`, `ARCHIVE_UNSUPPORTED_VERSION`, `ARCHIVE_UNSUPPORTED_REQUIRED_CAPABILITY`, `ARCHIVE_PATH_UNSAFE`, `ARCHIVE_BLOB_MISSING`, `SECRET_VALUES_REQUIRED`, `AUTH_CREDENTIALS_NOT_EXPORTED`, `AUTH_SUBJECT_STUBS_IMPORTED`, `CLOUD_ONLY_FEATURE_EXCLUDED`, `PROJECT_ALREADY_EXISTS`, `IMPORT_VERIFY_FAILED`, and `IMPORT_CONFORMANCE_FAILED`.
+
+---
+## Public Buzz/Nostr identity links
+
+Human and agent principals use one common public identity-link resource with a discriminated proof protocol. A principal may have multiple active Nostr subjects; one active subject belongs to only one principal. Links are attribution only. They never change authentication, organization ownership, grants, delegates, spending, deployment authority, or transfer targeting.
+
+For a human account, open <https://console.run402.com/identity-links/connect>. That normal browser flow requires the direct Run402 session, fresh passkey, explicit public-correlation disclosure, and released Buzz approval UI. It never asks the human to paste a raw event, handle an `idlnk_…`, or provide a passkey/session/private key. Human link revocation is also browser-canonical. Revoking a public link never removes an organization membership, and removing membership never revokes the link.
+
+The CLI begin/complete ceremony below is for an agent's Run402 EOA:
+
+```bash
+run402 identity link nostr begin \
+  --pubkey <canonical-npub-or-64-lowercase-hex> \
+  --visibility public > challenge.json
+
+# Publish challenge.json's proof_content as a standalone Buzz kind-1 message.
+# Fetch the raw event, preserving exactly id,pubkey,created_at,kind,tags,content,sig.
+run402 identity link nostr complete --event-file raw-event.json
+# Or: buzz social event --event <event-id> | run402 identity link nostr complete --event-stdin
+
+run402 identity link list
+run402 identity link show idlnk_...
+run402 identity link revoke idlnk_...
+```
+
+`begin` uses the active Run402 wallet to EIP-191-sign the exact server payload and prints `proof_content`; it never handles a Nostr secret. Sign and publish that content through Buzz with `buzz social publish --content`, then recover the raw seven-field envelope with `buzz social event --event`. `identity link list` uses the active CLI identity (agent wallet when present, otherwise the signed-in human control-plane session) and preserves every active/revoked record plus `proof_protocol`. Do not use the desktop `buzz://nostr-bind` owner flow for an agent link: it signs as the human Buzz principal.
+
+## Buzz community control plane
+
+```sh
+run402 buzz status
+run402 buzz adopt offer --org <org_id> --identity-link <idlnk_id> [--deployment-context-file <json>]
+run402 buzz adopt offer show <buzzhao_id>
+run402 buzz adopt offer cancel <buzzhao_id>
+run402 buzz install --org <org_id> --community <buzz:community:host> --authority <hex-pubkey>
+run402 buzz enroll --installation <buzzci_id> --identity-link <idlnk_id> --grants-file <json> --expires-at <ISO-8601>
+```
+
+The status response preserves independent inert skill installation, durable human-adoption offers, completed/attempted human adoption, Buzz-community ↔ Run402-organization installation, and this distinct agent's enrollment. `buzz adopt offer` capability-checks before mutation and creates no challenge or authority; its `handoff_url` is the normal browser/passkey path. `--org` takes the Run402 organization id exactly as `run402 org whoami` and `run402 projects get` return it — a UUID, never transformed. `--deployment-context-file` takes a JSON object of exactly these five non-empty strings and no others: `project_id`, `release_id`, `live_url` (public HTTPS origin, no credentials or fragment), `source_revision`, `verified_at` (ISO-8601, not in the future); the gateway checks them against the org's active release and its claimed subdomain, custom domain, or deployment host, and a rejection names the offending fields. Poll authoritative state with `offer show`; a click is not completion. A completed poll reports a terminal consent receipt, public human `idlnk_…`, and ordinary owner membership separately. The membership alone grants organization authority; link and membership revocation are independent and the receipt remains completed. `run402 buzz adopt direct --org … --identity-link …`, raw `complete`, and clipboard/event handling are advanced compatibility paths. Other consent/decision commands are `buzz install activate|update|revoke` and `buzz approve|deny|revoke`; `buzz install discover --community <buzz:community:host>` is the unauthenticated descriptor index. MCP intentionally omits Buzz signing/passkey mutations and renders exact HTTPS/CLI handoffs. JSON is stdout, advice is stderr, every action has zero spend impact, and secret-shaped request fields fail locally. Older gateways fail the offer capability check without mutation and name the advanced direct fallback. Enrollment grants only finite named existing-project scopes and never agent org membership, future-project creation, owner role, delegates, or payment authority. On failure, branch on the stable code and preserve the exact repair `field` and complete `next_actions`; retry an unchanged command only when `safe_to_retry: true`, never through a generic edit fallback.
+
+The CLI rejects `--nostr-key`, `--nsec`, private-key, mnemonic, seed, derivation, display-name, label, and signed-label inputs locally before network access. It accepts raw events only through `--event-file` or `--event-stdin`, verifies the event id and BIP-340 signature locally, and sends no workspace/channel context. The event must be standalone kind 1 with either no tags or exactly one valid NIP-OA `auth` tag. Public proof bytes remain available after revocation.

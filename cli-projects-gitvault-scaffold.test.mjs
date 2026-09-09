@@ -1,5 +1,7 @@
 /**
- * `run402 projects provision` folds in the gitvault remote scaffold
+ * `run402 projects provision` is the provisioning PRIMITIVE and has no local
+ * side effects (first-deploy-agent-dx): it never inspects or mutates git.
+ * Historically it folded in the gitvault remote scaffold
  * (repo-first-onramp D4, task 2.4): provisioning inside a git repository
  * scaffolds the run402 remote automatically, reporting through the exact
  * same `gitvault` / `gitvault_skipped` / `gitvault_error` summary keys
@@ -115,72 +117,45 @@ async function createLocalAllowance() {
   saveAllowance({ address: account.address, privateKey, created: new Date().toISOString(), funded: false, rail: "x402" });
 }
 
-describe("projects provision — inside a git repository", () => {
+describe("projects provision — never touches git (first-deploy-agent-dx)", () => {
   let repoDir;
   before(async () => {
     repoDir = join(scratch, "repo");
     mkdirSync(repoDir, { recursive: true });
     git(repoDir, ["init", "-q", "-b", "main", "."]);
+    git(repoDir, ["remote", "add", "origin", "https://github.com/kychee-com/example.git"]);
     process.env.RUN402_CONFIG_DIR = join(scratch, "repo-cfg");
     process.chdir(repoDir);
     await createLocalAllowance();
   });
 
-  it("scaffolds the remote with the project it just provisioned and the resolved org", async () => {
+  it("provisions and stops: no scaffoldRemote call, no gitvault keys, remotes byte-identical", async () => {
+    const before = git(repoDir, ["remote", "-v"]);
     const payload = await ok("provision", []);
     assert.equal(payload.project_id, PROJECT);
-    const provisionCall = calls.find((c) => c.method === "projects.provision");
-    assert.ok(provisionCall, "provision must still call projects.provision");
-    const listCall = calls.find((c) => c.method === "projects.list");
-    assert.ok(listCall, "org resolution runs the same way gitvault init does it");
-    const scaffoldCall = calls.find((c) => c.method === "gitvault.scaffoldRemote");
-    assert.ok(scaffoldCall, `gitvault.scaffoldRemote was not reached; calls=${JSON.stringify(calls)}`);
-    assert.equal(scaffoldCall.input.project_id, PROJECT);
-    assert.equal(scaffoldCall.input.org_id, ORG);
-    assert.equal(payload.gitvault.name, "origin");
-    assert.equal(payload.gitvault.allocated, false, "provision never allocates a vault — only the remote is scaffolded");
-  });
-
-  it("uses an explicit --org without a project lookup, same as gitvault init", async () => {
-    const payload = await ok("provision", ["--org", "org_explicit"]);
-    assert.equal(calls.find((c) => c.method === "projects.list"), undefined, "an explicit --org must not trigger a project listing");
-    assert.equal(calls.find((c) => c.method === "gitvault.scaffoldRemote").input.org_id, "org_explicit");
-    assert.equal(payload.gitvault.name, "origin");
-  });
-
-  it("is non-fatal when the scaffold itself fails — provision still succeeds", async () => {
-    impl.scaffoldRemote = async () => { throw Object.assign(new Error("network unreachable"), { code: "NETWORK_ERROR" }); };
-    const payload = await ok("provision", []);
-    assert.equal(payload.project_id, PROJECT, "the provision result is unaffected by a scaffold failure");
-    assert.equal(payload.gitvault, null);
-    assert.equal(payload.gitvault_error.code, "NETWORK_ERROR");
-    assert.match(payload.gitvault_error.message, /network unreachable/);
-  });
-
-  it("reports gitvault_skipped, not an error, when the owning org cannot be resolved", async () => {
-    impl.projectsList = async () => ({ projects: [] });
-    const payload = await ok("provision", []);
-    assert.equal(payload.project_id, PROJECT);
-    assert.equal(payload.gitvault, null);
-    assert.match(payload.gitvault_skipped, /could not resolve the owning org/);
-    assert.equal(calls.find((c) => c.method === "gitvault.scaffoldRemote"), undefined, "no remote is added without a resolved org");
+    assert.ok(calls.find((c) => c.method === "projects.provision"), "provision must still call projects.provision");
+    assert.equal(calls.find((c) => c.method === "gitvault.scaffoldRemote"), undefined, "provision never scaffolds a remote");
+    assert.equal(git(repoDir, ["remote", "-v"]), before, "git remotes are untouched");
+    for (const key of ["gitvault", "gitvault_skipped", "gitvault_error"]) {
+      assert.equal(key in payload, false, `provision output carries no ${key} key`);
+    }
   });
 });
 
-describe("projects provision — outside a git repository", () => {
+describe("projects provision — outside any repository", () => {
+  let dir;
   before(async () => {
-    const notARepo = join(scratch, "not-a-repo");
-    mkdirSync(notARepo, { recursive: true });
-    process.env.RUN402_CONFIG_DIR = join(scratch, "not-a-repo-cfg");
-    process.chdir(notARepo);
+    dir = join(scratch, "plain");
+    mkdirSync(dir, { recursive: true });
+    process.env.RUN402_CONFIG_DIR = join(scratch, "plain-cfg");
+    process.chdir(dir);
     await createLocalAllowance();
   });
 
-  it("reports gitvault_skipped and never runs git init on its own — provision has no --git-remote opt-in", async () => {
+  it("never git-inits the directory", async () => {
     const payload = await ok("provision", []);
     assert.equal(payload.project_id, PROJECT);
-    assert.equal(payload.gitvault, null);
-    assert.match(payload.gitvault_skipped, /not a git repository/);
+    assert.throws(() => git(dir, ["rev-parse", "--is-inside-work-tree"]), "provision must not create a repository");
     assert.equal(calls.find((c) => c.method === "gitvault.scaffoldRemote"), undefined);
   });
 });

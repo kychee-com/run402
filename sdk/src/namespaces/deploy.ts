@@ -90,6 +90,8 @@ import type {
   ReleaseToReleaseDiff,
   RehearsePlanOptions,
   RehearsePlanResult,
+  ApplyRehearsalReport,
+  DeployRehearsalBlock,
   StartOptions,
   WarningEntry,
 } from "./deploy.types.js";
@@ -800,6 +802,90 @@ function deriveSliceKinds(spec: ReleaseSpec): ("release" | "asset")[] {
   return [...set].sort((a, b) => (a === "release" ? -1 : 1));
 }
 
+/**
+ * Decide and (when warranted) run the rehearsal for a cloud apply. Returns
+ * the `DeployResult.rehearsal` block plus, after a passed rehearsal, the
+ * bound `requiredPlan` the commit must carry. Throws `REHEARSAL_FAILED`
+ * (with the report attached) when the rehearsal fails — nothing has been
+ * committed at that point.
+ */
+async function rehearseBeforeCommit(
+  client: Client,
+  plan: PlanResponse,
+  planId: string,
+  project: string,
+  opts: ApplyOptions,
+  emit: (event: DeployEvent) => void,
+): Promise<{ block: DeployRehearsalBlock; requiredPlan?: { planId: string; planFingerprint?: string } }> {
+  const skip = (reason: NonNullable<DeployRehearsalBlock["reason"]>): { block: DeployRehearsalBlock } => {
+    emit({ type: "rehearsal.skipped", reason });
+    return { block: { status: "skipped", reason } };
+  };
+  if (opts.noRehearse) return skip("disabled");
+  if (opts.requiredPlan) return skip("reviewed_plan");
+  const envelope = plan.rehearsal;
+  if (!envelope || !envelope.available) {
+    const reason = envelope?.reason ?? "no_migrations";
+    return skip(reason === "no_live_release" ? "no_live_release" : "no_migrations");
+  }
+  emit({ type: "rehearsal.started", planId });
+  let rehearsed: RehearsePlanResult;
+  try {
+    rehearsed = await client.request<RehearsePlanResult>(
+      `/apply/v1/plans/${encodeURIComponent(planId)}/rehearse`,
+      {
+        method: "POST",
+        body: {},
+        authMeta: { method: "deploy.rehearse", capability: "project.deploy" as const, target: { project_id: project } },
+        context: "rehearsing deploy plan",
+      },
+    );
+  } catch (err) {
+    throw translateDeployError(err, "rehearsal", planId, null);
+  }
+  const report = rehearsed.report;
+  emit({
+    type: "rehearsal.finished",
+    planId,
+    status: report.status,
+    operationId: report.operation_id,
+    branchProjectId: report.branch_project_id,
+    durationMs: report.duration_ms,
+  });
+  if (report.status !== "passed") {
+    throw new Run402DeployError(
+      `Rehearsal failed on a contained branch; nothing was committed. ${describeRehearsalFailure(report)}`,
+      {
+        code: "REHEARSAL_FAILED",
+        phase: "rehearsal",
+        retryable: false,
+        context: "rehearsing deploy plan",
+        planId,
+        operationId: report.operation_id,
+        body: { rehearsal: report, next_actions: report.next_actions },
+      },
+    );
+  }
+  const bound = report.next_actions.find((a) => a.type === "commit_plan")?.body?.required_plan;
+  return {
+    block: {
+      status: "passed",
+      report,
+      operation_id: report.operation_id,
+      branch_project_id: report.branch_project_id,
+    },
+    ...(bound ? { requiredPlan: { planId: bound.plan_id, planFingerprint: bound.plan_fingerprint } } : {}),
+  };
+}
+
+function describeRehearsalFailure(report: ApplyRehearsalReport): string {
+  const failedMigration = report.migrations.find((m) => m.status === "failed");
+  if (failedMigration) return `Migration ${failedMigration.id} failed${failedMigration.error ? `: ${failedMigration.error}` : ""}.`;
+  const failedCheck = report.checks.find((c) => c.status === "failed");
+  if (failedCheck) return `Check ${failedCheck.name} failed${failedCheck.error ? `: ${failedCheck.error}` : ""}.`;
+  return report.error?.message ? `${report.error.message}.` : "";
+}
+
 async function applyOnce(
   client: Client,
   spec: ReleaseSpec,
@@ -867,6 +953,15 @@ async function applyOnce(
     ...(sliceKinds.length > 0 ? { slice_kinds: sliceKinds } : {}),
   });
   const { planId, operationId } = requirePersistedPlan(plan, "applying deploy");
+  // first-deploy-agent-dx: rehearsal is apply's decision, from the plan
+  // envelope. A migration-bearing plan against a project with a live release
+  // is rehearsed on a contained branch and committed only on a passing
+  // report; a first deploy (`reason: "no_live_release"`) has nothing to
+  // protect and commits directly. A passed rehearsal binds the commit to the
+  // report's `required_plan` — unbound commits of rehearsed plans are
+  // refused by the gateway.
+  const rehearsal = await rehearseBeforeCommit(client, plan, planId, spec.project, opts, emit);
+  const requiredPlan = rehearsal.requiredPlan ?? opts.requiredPlan;
   // gitvault §6.5 — the handshake. Content is uploaded, so the artifacts this
   // release ships are fixed; `authorize` verifies snapshot correspondence,
   // mints the activation token, and hands back the commit block. It throws
@@ -880,10 +975,11 @@ async function applyOnce(
       })
     : undefined;
   const commit = requireCloudCommitResponse(
-    await commitInternal(client, planId, opts.idempotencyKey, spec.project, opts.requiredPlan, gitvaultCommit),
+    await commitInternal(client, planId, opts.idempotencyKey, spec.project, requiredPlan, gitvaultCommit),
     "applying deploy",
   );
   const result = await pollUntilReady(client, commit, plan.diff, plan.warnings, emit, spec.project, sliceKinds);
+  result.rehearsal = rehearsal.block;
 
   // v1.48 unified-apply: thread the plan response's `asset_entries[]` back
   // into DeployResult.assets so callers reading `result.assets.byKey[key]`

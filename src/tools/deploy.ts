@@ -22,8 +22,9 @@ import type {
  *
  * The Zod schema mirrors `ReleaseSpec` and accepts byte sources in either
  * shape: a bare UTF-8 string (the natural shape, e.g. `"<h1>hi</h1>"`) or
- * the `{ data, encoding?, contentType? }` object — the latter is required
- * for binary payloads via base64 or for explicit `contentType` override.
+ * the `{ data, encoding?, content_type? }` object — the latter is required
+ * for binary payloads via base64 or for an explicit `content_type` override
+ * (wire fields are snake_case; `contentType` is only the in-function JS option).
  * The SDK's `resolveContent` already accepts both polymorphically; this
  * schema mirrors that. Agents that want to ship a real app via patch
  * semantics, multi-resource atomicity, or the resumable operation model
@@ -36,11 +37,11 @@ const fileEntry = z.union([
     .object({
       data: z.string(),
       encoding: z.enum(["utf-8", "base64"]).optional(),
-      contentType: z
+      content_type: z
         .string()
         .optional()
         .describe(
-          "MIME type override. Auto-detected from the path's extension when omitted.",
+          "MIME type override (snake_case, like every wire field). Auto-detected from the path's extension when omitted.",
         ),
     })
     .strict(),
@@ -98,7 +99,7 @@ const migrationEntry = z
       .object({
         sha256: z.string(),
         size: z.number(),
-        contentType: z.string().optional(),
+        content_type: z.string().optional(),
       })
       .optional()
       .describe("Pre-uploaded CAS reference. Mutually exclusive with sql."),

@@ -563,7 +563,7 @@ run402 sites deploy-dir ./dist
 run402 deploy verify op_... --project <id> --wait  # confirm gateway/edge release coherence
 run402 deploy release active --project <id>  # inspect current-live release inventory
 run402 deploy diagnose --project <id> https://example.com/events --method GET
-run402 apply --manifest app.json --rehearse --json
+run402 apply --manifest app.json --json      # rehearses automatically when a live release has migrations to protect
 run402 snapshots list prj_...
 run402 branches create prj_... --ttl-days 7 --json
 run402 functions deploy <id> <name> --file fn.ts
@@ -576,7 +576,9 @@ run402 cdn wait-fresh <url> --sha <hex>  # poll until a mutable URL serves the n
 
 `up` is the only compound CLI command: it calls the SDK action runner, emits `steps[]`, and writes `.run402/project.json` when it needs to remember the workspace project. Against run402 Core it skips Cloud allowance/tier prerequisites and fails closed if no Core project is selected.
 
-For database-bearing deploys, rehearse before commit. `run402 apply --manifest app.json --rehearse --json` plans, uploads missing CAS bytes, creates a contained branch, runs migrations/checks there, and exits nonzero on a failed rehearsal. If you already have a persisted plan id, use `run402 deploy rehearse <plan_id> --project <id> --json`. Manual restore points live under `run402 snapshots create|list|get|restore|delete`; restore is a two-step plan/confirm flow. Branch projects live under `run402 branches create|list|renew|delete`, default to a 7-day TTL, use sandboxed email by default, and are marked noindex.
+Rehearsal is automatic: a migration-bearing `run402 up` / `run402 apply` against a project with a live release is rehearsed on a contained branch and committed only on a passing report (`result.deploy.rehearsal`); a first deploy has nothing to protect and commits directly. `--no-rehearse` skips it. ADVANCED: `run402 deploy rehearse <plan_id>` rehearses an already-persisted plan without committing. Manual restore points live under `run402 snapshots create|list|get|restore|delete`; restore is a two-step plan/confirm flow. Branch projects live under `run402 branches create|list|renew|delete`, default to a 7-day TTL, use sandboxed email by default, and are marked noindex; a parent with no live release yields an empty branch.
+
+Your HTML never needs a pasted key: every Run402 host serves `/_run402/config.js` (`window.RUN402 = { project_id, api_base, anon_key }`) for the project it resolves to. `run402 up` also sets this principal's display name when it has none (the detected client, or `agent`) so promotion credit names you; change it with `run402 org whoami --set-name <name>`. `projects provision` never touches git; `up` scaffolds a `run402` remote on the app root only and never inside another repository.
 
 Portable archives export the supported run402 Core runtime slice of a Cloud project for local Core import. This is the no-lock-in trust path, separate from allowance/spend-cap financial-risk controls.
 
@@ -713,7 +715,7 @@ The full MCP surface: every tool is a thin shim over an SDK call.
 | `list_subdomains` / `delete_subdomain` | Manage subdomains. |
 | `domains_ensure` / `domains_get` / `domains_list` / `domains_check` | Manage project-scoped web/email ProjectDomain desired state and health checks. |
 | `domains_apply` / `domains_repair` / `domains_test_receive` / `domains_activate` / `domains_disconnect` | Apply safe provider actions, repair run402-owned routing, verify inbound receive, activate mailbox addresses, or disconnect a domain. |
-| `deploy` / `deploy_resume` / `deploy_rehearse` / `deploy_list` / `deploy_events` / `deploy_verify_edge` | Apply, resume, rehearse persisted plans on contained branches, list, inspect deploy operations, and verify gateway/edge coherence. |
+| `deploy` / `deploy_resume` / `deploy_rehearse` / `deploy_list` / `deploy_events` / `deploy_verify_edge` | Apply (rehearsal is automatic when a live release has migrations to protect), resume, ADVANCED-rehearse a persisted plan on a contained branch, list, inspect deploy operations, and verify gateway/edge coherence. |
 | `deploy_release_get` / `deploy_release_active` / `deploy_release_diff` | Inspect release inventory and release-to-release diffs without starting a new deploy mutation. |
 | `deploy_diagnose_url` | URL-first deploy resolver diagnostics. Params: `project_id`, either `url` or `host`/`path`, optional `method`; returns `would_serve`, `diagnostic_status`, `match`, warnings, next steps, and fenced JSON. |
 

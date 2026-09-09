@@ -20,7 +20,10 @@ export default defineConfig({
       sidebar: [
         {
           label: "Start here",
-          items: [{ label: "Getting started", slug: "getting-started" }],
+          items: [
+            { label: "Your first deploy", slug: "start/first-deploy" },
+            { label: "Getting started", slug: "getting-started" },
+          ],
         },
         {
           label: "References (rendered from the agent docs)",

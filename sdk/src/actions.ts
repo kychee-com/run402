@@ -82,6 +82,24 @@ export interface Run402UpActionInput {
   propagationBudgetSeconds?: number;
   /** Disable waiting for fresh edge propagation. Verify returns propagation_pending immediately. */
   propagationWait?: boolean;
+  /** Skip the automatic rehearsal a migration-bearing deploy against a
+   *  project with a live release gets. Default false. */
+  noRehearse?: boolean;
+  /** Explicit display name to set on the principal when it has none yet.
+   *  Omitted: the detected client name (`claude-code`, `codex`, `cursor`,
+   *  or `agent`) is used and reported as `identity.source: "detected"`. */
+  identityName?: string;
+}
+
+/** How `up` resolved the principal's display name (first-deploy-agent-dx). */
+export interface Run402UpIdentity {
+  display_name: string | null;
+  /** `existing`: already set; `explicit`: set now from `identityName`;
+   *  `detected`: set now from the detected client; `unavailable`: could not
+   *  be read or set (never fails the deploy). */
+  source: "existing" | "explicit" | "detected" | "unavailable";
+  /** The project room presence `up` registered under that name, when it could. */
+  presence?: { presence_id: string; name: string } | null;
 }
 
 export type Run402ActionApproval =
@@ -114,6 +132,7 @@ export type Run402ActionMutation =
   | "app.build"
   | "app.webhook.ensure"
   | "app.verify"
+  | "identity.name.set"
   | "deploy.apply";
 
 export interface Run402ActionRunOptions {
@@ -209,6 +228,12 @@ export interface Run402UpResult {
   verification?: { http: Run402UpVerificationHttpEntry[] };
   /** Deploy-manifest verify rollup (app manifests: `app_result.verify`). */
   verify?: Run402AppUpVerifyResult;
+  /** The principal's display name as resolved before the deploy. */
+  identity?: Run402UpIdentity;
+  /** Git scaffold + first vault push outcome, attached by the CLI's `up`
+   *  composition (never by the SDK action): `status: "scaffolded" | "skipped"`
+   *  with `reason: "inside_other_repository" | "not_a_repository" | …`. */
+  repo?: Record<string, unknown>;
 }
 
 export type Run402ProjectsProvisionActionResult =

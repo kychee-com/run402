@@ -1,8 +1,10 @@
 /**
- * `r.gitvault.scaffoldRemote` — D1 (`repo-first-onramp` task 2.1): the remote
- * scaffold claims `origin` additively, falls back to `run402` only when
- * `origin` is already taken by something else, and never modifies or
- * reclaims ANY existing remote it finds under either name.
+ * `r.gitvault.scaffoldRemote` (first-deploy-agent-dx, design D3): the remote
+ * is ALWAYS named `run402` — `origin` is never claimed, even when free — and
+ * the scaffold acts on the APP ROOT only: a directory that is not a
+ * repository is initialized, a directory that is itself a git toplevel gets
+ * the remote, and a directory that merely lies inside some other repository
+ * is left byte-identical and reported `skipped` with the toplevel named.
  *
  * These exercise real git, not the protocol: scaffoldRemote never opens a
  * vault or touches the network, so a real temp-dir repository is cheaper and
@@ -11,7 +13,7 @@
 
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -54,114 +56,87 @@ async function freshRepo(): Promise<string> {
   return dir;
 }
 
-describe("scaffoldRemote — D1 claim origin additively", () => {
-  it("origin-absent: claims `origin`", async () => {
+async function remoteUrl(dir: string, name: string): Promise<string> {
+  return (await hardenedGit(dir, ["remote", "get-url", name])).text().trim();
+}
+
+describe("scaffoldRemote — the remote is always `run402`, origin is never claimed", () => {
+  it("no remotes at all: adds `run402`, leaves `origin` absent", async () => {
     const dir = await freshRepo();
     const r = await sdk().gitvault.scaffoldRemote({ repo_dir: dir, org_id: ORG, project_id: PROJECT });
-    assert.equal(r.name, "origin");
+    assert.equal(r.status, "scaffolded");
+    assert.equal(r.name, "run402");
     assert.equal(r.url, OUR_URL);
     assert.equal(r.already_present, false);
     assert.equal(r.existing_url, null);
-    assert.match(r.reason, /claimed it/);
-    assert.equal((await hardenedGit(dir, ["remote", "get-url", "origin"])).text().trim(), OUR_URL);
+    assert.match(r.reason, /added/);
+    assert.equal(await remoteUrl(dir, "run402"), OUR_URL);
+    await assert.rejects(remoteUrl(dir, "origin"), "origin must not have been claimed");
   });
 
-  it("origin-present-pointing-elsewhere: falls back to `run402`, leaves origin byte-identical", async () => {
+  it("origin pointing elsewhere: adds `run402`, leaves origin byte-identical", async () => {
     const dir = await freshRepo();
     await hardenedGit(dir, ["remote", "add", "origin", "https://github.com/kychee-com/example.git"]);
     const r = await sdk().gitvault.scaffoldRemote({ repo_dir: dir, org_id: ORG, project_id: PROJECT });
+    assert.equal(r.status, "scaffolded");
     assert.equal(r.name, "run402");
-    assert.equal(r.url, OUR_URL);
-    assert.equal(r.already_present, false);
-    assert.match(r.reason, /origin.*added as 'run402'/);
-    // origin is left EXACTLY as it was.
-    assert.equal((await hardenedGit(dir, ["remote", "get-url", "origin"])).text().trim(), "https://github.com/kychee-com/example.git");
-    assert.equal((await hardenedGit(dir, ["remote", "get-url", "run402"])).text().trim(), OUR_URL);
+    assert.equal(await remoteUrl(dir, "origin"), "https://github.com/kychee-com/example.git");
+    assert.equal(await remoteUrl(dir, "run402"), OUR_URL);
   });
 
-  it("run402-already-present: origin AND run402 both taken by something else — neither is touched, nothing added", async () => {
+  it("run402 already taken by something else: nothing is touched, nothing added", async () => {
     const dir = await freshRepo();
-    await hardenedGit(dir, ["remote", "add", "origin", "https://github.com/kychee-com/example.git"]);
     await hardenedGit(dir, ["remote", "add", "run402", "https://gitlab.com/someone/else.git"]);
     const r = await sdk().gitvault.scaffoldRemote({ repo_dir: dir, org_id: ORG, project_id: PROJECT });
+    assert.equal(r.status, "scaffolded");
     assert.equal(r.name, "run402");
     assert.equal(r.already_present, true);
     assert.equal(r.existing_url, "https://gitlab.com/someone/else.git");
-    assert.match(r.reason, /neither remote was touched/);
-    // Both remotes are exactly as they were — nothing added, nothing rewritten.
-    assert.equal((await hardenedGit(dir, ["remote", "get-url", "origin"])).text().trim(), "https://github.com/kychee-com/example.git");
-    assert.equal((await hardenedGit(dir, ["remote", "get-url", "run402"])).text().trim(), "https://gitlab.com/someone/else.git");
+    assert.match(r.reason, /left unchanged/);
+    assert.equal(await remoteUrl(dir, "run402"), "https://gitlab.com/someone/else.git");
   });
 
-  it("idempotent: a second scaffold on the same vault reports origin already claimed, changes nothing", async () => {
+  it("idempotent: a second scaffold reports run402 already pointing here, changes nothing", async () => {
     const dir = await freshRepo();
     const s = sdk();
     const first = await s.gitvault.scaffoldRemote({ repo_dir: dir, org_id: ORG, project_id: PROJECT });
     assert.equal(first.already_present, false);
     const second = await s.gitvault.scaffoldRemote({ repo_dir: dir, org_id: ORG, project_id: PROJECT });
-    assert.equal(second.name, "origin");
+    assert.equal(second.status, "scaffolded");
+    assert.equal(second.name, "run402");
     assert.equal(second.already_present, true);
     assert.equal(second.existing_url, OUR_URL);
     assert.match(second.reason, /already points here/);
   });
 
-  it("origin taken elsewhere, but run402 already points at this exact vault: idempotent on the fallback name too", async () => {
-    const dir = await freshRepo();
-    await hardenedGit(dir, ["remote", "add", "origin", "https://github.com/kychee-com/example.git"]);
-    await hardenedGit(dir, ["remote", "add", "run402", OUR_URL]);
-    const r = await sdk().gitvault.scaffoldRemote({ repo_dir: dir, org_id: ORG, project_id: PROJECT });
-    assert.equal(r.name, "run402");
-    assert.equal(r.already_present, true);
-    assert.equal(r.existing_url, OUR_URL);
-    assert.match(r.reason, /already points here, nothing to add/);
-  });
-
-  it("not a repository yet: initializes one, then claims origin", async () => {
+  it("not a repository yet: initializes one on branch main, then adds `run402`", async () => {
     const dir = join(root, "fresh");
-    mkdirSync(dir, { recursive: true });
+    mkdirSync(dir);
     const r = await sdk().gitvault.scaffoldRemote({ repo_dir: dir, org_id: ORG, project_id: PROJECT });
+    assert.equal(r.status, "scaffolded");
     assert.equal(r.created_repository, true);
-    assert.equal(r.name, "origin");
-    assert.equal((await hardenedGit(dir, ["remote", "get-url", "origin"])).text().trim(), OUR_URL);
-  });
-
-  it("a repository it creates gets branch 'main' — never git's own hardcoded default (kychee-com/run402 second dogfood)", async () => {
-    // `hardenedGit`'s own environment (`hardenedGitEnv`) sets
-    // `GIT_CONFIG_NOSYSTEM=1` and `GIT_CONFIG_GLOBAL=/dev/null` for every
-    // invocation, so a PLAIN `git init` here is fully isolated from this
-    // machine's own config either way and falls back to git's built-in
-    // default (historically `master`) with no `-b main` fix — deterministic
-    // and safe to assert without touching real global git state. The docs
-    // teach `git push origin main`, and the remote helper's own KNOWN LIMITS
-    // note says a first push of any OTHER branch leaves HEAD naming a ref
-    // that does not exist yet.
-    const dir = join(root, "fresh-branch-name");
-    mkdirSync(dir, { recursive: true });
-    await sdk().gitvault.scaffoldRemote({ repo_dir: dir, org_id: ORG, project_id: PROJECT });
-    // An empty repository has no commit yet, so the branch name lives only
-    // in the symbolic HEAD ref, not a resolvable commit — read it directly.
-    const headRef = (await hardenedGit(dir, ["symbolic-ref", "HEAD"])).text().trim();
-    assert.equal(headRef, "refs/heads/main");
+    assert.equal(r.name, "run402");
+    assert.equal(await remoteUrl(dir, "run402"), OUR_URL);
+    assert.equal((await hardenedGit(dir, ["symbolic-ref", "HEAD"])).text().trim(), "refs/heads/main");
   });
 
   it("an EXISTING repository's branch is never touched, even if it is not 'main'", async () => {
     const dir = await freshRepo();
     await hardenedGit(dir, ["symbolic-ref", "HEAD", "refs/heads/develop"]);
     const before = (await hardenedGit(dir, ["symbolic-ref", "HEAD"])).text().trim();
-    assert.equal(before, "refs/heads/develop");
-    const r = await sdk().gitvault.scaffoldRemote({ repo_dir: dir, org_id: ORG, project_id: PROJECT });
-    assert.equal(r.created_repository, false, "the repository already existed");
+    await sdk().gitvault.scaffoldRemote({ repo_dir: dir, org_id: ORG, project_id: PROJECT });
     const after = (await hardenedGit(dir, ["symbolic-ref", "HEAD"])).text().trim();
-    assert.equal(after, "refs/heads/develop", "an existing repository's branch must never be changed");
+    assert.equal(after, before);
+    assert.equal(after, "refs/heads/develop");
   });
 
-  it("an explicit remote_name is honored verbatim and never claims `origin`", async () => {
+  it("an explicit remote_name is honored verbatim", async () => {
     const dir = await freshRepo();
     const r = await sdk().gitvault.scaffoldRemote({ repo_dir: dir, org_id: ORG, project_id: PROJECT, remote_name: "vault" });
     assert.equal(r.name, "vault");
-    assert.equal(r.already_present, false);
-    await assert.rejects(hardenedGit(dir, ["remote", "get-url", "origin"]), "no origin remote should exist");
-    assert.equal((await hardenedGit(dir, ["remote", "get-url", "vault"])).text().trim(), OUR_URL);
+    await assert.rejects(remoteUrl(dir, "origin"), "no origin remote should exist");
+    await assert.rejects(remoteUrl(dir, "run402"), "no run402 remote should exist");
+    assert.equal(await remoteUrl(dir, "vault"), OUR_URL);
   });
 
   it("an explicit remote_name that already exists elsewhere is left byte-identical", async () => {
@@ -169,7 +144,31 @@ describe("scaffoldRemote — D1 claim origin additively", () => {
     await hardenedGit(dir, ["remote", "add", "vault", "https://example.com/other.git"]);
     const r = await sdk().gitvault.scaffoldRemote({ repo_dir: dir, org_id: ORG, project_id: PROJECT, remote_name: "vault" });
     assert.equal(r.already_present, true);
-    assert.equal(r.existing_url, "https://example.com/other.git");
-    assert.equal((await hardenedGit(dir, ["remote", "get-url", "vault"])).text().trim(), "https://example.com/other.git");
+    assert.equal(await remoteUrl(dir, "vault"), "https://example.com/other.git");
+  });
+});
+
+describe("scaffoldRemote — the app root only; an enclosing repository is never touched", () => {
+  it("a subdirectory of another repository: skipped, toplevel named, nothing changes anywhere", async () => {
+    const top = await freshRepo();
+    await hardenedGit(top, ["remote", "add", "origin", "https://github.com/kychee-com/monorepo.git"]);
+    const app = join(top, "apps", "demo");
+    mkdirSync(app, { recursive: true });
+    const r = await sdk().gitvault.scaffoldRemote({ repo_dir: app, org_id: ORG, project_id: PROJECT });
+    assert.equal(r.status, "skipped");
+    assert.equal(realpathSync(r.toplevel!), realpathSync(top));
+    assert.match(r.reason, /inside the repository at/);
+    assert.equal(r.created_repository, false);
+    // The enclosing repository has exactly the remotes it had.
+    assert.equal((await hardenedGit(top, ["remote"])).text().trim(), "origin");
+    // And no repository was created in the app directory.
+    assert.equal(realpathSync((await hardenedGit(app, ["rev-parse", "--show-toplevel"])).text().trim()), realpathSync(top));
+  });
+
+  it("the toplevel itself is scaffolded normally", async () => {
+    const top = await freshRepo();
+    const r = await sdk().gitvault.scaffoldRemote({ repo_dir: top, org_id: ORG, project_id: PROJECT });
+    assert.equal(r.status, "scaffolded");
+    assert.equal(r.name, "run402");
   });
 });

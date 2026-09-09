@@ -46,8 +46,8 @@ import { sdkStats, printVerboseStats } from "./stats.mjs";
 const APPLY_HELP = `run402 deploy apply — Unified deploy primitive (v1.34+)
 
 Usage:
-  run402 deploy apply --manifest <path> [--project <id>] [--check|--print-spec|--plan|--rehearse|--require-plan <id>] [--quiet|--final-only] [--json]
-  run402 deploy apply --spec '<json>' [--project <id>] [--check|--print-spec|--plan|--rehearse|--require-plan <id>] [--quiet|--final-only] [--json]
+  run402 deploy apply --manifest <path> [--project <id>] [--check|--print-spec|--plan|--require-plan <id>] [--no-rehearse] [--quiet|--final-only] [--json]
+  run402 deploy apply --spec '<json>' [--project <id>] [--check|--print-spec|--plan|--require-plan <id>] [--no-rehearse] [--quiet|--final-only] [--json]
   run402 deploy apply --dir <build-output> [--manifest <path>] [--project <id>]
   cat spec.json | run402 deploy apply [--project <id>]
 
@@ -98,9 +98,10 @@ Options:
   --check                 Validate and normalize locally. No gateway calls or uploads.
   --print-spec            Print the normalized ReleaseSpec JSON. No gateway calls or uploads.
   --plan                  Ask the gateway for a reviewed plan. No upload or commit.
-  --rehearse              Plan, upload missing content, run the plan against a contained branch, and print the rehearsal report. Does not commit unless --commit is also passed.
-  --teardown <policy>     Rehearsal branch cleanup policy: keep (default), on_pass, or always.
-  --commit                After a passing rehearsal, commit the original plan.
+  --no-rehearse           Skip the automatic rehearsal. By default a migration-bearing plan
+                          against a project with a live release is rehearsed on a contained
+                          branch and committed only on a passing report (result.rehearsal);
+                          a first deploy has nothing to protect and commits directly.
   --require-plan <id>     Apply only if this reviewed plan still matches.
   --json                  No-op compatibility flag; success output is always JSON.
   --quiet                 Suppress per-event JSON-line stderr (final result still on stdout)
@@ -237,8 +238,9 @@ Options:
                       failed rehearsals keep it), keep, always. When omitted,
                       the gateway default (on_pass) applies.
 
-Use \`run402 apply --manifest app.json --rehearse --json\` for the canonical
-one-shot plan → upload → rehearse report flow.
+Rehearsal is automatic in \`run402 up\` / \`run402 deploy apply\` for a
+migration-bearing plan against a project with a live release; this verb is the
+primitive for rehearsing an already-persisted plan without committing.
 `;
 
 const RELEASE_HELP = `run402 deploy release — Inspect deploy release inventory and diffs
@@ -660,12 +662,11 @@ function parseApplyArgs(args) {
     allowWarningCodes: [],
     mode: null,
     planFingerprint: null,
-    rehearsalTeardown: "keep",
-    commitAfterRehearse: false,
+    noRehearse: false,
     allowDirty: false,
     verbose: false,
   };
-  const allowedFlags = ["--manifest", "--spec", "--dir", "--project", "--quiet", "--final-only", "--json", "--allow-warning", "--allow-warnings", "--check", "--print-spec", "--plan", "--rehearse", "--teardown", "--commit", "--require-plan", "--plan-fingerprint", "--allow-dirty", "-v", "--verbose", "--help", "-h"];
+  const allowedFlags = ["--manifest", "--spec", "--dir", "--project", "--quiet", "--final-only", "--json", "--allow-warning", "--allow-warnings", "--check", "--print-spec", "--plan", "--no-rehearse", "--require-plan", "--plan-fingerprint", "--allow-dirty", "-v", "--verbose", "--help", "-h"];
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -715,15 +716,6 @@ function parseApplyArgs(args) {
         opts.allowWarningCodes.push(value);
       } else if (arg === "--require-plan") {
         setApplyMode(opts, { kind: "applyReviewed", planId: value }, "--require-plan");
-      } else if (arg === "--teardown") {
-        if (!["keep", "on_pass", "always"].includes(value)) {
-          fail({
-            code: "BAD_USAGE",
-            message: "--teardown must be one of: keep, on_pass, always",
-            details: { flag: "--teardown", value },
-          });
-        }
-        opts.rehearsalTeardown = value;
       } else {
         opts.planFingerprint = value;
       }
@@ -738,8 +730,7 @@ function parseApplyArgs(args) {
     if (arg === "--check") { setApplyMode(opts, "check", "--check"); continue; }
     if (arg === "--print-spec") { setApplyMode(opts, "printSpec", "--print-spec"); continue; }
     if (arg === "--plan") { setApplyMode(opts, "plan", "--plan"); continue; }
-    if (arg === "--rehearse") { setApplyMode(opts, "rehearse", "--rehearse"); continue; }
-    if (arg === "--commit") { opts.commitAfterRehearse = true; continue; }
+    if (arg === "--no-rehearse") { opts.noRehearse = true; continue; }
     if (typeof arg === "string" && arg.startsWith("-")) {
       fail({
         code: "BAD_USAGE",
@@ -770,14 +761,6 @@ function parseApplyArgs(args) {
       });
     }
   }
-  if (opts.commitAfterRehearse && opts.mode !== "rehearse") {
-    fail({
-      code: "BAD_USAGE",
-      message: "--commit can only be used with --rehearse.",
-      details: { flag: "--commit" },
-    });
-  }
-
   return opts;
 }
 
@@ -1201,56 +1184,6 @@ async function applyCmd(args) {
       console.log(JSON.stringify(result.plan, null, 2));
       return;
     }
-    if (opts.mode === "rehearse") {
-      const sdk = getSdk(sdkOpts);
-      const planned = await sdk._applyEngine.plan(releaseSpec, { idempotencyKey });
-      const planId = planned.plan.plan_id;
-      if (!planId) {
-        fail({
-          code: "DRY_RUN_PLAN_NOT_COMMITTABLE",
-          message: "Rehearsal requires a persisted plan_id, but the plan response did not include one.",
-          details: { project_id: releaseSpec.project },
-        });
-      }
-      await sdk._applyEngine.upload(planned.plan, {
-        project: releaseSpec.project,
-        byteReaders: planned.byteReaders,
-        onEvent: makeStderrEventWriter(opts.quiet),
-      });
-      const rehearsal = await withAutoApprove(() =>
-        sdk._applyEngine.rehearse(planId, {
-          project: releaseSpec.project,
-          teardown: opts.rehearsalTeardown,
-        }),
-      );
-      if (rehearsal.report.status !== "passed") {
-        console.log(JSON.stringify({
-          ok: false,
-          project_id: releaseSpec.project,
-          plan_id: planId,
-          rehearsal,
-          commit_command: `run402 deploy apply --require-plan ${planId}${planned.plan.plan_fingerprint ? ` --plan-fingerprint ${planned.plan.plan_fingerprint}` : ""}`,
-        }, null, 2));
-        process.exit(1);
-      }
-      if (opts.commitAfterRehearse) {
-        const committed = await sdk._applyEngine.commit(planId, {
-          project: releaseSpec.project,
-          onEvent: makeStderrEventWriter(opts.quiet),
-          idempotencyKey,
-        });
-        console.log(JSON.stringify({ ok: true, project_id: releaseSpec.project, plan: planned.plan, rehearsal, commit: committed }, null, 2));
-        return;
-      }
-      console.log(JSON.stringify({
-        ok: true,
-        project_id: releaseSpec.project,
-        plan: planned.plan,
-        rehearsal,
-        commit_command: `run402 deploy apply --require-plan ${planId}${planned.plan.plan_fingerprint ? ` --plan-fingerprint ${planned.plan.plan_fingerprint}` : ""}`,
-      }, null, 2));
-      return;
-    }
     const requiredPlan = opts.mode && opts.mode.kind === "applyReviewed"
       ? { planId: opts.mode.planId, ...(opts.mode.planFingerprint ? { planFingerprint: opts.mode.planFingerprint } : {}) }
       : undefined;
@@ -1269,6 +1202,7 @@ async function applyCmd(args) {
           idempotencyKey,
           allowWarnings: opts.allowWarnings,
           allowWarningCodes: opts.allowWarningCodes,
+          ...(opts.noRehearse ? { noRehearse: true } : {}),
           ...(requiredPlan ? { requiredPlan } : {}),
         },
         target: isCoreApiTarget() ? "core" : "cloud",

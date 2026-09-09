@@ -595,7 +595,7 @@ server.tool(
 
 server.tool(
   "deploy_rehearse",
-  "Run a persisted apply plan against a contained branch and return the rehearsal report. Source project and plan stay untouched.",
+  "ADVANCED. Rehearsal is automatic in `deploy` / `app_up` for a migration-bearing plan against a project with a live release (the result's `rehearsal` block says passed or why it was skipped); this tool rehearses an already-persisted plan on a contained branch without committing and returns the report. A project with no live release rehearses on an empty branch. Source project and plan stay untouched.",
   deployRehearseSchema,
   async (args) => handleDeployRehearse(args),
 );
@@ -1931,9 +1931,9 @@ server.tool(
 
 server.tool(
   "whoami",
-  "Resolve the caller's control-plane principal and its org memberships (GET /agent/v1/whoami). A wallet authenticates; ownership is the org. Returns the principal (id/type/displayName/createdAt), authenticator_id, and every org membership (org_id, display_name, role, status). This is the REMOTE identity — for the local wallet/profile state use `status`.",
+  "Resolve the caller's control-plane principal and its org memberships (GET /agent/v1/whoami), optionally setting the principal's display name first (`set_display_name` → PATCH /agent/v1/me; 1–64 chars — the name promotion credit, `app_up`'s room presence, and audit surfaces show for this principal). A wallet authenticates; ownership is the org. Returns the principal (id/type/display_name/created_at), authenticator_id, and every org membership (org_id, display_name, role, status). This is the REMOTE identity — for the local wallet/profile state use `status`.",
   whoamiSchema,
-  async () => handleWhoami(),
+  async (args) => handleWhoami(args),
 );
 
 server.tool(

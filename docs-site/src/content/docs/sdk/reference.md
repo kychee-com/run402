@@ -246,6 +246,9 @@ import { Run402Action, run402 } from "@run402/sdk/node";
 const r = run402();
 
 await r.up({ name: "my-app" }, { approval: "yes" });
+// result.identity: { display_name, source }  — the principal's name (set from the detected client when empty)
+// result.deploy.rehearsal: { status: "passed" | "skipped", … } — automatic for a live-release project with migrations
+// input.noRehearse / input.identityName override both.
 
 const provision = await r.actions.run({
   type: Run402Action.ProjectsProvision,
@@ -430,7 +433,7 @@ export default defineConfig(({ env }) => ({
 Helper semantics:
 - `defineConfig(config)` preserves type inference. The export may be an object or `(context) => object`; context has `manifestPath`, `rootDir`, and `env`. Use `env.get("NAME")`, `env.required("NAME")`, or `env.RUN402_*` property reads; executable manifest loads report `config.env_accessed` metadata for those reads.
 - `dir(path, { prefix?, ignore?, includeSensitive? })` resolves from the config directory, walks deterministically by normalized `/` path, skips sensitive defaults unless opted in, rejects symlinks, infers content type, and produces local directory descriptors consumed by the Node normalizer.
-- `file(path, { contentType? })` produces a local file source; the Node normalizer reads bytes later and keeps secrets out of config examples.
+- `file(path, { contentType? })` produces a local file source (a JS option, camelCase; on the WIRE and in JSON manifests the field is `content_type`); the Node normalizer reads bytes later and keeps secrets out of config examples.
 - `sqlFile(path, { id?, name?, checksum?, transaction? })` derives `id` from the filename when omitted and keeps checksum/transaction metadata stable. Pass `{ name: "seed" }` for generated/idempotent SQL; the SDK compiles `<name>_<sha256(sql)[0:16]>` from the post-build SQL bytes, changed content applies once under a new id, and unchanged re-deploys noop. SQL declared with `name` MUST be idempotent because it re-runs whenever content changes against a database where prior versions may already exist.
 - `nodeFunction(path, opts)` creates a Node 22 `FunctionSpec` from built JavaScript. TypeScript function sources (`.ts`, `.tsx`, `.mts`, `.cts`) currently fail locally with `TYPESCRIPT_FUNCTION_REQUIRES_BUNDLE`; build them first and point at `.js`.
 
@@ -527,7 +530,9 @@ const info = await r.projects.info(projectId);
 
 ## Rehearsals, snapshots, and branches
 
-For database-bearing deploys, rehearse before commit. Create a reviewed plan with `r.project(id).apply.plan(spec, { mode: "reviewedPlan" })`, upload missing bytes, then call `r.project(id).apply.rehearse(plan.plan.plan_id, { teardown: "on_pass" })`. The rehearsal creates a contained branch, applies migrations and checks there, and returns `report.status`, migration/check results, branch URL, snapshot id, and `next_actions`. A passing report does not mutate the source project until you commit the original plan.
+Rehearsal is automatic inside `apply()` and `r.up()`: when the plan's `rehearsal.available` is true (migrations, and the project has a live release), the plan is rehearsed on a contained branch and committed only on a passing report, bound to the report's `required_plan`. The result carries `rehearsal: { status: "passed", report, operation_id, branch_project_id }`, or `{ status: "skipped", reason: "no_live_release" | "no_migrations" | "disabled" | "reviewed_plan" | "unsupported" }`. A failed rehearsal throws `Run402DeployError` with `code: "REHEARSAL_FAILED"` (the report is in `body.rehearsal`); nothing is committed. Pass `{ noRehearse: true }` to skip it. `onEvent` sees `rehearsal.started`, `rehearsal.finished`, and `rehearsal.skipped`.
+
+The primitive is still there for experts: `r.project(id).apply.rehearse(planId, { teardown })` rehearses an already-persisted plan without committing (a project with no live release rehearses on an EMPTY branch — never a refusal).
 
 Manual restore points are exposed as `r.snapshots` and the scoped `r.project(id).snapshots`. `restorePlan()` is the no-mutation loss-statement step; `restore()` requires the confirm token from the plan and performs the atomic offline-materialize-then-flip restore. Auth users/passkeys are restored only with `{ includeAuth: true }`; sessions and tokens are never restored.
 
@@ -2701,6 +2706,8 @@ After `accept`, the project carries a persistent `secrets_rotation_advised` advi
 
 What does NOT transfer: tier lease (stays with the original owner's organization; no Phase 1A proration), KMS signers (`r.contracts.*` — wallet-scoped), GitHub repo ownership (handle out of band), on-chain balance on any wallet.
 
+`r.orgs.setDisplayName(name)` — `PATCH /agent/v1/me`; the name promotion credit (`hand_to_operator.credited_as`), `r.up()`'s room presence, and audit surfaces show for this principal (1–64 chars). `r.up()` sets a detected default when it is empty.
+
 ## Org membership & project grants (`r.orgs`, `r.org(id)`, `r.grants` — org-owned control plane; first-class orgs)
 
 A wallet **authenticates** (SIWX → a control-plane *principal*); an **org** owns projects, and what a principal may do is decided by its org membership role (`owner > admin > developer > billing > viewer`) or a per-project grant — never `wallet_address == signer`. The collection + identity lives on `r.orgs`; per-org operations on the scoped sub-client **`r.org(id)`** (the org analog of `r.project(id)` — the id is bound once). Memberships carry `org_id` + `display_name`.
@@ -2763,7 +2770,7 @@ OpenClaw skill packaging follows the CLI release train. `@run402/functions` and 
 
 ## Patterns & gotchas
 
-- Provision before authoring HTML. The `anon_key` is permanent and must be embedded in your frontend; provision first, then write the HTML.
+- Never paste a key into HTML. Every Run402 host serves `/_run402/config.js` (`window.RUN402 = { project_id, api_base, anon_key }`) for the project it resolves to at request time; load that instead. The `anon_key` is public by design.
 - Use the manifest for access control, never raw `GRANT/REVOKE`.
 - `user_owns_rows` is the default for user-scoped data. Reach for `public_read_write_UNRESTRICTED` only on intentionally-public tables.
 - Use immutable `cdnUrl` from `r.assets.put`. It's correct from the moment of upload — no `waitFresh` needed.
