@@ -1665,3 +1665,112 @@ function fakeSdk(opts: {
     },
   } as never;
 }
+
+// principal-display-name (first-deploy-agent-dx): a wallet principal's
+// creation-time display_name is its wallet subject — an address chosen by
+// nobody — so `up` treats it as unset and names the principal like a fresh one.
+function identityAwareSdk(calls: string[], whoami: { display_name: string | null; subject: string | null }) {
+  const sdk = fakeSdk({ calls, allowanceConfigured: true, tierActive: true, activeProject: null }) as unknown as Record<string, unknown>;
+  const set: string[] = [];
+  sdk.orgs = {
+    async whoami() {
+      calls.push("orgs.whoami");
+      return {
+        principal: { id: "prn_1", type: "agent", display_name: whoami.display_name },
+        active_authenticator: whoami.subject ? { kind: "siwx_eoa", public_subject: whoami.subject } : null,
+        memberships: [],
+      };
+    },
+    async setDisplayName(name: string) {
+      calls.push(`orgs.setDisplayName:${name}`);
+      set.push(name);
+      return { principal: { id: "prn_1", type: "agent", display_name: name }, memberships: [] };
+    },
+  };
+  sdk.rooms = {
+    async forProject() { return { orgId: "org_1", roomKey: "prj_ready" }; },
+    async registerPresence(_o: string, _r: string, opts: { requestedName?: string }) {
+      calls.push(`rooms.registerPresence:${opts.requestedName ?? ""}`);
+      return { presence_id: "prs_1", name: opts.requestedName ?? "anon" };
+    },
+  };
+  return { sdk: sdk as never, set };
+}
+
+function identityWorkspace(prefix: string): string {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  writeFileSync(join(dir, "run402.deploy.json"), JSON.stringify({
+    site: { replace: { "index.html": { data: "<h1>ready</h1>" } } },
+  }));
+  mkdirSync(join(dir, ".run402"), { recursive: true });
+  writeFileSync(join(dir, ".run402", "project.json"), JSON.stringify({
+    schema_version: "run402.workspace-project.v1",
+    project_id: "prj_ready",
+    name: "ready",
+    created_at: "2026-06-30T00:00:00.000Z",
+  }));
+  return dir;
+}
+
+const WALLET = "0x2804a3f59FDd33618B2cb711060550E4eCd6DDc0";
+
+test("up treats a wallet-subject display_name as unset and names the principal from the detected client", async () => {
+  const dir = identityWorkspace("run402-up-identity-wallet-");
+  const calls: string[] = [];
+  const { sdk, set } = identityAwareSdk(calls, { display_name: WALLET, subject: WALLET.toLowerCase() });
+  try {
+    const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
+    const result = await actions.up({}, { approval: "yes" });
+    assert.equal(result.result?.identity?.source, "detected");
+    assert.equal(set.length, 1, "the detected name was set exactly once");
+    assert.equal(result.result?.identity?.display_name, set[0]);
+    assert.notEqual(result.result?.identity?.display_name, WALLET);
+    assert.ok(calls.includes(`rooms.registerPresence:${set[0]}`), "the room presence uses the same name");
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("up treats any bare 0x address as unset even without an authenticator subject", async () => {
+  const dir = identityWorkspace("run402-up-identity-bare-");
+  const calls: string[] = [];
+  const { sdk, set } = identityAwareSdk(calls, { display_name: "0x00000000000000000000000000000000000000ab", subject: null });
+  try {
+    const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
+    const result = await actions.up({}, { approval: "yes" });
+    assert.equal(result.result?.identity?.source, "detected");
+    assert.equal(set.length, 1);
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("up keeps a chosen display_name and reports it as existing", async () => {
+  const dir = identityWorkspace("run402-up-identity-chosen-");
+  const calls: string[] = [];
+  const { sdk, set } = identityAwareSdk(calls, { display_name: "Grok", subject: WALLET });
+  try {
+    const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
+    const result = await actions.up({}, { approval: "yes" });
+    assert.equal(result.result?.identity?.source, "existing");
+    assert.equal(result.result?.identity?.display_name, "Grok");
+    assert.equal(set.length, 0, "an explicit name is never touched");
+    assert.ok(calls.includes("rooms.registerPresence:Grok"));
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("up sets an explicit identityName over a wallet-subject display_name", async () => {
+  const dir = identityWorkspace("run402-up-identity-explicit-");
+  const calls: string[] = [];
+  const { sdk, set } = identityAwareSdk(calls, { display_name: WALLET, subject: WALLET });
+  try {
+    const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
+    const result = await actions.up({ identityName: "Grok" }, { approval: "yes" });
+    assert.equal(result.result?.identity?.source, "explicit");
+    assert.deepEqual(set, ["Grok"]);
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});

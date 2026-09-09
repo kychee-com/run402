@@ -235,6 +235,13 @@ interface VerifyClassification {
  * Node implementation of the action runner. The public CLI should treat this
  * as the orchestration kernel and stay a flag parser / renderer.
  */
+/** True when `displayName` is the wallet subject (or any bare 0x address) rather than a name someone chose. */
+export function isUnchosenDisplayName(displayName: string, walletSubject: string | null): boolean {
+  const name = displayName.trim();
+  if (walletSubject && name.toLowerCase() === walletSubject.trim().toLowerCase()) return true;
+  return /^0x[0-9a-f]{40}$/i.test(name);
+}
+
 export class NodeActions implements Run402Actions {
   constructor(
     private readonly sdk: Run402,
@@ -653,6 +660,12 @@ export class NodeActions implements Run402Actions {
     try {
       const me = await this.sdk.orgs.whoami();
       current = me.principal?.display_name ?? null;
+      // A wallet principal is created with its wallet subject as its
+      // display_name — an address chosen by nobody. Treat that (and any bare
+      // 0x address) as UNSET so the first deploy names the principal the way
+      // a fresh one is named; an explicit name is never touched by this.
+      const subject = (me.active_authenticator as { public_subject?: string } | null)?.public_subject ?? null;
+      if (current && isUnchosenDisplayName(current, subject)) current = null;
     } catch {
       return { display_name: null, source: "unavailable" };
     }
