@@ -47,10 +47,11 @@ import {
   type Run402AppUpVerifyResult,
 } from "../app-up.js";
 import type { Run402ExecutionMode, Run402ReviewedPlanRequirement } from "../config.js";
-import { LocalError } from "../errors.js";
+import { LocalError, Run402DeployError } from "../errors.js";
 import type { Run402 } from "../index.js";
 import type {
   DeployEvent,
+  DeployResult,
   DeployResolveResponse,
   EdgePropagationDiagnostics,
   PlanResponse,
@@ -552,7 +553,8 @@ export class NodeActions implements Run402Actions {
       });
     }
     const requiredPlan = reviewedPlanRequirement(run.executionMode);
-    const deploy = await scoped.apply(releaseSpec, {
+    const applyUp = (): Promise<DeployResult> =>
+      scoped.apply(releaseSpec, {
       idempotencyKey: explicitDeployIdempotencyKey,
       allowWarnings: input.allowWarnings,
       allowWarningCodes: input.allowWarningCodes,
@@ -570,6 +572,26 @@ export class NodeActions implements Run402Actions {
         });
       },
     });
+    let deploy: DeployResult;
+    try {
+      deploy = await applyUp();
+    } catch (err) {
+      // A failed rehearsal is a first-class outcome, not a generic step
+      // failure: surface the stable code, the report, and its next actions
+      // (`commit_plan` / `discard_branch` / `keep_branch`) so the agent can
+      // act on them without re-reading logs. Nothing was committed.
+      if (err instanceof Run402DeployError && err.code === "REHEARSAL_FAILED") {
+        const body = (err.body ?? {}) as { rehearsal?: unknown; next_actions?: unknown };
+        throw run.error(err.message, "REHEARSAL_FAILED", {
+          project_id: resolved.projectId,
+          plan_id: err.planId,
+          operation_id: err.operationId,
+          rehearsal: body.rehearsal ?? null,
+          next_actions: body.next_actions ?? [],
+        });
+      }
+      throw err;
+    }
     run.setState(deployStep, "succeeded", {
       release_id: deploy.release_id,
       operation_id: deploy.operation_id,
