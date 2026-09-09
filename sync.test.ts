@@ -1576,6 +1576,10 @@ describe("SDK surface alignment", () => {
     // runtime-enforced), plus convenience methods consumers can compose
     // without needing their own MCP tool.
     const SDK_ONLY_METHODS = new Set([
+      // principal-display-name (first-deploy-agent-dx): `PATCH /agent/v1/me`
+      // rides the whoami door on every surface (`org whoami --set-name`,
+      // MCP `whoami` `set_display_name`), so it has no verb of its own.
+      "orgs.setDisplayName",
       // Claim challenge is the first step of the claim-wallet-org flow; the
       // `claim_wallet_org` capability maps to the submit step, and the Node
       // convenience `claimWalletOrg` composes challenge + sign + submit.
@@ -2285,9 +2289,11 @@ describe("SURFACE consistency", () => {
 
 describe("deploy route surface alignment", () => {
   it("keeps route authoring documented across public agent surfaces", () => {
+    // `llms.txt` is the budgeted FRONT DOOR (first-deploy-front-door spec):
+    // one command, one file, two links — it links the references below and
+    // deliberately carries no route-authoring material of its own.
     const requiredFiles = [
       "README.md",
-      "llms.txt",
       "SKILL.md",
       "openclaw/SKILL.md",
       "cli/README.md",
