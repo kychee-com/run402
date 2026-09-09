@@ -246,7 +246,7 @@ import { Run402Action, run402 } from "@run402/sdk/node";
 const r = run402();
 
 await r.up({ name: "my-app" }, { approval: "yes" });
-// result.identity: { display_name, source }  — the principal's name (set from the detected client when empty or still the wallet subject)
+// result.identity: { display_name, source }  — the principal's name (set from the detected client when empty; wallet principals are created unnamed)
 // result.deploy.rehearsal: { status: "passed" | "skipped", … } — automatic for a live-release project with migrations
 // input.noRehearse / input.identityName override both.
 
