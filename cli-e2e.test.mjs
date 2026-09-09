@@ -3214,7 +3214,7 @@ describe("CLI e2e happy path", () => {
     wf(manifestPath, JSON.stringify({
       project_id: "prj_test123",
       database: { migrations: [{ id: "001_init", sql_path: "001_init.sql" }] },
-      site: { replace: { "index.html": { path: "index.html", contentType: "text/html" } } },
+      site: { replace: { "index.html": { path: "index.html", content_type: "text/html" } } },
     }));
 
     const { threw, deployCalled } = await deployApplyAndCapture(
@@ -3223,6 +3223,24 @@ describe("CLI e2e happy path", () => {
     assert.equal(threw, null);
     assert.equal(deployCalled, true,
       "path-backed deploy apply manifest must reach /apply/v1/plans");
+  });
+
+  it("deploy apply refuses contentType in a manifest and names content_type (one spelling on the wire)", async () => {
+    const { writeFileSync: wf } = await import("node:fs");
+    const indexPath = join(tempDir, "index-camel.html");
+    const manifestPath = join(tempDir, "deploy-apply-camel.json");
+    wf(indexPath, "<h1>camel</h1>");
+    wf(manifestPath, JSON.stringify({
+      project_id: "prj_test123",
+      site: { replace: { "index.html": { path: "index-camel.html", contentType: "text/html" } } },
+    }));
+
+    const { threw, deployCalled, stderr } = await deployApplyAndCapture(
+      ["--manifest", manifestPath, "--project", "prj_test123"]);
+
+    assert.ok(threw, "a camelCase manifest field must fail before any gateway call");
+    assert.equal(deployCalled, false);
+    assert.match(String(stderr ?? threw), /content_type/);
   });
 
   // ── Functions ───────────────────────────────────────────────────────────
