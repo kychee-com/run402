@@ -86,18 +86,23 @@ export interface Run402UpActionInput {
    *  project with a live release gets. Default false. */
   noRehearse?: boolean;
   /** Explicit display name to set on the principal when it has none yet.
-   *  Omitted: the detected client name (`claude-code`, `codex`, `cursor`,
-   *  or `agent`) is used and reported as `identity.source: "detected"`. */
+   *  Omitted: `RUN402_AGENT_NAME` when set, else a specifically detected
+   *  client (`claude-code`, `codex`, `cursor`) reported as `identity.source:
+   *  "detected"`; when nothing is known no name is written and the result
+   *  says `identity.source: "undetected"`. */
   identityName?: string;
 }
 
 /** How `up` resolved the principal's display name (first-deploy-agent-dx). */
 export interface Run402UpIdentity {
   display_name: string | null;
-  /** `existing`: already set; `explicit`: set now from `identityName`;
-   *  `detected`: set now from the detected client; `unavailable`: could not
-   *  be read or set (never fails the deploy). */
-  source: "existing" | "explicit" | "detected" | "unavailable";
+  /** `existing`: already set; `explicit`: set now from `identityName` or
+   *  `RUN402_AGENT_NAME`; `detected`: set now from a specifically detected
+   *  client (`claude-code`, `codex`, `cursor`); `undetected`: nothing known
+   *  and nothing persisted — a guess is never written as a name (the room
+   *  presence is `agent` for coordination only); `unavailable`: could not be
+   *  read or set (never fails the deploy). */
+  source: "existing" | "explicit" | "detected" | "undetected" | "unavailable";
   /** The project room presence `up` registered under that name, when it could. */
   presence?: { presence_id: string; name: string } | null;
 }

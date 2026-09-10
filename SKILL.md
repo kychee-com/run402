@@ -499,7 +499,7 @@ Reference: [`astro/README.md`](./astro/README.md) (top section), [`cli/llms-cli.
 
 ## Rehearsals, snapshots, and branches
 
-Rehearsal is automatic. A migration-bearing **`deploy`** / **`app_up`** against a project with a live release is rehearsed on a contained branch and committed only on a passing report; the result's `rehearsal` block says `passed`, or `skipped` with a reason (`no_live_release` on a first deploy — nothing to protect, so it just ships; `no_migrations`; `disabled` when you passed `no_rehearse`). A failed rehearsal returns `REHEARSAL_FAILED` with the report and commits nothing. ADVANCED: **`deploy_rehearse`** rehearses an already-persisted plan id without committing (a project with no live release rehearses on an empty branch — never a refusal). CI sessions cannot rehearse in v1; run from a local allowance/control-plane session.
+Rehearsal is automatic. A migration-bearing **`deploy`** / **`app_up`** against a project with a live release is rehearsed on a contained branch and committed only on a passing report; the result's `rehearsal` block says `passed`, or `skipped` with a reason (`no_live_release` on a first deploy — nothing to protect, so it just ships; `no_migrations`; `disabled` when you passed `no_rehearse`). A failed rehearsal returns `REHEARSAL_FAILED` with the report and commits nothing. ADVANCED: **`deploy_rehearse`** rehearses without committing — pass `plan_id` for a plan whose bytes are uploaded, or `manifest` to plan, upload, and rehearse in one call (a project with no live release rehearses on an empty branch — never a refusal). CI sessions cannot rehearse in v1; run from a local allowance/control-plane session.
 
 Snapshot tools are the restore surface, not the portability surface:
 

@@ -228,19 +228,28 @@ Output:
   stderr: one JSON poll progress line per attempt when --wait is set
 `;
 
-const REHEARSE_HELP = `run402 deploy rehearse — Run a persisted plan on a contained branch
+const REHEARSE_HELP = `run402 deploy rehearse — Run a plan on a contained branch (ADVANCED; rehearsal is automatic in up / deploy apply)
 
 Usage:
-  run402 deploy rehearse <plan_id> [--project <id>] [--teardown on_pass|keep|always] [--json]
+  run402 deploy rehearse [<plan_id>] [--manifest <path>] [--project <id>] [--teardown on_pass|keep|always] [--json]
 
 Options:
+  <plan_id>           An already-persisted plan. Its bytes must be uploaded; when
+                      the gateway answers REHEARSAL_CONTENT_MISSING the manifest
+                      in the current directory (or --manifest) is used to upload
+                      them and the rehearsal is retried. If facts changed since
+                      that plan, a fresh reviewed plan is created and rehearsed
+                      instead — the result names which plan was rehearsed.
+  --manifest <path>   Plan from this manifest (run402.json, run402.deploy.json,
+                      app.json, or an executable config), upload its bytes, then
+                      rehearse. Without <plan_id> the manifest is discovered in
+                      the current directory the same way run402 up does.
   --teardown <mode>   on_pass (default: passed rehearsals delete their branch;
-                      failed rehearsals keep it), keep, always. When omitted,
-                      the gateway default (on_pass) applies.
+                      failed rehearsals keep it), keep, always.
+  --project <id>      Project for operator-approval metadata and project resolution.
 
-Rehearsal is automatic in \`run402 up\` / \`run402 deploy apply\` for a
-migration-bearing plan against a project with a live release; this verb is the
-primitive for rehearsing an already-persisted plan without committing.
+Nothing is committed. The result carries the rehearsal report and the exact
+bound commit command (run402 deploy apply --require-plan <plan_id>).
 `;
 
 const RELEASE_HELP = `run402 deploy release — Inspect deploy release inventory and diffs
@@ -356,14 +365,52 @@ export async function runDeployV2(sub, args) {
   });
 }
 
+const REHEARSE_MANIFEST_CANDIDATES = ["run402.json", "run402.deploy.json", "app.json", "run402.deploy.ts", "run402.deploy.mts", "run402.deploy.js", "run402.deploy.mjs"];
+
+/** The manifest `deploy rehearse` would plan from in `dir`, discovered the way `up` does, or null. */
+export function discoverRehearseManifest(dir = process.cwd()) {
+  for (const name of REHEARSE_MANIFEST_CANDIDATES) {
+    const candidate = resolve(dir, name);
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+async function loadReleaseSpecForRehearse(manifestPath, project) {
+  const executable = EXECUTABLE_MANIFEST_EXTENSIONS.has(extname(manifestPath).toLowerCase());
+  let normalized;
+  try {
+    if (executable) {
+      normalized = await loadDeployManifest(manifestPath, { ...(project ? { project } : {}) });
+    } else {
+      const spec = JSON.parse(readFileSync(manifestPath, "utf-8"));
+      rejectLegacySecretManifest(spec, { source: "manifest", path: manifestPath });
+      const defaultProject = project || spec?.project || spec?.project_id ? undefined : resolveProjectId(null);
+      normalized = await normalizeDeployManifest(spec, {
+        baseDir: dirname(manifestPath),
+        ...(project ? { project } : {}),
+        ...(defaultProject ? { defaultProject } : {}),
+      });
+    }
+  } catch (err) {
+    reportSdkError(err);
+  }
+  return normalized;
+}
+
+function isContentMissing(err) {
+  const code = err?.code ?? err?.body?.code ?? err?.envelope?.code;
+  return code === "REHEARSAL_CONTENT_MISSING";
+}
+
 async function rehearseCmd(rawArgs) {
   const args = normalizeArgv(rawArgs);
   if (args.includes("--help") || args.includes("-h")) {
     console.log(REHEARSE_HELP);
     return;
   }
-  const valueFlags = new Set(["--project", "--teardown"]);
-  const allowedFlags = ["--project", "--teardown", "--json", "--help", "-h"];
+  const valueFlags = new Set(["--project", "--teardown", "--manifest"]);
+  const allowedFlags = ["--project", "--teardown", "--manifest", "--json", "--help", "-h"];
   const positionals = [];
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
@@ -382,9 +429,23 @@ async function rehearseCmd(rawArgs) {
     }
     positionals.push(arg);
   }
-  const planId = positionals[0];
-  if (!planId || positionals.length > 1) {
-    fail({ code: "BAD_USAGE", message: "Usage: run402 deploy rehearse <plan_id> [--project <id>] [--teardown on_pass|keep|always] [--json]" });
+  if (positionals.length > 1) {
+    fail({ code: "BAD_USAGE", message: "Usage: run402 deploy rehearse [<plan_id>] [--manifest <path>] [--project <id>] [--teardown on_pass|keep|always] [--json]" });
+  }
+  const givenPlanId = positionals[0] ?? null;
+  const explicitManifest = flagValue(args, "--manifest");
+  const manifestPath = explicitManifest
+    ? (isAbsolute(explicitManifest) ? explicitManifest : resolve(process.cwd(), explicitManifest))
+    : discoverRehearseManifest();
+  if (explicitManifest && !existsSync(manifestPath)) {
+    fail({ code: "BAD_USAGE", message: `Manifest not found: ${manifestPath}`, details: { flag: "--manifest", path: explicitManifest } });
+  }
+  if (!givenPlanId && !manifestPath) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Nothing to rehearse: pass a <plan_id>, or run from a directory with a manifest (run402.json, run402.deploy.json, app.json), or pass --manifest <path>.",
+      details: { searched: REHEARSE_MANIFEST_CANDIDATES },
+    });
   }
   // When --teardown is absent, omit it from the request body entirely — the
   // gateway defaults to on_pass (passed rehearsals delete their branch).
@@ -394,23 +455,63 @@ async function rehearseCmd(rawArgs) {
   }
   const project = flagValue(args, "--project") ?? undefined;
   // A delegate is a complete deploy credential and the gateway explicitly
-  // supports rehearsing with one — walletAuthOrCiSession routes a delegate
-  // bearer through delegateDeployAuth("project.deploy"), and the route rejects
-  // only CI sessions (REHEARSAL_CI_UNSUPPORTED), whose own next_action reads
-  // "Rehearse with a wallet, control-plane session, or scoped agent delegate."
-  // Without this branch the CLI refuses locally with NO_ALLOWANCE and tells the
-  // caller to run `run402 init` — a wrong remedy for a holder who has no wallet
-  // by design, and the same misleading-error shape we removed from the payment
-  // path in 4.11.2. Rehearsal is the SAFE path; never make it the harder one.
+  // supports rehearsing with one (the route rejects only CI sessions).
+  // Rehearsal is the SAFE path; never make it the harder one.
   if (!isCoreApiTarget() && !loadLiveControlPlaneSession() && !delegateTokenFromEnv()) {
-    allowanceAuthHeaders(`/apply/v1/plans/${planId}/rehearse`);
+    allowanceAuthHeaders(`/apply/v1/plans/${givenPlanId ?? "_"}/rehearse`);
   }
+  const sdk = getSdk();
+  const emit = makeStderrEventWriter(false);
+
+  // Plan from the manifest, upload its bytes, and hand back the persisted
+  // plan id to rehearse. Used when no plan id was given, and as the recovery
+  // for a plan whose bytes were never uploaded.
+  async function planAndUpload() {
+    const normalized = await loadReleaseSpecForRehearse(manifestPath, project);
+    const planned = await sdk._applyEngine.plan(normalized.spec, {
+      idempotencyKey: normalized.idempotencyKey,
+      mode: "reviewedPlan",
+    });
+    const planId = planned.plan.plan_id;
+    if (!planId) {
+      fail({ code: "DRY_RUN_PLAN_NOT_COMMITTABLE", message: "Rehearsal requires a persisted plan_id, but the plan response did not include one.", details: { project_id: normalized.spec.project } });
+    }
+    await sdk._applyEngine.upload(planned.plan, {
+      project: normalized.spec.project,
+      byteReaders: planned.byteReaders,
+      onEvent: emit,
+    });
+    return { planId, plan: planned.plan, projectId: normalized.spec.project };
+  }
+
   try {
-    const rehearsal = await withAutoApprove(() =>
-      getSdk()._applyEngine.rehearse(planId, { project, teardown }),
-    );
+    let planId = givenPlanId;
+    let replanned = null;
+    let rehearsal;
+    if (!planId) {
+      const fresh = await planAndUpload();
+      planId = fresh.planId;
+      rehearsal = await withAutoApprove(() => sdk._applyEngine.rehearse(planId, { project: project ?? fresh.projectId, teardown }));
+    } else {
+      try {
+        rehearsal = await withAutoApprove(() => sdk._applyEngine.rehearse(planId, { project, teardown }));
+      } catch (err) {
+        if (!isContentMissing(err) || !manifestPath) throw err;
+        // The plan's bytes were never uploaded (a --plan-only plan). Plan from
+        // the manifest to get byte readers, upload, and retry. When facts
+        // changed since the given plan the fresh plan is the one rehearsed,
+        // and the result says so — never silently substituted.
+        const fresh = await planAndUpload();
+        if (fresh.planId !== givenPlanId) replanned = { original_plan_id: givenPlanId, plan_id: fresh.planId, why: "plan facts changed since the given plan; a fresh reviewed plan was created, its bytes uploaded, and that plan rehearsed" };
+        planId = fresh.planId;
+        rehearsal = await withAutoApprove(() => sdk._applyEngine.rehearse(planId, { project: project ?? fresh.projectId, teardown }));
+      }
+    }
     console.log(JSON.stringify({
       ok: rehearsal.report.status === "passed",
+      plan_id: planId,
+      ...(manifestPath ? { manifest_path: manifestPath } : {}),
+      ...(replanned ? { replanned } : {}),
       rehearsal,
       commit_command: `run402 deploy apply --require-plan ${planId}`,
     }, null, 2));

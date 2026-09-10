@@ -182,7 +182,7 @@ export const COMMAND_MANIFEST = [
 
   // ── deploy (unified deploy v2) ───────────────────────────────────────────
   { path: ["deploy", "apply"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["--spec", "{}", "--check"], runStyle: "deployV2" },
-  { path: ["deploy", "rehearse"], positionals: [p("plan_id")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["plan_gate1"], runStyle: "deployV2" },
+  { path: ["deploy", "rehearse"], positionals: [p("plan_id", { required: false })], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["plan_gate1"], runStyle: "deployV2" },
   { path: ["deploy", "promote"], positionals: [p("release_id")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["rel_gate1"], runStyle: "deployV2" },
   { path: ["deploy", "resume"], positionals: [p("operation_id")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["op_gate1"], runStyle: "deployV2" },
   { path: ["deploy", "list"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "deployV2" },

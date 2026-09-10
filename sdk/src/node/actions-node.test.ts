@@ -1713,6 +1713,15 @@ function identityWorkspace(prefix: string): string {
 }
 
 const WALLET = "0x2804a3f59FDd33618B2cb711060550E4eCd6DDc0";
+const CLIENT_MARKERS = ["CLAUDECODE", "CLAUDE_CODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SESSION_ID", "CODEX_SANDBOX", "CODEX_CI", "OPENAI_CODEX", "CODEX_HOME", "CURSOR_TRACE_ID", "CURSOR_SESSION_ID", "CURSOR_AGENT", "RUN402_AGENT_NAME"];
+async function withClientEnv<T>(env: Record<string, string>, fn: () => Promise<T>): Promise<T> {
+  const saved: Record<string, string | undefined> = {};
+  for (const k of CLIENT_MARKERS) { saved[k] = process.env[k]; delete process.env[k]; }
+  Object.assign(process.env, env);
+  try { return await fn(); } finally {
+    for (const k of CLIENT_MARKERS) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; }
+  }
+}
 
 
 
@@ -1732,16 +1741,54 @@ test("up keeps a chosen display_name and reports it as existing", async () => {
   }
 });
 
-test("up names an unnamed principal from the detected client", async () => {
+test("up names an unnamed principal from a specifically detected client", async () => {
   const dir = identityWorkspace("run402-up-identity-unnamed-");
   const calls: string[] = [];
   const { sdk, set } = identityAwareSdk(calls, { display_name: null, subject: WALLET });
   try {
-    const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
-    const result = await actions.up({}, { approval: "yes" });
+    const result = await withClientEnv({ CLAUDECODE: "1" }, async () => {
+      const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
+      return actions.up({}, { approval: "yes" });
+    });
     assert.equal(result.result?.identity?.source, "detected");
-    assert.equal(set.length, 1);
-    assert.equal(result.result?.identity?.display_name, set[0]);
+    assert.deepEqual(set, ["claude-code"]);
+    assert.equal(result.result?.identity?.display_name, "claude-code");
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("up reads RUN402_AGENT_NAME before detection and reports it as explicit", async () => {
+  const dir = identityWorkspace("run402-up-identity-env-");
+  const calls: string[] = [];
+  const { sdk, set } = identityAwareSdk(calls, { display_name: null, subject: WALLET });
+  try {
+    const result = await withClientEnv({ CLAUDECODE: "1", RUN402_AGENT_NAME: " Grok " }, async () => {
+      const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
+      return actions.up({}, { approval: "yes" });
+    });
+    assert.equal(result.result?.identity?.source, "explicit");
+    assert.deepEqual(set, ["Grok"]);
+    assert.ok(calls.includes("rooms.registerPresence:Grok"));
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("up never persists a guess: an undetected runtime leaves the principal unnamed", async () => {
+  const dir = identityWorkspace("run402-up-identity-undetected-");
+  const calls: string[] = [];
+  const { sdk, set } = identityAwareSdk(calls, { display_name: null, subject: WALLET });
+  try {
+    const result = await withClientEnv({}, async () => {
+      const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
+      return actions.up({}, { approval: "yes" });
+    });
+    assert.equal(result.result?.identity?.source, "undetected");
+    assert.equal(result.result?.identity?.display_name, null);
+    assert.equal(set.length, 0, "nothing is written");
+    assert.ok(calls.includes("rooms.registerPresence:agent"), "the room presence is a coordination label only");
+    assert.equal(result.result?.deploy?.release_id, "rel_123", "the deploy still runs");
   } finally {
     rmSync(dir, { force: true, recursive: true });
   }
@@ -1752,8 +1799,10 @@ test("up sets an explicit identityName over an unnamed principal", async () => {
   const calls: string[] = [];
   const { sdk, set } = identityAwareSdk(calls, { display_name: null, subject: WALLET });
   try {
-    const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
-    const result = await actions.up({ identityName: "Grok" }, { approval: "yes" });
+    const result = await withClientEnv({}, async () => {
+      const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
+      return actions.up({ identityName: "Grok" }, { approval: "yes" });
+    });
     assert.equal(result.result?.identity?.source, "explicit");
     assert.deepEqual(set, ["Grok"]);
   } finally {

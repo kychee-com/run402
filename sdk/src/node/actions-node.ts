@@ -61,7 +61,7 @@ import type {
 import type { ProjectSummary, ProvisionResult } from "../namespaces/projects.types.js";
 import type { TierName, TierSetResult } from "../namespaces/tier.js";
 import { loadDeployManifest, normalizeDeployManifest } from "./deploy-manifest.js";
-import { detectClientName } from "./client-detect.js";
+import { declaredAgentName, detectClientName } from "./client-detect.js";
 
 export type NodeActionTargetKind = "cloud" | "core" | "unknown";
 
@@ -661,9 +661,32 @@ export class NodeActions implements Run402Actions {
     }
     let displayName = current;
     let source: Run402UpIdentity["source"] = "existing";
-    if (!displayName || (input.identityName && input.identityName !== displayName)) {
-      const desired = input.identityName?.trim() || detectClientName();
-      source = input.identityName ? "explicit" : "detected";
+    // Order: explicit input, then the runtime's own declaration
+    // (RUN402_AGENT_NAME), then a specifically detected client. A generic
+    // guess is never persisted as a name.
+    const explicitName = input.identityName?.trim() || declaredAgentName() || null;
+    const detectedName = explicitName ? null : detectClientName();
+    if (!displayName || (explicitName && explicitName !== displayName)) {
+      const desired = explicitName ?? detectedName;
+      if (!desired) {
+        let presence: Run402UpIdentity["presence"] = null;
+        try {
+          const room = await this.sdk.rooms.forProject(projectId);
+          const registered = await this.sdk.rooms.registerPresence(room.orgId, room.roomKey, { requestedName: "agent", task: "run402 up" });
+          presence = { presence_id: registered.presence_id, name: registered.name };
+        } catch {
+          presence = null;
+        }
+        run.skipStep({
+          action: "identity.name.set",
+          description: "No display name is known for this principal; nothing was written (set RUN402_AGENT_NAME or run `run402 org whoami --set-name <name>`)",
+          mutation: false,
+          auto: true,
+          details: { source: "undetected" },
+        });
+        return { display_name: null, source: "undetected", presence };
+      }
+      source = explicitName ? "explicit" : "detected";
       const step = run.addStep({
         action: "identity.name.set",
         description: `Set this principal's display name to ${desired}`,
@@ -674,7 +697,7 @@ export class NodeActions implements Run402Actions {
       await run.approve(
         step,
         ["identity.name.set"],
-        `Name this principal "${desired}" (promotion credit and room presence use it; change any time with run402 whoami --set-name).`,
+        `Name this principal "${desired}" (promotion credit and room presence use it; change any time with run402 org whoami --set-name).`,
       );
       run.setState(step, "running");
       try {
