@@ -30,11 +30,16 @@ The human owner can then initiate community installation:
 ```sh
 run402 buzz install \
   --org org_0123456789abcdef0123456789abcdef \
-  --community buzz:community:acme.communities.buzz.xyz \
-  --authority 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+  --community buzz:community:acme.communities.buzz.xyz
 ```
 
-The installation remains `pending`, and `authority_proof_content.descriptor_state: "proposed"` labels the nested active descriptor as the exact state awaiting approval. Its `event_content` is canonical JSON. A current Buzz owner or admin publishes those exact bytes with the already-shipped `buzz social publish --content '<event_content>'` kind-1 command. Activation submits that signed event and the relay URL. Run402 verifies the event signature and freshness, the relay's released NIP-11 `self`, and the current relay-signed NIP-43 kind-13534 membership snapshot before the installation becomes active. Buzz itself needs no new event kind, handler, extension, deep link, UI, CLI, or release.
+The installation remains `pending` and returns `installation_identity.pubkey` — the one Nostr key Run402 holds for this community — with a single next action: a current Buzz community owner or admin mints a one-use invite in Buzz Desktop (the same door hive402 nodes and every other non-human participant use) and hands over its link or code:
+
+```sh
+run402 buzz install activate buzzci_… --invite 'https://acme.communities.buzz.xyz/invite/v2.…'
+```
+
+Run402 claims the invite as the installation identity (NIP-98, accepting the relay's join policy when one is advertised), then verifies the current relay-signed NIP-43 kind-13534 membership snapshot lists that identity before the installation becomes active. No Nostr key ever leaves Buzz Desktop; there is no approval post and no member-add ceremony. Activation also probes whether the relay honors NIP-OA owner attestation and records `bot_mode`: `attested` means each routed project posts under its own bot (a distinct name and avatar, attested by the installation identity), `installation_identity` means the identity posts everything itself. Buzz itself needs no new event kind, handler, extension, deep link, UI, CLI, or release.
 
 Every NIP-11 and Nostr membership read re-resolves the relay, rejects literal/private/reserved or mixed public/private destinations, and pins the validated address set into the actual fresh TLS connection. Redirects are disabled and response time/size are bounded, so a relay hostname cannot pass a DNS check and then redirect or rebind the connection into a private network.
 

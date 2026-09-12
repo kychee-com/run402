@@ -194,6 +194,26 @@ describe("run402 buzz CLI", () => {
     assert.match(stderr.join("\n"), /pending/);
   });
 
+  it("installs without naming a Buzz authority and activates through the invite front door", async () => {
+    const calls = [];
+    sdk = {
+      buzz: {
+        install: async (input) => { calls.push(["install", input]); return { status: "pending", installation_identity: { pubkey: "ab".repeat(32) }, next_actions: [{ type: "mint_buzz_invite" }] }; },
+        communityInstallations: {
+          activate: async (id, invite, key) => { calls.push(["activate", id, invite, key]); return { status: "active", bot_mode: "attested" }; },
+        },
+      },
+    };
+    await run("install", ["--org", `org_${"1".repeat(32)}`, "--community", "buzz:community:acme.communities.buzz.xyz"]);
+    assert.equal(calls[0][0], "install");
+    assert.equal(calls[0][1].buzzCommunitySubject, "buzz:community:acme.communities.buzz.xyz");
+    assert.equal(calls[0][1].buzzCommunityAuthoritySubject, undefined);
+    assert.equal(JSON.parse(stdout[0]).next_actions[0].type, "mint_buzz_invite");
+    await run("install", ["activate", `buzzci_${"2".repeat(32)}`, "--invite", "https://acme.communities.buzz.xyz/invite/v2.abcdefghij", "--idempotency-key", "activate-1"]);
+    assert.deepEqual(calls[1], ["activate", `buzzci_${"2".repeat(32)}`, "https://acme.communities.buzz.xyz/invite/v2.abcdefghij", "activate-1"]);
+    assert.equal(JSON.parse(stdout[1]).bot_mode, "attested");
+  });
+
   it("discovers descriptors by community without authentication", async () => {
     let observed;
     sdk = {

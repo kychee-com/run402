@@ -2415,7 +2415,8 @@ run402 buzz status
 run402 buzz adopt offer --org <org_id> --identity-link <idlnk_id> [--deployment-context-file <json>]
 run402 buzz adopt offer show <buzzhao_id>
 run402 buzz adopt offer cancel <buzzhao_id>
-run402 buzz install --org <org_id> --community <buzz:community:host> --authority <hex-pubkey>
+run402 buzz install --org <org_id> --community <buzz:community:host> [--authority <hex-pubkey>]
+run402 buzz install activate <buzzci_id> --invite <link|code>
 run402 buzz enroll --installation <buzzci_id> --identity-link <idlnk_id> --grants-file <json> --expires-at <ISO-8601>
 ```
 

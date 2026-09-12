@@ -26,7 +26,7 @@ Canonical workflows:
       --org                       the Run402 organization id as "run402 org whoami" returns it (a UUID)
       --deployment-context-file   JSON with exactly these five non-empty strings, and no others:
                                   project_id, release_id, live_url, source_revision, verified_at
-  run402 buzz install --org <org_id> --community <buzz:community:host> --authority <hex-pubkey>
+  run402 buzz install --org <org_id> --community <buzz:community:host> [--authority <hex-pubkey>]
   run402 buzz enroll --installation <buzzci_id> --identity-link <idlnk_id> --grants-file <json> --expires-at <ISO-8601>
 
 Explicit consent/decision commands:
@@ -34,7 +34,7 @@ Explicit consent/decision commands:
   run402 buzz adopt offer cancel <buzzhao_id>
   run402 buzz adopt complete <buzzha_id> --event-file <owner-event.json>
   run402 buzz adopt cancel <buzzha_id>
-  run402 buzz install activate <buzzci_id> --proof-file <authority-proof.json>
+  run402 buzz install activate <buzzci_id> --invite <link|code>   (a one-use invite minted in Buzz Desktop; no key leaves Desktop)
   run402 buzz install update <buzzci_id> --policy-file <policy.json> --policy-revision <n> --default <true|false>
   run402 buzz install revoke <buzzci_id>
   run402 buzz approve <buzzae_id> --grants-file <json> --descriptor-revision <n> --policy-revision <n>
@@ -199,12 +199,15 @@ async function install(args) {
   const [operation, ...rest] = args;
   if (operation === "activate") {
     const a = normalizeArgv(rest);
-    const values = ["--proof-file", "--idempotency-key"];
+    const values = ["--invite", "--idempotency-key"];
     assertKnownFlags(a, values, values);
-    const [id] = requirePositionalCount(a, values, { min: 1, max: 1, command: "run402 buzz install activate <buzzci_id> --proof-file <json>" });
-    const proof = readJsonFile(requiredFlag(a, "--proof-file"), "--proof-file");
+    const [id] = requirePositionalCount(a, values, { min: 1, max: 1, command: "run402 buzz install activate <buzzci_id> --invite <link|code>" });
+    // The invite is a one-use bearer artifact: it goes to the gateway once
+    // and is never echoed. A bare code, an https://<relay>/invite/<code>
+    // link, or a buzz://join?relay=…&code=… link are all accepted.
+    const invite = requiredFlag(a, "--invite");
     const key = flagValue(a, "--idempotency-key") ?? undefined;
-    return invoke(() => getSdk().buzz.communityInstallations.activate(id, proof, key));
+    return invoke(() => getSdk().buzz.communityInstallations.activate(id, invite, key));
   }
   if (operation === "revoke") {
     const a = normalizeArgv(rest);
@@ -252,13 +255,13 @@ async function install(args) {
   const a = normalizeArgv(args);
   const values = ["--org", "--community", "--authority", "--policy-file", "--idempotency-key"];
   assertKnownFlags(a, values, values);
-  requirePositionalCount(a, values, { min: 0, max: 0, command: "run402 buzz install [--org <org_id>] --community <subject> --authority <hex>" });
+  requirePositionalCount(a, values, { min: 0, max: 0, command: "run402 buzz install [--org <org_id>] --community <subject> [--authority <hex>]" });
   const policyFile = flagValue(a, "--policy-file");
   const organizationId = await resolveOrgId(a, { cmd: "buzz" });
   return invoke(() => getSdk().buzz.install({
     organizationId,
     buzzCommunitySubject: requiredFlag(a, "--community"),
-    buzzCommunityAuthoritySubject: requiredFlag(a, "--authority"),
+    buzzCommunityAuthoritySubject: flagValue(a, "--authority") ?? undefined,
     enrollmentPolicy: policyFile ? readJsonFile(policyFile, "--policy-file") : undefined,
     idempotencyKey: flagValue(a, "--idempotency-key") ?? undefined,
   }));

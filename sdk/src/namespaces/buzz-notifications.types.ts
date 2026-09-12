@@ -70,10 +70,25 @@ export interface BuzzEventRoute {
   /** The installation's Nostr notification pubkey (hex) — public by design. */
   notification_pubkey: string;
   signing_generation: number;
+  /** Probed at the installation's activation: `attested` means each project posts as its own bot. */
+  bot_mode: "attested" | "installation_identity" | null;
+  /** On the single-route read: the route's live project bots (attested mode). Never a secret. */
+  bots?: BuzzProjectBot[];
   created_at: string;
   updated_at: string;
   /** Revoked routes stay READABLE (sanitized history); only mutations reject them. */
   revoked_at: string | null;
+}
+
+/** A project's own Nostr identity in the community, attested by the installation identity (NIP-OA). */
+export interface BuzzProjectBot {
+  buzz_project_bot_id: string;
+  project_id: string;
+  pubkey: string;
+  display_name: string;
+  attested_by_generation: number;
+  profile_state: "pending" | "published";
+  status: "active" | "retired";
 }
 
 /**
@@ -162,6 +177,12 @@ export interface BuzzRouteDelivery {
   created_at: string;
   delivered_at: string | null;
   terminal_at: string | null;
+  /** The release this delivery belongs to; deliveries thread by (route, release). */
+  release_id: string | null;
+  /** Public id of the thread root delivery, for replies. */
+  thread_root_delivery_id: string | null;
+  thread_position: "root" | "reply" | null;
+  signer: "installation_identity" | "project_bot";
 }
 
 /**

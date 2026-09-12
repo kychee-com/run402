@@ -198,13 +198,32 @@ describe("Buzz SDK namespace", () => {
   it("rejects nested secret material before network access", async () => {
     const { run402, calls } = sdk(() => response({}));
     await assert.rejects(
-      run402.buzz.communityInstallations.activate(
-        "buzzci_11111111111111111111111111111111",
-        { nsec: "nsec1never" } as never,
-      ),
+      run402.buzz.communityInstallations.create({
+        organizationId: "org_11111111111111111111111111111111",
+        buzzCommunitySubject: "buzz:community:acme.communities.buzz.xyz",
+        enrollmentPolicy: { nsec: "nsec1never" } as never,
+      }),
       /never accepted/,
     );
     assert.equal(calls.length, 0);
+  });
+
+  it("activates with the one-use invite and refuses to call without one", async () => {
+    const { run402, calls } = sdk(() => response({ status: "active", bot_mode: "attested" }));
+    await assert.rejects(
+      run402.buzz.communityInstallations.activate("buzzci_11111111111111111111111111111111", "" as never),
+      /invite is required/,
+    );
+    assert.equal(calls.length, 0);
+    const activated = await run402.buzz.communityInstallations.activate(
+      "buzzci_11111111111111111111111111111111",
+      "https://acme.communities.buzz.xyz/invite/v2.abcdefghij",
+      "activate-1",
+    );
+    assert.equal(activated.bot_mode, "attested");
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]?.init.body, JSON.stringify({ invite: "https://acme.communities.buzz.xyz/invite/v2.abcdefghij" }));
+    assert.equal((calls[0]?.init.headers as Record<string, string>)["Idempotency-Key"], "activate-1");
   });
 
   it("preserves code-specific gateway recovery without synthesizing a generic retry", async () => {

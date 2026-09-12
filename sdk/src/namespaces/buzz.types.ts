@@ -45,11 +45,6 @@ export interface BuzzNostrEvent {
   sig: string;
 }
 
-export interface BuzzCommunityAuthorityProof {
-  buzz_community_subject: string;
-  approval_event: BuzzNostrEvent;
-  relay_url: string;
-}
 
 export interface BuzzSafePolicySummary {
   mode: BuzzEnrollmentMode;
@@ -131,32 +126,29 @@ export interface BuzzCommunityInstallation {
   buzz_community_installation_id: string;
   org_id: string;
   buzz_community_subject: string;
-  buzz_community_authority_subject?: string;
+  buzz_community_authority_subject?: string | null;
   relay_url?: string;
   relay_self: string | null;
   status: BuzzCommunityInstallationStatus;
   descriptor: BuzzCommunityDescriptor | null;
-  approval_event_id: string | null;
-  authority_membership_event_id: string | null;
+  /** The relay-signed kind:13534 membership event that activated the installation. */
+  membership_event_id: string | null;
+  /** Probed at activation: `attested` (each project posts as its own bot) or `installation_identity`. */
+  bot_mode: "attested" | "installation_identity" | null;
+  /** The non-secret invite-claim receipt (status, host, community id, role). */
+  invite_claim: { status: "joined" | "already_member"; claimed_at: string; community_id: string | null; host: string | null; role: string | null } | null;
+  /** The relay join policy accepted at activation, when the relay advertised one. */
+  join_policy: { version: string; age_attestation_required: boolean; accepted_at: string; accepted_by_principal_id: string } | null;
+  /** The installation identity — the one relay member Run402 holds per community. Never its secret. */
+  installation_identity: { pubkey: string; signing_generation: number; profile_state: "pending" | "published" } | null;
+  /** Kept for older clients: the installation identity's pubkey. */
+  notification_pubkey?: string;
   descriptor_revision: number;
   descriptor_hash: string | null;
   default_for_enrollment: boolean;
   enrollment_policy: BuzzEnrollmentPolicy;
   policy_revision: number;
   evidence_observed_at: string | null;
-  authority_proof_content: {
-    challenge_id: string;
-    nonce: string;
-    verification_code: string;
-    descriptor_state: "proposed";
-    descriptor: BuzzCommunityDescriptor;
-    event_kind: 1;
-    event_content: string;
-    publish_with: string;
-    relay_url: string;
-    origin: string;
-    expires_at: string;
-  } | null;
   issued_at: string;
   expires_at: string;
   activated_at: string | null;
@@ -306,7 +298,8 @@ export interface BuzzHumanAdoptionAttemptCreateInput {
 export interface BuzzCommunityInstallationCreateInput {
   organizationId: string;
   buzzCommunitySubject: string;
-  buzzCommunityAuthoritySubject: string;
+  /** Optional since the invite front door: the relay, not a named authority, admits the installation identity. */
+  buzzCommunityAuthoritySubject?: string;
   enrollmentPolicy?: BuzzEnrollmentPolicy;
   idempotencyKey?: string;
 }

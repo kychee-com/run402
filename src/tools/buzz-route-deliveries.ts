@@ -28,6 +28,9 @@ function deliveryLine(d: BuzzRouteDelivery): string {
   if (d.next_attempt_at) parts.push(`next ${d.next_attempt_at}`);
   if (d.delivered_at) parts.push(`delivered ${d.delivered_at}`);
   if (d.nostr_event_id) parts.push(`nostr ${d.nostr_event_id}`);
+  if (d.thread_position === "reply") parts.push(`reply → ${d.thread_root_delivery_id ?? "?"}`);
+  else if (d.thread_position === "root") parts.push(`thread root${d.release_id ? ` (${d.release_id})` : ""}`);
+  if (d.signer === "project_bot") parts.push("signed by the project bot");
   if (d.suppressed_reason) parts.push(`suppressed: ${d.suppressed_reason}`);
   if (d.last_error) parts.push(`last_error: ${d.last_error}`);
   return parts.join("  ");

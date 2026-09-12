@@ -22,7 +22,6 @@ import type {
   BuzzAgentEnrollmentCreateInput,
   BuzzAgentEnrollmentStatus,
   BuzzCapabilityStatus,
-  BuzzCommunityAuthorityProof,
   BuzzCommunityInstallation,
   BuzzCommunityInstallationCreateInput,
   BuzzCommunityInstallationUpdateInput,
@@ -168,7 +167,7 @@ export class BuzzCommunityInstallations {
       body: {
         org_id: required(input.organizationId, "organizationId", "starting Buzz community installation"),
         buzz_community_subject: required(input.buzzCommunitySubject, "buzzCommunitySubject", "starting Buzz community installation"),
-        buzz_community_authority_subject: required(input.buzzCommunityAuthoritySubject, "buzzCommunityAuthoritySubject", "starting Buzz community installation"),
+        ...(input.buzzCommunityAuthoritySubject ? { buzz_community_authority_subject: input.buzzCommunityAuthoritySubject } : {}),
         ...(input.enrollmentPolicy ? { enrollment_policy: input.enrollmentPolicy } : {}),
       },
       context: "starting Buzz community installation",
@@ -187,12 +186,17 @@ export class BuzzCommunityInstallations {
     return this.client.request<BuzzCommunityInstallation>(`/buzz-community-installations/v1/${encodeURIComponent(required(id, "buzzCommunityInstallationId", "reading Buzz community installation"))}`, { context: "reading Buzz community installation" });
   }
 
-  async activate(id: string, authorityProof: BuzzCommunityAuthorityProof, idempotencyKey?: string): Promise<BuzzCommunityInstallation> {
-    rejectSecrets(authorityProof);
+  /**
+   * The invite front door: `invite` is the one-use relay invite a Buzz
+   * community owner or admin minted in Buzz Desktop — the bare code, an
+   * `https://<relay>/invite/<code>` link, or a `buzz://join?…` link. Run402
+   * claims it as the installation identity; no Nostr key leaves Desktop.
+   */
+  async activate(id: string, invite: string, idempotencyKey?: string): Promise<BuzzCommunityInstallation> {
     return this.client.request<BuzzCommunityInstallation>(`/buzz-community-installations/v1/${encodeURIComponent(required(id, "buzzCommunityInstallationId", "activating Buzz community installation"))}/activate`, {
       method: "POST",
       headers: headers(idempotencyKey),
-      body: { authority_proof: authorityProof },
+      body: { invite: required(invite, "invite", "activating Buzz community installation") },
       context: "activating Buzz community installation",
     });
   }
