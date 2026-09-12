@@ -71,6 +71,44 @@ export interface CreateCheckoutResult {
   topup_id: string;
 }
 
+/**
+ * A Lightning cash top-up (lightning-cash-topup). `amount_usd_micros` is a
+ * QUOTE fixed at mint (`usd_value_is_quote: true`) and is what settlement
+ * credits. Never carries the provider's credential.
+ */
+export interface LightningTopup {
+  org_id: string;
+  product: "balance_topup";
+  rail: "lightning";
+  topup_id: string;
+  /** The payable invoice, verbatim. */
+  bolt11: string | null;
+  payment_hash: string | null;
+  amount_sats: number | null;
+  amount_usd_micros: number;
+  usd_value_is_quote: true;
+  quoted_rate: { usd_per_btc: number; source: string; observed_at: string; amount_sats: number } | null;
+  invoice_expires_at: string | null;
+  status: "pending" | "paid" | "paid_late" | "expired";
+  paid_at: string | null;
+  credited_ledger_id: string | null;
+  created_at: string | null;
+  next_actions: Array<{ type: string; method: string; path: string; why: string }>;
+}
+
+export interface CreateLightningTopupOptions {
+  /** Whole satoshis, 100–1,000,000. */
+  amountSats: number;
+  /** Replay-safe create: the same key returns the same top-up. */
+  idempotencyKey?: string;
+}
+
+export interface WaitForTopupOptions {
+  pollMs?: number;
+  timeoutMs?: number;
+  onPoll?: (state: LightningTopup) => void;
+}
+
 export interface EmailOrganization {
   id: string;
   email: string;
@@ -113,6 +151,12 @@ export type CreateCheckoutOptions =
       amountUsdMicros: number;
       successUrl?: string;
       cancelUrl?: string;
+    }
+  | {
+      /** lightning-cash-topup: a bolt11 invoice instead of a Stripe session. */
+      product?: "balance_topup";
+      rail: "lightning";
+      amountSats: number;
     }
   | {
       product: "tier";
@@ -240,6 +284,15 @@ function checkoutRequestBody(
   if (!request || typeof request !== "object" || Array.isArray(request)) {
     throw new LocalError("checkout must be an object with a product.", context);
   }
+  if ("rail" in request) {
+    if (request.rail !== "lightning") {
+      throw new LocalError('rail must be "lightning" (omit it for a Stripe checkout).', context);
+    }
+    if (!Number.isSafeInteger(request.amountSats) || request.amountSats <= 0) {
+      throw new LocalError("amountSats must be a positive integer number of satoshis.", context);
+    }
+    return { product: "balance_topup", rail: "lightning", amount_sats: request.amountSats };
+  }
   if (request.product === "balance_topup") {
     assertUsdMicrosAmount(request.amountUsdMicros, "amountUsdMicros", context);
     return {
@@ -361,6 +414,50 @@ export class Billing {
       body,
       context: "creating checkout",
     });
+  }
+
+  /**
+   * lightning-cash-topup: mint a bolt11 invoice that tops up the org's cash
+   * balance when paid. No funds move at creation; any active org member or a
+   * delegate for one of the org's projects may call it.
+   */
+  async createLightningTopup(
+    organizationId: string,
+    options: CreateLightningTopupOptions,
+  ): Promise<LightningTopup> {
+    assertNonEmptyString(organizationId, "organizationId", "creating Lightning top-up");
+    const body = checkoutRequestBody({ rail: "lightning", amountSats: options.amountSats }, "creating Lightning top-up");
+    return this.client.request<LightningTopup>(`/orgs/v1/${encodeURIComponent(organizationId)}/checkouts`, {
+      method: "POST",
+      body,
+      ...(options.idempotencyKey ? { headers: { "Idempotency-Key": options.idempotencyKey } } : {}),
+      context: "creating Lightning top-up",
+    });
+  }
+
+  /** Read one top-up (the waiting client's poll). */
+  async getTopup(organizationId: string, topupId: string): Promise<LightningTopup> {
+    assertNonEmptyString(organizationId, "organizationId", "reading top-up");
+    assertNonEmptyString(topupId, "topupId", "reading top-up");
+    return this.client.request<LightningTopup>(
+      `/orgs/v1/${encodeURIComponent(organizationId)}/checkouts/${encodeURIComponent(topupId)}`,
+      { context: "reading top-up" },
+    );
+  }
+
+  /**
+   * Poll a top-up until it is paid, paid late, or expired (or the timeout
+   * elapses, in which case the last observed state is returned).
+   */
+  async waitForTopup(organizationId: string, topupId: string, options: WaitForTopupOptions = {}): Promise<LightningTopup> {
+    const pollMs = options.pollMs ?? 2_000;
+    const deadline = Date.now() + (options.timeoutMs ?? 600_000);
+    for (;;) {
+      const state = await this.getTopup(organizationId, topupId);
+      options.onPoll?.(state);
+      if (state.status !== "pending" || Date.now() >= deadline) return state;
+      await new Promise((resolve) => setTimeout(resolve, pollMs));
+    }
   }
 
   /** Create an email-only (no-wallet) organization. Sends a verification email. */

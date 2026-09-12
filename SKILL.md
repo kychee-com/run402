@@ -650,6 +650,8 @@ Tier is per **organization**, not per project. One subscribe / renew / upgrade a
 - **`billing_history`** — ledger.
 - **`set_auto_recharge`** — auto-buy email packs when credits run low.
 - **`create_checkout`** — org checkout for balance top-ups, tiers, or email packs.
+- **`create_lightning_topup`** — top up the cash balance over Lightning: mints a bolt11 invoice (no Stripe; funds move only when paid), USD value quoted at mint.
+- **`get_topup`** — read a Lightning top-up: pending, paid, paid_late, or expired.
 
 ### KMS signers (on-chain signing)
 

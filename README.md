@@ -802,6 +802,8 @@ The full MCP surface: every tool is a thin shim over an SDK call.
 | `get_quote` | Tier pricing (free, no auth). |
 | `create_email_organization` / `link_wallet_to_organization` | Email-based organizations; hybrid Stripe + x402. |
 | `create_checkout` | Org checkout for balance top-ups, tiers, or email packs. |
+| `create_lightning_topup` | Top up the cash balance over Lightning: mints a bolt11 invoice; pay from any wallet. |
+| `get_topup` | Read a Lightning top-up (pending, paid, paid_late, expired). |
 | `billing_history` | Ledger history. |
 | `set_auto_recharge` | Auto-buy email packs when credits run low. |
 
@@ -835,6 +837,8 @@ The full MCP surface: every tool is a thin shim over an SDK call.
 | `project_get` / `project_use` | Server project detail and active-project selection. `project_use` validates through the server, then stores only an active id pointer. |
 | `project_key_cache_status` / `project_key_cache_export` | Explicit local project-key cache tools. `status` is redacted; `export` requires `reveal: true` and emits cached secret key material. |
 | `create_checkout` | Org checkout for balance top-ups, tiers, or email packs. |
+| `create_lightning_topup` | Top up the cash balance over Lightning: mints a bolt11 invoice; pay from any wallet. |
+| `get_topup` | Read a Lightning top-up (pending, paid, paid_late, expired). |
 | `send_feedback` | Send feedback to the run402 team. Write-only: no inbox, no reply path. Optional `project_id` + `handle` relay a deploy's promotion consent (`hand_to_operator` next action). |
 | `set_agent_contact` / `get_agent_contact_status` / `verify_agent_contact_email` | Register agent contact info, read assurance status, and start the operator email reply challenge. |
 | `start_operator_passkey_enrollment` | Email a run402 operator passkey enrollment link to the verified contact email. |

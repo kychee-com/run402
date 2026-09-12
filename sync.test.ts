@@ -656,6 +656,8 @@ const SURFACE: Capability[] = [
 
   // ── Additional billing ─────────────────────────────────────────────────
   { id: "create_checkout",   endpoint: "POST /orgs/v1/:org_id/checkouts",        mcp: "create_checkout",     cli: "billing:checkout",  openclaw: "billing:checkout" },
+  { id: "create_lightning_topup", endpoint: "POST /orgs/v1/:org_id/checkouts (rail: lightning)", mcp: "create_lightning_topup", cli: "billing:topup", openclaw: "billing:topup" },
+  { id: "get_topup",         endpoint: "GET /orgs/v1/:org_id/checkouts/:topup_id", mcp: "get_topup",          cli: null,                openclaw: null },
   { id: "allowance_checkout", endpoint: "POST /orgs/v1/:org_id/checkouts (local wallet convenience)", mcp: null, cli: "allowance:checkout", openclaw: "allowance:checkout" },
   { id: "billing_history",   endpoint: "GET /orgs/v1/:org_id/billing/history", mcp: "billing_history", cli: "allowance:history", openclaw: "allowance:history" },
 
@@ -1141,6 +1143,8 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   project_key_cache_export: "credentials.projectKeys.export",
   project_key_cache_remove: "credentials.projectKeys.remove",
   create_checkout: "billing.createCheckout",
+  create_lightning_topup: "billing.createLightningTopup",
+  get_topup: "billing.getTopup",
   allowance_checkout: "billing.createCheckout",
   billing_history: "billing.history",
   create_email_organization: "billing.createEmailOrganization",
@@ -1576,6 +1580,8 @@ describe("SDK surface alignment", () => {
     // runtime-enforced), plus convenience methods consumers can compose
     // without needing their own MCP tool.
     const SDK_ONLY_METHODS = new Set([
+      // lightning-cash-topup: the CLI's `--wait` loop; MCP callers poll `get_topup`.
+      "billing.waitForTopup",
       // principal-display-name (first-deploy-agent-dx): `PATCH /agent/v1/me`
       // rides the whoami door on every surface (`org whoami --set-name`,
       // MCP `whoami` `set_display_name`), so it has no verb of its own.

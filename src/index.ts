@@ -332,6 +332,7 @@ import { listNotificationRulesSchema, handleListNotificationRules } from "./tool
 import { createNotificationRuleSchema, handleCreateNotificationRule } from "./tools/create-notification-rule.js";
 import { deleteNotificationRuleSchema, handleDeleteNotificationRule } from "./tools/delete-notification-rule.js";
 import { createCheckoutSchema, handleCreateCheckout } from "./tools/create-checkout.js";
+import { createLightningTopupSchema, getTopupSchema, handleCreateLightningTopup, handleGetTopup } from "./tools/lightning-topup.js";
 import { billingHistorySchema, handleBillingHistory } from "./tools/billing-history.js";
 import { updateVersionSchema, handleUpdateVersion } from "./tools/update-version.js";
 import { deleteVersionSchema, handleDeleteVersion } from "./tools/delete-version.js";
@@ -1543,6 +1544,20 @@ server.tool(
   "Create a Stripe checkout URL for an organization. Products: balance_topup, tier, email_pack.",
   createCheckoutSchema,
   async (args) => handleCreateCheckout(args),
+);
+
+server.tool(
+  "create_lightning_topup",
+  "Top up an organization's cash balance over Lightning: mints a bolt11 invoice (no Stripe, no funds move until paid). Use when a human says 'top up N sats'. Pay it from any Lightning wallet, then get_topup until paid.",
+  createLightningTopupSchema,
+  async (args) => handleCreateLightningTopup(args),
+);
+
+server.tool(
+  "get_topup",
+  "Read a Lightning top-up: pending, paid, paid_late, or expired, with the credited ledger id once paid.",
+  getTopupSchema,
+  async (args) => handleGetTopup(args),
 );
 
 server.tool(

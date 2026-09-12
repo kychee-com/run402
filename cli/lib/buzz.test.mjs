@@ -204,7 +204,7 @@ describe("run402 buzz CLI", () => {
         },
       },
     };
-    await run("install", ["--org", `org_${"1".repeat(32)}`, "--community", "buzz:community:acme.communities.buzz.xyz"]);
+    await run("install", ["--org", "22222222-2222-4222-8222-222222222222", "--community", "buzz:community:acme.communities.buzz.xyz"]);
     assert.equal(calls[0][0], "install");
     assert.equal(calls[0][1].buzzCommunitySubject, "buzz:community:acme.communities.buzz.xyz");
     assert.equal(calls[0][1].buzzCommunityAuthoritySubject, undefined);

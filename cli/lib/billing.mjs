@@ -12,6 +12,7 @@ Subcommands:
   create-email <email>                     Create an email organization
   link-wallet [<org_id>] <wallet_address>  Link a wallet to an email organization
   checkout <identifier> --product <p>      Create an org checkout
+  topup <identifier> --sats <n> [--wait]   Top up the cash balance over Lightning (a bolt11 invoice; no node, no Stripe)
   auto-recharge [<org_id>] <on|off> [--threshold <n>]
   balance <identifier>                     Balance by organization id (UUID), wallet (0x...), or email
   history <identifier> [--limit <n>]       Ledger history by organization id (UUID), wallet, or email
@@ -21,6 +22,7 @@ Examples:
   run402 billing checkout 00000000-0000-4000-8000-000000000001 --product tier --tier hobby
   run402 billing checkout 0x1234... --product email-pack
   run402 billing checkout 0x1234... --product balance-topup --amount 5000000
+  run402 billing topup 0x1234... --sats 2000 --wait
   run402 billing auto-recharge org_abc on --threshold 2000
   run402 billing balance user@example.com
 `;
@@ -208,6 +210,62 @@ async function checkout(args) {
   }
 }
 
+// lightning-cash-topup: "top up N sats" → one invoice, optionally waited on.
+// stdout stays one JSON doc per step (the pipe contract); the human-facing
+// invoice line and the receipt go to stderr.
+async function topup(args) {
+  const parsedArgs = normalizeArgv(args);
+  const valueFlags = ["--sats", "--timeout", "--idempotency-key"];
+  assertKnownFlags(parsedArgs, [...valueFlags, "--wait", "--help", "-h"], valueFlags);
+  const positionals = positionalArgs(parsedArgs, valueFlags);
+  const identifier = positionals[0];
+  if (!identifier || positionals.length > 1) {
+    fail({ code: "BAD_USAGE", message: "Usage: run402 billing topup <identifier> --sats <n> [--wait]", hint: "run402 billing topup 0x1234... --sats 2000 --wait" });
+  }
+  const satsRaw = flagValue(parsedArgs, "--sats");
+  const sats = Number(satsRaw);
+  if (satsRaw === null || !Number.isSafeInteger(sats) || sats <= 0) {
+    fail({ code: "BAD_FLAG", message: "--sats must be a positive whole number of satoshis (100–1000000).", details: { flag: "--sats" } });
+  }
+  const timeoutRaw = flagValue(parsedArgs, "--timeout");
+  const timeoutMs = timeoutRaw === null ? 600_000 : Number(timeoutRaw) * 1000;
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    fail({ code: "BAD_FLAG", message: "--timeout must be a positive number of seconds.", details: { flag: "--timeout" } });
+  }
+  try {
+    const sdk = getSdk();
+    const org = await sdk.billing.lookupOrganization(identifier);
+    const created = await sdk.billing.createLightningTopup(org.org_id, {
+      amountSats: sats,
+      idempotencyKey: flagValue(parsedArgs, "--idempotency-key") ?? undefined,
+    });
+    console.log(JSON.stringify(created, null, 2));
+    console.error(`Invoice for ${created.amount_sats} sats (≈ $${(created.amount_usd_micros / 1_000_000).toFixed(2)} at the quoted rate), expires ${created.invoice_expires_at}.`);
+    console.error(`Pay it from any Lightning wallet:\n  lightning:${created.bolt11}`);
+    if (!parsedArgs.includes("--wait")) {
+      console.error(`Then read it: run402 billing topup is one-shot; poll GET /orgs/v1/${org.org_id}/checkouts/${created.topup_id} (or rerun with --wait).`);
+      return;
+    }
+    let announced = false;
+    const final = await sdk.billing.waitForTopup(org.org_id, created.topup_id, {
+      timeoutMs,
+      onPoll: () => { if (!announced) { announced = true; console.error("Waiting for the payment…"); } },
+    });
+    console.log(JSON.stringify(final, null, 2));
+    if (final.status === "paid" || final.status === "paid_late") {
+      console.error(`Received — ${final.amount_sats} sats credited $${(final.amount_usd_micros / 1_000_000).toFixed(2)} to the balance${final.status === "paid_late" ? " (paid after the invoice expired; still credited)" : ""}.`);
+    } else if (final.status === "expired") {
+      console.error("The invoice expired unpaid. Mint a fresh one with the same command.");
+      process.exitCode = 2;
+    } else {
+      console.error("Timed out still pending — a payment that lands later still credits (up to an hour after expiry); poll the top-up.");
+      process.exitCode = 2;
+    }
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
 async function createEmail(args) {
   const parsedArgs = normalizeArgv(args);
   assertKnownFlags(parsedArgs, ["--help", "-h"]);
@@ -353,6 +411,7 @@ export async function run(sub, args) {
     case "create-email": await createEmail(args); break;
     case "link-wallet": await linkWallet(args); break;
     case "checkout": await checkout(args); break;
+    case "topup": await topup(args); break;
     case "auto-recharge": await autoRecharge(args); break;
     case "balance": await balance(args); break;
     case "history": await history(args); break;

@@ -453,6 +453,7 @@ export const COMMAND_MANIFEST = [
   { path: ["billing", "create-email"], positionals: [p("email")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["gate@example.com"] },
   { path: ["billing", "link-wallet"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG, "0x1111111111111111111111111111111111111111"] },
   { path: ["billing", "checkout"], positionals: [p("identifier")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["00000000-0000-4000-8000-000000000001", "--product", "email-pack"] },
+  { path: ["billing", "topup"], positionals: [p("identifier")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["00000000-0000-4000-8000-000000000001", "--sats", "2000"] },
   { path: ["billing", "auto-recharge"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG, "--state", "on"] },
   { path: ["billing", "balance"], positionals: [p("identifier")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["gate@example.com"] },
   { path: ["billing", "history"], positionals: [p("identifier")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["gate@example.com"] },
