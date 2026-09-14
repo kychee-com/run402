@@ -36,6 +36,9 @@ Explicit consent/decision commands:
   run402 buzz adopt complete <buzzha_id> --event-file <owner-event.json>
   run402 buzz adopt cancel <buzzha_id>
   run402 buzz install activate <buzzci_id> --invite <link|code>   (a one-use invite minted in Buzz Desktop; no key leaves Desktop)
+  run402 buzz join --installation <buzzci_id> --identity-link <idlnk_id> [--auth-tag <json>]
+      the teammate door: a Buzz-launched agent joins the installed organization as a developer on the owner
+      attestation Buzz injected ($BUZZ_AUTH_TAG, public data), when the installation's policy opens that door
   run402 buzz install update <buzzci_id> --policy-file <policy.json> --policy-revision <n> --default <true|false>
   run402 buzz install revoke <buzzci_id>
   run402 buzz approve <buzzae_id> --grants-file <json> --descriptor-revision <n> --policy-revision <n>
@@ -301,6 +304,25 @@ async function enroll(args) {
   }));
 }
 
+// The teammate door. The attestation is the NIP-OA `auth` tag Buzz injects into
+// a managed agent as BUZZ_AUTH_TAG: the owner's pubkey and signature over this
+// agent's key — public, never a secret.
+async function join(args) {
+  const a = normalizeArgv(args);
+  const values = ["--installation", "--identity-link", "--auth-tag", "--idempotency-key"];
+  assertKnownFlags(a, values, values);
+  requirePositionalCount(a, values, { min: 0, max: 0, command: "run402 buzz join --installation <buzzci_id> --identity-link <idlnk_id> [--auth-tag <json>]" });
+  const authTag = flagValue(a, "--auth-tag") ?? (process.env.BUZZ_AUTH_TAG?.trim() || undefined);
+  if (!authTag) {
+    fail({ code: "BAD_USAGE", message: "The teammate door needs the owner attestation: pass --auth-tag or run inside Buzz where BUZZ_AUTH_TAG is set.", hint: "A managed Buzz agent has BUZZ_AUTH_TAG in its environment; an agent without one enrolls through `run402 buzz enroll` instead." });
+  }
+  return invoke(() => getSdk({ authMode: "wallet" }).buzz.communityInstallations.joinAsTeammate(requiredFlag(a, "--installation"), {
+    identityLinkId: requiredFlag(a, "--identity-link"),
+    ownerAttestation: authTag,
+    idempotencyKey: flagValue(a, "--idempotency-key") ?? undefined,
+  }));
+}
+
 async function approve(args) {
   const a = normalizeArgv(args);
   const values = ["--grants-file", "--descriptor-revision", "--policy-revision", "--idempotency-key"];
@@ -346,6 +368,7 @@ export async function run(sub, args = []) {
     case "adopt": return adopt(args);
     case "install": return install(args);
     case "enroll": return enroll(args);
+    case "join": return join(args);
     case "approve": return approve(args);
     case "deny": return deny(args);
     case "revoke": return revoke(args);

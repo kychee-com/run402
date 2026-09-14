@@ -2418,6 +2418,7 @@ run402 buzz adopt offer show <buzzhao_id>
 run402 buzz adopt offer cancel <buzzhao_id>
 run402 buzz install --org <org_id> --community <buzz:community:host> [--authority <hex-pubkey>]
 run402 buzz install activate <buzzci_id> --invite <link|code>
+run402 buzz join --installation <buzzci_id> --identity-link <idlnk_id> [--auth-tag <json>]   # teammate door: a Buzz-launched agent joins the installed org as a developer on its owner's attestation ($BUZZ_AUTH_TAG)
 run402 buzz enroll --installation <buzzci_id> --identity-link <idlnk_id> --grants-file <json> --expires-at <ISO-8601>
 ```
 

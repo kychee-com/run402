@@ -804,7 +804,28 @@ export async function runSetup({
   const canSelectCommunityInstallation = remoteBuzz?.eligibility?.can_select_community_installation === true
     || (remoteBuzz?.eligibility?.can_request_enrollment === true && nonterminalEnrollments.length === 0);
   const canRequestEnrollment = !relayWarning && canSelectCommunityInstallation && nonterminalEnrollments.length === 0;
-  const nextAction = canRequestEnrollment && activeEnrollments.length === 0 && defaultInstallations.length === 1
+  // The teammate door: a Buzz-launched agent carries its owner's attestation
+  // (BUZZ_AUTH_TAG). When the one verified default installation opens the
+  // door, the agent joins that org as a developer instead of asking for
+  // bounded grants — unless it is already a member of that org.
+  const ownerAttestation = typeof process.env.BUZZ_AUTH_TAG === "string" && process.env.BUZZ_AUTH_TAG.trim() !== "";
+  const memberOrgIds = new Set((Array.isArray(remoteBuzz?.community_installations) ? remoteBuzz.community_installations : [])
+    .map((entry) => entry?.org_id).filter((id) => typeof id === "string"));
+  const teammateDoor = !relayWarning && ownerAttestation && defaultInstallations.length === 1
+    && defaultInstallations[0].safe_policy_summary?.owner_attested_agents === "developer"
+    && !memberOrgIds.has(defaultInstallations[0].org_id)
+    ? defaultInstallations[0]
+    : null;
+  const nextAction = teammateDoor
+    ? {
+        type: "offer_teammate_join",
+        buzz_community_installation_id: teammateDoor.buzz_community_installation_id,
+        org_id: teammateDoor.org_id,
+        role: "developer",
+        requires_approval: true,
+        fallback: coldStartFallbackAvailable ? "org_of_one" : null,
+      }
+    : canRequestEnrollment && activeEnrollments.length === 0 && defaultInstallations.length === 1
     ? {
         type: "offer_community_enrollment",
         buzz_community_installation_id: defaultInstallations[0].buzz_community_installation_id,

@@ -25,6 +25,8 @@ import type {
   BuzzCommunityInstallation,
   BuzzCommunityInstallationCreateInput,
   BuzzCommunityInstallationUpdateInput,
+  BuzzTeammateJoin,
+  BuzzTeammateJoinInput,
   BuzzHumanAdoption,
   BuzzHumanAdoptionAttemptCreateInput,
   BuzzHumanAdoptionCreateInput,
@@ -198,6 +200,30 @@ export class BuzzCommunityInstallations {
       headers: headers(idempotencyKey),
       body: { invite: required(invite, "invite", "activating Buzz community installation") },
       context: "activating Buzz community installation",
+    });
+  }
+
+  /**
+   * The teammate door (`POST /buzz-community-installations/v1/:id/teammates`):
+   * a Buzz-launched agent presents the NIP-OA owner attestation Buzz injected
+   * as `BUZZ_AUTH_TAG` and, when the installation's policy opens the door
+   * (`owner_attested_agents: "developer"`) and the attesting owner is a
+   * current community owner/admin, joins the installed organization as a
+   * developer under its own principal. 201 on join, 200 when already a
+   * teammate. The attestation is public data (owner pubkey + signature).
+   */
+  async joinAsTeammate(id: string, input: BuzzTeammateJoinInput): Promise<BuzzTeammateJoin> {
+    rejectSecrets(input);
+    return this.client.request<BuzzTeammateJoin>(`/buzz-community-installations/v1/${encodeURIComponent(required(id, "buzzCommunityInstallationId", "joining Buzz organization as teammate"))}/teammates`, {
+      method: "POST",
+      headers: headers(input.idempotencyKey),
+      body: {
+        identity_link_id: required(input.identityLinkId, "identityLinkId", "joining Buzz organization as teammate"),
+        owner_attestation: Array.isArray(input.ownerAttestation)
+          ? input.ownerAttestation
+          : required(input.ownerAttestation, "ownerAttestation", "joining Buzz organization as teammate"),
+      },
+      context: "joining Buzz organization as teammate",
     });
   }
 

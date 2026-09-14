@@ -51,6 +51,8 @@ export interface BuzzSafePolicySummary {
   requires_current_community_membership: true;
   allowed_capabilities: BuzzGrantCapability[] | null;
   max_grant_ttl_seconds: number | null;
+  /** Teammate door: present ("developer") only when owner-attested agents may join the org as developers. */
+  owner_attested_agents?: "developer";
 }
 
 export interface BuzzEnrollmentPolicy {
@@ -58,6 +60,8 @@ export interface BuzzEnrollmentPolicy {
   requires_current_community_membership: true;
   allowed_capabilities?: BuzzGrantCapability[];
   max_grant_ttl_seconds?: number;
+  /** Open the teammate door: agents attested by a current community owner/admin join as developers. `null` closes it. */
+  owner_attested_agents?: "developer" | null;
 }
 
 export interface BuzzCommunityDescriptor {
@@ -309,6 +313,30 @@ export interface BuzzCommunityInstallationUpdateInput {
   enrollmentPolicy: BuzzEnrollmentPolicy;
   policyRevision: number;
   idempotencyKey?: string;
+}
+
+export interface BuzzTeammateJoinInput {
+  identityLinkId: string;
+  /** Buzz's `BUZZ_AUTH_TAG`: the `["auth", owner, conditions, sig]` tag, as a JSON string or array. */
+  ownerAttestation: string | string[];
+  idempotencyKey?: string;
+}
+
+export interface BuzzTeammateJoin {
+  buzz_community_installation_id: string;
+  org_id: string;
+  principal_id: string;
+  role: "developer" | "admin" | "owner";
+  status: "active";
+  membership: {
+    via: "owner_attestation";
+    agent_pubkey: string;
+    attesting_owner: string;
+    attesting_owner_community_role: string;
+    membership_event_id: string;
+    observed_at: string;
+  };
+  next_actions: Array<Record<string, unknown>>;
 }
 
 export interface BuzzAgentEnrollmentCreateInput {
