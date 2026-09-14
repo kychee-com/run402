@@ -255,7 +255,7 @@ async function topup(args) {
     if (final.status === "paid" || final.status === "paid_late") {
       console.error(`Received — ${final.amount_sats} sats credited $${(final.amount_usd_micros / 1_000_000).toFixed(2)} to the balance${final.status === "paid_late" ? " (paid after the invoice expired; still credited)" : ""}.`);
     } else if (final.status === "expired") {
-      console.error("The invoice expired unpaid. Mint a fresh one with the same command.");
+      console.error("No payment was observed before the invoice expired. If you already paid, it still credits on its own (the gateway keeps checking for an hour after expiry) — read the top-up again, or rerun with the same --idempotency-key. Otherwise mint a fresh one with the same command.");
       process.exitCode = 2;
     } else {
       console.error("Timed out still pending — a payment that lands later still credits (up to an hour after expiry); poll the top-up.");
