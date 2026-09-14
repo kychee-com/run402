@@ -212,6 +212,12 @@ export interface CreateBuzzEventRouteInput {
   /** 1–50 named projects owned by the org. */
   projectIds: string[];
   /**
+   * Also deliver the org's own facts (e.g. the `platform_payment_received`
+   * receipt after a Lightning top-up or tier purchase) into this channel.
+   * Default false: a route is project-scoped unless asked.
+   */
+  includeOrgEvents?: boolean;
+  /**
    * Omitted/null routes every registered routable type
    * (`deploy_activated`, `error_fingerprints_observed`, `platform_incident`).
    * An explicit `[]` is rejected (422) — it matches nothing, never everything.

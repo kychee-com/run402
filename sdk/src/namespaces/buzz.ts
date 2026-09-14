@@ -416,6 +416,7 @@ export class BuzzNotifications {
         route_name: required(input.routeName, "routeName", context),
         buzz_channel_id: required(input.buzzChannelId, "buzzChannelId", context),
         project_ids: input.projectIds,
+        ...(input.includeOrgEvents !== undefined ? { include_org_events: input.includeOrgEvents } : {}),
         ...(input.eventTypes !== undefined ? { event_types: input.eventTypes } : {}),
         ...(input.eventClasses !== undefined ? { event_classes: input.eventClasses } : {}),
       },

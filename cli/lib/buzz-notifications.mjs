@@ -22,7 +22,8 @@ import {
 const HELP = `run402 buzz notifications — route project events into a Buzz community channel
 
 Usage:
-  run402 buzz notifications configure --org <uuid> --installation <buzzci_id> --name <route_name> --channel <uuid> --project <id> [--project <id> ...] [--event-type <t> ...] [--event-class <c> ...]
+  run402 buzz notifications configure --org <uuid> --installation <buzzci_id> --name <route_name> --channel <uuid> --project <id> [--project <id> ...] [--event-type <t> ...] [--event-class <c> ...] [--include-org-events]
+      --include-org-events   also deliver the org's own facts (the platform_payment_received receipt after a Lightning top-up) into the channel
   run402 buzz notifications status [--org <uuid> | <buzzper_id>]
   run402 buzz notifications test <buzzper_id> [--wait] [--poll-seconds <n>] [--timeout-seconds <n>]
   run402 buzz notifications deliveries <buzzper_id> [--limit <n>] [--cursor <c>] [--delivery <buzzped_id>]
@@ -119,7 +120,8 @@ function narrateAuthorization(authorization) {
 async function configure(args) {
   const a = normalizeArgv(args);
   const valueFlags = ["--org", "--installation", "--name", "--channel", "--project", "--event-type", "--event-class", "--idempotency-key"];
-  assertKnownFlags(a, [...valueFlags, "--help", "-h"], valueFlags);
+  assertKnownFlags(a, [...valueFlags, "--include-org-events", "--help", "-h"], valueFlags);
+  const includeOrgEvents = a.includes("--include-org-events");
   requirePositionalCount(positionalArgs(a, valueFlags), valueFlags, {
     min: 0, max: 0, command: "run402 buzz notifications configure", missing: "",
   });
@@ -135,6 +137,7 @@ async function configure(args) {
       routeName: requiredFlag(a, "--name"),
       buzzChannelId: requiredFlag(a, "--channel"),
       projectIds,
+      ...(includeOrgEvents ? { includeOrgEvents: true } : {}),
       ...(eventTypes.length ? { eventTypes } : {}),
       ...(eventClasses.length ? { eventClasses } : {}),
       ...(flagValue(a, "--idempotency-key") ? { idempotencyKey: flagValue(a, "--idempotency-key") } : {}),
