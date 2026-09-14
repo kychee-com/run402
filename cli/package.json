@@ -37,6 +37,7 @@
     "ipaddr.js": "1.9.1",
     "json-canonicalize": "2.0.0",
     "mppx": "^0.4.7",
+    "qrcode": "1.5.4",
     "tsx": "^4.21.0",
     "undici": "^7.29.0",
     "viem": "^2.47.1"

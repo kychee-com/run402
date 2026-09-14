@@ -93,7 +93,12 @@ Notification routing is an OPTIONAL delivery state on top of an active community
 
 ### lightning_topup
 
-When a human asks the agent, in plain language, to top up the organization's balance in sats ("top up 2000 sats", "add some sats", "pay in bitcoin"), run `run402 billing topup <org> --sats <n> --wait`. Post the invoice line the command prints (`lightning:<bolt11>`) so the human can pay from any Lightning wallet, then post the receipt the command prints once the payment lands (amount in sats and the dollar value credited, which was quoted when the invoice was minted). If the command reports `LIGHTNING_TOPUP_NOT_CONFIGURED`, say so and offer the Stripe checkout instead. Never ask for, accept, or relay wallet keys, seed words, or payment credentials.
+When a human asks the agent, in plain language, to top up the organization's balance in sats ("top up 2000 sats", "add some sats", "pay in bitcoin"), post a QR code they can scan, not a wall of text. Two steps, one idempotency key:
+
+1. Mint and render: `run402 --wallet <profile> billing topup <org_id> --sats <n> --idempotency-key <key> --qr <tmp>/run402-invoice.png` (no `--wait`). Then post the image into the channel with the amount and a tappable link as the caption: `buzz messages send --channel <current channel uuid> --file <tmp>/run402-invoice.png --content "Scan to pay <n> sats (≈ $<usd>) — or tap: lightning:<bolt11>"`. Nothing but the invoice goes into the image or the text.
+2. Wait and confirm: rerun the same command with the same `--idempotency-key` and `--wait` (it returns the same invoice and blocks until it is paid). When it prints the receipt, post one line: the sats received and the dollars credited (the value quoted at mint). The organization's route also posts the receipt as a project bot when it carries `--include-org-events`; that is not a duplicate, it is the ledger speaking.
+
+If the command reports `LIGHTNING_TOPUP_NOT_CONFIGURED`, say so and offer the Stripe checkout instead. If the wait ends `expired`, say the payment still credits within the hour if it was sent, and rerun with the same key to check. Never ask for, accept, or relay wallet keys, seed words, or payment credentials.
 
 ## Offer one contextual test
 

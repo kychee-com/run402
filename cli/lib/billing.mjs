@@ -12,7 +12,7 @@ Subcommands:
   create-email <email>                     Create an email organization
   link-wallet [<org_id>] <wallet_address>  Link a wallet to an email organization
   checkout <identifier> --product <p>      Create an org checkout
-  topup <identifier> --sats <n> [--wait]   Top up the cash balance over Lightning (a bolt11 invoice; no node, no Stripe)
+  topup <identifier> --sats <n> [--wait] [--qr <file.png>]   Top up the cash balance over Lightning (a bolt11 invoice; --qr also writes a scannable PNG)
   auto-recharge [<org_id>] <on|off> [--threshold <n>]
   balance <identifier>                     Balance by organization id (UUID), wallet (0x...), or email
   history <identifier> [--limit <n>]       Ledger history by organization id (UUID), wallet, or email
@@ -23,6 +23,7 @@ Examples:
   run402 billing checkout 0x1234... --product email-pack
   run402 billing checkout 0x1234... --product balance-topup --amount 5000000
   run402 billing topup 0x1234... --sats 2000 --wait
+  run402 billing topup 0x1234... --sats 2000 --qr /tmp/invoice.png   # also write the invoice as a scannable PNG
   run402 billing auto-recharge org_abc on --threshold 2000
   run402 billing balance user@example.com
 `;
@@ -215,7 +216,7 @@ async function checkout(args) {
 // invoice line and the receipt go to stderr.
 async function topup(args) {
   const parsedArgs = normalizeArgv(args);
-  const valueFlags = ["--sats", "--timeout", "--idempotency-key"];
+  const valueFlags = ["--sats", "--timeout", "--idempotency-key", "--qr"];
   assertKnownFlags(parsedArgs, [...valueFlags, "--wait", "--help", "-h"], valueFlags);
   const positionals = positionalArgs(parsedArgs, valueFlags);
   const identifier = positionals[0];
@@ -242,6 +243,14 @@ async function topup(args) {
     console.log(JSON.stringify(created, null, 2));
     console.error(`Invoice for ${created.amount_sats} sats (≈ $${(created.amount_usd_micros / 1_000_000).toFixed(2)} at the quoted rate), expires ${created.invoice_expires_at}.`);
     console.error(`Pay it from any Lightning wallet:\n  lightning:${created.bolt11}`);
+    const qrPath = flagValue(parsedArgs, "--qr");
+    if (qrPath) {
+      // Uppercase bolt11 in a `LIGHTNING:` URI is what wallets and the BOLT11
+      // spec recommend for QR: alphanumeric mode, a third fewer modules.
+      const { toFile } = await import("qrcode");
+      await toFile(qrPath, `LIGHTNING:${created.bolt11.toUpperCase()}`, { type: "png", width: 512, margin: 2, errorCorrectionLevel: "M" });
+      console.error(`QR written to ${qrPath} — post the image where the payer can scan it.`);
+    }
     if (!parsedArgs.includes("--wait")) {
       console.error(`Then read it: run402 billing topup is one-shot; poll GET /orgs/v1/${org.org_id}/checkouts/${created.topup_id} (or rerun with --wait).`);
       return;
