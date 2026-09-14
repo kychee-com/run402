@@ -317,6 +317,14 @@ export interface BuzzAgentEnrollmentCreateInput {
   requestedGrants: BuzzProjectGrantRequest[];
   expiresAt: string;
   idempotencyKey?: string;
+  /**
+   * The managed agent's NIP-OA owner attestation — Buzz injects it as
+   * `BUZZ_AUTH_TAG` (a JSON `["auth", owner, conditions, sig]` tag). A
+   * Buzz-launched agent is not a relay member itself; with this the gateway
+   * lets it inherit its attesting owner's current membership. Public data:
+   * the owner's pubkey and signature, never a secret.
+   */
+  ownerAttestation?: string | string[];
 }
 
 export interface BuzzAgentEnrollmentApprovalInput {

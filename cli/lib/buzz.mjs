@@ -27,7 +27,8 @@ Canonical workflows:
       --deployment-context-file   JSON with exactly these five non-empty strings, and no others:
                                   project_id, release_id, live_url, source_revision, verified_at
   run402 buzz install --org <org_id> --community <buzz:community:host> [--authority <hex-pubkey>]
-  run402 buzz enroll --installation <buzzci_id> --identity-link <idlnk_id> --grants-file <json> --expires-at <ISO-8601>
+  run402 buzz enroll --installation <buzzci_id> --identity-link <idlnk_id> --grants-file <json> --expires-at <ISO-8601> [--auth-tag <json>]
+      --auth-tag   the managed agent's NIP-OA owner attestation; defaults to $BUZZ_AUTH_TAG (Buzz injects it). Public data.
 
 Explicit consent/decision commands:
   run402 buzz adopt offer show <buzzhao_id>
@@ -283,15 +284,20 @@ async function enroll(args) {
     return invoke(() => getSdk().buzz.enrollments.get(id));
   }
   const a = normalizeArgv(args);
-  const values = ["--installation", "--identity-link", "--grants-file", "--expires-at", "--idempotency-key"];
+  const values = ["--installation", "--identity-link", "--grants-file", "--expires-at", "--idempotency-key", "--auth-tag"];
   assertKnownFlags(a, values, values);
-  requirePositionalCount(a, values, { min: 0, max: 0, command: "run402 buzz enroll --installation <buzzci_id> --identity-link <idlnk_id> --grants-file <json> --expires-at <ISO>" });
+  requirePositionalCount(a, values, { min: 0, max: 0, command: "run402 buzz enroll --installation <buzzci_id> --identity-link <idlnk_id> --grants-file <json> --expires-at <ISO> [--auth-tag <json>]" });
+  // A Buzz-launched agent carries its owner's NIP-OA attestation in
+  // BUZZ_AUTH_TAG; it is public (owner pubkey + signature) and lets the
+  // gateway treat the agent as its attesting owner's for the membership gate.
+  const authTag = flagValue(a, "--auth-tag") ?? (process.env.BUZZ_AUTH_TAG?.trim() || undefined);
   return invoke(() => getSdk({ authMode: "wallet" }).buzz.enroll({
     buzzCommunityInstallationId: requiredFlag(a, "--installation"),
     identityLinkId: requiredFlag(a, "--identity-link"),
     requestedGrants: readJsonFile(requiredFlag(a, "--grants-file"), "--grants-file"),
     expiresAt: requiredFlag(a, "--expires-at"),
     idempotencyKey: flagValue(a, "--idempotency-key") ?? undefined,
+    ...(authTag ? { ownerAttestation: authTag } : {}),
   }));
 }
 

@@ -70,6 +70,8 @@ run402 --wallet buzz-honey buzz enroll \
   --expires-at 2026-08-06T12:00:00.000Z
 ```
 
+The CLI adds the managed agent's `BUZZ_AUTH_TAG` owner attestation to the request on its own (`--auth-tag` overrides it). The gateway checks the agent's own membership first; an agent absent from the relay's membership snapshot inherits its attesting owner's CURRENT membership when the attestation verifies and that owner is listed — the enrollment's evidence records both keys and the attestation, and approval re-checks it. An unattested non-member, a forged attestation, or an owner who is no longer a member is `BUZZ_IDENTITY_DRIFT`.
+
 Manual policy returns `pending`. A Run402 owner may approve an exact or narrower grant set with the descriptor and policy revisions shown in the enrollment. Automatic policy is opt-in, zero-spend, allowlist-only, finite-TTL, current-membership-gated, and still restricted to existing projects.
 
 ## Structured state reports

@@ -252,6 +252,7 @@ export class BuzzAgentEnrollments {
         identity_link_id: required(input.identityLinkId, "identityLinkId", "requesting Buzz agent enrollment"),
         requested_grants: input.requestedGrants,
         expires_at: required(input.expiresAt, "expiresAt", "requesting Buzz agent enrollment"),
+        ...(input.ownerAttestation !== undefined ? { owner_attestation: input.ownerAttestation } : {}),
       },
       context: "requesting Buzz agent enrollment",
     });
