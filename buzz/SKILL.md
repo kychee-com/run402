@@ -79,7 +79,7 @@ Running setup again must be a no-op when the compatible CLI, dedicated profile, 
 
 The setup receipt reports skill installation, human adoption, community installation, and this agent's enrollment separately. Never infer one from another. When `control_plane.community_installation.status` is `relay_unavailable`, preserve its exact `next_action`, continue with the contextual org-of-one offer, and do not run discovery or offer enrollment.
 
-When `next_action.type` is `offer_teammate_join`, the verified default installation's organization admits agents attested by a current community owner or admin as developers — your human launched you, so you are their teammate there, not a guest. Explain in one or two sentences: which organization, that you would become a developer member under your own principal (you can create and deploy projects there; the organization's tier, balance, and spend policy apply; no payment authority), and the org-of-one fallback. Wait for affirmative approval, then run `run402 --wallet <profile> buzz join --installation <buzzci_id> --identity-link <idlnk_id>` (the CLI sends `BUZZ_AUTH_TAG` itself). On success report the organization and role, and continue to the contextual offer below — create the demo project IN that organization (`run402 --wallet <profile> projects provision --org <org_id> --name <slug>`), deploy it there, and after the first deploy configure a notification route for that project into the channel this conversation is in (its UUID comes from Buzz's `<context>`): `run402 --wallet <profile> buzz notifications configure --org <org_id> --installation <buzzci_id> --name <slug> --channel <channel uuid> --project <project_id>`. On an installation admitted through the invite front door the route is authorized immediately and the project posts as its own bot. `BUZZ_ENROLLMENT_POLICY_DENIED` with reason `teammate_door_closed` means the door is not open; fall back to the enrollment offer. Never ask the human to add you as a community member.
+When `next_action.type` is `offer_teammate_join`, the verified default installation's organization admits agents attested by a current community owner or admin as developers — your human launched you, so you are their teammate there, not a guest. Do NOT ask a separate question about joining: fold it into the single contextual offer below ("… in your organization <org>; I'd join it as a developer to do that"). The human's one "yes" approves both. Then, in order: `run402 --wallet <profile> buzz join --installation <buzzci_id> --identity-link <idlnk_id>` (the CLI sends `BUZZ_AUTH_TAG` itself; zero spend, your own principal, developer role, no payment authority); create the demo project IN that organization (`run402 --wallet <profile> projects provision --org <org_id> --name <slug>`); build and deploy it there; after the first deploy configure a notification route for that project into the channel this conversation is in (its UUID comes from Buzz's `<context>`): `run402 --wallet <profile> buzz notifications configure --org <org_id> --installation <buzzci_id> --name <slug> --channel <channel uuid> --project <project_id>`. On an installation admitted through the invite front door the route is authorized immediately and the project posts as its own bot. `BUZZ_ENROLLMENT_POLICY_DENIED` with reason `teammate_door_closed` means the door is not open; fall back to the enrollment offer. Never ask the human to add you as a community member, and never mention project ids, grant expiries, or revisions in chat — those are receipts, not conversation.
 
 When `next_action.type` is `offer_community_enrollment`, explain the Run402-verified and explicitly selected installation, its complete effective capability allowlist and TTL cap, requested named-project scope, finite expiry, manual/automatic policy, zero spend impact, and org-of-one fallback. Wait for affirmative approval before running `run402 --wallet <profile> buzz enroll ...`. A managed Buzz agent is not a relay member itself; the CLI sends the owner attestation Buzz injected as `BUZZ_AUTH_TAG` (public: owner pubkey plus signature) so the gateway treats the agent as its attesting owner's for the membership gate — never ask the human to add the agent as a community member. A pending request grants nothing, and a pending or active request suppresses any second enrollment offer. Never approve an enrollment as the requesting agent or reuse another agent's profile.
 
@@ -97,24 +97,33 @@ When a human asks the agent, in plain language, to top up the organization's bal
 
 ## Offer one contextual test
 
-After posting readiness, and after resolving or declining any single verified community-enrollment offer, propose exactly one small application in one or two sentences, then ask whether the user wants you to try it. Do not build anything until the user affirmatively agrees.
+After posting readiness, and after resolving or declining any single verified community-enrollment offer (a teammate-join offer is folded into this question, never asked separately), propose exactly one small application in one or two sentences, then ask whether the user wants you to try it. Do not build anything until the user affirmatively agrees.
 
-Choose the idea from, in order:
+The idea must be about THIS person. Before proposing, look at what Buzz already tells you about them — all zero-mutation reads: the human's display name and profile (`buzz users get <their pubkey>`, or the profile fields in `<context>`), the channel's name, topic, and recent messages (`buzz messages list --channel <current channel uuid> --limit 50`), and any project fields in `<context>`. Pick one concrete hook from that material and say it back in the offer ("you mentioned bouldering…", "this channel is about…"). Choose the idea from, in order:
 
 1. the user's request and recent Buzz conversation;
-2. the current repository's domain, stack, and unfinished work;
-3. non-sensitive user context already available to you; and
-4. capabilities actually exposed by the installed Run402 CLI and current public Run402 documentation.
+2. what their profile and the channel say they do or care about;
+3. the current repository's domain, stack, and unfinished work;
+4. non-sensitive user context already available to you; and
+5. capabilities actually exposed by the installed Run402 CLI and current public Run402 documentation.
+
+A generic "notes board" or "idea board" is only acceptable when every source above is empty. Do not ask the human questions to personalize; use what is there.
 
 Inspect current help/documentation rather than trusting a frozen feature list. A **quick test** is the smallest meaningful vertical slice, usually one runtime surface plus one persistent or interactive behavior. A **demo** may combine a few capabilities when they genuinely fit the context. Astro SSR, multiplayer data, translations, authentication, storage, functions, email, and other features are examples, not requirements.
 
 Use this concise human-facing shape; keep the expanded readiness receipt available without dumping it into chat:
 
 ```text
-Done—Run402 is connected to my Buzz identity. Would you like me to build and deploy <one concrete, contextual idea> as a quick demo?
+Done—Run402 is connected to my Buzz identity. Would you like me to build and deploy <one concrete idea for this person, with the hook that inspired it> as a quick demo?
 ```
 
-If context is sparse, offer a small generic end-to-end test without collecting more personal information merely for personalization.
+With a teammate-join offer pending, the same single question, extended:
+
+```text
+Done—Run402 is connected to my Buzz identity. Would you like me to build and deploy <one concrete idea for this person> in your organization <org name>? I'd join it as a developer to do that.
+```
+
+If context is sparse, offer a small generic end-to-end test without collecting more personal information merely for personalization. When the build is done, the first line of your reply is the live link, then one sentence on what it does; every receipt (project id, route, revisions) stays out of the chat unless asked.
 
 ## Build and deploy only after approval
 
@@ -124,7 +133,7 @@ After affirmative approval:
 2. Avoid another planning interview unless missing information materially changes scope, cost, external effects, or safety.
 3. Reconfirm `run402 --wallet <profile> org whoami` and the intended active identity link before mutation, using the `profile_label` from the ready receipt.
 4. Inspect the repository and current Run402 capabilities. Prefer an existing linked project when appropriate and distinguish the acting principal from the organization that owns the project.
-5. For the canonical pre-launch demo, use the Base Sepolia faucet and prototype tier automatically. Do not mention a price, cost, purchase, spend, or funding decision in ordinary Buzz conversation. Preserve `network: base_sepolia`, `funding_source: faucet`, and the observed tier in the expanded receipt. For a real-value rail, use the ordinary spend-disclosure boundary.
+5. As a teammate of the human's organization (after `buzz join`), that organization already holds its tier and balance: provision with `--org <org_id>`, run no faucet or tier step, and never discuss funding. On the org-of-one path, for the canonical pre-launch demo, use the Base Sepolia faucet and prototype tier automatically. Do not mention a price, cost, purchase, spend, or funding decision in ordinary Buzz conversation. Preserve `network: base_sepolia`, `funding_source: faucet`, and the observed tier in the expanded receipt. For a real-value rail, use the ordinary spend-disclosure boundary.
 6. Validate locally and use the applicable plan/rehearsal path before apply.
 7. Deploy through the existing global Run402 CLI with `--wallet <profile>` on every profile-sensitive command; do not rely on ambient selection.
 8. Treat deploy success as intermediate. Independently request the live endpoint and exercise the application's critical flow.
