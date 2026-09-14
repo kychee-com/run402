@@ -418,6 +418,23 @@ function buzzCommunitySubjectFromRelay(relayUrl) {
   }
 }
 
+// Two admission forms exist. The invite front door (current): Run402 claimed a
+// one-use invite the community owner minted in Buzz Desktop, and the relay's
+// signed membership snapshot lists the installation identity. The approval
+// post (legacy): an owner or admin signed a kind-1 approval. Either proves the
+// community admitted the installation; neither is inferred from the other.
+function descriptorAdmissionVerified(descriptor) {
+  if (descriptor?.admission === "invite_claim") {
+    return typeof descriptor?.installation_identity_pubkey === "string"
+      && /^[0-9a-f]{64}$/.test(descriptor.installation_identity_pubkey)
+      && typeof descriptor?.membership?.event_id === "string"
+      && /^[0-9a-f]{64}$/.test(descriptor.membership.event_id)
+      && typeof descriptor?.membership?.role === "string";
+  }
+  return descriptor?.approval_event?.kind === 1
+    && ["owner", "admin"].includes(descriptor?.authority_membership?.role);
+}
+
 function discoverCommunityInstallations({ runner, run402Bin, wallet, relayUrl }) {
   const communitySubject = buzzCommunitySubjectFromRelay(relayUrl);
   if (!communitySubject) {
@@ -444,8 +461,7 @@ function discoverCommunityInstallations({ runner, run402Bin, wallet, relayUrl })
     && typeof descriptor?.org_id === "string"
     && Number.isSafeInteger(descriptor?.descriptor_revision)
     && typeof descriptor?.content_hash === "string"
-    && descriptor?.approval_event?.kind === 1
-    && ["owner", "admin"].includes(descriptor?.authority_membership?.role)
+    && descriptorAdmissionVerified(descriptor)
     && typeof descriptor?.relay_self === "string"
     ? [{
         buzz_community_installation_id: descriptor.buzz_community_installation_id,

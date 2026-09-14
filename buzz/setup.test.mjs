@@ -628,6 +628,66 @@ describe("Run402 for Buzz setup state machine", () => {
     assert.equal(countRun402(fake.calls, `--wallet ${PROFILE} init`), 0);
   });
 
+  it("offers enrollment on an installation admitted through the invite front door", async () => {
+    const descriptor = {
+      api_origin: "https://api.run402.com",
+      buzz_community_installation_id: `buzzci_${"7".repeat(32)}`,
+      buzz_community_subject: "buzz:community:relay.example",
+      content_hash: "2".repeat(64),
+      default_for_enrollment: true,
+      descriptor_revision: 2,
+      issued_at: "2026-09-14T11:09:07.096Z",
+      org_id: `org_${"3".repeat(32)}`,
+      provider: "run402",
+      safe_policy_summary: {
+        mode: "manual",
+        requires_current_community_membership: true,
+        allowed_capabilities: null,
+        max_grant_ttl_seconds: null,
+      },
+      status: "active",
+      admission: "invite_claim",
+      installation_identity_pubkey: "a".repeat(64),
+      membership: { role: "member", event_id: "b".repeat(64), observed_at: "2026-09-13T14:53:02.208Z", event_created_at: "2026-09-13T14:53:00.000Z" },
+      bot_mode: "attested",
+      relay_self: "4".repeat(64),
+    };
+    const fake = makeRunner({
+      linked: true,
+      hasMembership: false,
+      communityInstallations: [descriptor],
+      doctorRelayOrigin: "wss://relay.example",
+    });
+    const result = await runSetup({ pubkey: PUBKEY, wallet: PROFILE, runner: fake.runner, relayUrl: "wss://relay.example", reporter: () => {} });
+    assert.equal(result.next_action?.type, "offer_community_enrollment");
+    assert.equal(result.next_action?.buzz_community_installation_id, descriptor.buzz_community_installation_id);
+    assert.equal(result.control_plane.community_installation.status, "run402_verified");
+    assert.equal(result.control_plane.community_installation.resources.length, 1);
+  });
+
+  it("ignores an invite-admitted descriptor whose membership evidence is missing", async () => {
+    const descriptor = {
+      api_origin: "https://api.run402.com",
+      buzz_community_installation_id: `buzzci_${"8".repeat(32)}`,
+      buzz_community_subject: "buzz:community:relay.example",
+      content_hash: "2".repeat(64),
+      default_for_enrollment: true,
+      descriptor_revision: 2,
+      issued_at: "2026-09-14T11:09:07.096Z",
+      org_id: `org_${"3".repeat(32)}`,
+      provider: "run402",
+      safe_policy_summary: { mode: "manual", requires_current_community_membership: true, allowed_capabilities: null, max_grant_ttl_seconds: null },
+      status: "active",
+      admission: "invite_claim",
+      installation_identity_pubkey: "a".repeat(64),
+      relay_self: "4".repeat(64),
+    };
+    const fake = makeRunner({ linked: true, hasMembership: false, communityInstallations: [descriptor], doctorRelayOrigin: "wss://relay.example" });
+    const result = await runSetup({ pubkey: PUBKEY, wallet: PROFILE, runner: fake.runner, relayUrl: "wss://relay.example", reporter: () => {} });
+    assert.equal(result.next_action?.type, "offer_contextual_test");
+    assert.equal(result.control_plane.community_installation.resources.length, 0);
+  });
+
   it("does not offer a second enrollment while one is pending", async () => {
     const descriptor = {
       api_origin: "https://api.run402.com",
