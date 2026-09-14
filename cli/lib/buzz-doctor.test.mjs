@@ -270,6 +270,9 @@ describe("Buzz doctor bounded zero-mutation runner", () => {
     assert.deepEqual(callbackResults[0], { error: null, address: "93.184.216.34", family: 4 });
     assert.equal(callbackResults[1].error.message, "relay_hostname_changed");
     assert.equal(callbackResults[1].address, undefined);
+    // Node 20+ sockets ask with `{ all: true }` and take an array of records.
+    lookup("community.example", { all: true, family: 0 }, (error, addresses) => callbackResults.push({ error, addresses }));
+    assert.deepEqual(callbackResults[2], { error: null, addresses: [{ address: "93.184.216.34", family: 4 }] });
 
     const contractCodes = Object.values(BUZZ_DOCTOR_CONTRACT.codes_by_check).flat().sort();
     assert.deepEqual(Object.keys(BUZZ_DOCTOR_REPAIR_MATRIX).sort(), contractCodes);

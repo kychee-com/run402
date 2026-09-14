@@ -472,9 +472,17 @@ export function isPublicAddress(address) {
 }
 
 export function pinnedLookup(record, expectedHostname) {
-  return (hostname, _options, callback) => {
+  return (hostname, options, callback) => {
     if (hostname !== expectedHostname) {
       callback(new Error("relay_hostname_changed"));
+      return;
+    }
+    // Node 20+ sockets (autoSelectFamily) ask with `{ all: true }` and expect
+    // an array of records; answering in the single-address form there makes
+    // the connect fail with "Invalid IP address: undefined" — i.e. every relay
+    // looked unreachable from a current Node.
+    if (options && typeof options === "object" && options.all) {
+      callback(null, [{ address: record.address, family: record.family }]);
       return;
     }
     callback(null, record.address, record.family);
