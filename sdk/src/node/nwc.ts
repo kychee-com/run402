@@ -18,7 +18,10 @@ export const NWC_REQUEST_KIND = 23194;
 export const NWC_RESPONSE_KIND = 23195;
 const DEFAULT_TIMEOUT_MS = 30_000;
 const RELAY_HANDSHAKE_TIMEOUT_MS = 10_000;
-const RELAY_IDLE_CLOSE_MS = 60_000;
+// Short: a one-shot CLI process must not linger on an open relay socket after its
+// last request; reconnecting costs one handshake and long-lived callers keep
+// the socket warm by talking.
+const RELAY_IDLE_CLOSE_MS = 1_500;
 
 export interface NwcConnection {
   walletPubkey: string;
