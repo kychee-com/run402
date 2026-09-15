@@ -12,8 +12,8 @@
       "name": "run402-buzz",
       "type": "archive",
       "description": "Complete Run402 onboarding for a managed Buzz agent with a dedicated wallet/public identity link, report independent human-adoption and community-installation state, offer bounded per-agent enrollment before provisioning, and stop only at a real approval or repair boundary. Use when a managed Buzz user says \"install the run402.com skill\" or otherwise asks to install, initialize, set up, or connect Run402; asks to adopt a human, install a community, or enroll another agent; or later asks the linked agent to build, deploy, update, verify, or operate through Run402.",
-      "url": "https://run402.com/skills/run402-buzz/a56dfce5e6bdcbefadb70f519f39556595753052270f4276bbbc083beed9d7d6/run402-buzz.tgz",
-      "digest": "sha256:a56dfce5e6bdcbefadb70f519f39556595753052270f4276bbbc083beed9d7d6"
+      "url": "https://run402.com/skills/run402-buzz/a87c3f3dc608d8f7b5c696d2845477c0b8196669afe488d8081bfbd29da5b186/run402-buzz.tgz",
+      "digest": "sha256:a87c3f3dc608d8f7b5c696d2845477c0b8196669afe488d8081bfbd29da5b186"
     }
   ]
 }

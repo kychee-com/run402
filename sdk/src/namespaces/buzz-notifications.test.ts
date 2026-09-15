@@ -250,6 +250,28 @@ describe("buzz.notifications lifecycle mutations", () => {
     assert.deepEqual(parsedBody(calls[2]!), { expected_revision: 3, on_call_buzz_pubkey: onCall, on_call_display_name: "Claude1" });
   });
 
+  it("createRoute accepts an org-wide scope with no project list, and update switches scope (buzz-route-org-wide-scope)", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({ ...ROUTE, project_scope: "org", project_ids: [], authorization: { status: "authorized" } }, 201));
+    const sdk = makeSdk(fetch);
+    const created = await sdk.buzz.notifications.createRoute(ORG, {
+      installationId: ROUTE.buzz_community_installation_id,
+      routeName: "everything",
+      buzzChannelId: "chan-1",
+      projectScope: "org",
+    });
+    const body = parsedBody(calls[0]!) as Record<string, unknown>;
+    assert.equal(body.project_scope, "org");
+    assert.equal(body.project_ids, undefined);
+    assert.equal(created.project_scope, "org");
+    await sdk.buzz.notifications.update(ROUTE_ID, { projectScope: "listed", projectIds: ["prj_a"] }, 2);
+    assert.deepEqual(parsedBody(calls[1]!), { expected_revision: 2, project_ids: ["prj_a"], project_scope: "listed" });
+    // A listed route without a list is still refused locally.
+    await assert.rejects(
+      () => sdk.buzz.notifications.createRoute(ORG, { installationId: "buzzci_x", routeName: "r", buzzChannelId: "c" }),
+      (err: unknown) => (err as { message: string }).message.includes("projectScope"),
+    );
+  });
+
   it("createRoute passes the on-call agent only when given", async () => {
     const onCall = "92".repeat(32);
     const { fetch, calls } = mockFetch(() => jsonResponse({ ...ROUTE, authorization: { status: "authorized" } }, 201));

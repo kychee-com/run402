@@ -402,8 +402,9 @@ export class BuzzNotifications {
   async createRoute(organizationId: string, input: CreateBuzzEventRouteInput): Promise<CreatedBuzzEventRoute> {
     const context = "creating Buzz event route";
     rejectSecrets(input);
-    if (!Array.isArray(input?.projectIds) || input.projectIds.length === 0) {
-      throw new LocalError("projectIds must name at least one project — a route's scope is always explicit", context, {
+    const orgWide = input?.projectScope === "org";
+    if (!orgWide && (!Array.isArray(input?.projectIds) || input.projectIds.length === 0)) {
+      throw new LocalError("projectIds must name at least one project — a listed route's scope is explicit (pass projectScope: \"org\" for the whole organization)", context, {
         details: { field: "projectIds" },
       });
     }
@@ -415,7 +416,8 @@ export class BuzzNotifications {
         buzz_community_installation_id: required(input.installationId, "installationId", context),
         route_name: required(input.routeName, "routeName", context),
         buzz_channel_id: required(input.buzzChannelId, "buzzChannelId", context),
-        project_ids: input.projectIds,
+        ...(input.projectIds !== undefined ? { project_ids: input.projectIds } : {}),
+        ...(input.projectScope !== undefined ? { project_scope: input.projectScope } : {}),
         ...(input.includeOrgEvents !== undefined ? { include_org_events: input.includeOrgEvents } : {}),
         ...(input.eventTypes !== undefined ? { event_types: input.eventTypes } : {}),
         ...(input.eventClasses !== undefined ? { event_classes: input.eventClasses } : {}),
@@ -467,6 +469,7 @@ export class BuzzNotifications {
         ...(patch.routeName !== undefined ? { route_name: patch.routeName } : {}),
         ...(patch.buzzChannelId !== undefined ? { buzz_channel_id: patch.buzzChannelId } : {}),
         ...(patch.projectIds !== undefined ? { project_ids: patch.projectIds } : {}),
+        ...(patch.projectScope !== undefined ? { project_scope: patch.projectScope } : {}),
         ...(patch.eventTypes !== undefined ? { event_types: patch.eventTypes } : {}),
         ...(patch.eventClasses !== undefined ? { event_classes: patch.eventClasses } : {}),
         ...(patch.includeOrgEvents !== undefined ? { include_org_events: patch.includeOrgEvents } : {}),

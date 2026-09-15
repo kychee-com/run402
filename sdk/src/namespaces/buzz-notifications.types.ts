@@ -52,8 +52,10 @@ export interface BuzzEventRoute {
   route_name: string;
   /** The NIP-29 channel id deliveries post into. */
   buzz_channel_id: string;
-  /** Explicit 1–50 project scope; future/transferred projects never join automatically. */
+  /** The explicit project list (1–50 on a `listed` route; may be empty on an `org` route). */
   project_ids: string[];
+  /** `listed`: only `project_ids` are routed. `org`: every project the organization owns, present and future. */
+  project_scope?: "listed" | "org";
   /** null = every registered routable type (never an implicit `[]`). */
   event_types: string[] | null;
   /** null = every non-forbidden class. */
@@ -220,8 +222,14 @@ export interface CreateBuzzEventRouteInput {
   routeName: string;
   /** The NIP-29 channel id to post into. */
   buzzChannelId: string;
-  /** 1–50 named projects owned by the org. */
-  projectIds: string[];
+  /** 1–50 named projects owned by the org. Required for a `listed` route; optional for `org`. */
+  projectIds?: string[];
+  /**
+   * `listed` (default): the route carries only `projectIds`. `org`: every
+   * project the organization owns, present and future, read fresh per fact
+   * so a transferred project drops out; no list needed.
+   */
+  projectScope?: "listed" | "org";
   /**
    * Also deliver the org's own facts (e.g. the `platform_payment_received`
    * receipt after a Lightning top-up or tier purchase) into this channel.
@@ -260,6 +268,8 @@ export interface UpdateBuzzEventRoutePatch {
   routeName?: string;
   buzzChannelId?: string;
   projectIds?: string[];
+  /** Switch between the explicit list and the whole organization; switching to `listed` needs at least one project stored or given. */
+  projectScope?: "listed" | "org";
   /** `null` clears the filter back to "every registered type"; `[]` is rejected. */
   eventTypes?: string[] | null;
   eventClasses?: string[] | null;

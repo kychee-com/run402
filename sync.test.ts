@@ -344,6 +344,10 @@ const SURFACE: Capability[] = [
   // The one PATCH verb with a CLI spelling: set/clear the agent a crash or
   // incident pages. The rest of the PATCH surface stays SDK-only.
   { id: "buzz_notify_on_call",    endpoint: "PATCH /buzz-project-event-routes/v1/:id",                  mcp: null, cli: "buzz:notifications:on-call",    openclaw: "buzz:notifications:on-call" },
+  // The scope verb: a route names its projects explicitly, so a project an
+  // agent provisions later is added here (same PATCH, project_ids).
+  { id: "buzz_notify_projects",   endpoint: "PATCH /buzz-project-event-routes/v1/:id",                  mcp: null, cli: "buzz:notifications:projects",   openclaw: "buzz:notifications:projects" },
+  { id: "buzz_notify_scope",      endpoint: "PATCH /buzz-project-event-routes/v1/:id",                  mcp: null, cli: "buzz:notifications:scope",      openclaw: "buzz:notifications:scope" },
 
   // ── Named wallets / profiles (local-only management; selection via --wallet) ─
   { id: "wallets_list",      endpoint: "(local)",                              mcp: null, cli: "wallets:list",     openclaw: "wallets:list" },
@@ -945,6 +949,8 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   buzz_notify_rotate: "buzz.notifications.rotate",
   buzz_notify_revoke: "buzz.notifications.revoke",
   buzz_notify_on_call: "buzz.notifications.update",
+  buzz_notify_projects: "buzz.notifications.update",
+  buzz_notify_scope: "buzz.notifications.update",
 
   // repos (host-blind git repos) — all protocol logic is SDK-side; CLI/MCP
   // are adapters (task 5.0). `repos` is porcelain over projects.provision +

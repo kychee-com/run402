@@ -22,14 +22,22 @@ import {
 const HELP = `run402 buzz notifications — route project events into a Buzz community channel
 
 Usage:
-  run402 buzz notifications configure --org <uuid> --installation <buzzci_id> --name <route_name> --channel <uuid> --project <id> [--project <id> ...] [--event-type <t> ...] [--event-class <c> ...] [--include-org-events] [--on-call <hex-pubkey> [--on-call-name <display>]]
+  run402 buzz notifications configure --org <uuid> --installation <buzzci_id> --name <route_name> --channel <uuid> (--project <id> [--project <id> ...] | --all-projects) [--event-type <t> ...] [--event-class <c> ...] [--include-org-events] [--on-call <hex-pubkey> [--on-call-name <display>]]
+      --all-projects         route every project the organization owns, present and future (project_scope org);
+                             without it the route names its projects explicitly (--project, 1..50)
       --include-org-events   also deliver the org's own facts (the platform_payment_received receipt after a Lightning top-up) into the channel
+  run402 buzz notifications scope <buzzper_id> --org | --listed [--project <id> ...]
+      switch the route to the whole organization, or back to an explicit list (the stored list is kept;
+      --listed on a route with no stored list needs --project)
       --on-call <hex>        the Buzz agent (64-hex pubkey) a crash or platform incident pages with a p mention — the tag that wakes a managed Buzz agent
       --on-call-name <name>  the @name the page addresses it by (what Buzz renders as a mention chip); omitted, the gateway reads it from the agent's Buzz profile
   run402 buzz notifications on-call <buzzper_id> --agent <hex-pubkey> [--name <display>] | --clear
       set or clear the route's on-call agent (a PATCH at the route's current revision). Prints the ONE pubkey
       the agent must allow: pages are signed by the installation identity, and a managed Buzz agent answers only
       its owner by default — add it to the agent's respond-to allowlist (or set respond-to to anyone).
+  run402 buzz notifications projects <buzzper_id> --add <project_id> | --remove <project_id>
+      add a project to the route's scope or drop one (a PATCH at the route's current revision). A route
+      names its projects explicitly: a project an agent provisions later is NOT routed until it is added.
   run402 buzz notifications status [--org <uuid> | <buzzper_id>]
   run402 buzz notifications test <buzzper_id> [--wait] [--poll-seconds <n>] [--timeout-seconds <n>]
   run402 buzz notifications deliveries <buzzper_id> [--limit <n>] [--cursor <c>] [--delivery <buzzped_id>]
@@ -182,11 +190,89 @@ async function onCall(args) {
   }
 }
 
+/**
+ * `run402 buzz notifications projects <buzzper_id> --add <prj> | --remove <prj>`
+ * — widen or narrow the route's explicit project scope. Reads the route for
+ * its current revision and PATCHes at it, so a concurrent edit fails 409
+ * instead of being overwritten. Adding a project the route already carries,
+ * or removing one it does not, is a no-op that still reports the scope.
+ */
+async function projects(args) {
+  const a = normalizeArgv(args);
+  const valueFlags = ["--add", "--remove"];
+  assertKnownFlags(a, [...valueFlags, "--help", "-h"], valueFlags);
+  const positionals = requirePositionalCount(positionalArgs(a, valueFlags), valueFlags, {
+    min: 1, max: 1, command: "run402 buzz notifications projects <buzzper_id> --add <project_id> | --remove <project_id>", missing: "<buzzper_id>",
+  });
+  const [routeId] = positionals;
+  const add = flagValue(a, "--add");
+  const remove = flagValue(a, "--remove");
+  if ((add === null) === (remove === null)) {
+    fail({ code: "BAD_FLAG", message: "pass exactly one of --add <project_id> or --remove <project_id>", details: { flag: "--add" } });
+  }
+  try {
+    const sdk = getSdk();
+    const current = await sdk.buzz.notifications.get(routeId);
+    const scope = new Set(current.project_ids ?? []);
+    if (add !== null) scope.add(add);
+    if (remove !== null) scope.delete(remove);
+    if (scope.size === 0) {
+      fail({ code: "BAD_FLAG", message: "a route keeps at least one project; revoke the route instead of emptying it", details: { flag: "--remove" } });
+    }
+    const updated = await sdk.buzz.notifications.update(routeId, { projectIds: Array.from(scope) }, current.revision);
+    out(updated);
+    console.error(`Route scope is now ${updated.project_ids.length} project(s): ${updated.project_ids.join(", ")}. Only facts occurring from now on are delivered — nothing is replayed.`);
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+/**
+ * `run402 buzz notifications scope <buzzper_id> --org | --listed [--project <id> ...]`
+ * — switch the route between the whole organization and an explicit list.
+ * The stored list survives the switch to `org`; `--listed` on a route with
+ * nothing stored needs `--project`.
+ */
+async function scope(args) {
+  const a = normalizeArgv(args);
+  const valueFlags = ["--project"];
+  assertKnownFlags(a, [...valueFlags, "--org", "--listed", "--help", "-h"], valueFlags);
+  const positionals = requirePositionalCount(positionalArgs(a, valueFlags), valueFlags, {
+    min: 1, max: 1, command: "run402 buzz notifications scope <buzzper_id> --org | --listed [--project <id> ...]", missing: "<buzzper_id>",
+  });
+  const [routeId] = positionals;
+  const org = a.includes("--org");
+  const listed = a.includes("--listed");
+  if (org === listed) {
+    fail({ code: "BAD_FLAG", message: "pass exactly one of --org or --listed", details: { flag: "--org" } });
+  }
+  const projectIds = flagValues(a, "--project");
+  if (org && projectIds.length) {
+    fail({ code: "BAD_FLAG", message: "--project goes with --listed; an org-wide route needs no list", details: { flag: "--project" } });
+  }
+  try {
+    const sdk = getSdk();
+    const current = await sdk.buzz.notifications.get(routeId);
+    const updated = await sdk.buzz.notifications.update(
+      routeId,
+      { projectScope: org ? "org" : "listed", ...(projectIds.length ? { projectIds } : {}) },
+      current.revision,
+    );
+    out(updated);
+    console.error(org
+      ? "Route scope is now the whole organization: every project it owns, present and future, posts into the channel. Only facts occurring from now on are delivered."
+      : `Route scope is now ${updated.project_ids.length} listed project(s): ${updated.project_ids.join(", ")}.`);
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
 async function configure(args) {
   const a = normalizeArgv(args);
   const valueFlags = ["--org", "--installation", "--name", "--channel", "--project", "--event-type", "--event-class", "--idempotency-key", "--on-call", "--on-call-name"];
-  assertKnownFlags(a, [...valueFlags, "--include-org-events", "--help", "-h"], valueFlags);
+  assertKnownFlags(a, [...valueFlags, "--include-org-events", "--all-projects", "--help", "-h"], valueFlags);
   const includeOrgEvents = a.includes("--include-org-events");
+  const allProjects = a.includes("--all-projects");
   const onCall = flagValue(a, "--on-call");
   if (onCall !== null) assertHexPubkey(onCall, "--on-call");
   const onCallName = flagValue(a, "--on-call-name");
@@ -197,8 +283,8 @@ async function configure(args) {
     min: 0, max: 0, command: "run402 buzz notifications configure", missing: "",
   });
   const projectIds = flagValues(a, "--project");
-  if (projectIds.length === 0) {
-    fail({ code: "BAD_FLAG", message: "--project is required at least once — a route's scope is always explicit", details: { flag: "--project" } });
+  if (projectIds.length === 0 && !allProjects) {
+    fail({ code: "BAD_FLAG", message: "--project is required at least once, or pass --all-projects to route every project the organization owns", details: { flag: "--project" } });
   }
   const eventTypes = flagValues(a, "--event-type");
   const eventClasses = flagValues(a, "--event-class");
@@ -207,7 +293,8 @@ async function configure(args) {
       installationId: requiredFlag(a, "--installation"),
       routeName: requiredFlag(a, "--name"),
       buzzChannelId: requiredFlag(a, "--channel"),
-      projectIds,
+      ...(projectIds.length ? { projectIds } : {}),
+      ...(allProjects ? { projectScope: "org" } : {}),
       ...(includeOrgEvents ? { includeOrgEvents: true } : {}),
       ...(onCall !== null ? { onCallBuzzPubkey: onCall.trim().toLowerCase() } : {}),
       ...(onCallName !== null ? { onCallDisplayName: onCallName } : {}),
@@ -366,6 +453,12 @@ export async function run(sub, args) {
       break;
     case "on-call":
       await onCall(argv);
+      break;
+    case "projects":
+      await projects(argv);
+      break;
+    case "scope":
+      await scope(argv);
       break;
     case "status":
       await status(argv);
