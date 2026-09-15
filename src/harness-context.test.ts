@@ -73,6 +73,11 @@ describe("resolveSessionKey — the ordered chain, no source load-bearing", () =
     assert.deepEqual(out, { key: "codex-1", source: "codex_thread_id" });
   });
 
+  it("Grok's own session id wins over the generated fallback when Claude Code and Codex are absent", () => {
+    const out = resolveSessionKey({ env: { GROK_SESSION_ID: "01abc" }, cwd });
+    assert.deepEqual(out, { key: "01abc", source: "grok_session_id" });
+  });
+
   it("with no harness id and no cache, generates a key and persists it under ./.run402/", () => {
     const out = resolveSessionKey({ env: {}, cwd });
     assert.equal(out.source, "generated");
@@ -157,6 +162,14 @@ describe("resolveHarnessLabels — env overrides first, then harness inference, 
 
   it("infers codex from CODEX_THREAD_ID", () => {
     assert.deepEqual(resolveHarnessLabels({ env: { CODEX_THREAD_ID: "codex-1" } }), { program: "codex", model: null });
+  });
+
+  it("infers grok from GROK_AGENT", () => {
+    assert.deepEqual(resolveHarnessLabels({ env: { GROK_AGENT: "1" } }), { program: "grok", model: null });
+  });
+
+  it("infers grok from GROK_SESSION_ID", () => {
+    assert.deepEqual(resolveHarnessLabels({ env: { GROK_SESSION_ID: "01abc" } }), { program: "grok", model: null });
   });
 
   it("RUN402_PROGRAM overrides the inferred harness signal", () => {

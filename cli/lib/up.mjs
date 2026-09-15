@@ -75,7 +75,7 @@ into a failure, and is reported under result.repo (default apply) or result
 
 Identity: up makes sure this principal has a display name before the deploy
 that will be credited to it — an existing name is kept, otherwise the
-detected client name (claude-code, codex, cursor, or agent) is set (approved
+detected client name (claude-code, codex, cursor, grok, or agent) is set (approved)
 by -y, or asked once) — and joins the project room under it. Change it any
 time with 'run402 org whoami --set-name <name>'. Reported under
 result.identity.

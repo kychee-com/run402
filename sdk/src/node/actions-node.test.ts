@@ -1713,7 +1713,7 @@ function identityWorkspace(prefix: string): string {
 }
 
 const WALLET = "0x2804a3f59FDd33618B2cb711060550E4eCd6DDc0";
-const CLIENT_MARKERS = ["CLAUDECODE", "CLAUDE_CODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SESSION_ID", "CODEX_SANDBOX", "CODEX_CI", "OPENAI_CODEX", "CODEX_HOME", "CURSOR_TRACE_ID", "CURSOR_SESSION_ID", "CURSOR_AGENT", "RUN402_AGENT_NAME"];
+const CLIENT_MARKERS = ["CLAUDECODE", "CLAUDE_CODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SESSION_ID", "CODEX_SANDBOX", "CODEX_CI", "OPENAI_CODEX", "CODEX_HOME", "CURSOR_TRACE_ID", "CURSOR_SESSION_ID", "CURSOR_AGENT", "GROK_AGENT", "GROK_SESSION_ID", "RUN402_AGENT_NAME"];
 async function withClientEnv<T>(env: Record<string, string>, fn: () => Promise<T>): Promise<T> {
   const saved: Record<string, string | undefined> = {};
   for (const k of CLIENT_MARKERS) { saved[k] = process.env[k]; delete process.env[k]; }
@@ -1753,6 +1753,23 @@ test("up names an unnamed principal from a specifically detected client", async 
     assert.equal(result.result?.identity?.source, "detected");
     assert.deepEqual(set, ["claude-code"]);
     assert.equal(result.result?.identity?.display_name, "claude-code");
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("up names an unnamed principal grok when GROK_AGENT is set", async () => {
+  const dir = identityWorkspace("run402-up-identity-grok-");
+  const calls: string[] = [];
+  const { sdk, set } = identityAwareSdk(calls, { display_name: null, subject: WALLET });
+  try {
+    const result = await withClientEnv({ GROK_AGENT: "1", GROK_SESSION_ID: "01abc" }, async () => {
+      const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
+      return actions.up({}, { approval: "yes" });
+    });
+    assert.equal(result.result?.identity?.source, "detected");
+    assert.deepEqual(set, ["grok"]);
+    assert.equal(result.result?.identity?.display_name, "grok");
   } finally {
     rmSync(dir, { force: true, recursive: true });
   }

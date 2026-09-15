@@ -4,6 +4,8 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
 
 ## Unreleased
 
+- **Grok is a detected client.** `up` names an unnamed principal `grok` when `GROK_AGENT` or `GROK_SESSION_ID` is set (Grok Build / Grok CLI), the same way it already names `claude-code`, `codex`, and `cursor`. Room presence `program` and the resumable `session_key` follow those same env vars. `RUN402_AGENT_NAME` still wins when a runtime declares itself.
+
 - **`run402 contacts list` shows Telegram bindings again.** The listing (and `contacts rm` resolution) read the channels response's `telegram` array; before, they looked for a `channels` field that does not exist, so only the escalation ladder ever printed.
 
 - **One person, one passkey.** `run402 contacts connect telegram`, `contacts rm`, `contacts preferences set` (webhook URL), `notifications rules` mutations, and `webhook-secret rotate` now send your cached `run402 operator login --loopback` session beside the wallet auth, and the gateway accepts a passkey-fresh session for the wallet contact's verified email as `operator_passkey` assurance. Nobody is asked to enroll a second passkey; the emailed enrollment remains for an operator with no run402 login. `run402 operator whoami` now shows `amr: ["passkey"]` for a loopback login (the token response carries it).

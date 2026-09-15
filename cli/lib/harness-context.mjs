@@ -1,6 +1,6 @@
 /**
  * Best-effort session + task identity sourced from the AI harness running
- * this CLI invocation (Claude Code or Codex) — no network call, every source
+ * this CLI invocation (Claude Code, Codex, or Grok) — no network call, every source
  * optional, the chain always terminates. Backs coordination-room presence
  * resumption in rooms-context.mjs (run402-private's
  * presence-naming-ergonomics, tasks 2.2 / 3.1-3.2).
@@ -39,7 +39,8 @@ function isTruthyEnvValue(raw) {
 /**
  * Resolve THIS session's opaque identity as an ordered chain with no network
  * call: explicit override -> Claude Code's own session id -> Codex's own
- * thread id -> a locally generated key persisted for this checkout. No
+ * thread id -> Grok's own session id -> a locally generated key persisted
+ * for this checkout. No
  * source is load-bearing — a harness that sets neither env var, or a
  * filesystem that refuses the write, still yields a usable key for this run.
  */
@@ -60,6 +61,9 @@ export function resolveSessionKey({
 
   const codexId = env.CODEX_THREAD_ID?.trim();
   if (codexId) return { key: codexId, source: "codex_thread_id" };
+
+  const grokId = env.GROK_SESSION_ID?.trim();
+  if (grokId) return { key: grokId, source: "grok_session_id" };
 
   const keyPath = join(cwd, SESSION_KEY_CACHE_RELATIVE_PATH);
   try {
@@ -91,7 +95,7 @@ export function resolveSessionKey({
  * env overrides first (`RUN402_PROGRAM`/`RUN402_MODEL`), then `program`
  * inferred from the SAME harness signals {@link resolveSessionKey} already
  * trusts (`CLAUDE_CODE_SESSION_ID` or `CLAUDECODE` -> `"claude-code"`;
- * `CODEX_THREAD_ID` -> `"codex"`). `model` has no harness-exposed signal to
+ * `CODEX_THREAD_ID` -> `"codex"`; `GROK_SESSION_ID` or `GROK_AGENT` -> `"grok"`). `model` has no harness-exposed signal to
  * infer from today (open question in kygit-invite design.md) — it is
  * ALWAYS env-override-or-null, never guessed from `program`. Null stays
  * null in both fields: a placeholder label would be a Faithful breach.
@@ -105,6 +109,8 @@ export function resolveHarnessLabels({ env = process.env } = {}) {
       program = "claude-code";
     } else if (env.CODEX_THREAD_ID?.trim()) {
       program = "codex";
+    } else if (env.GROK_SESSION_ID?.trim() || env.GROK_AGENT?.trim()) {
+      program = "grok";
     }
   }
   const model = modelOverride || null;

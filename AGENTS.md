@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This file is the single source of truth for AI coding agents working in this repository (Claude Code, Codex, Cursor, Cline, OpenClaw, etc.). `CLAUDE.md` imports it via `@AGENTS.md`.
+This file is the single source of truth for AI coding agents working in this repository (Claude Code, Codex, Cursor, Grok, Cline, OpenClaw, etc.). `CLAUDE.md` imports it via `@AGENTS.md`.
 
 > **Updating docs?** See [`documentation.md`](documentation.md) — the map of every doc surface, with target audience, content summary, and update triggers. **Scan it before merging code changes.**
 

@@ -5,12 +5,14 @@
  * persisted as a name. `RUN402_AGENT_NAME` (read by `up` before detection)
  * is the way any runtime names itself with no per-command flag.
  */
-export type DetectedClientName = "claude-code" | "codex" | "cursor";
+export type DetectedClientName = "claude-code" | "codex" | "cursor" | "grok";
 
 export function detectClientName(env: NodeJS.ProcessEnv = process.env): DetectedClientName | null {
   if (env.CLAUDECODE || env.CLAUDE_CODE || env.CLAUDE_CODE_ENTRYPOINT || env.CLAUDE_CODE_SESSION_ID) return "claude-code";
   if (env.CODEX_SANDBOX || env.CODEX_CI || env.OPENAI_CODEX || env.CODEX_HOME) return "codex";
   if (env.CURSOR_TRACE_ID || env.CURSOR_SESSION_ID || env.CURSOR_AGENT) return "cursor";
+  // Grok Build / Grok CLI: GROK_AGENT=1 and a per-session GROK_SESSION_ID.
+  if (env.GROK_AGENT || env.GROK_SESSION_ID) return "grok";
   return null;
 }
 

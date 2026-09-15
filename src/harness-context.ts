@@ -45,7 +45,7 @@ const TASK_MAX_LENGTH = 500; // mirrors the gateway's own validateMeta cap — n
 
 export interface SessionKeyResolution {
   key: string;
-  source: "env_override" | "claude_code_session_id" | "codex_thread_id" | "generated_cached" | "generated";
+  source: "env_override" | "claude_code_session_id" | "codex_thread_id" | "grok_session_id" | "generated_cached" | "generated";
 }
 
 export interface TaskLabelResolution {
@@ -66,7 +66,8 @@ function isTruthyEnvValue(raw: string | undefined): boolean {
 /**
  * Resolve THIS server process's opaque identity as an ordered chain with no
  * network call: explicit override -> Claude Code's own session id -> Codex's
- * own thread id -> a locally generated key persisted for this checkout. No
+ * own thread id -> Grok's own session id -> a locally generated key persisted
+ * for this checkout. No
  * source is load-bearing — a harness that sets neither env var, or a
  * filesystem that refuses the write, still yields a usable key for this run.
  *
@@ -99,6 +100,9 @@ export function resolveSessionKey(opts: {
 
   const codexId = env.CODEX_THREAD_ID?.trim();
   if (codexId) return { key: codexId, source: "codex_thread_id" };
+
+  const grokId = env.GROK_SESSION_ID?.trim();
+  if (grokId) return { key: grokId, source: "grok_session_id" };
 
   const keyPath = join(cwd, SESSION_KEY_CACHE_RELATIVE_PATH);
   try {
@@ -161,6 +165,8 @@ export function resolveHarnessLabels(opts: { env?: NodeJS.ProcessEnv } = {}): Ha
       program = "claude-code";
     } else if (env.CODEX_THREAD_ID?.trim()) {
       program = "codex";
+    } else if (env.GROK_SESSION_ID?.trim() || env.GROK_AGENT?.trim()) {
+      program = "grok";
     }
   }
   const model: string | null = modelOverride || null;
