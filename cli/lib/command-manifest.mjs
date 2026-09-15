@@ -85,6 +85,7 @@ export const COMMAND_MANIFEST = [
   { path: ["buzz", "notifications", "resume"], positionals: [p("buzz_project_event_route_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["buzzper_11111111111111111111111111111111"], skipBehavioral: "requires live owner authentication and a live route" },
   { path: ["buzz", "notifications", "rotate"], positionals: [p("buzz_project_event_route_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["buzzper_11111111111111111111111111111111"], skipBehavioral: "requires live owner authentication and a live route" },
   { path: ["buzz", "notifications", "revoke"], positionals: [p("buzz_project_event_route_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["buzzper_11111111111111111111111111111111"], skipBehavioral: "requires live owner authentication and a live route" },
+  { path: ["buzz", "notifications", "on-call"], positionals: [p("buzz_project_event_route_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["buzzper_11111111111111111111111111111111", "--clear"], skipBehavioral: "requires live owner authentication and a live route" },
 
   // ── up / init / status (flat runners) ────────────────────────────────────
   { path: ["up"], positionals: [p("source", { required: false })], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["--check", "-y"], runStyle: "flat", skipBehavioral: "orchestrates a full provision/build/deploy against the real cwd" },

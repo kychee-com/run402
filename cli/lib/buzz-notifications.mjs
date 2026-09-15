@@ -22,8 +22,11 @@ import {
 const HELP = `run402 buzz notifications — route project events into a Buzz community channel
 
 Usage:
-  run402 buzz notifications configure --org <uuid> --installation <buzzci_id> --name <route_name> --channel <uuid> --project <id> [--project <id> ...] [--event-type <t> ...] [--event-class <c> ...] [--include-org-events]
+  run402 buzz notifications configure --org <uuid> --installation <buzzci_id> --name <route_name> --channel <uuid> --project <id> [--project <id> ...] [--event-type <t> ...] [--event-class <c> ...] [--include-org-events] [--on-call <hex-pubkey>]
       --include-org-events   also deliver the org's own facts (the platform_payment_received receipt after a Lightning top-up) into the channel
+      --on-call <hex>        the Buzz agent (64-hex pubkey) a crash or platform incident pages with a p mention — the tag that wakes a managed Buzz agent
+  run402 buzz notifications on-call <buzzper_id> --agent <hex-pubkey> | --clear
+      set or clear the route's on-call agent (a PATCH at the route's current revision)
   run402 buzz notifications status [--org <uuid> | <buzzper_id>]
   run402 buzz notifications test <buzzper_id> [--wait] [--poll-seconds <n>] [--timeout-seconds <n>]
   run402 buzz notifications deliveries <buzzper_id> [--limit <n>] [--cursor <c>] [--delivery <buzzped_id>]
@@ -117,11 +120,56 @@ function narrateAuthorization(authorization) {
   console.error("  Then run `run402 buzz notifications test <buzzper_id> --wait` to verify it landed.");
 }
 
+function assertHexPubkey(value, flag) {
+  if (!/^[0-9a-f]{64}$/i.test(String(value).trim())) {
+    fail({ code: "BAD_FLAG", message: `${flag} must be a 64-hex Buzz pubkey`, details: { flag } });
+  }
+}
+
+/**
+ * `run402 buzz notifications on-call <buzzper_id> --agent <hex> | --clear` —
+ * set or clear the agent a crash or platform incident pages. Reads the route
+ * for its current revision and PATCHes at that revision, so a concurrent
+ * edit fails 409 instead of being overwritten.
+ */
+async function onCall(args) {
+  const a = normalizeArgv(args);
+  const valueFlags = ["--agent"];
+  assertKnownFlags(a, [...valueFlags, "--clear", "--help", "-h"], valueFlags);
+  const positionals = requirePositionalCount(positionalArgs(a, valueFlags), valueFlags, {
+    min: 1, max: 1, command: "run402 buzz notifications on-call <buzzper_id> --agent <hex-pubkey> | --clear", missing: "<buzzper_id>",
+  });
+  const [routeId] = positionals;
+  const clearing = a.includes("--clear");
+  const agent = flagValue(a, "--agent");
+  if (clearing === (agent !== null)) {
+    fail({ code: "BAD_FLAG", message: "pass exactly one of --agent <hex-pubkey> or --clear", details: { flag: "--agent" } });
+  }
+  if (!clearing) assertHexPubkey(agent, "--agent");
+  try {
+    const sdk = getSdk();
+    const current = await sdk.buzz.notifications.get(routeId);
+    const updated = await sdk.buzz.notifications.update(
+      routeId,
+      { onCallBuzzPubkey: clearing ? null : agent.trim().toLowerCase() },
+      current.revision,
+    );
+    out(updated);
+    console.error(clearing
+      ? "On-call agent cleared: crashes and incidents on this route page nobody."
+      : `On-call agent set: a crash or platform incident on this route now mentions ${updated.on_call_buzz_pubkey} (a p tag — what wakes a managed Buzz agent).`);
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
 async function configure(args) {
   const a = normalizeArgv(args);
-  const valueFlags = ["--org", "--installation", "--name", "--channel", "--project", "--event-type", "--event-class", "--idempotency-key"];
+  const valueFlags = ["--org", "--installation", "--name", "--channel", "--project", "--event-type", "--event-class", "--idempotency-key", "--on-call"];
   assertKnownFlags(a, [...valueFlags, "--include-org-events", "--help", "-h"], valueFlags);
   const includeOrgEvents = a.includes("--include-org-events");
+  const onCall = flagValue(a, "--on-call");
+  if (onCall !== null) assertHexPubkey(onCall, "--on-call");
   requirePositionalCount(positionalArgs(a, valueFlags), valueFlags, {
     min: 0, max: 0, command: "run402 buzz notifications configure", missing: "",
   });
@@ -138,6 +186,7 @@ async function configure(args) {
       buzzChannelId: requiredFlag(a, "--channel"),
       projectIds,
       ...(includeOrgEvents ? { includeOrgEvents: true } : {}),
+      ...(onCall !== null ? { onCallBuzzPubkey: onCall.trim().toLowerCase() } : {}),
       ...(eventTypes.length ? { eventTypes } : {}),
       ...(eventClasses.length ? { eventClasses } : {}),
       ...(flagValue(a, "--idempotency-key") ? { idempotencyKey: flagValue(a, "--idempotency-key") } : {}),
@@ -290,6 +339,9 @@ export async function run(sub, args) {
   switch (sub) {
     case "configure":
       await configure(argv);
+      break;
+    case "on-call":
+      await onCall(argv);
       break;
     case "status":
       await status(argv);

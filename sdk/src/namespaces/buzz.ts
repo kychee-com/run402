@@ -419,6 +419,7 @@ export class BuzzNotifications {
         ...(input.includeOrgEvents !== undefined ? { include_org_events: input.includeOrgEvents } : {}),
         ...(input.eventTypes !== undefined ? { event_types: input.eventTypes } : {}),
         ...(input.eventClasses !== undefined ? { event_classes: input.eventClasses } : {}),
+        ...(input.onCallBuzzPubkey !== undefined ? { on_call_buzz_pubkey: input.onCallBuzzPubkey } : {}),
       },
       context,
     });
@@ -467,6 +468,8 @@ export class BuzzNotifications {
         ...(patch.projectIds !== undefined ? { project_ids: patch.projectIds } : {}),
         ...(patch.eventTypes !== undefined ? { event_types: patch.eventTypes } : {}),
         ...(patch.eventClasses !== undefined ? { event_classes: patch.eventClasses } : {}),
+        ...(patch.includeOrgEvents !== undefined ? { include_org_events: patch.includeOrgEvents } : {}),
+        ...(patch.onCallBuzzPubkey !== undefined ? { on_call_buzz_pubkey: patch.onCallBuzzPubkey } : {}),
       },
       context,
     });

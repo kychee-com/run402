@@ -341,6 +341,9 @@ const SURFACE: Capability[] = [
   { id: "buzz_notify_resume",     endpoint: "POST /buzz-project-event-routes/v1/:id/resume",            mcp: null, cli: "buzz:notifications:resume",     openclaw: "buzz:notifications:resume" },
   { id: "buzz_notify_rotate",     endpoint: "POST /buzz-project-event-routes/v1/:id/rotate",            mcp: null, cli: "buzz:notifications:rotate",     openclaw: "buzz:notifications:rotate" },
   { id: "buzz_notify_revoke",     endpoint: "DELETE /buzz-project-event-routes/v1/:id",                 mcp: null, cli: "buzz:notifications:revoke",     openclaw: "buzz:notifications:revoke" },
+  // The one PATCH verb with a CLI spelling: set/clear the agent a crash or
+  // incident pages. The rest of the PATCH surface stays SDK-only.
+  { id: "buzz_notify_on_call",    endpoint: "PATCH /buzz-project-event-routes/v1/:id",                  mcp: null, cli: "buzz:notifications:on-call",    openclaw: "buzz:notifications:on-call" },
 
   // ── Named wallets / profiles (local-only management; selection via --wallet) ─
   { id: "wallets_list",      endpoint: "(local)",                              mcp: null, cli: "wallets:list",     openclaw: "wallets:list" },
@@ -941,6 +944,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   buzz_notify_resume: "buzz.notifications.resume",
   buzz_notify_rotate: "buzz.notifications.rotate",
   buzz_notify_revoke: "buzz.notifications.revoke",
+  buzz_notify_on_call: "buzz.notifications.update",
 
   // repos (host-blind git repos) — all protocol logic is SDK-side; CLI/MCP
   // are adapters (task 5.0). `repos` is porcelain over projects.provision +
@@ -1937,10 +1941,6 @@ describe("SDK surface alignment", () => {
       "buzz.communityInstallations.getPublicDescriptor",
       "buzz.enrollments.list",
       "buzz.enrollments.get",
-      // update has no CLI verb yet — the routes surface ships read/lifecycle
-      // commands first, and the SDK's expectedRevision-guarded PATCH is the
-      // programmatic path (mirrors communityInstallations.update above).
-      "buzz.notifications.update",
       // testAndWait composes test + poll; the CLI spells it
       // `buzz notifications test --wait` (the escalations.raiseAndWait precedent).
       "buzz.notifications.testAndWait",

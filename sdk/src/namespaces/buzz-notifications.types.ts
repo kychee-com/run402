@@ -58,6 +58,15 @@ export interface BuzzEventRoute {
   event_types: string[] | null;
   /** null = every non-forbidden class. */
   event_classes: string[] | null;
+  /** Also carries the organization's own facts (receipts, high-importance room messages). */
+  include_org_events?: boolean;
+  /**
+   * The Buzz agent (64-hex pubkey) a crash or platform incident on this
+   * route pages with a `p` mention — the tag that wakes a managed Buzz
+   * agent. The failing release's deployer is paged instead when it holds a
+   * public Buzz identity link. null pages nobody.
+   */
+  on_call_buzz_pubkey?: string | null;
   status: BuzzEventRouteStatus;
   pause_reason: BuzzEventRoutePauseReason | null;
   paused_at: string | null;
@@ -229,6 +238,12 @@ export interface CreateBuzzEventRouteInput {
    * `recovery` may never be routed. `[]` is rejected like `eventTypes`.
    */
   eventClasses?: string[] | null;
+  /**
+   * The Buzz agent (64-hex pubkey) this route pages when a crash or platform
+   * incident names nobody — the projection mentions it with a `p` tag, which
+   * is what wakes a managed Buzz agent. Omit or null to page nobody.
+   */
+  onCallBuzzPubkey?: string | null;
   /** Auto-generated when omitted — every route mutation is idempotent. */
   idempotencyKey?: string;
 }
@@ -240,6 +255,9 @@ export interface UpdateBuzzEventRoutePatch {
   /** `null` clears the filter back to "every registered type"; `[]` is rejected. */
   eventTypes?: string[] | null;
   eventClasses?: string[] | null;
+  includeOrgEvents?: boolean;
+  /** `null` clears the on-call agent (pages nobody). */
+  onCallBuzzPubkey?: string | null;
   idempotencyKey?: string;
 }
 

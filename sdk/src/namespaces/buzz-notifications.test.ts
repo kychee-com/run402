@@ -238,6 +238,29 @@ describe("buzz.notifications lifecycle mutations", () => {
     assert.equal(out.revision, 2);
   });
 
+  it("update sets or clears the on-call agent and the org-events opt-in as their wire fields", async () => {
+    const onCall = "92".repeat(32);
+    const { fetch, calls } = mockFetch(() => jsonResponse({ ...ROUTE, revision: 2, on_call_buzz_pubkey: onCall }));
+    const sdk = makeSdk(fetch);
+    await sdk.buzz.notifications.update(ROUTE_ID, { onCallBuzzPubkey: onCall, includeOrgEvents: true }, 1);
+    assert.deepEqual(parsedBody(calls[0]!), { expected_revision: 1, include_org_events: true, on_call_buzz_pubkey: onCall });
+    await sdk.buzz.notifications.update(ROUTE_ID, { onCallBuzzPubkey: null }, 2);
+    assert.deepEqual(parsedBody(calls[1]!), { expected_revision: 2, on_call_buzz_pubkey: null });
+  });
+
+  it("createRoute passes the on-call agent only when given", async () => {
+    const onCall = "92".repeat(32);
+    const { fetch, calls } = mockFetch(() => jsonResponse({ ...ROUTE, authorization: { status: "authorized" } }, 201));
+    await makeSdk(fetch).buzz.notifications.createRoute(ORG, {
+      installationId: ROUTE.buzz_community_installation_id,
+      routeName: "crashes",
+      buzzChannelId: "chan-1",
+      projectIds: ["prj_a"],
+      onCallBuzzPubkey: onCall,
+    });
+    assert.equal((parsedBody(calls[0]!) as Record<string, unknown>).on_call_buzz_pubkey, onCall);
+  });
+
   it("update refuses a non-integer expectedRevision locally", async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse({}));
     await assert.rejects(
