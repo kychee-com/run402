@@ -44,6 +44,7 @@ run402 up --manifest run402.deploy.ts --plan
 run402 up --manifest run402.deploy.ts --require-plan plan_...
 run402 up --manifest run402.deploy.json --project prj_...
 run402 up verify --project prj_...
+run402 up --nested -y                         # app root inside another repo: its own nested repo + run402 remote
 ```
 
 `up` is a thin CLI shim over the Node SDK action runner. It discovers `run402.json`, `run402.deploy.json`, then `app.json`. A `run402.json` carrying the app schema/app markers uses the app-install graph; a release-shaped `run402.json` is normalized through the same ReleaseSpec path as `deploy apply` for compatibility. It validates the deploy input before any mutation, resolves the project as `--project` → `.run402/project.json` → manifest `project_id` → approved creation from `--name` → approved active-project fallback, then applies the manifest. `--name` is creation/link metadata only; it is not a manifest field and never renames an existing project. When everything is already configured, plain `run402 up` deploys. Non-interactive recursive prerequisites/local writes require `-y/--yes`.
@@ -51,6 +52,8 @@ run402 up verify --project prj_...
 For app manifests with `verify.http[]`, `up` runs HTTP checks after deploy. Fresh Run402 edge sentinel misses (`x-run402-edge` or sentinel JSON bodies) become `propagation_pending` with diagnostics instead of hard failure while the host binding is still converging. Use `--propagation-budget-s <seconds>` to tune the default 120 second wait, `--no-propagation-wait` to return immediately, and `run402 up verify` to rerun the same checks without upload, deploy, project creation, or resource mutation.
 
 For typed `run402.deploy.ts` configs, pass `--manifest` explicitly because TypeScript/JavaScript configs execute local code. Use `--check` for local-only import/normalize/file validation, `--print-spec` to inspect the normalized `ReleaseSpec`, `--plan` for a gateway-reviewed non-deploying plan, and `--require-plan <plan_id>` to apply only that reviewed intent. Warning flags are not used with `--require-plan`; the reviewed plan binds the exact warning/destructive set. Run402 Core skips Cloud allowance/tier prerequisites and fails closed when no Core project is selected.
+
+Every mode (and `deploy apply`) verifies the files the manifest references before any gateway call: migration `sql_path`/`sql_file`, function `source`/`files`, site `{ path }` entries and `dir()` targets, `assets.put` sources. A missing one is `MANIFEST_FILE_MISSING` (`details.missing[]` = `{ field_path, path, kind }`, one `create_file` next action per file). With no manifest in the working directory, `UP_MANIFEST_REQUIRED` looks one directory down (`details.nearby_manifests[]`, a leading `run_in_directory` next action such as `run402 up --check --dir <dir>`); `--manifest <path>` to a missing file is a typed `MANIFEST_NOT_FOUND` with a `create_manifest` next action. An app root that lies inside another repository is never scaffolded into it: the skip carries a `create_nested_repo` next action, and `--nested` gives the app its own nested repository (`git init -b main`, the `run402` remote, the first push) plus exactly one line in the enclosing repository's local `.git/info/exclude`, nothing else touched. `up` also sets this principal's display name when it has none: `RUN402_AGENT_NAME` (overrides an existing name), else the detected client (`claude-code`, `codex`, `cursor`, `grok`, or `RUN402_CLIENT=<name>` for one with no marker), and `result.identity` reports `detected` plus `detection: { applied, reason }` either way.
 
 ### repos — host-blind encrypted git repos (zero deploy ceremony)
 
@@ -63,12 +66,13 @@ git push -u origin main                       # allocates the vault on first pus
 
 # or, one call: provision + allocate + scaffold, nothing deployed
 run402 repos create my-notes
+run402 repos create --nested --project prj_xyz # app inside another repo: its own nested repo + remote
 run402 repos view --human
 run402 repos list --org org_1a2b3c
 run402 repos delete --project prj_xyz --force # refuses without --force while the vault holds generations
 ```
 
-A hosted git remote, encrypted before it leaves the machine — no deploy, no manifest, no app. `origin` is claimed additively — an existing `origin` is never touched, the run402 remote falls back to `run402` instead. Every mutating `repos` verb (`create`, `rename`, `delete`, `snapshot`, `policy`, `mirror`, `gc`, `handoff`, `resume`, `invite`, `join`) is CLI/OpenClaw-only by design — no MCP tool exists or will exist for them (one-shot recovery receipts, immutable generations, irreversible delete, single-use bearer keys). Three READ-ONLY tools do exist — `repos_view`, `repos_list_heads`, `repos_fsck` — teaching only `repos` spellings. See `run402 repos --help` for the full tiered surface (common: `create`/`view`/`list`; occasional: `snapshot`/`mirror`/`recover`/`handoff`/`resume`/`invite`/`join`; lifecycle: `rename`/`delete`; maintenance: `fsck`/`gc`/`access`/`policy`), and the CLI reference's `repos` section for the terminal-loss statement and the progressive backup warning.
+A hosted git remote, encrypted before it leaves the machine — no deploy, no manifest, no app. `origin` is claimed additively — an existing `origin` is never touched, the run402 remote falls back to `run402` instead. A directory inside another repository is never scaffolded into that repository: the skip carries a `create_nested_repo` next action, `--nested` makes it its own nested repository (one line appended to the enclosing repository's local `.git/info/exclude`, nothing else touched), and `create` prints a `git push` next action only for a remote it actually added. Every mutating `repos` verb (`create`, `rename`, `delete`, `snapshot`, `policy`, `mirror`, `gc`, `handoff`, `resume`, `invite`, `join`) is CLI/OpenClaw-only by design — no MCP tool exists or will exist for them (one-shot recovery receipts, immutable generations, irreversible delete, single-use bearer keys). Three READ-ONLY tools do exist — `repos_view`, `repos_list_heads`, `repos_fsck` — teaching only `repos` spellings. See `run402 repos --help` for the full tiered surface (common: `create`/`view`/`list`; occasional: `snapshot`/`mirror`/`recover`/`handoff`/`resume`/`invite`/`join`; lifecycle: `rename`/`delete`; maintenance: `fsck`/`gc`/`access`/`policy`), and the CLI reference's `repos` section for the terminal-loss statement and the progressive backup warning.
 
 **Handoff / resume.** `run402 repos handoff [--note-file <path>]` captures the actual working tree (staged/unstaged/untracked, like `git stash push -u`) into the vault and mints a single-use bearer key (`kgh1_…`, printed to stdout exactly once); `run402 repos resume <kgh1_…>` claims it on another machine, clones fresh, and reapplies the exact dirty state with `git stash apply --index`. No shared keystore, no shared allowance — the key is the whole handoff. On a wallet with no active tier, `resume` first folds the same cold-start chain `create` does (allowance → faucet → one x402 prototype payment); `--no-init` opts out, and the claim itself never waits on it. Sensitive untracked files (`.env`, `*.pem`, SSH/AWS/GPG dirs, …) are excluded from capture by default (`--include-sensitive <glob>` re-admits one). See the reference `run402.com/llms-cli.txt` for the full note-schema and flag reference.
 
@@ -169,7 +173,7 @@ Promote success means the origin pointer is active; mutable public URLs may stil
 `deploy-dir` hashes each file client-side and only uploads bytes the gateway doesn't already have. Re-deploying an unchanged tree returns immediately with `bytes_uploaded: 0`. Progress events stream to stderr.
 Release inspection commands print `{ release: ... }` or `{ diff: ... }` (raw payload, no envelope — see the "Output Contract" section in [llms-cli.txt](llms-cli.txt)); use them after deploys to compare release inventory without starting another mutation. `deploy verify` prints the canonical edge-coherence report and exits 2 when the report is valid but not yet coherent. Inventories include `release_generation`, `static_manifest_sha256`, and nullable `static_manifest_metadata`; diffs include `static_assets` counters such as unchanged/changed/added/removed and CAS byte reuse. `deploy diagnose` / `deploy resolve --url` print URL-first diagnostics with `would_serve`, `diagnostic_status`, `match`, warnings, `edge_propagation`, and next steps; host misses are successful diagnostic calls with `would_serve: false`. Stable-host resolve fields can include `authorization_result`, `cas_object`, `response_variant`, `allow`, `route_pattern`, `target_type`, `target_name`, `target_file`, and `edge_propagation` (`settled`, `propagating`, or `sync_pending`).
 
-For database-bearing changes, use `run402 apply --manifest app.json --rehearse --json` before commit. It creates a contained branch, applies the candidate plan there, runs checks, and exits nonzero on a failed rehearsal. Manual restore points live under `run402 snapshots create|list|get|restore|delete`; temporary data branches live under `run402 branches create|list|renew|delete`.
+For database-bearing changes, use `run402 apply --manifest app.json --rehearse --json` before commit. It creates a contained branch, applies the candidate plan there, runs checks, and exits nonzero on a failed rehearsal. The automatic rehearsal inside `up` / `apply` reports `rehearsal: { status: "skipped", reason }` when there is nothing to protect: `no_live_release` on a first deploy, `no_migrations`, or `migrations_unchanged` when every migration is already applied with an identical checksum (a page-only redeploy that still carries its migrations ships in seconds). `PUBLIC_ROUTED_FUNCTION` is informational (`requires_confirmation: false`) and needs no `--allow-warning`; only warnings with `requires_confirmation: true` do. Manual restore points live under `run402 snapshots create|list|get|restore|delete`; temporary data branches live under `run402 branches create|list|renew|delete`.
 
 ### GitHub Actions OIDC deploys
 
@@ -220,11 +224,16 @@ run402 functions deploy <id> my-fn --file fn.ts \
   --schedule "*/15 * * * *" \
   --deps "stripe,zod@^3"
 run402 functions logs <id> my-fn --tail 100 --request-id req_abc123 --follow
+run402 functions logs --request-id req_abc123 --project <id>   # <name> optional with --request-id: every function is searched
+run402 functions logs my-fn --project <id> --all               # include the Lambda INIT_START / REPORT lines
+run402 logs --request-id req_abc123 --project <id>             # the x-run402-request-id response header, no function name needed
 run402 functions invoke my-fn --project <id> --body-file request.json
 run402 functions invoke paid-fn --project <id> --body-file request.json --idempotency-key paid:call:123 --wait
 run402 functions rebuild <id> my-fn      # refresh ONE function onto the current runtime
 run402 functions rebuild <id> --all      # refresh every function in the project
 ```
+
+Log reads are app-first: every entry carries `origin: "app" | "platform"`, the Lambda runtime lines (INIT_START, START/END/REPORT RequestId, billed duration) are hidden by default (`--app`), `--platform` shows only them and `--all` the raw stream; `hidden` counts what was dropped and a `hint` explains an empty result. `--request-id` accepts `req_`, `fnrun_`, and `fnatt_` ids, `--since` takes an ISO timestamp or epoch ms, and `run402 logs` rejects unknown flags.
 
 Inline `--body <json>` is validated before any request. Prefer `--body-file <path>` for agents and Windows `cmd.exe`; the file path avoids shell quoting entirely. Invalid or empty JSON fails locally instead of invoking the function with corrupted input.
 
@@ -302,6 +311,15 @@ run402 tier set prototype                                    # free on testnet
 run402 tier set hobby                                        # $5 / 30 days
 run402 billing checkout <org_id> --product tier --tier hobby  # Stripe alternative
 ```
+
+### Doctor
+
+```bash
+run402 doctor                    # { ok, blocking[], warnings[], checks[] }
+run402 doctor --refresh          # live npm check for a newer run402
+```
+
+`ok` is structural: `true` exactly when `blocking[]` is empty. Every check carries `severity: "blocking" | "advisory" | "info"`; advisory findings (an unbound operator passkey, a degraded recovery posture on another org, a stale CLI, gitvault gaps) land in `warnings[]` without changing `ok` or the exit code. The `tier` check's `status` is a fixed vocabulary (`ok | inactive | frozen | past_due | dormant | purged | missing | unknown | error`, never a tier name; see `value.tier` / `value.lifecycle`), and a wallet whose own org holds no tier but can reach another org's projects reports `missing` as advisory (`TIER_MISSING_ON_OWN_ORG`).
 
 ## State
 

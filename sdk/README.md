@@ -207,6 +207,10 @@ await r.actions.run({
 
 Action identifiers are exported constants plus a string-literal union, so inputs narrow by `type`. `up` validates `run402.deploy.json` / `app.json` before any mutation, resolves the project as explicit `projectId` → `.run402/project.json` → manifest `project_id` → approved creation from `name` → approved active-project fallback, then delegates to `r.project(id).apply(...)`. `name` is only project creation/link metadata; it is not a manifest field and never renames an existing project. If allowance/tier/project/link are already configured, `r.up()` can run the requested deploy with the default approval policy; pass `{ approval: "yes" }` only when you want recursive prerequisites/local writes to proceed unattended.
 
+Before any gateway call, in every mode, `up` verifies every local file the manifest references (migration `sql_path`/`sql_file`, function `source`/`files`, site `{ path }` entries and `dir()` targets, `assets.put[].source`) and throws `MANIFEST_FILE_MISSING` (`details.missing[]` of `{ field_path, path, kind }`, one `create_file` next action per file); `manifest` pointing at a missing path is `MANIFEST_NOT_FOUND`, and with no manifest in the directory `UP_MANIFEST_REQUIRED` lists `details.nearby_manifests[]` one level down with a `run_in_directory` next action. The same check is exported standalone from `@run402/sdk/node`: `collectLocalFileReferences(spec)`, `findMissingLocalFileReferences(spec)`, `assertLocalFileReferencesExist(spec, { manifestPath? })`, plus the `manifestFileMissingError` / `manifestNotFoundError` builders.
+
+`up` also names the principal when it has none: `identityName` (or `RUN402_AGENT_NAME`; `identity.source: "explicit"`, overrides an existing name), else a detected client (`claude-code`, `codex`, `cursor`, `grok`; `RUN402_CLIENT=<name>` declares one with no marker of its own and is checked first; `identity.source: "detected"`), else nothing is written (`"undetected"`). `result.identity` always carries `detected` (the client seen this run, applied or not) and `detection: { applied, reason }` with `reason` one of `applied`, `name_already_set`, `explicit_name_wins`, `nothing_detected`. The scaffolded `run402` remote is never added inside another repository: the skip carries a `create_nested_repo` next action, and `nested: true` makes the app root its own nested repository (one line appended to the enclosing repository's local `.git/info/exclude`).
+
 App manifests can define `verify.http[]`. `r.up()` verifies those URLs after deploy, treats fresh Run402 edge sentinel misses as `propagation_pending` instead of permanent failures while the host binding converges, and returns `app_result.verify` plus per-check diagnostics. Use `propagationBudgetSeconds` to tune the default 120 second wait, `propagationWait: false` to return the pending state immediately, and `verifyOnly: true` to rerun verification without upload, deploy, project creation, or resource mutation.
 
 Typed-config workflows use one execution-mode union:
@@ -310,7 +314,7 @@ The `CredentialsProvider` interface has two required methods (`getAuth`, `getPro
 | `r.project(id).sites` | `deployDir` — Node entry only (`@run402/sdk/node`); thin wrapper over `r.project(id).apply({ site: dir(...) })` |
 | `r.project(id).assets` | `put` (single asset), `putMany`, `uploadDir` (Node, additive), `syncDir` (Node, destructive only with `prune: true` + confirm token), `prepareDir` (returns `{ manifest, applySlice }` for pre-commit URL injection), `get`, `ls`, `rm`, `sign`, `diagnoseUrl`, `waitFresh`, `diff`. Returns `AssetRef` (single) or `AssetManifest` (batch). |
 | `cache` | SSR origin ISR cache: `invalidate(url)`, `invalidatePrefix({ host, prefix })`, `invalidateAll({ host })`, `invalidateMany(urls)`, `inspect(url)`. Project-scoped (host ownership validated server-side; cross-project hosts throw `R402_CACHE_INVALIDATION_HOST_FORBIDDEN`). Generation-guarded — in-flight MISS renders started before an invalidate cannot overwrite the freshly-cleared state. |
-| `functions` | `deploy`, `invoke`, `logs`, `update`, `list`, `delete`, `rebuild`, `rebuildAll`, `runs.*` durable function requests |
+| `functions` | `deploy`, `invoke`, `logs` (`{ tail?, since?, requestId?, origin? }`; every entry carries `origin: "app" \| "platform"`, computed by the exported `classifyFunctionLogLine`, and `origin` filters client-side with `hidden: { platform, app }` counts), `logsByRequestId(projectId, requestId, { tail?, since?, origin?, functionName? })` (project-wide search for a `req_`/`fnrun_`/`fnatt_` id, the `x-run402-request-id` response header: reads every function, merges oldest-first, tags each entry with its `function`; also `r.project(id).functions.logsByRequestId`), `update`, `list`, `delete`, `rebuild`, `rebuildAll`, `runs.*` durable function requests |
 | `jobs` | `submit`, `get`, `logs`, `cancel`, `purge` for platform-managed jobs |
 | `secrets` | `set`, `list`, `delete` |
 | `subdomains` | `claim`, `list`, `delete` (most agents declare subdomains in `r.project(id).apply({ subdomains: { set: [...] } })` instead) |
@@ -584,7 +588,7 @@ const resumed = await (await r.project(projectId)).apply.resume("op_...");
   const committed = await p.apply.commit(plan.plan_id);
   ```
 
-  Plan responses may advertise `rehearsal: { available, rehearse_url }`; commit results may carry `restore_point` or `snapshot_skipped_reason`.
+  Plan responses may advertise `rehearsal: { available, rehearse_url, reason }` where `reason` is `null` when available, else `no_migrations`, `no_live_release`, or `migrations_unchanged`; commit results may carry `restore_point` or `snapshot_skipped_reason`. The automatic rehearsal inside `apply()` / `r.up()` reports `rehearsal: { status: "passed", … }` or `{ status: "skipped", reason: "no_live_release" | "no_migrations" | "migrations_unchanged" | "disabled" | "reviewed_plan" | "unsupported" }`; `migrations_unchanged` (gateway-supplied, or derived from the plan's `{ new, noop }` migration buckets when `new` is empty) means every migration is already applied with an identical checksum, so a page-only redeploy that still carries its migrations ships without a branch.
 - **Release observability is typed.** Use `r.project(id).apply.getRelease(releaseId, { siteLimit? })`, `r.project(id).apply.getActiveRelease({ siteLimit? })`, and `r.project(id).apply.diff({ from, to, limit? })` to inspect release inventory and release-to-release diffs (there is no bare `r.deploy` surface). Inventories include `release_generation`, `static_manifest_sha256`, nullable `static_manifest_metadata` (`file_count`, `total_bytes`, `cache_classes`, `cache_class_sources`, `spa_fallback`), and `static_public_paths[]` when returned. `site.paths` lists release static assets; `static_public_paths[]` lists browser reachability with `public_path`, `asset_path`, `reachability_authority`, `direct`, cache class, and content type. `diff` returns `ReleaseToReleaseDiff` with `migrations.applied_between_releases`; secret diffs expose keys only; `static_assets` exposes unchanged/changed/added/removed files, CAS byte reuse, eliminated deployment-copy bytes, and immutable/CAS warning counts.
 - **Server-authoritative manifest digest** — no byte-for-byte canonicalize requirement on the client.
 - The Node entry adds `fileSetFromDir(path)` for filesystem byte sources:
@@ -677,7 +681,7 @@ const resumed = await (await r.project(projectId)).apply.resume("op_...");
 
   | Code | Why it matters | Recovery |
   |------|----------------|----------|
-  | `PUBLIC_ROUTED_FUNCTION` | Function becomes public same-origin browser ingress. | Review app auth, CSRF, CORS/`OPTIONS`, and cookies; direct `/functions/v1/:name` remains API-key protected. Prefer `allowWarningCodes` after review; broad `allowWarnings` only after every warning was reviewed. |
+  | `PUBLIC_ROUTED_FUNCTION` | Function becomes public same-origin browser ingress. | Informational (`requires_confirmation: false`): it never blocks `apply` and needs no `allowWarningCodes` entry. Review app auth, CSRF, CORS/`OPTIONS`, and cookies; direct `/functions/v1/:name` remains API-key protected. Only warnings with `requires_confirmation: true` need `allowWarningCodes`; broad `allowWarnings` only after every warning was reviewed. |
   | `ROUTE_TARGET_CARRIED_FORWARD` | Carried-forward route still targets a base-release function. | Inspect active routes and deploy `routes.replace` if the target should change. |
   | `ROUTE_SHADOWS_STATIC_PATH` / `WILDCARD_ROUTE_SHADOWS_STATIC_PATHS` | Dynamic route shadows direct public static content. | Inspect warning details, active routes, `static_public_paths`, and resolve diagnostics; confirm only when intentional. |
   | `METHOD_SPECIFIC_ROUTE_ALLOWS_GET_STATIC_FALLBACK` | Unmatched methods can serve static content. | Confirm fallback is intended or add method coverage. |
@@ -704,8 +708,12 @@ const resumed = await (await r.project(projectId)).apply.resume("op_...");
   migration `sql_path` / `sql_file`. It also loads explicit executable
   `.ts/.mts/.cts/.js/.mjs/.cjs` configs and rejects executable auto-discovery
   with `EXECUTABLE_CONFIG_REQUIRES_EXPLICIT_MANIFEST`. It rejects unknown
-  manifest fields before they can become partial deploys. Use
-  `normalizeDeployManifest(input)` when the manifest object is already in memory.
+  manifest fields before they can become partial deploys, and a path that does
+  not exist is a typed `MANIFEST_NOT_FOUND` (with a `create_manifest` next
+  action), not a bare `LOCAL_ERROR`. Use
+  `normalizeDeployManifest(input)` when the manifest object is already in memory,
+  and `assertLocalFileReferencesExist(spec, { manifestPath? })` to fail with
+  `MANIFEST_FILE_MISSING` before uploading when a referenced file is absent.
 
   Minimal `run402.deploy.ts`:
 
@@ -794,7 +802,7 @@ const plan = await r.gitvault.prune({ project_id: projectId }); // plans; plan.s
 
 **Nothing here is memoised.** Two responses are secret-bearing — the maintenance lease's `holder_token` (returned exactly once) and anything derived from the keystore — so they are never cached, never persisted into an agent-surface result store, and never logged.
 
-`gitvaultRemoteUrl(orgId, projectId)` / `parseGitvaultRemoteUrl(url)` are exported helpers for the `run402::<org_id>/<project_id>` remote form that `git-remote-run402` serves; `r.gitvault.scaffoldRemote(...)` is what `run402 init` calls to add it — claiming `origin` when the repository has none yet, falling back to `run402` when `origin` is already taken by something else, and never modifying an existing remote either way.
+`gitvaultRemoteUrl(orgId, projectId)` / `parseGitvaultRemoteUrl(url)` are exported helpers for the `run402::<org_id>/<project_id>` remote form that `git-remote-run402` serves; `r.gitvault.scaffoldRemote(...)` is what `run402 init` calls to add it — claiming `origin` when the repository has none yet, falling back to `run402` when `origin` is already taken by something else, and never modifying an existing remote either way. A `repo_dir` that lies inside another repository is reported `skipped` with a `create_nested_repo` next action; `scaffoldRemote({ …, nested: true })` (and `init({ …, nested: true })`) makes it its own nested repository instead (`git init -b main`, the remote added there) and appends exactly one line to the enclosing repository's local `.git/info/exclude`, reporting `nested`, `enclosing_toplevel`, and `excluded_in_enclosing`.
 
 **Lazy allocation on first open.** `r.gitvault.openOrCreate({ project_id, org_id, repo_dir? })` resolves `repo_id` from `project_id` exactly like `open()`; when that resolution fails AND `org_id` was supplied, it runs the six-stage creation journal to allocate the vault before opening it. Without `org_id` it is byte-identical to `open()`. `push({ org_id, onVaultCreated })` composes this internally, so `git push` and `repos snapshot` allocate inline against an unregistered project — `onVaultCreated` fires with the one-shot recovery receipt the instant allocation lands, before capture/publish continue.
 
