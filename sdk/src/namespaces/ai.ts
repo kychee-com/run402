@@ -42,6 +42,12 @@ const IMAGE_ASPECTS: readonly ImageAspect[] = ["square", "landscape", "portrait"
 export interface GenerateImageOptions {
   prompt: string;
   aspect?: ImageAspect;
+  /**
+   * The paying organization. Needed only on the MPP Lightning rail when the
+   * calling principal belongs to more than one organization (the gateway
+   * answers `ORGANIZATION_SELECTION_REQUIRED` otherwise); x402 ignores it.
+   */
+  orgId?: string;
 }
 
 export interface GenerateImageResult {
@@ -120,7 +126,7 @@ export class Ai {
     // network the money moved on.
     const res = await this.client.requestWithResponse<Omit<GenerateImageResult, "payment">>(
       "/generate-image/v1",
-      { method: "POST", body: { prompt: opts.prompt, aspect }, context: "generating image" },
+      { method: "POST", body: { prompt: opts.prompt, aspect, ...(opts.orgId ? { org_id: opts.orgId } : {}) }, context: "generating image" },
     );
     return { ...res.body, payment: res.settlement ?? null };
   }

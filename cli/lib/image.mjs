@@ -12,6 +12,8 @@ Options:
   --aspect <ratio>    Image aspect ratio: square | landscape | portrait  (default: square)
   --output <file>     Save image to file (e.g. output.png)
                       If omitted, returns base64 JSON to stdout
+  --org <org_id>      The paying organization when the wallet belongs to more
+                      than one (Lightning rail); x402 ignores it
   --help, -h          Show this help message
 
 Examples:
@@ -71,7 +73,7 @@ export async function run(sub, args) {
   }
 
   const parsedArgs = normalizeArgv(args);
-  const valueFlags = ["--aspect", "--output"];
+  const valueFlags = ["--aspect", "--output", "--org"];
   assertKnownFlags(parsedArgs, [...valueFlags, "--help", "-h"], valueFlags);
   const positionals = positionalArgs(parsedArgs, valueFlags);
   if (positionals.length > 1) {
@@ -85,6 +87,7 @@ export async function run(sub, args) {
     prompt: positionals[0] ?? null,
     aspect: flagValue(parsedArgs, "--aspect") ?? "square",
     output: flagValue(parsedArgs, "--output"),
+    org: flagValue(parsedArgs, "--org"),
   };
 
   if (!opts.prompt) {
@@ -97,7 +100,7 @@ export async function run(sub, args) {
   assertAllowedValue(opts.aspect, ["square", "landscape", "portrait"], "--aspect");
 
   try {
-    const data = await getSdk().ai.generateImage({ prompt: opts.prompt, aspect: opts.aspect });
+    const data = await getSdk().ai.generateImage({ prompt: opts.prompt, aspect: opts.aspect, ...(opts.org ? { orgId: opts.org } : {}) });
     if (opts.output) {
       const buf = Buffer.from(data.image, "base64");
       writeFileSync(opts.output, buf);
