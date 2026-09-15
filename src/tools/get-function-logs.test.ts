@@ -222,14 +222,28 @@ describe("get_function_logs tool", () => {
     assert.equal(result.isError, true);
   });
 
-  it("returns isError when project not in keystore", async () => {
+  it("a project not in the keystore is read on the principal credential, and the gateway's verdict is forwarded", async () => {
+    // The agent a Buzz page addresses holds no project key: the tool no
+    // longer fails locally, it asks the gateway with the wallet and forwards
+    // the answer — here a project.read refusal.
+    let sawServiceKeyBearer = false;
+    globalThis.fetch = (async (_url: string, init?: RequestInit) => {
+      const auth = new Headers(init?.headers ?? {}).get("authorization") ?? "";
+      if (auth.startsWith("Bearer ")) sawServiceKeyBearer = true;
+      return new Response(
+        JSON.stringify({ code: "FORBIDDEN", message: "not a member of this project's organization" }),
+        { status: 403, headers: { "Content-Type": "application/json" } },
+      );
+    }) as typeof fetch;
+
     const result = await handleGetFunctionLogs({
       project_id: "nonexistent",
       name: "my-func",
     });
 
+    assert.equal(sawServiceKeyBearer, false, "no project key to send");
     assert.equal(result.isError, true);
-    assert.ok(result.content[0]!.text.includes("not found in key store"));
+    assert.ok(result.content[0]!.text.includes("FORBIDDEN") || result.content[0]!.text.includes("not a member"), result.content[0]!.text);
   });
 
   it("passes since as epoch ms query param", async () => {

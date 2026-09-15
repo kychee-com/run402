@@ -60,6 +60,12 @@ Output:
   Every entry carries "function" and "origin": "app" | "platform". "ok" is
   false only when a function's log read failed (it is named in "errors").
 
+Auth:
+  The project's cached service_key when present; otherwise your wallet /
+  session / delegate, which the gateway authorizes with project.read — an org
+  member or teammate agent following an error fingerprint's drill-down needs
+  no project key.
+
 Examples:
   run402 logs --request-id req_abc123
   run402 logs --request-id req_abc123 --function ssr

@@ -373,6 +373,18 @@ describe("functions.invoke", () => {
 });
 
 describe("functions.logs", () => {
+  it("without a cached project key, reads on the principal credential (no service-key bearer)", async () => {
+    // The agent a Buzz page addresses: an org member holding no project key.
+    const { fetch, calls } = mockFetch(() => json({ logs: [] }));
+    const sdk = makeSdk(fetch);
+    await sdk.functions.logs("prj_unknown", "api", { requestId: "req_abc123" });
+    const u = new URL(calls[0]!.url);
+    assert.equal(u.pathname, "/projects/v1/admin/prj_unknown/functions/api/logs");
+    const headers = Object.fromEntries(Object.entries(calls[0]!.headers).map(([k, v]) => [k.toLowerCase(), v]));
+    assert.equal(headers["authorization"], undefined, "no service key to send");
+    assert.ok(headers["sign-in-with-x"], "the principal signs the read");
+  });
+
   it("GETs logs path with tail, converts since to epoch ms, and passes requestId", async () => {
     const { fetch, calls } = mockFetch(() =>
       json({

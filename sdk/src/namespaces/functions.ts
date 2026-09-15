@@ -295,7 +295,11 @@ export class Functions {
     name: string,
     opts: FunctionLogsOptions = {},
   ): Promise<FunctionLogsResult> {
-    const project = await requireProjectCredentials(this.client, projectId, "fetching function logs");
+    // The project's own service key when cached; otherwise the client's
+    // principal credential (SIWX / session / delegate), which the gateway
+    // authorizes with project.read — the agent a Buzz page addresses runs
+    // the logs drill-down an error fingerprint hands it without a key.
+    const project = await this.client.getProjectCredentials(projectId);
 
     const tail = opts.tail ?? 50;
     validatePositiveJsonInteger(tail, "tail", "fetching function logs", { max: FUNCTION_LOG_TAIL_MAX });
@@ -311,7 +315,7 @@ export class Functions {
     const path = `/projects/v1/admin/${projectId}/functions/${encodeURIComponent(name)}/logs?${search.toString()}`;
 
     const wire = await this.client.request<{ logs?: FunctionLogEntry[] }>(path, {
-      headers: { Authorization: `Bearer ${project.service_key}` },
+      ...(project ? { headers: { Authorization: `Bearer ${project.service_key}` }, withAuth: false } : { withAuth: true }),
       context: "fetching function logs",
     });
     const filtered = applyFunctionLogOrigin(wire?.logs, origin);
