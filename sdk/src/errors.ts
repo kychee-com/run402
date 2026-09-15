@@ -732,6 +732,11 @@ export type NextActionType =
   | "claim_org_slug"
   | "claim_repo_name"
   | "push_repo"
+  // The app root lies inside another repository and the scaffold was
+  // skipped: `run402 repos create --nested --project <id>` (or `run402 up
+  // --nested`) makes it its own nested repository with an encrypted remote,
+  // never touching the enclosing checkout.
+  | "create_nested_repo"
   | "verify_refs"
   | "submit_gc"
   | "use_moved_command"
@@ -750,7 +755,12 @@ export type NextActionType =
   | "join_invite"
   | "revoke_invite"
   | "wait_room"
-  | "send_room_message";
+  | "send_room_message"
+  // Local manifest hops (`run402 up` / `deploy apply --check`): write the
+  // named manifest / file, or re-run from the directory that holds one.
+  | "create_manifest"
+  | "create_file"
+  | "run_in_directory";
 
 /**
  * A single advisory "what to do next" entry. Mirrors the gateway's

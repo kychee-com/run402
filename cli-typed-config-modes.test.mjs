@@ -1,6 +1,6 @@
 import { after, before, beforeEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -414,6 +414,97 @@ describe("typed release config CLI modes", () => {
       assert.equal(checked.json.result.project_id, "prj_test123");
       assert.equal(checked.json.result.manifest_path, manifestPath);
       assert.equal(calls.some((call) => call.path === "/apply/v1/plans"), false, "--check must stay local-only");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("up --check fails MANIFEST_FILE_MISSING when a function source.path does not exist", async () => {
+    const root = mkdtempSync(join(tmpdir(), "run402-cli-up-check-missing-fn-"));
+    try {
+      const manifestPath = join(root, "run402.deploy.json");
+      writeFileSync(manifestPath, JSON.stringify({
+        project_id: "prj_test123",
+        site: { replace: { "index.html": { data: "ok" } } },
+        functions: { replace: { api: { runtime: "node22", source: { path: "fn/api.mjs" } } } },
+      }));
+      const { run } = await import("./cli/lib/up.mjs");
+      calls = [];
+      const err = await expectExit1(() => run(["--manifest", manifestPath, "--check"]));
+      assert.equal(err.code, "MANIFEST_FILE_MISSING");
+      assert.ok(err.message.includes(join(root, "fn", "api.mjs")), err.message);
+      assert.equal(err.details.missing[0].kind, "function_source");
+      assert.equal(err.details.missing[0].field_path, "functions.replace.api.source");
+      assert.equal(err.next_actions[0].type, "create_file");
+      assert.equal(err.next_actions[0].path, join(root, "fn", "api.mjs"));
+      assert.equal(calls.length, 0, "file check must fail before any gateway call");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("up --check fails MANIFEST_FILE_MISSING when a site {path} entry does not exist", async () => {
+    const root = mkdtempSync(join(tmpdir(), "run402-cli-up-check-missing-site-"));
+    try {
+      const manifestPath = join(root, "run402.deploy.json");
+      writeFileSync(manifestPath, JSON.stringify({
+        project_id: "prj_test123",
+        site: { replace: { "index.html": { path: "public/index.html" } } },
+      }));
+      const { run } = await import("./cli/lib/up.mjs");
+      calls = [];
+      const err = await expectExit1(() => run(["--manifest", manifestPath, "--check"]));
+      assert.equal(err.code, "MANIFEST_FILE_MISSING");
+      assert.equal(err.details.missing[0].kind, "site_file");
+      assert.equal(err.details.missing[0].field_path, 'site.replace["index.html"]');
+      assert.equal(err.next_actions[0].type, "create_file");
+      assert.equal(err.next_actions[0].path, join(root, "public", "index.html"));
+      assert.equal(calls.length, 0);
+
+      const { run: runDeploy } = await import("./cli/lib/deploy.mjs");
+      const deployErr = await expectExit1(() => runDeploy(["apply", "--manifest", manifestPath, "--check"]));
+      assert.equal(deployErr.code, "MANIFEST_FILE_MISSING");
+      assert.equal(deployErr.next_actions[0].path, join(root, "public", "index.html"));
+      assert.equal(calls.length, 0);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("up --check from a parent directory names the manifest one directory down", async () => {
+    const root = mkdtempSync(join(tmpdir(), "run402-cli-up-check-nearby-"));
+    try {
+      mkdirSync(join(root, "child"), { recursive: true });
+      writeFileSync(join(root, "child", "run402.json"), JSON.stringify({
+        site: { replace: { "index.html": { data: "child" } } },
+      }));
+      const { run } = await import("./cli/lib/up.mjs");
+      calls = [];
+      const err = await expectExit1(() => run(["--dir", root, "--check"]));
+      assert.equal(err.code, "UP_MANIFEST_REQUIRED");
+      assert.equal(err.details.nearby_manifests[0].relative_dir, "child");
+      assert.equal(err.details.nearby_manifests[0].path, join(root, "child", "run402.json"));
+      assert.equal(err.details.next_actions[0].type, "run_in_directory");
+      assert.equal(err.details.next_actions[0].command, "run402 up --check --dir child");
+      assert.equal(err.next_actions[0].type, "run_in_directory");
+      assert.equal(calls.length, 0);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("up --manifest <missing> fails MANIFEST_NOT_FOUND with the resolved path", async () => {
+    const root = mkdtempSync(join(tmpdir(), "run402-cli-up-manifest-enoent-"));
+    try {
+      const manifestPath = join(root, "nope.deploy.json");
+      const { run } = await import("./cli/lib/up.mjs");
+      calls = [];
+      const err = await expectExit1(() => run(["--manifest", manifestPath, "--check"]));
+      assert.equal(err.code, "MANIFEST_NOT_FOUND");
+      assert.equal(err.details.path, manifestPath);
+      assert.equal(err.next_actions[0].type, "create_manifest");
+      assert.equal(err.next_actions[0].path, manifestPath);
+      assert.equal(calls.length, 0);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

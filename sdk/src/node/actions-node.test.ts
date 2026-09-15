@@ -8,6 +8,7 @@ import { pathToFileURL } from "node:url";
 import { Run402Action } from "../actions.js";
 import { RUN402_APP_SCHEMA_ID } from "../app-up.js";
 import { NodeActions } from "./actions-node.js";
+import { CLIENT_DETECTION_ENV_VARS, KNOWN_CLIENT_MARKERS, detectClientName } from "./client-detect.js";
 
 test("up check discovers run402.json app manifest and compiles an install graph locally", async () => {
   const dir = mkdtempSync(join(tmpdir(), "run402-app-up-check-"));
@@ -784,6 +785,143 @@ function appManifest(overrides: Record<string, unknown> = {}) {
     ...overrides,
   };
 }
+
+test("up check fails MANIFEST_FILE_MISSING when a function source path does not exist", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "run402-up-check-missing-fn-"));
+  writeFileSync(join(dir, "run402.deploy.json"), JSON.stringify({
+    site: { replace: { "index.html": { data: "<h1>hello</h1>" } } },
+    functions: { replace: { api: { runtime: "node22", source: { path: "fn/api.mjs" } } } },
+  }));
+  const calls: string[] = [];
+  const sdk = fakeSdk({ calls, allowanceConfigured: false, tierActive: false, activeProject: null });
+  try {
+    const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
+    await assert.rejects(
+      () => actions.up({}, { mode: "check" }),
+      (err: any) => {
+        assert.equal(err.code, "MANIFEST_FILE_MISSING");
+        assert.ok(String(err.message).includes(join(dir, "fn", "api.mjs")));
+        assert.equal(err.details.manifest_path, join(dir, "run402.deploy.json"));
+        assert.deepEqual(err.details.missing, [
+          { field_path: "functions.replace.api.source", path: join(dir, "fn", "api.mjs"), kind: "function_source" },
+        ]);
+        assert.equal(err.nextActions[0].type, "create_file");
+        assert.equal(err.nextActions[0].path, join(dir, "fn", "api.mjs"));
+        assert.equal(err.details.next_actions[0].path, join(dir, "fn", "api.mjs"));
+        return true;
+      },
+    );
+    assert.deepEqual(calls, []);
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("up check on a build-free run402.json validates the release slice's file references before any build", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "run402-up-check-app-missing-site-"));
+  writeFileSync(join(dir, "run402.json"), JSON.stringify(appManifest({
+    build: undefined,
+    resources: {},
+    secrets: {},
+    release: {
+      site: { replace: { "index.html": { path: "public/index.html" } } },
+      database: { migrations: [{ id: "001_init", sql_path: "db/schema.sql" }] },
+    },
+  })));
+  const calls: string[] = [];
+  const sdk = fakeSdk({ calls, allowanceConfigured: false, tierActive: false, activeProject: null });
+  try {
+    const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
+    // The migration file is read first during normalization, so it is the one named.
+    await assert.rejects(
+      () => actions.up({ name: "app" }, { mode: "check" }),
+      (err: any) => {
+        assert.equal(err.code, "MANIFEST_FILE_MISSING");
+        assert.equal(err.details.missing[0].kind, "migration_sql");
+        assert.equal(err.details.missing[0].path, join(dir, "db", "schema.sql"));
+        assert.equal(err.nextActions[0].type, "create_file");
+        return true;
+      },
+    );
+    mkdirSync(join(dir, "db"), { recursive: true });
+    writeFileSync(join(dir, "db", "schema.sql"), "create table t (id int);\n");
+    await assert.rejects(
+      () => actions.up({ name: "app" }, { mode: "check" }),
+      (err: any) => {
+        assert.equal(err.code, "MANIFEST_FILE_MISSING");
+        assert.deepEqual(err.details.missing, [
+          { field_path: 'site.replace["index.html"]', path: join(dir, "public", "index.html"), kind: "site_file" },
+        ]);
+        return true;
+      },
+    );
+    mkdirSync(join(dir, "public"), { recursive: true });
+    writeFileSync(join(dir, "public", "index.html"), "<h1>ok</h1>\n");
+    const result = await actions.up({ name: "app" }, { mode: "check" });
+    assert.equal(result.result?.app_result?.status, "planned");
+    assert.deepEqual(calls, []);
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("up from a parent directory names manifests one directory down in UP_MANIFEST_REQUIRED", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "run402-up-nearby-"));
+  mkdirSync(join(dir, "cairn"), { recursive: true });
+  mkdirSync(join(dir, "node_modules", "pkg"), { recursive: true });
+  mkdirSync(join(dir, ".hidden"), { recursive: true });
+  mkdirSync(join(dir, "docs"), { recursive: true });
+  writeFileSync(join(dir, "cairn", "run402.json"), JSON.stringify({ site: { replace: { "index.html": { data: "x" } } } }));
+  writeFileSync(join(dir, "node_modules", "pkg", "app.json"), "{}");
+  writeFileSync(join(dir, ".hidden", "app.json"), "{}");
+  const sdk = fakeSdk({ calls: [], allowanceConfigured: false, tierActive: false, activeProject: null });
+  try {
+    const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
+    await assert.rejects(
+      () => actions.up({}, { mode: "check" }),
+      (err: any) => {
+        assert.equal(err.code, "UP_MANIFEST_REQUIRED");
+        assert.match(err.message, /one directory down \(cairn\)/);
+        assert.match(err.message, /run402\.json/);
+        assert.deepEqual(err.details.nearby_manifests, [
+          { path: join(dir, "cairn", "run402.json"), relative_dir: "cairn" },
+        ]);
+        const first = err.details.next_actions[0];
+        assert.equal(first.type, "run_in_directory");
+        assert.equal(first.command, "run402 up --check --dir cairn");
+        assert.deepEqual(first.argv, ["run402", "up", "--check", "--dir", "cairn"]);
+        assert.equal(first.path, join(dir, "cairn", "run402.json"));
+        assert.equal(err.details.next_actions[1].type, "create_manifest");
+        assert.equal(err.nextActions[0].type, "run_in_directory");
+        return true;
+      },
+    );
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("up with an explicit --manifest that does not exist fails MANIFEST_NOT_FOUND", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "run402-up-manifest-enoent-"));
+  const sdk = fakeSdk({ calls: [], allowanceConfigured: false, tierActive: false, activeProject: null });
+  try {
+    const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
+    for (const name of ["run402.json", "missing.deploy.json"]) {
+      await assert.rejects(
+        () => actions.up({ manifest: name }, { mode: "check" }),
+        (err: any) => {
+          assert.equal(err.code, "MANIFEST_NOT_FOUND");
+          assert.equal(err.details.path, join(dir, name));
+          assert.equal(err.nextActions[0].type, "create_manifest");
+          assert.equal(err.nextActions[0].path, join(dir, name));
+          return true;
+        },
+      );
+    }
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
 
 test("up check validates locally without gateway calls", async () => {
   const dir = mkdtempSync(join(tmpdir(), "run402-up-check-"));
@@ -1713,7 +1851,7 @@ function identityWorkspace(prefix: string): string {
 }
 
 const WALLET = "0x2804a3f59FDd33618B2cb711060550E4eCd6DDc0";
-const CLIENT_MARKERS = ["CLAUDECODE", "CLAUDE_CODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SESSION_ID", "CODEX_SANDBOX", "CODEX_CI", "OPENAI_CODEX", "CODEX_HOME", "CURSOR_TRACE_ID", "CURSOR_SESSION_ID", "CURSOR_AGENT", "GROK_AGENT", "GROK_SESSION_ID", "RUN402_AGENT_NAME"];
+const CLIENT_MARKERS = [...CLIENT_DETECTION_ENV_VARS, "RUN402_AGENT_NAME"];
 async function withClientEnv<T>(env: Record<string, string>, fn: () => Promise<T>): Promise<T> {
   const saved: Record<string, string | undefined> = {};
   for (const k of CLIENT_MARKERS) { saved[k] = process.env[k]; delete process.env[k]; }
@@ -1730,11 +1868,109 @@ test("up keeps a chosen display_name and reports it as existing", async () => {
   const calls: string[] = [];
   const { sdk, set } = identityAwareSdk(calls, { display_name: "Grok", subject: WALLET });
   try {
-    const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
-    const result = await actions.up({}, { approval: "yes" });
+    const result = await withClientEnv({}, async () => {
+      const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
+      return actions.up({}, { approval: "yes" });
+    });
     assert.equal(result.result?.identity?.source, "existing");
     assert.equal(result.result?.identity?.display_name, "Grok");
+    assert.equal(result.result?.identity?.detected, null);
+    assert.deepEqual(result.result?.identity?.detection, { applied: false, reason: "nothing_detected" });
     assert.equal(set.length, 0, "an explicit name is never touched");
+    assert.ok(calls.includes("rooms.registerPresence:Grok"));
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("the client-detection marker table covers every known client, grok included", () => {
+  assert.deepEqual(KNOWN_CLIENT_MARKERS.map((entry) => entry.client), ["claude-code", "codex", "cursor", "grok"]);
+  for (const entry of KNOWN_CLIENT_MARKERS) {
+    for (const marker of entry.markers) {
+      assert.equal(detectClientName({ [marker]: "1" }), entry.client, marker);
+    }
+  }
+  assert.equal(detectClientName({}), null);
+  assert.equal(detectClientName({ RUN402_CLIENT: "  " }), null, "a blank RUN402_CLIENT is absent");
+  assert.equal(detectClientName({ RUN402_CLIENT: " grok ", CLAUDECODE: "1" }), "grok", "RUN402_CLIENT is checked before every marker");
+});
+
+test("up names an unnamed principal grok from a grok marker", async () => {
+  const dir = identityWorkspace("run402-up-identity-grok-");
+  const calls: string[] = [];
+  const { sdk, set } = identityAwareSdk(calls, { display_name: null, subject: WALLET });
+  try {
+    const result = await withClientEnv({ GROK_CLI: "1" }, async () => {
+      const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
+      return actions.up({}, { approval: "yes" });
+    });
+    assert.equal(result.result?.identity?.source, "detected");
+    assert.equal(result.result?.identity?.detected, "grok");
+    assert.deepEqual(result.result?.identity?.detection, { applied: true, reason: "applied" });
+    assert.deepEqual(set, ["grok"]);
+    assert.equal(result.result?.identity?.display_name, "grok");
+    assert.ok(calls.includes("rooms.registerPresence:grok"));
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("up names an unnamed principal from RUN402_CLIENT when the client has no marker of its own", async () => {
+  const dir = identityWorkspace("run402-up-identity-client-env-");
+  const calls: string[] = [];
+  const { sdk, set } = identityAwareSdk(calls, { display_name: null, subject: WALLET });
+  try {
+    const result = await withClientEnv({ RUN402_CLIENT: "grok" }, async () => {
+      const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
+      return actions.up({}, { approval: "yes" });
+    });
+    assert.equal(result.result?.identity?.source, "detected");
+    assert.equal(result.result?.identity?.detected, "grok");
+    assert.deepEqual(set, ["grok"]);
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("up reports a detected client it did not apply because the principal is already named", async () => {
+  const dir = identityWorkspace("run402-up-identity-detected-not-applied-");
+  const calls: string[] = [];
+  const { sdk, set } = identityAwareSdk(calls, { display_name: "agent", subject: WALLET });
+  try {
+    const result = await withClientEnv({ GROK_AGENT: "1" }, async () => {
+      const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
+      return actions.up({}, { approval: "yes" });
+    });
+    assert.equal(result.result?.identity?.source, "existing");
+    assert.equal(result.result?.identity?.display_name, "agent");
+    assert.equal(result.result?.identity?.detected, "grok");
+    assert.deepEqual(result.result?.identity?.detection, { applied: false, reason: "name_already_set" });
+    assert.equal(set.length, 0, "an existing name is never overwritten by a detected client");
+    assert.ok(calls.includes("rooms.registerPresence:agent"), "presence is registered under the existing name");
+    const skipped = result.steps.find((step) => step.action === "identity.name.set");
+    assert.ok(skipped, "the not-applied detection is recorded as a step");
+    assert.equal(skipped?.state, "skipped");
+    assert.match(skipped?.description ?? "", /Detected client "grok" but the principal is already named "agent"/);
+    assert.match(skipped?.description ?? "", /RUN402_AGENT_NAME=<name>/);
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("up lets RUN402_AGENT_NAME override an existing display_name and reports it as explicit", async () => {
+  const dir = identityWorkspace("run402-up-identity-env-override-");
+  const calls: string[] = [];
+  const { sdk, set } = identityAwareSdk(calls, { display_name: "agent", subject: WALLET });
+  try {
+    const result = await withClientEnv({ GROK_CLI: "1", RUN402_AGENT_NAME: "Grok" }, async () => {
+      const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
+      return actions.up({}, { approval: "yes" });
+    });
+    assert.equal(result.result?.identity?.source, "explicit");
+    assert.equal(result.result?.identity?.display_name, "Grok");
+    assert.equal(result.result?.identity?.detected, "grok");
+    assert.deepEqual(result.result?.identity?.detection, { applied: false, reason: "explicit_name_wins" });
+    assert.deepEqual(set, ["Grok"]);
     assert.ok(calls.includes("rooms.registerPresence:Grok"));
   } finally {
     rmSync(dir, { force: true, recursive: true });

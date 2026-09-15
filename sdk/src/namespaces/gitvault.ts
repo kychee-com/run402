@@ -311,6 +311,23 @@ export interface GitvaultScaffoldRemoteResult {
   reason: string;
   /** The enclosing repository's toplevel when `status` is `skipped`. */
   toplevel?: string;
+  /**
+   * `true` when `repo_dir` lies inside ANOTHER repository and was scaffolded
+   * as its own nested repository (`nested: true`). The enclosing repository
+   * is named by `enclosing_toplevel` and is never touched beyond one
+   * `/<relative path>/` line in its local `.git/info/exclude`
+   * (`excluded_in_enclosing` says whether that line is in place).
+   */
+  nested?: boolean;
+  enclosing_toplevel?: string;
+  excluded_in_enclosing?: boolean;
+  /**
+   * A `skipped` result names the way out: `create_nested_repo`, pointing at
+   * `run402 repos create --nested --project <id>` — a nested repository
+   * keeps an encrypted remote for the app without touching the enclosing
+   * repository. Absent on a `scaffolded` result.
+   */
+  next_actions?: NextAction[];
 }
 
 export interface GitvaultInitResult {
@@ -2046,6 +2063,12 @@ export class Gitvault {
     client_creation_id?: string;
     /** Skip the git scaffold — allocate the vault only. */
     scaffold_git?: boolean;
+    /**
+     * Scaffold `repo_dir` as its OWN repository even when it lies inside
+     * another one (see {@link Gitvault.scaffoldRemote}'s `nested`). Default
+     * `false`: an app root inside another repository is reported `skipped`.
+     */
+    nested?: boolean;
     remote_name?: string;
     remote_url?: string;
     service_public_key?: Uint8Array | string;
@@ -2092,6 +2115,7 @@ export class Gitvault {
         repo_dir: options.repo_dir,
         org_id: options.org_id,
         project_id: options.project_id,
+        ...(options.nested !== undefined ? { nested: options.nested } : {}),
         ...(options.remote_name !== undefined ? { remote_name: options.remote_name } : {}),
         ...(options.remote_url !== undefined ? { remote_url: options.remote_url } : {}),
       });
@@ -2155,38 +2179,78 @@ export class Gitvault {
    *
    * No key material or allocation is required — the cold-start path gains no
    * prompts or network dependencies from this.
+   *
+   * `nested: true` — the monorepo case. An app root that lies INSIDE another
+   * repository (an agent workspace with many apps under one checkout) is
+   * still made its own repository: `git init -b main` in `repo_dir`, the
+   * remote added there, and ONE line — `/<relative path of repo_dir>/` —
+   * appended to the ENCLOSING repository's local `.git/info/exclude`
+   * (located via `rev-parse --git-path info/exclude`, so a worktree resolves
+   * to its common dir) so the enclosing checkout never lists the nested
+   * repository as untracked noise. Never `.gitignore` (tracked content),
+   * never the index, never a submodule: nothing else in the enclosing
+   * repository changes, and its remotes are untouched. Idempotent — a second
+   * call on the already-nested app root adds nothing and re-reports the same
+   * shape. Without `nested`, the same situation is reported `skipped` with a
+   * `create_nested_repo` next_action naming this way out.
    */
-  async scaffoldRemote(options: { repo_dir: string; org_id: string; project_id: string; remote_name?: string; remote_url?: string }): Promise<GitvaultScaffoldRemoteResult> {
+  async scaffoldRemote(options: { repo_dir: string; org_id: string; project_id: string; remote_name?: string; remote_url?: string; nested?: boolean }): Promise<GitvaultScaffoldRemoteResult> {
     const { hardenedGit } = await this.#snapshot();
     const url = options.remote_url ?? gitvaultRemoteUrl(options.org_id, options.project_id);
     let createdRepository = false;
+    let enclosingToplevel: string | null = null;
     // The scaffold acts on the APP ROOT only (first-deploy-agent-dx, design
     // D3): a directory that is not a repository is initialized; a directory
     // that is itself a git toplevel gets the remote; a directory that merely
     // lies INSIDE some other repository is left exactly as it was — nobody
-    // asked for a remote on that repository. The result says which.
+    // asked for a remote on that repository — unless `nested` says to make
+    // it its own repository. The result says which.
     let insideRepository = true;
     try {
       await hardenedGit(options.repo_dir, ["rev-parse", "--git-dir"]);
     } catch {
       insideRepository = false;
     }
+    const { realpathSync } = await import("node:fs");
+    const here = realpathSync(options.repo_dir);
     if (insideRepository) {
       const toplevel = (await hardenedGit(options.repo_dir, ["rev-parse", "--show-toplevel"])).text().trim();
-      const { realpathSync } = await import("node:fs");
-      const here = realpathSync(options.repo_dir);
       if (realpathSync(toplevel) !== here) {
-        return {
-          status: "skipped",
-          name: options.remote_name ?? "run402",
-          url,
-          created_repository: false,
-          already_present: false,
-          existing_url: null,
-          reason: `${options.repo_dir} is inside the repository at ${toplevel} — an enclosing repository is never touched; run from the app root, or make the app root its own repository`,
-          toplevel,
-        };
+        if (!options.nested) {
+          return {
+            status: "skipped",
+            name: options.remote_name ?? "run402",
+            url,
+            created_repository: false,
+            already_present: false,
+            existing_url: null,
+            reason: `${options.repo_dir} is inside the repository at ${toplevel} — an enclosing repository is never touched; run from the app root, or make the app root its own repository`,
+            toplevel,
+            next_actions: [
+              {
+                type: "create_nested_repo",
+                command: `run402 repos create --nested --project ${options.project_id}`,
+                why: `The app lives inside the repository at ${toplevel}; a nested repo keeps an encrypted remote for the app without touching the enclosing repository.`,
+              },
+            ],
+          };
+        }
+        // Nested: the app root becomes its own repository, exactly the way a
+        // directory that is not a repository at all would below. The
+        // enclosing repository is only ever read (its toplevel) and, once
+        // the nested repository exists, told to exclude it locally.
+        enclosingToplevel = toplevel;
+        insideRepository = false;
       }
+    }
+    // Not inside any repository at all: `nested` is moot, and the result
+    // truthfully omits `nested: true`.
+    if (insideRepository && options.nested) {
+      // The app root is already its own toplevel. A previous nested scaffold
+      // (or a hand-made nested repository) may still sit inside another
+      // checkout — find it from the PARENT directory, so the idempotent
+      // second call keeps the exclude line in place.
+      enclosingToplevel = await this.#enclosingToplevelOf(here);
     }
     if (!insideRepository) {
       // `main`, not whatever `init.defaultBranch` (or the pre-2.28 hardcoded
@@ -2206,6 +2270,11 @@ export class Gitvault {
         await hardenedGit(options.repo_dir, ["symbolic-ref", "HEAD", "refs/heads/main"]);
       }
       createdRepository = true;
+    }
+    let nestedFields: Pick<GitvaultScaffoldRemoteResult, "nested" | "enclosing_toplevel" | "excluded_in_enclosing"> = {};
+    if (enclosingToplevel !== null) {
+      const excluded = await this.#excludeNestedRepoInEnclosing(enclosingToplevel, here);
+      nestedFields = { nested: true, enclosing_toplevel: enclosingToplevel, excluded_in_enclosing: excluded };
     }
     // An EXISTING repository is never touched — only the branch a fresh `init`
     // above just created gets steered to `main`; this repository's own HEAD
@@ -2236,10 +2305,68 @@ export class Gitvault {
         already_present: true,
         existing_url: existing,
         reason: existing === url ? `'${name}' already points here — nothing to add` : `'${name}' points at ${existing} — left unchanged, nothing was added`,
+        ...nestedFields,
       };
     }
     await add(name);
-    return { status: "scaffolded", name, url, created_repository: createdRepository, already_present: false, existing_url: null, reason: `no existing '${name}' remote — added` };
+    return { status: "scaffolded", name, url, created_repository: createdRepository, already_present: false, existing_url: null, reason: `no existing '${name}' remote — added`, ...nestedFields };
+  }
+
+  /**
+   * The toplevel of the repository that ENCLOSES `dir` (a realpath that is
+   * itself a git toplevel), found from its parent directory; `null` when the
+   * parent lies in no repository at all. Read-only.
+   */
+  async #enclosingToplevelOf(dir: string): Promise<string | null> {
+    const { hardenedGit } = await this.#snapshot();
+    const { dirname } = await import("node:path");
+    const parent = dirname(dir);
+    if (parent === dir) return null;
+    try {
+      const toplevel = (await hardenedGit(parent, ["rev-parse", "--show-toplevel"])).text().trim();
+      return toplevel.length > 0 ? toplevel : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Append `/<relative path of nestedDir from toplevel>/` to the enclosing
+   * repository's LOCAL `.git/info/exclude` — never `.gitignore`, which is
+   * tracked content (the same discipline as `excludeMessagingCacheFromGit`
+   * in `gitvault-restore.ts`). Located via `rev-parse --git-path
+   * info/exclude` so a linked worktree resolves to its common dir. Creates
+   * the file when absent; idempotent when the line is already there.
+   * Returns whether the line is in place — `false` (never a throw) when the
+   * enclosing repository could not be written, so a read-only checkout
+   * still gets its nested repository and the result says the exclude is
+   * missing.
+   */
+  async #excludeNestedRepoInEnclosing(toplevel: string, nestedDir: string): Promise<boolean> {
+    try {
+      const { hardenedGit } = await this.#snapshot();
+      const { realpathSync, readFileSync, appendFileSync, mkdirSync } = await import("node:fs");
+      const { dirname, isAbsolute, relative, resolve, sep } = await import("node:path");
+      const top = realpathSync(toplevel);
+      const rel = relative(top, nestedDir);
+      if (rel.length === 0 || rel.startsWith("..") || isAbsolute(rel)) return false;
+      const entry = `/${rel.split(sep).join("/")}/`;
+      const rawPath = (await hardenedGit(top, ["rev-parse", "--git-path", "info/exclude"])).text().trim();
+      const excludePath = isAbsolute(rawPath) ? rawPath : resolve(top, rawPath);
+      let existing = "";
+      try {
+        existing = readFileSync(excludePath, "utf-8");
+      } catch {
+        existing = "";
+      }
+      if (existing.split("\n").some((line) => line.trim() === entry)) return true;
+      mkdirSync(dirname(excludePath), { recursive: true });
+      const needsLeadingNewline = existing.length > 0 && !existing.endsWith("\n");
+      appendFileSync(excludePath, `${needsLeadingNewline ? "\n" : ""}${entry}\n`);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
 

@@ -1135,7 +1135,7 @@ function isModernFunctionsDiff(value: unknown): value is FunctionsDiff {
   );
 }
 
-function isModernPlanMigrationDiff(value: unknown): value is PlanMigrationDiff {
+export function isModernPlanMigrationDiff(value: unknown): value is PlanMigrationDiff {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const obj = value as PlanMigrationDiff;
   return Array.isArray(obj.new) && Array.isArray(obj.noop);
@@ -1645,11 +1645,14 @@ export interface PlanRehearsalEnvelope {
    *  release to protect. `apply()` rehearses automatically when true. */
   available: boolean;
   rehearse_url: string | null;
-  /** Why rehearsal is not offered: `no_migrations` (nothing to rehearse) or
+  /** Why rehearsal is not offered: `no_migrations` (nothing to rehearse),
    *  `no_live_release` (a first deploy has nothing to branch from — commit
-   *  directly). `null` when available. */
-  reason: null | "no_migrations" | "no_live_release";
-  /** Present with `reason: "no_live_release"`: one `commit_plan` entry. */
+   *  directly), or `migrations_unchanged` (every declared migration is a
+   *  checksum-identical noop already applied to the live project — nothing
+   *  would run on the branch). `null` when available. */
+  reason: null | "no_migrations" | "no_live_release" | "migrations_unchanged";
+  /** Present with `reason: "no_live_release"` / `"migrations_unchanged"`: one
+   *  `commit_plan` entry. */
   next_actions?: Array<{ type: string; command?: string; why: string }>;
 }
 
@@ -1657,10 +1660,13 @@ export interface PlanRehearsalEnvelope {
 export interface DeployRehearsalBlock {
   status: "passed" | "skipped" | "failed";
   /** Set when `status` is `skipped`. `no_live_release`: first deploy;
-   *  `no_migrations`: nothing to rehearse; `disabled`: `noRehearse`;
-   *  `reviewed_plan`: a `requiredPlan` was supplied (already reviewed);
-   *  `unsupported`: the target (Core) has no branches. */
-  reason?: "no_migrations" | "no_live_release" | "disabled" | "reviewed_plan" | "unsupported";
+   *  `no_migrations`: nothing to rehearse; `migrations_unchanged`: every
+   *  declared migration is a checksum-identical noop already applied (the
+   *  plan's `migrations.new` bucket is empty), so a rehearsal would run
+   *  nothing; `disabled`: `noRehearse`; `reviewed_plan`: a `requiredPlan`
+   *  was supplied (already reviewed); `unsupported`: the target (Core) has
+   *  no branches. */
+  reason?: "no_migrations" | "no_live_release" | "migrations_unchanged" | "disabled" | "reviewed_plan" | "unsupported";
   /** The gateway's rehearsal report when a rehearsal ran. */
   report?: ApplyRehearsalReport;
   operation_id?: string;

@@ -151,7 +151,8 @@ export function _resetSessionKeyForTests(): void {
  * (kygit-invite design D8) — TypeScript port of the CLI's
  * `resolveHarnessLabels`, byte-identical precedence: explicit env overrides
  * first (`RUN402_PROGRAM`/`RUN402_MODEL`), then `program` inferred from the
- * SAME harness signals {@link resolveSessionKey} already trusts. `model` has
+ * SAME harness signals {@link resolveSessionKey} already trusts (plus the
+ * cursor and grok markers `up`'s client detection reads). `model` has
  * no harness-exposed signal to infer from today — it is ALWAYS
  * env-override-or-null. Null stays null in both fields.
  */
@@ -165,7 +166,9 @@ export function resolveHarnessLabels(opts: { env?: NodeJS.ProcessEnv } = {}): Ha
       program = "claude-code";
     } else if (env.CODEX_THREAD_ID?.trim()) {
       program = "codex";
-    } else if (env.GROK_SESSION_ID?.trim() || env.GROK_AGENT?.trim()) {
+    } else if (env.CURSOR_TRACE_ID?.trim() || env.CURSOR_SESSION_ID?.trim() || env.CURSOR_AGENT?.trim()) {
+      program = "cursor";
+    } else if (env.GROK_CLI?.trim() || env.GROK_SESSION_ID?.trim() || env.GROK_AGENT?.trim() || env.XAI_GROK?.trim() || env.GROK_CODE?.trim()) {
       program = "grok";
     }
   }

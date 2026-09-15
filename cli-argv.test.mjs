@@ -1001,6 +1001,251 @@ describe("function log filter validation", () => {
   });
 });
 
+describe("function log origin filter + request-id fan-out (app-first logs)", () => {
+  const MIXED = [
+    { timestamp: "2026-05-01T00:00:00.000Z", message: "INIT_START Runtime Version: nodejs:22.v20", event_id: "e1" },
+    { timestamp: "2026-05-01T00:00:00.100Z", message: "START RequestId: 4d1f2c3a-0000-4000-8000-000000000001 Version: $LATEST", event_id: "e2" },
+    { timestamp: "2026-05-01T00:00:00.200Z", message: "2026-05-01T00:00:00.200Z\t4d1f2c3a\tINFO\tProcessing webhook", event_id: "e3", request_id: "req_abc123" },
+    { timestamp: "2026-05-01T00:00:00.300Z", message: "REPORT RequestId: 4d1f2c3a-0000-4000-8000-000000000001\tDuration: 12.34 ms\tBilled Duration: 13 ms", event_id: "e4" },
+  ];
+
+  // Routes both `functions logs` and `run402 logs` need: the function list
+  // (for the fan-out) and per-function logs. `logsFor(name)` picks the stream.
+  function withLogsFetch(fn, { functions = ["hello", "ssr"], logsFor = () => MIXED, failFor = null } = {}) {
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = (input, init) => {
+      const info = requestInfo(input, init);
+      calls.push(info);
+      const pathNoQuery = info.path.split("?")[0];
+      if (pathNoQuery === "/projects/v1/admin/prj_test123/functions" && info.method === "GET") {
+        return Promise.resolve(json({ functions: functions.map((name) => ({ name })) }));
+      }
+      const m = /\/functions\/([^/]+)\/logs$/.exec(pathNoQuery);
+      if (m && info.method === "GET") {
+        const name = decodeURIComponent(m[1]);
+        if (failFor === name) return Promise.resolve(json({ error: "CloudWatch unavailable", code: "FUNCTION_LOGS_UNAVAILABLE" }, 503));
+        return Promise.resolve(json({ logs: logsFor(name) }));
+      }
+      return mockFetch(input, init);
+    };
+    return fn().finally(() => { globalThis.fetch = prevFetch; });
+  }
+
+  async function runCaptured(modulePath, sub, args) {
+    const { run } = await import(modulePath);
+    captureStart();
+    try {
+      await run(sub, args);
+    } finally {
+      captureStop();
+    }
+    return JSON.parse(stdout.join("\n"));
+  }
+
+  it("functions logs hides Lambda runtime lines by default and reports them in hidden", async () => {
+    const out = await withLogsFetch(() => runCaptured("./cli/lib/functions.mjs", "logs", ["prj_test123", "hello"]));
+    assert.equal(out.origin, "app");
+    assert.deepEqual(out.hidden, { platform: 3, app: 0 });
+    assert.equal(out.logs.length, 1);
+    assert.equal(out.logs[0].origin, "app");
+    assert.match(out.logs[0].message, /Processing webhook/);
+    assert.equal(out.hint, undefined, "no hint when app lines were found");
+    const logCall = calls.find((c) => /\/logs\?/.test(c.path));
+    assert.equal(new URL(logCall.url).searchParams.has("origin"), false, "origin is client-side only");
+  });
+
+  it("functions logs --app is the explicit spelling of the default", async () => {
+    const out = await withLogsFetch(() => runCaptured("./cli/lib/functions.mjs", "logs", ["prj_test123", "hello", "--app"]));
+    assert.equal(out.origin, "app");
+    assert.equal(out.logs.length, 1);
+  });
+
+  it("functions logs --all shows INIT_START/REPORT lines, each tagged with its origin", async () => {
+    const out = await withLogsFetch(() => runCaptured("./cli/lib/functions.mjs", "logs", ["prj_test123", "hello", "--all"]));
+    assert.equal(out.origin, "all");
+    assert.equal(out.hidden, undefined);
+    assert.deepEqual(out.logs.map((e) => e.origin), ["platform", "platform", "app", "platform"]);
+    assert.ok(out.logs.some((e) => e.message.startsWith("REPORT RequestId")));
+  });
+
+  it("functions logs --platform shows only the runtime lines", async () => {
+    const out = await withLogsFetch(() => runCaptured("./cli/lib/functions.mjs", "logs", ["prj_test123", "hello", "--platform"]));
+    assert.equal(out.origin, "platform");
+    assert.deepEqual(out.hidden, { platform: 0, app: 1 });
+    assert.equal(out.logs.length, 3);
+    assert.ok(out.logs.every((e) => e.origin === "platform"));
+  });
+
+  it("functions logs adds a hint when hiding platform lines left nothing to show", async () => {
+    const out = await withLogsFetch(
+      () => runCaptured("./cli/lib/functions.mjs", "logs", ["prj_test123", "hello"]),
+      { logsFor: () => MIXED.filter((e) => !e.request_id) },
+    );
+    assert.deepEqual(out.logs, []);
+    assert.deepEqual(out.hidden, { platform: 3, app: 0 });
+    assert.equal(out.hint, "3 platform lines hidden (INIT_START/REPORT); pass --platform or --all to see them");
+  });
+
+  it("functions logs rejects more than one origin flag before network", async () => {
+    const { run } = await import("./cli/lib/functions.mjs");
+    const err = await expectExit1(() => run("logs", ["prj_test123", "hello", "--app", "--all"]));
+    assert.equal(err.code, "BAD_USAGE");
+    assert.deepEqual(err.details.flags, ["--app", "--all"]);
+    assert.equal(calls.length, 0);
+  });
+
+  it("functions logs --request-id with no <name> fans out across every function", async () => {
+    const out = await withLogsFetch(
+      () => runCaptured("./cli/lib/functions.mjs", "logs", ["prj_test123", "--request-id", "req_abc123", "--all"]),
+      { logsFor: (name) => (name === "ssr" ? [{ timestamp: "2026-05-01T00:00:01.000Z", message: `${name} line`, request_id: "req_abc123" }] : MIXED) },
+    );
+    assert.equal(out.request_id, "req_abc123");
+    assert.deepEqual(out.scanned, ["hello", "ssr"]);
+    assert.equal(out.errors, undefined);
+    assert.ok(out.logs.every((e) => typeof e.function === "string" && typeof e.origin === "string"));
+    assert.equal(out.logs[out.logs.length - 1].function, "ssr", "merged oldest-first across functions");
+    const logCalls = calls.filter((c) => /\/logs\?/.test(c.path));
+    assert.equal(logCalls.length, 2);
+    assert.ok(logCalls.every((c) => new URL(c.url).searchParams.get("request_id") === "req_abc123"));
+    assert.ok(calls.some((c) => c.path === "/projects/v1/admin/prj_test123/functions"), "lists the project's functions first");
+  });
+
+  it("functions logs fan-out names the function whose read failed", async () => {
+    const out = await withLogsFetch(
+      () => runCaptured("./cli/lib/functions.mjs", "logs", ["prj_test123", "--request-id", "req_abc123"]),
+      { failFor: "ssr" },
+    );
+    assert.deepEqual(out.scanned, ["hello"]);
+    assert.equal(out.errors.length, 1);
+    assert.equal(out.errors[0].function, "ssr");
+    assert.equal(out.errors[0].code, "FUNCTION_LOGS_UNAVAILABLE");
+  });
+
+  it("functions logs with neither <name> nor --request-id is a usage error", async () => {
+    const { run } = await import("./cli/lib/functions.mjs");
+    const err = await expectExit1(() => run("logs", ["prj_test123"]));
+    assert.equal(err.code, "BAD_USAGE");
+    assert.match(err.message, /Missing <name>/);
+    assert.match(err.hint, /--request-id/);
+    assert.equal(calls.length, 0);
+  });
+
+  it("functions logs --follow needs a <name>", async () => {
+    const { run } = await import("./cli/lib/functions.mjs");
+    const err = await expectExit1(() => run("logs", ["prj_test123", "--request-id", "req_abc123", "--follow"]));
+    assert.equal(err.code, "BAD_USAGE");
+    assert.equal(err.details.flag, "--follow");
+    assert.equal(calls.length, 0);
+  });
+
+  it("logs --request-id accepts fnrun_ / fnatt_ ids, not just req_", async () => {
+    for (const id of ["fnrun_abc123", "fnatt_abc123"]) {
+      calls = [];
+      const out = await withLogsFetch(() => runCaptured("./cli/lib/logs.mjs", "--request-id", [id, "--project", "prj_test123"]));
+      assert.equal(out.ok, true);
+      assert.equal(out.request_id, id);
+      assert.deepEqual(out.scanned, ["hello", "ssr"]);
+      const logCalls = calls.filter((c) => /\/logs\?/.test(c.path));
+      assert.ok(logCalls.length === 2 && logCalls.every((c) => new URL(c.url).searchParams.get("request_id") === id));
+    }
+  });
+
+  it("logs hides platform lines by default and --all restores the raw stream", async () => {
+    const dflt = await withLogsFetch(() => runCaptured("./cli/lib/logs.mjs", "--request-id", ["req_abc123", "--project", "prj_test123"]));
+    assert.equal(dflt.origin, "app");
+    assert.deepEqual(dflt.hidden, { platform: 6, app: 0 });
+    assert.equal(dflt.entries.length, 2);
+    assert.ok(dflt.entries.every((e) => e.origin === "app" && typeof e.function === "string"));
+
+    calls = [];
+    const all = await withLogsFetch(() => runCaptured("./cli/lib/logs.mjs", "--request-id", ["req_abc123", "--project", "prj_test123", "--all"]));
+    assert.equal(all.origin, "all");
+    assert.equal(all.hidden, undefined);
+    assert.equal(all.entries.length, 8);
+  });
+
+  it("logs adds the hidden-platform hint when the app filter empties the result", async () => {
+    const out = await withLogsFetch(
+      () => runCaptured("./cli/lib/logs.mjs", "--request-id", ["req_abc123", "--project", "prj_test123"]),
+      { functions: ["hello"], logsFor: () => MIXED.filter((e) => !e.request_id) },
+    );
+    assert.deepEqual(out.entries, []);
+    assert.equal(out.hint, "3 platform lines hidden (INIT_START/REPORT); pass --platform or --all to see them");
+  });
+
+  it("logs <function> positional (the form `run402 errors` prints) narrows the search without listing", async () => {
+    const out = await withLogsFetch(() => runCaptured("./cli/lib/logs.mjs", "hello", ["--request-id", "req_abc123", "--project", "prj_test123"]));
+    assert.deepEqual(out.scanned, ["hello"]);
+    assert.ok(!calls.some((c) => c.path === "/projects/v1/admin/prj_test123/functions"), "no list call when the function is named");
+    assert.ok(calls.some((c) => /\/functions\/hello\/logs\?/.test(c.path)));
+  });
+
+  it("logs --function alone is that function's tail (request_id null, same envelope)", async () => {
+    const out = await withLogsFetch(() => runCaptured("./cli/lib/logs.mjs", "--function", ["hello", "--project", "prj_test123", "--tail", "20", "--all"]));
+    assert.equal(out.ok, true);
+    assert.equal(out.request_id, null);
+    assert.deepEqual(out.scanned, ["hello"]);
+    assert.equal(out.entries.length, 4);
+    assert.ok(out.entries.every((e) => e.function === "hello"));
+    const logCall = calls.find((c) => /\/logs\?/.test(c.path));
+    const params = new URL(logCall.url).searchParams;
+    assert.equal(params.get("tail"), "20");
+    assert.equal(params.has("request_id"), false);
+  });
+
+  it("logs --since accepts ISO and epoch ms and rejects garbage before network", async () => {
+    await withLogsFetch(() => runCaptured("./cli/lib/logs.mjs", "--request-id", ["req_abc123", "--project", "prj_test123", "--since", "2026-05-01T00:00:00Z"]));
+    let logCall = calls.find((c) => /\/logs\?/.test(c.path));
+    assert.equal(new URL(logCall.url).searchParams.get("since"), String(Date.parse("2026-05-01T00:00:00Z")));
+
+    calls = [];
+    await withLogsFetch(() => runCaptured("./cli/lib/logs.mjs", "--request-id", ["req_abc123", "--project", "prj_test123", "--since", "1777593600000"]));
+    logCall = calls.find((c) => /\/logs\?/.test(c.path));
+    assert.equal(new URL(logCall.url).searchParams.get("since"), "1777593600000");
+
+    calls = [];
+    const { run } = await import("./cli/lib/logs.mjs");
+    const err = await expectExit1(() => run("--request-id", ["req_abc123", "--project", "prj_test123", "--since", "yesterday"]));
+    assert.equal(err.code, "BAD_USAGE");
+    assert.equal(err.details.flag, "--since");
+    assert.equal(calls.length, 0);
+  });
+
+  it("logs rejects unknown flags before network", async () => {
+    const { run } = await import("./cli/lib/logs.mjs");
+    const err = await expectExit1(() => run("--request-id", ["req_abc123", "--project", "prj_test123", "--no-such-flag"]));
+    assert.equal(err.code, "UNKNOWN_FLAG");
+    assert.equal(err.details.flag, "--no-such-flag");
+    assert.equal(calls.length, 0);
+  });
+
+  it("logs rejects a malformed request id and a missing selector before network", async () => {
+    const { run } = await import("./cli/lib/logs.mjs");
+    let err = await expectExit1(() => run("--request-id", ["trace_abc123", "--project", "prj_test123"]));
+    assert.equal(err.code, "BAD_USAGE");
+    assert.equal(err.details.flag, "--request-id");
+
+    err = await expectExit1(() => run("--project", ["prj_test123"]));
+    assert.equal(err.code, "BAD_USAGE");
+    assert.match(err.message, /--request-id/);
+
+    err = await expectExit1(() => run("--request-id", ["req_abc123", "--project", "prj_test123", "--app", "--platform"]));
+    assert.equal(err.code, "BAD_USAGE");
+    assert.equal(calls.length, 0);
+  });
+
+  it("logs reports ok:false and names the function whose read failed", async () => {
+    const out = await withLogsFetch(
+      () => runCaptured("./cli/lib/logs.mjs", "--request-id", ["req_abc123", "--project", "prj_test123"]),
+      { failFor: "ssr" },
+    );
+    assert.equal(out.ok, false);
+    assert.deepEqual(out.scanned, ["hello"]);
+    assert.equal(out.errors[0].function, "ssr");
+    assert.equal(out.errors[0].code, "FUNCTION_LOGS_UNAVAILABLE");
+  });
+});
+
 describe("durable function runs CLI", () => {
   it("creates a delayed run with JSON-only stdout", async () => {
     const { run } = await import("./cli/lib/functions.mjs");

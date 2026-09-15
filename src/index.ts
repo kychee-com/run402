@@ -678,7 +678,7 @@ server.tool(
 
 server.tool(
   "get_function_logs",
-  "Get recent logs from a deployed function. Shows console.log/error output and error stack traces from CloudWatch.",
+  "Get recent logs from a deployed function. Shows console.log/error output and error stack traces from CloudWatch. Pass request_id (the x-run402-request-id response header) without name to search every function in the project; origin: \"app\" hides the Lambda INIT_START/REPORT runtime lines.",
   getFunctionLogsSchema,
   async (args) => handleGetFunctionLogs(args),
 );

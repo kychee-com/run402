@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 
 import { Run402 } from "../index.js";
 import { ApiError, LocalError, ProjectCredentialNotFound } from "../errors.js";
-import { FunctionRunTerminalError } from "./functions.js";
+import { FunctionRunTerminalError, classifyFunctionLogLine } from "./functions.js";
 import type { CredentialsProvider } from "../credentials.js";
 
 function makeCreds(): CredentialsProvider {
@@ -467,6 +467,239 @@ describe("functions.logs", () => {
     await sdk.functions.logs("prj_known", "my fn");
     assert.ok(calls[0]!.url.includes("/functions/my%20fn/logs"));
   });
+
+  const MIXED_STREAM = [
+    { timestamp: "2026-04-01T00:00:00.000Z", message: "INIT_START Runtime Version: nodejs:22.v20\tRuntime Version ARN: arn:aws:lambda:us-east-1::runtime:abc" },
+    { timestamp: "2026-04-01T00:00:00.100Z", message: "START RequestId: 4d1f2c3a-0000-4000-8000-000000000001 Version: $LATEST" },
+    { timestamp: "2026-04-01T00:00:00.200Z", message: "2026-04-01T00:00:00.200Z\t4d1f2c3a-0000-4000-8000-000000000001\tINFO\tProcessing webhook", request_id: "req_abc123" },
+    { timestamp: "2026-04-01T00:00:00.300Z", message: "END RequestId: 4d1f2c3a-0000-4000-8000-000000000001" },
+    { timestamp: "2026-04-01T00:00:00.400Z", message: "REPORT RequestId: 4d1f2c3a-0000-4000-8000-000000000001\tDuration: 12.34 ms\tBilled Duration: 13 ms\tMemory Size: 256 MB\tMax Memory Used: 80 MB" },
+  ];
+
+  it("tags every entry with origin and returns everything by default (origin: all, no hidden)", async () => {
+    const { fetch, calls } = mockFetch(() => json({ logs: MIXED_STREAM }));
+    const sdk = makeSdk(fetch);
+    const result = await sdk.functions.logs("prj_known", "hello");
+    assert.equal(result.origin, "all");
+    assert.equal(result.hidden, undefined);
+    assert.deepEqual(result.logs.map((e) => e.origin), ["platform", "platform", "app", "platform", "platform"]);
+    assert.equal(result.logs.length, 5);
+    // origin is client-side only: nothing new on the wire.
+    assert.equal(new URL(calls[0]!.url).searchParams.has("origin"), false);
+  });
+
+  it("origin: app hides Lambda runtime lines and counts them in hidden", async () => {
+    const { fetch, calls } = mockFetch(() => json({ logs: MIXED_STREAM }));
+    const sdk = makeSdk(fetch);
+    const result = await sdk.functions.logs("prj_known", "hello", { origin: "app" });
+    assert.equal(result.origin, "app");
+    assert.deepEqual(result.hidden, { platform: 4, app: 0 });
+    assert.equal(result.logs.length, 1);
+    assert.equal(result.logs[0]!.origin, "app");
+    assert.match(result.logs[0]!.message, /Processing webhook/);
+    assert.equal(result.logs[0]!.request_id, "req_abc123", "wire fields survive tagging");
+    assert.equal(new URL(calls[0]!.url).searchParams.has("origin"), false);
+  });
+
+  it("origin: platform keeps only the runtime lines", async () => {
+    const { fetch } = mockFetch(() => json({ logs: MIXED_STREAM }));
+    const sdk = makeSdk(fetch);
+    const result = await sdk.functions.logs("prj_known", "hello", { origin: "platform" });
+    assert.equal(result.origin, "platform");
+    assert.deepEqual(result.hidden, { platform: 0, app: 1 });
+    assert.equal(result.logs.length, 4);
+    assert.ok(result.logs.every((e) => e.origin === "platform"));
+  });
+
+  it("origin: all is explicit and equals the default", async () => {
+    const { fetch } = mockFetch(() => json({ logs: MIXED_STREAM }));
+    const sdk = makeSdk(fetch);
+    const result = await sdk.functions.logs("prj_known", "hello", { origin: "all" });
+    assert.equal(result.logs.length, 5);
+    assert.equal(result.hidden, undefined);
+  });
+
+  it("rejects an unknown origin before fetching", async () => {
+    const { fetch, calls } = mockFetch(() => json({ logs: [] }));
+    const sdk = makeSdk(fetch);
+    await assert.rejects(
+      sdk.functions.logs("prj_known", "hello", { origin: "lambda" as never }),
+      (err: unknown) => err instanceof LocalError && /origin/.test(err.message),
+    );
+    assert.equal(calls.length, 0);
+  });
+
+  it("tolerates a wire response with no logs array", async () => {
+    const { fetch } = mockFetch(() => json({}));
+    const sdk = makeSdk(fetch);
+    const result = await sdk.functions.logs("prj_known", "hello", { origin: "app" });
+    assert.deepEqual(result, { logs: [], origin: "app", hidden: { platform: 0, app: 0 } });
+  });
+});
+
+describe("classifyFunctionLogLine", () => {
+  const platform = [
+    "INIT_START Runtime Version: nodejs:22.v20\tRuntime Version ARN: arn:aws:lambda:us-east-1::runtime:abc",
+    "INIT_REPORT Init Duration: 412.11 ms\tPhase: init\tStatus: timeout",
+    "RESTORE_START Runtime Version: nodejs:22.v20",
+    "RESTORE_REPORT Restore Duration: 88.10 ms",
+    "START RequestId: 4d1f2c3a-0000-4000-8000-000000000001 Version: $LATEST",
+    "END RequestId: 4d1f2c3a-0000-4000-8000-000000000001",
+    "REPORT RequestId: 4d1f2c3a-0000-4000-8000-000000000001\tDuration: 12.34 ms\tBilled Duration: 13 ms",
+    "EXTENSION\tName: cloudwatch_lambda_agent\tState: Ready\tEvents: [INVOKE, SHUTDOWN]",
+    "LOGS\tName: cloudwatch_lambda_agent\tState: Subscribed\tTypes: [Platform]",
+    "TELEMETRY\tName: cloudwatch_lambda_agent\tState: Subscribed\tTypes: [Platform]",
+    "  START RequestId: leading-whitespace-is-trimmed",
+  ];
+  const app = [
+    "2026-04-01T00:00:00.200Z\t4d1f2c3a-0000-4000-8000-000000000001\tINFO\tProcessing webhook",
+    "2026-04-01T00:00:00.200Z\t4d1f2c3a-0000-4000-8000-000000000001\tERROR\tFunction error: TypeError: boom",
+    "{\"event\":\"function.error\",\"request_id\":\"req_abc123\",\"message\":\"boom\"}",
+    "2026-04-01T00:00:03.000Z 4d1f2c3a-0000-4000-8000-000000000001 Task timed out after 3.00 seconds",
+    "RequestId: 4d1f2c3a-0000-4000-8000-000000000001 Error: Runtime exited with error: signal: killed Runtime.ExitError",
+    "started REPORT RequestId: not-at-line-start",
+    "INIT_STARTED is an app word, not the runtime banner",
+    "",
+  ];
+  for (const line of platform) {
+    it(`platform: ${line.slice(0, 40)}`, () => {
+      assert.equal(classifyFunctionLogLine(line), "platform");
+    });
+  }
+  for (const line of app) {
+    it(`app: ${line.slice(0, 40) || "<empty>"}`, () => {
+      assert.equal(classifyFunctionLogLine(line), "app");
+    });
+  }
+  it("treats a non-string as app instead of throwing", () => {
+    assert.equal(classifyFunctionLogLine(undefined as never), "app");
+  });
+});
+
+describe("functions.logsByRequestId", () => {
+  const LIST = { functions: [{ name: "ssr" }, { name: "checkout" }, { name: "cron" }] };
+
+  it("lists the project's functions, fans the filtered read out to each, and merges oldest-first", async () => {
+    const { fetch, calls } = mockFetch((call) => {
+      const u = new URL(call.url);
+      if (u.pathname === "/projects/v1/admin/prj_known/functions") return json(LIST);
+      if (u.pathname.endsWith("/functions/ssr/logs")) {
+        return json({ logs: [
+          { timestamp: "2026-04-01T00:00:02.000Z", message: "2026-04-01T00:00:02.000Z\tuuid\tINFO\tssr rendered", request_id: "req_abc123" },
+          { timestamp: "2026-04-01T00:00:03.000Z", message: "REPORT RequestId: uuid\tDuration: 1 ms\tBilled Duration: 1 ms" },
+        ] });
+      }
+      if (u.pathname.endsWith("/functions/checkout/logs")) {
+        return json({ logs: [
+          { timestamp: "2026-04-01T00:00:01.000Z", message: "2026-04-01T00:00:01.000Z\tuuid\tINFO\tcheckout started", request_id: "req_abc123" },
+        ] });
+      }
+      return json({ logs: [] });
+    });
+    const sdk = makeSdk(fetch);
+    const result = await sdk.functions.logsByRequestId("prj_known", "req_abc123", { tail: 25, since: "2026-04-01T00:00:00.000Z" });
+
+    assert.equal(result.request_id, "req_abc123");
+    assert.deepEqual(result.scanned, ["ssr", "checkout", "cron"]);
+    assert.deepEqual(result.errors, []);
+    assert.equal(result.origin, "all");
+    assert.equal(result.hidden, undefined);
+    assert.deepEqual(result.entries.map((e) => [e.function, e.origin]), [
+      ["checkout", "app"],
+      ["ssr", "app"],
+      ["ssr", "platform"],
+    ]);
+
+    const logCalls = calls.filter((c) => c.url.includes("/logs?"));
+    assert.equal(logCalls.length, 3);
+    for (const c of logCalls) {
+      const u = new URL(c.url);
+      assert.equal(u.searchParams.get("request_id"), "req_abc123");
+      assert.equal(u.searchParams.get("tail"), "25");
+      assert.equal(u.searchParams.get("since"), String(Date.parse("2026-04-01T00:00:00.000Z")));
+      assert.equal(c.headers["Authorization"], "Bearer svc_k");
+    }
+  });
+
+  it("applies the origin filter across every function and sums hidden counts", async () => {
+    const { fetch } = mockFetch((call) => {
+      const u = new URL(call.url);
+      if (u.pathname === "/projects/v1/admin/prj_known/functions") return json(LIST);
+      return json({ logs: [
+        { timestamp: "2026-04-01T00:00:00.000Z", message: "START RequestId: uuid Version: $LATEST" },
+        { timestamp: "2026-04-01T00:00:01.000Z", message: "REPORT RequestId: uuid\tDuration: 1 ms" },
+      ] });
+    });
+    const sdk = makeSdk(fetch);
+    const result = await sdk.functions.logsByRequestId("prj_known", "req_abc123", { origin: "app" });
+    assert.equal(result.origin, "app");
+    assert.deepEqual(result.entries, []);
+    assert.deepEqual(result.hidden, { platform: 6, app: 0 });
+  });
+
+  it("names the function whose read failed and still returns the others", async () => {
+    const { fetch } = mockFetch((call) => {
+      const u = new URL(call.url);
+      if (u.pathname === "/projects/v1/admin/prj_known/functions") return json(LIST);
+      if (u.pathname.endsWith("/functions/checkout/logs")) {
+        return json({ error: "Failed to read function logs from CloudWatch", code: "FUNCTION_LOGS_UNAVAILABLE" }, 503);
+      }
+      return json({ logs: [{ timestamp: "2026-04-01T00:00:00.000Z", message: "line" }] });
+    });
+    const sdk = makeSdk(fetch);
+    const result = await sdk.functions.logsByRequestId("prj_known", "req_abc123");
+    assert.deepEqual(result.scanned, ["ssr", "cron"]);
+    assert.equal(result.errors.length, 1);
+    assert.equal(result.errors[0]!.function, "checkout");
+    assert.equal(result.errors[0]!.code, "FUNCTION_LOGS_UNAVAILABLE");
+    assert.match(result.errors[0]!.message, /CloudWatch/);
+    assert.deepEqual(result.entries.map((e) => e.function), ["ssr", "cron"]);
+  });
+
+  it("functionName narrows the search to one function without listing", async () => {
+    const { fetch, calls } = mockFetch(() => json({ logs: [] }));
+    const sdk = makeSdk(fetch);
+    const result = await sdk.functions.logsByRequestId("prj_known", "fnrun_abc123", { functionName: "worker" });
+    assert.deepEqual(result.scanned, ["worker"]);
+    assert.equal(calls.length, 1);
+    const u = new URL(calls[0]!.url);
+    assert.equal(u.pathname, "/projects/v1/admin/prj_known/functions/worker/logs");
+    assert.equal(u.searchParams.get("request_id"), "fnrun_abc123");
+    assert.equal(u.searchParams.get("tail"), "100", "default tail per function is 100");
+  });
+
+  it("answers an empty project without any log read", async () => {
+    const { fetch, calls } = mockFetch(() => json({ functions: [] }));
+    const sdk = makeSdk(fetch);
+    const result = await sdk.functions.logsByRequestId("prj_known", "req_abc123");
+    assert.deepEqual(result, { request_id: "req_abc123", scanned: [], entries: [], errors: [], origin: "all" });
+    assert.equal(calls.length, 1);
+  });
+
+  it("rejects a malformed request id, tail, since, or origin before any network call", async () => {
+    const { fetch, calls } = mockFetch(() => json({ functions: [] }));
+    const sdk = makeSdk(fetch);
+    await assert.rejects(sdk.functions.logsByRequestId("prj_known", "trace_abc123"), LocalError);
+    await assert.rejects(sdk.functions.logsByRequestId("prj_known", "req_abc123", { tail: 1001 }), LocalError);
+    await assert.rejects(sdk.functions.logsByRequestId("prj_known", "req_abc123", { since: "yesterday" }), LocalError);
+    await assert.rejects(sdk.functions.logsByRequestId("prj_known", "req_abc123", { origin: "lambda" as never }), LocalError);
+    assert.equal(calls.length, 0);
+  });
+
+  it("throws ProjectCredentialNotFound for an unknown project", async () => {
+    const { fetch } = mockFetch(() => json({ functions: [] }));
+    const sdk = makeSdk(fetch);
+    await assert.rejects(sdk.functions.logsByRequestId("prj_unknown", "req_abc123"), ProjectCredentialNotFound);
+  });
+
+  it("is reachable on the scoped client", async () => {
+    const { fetch, calls } = mockFetch(() => json({ logs: [] }));
+    const sdk = makeSdk(fetch);
+    const scoped = await sdk.project("prj_known");
+    const result = await scoped.functions.logsByRequestId("req_abc123", { functionName: "ssr" });
+    assert.deepEqual(result.scanned, ["ssr"]);
+    assert.ok(calls[0]!.url.includes("/projects/v1/admin/prj_known/functions/ssr/logs?"));
+  });
 });
 
 const queuedRun = {
@@ -854,5 +1087,18 @@ describe("functions.rebuildAll", () => {
     assert.equal(result.total, 2);
     assert.equal(result.results.length, 2);
     assert.equal(result.results[1]!.rebuilt, false);
+  });
+});
+
+describe("functions.runs.logs origin tagging", () => {
+  it("tags run log entries with origin and reports origin: all", async () => {
+    const { fetch } = mockFetch(() => json({ logs: [
+      { timestamp: "2026-04-01T00:00:00.000Z", message: "START RequestId: uuid Version: $LATEST" },
+      { timestamp: "2026-04-01T00:00:00.100Z", message: "2026-04-01T00:00:00.100Z\tuuid\tINFO\thandled fnrun_abc123" },
+    ] }));
+    const sdk = makeSdk(fetch);
+    const result = await sdk.functions.runs.logs("prj_known", "fnrun_abc123");
+    assert.equal(result.origin, "all");
+    assert.deepEqual(result.logs.map((e) => e.origin), ["platform", "app"]);
   });
 });

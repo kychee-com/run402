@@ -260,8 +260,13 @@ export type {
   PrepareDirOptions,
 } from "./assets-node.js";
 export {
+  assertLocalFileReferencesExist,
+  collectLocalFileReferences,
+  findMissingLocalFileReferences,
   loadDeployManifest,
   loadExecutableDeployConfig,
+  manifestFileMissingError,
+  manifestNotFoundError,
   normalizeDeployManifest,
 } from "./deploy-manifest.js";
 export {
@@ -299,6 +304,9 @@ export type {
   DeployManifestVerifyHttpCheck,
   DeployManifestVerifySpec,
   LoadDeployManifestOptions,
+  LocalFileReference,
+  LocalFileReferenceKind,
+  MissingLocalFileReference,
   NormalizedDeployManifest,
   NormalizedDeployManifestVerify,
   NormalizeDeployManifestOptions,

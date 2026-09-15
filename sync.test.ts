@@ -1011,7 +1011,9 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   // SSR Runtime DX (v1.52) — local/CLI-only; no MCP, no SDK
   doctor: null,
   dev: null,
-  logs: null,
+  // `run402 logs` is the project-wide request-id search; the SDK owns the
+  // cross-function fan-out (no gateway route exists for it).
+  logs: "functions.logsByRequestId",
 
   // SSR origin cache (v1.52)
   cache_invalidate: "cache.invalidate",
@@ -2314,7 +2316,7 @@ describe("deploy route surface alignment", () => {
       "SKILL.md",
       "openclaw/SKILL.md",
       "cli/README.md",
-      "cli/llms-cli.txt",
+      "cli/llms-cli-full.txt",
       "llms-mcp.txt",
       "sdk/README.md",
       "sdk/llms-sdk.txt",
@@ -2348,7 +2350,7 @@ describe("deploy route surface alignment", () => {
     const requiredDocs: Array<{ file: string; patterns: RegExp[] }> = [
       { file: "README.md", patterns: [/--route-scope/, /CI_ROUTE_SCOPE_DENIED/] },
       { file: "cli/README.md", patterns: [/--route-scope/] },
-      { file: "cli/llms-cli.txt", patterns: [/--route-scope/, /CI_ROUTE_SCOPE_DENIED/] },
+      { file: "cli/llms-cli-full.txt", patterns: [/--route-scope/, /CI_ROUTE_SCOPE_DENIED/] },
       { file: "sdk/README.md", patterns: [/route_scopes/, /CI_ROUTE_SCOPE_DENIED/] },
       { file: "sdk/llms-sdk.txt", patterns: [/route_scopes/, /CI_ROUTE_SCOPE_DENIED/] },
       { file: "llms-mcp.txt", patterns: [/ci_create_binding/, /route_scopes/, /CI_ROUTE_SCOPE_DENIED/] },
@@ -2451,7 +2453,7 @@ describe("deploy route surface alignment", () => {
         ],
       },
       {
-        file: "cli/llms-cli.txt",
+        file: "cli/llms-cli-full.txt",
         patterns: [
           [/site\.public_paths/, "site public path authoring"],
           [/\/events\.html.*not public|not public.*\/events\.html/, "explicit mode hides backing asset filename"],
@@ -2578,7 +2580,7 @@ describe("deploy route surface alignment", () => {
       "SKILL.md",
       "llms-mcp.txt",
       "cli/README.md",
-      "cli/llms-cli.txt",
+      "cli/llms-cli-full.txt",
       "sdk/README.md",
       "sdk/llms-sdk.txt",
       "openclaw/SKILL.md",
@@ -2668,7 +2670,7 @@ describe("ReleaseSpec schema hosting contract", () => {
   it("agent docs point at the hosted schema URL", () => {
     const docs = [
       readFileSync(join(__dirname, "sdk/llms-sdk.txt"), "utf-8"),
-      readFileSync(join(__dirname, "cli/llms-cli.txt"), "utf-8"),
+      readFileSync(join(__dirname, "cli/llms-cli-full.txt"), "utf-8"),
     ].join("\n");
     assert.ok(docs.includes(RELEASE_SPEC_SCHEMA_URL), "llms SDK/CLI docs must mention the ReleaseSpec schema URL");
   });
@@ -2695,7 +2697,7 @@ describe("ReleaseSpec schema hosting contract", () => {
 describe("agent deploy-friction docs stay visible", () => {
   const publicDocs: Array<{ file: string; patterns: Array<[RegExp, string]> }> = [
     {
-      file: "cli/llms-cli.txt",
+      file: "cli/llms-cli-full.txt",
       patterns: [
         [/release-spec\.v1\.json/, "ReleaseSpec schema URL"],
         [/--stdin/, "secret stdin guidance"],
@@ -2854,7 +2856,7 @@ describe("agent-docs URL split (agent-docs-self-host cutover guard)", () => {
   const MOVED_AT_APEX = /\/\/run402\.com\/(?:llms-cli|llms-sdk|llms-mcp)\.txt|\/\/run402\.com\/SKILL\.md/;
   const AGENT_DOCS = [
     "llms.txt", "llms-mcp.txt", "SKILL.md",
-    "cli/llms-cli.txt", "sdk/llms-sdk.txt",
+    "cli/llms-cli.txt", "cli/llms-cli-full.txt", "sdk/llms-sdk.txt",
     "README.md", "cli/README.md", "sdk/README.md",
     "openclaw/README.md", "openclaw/SKILL.md",
   ];

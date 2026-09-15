@@ -588,7 +588,7 @@ export { Deploy } from "./namespaces/deploy.js";
 export type { ByteReader } from "./namespaces/deploy.js";
 export type * from "./namespaces/domains.js";
 export type * from "./namespaces/email.js";
-export { FunctionRunTerminalError, FunctionRuns } from "./namespaces/functions.js";
+export { FunctionRunTerminalError, FunctionRuns, classifyFunctionLogLine } from "./namespaces/functions.js";
 export type * from "./namespaces/functions.types.js";
 export type * from "./namespaces/jobs.js";
 export type * from "./namespaces/operator.js";

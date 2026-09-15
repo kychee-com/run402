@@ -458,3 +458,170 @@ describe("run402 doctor — recovery_posture (gitvault-recovery-custody)", () =>
     assert.equal(check.status, "skipped");
   });
 });
+
+// ─── ok vs warnings[] — the "can this agent ship" split ──────────────────────
+//
+// An agent user's report: `ok: false` with only two NON-blocking findings
+// (operator passkey not bound, recovery posture degraded on another org) —
+// and it could still deploy. `ok` now answers exactly one question (is any
+// check blocking?) and is structural, never a status-string allowlist; every
+// check carries `severity`, advisory gaps ride in `warnings[]`, and
+// `blocking[]` is what to fix when `ok` is false. The tier check's status
+// is a fixed vocabulary that never leaks a tier NAME into the status slot.
+
+describe("run402 doctor — ok is 'can this agent ship'; warnings[] carries the non-blocking gaps", () => {
+  /** Answer specific API paths with fixed bodies; everything else falls through to the suite mock. */
+  function withRoutes(routes, fn) {
+    const prior = globalThis.fetch;
+    globalThis.fetch = async (input) => {
+      const url = typeof input === "string" ? input : String(input?.url ?? input);
+      for (const [needle, body] of Object.entries(routes)) {
+        if (url.includes(needle)) return json(body);
+      }
+      return prior(input);
+    };
+    return fn().finally(() => { globalThis.fetch = prior; });
+  }
+
+  async function runDoctor(args) {
+    captureStart();
+    let threw = null;
+    try {
+      await run(args[0], args.slice(1));
+    } catch (err) {
+      threw = err;
+    } finally {
+      captureStop();
+    }
+    return { exit: threw?.message ?? null, report: JSON.parse(stdout.join("\n")) };
+  }
+
+  const ACTIVE_TIER = {
+    tier: "team",
+    active: true,
+    organization_lifecycle_state: "active",
+    lease_expires_at: "2099-01-01T00:00:00.000Z",
+    projects: [{ id: ACTIVE_PROJECT, name: "active" }],
+  };
+  const OPERATOR_WITH_GAPS = {
+    operator_contact: { email_status: "verified", passkey_status: "not_bound" },
+    operator_reachability: { reachable: true, verified_recipient_count: 1, sources: [], skipped_last_90d: 0 },
+    skipped_notifications: [],
+    critical_items: [],
+    runtime: { stale_function_count: 0, stale_functions: [] },
+    recovery_posture: [{
+      org_id: "org-other", vault_count: 1,
+      control_plane_configured: false,
+      source_wrapper_configured: true,
+      source_backup_configured: true,
+      custody_legacy_present: false,
+      human_owner_with_login_count: 0, source_custodian_count: 1, wrapper_backed_custodian_count: 1,
+      state_generation: 2,
+    }],
+  };
+  const ONLY_SHIP_CHECKS = ["--only", "tier", "--only", "operator_health", "--only", "recovery_posture", "--only", "runtime_staleness"];
+
+  it("the user's exact shape — passkey not bound + degraded posture on another org — is ok:true, exit 0, with both gaps in warnings[]", async () => {
+    const { exit, report } = await withRoutes({
+      "/tiers/v1/status": ACTIVE_TIER,
+      "/agent/v1/operator/status": OPERATOR_WITH_GAPS,
+    }, () => runDoctor(ONLY_SHIP_CHECKS));
+    assert.equal(exit, "process.exit(0)", "advisory warnings must never change the exit code");
+    assert.equal(report.ok, true);
+    assert.deepEqual(report.blocking, []);
+    assert.ok(report.warnings.length >= 2, `expected the two advisory gaps in warnings[], got ${JSON.stringify(report.warnings)}`);
+    const forCheck = (name) => report.warnings.filter((w) => w.check === name);
+    assert.match(forCheck("operator_health")[0].message, /operator passkey not bound/);
+    assert.match(forCheck("recovery_posture")[0].message, /org org-other \(1 vault\): no human owner/);
+    for (const w of report.warnings) {
+      assert.equal(typeof w.check, "string");
+      assert.equal(typeof w.message, "string");
+    }
+    // The advisory checks are still reported as `warning` with their gaps —
+    // checks[] is unchanged apart from the added severity.
+    assert.equal(report.checks.find((c) => c.name === "operator_health").status, "warning");
+    assert.equal(report.checks.find((c) => c.name === "operator_health").severity, "advisory");
+    assert.equal(report.checks.find((c) => c.name === "tier").severity, "info");
+  });
+
+  it("a frozen tier is ok:false, exit 1, with tier as the blocking entry (GH-570 semantics kept)", async () => {
+    const { exit, report } = await withRoutes({
+      "/tiers/v1/status": { ...ACTIVE_TIER, tier: "prototype", active: false, organization_lifecycle_state: "frozen" },
+      "/agent/v1/operator/status": OPERATOR_WITH_GAPS,
+    }, () => runDoctor(ONLY_SHIP_CHECKS));
+    assert.equal(exit, "process.exit(1)");
+    assert.equal(report.ok, false);
+    assert.equal(report.blocking.length, 1);
+    assert.equal(report.blocking[0].check, "tier");
+    assert.equal(report.blocking[0].status, "frozen");
+    assert.equal(typeof report.blocking[0].message, "string");
+    const tier = report.checks.find((c) => c.name === "tier");
+    assert.equal(tier.status, "frozen");
+    assert.equal(tier.severity, "blocking");
+    assert.equal(tier.value.tier, "prototype");
+    assert.equal(tier.value.lifecycle, "frozen");
+    // The advisory gaps are STILL surfaced alongside the blocker.
+    assert.ok(report.warnings.some((w) => w.check === "operator_health"));
+  });
+
+  it("every check carries severity ∈ {blocking, advisory, info}, on a full run, --only, and --refresh alike", async () => {
+    for (const args of [["--no-scan"], ["--only", "gitvault"], ["--refresh", "--no-scan"]]) {
+      const { report } = await runDoctor(args);
+      assert.ok(report.checks.length > 0);
+      for (const c of report.checks) {
+        assert.ok(["blocking", "advisory", "info"].includes(c.severity), `${c.name} (${args.join(" ")}) has severity ${c.severity}`);
+      }
+      assert.equal(typeof report.ok, "boolean");
+      assert.ok(Array.isArray(report.blocking));
+      assert.ok(Array.isArray(report.warnings));
+      assert.equal(report.ok, report.blocking.length === 0, "ok is exactly 'blocking[] is empty'");
+      assert.ok(report.checks.every((c) => (c.severity === "blocking") === report.blocking.some((b) => b.check === c.name)));
+    }
+  });
+
+  it("the tier status is a fixed vocabulary — an active tier reports 'ok', never the tier name, and value.tier/value.lifecycle carry the facts", async () => {
+    const { report } = await withRoutes({ "/tiers/v1/status": ACTIVE_TIER }, () => runDoctor(["--only", "tier"]));
+    const tier = report.checks[0];
+    assert.equal(tier.status, "ok");
+    assert.equal(tier.severity, "info");
+    assert.equal(tier.value.tier, "team");
+    assert.equal(tier.value.lifecycle, "active");
+    assert.equal(tier.value.active, true);
+    // A gateway that (against its own contract) returns an empty lifecycle
+    // string used to fall through to `tierName ?? "missing"` and put "team"
+    // in the status slot — which then failed the ok allowlist.
+    const { report: r2 } = await withRoutes({ "/tiers/v1/status": { ...ACTIVE_TIER, organization_lifecycle_state: "" } }, () => runDoctor(["--only", "tier"]));
+    assert.equal(r2.checks[0].status, "unknown");
+    assert.equal(r2.checks[0].severity, "info");
+    assert.equal(r2.ok, true);
+    // An unrecognized non-active lifecycle string is 'inactive' (blocking), never echoed raw.
+    const { report: r3 } = await withRoutes({ "/tiers/v1/status": { ...ACTIVE_TIER, organization_lifecycle_state: "hibernating" } }, () => runDoctor(["--only", "tier"]));
+    assert.equal(r3.checks[0].status, "inactive");
+    assert.equal(r3.checks[0].value.lifecycle, "hibernating");
+    assert.equal(r3.ok, false);
+  });
+
+  it("a wallet with no tier of its own but reachable projects on another org is 'missing' as an ADVISORY (it can still ship there); with nowhere to ship it blocks", async () => {
+    const { exit, report } = await withRoutes({
+      "/tiers/v1/status": { tier: null, active: false, organization_lifecycle_state: "active", projects: [{ id: "prj_other_org_0001", name: "theirs" }] },
+    }, () => runDoctor(["--only", "tier"]));
+    assert.equal(exit, "process.exit(0)");
+    assert.equal(report.ok, true);
+    assert.equal(report.checks[0].status, "missing");
+    assert.equal(report.checks[0].severity, "advisory");
+    assert.equal(report.checks[0].value.reachable_projects, 1);
+    assert.equal(report.warnings.length, 1);
+    assert.equal(report.warnings[0].check, "tier");
+    assert.equal(report.warnings[0].code, "TIER_MISSING_ON_OWN_ORG");
+    assert.match(report.warnings[0].message, /can reach 1 project/);
+
+    const { exit: exit2, report: r2 } = await withRoutes({
+      "/tiers/v1/status": { tier: null, active: false, organization_lifecycle_state: "active", projects: [] },
+    }, () => runDoctor(["--only", "tier"]));
+    assert.equal(exit2, "process.exit(1)");
+    assert.equal(r2.ok, false);
+    assert.equal(r2.checks[0].status, "missing");
+    assert.equal(r2.checks[0].severity, "blocking");
+    assert.equal(r2.blocking[0].check, "tier");
+  });
+});

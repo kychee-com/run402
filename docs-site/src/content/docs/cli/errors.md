@@ -1,0 +1,66 @@
+---
+title: "R402_* runtime error codes"
+description: "Stable R402_* error codes from the SSR runtime, cache layer, and Astro adapter, with fixes."
+order: 9
+slice: errors
+summary: "R402_* SSR runtime and cache error codes"
+---
+
+## R402_* SSR Runtime Error Codes (cache + Astro adapter)
+
+Stable error codes for the Astro SSR runtime. Each carries `code`, `message`, `suggestedFix`, `docs`, and (when statically determinable) `file`, `line`. Codes are protocol-stable and emitted as the exact uppercase string in JSON envelopes, response headers, logs, and CLI output.
+
+**Build / deploy:**
+
+- `R402_ASTRO_BUILD_FAILED` — Astro's own compiler threw an unrecovered error. Suggested fix: read the build log + address the underlying compiler error.
+- `R402_ASTRO_UNSUPPORTED_OUTPUT` — `output: '...'` is not supported. Use `output: 'server'` (default) and opt-in per route via `export const prerender = true;`.
+- `R402_ASTRO_MIDDLEWARE_UNSUPPORTED` — middleware ran but a specific pattern hit a snag. Move auth-gating to page frontmatter or API endpoints.
+- `R402_ASTRO_SERVER_ISLAND_UNSUPPORTED` — `server:defer` / `server:only` detected. Use client islands (`client:load`, `client:idle`, `client:visible`) instead; server islands are unsupported.
+- `R402_ASTRO_SESSIONS_UNSUPPORTED` — `Astro.session.*` or `experimental.session` detected. Use signed cookies via `Astro.cookies` or DB-backed sessions.
+- `R402_ASTRO_DYNAMIC_IMAGE_UNSUPPORTED` — `<Image src={expr}>` where `expr` is a runtime value (DB row, function call, env var). Use `<Run402Picture asset={page.hero_asset}>` for CMS images; static-import binding `<Image src={hero}>` is allowed.
+- `R402_ASTRO_VERSION_UNSUPPORTED` — installed Astro outside the adapter's pinned peer range.
+- `R402_BUNDLE_UNRESOLVED_IMPORT` — bundler couldn't resolve a function-file import. Check package presence in `dependencies`.
+- `R402_BUNDLE_NATIVE_DEP_UNSUPPORTED` — bundle contains native binary deps (`sharp`, `better-sqlite3`, etc.). Replace with Run402 primitives (`r.assets.put` for image processing, `r.ai.*` for ML).
+
+**Runtime / SnapStart:**
+
+- `R402_SNAPSTART_INIT_IO` — module-scope IO detected during SnapStart snapshot capture. Move SDK calls inside the request handler.
+- `R402_SDK_OUTSIDE_REQUEST_CONTEXT` — SDK function called outside an active request context (module scope or post-response timer). Move into handler scope.
+- `R402_SSR_RUNTIME_ERROR` — uncaught exception during render. The public response carries `requestId` + `releaseId` (no stack trace); full stack via `run402 logs --request-id <req>`.
+
+**Cache layer:**
+
+- `R402_CACHE_UNSUPPORTED_VARY` — response `Vary` references something other than `Accept-Language`. Bypass header emitted; response delivered normally but not cached.
+- `R402_CACHE_AUTH_TAINTED` — informational diagnostic (not an `ok: false` error). Emitted via `x-run402-cache-reason: auth` when render called `auth.user()` (or any other `auth.*` helper) or a payment primitive. This is the expected uncacheable-by-design behavior.
+
+**Auth-aware SSR (auth-aware-ssr, v3.0):**
+
+22 codes covering the browser-session / actor-context / hosted-UI / SDK surface. See run402.com/llms-full.txt for the full table with per-code fix-it hints. Highlights:
+
+- `R402_AUTH_REQUIRED` — 401 (JSON) / 303 → `/auth/sign-in?returnTo=` (HTML). Auth helper called from an anonymous request.
+- `R402_AUTH_INSUFFICIENT_ROLE` / `R402_AUTH_INSUFFICIENT_MEMBERSHIP` — 403. Authenticated user lacks the named grant; platform does NOT redirect to sign-in (the user IS signed in).
+- `R402_AUTH_FRESHNESS_REQUIRED` — 401 / 303 → `/auth/re-auth`. Per-AMR step-up needed.
+- `R402_AUTH_SESSION_EXPIRED` / `R402_AUTH_SESSION_INVALID` — cookie cleared on response; user re-signs-in.
+- `R402_AUTH_CSRF_ORIGIN_MISMATCH` — 403. Cookie-authenticated unsafe-method request with mismatched / missing Origin and Referer.
+- `R402_AUTH_CSRF_TOKEN_MISMATCH` — 403. Hosted-auth form missing or mismatching the platform CSRF token.
+- `R402_AUTH_BEARER_COOKIE_MISMATCH` / `R402_AUTH_INVALID_BEARER` — 400 / 401. Cookie + Bearer disagree, or valid cookie + malformed Bearer.
+- `R402_AUTH_UNKNOWN_EXPORT` — 500. Hallucinated SDK name (`getUser`, `getSession`, `auth.protect`, …). `details.canonical_name` carries the replacement.
+- `R402_AUTH_PRERENDERED` — 500. `auth.*` called from a prerendered page. Convert to SSR or use a server island.
+- `R402_AUTH_FETCH_ABSOLUTE_URL` — 500. `auth.fetch` rejected a cross-origin / embedded-creds / javascript:/data: / protocol-relative / subdomain-spoof / port-mismatch URL.
+- `R402_AUTH_RETURN_TO_INVALID` — 400. Hosted-auth route got a `returnTo` that's not path-relative or same-origin absolute.
+- `R402_AUTH_IDENTITY_LINK_CONFLICT` — 409. `(project_id, provider, subject)` already linked to another user.
+- `R402_AUTH_SESSION_BRIDGE_UNVERIFIED` — 401. Custom identity proof failed verification, OR consumer accessed the internal-only session-creation primitive.
+- `R402_AUTH_UNKNOWN_IDENTITY` — 401. `createResponseFromIdentity` couldn't resolve identity AND `createUser: true` not set.
+- `R402_AUTH_DOMAIN_NOT_ALLOWED` — 403. Hosted Google sign-in rejected at token issuance: the verified email's domain isn't in the project's `allowed_email_domains` (or the email is unverified). Set/clear the allowlist with `run402 auth settings --allowed-email-domains <csv|none>`. Empty allowlist = unrestricted.
+- `R402_AUTH_TENANT_SUFFIX_REQUIRED` — gateway refuses session cookies on `*.run402.com` for non-allowlisted projects. PSL-registered `*.run402.app` + verified custom domains are always allowed.
+- `R402_AUTH_ACTOR_HEADER_SPOOF` — client-supplied reserved actor header was stripped at ingress; diagnostic only.
+- `R402_AUTH_REDUNDANT_USER_FILTER` — deploy-fail (or runtime warn). `.eq("user_id", user.id)` against an RLS-bound table. Add `// run402-allow-user-filter: <reason>` if intentional.
+- `R402_AUTH_AUTHZ_VERSION_PROHIBITED` — deploy-fail. Consumer migration mutates `internal.sessions.authz_version` directly.
+- `R402_CACHE_INVALIDATION_HOST_REQUIRED` — `cache.invalidate('/path')` called outside a request context. Use absolute URL form OR move into a request handler.
+- `R402_CACHE_INVALIDATION_HOST_FORBIDDEN` — cross-project host. Use a host attached to your project (`run402 domains list`).
+
+**Deploy:**
+
+- `R402_DEPLOY_STAGE_FAILED` — apply-v1 state machine failure at a specific stage (`validate` / `stage` / `migrate` / `schema_settling` / `activating` / `snapstart_validate`).
+
+---

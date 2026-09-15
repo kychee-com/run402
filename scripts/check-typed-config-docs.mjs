@@ -8,6 +8,7 @@ const goldenDocs = [
   "llms.txt",
   "cli/README.md",
   "cli/llms-cli.txt",
+  "cli/llms-cli-full.txt",
   "sdk/README.md",
   "sdk/llms-sdk.txt",
   "llms-mcp.txt",

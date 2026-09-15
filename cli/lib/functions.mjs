@@ -5,9 +5,71 @@ import { reportSdkError, fail } from "./sdk-errors.mjs";
 import { assertKnownFlags, hasHelp, normalizeArgv, parseIntegerFlag, resolveProjectSelector, validateRegularFile, failUnknownSubcommand } from "./argparse.mjs";
 import { cliCommandAction } from "./next-actions.mjs";
 
-const FUNCTION_LOG_REQUEST_ID_RE = /^(?:req|fnrun|fnatt)_[A-Za-z0-9_-]{4,128}$/;
+export const FUNCTION_LOG_REQUEST_ID_RE = /^(?:req|fnrun|fnatt)_[A-Za-z0-9_-]{4,128}$/;
 const ISO_DATE_TIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
-const FUNCTION_LOG_TAIL_MAX = 1000;
+export const FUNCTION_LOG_TAIL_MAX = 1000;
+
+// Shared by `run402 functions logs` and the top-level `run402 logs` shortcut
+// (cli/lib/logs.mjs) so the two commands validate identically.
+
+/** `--since <iso|epoch_ms>` → ISO string, or a BAD_USAGE exit. */
+export function parseLogSinceFlag(since) {
+  if (since === undefined || since === null) return undefined;
+  const raw = String(since).trim();
+  const ms = /^\d+$/.test(raw)
+    ? Number(raw)
+    : ISO_DATE_TIME_RE.test(raw)
+      ? Date.parse(raw)
+      : Number.NaN;
+  if (!Number.isSafeInteger(ms) || ms < 0) {
+    fail({
+      code: "BAD_USAGE",
+      message: `Invalid --since value: ${since}`,
+      details: { flag: "--since", value: since },
+    });
+  }
+  return new Date(ms).toISOString();
+}
+
+/** `--request-id <id>` must be a req_ / fnrun_ / fnatt_ correlation id. */
+export function assertLogRequestIdFlag(requestId) {
+  if (requestId !== undefined && !FUNCTION_LOG_REQUEST_ID_RE.test(requestId)) {
+    fail({
+      code: "BAD_USAGE",
+      message: `Invalid --request-id value: ${requestId}`,
+      details: { flag: "--request-id", value: requestId, expected: "req_|fnrun_|fnatt_ + 4-128 url-safe chars" },
+    });
+  }
+}
+
+/**
+ * `--app` (default) / `--platform` / `--all` → the SDK origin filter. Lambda
+ * runtime lines (INIT_START / START / END / REPORT …) are `platform`; the
+ * function's own output is `app`. More than one flag is a usage error.
+ */
+export function resolveLogOriginFlag(args) {
+  const chosen = ["--app", "--platform", "--all"].filter((flag) => args.includes(flag));
+  if (chosen.length > 1) {
+    fail({
+      code: "BAD_USAGE",
+      message: `Pass only one of --app, --platform, --all (got: ${chosen.join(", ")})`,
+      details: { flags: chosen },
+    });
+  }
+  if (chosen[0] === "--platform") return "platform";
+  if (chosen[0] === "--all") return "all";
+  return "app";
+}
+
+/**
+ * The hint attached when the origin filter left an empty result but hid
+ * platform lines — so an agent learns the function DID run (INIT/REPORT
+ * exist) and simply wrote nothing, instead of reading "no logs".
+ */
+export function platformHiddenHint(entries, hidden) {
+  if (!hidden || hidden.platform <= 0 || entries.length > 0) return undefined;
+  return `${hidden.platform} platform lines hidden (INIT_START/REPORT); pass --platform or --all to see them`;
+}
 
 const HELP = `run402 functions — Manage serverless functions
 
@@ -23,8 +85,10 @@ Subcommands:
                                        --raw prints the response body verbatim
                                        (string body → text + newline, JSON
                                        body → pretty-printed JSON).
-  logs   <name> [--project <id>] [--tail <n>] [--since <ts>] [--request-id <req_...>] [--follow]
-                                       Get function logs
+  logs   [<name>] [--project <id>] [--tail <n>] [--since <ts>] [--request-id <id>] [--app|--platform|--all] [--follow]
+                                       Get function logs (app output by default;
+                                       omit <name> with --request-id to search
+                                       every function)
   runs   <action> ...                  Create, inspect, cancel, redrive, and
                                        wait for durable function runs
   update <name> [--project <id>] [--schedule <cron>] [--schedule-remove] [--timeout <s>] [--memory <mb>]
@@ -48,6 +112,8 @@ Examples:
   run402 functions logs stripe-webhook --tail 100
   run402 functions logs stripe-webhook --since 2026-03-29T14:00:00Z
   run402 functions logs stripe-webhook --request-id req_abc123
+  run402 functions logs --request-id req_abc123          # every function in the project
+  run402 functions logs stripe-webhook --all             # include INIT_START / REPORT lines
   run402 functions logs stripe-webhook --follow
   run402 functions runs create worker --event-type reminder.send --idempotency-key reminder:123 --delay 10m
   run402 functions runs get fnrun_abc123 --project prj_abc123
@@ -167,27 +233,42 @@ Examples:
 
 Usage:
   run402 functions logs <name> [--project <id>] [options]
+  run402 functions logs --request-id <id> [--project <id>] [options]
 
 Legacy (still supported):
   run402 functions logs <project_id> <name> [options]
 
 Arguments:
-  <name>              Function name
+  <name>              Function name. Optional when --request-id is given: the
+                      search then fans out across every function in the project
+                      and each entry carries its "function".
 
 Options:
   --project <id>      Target project ID (defaults to the active project)
-  --tail <n>          Number of most-recent entries (default 50, max 1000)
+  --tail <n>          Number of most-recent entries (default 50, max 1000).
+                      Bounds the read BEFORE the origin filter below.
   --since <ts>        ISO timestamp or epoch ms; only entries after this
-  --request-id <id>   Only entries correlated to this req_, fnrun_, or fnatt_ id
+  --request-id <id>   Only entries correlated to this req_ (the
+                      x-run402-request-id response header), fnrun_, or fnatt_ id
+  --app               Only the function's own output (default). Lambda runtime
+                      lines (INIT_START, START/END/REPORT RequestId, billed
+                      duration) are hidden; "hidden.platform" counts them and a
+                      "hint" appears when hiding them left the result empty.
+  --platform          Only the Lambda runtime lines
+  --all               Both (the raw CloudWatch stream)
   --follow            Poll every 3s and stream new entries (Ctrl-C to stop).
-                      Emits NDJSON: one JSON log entry per line, no wrapping
-                      "logs:" envelope (the wrapping object is only used in
-                      the non-follow batch mode).
+                      Requires <name>. Emits NDJSON: one JSON log entry per
+                      line, no wrapping "logs:" envelope (the wrapping object
+                      is only used in the non-follow batch mode).
+
+Every entry carries "origin": "app" | "platform".
 
 Examples:
   run402 functions logs prj_abc123 stripe-webhook --tail 100
   run402 functions logs prj_abc123 stripe-webhook --since 2026-03-29T14:00:00Z
   run402 functions logs prj_abc123 stripe-webhook --request-id req_abc123
+  run402 functions logs --request-id req_abc123 --project prj_abc123
+  run402 functions logs prj_abc123 stripe-webhook --all
   run402 functions logs prj_abc123 stripe-webhook --follow
 `,
   runs: `run402 functions runs — Manage durable function runs
@@ -451,8 +532,13 @@ function validateInvokeJsonBody(value, source, projectId, name) {
 }
 
 async function logs(projectId, name, args) {
-  assertRequiredProjectAndName(projectId, name, "run402 functions logs <project_id> <name> [--tail <n>] [--request-id <req_...>]");
-  assertKnownFlags(args, ["--tail", "--since", "--request-id", "--follow", "--help", "-h"], ["--tail", "--since", "--request-id"]);
+  const usage = "run402 functions logs <name> [--project <id>] [--tail <n>] [--since <ts>] [--request-id <id>] [--app|--platform|--all] [--follow]  |  run402 functions logs --request-id <id> [--project <id>]";
+  assertRequiredProject(projectId, usage);
+  assertKnownFlags(
+    args,
+    ["--tail", "--since", "--request-id", "--follow", "--app", "--platform", "--all", "--help", "-h"],
+    ["--tail", "--since", "--request-id"],
+  );
   let tail = 50;
   let since = undefined;
   let requestId = undefined;
@@ -463,52 +549,70 @@ async function logs(projectId, name, args) {
     if (args[i] === "--request-id" && args[i + 1]) requestId = args[++i];
     if (args[i] === "--follow") follow = true;
   }
+  const origin = resolveLogOriginFlag(args);
 
-  // Parse since: accept ISO string or epoch ms — keep CLI-side validation
-  // so a bad `--since` errors with a clear message rather than silently
-  // being dropped by the SDK.
-  let sinceIso = undefined;
-  if (since !== undefined) {
-    const raw = String(since).trim();
-    const ms = /^\d+$/.test(raw)
-      ? Number(raw)
-      : ISO_DATE_TIME_RE.test(raw)
-        ? Date.parse(raw)
-        : Number.NaN;
-    if (!Number.isSafeInteger(ms) || ms < 0) {
+  // Keep CLI-side validation so a bad `--since` / `--request-id` errors with
+  // a clear message before any network call.
+  let sinceIso = parseLogSinceFlag(since);
+  assertLogRequestIdFlag(requestId);
+
+  if (!name) {
+    if (!requestId) {
       fail({
         code: "BAD_USAGE",
-        message: `Invalid --since value: ${since}`,
-        details: { flag: "--since", value: since },
+        message: "Missing <name>.",
+        hint: `${usage} — pass --request-id <req_...> to search every function without naming one.`,
       });
     }
-    sinceIso = new Date(ms).toISOString();
-  }
-  if (requestId !== undefined && !FUNCTION_LOG_REQUEST_ID_RE.test(requestId)) {
-    fail({
-      code: "BAD_USAGE",
-      message: `Invalid --request-id value: ${requestId}`,
-      details: { flag: "--request-id", value: requestId, expected: "req_<4-128 url-safe chars>" },
-    });
+    if (follow) {
+      fail({
+        code: "BAD_USAGE",
+        message: "--follow requires <name>; the request-id search across every function is a one-shot read.",
+        details: { flag: "--follow" },
+      });
+    }
+    try {
+      const result = await getSdk().functions.logsByRequestId(projectId, requestId, { tail, since: sinceIso, origin });
+      const hint = platformHiddenHint(result.entries, result.hidden);
+      console.log(JSON.stringify({
+        logs: result.entries,
+        request_id: result.request_id,
+        scanned: result.scanned,
+        ...(result.errors.length > 0 && { errors: result.errors }),
+        origin: result.origin,
+        ...(result.hidden && { hidden: result.hidden }),
+        ...(hint && { hint }),
+      }, null, 2));
+    } catch (err) {
+      reportSdkError(err);
+    }
+    return;
   }
 
   const fetchLogs = async () => {
     try {
-      const data = await getSdk().functions.logs(projectId, name, {
+      return await getSdk().functions.logs(projectId, name, {
         tail,
         since: sinceIso,
         requestId,
+        origin,
       });
-      return data.logs || [];
     } catch (err) {
       reportSdkError(err);
-      return [];
+      return { logs: [], origin };
     }
   };
 
   if (!follow) {
-    const entries = await fetchLogs();
-    console.log(JSON.stringify({ logs: entries }, null, 2));
+    const result = await fetchLogs();
+    const entries = result.logs || [];
+    const hint = platformHiddenHint(entries, result.hidden);
+    console.log(JSON.stringify({
+      logs: entries,
+      origin: result.origin ?? origin,
+      ...(result.hidden && { hidden: result.hidden }),
+      ...(hint && { hint }),
+    }, null, 2));
     return;
   }
 
@@ -552,12 +656,12 @@ async function logs(projectId, name, args) {
     sinceIso = new Date(highWaterMs).toISOString();
   };
 
-  printFreshEntries(await fetchLogs());
+  printFreshEntries((await fetchLogs()).logs || []);
 
   while (running) {
     await new Promise(r => setTimeout(r, 3000));
     if (!running) break;
-    printFreshEntries(await fetchLogs());
+    printFreshEntries((await fetchLogs()).logs || []);
   }
 }
 
@@ -934,7 +1038,14 @@ export async function run(sub, args) {
   switch (sub) {
     case "deploy": { const { projectId, rest } = select(); await deploy(projectId, rest[0], rest.slice(1)); break; }
     case "invoke": { const { projectId, rest } = select(); await invoke(projectId, rest[0], rest.slice(1)); break; }
-    case "logs":   { const { projectId, rest } = select(); await logs(projectId, rest[0], rest.slice(1)); break; }
+    case "logs":   {
+      // <name> is optional when --request-id is given (project-wide search),
+      // so a leading flag means "no name", not "the name is --request-id".
+      const { projectId, rest } = select();
+      const hasName = typeof rest[0] === "string" && !rest[0].startsWith("-");
+      await logs(projectId, hasName ? rest[0] : undefined, hasName ? rest.slice(1) : rest);
+      break;
+    }
     case "runs": await runs(args[0], args.slice(1)); break;
     case "update": { const { projectId, rest } = select(); await update(projectId, rest[0], rest.slice(1)); break; }
     case "rebuild": { const { projectId, rest } = select(); await rebuild(projectId, rest); break; }

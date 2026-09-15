@@ -361,7 +361,7 @@ describe("public docs — secrets isolation drift", () => {
     "AGENTS.md",
     "sdk/README.md",
     "sdk/llms-sdk.txt",
-    "cli/llms-cli.txt",
+    "cli/llms-cli-full.txt",
     "llms-mcp.txt",
     "llms.txt",
   ];

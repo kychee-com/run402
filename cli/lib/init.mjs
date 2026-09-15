@@ -44,9 +44,11 @@ Options:
                   idempotent and does not need this flag.
   --name <name>   Set this principal's display name (1-64 chars) — what promotion
                   credit, \`run402 up\`'s room presence, and audit surfaces show
-                  for you. \`run402 up\` sets a detected default (claude-code,
-                  codex, cursor, or agent) when it is empty; change it any time
-                  with \`run402 org whoami --set-name <name>\`.
+                  for you. When it is empty, \`run402 up\` sets the detected
+                  client (claude-code, codex, cursor, or grok; RUN402_CLIENT=<name>
+                  declares one that is not auto-detected) and otherwise writes
+                  nothing; RUN402_AGENT_NAME=<name> sets or overrides it. Change
+                  it any time with \`run402 org whoami --set-name <name>\`.
   --git-remote    Also 'git init' the current directory when it is not a
                   repository yet, so the gitvault remote can be added there.
                   Opt-in on purpose: init is often run outside a project

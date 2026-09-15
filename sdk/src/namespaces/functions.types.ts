@@ -95,6 +95,19 @@ export interface FunctionInvokeResult {
   duration_ms: number;
 }
 
+/**
+ * Where a log line came from. `platform` is a Lambda runtime control line
+ * (`INIT_START`, `START RequestId`, `END RequestId`, `REPORT RequestId`,
+ * `INIT_REPORT`, `RESTORE_START`, `RESTORE_REPORT`, extension banners);
+ * `app` is everything the function itself wrote, including the wrapper's
+ * `function.error` diagnostics and "Task timed out" lines. Computed
+ * client-side by `classifyFunctionLogLine`; never part of the wire response.
+ */
+export type FunctionLogOrigin = "platform" | "app";
+
+/** Origin filter for log reads. `all` (the SDK default) returns every line. */
+export type FunctionLogOriginFilter = FunctionLogOrigin | "all";
+
 export interface FunctionLogEntry {
   timestamp: string;
   message: string;
@@ -106,6 +119,14 @@ export interface FunctionLogEntry {
   ingestion_time?: string;
   /** Best-effort routed/function request id extracted from structured logs. */
   request_id?: string;
+  /** `platform` for Lambda runtime lines, `app` for function output. Set on every entry the SDK returns. */
+  origin: FunctionLogOrigin;
+}
+
+/** Entries dropped by an origin filter, by origin. */
+export interface FunctionLogsHiddenCounts {
+  platform: number;
+  app: number;
 }
 
 export interface FunctionLogsOptions {
@@ -115,10 +136,58 @@ export interface FunctionLogsOptions {
   since?: string;
   /** Only return logs correlated to this routed request id, function run id, or attempt id. */
   requestId?: string;
+  /**
+   * Client-side origin filter. Default `all`. `app` hides Lambda runtime
+   * lines (`INIT_START` / `REPORT` …); `platform` shows only those. The
+   * filter runs on the page the gateway returned, so `tail` bounds the
+   * unfiltered read, not the filtered result.
+   */
+  origin?: FunctionLogOriginFilter;
 }
 
 export interface FunctionLogsResult {
   logs: FunctionLogEntry[];
+  /** The origin filter that was applied (`all` when unfiltered). */
+  origin: FunctionLogOriginFilter;
+  /** Entries the origin filter dropped. Absent when `origin` is `all`. */
+  hidden?: FunctionLogsHiddenCounts;
+}
+
+export interface FunctionLogsByRequestIdOptions {
+  /** Number of log lines PER FUNCTION. Server clamps to 1000. Default 100. */
+  tail?: number;
+  /** Only return logs at or after this ISO 8601 timestamp or epoch ms. */
+  since?: string;
+  /** Client-side origin filter. Default `all`. */
+  origin?: FunctionLogOriginFilter;
+  /** Limit the search to one function instead of every function in the project. */
+  functionName?: string;
+}
+
+/** One log entry from a project-wide request-id search, tagged with its function. */
+export interface FunctionLogSearchEntry extends FunctionLogEntry {
+  function: string;
+}
+
+export interface FunctionLogSearchError {
+  function: string;
+  message: string;
+  /** Gateway error code when the failure carried one. */
+  code?: string;
+}
+
+export interface FunctionLogsByRequestIdResult {
+  request_id: string;
+  /** Functions whose logs were read successfully. */
+  scanned: string[];
+  /** Matching entries across every scanned function, oldest first. */
+  entries: FunctionLogSearchEntry[];
+  /** Functions whose log read failed; the search is partial when non-empty. */
+  errors: FunctionLogSearchError[];
+  /** The origin filter that was applied (`all` when unfiltered). */
+  origin: FunctionLogOriginFilter;
+  /** Entries the origin filter dropped across every scanned function. Absent when `origin` is `all`. */
+  hidden?: FunctionLogsHiddenCounts;
 }
 
 export type FunctionRunStatus =

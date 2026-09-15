@@ -36,7 +36,28 @@ const BUNDLES = [
   // reads. One command, one file, two links — and a line budget so it stays
   // that way. Served at run402.com/llms.txt and docs.run402.com/llms.txt.
   { id: "front-door", section: "start", out: "llms.txt", flatHeader: "# Run402 — your first deploy", lineBudget: 180 },
-  { id: "cli", section: "cli", out: "cli/llms-cli.txt", flatHeader: "# Run402 CLI -- Agent Reference" },
+  // The CLI reference is SLICED (agent-docs-slices): the page whose frontmatter
+  // says `slice: index` becomes the short `llms-cli.txt` (first-deploy contract
+  // + a table of fetchable slices), every other page becomes its own
+  // `cli/llms-cli-<slice>.txt`, and the whole book stays available as
+  // `cli/llms-cli-full.txt`. A fetch that truncates at ~60 KB (the size at which
+  // several agent runtimes cut a document off) must still return a complete
+  // contract, so the index and every slice carry a byte budget.
+  {
+    id: "cli",
+    section: "cli",
+    out: "cli/llms-cli.txt",
+    flatHeader: "# Run402 CLI -- Agent Reference",
+    slices: {
+      full: "cli/llms-cli-full.txt",
+      outFor: (slice) => `cli/llms-cli-${slice}.txt`,
+      urlFor: (slice) => `https://docs.run402.com/llms-cli-${slice}.txt`,
+      indexUrl: "https://docs.run402.com/llms-cli.txt",
+      fullUrl: "https://docs.run402.com/llms-cli-full.txt",
+      indexByteBudget: 48 * 1024,
+      sliceByteBudget: 56 * 1024,
+    },
+  },
   { id: "sdk", section: "sdk", out: "sdk/llms-sdk.txt", flatHeader: "# @run402/sdk — comprehensive reference" },
   { id: "mcp", section: "mcp", out: "llms-mcp.txt", flatHeader: "# Run402 MCP Server — comprehensive tool reference" },
 ];
@@ -68,6 +89,15 @@ export function assertCliSectionOrder(text) {
   }
 }
 
+export function assertByteBudget(label, text, budget) {
+  const bytes = Buffer.byteLength(text, "utf-8");
+  if (bytes > budget) {
+    throw new Error(
+      `[build-agent-flat-docs] ${label} is ${bytes} bytes; the slice budget is ${budget}. Split the page into another slice (frontmatter \`slice:\`) rather than growing it.`,
+    );
+  }
+}
+
 export function assertLineBudget(bundle, text) {
   if (!bundle.lineBudget) return;
   const lines = text.replace(/\n$/, "").split("\n").length;
@@ -95,6 +125,18 @@ function listMarkdown(dir) {
   return out;
 }
 
+/** A frontmatter scalar may be JSON-quoted (values with a colon must be). */
+function unquote(value) {
+  if (/^".*"$/.test(value)) {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return value.slice(1, -1);
+    }
+  }
+  return value;
+}
+
 /** Split YAML frontmatter from a markdown body. Returns { data, body }. */
 function splitFrontmatter(raw) {
   const m = raw.match(/^---\n([\s\S]*?)\n---\n?/);
@@ -103,7 +145,7 @@ function splitFrontmatter(raw) {
   const data = {};
   for (const line of m[1].split("\n")) {
     const mm = line.match(/^([A-Za-z0-9_]+):\s*(.*)$/);
-    if (mm) data[mm[1]] = mm[2].trim();
+    if (mm) data[mm[1]] = unquote(mm[2].trim());
   }
   return { data, body };
 }
@@ -113,14 +155,17 @@ function normalize(text) {
   return text.replace(/\r\n/g, "\n").replace(/\s+$/, "") + "\n";
 }
 
-/** Build the flat-file bytes for one bundle from its source pages. */
-function renderBundle(bundle) {
+/** Load and order the source pages of one bundle. */
+function loadPages(bundle) {
   const pages = listMarkdown(join(CONTENT_ROOT, bundle.section)).map((path) => {
     const { data, body } = splitFrontmatter(readFileSync(path, "utf-8"));
     return {
       path,
       order: Number.isFinite(Number(data.order)) ? Number(data.order) : 1e9,
-      body,
+      slice: data.slice ?? null,
+      title: data.title ?? null,
+      summary: data.summary ?? null,
+      body: body.replace(/\r\n/g, "\n").trim(),
     };
   });
   if (pages.length === 0) {
@@ -128,24 +173,108 @@ function renderBundle(bundle) {
   }
   // Deterministic order: explicit `order`, then path.
   pages.sort((a, b) => a.order - b.order || a.path.localeCompare(b.path));
+  return pages;
+}
+
+/** Build the flat-file bytes for one bundle from its source pages. */
+function renderBundle(bundle) {
   // Trim each page body (leading/trailing blank lines are not significant) and
   // join with a single blank line; normalize() adds the lone trailing newline.
   // The agent-file title H1 is generator-owned (bundle.flatHeader) so the rendered
   // portal pages carry only the Starlight frontmatter title — no duplicate body H1.
-  const parts = pages.map((p) => p.body.replace(/\r\n/g, "\n").trim());
+  const parts = loadPages(bundle).map((p) => p.body);
   const joined = (bundle.flatHeader ? [bundle.flatHeader, ...parts] : parts).join("\n\n");
   return normalize(joined);
+}
+
+/**
+ * The slice table appended to the index. Sizes are derived from the rendered
+ * slice bytes, so the table is byte-stable for a given source tree (the regen
+ * gate depends on that) and an agent can budget a fetch before making it.
+ */
+export function renderSliceTable(slices, cfg) {
+  const lines = [
+    "## Fetchable reference slices",
+    "",
+    "This file is the index: everything above is the whole first-deploy contract. The rest of the CLI reference is split into slices so a single fetch never truncates; fetch only the slice you need (`curl -sL <url>`). Every slice is self-contained and links back here.",
+    "",
+    "| Slice | Fetch | Covers | Size |",
+    "|---|---|---|---|",
+  ];
+  for (const s of slices) {
+    const kb = Math.max(1, Math.round(s.bytes / 1024));
+    lines.push(`| ${s.title} | ${cfg.urlFor(s.slice)} | ${s.summary ?? ""} | ~${kb} KB |`);
+  }
+  lines.push(
+    "",
+    `The whole reference as one document (large; only when you can hold it): ${cfg.fullUrl}`,
+  );
+  return lines.join("\n");
+}
+
+/**
+ * Render a sliced bundle. Returns [{ out, text, label }] for the index, every
+ * slice, and the full concatenation, in that order.
+ */
+export function renderSlicedBundle(bundle) {
+  const cfg = bundle.slices;
+  const pages = loadPages(bundle);
+  const index = pages.find((p) => p.slice === "index");
+  if (!index) throw new Error(`[build-agent-flat-docs] bundle '${bundle.id}': no page declares \`slice: index\``);
+  const others = pages.filter((p) => p !== index);
+  const seen = new Set();
+  for (const p of others) {
+    if (!p.slice || !/^[a-z][a-z0-9-]*$/.test(p.slice) || p.slice === "full") {
+      throw new Error(`[build-agent-flat-docs] ${relative(ROOT, p.path)}: every page of a sliced bundle needs a kebab-case \`slice:\` (not 'full')`);
+    }
+    if (seen.has(p.slice)) throw new Error(`[build-agent-flat-docs] duplicate slice '${p.slice}' (${relative(ROOT, p.path)})`);
+    seen.add(p.slice);
+    if (!p.title) throw new Error(`[build-agent-flat-docs] ${relative(ROOT, p.path)}: slice pages need a \`title:\``);
+  }
+  const outputs = [];
+  const rendered = others.map((p) => {
+    const header = [
+      `${bundle.flatHeader} — ${p.title}`,
+      "",
+      `> Slice \`${p.slice}\` of the Run402 CLI reference. Index (start here): ${cfg.indexUrl} · Whole reference: ${cfg.fullUrl}`,
+    ].join("\n");
+    const text = normalize([header, p.body].join("\n\n"));
+    return { ...p, text, bytes: Buffer.byteLength(text, "utf-8") };
+  });
+  const indexText = normalize([bundle.flatHeader, index.body, renderSliceTable(rendered, cfg)].join("\n\n"));
+  outputs.push({ out: bundle.out, text: indexText, label: `${bundle.out} (index)`, budget: cfg.indexByteBudget });
+  for (const r of rendered) {
+    outputs.push({ out: cfg.outFor(r.slice), text: r.text, label: cfg.outFor(r.slice), budget: cfg.sliceByteBudget });
+  }
+  const full = normalize([bundle.flatHeader, ...pages.map((p) => p.body)].join("\n\n"));
+  outputs.push({ out: cfg.full, text: full, label: cfg.full, budget: null, isFull: true });
+  return outputs;
+}
+
+/**
+ * Every flat file this generator owns, as { asset, path } (asset = the served
+ * basename). The docs deploy manifest and the workflows consume this list so a
+ * new slice is served the moment it exists.
+ */
+export function listAgentFlatFiles() {
+  const out = [];
+  for (const bundle of BUNDLES) {
+    if (bundle.id === "front-door") continue; // llms.txt is served from the apex, not the docs project
+    if (bundle.slices) {
+      for (const o of renderSlicedBundle(bundle)) out.push({ asset: o.out.split("/").pop(), path: o.out });
+    } else {
+      out.push({ asset: bundle.out.split("/").pop(), path: bundle.out });
+    }
+  }
+  return out;
 }
 
 const isMain = !!process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 const check = process.argv.includes("--check");
 let stale = [];
 
-for (const bundle of isMain ? BUNDLES : []) {
-  const next = renderBundle(bundle);
-  assertLineBudget(bundle, next);
-  if (bundle.id === "cli") assertCliSectionOrder(next);
-  const outPath = join(ROOT, bundle.out);
+function writeOrCheck(outRel, next) {
+  const outPath = join(ROOT, outRel);
   let current = "";
   try {
     current = readFileSync(outPath, "utf-8");
@@ -153,13 +282,27 @@ for (const bundle of isMain ? BUNDLES : []) {
     /* missing → treated as stale */
   }
   if (check) {
-    if (current !== next) stale.push(bundle.out);
+    if (current !== next) stale.push(outRel);
   } else if (current !== next) {
     writeFileSync(outPath, next);
-    console.log(`regenerated ${bundle.out}`);
+    console.log(`regenerated ${outRel}`);
   } else {
-    console.log(`unchanged   ${bundle.out}`);
+    console.log(`unchanged   ${outRel}`);
   }
+}
+
+for (const bundle of isMain ? BUNDLES : []) {
+  if (bundle.slices) {
+    for (const o of renderSlicedBundle(bundle)) {
+      if (o.budget) assertByteBudget(o.label, o.text, o.budget);
+      if (o.isFull) assertCliSectionOrder(o.text);
+      writeOrCheck(o.out, o.text);
+    }
+    continue;
+  }
+  const next = renderBundle(bundle);
+  assertLineBudget(bundle, next);
+  writeOrCheck(bundle.out, next);
 }
 
 if (isMain && check) {

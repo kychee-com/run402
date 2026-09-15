@@ -485,7 +485,10 @@ export const COMMAND_MANIFEST = [
   // without rejecting it," which this satisfies.
   { path: ["doctor"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["--no-scan"], runStyle: "merged" },
   { path: ["webhook-secret", "rotate"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
-  { path: ["logs"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["--request-id", "req_gate123"], runStyle: "merged" },
+  // `run402 logs [<function>] --request-id <id>`: the optional positional is
+  // the function name (`run402 errors` samples print it that way); it is
+  // never a project id.
+  { path: ["logs"], positionals: [p("function", { required: false })], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["--request-id", "req_gate123"], runStyle: "merged" },
 ];
 
 // Families deliberately absent from the manifest, consumed by the gate's

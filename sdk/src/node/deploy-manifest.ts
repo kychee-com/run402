@@ -1,4 +1,4 @@
-import { copyFile, readFile, rm } from "node:fs/promises";
+import { copyFile, readFile, rm, stat } from "node:fs/promises";
 import {
   dirname,
   extname,
@@ -23,6 +23,7 @@ import type {
   ContentSource,
   DatabaseSpec,
   FileSet,
+  FsFileSource,
   FunctionSpec,
   I18nSpec,
   LocalDirRef,
@@ -40,7 +41,215 @@ function isLocalDirRef(value: unknown): value is LocalDirRef {
   );
 }
 
+function isFsFileSource(value: unknown): value is FsFileSource {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as { __source?: unknown }).__source === "fs-file" &&
+    typeof (value as { path?: unknown }).path === "string"
+  );
+}
+
 const CONTEXT = "normalizing deploy manifest";
+
+// ─── Local filesystem references ─────────────────────────────────────────────
+//
+// A normalized ReleaseSpec still points at the local disk in four places:
+// function sources / file sets and site file entries become lazy `fs-file`
+// handles, `dir()` targets stay `LocalDirRef`s, and `assets.put[].source`
+// can be an `fs-file` too. None of them is opened until bytes are hashed
+// for a plan, so `--check` / `--print-spec` used to pass on a manifest whose
+// files did not exist. These helpers make the filesystem-reference check a
+// first-class, typed step that runs before any mutation. (Migration
+// `sql_path` / `sql_file` is read eagerly during normalization; a missing
+// one raises the same `MANIFEST_FILE_MISSING` envelope from there.)
+
+export type LocalFileReferenceKind =
+  | "migration_sql"
+  | "function_source"
+  | "site_file"
+  | "site_dir"
+  | "asset";
+
+export interface LocalFileReference {
+  /** Dotted/bracketed path into the ReleaseSpec, e.g. `functions.replace.api.source`. */
+  field_path: string;
+  /** Absolute path the reference resolved to. */
+  path: string;
+  kind: LocalFileReferenceKind;
+  /** `site_dir` references must be directories; everything else a file. */
+  expects: "file" | "directory";
+}
+
+export interface MissingLocalFileReference {
+  field_path: string;
+  path: string;
+  kind: LocalFileReferenceKind;
+}
+
+/** Collect every local filesystem reference a normalized ReleaseSpec carries. */
+export function collectLocalFileReferences(spec: Partial<ReleaseSpec>): LocalFileReference[] {
+  const refs: LocalFileReference[] = [];
+  const pushFile = (field_path: string, path: string, kind: LocalFileReferenceKind) => {
+    refs.push({ field_path, path, kind, expects: "file" });
+  };
+
+  const visitFileSet = (set: FileSet | undefined, fieldPrefix: string, kind: LocalFileReferenceKind) => {
+    if (!set || typeof set !== "object") return;
+    for (const [path, entry] of Object.entries(set)) {
+      if (isFsFileSource(entry)) pushFile(`${fieldPrefix}[${JSON.stringify(path)}]`, entry.path, kind);
+    }
+  };
+
+  const visitFunctions = (map: Record<string, FunctionSpec> | undefined, fieldPrefix: string) => {
+    if (!map || typeof map !== "object") return;
+    for (const [name, fn] of Object.entries(map)) {
+      if (!fn || typeof fn !== "object") continue;
+      if (isFsFileSource(fn.source)) pushFile(`${fieldPrefix}.${name}.source`, fn.source.path, "function_source");
+      visitFileSet(fn.files, `${fieldPrefix}.${name}.files`, "function_source");
+    }
+  };
+  visitFunctions(spec.functions?.replace, "functions.replace");
+  visitFunctions(spec.functions?.patch?.set, "functions.patch.set");
+
+  const site = spec.site as
+    | { replace?: FileSet | LocalDirRef; patch?: { put?: FileSet | LocalDirRef } }
+    | null
+    | undefined;
+  const visitSiteTarget = (target: FileSet | LocalDirRef | undefined, fieldPath: string) => {
+    if (!target) return;
+    if (isLocalDirRef(target)) {
+      refs.push({ field_path: fieldPath, path: target.path, kind: "site_dir", expects: "directory" });
+      return;
+    }
+    visitFileSet(target, fieldPath, "site_file");
+  };
+  if (site && typeof site === "object") {
+    visitSiteTarget(site.replace, "site.replace");
+    visitSiteTarget(site.patch?.put, "site.patch.put");
+  }
+
+  const puts = spec.assets?.put;
+  if (Array.isArray(puts)) {
+    puts.forEach((entry, idx) => {
+      const source = (entry as { source?: unknown } | null)?.source;
+      if (isFsFileSource(source)) pushFile(`assets.put[${idx}].source`, source.path, "asset");
+    });
+  }
+
+  return refs;
+}
+
+/** `stat` every local reference; returns the ones that are absent or of the wrong kind. */
+export async function findMissingLocalFileReferences(
+  spec: Partial<ReleaseSpec>,
+): Promise<MissingLocalFileReference[]> {
+  const refs = collectLocalFileReferences(spec);
+  const missing: MissingLocalFileReference[] = [];
+  const seen = new Set<string>();
+  for (const ref of refs) {
+    const key = `${ref.field_path}\u0000${ref.path}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    let ok = false;
+    try {
+      const info = await stat(ref.path);
+      ok = ref.expects === "directory" ? info.isDirectory() : info.isFile();
+    } catch {
+      ok = false;
+    }
+    if (!ok) missing.push({ field_path: ref.field_path, path: ref.path, kind: ref.kind });
+  }
+  return missing;
+}
+
+const LOCAL_FILE_KIND_LABEL: Record<LocalFileReferenceKind, string> = {
+  migration_sql: "migration SQL file",
+  function_source: "function source file",
+  site_file: "site file",
+  site_dir: "site directory",
+  asset: "asset file",
+};
+
+/**
+ * Build the `MANIFEST_FILE_MISSING` envelope: the message names the first
+ * missing file, `details.missing[]` lists all of them, and there is one
+ * `create_file` next action per missing reference.
+ */
+export function manifestFileMissingError(
+  missing: MissingLocalFileReference[],
+  opts: { manifestPath?: string } = {},
+): LocalError {
+  const first = missing[0];
+  const rest = missing.length - 1;
+  const message = first
+    ? `Manifest references a ${LOCAL_FILE_KIND_LABEL[first.kind]} that does not exist: ${first.path} (${first.field_path})` +
+      (rest > 0 ? ` and ${rest} more` : "") +
+      "."
+    : "Manifest references files that do not exist.";
+  return new LocalError(message, "checking manifest file references", {
+    code: "MANIFEST_FILE_MISSING",
+    details: {
+      ...(opts.manifestPath ? { manifest_path: opts.manifestPath } : {}),
+      missing,
+    },
+    next_actions: missing.map((entry) => ({
+      type: "create_file",
+      path: entry.path,
+      field_path: entry.field_path,
+      kind: entry.kind,
+      why: `${entry.field_path} points at a ${LOCAL_FILE_KIND_LABEL[entry.kind]} that does not exist. Create it at that path, or fix the reference in the manifest, then re-run.`,
+    })),
+  });
+}
+
+/**
+ * Throw `MANIFEST_FILE_MISSING` when any local filesystem reference in the
+ * normalized spec is absent. Cheap (one `stat` per reference) — run it in
+ * `--check` / `--print-spec` and before any plan so a typo in `source.path`
+ * or a site `{ path }` never reaches the gateway.
+ */
+export async function assertLocalFileReferencesExist(
+  spec: Partial<ReleaseSpec>,
+  opts: { manifestPath?: string } = {},
+): Promise<void> {
+  const missing = await findMissingLocalFileReferences(spec);
+  if (missing.length > 0) throw manifestFileMissingError(missing, opts);
+}
+
+/**
+ * Typed ENOENT for an explicitly named manifest path: `MANIFEST_NOT_FOUND`
+ * with `details.path` and a `create_manifest` next action pointing at it.
+ */
+export function manifestNotFoundError(path: string, context: string): LocalError {
+  const starter = {
+    site: {
+      replace: {
+        "index.html": { data: "<!doctype html><h1>Hello from Run402</h1>" },
+      },
+    },
+  };
+  return new LocalError(
+    `Manifest not found: ${path}. Check the --manifest path (it is resolved against the current directory) or create the file.`,
+    context,
+    {
+      code: "MANIFEST_NOT_FOUND",
+      details: { path },
+      next_actions: [
+        {
+          type: "create_manifest",
+          path,
+          content: JSON.stringify(starter, null, 2),
+          why: "No file exists at the path given to --manifest. Create it (this minimal site manifest deploys as-is) or point --manifest at the file you meant.",
+        },
+      ],
+    },
+  );
+}
+
+function isMissingFileError(err: unknown): boolean {
+  return typeof err === "object" && err !== null && (err as { code?: unknown }).code === "ENOENT";
+}
 
 const MANIFEST_FIELDS = new Set([
   "$schema",
@@ -353,6 +562,11 @@ export async function loadDeployManifest(
   opts: LoadDeployManifestOptions = {},
 ): Promise<NormalizedDeployManifest> {
   const manifestPath = isAbsolute(path) ? path : resolvePath(process.cwd(), path);
+  try {
+    await stat(manifestPath);
+  } catch (err) {
+    if (isMissingFileError(err)) throw manifestNotFoundError(manifestPath, "loading deploy manifest");
+  }
   const extension = extname(manifestPath).toLowerCase();
   if (EXECUTABLE_MANIFEST_EXTENSIONS.has(extension)) {
     const loaded = await loadExecutableDeployConfig(manifestPath, {
@@ -382,6 +596,7 @@ export async function loadDeployManifest(
   try {
     raw = await readFile(manifestPath, "utf-8");
   } catch (err) {
+    if (isMissingFileError(err)) throw manifestNotFoundError(manifestPath, "loading deploy manifest");
     throw new LocalError(
       `Failed to read deploy manifest '${path}': ${(err as Error).message}`,
       "loading deploy manifest",
@@ -877,6 +1092,21 @@ async function mapMigration(
     try {
       out.sql = await readFile(abs, "utf-8");
     } catch (err) {
+      if (isMissingFileError(err)) {
+        const typed = manifestFileMissingError([
+          { field_path: `database.migrations[${index}].${field}`, path: abs, kind: "migration_sql" },
+        ]);
+        throw new LocalError(
+          `Failed to read migration ${field} '${sqlPath}' for ${label}: ${typed.message}`,
+          CONTEXT,
+          {
+            cause: err,
+            code: "MANIFEST_FILE_MISSING",
+            details: typed.details,
+            next_actions: typed.nextActions,
+          },
+        );
+      }
       throw new LocalError(
         `Failed to read migration ${field} '${sqlPath}' for ${label}: ${(err as Error).message}`,
         CONTEXT,

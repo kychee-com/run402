@@ -63,7 +63,7 @@ Usage:
   run402 repos <verb> [options] — fifteen verbs, tiered by how often you reach for them:
 
 Common:
-  run402 repos create [name]  [--org <org_id>] [--dir <path>] [--tier <tier>] [--project <id>]
+  run402 repos create [name]  [--org <org_id>] [--dir <path>] [--nested] [--tier <tier>] [--project <id>]
                               [--byo <s3://bucket/prefix>] [--profile <name> | --ambient] [--region <r>] [--endpoint <url>] [--no-init]
   run402 repos view           [--project <id>] [--repo <repo_id>] [--human]
   run402 repos list           [--org <org_id>] [--human]
@@ -383,6 +383,19 @@ Options:
   --dir <path>      create: the working tree to scaffold (default: cwd). Not
                     a git repository yet? One is created — \`repos create\` is
                     a from-a-directory-to-a-hosted-repo verb by definition.
+                    A directory INSIDE another repository (a monorepo app) is
+                    not: the vault is still allocated, but the remote scaffold
+                    is skipped (\`remote.status\` "skipped", the enclosing
+                    toplevel named) and the response carries a
+                    \`create_nested_repo\` next_action — re-run with --nested.
+  --nested          create: make the working tree its OWN repository even when
+                    it lies inside another one — \`git init -b main\` there, the
+                    remote added there, and exactly one line
+                    (\`/<relative path>/\`) appended to the ENCLOSING
+                    repository's local .git/info/exclude so it never shows the
+                    app as untracked noise. Nothing else in the enclosing
+                    repository is touched (no .gitignore, index, or submodule).
+                    No-op on a directory that is already its own toplevel.
   --tier <tier>     create: project tier (default: prototype) — new projects only
   --idempotency-key <key>
                     create: re-running with the same key resolves to the
@@ -740,7 +753,14 @@ function slugifyRepoName(name) {
 async function remoteBasenameCandidate(dir) {
   try {
     const { hardenedGit } = await import("#sdk/node");
-    await hardenedGit(dir, ["rev-parse", "--git-dir"]);
+    const { realpathSync } = await import("node:fs");
+    // Only a remote of `dir`'s OWN repository names this repo. A directory
+    // that merely lies inside another checkout (a monorepo app, whether or
+    // not it is about to become a nested repository via --nested) would
+    // otherwise inherit the ENCLOSING repository's origin basename — the
+    // monorepo's name, never the app's.
+    const toplevel = (await hardenedGit(dir, ["rev-parse", "--show-toplevel"])).text().trim();
+    if (realpathSync(toplevel) !== realpathSync(dir)) return null;
     for (const name of ["run402", "origin"]) {
       let url;
       try {
@@ -834,9 +854,15 @@ async function printCreateResult({ sdk, projectId, vault, adopted, name, verbose
     if (name) console.error(`repo name not claimed (non-fatal): ${err?.message ?? String(err)}`);
   }
 
-  const pushAction = vault.remote
+  // A `push_repo` action names a remote that EXISTS — only a scaffolded
+  // result has one. A skipped scaffold (the working tree lies inside another
+  // repository) allocated the vault but added no remote; its own
+  // `next_actions` (the SDK's `create_nested_repo`) name the way out.
+  const remoteScaffolded = vault.remote != null && vault.remote.status !== "skipped";
+  const pushAction = remoteScaffolded
     ? nextAction("push_repo", { command: `git push -u ${vault.remote.name} HEAD`, why: "Publish the current branch to the encrypted Run402 remote." })
     : null;
+  const remoteSkippedActions = vault.remote?.status === "skipped" ? (vault.remote.next_actions ?? []) : [];
   const claimAction = address ? null : orgSlug ? claimRepoNameAction(projectId) : claimOrgSlugAction();
   // gitvault-byo-primary-bucket task 3.5: a BYO vault's "add a copy" remedy
   // names a SECOND customer-held location (D7) — the plain mirror hint
@@ -846,7 +872,7 @@ async function printCreateResult({ sdk, projectId, vault, adopted, name, verbose
   const mirrorAction = isByo
     ? nextAction("configure_mirror", { command: "run402 repos mirror <destination>", why: GITVAULT_BYO_UNMIRRORED_REMEDY_STATEMENT })
     : nextAction("configure_mirror", { command: "run402 repos mirror <destination>", why: GITVAULT_MIRROR_SETUP_HINT });
-  const nextActions = [pushAction, mirrorAction, claimAction].filter(Boolean);
+  const nextActions = [pushAction, ...remoteSkippedActions, mirrorAction, claimAction].filter(Boolean);
 
   // Secret-bearing (recovery_receipt): built fresh every call, printed once,
   // and never spilled into any cache path — see spillIfLarge's own doc
@@ -873,8 +899,14 @@ async function printCreateResult({ sdk, projectId, vault, adopted, name, verbose
   if (address) console.error(`address: ${address}`);
   else if (!orgSlug) console.error("no named address yet — claim an org slug (run402 org slug <slug>) to get run402::<slug>/<name> addresses");
   else console.error(`no address claimed — run 'run402 repos rename <name> --project ${projectId}' to claim one`);
-  if (vault.remote) console.error(`remote '${vault.remote.name}' -> ${vault.remote.url} (${vault.remote.reason})`);
+  if (remoteScaffolded) {
+    console.error(`remote '${vault.remote.name}' -> ${vault.remote.url} (${vault.remote.reason})`);
+    if (vault.remote.nested) console.error(`nested repository inside ${vault.remote.enclosing_toplevel}${vault.remote.excluded_in_enclosing ? " — excluded there via .git/info/exclude" : " — could not write its .git/info/exclude"}`);
+  } else if (vault.remote?.status === "skipped") {
+    console.error(`remote skipped: ${vault.remote.reason}`);
+  }
   if (pushAction) console.error(`next: ${pushAction.command}`);
+  for (const action of remoteSkippedActions) if (action?.command) console.error(`next: ${action.command}`);
   if (isByo) {
     console.error(`storage: byo (${vault.byo_destination}) — ${GITVAULT_BYO_HEADLINE_STATEMENT}`);
     console.error(GITVAULT_BYO_NO_PAYLOAD_COPY_STATEMENT);
@@ -903,7 +935,7 @@ async function createAdopt(projectId, dir, a) {
   }
   try {
     const byo = resolveByoOption(a);
-    const vault = await sdk.gitvault.init({ org_id: orgId, project_id: projectId, repo_dir: dir, ...(byo ? { byo } : {}) });
+    const vault = await sdk.gitvault.init({ org_id: orgId, project_id: projectId, repo_dir: dir, ...(a.includes("--nested") ? { nested: true } : {}), ...(byo ? { byo } : {}) });
     await printCreateResult({ sdk, projectId, vault, adopted: true, name: null, verboseArgv: a });
   } catch (err) {
     reportSdkError(err);
@@ -986,7 +1018,7 @@ async function createProvision(name, dir, a) {
 
   try {
     const byo = resolveByoOption(a);
-    const vault = await sdk.gitvault.init({ org_id: effectiveOrgId, project_id: provisioned.project_id, repo_dir: dir, ...(byo ? { byo } : {}) });
+    const vault = await sdk.gitvault.init({ org_id: effectiveOrgId, project_id: provisioned.project_id, repo_dir: dir, ...(a.includes("--nested") ? { nested: true } : {}), ...(byo ? { byo } : {}) });
     await printCreateResult({ sdk, projectId: provisioned.project_id, vault, adopted: false, name, verboseArgv: a });
   } catch (err) {
     reportSdkError(err);
@@ -995,7 +1027,7 @@ async function createProvision(name, dir, a) {
 
 async function create(args) {
   const a = normalizeArgv(args);
-  assertKnownFlags(a, [...CREATE_VALUE_FLAGS, "--ambient", "--no-init", "--help", "-h", "-v", "--verbose"], CREATE_VALUE_FLAGS);
+  assertKnownFlags(a, [...CREATE_VALUE_FLAGS, "--ambient", "--no-init", "--nested", "--help", "-h", "-v", "--verbose"], CREATE_VALUE_FLAGS);
   const positionals = requirePositionalCount(a, CREATE_VALUE_FLAGS, {
     min: 0, max: 1, command: "run402 repos create [name]", missing: "",
   });

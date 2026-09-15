@@ -3,16 +3,40 @@
  * display name `up` sets on a principal that has none (principal-display-name
  * spec). Returns null when nothing specific is known: a guess is never
  * persisted as a name. `RUN402_AGENT_NAME` (read by `up` before detection)
- * is the way any runtime names itself with no per-command flag.
+ * is the way any runtime names itself with no per-command flag;
+ * `RUN402_CLIENT` declares the client for detection purposes when it has no
+ * marker of its own (checked first, before every marker).
  */
 export type DetectedClientName = "claude-code" | "codex" | "cursor" | "grok";
 
+/** Env var that names the client outright when it is not auto-detected. */
+export const CLIENT_OVERRIDE_ENV = "RUN402_CLIENT";
+
+/**
+ * The env markers each known client is detected from, in detection order
+ * (first client whose marker is truthy wins). Exported so tests and docs can
+ * enumerate the table instead of copying it.
+ */
+export const KNOWN_CLIENT_MARKERS: ReadonlyArray<{ readonly client: DetectedClientName; readonly markers: ReadonlyArray<string> }> = [
+  { client: "claude-code", markers: ["CLAUDECODE", "CLAUDE_CODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SESSION_ID"] },
+  { client: "codex", markers: ["CODEX_SANDBOX", "CODEX_CI", "OPENAI_CODEX", "CODEX_HOME"] },
+  { client: "cursor", markers: ["CURSOR_TRACE_ID", "CURSOR_SESSION_ID", "CURSOR_AGENT"] },
+  { client: "grok", markers: ["GROK_CLI", "GROK_SESSION_ID", "GROK_AGENT", "XAI_GROK", "GROK_CODE"] },
+];
+
+/** Every env var detection reads, `RUN402_CLIENT` first — for test isolation. */
+export const CLIENT_DETECTION_ENV_VARS: ReadonlyArray<string> = [
+  CLIENT_OVERRIDE_ENV,
+  ...KNOWN_CLIENT_MARKERS.flatMap((entry) => entry.markers),
+];
+
 export function detectClientName(env: NodeJS.ProcessEnv = process.env): DetectedClientName | null {
-  if (env.CLAUDECODE || env.CLAUDE_CODE || env.CLAUDE_CODE_ENTRYPOINT || env.CLAUDE_CODE_SESSION_ID) return "claude-code";
-  if (env.CODEX_SANDBOX || env.CODEX_CI || env.OPENAI_CODEX || env.CODEX_HOME) return "codex";
-  if (env.CURSOR_TRACE_ID || env.CURSOR_SESSION_ID || env.CURSOR_AGENT) return "cursor";
-  // Grok Build / Grok CLI: GROK_AGENT=1 and a per-session GROK_SESSION_ID.
-  if (env.GROK_AGENT || env.GROK_SESSION_ID) return "grok";
+  const declared = env[CLIENT_OVERRIDE_ENV];
+  const declaredClient = typeof declared === "string" ? declared.trim() : "";
+  if (declaredClient.length > 0) return declaredClient as DetectedClientName;
+  for (const entry of KNOWN_CLIENT_MARKERS) {
+    if (entry.markers.some((marker) => Boolean(env[marker]))) return entry.client;
+  }
   return null;
 }
 

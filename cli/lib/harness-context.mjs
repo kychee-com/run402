@@ -95,7 +95,9 @@ export function resolveSessionKey({
  * env overrides first (`RUN402_PROGRAM`/`RUN402_MODEL`), then `program`
  * inferred from the SAME harness signals {@link resolveSessionKey} already
  * trusts (`CLAUDE_CODE_SESSION_ID` or `CLAUDECODE` -> `"claude-code"`;
- * `CODEX_THREAD_ID` -> `"codex"`; `GROK_SESSION_ID` or `GROK_AGENT` -> `"grok"`). `model` has no harness-exposed signal to
+ * `CODEX_THREAD_ID` -> `"codex"`; `CURSOR_TRACE_ID`/`CURSOR_SESSION_ID`/
+ * `CURSOR_AGENT` -> `"cursor"`; `GROK_CLI`/`GROK_SESSION_ID`/`GROK_AGENT`/
+ * `XAI_GROK`/`GROK_CODE` -> `"grok"`). `model` has no harness-exposed signal to
  * infer from today (open question in kygit-invite design.md) — it is
  * ALWAYS env-override-or-null, never guessed from `program`. Null stays
  * null in both fields: a placeholder label would be a Faithful breach.
@@ -109,7 +111,9 @@ export function resolveHarnessLabels({ env = process.env } = {}) {
       program = "claude-code";
     } else if (env.CODEX_THREAD_ID?.trim()) {
       program = "codex";
-    } else if (env.GROK_SESSION_ID?.trim() || env.GROK_AGENT?.trim()) {
+    } else if (env.CURSOR_TRACE_ID?.trim() || env.CURSOR_SESSION_ID?.trim() || env.CURSOR_AGENT?.trim()) {
+      program = "cursor";
+    } else if (env.GROK_CLI?.trim() || env.GROK_SESSION_ID?.trim() || env.GROK_AGENT?.trim() || env.XAI_GROK?.trim() || env.GROK_CODE?.trim()) {
       program = "grok";
     }
   }

@@ -13,7 +13,7 @@
 
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -163,6 +163,97 @@ describe("scaffoldRemote — the app root only; an enclosing repository is never
     assert.equal((await hardenedGit(top, ["remote"])).text().trim(), "origin");
     // And no repository was created in the app directory.
     assert.equal(realpathSync((await hardenedGit(app, ["rev-parse", "--show-toplevel"])).text().trim()), realpathSync(top));
+    // The skip names the way out: a nested repository for the app.
+    assert.equal(r.next_actions?.length, 1);
+    assert.equal(r.next_actions![0]!.type, "create_nested_repo");
+    assert.equal(r.next_actions![0]!.command, `run402 repos create --nested --project ${PROJECT}`);
+    assert.match(r.next_actions![0]!.why ?? "", /without touching the enclosing repository/);
+    assert.equal(r.nested, undefined);
+  });
+
+  it("nested: true — the app root becomes its own repository; the enclosing one gains only an exclude line", async () => {
+    const top = await freshRepo();
+    await hardenedGit(top, ["remote", "add", "origin", "https://github.com/kychee-com/monorepo.git"]);
+    const app = join(top, "apps", "demo");
+    mkdirSync(app, { recursive: true });
+    writeFileSync(join(app, "index.html"), "<h1>demo</h1>\n");
+    writeFileSync(join(top, "README.md"), "# monorepo\n");
+
+    const r = await sdk().gitvault.scaffoldRemote({ repo_dir: app, org_id: ORG, project_id: PROJECT, nested: true });
+    assert.equal(r.status, "scaffolded");
+    assert.equal(r.nested, true);
+    assert.equal(r.created_repository, true);
+    assert.equal(r.already_present, false);
+    assert.equal(realpathSync(r.enclosing_toplevel!), realpathSync(top));
+    assert.equal(r.excluded_in_enclosing, true);
+    assert.equal(r.next_actions, undefined);
+    assert.equal(r.toplevel, undefined);
+
+    // apps/demo is its own repository on `main`, carrying the remote.
+    assert.ok(existsSync(join(app, ".git")));
+    assert.equal(realpathSync((await hardenedGit(app, ["rev-parse", "--show-toplevel"])).text().trim()), realpathSync(app));
+    assert.equal((await hardenedGit(app, ["symbolic-ref", "HEAD"])).text().trim(), "refs/heads/main");
+    assert.equal(await remoteUrl(app, "run402"), OUR_URL);
+
+    // The enclosing repository: exactly one exclude line, nothing else —
+    // its remotes are what they were, no .gitignore appeared, its index is
+    // empty, and `git status` no longer lists the app as untracked noise.
+    const exclude = readFileSync(join(top, ".git", "info", "exclude"), "utf-8");
+    assert.equal(exclude.split("\n").filter((line) => line === "/apps/demo/").length, 1);
+    assert.equal((await hardenedGit(top, ["remote"])).text().trim(), "origin");
+    assert.equal(existsSync(join(top, ".gitignore")), false);
+    assert.equal(existsSync(join(top, ".gitmodules")), false);
+    assert.equal((await hardenedGit(top, ["ls-files", "--stage"])).text().trim(), "");
+    const porcelain = (await hardenedGit(top, ["status", "--porcelain", "--untracked-files=all"])).text();
+    assert.ok(!porcelain.includes("apps/demo"), `enclosing status must not list the nested repo:\n${porcelain}`);
+    assert.ok(porcelain.includes("README.md"), "the enclosing repository's own untracked files are still reported");
+
+    // Idempotent: a second nested call re-reports the same shape, adds no
+    // second exclude line, and re-inits nothing.
+    const again = await sdk().gitvault.scaffoldRemote({ repo_dir: app, org_id: ORG, project_id: PROJECT, nested: true });
+    assert.equal(again.status, "scaffolded");
+    assert.equal(again.nested, true);
+    assert.equal(again.created_repository, false);
+    assert.equal(again.already_present, true);
+    assert.equal(again.existing_url, OUR_URL);
+    assert.equal(realpathSync(again.enclosing_toplevel!), realpathSync(top));
+    assert.equal(again.excluded_in_enclosing, true);
+    const excludeAgain = readFileSync(join(top, ".git", "info", "exclude"), "utf-8");
+    assert.equal(excludeAgain.split("\n").filter((line) => line === "/apps/demo/").length, 1);
+    assert.equal((await hardenedGit(app, ["symbolic-ref", "HEAD"])).text().trim(), "refs/heads/main");
+  });
+
+  it("nested: true inside a linked worktree excludes via the common dir (rev-parse --git-path)", async () => {
+    const top = await freshRepo();
+    writeFileSync(join(top, "README.md"), "# monorepo\n");
+    await hardenedGit(top, ["add", "README.md"]);
+    await hardenedGit(top, ["commit", "-q", "-m", "init"]);
+    const wt = join(root, "wt");
+    await hardenedGit(top, ["worktree", "add", "-q", wt]);
+    const app = join(wt, "apps", "demo");
+    mkdirSync(app, { recursive: true });
+    const r = await sdk().gitvault.scaffoldRemote({ repo_dir: app, org_id: ORG, project_id: PROJECT, nested: true });
+    assert.equal(r.status, "scaffolded");
+    assert.equal(r.nested, true);
+    assert.equal(realpathSync(r.enclosing_toplevel!), realpathSync(wt));
+    assert.equal(r.excluded_in_enclosing, true);
+    // The worktree's `.git` is a file pointing at the common dir; the exclude
+    // lives there, and the worktree's status honors it.
+    const exclude = readFileSync(join(top, ".git", "info", "exclude"), "utf-8");
+    assert.ok(exclude.split("\n").includes("/apps/demo/"));
+    const porcelain = (await hardenedGit(wt, ["status", "--porcelain", "--untracked-files=all"])).text();
+    assert.ok(!porcelain.includes("apps/demo"), `worktree status must not list the nested repo:\n${porcelain}`);
+  });
+
+  it("nested: true on a directory in no repository at all is the ordinary scaffold (nested is moot)", async () => {
+    const dir = join(root, "standalone");
+    mkdirSync(dir, { recursive: true });
+    const r = await sdk().gitvault.scaffoldRemote({ repo_dir: dir, org_id: ORG, project_id: PROJECT, nested: true });
+    assert.equal(r.status, "scaffolded");
+    assert.equal(r.created_repository, true);
+    assert.equal(r.nested, undefined);
+    assert.equal(r.enclosing_toplevel, undefined);
+    assert.equal((await hardenedGit(dir, ["symbolic-ref", "HEAD"])).text().trim(), "refs/heads/main");
   });
 
   it("the toplevel itself is scaffolded normally", async () => {

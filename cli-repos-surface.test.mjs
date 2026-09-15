@@ -505,6 +505,61 @@ describe("run402 repos create — provision + allocate + scaffold, zero deploy c
     assert.equal(pushAction.command, "git push -u origin HEAD");
   });
 
+  it("--nested forwards nested: true to gitvault.init (a monorepo app root becomes its own repository)", async () => {
+    impl.gitvaultInit = async (input) => ({
+      repo_id: REPO,
+      project_id: input.project_id,
+      recovery_receipt: { format: "r402s/v0", object_kind: "recovery_receipt" },
+      genesis_sha256: "d1277eb4",
+      remote: { status: "scaffolded", name: "run402", url: `run402::${input.org_id}/${input.project_id}`, created_repository: true, already_present: false, existing_url: null, reason: "no existing 'run402' remote — added", nested: true, enclosing_toplevel: "/somewhere/monorepo", excluded_in_enclosing: true },
+      deduplicated: false,
+      terminal_loss_statement: "TERMINAL LOSS STATEMENT",
+    });
+    const payload = await ok("create", ["nested-notes", "--org", ORG, "--nested"]);
+    const initCall = calls.find((c) => c.method === "gitvault.init");
+    assert.ok(initCall);
+    assert.equal(initCall.input.nested, true);
+    assert.equal(payload.remote.nested, true);
+    assert.equal(payload.remote.enclosing_toplevel, "/somewhere/monorepo");
+    const pushAction = payload.next_actions.find((a) => a.type === "push_repo");
+    assert.ok(pushAction, "a nested scaffold has a real remote to push to");
+    assert.equal(pushAction.command, "git push -u run402 HEAD");
+    assert.equal(payload.next_actions.find((a) => a.type === "create_nested_repo"), undefined);
+  });
+
+  it("without --nested, gitvault.init is not asked to nest", async () => {
+    await ok("create", ["plain-notes", "--org", ORG]);
+    const initCall = calls.find((c) => c.method === "gitvault.init");
+    assert.equal(initCall.input.nested, undefined);
+  });
+
+  it("a skipped remote (app root inside another repository) yields no push_repo action, only create_nested_repo", async () => {
+    impl.gitvaultInit = async (input) => ({
+      repo_id: REPO,
+      project_id: input.project_id,
+      recovery_receipt: { format: "r402s/v0", object_kind: "recovery_receipt" },
+      genesis_sha256: "d1277eb4",
+      remote: {
+        status: "skipped", name: "run402", url: `run402::${input.org_id}/${input.project_id}`, created_repository: false, already_present: false, existing_url: null,
+        reason: "/somewhere/monorepo/apps/demo is inside the repository at /somewhere/monorepo — an enclosing repository is never touched",
+        toplevel: "/somewhere/monorepo",
+        next_actions: [{ type: "create_nested_repo", command: `run402 repos create --nested --project ${input.project_id}`, why: "The app lives inside the repository at /somewhere/monorepo; a nested repo keeps an encrypted remote for the app without touching the enclosing repository." }],
+      },
+      deduplicated: false,
+      terminal_loss_statement: "TERMINAL LOSS STATEMENT",
+    });
+    const payload = await ok("create", ["mono-notes", "--org", ORG]);
+    assert.equal(payload.repo_id, REPO, "the vault is still allocated");
+    assert.equal(payload.remote.status, "skipped");
+    assert.equal(payload.remote.toplevel, "/somewhere/monorepo");
+    assert.equal(payload.next_actions.find((a) => a.type === "push_repo"), undefined, "never a git push to a remote that was not added");
+    const nestedAction = payload.next_actions.find((a) => a.type === "create_nested_repo");
+    assert.ok(nestedAction, "the way out is named");
+    assert.equal(nestedAction.command, `run402 repos create --nested --project ${PROJECT}`);
+    assert.ok(stderr.some((line) => line.includes("remote skipped:")), "stderr names the skipped remote");
+    assert.ok(!stderr.some((line) => line.startsWith("next: git push")), "stderr never suggests a push to a missing remote");
+  });
+
   it("infers the name from the directory basename when no name is given", async () => {
     const inferDir = join(scratch, "inferred-repo-name");
     mkdirSync(inferDir, { recursive: true });
@@ -516,6 +571,26 @@ describe("run402 repos create — provision + allocate + scaffold, zero deploy c
       const provisionCall = calls.find((c) => c.method === "projects.provision");
       assert.equal(provisionCall.input.name, "inferred-repo-name");
       assert.equal(payload.project_id, PROJECT);
+    } finally {
+      process.chdir(prevCwd);
+    }
+  });
+
+  it("infers the name from the app directory, not the ENCLOSING repository's remote, for a monorepo app", async () => {
+    const mono = join(scratch, "monorepo-for-inference");
+    const app = join(mono, "apps", "demo-app");
+    mkdirSync(app, { recursive: true });
+    git(mono, ["init", "-q", "-b", "main", "."]);
+    git(mono, ["remote", "add", "origin", "https://github.com/kychee-com/monorepo-for-inference.git"]);
+    const prevCwd = process.cwd();
+    process.chdir(app);
+    try {
+      const payload = await ok("create", ["--org", ORG, "--nested"]);
+      const provisionCall = calls.find((c) => c.method === "projects.provision");
+      assert.equal(provisionCall.input.name, "demo-app", "the enclosing origin's basename is not this app's name");
+      assert.equal(payload.project_id, PROJECT);
+      const initCall = calls.find((c) => c.method === "gitvault.init");
+      assert.equal(initCall.input.nested, true);
     } finally {
       process.chdir(prevCwd);
     }

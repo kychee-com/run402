@@ -79,7 +79,25 @@ Usage:
   run402 --wallet <profile> doctor --buzz --buzz-agent <npub-or-hex>
 
 Output:
-  Stdout is a JSON report { ok, checks: [{ name, status, value?, hint?, message? }] }.
+  Stdout is a JSON report:
+    { ok,
+      blocking: [{ check, status, message, hint? }],
+      warnings: [{ check, code?, message, hint? }],
+      checks:   [{ name, status, severity, value?, hint?, message? }] }
+  \`ok\` answers ONE question — can this agent ship from here — and is true
+  exactly when \`blocking[]\` is empty. Every check carries a \`severity\`:
+    blocking  would stop a deploy: config_dir / allowance missing or error,
+              api_reachable error, tier inactive / frozen / past_due /
+              dormant / missing / error, error-severity source_scan findings
+    advisory  a warning that never stops a deploy: operator_health,
+              recovery_posture, gitvault, runtime_staleness, cli_update gaps
+    info      ok / skipped / unknown
+  Agents: branch on \`ok\`; read \`warnings[]\` (one entry per gap) for the
+  non-blocking gaps and \`blocking[]\` for what to fix when \`ok\` is false.
+  \`--only\` and \`--refresh\` runs have the same shape. The tier check's
+  status is a fixed vocabulary — ok | inactive | frozen | past_due | dormant
+  | purged | missing | unknown | error — never a tier name; the tier name
+  and raw lifecycle ride in value.tier / value.lifecycle.
   Buzz mode adds { mode: "buzz", contract_id, generated_at, mutation_state,
   binding, telemetry } and uses check status ok|warning|blocked.
 
@@ -130,7 +148,10 @@ Checks performed:
   - Allowance is configured and on a valid rail (x402 / mpp)
   - Keystore has at least one wallet
   - API_BASE is reachable (network check via /health)
-  - Active tier resolves and is not 'past_due' / 'frozen'
+  - Active tier resolves and is not 'past_due' / 'frozen' / 'dormant'. A wallet
+    whose OWN organization holds no tier but that can reach projects owned by
+    another organization (membership or grant) reports status 'missing' as an
+    advisory, not a blocker — deploys to those projects are unaffected.
   - Function runtime staleness: deployed functions running an older platform
     runtime than the current gateway build (refresh with 'run402 functions
     rebuild --all'; re-bundles from your stored source, no source change)
@@ -157,9 +178,88 @@ Buzz mode checks (in order):
   operator, runtime-staleness, and source-tree checks.
 
 Exit codes:
-  0  — all checks pass
-  1  — one or more checks failed (details in output)
+  0  — ok: true (advisory warnings never change the exit code)
+  1  — ok: false (one or more blocking checks; see blocking[])
 `;
+
+/**
+ * Check statuses that carry no finding at all. Everything else is either the
+ * one advisory status (`warning`) or a blocking status — so a NEW status
+ * string that slips into a check (a lifecycle name, a tier name, a typo)
+ * fails closed as blocking instead of silently passing.
+ */
+const INFO_STATUSES = new Set(["ok", "skipped", "unknown"]);
+
+/** Non-active organization lifecycle states the gateway can report (`organization-lifecycle` spec); each is its own blocking tier status. */
+const TIER_LIFECYCLE_STATUSES = new Set(["past_due", "frozen", "dormant", "purged"]);
+
+/**
+ * The severity contract, in one place: `blocking` = would stop this agent
+ * from shipping; `advisory` = a gap worth surfacing that never stops a
+ * deploy; `info` = nothing to act on. A check may pin its own `severity`
+ * explicitly (the tier check does, for the missing-but-can-reach-projects
+ * shape); otherwise it is derived from `status`.
+ */
+function severityOf(check) {
+  if (check.severity === "blocking" || check.severity === "advisory" || check.severity === "info") return check.severity;
+  if (INFO_STATUSES.has(check.status)) return "info";
+  if (check.status === "warning") return "advisory";
+  return "blocking";
+}
+
+/** Stable codes for advisory checks that report ONE finding (no `value.gaps`), keyed by check name. */
+const ADVISORY_CODES = {
+  cli_update: "CLI_UPDATE_AVAILABLE",
+  runtime_staleness: "FUNCTION_RUNTIME_STALE",
+  source_scan: "SOURCE_SCAN_WARNINGS",
+  tier: "TIER_MISSING_ON_OWN_ORG",
+};
+
+/**
+ * Fold the per-check report into the agent-facing envelope:
+ * `{ ok, blocking[], warnings[], checks[] }`. `warnings[]` carries one entry
+ * per gap string of every advisory check (plus one for an advisory check
+ * with no gaps); `blocking[]` carries one entry per blocking check and is
+ * empty exactly when `ok` is true. Pure — the same fold serves a full run,
+ * `--only`, and `--refresh`.
+ */
+export function buildDoctorReport(rawChecks) {
+  const checks = rawChecks.map((check) => {
+    const { name, status, severity: _pinned, ...rest } = check;
+    return { name, status, severity: severityOf(check), ...rest };
+  });
+  const blocking = [];
+  const warnings = [];
+  for (const check of checks) {
+    if (check.severity === "blocking") {
+      blocking.push({
+        check: check.name,
+        status: check.status,
+        message: check.message ?? `${check.name}: ${check.status}`,
+        ...(check.hint && { hint: check.hint }),
+      });
+      continue;
+    }
+    if (check.severity !== "advisory") continue;
+    const gaps = Array.isArray(check.value?.gaps) ? check.value.gaps.filter((g) => typeof g === "string" && g.length > 0) : [];
+    if (gaps.length > 0) {
+      for (const gap of gaps) {
+        warnings.push({ check: check.name, message: gap, ...(check.hint && { hint: check.hint }) });
+      }
+    } else {
+      const code = check.code ?? ADVISORY_CODES[check.name];
+      const message = check.message ?? check.hint ?? `${check.name}: ${check.status}`;
+      warnings.push({
+        check: check.name,
+        ...(code && { code }),
+        message,
+        // Only carry `hint` when it adds something the message does not.
+        ...(check.hint && check.hint !== message && { hint: check.hint }),
+      });
+    }
+  }
+  return { ok: blocking.length === 0, blocking, warnings, checks };
+}
 
 function redactAllowanceForDiagnostics(allowance) {
   if (!allowance || typeof allowance !== "object") return allowance;
@@ -368,36 +468,71 @@ export async function run(sub, args = []) {
   }
 
   // 5. Active tier.
+  //
+  // `status` is a FIXED vocabulary — ok | inactive | frozen | past_due |
+  // dormant | purged | missing | unknown | error — never the tier name and
+  // never a raw gateway string: the old derivation fell through to
+  // `tierName ?? "missing"`, which could put a tier NAME ("team") in the
+  // status slot, and any status outside the ok-allowlist silently flipped
+  // the whole report to ok:false while looking benign. The tier name and the
+  // raw lifecycle ride in value.tier / value.lifecycle instead.
   if (wanted("tier")) try {
     const sdk = getSdk();
     const tier = await sdk.tier.status();
-    const tierName = tier?.tier ?? null;
-    const lifecycle = tier?.organization_lifecycle_state ?? null;
+    const tierName = typeof tier?.tier === "string" && tier.tier.length > 0 ? tier.tier : null;
+    const lifecycle = typeof tier?.organization_lifecycle_state === "string" && tier.organization_lifecycle_state.length > 0
+      ? tier.organization_lifecycle_state
+      : null;
     const active = tier?.active === true;
-    if (tierName && active && lifecycle === "active") {
-      checks.push({
-        name: "tier",
-        status: "ok",
-        value: { tier: tierName, active, organization_lifecycle_state: lifecycle },
-      });
+    // Projects this wallet can reach through org membership or a grant —
+    // the tier read already carries them. A wallet whose OWN org-of-one
+    // never bought a tier can still ship into another org's projects, so
+    // "missing" is only a blocker when there is nowhere to ship.
+    const reachableProjects = Array.isArray(tier?.projects) ? tier.projects.length : 0;
+    let status;
+    if (lifecycle !== null && lifecycle !== "active") {
+      status = TIER_LIFECYCLE_STATUSES.has(lifecycle) ? lifecycle : "inactive";
+    } else if (tierName === null) {
+      status = "missing";
+    } else if (!active) {
+      status = "inactive";
+    } else if (lifecycle === null) {
+      status = "unknown";
     } else {
-      const status = lifecycle && lifecycle !== "active"
-        ? lifecycle
-        : tierName && !active
-          ? "inactive"
-          : tierName && lifecycle === null
-            ? "unknown"
-            : tierName ?? "missing";
+      status = "ok";
+    }
+    const value = {
+      tier: tierName,
+      lifecycle,
+      active,
+      organization_lifecycle_state: lifecycle,
+      lease_expires_at: tier?.lease_expires_at ?? null,
+      reachable_projects: reachableProjects,
+    };
+    if (status === "ok") {
+      checks.push({ name: "tier", status, value });
+    } else if (status === "missing" && reachableProjects > 0) {
       checks.push({
         name: "tier",
         status,
-        value: {
-          tier: tierName,
-          active,
-          organization_lifecycle_state: lifecycle,
-          lease_expires_at: tier?.lease_expires_at ?? null,
-        },
-        hint: lifecycle === null && tierName
+        severity: "advisory",
+        value,
+        message: `this wallet's own organization holds no tier, but it can reach ${reachableProjects} project(s) owned by another organization (membership or grant) — deploys to those are unaffected`,
+        hint: "Run 'run402 tier set prototype' only if you want to provision projects under this wallet's own organization.",
+      });
+    } else {
+      checks.push({
+        name: "tier",
+        status,
+        value,
+        message: status === "unknown"
+          ? "tier resolved, but the organization lifecycle could not be determined"
+          : status === "missing"
+            ? "no tier on this wallet's organization and no reachable project — nothing can be provisioned or deployed from here"
+            : status === "inactive"
+              ? `tier '${tierName ?? "(none)"}' is not active${lifecycle && lifecycle !== "active" ? ` (organization lifecycle '${lifecycle}')` : ""}`
+              : `organization lifecycle is '${lifecycle}' — the control plane is gated until the tier is reactivated`,
+        hint: status === "unknown"
           ? "Tier resolved, but organization lifecycle could not be determined. Check `run402 tier status` before assuming the account is healthy."
           : "Run 'run402 tier set prototype' to subscribe, renew, or reactivate the tier.",
       });
@@ -838,11 +973,10 @@ export async function run(sub, args = []) {
     }
   }
 
-  // 'warning' counts as ok for exit-code purposes — gaps are surfaced in
-  // output but don't fail the doctor. Only hard 'error' / 'missing' /
-  // 'empty' fail.
-  const allOk = checks.every((c) => c.status === "ok" || c.status === "warning" || c.status === "skipped" || c.status === "unknown");
-
-  console.log(JSON.stringify({ ok: allOk, checks }, null, 2));
-  process.exit(allOk ? 0 : 1);
+  // `ok` is structural — "no check is blocking" — never an allowlist of
+  // status strings. Advisory warnings ride in `warnings[]` and never change
+  // the exit code; `blocking[]` is what to fix when `ok` is false.
+  const report = buildDoctorReport(checks);
+  console.log(JSON.stringify(report, null, 2));
+  process.exit(report.ok ? 0 : 1);
 }

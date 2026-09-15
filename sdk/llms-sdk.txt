@@ -246,7 +246,7 @@ import { Run402Action, run402 } from "@run402/sdk/node";
 const r = run402();
 
 await r.up({ name: "my-app" }, { approval: "yes" });
-// result.identity: { display_name, source }  — the principal's name: RUN402_AGENT_NAME, else a detected client, when empty; nothing is written when nothing is known (source "undetected")
+// result.identity: { display_name, source, detected, detection }  — the principal's name: RUN402_AGENT_NAME (overrides an existing name), else a detected client (claude-code, codex, cursor, grok, or RUN402_CLIENT=<name>) when empty; nothing is written when nothing is known (source "undetected"). `detected` is what was seen either way; `detection.reason` "name_already_set" means a client was detected but the existing name was kept.
 // result.deploy.rehearsal: { status: "passed" | "skipped", … } — automatic for a live-release project with migrations
 // input.noRehearse / input.identityName override both.
 
@@ -530,7 +530,7 @@ const info = await r.projects.info(projectId);
 
 ## Rehearsals, snapshots, and branches
 
-Rehearsal is automatic inside `apply()` and `r.up()`: when the plan's `rehearsal.available` is true (migrations, and the project has a live release), the plan is rehearsed on a contained branch and committed only on a passing report, bound to the report's `required_plan`. The result carries `rehearsal: { status: "passed", report, operation_id, branch_project_id }`, or `{ status: "skipped", reason: "no_live_release" | "no_migrations" | "disabled" | "reviewed_plan" | "unsupported" }`. A failed rehearsal throws `Run402DeployError` with `code: "REHEARSAL_FAILED"` (the report is in `body.rehearsal`); nothing is committed. Pass `{ noRehearse: true }` to skip it. `onEvent` sees `rehearsal.started`, `rehearsal.finished`, and `rehearsal.skipped`.
+Rehearsal is automatic inside `apply()` and `r.up()`: when the plan's `rehearsal.available` is true (migrations, and the project has a live release), the plan is rehearsed on a contained branch and committed only on a passing report, bound to the report's `required_plan`. The result carries `rehearsal: { status: "passed", report, operation_id, branch_project_id }`, or `{ status: "skipped", reason: "no_live_release" | "no_migrations" | "migrations_unchanged" | "disabled" | "reviewed_plan" | "unsupported" }` (`migrations_unchanged`: every migration is already applied with an identical checksum — `plan.migrations.new` is empty — so nothing is rehearsed and a page-only redeploy ships in seconds). A failed rehearsal throws `Run402DeployError` with `code: "REHEARSAL_FAILED"` (the report is in `body.rehearsal`); nothing is committed. Pass `{ noRehearse: true }` to skip it. `onEvent` sees `rehearsal.started`, `rehearsal.finished`, and `rehearsal.skipped`.
 
 The primitive is still there for experts: `r.project(id).apply.rehearse(planId, { teardown })` rehearses an already-persisted plan without committing (a project with no live release rehearses on an EMPTY branch — never a refusal).
 
@@ -978,7 +978,7 @@ Known route warning codes and recovery:
 
 | Code | Meaning | Recovery |
 |---|---|---|
-| `PUBLIC_ROUTED_FUNCTION` | A route makes the target function public same-origin browser ingress. | Review app auth, CSRF, CORS/`OPTIONS`, and cookies; direct `/functions/v1/:name` remains API-key protected. Prefer `allowWarningCodes: ["PUBLIC_ROUTED_FUNCTION"]` after review; broad `allowWarnings` only after every warning was reviewed. |
+| `PUBLIC_ROUTED_FUNCTION` | A route makes the target function public same-origin browser ingress. | Informational (`requires_confirmation: false`): it never blocks `apply` and needs no `allowWarningCodes` entry. Review app auth, CSRF, CORS/`OPTIONS`, and cookies; direct `/functions/v1/:name` remains API-key protected. Only warnings with `requires_confirmation: true` need `allowWarningCodes`. |
 | `ROUTE_TARGET_CARRIED_FORWARD` | A carried-forward route still points at a base-release function target. | Inspect active routes with release observability and deploy `routes.replace` if the target should change. |
 | `ROUTE_SHADOWS_STATIC_PATH` | A dynamic route shadows one static path. | Inspect warning details and active release routes; confirm only when intentional. |
 | `WILDCARD_ROUTE_SHADOWS_STATIC_PATHS` | A prefix route shadows static paths. | Review affected paths, split exact routes if needed, and confirm only when intentional. |
@@ -1679,7 +1679,13 @@ deploy(projectId, opts: {
   deps?: string[], schedule?: string | null,
 }): Promise<FunctionDeployResult> // routes through unified apply (functions.patch.set). result: { name, url, status, runtime, schedule, warnings }; runtime_version & deps_resolved are null via this path - read r.functions.list() for resolved versions
 invoke(projectId, name, opts?: { method?, body?, headers?, idempotencyKey?, wait? }): Promise<FunctionInvokeResult> // paid calls require a stable idempotencyKey; wait polls a 202 run handle and replays the same key for the retained result
-logs(projectId, name, opts?: { tail?, since?, requestId? }): Promise<FunctionLogsResult>
+logs(projectId, name, opts?: { tail?, since?, requestId?, origin? }): Promise<FunctionLogsResult>
+  // every entry carries origin: "app" | "platform" (computed client-side by the exported classifyFunctionLogLine);
+  // origin filters client-side (default "all") and the result reports origin + hidden: { platform, app } when filtered
+logsByRequestId(projectId, requestId, opts?: { tail?, since?, origin?, functionName? }): Promise<FunctionLogsByRequestIdResult>
+  // project-wide request-id search (the x-run402-request-id response header; fnrun_/fnatt_ ids too): lists the project's
+  // functions (or just functionName), reads each with the request_id filter, returns { request_id, scanned, entries (each
+  // with function), errors (each with function, message, code?), origin, hidden? } merged oldest-first. Also r.project(id).functions.logsByRequestId(...)
 update(projectId, name, opts: { schedule?, timeout?, memory? }): Promise<FunctionUpdateResult>
 list(projectId): Promise<FunctionListResult> // FunctionSummary includes runtime_version?, runtime_current_version?, runtime_minimum_version?, and runtime_stale?
 delete(projectId, name): Promise<void>

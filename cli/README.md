@@ -4,7 +4,7 @@ Command-line interface for [Run402](https://run402.com) — provision Postgres d
 
 The CLI lets an agent act as its own first-class Run402 principal rather than borrowing a human account. Identity records who invoked an action; organization roles, grants, delegates, freshness, and spend policy determine what that principal may do. People remain first-class owners and collaborators without becoming routine CLI operators.
 
-For the full CLI reference (every flag, every subcommand) see **<https://docs.run402.com/llms-cli.txt>**.
+For the full CLI reference (every flag, every subcommand) start at **<https://docs.run402.com/llms-cli.txt>** — the index holds the first-deploy contract and links one fetchable `/llms-cli-<slice>.txt` per topic (deploy, commands, repos, orgs, functions, assets, ops, errors, frontend, platform); <https://docs.run402.com/llms-cli-full.txt> is the whole reference as one document.
 
 ## Install
 
@@ -357,7 +357,7 @@ The canonical, comprehensive CLI reference — every flag, every subcommand, edg
 
 **<https://docs.run402.com/llms-cli.txt>**
 
-Same content also at [`cli/llms-cli.txt`](./llms-cli.txt) in the repo. Treat that file as authoritative; this README is a quick-orientation landing page.
+Same content also at [`cli/llms-cli.txt`](./llms-cli.txt) (index), [`cli/llms-cli-<slice>.txt`](./) (topic slices) and [`cli/llms-cli-full.txt`](./llms-cli-full.txt) (everything) in the repo. Treat those files as authoritative; this README is a quick-orientation landing page.
 
 ## Other interfaces
 

@@ -548,7 +548,7 @@ The community control plane keeps four concepts separate: installing the skill i
 npm install -g run402@latest
 ```
 
-Every subcommand prints JSON to stdout, JSON errors to stderr, exits 0 on success and 1 on failure: designed for an agent shell, not a human. Full reference: [`cli/llms-cli.txt`](./cli/llms-cli.txt) (also at <https://docs.run402.com/llms-cli.txt>).
+Every subcommand prints JSON to stdout, JSON errors to stderr, exits 0 on success and 1 on failure: designed for an agent shell, not a human. Full reference: [`cli/llms-cli.txt`](./cli/llms-cli.txt) (also at <https://docs.run402.com/llms-cli.txt>) — an index carrying the whole first-deploy contract plus a table of fetchable topic slices (`/llms-cli-deploy.txt`, `/llms-cli-commands.txt`, `/llms-cli-functions.txt`, …); `/llms-cli-full.txt` is the whole thing in one document.
 
 ```bash
 run402 up --name my-app -y                # recursive SDK action runner: init/tier/project/link/deploy
@@ -936,7 +936,7 @@ Architecture: every tool / subcommand / skill script is a thin shim over an `@ru
 - Web: <https://run402.com>
 - Self-host backend (run402 Core): <https://github.com/kychee-com/run402-core>
 - API docs (HTTP): <https://run402.com/llms.txt> · <https://run402.com/openapi.json>
-- CLI docs: <https://docs.run402.com/llms-cli.txt>
+- CLI docs: <https://docs.run402.com/llms-cli.txt> (index + fetchable slices; <https://docs.run402.com/llms-cli-full.txt> for the whole reference)
 - Status: <https://api.run402.com/status>
 - Health: <https://api.run402.com/health>
 

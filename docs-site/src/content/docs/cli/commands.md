@@ -1,0 +1,169 @@
+---
+title: "Core commands"
+description: "Command reference for up, init, pay, status, wallets, allowance, tier, credentials, projects, admin, apply/rehearsal/snapshots/branches, deploy, ci, and transfer."
+order: 3
+slice: commands
+summary: "up, init, pay, status, wallets, allowance, tier, credentials, projects, apply, deploy, ci, transfer"
+---
+
+## Command Reference
+
+### up
+- `run402 up [repo-or-path] [--name <name>] [--project <id>] [--manifest <path>] [--dir <path>] [--tier <prototype|hobby|team>] [-y|--yes] [--check|--print-spec|--plan|--require-plan <id>] [--verify] [--propagation-budget-s <seconds>] [--no-propagation-wait] [--quiet]` — SDK-owned recursive app deploy. Validates `run402.deploy.json`/`app.json`, requires explicit `--manifest` for executable `.ts/.js` configs, ensures missing Cloud prerequisites when approved, resolves/creates/links a project, then applies the manifest. Output includes `steps[]`; success has no top-level `status`. Use `--check` for local-only validation, `--print-spec` for normalized `ReleaseSpec`, `--plan` for a gateway-reviewed non-deploying plan, and `--require-plan` for exact reviewed apply. App HTTP verification reports fresh edge misses as `propagation_pending`, waits up to `--propagation-budget-s` (default 120), and `--no-propagation-wait` returns the pending state immediately. Add `--verify` to wait for gateway/edge release coherence after the deploy and attach `edge_coherence`; non-coherence exits 2.
+- `run402 up verify [repo-or-path] [--project <id>] [--manifest <path>] [--dir <path>] [--propagation-budget-s <seconds>] [--no-propagation-wait] [--quiet]` — rerun manifest HTTP verification (app manifest `verify.http[]` or deploy-manifest top-level `verify`) without deploying, uploading, creating a project, or mutating resources. Use it after `propagation_pending` or before declaring a consumer copy healthy.
+
+### init
+- `run402 init` — set up with x402 (Base Sepolia). Creates allowance, requests faucet, checks tier, lists projects.
+- `run402 init --api-base <url>` — configure the active profile to target a Run402 Core/API base. For Core, this does not create an allowance, request faucet funds, or require a Cloud tier.
+- `run402 init mpp` — set up with MPP (Tempo Moderato testnet). Same steps, different payment rail.
+- `run402 init lightning` — the Lightning allowance: the same Base allowance (the x402 fallback) plus a budgeted Lightning wallet the platform mints on Run402's own Hub (`POST /agent/v1/lightning-wallet`; custody `run402_hub`, a starter amount funded by the platform). The one-time pairing is stored in `allowance.json` beside the Base key and never printed; `rail` becomes `lightning`, so tier purchases and image generation answer a Lightning challenge first and fall back to x402. The summary carries `lightning: { wallet_id, status, lightning_address, budget_sats, starter_sats, balance_sats, custody, outcome }`; `outcome: "minting"` means rerun in a few seconds, `"unavailable"` means no Hub on this gateway (x402 keeps paying).
+- `run402 init <rail> --switch-rail` — switch the persisted rail; re-running with the same rail is idempotent.
+
+### pay
+
+`run402 pay <url> [--method <M>] [--body <json-or-text>] [--max-usd <amount>] [--idempotency-key <key>] [--require-receipt]` calls an arbitrary x402-priced HTTP endpoint through the SDK buyer. The request body goes in `--body` and nowhere else: `--json` is the CLI-wide output-format flag, takes no value, and is a no-op here because `pay` always prints JSON. Writing `--json '<payload>'` does not send the payload — it fails `BAD_USAGE` with a hint naming `--body`. The default ceiling is `$0.10`; `--max-usd` accepts up to six decimal places and is converted exactly to USD micros. `--require-receipt` requires a verified wallet-rooted offer before payment and a matching receipt afterward. JSON output is the complete `x402-commerce-result.v1` envelope with settlement, movement/replay, delivery, offer, merchant-receipt, signer-relationship, policy, and portable evidence. Unpriced URLs return `payment: null`. For `PAYMENT_INTENT_PENDING` on a trusted Run402 host, wait for `Retry-After` and repeat the identical command with the same payer, request, and key. Never substitute a fresh key. Custom/arbitrary hosts and other `funds_moved: "unknown"` outcomes remain ambiguous and require reconciliation.
+
+```bash
+run402 pay https://seller.example/translate --method POST \
+  --body '{"text":"hello"}' --max-usd 0.05 \
+  --idempotency-key translation:1 --require-receipt
+```
+
+### status
+`run402 status` — show full organization state in one shot (wallet, rail, balances, tier, projects, active project). Read-only, JSON output. Includes a `wallet: { local_label, server_label, address }` object naming the active named wallet (`local_label` is the local selector, `server_label` the server-synced display name or null), a top-level `rail`, and a `balances: { on_chain_usd_micros, on_chain_token, prepaid_credit_usd_micros, held_usd_micros }` object. The on-chain token tracks the rail (USDC on x402, pathUSD on mpp); prepaid credit is rail-independent.
+
+### wallets
+Manage multiple named wallets (profiles) on one machine. Keys never leave the machine (non-custodial). The `default` wallet lives at the config-dir root; named wallets live under `{config_dir}/profiles/<name>/`.
+- `run402 wallets list` — JSON array of `{ local_label, server_label, address, address_short, rail, active }`. Reads non-secret `meta.json`; never loads private keys.
+- `run402 wallets current` — the resolved active wallet `{ name, source, source_detail, address, label, warnings }`. `source` ∈ flag|env|binding|config|default. `warnings` surfaces env-vs-binding conflicts and local-name-vs-server-label drift.
+- `run402 wallets new <name> [--mpp | --rail <x402|mpp|lightning>]` — create a new named wallet (generates a key). `{ name, address, rail, created: true }`. A `lightning` wallet is minted on the platform by `run402 --wallet <name> init lightning`.
+- `run402 wallets lightning [status|mint|revoke]` — the active wallet's Lightning allowance. `status` reads the platform record plus a best-effort balance and remaining budget over NWC (`{ rail, lightning: { wallet_id, status, custody, lightning_address, budget_sats, starter_sats, has_pairing, balance_sats, budget_remaining_sats } }`); `mint` is `init lightning`'s wallet step alone; `revoke` deletes the sub-wallet on Run402's Hub, forgets the pairing, and returns the rail to x402. The pairing secret is never printed.
+- `run402 wallets use <name>` — set the global default wallet (`config.json` `active_wallet`). `{ name, active: true }`.
+- `run402 wallets rename <old> <new>` — rename a wallet; renaming `default` migrates its root files into `profiles/<new>/`. `{ from, to, renamed: true }`.
+- `run402 wallets bind [<name>]` — write `./.run402.json` binding this directory to a wallet (defaults to the active one). Safe to commit (holds only a name). `{ wallet, file, bound: true, safe_to_commit: true }`.
+- `run402 wallets unbind` — remove `./.run402.json`. `{ file, unbound }`.
+- `run402 wallets import <name> --key <path|->` — adopt an existing 0x-prefixed 64-hex private key (file path or `-` for stdin) as a named wallet. `{ name, address, imported: true }`.
+- `run402 wallets rm <name> --yes` — delete a wallet and its keys. Requires `--yes` (agent-first: no interactive prompt). Refuses to remove `default`. `{ name, removed: true }`.
+- Server-side display label: `new`/`rename`/`import` push the wallet's name to a server-side label (signed by the wallet — proof of control) so the same name shows cross-machine and in the operator console (WEB). Best-effort and on by default; `RUN402_WALLET_LABEL_SYNC=0` opts out (fully offline wallet ops). The local folder name is the source of truth; the label is a mirror, and `wallets current` flags any drift.
+- Selection for ANY command: `--wallet <name>` (alias `--profile`) > `RUN402_WALLET` > nearest `./.run402.json`/`.run402.local.json` > `wallets use` default > `default`. A conflicting env + binding errors with `WALLET_SELECTION_CONFLICT` (resolve via `--wallet`, `unset RUN402_WALLET`, or `wallets unbind`). Selecting a non-existent wallet errors with `WALLET_NOT_FOUND`.
+
+### allowance
+- `run402 allowance <create|status|fund|balance|export>`
+- `run402 allowance checkout --amount <usd_micros>`
+- `run402 allowance history [--limit <n>]`
+
+### tier
+Tier and quotas are per organization (not per project) — `set` is organization-wide, `status.pool_usage` is the pooled total across every project in the organization. `set` refetches status after the call and includes it as `status_after`.
+
+- `run402 tier status`
+- `run402 tier set <prototype|hobby|team>`
+
+### credentials
+
+Two surfaces under one command. `credentials <verb>` acts on PROJECT CREDENTIALS (rows on the gateway); `credentials project-keys <verb>` acts on the LOCAL key cache on this machine. A project credential (`r402_…`) is named, listable, expiring and individually revocable, and several may be live per kind at once — that overlap is how you rotate with no downtime. It replaces the derived `anon_key`/`service_key`, which come from the platform signing key, never expire, and cannot be revoked one at a time.
+
+Secrets are returned EXACTLY ONCE, from `issue`, `rotate` and `token`. Full JSON goes to stdout so it can be piped (`| jq -r .secret`); warnings go to stderr. Never write one of these responses to a result cache or tmp file.
+
+- `run402 credentials status [--project <id>]` — am I still on the retiring key? Returns `state: "legacy"|"rotatable"`, `rotatable_credentials`, `credentials[]`, and `retirement.gated_on[]`. `retirement.deadline` is ALWAYS null and that is deliberate: retirement is gated on conditions (every tenant migrated, 30 consecutive days of zero legacy-key use, explicit operator approval), never a date — do not plan against one. Needs only `project.read`, so automation can check its own posture.
+- `run402 credentials issue --kind <anon|service> --name <name> [--project <id>] [--expires <iso8601>] [--import]` — mint one; secret printed ONCE. `--name` must be unique among LIVE credentials; re-using a live name returns `409 CREDENTIAL_NAME_TAKEN`, and that collision IS the idempotency story (a retried create never silently mints a second credential). `--expires` must be in the future and within one year. `--import` additionally writes the minted secret into this machine's local key cache (what deploys and data-plane commands read) — the cold-restart re-key path in one command per kind instead of issue-then-`project-keys import`. A first `--kind anon --import` on a machine with no cached entry still needs a service key first (the same rule as `project-keys import`), and that refusal comes BEFORE the mint, so a show-once secret is never burned on a usage error.
+- `run402 credentials list [--project <id>] [--include-revoked]` — metadata only; never a secret or a secret hash.
+- `run402 credentials rotate <credential_id> [--project <id>]` — mint a replacement and revoke the old one in one transaction, keeping the name and recording `replacement_of`. New secret printed ONCE. For a rotation with NO downtime window, prefer issuing a second credential, deploying it, then revoking the first; use `rotate` when the old secret is already compromised.
+- `run402 credentials revoke <credential_id> [--project <id>] [--reason <text>]` — immediate, and frees the name for reuse.
+- `run402 credentials token [--project <id>] [--kind <anon|service>]` — mint a SHORT-LIVED token (defaults to `service`). This is the cold-restart recovery path and the ONE credential call an agent can make with no human present: a delegate is accepted. No step-up, because there is nobody to prompt; what it returns expires, so it cannot become a durable root.
+
+Authority split: `issue`/`rotate`/`revoke` require owner membership on the project's owning org PLUS a fresh step-up, and a delegate can NEVER satisfy them — otherwise a scoped agent credential could escalate itself into a permanent root. Authenticate with a wallet (SIWX) or a control-plane session (`run402 operator login --step-up`). `token` is the deliberate exception.
+
+- `run402 credentials project-keys list` — LOCAL CACHE read. Lists cached project-key entries with `source: "local_cache"`, `cache_path`, `wallet`/`profile`, key presence, prefixes, fingerprints, and timestamps. Never prints full keys.
+- `run402 credentials project-keys status --project <id>` — LOCAL CACHE read for one project id. `configured: false` means this selected wallet/profile lacks cached keys; it does not mean the server project is missing.
+- `run402 credentials project-keys import --project <id> --service-key-stdin` — import a service key from stdin. Optional anon key comes from `--anon-key-env <env>`.
+- `run402 credentials project-keys import --project <id> --service-key-env <env>` — import a service key from an environment variable. Do not pass service keys as argv values.
+- `run402 credentials project-keys import --project <id> --anon-key-env <env>` — anon-only rotation. Import writes the whole cache entry, so the FIRST import for a project must supply a service key; once an entry exists, `--anon-key-env` alone rotates the anon key and keeps the cached service key. Rotating the anon key therefore never requires exporting the service key with `--reveal` and passing it back through a shell. Passing `--anon-key-env` with no cached service key fails with `BAD_USAGE` naming that flag.
+- `run402 credentials project-keys export --project <id> --reveal` — print cached secret key material. Requires `--reveal`.
+- `run402 credentials project-keys remove --project <id>` — remove one local cache entry without deleting or changing the server project.
+
+### projects
+- `run402 projects quote`
+- `run402 projects list [--org <id>] [--all]` — SERVER read of the named, domain-aware inventory (NOT the local project-key cache). Membership-scoped by default: every project owned by an org your wallet is an active member of, each row `{ project_id, name, site_url, custom_domains, org_id, status, active }` (`active` from local state). `--org <id>` filters to one org (authorize-before-reveal: non-member/guessed id -> 403, non-UUID -> 400). `--all` reads the cross-wallet inventory across every wallet controlling your operator email — run `run402 operator login` first for the union, else it falls back to the current wallet's slice and echoes `scope`. Bare `run402 projects list` is the cold-start path (no login needed). Tier/lifecycle live on the organization — use `run402 status` / `run402 tier status`.
+- `run402 projects rename <id> --name <label>` — rename a project (fix an auto-generated name). Needs org `admin`+ (or a `project:write` grant) on the owning org; authorize-before-reveal (unauthorized/guessed id -> 403, never a not-found oracle). Works even if the project isn't in the local project-key cache. Server-validated name (1-200 chars, no control characters).
+- `run402 projects provision [--name <name>] [--org <id>]` — `--org` provisions into an EXISTING org (you need `developer`+ on it); omit for the cold-start path (the wallet's organization). Tier is org-governed — a client-supplied `--tier` is ignored when targeting an org. Against a configured Core target, creates a local Core project without Cloud payment and saves it as the active project.
+- `run402 projects use <id>` — SERVER validation, then stores only the active project id in profile state. It does not require a matching local project-key cache entry.
+- `run402 projects current` — LOCAL STATE read of the active project pointer with profile-state provenance and validation status.
+- `run402 projects get <id>` — SERVER read of one project's authoritative view: `{ project_id, public_id, name, org_id, tier, effective_status, organization_lifecycle_state, site_url, custom_domains[], last_deploy, mailbox[], usage{api_calls, storage_bytes, api_calls_limit, storage_bytes_limit}, created_at }`. Caller-authed (SIWX/control-plane, no project keys) and works even if the project isn't in the local project-key cache; authorize-before-reveal (unauthorized/guessed id -> 403, never a not-found oracle). Returns NO keys — use `run402 credentials project-keys ...` for local credential-cache inspection/export.
+- `run402 projects info <id>` — moved before public launch. Returns structured `COMMAND_MOVED`; use `projects get <id>` for server detail or `credentials project-keys status --project <id>` for local cache status.
+- `run402 projects sql <id> "<sql>" [--file <path>] [--params '<json_array>']`
+- `run402 projects rest <id> <table> "<query>"`
+- `run402 projects keys <id>` — moved before public launch. Returns structured `COMMAND_MOVED`; use `credentials project-keys export --project <id> --reveal` for cached key material.
+- `run402 projects costs <id> [--window <24h|7d|30d|90d>]` — admin-only per-project finance: revenue, direct cost, margin, and cost breakdown. Uses the configured allowance wallet for admin auth; `RUN402_ADMIN_COOKIE='run402_admin=...'` is an optional browser-session override.
+- `run402 projects promote-user <id> <email>` — promote a user to project_admin role
+- `run402 projects demote-user <id> <email>` — demote a user from project_admin role
+- `run402 projects <usage|schema> <id>`
+- `run402 projects delete <id> --confirm` — cascade deletes all project resources: Lambda functions, subdomains, S3 site files, deployments, secrets, and published app versions. The schema slot is dropped and recreated. This is irreversible. `--confirm` is required.
+- `run402 projects validate-expose [id] <manifest_json>` — validate an auth/expose manifest without applying it
+- `run402 projects validate-expose [id] --file manifest.json [--migration-file setup.sql]` — validate file input with optional migration-reference SQL
+- `run402 projects apply-expose <id> <manifest_json>` — apply a declarative authorization manifest
+- `run402 projects apply-expose <id> --file manifest.json` — apply from a JSON file
+- `run402 projects get-expose <id>` — print the current manifest (`source: applied | introspected`)
+
+Provisioning automatically sets the new project as the active project. Other commands that take `<id>` default to the active project when omitted.
+
+SQL supports DDL + queries, returns JSON. REST uses PostgREST syntax (`select=`, `eq.`, `order=`, `limit=`).
+
+User auth: password + Google OAuth. See "User Auth" section below.
+
+### admin (platform-admin only)
+- `run402 admin lease-perpetual <organization_id> --enable | --disable` — toggle the organization-level escape hatch. When enabled, the organization never advances past `active` regardless of lease expiry; every project on the organization is pinned. Enabling on a grace-state organization (past_due / frozen / dormant) reactivates inline (`reactivated: true` in the response).
+- `run402 admin archive <project_id> [--reason "..."]` — operator moderation. Sets `projects.archived_at = NOW()` on a single project; sibling projects on the same organization keep serving. No-op when already archived (returns `note: "already archived"`).
+- `run402 admin reactivate <project_id>` — un-archive a project (flips `archived_at` back to NULL). It does not touch organization-level lifecycle. To reactivate a grace-state organization, run `run402 tier set <tier>` (the tier flow runs the lifecycle advance inline) or enable `run402 admin lease-perpetual <org_id> --enable`.
+
+All admin subcommands require a platform-admin allowance wallet (or an admin OAuth session). Project owners with a non-admin wallet receive `403 admin_required`.
+
+### apply, rehearsal, snapshots, branches
+- `run402 apply --manifest app.json [--project <id>] [--no-rehearse] [--json]` — alias for `run402 deploy apply`; rehearsal is automatic for a migration-bearing plan against a project with a live release (see "Protecting a live database"), `--no-rehearse` skips it.
+- `run402 deploy rehearse [<plan_id>] [--manifest <path>] [--project <id>] [--teardown keep|on_pass|always] [--json]` — ADVANCED: rehearse without committing. With no `<plan_id>` it discovers the manifest in the current directory the way `up` does (or takes `--manifest`), creates a reviewed plan, uploads its bytes, and rehearses it. With a `<plan_id>` whose bytes were never uploaded (a `--plan`-only plan), the gateway answers `409 REHEARSAL_CONTENT_MISSING` and the CLI uses the manifest to upload and retry; if facts changed since that plan a fresh plan is rehearsed and the result says so under `replanned`. Source project data and the original plan stay untouched; a project with no live release rehearses on an empty branch. The result names the plan rehearsed and its bound commit command.
+- `run402 snapshots create [project-id] [--json]` — capture a manual internal restore point.
+- `run402 snapshots list [project-id] [--kind manual|pre_migration|pre_restore|scheduled] [--limit <n>] [--after <cursor>] [--json]` — keyset-paginated snapshot list.
+- `run402 snapshots get [project-id] <snapshot-id> [--json]` — inspect one snapshot and its next actions.
+- `run402 snapshots restore [project-id] <snapshot-id> [--include-auth] [--json]` — plan a restore and print `restore_plan.confirm.token`; no mutation.
+- `run402 snapshots restore [project-id] <snapshot-id> --confirm <token> [--include-auth] [--json]` — execute the atomic offline-materialize-then-flip restore. Auth users/passkeys are restored only with `--include-auth`; sessions and tokens are never restored.
+- `run402 snapshots delete [project-id] <snapshot-id> [--json]` — delete a snapshot and release its CAS references.
+- `run402 branches create [project-id] [--from-snapshot <snapshot-id>] [--name <label>] [--email-mode sandbox|off] [--enable-cron] [--ttl-days <1..30>] [--json]` — create a contained branch project. Email defaults to sandboxed, scheduled functions default off, and TTL defaults to 7 days. A parent with no live release yields an EMPTY branch (`branch_url: null`, no cloned release) whose host comes up on its first activation.
+- `run402 branches list [project-id] [--json]` — list active branches for the parent project.
+- `run402 branches renew [project-id] <branch-project-id> [--ttl-days <1..30>] [--json]` — extend a branch TTL.
+- `run402 branches delete [project-id] <branch-project-id> [--json]` — delete a branch project and purge its resources.
+
+### deploy
+- `run402 deploy apply --manifest app.json [--project <id>] [--check|--print-spec|--plan|--require-plan <id>] [--no-rehearse] [--json] [--quiet|--final-only] [--allow-warning <code> ...] [--allow-warnings] [--allow-dirty] [-v|--verbose]` — unified apply primitive with `assets` slice support; accepts JSON data manifests and explicit executable typed configs through the same `--manifest` flag. rehearsal against a contained branch is automatic when there is a live release to protect (`--no-rehearse` skips it); `--json` is accepted as a no-op because success output is always JSON. Against a `gitvault_policy: required` project, the deploy-lane capture applies the SAME dirty-tree rule `repos snapshot` does: a dirty work tree refuses `SNAPSHOT_DIRTY_TREE` before any capture, and `--allow-dirty` captures it as-is with the same `modified_captured`/`untracked_captured` disclosure (see the `repos` section above and [Observability](#observability)). The final result always carries a `stats` block; `-v`/`--verbose` also prints a one-line stderr summary.
+- `run402 deploy resume <operation_id> [--project <id>] [--quiet]` — re-run a stuck operation forward
+- `run402 deploy promote <release-id> [--project <id>] [--allow-warning <code>] [--allow-warnings]` — operator pointer-swap (re-point live release without re-running the apply pipeline)
+- `run402 deploy list [--project <id>] [--limit <n>]` — list recent deploy operations
+- `run402 deploy events <operation_id> [--project <id>]` — fetch the recorded event stream for an operation
+- `run402 deploy verify <operation_id>|--operation <operation_id> [--project <id>] [--wait] [--timeout <seconds>] [--json]` — verify gateway/edge release coherence; exits 2 when a valid report remains not coherent
+- `run402 deploy release get <release_id> [--project <id>] [--site-limit <n>]` — fetch release inventory
+- `run402 deploy release active [--project <id>] [--site-limit <n>]` — fetch current-live release inventory
+- `run402 deploy release diff --from <empty|active|release_id> --to <active|release_id> [--project <id>] [--limit <n>]` — diff release targets
+- `run402 deploy diagnose [--project <id>] <url> [--method GET]` — URL-first public deploy diagnostics
+- `run402 deploy resolve [--project <id>] (--url <url> | --host <host> [--path /x]) [--method GET]` — lower-level resolver parity; `--url` cannot be combined with `--host`/`--path`
+
+Requires active tier and a provisioned project on Run402 Cloud. Against a configured Core target, uses the active Core project and does not require Cloud tier/allowance setup. Deploys to an existing project: runs migrations, applies the authorization manifest (from a `manifest.json` entry in `files[]`), deploys functions, deploys static site, and claims subdomain when the target supports that slice. Secret values are write-only: set them with `printf %s "$OPENAI_API_KEY" | run402 secrets set <id> OPENAI_API_KEY --stdin` or `--file <path>` before deploy, then use value-free `secrets.require` in `deploy apply` manifests. `deploy apply` stops before upload/commit on confirmation-required warnings unless each warning is covered by repeatable `--allow-warning <code>` or the broad reviewed `--allow-warnings`; `--require-plan` absorbs the warning approval already bound into the reviewed plan and rejects warning flags. The manifest must include `project_id` (or use `--project` flag, or omit both to use the active project).
+
+Inside GitHub Actions, `deploy apply` automatically uses OIDC credentials when `GITHUB_ACTIONS=true`, `ACTIONS_ID_TOKEN_REQUEST_URL`, and `ACTIONS_ID_TOKEN_REQUEST_TOKEN` are present. In that mode, project id resolution is `--project`, then `manifest.project_id`, then the local active project if present, then `RUN402_PROJECT_ID`.
+
+### ci
+- `run402 ci link github [--project <id>] [--manifest <path>] [--repo <owner/repo>] [--branch <name> | --environment <name>] [--repository-id <id>] [--workflow <path>] [--expires-at <iso>] [--route-scope <pattern> ...] [--force]` — create a GitHub Actions OIDC deploy binding and write a workflow
+- `run402 ci list [--project <id>]` — list CI bindings for a project
+- `run402 ci revoke <binding_id>` — revoke a binding
+
+`link github` requires a local allowance because it signs the delegation. The generated workflow does not require an allowance file or service key in GitHub; it uses GitHub's OIDC token with `id-token: write`. Use repeatable `--route-scope` only when CI should deploy route declarations; no scopes means no CI route authority.
+
+### transfer (unified project transfer — wallet + email + owned-org recipient)
+One noun, three recipient kinds: wallet = two-party SIWX, completed by `accept`; email = email->org, completed by `claim`; owned org = `--to-org <org_id>` immediate same-actor org move. Same `/projects/v1/:id/transfers`; preview/list/cancel are kind-agnostic; rows carry `recipient_kind`. Pre-v1.93 `/handoffs` and `--handoff(s)` are gone.
+- `run402 transfer init (--to <wallet|email> | --to-org <org_id>) [--project <id>] [--billing-policy migrate] [--message <text>] [--kysigned <record_id>] [--retain-collaborator developer]` — owner/admin initiate. `--to` routes by kind. `--to-org`: caller must actively own source+destination org; success completes immediately with accepted result + project keys. `--retain-collaborator developer`: email recipients only, only `developer`, rejected with `BAD_FLAG` on wallet/org rails; recipient must accept at claim; omit = full severance. `--billing-policy`/`--kysigned` wallet-only; email/org reject. Codes: `INVALID_RETAIN_ROLE`, `RETAIN_SUBJECT_REQUIRED`.
+- `run402 transfer preview <transfer_id>` — fetch the preview document (any party; kind-agnostic). Lists custom domains, subdomains, function names, secret NAMES (never values), CI bindings that will be revoked on completion, mailbox summary, billing implications, and — on email transfers — the `retain_collaborator` offer.
+- `run402 transfer list [--incoming | --outgoing] [--limit N] [--offset N]` — `--incoming` (default) shows transfers OFFERED TO you; `--outgoing` shows transfers you initiated. Pending rows are unioned and each entry carries `recipient_kind` and `preview_path`.
+- `run402 transfer accept <transfer_id>` — accept WALLET transfer. Atomically flips ownership, revokes previous owner CI bindings, stamps `secrets_rotation_advised`. Secret values inherited; response has `secret_names_inherited[]`, new owner `anon_key` + `service_key`; SDK/CLI persist keys and set project active.
+- `run402 transfer claim <transfer_id> [--into <organization_id>] [--accept-retained-collaborator]` — claim EMAIL transfer into owned org; omit `--into` to create new org. Email analog of `accept`. `--accept-retained-collaborator` accepts retained developer offer from preview; omit = severance. Result includes `retained_collaborator_principal_id|null`, keys persisted + project active. Keys derive from `project_id` and do not rotate; rotate inherited secrets with `run402 secrets set`.
+- `run402 transfer cancel <transfer_id> [--reason <text>]` — cancel a pending transfer of any kind (any authorized party).
+
+Pending transfer: 72h TTL; owner-side mutations return `409 PROJECT_HAS_PENDING_TRANSFER` with `details.transfer_id` + cancel `next_actions[]`. Data-plane and payment routes keep serving; `transfer cancel` unblocked. After accept/claim, rotate inherited secrets; `secrets_rotation_advised` clears after every inherited name is rewritten.
+
+Does not transfer: tier lease (stays with original org; no proration), KMS signers, GitHub repo ownership, on-chain balances. Wallet transfers only support `--billing-policy migrate`; if recipient lacks active org, accept -> `409 RECIPIENT_ORGANIZATION_NOT_ACTIVE`. Email/owned-org always migrate; do not pass `--billing-policy`.

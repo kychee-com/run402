@@ -28,7 +28,25 @@ export default defineConfig({
         {
           label: "References (rendered from the agent docs)",
           items: [
-            { label: "CLI", slug: "cli/reference" },
+            {
+              label: "CLI",
+              // One entry per slice of llms-cli.txt (agent-docs-slices): the
+              // index page is the first-deploy contract, the rest are the
+              // fetchable llms-cli-<slice>.txt files.
+              items: [
+                { label: "Index (start here)", slug: "cli/reference" },
+                { label: "Deploying apps", slug: "cli/deploy" },
+                { label: "Core commands", slug: "cli/commands" },
+                { label: "Repos", slug: "cli/repos" },
+                { label: "Orgs, events, rooms", slug: "cli/orgs" },
+                { label: "Functions, secrets, jobs", slug: "cli/functions" },
+                { label: "Assets, sites, email, AI", slug: "cli/assets" },
+                { label: "Auth, billing, operator, doctor", slug: "cli/ops" },
+                { label: "R402_* error codes", slug: "cli/errors" },
+                { label: "REST + user auth for frontends", slug: "cli/frontend" },
+                { label: "Ideas, pricing, Core, Buzz", slug: "cli/platform" },
+              ],
+            },
             { label: "SDK", slug: "sdk/reference" },
             { label: "MCP", slug: "mcp/reference" },
           ],

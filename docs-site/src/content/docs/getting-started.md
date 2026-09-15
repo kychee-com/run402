@@ -6,7 +6,7 @@ description: How an agent (and the developer supervising it) gets from zero to a
 Run402 is designed to be driven by an AI coding agent end to end — no human signup,
 no dashboard API keys, no human in the payment loop. This page orients the
 **developer supervising that agent**; the agent itself works from the flat
-references ([`/llms-cli.txt`](https://docs.run402.com/llms-cli.txt),
+references ([`/llms-cli.txt`](https://docs.run402.com/llms-cli.txt) — an index that links one fetchable `/llms-cli-<slice>.txt` per topic,
 [`/llms-sdk.txt`](https://docs.run402.com/llms-sdk.txt),
 [`/llms-mcp.txt`](https://docs.run402.com/llms-mcp.txt)) and the skill at
 [`/SKILL.md`](https://docs.run402.com/SKILL.md).

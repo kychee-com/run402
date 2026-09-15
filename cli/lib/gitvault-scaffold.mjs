@@ -15,9 +15,13 @@
  * did not ask to turn into a repository is left alone. The remote is always
  * `run402` and `origin` is never touched or claimed; a directory that lies
  * inside ANOTHER repository is reported `skipped` with the enclosing
- * toplevel named — that repository is never touched (first-deploy-agent-dx). Every
- * branch is non-fatal — a missing git, an unresolvable org, or an
- * unreachable gateway all report and return, never throw.
+ * toplevel named — that repository is never touched (first-deploy-agent-dx)
+ * — and the skip carries the SDK's `create_nested_repo` next_action; with
+ * `nested: true` the SDK makes the app root its own nested repository
+ * instead (the enclosing repository only gains one local
+ * `.git/info/exclude` line). Every branch is non-fatal — a missing git, an
+ * unresolvable org, or an unreachable gateway all report and return, never
+ * throw.
  */
 import { getSdk } from "./sdk.mjs";
 import { resolveOwningOrgId } from "./org-context.mjs";
@@ -28,9 +32,11 @@ import { resolveOwningOrgId } from "./org-context.mjs";
  * @param {string} options.projectId The project the remote should point at.
  * @param {string} [options.orgId] Explicit owning org. Resolved via `resolveOwningOrgId` when omitted.
  * @param {boolean} [options.createRepoIfMissing] Opt into `git init`-ing `repoDir` when it is not a repository yet.
- * @returns {Promise<{status: "scaffolded"|"skipped"|"error", reason?: string, toplevel?: string|null, gitvault: object|null, gitvault_skipped?: string, gitvault_error?: {code: string, message: string}}>}
+ * @param {boolean} [options.nested] Scaffold `repoDir` as its OWN repository even when it lies inside another one (`Gitvault.scaffoldRemote`'s `nested`).
+ * @param {string} [options.nestedCommand] The caller's own `--nested` spelling for the `create_nested_repo` next_action (default: the SDK's `run402 repos create --nested --project <id>`).
+ * @returns {Promise<{status: "scaffolded"|"skipped"|"error", reason?: string, toplevel?: string|null, next_actions?: object[], gitvault: object|null, gitvault_skipped?: string, gitvault_error?: {code: string, message: string}}>}
  */
-export async function scaffoldGitvaultRemote({ repoDir = process.cwd(), projectId, orgId, createRepoIfMissing = false } = {}) {
+export async function scaffoldGitvaultRemote({ repoDir = process.cwd(), projectId, orgId, createRepoIfMissing = false, nested = false, nestedCommand } = {}) {
   const out = { gitvault: null, status: "skipped" };
   try {
     const { hardenedGit } = await import("#sdk/node");
@@ -51,13 +57,19 @@ export async function scaffoldGitvaultRemote({ repoDir = process.cwd(), projectI
       out.gitvault_skipped = `could not resolve the owning org for ${projectId} — the run402 remote was not added`;
       return out;
     }
-    const remote = await getSdk().gitvault.scaffoldRemote({ repo_dir: repoDir, org_id: resolvedOrgId, project_id: projectId });
+    const remote = await getSdk().gitvault.scaffoldRemote({ repo_dir: repoDir, org_id: resolvedOrgId, project_id: projectId, ...(nested ? { nested: true } : {}) });
     if (remote.status === "skipped") {
       // The app root lies INSIDE some other repository (first-deploy-agent-dx
-      // D3): that repository is never touched. Say which one, and why.
+      // D3): that repository is never touched. Say which one, why, and the
+      // way out — the SDK's `create_nested_repo` next_action, respelled to
+      // the caller's own `--nested` verb when it has one (`run402 up
+      // --nested`), so the command printed is the one the agent just ran.
       out.reason = "inside_other_repository";
       out.toplevel = remote.toplevel ?? null;
       out.gitvault_skipped = remote.reason;
+      out.next_actions = (remote.next_actions ?? []).map((action) =>
+        action.type === "create_nested_repo" && nestedCommand ? { ...action, command: nestedCommand } : action,
+      );
       return out;
     }
     // `allocated: false` is stated, not left to be inferred: this is local

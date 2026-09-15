@@ -26,6 +26,7 @@ import { existsSync, fstatSync, readFileSync } from "node:fs";
 import { resolve, dirname, extname, isAbsolute } from "node:path";
 import {
   applyWithGitvault,
+  assertLocalFileReferencesExist,
   buildDeployResolveSummary,
   githubActionsCredentials,
   loadDeployManifest,
@@ -1182,6 +1183,18 @@ async function applyCmd(args) {
   const releaseSpec = normalizedManifest.spec;
   const idempotencyKey = normalizedManifest.idempotencyKey;
 
+  // Filesystem-reference check: every function source, site file / dir and
+  // asset path the normalized spec still points at must exist. One `stat`
+  // per reference, so it runs in every mode — `--check` / `--print-spec`
+  // included — before any gateway call (MANIFEST_FILE_MISSING).
+  try {
+    await assertLocalFileReferencesExist(releaseSpec, {
+      ...(manifestPath ? { manifestPath } : {}),
+    });
+  } catch (err) {
+    reportSdkError(err);
+  }
+
   if (opts.mode === "check") {
     console.log(JSON.stringify({
       ok: true,
@@ -1531,12 +1544,15 @@ function enhanceDeployWarningError(err) {
 
 const ROUTE_WARNING_GUIDANCE = {
   PUBLIC_ROUTED_FUNCTION: {
-    hint: "A deploy route makes a function public same-origin browser ingress; direct /functions/v1/:name remains API-key protected.",
+    // Informational on the gateway (requires_confirmation: false): it never
+    // blocks a deploy by itself, so the guidance must not teach an
+    // acknowledgement flag the warning does not need.
+    hint: "A deploy route makes a function public same-origin browser ingress; direct /functions/v1/:name remains API-key protected. This warning is informational and needs no --allow-warning; another warning with requires_confirmation: true is what blocked this plan.",
     next_actions: [
       nextAction("edit_request", { why: "Review application auth and authorization in the routed function." }),
       nextAction("edit_request", { why: "Add CSRF protection for cookie-authenticated POST/PUT/PATCH/DELETE routes." }),
       nextAction("edit_request", { why: "Implement CORS and OPTIONS explicitly when cross-origin callers are intended." }),
-      retryAction("run402 deploy apply --allow-warnings", "Retry only after the public ingress review is intentional."),
+      retryAction("run402 deploy apply --allow-warning <code>", "Acknowledge only the warning that has requires_confirmation: true, after review."),
     ],
   },
   ROUTE_TARGET_CARRIED_FORWARD: {

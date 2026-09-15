@@ -7,9 +7,11 @@
  * no adapter manifest, and the CLI's site spec is per-file. So this script walks the
  * static `docs-site/dist/**` and enumerates every file into `site.replace` as a path
  * ref, then declares `public_paths: { mode: "implicit" }` so filename-derived URLs
- * (e.g. dist/getting-started/index.html -> /getting-started/) are reachable. The four
- * flat agent files are added from their canonical repo-root paths (preserving the
- * git-tag raw.githubusercontent.com pins) and become reachable at /llms-*.txt + /SKILL.md.
+ * (e.g. dist/getting-started/index.html -> /getting-started/) are reachable. The
+ * flat agent files (llms-cli.txt index + its llms-cli-<slice>.txt slices +
+ * llms-cli-full.txt, llms-sdk.txt, llms-mcp.txt, SKILL.md) are added from their
+ * canonical repo-root paths (preserving the git-tag raw.githubusercontent.com pins)
+ * and become reachable at /llms-*.txt + /SKILL.md.
  *
  * The resulting manifest is fed to the SAME `run402 deploy apply --manifest ... --project ...`
  * OIDC invocation the docs project already uses — no SSR runtime, no new auth path.
@@ -22,6 +24,7 @@
 import { readdirSync, statSync, writeFileSync } from "node:fs";
 import { join, dirname, relative, posix } from "node:path";
 import { fileURLToPath } from "node:url";
+import { listAgentFlatFiles } from "./build-agent-flat-docs.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const PROJECT_ID = "prj_1780488560350_0018"; // run402-docs
@@ -32,11 +35,12 @@ const outArg = argv.includes("--out") ? argv[argv.indexOf("--out") + 1] : "run40
 const DIST = join(ROOT, distArg);
 const OUT = join(ROOT, outArg);
 
-// The four flat agent files keep their canonical repo-root source paths.
+// The flat agent files keep their canonical repo-root source paths. The list
+// comes from the generator itself (index + every CLI slice + the full CLI
+// reference + the SDK/MCP references), so a new slice is served the moment it
+// is generated; SKILL.md is the one file the generator does not own.
 const FLAT_FILES = [
-  { asset: "llms-cli.txt", path: "cli/llms-cli.txt" },
-  { asset: "llms-sdk.txt", path: "sdk/llms-sdk.txt" },
-  { asset: "llms-mcp.txt", path: "llms-mcp.txt" },
+  ...listAgentFlatFiles(),
   { asset: "SKILL.md", path: "SKILL.md" },
 ];
 
@@ -88,7 +92,7 @@ for (const full of distFiles) {
     publicPaths["/" + rel] = { asset: rel, cache_class };
   }
 }
-// The four flat agent files from the repo root → /llms-*.txt + /SKILL.md.
+// The flat agent files from the repo root → /llms-*.txt + /SKILL.md.
 for (const f of FLAT_FILES) {
   replace[f.asset] = { path: f.path };
   publicPaths["/" + f.asset] = { asset: f.asset, cache_class: "revalidating_asset" };

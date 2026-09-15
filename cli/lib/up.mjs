@@ -10,7 +10,7 @@ import { loadLiveControlPlaneSession } from "../core-dist/control-plane-session.
 const HELP = `run402 up — Provision/link/deploy the current app
 
 Usage:
-  run402 up [repo-or-path] [--name <name>] [--project <id>] [--manifest <path>] [--dir <path>] [--tier <tier>] [-y|--yes] [--check|--print-spec|--plan|--require-plan <id>|--repo-only] [--verify] [--human|--json-stream] [--quiet]
+  run402 up [repo-or-path] [--name <name>] [--project <id>] [--manifest <path>] [--dir <path>] [--tier <tier>] [-y|--yes] [--check|--print-spec|--plan|--require-plan <id>|--repo-only] [--nested] [--verify] [--human|--json-stream] [--quiet]
   run402 up verify [repo-or-path] [--project <id>] [--manifest <path>] [--dir <path>] [--human|--json-stream]
 
 Options:
@@ -55,12 +55,24 @@ Options:
                       bearing deploy against a project with a live release is
                       rehearsed on a contained branch and committed only on a
                       passing report; a first deploy has nothing to protect and
-                      commits directly (result.deploy.rehearsal says which).
+                      commits directly, and a plan whose migrations are all
+                      already applied with an identical checksum is not
+                      rehearsed either (result.deploy.rehearsal says which:
+                      no_live_release / migrations_unchanged / no_migrations).
   --repo-only         Provision + scaffold the run402 remote + first push,
                       and stop there — no deploy. The vault-only track
                       (D8), composed through up instead of run402 repos
                       create. Incompatible with --check/--print-spec/--plan/
                       --require-plan/--verify.
+  --nested            Give an app root that lies INSIDE another repository (a
+                      monorepo workspace) its own nested repository: git init
+                      -b main there, the run402 remote added there, the first
+                      push made from there, and exactly one line
+                      (/<relative path>/) appended to the ENCLOSING
+                      repository's local .git/info/exclude. Nothing else in
+                      the enclosing repository is touched (no .gitignore,
+                      index, or submodule). No-op when the app root is already
+                      its own repository.
 
 Repo composition (D4): against a local directory (not a git URL source), up
 composes git init (only when the app root is not already a repository) +
@@ -68,17 +80,25 @@ provision + a run402 remote scaffold (origin is never claimed) + a first
 gitvault push — one command, the fly-launch shape. The app root is the
 manifest's directory; an app root that lies INSIDE another repository is
 left untouched (result.repo.status "skipped", reason
-"inside_other_repository", toplevel named). The scaffold and first push are
-best-effort: a git or vault hiccup never turns an otherwise-successful deploy
-into a failure, and is reported under result.repo (default apply) or result
-(--repo-only) instead.
+"inside_other_repository", toplevel named) and result.repo.next_actions
+carries create_nested_repo — re-run with --nested to give the app its own
+encrypted remote (result.repo.gitvault.nested true, enclosing_toplevel,
+excluded_in_enclosing). The scaffold and first push are best-effort: a git
+or vault hiccup never turns an otherwise-successful deploy into a failure,
+and is reported under result.repo (default apply) or result (--repo-only)
+instead.
 
 Identity: up makes sure this principal has a display name before the deploy
-that will be credited to it — an existing name is kept, otherwise the
-detected client name (claude-code, codex, cursor, grok, or agent) is set (approved)
-by -y, or asked once) — and joins the project room under it. Change it any
-time with 'run402 org whoami --set-name <name>'. Reported under
-result.identity.
+that will be credited to it, then joins the project room under it. An
+existing name is kept; otherwise the detected client name (claude-code,
+codex, cursor, or grok) is set (approved by -y, or asked once); when no
+client is detected nothing is written and the room presence is 'agent' for
+coordination only. RUN402_AGENT_NAME=<name> sets the name, overriding an
+existing one; RUN402_CLIENT=<name> declares the client when it is not
+auto-detected. A detected client that was not applied (the principal is
+already named) is still reported. Change the name any time with
+'run402 org whoami --set-name <name>'. Reported under result.identity
+(source, detected, detection).
   --json              Emit one final JSON object on stdout (default; compatibility no-op).
   --human             Emit the legacy human success/blocking summary on stdout.
   --json-stream       Emit NDJSON progress events on stdout and a final result event.
@@ -165,6 +185,7 @@ export async function run(args = []) {
       "--json-stream",
       "--repo-only",
       "--no-rehearse",
+      "--nested",
     ],
     [
       "--name",
@@ -276,6 +297,7 @@ export async function run(args = []) {
     });
   }
   const repoOnly = parsed.includes("--repo-only");
+  const nested = parsed.includes("--nested");
   if (repoOnly && (dryRun || isNonApplyingMode(mode) || isApplyReviewedMode(mode) || verifyEdge)) {
     fail({
       code: "BAD_USAGE",
@@ -307,7 +329,7 @@ export async function run(args = []) {
 
     let result;
     if (repoOnly) {
-      result = await runRepoOnly({ sdk, workDir, createdRepository, opts: parsed, tier, allowWarningCodes, idempotencyKey: flagValue(parsed, "--idempotency-key") ?? undefined });
+      result = await runRepoOnly({ sdk, workDir, createdRepository, nested, opts: parsed, tier, allowWarningCodes, idempotencyKey: flagValue(parsed, "--idempotency-key") ?? undefined });
     } else {
       result = await sdk.up({
         source,
@@ -345,7 +367,7 @@ export async function run(args = []) {
       if (composeRepo && mode === undefined) {
         const projectId = result?.result?.project_id ?? result?.result?.deploy?.project_id ?? null;
         if (projectId) {
-          const repoResult = await composeRepoPushStep({ sdk, workDir, projectId, createdRepository });
+          const repoResult = await composeRepoPushStep({ sdk, workDir, projectId, createdRepository, nested });
           if (result.result) result.result.repo = repoResult;
         }
       }
@@ -364,9 +386,9 @@ export async function run(args = []) {
     } else if (mode === "printSpec") {
       console.log(JSON.stringify(result.result?.spec ?? null, null, 2));
     } else if (human && result?.result?.app_result) {
-      console.log(formatAppUpHuman(result.result.app_result));
+      console.log([formatAppUpHuman(result.result.app_result), formatRepoSkipLine(result)].filter(Boolean).join("\n"));
     } else if (human && shouldRenderHumanSuccess(result)) {
-      console.log(formatLegacyUpSuccess(result));
+      console.log([formatLegacyUpSuccess(result), formatRepoSkipLine(result)].filter(Boolean).join("\n"));
     } else {
       console.log(JSON.stringify(result, null, 2));
     }
@@ -637,12 +659,20 @@ async function gitInitIfNeeded(dir) {
  * fold-in follows (`gitvault-scaffold.mjs`): a git or vault hiccup here must
  * never turn an otherwise-successful `up` into a failure.
  */
-async function composeRepoPushStep({ sdk, workDir, projectId, createdRepository }) {
+async function composeRepoPushStep({ sdk, workDir, projectId, createdRepository, nested = false }) {
   const { resolveOwningOrgId } = await import("./org-context.mjs");
   const { scaffoldGitvaultRemote } = await import("./gitvault-scaffold.mjs");
   const orgId = await resolveOwningOrgId(projectId);
-  const scaffold = await scaffoldGitvaultRemote({ repoDir: workDir, projectId, orgId: orgId ?? undefined, createRepoIfMissing: false });
+  // `--nested`: an app root INSIDE another repository (a monorepo workspace)
+  // becomes its own repository with the encrypted remote — the enclosing
+  // checkout only gains one local `.git/info/exclude` line. Without it the
+  // scaffold is skipped there and the result's `next_actions` name
+  // `run402 up --nested` (the caller's own spelling of the way out).
+  const scaffold = await scaffoldGitvaultRemote({ repoDir: workDir, projectId, orgId: orgId ?? undefined, createRepoIfMissing: false, nested, nestedCommand: "run402 up --nested" });
   if (createdRepository && scaffold.gitvault) scaffold.gitvault.created_repository = true;
+  // A nested repository the scaffold itself just created is as fresh as one
+  // `up`'s own git init made: nothing committed, every file untracked.
+  const freshRepository = createdRepository || scaffold.gitvault?.created_repository === true;
   const out = { ...scaffold, first_push: null, first_push_error: null };
   if (scaffold.status !== "scaffolded") {
     // Nothing was scaffolded (the app root is inside another repository, or
@@ -666,7 +696,7 @@ async function composeRepoPushStep({ sdk, workDir, projectId, createdRepository 
       project_id: projectId,
       org_id: orgId,
       repo_dir: workDir,
-      ...(createdRepository ? { snapshot: { allowDirty: true } } : {}),
+      ...(freshRepository ? { snapshot: { allowDirty: true } } : {}),
       onVaultCreated: (created) => { vaultCreated = created; },
     });
     out.first_push = {
@@ -674,7 +704,7 @@ async function composeRepoPushStep({ sdk, workDir, projectId, createdRepository 
       form: pushed.form,
       gitvault_commit: pushed.gitvault_commit,
       vault_created: vaultCreated,
-      ...(createdRepository ? { captured_dirty: true, modified_captured: pushed.snapshot?.modified_captured ?? null, untracked_captured: pushed.snapshot?.untracked_captured ?? null } : {}),
+      ...(freshRepository ? { captured_dirty: true, modified_captured: pushed.snapshot?.modified_captured ?? null, untracked_captured: pushed.snapshot?.untracked_captured ?? null } : {}),
     };
   } catch (err) {
     out.first_push_error = { code: err?.body?.code ?? err?.code ?? "GITVAULT_PUSH_FAILED", message: err?.message ?? String(err) };
@@ -688,7 +718,7 @@ async function composeRepoPushStep({ sdk, workDir, projectId, createdRepository 
  * create`'s own shape (task 2.6); `up --repo-only` is the "I'm already
  * inside `up`'s mental model" entry point to the same outcome.
  */
-async function runRepoOnly({ sdk, workDir, createdRepository, opts, tier, idempotencyKey }) {
+async function runRepoOnly({ sdk, workDir, createdRepository, nested = false, opts, tier, idempotencyKey }) {
   // `sdk.up()`'s action graph auto-approves prerequisites (allowance, tier)
   // for a cold start; calling projects.provision directly bypasses that, so
   // this mirrors the SAME gate `run402 projects provision` itself uses —
@@ -697,7 +727,7 @@ async function runRepoOnly({ sdk, workDir, createdRepository, opts, tier, idempo
   if (!isCoreApiTarget() && !loadLiveControlPlaneSession()) allowanceAuthHeaders("/projects/v1");
   const name = flagValue(opts, "--name") ?? undefined;
   const provisioned = await sdk.projects.provision({ tier, name, idempotencyKey });
-  const repo = await composeRepoPushStep({ sdk, workDir, projectId: provisioned.project_id, createdRepository });
+  const repo = await composeRepoPushStep({ sdk, workDir, projectId: provisioned.project_id, createdRepository, nested });
   return {
     action: "up",
     mode: "repo-only",
@@ -742,6 +772,22 @@ function shouldRenderHumanSuccess(result) {
     result?.dry_run === false &&
     result?.mode === "apply" &&
     result?.result?.deploy?.release_id;
+}
+
+/**
+ * One line for the human summary when the repo compose was skipped — the
+ * reason and, when the app root lies inside another repository, the exact
+ * `--nested` command that gives it an encrypted remote of its own.
+ */
+function formatRepoSkipLine(result) {
+  const repo = result?.result?.repo;
+  // Only the actionable skip gets a human line: an app root inside another
+  // repository has a remedy (--nested). Other skips stay JSON-only.
+  if (repo?.status !== "skipped" || repo.reason !== "inside_other_repository") return null;
+  const where = repo.toplevel ? ` (inside ${repo.toplevel})` : "";
+  const nestedAction = (Array.isArray(repo.next_actions) ? repo.next_actions : []).find((action) => action?.type === "create_nested_repo");
+  const remedy = nestedAction?.command ? ` Give it its own encrypted remote with: ${nestedAction.command}` : "";
+  return `Encrypted remote skipped: ${repo.reason ?? "skipped"}${where}.${remedy}`;
 }
 
 function formatLegacyUpSuccess(result) {

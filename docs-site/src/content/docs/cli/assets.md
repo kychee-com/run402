@@ -1,0 +1,290 @@
+---
+title: "Assets, sites, domains, email, AI"
+description: "Command reference for assets (primary storage API), sites, subdomains, domains, apps, image, ai, and email."
+order: 7
+slice: assets
+summary: "assets, sites, subdomains, domains, apps, image, ai, email"
+---
+
+### assets (primary storage API)
+
+Direct-to-S3 asset storage, 1 byte to 5 TiB. Flat key namespace per project.
+
+Bulk directories: use `deploy apply` with `assets` slice: additive `assets: { put: [...] }`; declarative sync `assets: { put: [...], sync: { prefix, prune: true, confirm? } }`. No `run402 assets sync`; apply is canonical so HTML + asset URLs stage atomically.
+
+- `run402 assets put <file> [files...] [--project <id>] [--key <dest>] [--content-type <mime>] [--private] [--immutable] [--meta <k=v>] [--exif-policy keep|strip] [--concurrency N] [--no-resume] [--stream]` — without `--stream`, stdout is the final results array (JSON). With `--stream`, stdout is NDJSON per-file progress events. `--json` is a deprecated alias for `--stream` (writes a deprecation warning to stderr). Stdout carries the canonical snake_case wire shape only (see the `assets put` output example below); the SDK's camelCase `AssetRef` conveniences never appear on CLI stdout.
+- `run402 assets get <key> --output <file> [--project <id>]`
+- `run402 assets ls [--project <id>] [--prefix <p>] [--limit <n>] [--sort key:asc|createdAt:asc|createdAt:desc] [--filter <k=v> ...]`
+- `run402 assets rm <key> [--project <id>]`
+- `run402 assets sign <key> [--project <id>] [--ttl <seconds>]` — signed URL TTL must be an integer from 60 to 604800 seconds.
+- `run402 assets diagnose <url> [--project <id>]` — inspect live CDN state for a public URL
+- `run402 cdn wait-fresh <url> --sha <hex> [--timeout <secs>] [--project <id>]` — poll a mutable URL until it serves the expected SHA-256
+
+Project resolution for every command above: `--project <id>` > `RUN402_PROJECT_ID` (the canonical env var, same as every other project-scoped command) > the deprecated `RUN402_PROJECT` alias > the active project. `RUN402_PROJECT` works as a fallback but prints one deprecation line to stderr; switch to `RUN402_PROJECT_ID`.
+
+`put` flags:
+- `--meta key=value` repeatable; coercion: numeric-looking -> number, `true|false` -> boolean, comma -> `string[]`, else string. Serialized total <=4 KB; no nested objects; invalid -> `INVALID_ASSET_METADATA`.
+- `--exif-policy keep|strip`; default `keep`; `strip` removes EXIF bytes + `image_exif`; invalid -> `INVALID_EXIF_POLICY`.
+
+`ls` flags:
+- `--sort key:asc|createdAt:asc|createdAt:desc` — result ordering. Default `key:asc` (legacy bare-key cursor). The `createdAt:*` variants use a base64url JSON `{s, ts, key}` cursor; reusing a cursor across sort keys returns `400 INVALID_CURSOR_FOR_SORT`.
+- `--filter key=value` — repeatable media-picker filter. Allowed keys: `uploaded_by`, `tag`, `format`, `is_image` (`true`/`false`), `min_width`, `max_width`, `min_height`, `max_height` (non-negative ints). Unknown keys are rejected client-side with `INVALID_FILTER_KEY`.
+
+Examples:
+
+```
+run402 assets put ./artifact.tgz --project prj_abc123
+run402 assets put ./hero.jpg --project prj_abc123 --meta uploaded_by=agent_abc --meta version=3 --meta tags=hero,banner --exif-policy strip
+run402 assets put ./dist/**/*.png --project prj_abc123 --key assets/
+run402 assets put ./asset --project prj_abc123 --key assets/logo --content-type image/svg+xml
+run402 assets put huge.bin --project prj_abc123 --immutable
+run402 assets get images/logo.png --output /tmp/logo.png --project prj_abc123
+run402 assets ls --project prj_abc123 --prefix images/
+run402 assets ls --project prj_abc123 --sort createdAt:desc --filter is_image=true --filter min_width=320 --filter format=webp
+run402 assets ls --project prj_abc123 --filter uploaded_by=agent_abc --filter tag=hero
+run402 assets diagnose https://app.run402.com/_blob/avatar.png --project prj_abc123
+run402 cdn wait-fresh https://app.run402.com/_blob/avatar.png --sha ba78... --timeout 120
+```
+
+CLI `assets put` output (canonical snake_case wire shape — one entry per file, plus the local `file` path):
+
+```json
+[
+  {
+    "file": "./hero.png",
+    "key": "hero.png",
+    "sha256": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+    "size_bytes": 1234,
+    "content_type": "image/png",
+    "visibility": "public",
+    "immutable": true,
+    "url": "https://pr-abc.run402.com/_blob/hero.png",
+    "immutable_url": "https://pr-abc.run402.com/_blob/hero-ba7816bf.png",
+    "cdn_url": "https://pr-abc.run402.com/_blob/hero.png",
+    "cdn_immutable_url": "https://pr-abc.run402.com/_blob/hero-ba7816bf.png",
+    "sri": "sha256-unhbz…",
+    "etag": "\"sha256-ba7816bf…\"",
+    "content_digest": "sha-256=:unhbz…:",
+    "metadata": null,
+    "image_format": "png",
+    "image_info": { "has_alpha": true },
+    "image_exif": null,
+    "image_exif_policy": "keep"
+  }
+]
+```
+
+Image uploads additionally carry the snake_case image fields (`width_px`, `height_px`, `blurhash`, `variant_spec_version`, `display_url`, `display_immutable_url`, `variants`, `blurhash_data_url`, `asset_schema`). The SDK's typed `AssetRef` (below) exposes camelCase conveniences (`cdnUrl`, `immutableUrl`, `contentSha256`, `size`, …) whose values are guaranteed identical to their snake_case wire twins; the CLI emits the wire shape only.
+
+SDK `put` response (`AssetRef`):
+
+```js
+const asset = await client.assets.put(projectId, key, { bytes });  // defaults to immutable: true
+html += asset.scriptTag();             // <script src=... defer integrity=... crossorigin></script>
+html += asset.linkTag();               // <link rel="stylesheet" href=... integrity=... crossorigin>
+html += asset.imgTag("Company logo");  // <img src=... alt="Company logo" width=... height=... loading="lazy" decoding="async">
+html += asset.imgTagWithSrcSet({ alt: "Hero", sizes: "(max-width: 800px) 100vw, 1920px" });
+// → <picture><source type="image/webp" srcset="<thumb> 320w, <medium> 800w, <large> 1920w" sizes="…">
+//             <img src="<display_url>" alt="Hero" width="…" height="…" loading="lazy" decoding="async"></picture>
+```
+
+`immutable: true` is the default. SDK/CLI compute SHA-256; gateway returns content-addressed URL + SRI. Immutable URL needs no invalidation/redeploy fix/`cdn wait-fresh`. Use `{ immutable: false }` only for mutable URL/cache semantics; tag emitters throw without immutable URL/SRI. Emitters include `defer`, `loading="lazy"`, `decoding="async"`.
+
+AssetRef fields:
+- `cdnUrl` — content-addressed emitter URL, `https://pr-<public_id>.run402.com/_blob/<key-without-ext>-<8hex>.<ext>`, served through the CDN, guaranteed reachable.
+- `cdnMutableUrl` — mutable auto-subdomain URL; eventual consistency; prefer `cdnUrl`.
+- `url` / `immutableUrl` — preferred-host forms on claimed/custom domain; currently not CDN-served; use for direct API consumers, not `<script>`/`<img>`.
+- `etag` — strong `"sha256-<hex>"` ETag (when `immutable`).
+- `sri` — `sha256-<base64>` for `<script integrity={sri}>` if you must construct tags by hand.
+- `contentDigest` — RFC 9530 `sha-256=:<base64>:` for HTTP integrity.
+- `cacheKind` — `"immutable" | "mutable" | "private"`.
+- `cdn.{version,invalidationId,invalidationStatus,ready,hint}` — CloudFront invalidation envelope; `cdn.ready === true` for immutable uploads.
+
+Image variants (`@run402/sdk@2.3.0+`, image MIME >=320x320):
+- `width_px`, `height_px`: post-EXIF display dims; `imgTag` emits width/height to avoid CLS.
+- `blurhash`: ~30-byte LQIP; decode with `blurhash` npm package.
+- `variant_spec_version`: URL identity tied to encoder generation; bumps create new URLs without invalidating old.
+- `display_url` / `display_immutable_url`: browser-displayable; jpeg/png/webp/avif = `cdn_url`; HEIC/HEIF -> JPEG `display_jpeg`, original bytes preserved in CAS. `imgTag`/`imgTagWithSrcSet` default `<img src>` to `display_url`.
+- `variants.thumb|medium|large`: WebP 320w/800w/1920w with `url`, `cdn_url`, `width_px`, `height_px`, `format`, `sha256`; use `variants.thumb.cdn_url` for grids.
+- `variants.display_jpeg`: HEIC/HEIF only, full-res JPEG quality 90 sRGB.
+- `thumbUrl` / `displayUrl` SDK conveniences: `thumbUrl = variants.thumb.cdn_url ?? displayUrl`, `displayUrl = display_url ?? cdn_url`; `undefined` for non-images.
+- `imgTagWithSrcSet(opts)` emits WebP `<picture>` + `display_url` fallback; throws on missing `opts.sizes` or missing `variants`; use `imgTag()` when no variants. AVIF deferred.
+- `r.assets.put(...)` and `r.project(id).apply({ assets: { put: [...] } })` produce identical `AssetRef` shape.
+- Encoder errors: 422 `IMAGE_DECODE_FAILED`, 413 `IMAGE_INPUT_TOO_LARGE` (>40 MP or >12000 px any axis), 504 `IMAGE_ENCODE_TIMEOUT`, 429 `TOO_MANY_ENCODES_QUEUED` (retry after 2s).
+
+Metadata/EXIF/intrinsics (`@run402/sdk@2.4.0+`; flat shape, not `image:{}`):
+- `metadata`: flat `string | number | boolean | string[]`, <=4 KB serialized, `null` if absent; nested invalid client-side `INVALID_ASSET_METADATA`.
+- `image_format`: `jpeg|png|webp|avif|heic|tiff|svg|bmp`, `null` non-image.
+- `image_info`: `has_alpha`, `color_space`, `animated`, `frame_count`, `bit_depth`, `orientation`; `null` non-image; future keys opaque.
+- `image_exif`: EXIF block; `null` non-image, stripped, or formats without EXIF.
+- `image_exif_policy`: `"keep"` default or `"strip"`; `null` non-image.
+
+Shape contract (`@run402/sdk@2.12.0+`, atomic with variants):
+- `blurhash_data_url`: pre-decoded PNG data URL (~600-1200 bytes at 16x16); embed as placeholder background; `null` only decoder failed; absent on rows stored without it.
+- `asset_schema`: highest satisfied shape contract (`"v1.49" | "v1.50" | "v1.54" | null`); `null` = partial shape; absent on rows stored without it. Strict consumers skip partial-shape rows without per-field branching.
+- Enables `@run402/astro@1.0+` `<Run402Image>`: pre-decoded placeholder + WebP ladder `<picture>` + width/height, optional `imageDefaults.strict: { onSchema: ">=v1.49" }`; Astro + React output byte-identical.
+
+Typed errors a caller can branch on (`catch (e) { if (e.code === "...") }`):
+- `INVALID_ASSET_METADATA` (HTTP 400 or `LocalError` pre-network)
+- `INVALID_EXIF_POLICY` (HTTP 400 or `LocalError` pre-network)
+- `INVALID_FILTER_KEY` (HTTP 400 or `LocalError` pre-network)
+- `INVALID_SORT` (HTTP 400 or `LocalError` pre-network)
+- `INVALID_CURSOR_FOR_SORT` (HTTP 400 — cross-sort cursor reuse)
+- `IMAGE_DECODE_FAILED` (HTTP 422 — no partial row written)
+
+Mutable URL loop only: `run402 cdn wait-fresh <mutable-url> --sha <new-sha>` blocks until CDN serves new SHA. Do not use on immutable URLs.
+
+Resume removed in v2.1.0. CLI delegates to `sdk.assets.put` via unified apply (`apply/v1/plans -> content/v1/plans -> S3 PUT -> commit`). `--concurrency` / `--no-resume` accepted but ignored; resume semantics live at apply-plan level (24h TTL).
+
+Private blobs (`--private`): no CDN URL returned; read via authenticated gateway path `GET /storage/v1/blob/<key>` with apikey, or via `run402 assets sign` for time-boxed external sharing.
+
+Content-Type: infers MIME from destination key extension; use `--content-type <mime>` for extensionless/uncommon/override; applies to every file in invocation.
+
+`diagnose` exit codes: 0 when CDN serves expected SHA, 1 otherwise; `until run402 assets diagnose <url>; do sleep 1; done` waits. Probe vantage single-region us-east-1; stderr caveat `# probed once from gateway-us-east-1; not a global view`.
+
+#### Uploading from Node/agent code
+
+```javascript
+import { run402, dir } from "@run402/sdk/node";
+
+const client = run402();
+
+// Single key — bytes/string source.
+const asset = await client.assets.put(projectId, "uploads/report.pdf", { bytes });
+// asset.cdnUrl is the preferred content-addressed URL for public blobs.
+
+// Whole directory in one apply (atomic with site/functions/secrets if combined).
+const manifest = await client.assets.uploadDir("./assets", {
+  project: projectId,
+  prefix: "static/",
+});
+console.log(manifest.byKey["static/logo.png"].cdn_url);
+
+// Or as part of a release apply (assets promote inside the same activation
+// transaction that flips live_release_id).
+await (await client.project(projectId)).apply({
+  project: projectId,
+  assets: { put: [{ key: "static/logo.png", source: bytes }] },
+  site: dir("./dist"),
+});
+```
+
+### sites
+- `run402 sites deploy --manifest <file> [--project <id>]`
+- `run402 sites deploy-dir <path> [--project <id>] [--quiet] [--dry-run] [--confirm-prune]`
+
+`--project` defaults to the active project. Manifest: `{"files":[{"file":"index.html","data":"..."},{"file":"style.css","data":"..."}]}`. Must include `index.html`. Free with active tier. If the project already has a subdomain, redeploying auto-reassigns it to the new deployment (response includes `subdomain_urls`).
+
+To inspect deploy status, use `run402 deploy events <operation_id>` or `run402 deploy list --project <id>` instead of polling a deployment artifact.
+
+CAS-backed transport: Both `sites deploy` and `sites deploy-dir` hash each file locally and only PUT bytes the gateway doesn't already have. Re-deploying an unchanged tree returns immediately with `bytes_uploaded: 0`.
+
+Dry-run: `run402 sites deploy-dir ./dist --project prj_... --dry-run` calls the gateway's `POST /apply/v1/plans?dry_run=true`, prints `{status:"ok", dry_run:true, plan_id:null, operation_id:null, manifest_digest, diff, warnings, expected_events, missing_content_count}`, and exits without uploading bytes or committing a release. Use it to preview the server-authoritative plan/diff envelope.
+
+Progress events: `sites deploy` and `sites deploy-dir` stream unified `DeployEvent` JSON lines to stderr by default; the final result payload (release/deployment metadata, no `status` wrapper) still goes to stdout. Pipe streams separately: `run402 sites deploy-dir ./dist --project p > result.json 2> events.log`. Pass `--quiet` to suppress events (stdout still gets the result payload).
+
+### subdomains
+- `run402 subdomains claim <name> [--deployment <id>] [--project <id>]`
+- `run402 subdomains list [--project <id>]`
+- `run402 subdomains delete <name> --confirm [--project <id>]` — `--confirm` required (irreversible release).
+
+All options default to the active project. `claim` also defaults to the project's last deployment. Names: 3-63 chars, lowercase alphanumeric + hyphens. Creates `<name>.run402.com`.
+
+Subdomain auto-reassignment: You only need to `claim` a subdomain once. Every subsequent `run402 sites deploy` or `run402 deploy` to the same project automatically updates the subdomain to point to the new deployment. The response includes `subdomain_urls` showing which subdomains were reassigned. No need to re-claim after each deploy.
+
+### domains
+- `run402 domains connect <domain> --project <id> [--web] [--authority manual-dns|hosted-zone] [--email-send] [--email-receive] [--mailbox-addresses primary|alias|managed|none] [--addresses <csv>]`
+- `run402 domains list [--project <id>]`
+- `run402 domains status <domain> [--project <id>]`
+- `run402 domains dns <domain> [--project <id>] [--format json|bind]`
+- `run402 domains check <domain> [--project <id>]`
+- `run402 domains repair <domain> [--project <id>]`
+- `run402 domains test-receive <domain> --to <local-part|address> [--project <id>]`
+- `run402 domains wait <domain> [--project <id>] [--until active|safe|receive-active]`
+- `run402 domains activate <domain> [--project <id>]`
+- `run402 domains disconnect <domain> --confirm [--project <id>]` — `--confirm` required.
+
+ProjectDomain is the project-scoped lifecycle surface for web custom domains, custom email sending, inbound receive routing, mailbox address activation, and drift checks.
+
+Auth is control-plane auth: current wallet, operator session, or delegate. Domain commands do not require a local project-key cache entry.
+
+**`--authority` on connect (web domains):** `hosted-zone` puts the domain's DNS zone on Run402 — the domain owner makes ONE nameserver change at their registrar and Run402 applies every record, verifies ownership, and issues TLS automatically. This is the only workable path for a ROOT domain (`example.com`) at most registrars, since a root CNAME is illegal without flattening/ALIAS support. `manual-dns` (the default) returns the records to add yourself. Pre-existing MX/TXT are imported into a hosted zone before the nameserver change is recommended, so mail keeps working. The connect response carries `hosted_zone.ns_assigned` (the pair to hand the owner) and the CLI prints that instruction to stderr; stdout stays pure JSON.
+
+**Root-domain flow (hosted zone):**
+1. `run402 domains connect example.com --project prj_123 --web --authority hosted-zone`
+2. Give the domain owner the two nameservers from the output; they set them at their registrar
+3. `run402 domains wait example.com --project prj_123 --until active`
+
+**Setup flow:**
+1. `run402 domains connect example.com --project prj_123 --web --email-send --email-receive --mailbox-addresses primary --addresses info`
+2. `run402 domains dns example.com --project prj_123 --format bind` — copy DNS records to your registrar without clobbering existing MX unless full takeover is explicitly confirmed
+3. `run402 domains check example.com --project prj_123` — preflight desired vs observed state and drift
+4. `run402 domains test-receive example.com --project prj_123 --to info` — create an inbound token and send the test mail
+5. `run402 domains activate example.com --project prj_123` — switch mailbox addresses after receive checks pass
+
+### apps
+- `run402 apps browse [--tag <tag>]`
+- `run402 apps fork <version_id> <name> [--subdomain <name>] [--bootstrap '<json>']`
+- `run402 apps inspect <version_id>`
+- `run402 apps publish <id> [--description "..."] [--tags a,b] [--visibility <public|private>] [--fork-allowed]`
+- `run402 apps <versions|delete> <id> [<version_id>]`
+- `run402 apps update <id> <version_id> [--description "..."] [--tags a,b]`
+
+Forking clones schema, site, and functions into a new project. If the app includes a `bootstrap` function, it runs automatically with the provided variables — use it for first-admin setup, demo data seeding, or app configuration. Response includes `bootstrap_result` (the function's return value) or `bootstrap_error` if it failed. Use `run402 apps inspect` to see what `bootstrap_variables` an app expects.
+
+### image
+$0.03 per image.
+
+- `run402 image generate "<prompt>" [--aspect <square|landscape|portrait>] [--output <file>] [--org <org_id>]`
+
+Without `--output`, returns `{"aspect":"...","content_type":"image/png","image":"<base64>"}`.
+
+### ai
+Built-in AI helpers. Translation requires the AI Translation add-on on the project. Moderation is free for all projects.
+
+- `run402 ai translate <id> "<text>" --to <lang> [--from <lang>] [--context "<hint>"]` — translate text to a target language (ISO 639-1 codes). Source language auto-detected if `--from` omitted. Context hint guides tone/register (max 200 chars).
+- `run402 ai moderate <id> "<text>"` — run content moderation. Returns flagged status and per-category scores.
+- `run402 ai usage <id>` — check translation word quota for the current billing period (used, included, remaining).
+
+### email
+Max 5 mailboxes/project. Inspect defaults and footer policy with `email mailboxes`; set `default_outbound_mailbox_id` / `auth_sender_mailbox_id` via `email defaults`; set per-mailbox outbound footer policy with `email update --footer-policy run402_transparency|none`. Omit `--mailbox` to use outbound default; branch on `DEFAULT_MAILBOX_REQUIRED` / `DEFAULT_MAILBOX_INVALID` + `next_actions`. `footer_policy=none` requires hobby/team; prototype projects are locked to `run402_transparency` and return `FOOTER_POLICY_TIER_REQUIRED`. Send modes: template or raw HTML; one recipient/send. Rate limits: prototype 10/day, hobby 50/day, team 500/day. Unique recipients/lease: prototype 25 / 200 / 1000.
+
+Run402 Core uses the same CLI after `run402 init --api-base=http://my-core:4020`. The Core operator must configure the gateway outbound provider first; `email mailboxes` surfaces `provider_readiness`, `can_send`, `send_blocked_reason`, and `next_actions` when setup is missing. Core's first slice supports raw outbound mail with attachments; managed templates, inbound reply handling, sender-domain automation, and delivery operations may remain Cloud-only until the Core gateway adds them.
+
+Templates: `project_invite` (project_name, invite_url), `magic_link` (project_name, link_url, expires_in), `notification` (project_name, message max 500 chars).
+
+- `run402 email create <slug> [--project <id>]` — create a project-scoped mailbox local part. The response's `managed_address` is `<slug>@<project-mail-host>.mail.run402.com`; another project may use the same slug. NOT idempotent: a same-project conflict (slug already in use, address in cooldown, or the project already has 5 mailboxes) returns a 409 error rather than an existing mailbox.
+- `run402 email mailboxes [--project <id>]` — list mailboxes plus `mailbox_settings`, `address`/`managed_address`, default-role/readiness/footer-policy metadata (`is_default_outbound`, `is_auth_sender`, `can_send`, `can_receive`, `send_blocked_reason`, `domain_kind`, `footer_policy`, `effective_footer_policy`, `footer_policy_locked_reason`), and gateway `next_actions`.
+- `run402 email defaults [--outbound <slug|mbx_id>] [--auth-sender <slug|mbx_id>] [--clear-outbound] [--clear-auth-sender] [--project <id>]` — show current defaults with no flags, or set/clear `default_outbound_mailbox_id` and/or `auth_sender_mailbox_id`. Slugs are resolved through `email mailboxes`; SDK PATCH uses mailbox ids.
+- `run402 email update [<slug|mbx_id>] --footer-policy <run402_transparency|none> [--mailbox <slug|mbx_id>] [--project <id>]` — set the mailbox's outbound footer policy through `PATCH /mailboxes/v1/:mailbox_id`. The optional positional target and `--mailbox` are equivalent; omit only on single-mailbox projects.
+- `run402 email status [--mailbox <slug|id>] [--project <id>]` — show mailbox info (ID, address, slug, footer policy)
+- `run402 email send --template <name> --to <email> [--var key=value ...] [--from-name <name>] [--mailbox <slug|id>] [--project <id>]`
+- `run402 email send --to <email> --subject <subject> --html <html> [--text <text>] [--attach <path>[:content-type] ...] [--from-name <name>] [--mailbox <slug|id>] [--project <id>]`
+- `run402 email list [--direction <inbound|outbound>] [--mailbox <slug|id>] [--project <id>]` — lists BOTH sent + received by default; `--direction inbound` lists received replies (the reconciliation backstop if a reply_received webhook is lost)
+- `run402 email get <message_id> [--mailbox <slug|id>] [--project <id>]`
+- `run402 email reply <message_id> --html <html> [--text <text>] [--subject <subject>] [--from-name <name>] [--mailbox <slug|id>] [--project <id>]` — reply to an inbound message (threads via In-Reply-To)
+- `run402 email get-raw <message_id> --output <file> [--mailbox <slug|id>] [--project <id>]` — fetch inbound raw RFC-822 bytes (DKIM/zk-email). `--output` required; bytes to file, stdout `{ message_id, bytes, output }`. Outbound returns 404.
+- `run402 email delete [<slug|mailbox_id>] --confirm [--project <id>]` — delete a mailbox (irreversible). Target a specific mailbox by slug or id; on a project with one mailbox the target may be omitted.
+- `run402 email webhooks list [--mailbox <slug|id>] [--project <id>]` — list all webhooks registered on the mailbox
+- `run402 email webhooks get <webhook_id> [--mailbox <slug|id>] [--project <id>]` — get webhook details
+- `run402 email webhooks delete <webhook_id> [--mailbox <slug|id>] [--project <id>]` — delete a webhook
+- `run402 email webhooks update <webhook_id> [--url <url>] [--events <e1,e2>] [--mailbox <slug|id>] [--project <id>]` — update webhook URL and/or events
+- `run402 email webhooks register --url <url> --events <e1,e2> [--mailbox <slug|id>] [--project <id>]` — register a new webhook. Valid events: delivery, bounced, complained, reply_received, mailbox_suspended
+- `run402 email webhooks deliveries [--status <pending|in_flight|delivered|failed_permanent>] [--mailbox <slug|id>] [--project <id>]` — durable delivery rows. At-least-once with bounded retries/backoff; `failed_permanent` = DLQ. Body envelope `{ id, type, created_at, schema_version, idempotency_key, payload }`; dedupe on `idempotency_key`.
+- `run402 email webhooks redrive <delivery_id> [--mailbox <slug|id>] [--project <id>]` — re-queue a dead-lettered (failed_permanent) delivery for another attempt
+
+Raw HTML: `--subject` max 998 chars, `--html` max 1 MB. If `--text` omitted, plaintext auto-generated. `--attach <path>[:content-type]` raw-HTML only, repeatable max 5, <=7 MB total, content-type inferred if suffix omitted. `--from-name` sets From display name. Success may include `mailbox_id`, `from_address`.
+
+Slug rules: 3-63 chars, lowercase alphanumeric + hyphens, no consecutive hyphens. `--project` defaults to the active project.
+
+Functions: `import { email } from '@run402/functions'`; uses project service context + configured outbound default, so set mailbox defaults first:
+```js
+import { email } from '@run402/functions';
+
+// Template mode
+await email.send({ to: "user@example.com", template: "notification", variables: { project_name: "My App", message: "Hello!" } });
+
+// Raw HTML mode
+await email.send({ to: "user@example.com", subject: "Welcome!", html: "<h1>Hi</h1>", from_name: "My App" });
+```
+Throws on rate limit, suppression, missing/invalid default, no mailbox.

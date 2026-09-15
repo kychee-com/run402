@@ -186,6 +186,69 @@ describe("run402 up — default apply composes the repo as a best-effort additio
     assert.equal(payload.result.repo.gitvault, null);
     assert.equal(payload.result.repo.first_push, null);
     assert.equal(calls.find((c) => c.method === "gitvault.push"), undefined, "no push from a repository we did not set up");
+    const scaffoldCall = calls.find((c) => c.method === "gitvault.scaffoldRemote");
+    assert.equal(scaffoldCall.input.nested, undefined, "without --nested the SDK is not asked to nest");
+  });
+
+  it("a skipped scaffold carries the create_nested_repo next_action, respelled as `run402 up --nested`", async () => {
+    impl.scaffoldRemote = async (input) => ({
+      status: "skipped", name: "run402", url: `run402::${input.org_id}/${input.project_id}`,
+      created_repository: false, already_present: false, existing_url: null,
+      reason: `${input.repo_dir} is inside the repository at /somewhere/monorepo — an enclosing repository is never touched`,
+      toplevel: "/somewhere/monorepo",
+      next_actions: [{ type: "create_nested_repo", command: `run402 repos create --nested --project ${input.project_id}`, why: "The app lives inside the repository at /somewhere/monorepo; a nested repo keeps an encrypted remote for the app without touching the enclosing repository." }],
+    });
+    const payload = await runJson(["-y", "--json"]);
+    assert.equal(payload.result.repo.status, "skipped");
+    assert.equal(payload.result.repo.reason, "inside_other_repository");
+    assert.equal(payload.result.repo.next_actions.length, 1);
+    assert.equal(payload.result.repo.next_actions[0].type, "create_nested_repo");
+    assert.equal(payload.result.repo.next_actions[0].command, "run402 up --nested", "up names its OWN --nested spelling, not repos create's");
+    assert.match(payload.result.repo.next_actions[0].why, /without touching the enclosing repository/);
+  });
+
+  it("--nested forwards nested: true to the scaffold and pushes from the nested repository it created", async () => {
+    impl.scaffoldRemote = async (input) => ({
+      status: "scaffolded", name: "run402", url: `run402::${input.org_id}/${input.project_id}`,
+      created_repository: true, already_present: false, existing_url: null,
+      reason: "no existing 'run402' remote — added",
+      nested: true, enclosing_toplevel: "/somewhere/monorepo", excluded_in_enclosing: true,
+    });
+    const payload = await runJson(["-y", "--json", "--nested"]);
+    assert.equal(payload.result.project_id, PROJECT);
+    const scaffoldCall = calls.find((c) => c.method === "gitvault.scaffoldRemote");
+    assert.equal(scaffoldCall.input.nested, true);
+    assert.equal(payload.result.repo.status, "scaffolded");
+    assert.equal(payload.result.repo.gitvault.nested, true);
+    assert.equal(payload.result.repo.gitvault.enclosing_toplevel, "/somewhere/monorepo");
+    assert.equal(payload.result.repo.gitvault.excluded_in_enclosing, true);
+    assert.equal(payload.result.repo.next_actions, undefined);
+    // A nested repository the scaffold just created is all-untracked, exactly
+    // like one up's own git init made: the first push captures it dirty.
+    const pushCall = calls.find((c) => c.method === "gitvault.push");
+    assert.ok(pushCall, "the first push runs from the nested repository");
+    assert.equal(pushCall.input.snapshot?.allowDirty, true);
+    assert.ok(payload.result.repo.first_push);
+    assert.equal(payload.result.repo.first_push.captured_dirty, true);
+  });
+
+  it("--human prints one line naming the skip reason and the --nested remedy", async () => {
+    impl.scaffoldRemote = async (input) => ({
+      status: "skipped", name: "run402", url: `run402::${input.org_id}/${input.project_id}`,
+      created_repository: false, already_present: false, existing_url: null,
+      reason: "inside", toplevel: "/somewhere/monorepo",
+      next_actions: [{ type: "create_nested_repo", command: `run402 repos create --nested --project ${input.project_id}`, why: "why" }],
+    });
+    captureStart();
+    try {
+      await run(["-y", "--human"]);
+    } finally {
+      captureStop();
+    }
+    const text = stdout.join("\n");
+    assert.match(text, /Success! Project is up/);
+    assert.match(text, /Encrypted remote skipped: inside_other_repository \(inside \/somewhere\/monorepo\)/);
+    assert.match(text, /run402 up --nested/);
   });
 
   it("--no-rehearse is forwarded to the SDK up action", async () => {

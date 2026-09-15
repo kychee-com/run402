@@ -27,6 +27,7 @@ import { assertCiDeployableSpec } from "./ci.js";
 import {
   ROUTE_PRICING_NETWORKS,
   ROUTE_HTTP_METHODS,
+  isModernPlanMigrationDiff,
   normalizeDeployResolveRequest,
 } from "./deploy.types.js";
 import {
@@ -826,8 +827,24 @@ async function rehearseBeforeCommit(
   const envelope = plan.rehearsal;
   if (!envelope || !envelope.available) {
     const reason = envelope?.reason ?? "no_migrations";
-    return skip(reason === "no_live_release" ? "no_live_release" : "no_migrations");
+    return skip(
+      reason === "no_live_release"
+        ? "no_live_release"
+        : reason === "migrations_unchanged"
+          ? "migrations_unchanged"
+          : "no_migrations",
+    );
   }
+  // Named migrations that are all checksum-identical noops (already applied
+  // to the live project) would run NOTHING on the branch, so a rehearsal
+  // proves nothing and only costs time. Newer gateways answer
+  // `reason: "migrations_unchanged"` themselves (handled above); derive the
+  // same conclusion from the plan's migration buckets for older ones. A
+  // same-id/different-checksum migration is a hard 422 before any 2xx plan,
+  // so `new.length === 0` means exactly "every declared migration is
+  // already applied". A plan without modern buckets is rehearsed as before.
+  const unchanged = migrationsUnchangedReason(plan);
+  if (unchanged) return skip(unchanged);
   emit({ type: "rehearsal.started", planId });
   let rehearsed: RehearsePlanResult;
   try {
@@ -876,6 +893,22 @@ async function rehearseBeforeCommit(
     },
     ...(bound ? { requiredPlan: { planId: bound.plan_id, planFingerprint: bound.plan_fingerprint } } : {}),
   };
+}
+
+/**
+ * `"migrations_unchanged"` when the plan carries modern migration buckets and
+ * none are new (all noop); `"no_migrations"` when the buckets are both empty;
+ * `null` when there is something to rehearse or the buckets are absent.
+ */
+function migrationsUnchangedReason(plan: PlanResponse): "migrations_unchanged" | "no_migrations" | null {
+  const diff = isModernPlanMigrationDiff(plan.migrations)
+    ? plan.migrations
+    : isModernPlanMigrationDiff(plan.diff?.migrations)
+      ? plan.diff.migrations
+      : null;
+  if (!diff) return null;
+  if (diff.new.length > 0) return null;
+  return diff.noop.length > 0 ? "migrations_unchanged" : "no_migrations";
 }
 
 function describeRehearsalFailure(report: ApplyRehearsalReport): string {

@@ -1521,6 +1521,118 @@ describe("Deploy.plan", () => {
   });
 });
 
+describe("Deploy.apply (rehearsal decision)", () => {
+  function migrationPlan(
+    migrations: PlanResponse["migrations"],
+    rehearsal: NonNullable<PlanResponse["rehearsal"]>,
+  ): PlanResponse {
+    return {
+      ...noContentPlan("plan_rh", "op_rh"),
+      migrations,
+      rehearsal,
+    };
+  }
+
+  function passedRehearsal(): unknown {
+    return {
+      operation_id: "op_rh_rehearsal",
+      status: "ready",
+      poll_url: "/apply/v1/operations/op_rh_rehearsal",
+      report: {
+        kind: "rehearsal_report",
+        status: "passed",
+        operation_id: "op_rh_rehearsal",
+        source_project_id: "prj_test",
+        plan_id: "plan_rh",
+        branch_project_id: "prj_branch",
+        branch_url: null,
+        branch_plan_id: null,
+        branch_operation_id: null,
+        snapshot_id: null,
+        started_at: "2026-06-30T00:00:00.000Z",
+        completed_at: "2026-06-30T00:00:19.000Z",
+        duration_ms: 19_000,
+        migrations: [],
+        checks: [],
+        teardown: { policy: "on_pass", action: "deleted" },
+        next_actions: [
+          { type: "commit_plan", why: "commit", body: { required_plan: { plan_id: "plan_rh", plan_fingerprint: "pfp_rh" } } },
+        ],
+      },
+    };
+  }
+
+  async function applyWith(plan: PlanResponse) {
+    const w = makeWiring();
+    const events: DeployEvent[] = [];
+    w.setHandler((req) => {
+      if (req.path === "/apply/v1/plans") return plan;
+      if (req.path === "/apply/v1/plans/plan_rh/rehearse") return passedRehearsal();
+      if (req.path === "/apply/v1/plans/plan_rh/commit") return readyCommit("op_rh", "rel_rh");
+      throw new Error(`unexpected path ${req.path}`);
+    });
+    const deploy = new Deploy(w.client);
+    const result = await deploy.apply(
+      {
+        project: "prj_test",
+        site: { replace: { "index.html": "<h1>hi</h1>" } },
+        database: { migrations: [{ id: "001_init", sql: "select 1" }] },
+      },
+      { onEvent: (event) => events.push(event) },
+    );
+    return { w, events, result };
+  }
+
+  it("skips rehearsal when every named migration is a checksum-identical noop (older gateway says available)", async () => {
+    const { w, events, result } = await applyWith(migrationPlan(
+      { new: [], noop: [{ id: "001_init", checksum_hex: "a".repeat(64) }, { id: "002_seed", checksum_hex: "b".repeat(64) }] },
+      { available: true, rehearse_url: "/apply/v1/plans/plan_rh/rehearse", reason: null },
+    ));
+    assert.equal(countRequests(w, "/apply/v1/plans/plan_rh/rehearse"), 0, "no rehearse POST for an all-noop plan");
+    assert.equal(countRequests(w, "/apply/v1/plans/plan_rh/commit"), 1);
+    assert.deepEqual(result.rehearsal, { status: "skipped", reason: "migrations_unchanged" });
+    assert.deepEqual(
+      events.filter((e) => e.type.startsWith("rehearsal.")),
+      [{ type: "rehearsal.skipped", reason: "migrations_unchanged" }],
+    );
+  });
+
+  it("accepts a gateway-supplied migrations_unchanged reason verbatim", async () => {
+    const { w, result } = await applyWith(migrationPlan(
+      { new: [], noop: [{ id: "001_init", checksum_hex: "a".repeat(64) }] },
+      {
+        available: false,
+        rehearse_url: null,
+        reason: "migrations_unchanged",
+        next_actions: [{ type: "commit_plan", why: "Every migration is already applied; commit directly." }],
+      },
+    ));
+    assert.equal(countRequests(w, "/apply/v1/plans/plan_rh/rehearse"), 0);
+    assert.deepEqual(result.rehearsal, { status: "skipped", reason: "migrations_unchanged" });
+  });
+
+  it("still rehearses when the plan carries at least one new migration", async () => {
+    const { w, events, result } = await applyWith(migrationPlan(
+      { new: [{ id: "003_more", checksum_hex: "c".repeat(64), transaction: "default" }], noop: [{ id: "001_init", checksum_hex: "a".repeat(64) }] },
+      { available: true, rehearse_url: "/apply/v1/plans/plan_rh/rehearse", reason: null },
+    ));
+    assert.equal(countRequests(w, "/apply/v1/plans/plan_rh/rehearse"), 1, "a new migration is rehearsed");
+    assert.equal(result.rehearsal?.status, "passed");
+    assert.equal(result.rehearsal?.branch_project_id, "prj_branch");
+    assert.ok(events.some((e) => e.type === "rehearsal.started"));
+    const commitReq = w.requests.find((r) => r.path === "/apply/v1/plans/plan_rh/commit");
+    assert.deepEqual((commitReq?.body as { required_plan?: unknown }).required_plan, { plan_id: "plan_rh", plan_fingerprint: "pfp_rh" });
+  });
+
+  it("rehearses a migration-bearing plan without modern buckets exactly as before", async () => {
+    const { w } = await applyWith({
+      ...noContentPlan("plan_rh", "op_rh"),
+      rehearsal: { available: true, rehearse_url: "/apply/v1/plans/plan_rh/rehearse", reason: null },
+    });
+    assert.equal(countRequests(w, "/apply/v1/plans/plan_rh/rehearse"), 1);
+  });
+});
+
 describe("Deploy.apply (validation)", () => {
   it("rejects multi-element subdomains.set with SUBDOMAIN_MULTI_NOT_SUPPORTED", async () => {
     const w = makeWiring();

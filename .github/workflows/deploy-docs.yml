@@ -8,6 +8,7 @@ on:
       - "scripts/build-agent-flat-docs.mjs"
       - "scripts/build-docs-deploy-manifest.mjs"
       - "cli/llms-cli.txt"
+      - "cli/llms-cli-*.txt"
       - "sdk/llms-sdk.txt"
       - "llms-mcp.txt"
       - "SKILL.md"
@@ -54,13 +55,15 @@ jobs:
       - name: Deploy to run402
         run: npx --yes run402@latest deploy apply --project 'prj_1780488560350_0018' --allow-warnings < run402.docs.deploy.json
 
-      # Smoke: the portal root serves HTML and the four flat files still serve at
-      # their canonical paths with the right content types (CDN propagation retry).
+      # Smoke: the portal root serves HTML and the flat files (the llms-cli.txt
+      # index, one of its slices, the full CLI reference, SDK, MCP, SKILL.md)
+      # still serve at their canonical paths with the right content types (CDN
+      # propagation retry).
       - name: Smoke test served surfaces
         run: |
           curl -fsS --retry 6 --retry-delay 5 --retry-all-errors -o /dev/null \
             -w '/ -> %{http_code} %{content_type}\n' https://docs.run402.com/
-          for f in llms-cli.txt llms-sdk.txt llms-mcp.txt SKILL.md; do
+          for f in llms-cli.txt llms-cli-deploy.txt llms-cli-full.txt llms-sdk.txt llms-mcp.txt SKILL.md; do
             curl -fsS --retry 6 --retry-delay 5 --retry-all-errors -o /dev/null \
               -w "/$f -> %{http_code} %{content_type}\n" "https://docs.run402.com/$f"
           done

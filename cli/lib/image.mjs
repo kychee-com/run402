@@ -26,7 +26,9 @@ Output (without --output):
 
 Notes:
   - Requires a funded allowance (run402 allowance create && run402 allowance fund)
-  - Payments are processed automatically via x402 micropayments (Base Sepolia USDC)
+  - Payments are processed automatically via x402 micropayments (USDC on the
+    network your allowance targets — Base Sepolia on the prototype tier, Base
+    mainnet on paid tiers) or over Lightning from a rail: lightning wallet
   - Use --output to save directly to a file instead of printing base64
 `;
 

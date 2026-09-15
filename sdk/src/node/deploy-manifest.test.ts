@@ -7,10 +7,14 @@ import { describe, it } from "node:test";
 
 import { LocalError } from "../errors.js";
 import {
+  assertLocalFileReferencesExist,
+  collectLocalFileReferences,
+  findMissingLocalFileReferences,
   loadDeployManifest,
   loadExecutableDeployConfig,
   normalizeDeployManifest,
 } from "./deploy-manifest.js";
+import { dir } from "./assets-node.js";
 
 describe("Node deploy manifest helpers", () => {
   it("loads explicit executable TypeScript deploy configs", async () => {
@@ -316,6 +320,13 @@ describe("Node deploy manifest helpers", () => {
         (err: unknown) => {
           assert.ok(err instanceof LocalError);
           assert.match(err.message, /Failed to read migration sql_file/);
+          assert.equal(err.code, "MANIFEST_FILE_MISSING");
+          const details = err.details as { missing: Array<{ field_path: string; path: string; kind: string }> };
+          assert.equal(details.missing[0].kind, "migration_sql");
+          assert.equal(details.missing[0].field_path, "database.migrations[0].sql_file");
+          assert.equal(details.missing[0].path, join(root, "db", "missing.sql"));
+          assert.equal(err.nextActions?.[0]?.type, "create_file");
+          assert.equal(err.nextActions?.[0]?.path, join(root, "db", "missing.sql"));
           return true;
         },
       );
@@ -1057,5 +1068,122 @@ describe("Node deploy manifest helpers", () => {
       } as never),
       /Unknown Deploy manifest verify field: checks\..*Use `verify\.http`/,
     );
+  });
+});
+
+describe("local filesystem references", () => {
+  it("collects function sources, site files, dir() targets, and asset sources from a normalized spec", async () => {
+    const root = mkdtempSync(join(tmpdir(), "run402-manifest-refs-"));
+    try {
+      const normalized = await normalizeDeployManifest({
+        project_id: "prj_refs",
+        functions: {
+          replace: {
+            api: { runtime: "node22", source: { path: "fn/api.mjs" } },
+            multi: { runtime: "node22", files: { "index.mjs": { path: "fn/index.mjs" } }, entrypoint: "index.mjs" },
+          },
+        },
+        site: { replace: { "index.html": { path: "site/index.html" }, "inline.html": { data: "x" } } },
+        assets: { put: [{ key: "img/a.png", source: { path: "assets/a.png" } }] },
+      } as never, { baseDir: root });
+      const refs = collectLocalFileReferences(normalized.spec);
+      assert.deepEqual(
+        refs.map((ref) => [ref.field_path, ref.kind, ref.expects]),
+        [
+          ["functions.replace.api.source", "function_source", "file"],
+          ['functions.replace.multi.files["index.mjs"]', "function_source", "file"],
+          ['site.replace["index.html"]', "site_file", "file"],
+          ["assets.put[0].source", "asset", "file"],
+        ],
+      );
+      assert.equal(refs[0].path, join(root, "fn", "api.mjs"));
+
+      const dirRefs = collectLocalFileReferences({ site: { replace: dir(join(root, "dist")) } });
+      assert.equal(dirRefs.length, 1);
+      assert.equal(dirRefs[0].kind, "site_dir");
+      assert.equal(dirRefs[0].expects, "directory");
+      assert.equal(dirRefs[0].field_path, "site.replace");
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  });
+
+  it("reports only the references that are absent (or of the wrong kind)", async () => {
+    const root = mkdtempSync(join(tmpdir(), "run402-manifest-refs-missing-"));
+    try {
+      mkdirSync(join(root, "fn"), { recursive: true });
+      mkdirSync(join(root, "dist"), { recursive: true });
+      writeFileSync(join(root, "fn", "api.mjs"), "export default () => new Response('ok');\n");
+      const normalized = await normalizeDeployManifest({
+        project_id: "prj_refs",
+        functions: { replace: { api: { runtime: "node22", source: { path: "fn/api.mjs" } } } },
+        site: { replace: { "index.html": { path: "site/index.html" }, "dist-as-file": { path: "dist" } } },
+      } as never, { baseDir: root });
+      const missing = await findMissingLocalFileReferences(normalized.spec);
+      assert.deepEqual(missing, [
+        { field_path: 'site.replace["index.html"]', path: join(root, "site", "index.html"), kind: "site_file" },
+        { field_path: 'site.replace["dist-as-file"]', path: join(root, "dist"), kind: "site_file" },
+      ]);
+      await assertLocalFileReferencesExist({
+        functions: normalized.spec.functions,
+        site: { replace: dir(join(root, "dist")) },
+      });
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  });
+
+  it("throws MANIFEST_FILE_MISSING naming the first missing file with one create_file action per file", async () => {
+    const root = mkdtempSync(join(tmpdir(), "run402-manifest-refs-throw-"));
+    try {
+      const normalized = await normalizeDeployManifest({
+        project_id: "prj_refs",
+        functions: { replace: { api: { runtime: "node22", source: { path: "fn/api.mjs" } } } },
+        site: { replace: { "index.html": { path: "site/index.html" } } },
+      } as never, { baseDir: root });
+      await assert.rejects(
+        () => assertLocalFileReferencesExist(normalized.spec, { manifestPath: join(root, "run402.deploy.json") }),
+        (err: unknown) => {
+          assert.ok(err instanceof LocalError);
+          assert.equal(err.code, "MANIFEST_FILE_MISSING");
+          assert.match(err.message, /function source file that does not exist/);
+          assert.ok(err.message.includes(join(root, "fn", "api.mjs")));
+          assert.match(err.message, /and 1 more/);
+          const details = err.details as { manifest_path: string; missing: Array<{ kind: string }> };
+          assert.equal(details.manifest_path, join(root, "run402.deploy.json"));
+          assert.equal(details.missing.length, 2);
+          assert.equal(err.nextActions?.length, 2);
+          assert.equal(err.nextActions?.[0]?.type, "create_file");
+          assert.equal(err.nextActions?.[0]?.path, join(root, "fn", "api.mjs"));
+          assert.equal(err.nextActions?.[0]?.field_path, "functions.replace.api.source");
+          assert.equal(err.nextActions?.[1]?.path, join(root, "site", "index.html"));
+          return true;
+        },
+      );
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  });
+
+  it("answers an explicit missing manifest path with MANIFEST_NOT_FOUND and a create_manifest action", async () => {
+    const root = mkdtempSync(join(tmpdir(), "run402-manifest-enoent-"));
+    try {
+      for (const name of ["missing.json", "missing.ts"]) {
+        const path = join(root, name);
+        await assert.rejects(
+          () => loadDeployManifest(path),
+          (err: unknown) => {
+            assert.ok(err instanceof LocalError);
+            assert.equal(err.code, "MANIFEST_NOT_FOUND");
+            assert.deepEqual(err.details, { path });
+            assert.equal(err.nextActions?.[0]?.type, "create_manifest");
+            assert.equal(err.nextActions?.[0]?.path, path);
+            return true;
+          },
+        );
+      }
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
   });
 });

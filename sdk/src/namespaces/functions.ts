@@ -5,6 +5,8 @@
  * `functions.patch.set` release) — the legacy `POST /projects/v1/admin/:id/
  * functions` route was removed gateway-side. invoke/logs/list/delete/update
  * cover `/projects/v1/admin/:id/functions*` and `/functions/v1/:name`, plus
+ * the client-side `logsByRequestId` fan-out (no project-wide logs route
+ * exists) and the `origin` tagging/filter on every log entry, plus
  * the opt-in runtime rebuild/rebuildAll against `/projects/v1/:id/functions*`
  * (wallet-authed, capability `function-runtime-rebuild`).
  */
@@ -21,6 +23,14 @@ import type {
   FunctionInvokeOptions,
   FunctionInvokeResult,
   FunctionListResult,
+  FunctionLogEntry,
+  FunctionLogOrigin,
+  FunctionLogOriginFilter,
+  FunctionLogSearchEntry,
+  FunctionLogSearchError,
+  FunctionLogsByRequestIdOptions,
+  FunctionLogsByRequestIdResult,
+  FunctionLogsHiddenCounts,
   FunctionLogsOptions,
   FunctionLogsResult,
   FunctionRunCreateOptions,
@@ -51,6 +61,74 @@ const DISALLOWED_FUNCTION_DEPS = new Set([
   "canvas",
   "bcrypt",
 ]);
+
+/**
+ * Lambda runtime control lines. Every pattern anchors at the start of the
+ * (trimmed) CloudWatch message; nothing a function writes through `console.*`
+ * can start this way because the Node runtime's text log format prefixes app
+ * output with `<iso-timestamp>\t<request-uuid>\t<LEVEL>\t`.
+ *
+ *   INIT_START / INIT_REPORT       cold-start init phase
+ *   RESTORE_START / RESTORE_REPORT SnapStart restore phase (`class: "ssr"`)
+ *   START / END / REPORT RequestId per-invocation bookends (billed duration…)
+ *   EXTENSION / LOGS / TELEMETRY   extension registration banners
+ *
+ * Deliberately NOT platform: `Task timed out after …`, `RequestId: … Error:
+ * Runtime exited …`, and the wrapper's own `{"event":"function.error",…}`
+ * diagnostics — those describe what happened to the app code and stay `app`.
+ */
+const PLATFORM_LOG_LINE_RE = /^(?:INIT_START\b|INIT_REPORT\b|RESTORE_START\b|RESTORE_REPORT\b|START RequestId:|END RequestId:|REPORT RequestId:|EXTENSION\t|LOGS\t|TELEMETRY\t)/;
+
+/**
+ * Classify one CloudWatch log line as a Lambda runtime control line
+ * (`platform`) or function output (`app`). Pure; safe on any string.
+ */
+export function classifyFunctionLogLine(message: string): FunctionLogOrigin {
+  const line = typeof message === "string" ? message.trimStart() : "";
+  return PLATFORM_LOG_LINE_RE.test(line) ? "platform" : "app";
+}
+
+const FUNCTION_LOG_ORIGIN_FILTERS: ReadonlySet<string> = new Set(["app", "platform", "all"]);
+
+function validateFunctionLogOriginFilter(value: unknown, context: string): FunctionLogOriginFilter {
+  if (value === undefined) return "all";
+  if (typeof value !== "string" || !FUNCTION_LOG_ORIGIN_FILTERS.has(value)) {
+    throw new LocalError(
+      `Invalid functions.logs origin: ${String(value)} (expected "app", "platform", or "all")`,
+      context,
+    );
+  }
+  return value as FunctionLogOriginFilter;
+}
+
+/**
+ * Tag every entry with its origin and apply the client-side filter. The wire
+ * response never carries `origin`; it is computed here so CLI/MCP never
+ * re-derive it.
+ */
+function applyFunctionLogOrigin(
+  logs: FunctionLogEntry[] | undefined,
+  origin: FunctionLogOriginFilter,
+): { logs: FunctionLogEntry[]; hidden?: FunctionLogsHiddenCounts } {
+  const tagged: FunctionLogEntry[] = (Array.isArray(logs) ? logs : []).map((entry) => ({
+    ...entry,
+    origin: classifyFunctionLogLine(entry?.message ?? ""),
+  }));
+  if (origin === "all") return { logs: tagged };
+  const hidden: FunctionLogsHiddenCounts = { platform: 0, app: 0 };
+  const kept: FunctionLogEntry[] = [];
+  for (const entry of tagged) {
+    if (entry.origin === origin) kept.push(entry);
+    else hidden[entry.origin] += 1;
+  }
+  return { logs: kept, hidden };
+}
+
+function compareFunctionLogEntries(a: FunctionLogEntry, b: FunctionLogEntry): number {
+  const ta = a.timestamp ? Date.parse(a.timestamp) : 0;
+  const tb = b.timestamp ? Date.parse(b.timestamp) : 0;
+  return (Number.isNaN(ta) ? 0 : ta) - (Number.isNaN(tb) ? 0 : tb);
+}
 
 export class FunctionRunTerminalError extends Error {
   readonly run: FunctionRunHandle;
@@ -221,6 +299,7 @@ export class Functions {
 
     const tail = opts.tail ?? 50;
     validatePositiveJsonInteger(tail, "tail", "fetching function logs", { max: FUNCTION_LOG_TAIL_MAX });
+    const origin = validateFunctionLogOriginFilter(opts.origin, "fetching function logs");
     const search = new URLSearchParams({ tail: String(tail) });
     if (opts.since !== undefined) {
       search.set("since", String(parseLogSince(opts.since)));
@@ -231,10 +310,85 @@ export class Functions {
     }
     const path = `/projects/v1/admin/${projectId}/functions/${encodeURIComponent(name)}/logs?${search.toString()}`;
 
-    return this.client.request<FunctionLogsResult>(path, {
+    const wire = await this.client.request<{ logs?: FunctionLogEntry[] }>(path, {
       headers: { Authorization: `Bearer ${project.service_key}` },
       context: "fetching function logs",
     });
+    const filtered = applyFunctionLogOrigin(wire?.logs, origin);
+    return {
+      logs: filtered.logs,
+      origin,
+      ...(filtered.hidden ? { hidden: filtered.hidden } : {}),
+    };
+  }
+
+  /**
+   * Project-wide request-id search. The gateway has no cross-function logs
+   * route, so this fans `logs()` out across every function in the project
+   * (or just `functionName`) and merges the matches oldest-first. A function
+   * whose read failed lands in `errors[]` by name; the others still answer.
+   * Accepts `req_…` (the `x-run402-request-id` response header), `fnrun_…`,
+   * and `fnatt_…` ids.
+   */
+  async logsByRequestId(
+    projectId: string,
+    requestId: string,
+    opts: FunctionLogsByRequestIdOptions = {},
+  ): Promise<FunctionLogsByRequestIdResult> {
+    const context = "searching function logs by request id";
+    validateFunctionLogRequestId(requestId, "requestId", context);
+    const tail = opts.tail ?? 100;
+    validatePositiveJsonInteger(tail, "tail", context, { max: FUNCTION_LOG_TAIL_MAX });
+    const origin = validateFunctionLogOriginFilter(opts.origin, context);
+    if (opts.since !== undefined) parseLogSince(opts.since);
+
+    let names: string[];
+    if (opts.functionName !== undefined) {
+      validateNonEmptyString(opts.functionName, "functionName", context);
+      names = [opts.functionName];
+    } else {
+      const list = await this.list(projectId);
+      names = (list?.functions ?? []).map((fn) => fn.name).filter((n): n is string => typeof n === "string" && n.length > 0);
+    }
+
+    const results = await Promise.allSettled(
+      names.map((name) =>
+        this.logs(projectId, name, { tail, since: opts.since, requestId, origin }).then((result) => ({ name, result })),
+      ),
+    );
+
+    const scanned: string[] = [];
+    const entries: FunctionLogSearchEntry[] = [];
+    const errors: FunctionLogSearchError[] = [];
+    const hidden: FunctionLogsHiddenCounts = { platform: 0, app: 0 };
+    results.forEach((settled, index) => {
+      const name = names[index]!;
+      if (settled.status === "fulfilled") {
+        scanned.push(name);
+        for (const entry of settled.value.result.logs) entries.push({ function: name, ...entry });
+        if (settled.value.result.hidden) {
+          hidden.platform += settled.value.result.hidden.platform;
+          hidden.app += settled.value.result.hidden.app;
+        }
+        return;
+      }
+      const reason: unknown = settled.reason;
+      const message = reason instanceof Error ? reason.message : String(reason);
+      const code = reason && typeof reason === "object" && typeof (reason as { code?: unknown }).code === "string"
+        ? (reason as { code: string }).code
+        : undefined;
+      errors.push({ function: name, message, ...(code ? { code } : {}) });
+    });
+    entries.sort(compareFunctionLogEntries);
+
+    return {
+      request_id: requestId,
+      scanned,
+      entries,
+      errors,
+      origin,
+      ...(origin !== "all" ? { hidden } : {}),
+    };
   }
 
   /** List deployed functions for a project. */
@@ -456,13 +610,14 @@ export class FunctionRuns {
     validatePositiveJsonInteger(tail, "tail", "fetching function run logs", { max: FUNCTION_LOG_TAIL_MAX });
     const search = new URLSearchParams({ tail: String(tail) });
     if (opts.since !== undefined) search.set("since", isoOrEpochString(opts.since, "since", "fetching function run logs"));
-    return this.client.request<FunctionLogsResult>(
+    const wire = await this.client.request<{ logs?: FunctionLogEntry[] }>(
       `/functions/v1/runs/${encodeURIComponent(runId)}/logs?${search.toString()}`,
       {
         headers: { Authorization: `Bearer ${project.service_key}` },
         context: "fetching function run logs",
       },
     );
+    return { logs: applyFunctionLogOrigin(wire?.logs, "all").logs, origin: "all" };
   }
 
   async cancel(projectId: string, runId: string): Promise<FunctionRunHandle> {

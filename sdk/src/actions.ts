@@ -85,24 +85,43 @@ export interface Run402UpActionInput {
   /** Skip the automatic rehearsal a migration-bearing deploy against a
    *  project with a live release gets. Default false. */
   noRehearse?: boolean;
-  /** Explicit display name to set on the principal when it has none yet.
-   *  Omitted: `RUN402_AGENT_NAME` when set, else a specifically detected
-   *  client (`claude-code`, `codex`, `cursor`, `grok`) reported as `identity.source:
-   *  "detected"`; when nothing is known no name is written and the result
-   *  says `identity.source: "undetected"`. */
+  /** Explicit display name to set on the principal. Omitted:
+   *  `RUN402_AGENT_NAME` when set (sets or overrides the name, reported as
+   *  `identity.source: "explicit"`), else — only when the principal has no
+   *  name yet — a specifically detected client (`claude-code`, `codex`,
+   *  `cursor`, `grok`, or whatever `RUN402_CLIENT` declares) reported as
+   *  `identity.source: "detected"`; when nothing is known no name is written
+   *  and the result says `identity.source: "undetected"`. */
   identityName?: string;
 }
+
+/** A client `up` can detect from its environment (`RUN402_CLIENT` declares one outright). */
+export type Run402UpDetectedClient = "claude-code" | "codex" | "cursor" | "grok" | (string & {});
 
 /** How `up` resolved the principal's display name (first-deploy-agent-dx). */
 export interface Run402UpIdentity {
   display_name: string | null;
   /** `existing`: already set; `explicit`: set now from `identityName` or
    *  `RUN402_AGENT_NAME`; `detected`: set now from a specifically detected
-   *  client (`claude-code`, `codex`, `cursor`, `grok`); `undetected`: nothing known
-   *  and nothing persisted — a guess is never written as a name (the room
-   *  presence is `agent` for coordination only); `unavailable`: could not be
-   *  read or set (never fails the deploy). */
+   *  client (`claude-code`, `codex`, `cursor`, `grok`); `undetected`: nothing
+   *  known and nothing persisted — a guess is never written as a name (the
+   *  room presence is `agent` for coordination only); `unavailable`: could
+   *  not be read or set (never fails the deploy). */
   source: "existing" | "explicit" | "detected" | "undetected" | "unavailable";
+  /** The client detected from the environment on this run, whether or not
+   *  it was applied as the name (`null` when nothing specific was detected
+   *  or the read was unavailable). */
+  detected?: Run402UpDetectedClient | null;
+  /** Whether the detected client became the display name, and why not when
+   *  it did not: `applied` (it did); `name_already_set` (the principal was
+   *  already named — nothing written; rename with `RUN402_AGENT_NAME=<name>`
+   *  or `run402 org whoami --set-name <name>`); `explicit_name_wins`
+   *  (`identityName` / `RUN402_AGENT_NAME` took precedence);
+   *  `nothing_detected` (no client marker and no `RUN402_CLIENT`). */
+  detection?: {
+    applied: boolean;
+    reason: "applied" | "name_already_set" | "explicit_name_wins" | "nothing_detected";
+  };
   /** The project room presence `up` registered under that name, when it could. */
   presence?: { presence_id: string; name: string } | null;
 }

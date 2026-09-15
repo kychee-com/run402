@@ -1,163 +1,192 @@
 /**
  * run402 logs — Top-level shortcut for fetching function logs by request id.
  *
- * Capability `astro-ssr-runtime` (Run402 v1.52). When an SSR response
- * returns 5xx, the response includes `x-run402-request-id: req_...` and
- * `x-run402-error-code: R402_SSR_RUNTIME_ERROR`. The agent (or user)
- * copies the request id and runs:
+ * Capability `astro-ssr-runtime` (Run402 v1.52). Every function response
+ * (routed and direct) carries `x-run402-request-id: req_...`; a 5xx from the
+ * SSR runtime adds `x-run402-error-code: R402_SSR_RUNTIME_ERROR`. The agent
+ * (or user) copies the request id and runs:
  *
  *   run402 logs --request-id req_...
  *
- * Resolves project + function from env (RUN402_PROJECT_ID + --function)
- * OR explicit flags. For multi-function projects, you can omit --function
- * and the command scans every function in the project.
+ * No function name needed: the SDK's `functions.logsByRequestId` fans the
+ * read out across every function in the project (the gateway has no
+ * project-wide logs route). `--function <name>` (or a leading positional)
+ * narrows it to one; with `--function` alone the command is that function's
+ * plain tail.
  *
- * Delegates to `run402 functions logs` for single-function lookups.
+ * App output only by default — Lambda's own INIT_START / START / END / REPORT
+ * lines are `origin: "platform"` and hidden unless `--platform` / `--all`.
  */
 
 import { getSdk } from "./sdk.mjs";
+import { getActiveProjectId } from "./config.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
+import { assertKnownFlags, flagValue, normalizeArgv, parseIntegerFlag, positionalArgs } from "./argparse.mjs";
+import {
+  FUNCTION_LOG_TAIL_MAX,
+  assertLogRequestIdFlag,
+  parseLogSinceFlag,
+  platformHiddenHint,
+  resolveLogOriginFlag,
+} from "./functions.mjs";
 
 const HELP = `run402 logs — Fetch function logs by request id
 
 Usage:
-  run402 logs --request-id <req_id> [--function <name>] [--project <id>] [--tail <n>]
+  run402 logs --request-id <id> [<function> | --function <name>] [--project <id>] [options]
+  run402 logs --function <name> [--project <id>] [options]
 
-Required:
-  --request-id <req_id>   The req_... id (from x-run402-request-id header)
+Required (one of):
+  --request-id <id>       A req_... id (the x-run402-request-id response header),
+                          or a fnrun_... / fnatt_... durable-run id. Without
+                          --function, every function in the project is scanned.
+  --function <name>       Limit to one function. Alone (no --request-id) this
+                          is that function's recent tail. A leading positional
+                          <function> means the same thing.
 
 Optional:
-  --function <name>       Limit to one function (default: scan all functions in the project)
-  --project <id>          Project id (default: \$RUN402_PROJECT_ID)
-  --tail <n>              Max entries per function (default 100)
+  --project <id>          Project id (default: \$RUN402_PROJECT_ID, else the active project)
+  --tail <n>              Max entries per function BEFORE the origin filter (default 100, max 1000)
+  --since <ts>            ISO timestamp or epoch ms; only entries at or after this
+  --app                   Only the function's own output (default). Lambda runtime
+                          lines (INIT_START, START/END/REPORT RequestId, billed
+                          duration) are hidden; "hidden.platform" counts them and a
+                          "hint" appears when hiding them left the result empty.
+  --platform              Only the Lambda runtime lines
+  --all                   Both (the raw CloudWatch stream)
 
 Output:
-  Stdout is JSON { ok, request_id, project_id, scanned, entries, errors? }.
+  Stdout is JSON { ok, request_id, project_id, scanned, entries, errors?, origin, hidden?, hint? }.
+  Every entry carries "function" and "origin": "app" | "platform". "ok" is
+  false only when a function's log read failed (it is named in "errors").
 
 Examples:
   run402 logs --request-id req_abc123
   run402 logs --request-id req_abc123 --function ssr
-  run402 logs --request-id req_abc123 --project prj_xyz
+  run402 logs ssr --request-id req_abc123 --all
+  run402 logs --request-id fnrun_abc123 --project prj_xyz
+  run402 logs --function checkout --tail 20
 
 Tip: the request id appears in:
-  - The 'x-run402-request-id' response header on every SSR response
+  - The 'x-run402-request-id' response header on every function response
   - The 'requestId' field of any R402_SSR_RUNTIME_ERROR envelope
   - The 'request_id' field in deploy / cache invalidate result envelopes
+  - The 'samples' of 'run402 errors' (each sample names a runnable logs command)
 `;
 
+const VALUE_FLAGS = ["--request-id", "--function", "--project", "--tail", "--since"];
+const KNOWN_FLAGS = [...VALUE_FLAGS, "--app", "--platform", "--all", "--help", "-h"];
+
 export async function run(sub, args = []) {
-  const all = [sub, ...args].filter(Boolean);
+  const all = normalizeArgv([sub, ...args].filter(Boolean));
   if (!all.length || all.includes("--help") || all.includes("-h")) {
     console.log(HELP);
     return;
   }
+  assertKnownFlags(all, KNOWN_FLAGS, VALUE_FLAGS);
 
-  const requestId = pickFlagValue(all, "--request-id");
-  const fnName = pickFlagValue(all, "--function");
-  const projectIdArg = pickFlagValue(all, "--project");
-  const tailArg = pickFlagValue(all, "--tail");
+  const requestId = flagValue(all, "--request-id") ?? undefined;
+  const functionFlag = flagValue(all, "--function") ?? undefined;
+  const projectIdArg = flagValue(all, "--project") ?? undefined;
+  const tailArg = flagValue(all, "--tail") ?? undefined;
+  const sinceArg = flagValue(all, "--since") ?? undefined;
+  const origin = resolveLogOriginFlag(all);
 
-  if (!requestId) {
+  const positionals = positionalArgs(all, VALUE_FLAGS);
+  if (positionals.length > 1) {
     fail({
       code: "BAD_USAGE",
-      message: "Missing --request-id <req_id>.",
+      message: `Unexpected argument: ${positionals[1]}`,
+      hint: "run402 logs [<function>] --request-id <id> [--project <id>]",
+      details: { argument: positionals[1] },
+    });
+  }
+  if (positionals.length === 1 && functionFlag !== undefined && positionals[0] !== functionFlag) {
+    fail({
+      code: "BAD_USAGE",
+      message: `Function named twice: positional '${positionals[0]}' and --function '${functionFlag}'`,
+      details: { positional: positionals[0], flag: functionFlag },
+    });
+  }
+  const fnName = functionFlag ?? positionals[0];
+
+  if (!requestId && !fnName) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing --request-id <id> (or --function <name> for a plain tail).",
       hint: "Pass the request id from the 'x-run402-request-id' response header.",
     });
   }
-  if (!requestId.startsWith("req_")) {
-    fail({
-      code: "BAD_USAGE",
-      message: `--request-id must look like 'req_...' (got: ${requestId})`,
-    });
-  }
+  assertLogRequestIdFlag(requestId);
 
-  const projectId = projectIdArg ?? process.env.RUN402_PROJECT_ID;
+  const projectId = projectIdArg ?? process.env.RUN402_PROJECT_ID ?? getActiveProjectId() ?? undefined;
   if (!projectId) {
     fail({
       code: "BAD_USAGE",
       message: "Missing project id.",
-      hint: "Pass --project <id> or set RUN402_PROJECT_ID env var.",
+      hint: "Pass --project <id>, set RUN402_PROJECT_ID, or 'run402 projects use <id>'.",
     });
   }
 
-  const tail = tailArg ? parseInt(tailArg, 10) : 100;
-  if (Number.isNaN(tail) || tail < 1 || tail > 5000) {
-    fail({
-      code: "BAD_USAGE",
-      message: `--tail must be an integer between 1 and 5000 (got: ${tailArg})`,
-    });
-  }
+  const tail = parseIntegerFlag("--tail", tailArg, { min: 1, max: FUNCTION_LOG_TAIL_MAX, def: 100 });
+  const since = parseLogSinceFlag(sinceArg);
 
   const sdk = getSdk();
-
   try {
-    let fnNames;
-    if (fnName) {
-      fnNames = [fnName];
-    } else {
-      // Scan every function in the project.
-      const list = await sdk.functions.list(projectId);
-      fnNames = (list?.functions ?? []).map((f) => f.name);
-      if (fnNames.length === 0) {
-        console.log(JSON.stringify({ ok: true, request_id: requestId, project_id: projectId, entries: [], scanned: [] }, null, 2));
-        return;
-      }
+    if (requestId) {
+      const result = await sdk.functions.logsByRequestId(projectId, requestId, {
+        tail,
+        since,
+        origin,
+        ...(fnName !== undefined && { functionName: fnName }),
+      });
+      emit({
+        ok: result.errors.length === 0,
+        request_id: result.request_id,
+        project_id: projectId,
+        scanned: result.scanned,
+        entries: result.entries,
+        errors: result.errors,
+        origin: result.origin,
+        hidden: result.hidden,
+      });
+      return;
     }
 
-    // Query each function in parallel; aggregate entries. SDK returns
-    // FunctionLogsResult = { logs: FunctionLogEntry[] }; unwrap to the array
-    // so the aggregated JSON has a flat entries[] field.
-    const results = await Promise.allSettled(
-      fnNames.map((name) =>
-        sdk.functions
-          .logs(projectId, name, { requestId, tail })
-          .then((result) => ({ name, entries: result?.logs ?? [] })),
-      ),
-    );
-
-    const allEntries = [];
-    const scanned = [];
-    const errors = [];
-    for (const r of results) {
-      if (r.status === "fulfilled") {
-        scanned.push(r.value.name);
-        for (const e of r.value.entries) {
-          allEntries.push({ function: r.value.name, ...e });
-        }
-      } else {
-        errors.push({ name: "?", error: r.reason?.message ?? String(r.reason) });
-      }
-    }
-
-    // Sort by timestamp ascending. FunctionLogEntry.timestamp is an ISO 8601
-    // string; convert to epoch ms for comparison.
-    allEntries.sort((a, b) => {
-      const ta = a.timestamp ? Date.parse(a.timestamp) : 0;
-      const tb = b.timestamp ? Date.parse(b.timestamp) : 0;
-      return ta - tb;
+    // --function alone: that function's recent tail, same envelope.
+    const result = await sdk.functions.logs(projectId, fnName, { tail, since, origin });
+    emit({
+      ok: true,
+      request_id: null,
+      project_id: projectId,
+      scanned: [fnName],
+      entries: (result.logs ?? []).map((entry) => ({ function: fnName, ...entry })),
+      errors: [],
+      origin: result.origin ?? origin,
+      hidden: result.hidden,
     });
-
-    console.log(
-      JSON.stringify(
-        {
-          ok: errors.length === 0,
-          request_id: requestId,
-          project_id: projectId,
-          scanned,
-          entries: allEntries,
-          ...(errors.length > 0 && { errors }),
-        },
-        null,
-        2,
-      ),
-    );
   } catch (err) {
     reportSdkError(err);
   }
 }
 
-function pickFlagValue(args, flag) {
-  const idx = args.indexOf(flag);
-  if (idx === -1) return undefined;
-  return args[idx + 1];
+function emit({ ok, request_id, project_id, scanned, entries, errors, origin, hidden }) {
+  const hint = platformHiddenHint(entries, hidden);
+  console.log(
+    JSON.stringify(
+      {
+        ok,
+        request_id,
+        project_id,
+        scanned,
+        entries,
+        ...(errors.length > 0 && { errors }),
+        origin,
+        ...(hidden && { hidden }),
+        ...(hint && { hint }),
+      },
+      null,
+      2,
+    ),
+  );
 }

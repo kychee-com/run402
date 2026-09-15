@@ -4,6 +4,7 @@ import {
   lstat,
   mkdir,
   mkdtemp,
+  readdir,
   readFile,
   rename,
   rm,
@@ -60,7 +61,12 @@ import type {
 } from "../namespaces/deploy.types.js";
 import type { ProjectSummary, ProvisionResult } from "../namespaces/projects.types.js";
 import type { TierName, TierSetResult } from "../namespaces/tier.js";
-import { loadDeployManifest, normalizeDeployManifest } from "./deploy-manifest.js";
+import {
+  assertLocalFileReferencesExist,
+  loadDeployManifest,
+  manifestNotFoundError,
+  normalizeDeployManifest,
+} from "./deploy-manifest.js";
 import { declaredAgentName, detectClientName } from "./client-detect.js";
 
 export type NodeActionTargetKind = "cloud" | "core" | "unknown";
@@ -638,9 +644,13 @@ export class NodeActions implements Run402Actions {
    * principal-display-name (first-deploy-agent-dx): make sure the deploying
    * principal has a display name before the deploy that will be credited to
    * it, then join the project's room under that name. Explicit
-   * `identityName` wins; otherwise the detected client name is set and
-   * reported as `detected`. Best-effort end to end: a whoami, PATCH, or
-   * room hiccup never fails the deploy — it reports `source: "unavailable"`.
+   * `identityName` / `RUN402_AGENT_NAME` wins and may rename an already-named
+   * principal; otherwise a detected client name is set only when no name
+   * exists yet, and reported as `detected`. The detected client is always
+   * reported (`detected` + `detection`), even when it was not applied, so an
+   * agent whose principal is already named sees why. Best-effort end to
+   * end: a whoami, PATCH, or room hiccup never fails the deploy — it reports
+   * `source: "unavailable"`.
    */
   async #ensureIdentity(
     input: Run402UpActionInput,
@@ -663,9 +673,20 @@ export class NodeActions implements Run402Actions {
     let source: Run402UpIdentity["source"] = "existing";
     // Order: explicit input, then the runtime's own declaration
     // (RUN402_AGENT_NAME), then a specifically detected client. A generic
-    // guess is never persisted as a name.
+    // guess is never persisted as a name. Detection always runs so the
+    // result can say what was seen even when it was not applied.
     const explicitName = input.identityName?.trim() || declaredAgentName() || null;
-    const detectedName = explicitName ? null : detectClientName();
+    const detectedName = detectClientName();
+    const detectionReport = (applied: boolean): Pick<Run402UpIdentity, "detected" | "detection"> => {
+      const reason: NonNullable<Run402UpIdentity["detection"]>["reason"] = applied
+        ? "applied"
+        : !detectedName
+          ? "nothing_detected"
+          : explicitName
+            ? "explicit_name_wins"
+            : "name_already_set";
+      return { detected: detectedName, detection: { applied, reason } };
+    };
     if (!displayName || (explicitName && explicitName !== displayName)) {
       const desired = explicitName ?? detectedName;
       if (!desired) {
@@ -679,12 +700,12 @@ export class NodeActions implements Run402Actions {
         }
         run.skipStep({
           action: "identity.name.set",
-          description: "No display name is known for this principal; nothing was written (set RUN402_AGENT_NAME or run `run402 org whoami --set-name <name>`)",
+          description: "No display name is known for this principal; nothing was written (set RUN402_AGENT_NAME=<name>, RUN402_CLIENT=<client>, or run `run402 org whoami --set-name <name>`)",
           mutation: false,
           auto: true,
-          details: { source: "undetected" },
+          details: { source: "undetected", detected: null },
         });
-        return { display_name: null, source: "undetected", presence };
+        return { display_name: null, source: "undetected", ...detectionReport(false), presence };
       }
       source = explicitName ? "explicit" : "detected";
       const step = run.addStep({
@@ -692,7 +713,7 @@ export class NodeActions implements Run402Actions {
         description: `Set this principal's display name to ${desired}`,
         mutation: true,
         auto: true,
-        details: { display_name: desired, source },
+        details: { display_name: desired, source, detected: detectedName },
       });
       await run.approve(
         step,
@@ -706,8 +727,18 @@ export class NodeActions implements Run402Actions {
         run.setState(step, "succeeded", { display_name: displayName });
       } catch (err) {
         run.setState(step, "failed", { error: err instanceof Error ? err.message : String(err) });
-        return { display_name: current, source: "unavailable" };
+        return { display_name: current, source: "unavailable", ...detectionReport(false) };
       }
+    } else if (detectedName && detectedName !== displayName) {
+      // A client was detected but the principal already carries a name: say
+      // so, write nothing (an existing name is never overwritten by a guess).
+      run.skipStep({
+        action: "identity.name.set",
+        description: `Detected client "${detectedName}" but the principal is already named "${displayName}"; nothing written — set RUN402_AGENT_NAME=<name> or run \`run402 org whoami --set-name <name>\` to rename`,
+        mutation: false,
+        auto: true,
+        details: { source: "existing", display_name: displayName, detected: detectedName, reason: "name_already_set" },
+      });
     }
     let presence: Run402UpIdentity["presence"] = null;
     try {
@@ -720,7 +751,7 @@ export class NodeActions implements Run402Actions {
     } catch {
       presence = null;
     }
-    return { display_name: displayName, source, presence };
+    return { display_name: displayName, source, ...detectionReport(source === "detected"), presence };
   }
 
   async #verifyDeployManifestOnly(
@@ -818,14 +849,31 @@ export class NodeActions implements Run402Actions {
           },
         },
       };
+      // `up` never walks into subdirectories, but an agent standing in a
+      // parent workspace (a monorepo root, a checkout that holds the app one
+      // level down) usually is one `--dir` away from the manifest it meant.
+      // Name what is one directory down so the hop is executable.
+      const nearby = await findNearbyManifests(workspaceDir);
+      const nearbyActions = nearby.map((entry) => ({
+        type: "run_in_directory",
+        command: `run402 up --check --dir ${shellArg(entry.relative_dir)}`,
+        argv: ["run402", "up", "--check", "--dir", entry.relative_dir],
+        path: entry.path,
+        dir: entry.relative_dir,
+        why: "A manifest exists one directory down; up does not walk into subdirectories.",
+      }));
       throw run.error(
-        "No deploy manifest found. Add run402.deploy.json or app.json, or pass --manifest for executable configs.",
+        nearby.length > 0
+          ? `No deploy manifest found in ${workspaceDir}, but ${nearby.length === 1 ? "one exists" : `${nearby.length} exist`} one directory down (${nearby.map((entry) => entry.relative_dir).join(", ")}). Re-run with --dir <that directory>, or add run402.json, run402.deploy.json or app.json here.`
+          : "No deploy manifest found. Add run402.json, run402.deploy.json or app.json, or pass --manifest for executable configs.",
         "UP_MANIFEST_REQUIRED",
         {
           dir: workspaceDir,
           candidates: MANIFEST_CANDIDATES,
           executable_candidates: EXECUTABLE_MANIFEST_CANDIDATES,
+          nearby_manifests: nearby,
           next_actions: [
+            ...nearbyActions,
             {
               type: "create_manifest",
               why: "Write a deploy manifest, then re-run. This minimal site manifest deploys as-is; add database/functions/routes slices later.",
@@ -886,11 +934,23 @@ export class NodeActions implements Run402Actions {
           }
           throw err;
         }
+        // The release slice is normally normalized only after the build
+        // ran. With no build commands declared nothing on disk changes
+        // between now and then, so the slice's filesystem references can be
+        // checked right here — in `--check` as much as before a real apply.
+        // A declared build may produce the referenced files (there is no
+        // output-dir field to narrow by), so the pre-build check is skipped
+        // then and the post-build normalization performs it instead.
+        const buildProducesFiles = (appSpec.build?.commands ?? []).length > 0;
+        if (!buildProducesFiles) {
+          await this.#assertAppReleaseFileReferences(appSpec, manifestPath, run);
+        }
         run.setState(step, "succeeded", {
           manifest_kind: "app",
           manifest_path: manifestPath,
           app_id: appSpec.app.id,
           graph_digest: appGraph.graph_digest,
+          file_references: buildProducesFiles ? "deferred_to_post_build" : "checked",
         });
         return {
           manifestKind: "app",
@@ -914,6 +974,7 @@ export class NodeActions implements Run402Actions {
         { manifest_path: manifestPath },
       );
     }
+    await this.#assertManifestFileReferences(loaded.spec, manifestPath, run);
     run.setState(step, "succeeded", {
       manifest_kind: "release",
       manifest_path: manifestPath,
@@ -1000,6 +1061,80 @@ export class NodeActions implements Run402Actions {
         ...(commit ? { commit } : {}),
       },
     };
+  }
+
+  /**
+   * `stat` every local filesystem reference of a normalized spec and fail
+   * with the action-shaped `MANIFEST_FILE_MISSING` envelope (code, message
+   * naming the first missing file, `details.missing[]`, one `create_file`
+   * next action per file) before any plan or mutation.
+   */
+  async #assertManifestFileReferences(
+    spec: ReleaseSpec,
+    manifestPath: string,
+    run: ActionRun,
+  ): Promise<void> {
+    try {
+      await assertLocalFileReferencesExist(spec, { manifestPath });
+    } catch (err) {
+      throw this.#retypeManifestFileError(err, run);
+    }
+  }
+
+  /**
+   * Normalize an app release slice and re-shape a `MANIFEST_FILE_MISSING`
+   * (a missing migration `sql_path`) into the action envelope; every other
+   * normalization error passes through untouched.
+   */
+  async #normalizeWithTypedFileErrors<T>(fn: () => Promise<T>, run: ActionRun): Promise<T> {
+    try {
+      return await fn();
+    } catch (err) {
+      if (err instanceof LocalError && err.code === "MANIFEST_FILE_MISSING") {
+        throw this.#retypeManifestFileError(err, run);
+      }
+      throw err;
+    }
+  }
+
+  #retypeManifestFileError(err: unknown, run: ActionRun): unknown {
+    if (!(err instanceof LocalError) || err.code !== "MANIFEST_FILE_MISSING") return err;
+    const details = err.details && typeof err.details === "object" && !Array.isArray(err.details)
+      ? err.details as Record<string, unknown>
+      : {};
+    return run.error(err.message, "MANIFEST_FILE_MISSING", {
+      ...details,
+      next_actions: err.nextActions ?? [],
+    });
+  }
+
+  /**
+   * Pre-build filesystem check for an app manifest's release slice. Templates
+   * are materialized against an empty environment (only path-bearing fields
+   * matter here) and the slice is normalized exactly as the post-build path
+   * would; a `MANIFEST_FILE_MISSING` surfaces, any other normalization error
+   * is left for the real apply path to report with its full context.
+   */
+  async #assertAppReleaseFileReferences(
+    appSpec: Run402AppSpec,
+    manifestPath: string,
+    run: ActionRun,
+  ): Promise<void> {
+    if (!appSpec.release || typeof appSpec.release !== "object") return;
+    const releaseInput = materializeTemplates(appSpec.release, {}) as Run402AppReleaseSpec;
+    let normalized;
+    try {
+      normalized = await normalizeDeployManifest(releaseInput, {
+        project: "prj_up_preflight_placeholder",
+        baseDir: dirname(manifestPath),
+      });
+    } catch (err) {
+      if (err instanceof LocalError && err.code === "MANIFEST_FILE_MISSING") {
+        throw this.#retypeManifestFileError(err, run);
+      }
+      return;
+    }
+    await this.#assertManifestFileReferences(normalized.spec, manifestPath, run);
   }
 
   #planAppUpResult(
@@ -1289,10 +1424,13 @@ export class NodeActions implements Run402Actions {
         ...env,
         "input.name": input.name ?? manifest.appSpec.project.name ?? "",
       }) as Run402AppReleaseSpec;
-      const normalized = await normalizeDeployManifest(releaseInput, {
-        project: resolved.projectId,
-        baseDir: dirname(manifest.manifestPath),
-      });
+      const normalized = await this.#normalizeWithTypedFileErrors(
+        () => normalizeDeployManifest(releaseInput, {
+          project: resolved.projectId,
+          baseDir: dirname(manifest.manifestPath),
+        }),
+        run,
+      );
       if (!hasDeployableContent(normalized.spec)) {
         throw run.error(
           "App release contains no deployable sections.",
@@ -1300,6 +1438,7 @@ export class NodeActions implements Run402Actions {
           { manifest_path: manifest.manifestPath },
         );
       }
+      await this.#assertManifestFileReferences(normalized.spec, manifest.manifestPath, run);
 
       const deployStep = run.addStep({
         action: "deploy.apply",
@@ -2499,10 +2638,15 @@ class ActionRun {
   }
 
   error(message: string, code: string, details?: Record<string, unknown>): LocalError {
+    // `details.next_actions` stays where consumers already read it; hoist a
+    // copy to the envelope's top-level `next_actions` so `err.nextActions` /
+    // the CLI's `next_actions` field carry it too.
+    const nextActions = Array.isArray(details?.next_actions) ? details.next_actions : undefined;
     return withActionDetails(
       new LocalError(message, "running Run402 action", {
         code,
         details: { action: this.input.type, ...(details ?? {}), steps: this.steps },
+        ...(nextActions ? { next_actions: nextActions } : {}),
       }),
       this,
     );
@@ -3032,6 +3176,34 @@ async function findManifest(workspaceDir: string): Promise<string | null> {
   return null;
 }
 
+const NEARBY_MANIFEST_SCAN_LIMIT = 200;
+
+/**
+ * Manifests one directory down from `workspaceDir` (immediate children
+ * only; `node_modules`, `.git` and every other dot-directory skipped; the
+ * scan reads at most {@link NEARBY_MANIFEST_SCAN_LIMIT} entries). Surfaced in
+ * `UP_MANIFEST_REQUIRED` so an agent standing in a parent directory learns
+ * where `up` would have found a manifest instead of a bare ENOENT.
+ */
+async function findNearbyManifests(
+  workspaceDir: string,
+): Promise<Array<{ path: string; relative_dir: string }>> {
+  let entries: Array<{ name: string; isDirectory(): boolean; isSymbolicLink(): boolean }>;
+  try {
+    entries = await readdir(workspaceDir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const found: Array<{ path: string; relative_dir: string }> = [];
+  for (const entry of entries.slice(0, NEARBY_MANIFEST_SCAN_LIMIT)) {
+    if (!entry.isDirectory()) continue;
+    if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
+    const manifestPath = await findManifest(join(workspaceDir, entry.name));
+    if (manifestPath) found.push({ path: manifestPath, relative_dir: entry.name });
+  }
+  return found.sort((a, b) => a.relative_dir.localeCompare(b.relative_dir));
+}
+
 async function findExecutableManifest(workspaceDir: string): Promise<string | null> {
   for (const candidate of EXECUTABLE_MANIFEST_CANDIDATES) {
     const path = join(workspaceDir, candidate);
@@ -3050,6 +3222,9 @@ async function loadRun402JsonManifest(path: string): Promise<unknown> {
   try {
     raw = await readFile(path, "utf-8");
   } catch (err) {
+    if ((err as { code?: unknown } | null)?.code === "ENOENT") {
+      throw manifestNotFoundError(path, "loading Run402 manifest");
+    }
     throw new LocalError(
       `Failed to read Run402 manifest '${path}': ${(err as Error).message}`,
       "loading Run402 manifest",

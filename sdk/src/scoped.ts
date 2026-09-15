@@ -136,6 +136,8 @@ import type {
   FunctionInvokeOptions,
   FunctionInvokeResult,
   FunctionListResult,
+  FunctionLogsByRequestIdOptions,
+  FunctionLogsByRequestIdResult,
   FunctionLogsOptions,
   FunctionLogsResult,
   FunctionRunCreateOptions,
@@ -911,6 +913,9 @@ class ScopedFunctions {
   }
   logs(name: string, opts?: FunctionLogsOptions): Promise<FunctionLogsResult> {
     return this.parent.functions.logs(this.projectId, name, opts);
+  }
+  logsByRequestId(requestId: string, opts?: FunctionLogsByRequestIdOptions): Promise<FunctionLogsByRequestIdResult> {
+    return this.parent.functions.logsByRequestId(this.projectId, requestId, opts);
   }
   list(): Promise<FunctionListResult> {
     return this.parent.functions.list(this.projectId);

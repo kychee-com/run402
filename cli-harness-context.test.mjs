@@ -157,6 +157,21 @@ describe("resolveHarnessLabels — env overrides first, then harness inference, 
 
   it("infers grok from GROK_SESSION_ID", () => {
     assert.deepEqual(resolveHarnessLabels({ env: { GROK_SESSION_ID: "01abc" } }), { program: "grok", model: null });
+
+  it("infers cursor from any cursor marker", () => {
+    for (const marker of ["CURSOR_TRACE_ID", "CURSOR_SESSION_ID", "CURSOR_AGENT"]) {
+      assert.deepEqual(resolveHarnessLabels({ env: { [marker]: "1" } }), { program: "cursor", model: null }, marker);
+    }
+  });
+
+  it("infers grok from any grok marker", () => {
+    for (const marker of ["GROK_CLI", "GROK_SESSION_ID", "GROK_AGENT", "XAI_GROK", "GROK_CODE"]) {
+      assert.deepEqual(resolveHarnessLabels({ env: { [marker]: "1" } }), { program: "grok", model: null }, marker);
+    }
+  });
+
+  it("a whitespace-only grok marker is treated as absent", () => {
+    assert.deepEqual(resolveHarnessLabels({ env: { GROK_CLI: "   " } }), { program: null, model: null });
   });
 
   it("RUN402_PROGRAM overrides the inferred harness signal", () => {
