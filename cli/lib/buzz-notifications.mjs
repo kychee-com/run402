@@ -27,9 +27,9 @@ Usage:
       --on-call <hex>        the Buzz agent (64-hex pubkey) a crash or platform incident pages with a p mention — the tag that wakes a managed Buzz agent
       --on-call-name <name>  the @name the page addresses it by (what Buzz renders as a mention chip); omitted, the gateway reads it from the agent's Buzz profile
   run402 buzz notifications on-call <buzzper_id> --agent <hex-pubkey> [--name <display>] | --clear
-      set or clear the route's on-call agent (a PATCH at the route's current revision). Prints the project-bot
-      pubkeys the agent must allow: a managed Buzz agent answers only its owner by default and drops a bot's
-      page before seeing it — add them to the agent's respond-to allowlist (or set respond-to to anyone).
+      set or clear the route's on-call agent (a PATCH at the route's current revision). Prints the ONE pubkey
+      the agent must allow: pages are signed by the installation identity, and a managed Buzz agent answers only
+      its owner by default — add it to the agent's respond-to allowlist (or set respond-to to anyone).
   run402 buzz notifications status [--org <uuid> | <buzzper_id>]
   run402 buzz notifications test <buzzper_id> [--wait] [--poll-seconds <n>] [--timeout-seconds <n>]
   run402 buzz notifications deliveries <buzzper_id> [--limit <n>] [--cursor <c>] [--delivery <buzzped_id>]
@@ -174,14 +174,9 @@ async function onCall(args) {
     } else {
       console.error(`On-call agent set: a crash or platform incident on this route carries a p tag for ${updated.on_call_buzz_pubkey}. No display name was found on its Buzz profile, so the page has no @mention text; rerun with --name <display> to add it.`);
     }
-    const bots = Array.isArray(current.bots) ? current.bots.filter((bot) => bot && typeof bot.pubkey === "string") : [];
-    console.error("A managed Buzz agent answers only its owner by default and drops a project bot's page before seeing it.");
-    if (bots.length) {
-      console.error("Add these project-bot pubkeys to the agent's respond-to allowlist (Buzz Desktop agent settings, or --respond-to allowlist --respond-to-allowlist ...), then restart it:");
-      for (const bot of bots) console.error(`  ${bot.pubkey}  (${bot.display_name ?? bot.project_id})`);
-    } else {
-      console.error("Its project bots are minted on first delivery; rerun `run402 buzz notifications status <buzzper_id>` afterwards for the bots[].pubkey values to allowlist.");
-    }
+    console.error("A managed Buzz agent answers only its owner by default and drops a page before seeing it.");
+    console.error("Pages are signed by the installation identity, so allowlist this ONE pubkey on the agent (Buzz Desktop agent settings, or --respond-to allowlist --respond-to-allowlist ...), then restart it:");
+    console.error(`  ${current.notification_pubkey}  (run402 installation identity — one entry covers every routed project)`);
   } catch (err) {
     reportSdkError(err);
   }
