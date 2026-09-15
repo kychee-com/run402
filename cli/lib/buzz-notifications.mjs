@@ -169,8 +169,11 @@ async function onCall(args) {
       console.error("On-call agent cleared: crashes and incidents on this route page nobody.");
       return;
     }
-    const label = updated.on_call_display_name ? `@${updated.on_call_display_name}` : "(no display name found on its Buzz profile — the page carries the p tag only; pass --name to add the @mention text)";
-    console.error(`On-call agent set: a crash or platform incident on this route now opens with "${label} please investigate:" and carries a p tag for ${updated.on_call_buzz_pubkey}.`);
+    if (updated.on_call_display_name) {
+      console.error(`On-call agent set: a crash or platform incident on this route now opens with "@${updated.on_call_display_name} please investigate:" and carries a p tag for ${updated.on_call_buzz_pubkey}.`);
+    } else {
+      console.error(`On-call agent set: a crash or platform incident on this route carries a p tag for ${updated.on_call_buzz_pubkey}. No display name was found on its Buzz profile, so the page has no @mention text; rerun with --name <display> to add it.`);
+    }
     const bots = Array.isArray(current.bots) ? current.bots.filter((bot) => bot && typeof bot.pubkey === "string") : [];
     console.error("A managed Buzz agent answers only its owner by default and drops a project bot's page before seeing it.");
     if (bots.length) {
