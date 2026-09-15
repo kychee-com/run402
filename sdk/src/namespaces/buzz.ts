@@ -420,6 +420,7 @@ export class BuzzNotifications {
         ...(input.eventTypes !== undefined ? { event_types: input.eventTypes } : {}),
         ...(input.eventClasses !== undefined ? { event_classes: input.eventClasses } : {}),
         ...(input.onCallBuzzPubkey !== undefined ? { on_call_buzz_pubkey: input.onCallBuzzPubkey } : {}),
+        ...(input.onCallDisplayName !== undefined ? { on_call_display_name: input.onCallDisplayName } : {}),
       },
       context,
     });
@@ -470,6 +471,7 @@ export class BuzzNotifications {
         ...(patch.eventClasses !== undefined ? { event_classes: patch.eventClasses } : {}),
         ...(patch.includeOrgEvents !== undefined ? { include_org_events: patch.includeOrgEvents } : {}),
         ...(patch.onCallBuzzPubkey !== undefined ? { on_call_buzz_pubkey: patch.onCallBuzzPubkey } : {}),
+        ...(patch.onCallDisplayName !== undefined ? { on_call_display_name: patch.onCallDisplayName } : {}),
       },
       context,
     });

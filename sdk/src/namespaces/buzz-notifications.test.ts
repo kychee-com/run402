@@ -246,6 +246,8 @@ describe("buzz.notifications lifecycle mutations", () => {
     assert.deepEqual(parsedBody(calls[0]!), { expected_revision: 1, include_org_events: true, on_call_buzz_pubkey: onCall });
     await sdk.buzz.notifications.update(ROUTE_ID, { onCallBuzzPubkey: null }, 2);
     assert.deepEqual(parsedBody(calls[1]!), { expected_revision: 2, on_call_buzz_pubkey: null });
+    await sdk.buzz.notifications.update(ROUTE_ID, { onCallBuzzPubkey: onCall, onCallDisplayName: "Claude1" }, 3);
+    assert.deepEqual(parsedBody(calls[2]!), { expected_revision: 3, on_call_buzz_pubkey: onCall, on_call_display_name: "Claude1" });
   });
 
   it("createRoute passes the on-call agent only when given", async () => {

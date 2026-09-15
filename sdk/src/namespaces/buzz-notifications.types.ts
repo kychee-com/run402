@@ -67,6 +67,8 @@ export interface BuzzEventRoute {
    * public Buzz identity link. null pages nobody.
    */
   on_call_buzz_pubkey?: string | null;
+  /** The name the page addresses that agent by (`@<name> please investigate:`), or null for a tag-only page. */
+  on_call_display_name?: string | null;
   status: BuzzEventRouteStatus;
   pause_reason: BuzzEventRoutePauseReason | null;
   paused_at: string | null;
@@ -244,6 +246,12 @@ export interface CreateBuzzEventRouteInput {
    * is what wakes a managed Buzz agent. Omit or null to page nobody.
    */
   onCallBuzzPubkey?: string | null;
+  /**
+   * The name the page addresses the on-call agent by (`@<name> please
+   * investigate:` — what Buzz renders as a mention chip). Omitted with a
+   * pubkey: the gateway resolves it from the agent's Buzz profile.
+   */
+  onCallDisplayName?: string | null;
   /** Auto-generated when omitted — every route mutation is idempotent. */
   idempotencyKey?: string;
 }
@@ -258,6 +266,8 @@ export interface UpdateBuzzEventRoutePatch {
   includeOrgEvents?: boolean;
   /** `null` clears the on-call agent (pages nobody). */
   onCallBuzzPubkey?: string | null;
+  /** The `@name` the page addresses the on-call agent by; a new pubkey without one is resolved from its Buzz profile; `null` clears it. */
+  onCallDisplayName?: string | null;
   idempotencyKey?: string;
 }
 
