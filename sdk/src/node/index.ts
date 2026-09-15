@@ -810,6 +810,7 @@ export type { NwcConnection } from "./nwc.js";
 export {
   createLightningFetch,
   readLightningChallenge,
+  isLightningChargedRequest,
   LightningPaymentError,
   RUN402_MPP_LIGHTNING_PROFILE,
   LIGHTNING_MAX_DEBIT_SATS,

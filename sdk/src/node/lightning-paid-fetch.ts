@@ -90,9 +90,37 @@ function sha256Hex(hex: string): string {
   return createHash("sha256").update(Buffer.from(hex, "hex")).digest("hex");
 }
 
+/** The Run402 surfaces charged over Lightning (`/.well-known/x402` → `paymentCapabilities[].resources`). */
+const CHARGED_PATHS = [/^\/tiers\/v1\/[^/]+$/, /^\/generate-image\/v1$/];
+
+function requestUrl(input: RequestInfo | URL): string {
+  return typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+}
+
+function requestMethod(input: RequestInfo | URL, init: RequestInit | undefined): string {
+  return (init?.method ?? (typeof input === "object" && "method" in input ? input.method : "GET")).toUpperCase();
+}
+
+/**
+ * Only a POST to a charged surface gets the Lightning negotiation headers
+ * and a default Idempotency-Key. Every other request is left byte-for-byte
+ * alone: an Idempotency-Key on an ordinary write (a room message, a project
+ * provision) would turn a deliberate repeat into a replay.
+ */
+export function isLightningChargedRequest(input: RequestInfo | URL, init: RequestInit | undefined): boolean {
+  if (requestMethod(input, init) !== "POST") return false;
+  let pathname: string;
+  try {
+    pathname = new URL(requestUrl(input)).pathname;
+  } catch {
+    return false;
+  }
+  return CHARGED_PATHS.some((pattern) => pattern.test(pathname));
+}
+
 function defaultIdempotencyKey(input: RequestInfo | URL, init: RequestInit | undefined): string {
-  const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
-  const method = (init?.method ?? (typeof input === "object" && "method" in input ? input.method : "GET")).toUpperCase();
+  const url = requestUrl(input);
+  const method = requestMethod(input, init);
   const body = typeof init?.body === "string" ? init.body : init?.body instanceof Uint8Array ? Buffer.from(init.body).toString("utf8") : "";
   const digest = createHash("sha256").update(`${method}\n${url}\n${body}`).digest("hex");
   return `lnc_${digest.slice(0, 32)}`;
@@ -110,6 +138,11 @@ export function createLightningFetch(options: LightningFetchOptions): FetchFn {
   };
 
   return async (input, init) => {
+    if (!isLightningChargedRequest(input, init)) {
+      // Not a Lightning surface: the x402 buyer (or the plain fetch) owns it.
+      const other = (await fallback()) ?? baseFetch;
+      return other(input, init);
+    }
     // Deterministic over the request bytes: a retry of the identical call
     // (after a crash, a timeout, or a gateway hiccup between payment and
     // fulfilment) lands on the same payment intent and is fulfilled without

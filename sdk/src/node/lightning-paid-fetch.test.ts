@@ -14,6 +14,7 @@ import {
   LightningPaymentError,
   RUN402_MPP_LIGHTNING_PROFILE,
   createLightningFetch,
+  isLightningChargedRequest,
   readLightningChallenge,
   type LightningWalletLike,
 } from "./lightning-paid-fetch.js";
@@ -130,7 +131,7 @@ describe("createLightningFetch", () => {
     });
     assert.equal(w.paid.length, 0);
     const big = seller([() => new Response("{}", { status: 402, headers: { "www-authenticate": challengeHeader({ request: { amount: "300000", currency: "sat", methodDetails: { invoice: "lnbc1big", paymentHash: HASH, network: "mainnet" } } }) } })]);
-    await assert.rejects(() => createLightningFetch({ pairingUri: URI, baseFetch: big.fetch, wallet: wallet(), stack: async () => stack, fallback: async () => null })("https://api.example/x", { method: "POST" }), /LIGHTNING_DEBIT_ABOVE_CAP|exceeds/);
+    await assert.rejects(() => createLightningFetch({ pairingUri: URI, baseFetch: big.fetch, wallet: wallet(), stack: async () => stack, fallback: async () => null })("https://api.example/tiers/v1/hobby", { method: "POST" }), /LIGHTNING_DEBIT_ABOVE_CAP|exceeds/);
   });
 
   it("resolves an unknown outcome by lookup and never pays the same invoice twice", async () => {
@@ -160,5 +161,41 @@ describe("createLightningFetch", () => {
     assert.equal(readLightningChallenge(tempo, stack), null);
     const ok = new Response("", { status: 402, headers: { "www-authenticate": challengeHeader() } });
     assert.equal(readLightningChallenge(ok, stack)?.amountSats, 101);
+  });
+});
+
+describe("createLightningFetch — request selection", () => {
+  it("leaves every request that is not a charged POST untouched, with no Lightning headers and no idempotency key", async () => {
+    const s = seller([() => new Response("{\"message_id\":\"msg_1\"}", { status: 201 })]);
+    const w = wallet();
+    const fetch = createLightningFetch({ pairingUri: URI, baseFetch: s.fetch, wallet: w, stack: async () => stack, fallback: async () => null });
+    const response = await fetch("https://api.example/rooms/v1/messages", { method: "POST", body: "{\"body\":\"hi\"}", headers: { "content-type": "application/json" } });
+    assert.equal(response.status, 201);
+    assert.equal(s.calls.length, 1);
+    assert.equal(s.calls[0]!.headers.get("idempotency-key"), null);
+    assert.equal(s.calls[0]!.headers.get("run402-payment-profile"), null);
+    assert.equal(s.calls[0]!.headers.get("accept-payment"), null);
+    const get = await fetch("https://api.example/tiers/v1/status", { method: "GET" });
+    assert.equal(get.status, 201);
+    assert.equal(s.calls[1]!.headers.get("idempotency-key"), null);
+    assert.equal(w.paid.length, 0);
+  });
+
+  it("hands a non-charged request to the x402 buyer when one exists", async () => {
+    const fallbackCalls: string[] = [];
+    const fetch = createLightningFetch({
+      pairingUri: URI, baseFetch: async () => { throw new Error("base fetch must not be used"); }, wallet: wallet(), stack: async () => stack,
+      fallback: async () => async (input) => { fallbackCalls.push(String(input)); return new Response("ok", { status: 200 }); },
+    });
+    await fetch("https://api.example/contracts/v1/call", { method: "POST" });
+    assert.deepEqual(fallbackCalls, ["https://api.example/contracts/v1/call"]);
+  });
+
+  it("classifies charged surfaces", () => {
+    assert.equal(isLightningChargedRequest("https://api.example/tiers/v1/prototype", { method: "POST" }), true);
+    assert.equal(isLightningChargedRequest("https://api.example/generate-image/v1", { method: "post" }), true);
+    assert.equal(isLightningChargedRequest("https://api.example/tiers/v1/status", { method: "GET" }), false);
+    assert.equal(isLightningChargedRequest("https://api.example/tiers/v1/prototype/extra", { method: "POST" }), false);
+    assert.equal(isLightningChargedRequest("not a url", { method: "POST" }), false);
   });
 });

@@ -64,12 +64,13 @@ describe("agent.lightningWallet", () => {
   });
 
   it("gives up with a typed error when the wallet never leaves minting", async () => {
+    // A zero budget: the first poll after the mint already sits at the deadline,
+    // so the outcome does not depend on the wall clock.
     const { client: c } = client([
       { method: "POST", reply: wallet({ status: "minting" }) },
       { method: "GET", reply: wallet({ status: "minting" }) },
-      { method: "GET", reply: wallet({ status: "minting" }) },
     ]);
-    await assert.rejects(new AgentLightningWallets(c).mint({ intervalMs: 1, timeoutMs: 2 }), (error: unknown) => {
+    await assert.rejects(new AgentLightningWallets(c).mint({ intervalMs: 1, timeoutMs: 0 }), (error: unknown) => {
       assert.equal((error as { code?: string }).code, "LIGHTNING_WALLET_STILL_MINTING");
       return true;
     });
