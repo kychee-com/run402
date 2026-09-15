@@ -1730,7 +1730,7 @@ Forking clones schema, site, and functions into a new project. If the app includ
 ### image
 $0.03 per image.
 
-- `run402 image generate "<prompt>" [--aspect <square|landscape|portrait>] [--output <file>]`
+- `run402 image generate "<prompt>" [--aspect <square|landscape|portrait>] [--output <file>] [--org <org_id>]`
 
 Without `--output`, returns `{"aspect":"...","content_type":"image/png","image":"<base64>"}`.
 

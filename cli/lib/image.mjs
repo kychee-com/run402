@@ -44,10 +44,13 @@ Options:
                       (default: square)
   --output <file>     Save image to file (e.g. output.png). If omitted,
                       returns base64 JSON to stdout.
+  --org <org_id>      The paying organization when the wallet belongs to more
+                      than one (Lightning rail); x402 ignores it
 
 Notes:
   - Requires a funded allowance (run402 allowance create && run402 allowance fund)
-  - Payments are processed automatically via x402 micropayments
+  - Payments are processed automatically via x402 micropayments, or over
+    Lightning from a rail: lightning wallet
   - Use --output to save directly to a file instead of printing base64
 
 Examples:
