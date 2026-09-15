@@ -160,7 +160,7 @@ Exit codes apply **only when `--fail-on-new` is set** (otherwise failures are th
 
 Quality tiers (`fingerprint_quality` on each row): `frame_names` = full fidelity (grouped by stable stack frames); `message_only` = medium (grouped by normalized message); `coarse` = the function predates the error side-channel — **redeploy it** and future occurrences fingerprint at full fidelity (already-recorded coarse rows stay coarse). The verdict's `coverage` line counts how many functions are still coarse.
 
-Auth: the addressed project's own `anon_key` / `service_key`. A key for project A requesting project B's errors gets `403` (never a `404` that would leak existence). Read-only; never lifecycle-gated.
+Auth: the addressed project's own `service_key` when it is cached locally; otherwise your wallet / session / delegate, which the gateway authorizes with `project.read` (an org member or teammate agent — the one a Buzz crash page addresses — needs no project key). A key for project A requesting project B's errors gets `403` (never a `404` that would leak existence). Read-only; never lifecycle-gated.
 
 The golden path — gate a promote:
 
