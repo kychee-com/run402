@@ -134,6 +134,23 @@ describe("errors.list", () => {
     assert.equal(calls[0]!.headers["apikey"], "service.jwt.test");
   });
 
+  it("without a cached project key, reads on the principal credential instead (no apikey header)", async () => {
+    // The agent a Buzz page addresses: an org member holding no project key.
+    const { fetch, calls } = mockFetch(() => jsonResponse(CLEAN_PAGE));
+    const creds: CredentialsProvider = {
+      async getAuth() { return { "SIGN-IN-WITH-X": "test-siwx" }; },
+      async getProjectCredentials() { return null; },
+      async getProject() { return null; },
+    };
+    const sdk = new Run402({ apiBase: "https://api.example.test", credentials: creds, fetch });
+    await sdk.errors.list("prj_1");
+    await sdk.errors.get("prj_1", "fp_1");
+    for (const call of calls) {
+      assert.equal(call.headers["apikey"], undefined, "no project key to send");
+      assert.equal(call.headers["sign-in-with-x"], "test-siwx", "the principal signs the read");
+    }
+  });
+
   it("maps newIn → new_in and passes every other filter through 1:1", async () => {
     const { fetch } = mockFetch((call) => {
       assert.equal(

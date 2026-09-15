@@ -108,9 +108,11 @@ Exit codes (the promote gate — only when --fail-on-new is set):
                 from 1. Without --fail-on-new, failures are the usual exit 1.
 
 Auth:
-  The addressed project's own anon_key or service_key. A key for project A
-  requesting project B's errors gets 403 (never a 404 that leaks existence).
-  Read-only; never lifecycle-gated.
+  The addressed project's own service_key when it is cached locally; otherwise
+  your wallet / session / delegate, which the gateway authorizes with
+  project.read — an org member or teammate agent needs no project key. A key
+  for project A requesting project B's errors gets 403 (never a 404 that
+  leaks existence). Read-only; never lifecycle-gated.
 
 The golden path — gate a promote:
   run402 deploy promote --project <id> --release <rel>

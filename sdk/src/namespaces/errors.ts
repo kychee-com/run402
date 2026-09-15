@@ -24,14 +24,15 @@
  * client recount. Exposed both unscoped (`r.errors.list(projectId, …)`) and
  * project-scoped (`r.project(id).errors.list(…)`), mirroring `r.events`.
  *
- * Auth: the addressed project's OWN key (apikey-authed read). A key for a
- * different project gets 403, never a 404 that would confirm existence.
+ * Auth: the addressed project's OWN key when it is cached locally; otherwise
+ * the client's principal (SIWX wallet / session / delegate) with
+ * `project.read`. A key for a different project gets 403, never a 404 that
+ * would confirm existence.
  */
 
 import type { Client } from "../kernel.js";
 import { LocalError } from "../errors.js";
 import { isRun402Error } from "../errors.js";
-import { requireProjectCredentials } from "../project-credentials.js";
 import type {
   ErrorsPage,
   ErrorFingerprint,
@@ -100,6 +101,20 @@ function sleepRacingSignal(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
+/**
+ * The credential for an error read. The project's own service key when it is
+ * cached locally (the historical path); otherwise the client's principal
+ * credential — a SIWX wallet, session, or delegate — which the gateway
+ * authorizes through `project.read`. That second path is how the agent a Buzz
+ * page addresses runs `run402 errors --project …` on a project it never
+ * deployed: an org member or teammate holds no project key and does not need
+ * one.
+ */
+async function credentialFor(client: Client, projectId: string): Promise<{ headers?: Record<string, string>; withAuth: boolean }> {
+  const keys = await client.getProjectCredentials(projectId);
+  return keys ? { headers: { apikey: keys.service_key }, withAuth: false } : { withAuth: true };
+}
+
 export class Errors {
   constructor(private readonly client: Client) {}
 
@@ -114,13 +129,11 @@ export class Errors {
     if (!projectId) {
       throw new LocalError("errors.list requires a projectId", "reading release error fingerprints");
     }
-    const keys = await requireProjectCredentials(this.client, projectId, "reading release error fingerprints");
     return this.client.request<ErrorsPage>(
       `/projects/v1/${encodeURIComponent(projectId)}/errors${errorsQuery(opts)}`,
       {
         method: "GET",
-        headers: { apikey: keys.service_key },
-        withAuth: false,
+        ...(await credentialFor(this.client, projectId)),
         context: "reading release error fingerprints",
       },
     );
@@ -141,17 +154,16 @@ export class Errors {
     if (!fingerprintId) {
       throw new LocalError("errors.get requires a fingerprintId", "reading an error fingerprint");
     }
-    const keys = await requireProjectCredentials(this.client, projectId, "reading an error fingerprint");
     return this.client.request<ErrorFingerprintDetail>(
       `/projects/v1/${encodeURIComponent(projectId)}/errors/${encodeURIComponent(fingerprintId)}`,
       {
         method: "GET",
-        headers: { apikey: keys.service_key },
-        withAuth: false,
+        ...(await credentialFor(this.client, projectId)),
         context: "reading an error fingerprint",
       },
     );
   }
+
 
   /**
    * The promote-gate poll loop. Run it right after an apply/promote activates a
