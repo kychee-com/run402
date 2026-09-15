@@ -170,6 +170,7 @@ describe("resolveHarnessLabels — env overrides first, then harness inference, 
 
   it("infers grok from GROK_SESSION_ID", () => {
     assert.deepEqual(resolveHarnessLabels({ env: { GROK_SESSION_ID: "01abc" } }), { program: "grok", model: null });
+  });
 
   it("infers cursor from any cursor marker", () => {
     for (const marker of ["CURSOR_TRACE_ID", "CURSOR_SESSION_ID", "CURSOR_AGENT"]) {
