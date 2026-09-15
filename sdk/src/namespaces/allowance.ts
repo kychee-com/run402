@@ -24,6 +24,18 @@ export interface AllowanceStatusResult {
   faucet_used?: boolean;
   lastFaucet?: string;
   path?: string;
+  /** The persisted payment rail (`x402` when unset). */
+  rail?: "x402" | "mpp" | "lightning";
+  /** The Lightning allowance, without its pairing secret. */
+  lightning?: {
+    wallet_id: string;
+    lightning_address: string | null;
+    budget_sats: number;
+    starter_sats: number;
+    custody: "run402_hub";
+    has_pairing: true;
+    minted_at: string;
+  };
   /** true when the local provider holds an allowance, false otherwise. */
   configured: boolean;
 }
@@ -76,6 +88,20 @@ export class Allowance {
       faucet_used: !!data.funded,
       lastFaucet: data.lastFaucet,
       path: this.client.credentials.getAllowancePath?.call(this.client.credentials),
+      rail: data.rail ?? "x402",
+      ...(data.lightning
+        ? {
+          lightning: {
+            wallet_id: data.lightning.wallet_id,
+            lightning_address: data.lightning.lightning_address,
+            budget_sats: data.lightning.budget_sats,
+            starter_sats: data.lightning.starter_sats,
+            custody: data.lightning.custody,
+            has_pairing: true as const,
+            minted_at: data.lightning.minted_at,
+          },
+        }
+        : {}),
       configured: true,
     };
   }

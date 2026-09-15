@@ -766,6 +766,9 @@ const SURFACE: Capability[] = [
 
   // ── Allowance management ───────────────────────────────────────────────
   { id: "allowance_status",  endpoint: "(local)",                          mcp: "allowance_status", cli: "allowance:status", openclaw: "allowance:status" },
+  // The Lightning allowance (mpp-lightning-over-nwc): one verb on every
+  // surface; `init lightning` is the same mint through the existing `init`.
+  { id: "lightning_wallet",  endpoint: "/agent/v1/lightning-wallet",       mcp: "lightning_wallet", cli: "wallets:lightning", openclaw: "wallets:lightning" },
   { id: "allowance_create",  endpoint: "(local)",                          mcp: "allowance_create", cli: "allowance:create", openclaw: "allowance:create" },
   { id: "allowance_export",  endpoint: "(local)",                          mcp: "allowance_export", cli: "allowance:export", openclaw: "allowance:export" },
 
@@ -1146,6 +1149,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   project_key_cache_remove: "credentials.projectKeys.remove",
   create_checkout: "billing.createCheckout",
   create_lightning_topup: "billing.createLightningTopup",
+  lightning_wallet: "agent.lightningWallet.mint",
   get_topup: "billing.getTopup",
   allowance_checkout: "billing.createCheckout",
   billing_history: "billing.history",
@@ -1584,6 +1588,11 @@ describe("SDK surface alignment", () => {
     const SDK_ONLY_METHODS = new Set([
       // lightning-cash-topup: the CLI's `--wait` loop; MCP callers poll `get_topup`.
       "billing.waitForTopup",
+      // mpp-lightning-over-nwc: one verb (`lightning_wallet` / `wallets lightning`)
+      // covers mint, read, and revoke; the SDK exposes them separately.
+      "agent.lightningWallet.get",
+      "agent.lightningWallet.revoke",
+      "agent.lightningWallet.waitForActive",
       // principal-display-name (first-deploy-agent-dx): `PATCH /agent/v1/me`
       // rides the whoami door on every surface (`org whoami --set-name`,
       // MCP `whoami` `set_display_name`), so it has no verb of its own.

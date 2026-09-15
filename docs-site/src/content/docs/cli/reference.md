@@ -21,7 +21,8 @@ Run402 is agent-first because agents are first-class participants, not because p
 Agent-critical facts:
 - Atomic full-stack apply: `run402 deploy apply --manifest app.json` ships DB migrations, site files, function code, secrets, assets, subdomains, i18n, and routes as one transaction; partial failures roll back.
 - No platform token: local allowance (`~/.config/run402/allowance.json`) signs requests. Per-project `anon_key` / `service_key` are runtime data-plane keys (PostgREST/Storage/Functions), permanent, and embeddable/server-side respectively.
-- Agent-paid usage: x402 USDC on Base or MPP pathUSD on Tempo, signed by allowance. Humans may fund via Stripe credits; CLI behavior is unchanged.
+- Agent-paid usage: x402 USDC on Base or MPP pathUSD on Tempo, signed by allowance. Humans may - `run402 allowance <create|status|fund|balance|export>` — `status` reports `wallet.rail` and, on a Lightning profile, a `lightning` block (wallet id, status, custody `run402_hub`, address, budget, starter, `balance_sats`, `budget_remaining_sats`; never the pairing).
+ via Stripe credits; CLI behavior is unchanged.
 
 Install + deploy — the only first-deploy path (the front door at <https://run402.com/llms.txt> is the same three lines with a full manifest):
 
@@ -882,6 +883,8 @@ run402 subdomains claim my-app
 - `run402 init` — set up with x402 (Base Sepolia). Creates allowance, requests faucet, checks tier, lists projects.
 - `run402 init --api-base <url>` — configure the active profile to target a Run402 Core/API base. For Core, this does not create an allowance, request faucet funds, or require a Cloud tier.
 - `run402 init mpp` — set up with MPP (Tempo Moderato testnet). Same steps, different payment rail.
+- `run402 init lightning` — the Lightning allowance: the same Base allowance (the x402 fallback) plus a budgeted Lightning wallet the platform mints on Run402's own Hub (`POST /agent/v1/lightning-wallet`; custody `run402_hub`, a starter amount funded by the platform). The one-time pairing is stored in `allowance.json` beside the Base key and never printed; `rail` becomes `lightning`, so tier purchases and image generation answer a Lightning challenge first and fall back to x402. The summary carries `lightning: { wallet_id, status, lightning_address, budget_sats, starter_sats, balance_sats, custody, outcome }`; `outcome: "minting"` means rerun in a few seconds, `"unavailable"` means no Hub on this gateway (x402 keeps paying).
+- `run402 init <rail> --switch-rail` — switch the persisted rail; re-running with the same rail is idempotent.
 
 ### pay
 
@@ -900,7 +903,8 @@ run402 pay https://seller.example/translate --method POST \
 Manage multiple named wallets (profiles) on one machine. Keys never leave the machine (non-custodial). The `default` wallet lives at the config-dir root; named wallets live under `{config_dir}/profiles/<name>/`.
 - `run402 wallets list` — JSON array of `{ local_label, server_label, address, address_short, rail, active }`. Reads non-secret `meta.json`; never loads private keys.
 - `run402 wallets current` — the resolved active wallet `{ name, source, source_detail, address, label, warnings }`. `source` ∈ flag|env|binding|config|default. `warnings` surfaces env-vs-binding conflicts and local-name-vs-server-label drift.
-- `run402 wallets new <name> [--mpp]` — create a new named wallet (generates a key). `{ name, address, rail, created: true }`.
+- `run402 wallets new <name> [--mpp | --rail <x402|mpp|lightning>]` — create a new named wallet (generates a key). `{ name, address, rail, created: true }`. A `lightning` wallet is minted on the platform by `run402 --wallet <name> init lightning`.
+- `run402 wallets lightning [status|mint|revoke]` — the active wallet's Lightning allowance. `status` reads the platform record plus a best-effort balance and remaining budget over NWC (`{ rail, lightning: { wallet_id, status, custody, lightning_address, budget_sats, starter_sats, has_pairing, balance_sats, budget_remaining_sats } }`); `mint` is `init lightning`'s wallet step alone; `revoke` deletes the sub-wallet on Run402's Hub, forgets the pairing, and returns the rail to x402. The pairing secret is never printed.
 - `run402 wallets use <name>` — set the global default wallet (`config.json` `active_wallet`). `{ name, active: true }`.
 - `run402 wallets rename <old> <new>` — rename a wallet; renaming `default` migrates its root files into `profiles/<new>/`. `{ from, to, renamed: true }`.
 - `run402 wallets bind [<name>]` — write `./.run402.json` binding this directory to a wallet (defaults to the active one). Safe to commit (holds only a name). `{ wallet, file, bound: true, safe_to_commit: true }`.

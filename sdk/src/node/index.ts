@@ -803,3 +803,15 @@ export {
   validateCiSubjectMatch,
   withRetry,
 } from "../index.js";
+
+// mpp-lightning-over-nwc: the agent's Lightning wallet client and the rail's buyer.
+export { NwcWallet, NwcError, closeNwcConnections, parseNwcUri } from "./nwc.js";
+export type { NwcConnection } from "./nwc.js";
+export {
+  createLightningFetch,
+  readLightningChallenge,
+  LightningPaymentError,
+  RUN402_MPP_LIGHTNING_PROFILE,
+  LIGHTNING_MAX_DEBIT_SATS,
+} from "./lightning-paid-fetch.js";
+export type { LightningFetchOptions, LightningWalletLike } from "./lightning-paid-fetch.js";

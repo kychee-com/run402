@@ -16,7 +16,7 @@
 import { writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
 import { failUnknownSubcommand } from "./argparse.mjs";
 import { join } from "node:path";
-import { fail } from "./sdk-errors.mjs";
+import { fail, reportSdkError } from "./sdk-errors.mjs";
 import { isValidProfileName, getActiveProfile } from "../core-dist/config.js";
 import {
   listProfileNames,
@@ -50,12 +50,17 @@ Usage:
   run402 wallets unbind               Remove ./.run402.json
   run402 wallets import <name> --key <path|->   Adopt an existing private key as a named wallet
   run402 wallets rm <name> --yes      Delete a wallet and its keys (requires --yes)
+  run402 wallets lightning status     The active wallet's Lightning allowance (balance, budget, custody)
+  run402 wallets lightning mint       Mint the Lightning allowance for the active wallet (same as init lightning)
+  run402 wallets lightning revoke     Revoke it: the sub-wallet is deleted on Run402's Hub; the rail returns to x402
 
 Selection precedence for normal commands:
   --wallet <name>  >  RUN402_WALLET  >  ./.run402.json  >  'wallets use' default  >  default
 
 Options:
   --mpp           (new) create the wallet on the MPP rail instead of x402
+  --rail <rail>   (new) x402 (default), mpp, or lightning; a lightning wallet
+                  is minted on the platform by: run402 --wallet <name> init lightning
   --key <path|->  (import) read the private key from a file, or '-' for stdin
   --yes           (rm) confirm deletion
 
@@ -159,7 +164,12 @@ async function cmdNew(args) {
   if (profileExists(name)) {
     fail({ code: "WALLET_EXISTS", message: `A wallet named '${name}' already exists.`, hint: "run402 wallets list", details: { name } });
   }
-  const rail = args.includes("--mpp") ? "mpp" : "x402";
+  const railFlag = args.indexOf("--rail");
+  const requested = railFlag >= 0 ? args[railFlag + 1] : args.includes("--mpp") ? "mpp" : "x402";
+  if (!["x402", "mpp", "lightning"].includes(requested)) {
+    fail({ code: "BAD_USAGE", message: "--rail must be x402, mpp, or lightning", details: { rail: requested } });
+  }
+  const rail = requested;
   const { generatePrivateKey, privateKeyToAccount } = await import("viem/accounts");
   const privateKey = generatePrivateKey();
   const address = privateKeyToAccount(privateKey).address;
@@ -168,7 +178,7 @@ async function cmdNew(args) {
   saveAllowance({ address, privateKey, created, funded: false, rail }, join(profileDir(name), "allowance.json"));
   writeMeta(name, { name, address, label: name, rail, created });
   await maybePushLabel(name, name, address);
-  out({ local_label: name, address, rail, created: true, next: `run402 wallets use ${name}  (or --wallet ${name} <command>)` });
+  out({ local_label: name, address, rail, created: true, next: rail === "lightning" ? `run402 --wallet ${name} init lightning  (mints the Lightning allowance on the platform)` : `run402 wallets use   (or --wallet  <command>)` });
 }
 
 function cmdUse(args) {
@@ -352,7 +362,46 @@ export async function run(sub, args = []) {
     case "unbind": return cmdUnbind();
     case "import": return cmdImport(rest);
     case "rm": return cmdRm(rest);
+    case "lightning": return cmdLightning(rest);
     default:
       failUnknownSubcommand("wallets", sub);
+  }
+}
+
+// ── lightning ────────────────────────────────────────────────────────────────
+// The Lightning allowance of the ACTIVE wallet (mpp-lightning-over-nwc).
+// The pairing secret stays in allowance.json and is never printed.
+async function cmdLightning(args) {
+  const action = args.find((a) => a && !a.startsWith("-")) ?? "status";
+  const { ensureLightningWallet, revokeLightningWallet, describeLightning, readLightningBalance } = await import("./lightning-wallet.mjs");
+  const { readAllowance } = await import("../core-dist/allowance.js");
+  try {
+    if (action === "status") {
+      const allowance = readAllowance();
+      if (!allowance) fail({ code: "NO_ALLOWANCE", message: "No allowance configured for this wallet.", hint: "run402 init lightning" });
+      let wallet = null;
+      try { wallet = await getSdk().agent.lightningWallet.get(); } catch (err) {
+        const code = err?.body?.code ?? err?.code;
+        if (code !== "LIGHTNING_WALLET_NOT_FOUND") throw err;
+      }
+      const balance = await readLightningBalance(allowance);
+      const lightning = describeLightning(allowance, wallet, balance);
+      out({ rail: allowance.rail ?? "x402", lightning, ...(lightning ? {} : { hint: "run402 init lightning" }) });
+      return;
+    }
+    if (action === "mint") {
+      const result = await ensureLightningWallet();
+      const balance = result.outcome === "stored" || result.outcome === "present" ? await readLightningBalance(result.allowance) : null;
+      out({ outcome: result.outcome, rail: result.allowance.rail ?? "x402", lightning: describeLightning(result.allowance, result.wallet, balance) });
+      return;
+    }
+    if (action === "revoke") {
+      const wallet = await revokeLightningWallet();
+      out({ revoked: true, status: wallet?.status ?? "revoked", rail: "x402", next: "run402 init lightning  (mint again once the deletion completes)" });
+      return;
+    }
+    failUnknownSubcommand("wallets lightning", action);
+  } catch (err) {
+    reportSdkError(err);
   }
 }

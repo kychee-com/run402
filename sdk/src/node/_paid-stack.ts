@@ -136,6 +136,25 @@ export async function loadX402Stack(): Promise<X402Stack> {
   };
 }
 
+export interface LightningStack {
+  Challenge: { deserialize: (value: string) => { method: string; intent: string; expires?: string; request?: Record<string, unknown> }; serialize: (challenge: unknown) => string };
+  Credential: { from: (parameters: { challenge: unknown; payload: unknown }) => unknown; serialize: (credential: unknown) => string };
+}
+
+/** The MPP challenge/credential codecs the Lightning rail needs (no Tempo, no viem). */
+export async function loadLightningStack(): Promise<LightningStack> {
+  const c = new LoadCollector();
+  const mppxSpecifier = "mppx";
+  const mppx = await c.load("mppx", () =>
+    import(/* webpackIgnore: true */ mppxSpecifier) as Promise<{
+      Challenge: LightningStack["Challenge"];
+      Credential: LightningStack["Credential"];
+    }>,
+  );
+  c.throwIfFailed();
+  return { Challenge: mppx!.Challenge, Credential: mppx!.Credential };
+}
+
 export async function loadMppStack(): Promise<MppStack> {
   const c = new LoadCollector();
   const mppxSpecifier = "mppx/client";

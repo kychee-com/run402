@@ -20,6 +20,10 @@ Usage:
                              Configure a Run402 Core/API target for the active
                              profile without setting up Cloud payment.
   run402 init mpp            Set up with MPP (Tempo Moderato)
+  run402 init lightning      Set up the Lightning allowance: a budgeted wallet
+                             minted on Run402's Hub (custody: Run402), plus the
+                             Base allowance as the x402 fallback. Lightning
+                             becomes the default rail for paid calls.
   run402 init <rail> --switch-rail
                              Switch the persisted payment rail to <rail>.
                              Required when an allowance already exists on
@@ -338,7 +342,8 @@ export async function run(args = []) {
   const CONFIG_DIR = configDir();
 
   const isMpp = args[0] === "mpp";
-  const requestedRail = isMpp ? "mpp" : "x402";
+  const isLightning = args[0] === "lightning";
+  const requestedRail = isLightning ? "lightning" : isMpp ? "mpp" : "x402";
   const switchRailConfirmed = args.includes("--switch-rail");
 
   const existingAllowance = readAllowance();
@@ -385,16 +390,13 @@ export async function run(args = []) {
     const { generatePrivateKey, privateKeyToAccount } = await import("viem/accounts");
     const privateKey = generatePrivateKey();
     const account = privateKeyToAccount(privateKey);
-    allowance = { address: account.address, privateKey, created: new Date().toISOString(), funded: false, rail: isMpp ? "mpp" : "x402" };
+    allowance = { address: account.address, privateKey, created: new Date().toISOString(), funded: false, rail: requestedRail };
     saveAllowance(allowance);
     line("Allowance", `${short(allowance.address)} (created)`);
   } else {
-    // Update rail if switching
-    if ((isMpp && allowance.rail !== "mpp") || (!isMpp && allowance.rail === "mpp")) {
-      allowance = { ...allowance, rail: isMpp ? "mpp" : "x402" };
-      saveAllowance(allowance);
-    } else if (!allowance.rail) {
-      allowance = { ...allowance, rail: isMpp ? "mpp" : "x402" };
+    // Update rail if switching (a wallet leaving Lightning keeps its pairing on disk until revoked).
+    if (allowance.rail !== requestedRail) {
+      allowance = { ...allowance, rail: requestedRail };
       saveAllowance(allowance);
     }
     line("Allowance", short(allowance.address));
@@ -403,11 +405,11 @@ export async function run(args = []) {
   const walletName = getActiveProfile();
   const walletMeta = readMeta(walletName);
   summary.wallet = { local_label: walletName, server_label: walletMeta?.label ?? null, address: allowance.address };
-  summary.network = isMpp ? "tempo-moderato" : "base-sepolia";
-  summary.rail = isMpp ? "mpp" : "x402";
+  summary.network = isLightning ? "bitcoin-mainnet" : isMpp ? "tempo-moderato" : "base-sepolia";
+  summary.rail = requestedRail;
 
-  line("Network", isMpp ? "Tempo Moderato (testnet)" : "Base Sepolia (testnet)");
-  line("Rail", isMpp ? "mpp" : "x402");
+  line("Network", isLightning ? "Bitcoin mainnet (Lightning) + Base Sepolia fallback" : isMpp ? "Tempo Moderato (testnet)" : "Base Sepolia (testnet)");
+  line("Rail", requestedRail);
 
   // 3. Balance — check on-chain, faucet if zero
   let balance = 0;
@@ -558,6 +560,38 @@ export async function run(args = []) {
   if (previousRail && previousRail !== (isMpp ? "mpp" : "x402")) {
     const prev = previousRail === "mpp" ? "Tempo pathUSD" : "Base Sepolia USDC";
     line("Note", `Switched from ${previousRail} — ${prev} balance still available if you switch back`);
+  }
+
+  // 3b. The Lightning allowance (mpp-lightning-over-nwc): a budgeted wallet
+  // on Run402's Hub, minted by the platform, its pairing kept beside the
+  // Base key. Never printed. A Hub that is not configured leaves the rail
+  // on Lightning with x402 as the live fallback, and says so.
+  summary.lightning = null;
+  if (isLightning) {
+    try {
+      const { ensureLightningWallet, describeLightning, readLightningBalance } = await import("./lightning-wallet.mjs");
+      const result = await ensureLightningWallet();
+      allowance = result.allowance;
+      const settled = result.outcome === "stored" || result.outcome === "present";
+      const balance = settled ? await readLightningBalance(allowance) : null;
+      summary.lightning = { ...(describeLightning(allowance, result.wallet, balance) ?? {}), outcome: result.outcome };
+      if (result.outcome === "stored") {
+        line("Lightning", `wallet minted on Run402's Hub (${result.wallet.budget_sats} sats budget, ${result.wallet.starter_sats} starter)`);
+      } else if (result.outcome === "present") {
+        line("Lightning", `wallet ${allowance.lightning.wallet_id}${balance ? ` — ${balance.balance_sats} sats` : ""}`);
+      } else if (result.outcome === "minting") {
+        line("Lightning", "the platform is still minting the wallet — rerun `run402 init lightning` in a few seconds");
+      } else if (result.outcome === "unavailable") {
+        line("Lightning", "no Hub on this gateway — paying over x402 until it is back");
+      } else if (result.outcome === "pairing_lost") {
+        line("Lightning", "wallet is active but its pairing was handed to another machine — `run402 wallets lightning revoke`, then init again");
+      } else {
+        line("Lightning", `wallet is ${result.outcome}`);
+      }
+    } catch (err) {
+      summary.lightning = { outcome: "error", code: err?.body?.code ?? err?.code ?? "LIGHTNING_WALLET_FAILED", message: err?.message ?? String(err) };
+      line("Lightning", `wallet setup failed: ${err?.message ?? String(err)} — paying over x402 until it is fixed`);
+    }
   }
 
   // 4. Tier status

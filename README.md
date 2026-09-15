@@ -1,3 +1,4 @@
+| `lightning_wallet` | The Lightning allowance: mint the agent's budgeted wallet on Run402's Hub (pairing stored locally, Lightning becomes the default rail), read it, or revoke it. |
 <p align="center">
   <img src=".github/logo.svg" width="120" alt="run402 logo">
 </p>

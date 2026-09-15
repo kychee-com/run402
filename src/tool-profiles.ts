@@ -27,6 +27,7 @@ export const TOOL_PROFILES: Record<string, readonly string[]> = {
     "generate_image",
     "init",
     "allowance_status",
+    "lightning_wallet",
     "allowance_export",
     "check_balance",
     "request_faucet",

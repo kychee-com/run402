@@ -46,6 +46,7 @@ import { Errors } from "./namespaces/errors.js";
 import { Pay, type PayExecutor } from "./namespaces/pay.js";
 import { IdentityLinks } from "./namespaces/identity-links.js";
 import { Buzz } from "./namespaces/buzz.js";
+import { Agent } from "./namespaces/agent.js";
 import { Gitvault } from "./namespaces/gitvault.js";
 import type { ContentSource, FileSet } from "./namespaces/deploy.types.js";
 import { ScopedRun402 } from "./scoped.js";
@@ -165,6 +166,8 @@ export class Run402 {
   readonly errors: Errors;
   /** Public dual-proof associations between the active agent principal and external identities. */
   readonly identityLinks: IdentityLinks;
+  /** The calling agent's own facts: its Lightning wallet (the Lightning allowance). */
+  readonly agent: Agent;
   /** Buzz human adoption, community installation, and bounded agent enrollment workflows. */
   readonly buzz: Buzz;
   /**
@@ -268,6 +271,7 @@ export class Run402 {
     this.pay = new Pay(client, opts.payExecutor);
     this.errors = new Errors(client);
     this.identityLinks = new IdentityLinks(client);
+    this.agent = new Agent(client);
     this.buzz = new Buzz(client);
     this.gitvault = new Gitvault(client);
   }
@@ -636,6 +640,8 @@ export type * from "./namespaces/projects.types.js";
 export { IdentityLinks, NostrIdentityLinks } from "./namespaces/identity-links.js";
 export type * from "./namespaces/identity-links.js";
 export type * from "./namespaces/identity-links.types.js";
+export { Agent, AgentLightningWallets } from "./namespaces/agent.js";
+export type * from "./namespaces/agent.types.js";
 export { Buzz, BuzzHumanAdoptions, BuzzHumanAdoptionOffers, BuzzCommunityInstallations, BuzzAgentEnrollments, BuzzNotifications } from "./namespaces/buzz.js";
 export type * from "./namespaces/buzz.types.js";
 export type * from "./namespaces/buzz-notifications.types.js";

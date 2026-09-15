@@ -554,6 +554,7 @@ For agents that sign Ethereum transactions. Private keys never leave AWS KMS. $0
 - `init` — one-shot setup: allowance + faucet + tier check + project list.
 - `status` — full organization snapshot.
 - `allowance_status` / `allowance_create` / `allowance_export` — local allowance management.
+- `lightning_wallet` — the Lightning allowance: `mint` (default) asks Run402 for the agent's budgeted sub-wallet on its Hub and stores the one-time pairing locally, making Lightning the default rail (x402 stays the fallback); `get` reads it; `revoke` deletes it on the Hub and returns the rail to x402. `init` accepts `rail: "lightning"` and does the mint in the same call. Custody is Run402's Hub; the pairing never appears in tool output.
 - `request_faucet` — Base Sepolia testnet USDC.
 - `redeem_voucher` — redeem a promo code (e.g. `R402-K8F3-Q2W9`) for run402 prepaid credit. Use it whenever the user hands you a code. Funding, like the faucet, but off-chain: it credits the organization's prepaid balance, which then settles a tier with no on-chain payment. Works before or after setup; a repeat of the same code returns the original result instead of crediting twice.
 - `check_balance` — USDC for an allowance address.
@@ -762,7 +763,7 @@ The full surface is **198 tools (~43,200 tokens)** loaded into your context befo
 RUN402_MCP_PROFILE=buyer npx -y run402-mcp     # 7 tools, ~740 tokens
 ```
 
-Registers `generate_image` · `init` · `check_balance` · `allowance_status` · `allowance_export` · `request_faucet` · `redeem_voucher` — enough to bootstrap a wallet, fund it (Base Sepolia faucet, a promo code, or a mainnet address from `allowance_export`), confirm the money landed, and buy.
+Registers `generate_image` · `init` · `check_balance` · `allowance_status` · `lightning_wallet` · `allowance_export` · `request_faucet` · `redeem_voucher` — enough to bootstrap a wallet, fund it (Base Sepolia faucet, a promo code, or a mainnet address from `allowance_export`), confirm the money landed, and buy.
 
 Use the profile when the task is a purchase. Leave it unset when you may provision, deploy, or manage a project — the other 191 tools are how you do that.
 

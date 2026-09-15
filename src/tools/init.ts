@@ -10,9 +10,9 @@ const TEMPO_RPC = "https://rpc.moderato.tempo.xyz/";
 
 export const initSchema = {
   rail: z
-    .enum(["x402", "mpp"])
+    .enum(["x402", "mpp", "lightning"])
     .optional()
-    .describe("Payment rail: x402 (Base Sepolia, default) or mpp (Tempo Moderato)"),
+    .describe("Payment rail: x402 (Base Sepolia, default), mpp (Tempo Moderato), or lightning (a budgeted wallet minted on Run402's Hub, with the Base allowance as the x402 fallback)"),
 };
 
 type McpResult = { content: Array<{ type: "text"; text: string }>; isError?: boolean };
@@ -21,7 +21,7 @@ function short(addr: string) {
   return addr.slice(0, 6) + "..." + addr.slice(-4);
 }
 
-export async function handleInit(args: { rail?: "x402" | "mpp" }): Promise<McpResult> {
+export async function handleInit(args: { rail?: "x402" | "mpp" | "lightning" }): Promise<McpResult> {
   const rail = args.rail ?? "x402";
   const lines: string[] = [];
 
@@ -119,6 +119,20 @@ export async function handleInit(args: { rail?: "x402" | "mpp" }): Promise<McpRe
     }
   }
 
+  // 3b. The Lightning allowance: a budgeted wallet minted on Run402's Hub;
+  // the pairing is stored locally by the wallet tool and never rendered here.
+  let lightningStatus: string | null = null;
+  if (rail === "lightning") {
+    const { handleLightningWallet } = await import("./lightning-wallet.js");
+    const minted = await handleLightningWallet({ action: "mint" });
+    const text = minted.content[0]?.text ?? "";
+    const status = /\| status \| ([a-z_]+) \|/.exec(text)?.[1] ?? (minted.isError ? "failed" : "unknown");
+    const walletId = /\| wallet_id \| `([^`]+)` \|/.exec(text)?.[1];
+    lightningStatus = minted.isError
+      ? `not available (${text.split("\n").find((line) => line.trim().length > 0) ?? "error"}) — paying over x402 until it is`
+      : `${status}${walletId ? ` (${walletId})` : ""}`;
+  }
+
   // 4. Tier status
   let tierDisplay = "(none)";
   try {
@@ -143,9 +157,10 @@ export async function handleInit(args: { rail?: "x402" | "mpp" }): Promise<McpRe
     `|-------|-------|`,
     `| config | \`${configDir}\` |`,
     `| address | \`${short(allowance.address)}\`${allowanceCreated ? " (created)" : ""} |`,
-    `| network | ${rail === "mpp" ? "Tempo Moderato (testnet)" : "Base Sepolia (testnet)"} |`,
+    `| network | ${rail === "mpp" ? "Tempo Moderato (testnet)" : rail === "lightning" ? "Bitcoin mainnet (Lightning) + Base Sepolia fallback" : "Base Sepolia (testnet)"} |`,
     `| rail | ${rail} |`,
     `| faucet | ${faucetStatus} |`,
+    ...(lightningStatus ? [`| lightning | ${lightningStatus} |`] : []),
     `| tier | ${tierDisplay} |`,
     `| projects | ${projectCount} active |`,
   );

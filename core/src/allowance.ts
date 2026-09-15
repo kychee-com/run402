@@ -9,7 +9,19 @@ export interface AllowanceData {
   created?: string;
   funded?: boolean;
   lastFaucet?: string;
-  rail?: "x402" | "mpp";
+  rail?: "x402" | "mpp" | "lightning";
+  /** The Lightning allowance (`run402 init lightning`): a budgeted wallet on Run402's Hub. `nwc` is the pairing secret. */
+  lightning?: AllowanceLightning;
+}
+
+export interface AllowanceLightning {
+  wallet_id: string;
+  nwc: string;
+  lightning_address: string | null;
+  budget_sats: number;
+  starter_sats: number;
+  custody: "run402_hub";
+  minted_at: string;
 }
 
 // 0x-prefixed 40-hex EVM address.

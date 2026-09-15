@@ -104,6 +104,7 @@ export const COMMAND_MANIFEST = [
   { path: ["wallets", "unbind"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
   { path: ["wallets", "import"], positionals: [p("name")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["gate-import-wallet", "--key", "__FIXTURE_FILE__"] },
   { path: ["wallets", "rm"], positionals: [p("name")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["no-such-wallet", "--yes"] },
+  { path: ["wallets", "lightning"], positionals: [p("action", { required: false })], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["status"] },
 
   // ── credentials (gateway project credentials) ────────────────────────────
   { path: ["credentials", "issue"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["--kind", "service", "--name", "gate-cred"] },

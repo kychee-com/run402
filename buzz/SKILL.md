@@ -100,6 +100,15 @@ When a human asks the agent, in plain language, to top up the organization's bal
 
 If the command reports `LIGHTNING_TOPUP_NOT_CONFIGURED`, say so and offer the Stripe checkout instead. If the wait ends `expired`, say the payment still credits within the hour if it was sent, and rerun with the same key to check. Never ask for, accept, or relay wallet keys, seed words, or payment credentials.
 
+### lightning_pay
+
+When a human asks the agent itself to pay Run402 in sats ("generate that image and pay in bitcoin", "buy the tier over lightning", "can you pay in sats?"), the agent uses its OWN Lightning wallet, not the organization's cash balance. One-time setup, then ordinary paid calls:
+
+1. Once per profile: `run402 --wallet <profile> init lightning`. The platform mints a budgeted wallet on Run402's Hub with a few starter sats and stores its pairing locally; the summary's `lightning.outcome` says `stored` (ready), `minting` (rerun in a few seconds), or `unavailable` (no Hub on this gateway — the same calls pay over x402 instead; say so). Tell the human, in one line, that the sats sit on Run402's Hub and the agent holds a budgeted connection (`custody: run402_hub`); never print the pairing, an invoice, or a preimage.
+2. Then the paid call as usual — `run402 --wallet <profile> image generate "<prompt>"` or `run402 --wallet <profile> tier set prototype`. The CLI answers the Lightning challenge from the agent's wallet and retries with the preimage; the reply carries a `payment` block (intent id, payment hash) and the organization's route posts the receipt in the channel when it carries `--include-org-events`. Report what was bought and the sats it cost; `run402 wallets lightning status` shows the remaining balance and budget when asked.
+
+If the call fails `LIGHTNING_BUDGET_EXHAUSTED`, say the wallet's budget is spent and offer x402 (`run402 init --switch-rail`) or a top-up of the organization instead. Never ask for, accept, or relay wallet keys, seed words, or a pairing.
+
 ## Offer one contextual test
 
 After posting readiness, and after resolving or declining any single verified community-enrollment offer (a teammate-join offer is folded into this question, never asked separately), propose exactly one small application in one or two sentences, then ask whether the user wants you to try it. Do not build anything until the user affirmatively agrees.

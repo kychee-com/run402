@@ -29,6 +29,7 @@ import {
   type PaymentAttemptPhase,
 } from "../errors.js";
 import { PaidStackUnavailable, loadMppStack, loadX402Stack } from "./_paid-stack.js";
+import { createLightningFetch } from "./lightning-paid-fetch.js";
 import type { MppStack, X402Stack } from "./_paid-stack.js";
 import {
   DEFAULT_PAYMENT_MAX_USD_MICROS,
@@ -240,7 +241,7 @@ export type PaymentPayerSource =
 /** Safe, key-free provenance for the payer selected by paid fetch. */
 export interface PaymentPayerProvenance {
   readonly source: PaymentPayerSource;
-  readonly rail: "x402" | "mpp";
+  readonly rail: "x402" | "mpp" | "lightning";
   readonly payers: readonly {
     readonly address: string;
     readonly network?: X402PaymentNetwork;
@@ -276,6 +277,8 @@ export interface PaidFetchOptions {
    * validate requests. A response from any other origin is unaffected.
    */
   apiBase?: string;
+  /**  Build the buyer for this rail regardless of the persisted one (the Lightning buyer's x402 fallback). */
+  railOverride?: "x402";
 }
 
 const USDC_ABI = [
@@ -609,8 +612,25 @@ export async function setupPaidFetch(options: PaidFetchOptions = {}): Promise<Co
   const allowance = resolvedAllowance?.allowance ?? null;
   if (!allowance && !options.paymentSigner) return null;
 
+  const rail = options.railOverride ?? allowance?.rail;
   try {
-    if (allowance?.rail === "mpp") {
+    if (rail === "lightning" && allowance?.lightning?.nwc) {
+      // The Lightning allowance: pay the seller's Lightning challenge from the
+      // agent's budgeted wallet on Run402's Hub; fall back to the x402 buyer
+      // built from the same allowance when no Lightning challenge is offered.
+      const lightning = allowance.lightning;
+      const fetchFn = createLightningFetch({
+        pairingUri: lightning.nwc,
+        baseFetch: sdkFetch,
+        fallback: async () => setupPaidFetch({ ...options, railOverride: "x402" }),
+      });
+      return withPayer(fetchFn, {
+        source: resolvedAllowance!.source,
+        rail: "lightning",
+        payers: [{ address: lightning.lightning_address ?? lightning.wallet_id }],
+      });
+    }
+    if (rail === "mpp" && allowance) {
       const stack = await stackLoaders.mpp();
       const account = stack.privateKeyToAccount(allowance.privateKey as `0x${string}`);
       const mppx = stack.Mppx.create({
@@ -870,11 +890,11 @@ export function createLazyPaidFetch(options: PaidFetchOptions = {}): LazyPaidFet
           ...payResponseMetadata(response),
         };
       }
-      if (configured?.payer.rail === "mpp") {
+      if (configured?.payer.rail === "mpp" || configured?.payer.rail === "lightning") {
         throw paymentNetworkUnsupportedError(
           challengeNetworks(response),
           configured.payer.payers.flatMap((payer) => payer.network ? [payer.network] : []),
-          { configured_rail: "mpp" },
+          { configured_rail: configured.payer.rail },
         );
       }
       if (missingPaidStackPackages !== null) {

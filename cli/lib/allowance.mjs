@@ -85,8 +85,11 @@ async function status() {
       console.log(JSON.stringify({ wallet: null, hint: "Run: run402 allowance create" }));
       return;
     }
-    // Preserve CLI's rail field (SDK doesn't surface it; read from local allowance).
     const w = readAllowance();
+    // The Lightning allowance (mpp-lightning-over-nwc): public facts plus a
+    // best-effort balance read over NWC; the pairing secret never prints.
+    const { describeLightning, readLightningBalance } = await import("./lightning-wallet.mjs");
+    const lightning = w?.lightning ? describeLightning(w, null, await readLightningBalance(w)) : null;
     console.log(JSON.stringify({
       wallet: {
         address: data.address,
@@ -96,9 +99,10 @@ async function status() {
         // tracks faucet invocation, not pay-readiness. For a true "can this
         // account pay right now" check, use `run402 allowance balance`.
         faucet_used: !!data.faucet_used,
-        rail: w?.rail || "x402",
+        rail: data.rail ?? w?.rail ?? "x402",
         path: data.path ?? allowanceFile(),
       },
+      ...(lightning ? { lightning } : {}),
     }));
   } catch (err) {
     reportSdkError(err);

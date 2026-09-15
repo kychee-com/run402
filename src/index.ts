@@ -214,6 +214,7 @@ import {
 
 // New tools — allowance, faucet, image
 import { allowanceStatusSchema, handleAllowanceStatus } from "./tools/allowance-status.js";
+import { lightningWalletSchema, handleLightningWallet } from "./tools/lightning-wallet.js";
 import { allowanceCreateSchema, handleAllowanceCreate } from "./tools/allowance-create.js";
 import { allowanceExportSchema, handleAllowanceExport } from "./tools/allowance-export.js";
 import { requestFaucetSchema, handleRequestFaucet } from "./tools/request-faucet.js";
@@ -1147,6 +1148,13 @@ server.tool(
   "Check local agent allowance status — address, network, and funding status.",
   allowanceStatusSchema,
   async (args) => handleAllowanceStatus(args),
+);
+
+server.tool(
+  "lightning_wallet",
+  "The agent's Lightning wallet (the Lightning allowance): mint one budgeted sub-wallet on Run402's Hub and store its pairing locally (Lightning becomes the default rail), read it, or revoke it. Custody is Run402's Hub.",
+  lightningWalletSchema,
+  async (args) => handleLightningWallet(args),
 );
 
 server.tool(
