@@ -50,6 +50,7 @@ import {
   type Run402AppUpDiagnostic,
   type Run402AppUpNextAction,
   type Run402AppUpVerifyResult,
+  type Run402ObservedRelease,
 } from "../app-up.js";
 import type { Run402ExecutionMode, Run402ReviewedPlanRequirement } from "../config.js";
 import { LocalError, Run402DeployError } from "../errors.js";
@@ -212,6 +213,7 @@ interface AppVerifyContext {
 }
 
 interface AppHttpVerifyAttempt {
+  observedRelease: Run402ObservedRelease;
   status: number | null;
   edgeCode: string | null;
   edgeHeader: string | null;
@@ -219,6 +221,7 @@ interface AppHttpVerifyAttempt {
 }
 
 interface AppHttpVerifyCheckResult {
+  observedRelease?: Run402ObservedRelease;
   id: string;
   ok: boolean;
   propagationPending: boolean;
@@ -1068,6 +1071,8 @@ export class NodeActions implements Run402Actions {
           repo_url: rawSource,
           commit: commit ?? null,
           checkout,
+          source_available: true,
+          ...(await sourceGitState(checkout, commit)),
         });
         return {
           workspaceDir: checkout,
@@ -1101,6 +1106,8 @@ export class NodeActions implements Run402Actions {
     run.setState(step, "succeeded", {
       kind: "local",
       path: workspaceDir,
+      source_available: true,
+      ...(await sourceGitState(workspaceDir, commit)),
       commit: commit ?? null,
     });
     return {
@@ -1314,6 +1321,7 @@ export class NodeActions implements Run402Actions {
       const actual = verification.results.get(check.id);
       if (actual !== undefined) {
         check.actual_status = actual.status;
+        if (actual.observedRelease) check.observed_release = actual.observedRelease;
         check.propagation_wait_ms = actual.propagationWaitMs;
         if (actual.diagnostic) check.diagnostic = actual.diagnostic;
         check.status = actual.ok
@@ -1576,6 +1584,7 @@ export class NodeActions implements Run402Actions {
         const actual = verification.results.get(check.id);
         if (actual !== undefined) {
           check.actual_status = actual.status;
+          if (actual.observedRelease) check.observed_release = actual.observedRelease;
           check.propagation_wait_ms = actual.propagationWaitMs;
           if (actual.diagnostic) check.diagnostic = actual.diagnostic;
           check.status = actual.ok
@@ -2002,6 +2011,7 @@ export class NodeActions implements Run402Actions {
             propagationPending: false,
             status,
             propagationWaitMs: checkPropagationWaitMs,
+            observedRelease: observed.observedRelease,
           });
           break;
         }
@@ -2033,6 +2043,7 @@ export class NodeActions implements Run402Actions {
               propagationPending: true,
               status,
               propagationWaitMs: checkPropagationWaitMs,
+              observedRelease: observed.observedRelease,
               ...(pendingDiagnosis ? { diagnostic: { edge_propagation: pendingDiagnosis.edge_propagation ?? null, resolve: pendingDiagnosis } } : {}),
             });
             break;
@@ -2069,6 +2080,7 @@ export class NodeActions implements Run402Actions {
           propagationPending: false,
           status,
           propagationWaitMs: checkPropagationWaitMs,
+          observedRelease: observed.observedRelease,
           // A network-level fetch failure (status null) must carry its error
           // on the entry, not only in the diagnostics array.
           ...(diagnosis || observed.error
@@ -2696,6 +2708,26 @@ function isRepositoryUrl(value: string): boolean {
   return /^https?:\/\/.+/.test(value) || /^git@[^:]+:.+/.test(value) || /^ssh:\/\/.+/.test(value) || /^file:\/\/.+/.test(value);
 }
 
+async function sourceGitState(dir: string, commit: string | undefined): Promise<Record<string, unknown>> {
+  if (commit) return { git_state: "has_commit" };
+  try {
+    await execFileAsync("git", ["-C", dir, "rev-parse", "--git-dir"]);
+    const { stdout } = await execFileAsync("git", ["-C", dir, "symbolic-ref", "--quiet", "HEAD"]);
+    try {
+      await execFileAsync("git", ["-C", dir, "show-ref", "--verify", "--quiet", stdout.trim()]);
+    } catch (error) {
+      if ((error as { code?: number }).code === 1) {
+        return { git_state: "unborn", git_message: "Local source directory exists; this repository has no commits." };
+      }
+    }
+  } catch (error) {
+    if (/not a git repository/i.test(String((error as { stderr?: string }).stderr ?? ""))) {
+      return { git_state: "not_repository", git_message: "Local source directory exists outside a Git repository." };
+    }
+  }
+  return { git_state: "unavailable", git_message: "Local source directory exists; Git commit information could not be read." };
+}
+
 async function gitCommit(dir: string): Promise<string | undefined> {
   try {
     const { stdout } = await execFileAsync("git", ["-C", dir, "rev-parse", "HEAD"], {
@@ -2781,6 +2813,7 @@ function buildVerificationHttpEntries(
       expected_status: check.expect.status,
       ...(actual !== undefined ? { actual_status: actual.status } : {}),
       ...(actual !== undefined ? { propagation_wait_ms: actual.propagationWaitMs } : {}),
+      ...(actual?.observedRelease ? { observed_release: actual.observedRelease } : {}),
       ...(actual?.diagnostic ? { diagnostic: actual.diagnostic } : {}),
     };
   });
@@ -2811,6 +2844,7 @@ async function fetchAppVerifyUrl(url: string): Promise<AppHttpVerifyAttempt> {
     const text = await res.text().catch(() => "");
     return {
       status: res.status,
+      observedRelease: observedRelease(res.headers, res.url || url),
       edgeCode: edgeCodeFromBody(text),
       edgeHeader: res.headers.get("x-run402-edge"),
       error: null,
@@ -2818,11 +2852,27 @@ async function fetchAppVerifyUrl(url: string): Promise<AppHttpVerifyAttempt> {
   } catch (err) {
     return {
       status: null,
+      observedRelease: { ...observedRelease(new Headers(), url), unavailable_reason: "request_failed" },
       edgeCode: null,
       edgeHeader: null,
       error: err instanceof Error ? err.message : String(err),
     };
   }
+}
+
+function observedRelease(headers: Headers, url: string): Run402ObservedRelease {
+  const releaseId = headers.get("x-run402-release-id")?.trim() || null;
+  const rawGeneration = headers.get("x-run402-release-generation")?.trim() ?? "";
+  const parsed = /^\d+$/.test(rawGeneration) ? Number(rawGeneration) : NaN;
+  const generation = Number.isSafeInteger(parsed) ? parsed : null;
+  return {
+    release_id: releaseId,
+    generation,
+    source: "response_headers",
+    url,
+    observed_at: new Date().toISOString(),
+    unavailable_reason: releaseId !== null && generation !== null ? null : "headers_missing_or_invalid",
+  };
 }
 
 function edgeCodeFromBody(text: string): string | null {

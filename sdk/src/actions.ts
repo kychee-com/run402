@@ -1,6 +1,7 @@
 import type { DeployResult, PlanResponse, ReleaseSpec } from "./namespaces/deploy.types.js";
 import type {
   Run402AppInstallGraph,
+  Run402ObservedRelease,
   Run402AppInstallNodeStatus,
   Run402AppUpResultEnvelope,
   Run402AppUpVerifyResult,
@@ -238,6 +239,7 @@ export interface Run402UpVerificationHttpEntry {
   url?: string;
   expected_status: number;
   actual_status?: number | null;
+  observed_release?: Run402ObservedRelease;
   propagation_wait_ms?: number;
   diagnostic?: Record<string, unknown>;
 }

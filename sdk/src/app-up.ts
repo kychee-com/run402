@@ -233,6 +233,16 @@ export interface Run402AppUpResourceSummary {
 
 export type Run402AppVerifyStatus = "verified" | "propagation_pending" | "failed";
 
+/** Header evidence from one HTTP response, not proof of release stability. */
+export interface Run402ObservedRelease {
+  release_id: string | null;
+  generation: number | null;
+  source: "response_headers";
+  url: string;
+  observed_at: string;
+  unavailable_reason: "headers_missing_or_invalid" | "request_failed" | null;
+}
+
 export interface Run402AppUpVerifyResult {
   status: Run402AppVerifyStatus;
   warnings: Run402AppUpDiagnostic[];
@@ -276,6 +286,7 @@ export interface Run402AppUpResultEnvelope {
       url?: string;
       expected_status: number;
       actual_status?: number | null;
+      observed_release?: Run402ObservedRelease;
       propagation_wait_ms?: number;
       diagnostic?: Record<string, unknown>;
     }>;

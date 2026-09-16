@@ -641,6 +641,8 @@ for (const outcome of ['current', 'older', 'offline']) {
     assert.equal(check.value.cache.refresh_attempted, true);
     assert.equal(check.value.cache.freshness_basis, 'observation_age');
     assert.equal(check.status, outcome === 'current' ? 'ok' : 'unknown');
+    assert.equal(check.value.install_confidence_basis, 'installation_method_detection');
+    assert.match(check.value.install_confidence_message, /independent of registry version comparison/);
     assert.equal(check.value.cache.refresh_failed, outcome === 'offline');
     assert.equal(check.value.next_actions, undefined, 'never offer a downgrade');
     if (outcome === 'offline') {

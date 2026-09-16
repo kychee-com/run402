@@ -546,7 +546,7 @@ test("up verify reruns app HTTP checks without deploying", async (t) => {
     activeProject: null,
   });
   const fetchMock = mock.method(globalThis, "fetch", async () =>
-    new Response("ok", { status: 200 })
+    new Response("ok", { status: 200, headers: { "x-run402-release-id": "rel_observed", "x-run402-release-generation": "4" } })
   );
   t.after(() => fetchMock.mock.restore());
 
@@ -562,6 +562,13 @@ test("up verify reruns app HTTP checks without deploying", async (t) => {
     assert.equal(result.result?.app_result?.status, "succeeded");
     assert.equal(result.result?.app_result?.verify?.status, "verified");
     assert.equal(result.result?.app_result?.verification.http[0]?.actual_status, 200);
+    const observed = result.result?.app_result?.verification.http[0]?.observed_release;
+    assert.equal(observed?.release_id, "rel_observed");
+    assert.equal(observed?.generation, 4);
+    assert.equal(observed?.source, "response_headers");
+    assert.equal(observed?.unavailable_reason, null);
+    assert.ok(observed?.url.startsWith("https://"));
+    assert.ok(Number.isFinite(Date.parse(observed!.observed_at)));
     assert.ok(!calls.some((call) => call.startsWith("project.apply:")));
     assert.ok(calls.includes("projects.keys:prj_ready"));
     assert.ok(calls.includes("project:prj_ready"));
@@ -1390,7 +1397,7 @@ test("up runs deploy-manifest verify.http checks after apply and surfaces verifi
     assert.ok(calls.includes("project.apply:prj_ready"));
     assert.deepEqual(fetched, ["https://prj_ready.run402.test/"]);
     assert.equal(result.result?.verify?.status, "verified");
-    assert.deepEqual(result.result?.verification?.http, [{
+    assert.deepEqual(result.result?.verification?.http.map(({ observed_release, ...entry }) => entry), [{
       id: "home",
       status: "succeeded",
       path: "/",
@@ -1519,6 +1526,10 @@ test("up verify reruns deploy-manifest verify.http checks without deploying", as
     assert.equal(result.result?.verify?.status, "verified");
     assert.equal(result.result?.verification?.http[0]?.status, "succeeded");
     assert.equal(result.result?.verification?.http[0]?.actual_status, 200);
+    const observed = result.result?.verification?.http[0]?.observed_release;
+    assert.equal(observed?.release_id, null);
+    assert.equal(observed?.generation, null);
+    assert.equal(observed?.unavailable_reason, "headers_missing_or_invalid");
     assert.ok(!calls.some((call) => call.startsWith("project.apply:")), "verify-only must not deploy");
     assert.ok(calls.includes("projects.keys:prj_ready"));
   } finally {
@@ -2235,5 +2246,50 @@ for (const { status, expected } of [{ status: 400, expected: 400 }, { status: 42
       assert.equal(await response.text(), '{"error":"application_error"}');
       assert.ok(!calls.some(call => call.startsWith("project.apply:")));
     } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+}
+
+for (const state of ["not_repository", "unborn", "has_commit"] as const) {
+  test(`source resolution distinguishes available files from Git state: ${state}`, async () => {
+    const root = mkdtempSync(join(tmpdir(), "run402-source-state-"));
+    const dir = join(root, "app");
+    mkdirSync(dir);
+    try {
+      // The unborn app is nested inside a parent with a real commit.
+      if (state === "unborn") {
+        execFileSync("git", ["init", "-q", root]);
+        execFileSync("git", ["-C", root, "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "--allow-empty", "-qm", "parent"]);
+      }
+      if (state !== "not_repository") execFileSync("git", ["init", "-q", dir]);
+      writeFileSync(join(dir, "run402.json"), JSON.stringify(appManifest()));
+      if (state === "has_commit") execFileSync("git", ["-C", dir, "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "--allow-empty", "-qm", "initial"]);
+      const actions = new NodeActions(fakeSdk({ calls: [], allowanceConfigured: true, tierActive: true, activeProject: null }), { targetKind: "cloud", cwd: dir });
+      const result = await actions.up({}, { mode: "check" });
+      const source = result.steps.find(step => step.action === "app.source.resolve")?.details;
+      assert.equal(source?.source_available, true);
+      assert.equal(source?.git_state, state);
+      assert.equal(source?.commit === null, state !== "has_commit");
+      if (state === "unborn") {
+        assert.throws(() => execFileSync("git", ["-C", dir, "rev-parse", "--verify", "HEAD"], { stdio: "pipe" }));
+        assert.match(String(source?.git_message), /no commits/);
+      }
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+}
+
+for (const generation of ["7", "", "oops", "-1", "9007199254740992"]) {
+  test(`deploy verification retains release headers without guessing generation: ${generation}`, async (t) => {
+    const dir = mkdtempSync(join(tmpdir(), "run402-release-observation-"));
+    writeFileSync(join(dir, "run402.deploy.json"), JSON.stringify({ project_id: "prj_ready", site: { replace: { "index.html": { data: "ok" } } }, verify: { http: [{ id: "home", url: "https://example.com/", expect: { status: 200 } }] } }));
+    const fetchMock = mock.method(globalThis, "fetch", async () => new Response("ok", { status: 200, headers: { "x-run402-release-id": "rel_headers", "x-run402-release-generation": generation } }));
+    t.after(() => { fetchMock.mock.restore(); rmSync(dir, { recursive: true, force: true }); });
+    const actions = new NodeActions(fakeSdk({ calls: [], allowanceConfigured: true, tierActive: true, activeProject: null }), { targetKind: "cloud", cwd: dir });
+    const result = await actions.up({ verifyOnly: true });
+    const observation = result.result?.verification?.http[0]?.observed_release;
+    assert.equal(observation?.release_id, "rel_headers");
+    assert.equal(observation?.generation, generation === "7" ? 7 : null);
+    assert.equal(observation?.unavailable_reason, generation === "7" ? null : "headers_missing_or_invalid");
+    assert.equal(observation?.url, "https://example.com/");
+    assert.equal(result.result?.verify?.status, "verified");
   });
 }
