@@ -22,7 +22,9 @@
   button, .btn { font: inherit; border: 0; border-radius: 10px; padding: 12px 18px; cursor: pointer; background: var(--accent); color: var(--accent-ink); font-weight: 600; text-decoration: none; display: inline-block; }
   button.ghost { background: transparent; color: var(--muted); border: 1px solid var(--line); }
   button.danger { background: transparent; color: var(--danger); padding: 6px 10px; }
-  .code { font: 700 40px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 6px; margin: 16px 0 8px; }
+  .code { font: 700 40px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 6px; margin: 8px 0 12px; user-select: all; }
+  .step { margin: 16px 0 6px; }
+  .step:first-child { margin-top: 0; }
   .hint { color: var(--muted); font-size: 14px; }
   .row { display: flex; gap: 10px; align-items: center; }
   .row.between { justify-content: space-between; }
@@ -48,13 +50,17 @@
   </section>
 
   <section id="pending" class="card" hidden>
-    <p>Buzz is asking for your approval. Type this code in Buzz:</p>
-    <div class="code" id="code">000000</div>
-    <p class="hint">Expires in <span id="countdown">5:00</span>. Buzz will open a new tab when you approve; this tab updates on its own.</p>
+    <p class="step"><b>Step 1</b> · Your code. Buzz will ask you to type it.</p>
     <div class="row">
-      <a id="open-buzz" class="btn" href="#">Open Buzz again</a>
-      <button id="cancel" class="ghost">Cancel</button>
+      <div class="code" id="code">000000</div>
+      <button id="copy" class="ghost" type="button">Copy</button>
     </div>
+    <p class="step"><b>Step 2</b> · Open Buzz, type the code, and approve.</p>
+    <div class="row">
+      <a id="open-buzz" class="btn" href="#">Open Buzz</a>
+      <button id="cancel" class="ghost" type="button">Cancel</button>
+    </div>
+    <p class="hint">Expires in <span id="countdown">5:00</span>. When you approve, Buzz opens a new tab and this one signs in on its own.</p>
   </section>
 
   <section id="signed-in" class="card" hidden>
@@ -106,17 +112,45 @@
       const c = await api("/api/buzz/start", { method: "POST", body: "{}" });
       $("code").textContent = c.verification_code;
       $("open-buzz").href = c.deep_link;
+      $("copy").textContent = "Copy";
       startCountdown(c.expires_at);
+      startPolling();
       show("pending");
-      // User gesture just happened, so the custom-scheme navigation is allowed.
-      window.location.href = c.deep_link;
+      // Step 2 is the user's click on "Open Buzz"; never leave the page on our own.
     } catch (e) {
       $("signin-error").textContent = `Could not start sign-in: ${e.message}`;
       $("signin-error").hidden = false;
     }
   });
 
-  $("cancel").addEventListener("click", () => { stopCountdown(); show("signed-out"); });
+  $("copy").addEventListener("click", async () => {
+    const code = $("code").textContent;
+    try {
+      await navigator.clipboard.writeText(code);
+      $("copy").textContent = "Copied";
+    } catch {
+      const range = document.createRange(); range.selectNodeContents($("code"));
+      const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+      $("copy").textContent = "Select and copy";
+    }
+  });
+
+  $("cancel").addEventListener("click", () => { stopCountdown(); stopPolling(); show("signed-out"); });
+
+  // While the code is showing, keep checking whether the callback tab signed us in.
+  // The cookie is shared across tabs, so /api/me flips to 200 as soon as it lands.
+  let pollTimer = null;
+  function startPolling() { stopPolling(); pollTimer = setInterval(refreshIfSignedIn, 2500); }
+  function stopPolling() { if (pollTimer) clearInterval(pollTimer); pollTimer = null; }
+  async function refreshIfSignedIn() {
+    try {
+      await api("/api/me");
+    } catch {
+      return; // not yet — stay on the code screen
+    }
+    stopCountdown(); stopPolling();
+    boot();
+  }
 
   function startCountdown(expiresAt) {
     stopCountdown();
@@ -125,15 +159,17 @@
       const left = Math.max(0, end - Date.now());
       const m = Math.floor(left / 60000), s = Math.floor((left % 60000) / 1000);
       $("countdown").textContent = `${m}:${String(s).padStart(2, "0")}`;
-      if (left <= 0) { stopCountdown(); show("signed-out"); }
+      if (left <= 0) { stopCountdown(); stopPolling(); show("signed-out"); }
     };
     tick();
     countdownTimer = setInterval(tick, 500);
   }
   function stopCountdown() { if (countdownTimer) clearInterval(countdownTimer); countdownTimer = null; }
 
-  if (channel) channel.onmessage = (ev) => { if (ev.data && ev.data.type === "signed_in") { stopCountdown(); boot(); } };
-  window.addEventListener("focus", () => { if (!$("pending").hidden) boot(); });
+  if (channel) channel.onmessage = (ev) => { if (ev.data && ev.data.type === "signed_in") refreshIfSignedIn(); };
+  // Coming back from Buzz must never bounce a pending screen to the login button:
+  // only a real session changes the view.
+  window.addEventListener("focus", () => { if (!$("pending").hidden) refreshIfSignedIn(); });
 
   $("signout").addEventListener("click", async () => {
     await api("/api/logout", { method: "POST", body: "{}" }).catch(() => {});
