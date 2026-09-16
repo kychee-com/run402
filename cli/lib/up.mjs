@@ -129,6 +129,8 @@ Examples:
 
 const VERIFY_HELP = `run402 up verify — Rerun manifest HTTP verification (verify.http[])
 
+Output: mode="verify", read_only=true, dry_run=false (real HTTP probes, no deploy).
+
 Works for both app manifests (run402.json) and deploy manifests
 (run402.deploy.json / app.json) that declare a top-level verify block.
 

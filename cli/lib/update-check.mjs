@@ -196,7 +196,7 @@ export function createUpdateCheckScheduler({
   let liveNotice = null;
   let livePromise = null;
   const shouldRefresh = !isUpdateOptedOut(env) &&
-    !isCacheFresh(cache, { now }) &&
+    (!isCacheFresh(cache, { now }) || cache?.current !== current) &&
     shouldRunLiveUpdateCheck({ env, stderrIsTTY, stdoutIsTTY });
 
   if (shouldRefresh) {
@@ -279,7 +279,7 @@ export async function doctorUpdateCheck({
   let record = readUpdateCache({ path: cachePath });
 
   // A real TTL (24h) that actually causes a refresh. An explicit `--refresh`
-  // always checks live; a MISSING or EXPIRED cache also gets exactly ONE
+  // always checks live; a MISSING/EXPIRED cache or changed installed version gets ONE
   // bounded live attempt automatically, so a plain `run402 doctor` self-heals
   // a stale cache instead of silently reporting a weeks-old value as if it
   // were current. `refreshUpdateCheck` itself
@@ -287,7 +287,8 @@ export async function doctorUpdateCheck({
   // doc comment), so a failed attempt here degrades gracefully to the LAST
   // GOOD record — never to a bare unknown when something was already known.
   const cacheWasFreshAtStart = isCacheFresh(record, { now });
-  const refreshAttempted = refresh || !cacheWasFreshAtStart;
+  const installedVersionChanged = record?.current !== current;
+  const refreshAttempted = refresh || !cacheWasFreshAtStart || installedVersionChanged;
   let refreshFailed = false;
   if (refreshAttempted) {
     const refreshed = await refreshUpdateCheck({ env, fetchImpl, current, cachePath });
@@ -336,7 +337,7 @@ export async function doctorUpdateCheck({
   });
   const comparison = compareSemver(current, record.latest);
   const stale = notice !== null;
-  const status = stale ? "warning" : record.latest && comparison !== null ? "ok" : "unknown";
+  const status = stale ? "warning" : record.latest && comparison === 0 && !refreshFailed ? "ok" : "unknown";
   // Faithful: an estimate served from a failed-refresh fallback is labeled
   // as one, not presented as if it were current.
   const staleEstimateNote = refreshFailed && ageMs !== null
@@ -356,16 +357,20 @@ export async function doctorUpdateCheck({
       cache: {
         path: cachePath,
         fresh: freshness,
+        freshness_basis: "observation_age",
         age_ms: ageMs,
         source: record.source ?? "cache",
         error: record.error ?? null,
         refresh_attempted: refreshAttempted,
         refresh_failed: refreshFailed,
+        last_attempt_at: record.last_attempt_at ?? (refreshAttempted ? record.checked_at : null),
       },
       ...(stale ? { next_actions: notice.next_actions } : {}),
     },
     ...(stale
       ? { hint: `A newer run402 CLI is available (${current} -> ${record.latest})${staleEstimateNote}.` }
+      : comparison > 0 && !record.error
+        ? { hint: "Installed version is newer than the registry observation; whether it is current is unknown. No downgrade is recommended. Retry run402 doctor --refresh to check again." }
       : record.error
         ? { hint: `Could not check npm for the latest run402 version${staleEstimateNote}; other doctor checks still ran.` }
         : {}),

@@ -8,6 +8,8 @@
 
 Canonical deploy primitive: CAS bytes (no inline-body cap), per-resource `replace`/`patch`, atomic multi-resource activation, resumable failures. SDK: `r.project(id).apply(...)`.
 
+Runtime config tokens are opaque credentials: equivalent claims can have different ES256 signatures. Do not compare token strings to determine project identity; use `project_id` and `api_base`.
+
 Your HTML never needs a pasted key: load `/_run402/config.js` and read `window.RUN402.anon_key` (see "Runtime config on every host"). Wire fields — manifests, plan and commit bodies — are `snake_case` (`content_type`, never `contentType`; `contentType` is only the in-function `assets.put` JS option).
 
 Manifest format mirrors a v2 `ReleaseSpec`. For editor autocomplete, use top-level `"$schema": "https://run402.com/schemas/release-spec.v1.json"`; the CLI accepts that metadata and strips it before planning.
@@ -518,7 +520,7 @@ Additive batch: locally computed `sha256`; gateway dedupes CAS; only new shas up
 
 Declarative sync: `prune: true` deletes keys under explicit `prefix` absent from new `put`; no implicit project-root prune. First apply without `confirm` returns `asset_sync` (`base_revision`, `delete_set_digest`, `expected_delete_count`, `sample_keys`); re-run with `confirm`. Activation rechecks and fails `ASSET_SYNC_DRIFT` if inventory mutates between commit/activation. No `run402 assets sync`; use manifest + `deploy apply` or SDK helpers (`uploadDir`, `syncDir`, `prepareDir`, `putMany`).
 
-Verify block (authoring-only): deploy manifests accept a top-level `verify` with post-apply HTTP checks — the same `verify.http[]` shape app manifests use. It is stripped before the wire `ReleaseSpec` (like `$schema`); `run402 up` runs the checks after a successful apply (propagation-tolerant, results in `result.verification.http[]` + a `result.verify` rollup) and `run402 up verify` reruns them on demand. Each check: `id` (unique, required), `path` (resolved against the project public origin) or `url`, `expect: { status }` (snake alias `expected_status`), optional `retries`.
+Verify block (authoring-only): deploy manifests accept a top-level `verify` with post-apply HTTP checks — the same `verify.http[]` shape app manifests use. It is stripped before the wire `ReleaseSpec` (like `$schema`); `run402 up` runs the checks after a successful apply (propagation-tolerant, results in `result.verification.http[]` + a `result.verify` rollup) and `run402 up verify` reruns them on demand. Verification-only output reports `mode: "verify"`, `read_only: true`, and `dry_run: false` because it performs real probes without applying a deployment. Each check: `id` (unique, required), `path` (resolved against the project public origin) or `url`, `expect: { status }` (snake alias `expected_status`), optional `retries`.
 
 ```json
 "verify": {

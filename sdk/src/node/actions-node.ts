@@ -2650,7 +2650,8 @@ class ActionRun {
   result<T>(result: T): Run402ActionResult<T> {
     return {
       action: this.input.type,
-      mode: this.executionMode,
+      mode: this.input.type === Run402Action.Up && this.input.verifyOnly ? "verify" : this.executionMode,
+      ...(this.input.type === Run402Action.Up && this.input.verifyOnly ? { read_only: true } : {}),
       dry_run: this.dryRun || this.executionMode === "check" || (this.executionMode === "printSpec" || this.executionMode === "printManifest") || this.executionMode === "plan",
       target: this.target,
       steps: this.steps,

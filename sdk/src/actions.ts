@@ -220,7 +220,9 @@ export interface Run402ActionEvent {
 
 export interface Run402ActionResult<T = unknown> {
   action: Run402ActionType;
-  mode: Run402ExecutionMode | "legacyDryRun";
+  mode: Run402ExecutionMode | "legacyDryRun" | "verify";
+  /** True for verification-only execution; real probes are not a dry run. */
+  read_only?: boolean;
   dry_run: boolean;
   target: "cloud" | "core" | "unknown";
   steps: Run402ActionStep[];

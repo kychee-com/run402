@@ -553,6 +553,10 @@ test("up verify reruns app HTTP checks without deploying", async (t) => {
   try {
     const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
     const result = await actions.up({ verifyOnly: true });
+    assert.equal(result.mode, "verify");
+    assert.equal(result.read_only, true);
+    assert.equal(result.dry_run, false);
+    assert.ok(result.steps.every(step => !step.mutation));
 
     assert.equal(result.result?.project_id, "prj_ready");
     assert.equal(result.result?.app_result?.status, "succeeded");
@@ -1506,6 +1510,10 @@ test("up verify reruns deploy-manifest verify.http checks without deploying", as
   try {
     const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
     const result = await actions.up({ verifyOnly: true });
+    assert.equal(result.mode, "verify");
+    assert.equal(result.read_only, true);
+    assert.equal(result.dry_run, false);
+    assert.ok(result.steps.every(step => !step.mutation));
 
     assert.equal(result.result?.project_id, "prj_ready");
     assert.equal(result.result?.verify?.status, "verified");

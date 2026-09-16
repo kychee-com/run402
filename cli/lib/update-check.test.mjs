@@ -624,3 +624,42 @@ it("separates an installed version ahead of the observation from install confide
   assert.equal(check.value.confidence, undefined);
   assert.equal(check.value.next_actions, undefined);
 }));
+
+for (const outcome of ['current', 'older', 'offline']) {
+  it(`refreshes a within-TTL observation after upgrade: ${outcome}`, () => withTemp(async (dir) => {
+    const cachePath = join(dir, 'cache.json');
+    const checkedAt = new Date(Date.now() - 60_000).toISOString();
+    writeUpdateCache({ current: '4.82.0', latest: '4.78.0', checked_at: checkedAt, source: 'registry', error: null }, { path: cachePath });
+    let calls = 0;
+    const fetchImpl = async () => {
+      calls++;
+      if (outcome === 'offline') throw new Error('offline');
+      return new Response(JSON.stringify({ version: outcome === 'current' ? '4.84.0' : '4.78.0' }));
+    };
+    const check = await doctorUpdateCheck({ cwd: dir, current: '4.84.0', cachePath, fetchImpl });
+    assert.equal(calls, 1);
+    assert.equal(check.value.cache.refresh_attempted, true);
+    assert.equal(check.value.cache.freshness_basis, 'observation_age');
+    assert.equal(check.status, outcome === 'current' ? 'ok' : 'unknown');
+    assert.equal(check.value.cache.refresh_failed, outcome === 'offline');
+    assert.equal(check.value.next_actions, undefined, 'never offer a downgrade');
+    if (outcome === 'offline') {
+      assert.equal(check.value.latest_known, '4.78.0');
+      assert.equal(check.value.checked_at, checkedAt);
+      assert.ok(check.value.cache.last_attempt_at);
+    }
+    await doctorUpdateCheck({ cwd: dir, current: '4.84.0', cachePath, fetchImpl });
+    assert.equal(calls, 1, 'one bounded automatic attempt per installed version within TTL');
+  }));
+}
+
+it('background scheduler refreshes after upgrade while respecting live-check policy', () => withTemp(async (dir) => {
+  const cachePath = join(dir, 'cache.json');
+  writeUpdateCache({ current: '4.82.0', latest: '4.78.0', checked_at: new Date().toISOString(), source: 'registry' }, { path: cachePath });
+  let calls = 0;
+  const opts = { cwd: dir, current: '4.84.0', cachePath, stderrIsTTY: false, stdoutIsTTY: false,
+    fetchImpl: async () => { calls++; return new Response(JSON.stringify({ version: '4.84.0' })); } };
+  assert.equal(createUpdateCheckScheduler({ ...opts, env: {} }).livePromise, null);
+  await createUpdateCheckScheduler({ ...opts, env: { RUN402_UPDATE_CHECK: '1' } }).livePromise;
+  assert.equal(calls, 1);
+}));

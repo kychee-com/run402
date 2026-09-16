@@ -274,7 +274,7 @@ This file is the index: everything above is the whole first-deploy contract. The
 | Orgs, events, rooms, escalations, errors | https://docs.run402.com/llms-cli-orgs.txt | org/grants, events, rooms/claims, escalations, error fingerprints | ~37 KB |
 | Functions, secrets, jobs | https://docs.run402.com/llms-cli-functions.txt | functions (deploy, invoke, runs, logs), secrets, jobs | ~19 KB |
 | Assets, sites, domains, email, AI | https://docs.run402.com/llms-cli-assets.txt | assets, sites, subdomains, domains, apps, image, ai, email | ~25 KB |
-| Auth, billing, operator, doctor, logs | https://docs.run402.com/llms-cli-ops.txt | auth, billing, contracts, notifications, operator, service, cache, doctor, dev, logs | ~36 KB |
+| Auth, billing, operator, doctor, logs | https://docs.run402.com/llms-cli-ops.txt | auth, billing, contracts, notifications, operator, service, cache, doctor, dev, logs | ~37 KB |
 | R402_* runtime error codes | https://docs.run402.com/llms-cli-errors.txt | R402_* SSR runtime and cache error codes | ~6 KB |
 | REST API and user auth for frontends | https://docs.run402.com/llms-cli-frontend.txt | REST API (PostgREST) and user auth for generated frontend code | ~12 KB |
 | Ideas, pricing, Core, archives, Buzz | https://docs.run402.com/llms-cli-platform.txt | build ideas, pricing, self-hosted Core, portable archives, Buzz/Nostr | ~13 KB |
