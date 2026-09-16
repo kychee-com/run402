@@ -14,6 +14,7 @@ export type Run402ExecutionMode =
   | "apply"
   | "check"
   | "printSpec"
+  | "printManifest"
   | "plan"
   | { kind: "applyReviewed"; planId: string; planFingerprint?: string };
 

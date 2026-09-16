@@ -112,7 +112,7 @@ test("up dry-run for run402.json returns graph without gateway calls or local li
     const result = await actions.up({ name: "kysigned2" }, { dryRun: true });
 
     assert.equal(result.dry_run, true);
-    assert.equal(result.result?.project_id, "prj_planned");
+    assert.equal(result.result?.project_id, null);
     assert.equal(result.result?.app_result?.dry_run, true);
     assert.equal(result.result?.app_result?.project.public_origin, "https://kysigned2.run402.com");
     assert.match(result.result?.app_graph?.graph_digest ?? "", /^sha256:[0-9a-f]{64}$/);
@@ -721,7 +721,7 @@ test("up dry-run plans recursive steps without gateway mutations or local writes
     }, { dryRun: true });
 
     assert.equal(result.dry_run, true);
-    assert.equal(result.result?.project_id, "prj_planned");
+    assert.equal(result.result?.project_id, null);
     assert.deepEqual(calls, ["allowance.status"]);
     assert.equal(existsSync(join(dir, ".run402", "project.json")), false);
     assert.ok(result.steps.some((step) => step.action === "allowance.create" && step.state === "planned"));
@@ -2123,4 +2123,67 @@ test("four sibling apps produce one unranked selection action; parent links neve
     await assert.rejects(new NodeActions(sdk, { cwd: dir }).up({ manifest: "beta/run402.json" }, { approval: "yes" }), { code: "UP_PROJECT_REQUIRED" });
     assert.deepEqual(calls, []);
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("local preflight has nullable intent, real file evidence and deferred gateway checks; export is read-only", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "run402-preflight-evidence-"));
+  const calls: string[] = [];
+  try {
+    writeFileSync(join(dir, "api.js"), "export default () => 'hello';");
+    writeFileSync(join(dir, "run402.json"), JSON.stringify({ functions: { replace: { api: { source: { path: "api.js" }, config: { timeout_seconds: 5 } } } } }));
+    const actions = new NodeActions(fakeSdk({ calls, allowanceConfigured: false, tierActive: false, activeProject: "prj_unrelated" }), { cwd: dir, targetKind: "cloud" });
+    const checked = await actions.up({}, { mode: "check" });
+    const preflight = checked.result?.preflight as any;
+    assert.equal(checked.result?.project_id, null);
+    assert.equal(preflight.target.source, "unresolved");
+    assert.equal(preflight.gateway_validated, false);
+    assert.equal(preflight.summary.file_references, 1);
+    assert.equal(preflight.checks.find((c: any) => c.name === "quota").status, "deferred");
+    assert.equal(JSON.stringify(checked).includes("placeholder"), false);
+    const exported = await actions.up({}, { mode: "printManifest" });
+    assert.deepEqual((exported.result?.manifest?.functions as any).replace.api.source, { path: "api.js" });
+    assert.deepEqual(calls, []);
+    assert.equal(existsSync(join(dir, ".run402")), false);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("selected app scan ignores a sibling bearer fixture and blocks its own source consistently", async () => {
+  const root = mkdtempSync(join(tmpdir(), "run402-scan-scope-"));
+  const calls: string[] = [];
+  try {
+    const dir = join(root, "app");
+    const sibling = join(root, "unrelated");
+    mkdirSync(dir); mkdirSync(sibling);
+    writeFileSync(join(dir, "run402.json"), JSON.stringify({ site: { replace: { "index.html": "ok" } } }));
+    writeFileSync(join(sibling, "test.js"), 'fetch("/", {headers:{Authorization:"Bearer fixture"}}); await getSession();');
+    const actions = new NodeActions(fakeSdk({ calls, allowanceConfigured: false, tierActive: false, activeProject: "prj_unrelated" }), { cwd: root });
+    await actions.up({ dir }, { mode: "check" });
+    mkdirSync(join(dir, "src"));
+    writeFileSync(join(dir, "src", "bad.js"), "await getSession();");
+    for (const options of [{ mode: "check" as const }, { approval: "yes" as const }]) {
+      await assert.rejects(actions.up({ dir, name: "selected" }, options), (err: any) => {
+        assert.equal(err.code, "R402_AUTH_PREFLIGHT_FAILED");
+        assert.equal(err.details.app_root, dir);
+        assert.equal(err.details.errors[0].file, "src/bad.js");
+        return true;
+      });
+    }
+    assert.deepEqual(calls, []);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("preflight reports missing SQL and site files together", async () => {
+  const root = mkdtempSync(join(tmpdir(), "run402-missing-inputs-"));
+  try {
+    writeFileSync(join(root, "run402.json"), JSON.stringify({ database: { migrations: [{ name: "first", sql_path: "first.sql" }] }, site: { replace: { "index.html": { path: "index.html" } } } }));
+    const calls: string[] = [];
+    const actions = new NodeActions(fakeSdk({ calls, allowanceConfigured: false, tierActive: false, activeProject: null }), { cwd: root });
+    await assert.rejects(actions.up({}, { mode: "check" }), (err: any) => {
+      assert.equal(err.code, "MANIFEST_FILE_MISSING");
+      assert.deepEqual(new Set(err.details.missing.map((item: any) => item.kind)), new Set(["migration_sql", "site_file"]));
+      assert.equal(err.nextActions.length, 2);
+      return true;
+    });
+    assert.deepEqual(calls, []);
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });

@@ -239,12 +239,14 @@ export interface Run402UpVerificationHttpEntry {
 }
 
 export interface Run402UpResult {
-  project_id: string;
+  project_id: string | null;
+  preflight?: Record<string, unknown>;
+  manifest?: Record<string, unknown>;
   manifest_path: string;
   workspace_link_path?: string;
   app_graph?: Run402AppInstallGraph;
   app_result?: Run402AppUpResultEnvelope;
-  spec?: ReleaseSpec;
+  spec?: Omit<ReleaseSpec, "project"> & { project?: string };
   plan?: PlanResponse;
   deploy?: DeployResult;
   /** Deploy-manifest `verify.http[]` per-check results (app manifests report

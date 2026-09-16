@@ -33,6 +33,10 @@ import {
   normalizeDeployManifest,
   normalizeDeployResolveRequest,
   resolveDeploymentTarget,
+  resolveApplicationScope,
+  scanDeploymentSources,
+  serializeDeployManifest,
+  describeLocalPreflight,
 } from "#sdk/node";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
@@ -48,8 +52,8 @@ import { sdkStats, printVerboseStats } from "./stats.mjs";
 const APPLY_HELP = `run402 deploy apply — Unified deploy primitive (v1.34+)
 
 Usage:
-  run402 deploy apply --manifest <path> [--project <id>] [--check|--print-spec|--plan|--require-plan <id>] [--no-rehearse] [--quiet|--final-only] [--json]
-  run402 deploy apply --spec '<json>' [--project <id>] [--check|--print-spec|--plan|--require-plan <id>] [--no-rehearse] [--quiet|--final-only] [--json]
+  run402 deploy apply --manifest <path> [--project <id>] [--check|--print-spec|--print-manifest|--plan|--require-plan <id>] [--no-rehearse] [--quiet|--final-only] [--json]
+  run402 deploy apply --spec '<json>' [--project <id>] [--check|--print-spec|--print-manifest|--plan|--require-plan <id>] [--no-rehearse] [--quiet|--final-only] [--json]
   run402 deploy apply --dir <build-output> [--manifest <path>] [--project <id>]
   cat spec.json | run402 deploy apply [--project <id>]
 
@@ -98,7 +102,9 @@ Options:
                           @run402/astro installed in the project.
   --project <id>          Override project_id from the manifest
   --check                 Validate and normalize locally. No gateway calls or uploads.
-  --print-spec            Print the normalized ReleaseSpec JSON. No gateway calls or uploads.
+  --print-spec            Advanced SDK-native inspection JSON, not authoring input.
+  --print-manifest        Export snake_case authoring JSON relative to the original manifest
+                          directory. Unsupported constructs fail; no gateway calls or uploads.
   --plan                  Ask the gateway for a reviewed plan. No upload or commit.
   --no-rehearse           Skip the automatic rehearsal. By default a migration-bearing plan
                           against a project with a live release is rehearsed on a contained
@@ -769,7 +775,7 @@ function parseApplyArgs(args) {
     allowDirty: false,
     verbose: false,
   };
-  const allowedFlags = ["--manifest", "--spec", "--dir", "--project", "--quiet", "--final-only", "--json", "--allow-warning", "--allow-warnings", "--check", "--print-spec", "--plan", "--no-rehearse", "--require-plan", "--plan-fingerprint", "--allow-dirty", "-v", "--verbose", "--help", "-h"];
+  const allowedFlags = ["--manifest", "--spec", "--dir", "--project", "--quiet", "--final-only", "--json", "--allow-warning", "--allow-warnings", "--check", "--print-spec", "--print-manifest", "--plan", "--no-rehearse", "--require-plan", "--plan-fingerprint", "--allow-dirty", "-v", "--verbose", "--help", "-h"];
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -832,6 +838,7 @@ function parseApplyArgs(args) {
     if (arg === "-v" || arg === "--verbose") { opts.verbose = true; continue; }
     if (arg === "--check") { setApplyMode(opts, "check", "--check"); continue; }
     if (arg === "--print-spec") { setApplyMode(opts, "printSpec", "--print-spec"); continue; }
+    if (arg === "--print-manifest") { setApplyMode(opts, "printManifest", "--print-manifest"); continue; }
     if (arg === "--plan") { setApplyMode(opts, "plan", "--plan"); continue; }
     if (arg === "--no-rehearse") { opts.noRehearse = true; continue; }
     if (typeof arg === "string" && arg.startsWith("-")) {
@@ -1168,6 +1175,7 @@ async function applyCmd(args) {
       ? await loadDeployManifest(manifestPath, {
 
           ...(defaultProject ? { defaultProject } : {}),
+          validateFiles: true,
         })
       : await normalizeDeployManifest(spec, {
           baseDir: manifestPath ? dirname(manifestPath) : process.cwd(),
@@ -1178,14 +1186,16 @@ async function applyCmd(args) {
     reportSdkError(err);
   }
 
+  const applicationScope = await resolveApplicationScope({ dir: opts.dir, manifest: manifestPath ?? undefined });
   const releaseSpec = normalizedManifest.spec;
+  let target;
   try {
-    const target = await resolveDeploymentTarget({
-      appRoot: manifestPath ? dirname(manifestPath) : resolve(opts.dir || process.cwd()),
+    target = await resolveDeploymentTarget({
+      appRoot: applicationScope.app_root,
       manifestPath: manifestPath ?? undefined, projectId: opts.project || undefined, environmentProjectId: process.env.RUN402_PROJECT_ID || undefined,
       manifestProjectId: manifestProject || (releaseSpec.project === "prj_up_preflight_placeholder" ? undefined : releaseSpec.project),
       targetKind: isCoreApiTarget() ? "core" : "cloud", apiBase: API,
-      allowUnresolved: opts.mode === "check" || opts.mode === "printSpec",
+      allowUnresolved: opts.mode === "check" || opts.mode === "printSpec" || opts.mode === "printManifest",
     });
     if (target.project_id) releaseSpec.project = target.project_id;
   } catch (err) { reportSdkError(err); }
@@ -1203,77 +1213,29 @@ async function applyCmd(args) {
     reportSdkError(err);
   }
 
+  if (process.env.RUN402_DEPLOY_SKIP_SCAN !== "1") {
+    const scan = scanDeploymentSources(releaseSpec, manifestPath ? dirname(manifestPath) : resolve(opts.dir || process.cwd()), opts.dir ? resolve(opts.dir) : undefined);
+    if (scan.errors.length) fail({ code: "R402_AUTH_PREFLIGHT_FAILED", message: "Source scan blocked this application. Fix the reported findings, or explicitly override with RUN402_DEPLOY_SKIP_SCAN=1.", details: scan });
+  }
+
   if (opts.mode === "check") {
     console.log(JSON.stringify({
       ok: true,
       mode: "check",
-      project_id: releaseSpec.project,
-      manifest_path: manifestPath,
+      project_id: target.project_id,
+      ...describeLocalPreflight({ entryPoint: "deploy apply", appRoot: manifestPath ? dirname(manifestPath) : resolve(opts.dir || process.cwd()), manifestPath, authoring: normalizedManifest.manifest, spec: releaseSpec, target, apiBase: API }),
     }, null, 2));
     return;
   }
+  if (opts.mode === "printManifest") {
+    try { console.log(JSON.stringify(serializeDeployManifest(normalizedManifest, manifestPath ? dirname(manifestPath) : process.cwd(), opts.project || process.env.RUN402_PROJECT_ID), null, 2)); } catch (err) { reportSdkError(err); }
+    return;
+  }
   if (opts.mode === "printSpec") {
-    console.log(JSON.stringify(releaseSpec, null, 2));
+    console.log(JSON.stringify({ ...releaseSpec, project: target.project_id ?? undefined }, null, 2));
     return;
   }
 
-  // Pre-flight source scan (auth-aware-ssr Section 9). Bypass via
-  // RUN402_DEPLOY_SKIP_SCAN=1 — useful for forcing a deploy when
-  // the scanner has a false positive that the operator has confirmed
-  // is fine. Hits with severity `error` fail the deploy.
-  //
-  // Scope: a `--dir` (Astro SSR build) deploy walks that dir —
-  // it IS the artifact. A manifest/spec/stdin deploy scans ONLY the
-  // on-disk source files the manifest actually references, resolved
-  // against the manifest's baseDir. We must NOT walk cwd/src for a
-  // manifest deploy: running from inside an unrelated source tree (e.g.
-  // the gateway monorepo, which legitimately has dozens of `getUser`
-  // references) would otherwise block a deploy of one unrelated HTML file.
-  if (!isNonApplyingMode(opts.mode) && process.env.RUN402_DEPLOY_SKIP_SCAN !== "1") {
-    try {
-      const { scanSourceTree, scanSourceFiles, SCAN_SEVERITY } = await import(
-        "./doctor-source-scan.mjs"
-      );
-      const scannableExt = /\.(?:ts|tsx|js|jsx|mjs|cjs|astro)$/;
-      let findings;
-      if (opts.dir) {
-        const scanRoot = isAbsolute(opts.dir)
-          ? opts.dir
-          : resolve(process.cwd(), opts.dir);
-        findings = scanSourceTree(scanRoot, { cwd: process.cwd() });
-      } else {
-        const baseDir = manifestPath ? dirname(manifestPath) : process.cwd();
-        const files = collectManifestSourceFiles(spec ?? normalizedManifest.manifest, baseDir).filter(
-          (p) => scannableExt.test(p) && existsSync(p),
-        );
-        findings = files.length > 0
-          ? scanSourceFiles(files, { cwd: process.cwd() })
-          : [];
-      }
-      const errorFindings = findings.filter((f) => f.severity === SCAN_SEVERITY.ERROR);
-      if (errorFindings.length > 0) {
-        const summary = errorFindings.slice(0, 10).map((f) => {
-          const loc = f.line ? `${f.file}:${f.line}` : f.file;
-          return `  ${f.code} ${loc}\n    ${f.message}${f.canonical_name ? `\n    fix: ${f.canonical_name}` : ""}`;
-        }).join("\n");
-        const more = errorFindings.length > 10 ? `\n  ...and ${errorFindings.length - 10} more` : "";
-        fail({
-          code: "R402_AUTH_PREFLIGHT_FAILED",
-          message: `Source scan blocked deploy: ${errorFindings.length} R402_AUTH_* finding(s). Run \`run402 doctor\` for the full list. Bypass with RUN402_DEPLOY_SKIP_SCAN=1 if you're sure.`,
-          details: { findings: errorFindings, summary: `${summary}${more}` },
-        });
-      }
-    } catch (err) {
-      if (err && typeof err === "object" && err.code === "R402_AUTH_PREFLIGHT_FAILED") {
-        throw err;
-      }
-      // Scanner crashed — warn but don't block. The scanner is a safety
-      // net; the deploy should proceed if it can't read the source tree.
-      console.warn(
-        `[deploy] source scan skipped: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-  }
 
   let sdkOpts;
   const delegateToken = delegateTokenFromEnv();
@@ -1388,7 +1350,7 @@ async function applyCmd(args) {
 }
 
 function isNonApplyingMode(mode) {
-  return mode === "check" || mode === "printSpec" || mode === "plan";
+  return mode === "check" || mode === "printSpec" || mode === "printManifest" || mode === "plan";
 }
 
 function hasGithubActionsOidcEnv(env = process.env) {

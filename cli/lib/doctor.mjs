@@ -1,3 +1,4 @@
+import { resolveApplicationScope, loadApplicationScanInput, scanDeploymentSources } from "#sdk/node";
 /**
  * run402 doctor — Health and config diagnostics.
  *
@@ -28,7 +29,7 @@ import { fail } from "./sdk-errors.mjs";
 import { normalizeArgv, assertKnownFlags, flagValue } from "./argparse.mjs";
 
 /** Value-taking flags — the flag set doctor actually parses; anything else is BAD_USAGE via assertKnownFlags, never silently ignored. */
-const DOCTOR_VALUE_FLAGS = ["--scan-dir", "--buzz-agent", "--project", "--only"];
+const DOCTOR_VALUE_FLAGS = ["--scan-dir", "--dir", "--manifest", "--buzz-agent", "--project", "--only"];
 
 /**
  * The stable, complete registry of ordinary-mode check names. One entry
@@ -113,7 +114,9 @@ Options:
                  reports fresh/age_ms/refresh_attempted/refresh_failed.
   --no-scan      Skip the source-tree scan (config / health checks only). Implied
                  by any --only that omits source_scan.
-  --scan-dir D   Scan a custom directory instead of \`<cwd>/src\`
+  --dir D        Select the application directory for deployment diagnostics.
+  --manifest P   Explicitly select a manifest (executable configs are trusted code).
+  --scan-dir D   Advanced arbitrary scan; does not claim deployment readiness
   --project <id> Target THIS project's gitvault check instead of the repo-standing
                  default (the 4.38.0 pin / run402 remote / RUN402_PROJECT_ID / active
                  project, in that order — see \`gitvault-target.mjs\`). Scoped to the
@@ -942,17 +945,30 @@ export async function run(sub, args = []) {
   // otherwise bury the gitvault diagnosis under thousands of hits.
   if (!skipScan && wanted("source_scan")) {
     try {
-      const scanRoot = scanDirOverride ?? resolveScanRoot(process.cwd());
-      const findings = scanSourceTree(scanRoot, { cwd: process.cwd() });
+      const scope = await resolveApplicationScope({ dir: flagValue(all, "--dir") ?? undefined, manifest: flagValue(all, "--manifest") ?? undefined });
+      if (!scanDirOverride && !scope.selected) {
+        checks.push({ name: "source_scan", status: "skipped", value: { scope: "unscoped", app_root: scope.app_root }, message: "No application selected. Run doctor --dir <app> or --manifest <path>; sibling applications are not deployment blockers." });
+      } else {
+      const scanRoot = scanDirOverride ?? resolveScanRoot(scope.app_root);
+      const scanContext = { scope: scanDirOverride ? "explicit_scan_directory" : "application", app_root: scope.app_root, manifest_path: scope.manifest_path };
+      let findings;
+      if (scanDirOverride) findings = scanSourceTree(scanRoot, { cwd: scope.app_root });
+      else {
+        const selected = await loadApplicationScanInput(scope.manifest_path);
+        scanContext.build_outputs = selected.build_deferred ? "deferred_until_build" : "not_deferred";
+        findings = scanDeploymentSources(selected.spec, scope.app_root).findings;
+      }
       const errorFindings = findings.filter((f) => f.severity === SCAN_SEVERITY.ERROR);
       const warnFindings = findings.filter((f) => f.severity === SCAN_SEVERITY.WARN);
       if (findings.length === 0) {
-        checks.push({ name: "source_scan", status: "ok", value: { scan_root: scanRoot, file_count_with_findings: 0 } });
+        checks.push({ name: "source_scan", status: "ok", value: { ...scanContext, scan_root: scanRoot, file_count_with_findings: 0 } });
       } else {
         checks.push({
           name: "source_scan",
           status: errorFindings.length > 0 ? "error" : "warning",
+          ...(scanDirOverride ? { severity: "advisory" } : {}),
           value: {
+            ...scanContext,
             scan_root: scanRoot,
             findings: errorFindings.length + warnFindings.length,
             errors: errorFindings.length,
@@ -960,14 +976,16 @@ export async function run(sub, args = []) {
             details: findings,
           },
           hint: errorFindings.length > 0
-            ? "Fix the R402_AUTH_* findings above. `run402 deploy` will refuse to ship until these are resolved."
+            ? scanDirOverride ? "Findings are from the explicit arbitrary scan directory; they do not establish that an application deploy will be refused." : "Fix the findings in this application. The same scoped source scan gates up and deploy apply."
             : "Source scan emitted warnings (non-blocking). Review and address when convenient.",
         });
+      }
       }
     } catch (err) {
       checks.push({
         name: "source_scan",
-        status: "skipped",
+        status: "error",
+        value: { code: err?.code ?? "APPLICATION_SCAN_FAILED", details: err?.details ?? null },
         message: err instanceof Error ? err.message : String(err),
       });
     }

@@ -374,11 +374,14 @@ type Run402ExecutionMode =
   | "apply"
   | "check"
   | "printSpec"
+  | "printManifest"
   | "plan"
   | { kind: "applyReviewed"; planId: string; planFingerprint?: string };
 ```
 
 `r.actions.run(input, opts)` returns `{ action, mode, dry_run, target, steps, result }`. `r.up(input, opts)` is equivalent to `actions.run({ type: Run402Action.Up, ...input }, opts)`.
+
+Local check returns `result.preflight` with nullable target/provenance, `gateway_validated: false`, checks/evidence, summary, warnings and deferred remote work. `mode: "printManifest"` returns `result.manifest`, a reloadable snake_case authoring representation relative to the source directory. `mode: "printSpec"` is advanced SDK-native inspection. The Node helper `serializeDeployManifest(loaded, baseDir, explicitProject?)` rejects unsupported runtime/secret/build constructs with `MANIFEST_EXPORT_UNSUPPORTED`.
 
 `Run402Action.Up` behavior:
 - Discover `run402.deploy.json`, then `app.json` under `dir` / cwd; explicit `manifest` wins.
@@ -388,7 +391,7 @@ type Run402ExecutionMode =
 - Set `propagationBudgetSeconds` to control the wait for edge convergence (default 120). Set `propagationWait: false` to return `status: "propagation_pending"` immediately with `verify.status`, `propagation_wait_ms`, warnings, `next_action`, and diagnostic `edge_propagation` / `resolve` payloads.
 - Set `verifyOnly: true` to rerun app HTTP verification without upload, deploy, resource mutation, or project creation. This is the SDK equivalent of `run402 up verify`.
 - `name` is only project creation/link metadata. It is not a manifest field and never renames an existing project.
-- Write `.run402/project.json` atomically when `up` needs to remember an explicit/created/active project. Schema: `{ schema_version: "run402.workspace-project.v1", project_id, name?, target?, created_at, updated_at? }`.
+- Write `.run402/project.json` atomically when `up` needs to remember an explicit/created project. Schema: `{ schema_version: "run402.workspace-project.v1", project_id, name?, target?, created_at, updated_at? }`.
 - On Run402 Cloud, recursively ensure allowance and tier (default bootstrap tier `prototype`) only when missing; existing active tiers are not downgraded or renewed just because `up` ran.
 - On Run402 Core, skip Cloud allowance/tier prerequisites and fail closed if no Core project is selected.
 - Delegate the final deployment to `r.project(id).apply(spec, opts)`.
