@@ -127,8 +127,13 @@
       $("who-name").textContent = hasName ? me.label : "Signed in with Buzz";
       $("who").textContent = hasName && me.nip05 ? me.nip05 : shortNpub(me.npub);
       $("who").title = me.npub;
-      if (me.picture && /^https:\/\//.test(me.picture)) { $("avatar").src = me.picture; $("avatar").hidden = false; }
-      else { $("avatar").hidden = true; $("avatar").removeAttribute("src"); }
+      // Relay-hosted pictures need a Blossom token the browser cannot mint, so
+      // every avatar goes through the app, which fetches or redirects as needed.
+      if (me.picture && /^https:\/\//.test(me.picture)) {
+        $("avatar").hidden = false;
+        $("avatar").onerror = () => { $("avatar").hidden = true; };
+        $("avatar").src = `/api/avatar?u=${encodeURIComponent(me.pubkey)}`;
+      } else { $("avatar").hidden = true; $("avatar").removeAttribute("src"); }
       show("signed-in");
       await loadTasks();
     } catch {

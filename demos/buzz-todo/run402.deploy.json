@@ -62,6 +62,11 @@
         "target": { "type": "function", "name": "buzz-todo-api" }
       },
       {
+        "pattern": "/api/avatar",
+        "methods": ["GET"],
+        "target": { "type": "function", "name": "buzz-todo-api" }
+      },
+      {
         "pattern": "/api/logout",
         "methods": ["POST"],
         "target": { "type": "function", "name": "buzz-todo-api" }

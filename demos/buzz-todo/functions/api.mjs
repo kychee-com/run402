@@ -81,6 +81,43 @@ export function nip98Authorization(privHex, url, method, body) {
   return `Nostr ${Buffer.from(JSON.stringify(event), "utf8").toString("base64")}`;
 }
 
+/** Blossom (BUD-01) `get` authorization for one relay media object. */
+export function blossomGetAuthorization(privHex, mediaUrl, nowS = Math.floor(Date.now() / 1000)) {
+  const url = new URL(mediaUrl);
+  const file = url.pathname.split("/").pop() ?? "";
+  const sha256 = file.split(".")[0];
+  const tags = [["t", "get"], ["expiration", String(nowS + 600)], ["server", url.host]];
+  if (HEX64.test(sha256)) tags.push(["x", sha256]);
+  const event = signNostrEvent(privHex, 24242, tags, "Get media", nowS);
+  return `Nostr ${Buffer.from(JSON.stringify(event), "utf8").toString("base64")}`;
+}
+
+const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
+
+/** Fetch a relay-hosted image through the app's member identity. null when unavailable. */
+export async function fetchRelayMedia(mediaUrl, { privHex = process.env.BUZZ_BOT_PRIVATE_KEY, origin = BUZZ_RELAY_ORIGIN } = {}) {
+  if (!privHex || !HEX64.test(privHex)) return null;
+  let url;
+  try { url = new URL(mediaUrl); } catch { return null; }
+  if (url.origin !== origin || !url.pathname.startsWith("/media/")) return null;
+  let res;
+  try {
+    res = await fetch(url, { headers: { authorization: blossomGetAuthorization(privHex, url.toString()), accept: "image/*" }, signal: AbortSignal.timeout(8000) });
+  } catch (error) {
+    console.warn("relay media fetch failed", { url: url.toString(), error: String(error?.message ?? error) });
+    return null;
+  }
+  if (!res.ok) {
+    console.warn("relay media fetch rejected", { url: url.toString(), status: res.status });
+    return null;
+  }
+  const type = res.headers.get("content-type") || "application/octet-stream";
+  if (!type.startsWith("image/")) return null;
+  const buf = Buffer.from(await res.arrayBuffer());
+  if (buf.length === 0 || buf.length > AVATAR_MAX_BYTES) return null;
+  return { bytes: buf, contentType: type };
+}
+
 /** Kind-0 profile for a pubkey from the Buzz relay, or null when unavailable. */
 export async function fetchBuzzProfile(pubkey, { privHex = process.env.BUZZ_BOT_PRIVATE_KEY, origin = BUZZ_RELAY_ORIGIN } = {}) {
   if (!privHex || !HEX64.test(privHex)) return null;
@@ -387,6 +424,28 @@ export default async function handler(request) {
     // Everything below needs a session.
     const session = readSession(cookieValue(request));
     if (!session) return fail("UNAUTHENTICATED", "sign in with Buzz first", 401);
+
+    if (path === "/api/avatar" && request.method === "GET") {
+      // Relay media needs a Blossom token, which browsers cannot mint; the app
+      // fetches it with its own member identity and streams the bytes.
+      const target = new URL(request.url).searchParams.get("u") || session.pubkey;
+      if (!HEX64.test(target)) return fail("AVATAR_INVALID", "u must be a hex pubkey");
+      const row = await loadUser(db, target);
+      const picture = row?.picture;
+      if (!picture) return fail("AVATAR_NONE", "no picture", 404);
+      let pictureUrl;
+      try { pictureUrl = new URL(picture); } catch { return fail("AVATAR_NONE", "no picture", 404); }
+      if (pictureUrl.protocol !== "https:") return fail("AVATAR_NONE", "no picture", 404);
+      if (pictureUrl.origin !== BUZZ_RELAY_ORIGIN) {
+        return new Response(null, { status: 302, headers: { location: pictureUrl.toString(), "cache-control": "private, max-age=600" } });
+      }
+      const media = await fetchRelayMedia(pictureUrl.toString());
+      if (!media) return fail("AVATAR_UNAVAILABLE", "could not fetch the picture", 502);
+      return new Response(media.bytes, {
+        status: 200,
+        headers: { "content-type": media.contentType, "cache-control": "private, max-age=600", "x-content-type-options": "nosniff" },
+      });
+    }
 
     if (path === "/api/me" && request.method === "GET") {
       const row = (await loadUser(db, session.pubkey)) ?? { pubkey: session.pubkey, npub: npubFromHex(session.pubkey) };
