@@ -15,7 +15,7 @@ function files(directory = ROOT) {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const path = join(directory, entry.name);
     if (entry.isSymbolicLink()) return [path];
-    if (entry.isDirectory() && [".git", ".claude", ".codex", "node_modules", "dist"].includes(entry.name)) return [];
+    if (entry.isDirectory() && [".git", ".claude", ".codex", ".worktrees", "node_modules", "dist"].includes(entry.name)) return [];
     return entry.isDirectory() ? files(path) : [path];
   });
 }
