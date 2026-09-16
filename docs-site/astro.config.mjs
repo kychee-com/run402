@@ -1,6 +1,7 @@
 // @ts-check
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
+import sitemap from "@astrojs/sitemap";
 
 // Static (SSG) docs portal — no @run402/astro SSR adapter (Fork 1). The whole
 // dist/** is shipped to the existing run402 docs project by the deploy workflow;
@@ -9,11 +10,13 @@ import starlight from "@astrojs/starlight";
 export default defineConfig({
   site: "https://docs.run402.com",
   integrations: [
+    sitemap(),
     starlight({
       title: "Run402 Docs",
       description:
         "Documentation for Run402 — Postgres, REST, auth, content-addressed storage, serverless functions, email and atomic deploys an AI agent can provision and pay for on its own.",
       social: [
+        { icon: "external", label: "Run402 homepage", href: "https://run402.com/" },
         { icon: "github", label: "GitHub", href: "https://github.com/kychee-com/run402" },
       ],
       // Agents fetch the flat llms-*.txt; humans navigate here.
