@@ -656,3 +656,14 @@ describe("doctor selected application source scope", () => {
     assert.equal(value.ok, true);
   });
 });
+
+it("verbose allowance reports faucet history without a funded or private-key field", async () => {
+  const { saveAllowance } = await import("./cli/lib/config.mjs");
+  saveAllowance({ address: "0x" + "11".repeat(20), privateKey: "0x" + "22".repeat(32), rail: "x402", funded: false, created: "2026-09-16T00:00:00Z" });
+  captureStart();
+  try { await run("--verbose", ["--only", "allowance"]); } catch (err) { assert.match(err.message, /process.exit/); } finally { captureStop(); }
+  const details = JSON.parse(stdout.join("\n")).checks.find(c => c.name === "allowance").value.details;
+  assert.equal(details.faucet_used, false);
+  assert.equal(details.funded, undefined);
+  assert.equal(details.privateKey, undefined);
+});

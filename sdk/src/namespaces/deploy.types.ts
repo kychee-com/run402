@@ -2190,6 +2190,8 @@ export interface EdgePointerUpdateStatus {
 export type EdgeBlockState = "converging" | "coherent" | "unknown" | "not_applicable";
 
 export interface EdgeBlock {
+  checked_at?: string | null;
+  received_at?: string;
   state: EdgeBlockState;
   expected_max_lag_seconds?: number | null;
   pointer_updates: Record<EdgePointerTarget, EdgePointerUpdateStatus | undefined>;
@@ -2200,6 +2202,8 @@ export type EdgeProbePathState = "coherent" | "stale_prior_release" | "unknown" 
 export type EdgeProbeObservedConfidence = "identity" | "body_hash" | "weak" | "error";
 
 export interface EdgeCoherencePathObservation {
+  checked_at?: string;
+  verification_basis?: "release_identity" | "content_hash" | "weak_metadata";
   path: string;
   host: string;
   state: EdgeProbePathState;
@@ -2219,6 +2223,8 @@ export interface EdgeCoherencePathObservation {
 }
 
 export interface EdgeCoherenceReport {
+  checked_at?: string;
+  verification_basis?: "no_mutable_paths";
   coherent: boolean;
   operation_id: string;
   project_id: string;

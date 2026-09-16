@@ -614,3 +614,11 @@ run402 subdomains claim my-app
 ```
 
 ---
+
+### Interpreting deploy evidence
+
+`up --verify` replaces the current `deploy.edge` summary with the latest probe result and retains the earlier summary in `activation_snapshot`, whose timestamp can be null for an older gateway. Reports disclose path sampling, vantage, check time, and `verification_basis`: release identity, content hash, or inconclusive weak metadata. Identity checks may legitimately have `observed_sha256: null`; a hash is never inferred from HTTP 200. `no_mutable_paths` is explicit.
+
+A successful first vault push reports `repo.first_push.snapshot` (ID, kind, backup status) separately from `repo.local_git` (branch, HEAD, unborn, dirty). A synthetic backup does not advance your branch or stage files. An unborn branch with untracked files after backup is expected.
+
+Function HTTP 400/429 responses can carry `x-cache: Error from cloudfront`. Judge them against the application’s expected status and body; preserve `Retry-After` for rate limits. That header alone does not establish edge failure.

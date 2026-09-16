@@ -19,6 +19,7 @@
  * behavior; this file is the implementation.
  */
 
+import { normalizeEdgeEvidence } from "./edge-evidence.js";
 import type { Client } from "../kernel.js";
 import { isCiSessionCredentials } from "../ci-credentials.js";
 import { isDelegateCredentials } from "../delegate-credentials.js";
@@ -581,10 +582,10 @@ export class Deploy {
     }
     const headers = await apikeyHeaders(this.client, opts.project);
     try {
-      return await this.client.request<EdgeCoherenceReport>(
+      return normalizeEdgeEvidence(await this.client.request<EdgeCoherenceReport>(
         `/apply/v1/operations/${encodeURIComponent(operationId)}/edge-coherence`,
         { headers, context: "verifying deploy edge coherence" },
-      );
+      ));
     } catch (err) {
       throw translateDeployError(err, "edge-coherence", null, operationId);
     }

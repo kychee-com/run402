@@ -5868,6 +5868,16 @@ describe("Deploy.edgeCoherence", () => {
     assert.equal(events[1].report.coherent, true);
   });
 
+  it("times out instead of accepting an older weak-only coherent report", async () => {
+    const w = makeWiring();
+    const weak = report(); weak.paths[0].observed_confidence = "weak";
+    w.setHandler(() => weak);
+    const result = await new Deploy(w.client).waitEdgeCoherent("op_42", { project: "prj_test", timeoutMs: 3, intervalMs: 1 });
+    assert.equal(result.coherent, false);
+    assert.equal(result.report.paths[0].state, "unknown");
+    assert.ok(result.attempts >= 1);
+  });
+
   it("rejects invalid operation ids without issuing a request", async () => {
     const w = makeWiring();
     const deploy = new Deploy(w.client);

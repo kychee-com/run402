@@ -473,7 +473,7 @@ describe("CLI update notices and scheduler", () => {
       });
       assert.equal(fetchCalls, 1, "no cache existed yet — a live check must run automatically, not just on --refresh");
       assert.equal(check.status, "warning");
-      assert.equal(check.value.latest, "3.7.16");
+      assert.equal(check.value.latest_known, "3.7.16");
       assert.equal(check.value.cache.fresh, true);
       assert.equal(check.value.cache.refresh_attempted, true);
       assert.equal(check.value.cache.refresh_failed, false);
@@ -500,7 +500,7 @@ describe("CLI update notices and scheduler", () => {
       });
       assert.equal(fetchCalls, 0);
       assert.equal(check.status, "warning");
-      assert.equal(check.value.latest, "3.7.15");
+      assert.equal(check.value.latest_known, "3.7.15");
       assert.equal(check.value.cache.fresh, true);
       assert.equal(check.value.cache.refresh_attempted, false);
       assert.equal(check.value.cache.age_ms, 60 * 60 * 1000);
@@ -532,7 +532,7 @@ describe("CLI update notices and scheduler", () => {
         },
       });
       assert.equal(fetchCalls, 1, "an expired cache must trigger exactly one automatic live check");
-      assert.equal(check.value.latest, "3.7.20", "the fresh value wins, not the 30-day-old one");
+      assert.equal(check.value.latest_known, "3.7.20", "the fresh value wins, not the 30-day-old one");
       assert.equal(check.value.cache.fresh, true);
       assert.equal(check.value.cache.refresh_failed, false);
     }));
@@ -555,7 +555,7 @@ describe("CLI update notices and scheduler", () => {
         fetchImpl: async () => { throw new Error("offline"); },
       });
       // Faithful: the network is down, but the LAST KNOWN value is not thrown away as a bare null.
-      assert.equal(check.value.latest, "4.17.5", "a failed refresh must not erase the last known-good value");
+      assert.equal(check.value.latest_known, "4.17.5", "a failed refresh must not erase the last known-good value");
       assert.equal(check.value.cache.fresh, false, "honestly reported as stale, not silently presented as current");
       assert.equal(check.value.cache.refresh_attempted, true);
       assert.equal(check.value.cache.refresh_failed, true);
@@ -607,7 +607,20 @@ describe("CLI update notices and scheduler", () => {
         },
       });
       assert.equal(fetchCalls, 1, "--refresh must check live regardless of freshness");
-      assert.equal(check.value.latest, "3.7.21");
+      assert.equal(check.value.latest_known, "3.7.21");
     }));
   });
 });
+
+it("separates an installed version ahead of the observation from install confidence", () => withTemp(async (dir) => {
+  const check = await doctorUpdateCheck({ cwd: dir, current: "4.82.0", cachePath: join(dir, "cache.json"),
+    fetchImpl: async () => new Response(JSON.stringify({ version: "4.78.0" }), { headers: { "content-type": "application/json" } }),
+  });
+  assert.equal(check.value.latest_known, "4.78.0");
+  assert.equal(check.value.comparison, "ahead_of_observation");
+  assert.ok(check.value.checked_at);
+  assert.ok(check.value.install_confidence);
+  assert.equal(check.value.latest, undefined);
+  assert.equal(check.value.confidence, undefined);
+  assert.equal(check.value.next_actions, undefined);
+}));

@@ -268,6 +268,8 @@ function redactAllowanceForDiagnostics(allowance) {
   if (!allowance || typeof allowance !== "object") return allowance;
   const safe = { ...allowance };
   delete safe.privateKey;
+  if (typeof safe.funded === "boolean") safe.faucet_used = safe.funded;
+  delete safe.funded;
   return safe;
 }
 
@@ -509,7 +511,7 @@ export async function run(sub, args = []) {
       lifecycle,
       active,
       organization_lifecycle_state: lifecycle,
-      lease_expires_at: tier?.lease_expires_at ?? null,
+      lease_expires_at: tier?.lease_perpetual === true ? null : tier?.lease_expires_at ?? null,
       reachable_projects: reachableProjects,
     };
     if (status === "ok") {

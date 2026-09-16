@@ -1,3 +1,4 @@
+import { mergeEdgeVerification } from "#sdk";
 import { dirname } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stderr as output } from "node:process";
@@ -587,10 +588,7 @@ async function attachEdgeVerification(result, { sdk, timeoutSeconds, jsonStream,
     },
   });
   result.result.edge_coherence = wait;
-  result.result.deploy = {
-    ...deploy,
-    edge_coherence: wait.report,
-  };
+  result.result.deploy = mergeEdgeVerification(deploy, wait.report);
   return wait;
 }
 
@@ -722,11 +720,20 @@ async function composeRepoPushStep({ sdk, workDir, projectId, createdRepository,
       form: pushed.form,
       gitvault_commit: pushed.gitvault_commit,
       vault_created: vaultCreated,
+      snapshot: pushed.snapshot ? { id: pushed.snapshot.oid, kind: pushed.snapshot.kind, backup_status: "succeeded" } : null,
+      note: "Vault backup does not create a local branch commit or stage files. Local HEAD and dirty state are independent.",
       ...(freshRepository ? { captured_dirty: true, modified_captured: pushed.snapshot?.modified_captured ?? null, untracked_captured: pushed.snapshot?.untracked_captured ?? null } : {}),
     };
   } catch (err) {
     out.first_push_error = { code: err?.body?.code ?? err?.code ?? "GITVAULT_PUSH_FAILED", message: err?.message ?? String(err) };
   }
+  try {
+    const { hardenedGit } = await import("#sdk/node");
+    const read = async (args) => { try { return (await hardenedGit(workDir, args)).text().trim(); } catch { return null; } };
+    const head = await read(["rev-parse", "--verify", "HEAD"]);
+    const status = await read(["status", "--porcelain"]);
+    out.local_git = { branch: await read(["symbolic-ref", "--short", "HEAD"]), head, unborn: head === null, dirty: status === null ? null : status.length > 0 };
+  } catch { out.local_git = { state: "unavailable" }; }
   return out;
 }
 

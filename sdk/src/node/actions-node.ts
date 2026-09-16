@@ -669,7 +669,7 @@ export class NodeActions implements Run402Actions {
    * principal has a display name before the deploy that will be credited to
    * it, then join the project's room under that name. Explicit
    * `identityName` / `RUN402_AGENT_NAME` wins and may rename an already-named
-   * principal; otherwise a detected client name is set only when no name
+   * agent principal; human and unknown principals are preserved. Otherwise a detected client name is set only when no name
    * exists yet, and reported as `detected`. The detected client is always
    * reported (`detected` + `detection`), even when it was not applied, so an
    * agent whose principal is already named sees why. Best-effort end to
@@ -684,14 +684,22 @@ export class NodeActions implements Run402Actions {
     if (this.#targetKind() === "core") {
       return { display_name: null, source: "unavailable" };
     }
+    const explicitName = input.identityName?.trim() || declaredAgentName() || null;
+    const detectedName = detectClientName();
     let current: string | null = null;
+    let principalId: string | null = null;
+    let principalType: string | null = null;
     try {
       const me = await this.sdk.orgs.whoami();
+      principalId = me.principal?.id ?? null;
+      principalType = me.principal?.type ?? null;
       // The gateway never seeds display_name from a wallet subject (and
       // nulled the ones it once did), so null here means exactly "unset".
       current = me.principal?.display_name ?? null;
     } catch {
-      return { display_name: null, source: "unavailable" };
+      return { display_name: null, source: "unavailable", detected: detectedName,
+        principal: { id: null, type: null, display_name: null },
+        client: { detected: detectedName, declared_name: explicitName } };
     }
     let displayName = current;
     let source: Run402UpIdentity["source"] = "existing";
@@ -699,9 +707,14 @@ export class NodeActions implements Run402Actions {
     // (RUN402_AGENT_NAME), then a specifically detected client. A generic
     // guess is never persisted as a name. Detection always runs so the
     // result can say what was seen even when it was not applied.
-    const explicitName = input.identityName?.trim() || declaredAgentName() || null;
-    const detectedName = detectClientName();
-    const detectionReport = (applied: boolean): Pick<Run402UpIdentity, "detected" | "detection"> => {
+    if (principalType !== "agent") {
+      run.skipStep({ action: "identity.name.set", description: "Preserve authenticated human or unknown principal identity; client detection does not rename it.", mutation: false, auto: true, details: { principal_type: principalType } });
+      return { display_name: current, source: "existing",
+        principal: { id: principalId, type: principalType, display_name: current },
+        client: { detected: detectedName, declared_name: explicitName },
+        detected: detectedName, detection: { applied: false, reason: "principal_identity_preserved" } };
+    }
+    const detectionReport = (applied: boolean): Pick<Run402UpIdentity, "detected" | "detection" | "principal" | "client"> => {
       const reason: NonNullable<Run402UpIdentity["detection"]>["reason"] = applied
         ? "applied"
         : !detectedName
@@ -709,7 +722,9 @@ export class NodeActions implements Run402Actions {
           : explicitName
             ? "explicit_name_wins"
             : "name_already_set";
-      return { detected: detectedName, detection: { applied, reason } };
+      return { detected: detectedName, detection: { applied, reason },
+        principal: { id: principalId, type: principalType, display_name: displayName },
+        client: { detected: detectedName, declared_name: explicitName } };
     };
     if (!displayName || (explicitName && explicitName !== displayName)) {
       const desired = explicitName ?? detectedName;
@@ -2832,6 +2847,9 @@ async function classifyAppVerifyAttempt(input: {
 }): Promise<VerifyClassification> {
   if (input.attempt.status === input.check.expect.status) {
     return { kind: "success" };
+  }
+  if ((input.attempt.status === 400 || input.attempt.status === 429) && input.attempt.edgeCode === null && !input.attempt.edgeHeader) {
+    return { kind: "failed" };
   }
   const host = hostnameFromUrl(input.url);
   const freshness = host ? freshnessForHost(input.context, host) : { fresh: false, ageSeconds: null };

@@ -123,6 +123,13 @@ export function reportSdkError(err) {
     mergeStructuredErrorFields(payload, err);
   }
 
+  if (err?.code === "REST_PERMISSION_DENIED") {
+    payload.code = err.code;
+    payload.message = err.message;
+    payload.details = err.details;
+    payload.upstream_body = err.body;
+  }
+
   // Org-owned control plane (gateway v1.77+): a NOT_AUTHORIZED denial means the
   // wallet authenticated but the resolved principal lacks the org role/grant for
   // this control-plane action — distinct from a missing-auth or payment error.

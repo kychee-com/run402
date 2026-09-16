@@ -65,7 +65,7 @@ mock.module("./cli/lib/sdk.mjs", {
           calls.push({ method: "gitvault.push", input });
           return (impl.push ?? (async () => ({
             generation: "0000000000000000", form: "wal", head_sha256: "abc",
-            snapshot: {}, gitvault_commit: "x".repeat(40), gitvault_commit_line: "gitvault_commit " + "x".repeat(40),
+            snapshot: { oid: "x".repeat(40), kind: "synthetic" }, gitvault_commit: "x".repeat(40), gitvault_commit_line: "gitvault_commit " + "x".repeat(40),
           })))(input);
         },
       },
@@ -145,6 +145,10 @@ describe("run402 up — default apply composes the repo as a best-effort additio
     const pushCall = calls.find((c) => c.method === "gitvault.push");
     assert.equal(pushCall.input.snapshot?.allowDirty, true);
     assert.equal(payload.result.repo.first_push.captured_dirty, true);
+    assert.equal(payload.result.repo.first_push.snapshot.kind, "synthetic");
+    assert.equal(payload.result.repo.first_push.snapshot.backup_status, "succeeded");
+    assert.equal(payload.result.repo.local_git.unborn, true);
+    assert.equal(payload.result.repo.local_git.head, null);
     // gitvault.scaffoldRemote is mocked (returns canned data, touches no real
     // git config); what is under test is that the CLI called it with the
     // right target and reported its answer, not the SDK's own git plumbing

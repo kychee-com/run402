@@ -1053,3 +1053,5 @@ This package is on the `3.x` line. The in-repo packages (`@run402/sdk`, `run402`
 ## License
 
 MIT
+
+Deployment diagnostics distinguish authenticated principal identity from detected client, and release identity from content-hash verification. Weak size/type evidence is inconclusive. Native REST SQLSTATE `42501` is surfaced as `REST_PERMISSION_DENIED` while retaining the upstream body/status and requested relation/method.

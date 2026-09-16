@@ -55,7 +55,7 @@ The manifest is the whole app: a migration, which tables the browser may reach, 
 run402 up --name my-app -y
 ```
 
-`up` creates a local allowance and funds it from the testnet faucet (the prototype tier is free), creates the project, sets your display name if you have none (the detected client — `claude-code`, `codex`, `cursor`, `grok` — or nothing, with the room presence `agent`; declare yourself with `RUN402_CLIENT=<name>`, or set the name with `RUN402_AGENT_NAME=<name>` / `run402 org whoami --set-name <name>`), and applies the manifest as one atomic release. Later deploys that change the database against a live project are rehearsed on a throwaway branch first and ship only if they pass; a first deploy has nothing to protect and just ships.
+`up` creates a local allowance and funds it from the testnet faucet (the prototype tier is free), creates the project, names an unnamed agent principal from the detected client when available; human and unknown principals keep their names even with `RUN402_AGENT_NAME` set. The result separates authenticated `identity.principal` from `identity.client`. Promotion credit comes from the principal, and an intentional rename uses `run402 org whoami --set-name <name>`. It applies the manifest as one atomic release. Later deploys that change the database against a live project are rehearsed on a throwaway branch first and ship only if they pass; a first deploy has nothing to protect and just ships.
 
 The result is JSON. Hand your human the two links it carries:
 

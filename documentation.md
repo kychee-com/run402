@@ -176,3 +176,7 @@ When you… | Update at minimum…
 - **`AGENTS.md`** is canonical for repo architecture; `CLAUDE.md` just imports it.
 - **`apps/marketing/llms-full.txt`** (private repo) is canonical for the HTTP API reference — edit directly there.
 - **`apps/marketing/updates.txt`** + **`apps/marketing/humans/changelog.html`** (private repo) are canonical for the changelog — edit directly there (the changelog is authored as HTML; there is no markdown source).
+
+### First-deploy DX contract checkpoint (2026-09-16)
+
+Updated first-deploy, CLI ops/deploy, SDK/MCP references, SDK README, installed SKILL and OpenClaw recipe for explicit destination intent, scoped preflight, authoring export, principal/client separation, vault/local-Git separation, native REST denial and evidence-based coherence. Flat references and skill index are regenerated from their sources. Hosted OpenAPI/llms changes are staged in the matching private OpenSpec worktree; publication and live acceptance remain separate pending tasks.

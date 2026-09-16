@@ -1448,3 +1448,5 @@ Renewal: `run402 tier set <same-tier>` extends the lease in place and clears any
 - npm: [`run402`](https://www.npmjs.com/package/run402) · [`@run402/sdk`](https://www.npmjs.com/package/@run402/sdk) · [`@run402/functions`](https://www.npmjs.com/package/@run402/functions) · [`run402-mcp`](https://www.npmjs.com/package/run402-mcp)
 - Remote MCP (no install, free discovery tools; never handles funds): `https://mcp.run402.com/mcp`
 - Homepage: <https://run402.com>
+
+First-deploy diagnostics: human principal names are preserved; client detection is separate. A synthetic vault snapshot backs up source without creating a local branch commit. Exposed-table permission denials may be native PostgREST `42501`; `REST_PERMISSION_DENIED` preserves the upstream status and does not infer RLS. An expected function 400/429 remains an application response even with CloudFront’s error cache header.

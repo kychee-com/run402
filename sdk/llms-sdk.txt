@@ -246,7 +246,7 @@ import { Run402Action, run402 } from "@run402/sdk/node";
 const r = run402();
 
 await r.up({ name: "my-app" }, { approval: "yes" });
-// result.identity: { display_name, source, detected, detection }  — the principal's name: RUN402_AGENT_NAME (overrides an existing name), else a detected client (claude-code, codex, cursor, grok, or RUN402_CLIENT=<name>) when empty; nothing is written when nothing is known (source "undetected"). `detected` is what was seen either way; `detection.reason` "name_already_set" means a client was detected but the existing name was kept.
+// result.identity separates principal { id, type, display_name } from client { detected, declared_name }. Human/unknown identity is preserved; RUN402_AGENT_NAME can name agent principals only.
 // result.deploy.rehearsal: { status: "passed" | "skipped", … } — automatic for a live-release project with migrations
 // input.noRehearse / input.identityName override both.
 
@@ -2795,3 +2795,7 @@ OpenClaw skill packaging follows the CLI release train. `@run402/functions` and 
 - HTTP API reference: <https://run402.com/llms-full.txt>
 - npm: <https://www.npmjs.com/package/@run402/sdk>
 - Source: <https://github.com/kychee-com/run402>
+
+Native PostgREST permission denial is a separate boundary: an exposed table can still reject an operation with HTTP 401/403 and SQLSTATE `42501`. SDK/CLI/MCP label that `REST_PERMISSION_DENIED`, retaining `source: postgrest`, upstream status/code, requested method/relation, and the original body. It does not establish whether grants or RLS caused the denial, and it is not `TABLE_NOT_EXPOSED`.
+
+`apply.edgeCoherence` and `apply.waitEdgeCoherent` require strong release-identity or content-hash evidence. Weak-only legacy reports become inconclusive. Reports retain their sampling/vantage disclosure and optional server check timestamp. `mergeEdgeVerification` folds the latest report into the current edge summary and preserves the earlier activation snapshot.
