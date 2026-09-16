@@ -25,6 +25,7 @@ import {
   DEFAULT_API_BASE,
   getApiBase,
   getApiBaseSource,
+  getActiveProfile,
   getApiTargetKind,
 } from "../../core-dist/config.js";
 import { Run402, type PayExecutor, type Run402Options } from "../index.js";
@@ -189,6 +190,7 @@ export function run402(opts: NodeRun402Options = {}): NodeRun402 {
   const explicitApiBase = opts.apiBase !== undefined || getApiBaseSource() === "env";
   const actions = new NodeActions(base, {
     targetKind: inferTargetKind(apiBase, explicitApiBase),
+    profile: getActiveProfile(),
   });
   (base as unknown as { actions: NodeActions }).actions = actions;
   (base as unknown as { up: NodeActions["up"] }).up = actions.up.bind(actions);
@@ -701,7 +703,7 @@ export {
   verifyArchive,
 } from "./archives-node.js";
 export { NodeCredentialsProvider } from "./credentials.js";
-export { NodeActions } from "./actions-node.js";
+export { NodeActions, resolveDeploymentTarget } from "./actions-node.js";
 export type { NodeActionTargetKind, NodeActionsOptions } from "./actions-node.js";
 export { setupPaidFetch, createLazyPaidFetch, X402BalanceError } from "./paid-fetch.js";
 export type {

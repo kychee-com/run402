@@ -32,6 +32,7 @@ import {
   loadDeployManifest,
   normalizeDeployManifest,
   normalizeDeployResolveRequest,
+  resolveDeploymentTarget,
 } from "#sdk/node";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
@@ -1159,21 +1160,18 @@ async function applyCmd(args) {
     });
   }
   const useGithubActionsOidc = hasGithubActionsOidcEnv();
-  let defaultProject;
-  if (!opts.project && !manifestProject) {
-    defaultProject = useGithubActionsOidc ? resolveCiProjectId() : resolveProjectId(null);
-  }
+  const defaultProject = "prj_up_preflight_placeholder";
 
   let normalizedManifest;
   try {
     normalizedManifest = executableManifest
       ? await loadDeployManifest(manifestPath, {
-          ...(opts.project ? { project: opts.project } : {}),
+
           ...(defaultProject ? { defaultProject } : {}),
         })
       : await normalizeDeployManifest(spec, {
           baseDir: manifestPath ? dirname(manifestPath) : process.cwd(),
-          ...(opts.project ? { project: opts.project } : {}),
+
           ...(defaultProject ? { defaultProject } : {}),
         });
   } catch (err) {
@@ -1181,6 +1179,16 @@ async function applyCmd(args) {
   }
 
   const releaseSpec = normalizedManifest.spec;
+  try {
+    const target = await resolveDeploymentTarget({
+      appRoot: manifestPath ? dirname(manifestPath) : resolve(opts.dir || process.cwd()),
+      manifestPath: manifestPath ?? undefined, projectId: opts.project || undefined, environmentProjectId: process.env.RUN402_PROJECT_ID || undefined,
+      manifestProjectId: manifestProject || (releaseSpec.project === "prj_up_preflight_placeholder" ? undefined : releaseSpec.project),
+      targetKind: isCoreApiTarget() ? "core" : "cloud", apiBase: API,
+      allowUnresolved: opts.mode === "check" || opts.mode === "printSpec",
+    });
+    if (target.project_id) releaseSpec.project = target.project_id;
+  } catch (err) { reportSdkError(err); }
   const idempotencyKey = normalizedManifest.idempotencyKey;
 
   // Filesystem-reference check: every function source, site file / dir and

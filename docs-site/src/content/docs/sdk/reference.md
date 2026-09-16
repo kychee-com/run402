@@ -383,7 +383,7 @@ type Run402ExecutionMode =
 `Run402Action.Up` behavior:
 - Discover `run402.deploy.json`, then `app.json` under `dir` / cwd; explicit `manifest` wins.
 - Validate the deploy manifest and referenced local files before allowance, tier, project, link, upload, or deploy mutations.
-- Resolve project as explicit `projectId`, then `.run402/project.json`, then manifest `project_id`, then approved project creation from `name`, then approved active-project fallback.
+- Resolve project as explicit `projectId`, then `.run402/project.json`, then manifest `project_id`, then approved project creation from `name`; global active state never selects a deployment target.
 - For app manifests with `verify.http[]`, fetch verification URLs after apply and write per-check details to `result.app_result.verification.http[]`. Fresh edge sentinel misses (`x-run402-edge` or JSON codes such as `SUBDOMAIN_NOT_CONFIGURED`) and non-settled deploy-resolve diagnostics become `propagation_pending` instead of permanent failures while the binding is fresh.
 - Set `propagationBudgetSeconds` to control the wait for edge convergence (default 120). Set `propagationWait: false` to return `status: "propagation_pending"` immediately with `verify.status`, `propagation_wait_ms`, warnings, `next_action`, and diagnostic `edge_propagation` / `resolve` payloads.
 - Set `verifyOnly: true` to rerun app HTTP verification without upload, deploy, resource mutation, or project creation. This is the SDK equivalent of `run402 up verify`.

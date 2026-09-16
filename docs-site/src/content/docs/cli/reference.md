@@ -96,7 +96,8 @@ Project resolution order:
 - workspace link `.run402/project.json` (`schema_version: "run402.workspace-project.v1"`, `project_id`, optional `name`, `target`)
 - manifest `project_id`
 - approved project creation from `--name`
-- approved active-project fallback
+
+Conflicting selectors fail before wallet, tier, identity, link or Git mutations. Missing intent returns `UP_PROJECT_REQUIRED` with one `select_project` action. `-y` approves work only after the target is known. On an interactive terminal without `-y`, enter an existing project ID or `new <name>`; there is no default project choice. Use `RUN402_PROJECT_ID` as an explicit CLI environment selector.
 
 `--name` is only project creation/link metadata. It is not part of the deploy manifest, does not select a project when another selector already resolved one, and never renames an existing project. The workspace link is a local convenience file; it is written atomically and skipped in local check / reviewed-plan modes.
 

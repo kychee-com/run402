@@ -134,7 +134,7 @@ Getting started:
   run402 init               Set up with x402 (Base Sepolia)
   run402 init mpp           Set up with MPP (Tempo Moderato)
   run402 tier set prototype  Subscribe to a tier
-  run402 deploy apply --manifest app.json
+  run402 up --name my-app -y  Create and deploy this app (explicit destination)
   run402 ci link github --project prj_... --manifest run402.deploy.json
 `;
 

@@ -172,13 +172,12 @@ test("up app apply blocks with name guidance when manifest needs input.name", as
 
   try {
     const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
-    const result = await actions.up({}, { approval: "yes" });
-
-    assert.equal(result.result?.app_result?.status, "blocked");
-    assert.equal(result.result?.app_result?.diagnostics[0]?.code, "PROJECT_REQUIRED");
-    assert.match(result.result?.app_result?.diagnostics[0]?.message ?? "", /instance name/);
-    assert.equal(result.result?.app_result?.next_actions[0]?.command, "run402 up --name <name> --yes");
-    assert.equal(result.result?.app_result?.steps.find((step) => step.id === "project.ensure")?.status, "blocked");
+    await assert.rejects(actions.up({}, { approval: "yes" }), (err: any) => {
+      assert.equal(err.code, "UP_PROJECT_REQUIRED");
+      assert.equal(err.nextActions.length, 1);
+      assert.equal(err.nextActions[0].type, "select_project");
+      return true;
+    });
     assert.deepEqual(calls, []);
   } finally {
     if (previous === undefined) delete process.env.KYSIGNED_ALLOWED_CREATORS;
@@ -1561,7 +1560,7 @@ test("up refuses to overwrite a workspace link changed during execution", async 
   try {
     const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
     await assert.rejects(
-      actions.up({}, {
+      actions.up({ projectId: "prj_active" }, {
         approval: {
           mode: "interactive",
           async approve(request) {
@@ -2061,4 +2060,67 @@ test("up sets an explicit identityName over an unnamed principal", async () => {
   } finally {
     rmSync(dir, { force: true, recursive: true });
   }
+});
+
+test("unlinked up never selects the global project, even with yes, plan, or interactive generic approval", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "run402-target-intent-"));
+  writeFileSync(join(dir, "run402.json"), JSON.stringify({ site: { replace: { "index.html": { data: "new app" } } } }));
+  try {
+    for (const options of [{ approval: "yes" as const }, { mode: "plan" as const }, { approval: { mode: "interactive" as const, approve: async () => true } }]) {
+      const calls: string[] = [];
+      const actions = new NodeActions(fakeSdk({ calls, allowanceConfigured: false, tierActive: false, activeProject: "prj_unrelated_live" }), { targetKind: "cloud", cwd: dir });
+      await assert.rejects(actions.up({}, options), (err: any) => {
+        assert.equal(err.code, "UP_PROJECT_REQUIRED");
+        assert.equal(err.nextActions.length, 1);
+        assert.equal(err.nextActions[0].safe_to_auto_execute, false);
+        return true;
+      });
+      assert.deepEqual(calls, []);
+      assert.deepEqual(readdirSync(dir), ["run402.json"]);
+    }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("up checks conflicting explicit, manifest, link and API selectors before cold-wallet prerequisites", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "run402-target-conflicts-"));
+  const calls: string[] = [];
+  const actions = new NodeActions(fakeSdk({ calls, allowanceConfigured: false, tierActive: false, activeProject: "prj_unrelated_live" }), { targetKind: "cloud", cwd: dir });
+  try {
+    writeFileSync(join(dir, "run402.json"), JSON.stringify({ project_id: "prj_manifest", site: { replace: { "index.html": { data: "new" } } } }));
+    await assert.rejects(actions.up({ projectId: "prj_other" }, { approval: "yes" }), { code: "RUN402_PROJECT_CONFLICT" });
+    mkdirSync(join(dir, ".run402"));
+    const link = { schema_version: "run402.workspace-project.v1", project_id: "prj_manifest", target: { kind: "cloud", api_base: "https://other.example.test" } };
+    writeFileSync(join(dir, ".run402/project.json"), JSON.stringify(link));
+    await assert.rejects(actions.up({ projectId: "prj_manifest" }, { approval: "yes" }), { code: "RUN402_WORKSPACE_LINK_CONFLICT" });
+    assert.deepEqual(calls, []);
+    assert.deepEqual(JSON.parse(readFileSync(join(dir, ".run402/project.json"), "utf8")), link);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("four sibling apps produce one unranked selection action; parent links never select a child", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "run402-four-apps-"));
+  const calls: string[] = [];
+  const sdk = fakeSdk({ calls, allowanceConfigured: true, tierActive: true, activeProject: "prj_unrelated_live" });
+  try {
+    mkdirSync(join(dir, ".run402"));
+    writeFileSync(join(dir, ".run402/project.json"), JSON.stringify({ schema_version: "run402.workspace-project.v1", project_id: "prj_parent" }));
+    for (const name of ["alpha", "beta", "gamma", "delta"]) {
+      mkdirSync(join(dir, name));
+      writeFileSync(join(dir, name, "run402.json"), JSON.stringify({ site: { replace: { "index.html": { data: name } } } }));
+    }
+    await assert.rejects(new NodeActions(sdk, { cwd: dir }).up({}, { mode: "check" }), (err: any) => {
+      const actions = err.nextActions ?? err.details.next_actions;
+      assert.equal(actions.length, 1);
+      assert.equal(actions[0].type, "select_application");
+      assert.equal(actions[0].safe_to_auto_execute, false);
+      assert.equal(actions[0].candidates.length, 4);
+      for (const candidate of actions[0].candidates) {
+        assert.equal(candidate.recommended, false);
+        assert.ok(candidate.argv.includes("--check"));
+      }
+      return true;
+    });
+    await assert.rejects(new NodeActions(sdk, { cwd: dir }).up({ manifest: "beta/run402.json" }, { approval: "yes" }), { code: "UP_PROJECT_REQUIRED" });
+    assert.deepEqual(calls, []);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });

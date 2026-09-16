@@ -530,3 +530,21 @@ describe("typed release config CLI modes", () => {
     }
   });
 });
+
+describe("deployment intent guard", () => {
+  it("rejects a projectless apply before any gateway request even with global active state", async () => {
+    const { setActiveProjectId } = await import("./cli/lib/config.mjs");
+    const { run } = await import("./cli/lib/deploy.mjs");
+    setActiveProjectId("prj_unrelated");
+    const app = join(tempDir, "unlinked-app");
+    mkdirSync(app, { recursive: true });
+    const manifest = join(app, "app.json");
+    writeFileSync(manifest, JSON.stringify({ site: { replace: { "index.html": { data: "new app" } } } }));
+    const before = calls.length;
+    const err = await expectExit1(() => run(["apply", "--manifest", manifest]));
+    assert.equal(err.code, "UP_PROJECT_REQUIRED");
+    assert.equal(err.next_actions.length, 1);
+    assert.equal(err.next_actions[0].type, "select_project");
+    assert.equal(calls.length, before);
+  });
+});

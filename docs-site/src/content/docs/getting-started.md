@@ -24,7 +24,7 @@ references ([`/llms-cli.txt`](https://docs.run402.com/llms-cli.txt) — an index
 The prototype tier is free on testnet — no real money. The front door at
 [`run402.com/llms.txt`](https://run402.com/llms.txt) (rendered here as
 [Your first deploy](/start/first-deploy/)) is the whole first run: one manifest,
-`run402 up -y`, two links. The CLI reference covers `run402 deploy apply`, the
+`run402 up --name my-app -y`, two links. The CLI reference covers `run402 deploy apply`, the
 unified deploy primitive underneath `up`. Run402 **plans and stages** a database, functions, a static
 site, secrets, assets, subdomains and routes as one release, then **activates
 them together**. Failed stages are resumable; applied database migrations are

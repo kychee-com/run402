@@ -829,7 +829,8 @@ describe("Run402 for Buzz setup state machine", () => {
     await runSetup({ pubkey: PUBKEY, wallet: PROFILE, runner: fake.runner, reporter: () => {} });
     const transcript = fake.calls.map((call) => call.join(" ")).join("\n");
     for (const forbidden of ["tier set", "projects ", "provision", "deploy", "transfer", "delete", "generate"]) {
-      assert.ok(!transcript.includes(forbidden), transcript);
+      // Match command tokens, not a checkout path such as harden-first-deploy-dx.
+      assert.ok(!fake.calls.some((call) => call.some((arg, i) => arg === forbidden.trim() || `${arg} ${call[i + 1]}` === forbidden.trim())), transcript);
     }
   });
 

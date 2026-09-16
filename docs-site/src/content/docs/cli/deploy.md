@@ -435,7 +435,7 @@ Common CI error codes:
 ---
 ### Unified Deploy Details
 
-Use `run402 deploy apply --manifest app.json` for full-stack releases; see the Unified Apply example above. `project_id` is required unless `--project` or active project is used. Omitted top-level sections carry forward. Strict adapter: only top-level `$schema` ignored; typo/no-op fields fail before planning.
+Use `run402 deploy apply --manifest app.json` for full-stack releases; see the Unified Apply example above. Use `project_id`, `--project`, `RUN402_PROJECT_ID`, or an app-local `.run402/project.json` link. Global active state is never a deployment selector; conflicting selectors fail before mutations. Omitted top-level sections carry forward. Strict adapter: only top-level `$schema` ignored; typo/no-op fields fail before planning.
 
 Function specs add auth gates:
 - `require_auth: true`: valid project user JWT required; 401 on anonymous; no DB lookup; independent from `require_role`.

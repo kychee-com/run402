@@ -72,6 +72,8 @@ import { declaredAgentName, detectClientName } from "./client-detect.js";
 export type NodeActionTargetKind = "cloud" | "core" | "unknown";
 
 export interface NodeActionsOptions {
+  /** Non-secret CLI recovery context. */
+  profile?: string;
   targetKind?: NodeActionTargetKind;
   cwd?: string;
 }
@@ -417,8 +419,17 @@ export class NodeActions implements Run402Actions {
     source: ResolvedUpSource,
     startedAt: string,
   ): Promise<Run402ActionResult<Run402UpResult>> {
-    const workspaceDir = source.workspaceDir;
+    let workspaceDir = source.workspaceDir;
     const manifest = await this.#discoverAndValidateManifest(input, workspaceDir, source.metadata, run);
+    workspaceDir = dirname(manifest.manifestPath);
+    if (!input.verifyOnly) {
+      await resolveDeploymentTarget({
+        appRoot: workspaceDir, manifestPath: manifest.manifestPath, projectId: input.projectId,
+        manifestProjectId: manifest.manifestProjectId ?? manifest.appSpec?.project.id, name: input.name,
+        targetKind: this.#targetKind(), apiBase: this.sdk.apiBase,
+        allowUnresolved: run.executionMode === "check" || run.executionMode === "printSpec" || run.dryRun,
+      });
+    }
 
     if (manifest.manifestKind === "app") {
       if (input.verifyOnly) {
@@ -507,7 +518,7 @@ export class NodeActions implements Run402Actions {
           schema_version: "run402.workspace-project.v1",
           project_id: resolved.projectId,
           ...(input.name ? { name: input.name } : {}),
-          target: { kind: this.#targetKind() },
+          target: { kind: this.#targetKind(), api_base: this.sdk.apiBase },
           created_at: resolved.link?.created_at ?? new Date().toISOString(),
           updated_at: new Date().toISOString(),
         },
@@ -854,14 +865,26 @@ export class NodeActions implements Run402Actions {
       // level down) usually is one `--dir` away from the manifest it meant.
       // Name what is one directory down so the hop is executable.
       const nearby = await findNearbyManifests(workspaceDir);
-      const nearbyActions = nearby.map((entry) => ({
+      const selectorArgs = [...(input.projectId ? ["--project", input.projectId] : []), ...(input.name ? ["--name", input.name] : [])];
+      const candidateActions = await Promise.all(nearby.map(async (entry) => ({
+        binding: await nearbyBinding(entry.path),
+        cwd: workspaceDir,
+        env: { RUN402_API_BASE: this.sdk.apiBase, ...(this.opts.profile ? { RUN402_WALLET: this.opts.profile } : {}) },
         type: "run_in_directory",
-        command: `run402 up --check --dir ${shellArg(entry.relative_dir)}`,
-        argv: ["run402", "up", "--check", "--dir", entry.relative_dir],
+        command: ["run402", "up", "--check", "--dir", entry.relative_dir, ...selectorArgs].map(shellArg).join(" "),
+        argv: ["run402", "up", "--check", "--dir", entry.relative_dir, ...selectorArgs],
+        app_root: dirname(entry.path),
+        manifest_path: entry.path,
+        safe_to_auto_execute: true,
         path: entry.path,
         dir: entry.relative_dir,
         why: "A manifest exists one directory down; up does not walk into subdirectories.",
-      }));
+      })));
+      const nearbyActions = nearby.length > 1 ? [{
+        type: "select_application", safe_to_auto_execute: false,
+        why: "Choose the intended application; directory order does not indicate a recommendation.",
+        candidates: candidateActions.map((entry) => ({ ...entry, recommended: false })),
+      }] : candidateActions;
       throw run.error(
         nearby.length > 0
           ? `No deploy manifest found in ${workspaceDir}, but ${nearby.length === 1 ? "one exists" : `${nearby.length} exist`} one directory down (${nearby.map((entry) => entry.relative_dir).join(", ")}). Re-run with --dir <that directory>, or add run402.json, run402.deploy.json or app.json here.`
@@ -872,7 +895,7 @@ export class NodeActions implements Run402Actions {
           candidates: MANIFEST_CANDIDATES,
           executable_candidates: EXECUTABLE_MANIFEST_CANDIDATES,
           nearby_manifests: nearby,
-          next_actions: [
+          next_actions: nearby.length > 1 ? nearbyActions : [
             ...nearbyActions,
             {
               type: "create_manifest",
@@ -954,6 +977,7 @@ export class NodeActions implements Run402Actions {
         });
         return {
           manifestKind: "app",
+          manifestProjectId: appSpec.project.id,
           manifestPath,
           releaseSpec: null,
           appGraph,
@@ -963,9 +987,7 @@ export class NodeActions implements Run402Actions {
       }
     }
     const loaded = await loadDeployManifest(manifestPath, {
-      ...(input.projectId
-        ? { project: input.projectId }
-        : { defaultProject: "prj_up_preflight_placeholder" }),
+      defaultProject: "prj_up_preflight_placeholder",
     });
     if (!hasDeployableContent(loaded.spec)) {
       throw run.error(
@@ -1399,7 +1421,7 @@ export class NodeActions implements Run402Actions {
           schema_version: "run402.workspace-project.v1",
           project_id: resolved.projectId,
           ...(input.name ? { name: input.name } : {}),
-          target: { kind: this.#targetKind() },
+          target: { kind: this.#targetKind(), api_base: this.sdk.apiBase },
           created_at: resolved.link?.created_at ?? new Date().toISOString(),
           updated_at: new Date().toISOString(),
         },
@@ -2207,7 +2229,7 @@ export class NodeActions implements Run402Actions {
     run.setState(step, "running");
 
     const linkConflict = workspaceLinkConflict(link, input, this.#targetKind(), linkPath);
-    if (linkConflict && !input.projectId) {
+    if (linkConflict) {
       throw run.error(
         linkConflict.message,
         "RUN402_WORKSPACE_LINK_CONFLICT",
@@ -2335,43 +2357,7 @@ export class NodeActions implements Run402Actions {
       };
     }
 
-    const active = await this.sdk.projects.active();
-    if (active) {
-      const activeStep = run.addStep({
-        action: "project.resolve",
-        description: "Use active project for this workspace",
-        mutation: false,
-        auto: true,
-        details: { active_project_id: active },
-      });
-      await run.approve(
-        activeStep,
-        [],
-        `Use active project ${active} and link this workspace to it.`,
-      );
-      run.setState(activeStep, run.dryRun ? "planned" : "succeeded", {
-        project_id: active,
-        source: "active",
-      });
-      run.setState(step, run.dryRun ? "planned" : "succeeded", {
-        project_id: active,
-        source: "active",
-        link_path: linkPath,
-      });
-      return {
-        projectId: active,
-        source: "active",
-        link,
-        linkPath,
-        shouldWriteLink: true,
-      };
-    }
-
-    throw run.error(
-      "No project is configured for this workspace. Pass --project, add project_id to the manifest, or pass --name to create one.",
-      "RUN402_PROJECT_REQUIRED",
-      { link_path: linkPath, manifest_path: manifest.manifestPath },
-    );
+    throw projectSelectionRequired(workspaceDir, manifest.manifestPath);
   }
 
   async #resolveProjectForVerify(
@@ -3295,7 +3281,8 @@ async function readWorkspaceProjectLink(path: string): Promise<WorkspaceProjectL
   let raw: string;
   try {
     raw = await readFile(path, "utf-8");
-  } catch {
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
     return null;
   }
   let parsed: unknown;
@@ -3391,7 +3378,7 @@ function workspaceProjectLinksEqual(a: WorkspaceProjectLink | null, b: Workspace
 
 function workspaceLinkConflict(
   link: WorkspaceProjectLink | null,
-  input: Run402UpActionInput,
+  input: Pick<Run402UpActionInput, "name">,
   targetKind: NodeActionTargetKind,
   linkPath: string,
 ): { message: string; details: Record<string, unknown> } | null {
@@ -3500,4 +3487,44 @@ function assertNever(value: never): never {
     "running Run402 action",
     { code: "RUN402_ACTION_UNKNOWN" },
   );
+}
+
+/** Resolve only local destination intent. Approval and global active state are never selectors. */
+export async function resolveDeploymentTarget(input: {
+  appRoot: string; manifestPath?: string; projectId?: string; environmentProjectId?: string; manifestProjectId?: string;
+  name?: string; targetKind?: NodeActionTargetKind; apiBase?: string; allowUnresolved?: boolean;
+}): Promise<{ project_id: string | null; project_name: string | null; source: "explicit" | "workspace_link" | "manifest" | "create" | "unresolved" }> {
+  const linkPath = join(input.appRoot, ".run402", "project.json");
+  const link = await readWorkspaceProjectLink(linkPath);
+  const conflict = workspaceLinkConflict(link, input, input.targetKind ?? "unknown", linkPath);
+  if (conflict) throw new LocalError(conflict.message, "resolving deployment target", { code: "RUN402_WORKSPACE_LINK_CONFLICT", details: conflict.details });
+  if (link?.target?.api_base && input.apiBase && link.target.api_base.replace(/\/$/, "") !== input.apiBase.replace(/\/$/, "")) {
+    throw new LocalError("Workspace link belongs to a different API target.", "resolving deployment target", { code: "RUN402_WORKSPACE_LINK_CONFLICT", details: { reason: "api_base_mismatch", link_path: linkPath } });
+  }
+  const selectors = [input.projectId, input.environmentProjectId, link?.project_id, input.manifestProjectId].filter(Boolean);
+  if (new Set(selectors).size > 1) {
+    throw new LocalError("Deployment project selectors disagree.", "resolving deployment target", { code: "RUN402_PROJECT_CONFLICT", details: { explicit_project_id: input.projectId ?? null, linked_project_id: link?.project_id ?? null, manifest_project_id: input.manifestProjectId ?? null } });
+  }
+  const projectId = input.projectId ?? input.environmentProjectId ?? link?.project_id ?? input.manifestProjectId ?? null;
+  if (projectId && input.name && (!link || link.name !== input.name)) {
+    throw new LocalError("--name is creation intent and cannot select or rename an existing project. Pass --project alone.", "resolving deployment target", { code: "RUN402_PROJECT_CONFLICT", details: { project_id: projectId, name: input.name } });
+  }
+  if (!projectId && !input.name && !input.allowUnresolved) throw projectSelectionRequired(input.appRoot, input.manifestPath);
+  return { project_id: projectId, project_name: input.name ?? link?.name ?? null,
+    source: input.projectId || input.environmentProjectId ? "explicit" : link ? "workspace_link" : input.manifestProjectId ? "manifest" : input.name ? "create" : "unresolved" };
+}
+
+function projectSelectionRequired(appRoot: string, manifestPath?: string): LocalError {
+  return new LocalError("No deployment destination is selected. Pass --project for an existing project or --name to create one; -y never selects the global active project.", "resolving deployment target", {
+    code: "UP_PROJECT_REQUIRED", details: { app_root: appRoot, manifest_path: manifestPath ?? null, mutation_state: "not_started" },
+    next_actions: [{ type: "select_project", safe_to_auto_execute: false, why: "Select the intended project explicitly, or name a new project, then retry in this application directory.", app_root: appRoot }],
+  });
+}
+
+async function nearbyBinding(manifestPath: string): Promise<Record<string, unknown>> {
+  try {
+    const manifest = JSON.parse(await readFile(manifestPath, "utf-8"));
+    const link = await readWorkspaceProjectLink(join(dirname(manifestPath), ".run402", "project.json"));
+    return { app_name: manifest.app?.name ?? manifest.app?.id ?? null, manifest_project_id: typeof manifest.project === "string" ? manifest.project : manifest.project_id ?? manifest.project?.id ?? null, linked_project_id: link?.project_id ?? null, target: link?.target ?? null };
+  } catch { return { status: "unknown", reason: "Local binding could not be read; select the application and run its check." }; }
 }

@@ -14,7 +14,7 @@
 import { after, before, beforeEach, describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -315,5 +315,18 @@ describe("run402 up --repo-only — vault-only, zero deploy ceremony", () => {
       captureStop();
     }
     assert.equal(threw?.message, "process.exit(1)");
+  });
+});
+
+
+describe("up target failure precedes repository mutation", () => {
+  it("leaves an unlinked directory without Git or remote setup after selection fails", async () => {
+    const dir = join(scratch, "unselected-app");
+    mkdirSync(dir);
+    process.chdir(dir);
+    impl.up = async () => { throw Object.assign(new Error("Select a destination"), { code: "UP_PROJECT_REQUIRED" }); };
+    await assert.rejects(runJson(["-y", "--json"]), /process.exit\(1\)/);
+    assert.equal(existsSync(join(dir, ".git")), false);
+    assert.deepEqual(calls.map((call) => call.method), ["up"]);
   });
 });

@@ -60,7 +60,7 @@ Prototype uses free testnet USDC on Base Sepolia. Hobby/Team require real money:
 npm install -g run402@latest
 run402 init --api-base=http://my-core:4020
 run402 projects provision --name "my-app"    # returns anon_key, service_key, project_id
-run402 deploy apply --manifest app.json      # uses the active Core project
+run402 deploy apply --manifest app.json --project <core-project-id>
 ```
 
 `init --api-base` stores the API base in the active profile (`target.json`) so the CLI, Node SDK, and MCP use the same target by default. Against Core, `projects provision` and `deploy apply` do not require Cloud tier, allowance, or x402 setup. Unsupported Cloud-only manifest slices fail as Core capability errors; they are not silently deployed to Run402 Cloud.

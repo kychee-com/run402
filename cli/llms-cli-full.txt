@@ -90,7 +90,8 @@ Project resolution order:
 - workspace link `.run402/project.json` (`schema_version: "run402.workspace-project.v1"`, `project_id`, optional `name`, `target`)
 - manifest `project_id`
 - approved project creation from `--name`
-- approved active-project fallback
+
+Conflicting selectors fail before wallet, tier, identity, link or Git mutations. Missing intent returns `UP_PROJECT_REQUIRED` with one `select_project` action. `-y` approves work only after the target is known. On an interactive terminal without `-y`, enter an existing project ID or `new <name>`; there is no default project choice. Use `RUN402_PROJECT_ID` as an explicit CLI environment selector.
 
 `--name` is only project creation/link metadata. It is not part of the deploy manifest, does not select a project when another selector already resolved one, and never renames an existing project. The workspace link is a local convenience file; it is written atomically and skipped in local check / reviewed-plan modes.
 
@@ -690,7 +691,7 @@ Common CI error codes:
 ---
 ### Unified Deploy Details
 
-Use `run402 deploy apply --manifest app.json` for full-stack releases; see the Unified Apply example above. `project_id` is required unless `--project` or active project is used. Omitted top-level sections carry forward. Strict adapter: only top-level `$schema` ignored; typo/no-op fields fail before planning.
+Use `run402 deploy apply --manifest app.json` for full-stack releases; see the Unified Apply example above. Use `project_id`, `--project`, `RUN402_PROJECT_ID`, or an app-local `.run402/project.json` link. Global active state is never a deployment selector; conflicting selectors fail before mutations. Omitted top-level sections carry forward. Strict adapter: only top-level `$schema` ignored; typo/no-op fields fail before planning.
 
 Function specs add auth gates:
 - `require_auth: true`: valid project user JWT required; 401 on anonymous; no DB lookup; independent from `require_role`.
@@ -1009,9 +1010,9 @@ All admin subcommands require a platform-admin allowance wallet (or an admin OAu
 - `run402 deploy diagnose [--project <id>] <url> [--method GET]` — URL-first public deploy diagnostics
 - `run402 deploy resolve [--project <id>] (--url <url> | --host <host> [--path /x]) [--method GET]` — lower-level resolver parity; `--url` cannot be combined with `--host`/`--path`
 
-Requires active tier and a provisioned project on Run402 Cloud. Against a configured Core target, uses the active Core project and does not require Cloud tier/allowance setup. Deploys to an existing project: runs migrations, applies the authorization manifest (from a `manifest.json` entry in `files[]`), deploys functions, deploys static site, and claims subdomain when the target supports that slice. Secret values are write-only: set them with `printf %s "$OPENAI_API_KEY" | run402 secrets set <id> OPENAI_API_KEY --stdin` or `--file <path>` before deploy, then use value-free `secrets.require` in `deploy apply` manifests. `deploy apply` stops before upload/commit on confirmation-required warnings unless each warning is covered by repeatable `--allow-warning <code>` or the broad reviewed `--allow-warnings`; `--require-plan` absorbs the warning approval already bound into the reviewed plan and rejects warning flags. The manifest must include `project_id` (or use `--project` flag, or omit both to use the active project).
+Requires active tier and a provisioned project on Run402 Cloud. Against a configured Core target, uses the active Core project and does not require Cloud tier/allowance setup. Deploys to an existing project: runs migrations, applies the authorization manifest (from a `manifest.json` entry in `files[]`), deploys functions, deploys static site, and claims subdomain when the target supports that slice. Secret values are write-only: set them with `printf %s "$OPENAI_API_KEY" | run402 secrets set <id> OPENAI_API_KEY --stdin` or `--file <path>` before deploy, then use value-free `secrets.require` in `deploy apply` manifests. `deploy apply` stops before upload/commit on confirmation-required warnings unless each warning is covered by repeatable `--allow-warning <code>` or the broad reviewed `--allow-warnings`; `--require-plan` absorbs the warning approval already bound into the reviewed plan and rejects warning flags. The manifest must include `project_id`, or use `--project`, `RUN402_PROJECT_ID`, or an app-local workspace link. Omitting intent fails with `UP_PROJECT_REQUIRED`; it never falls back to the active project.
 
-Inside GitHub Actions, `deploy apply` automatically uses OIDC credentials when `GITHUB_ACTIONS=true`, `ACTIONS_ID_TOKEN_REQUEST_URL`, and `ACTIONS_ID_TOKEN_REQUEST_TOKEN` are present. In that mode, project id resolution is `--project`, then `manifest.project_id`, then the local active project if present, then `RUN402_PROJECT_ID`.
+Inside GitHub Actions, `deploy apply` automatically uses OIDC credentials when `GITHUB_ACTIONS=true`, `ACTIONS_ID_TOKEN_REQUEST_URL`, and `ACTIONS_ID_TOKEN_REQUEST_TOKEN` are present. In that mode, project intent comes from `--project`, `RUN402_PROJECT_ID`, the app-local workspace link, or the manifest; conflicting selectors are rejected.
 
 ### ci
 - `run402 ci link github [--project <id>] [--manifest <path>] [--repo <owner/repo>] [--branch <name> | --environment <name>] [--repository-id <id>] [--workflow <path>] [--expires-at <iso>] [--route-scope <pattern> ...] [--force]` — create a GitHub Actions OIDC deploy binding and write a workflow
@@ -2347,7 +2348,7 @@ Prototype uses free testnet USDC on Base Sepolia. Hobby/Team require real money:
 npm install -g run402@latest
 run402 init --api-base=http://my-core:4020
 run402 projects provision --name "my-app"    # returns anon_key, service_key, project_id
-run402 deploy apply --manifest app.json      # uses the active Core project
+run402 deploy apply --manifest app.json --project <core-project-id>
 ```
 
 `init --api-base` stores the API base in the active profile (`target.json`) so the CLI, Node SDK, and MCP use the same target by default. Against Core, `projects provision` and `deploy apply` do not require Cloud tier, allowance, or x402 setup. Unsupported Cloud-only manifest slices fail as Core capability errors; they are not silently deployed to Run402 Cloud.

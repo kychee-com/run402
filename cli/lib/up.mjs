@@ -1,3 +1,4 @@
+import { dirname } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stderr as output } from "node:process";
 import { getSdk } from "./sdk.mjs";
@@ -18,7 +19,7 @@ Options:
                       to the current directory.
   --name <name>       Project display name when up needs to create a project.
                       Not a deploy manifest field and never renames a project.
-  --project <id>      Explicit project id. Highest-priority project selector.
+  --project <id>      Explicit project id. All supplied selectors must agree.
   --manifest <path>   Manifest path. Defaults to run402.json, then
                       run402.deploy.json, then app.json in --dir/current directory.
   --dir <path>        Workspace directory to inspect (default: current dir).
@@ -111,7 +112,7 @@ Update notices:
 
 Project resolution:
   explicit --project > .run402/project.json > manifest project_id > approved
-  project creation from --name > approved active-project fallback.
+  project creation from --name. Global active state is never a deployment target.
 
 Examples:
   run402 up https://github.com/kychee-com/kysigned --name kysigned2 --yes --json
@@ -296,6 +297,10 @@ export async function run(args = []) {
       details: { flag: "--require-plan" },
     });
   }
+  const explicitProject = flagValue(parsed, "--project");
+  if (explicitProject && process.env.RUN402_PROJECT_ID && explicitProject !== process.env.RUN402_PROJECT_ID) {
+    fail({ code: "RUN402_PROJECT_CONFLICT", message: "--project conflicts with RUN402_PROJECT_ID.", details: { explicit_project_id: explicitProject, environment_project_id: process.env.RUN402_PROJECT_ID } });
+  }
   const repoOnly = parsed.includes("--repo-only");
   const nested = parsed.includes("--nested");
   if (repoOnly && (dryRun || isNonApplyingMode(mode) || isApplyReviewedMode(mode) || verifyEdge)) {
@@ -318,23 +323,21 @@ export async function run(args = []) {
   // clone into somewhere ephemeral, so there is no local working tree here
   // to scaffold a remote onto).
   const composeRepo = !dryRun && mode === undefined && !looksLikeGitRemoteUrl(source);
-  const workDir = flagValue(parsed, "--dir") ?? (source && !looksLikeGitRemoteUrl(source) ? source : undefined) ?? process.cwd();
+  let workDir = flagValue(parsed, "--dir") ?? (source && !looksLikeGitRemoteUrl(source) ? source : undefined) ?? process.cwd();
 
   try {
     const sdk = getSdk();
     let createdRepository = false;
-    if (composeRepo) {
-      createdRepository = await gitInitIfNeeded(workDir);
-    }
+    // Repository setup follows successful target resolution and deployment.
 
     let result;
     if (repoOnly) {
       result = await runRepoOnly({ sdk, workDir, createdRepository, nested, opts: parsed, tier, allowWarningCodes, idempotencyKey: flagValue(parsed, "--idempotency-key") ?? undefined });
     } else {
-      result = await sdk.up({
+      result = await upWithExplicitSelection(sdk, {
         source,
         name: flagValue(parsed, "--name") ?? undefined,
-        projectId: flagValue(parsed, "--project") ?? undefined,
+        projectId: flagValue(parsed, "--project") ?? process.env.RUN402_PROJECT_ID ?? undefined,
         manifest: flagValue(parsed, "--manifest") ?? undefined,
         dir: flagValue(parsed, "--dir") ?? undefined,
         tier,
@@ -366,9 +369,14 @@ export async function run(args = []) {
       // discipline `projects provision`'s own fold-in follows).
       if (composeRepo && mode === undefined) {
         const projectId = result?.result?.project_id ?? result?.result?.deploy?.project_id ?? null;
-        if (projectId) {
-          const repoResult = await composeRepoPushStep({ sdk, workDir, projectId, createdRepository, nested });
-          if (result.result) result.result.repo = repoResult;
+        if (projectId && result?.result?.app_result?.status !== "blocked") {
+          workDir = result?.result?.manifest_path ? dirname(result.result.manifest_path) : workDir;
+          try {
+            createdRepository = await gitInitIfNeeded(workDir);
+            result.result.repo = await composeRepoPushStep({ sdk, workDir, projectId, createdRepository, nested });
+          } catch (err) {
+            result.result.repo = { status: "failed", first_push: null, first_push_error: { code: err?.code ?? "GITVAULT_SETUP_FAILED", message: err?.message ?? String(err) } };
+          }
         }
       }
     }
@@ -727,6 +735,7 @@ async function runRepoOnly({ sdk, workDir, createdRepository, nested = false, op
   if (!isCoreApiTarget() && !loadLiveControlPlaneSession()) allowanceAuthHeaders("/projects/v1");
   const name = flagValue(opts, "--name") ?? undefined;
   const provisioned = await sdk.projects.provision({ tier, name, idempotencyKey });
+  createdRepository = await gitInitIfNeeded(workDir);
   const repo = await composeRepoPushStep({ sdk, workDir, projectId: provisioned.project_id, createdRepository, nested });
   return {
     action: "up",
@@ -748,6 +757,21 @@ function parsePropagationBudget(args) {
     });
   }
   return value;
+}
+
+export async function upWithExplicitSelection(sdk, request, options, terminal = { interactive: input.isTTY && output.isTTY, question: async (prompt) => {
+  const rl = createInterface({ input, output });
+  try { return await rl.question(prompt); } finally { rl.close(); }
+} }) {
+  try { return await sdk.up(request, options); }
+  catch (err) {
+    if (err?.code !== "UP_PROJECT_REQUIRED" || !terminal.interactive || options.approval === "yes") throw err;
+    const choice = (await terminal.question("Deployment destination: enter an existing project ID, or 'new <name>' to create one (empty cancels): ")).trim();
+    if (!choice) throw err;
+    const selected = choice.startsWith("new ") ? { name: choice.slice(4).trim() } : { projectId: choice };
+    if (!(selected.name || selected.projectId)) throw err;
+    return sdk.up({ ...request, ...selected }, options);
+  }
 }
 
 function makeApproval(yes) {
