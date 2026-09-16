@@ -73,7 +73,7 @@ Every script prints **JSON to stdout**, **JSON errors to stderr**, and exits **0
 | **Install** | Copy directory + `npm install` (frontmatter installs `run402` globally) | `npx run402-mcp` |
 | **Skill body** | [`openclaw/SKILL.md`](./SKILL.md) — `run402 <verb>` examples | [root `SKILL.md`](../SKILL.md) — MCP tool names |
 | **Credentials** | `~/.config/run402/` (shared) | `~/.config/run402/` (shared) |
-| **Payment** | x402 via the CLI's allowance | x402 via the CLI's allowance |
+| **Payment** | x402 or MPP (Tempo, Bitcoin Lightning) via the CLI's allowance | x402 or MPP (Tempo, Bitcoin Lightning) via the CLI's allowance |
 
 ## Full reference
 

@@ -27,7 +27,7 @@ const project = await r.projects.provision({ tier: "prototype" });
 await (await r.project(project.project_id)).assets.put("hello.txt", { content: "hi" });
 ```
 
-That's it — credentials are read, x402 payments are signed, results are typed.
+That's it — credentials are read, x402 (or Lightning) payments are signed, results are typed.
 
 ## Public Buzz/Nostr identity links
 

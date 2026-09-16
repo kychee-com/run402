@@ -365,7 +365,7 @@ The gate applies to both routed (`/your/route`) and direct (`POST /functions/v1/
 
 ### Database
 
-- `provision_postgres_project` — provision a new database. Auto-handles x402 payment. Params: `tier?` (default `"prototype"`), `name?`, `org_id?` (provision into an EXISTING org — needs `developer`+ on it; omit for the cold-start path; tier is org-governed). Returns `project_id`, `anon_key`, `service_key`, `tier`, `schema_slot`, `lease_expires_at`.
+- `provision_postgres_project` — provision a new database. Auto-handles payment (x402, or MPP on Tempo or Lightning). Params: `tier?` (default `"prototype"`), `name?`, `org_id?` (provision into an EXISTING org — needs `developer`+ on it; omit for the cold-start path; tier is org-governed). Returns `project_id`, `anon_key`, `service_key`, `tier`, `schema_slot`, `lease_expires_at`.
 - `run_sql` — execute SQL (DDL or queries). Service-key-authenticated. Params: `project_id?` (defaults to the active project), `sql`. Returns a markdown table for result sets; mutations report "N rows affected" and DDL reports "Statement executed".
 - `rest_query` — query/mutate via PostgREST. Params: `project_id?` (defaults to the active project), `table`, `method?` (`GET`/`POST`/`PATCH`/`DELETE`), `params?` (PostgREST query syntax: `select=…`, `eq.value`, `order=…`, `limit=…`), `body?`, `key_type?` (`"anon"` default — RLS applies; `"service"` — bypasses RLS via the admin REST path).
 - `apply_expose` — apply the declarative authorization manifest. Params: `project_id`, `manifest` (`{ version: "1", tables: [...], views: [...], rpcs: [...] }`).
@@ -508,7 +508,7 @@ Tier rate limits: prototype 10/day, hobby 50/day, team 500/day. Unique recipient
 
 ### AI helpers
 
-- `generate_image` — text-to-PNG. $0.03 via x402. Params: `prompt`, `aspect?` (`square` / `landscape` / `portrait`).
+- `generate_image` — text-to-PNG. $0.03 via x402, MPP on Tempo, or Bitcoin Lightning. Params: `prompt`, `aspect?` (`square` / `landscape` / `portrait`).
 - `ai_translate` — translate text. Metered per project (requires AI Translation add-on). Params: `project_id`, `text`, `to`, `from?`, `context?`.
 - `ai_moderate` — moderate text. Free. Params: `project_id`, `text`.
 - `ai_usage` — translation quota.
@@ -525,7 +525,7 @@ Tier rate limits: prototype 10/day, hobby 50/day, team 500/day. Unique recipient
 
 Tier is per organization, not per project. `set_tier` applies immediately to every project in the organization. `api_calls` / `storage_bytes` / `emailsPerDay` / `maxFunctions` / `maxScheduledFunctions` / `maxSecrets` are pooled across every non-terminal project in the organization; per-function caps (`functionTimeoutSec`, `functionMemoryMb`, `minScheduleIntervalMinutes`) stay per-instance. Multi-wallet organizations (via `link_wallet_to_organization`) share the same pool. Quota-denial error envelopes include `details.scope: "organization" | "project"` — `"organization"` for the pooled path, `"project"` for the orphan fallback (project whose organization row was purged but cascade has not yet run).
 
-- `set_tier` — subscribe / renew / upgrade. Auto-detects action. x402 payment. Params: `tier` (`prototype` / `hobby` / `team`). Organization-wide effect.
+- `set_tier` — subscribe / renew / upgrade. Auto-detects action. x402 or MPP payment. Params: `tier` (`prototype` / `hobby` / `team`). Organization-wide effect.
 - `tier_status` — current organization tier, lease, and `pool_usage` pooled across every project in the organization; function authoring caps when returned.
 - `get_quote` — pricing (free, no auth).
 - `create_email_organization` — Stripe-only organization by email (no wallet). Params: `email`. Idempotent.
@@ -720,15 +720,16 @@ The SQL endpoint blocks: `CREATE EXTENSION`, `COPY ... PROGRAM`, `ALTER SYSTEM`,
 
 ## Payment Handling
 
-Two payment rails work with the same wallet key:
+Three payment rails, one 402 handshake:
 
 - x402 (default): USDC on Base. Prototype = Base Sepolia testnet (free from faucet). Hobby/team = Base mainnet.
-- MPP: pathUSD on Tempo Moderato (testnet) / Tempo (mainnet). Switch rails via `run402 init mpp` in the user's shell.
+- MPP on Tempo: pathUSD on Tempo Moderato (testnet) / Tempo (mainnet). Same wallet key as x402. Switch rails via `run402 init mpp` in the user's shell.
+- MPP on Bitcoin Lightning: sats, mainnet. `lightning_wallet` (or `init` with `rail: "lightning"`) asks Run402 to mint the agent a budgeted wallet on its own Hub; tiers and image generation are then paid in sats and x402 stays the fallback. `create_lightning_topup` mints an invoice any wallet can pay to top up the organization instead.
 
 The MCP server handles all signing automatically. When a paid tool returns 402, the response includes payment details as informational text — guide the user through funding, then retry the same tool call.
 
 For real-money tiers, two paths to fund:
-- Path A — fund the agent allowance: human sends USDC on Base mainnet to the address from `allowance_export`. Agent pays autonomously via x402 from then on.
+- Path A — fund the agent allowance: human sends USDC on Base mainnet to the address from `allowance_export`. Agent pays autonomously via x402 from then on. Or in sats: `create_lightning_topup` returns a Lightning invoice the human pays from any wallet.
 - Path B — Stripe credits: create or pick the organization, then `create_checkout` with `product: "tier"` returns a Stripe URL the human pays once.
 
 Suggest $10 to your human for two Hobby projects, or $20 for one Team plus renewal buffer.

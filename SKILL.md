@@ -1,6 +1,6 @@
 ---
 name: run402
-description: Provision Postgres + REST API + auth + content-addressed storage + serverless functions + email — paid with x402 USDC on Base. Prototype tier is free on testnet. Use when the user asks to build a webapp, deploy a site, create a database, generate images, or mentions Run402.
+description: Provision Postgres + REST API + auth + content-addressed storage + serverless functions + email — paid with x402 (USDC on Base) or MPP (pathUSD on Tempo, or sats over Bitcoin Lightning). Prototype tier is free on testnet. Use when the user asks to build a webapp, deploy a site, create a database, generate images, or mentions Run402.
 metadata:
   openclaw:
     emoji: "🐘"
@@ -531,7 +531,7 @@ Archive v1 exports active release/apply state, supported Postgres/RLS/REST data,
 
 ### Database
 
-- **`provision_postgres_project`** — provision a new database. Auto-handles x402 payment.
+- **`provision_postgres_project`** — provision a new database. Auto-handles payment (x402, or MPP on Tempo or Lightning).
 - **`run_sql`** — execute SQL (DDL or queries). Service-key-authenticated.
 - **`rest_query`** — query/mutate via PostgREST. Pass `key_type: "anon"` (default) for RLS-applied access, `"service"` to bypass.
 - **`validate_manifest`** / **`apply_expose`** / **`get_expose`** — declarative authorization manifest (see "expose manifest" above).
@@ -613,7 +613,7 @@ Tier rate limits: prototype 10/day, hobby 50/day, team 500/day. Unique recipient
 
 ### AI helpers
 
-- **`generate_image`** — text-to-PNG via x402 ($0.03/image). Aspects: `square`, `landscape`, `portrait`.
+- **`generate_image`** — text-to-PNG, $0.03/image via x402, MPP on Tempo, or Bitcoin Lightning. Aspects: `square`, `landscape`, `portrait`.
 - **`ai_translate`** — translate text. Metered per project (requires AI Translation add-on).
 - **`ai_moderate`** — moderate text. Free.
 - **`ai_usage`** — translation quota.
@@ -645,7 +645,7 @@ Tier rate limits: prototype 10/day, hobby 50/day, team 500/day. Unique recipient
 
 Tier is per **organization**, not per project. One subscribe / renew / upgrade applies immediately to every project in the organization, and `api_calls` / `storage_bytes` quotas are enforced against the pooled sum across every non-terminal project in the organization. Multi-wallet organizations (via `link_wallet_to_organization`) share that same pool. Quota-denial errors carry `details.scope: "organization" | "project"` — `"organization"` for the pooled path, `"project"` for the orphan fallback when a project's organization row has been purged but cascade has not yet run.
 
-- **`set_tier`** — subscribe / renew / upgrade. Auto-detects action. x402 payment. Effect is organization-wide.
+- **`set_tier`** — subscribe / renew / upgrade. Auto-detects action. x402 or MPP payment. Effect is organization-wide.
 - **`tier_status`** — current organization tier, lease, **pool_usage across every project in the organization**, and function caps when returned.
 - **`get_quote`** — pricing (free, no auth).
 - **`create_email_organization`** / **`link_wallet_to_organization`** — email-based organizations; hybrid Stripe + x402. `link_wallet_to_organization` returns a `pool_implications` block (organization tier, current pooled api_calls/storage, tier_limits, `over_limit`) so agents can warn before merging a wallet into a pool that would exceed the cap.
@@ -988,16 +988,17 @@ MCP consumers use the `errors_list` tool: poll it with `new_in: "<release_id>"` 
 
 ## Payment Handling
 
-Two payment rails work with the same wallet key:
+Three payment rails, one 402 handshake:
 
 - **x402** (default): USDC on Base. Prototype uses Base Sepolia testnet (free from faucet); hobby/team use Base mainnet.
-- **MPP**: pathUSD on Tempo Moderato (testnet) / Tempo (mainnet). Same wallet key, different chain.
+- **MPP on Tempo**: pathUSD on Tempo Moderato (testnet) / Tempo (mainnet). Same wallet key as x402, different chain.
+- **MPP on Bitcoin Lightning**: sats, mainnet. **`lightning_wallet`** (or **`init`** with `rail: "lightning"`) asks Run402 to mint the agent a budgeted wallet on its own Hub; tiers and image generation are then paid in sats and x402 stays the fallback. **`create_lightning_topup`** mints an invoice any wallet can pay to top up the organization's balance instead.
 
 The MCP server handles all signing automatically. When a paid tool returns 402, the response includes payment details as **informational text** (not an error) — guide the user through funding, then retry the same tool call. **`provision_postgres_project`**, **`set_tier`**, **`deploy`**, and **`generate_image`** are Run402's paid tools; **`pay_url`** is the bounded buyer for a URL priced by an external x402 seller. Everything else is free with an active tier.
 
 For real-money tiers, two paths to fund:
 
-- **Path A — fund the agent allowance**: human sends USDC on Base mainnet to the address from **`allowance_export`**. Agent pays autonomously via x402.
+- **Path A — fund the agent allowance**: human sends USDC on Base mainnet to the address from **`allowance_export`**. Agent pays autonomously via x402. Or in sats: **`create_lightning_topup`** returns a Lightning invoice the human pays from any wallet.
 - **Path B — Stripe credits**: create or pick the organization, then **`create_checkout`** with `product: "tier"` returns a Stripe URL the human pays once.
 
 Suggest $10 to your human for two Hobby projects, or $20 for one Team plus renewal buffer.

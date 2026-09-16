@@ -1,6 +1,6 @@
 ---
 name: run402
-description: Provision Postgres + REST API + auth + content-addressed storage + serverless functions + email — paid with x402 USDC on Base. Prototype tier is free on testnet.
+description: Provision Postgres + REST API + auth + content-addressed storage + serverless functions + email — paid with x402 (USDC on Base) or MPP (pathUSD on Tempo, or sats over Bitcoin Lightning). Prototype tier is free on testnet.
 metadata:
   openclaw:
     emoji: "🐘"
@@ -1345,18 +1345,19 @@ run402 functions deploy $PROJECT my-fn --file fn.ts
 
 ## Payment Handling
 
-Two payment rails work with the same wallet key:
+Three payment rails, one 402 handshake:
 
 - x402 (default): USDC on Base. Prototype = Base Sepolia testnet (free from faucet). Hobby/Team = Base mainnet.
-- MPP: pathUSD on Tempo Moderato. Prototype = testnet (instant faucet, no rate limit). Hobby/Team = Tempo mainnet.
+- MPP on Tempo: pathUSD on Tempo Moderato. Prototype = testnet (instant faucet, no rate limit). Hobby/Team = Tempo mainnet. Same wallet key as x402.
+- MPP on Bitcoin Lightning: sats, mainnet. `run402 init lightning` asks Run402 to mint the agent a budgeted wallet on its own Hub; tiers and image generation are then paid in sats and x402 stays the fallback. `run402 billing topup <org_id> --sats <n>` mints an invoice any wallet can pay to top up the organization instead.
 
-Switch rails via `run402 init mpp` instead of `run402 init`.
+Switch rails via `run402 init mpp` or `run402 init lightning` instead of `run402 init`.
 
 The CLI handles all signing automatically — never ask the human for a private key or set up payment libraries by hand. When a paid call returns 402, the CLI parses the requirements and signs from the local allowance. If funds are short, you get a structured error and a `renew_url`.
 
 For real-money tiers, two paths to fund:
 
-- Path A — fund the agent allowance: human sends USDC on Base mainnet to the `address` field from `run402 allowance export`. Agent pays Run402 autonomously via x402 from then on.
+- Path A — fund the agent allowance: human sends USDC on Base mainnet to the `address` field from `run402 allowance export`. Agent pays Run402 autonomously via x402 from then on. Or in sats: `run402 billing topup <org_id> --sats <n> --qr invoice.png` mints a Lightning invoice the human pays from any wallet.
 - Path B — Stripe credits: create or pick the organization, then `run402 billing checkout <org_id> --product tier --tier hobby` returns a checkout URL the human pays once.
 
 Suggest $10 to your human for two Hobby projects, or $20 for one Team plus renewal buffer.

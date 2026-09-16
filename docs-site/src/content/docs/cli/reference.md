@@ -23,7 +23,7 @@ Run402 is agent-first because agents are first-class participants, not because p
 Agent-critical facts:
 - Atomic full-stack apply: `run402 deploy apply --manifest app.json` ships DB migrations, site files, function code, secrets, assets, subdomains, i18n, and routes as one transaction; partial failures roll back.
 - No platform token: local allowance (`~/.config/run402/allowance.json`) signs requests. Per-project `anon_key` / `service_key` are runtime data-plane keys (PostgREST/Storage/Functions), permanent, and embeddable/server-side respectively.
-- Agent-paid usage: x402 USDC on Base or MPP pathUSD on Tempo, signed by allowance. Humans may - `run402 allowance <create|status|fund|balance|export>` — `status` reports `wallet.rail` and, on a Lightning profile, a `lightning` block (wallet id, status, custody `run402_hub`, address, budget, starter, `balance_sats`, `budget_remaining_sats`; never the pairing).
+- Agent-paid usage: x402 USDC on Base, MPP pathUSD on Tempo, or sats over Bitcoin Lightning (MPP) from the agent's platform-minted wallet, signed by allowance. Humans may - `run402 allowance <create|status|fund|balance|export>` — `status` reports `wallet.rail` and, on a Lightning profile, a `lightning` block (wallet id, status, custody `run402_hub`, address, budget, starter, `balance_sats`, `budget_remaining_sats`; never the pairing).
  via Stripe credits; CLI behavior is unchanged.
 
 Install + deploy — the only first-deploy path (the front door at <https://run402.com/llms.txt> is the same three lines with a full manifest):
@@ -48,7 +48,7 @@ App build scripts should read the same target/profile store through `resolveRun4
 - Project keys are cached automatically after provision or fork for operations that truly need anon/service keys. They are not project inventory.
 - `<id>` in commands = `project_id` from `run402 projects list`
 - Output: JSON stdout on success; JSON stderr on failure; exit 0 success, non-zero error. See Output Contract.
-- CLI handles x402 signing; do not request private keys or payment libraries.
+- CLI handles x402 / MPP signing; do not request private keys or payment libraries.
 - `run402 up` is the only compound CLI command. It emits natural JSON with `steps[]` (no top-level success `status`). Use `--check` for local-only validation, `--plan` for gateway-reviewed intent, and `--require-plan` for exact reviewed apply.
 - GitHub Actions deploys use OIDC: link once with `run402 ci link github`; generated workflow calls `run402 deploy apply` with `permissions: id-token: write`.
 - Projects, sites, subdomains, forks, functions, secrets, blob storage: free with active tier. Only image generation ($0.03) is per-call
@@ -204,7 +204,7 @@ run402 allowance fund      # Get free testnet USDC (Base Sepolia)
 run402 allowance balance   # Check USDC balance (mainnet + testnet + billing)
 ```
 
-Allowance lives at `~/.config/run402/allowance.json` (0600). CLI signs x402 automatically; never handle private keys/payment libs manually.
+Allowance lives at `~/.config/run402/allowance.json` (0600). CLI signs x402 / MPP payments automatically; never handle private keys/payment libs manually.
 
 For a self-hosted Run402 Core Gateway, skip Cloud allowance setup and configure the target instead:
 

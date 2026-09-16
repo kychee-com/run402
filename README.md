@@ -1,4 +1,3 @@
-| `lightning_wallet` | The Lightning allowance: mint the agent's budgeted wallet on Run402's Hub (pairing stored locally, Lightning becomes the default rail), read it, or revoke it. |
 <p align="center">
   <img src=".github/logo.svg" width="120" alt="run402 logo">
 </p>
@@ -23,7 +22,7 @@
 
 This is the backend Kychee's open products run on. We needed a layer an agent can drive end to end, with room for whatever each app turns out to need, and nothing off the shelf had all of it, so we built it and opened it the same way we open the apps: this repo holds the agent surfaces (MIT), [`run402-core`](https://github.com/kychee-com/run402-core) holds the full backend (Apache-2.0), and [kysigned](https://github.com/kychee-com/kysigned) is the first product running on it.
 
-One call to [run402](https://run402.com) gives an agent a full Postgres database, REST API, user auth, content-addressed file storage, static site hosting, serverless functions, and image generation, paid with x402 USDC on Base (or Stripe credits). The prototype tier is free on testnet.
+One call to [run402](https://run402.com) gives an agent a full Postgres database, REST API, user auth, content-addressed file storage, static site hosting, serverless functions, and image generation, paid with x402 (USDC on Base) or MPP (pathUSD on Tempo, or sats over Bitcoin Lightning) — or Stripe credits. The prototype tier is free on testnet.
 
 **Run402 is agent-first because agents are first-class participants, not because people disappear.** A person or agent acts through its own Run402 principal and authenticator, and its actions remain attributable. Identity answers who acted; memberships, roles, grants, delegates, freshness, and spend policy determine what that principal may do.
 
@@ -33,7 +32,7 @@ This monorepo ships every surface an agent can pick up:
 
 | Surface | Use when… |
 |---------|-----------|
-| [`@run402/sdk`](./sdk/) | Calling run402 from TypeScript: typed kernel, isomorphic (Node 22 / Deno / Bun / V8 isolates) with a Node entry that auto-loads the local keystore + allowance + x402 fetch |
+| [`@run402/sdk`](./sdk/) | Calling run402 from TypeScript: typed kernel, isomorphic (Node 22 / Deno / Bun / V8 isolates) with a Node entry that auto-loads the local keystore + allowance + x402 / Lightning fetch |
 | [`run402` CLI](./cli/) | Terminal, scripts, CI, agent-controlled shells: JSON in, JSON out, exit code on failure |
 | [`run402-mcp`](./src/) | Claude Desktop, Cursor, Cline, Claude Code: core run402 operations as MCP tools |
 | [OpenClaw skill](./openclaw/) | OpenClaw agents (no MCP server required) |
@@ -615,9 +614,9 @@ RUN402_MCP_PROFILE=buyer npx -y run402-mcp
 | profile | tools | approx. tokens |
 |---|---:|---:|
 | *(unset — default)* | 198 | ~43,200 |
-| `buyer` | **7** | **~740** |
+| `buyer` | **8** | **~740** |
 
-The seven: `generate_image` · `init` · `check_balance` · `allowance_status` · `allowance_export` · `request_faucet` · `redeem_voucher` — enough to bootstrap a wallet, fund it (from the faucet or a promo code), check it, and buy. **Local, so it can actually pay:** an x402 payment needs a signing key, so a wallet-less remote server cannot make one.
+The eight: `generate_image` · `init` · `check_balance` · `allowance_status` · `lightning_wallet` · `allowance_export` · `request_faucet` · `redeem_voucher` — enough to bootstrap a wallet, fund it (from the faucet or a promo code), check it, and buy. **Local, so it can actually pay:** an x402 payment needs a signing key, so a wallet-less remote server cannot make one.
 
 Default is unchanged when the variable is unset. An unknown profile name **exits 1** with the known-profile list rather than silently serving the full surface or nothing.
 
@@ -686,7 +685,7 @@ The full MCP surface: every tool is a thin shim over an SDK call.
 
 | Tool | Description |
 |------|-------------|
-| `provision_postgres_project` | Provision a new database. Auto-handles x402 payment. |
+| `provision_postgres_project` | Provision a new database. Auto-handles payment (x402, or MPP on Tempo or Lightning). |
 | `run_sql` | Execute SQL (DDL or queries). Returns a markdown table. |
 | `rest_query` | Query/mutate via PostgREST. |
 | `apply_expose` | Apply the declarative authorization manifest (tables, views, RPCs). Convergent: drops items removed between applies. |
@@ -776,7 +775,7 @@ The full MCP surface: every tool is a thin shim over an SDK call.
 
 | Tool | Description |
 |------|-------------|
-| `generate_image` | Text-to-PNG via x402 ($0.03 / image). |
+| `generate_image` | Text-to-PNG, $0.03 / image via x402, MPP on Tempo, or Bitcoin Lightning. |
 | `ai_translate` | Translate text. Metered per project. |
 | `ai_moderate` | Moderate text (free). |
 | `ai_usage` | Translation quota (used / included / remaining). |
@@ -801,7 +800,7 @@ The full MCP surface: every tool is a thin shim over an SDK call.
 
 | Tool | Description |
 |------|-------------|
-| `set_tier` | Subscribe / renew / upgrade a tier (auto-detects action). x402 payment. |
+| `set_tier` | Subscribe / renew / upgrade a tier (auto-detects action). x402 or MPP payment. |
 | `tier_status` | Current tier, lease expiry, usage, and function authoring caps when returned. |
 | `get_quote` | Tier pricing (free, no auth). |
 | `create_email_organization` / `link_wallet_to_organization` | Email-based organizations; hybrid Stripe + x402. |
@@ -831,6 +830,7 @@ The full MCP surface: every tool is a thin shim over an SDK call.
 | `init` | One-shot setup: allowance + faucet + tier check + project list. |
 | `status` | Full organization snapshot (allowance, balance, tier, projects). |
 | `allowance_status` / `allowance_create` / `allowance_export` | Local allowance management. |
+| `lightning_wallet` | The Lightning allowance: mint the agent's budgeted wallet on Run402's Hub (pairing stored locally, Lightning becomes the default rail), read it, or revoke it. |
 | `request_faucet` | Request testnet USDC. |
 | `redeem_voucher` | Redeem a promo code for run402 prepaid credit. |
 | `check_balance` | USDC balance for an allowance address. |
@@ -918,7 +918,7 @@ Local state lives at:
 
 - profile `state.json`: active project pointer and profile state
 - profile `credentials/project-keys.v1.json` (`0600`): local anon/service key cache for explicit credential-required operations
-- `~/.config/run402/allowance.json` (`0600`): wallet for x402 signing
+- `~/.config/run402/allowance.json` (`0600`): wallet for x402 / MPP signing
 
 Legacy `projects.json` files are one-way migration input only. `anon_key` and `service_key` have no expiry; lease enforcement happens server-side. Inspect cache state with `run402 credentials project-keys status --project <id>` and export secrets only with `run402 credentials project-keys export --project <id> --reveal`.
 

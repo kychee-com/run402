@@ -1,6 +1,6 @@
 # run402 CLI
 
-Command-line interface for [Run402](https://run402.com) — provision Postgres databases, deploy static sites, run Node 22 serverless functions, host content-addressed CDN assets, send email, sign on-chain. Paid autonomously with x402 USDC on Base. **Prototype tier is free on testnet.**
+Command-line interface for [Run402](https://run402.com) — provision Postgres databases, deploy static sites, run Node 22 serverless functions, host content-addressed CDN assets, send email, sign on-chain. Paid autonomously with x402 (USDC on Base) or MPP (pathUSD on Tempo, or sats over Bitcoin Lightning). **Prototype tier is free on testnet.**
 
 The CLI lets an agent act as its own first-class Run402 principal rather than borrowing a human account. Identity records who invoked an action; organization roles, grants, delegates, freshness, and spend policy determine what that principal may do. People remain first-class owners and collaborators without becoming routine CLI operators.
 
@@ -293,7 +293,7 @@ For Run402 Core, use the same commands after `run402 init --api-base=http://my-c
 run402 image generate "a serif logo" --aspect square --output logo.png
 ```
 
-$0.03 per image via x402.
+$0.03 per image via x402, MPP on Tempo, or Bitcoin Lightning.
 
 ### On-chain (KMS signers)
 
@@ -340,7 +340,7 @@ Hold several wallets on one machine and select between them:
 - Select per-command with `--wallet <name>` (alias `--profile`), the `RUN402_WALLET` env var, or a per-directory `.run402.json` (commit-safe — holds only a name) resolved by walking up the tree. Precedence: flag > env > binding > `wallets use` default > `default`. A conflicting env + binding is a hard error.
 - The active wallet name shows in `run402 status` and `run402 wallets current`.
 
-The CLI handles all x402 payment signing automatically — never ask the human for a private key or set up payment libraries by hand.
+The CLI handles all x402 / MPP payment signing automatically — never ask the human for a private key or set up payment libraries by hand.
 
 ### Operator (human / email session)
 
