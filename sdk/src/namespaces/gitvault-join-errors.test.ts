@@ -5,13 +5,16 @@
  * revoked -> _REVOKED; raw key absent from logs/traces/error reports").
  *
  * Mirrors `gitvault-resume-errors.test.ts` byte-for-byte, for the invite
- * kind: `join()`'s claim POST is the FIRST network call it makes — before
- * any keystore write, clone, or filesystem touch — so a gateway refusal
- * there is reachable with no real git repository at all.
+ * kind: `join()`'s claim POST is the FIRST network call it makes, after creating
+ * the claimant identity in an isolated keystore. A gateway refusal is
+ * reachable with no real git repository at all.
  *
  * Run: node --test --import tsx sdk/src/namespaces/gitvault-join-errors.test.ts
  */
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import assert from "node:assert/strict";
 
 import { Run402 } from "../index.js";
@@ -63,6 +66,9 @@ function makeSdk(fetchImpl: typeof globalThis.fetch): Run402 {
 // round-trip is covered by gitvault-handoff.test.ts; this file only needs
 // SOMETHING parseInviteKey accepts so join() reaches the network call whose
 // response is under test.
+const keystoreRoot = mkdtempSync(join(tmpdir(), "run402-invite-errors-"));
+after(() => rmSync(keystoreRoot, { recursive: true, force: true }));
+
 const FABRICATED_KEY = "kgi1_" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".slice(0, 64);
 
 describe("r.gitvault.join — gateway claim refusals propagate untouched", () => {
@@ -81,7 +87,7 @@ describe("r.gitvault.join — gateway claim refusals propagate untouched", () =>
       const r = makeSdk(fetch);
 
       await assert.rejects(
-        r.gitvault.join({ key: FABRICATED_KEY }),
+        r.gitvault.join({ keystore_root: keystoreRoot, key: FABRICATED_KEY }),
         (err: unknown) => {
           // The status-to-class mapping (403 -> Unauthorized, 409/410 -> ApiError,
           // etc.) is `kernel.ts`'s own concern, not `join()`'s — what matters
@@ -110,7 +116,7 @@ describe("r.gitvault.join — the raw key never appears in a thrown error (desig
 
     let caught: unknown;
     try {
-      await r.gitvault.join({ key: FABRICATED_KEY });
+      await r.gitvault.join({ keystore_root: keystoreRoot, key: FABRICATED_KEY });
       assert.fail("join() must reject");
     } catch (err) {
       caught = err;
@@ -156,7 +162,7 @@ describe("r.gitvault.join — the raw key never appears in a thrown error (desig
 
     let caught: unknown;
     try {
-      await r.gitvault.join({ key: malformed });
+      await r.gitvault.join({ keystore_root: keystoreRoot, key: malformed });
       assert.fail("join() must reject a malformed key before any network call");
     } catch (err) {
       caught = err;
@@ -172,7 +178,7 @@ describe("r.gitvault.join — the raw key never appears in a thrown error (desig
     const handoffLookingKey = "kgh1_" + "B".repeat(64);
 
     await assert.rejects(
-      r.gitvault.join({ key: handoffLookingKey }),
+      r.gitvault.join({ keystore_root: keystoreRoot, key: handoffLookingKey }),
       (err: unknown) => {
         const e = err as { code?: string; details?: { kind?: string; verb?: string } };
         return e.code === "INVITE_KEY_WRONG_KIND" && e.details?.kind === "handoff" && e.details?.verb === "resume";
