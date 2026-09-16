@@ -158,7 +158,7 @@ export async function run(args = []) {
       held_usd_micros: hasBilling ? (billing.held_usd_micros ?? 0) : null,
     },
     tier: tier && tier.tier
-      ? { name: tier.tier, status: tier.status, expires: tier.lease_expires_at }
+      ? { name: tier.tier, status: tier.status, expires: tier.lease_perpetual === true ? null : tier.lease_expires_at }
       : null,
     // v1.57: lifecycle state and the per-organization escape hatch moved to the
     // organization. Surface them at the top level so agents don't have to

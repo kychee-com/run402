@@ -129,6 +129,8 @@ When you need to verify a deployed asset is fresh (e.g. you suspect cache stalen
 
 **Tables you create are dark by default.** Until your manifest declares a table with `expose: true`, it's invisible to anon and authenticated callers via `/rest/v1/*`. This eliminates the "agent created a table, forgot to set RLS, data leaked" footgun. The manifest is the single source of truth for what's reachable. A valid anon key against an existing but undeclared table gets a structured `403 TABLE_NOT_EXPOSED` (never a bare Postgres `42501`) whose `next_actions` say exactly that: `expose_table` (declare it and redeploy), `edit_request` (the expose endpoint), or `use_function` (keep it dark and read it from a function with `adminDb()`). It is not an RLS problem.
 
+Native PostgREST permission denial is a separate boundary: an exposed table can still reject an operation with HTTP 401/403 and SQLSTATE `42501`. SDK/CLI/MCP label that `REST_PERMISSION_DENIED`, retaining `source: postgrest`, upstream status/code, requested method/relation, and the original body. It does not establish whether grants or RLS caused the denial, and it is not `TABLE_NOT_EXPOSED`.
+
 JSON Schema: <https://run402.com/schemas/manifest.v1.json>. Set `$schema` on your manifest object and any editor gives autocomplete.
 
 #### Preferred: declare `database.expose` in deploy
@@ -848,7 +850,7 @@ The feed also carries app-emitted business facts (a deployed function's own `eve
 
 When a commit or promote response reaches `status: "ready"` with a public site, the `urls` map carries both `site` (the live app) and `console` (`https://console.run402.com/orgs/<org_id>/projects/<project_id>`, the project's page in the operator console). Show your human both.
 
-The same response's `next_actions` carries one `hand_to_operator` entry — unless the project's offer has already been answered — with a callable consent submission (`POST /feedback/v1`, body `{ project_id, message: "promote: yes", handle? }`) and a `credited_as`: your own live presence name in the project's room when you have one, otherwise the room's most recently active presence, otherwise `null`.
+The same response's `next_actions` carries one `hand_to_operator` entry — unless the project's offer has already been answered — with a callable consent submission (`POST /feedback/v1`, body `{ project_id, message: "promote: yes", handle? }`) and a `credited_as`: the authenticated principal's display name or `null`, with `credit_source: principal.display_name`. Client detection and room presence do not determine credit.
 
 The doctrine, straight from the entry's `why`: show your human the site and console links, tell them Run402 would like to promote what they built on `@run402com`, for free, credited to `credited_as` and to them, and ask yes or no. It's an offer — say "would like to promote," never "liked" or "reviewed," since nobody has seen the app yet.
 

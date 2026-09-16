@@ -2333,7 +2333,7 @@ describe("CLI JSON-only output contract (v3.x cleanup)", () => {
     let check = parsed.checks.find((entry) => entry.name === "cli_update");
     assert.equal(check.status, "warning");
     assert.equal(check.value.current, CURRENT_CLI_VERSION);
-    assert.equal(check.value.latest, STALE_LATEST_VERSION);
+    assert.equal(check.value.latest_known, STALE_LATEST_VERSION);
     assert.equal(check.value.cache.refresh_attempted, false, "a cache within the 24h TTL must not trigger a live check on its own");
     assert.equal(check.value.next_actions[0].type, "upgrade_client");
     assert.ok(Array.isArray(check.value.next_actions[0].argv));
@@ -2362,7 +2362,7 @@ describe("CLI JSON-only output contract (v3.x cleanup)", () => {
     parsed = JSON.parse(stdout.join("\n").trim());
     check = parsed.checks.find((entry) => entry.name === "cli_update");
     assert.equal(check.status, "ok");
-    assert.equal(check.value.latest, CURRENT_CLI_VERSION);
+    assert.equal(check.value.latest_known, CURRENT_CLI_VERSION);
     assert.equal(check.value.cache.refresh_attempted, true);
     assert.ok(calls.some((call) => call.path === "/npm/run402/latest"), "an EXPIRED cache must trigger a live check without needing --refresh");
 
@@ -2381,7 +2381,7 @@ describe("CLI JSON-only output contract (v3.x cleanup)", () => {
     parsed = JSON.parse(stdout.join("\n").trim());
     check = parsed.checks.find((entry) => entry.name === "cli_update");
     assert.equal(check.status, "ok");
-    assert.equal(check.value.latest, CURRENT_CLI_VERSION);
+    assert.equal(check.value.latest_known, CURRENT_CLI_VERSION);
     assert.ok(calls.some((call) => call.path === "/npm/run402/latest"), "--refresh must check live even though the cache is already fresh");
   });
 });

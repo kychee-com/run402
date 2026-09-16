@@ -676,3 +676,7 @@ export {
   handoffMembershipFromWire,
 } from "./namespaces/gitvault.js";
 export type * from "./namespaces/gitvault.js";
+
+export { normalizeEdgeEvidence, mergeEdgeVerification } from "./namespaces/edge-evidence.js";
+
+export { RestPermissionDenied } from "./rest-diagnostics.js";

@@ -397,6 +397,13 @@ export function mapSdkError(err: unknown, context: string): ToolResult {
     return projectNotFound(err.projectId);
   }
   if (err instanceof Run402Error) {
+    if (err.code === "REST_PERMISSION_DENIED") {
+      return { isError: true, content: [{ type: "text", text: [
+        `Error ${context}: ${err.message} (HTTP ${err.status})`,
+        ...formatCanonicalErrorContext({ code: err.code, details: err.details, retryable: err.retryable }, { includeDetails: true }),
+        "Upstream body:", JSON.stringify(err.body),
+      ].join("\n") }] };
+    }
     if (err.status !== null) {
       return formatApiError({ status: err.status, body: err.body }, context);
     }

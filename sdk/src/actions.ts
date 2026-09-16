@@ -100,6 +100,8 @@ export type Run402UpDetectedClient = "claude-code" | "codex" | "cursor" | "grok"
 
 /** How `up` resolved the principal's display name (first-deploy-agent-dx). */
 export interface Run402UpIdentity {
+  principal?: { id: string | null; type: string | null; display_name: string | null };
+  client?: { detected: Run402UpDetectedClient | null; declared_name: string | null };
   display_name: string | null;
   /** `existing`: already set; `explicit`: set now from `identityName` or
    *  `RUN402_AGENT_NAME`; `detected`: set now from a specifically detected
@@ -120,7 +122,7 @@ export interface Run402UpIdentity {
    *  `nothing_detected` (no client marker and no `RUN402_CLIENT`). */
   detection?: {
     applied: boolean;
-    reason: "applied" | "name_already_set" | "explicit_name_wins" | "nothing_detected";
+    reason: "applied" | "name_already_set" | "explicit_name_wins" | "nothing_detected" | "principal_identity_preserved";
   };
   /** The project room presence `up` registered under that name, when it could. */
   presence?: { presence_id: string; name: string } | null;

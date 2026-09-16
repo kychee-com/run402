@@ -157,3 +157,16 @@ describe("rest_query tool", () => {
     assert.ok(result.content[0]!.text.includes("not found in key store"));
   });
 });
+
+it("retains native denial provenance in MCP without suggesting reauthentication", async () => {
+  saveProject("proj-denied", { anon_key: "ak", service_key: "sk" }, storePath);
+  globalThis.fetch = (async () => new Response(JSON.stringify({ code: "42501", message: "permission denied for table lights" }), { status: 401, headers: { "content-type": "application/json" } })) as typeof fetch;
+  const result = await handleRestQuery({ project_id: "proj-denied", table: "lights", method: "POST", body: {} });
+  assert.equal(result.isError, true);
+  const text = result.content.map(c => c.text).join("\n");
+  assert.match(text, /REST_PERMISSION_DENIED/);
+  assert.match(text, /postgrest/);
+  assert.match(text, /42501/);
+  assert.match(text, /HTTP 401/);
+  assert.doesNotMatch(text, /Authenticate again|TABLE_NOT_EXPOSED/);
+});

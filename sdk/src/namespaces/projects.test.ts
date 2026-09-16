@@ -765,6 +765,19 @@ describe("projects admin helpers (SDK/CLI parity)", () => {
     assert.equal(calls[0]!.body, "SELECT 1");
   });
 
+  it("normalizes native permission denial without changing body/status or inferring RLS", async () => {
+    const body = { code: "42501", message: "permission denied for table lights" };
+    const { fetch } = mockFetch(() => jsonResponse(body, 401));
+    const sdk = makeSdk(makeCreds(), fetch);
+    await assert.rejects(() => sdk.projects.rest("prj_known", "lights", { method: "POST", body: {} }), (error: any) => {
+      assert.equal(error.code, "REST_PERMISSION_DENIED");
+      assert.equal(error.status, 401);
+      assert.deepEqual(error.body, body);
+      assert.deepEqual(error.details, { source: "postgrest", upstream_status: 401, upstream_code: "42501", method: "POST", relation: "lights" });
+      return true;
+    });
+  });
+
   it("queries project REST tables with the anon key (GH-181)", async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse([{ id: 1 }]));
     const sdk = makeSdk(makeCreds(), fetch);

@@ -11,6 +11,7 @@
  *     v1.56 `projects.pin` removed in v1.57)
  */
 
+import { restDiagnostic } from "../rest-diagnostics.js";
 import type { Client } from "../kernel.js";
 import type { ProjectKeys } from "../credentials.js";
 import { LocalError } from "../errors.js";
@@ -365,13 +366,13 @@ export class Projects {
       ? `/admin/v1/rest/${encodeURIComponent(table)}${query}`
       : `/rest/v1/${encodeURIComponent(table)}${query}`;
 
-    return this.client.requestWithResponse<T>(path, {
-      method,
-      headers,
-      body: opts.body,
-      context: "querying REST",
-      withAuth: false,
-    });
+    try {
+      return await this.client.requestWithResponse<T>(path, {
+        method, headers, body: opts.body, context: "querying REST", withAuth: false,
+      });
+    } catch (error) {
+      throw restDiagnostic(error, method, table);
+    }
   }
 
   /** Apply the project's declarative expose manifest. */

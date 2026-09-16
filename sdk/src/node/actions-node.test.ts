@@ -1806,14 +1806,14 @@ function fakeSdk(opts: {
 // principal-display-name (first-deploy-agent-dx): the gateway never seeds a
 // display_name from a wallet subject, so `up` names a principal exactly when
 // whoami reports null and keeps a chosen name untouched.
-function identityAwareSdk(calls: string[], whoami: { display_name: string | null; subject: string | null }) {
+function identityAwareSdk(calls: string[], whoami: { display_name: string | null; subject: string | null; type?: string }) {
   const sdk = fakeSdk({ calls, allowanceConfigured: true, tierActive: true, activeProject: null }) as unknown as Record<string, unknown>;
   const set: string[] = [];
   sdk.orgs = {
     async whoami() {
       calls.push("orgs.whoami");
       return {
-        principal: { id: "prn_1", type: "agent", display_name: whoami.display_name },
+        principal: { id: "prn_1", type: whoami.type ?? "agent", display_name: whoami.display_name },
         active_authenticator: whoami.subject ? { kind: "siwx_eoa", public_subject: whoami.subject } : null,
         memberships: [],
       };
@@ -2187,3 +2187,45 @@ test("preflight reports missing SQL and site files together", async () => {
     assert.deepEqual(calls, []);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+for (const type of ["human", "unknown"]) {
+  for (const display_name of ["agent", null]) {
+    test(`up preserves ${type} principal ${display_name ?? "without name"} despite client/name input`, async () => {
+      const dir = identityWorkspace("run402-up-preserve-human-");
+      const calls: string[] = [];
+      const { sdk, set } = identityAwareSdk(calls, { display_name, subject: WALLET, type });
+      try {
+        const result = await withClientEnv({ RUN402_CLIENT: "grok", RUN402_AGENT_NAME: "Grok" }, async () =>
+          new NodeActions(sdk, { targetKind: "cloud", cwd: dir }).up({}, { approval: "yes" }));
+        assert.deepEqual(set, []);
+        assert.equal(result.result?.identity?.display_name, display_name);
+        assert.equal(result.result?.identity?.principal?.type, type);
+        assert.equal(result.result?.identity?.client?.detected, "grok");
+        assert.equal(result.result?.identity?.detection?.reason, "principal_identity_preserved");
+      } finally { rmSync(dir, { recursive: true, force: true }); }
+    });
+  }
+}
+
+for (const { status, expected } of [{ status: 400, expected: 400 }, { status: 429, expected: 429 }, { status: 400, expected: 200 }, { status: 429, expected: 200 }]) {
+  test(`function ${status} is compared to expected ${expected} despite CloudFront error header`, async (t) => {
+    const dir = identityWorkspace("run402-up-function-status-");
+    writeFileSync(join(dir, "run402.deploy.json"), JSON.stringify({ project_id: "prj_ready",
+      site: { replace: { "index.html": { data: "ok" } } },
+      verify: { http: [{ id: "function", url: "https://example.test/api/leave-light", expect: { status: expected } }] },
+    }));
+    const calls: string[] = [];
+    const sdk = fakeSdk({ calls, allowanceConfigured: true, tierActive: true, activeProject: null });
+    const response = new Response('{"error":"application_error"}', { status, headers: { "x-cache": "Error from cloudfront", "retry-after": "60" } });
+    const fetchMock = mock.method(globalThis, "fetch", async () => response.clone());
+    t.after(() => fetchMock.mock.restore());
+    try {
+      const result = await new NodeActions(sdk, { targetKind: "cloud", cwd: dir }).up({ verifyOnly: true });
+      assert.equal(result.result?.verify?.status, status === expected ? "verified" : "failed");
+      assert.equal(result.result?.verification?.http[0]?.actual_status, status);
+      assert.equal(response.headers.get("retry-after"), "60");
+      assert.equal(await response.text(), '{"error":"application_error"}');
+      assert.ok(!calls.some(call => call.startsWith("project.apply:")));
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+}
