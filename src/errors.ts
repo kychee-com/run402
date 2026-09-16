@@ -227,6 +227,9 @@ function addCodeGuidance(
     case "PAYMENT_INTENT_PENDING":
       lines.push(`\nNext step: Repeat the identical request with the same payer and Idempotency-Key after Retry-After. Do not authorize a fresh key while settlement is unresolved.`);
       return true;
+    case "PAYMENT_RECOVERY_PENDING":
+      lines.push(`\nNext step: The payment settled and the gateway is still fulfilling it. Repeat the identical request with the same Idempotency-Key after Retry-After; it lands on the same intent and never pays again. After three such cycles the charge is credited to the organization instead (PAYMENT_CREDITED).`);
+      return true;
     case "PAYMENT_DESTINATION_DRAINING":
       lines.push(`\nNext step: Wait for the destination mutation to finish, then repeat the identical request. Do not mint a replacement payment identity.`);
       return true;

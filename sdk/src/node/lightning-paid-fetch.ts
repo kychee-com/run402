@@ -9,6 +9,14 @@
  * The all-in debit cap (invoice plus routing fee, in msat and USD) is checked
  * against the wallet's remaining budget before paying. The pairing secret,
  * the preimage, and the invoice never reach a log or an error.
+ *
+ * Once the invoice is paid the money has moved, so the gateway's own "come
+ * back for the fulfilment" answers on the paid retry (`PAYMENT_RECOVERY_PENDING`,
+ * `PAYMENT_INTENT_PENDING`, `PAYMENT_STATE_UNAVAILABLE`, `PAYMENT_EVIDENCE_UNAVAILABLE`,
+ * each with a `retry` next action and a `Retry-After`) are honoured here: the
+ * byte-identical paid retry is repeated after the wait, a bounded number of
+ * times. It lands on the same payment intent and is fulfilled without a second
+ * payment; a settled intent never receives a fresh challenge.
  */
 import { createHash } from "node:crypto";
 
@@ -23,6 +31,65 @@ const ACCEPT_PAYMENT = `lightning/charge;profile=${RUN402_MPP_LIGHTNING_PROFILE}
 const FEE_HEADROOM_SATS = 10;
 /** A single Run402 charge above this is refused before paying (the spec's conservative USD ceiling in sats). */
 export const LIGHTNING_MAX_DEBIT_SATS = 250_000;
+
+/**
+ * The gateway's post-settlement "not yet" answers. Each names the retained
+ * intent, carries a `retry` next action and a `Retry-After`, and is answered
+ * by repeating the identical paid request — the same Idempotency-Key and the
+ * same credential — never by paying again. Terminal answers (`PAYMENT_CREDITED`,
+ * `PAYMENT_MANUAL_REVIEW`) carry a different action and are returned as-is.
+ */
+const POST_SETTLEMENT_RETRY_CODES = new Set([
+  "PAYMENT_RECOVERY_PENDING",
+  "PAYMENT_INTENT_PENDING",
+  "PAYMENT_STATE_UNAVAILABLE",
+  "PAYMENT_EVIDENCE_UNAVAILABLE",
+]);
+/** Bounded: the gateway credits a charge it cannot fulfil after three recovery cycles, well inside this. */
+export const POST_SETTLEMENT_RETRY_LIMIT = 6;
+const POST_SETTLEMENT_RETRY_MIN_MS = 1_000;
+const POST_SETTLEMENT_RETRY_MAX_MS = 10_000;
+const POST_SETTLEMENT_RETRY_DEFAULT_MS = 2_000;
+
+export interface PostSettlementRetry {
+  code: string;
+  delayMs: number;
+}
+
+/**
+ * The paid retry's answer, when it is one of the gateway's retryable
+ * post-settlement states from the origin that was asked: the code and how
+ * long to wait before repeating the identical request. Null for everything
+ * else, including a terminal 409 and any answer from another origin.
+ */
+export async function readPostSettlementRetry(response: Response, url: string): Promise<PostSettlementRetry | null> {
+  if ((response.status !== 409 && response.status !== 503) || response.redirected) return null;
+  if (response.url) {
+    try {
+      if (new URL(response.url).origin !== new URL(url).origin) return null;
+    } catch {
+      return null;
+    }
+  }
+  if (!response.headers.get("content-type")?.includes("application/json")) return null;
+  let body: unknown;
+  try {
+    body = await response.clone().json();
+  } catch {
+    return null;
+  }
+  if (!body || typeof body !== "object" || Array.isArray(body)) return null;
+  const { code, next_actions: nextActions } = body as { code?: unknown; next_actions?: unknown };
+  if (typeof code !== "string" || !POST_SETTLEMENT_RETRY_CODES.has(code)) return null;
+  const action = Array.isArray(nextActions) ? nextActions[0] as { type?: unknown } | undefined : undefined;
+  if (!action || typeof action !== "object" || action.type !== "retry") return null;
+  const raw = response.headers.get("retry-after");
+  const seconds = raw && /^\d+$/.test(raw) ? Number(raw) : null;
+  const delayMs = seconds === null
+    ? POST_SETTLEMENT_RETRY_DEFAULT_MS
+    : Math.min(POST_SETTLEMENT_RETRY_MAX_MS, Math.max(POST_SETTLEMENT_RETRY_MIN_MS, seconds * 1_000));
+  return { code, delayMs };
+}
 
 export interface LightningWalletLike {
   getBudgetSats(): Promise<{ usedSats: number; totalSats: number | null } | null>;
@@ -40,6 +107,8 @@ export interface LightningFetchOptions {
   stack?: () => Promise<LightningStack>;
   /** Called with the payment hash of each paid challenge (never the preimage). */
   onPaid?: (paymentHash: string) => void;
+  /** The wait between post-settlement retries; tests pass an instant one. */
+  sleep?: (ms: number) => Promise<void>;
 }
 
 export class LightningPaymentError extends Error {
@@ -130,6 +199,7 @@ export function createLightningFetch(options: LightningFetchOptions): FetchFn {
   const baseFetch: FetchFn = options.baseFetch ?? ((input, init) => globalThis.fetch(input, init));
   const wallet: LightningWalletLike = options.wallet ?? new NwcWallet(options.pairingUri);
   const loadStack = options.stack ?? loadLightningStack;
+  const sleep = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   let fallbackFetch: FetchFn | null | undefined;
 
   const fallback = async (): Promise<FetchFn | null> => {
@@ -198,6 +268,18 @@ export function createLightningFetch(options: LightningFetchOptions): FetchFn {
     const retryHeaders = new Headers(firstInit.headers);
     retryHeaders.set("authorization", credential);
     // Byte-identical retry: same body, same Idempotency-Key, plus the credential.
-    return baseFetch(input, { ...firstInit, headers: retryHeaders });
+    const paidInit: RequestInit = { ...firstInit, headers: retryHeaders };
+    let response = await baseFetch(input, paidInit);
+    // The money has moved. While the gateway says the settled charge's
+    // fulfilment is still pending, repeat the identical paid request after
+    // its Retry-After: the same intent, no second payment, a bounded wait.
+    for (let waits = 0; waits < POST_SETTLEMENT_RETRY_LIMIT; waits += 1) {
+      const pending = await readPostSettlementRetry(response, requestUrl(input));
+      if (!pending) break;
+      await response.body?.cancel().catch(() => undefined);
+      await sleep(pending.delayMs);
+      response = await baseFetch(input, paidInit);
+    }
+    return response;
   };
 }

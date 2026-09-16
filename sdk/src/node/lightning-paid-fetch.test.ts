@@ -12,9 +12,11 @@ import { describe, it } from "node:test";
 
 import {
   LightningPaymentError,
+  POST_SETTLEMENT_RETRY_LIMIT,
   RUN402_MPP_LIGHTNING_PROFILE,
   createLightningFetch,
   isLightningChargedRequest,
+  readPostSettlementRetry,
   readLightningChallenge,
   type LightningWalletLike,
 } from "./lightning-paid-fetch.js";
@@ -146,6 +148,83 @@ describe("createLightningFetch", () => {
     assert.equal(response.status, 200);
     assert.equal(payCalls, 1);
     assert.match(s.calls[1]!.headers.get("authorization") ?? "", /^Payment /);
+  });
+
+  const pending409 = (code: string, retryAfter?: string) => new Response(
+    JSON.stringify({ error: "pending", code, funds_moved: false, intent_id: "pi_1", next_actions: [{ type: "retry", why: "Retry the identical operation after recovery." }] }),
+    { status: 409, headers: { "content-type": "application/json", ...(retryAfter ? { "retry-after": retryAfter } : {}) } },
+  );
+
+  it("repeats the identical paid retry while the settled charge's fulfilment is pending, and never pays twice", async () => {
+    const s = seller([
+      () => new Response("{}", { status: 402, headers: { "www-authenticate": challengeHeader() } }),
+      () => pending409("PAYMENT_RECOVERY_PENDING", "2"),
+      () => pending409("PAYMENT_INTENT_PENDING"),
+      () => new Response(JSON.stringify({ image: "AAA=" }), { status: 200, headers: { "content-type": "application/json" } }),
+    ]);
+    const w = wallet();
+    const sleeps: number[] = [];
+    const fetch = createLightningFetch({ pairingUri: URI, baseFetch: s.fetch, wallet: w, stack: async () => stack, fallback: async () => null, sleep: async (ms) => { sleeps.push(ms); } });
+    const response = await fetch("https://api.example/generate-image/v1", { method: "POST", body: "{\"prompt\":\"a fox\"}", headers: { "content-type": "application/json" } });
+    assert.equal(response.status, 200);
+    assert.equal(s.calls.length, 4);
+    assert.deepEqual(w.paid, ["lnbc1fixture"], "one payment, however many fulfilment waits");
+    assert.deepEqual(sleeps, [2_000, 2_000], "Retry-After when given, the default otherwise");
+    for (const call of s.calls.slice(2)) {
+      assert.equal(call.headers.get("authorization"), s.calls[1]!.headers.get("authorization"), "the same credential");
+      assert.equal(call.headers.get("idempotency-key"), s.calls[1]!.headers.get("idempotency-key"), "the same key");
+      assert.equal(call.body, s.calls[1]!.body, "the same bytes");
+    }
+  });
+
+  it("gives up after the bounded number of waits and returns the gateway's last answer", async () => {
+    const s = seller([
+      () => new Response("{}", { status: 402, headers: { "www-authenticate": challengeHeader() } }),
+      () => pending409("PAYMENT_RECOVERY_PENDING", "30"),
+    ]);
+    const w = wallet();
+    const sleeps: number[] = [];
+    const fetch = createLightningFetch({ pairingUri: URI, baseFetch: s.fetch, wallet: w, stack: async () => stack, fallback: async () => null, sleep: async (ms) => { sleeps.push(ms); } });
+    const response = await fetch("https://api.example/generate-image/v1", { method: "POST", body: "{}" });
+    assert.equal(response.status, 409);
+    assert.equal(((await response.json()) as { code: string }).code, "PAYMENT_RECOVERY_PENDING");
+    assert.equal(s.calls.length, 2 + POST_SETTLEMENT_RETRY_LIMIT);
+    assert.equal(sleeps.length, POST_SETTLEMENT_RETRY_LIMIT);
+    assert.ok(sleeps.every((ms) => ms === 10_000), "a long Retry-After is clamped");
+    assert.deepEqual(w.paid, ["lnbc1fixture"]);
+  });
+
+  it("returns a terminal post-settlement answer at once", async () => {
+    const credited = new Response(
+      JSON.stringify({ error: "credited", code: "PAYMENT_CREDITED", next_actions: [{ type: "inspect_balance", why: "Inspect billing history." }] }),
+      { status: 409, headers: { "content-type": "application/json" } },
+    );
+    const s = seller([() => new Response("{}", { status: 402, headers: { "www-authenticate": challengeHeader() } }), () => credited]);
+    const sleeps: number[] = [];
+    const fetch = createLightningFetch({ pairingUri: URI, baseFetch: s.fetch, wallet: wallet(), stack: async () => stack, fallback: async () => null, sleep: async (ms) => { sleeps.push(ms); } });
+    const response = await fetch("https://api.example/tiers/v1/prototype", { method: "POST" });
+    assert.equal(response.status, 409);
+    assert.equal(s.calls.length, 2);
+    assert.deepEqual(sleeps, []);
+    const rechallenged = seller([() => new Response("{}", { status: 402, headers: { "www-authenticate": challengeHeader() } })]);
+    const w = wallet();
+    const again = await createLightningFetch({ pairingUri: URI, baseFetch: rechallenged.fetch, wallet: w, stack: async () => stack, fallback: async () => null })("https://api.example/tiers/v1/prototype", { method: "POST" });
+    assert.equal(again.status, 402, "a 402 on the paid retry is returned, never paid a second time");
+    assert.equal(w.paid.length, 1);
+  });
+
+  it("reads only the gateway's retryable post-settlement answers", async () => {
+    const json = (status: number, body: Record<string, unknown>, headers: Record<string, string> = {}) =>
+      new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", ...headers } });
+    const retry = [{ type: "retry", why: "later" }];
+    const url = "https://api.example/generate-image/v1";
+    assert.deepEqual(await readPostSettlementRetry(json(409, { code: "PAYMENT_RECOVERY_PENDING", next_actions: retry }, { "retry-after": "2" }), url), { code: "PAYMENT_RECOVERY_PENDING", delayMs: 2_000 });
+    assert.deepEqual(await readPostSettlementRetry(json(503, { code: "PAYMENT_STATE_UNAVAILABLE", next_actions: retry }, { "retry-after": "5" }), url), { code: "PAYMENT_STATE_UNAVAILABLE", delayMs: 5_000 });
+    assert.equal((await readPostSettlementRetry(json(409, { code: "PAYMENT_INTENT_PENDING", next_actions: retry }, { "retry-after": "0" }), url))?.delayMs, 1_000);
+    assert.equal(await readPostSettlementRetry(json(409, { code: "PAYMENT_RECOVERY_PENDING", next_actions: [{ type: "contact_support" }] }), url), null);
+    assert.equal(await readPostSettlementRetry(json(409, { code: "PAYMENT_CONTRACT_MISMATCH", next_actions: retry }), url), null);
+    assert.equal(await readPostSettlementRetry(json(200, { code: "PAYMENT_RECOVERY_PENDING", next_actions: retry }), url), null);
+    assert.equal(await readPostSettlementRetry(new Response("pending", { status: 409 }), url), null);
   });
 
   it("refuses a preimage that does not hash to the challenge", async () => {
