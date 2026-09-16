@@ -47,7 +47,14 @@
 
   <section id="signed-out" class="card" hidden>
     <p>Your tasks live on Run402 and are keyed to your Buzz identity. No password, no email.</p>
-    <button id="signin">Sign in with Buzz</button>
+    <div id="desktop-only">
+      <button id="signin">Sign in with Buzz</button>
+    </div>
+    <div id="mobile-gate" hidden>
+      <p><b>Sign in with Buzz needs Buzz Desktop for now.</b></p>
+      <p class="hint">The Buzz mobile app does not have the approval screen yet. Open this page on your computer where Buzz Desktop is installed:</p>
+      <p class="who" id="page-url"></p>
+    </div>
     <p id="signin-error" class="err" hidden></p>
   </section>
 
@@ -99,6 +106,19 @@
     if (!res.ok) throw Object.assign(new Error(body.message || res.statusText), { code: body.code, status: res.status });
     return body;
   }
+
+  // Buzz mobile has no nostr-bind approval screen; only Buzz Desktop does.
+  // Gate phones and tablets honestly. `?desktop=1` forces the full flow for testing.
+  const forceDesktop = new URLSearchParams(location.search).get("desktop") === "1";
+  const ua = navigator.userAgent || "";
+  const isMobile = !forceDesktop && (
+    (navigator.userAgentData && navigator.userAgentData.mobile === true)
+    || /Android|iPhone|iPad|iPod|Mobile/i.test(ua)
+    || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) // iPadOS reports a Mac UA
+  );
+  $("desktop-only").hidden = isMobile;
+  $("mobile-gate").hidden = !isMobile;
+  $("page-url").textContent = location.origin + location.pathname;
 
   async function boot() {
     try {
