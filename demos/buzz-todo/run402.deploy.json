@@ -1,0 +1,75 @@
+{
+  "$schema": "https://run402.com/schemas/release-spec.v1.json",
+  "database": {
+    "migrations": [
+      { "id": "001_buzz_todo", "sql_file": "db/001_buzz_todo.sql" }
+    ]
+  },
+  "site": {
+    "replace": {
+      "index.html": {
+        "path": "site/index.html",
+        "content_type": "text/html; charset=utf-8"
+      },
+      "callback.html": {
+        "path": "site/callback.html",
+        "content_type": "text/html; charset=utf-8"
+      }
+    },
+    "public_paths": {
+      "mode": "explicit",
+      "replace": {
+        "/": { "asset": "index.html", "cache_class": "html" },
+        "/callback": { "asset": "callback.html", "cache_class": "html" }
+      }
+    }
+  },
+  "functions": {
+    "replace": {
+      "buzz-todo-api": {
+        "runtime": "node22",
+        "source": {
+          "path": "functions/api.mjs",
+          "content_type": "application/javascript"
+        },
+        "deps": ["@noble/curves@2.0.1", "@scure/base@1.2.6"],
+        "config": {
+          "timeout_seconds": 10,
+          "memory_mb": 128
+        }
+      }
+    }
+  },
+  "routes": {
+    "replace": [
+      {
+        "pattern": "/api/buzz/start",
+        "methods": ["POST"],
+        "target": { "type": "function", "name": "buzz-todo-api" }
+      },
+      {
+        "pattern": "/api/buzz/complete",
+        "methods": ["POST"],
+        "target": { "type": "function", "name": "buzz-todo-api" }
+      },
+      {
+        "pattern": "/api/me",
+        "methods": ["GET"],
+        "target": { "type": "function", "name": "buzz-todo-api" }
+      },
+      {
+        "pattern": "/api/logout",
+        "methods": ["POST"],
+        "target": { "type": "function", "name": "buzz-todo-api" }
+      },
+      {
+        "pattern": "/api/tasks",
+        "methods": ["GET", "POST", "PATCH", "DELETE"],
+        "target": { "type": "function", "name": "buzz-todo-api" }
+      }
+    ]
+  },
+  "subdomains": {
+    "set": ["buzz-todo"]
+  }
+}

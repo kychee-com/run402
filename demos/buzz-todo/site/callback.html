@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Buzz To-Do · signing in</title>
+<style>
+  :root { color-scheme: light dark; --bg: #f6f5f1; --card: #ffffff; --ink: #1c1b18; --muted: #6b6960; --line: #e4e2da; --accent: #f5b400; --accent-ink: #1c1b18; --danger: #b3261e; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #15140f; --card: #1f1d17; --ink: #f2efe6; --muted: #a29e91; --line: #2f2c24; --accent-ink: #15140f; } }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 24px 16px; }
+  main { max-width: 520px; margin: 0 auto; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px; }
+  h1 { font-size: 22px; margin: 0 0 8px; }
+  .hint { color: var(--muted); font-size: 14px; }
+  .err { color: var(--danger); }
+  .who { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
+  .btn { font: inherit; border: 0; border-radius: 10px; padding: 12px 18px; background: var(--accent); color: var(--accent-ink); font-weight: 600; text-decoration: none; display: inline-block; margin-top: 12px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="card">
+    <h1 id="title">Finishing sign-in…</h1>
+    <p id="msg" class="hint">Checking the approval Buzz sent back.</p>
+    <p id="who" class="who"></p>
+    <a id="go" class="btn" href="/" hidden>Open my tasks</a>
+  </div>
+</main>
+<script>
+(async () => {
+  const $ = (id) => document.getElementById(id);
+  const MAX_FRAGMENT = 16384;
+
+  function base64UrlToUtf8(s) {
+    const b64 = s.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (s.length % 4)) % 4);
+    const bin = atob(b64);
+    const bytes = Uint8Array.from(bin, (ch) => ch.charCodeAt(0));
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  }
+
+  // Exact released-Buzz contract: `#buzz_bind=v1.<base64url(UTF-8 signed-event JSON)>`.
+  function decodeFragment(hash) {
+    if (typeof hash !== "string" || !hash.startsWith("#") || hash.length > MAX_FRAGMENT) throw new Error("The Buzz callback fragment is missing or invalid.");
+    const params = new URLSearchParams(hash.slice(1));
+    if ([...params.keys()].length !== 1 || !params.has("buzz_bind")) throw new Error("The Buzz callback fragment has unsupported fields.");
+    const encoded = params.get("buzz_bind") || "";
+    if (!encoded.startsWith("v1.")) throw new Error("The Buzz callback version is unsupported.");
+    const parsed = JSON.parse(base64UrlToUtf8(encoded.slice(3)));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("The Buzz response is not an event.");
+    return parsed;
+  }
+
+  function fail(message) {
+    $("title").textContent = "Sign-in did not complete";
+    $("msg").textContent = message;
+    $("msg").className = "err";
+    $("go").textContent = "Back to Buzz To-Do";
+    $("go").hidden = false;
+  }
+
+  let event;
+  try {
+    event = decodeFragment(window.location.hash);
+  } catch (e) {
+    return fail(e.message);
+  } finally {
+    // Scrub the proof from the URL before anything else runs.
+    history.replaceState(null, "", window.location.pathname);
+  }
+
+  try {
+    const res = await fetch("/api/buzz/complete", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ event }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.message || `Run402 answered ${res.status}`);
+    $("title").textContent = "Signed in with Buzz";
+    $("msg").textContent = "You are signed in as";
+    $("who").textContent = body.npub;
+    $("go").hidden = false;
+    try { new BroadcastChannel("buzz-todo-auth").postMessage({ type: "signed_in" }); } catch {}
+    setTimeout(() => { window.location.replace("/"); }, 1200);
+  } catch (e) {
+    fail(e.message);
+  }
+})();
+</script>
+</body>
+</html>
