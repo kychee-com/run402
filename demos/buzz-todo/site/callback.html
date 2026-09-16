@@ -79,7 +79,8 @@
     if (!res.ok) throw new Error(body.message || `Run402 answered ${res.status}`);
     $("title").textContent = "Signed in with Buzz";
     $("msg").textContent = "You are signed in as";
-    $("who").textContent = body.npub;
+    const u = body.user || {};
+    $("who").textContent = (u.display_name || u.name) ? `${u.label} · ${body.npub}` : body.npub;
     $("go").hidden = false;
     try { new BroadcastChannel("buzz-todo-auth").postMessage({ type: "signed_in" }); } catch {}
     setTimeout(() => { window.location.replace("/"); }, 1200);

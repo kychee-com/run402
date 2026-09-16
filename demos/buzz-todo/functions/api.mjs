@@ -32,6 +32,12 @@ const CHALLENGE_TTL_MS = 5 * 60 * 1000;
 const CREATED_AT_SKEW_MS = 5 * 60 * 1000;
 const SESSION_TTL_S = 7 * 24 * 60 * 60;
 const COOKIE = "buzz_todo_session";
+// The Buzz community relay the users live on. The app reads their kind-0
+// profiles through its own member identity (BUZZ_BOT_PRIVATE_KEY, a project
+// secret) with NIP-98 auth; without the secret the app shows the npub only.
+const BUZZ_RELAY_ORIGIN = process.env.BUZZ_RELAY_ORIGIN || "https://kychee.communities.buzz.xyz";
+const PROFILE_TTL_MS = 10 * 60 * 1000;
+const NIP98_KIND = 27235;
 const HEX64 = /^[0-9a-f]{64}$/;
 const HEX128 = /^[0-9a-f]{128}$/;
 
@@ -54,6 +60,56 @@ export function npubFromHex(pubkeyHex) {
 export function computeEventId(event) {
   const serialized = JSON.stringify([0, event.pubkey, event.created_at, event.kind, event.tags, event.content]);
   return createHash("sha256").update(serialized, "utf8").digest("hex");
+}
+
+// ---------------------------------------------------------------------------
+// The app's own Buzz identity: signs NIP-98 requests to read user profiles.
+// ---------------------------------------------------------------------------
+
+export function signNostrEvent(privHex, kind, tags, content, createdAt = Math.floor(Date.now() / 1000)) {
+  const priv = Buffer.from(privHex, "hex");
+  const event = { pubkey: Buffer.from(schnorr.getPublicKey(priv)).toString("hex"), created_at: createdAt, kind, tags, content };
+  event.id = computeEventId(event);
+  event.sig = Buffer.from(schnorr.sign(Buffer.from(event.id, "hex"), priv)).toString("hex");
+  return event;
+}
+
+export function nip98Authorization(privHex, url, method, body) {
+  const tags = [["u", url], ["method", method.toUpperCase()]];
+  if (body !== undefined) tags.push(["payload", createHash("sha256").update(body, "utf8").digest("hex")]);
+  const event = signNostrEvent(privHex, NIP98_KIND, tags, "");
+  return `Nostr ${Buffer.from(JSON.stringify(event), "utf8").toString("base64")}`;
+}
+
+/** Kind-0 profile for a pubkey from the Buzz relay, or null when unavailable. */
+export async function fetchBuzzProfile(pubkey, { privHex = process.env.BUZZ_BOT_PRIVATE_KEY, origin = BUZZ_RELAY_ORIGIN } = {}) {
+  if (!privHex || !HEX64.test(privHex)) return null;
+  const url = `${origin}/query`;
+  const body = JSON.stringify([{ kinds: [0], authors: [pubkey], limit: 1 }]);
+  let res;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json", authorization: nip98Authorization(privHex, url, "POST", body) },
+      body,
+      signal: AbortSignal.timeout(6000),
+    });
+  } catch (error) {
+    console.warn("buzz profile fetch failed", { pubkey, error: String(error?.message ?? error) });
+    return null;
+  }
+  if (!res.ok) {
+    console.warn("buzz profile fetch rejected", { pubkey, status: res.status, body: (await res.text().catch(() => "")).slice(0, 200) });
+    return null;
+  }
+  const events = await res.json().catch(() => null);
+  const event = Array.isArray(events) ? events.find((e) => e && e.kind === 0 && e.pubkey === pubkey) : null;
+  if (!event) return null;
+  let meta;
+  try { meta = JSON.parse(event.content); } catch { return null; }
+  if (!meta || typeof meta !== "object") return null;
+  const pick = (k) => (typeof meta[k] === "string" && meta[k].trim() ? meta[k].trim().slice(0, 500) : null);
+  return { display_name: pick("display_name"), name: pick("name"), picture: pick("picture"), about: pick("about"), nip05: pick("nip05") };
 }
 
 function exactTags(tags) {
@@ -196,6 +252,52 @@ function clearCookie() {
 }
 
 // ---------------------------------------------------------------------------
+// User rows + cached profile
+// ---------------------------------------------------------------------------
+
+const USER_COLUMNS = "pubkey, npub, display_name, name, picture, about, nip05, profile_fetched_at";
+
+async function loadUser(db, pubkey) {
+  const r = await db.sql(`SELECT ${USER_COLUMNS} FROM buzz_users WHERE pubkey = $1`, [pubkey]);
+  return r.rows[0] ?? null;
+}
+
+/** Best-effort: refresh the cached kind-0 profile when stale or forced. Never throws. */
+async function refreshProfile(db, user, { force = false } = {}) {
+  const fetchedAt = user.profile_fetched_at ? Date.parse(user.profile_fetched_at) : 0;
+  if (!force && Date.now() - fetchedAt < PROFILE_TTL_MS) return user;
+  const profile = await fetchBuzzProfile(user.pubkey);
+  if (!profile) return user;
+  try {
+    const r = await db.sql(
+      `UPDATE buzz_users SET display_name = $2, name = $3, picture = $4, about = $5, nip05 = $6, profile_fetched_at = now()
+        WHERE pubkey = $1 RETURNING ${USER_COLUMNS}`,
+      [user.pubkey, profile.display_name, profile.name, profile.picture, profile.about, profile.nip05],
+    );
+    return r.rows[0] ?? user;
+  } catch (error) {
+    console.warn("profile cache write failed", { pubkey: user.pubkey, error: String(error?.message ?? error) });
+    return user;
+  }
+}
+
+function presentUser(user) {
+  const npub = user.npub || npubFromHex(user.pubkey);
+  const label = user.display_name || user.name || `${npub.slice(0, 12)}…${npub.slice(-6)}`;
+  return {
+    pubkey: user.pubkey,
+    npub,
+    label,
+    display_name: user.display_name ?? null,
+    name: user.name ?? null,
+    picture: user.picture ?? null,
+    about: user.about ?? null,
+    nip05: user.nip05 ?? null,
+    profile_source: user.profile_fetched_at ? "buzz" : "none",
+  };
+}
+
+// ---------------------------------------------------------------------------
 // HTTP handler
 // ---------------------------------------------------------------------------
 
@@ -274,7 +376,8 @@ export default async function handler(request) {
          ON CONFLICT (pubkey) DO UPDATE SET last_login_at = now()`,
         [event.pubkey, npub],
       );
-      return json({ ok: true, pubkey: event.pubkey, npub }, 200, { "set-cookie": setCookie(mintSession(event.pubkey)) });
+      const user = presentUser(await refreshProfile(db, (await loadUser(db, event.pubkey)) ?? { pubkey: event.pubkey, npub }, { force: true }));
+      return json({ ok: true, pubkey: event.pubkey, npub, user }, 200, { "set-cookie": setCookie(mintSession(event.pubkey)) });
     }
 
     if (path === "/api/logout" && request.method === "POST") {
@@ -286,7 +389,9 @@ export default async function handler(request) {
     if (!session) return fail("UNAUTHENTICATED", "sign in with Buzz first", 401);
 
     if (path === "/api/me" && request.method === "GET") {
-      return json({ ok: true, pubkey: session.pubkey, npub: npubFromHex(session.pubkey) });
+      const row = (await loadUser(db, session.pubkey)) ?? { pubkey: session.pubkey, npub: npubFromHex(session.pubkey) };
+      const user = presentUser(await refreshProfile(db, row));
+      return json({ ok: true, ...user, user });
     }
 
     if (path === "/api/tasks") {

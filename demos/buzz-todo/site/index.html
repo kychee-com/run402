@@ -34,6 +34,8 @@
   li.done span { text-decoration: line-through; color: var(--muted); }
   li span { flex: 1; overflow-wrap: anywhere; }
   .who { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); }
+  .name { font-weight: 600; }
+  .avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; background: var(--line); }
   .err { color: var(--danger); margin-top: 12px; }
   [hidden] { display: none !important; }
 </style>
@@ -65,7 +67,13 @@
 
   <section id="signed-in" class="card" hidden>
     <div class="row between">
-      <div class="who" id="who"></div>
+      <div class="row">
+        <img id="avatar" class="avatar" alt="" hidden>
+        <div>
+          <div id="who-name" class="name"></div>
+          <div class="who" id="who"></div>
+        </div>
+      </div>
       <button id="signout" class="ghost">Sign out</button>
     </div>
     <form id="add" class="row" style="margin-top:16px">
@@ -95,8 +103,12 @@
   async function boot() {
     try {
       const me = await api("/api/me");
-      $("who").textContent = shortNpub(me.npub);
+      const hasName = !!(me.display_name || me.name);
+      $("who-name").textContent = hasName ? me.label : "Signed in with Buzz";
+      $("who").textContent = hasName && me.nip05 ? me.nip05 : shortNpub(me.npub);
       $("who").title = me.npub;
+      if (me.picture && /^https:\/\//.test(me.picture)) { $("avatar").src = me.picture; $("avatar").hidden = false; }
+      else { $("avatar").hidden = true; $("avatar").removeAttribute("src"); }
       show("signed-in");
       await loadTasks();
     } catch {

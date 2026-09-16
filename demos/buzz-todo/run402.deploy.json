@@ -2,7 +2,8 @@
   "$schema": "https://run402.com/schemas/release-spec.v1.json",
   "database": {
     "migrations": [
-      { "id": "001_buzz_todo", "sql_file": "db/001_buzz_todo.sql" }
+      { "id": "001_buzz_todo", "sql_file": "db/001_buzz_todo.sql" },
+      { "id": "002_buzz_profiles", "sql_file": "db/002_buzz_profiles.sql" }
     ]
   },
   "site": {
