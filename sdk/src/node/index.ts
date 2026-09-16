@@ -826,3 +826,9 @@ export {
   LIGHTNING_MAX_DEBIT_SATS,
 } from "./lightning-paid-fetch.js";
 export type { LightningFetchOptions, LightningWalletLike } from "./lightning-paid-fetch.js";
+
+export { scanFileContent, scanSourceTree, scanSourceFiles, resolveScanRoot, readDeclaredCapabilities, SCAN_SEVERITY, _testOnly_hallucinatedNames, _testOnly_authProperties } from "./source-scan.js";
+export { resolveApplicationScope, loadApplicationScanInput } from "./app-scope.js";
+export { scanDeploymentSources } from "./source-scan.js";
+export { describeLocalPreflight } from "./preflight.js";
+export { serializeDeployManifest } from "./manifest-export.js";

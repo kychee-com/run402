@@ -548,3 +548,23 @@ describe("deployment intent guard", () => {
     assert.equal(calls.length, before);
   });
 });
+
+describe("shared authoring export", () => {
+  it("up and primitive apply export reloadable projectless JSON with no calls", async () => {
+    const root = mkdtempSync(join(tmpdir(), "run402-cli-export-"));
+    try {
+      const path = join(root, "app.json");
+      writeFileSync(path, JSON.stringify({ functions: { replace: { api: { source: { data: "export default () => 1" }, config: { timeout_seconds: 5 } } } } }));
+      const { run: up } = await import("./cli/lib/up.mjs");
+      const { run: deploy } = await import("./cli/lib/deploy.mjs");
+      const a = await captureSuccess(() => up(["--manifest", path, "--print-manifest"]));
+      const b = await captureSuccess(() => deploy(["apply", "--manifest", path, "--print-manifest"]));
+      assert.deepEqual(a.json, b.json);
+      assert.equal(a.json.project_id, undefined);
+      assert.deepEqual(a.json.functions.replace.api.config, { timeout_seconds: 5 });
+      assert.equal(calls.length, 0);
+      const error = await expectExit1(() => up(["--manifest", path, "--check", "--print-manifest"]));
+      assert.equal(error.code, "BAD_USAGE");
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+});

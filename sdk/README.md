@@ -225,7 +225,7 @@ await r.up(
 );
 ```
 
-`check` and `printSpec` are local-only. `plan` calls the gateway in reviewed-plan mode and returns `plan_id` / `plan_fingerprint`; `applyReviewed` verifies before upload and again at commit.
+`check`, `printSpec`, and `printManifest` are local-only. `printManifest` returns reloadable snake_case authoring JSON relative to the original manifest directory; unsupported runtime/secret/build values fail explicitly. `plan` calls the gateway in reviewed-plan mode and returns `plan_id` / `plan_fingerprint`; `applyReviewed` verifies before upload and again at commit.
 
 For a self-hosted Run402 Core Gateway, run `run402 init --api-base=http://my-core:4020` once. The Node SDK then targets that API base by default; explicit `run402({ apiBase })` still wins.
 
@@ -303,7 +303,7 @@ The `CredentialsProvider` interface has two required methods (`getAuth`, `getPro
 
 | Namespace | Highlights |
 |---|---|
-| `actions` | Node entry only (`@run402/sdk/node`). Generic recursive action runner: `actions.run({ type: Run402Action.Up | ProjectsProvision | TierSet, ... })`; `r.up(input, opts)` is the convenience for repo-level manifest deploys. Recursive mutations are approval-gated; `mode: "check" | "printSpec" | "plan" | { kind: "applyReviewed" }` distinguishes local validation, gateway review, and exact reviewed apply. Child gateway mutations derive idempotency keys from the root action. |
+| `actions` | Node entry only (`@run402/sdk/node`). Generic recursive action runner: `actions.run({ type: Run402Action.Up | ProjectsProvision | TierSet, ... })`; `r.up(input, opts)` is the convenience for repo-level manifest deploys. Recursive mutations are approval-gated; `mode: "check" | "printSpec" | "printManifest" | "plan" | { kind: "applyReviewed" }` distinguishes local validation, gateway review, and exact reviewed apply. Child gateway mutations derive idempotency keys from the root action. |
 | `pay` | `fetch(url, init?, { maxUsdMicros?, idempotencyKey?, requireReceipt? })` — bounded arbitrary-URL x402 buyer; Node uses the selected allowance/signer and returns the response plus settlement and independently verified merchant evidence. |
 | `projects` | `provision`, `delete`, `list`, `get`, `use`, `active`, `sql`, `rest`, `validateExpose`, `applyExpose`, `getExpose`, `getUsage`, `getSchema`, `info`, `keys`, `pin`, `getQuote`. `list`/`get`/`use` are server-authoritative; local key reads are moving to `credentials.projectKeys`. |
 | `snapshots` | Internal project restore points: `create`, `list`, `get`, `restorePlan`, `restore`, `delete`. Restore is a two-step plan/confirm handshake. |

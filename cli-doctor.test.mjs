@@ -625,3 +625,34 @@ describe("run402 doctor — ok is 'can this agent ship'; warnings[] carries the 
     assert.equal(r2.blocking[0].check, "tier");
   });
 });
+
+describe("doctor selected application source scope", () => {
+  it("skips an unselected monorepo, ignores siblings, and agrees with apply on selected source errors", async () => {
+    const { mkdirSync, writeFileSync } = await import("node:fs");
+    const root = join(tempDir, "multi-app");
+    const app = join(root, "app");
+    const sibling = join(root, "sibling");
+    mkdirSync(app, { recursive: true }); mkdirSync(sibling);
+    writeFileSync(join(app, "run402.json"), JSON.stringify({ site: { replace: { "index.html": "ok" } } }));
+    writeFileSync(join(sibling, "bad.js"), 'fetch("/", {headers:{Authorization:"Bearer fixture"}}); await getSession();');
+    async function report(args) {
+      captureStart();
+      try { await run("--only", ["source_scan", ...args]); } catch (err) { assert.match(err.message, /process.exit/); } finally { captureStop(); }
+      return JSON.parse(stdout.join("\n"));
+    }
+    let value = await report(["--dir", root]);
+    assert.equal(value.checks[0].status, "skipped");
+    assert.equal(value.checks[0].value.scope, "unscoped");
+    value = await report(["--dir", app]);
+    assert.equal(value.ok, true);
+    mkdirSync(join(app, "src"));
+    writeFileSync(join(app, "src", "bad.js"), "await getSession();");
+    value = await report(["--dir", app]);
+    assert.equal(value.ok, false);
+    assert.equal(value.checks[0].value.details[0].file, "src/bad.js");
+    assert.equal(value.checks[0].value.app_root, app);
+    value = await report(["--scan-dir", sibling]);
+    assert.equal(value.checks[0].severity, "advisory");
+    assert.equal(value.ok, true);
+  });
+});

@@ -1,3 +1,7 @@
+import { serializeDeployManifest, manifestExportUnsupported } from "./manifest-export.js";
+import { describeLocalPreflight } from "./preflight.js";
+import { resolveApplicationScope, materializeTemplates } from "./app-scope.js";
+import { scanDeploymentSources } from "./source-scan.js";
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
 import {
@@ -66,6 +70,7 @@ import {
   loadDeployManifest,
   manifestNotFoundError,
   normalizeDeployManifest,
+  type NormalizedDeployManifest,
 } from "./deploy-manifest.js";
 import { declaredAgentName, detectClientName } from "./client-detect.js";
 
@@ -94,6 +99,7 @@ interface DiscoveredManifest {
   manifestKind: "app" | "release";
   manifestPath: string;
   releaseSpec: ReleaseSpec | null;
+  loaded?: NormalizedDeployManifest;
   appGraph?: Run402AppInstallGraph;
   appSpec?: Run402AppSpec;
   source?: Run402AppSourceMetadata;
@@ -422,16 +428,20 @@ export class NodeActions implements Run402Actions {
     let workspaceDir = source.workspaceDir;
     const manifest = await this.#discoverAndValidateManifest(input, workspaceDir, source.metadata, run);
     workspaceDir = dirname(manifest.manifestPath);
-    if (!input.verifyOnly) {
-      await resolveDeploymentTarget({
+    const target = !input.verifyOnly ? await resolveDeploymentTarget({
         appRoot: workspaceDir, manifestPath: manifest.manifestPath, projectId: input.projectId,
         manifestProjectId: manifest.manifestProjectId ?? manifest.appSpec?.project.id, name: input.name,
         targetKind: this.#targetKind(), apiBase: this.sdk.apiBase,
-        allowUnresolved: run.executionMode === "check" || run.executionMode === "printSpec" || run.dryRun,
-      });
+        allowUnresolved: run.executionMode === "check" || (run.executionMode === "printSpec" || run.executionMode === "printManifest") || run.dryRun,
+      }) : null;
+
+    if (!input.verifyOnly && process.env.RUN402_DEPLOY_SKIP_SCAN !== "1") {
+      const scan = scanDeploymentSources(manifest.releaseSpec ?? {}, workspaceDir);
+      if (scan.errors.length) throw run.error("Source scan blocked this application.", "R402_AUTH_PREFLIGHT_FAILED", scan);
     }
 
     if (manifest.manifestKind === "app") {
+      if (run.executionMode === "printManifest") manifestExportUnsupported("app", "app resources and build intent cannot be faithfully represented as a release manifest");
       if (input.verifyOnly) {
         return this.#verifyAppManifestOnly(input, manifest, workspaceDir, run, startedAt);
       }
@@ -440,22 +450,23 @@ export class NodeActions implements Run402Actions {
         startedAt,
         status: block ? "blocked" : "planned",
         dryRun: run.dryRun || run.executionMode === "check" || run.executionMode === "printSpec",
-        projectId: input.projectId ?? (run.dryRun ? "prj_planned" : null),
+        projectId: target?.project_id ?? null,
         diagnostics: block?.diagnostics,
         nextActions: block?.nextActions,
         blockedNodeId: block?.nodeId,
       });
       if (run.executionMode === "check" || run.executionMode === "printSpec" || run.dryRun) {
         return run.result({
-          project_id: input.projectId ?? "prj_planned",
+          project_id: target?.project_id ?? null,
           manifest_path: manifest.manifestPath,
           app_graph: manifest.appGraph,
           app_result: appResult,
+          preflight: describeLocalPreflight({ appRoot: workspaceDir, manifestPath: manifest.manifestPath, target: target!, authoring: manifest.appSpec?.release, spec: manifest.releaseSpec ?? undefined, buildDeferred: !!manifest.appSpec?.build?.commands?.length, apiBase: this.sdk.apiBase, profile: this.opts.profile }),
         });
       }
       if (block) {
         return run.result({
-          project_id: input.projectId ?? "prj_planned",
+          project_id: target?.project_id ?? null,
           manifest_path: manifest.manifestPath,
           app_graph: manifest.appGraph,
           app_result: appResult,
@@ -468,14 +479,16 @@ export class NodeActions implements Run402Actions {
       return this.#verifyDeployManifestOnly(input, manifest, workspaceDir, run);
     }
 
-    if (run.executionMode === "check" || run.executionMode === "printSpec") {
+    if (run.executionMode === "check" || (run.executionMode === "printSpec" || run.executionMode === "printManifest")) {
       if (!manifest.releaseSpec) {
         throw run.error("Internal error: release manifest did not produce a ReleaseSpec.", "RUN402_ACTION_INTERNAL");
       }
       return run.result({
-        project_id: manifest.releaseSpec.project,
+        project_id: target?.project_id ?? null,
         manifest_path: manifest.manifestPath,
-        ...(run.executionMode === "printSpec" ? { spec: manifest.releaseSpec } : {}),
+        preflight: describeLocalPreflight({ appRoot: workspaceDir, manifestPath: manifest.manifestPath, target: target!, authoring: manifest.loaded?.manifest, spec: manifest.releaseSpec, apiBase: this.sdk.apiBase, profile: this.opts.profile }),
+        ...(run.executionMode === "printManifest" ? { manifest: serializeDeployManifest(manifest.loaded!, workspaceDir, input.projectId) } : {}),
+        ...(run.executionMode === "printSpec" ? { spec: { ...manifest.releaseSpec, project: target?.project_id ?? undefined } } : {}),
       });
     }
 
@@ -533,14 +546,14 @@ export class NodeActions implements Run402Actions {
       mutation: run.executionMode !== "plan",
       auto: false,
       details: {
-        project_id: resolved.projectId,
+        project_id: resolved.projectId === "prj_planned" ? null : resolved.projectId,
         manifest_path: manifest.manifestPath,
       },
     });
     if (run.dryRun) {
       run.setState(deployStep, "planned");
       return run.result({
-        project_id: resolved.projectId,
+        project_id: resolved.projectId === "prj_planned" ? null : resolved.projectId,
         manifest_path: manifest.manifestPath,
         ...(resolved.shouldWriteLink ? { workspace_link_path: resolved.linkPath } : {}),
       });
@@ -965,9 +978,7 @@ export class NodeActions implements Run402Actions {
         // output-dir field to narrow by), so the pre-build check is skipped
         // then and the post-build normalization performs it instead.
         const buildProducesFiles = (appSpec.build?.commands ?? []).length > 0;
-        if (!buildProducesFiles) {
-          await this.#assertAppReleaseFileReferences(appSpec, manifestPath, run);
-        }
+        const checkedRelease = !buildProducesFiles ? await this.#assertAppReleaseFileReferences(appSpec, manifestPath, run) : undefined;
         run.setState(step, "succeeded", {
           manifest_kind: "app",
           manifest_path: manifestPath,
@@ -979,16 +990,17 @@ export class NodeActions implements Run402Actions {
           manifestKind: "app",
           manifestProjectId: appSpec.project.id,
           manifestPath,
-          releaseSpec: null,
+          releaseSpec: checkedRelease ?? null,
           appGraph,
           appSpec,
           source,
         };
       }
     }
-    const loaded = await loadDeployManifest(manifestPath, {
+    const loaded = await this.#normalizeWithTypedFileErrors(() => loadDeployManifest(manifestPath, {
       defaultProject: "prj_up_preflight_placeholder",
-    });
+      validateFiles: true,
+    }), run);
     if (!hasDeployableContent(loaded.spec)) {
       throw run.error(
         "Deploy manifest contains no deployable sections.",
@@ -1000,13 +1012,14 @@ export class NodeActions implements Run402Actions {
     run.setState(step, "succeeded", {
       manifest_kind: "release",
       manifest_path: manifestPath,
-      project_id: loaded.spec.project,
+      project_id: loaded.spec.project === "prj_up_preflight_placeholder" ? null : loaded.spec.project,
       idempotency_key: loaded.idempotencyKey ?? null,
     });
     return {
       manifestKind: "release",
       manifestPath,
       releaseSpec: loaded.spec,
+      loaded,
       idempotencyKey: loaded.idempotencyKey,
       manifestProjectId: loaded.spec.project === "prj_up_preflight_placeholder"
         ? undefined
@@ -1098,6 +1111,10 @@ export class NodeActions implements Run402Actions {
   ): Promise<void> {
     try {
       await assertLocalFileReferencesExist(spec, { manifestPath });
+      if (process.env.RUN402_DEPLOY_SKIP_SCAN !== "1") {
+        const scan = scanDeploymentSources(spec, dirname(manifestPath));
+        if (scan.errors.length) throw run.error("Source scan blocked this application. Fix the reported findings, or explicitly override with RUN402_DEPLOY_SKIP_SCAN=1.", "R402_AUTH_PREFLIGHT_FAILED", scan);
+      }
     } catch (err) {
       throw this.#retypeManifestFileError(err, run);
     }
@@ -1141,13 +1158,15 @@ export class NodeActions implements Run402Actions {
     appSpec: Run402AppSpec,
     manifestPath: string,
     run: ActionRun,
-  ): Promise<void> {
+  ): Promise<ReleaseSpec | undefined> {
     if (!appSpec.release || typeof appSpec.release !== "object") return;
     const releaseInput = materializeTemplates(appSpec.release, {}) as Run402AppReleaseSpec;
     let normalized;
     try {
       normalized = await normalizeDeployManifest(releaseInput, {
         project: "prj_up_preflight_placeholder",
+        validateFiles: true,
+        manifestPath,
         baseDir: dirname(manifestPath),
       });
     } catch (err) {
@@ -1157,6 +1176,7 @@ export class NodeActions implements Run402Actions {
       return;
     }
     await this.#assertManifestFileReferences(normalized.spec, manifestPath, run);
+    return normalized.spec;
   }
 
   #planAppUpResult(
@@ -1338,7 +1358,7 @@ export class NodeActions implements Run402Actions {
       };
     }
 
-    if (run.executionMode !== "check" && run.executionMode !== "printSpec" && !run.dryRun) {
+    if (run.executionMode !== "check" && run.executionMode !== "printSpec" && run.executionMode !== "printManifest" && !run.dryRun) {
       const spendBlock = spendApprovalBlock(input, run);
       if (spendBlock) return spendBlock;
     }
@@ -1371,7 +1391,7 @@ export class NodeActions implements Run402Actions {
         blockedNodeId: block.nodeId,
       });
       return run.result({
-        project_id: input.projectId ?? "prj_planned",
+        project_id: input.projectId ?? null,
         manifest_path: manifest.manifestPath,
         app_graph: manifest.appGraph,
         app_result: blocked,
@@ -1399,7 +1419,7 @@ export class NodeActions implements Run402Actions {
         blockedNodeId: "project.ensure",
       });
       return run.result({
-        project_id: input.projectId ?? "prj_planned",
+        project_id: input.projectId ?? null,
         manifest_path: manifest.manifestPath,
         app_graph: manifest.appGraph,
         app_result: blocked,
@@ -2437,7 +2457,7 @@ export class NodeActions implements Run402Actions {
       description: "Write workspace project link",
       mutation: true,
       auto: true,
-      details: { path, project_id: link.project_id, name: link.name ?? null },
+      details: { path, project_id: run.dryRun && link.project_id === "prj_planned" ? null : link.project_id, name: link.name ?? null },
     });
     await run.approve(step, ["workspace.link.write"], `Write ${shortPath(path)}.`);
     if (run.dryRun) {
@@ -2616,7 +2636,7 @@ class ActionRun {
     return {
       action: this.input.type,
       mode: this.executionMode,
-      dry_run: this.dryRun || this.executionMode === "check" || this.executionMode === "printSpec" || this.executionMode === "plan",
+      dry_run: this.dryRun || this.executionMode === "check" || (this.executionMode === "printSpec" || this.executionMode === "printManifest") || this.executionMode === "plan",
       target: this.target,
       steps: this.steps,
       result,
@@ -2681,21 +2701,6 @@ function appPublicOrigin(input: Run402UpActionInput, spec: Run402AppSpec | undef
   return `https://${subdomain}.run402.com`;
 }
 
-function materializeTemplates(value: unknown, values: Record<string, string>): unknown {
-  if (typeof value === "string") {
-    return value.replace(/\$\{([^}]+)\}/g, (_match, key: string) => values[key] ?? "");
-  }
-  if (Array.isArray(value)) return value.map((item) => materializeTemplates(item, values));
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>).map(([key, nested]) => [
-        key,
-        materializeTemplates(nested, values),
-      ]),
-    );
-  }
-  return value;
-}
 
 function appMailboxSlug(logicalName: string, spec: Run402AppMailboxSpec): string {
   return spec.slug ?? logicalName.replace(/_/g, "-");
@@ -3150,16 +3155,7 @@ function appBuildBlock(
 }
 
 async function findManifest(workspaceDir: string): Promise<string | null> {
-  for (const candidate of MANIFEST_CANDIDATES) {
-    const path = join(workspaceDir, candidate);
-    try {
-      await lstat(path);
-      return path;
-    } catch {
-      // try next candidate
-    }
-  }
-  return null;
+  return (await resolveApplicationScope({ dir: workspaceDir })).manifest_path;
 }
 
 const NEARBY_MANIFEST_SCAN_LIMIT = 200;

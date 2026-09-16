@@ -163,7 +163,10 @@ run402 up --manifest run402.deploy.ts --require-plan plan_...
 
 Mode contract:
 - `--check`: local-only import/normalize/strict field validation plus local file checks. No gateway calls, uploads, tier/project creation, or `.run402/project.json` writes. Success is raw JSON with `mode: "check"` / `dry_run: true` on `up`, or `{ ok: true, mode: "check", project_id, manifest_path }` on `deploy apply`.
-- `--print-spec`: local-only normalized `ReleaseSpec` JSON to stdout.
+- `--print-spec`: advanced SDK-native inspection JSON; this is not a reloadable authoring manifest.
+- `--print-manifest`: canonical snake_case authoring JSON, backed by `serializeDeployManifest`. Save it in the original manifest directory so relative paths keep their meaning. Reloading supported release inputs preserves selectors, file paths, content types and function configuration. Unsupported streams, dynamic directory references, environment-derived values, app/build resources or embedded secrets fail with `MANIFEST_EXPORT_UNSUPPORTED` and `details.field_paths`, with no partial output.
+
+Local success includes `gateway_validated: false`, the app root, nullable target/provenance, file/source evidence counts, local route warnings and deferred gateway policy/quota/cost/secret/migration/content/drift checks. `up` carries this as `result.preflight`; primitive apply includes these fields in its check response. Unresolved intent directs selection before planning. Build output checks are deferred until an approved build. Explicit typed configs execute trusted local code; check/export never executes a build.
 - `--plan`: gateway-reviewed plan, no upload or commit. Response includes `plan_id`, `plan_fingerprint`, `plan_expires_at`, `manifest_digest`, diff, warnings, and `next_actions[]`.
 - `--require-plan <plan_id>`: exact reviewed apply. The SDK recompiles locally, verifies the reviewed plan before upload, then commit verifies again before release mutation. Add `--plan-fingerprint <fingerprint>` when it was returned by `--plan`.
 

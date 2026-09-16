@@ -85,7 +85,7 @@ MCP tool output is markdown, not the `stats` envelope field — this is a CLI/SD
 
 ## `run402 up` (SDK action runner)
 
-`run402 up [repo-or-path] [--name <name>] [--project <id>] [--manifest <path>] [--dir <path>] [--tier <prototype|hobby|team>] [-y|--yes] [--check|--print-spec|--plan|--require-plan <id>] [--no-rehearse] [--verify] [--propagation-budget-s <seconds>] [--no-propagation-wait] [--json|--json-stream|--human] [--quiet] [--allow-warning <code> ...] [--allow-warnings]`
+`run402 up [repo-or-path] [--name <name>] [--project <id>] [--manifest <path>] [--dir <path>] [--tier <prototype|hobby|team>] [-y|--yes] [--check|--print-spec|--print-manifest|--plan|--require-plan <id>] [--no-rehearse] [--verify] [--propagation-budget-s <seconds>] [--no-propagation-wait] [--json|--json-stream|--human] [--quiet] [--allow-warning <code> ...] [--allow-warnings]`
 
 `run402 up verify [repo-or-path] [--project <id>] [--manifest <path>] [--dir <path>] [--propagation-budget-s <seconds>] [--no-propagation-wait] [--json|--json-stream|--human] [--quiet]`
 
@@ -106,7 +106,7 @@ Approval and recursion:
 - If allowance/tier/project/workspace link are already configured, plain `run402 up` runs the requested deploy without `-y`.
 - In a TTY, the CLI prompts for SDK-planned mutations. In SDK code, pass `{ approval: "yes" }`, `{ approval: "never" }`, or an interactive approval callback.
 - `--check` returns local validation `steps[]` without allowance creation, faucet request, tier payment, project creation, workspace-link write, upload, gateway plan, or deploy commit. It is not a file-exists check: it normalizes the manifest and verifies every referenced file (see above), so a missing `sql_path`, function source, or site file fails here with `MANIFEST_FILE_MISSING` instead of at upload. For a `run402.json` app manifest that declares no `build.commands`, the release slice's references are verified before any build; a declared build may produce those files, so the check is deferred until after the build runs (the step says `file_references: "deferred_to_post_build"`).
-- `--print-spec` performs the same local validation and prints normalized `ReleaseSpec` JSON.
+- `--print-spec` performs the same local validation and prints advanced SDK-native `ReleaseSpec` JSON. Use `--print-manifest` for reloadable snake_case authoring JSON, relative to the original manifest directory. Unsupported dynamic/secret values fail explicitly. `result.preflight` carries nullable target selection, local evidence and `gateway_validated: false`; see the deploy slice for deferred checks.
 - `--plan` calls the gateway reviewed-plan mode without upload or commit; it does not provision projects or write workspace links. The response includes a require-able `plan_id`, `plan_fingerprint`, expiration, warnings, diff, and `next_actions[]`.
 - `--require-plan <plan_id>` applies only if the reviewed plan still matches; optional `--plan-fingerprint <fingerprint>` tightens the check.
 - Run402 Cloud `up` can create/fund an allowance, ensure a prototype tier by default, create a project from `--name`, write the workspace link, make sure this principal has a display name, join the project room under it, then apply the manifest.

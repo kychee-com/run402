@@ -11,7 +11,7 @@ import { loadLiveControlPlaneSession } from "../core-dist/control-plane-session.
 const HELP = `run402 up — Provision/link/deploy the current app
 
 Usage:
-  run402 up [repo-or-path] [--name <name>] [--project <id>] [--manifest <path>] [--dir <path>] [--tier <tier>] [-y|--yes] [--check|--print-spec|--plan|--require-plan <id>|--repo-only] [--nested] [--verify] [--human|--json-stream] [--quiet]
+  run402 up [repo-or-path] [--name <name>] [--project <id>] [--manifest <path>] [--dir <path>] [--tier <tier>] [-y|--yes] [--check|--print-spec|--print-manifest|--plan|--require-plan <id>|--repo-only] [--nested] [--verify] [--human|--json-stream] [--quiet]
   run402 up verify [repo-or-path] [--project <id>] [--manifest <path>] [--dir <path>] [--human|--json-stream]
 
 Options:
@@ -29,7 +29,9 @@ Options:
                       tier, project creation, workspace link) for non-interactive runs.
   --check             Validate the manifest/config locally. No gateway calls,
                       uploads, or local writes.
-  --print-spec        Print the normalized ReleaseSpec JSON. No gateway calls,
+  --print-manifest    Export reloadable snake_case authoring JSON; relative paths
+                      use the original manifest directory. Unsupported constructs fail.
+  --print-spec        Advanced SDK-native inspection JSON, not authoring input. No gateway calls,
                       uploads, or local writes.
   --plan              Ask the gateway for a reviewed deploy plan. No upload,
                       commit, project provisioning, or workspace link write.
@@ -63,7 +65,7 @@ Options:
   --repo-only         Provision + scaffold the run402 remote + first push,
                       and stop there — no deploy. The vault-only track
                       (D8), composed through up instead of run402 repos
-                      create. Incompatible with --check/--print-spec/--plan/
+                      create. Incompatible with --check/--print-spec/--print-manifest/--plan/
                       --require-plan/--verify.
   --nested            Give an app root that lies INSIDE another repository (a
                       monorepo workspace) its own nested repository: git init
@@ -173,6 +175,7 @@ export async function run(args = []) {
       "--dry-run",
       "--check",
       "--print-spec",
+      "--print-manifest",
       "--plan",
       "--quiet",
       "--final-only",
@@ -267,6 +270,9 @@ export async function run(args = []) {
   const human = parsed.includes("--human");
   const quiet = parsed.includes("--quiet") || parsed.includes("--final-only") || jsonStream;
   const mode = parseExecutionMode(parsed);
+  if (mode === "printManifest" && jsonStream) {
+    fail({ code: "BAD_USAGE", message: "--print-manifest emits one authoring JSON object; omit --json-stream.", details: { flag: "--json-stream" } });
+  }
   const dryRun = parsed.includes("--dry-run");
   const verifyEdge = parsed.includes("--verify");
   if (human && (parsed.includes("--json") || jsonStream)) {
@@ -279,7 +285,7 @@ export async function run(args = []) {
   if (dryRun && mode !== undefined) {
     fail({
       code: "BAD_USAGE",
-      message: "--dry-run cannot be combined with --check, --print-spec, --plan, or --require-plan.",
+      message: "--dry-run cannot be combined with --check, --print-spec, --print-manifest, --plan, or --require-plan.",
       details: { flag: "--dry-run" },
     });
   }
@@ -306,7 +312,7 @@ export async function run(args = []) {
   if (repoOnly && (dryRun || isNonApplyingMode(mode) || isApplyReviewedMode(mode) || verifyEdge)) {
     fail({
       code: "BAD_USAGE",
-      message: "--repo-only cannot be combined with --dry-run, --check, --print-spec, --plan, --require-plan, or --verify.",
+      message: "--repo-only cannot be combined with --dry-run, --check, --print-spec, --print-manifest, --plan, --require-plan, or --verify.",
       details: { flag: "--repo-only" },
     });
   }
@@ -391,6 +397,8 @@ export async function run(args = []) {
       : null;
     if (jsonStream) {
       console.log(JSON.stringify({ type: "run402.up.result", result }));
+    } else if (mode === "printManifest") {
+      console.log(JSON.stringify(result.result.manifest, null, 2));
     } else if (mode === "printSpec") {
       console.log(JSON.stringify(result.result?.spec ?? null, null, 2));
     } else if (human && result?.result?.app_result) {
@@ -511,6 +519,7 @@ function parseExecutionMode(args) {
   const modes = [];
   if (args.includes("--check")) modes.push("--check");
   if (args.includes("--print-spec")) modes.push("--print-spec");
+  if (args.includes("--print-manifest")) modes.push("--print-manifest");
   if (args.includes("--plan")) modes.push("--plan");
   const requiredPlan = flagValue(args, "--require-plan");
   if (requiredPlan) modes.push("--require-plan");
@@ -531,6 +540,7 @@ function parseExecutionMode(args) {
   }
   if (args.includes("--check")) return "check";
   if (args.includes("--print-spec")) return "printSpec";
+  if (args.includes("--print-manifest")) return "printManifest";
   if (args.includes("--plan")) return "plan";
   if (requiredPlan) {
     return {
@@ -547,7 +557,7 @@ function isApplyReviewedMode(mode) {
 }
 
 function isNonApplyingMode(mode) {
-  return mode === "check" || mode === "printSpec" || mode === "plan";
+  return mode === "check" || mode === "printSpec" || mode === "printManifest" || mode === "plan";
 }
 
 async function attachEdgeVerification(result, { sdk, timeoutSeconds, jsonStream, quiet }) {

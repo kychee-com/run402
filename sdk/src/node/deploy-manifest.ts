@@ -525,6 +525,10 @@ export interface DeployManifestInput
 }
 
 export interface NormalizeDeployManifestOptions {
+  /** Aggregate missing local inputs before eager SQL normalization. */
+  validateFiles?: boolean;
+  /** Diagnostic source path for authoring-file checks. */
+  manifestPath?: string;
   /** Base directory for relative `{ path }`, `sql_path`, and `sql_file` entries. Defaults to `process.cwd()`. */
   baseDir?: string;
   /** Explicit project override, equivalent to CLI `--project`. Conflicts with a different manifest project. */
@@ -577,6 +581,7 @@ export async function loadDeployManifest(
     const normalized = await normalizeDeployManifest(loaded, {
       ...opts,
       baseDir: dirname(manifestPath),
+      manifestPath,
     });
     return metadata
       ? { ...normalized, manifestPath, config: metadata }
@@ -618,6 +623,7 @@ export async function loadDeployManifest(
   const normalized = await normalizeDeployManifest(parsed as DeployManifestInput, {
     ...opts,
     baseDir: dirname(manifestPath),
+    manifestPath,
   });
   return { ...normalized, manifestPath };
 }
@@ -789,6 +795,7 @@ export async function normalizeDeployManifest(
   assertKnownFields(manifest, "Deploy manifest", MANIFEST_FIELDS, {
     subdomain: "Use `subdomains: { set: [name] }`.",
   });
+  if (opts.validateFiles) await assertAuthoringFileReferences(manifest, opts.baseDir ?? process.cwd(), opts.manifestPath);
   const project = resolveProject(manifest, opts);
   const spec: ReleaseSpec = { project };
 
@@ -1999,4 +2006,51 @@ function assertKnownFields(
     const hint = hints[key] ? ` ${hints[key]}` : "";
     throw new LocalError(`Unknown ${label} field: ${key}.${hint}`, CONTEXT);
   }
+}
+
+/** Collect authoring paths before eager SQL reads so every missing input is reported together. */
+export function collectAuthoringFileReferences(input: unknown, baseDir: string): LocalFileReference[] {
+  const refs: LocalFileReference[] = [];
+  const record = (value: unknown): Record<string, unknown> => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  const add = (value: unknown, field: string, kind: LocalFileReferenceKind) => {
+    const entry = record(value);
+    if (typeof entry.path === "string" && entry.data === undefined) refs.push({ field_path: field, path: resolvePath(baseDir, entry.path), kind, expects: kind === "site_dir" ? "directory" : "file" });
+  };
+  const files = (value: unknown, field: string, kind: LocalFileReferenceKind) => {
+    if (isLocalDirRef(value)) { add(value, field, "site_dir"); return; }
+    for (const [name, entry] of Object.entries(record(value))) add(entry, `${field}[${JSON.stringify(name)}]`, kind);
+  };
+  const raw = record(input);
+  const fns = record(raw.functions);
+  for (const [field, bucket] of [["functions.replace", fns.replace], ["functions.patch.set", record(fns.patch).set]] as const) {
+    for (const [name, fn] of Object.entries(record(bucket))) {
+      add(record(fn).source, `${field}.${name}.source`, "function_source");
+      files(record(fn).files, `${field}.${name}.files`, "function_source");
+    }
+  }
+  files(record(raw.site).replace, "site.replace", "site_file");
+  files(record(record(raw.site).patch).put, "site.patch.put", "site_file");
+  const puts = record(raw.assets).put;
+  if (Array.isArray(puts)) puts.forEach((entry, index) => add(record(entry).source, `assets.put[${index}].source`, "asset"));
+  const migrations = record(raw.database).migrations;
+  if (Array.isArray(migrations)) migrations.forEach((entry, index) => {
+    const migration = record(entry);
+    if (migration.sql !== undefined) return;
+    const field = migration.sql_path !== undefined ? "sql_path" : "sql_file";
+    const path = migration[field];
+    if (typeof path === "string") refs.push({ field_path: `database.migrations[${index}].${field}`, path: resolvePath(baseDir, path), kind: "migration_sql", expects: "file" });
+  });
+  return refs;
+}
+
+async function assertAuthoringFileReferences(input: unknown, baseDir: string, manifestPath?: string): Promise<void> {
+  const missing: MissingLocalFileReference[] = [];
+  for (const { expects, ...ref } of collectAuthoringFileReferences(input, baseDir)) {
+    try {
+      const info = await stat(ref.path);
+      if (expects === "file" ? info.isFile() : info.isDirectory()) continue;
+    } catch { /* The complete missing list is the recovery contract. */ }
+    missing.push(ref);
+  }
+  if (missing.length) throw manifestFileMissingError(missing.sort((a, b) => Number(b.kind === "migration_sql") - Number(a.kind === "migration_sql")), { manifestPath });
 }
