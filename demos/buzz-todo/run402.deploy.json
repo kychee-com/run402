@@ -6,6 +6,9 @@
       { "id": "002_buzz_profiles", "sql_file": "db/002_buzz_profiles.sql" }
     ]
   },
+  "secrets": {
+    "require": ["BUZZ_BOT_PRIVATE_KEY"]
+  },
   "site": {
     "replace": {
       "index.html": {
