@@ -15,6 +15,13 @@
  * `projects.getQuote()`, `projects.active()`, `apps.browse(tags?)`,
  * `ai.generateImage(opts)`, etc.) pass through unchanged.
  */
+import type {
+  LiveChangesOptions,
+  LiveChangesPage,
+  LiveEvent,
+  LiveSubscribeOptions,
+  LiveSubscription,
+} from "./namespaces/live.types.js";
 import type { Client } from "./kernel.js";
 import type { Run402 } from "./index.js";
 import type { ProjectKeys } from "./credentials.js";
@@ -404,6 +411,19 @@ class ScopedEvents {
   /** Read a page of this project's events feed (cursor is opaque — store and echo). */
   list(opts?: ListEventsOptions): Promise<ProjectEventFeedPage> {
     return this.parent.events.list(this.projectId, opts);
+  }
+}
+
+class ScopedLive {
+  constructor(private readonly parent: Run402, private readonly projectId: string) {}
+
+  /** Hints since `cursor`, or hold up to `wait` seconds for the first one. */
+  changes(opts: LiveChangesOptions): Promise<LiveChangesPage> {
+    return this.parent.live.changes(this.projectId, opts);
+  }
+  /** Reconnecting SSE subscription; handle `resync` by refetching. */
+  subscribe(opts: LiveSubscribeOptions, onEvent: (event: LiveEvent) => void): LiveSubscription {
+    return this.parent.live.subscribe(this.projectId, opts, onEvent);
   }
 }
 
@@ -1025,6 +1045,7 @@ export class ScopedRun402 {
   readonly delegates: ScopedDelegates;
   /** Cursored project events feed, project-id pre-bound. */
   readonly events: ScopedEvents;
+  readonly live: ScopedLive;
   /** Release-error-rollup query surface (list / get / watch), project-id pre-bound. */
   readonly errors: ScopedErrors;
   readonly archives: ScopedArchives;
@@ -1049,6 +1070,7 @@ export class ScopedRun402 {
     this.grants = new ScopedGrants(parent, projectId);
     this.delegates = new ScopedDelegates(parent, projectId);
     this.events = new ScopedEvents(parent, projectId);
+    this.live = new ScopedLive(parent, projectId);
     this.errors = new ScopedErrors(parent, projectId);
     this.archives = new ScopedArchives(parent, projectId);
     this.snapshots = new ScopedSnapshots(parent, projectId);

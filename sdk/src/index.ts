@@ -40,6 +40,7 @@ import { Orgs, ScopedOrg } from "./namespaces/org.js";
 import { Grants } from "./namespaces/grants.js";
 import { Delegates } from "./namespaces/delegates.js";
 import { Events } from "./namespaces/events.js";
+import { Live } from "./namespaces/live.js";
 import { Rooms } from "./namespaces/rooms.js";
 import { Escalations } from "./namespaces/escalations.js";
 import { Errors } from "./namespaces/errors.js";
@@ -141,6 +142,12 @@ export class Run402 {
    * Also available project-scoped as `r.project(id).events`.
    */
   readonly events: Events;
+  /**
+   * tenant-live-changes: change hints for live tables (`tables[].live: true`),
+   * as a reconnecting SSE subscription or a held read. Also project-scoped as
+   * `r.project(id).live`.
+   */
+  readonly live: Live;
   /**
    * Agent-messaging coordination rooms — presence, room-visible addressed
    * messages, advisory claims. Org-scoped; a project id names its default
@@ -266,6 +273,7 @@ export class Run402 {
     this.grants = new Grants(client);
     this.delegates = new Delegates(client);
     this.events = new Events(client);
+    this.live = new Live(client);
     this.rooms = new Rooms(client);
     this.escalations = new Escalations(client);
     this.pay = new Pay(client, opts.payExecutor);
@@ -602,6 +610,7 @@ export { Delegates } from "./namespaces/delegates.js";
 export type * from "./namespaces/delegates.types.js";
 export { Events } from "./namespaces/events.js";
 export type * from "./namespaces/events.types.js";
+export type * from "./namespaces/live.types.js";
 export { Rooms, ScopedRoom } from "./namespaces/rooms.js";
 export { Escalations } from "./namespaces/escalations.js";
 export { waitFor, type WaitForOptions, type WaitForResult } from "./wait.js";

@@ -251,6 +251,7 @@ export const COMMAND_MANIFEST = [
 
   // ── events / errors (flat, merged runners) ───────────────────────────────
   { path: ["events"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "merged" },
+  { path: ["live"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["--tables", "cells", "--once"], runStyle: "merged" },
   { path: ["deliveries", "list"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
   { path: ["deliveries", "get"], positionals: [p("notification_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["n_1"], runStyle: "sub" },
   { path: ["contacts", "list"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },

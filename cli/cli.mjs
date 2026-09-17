@@ -54,6 +54,7 @@ BUILD & SHIP — the app and everything it serves
 
 OPERATE — what happened, and is it healthy
   events      What happened to your project since you last looked (cursored feed)
+  live        Change hints for live tables as NDJSON (SSE; --once for one held read)
   errors      Grouped error fingerprints + a promote/revert verdict (release-baselined)
   logs        Fetch function logs by request id (--request-id req_...)
   status      Show full account state (allowance, balance, tier, projects)
@@ -323,6 +324,11 @@ switch (cmd) {
   }
   case "events": {
     const { run } = await import("./lib/events.mjs");
+    await run(sub, rest);
+    break;
+  }
+  case "live": {
+    const { run } = await import("./lib/live.mjs");
     await run(sub, rest);
     break;
   }

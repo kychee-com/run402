@@ -1031,6 +1031,11 @@ Requires active tier and a provisioned project on Run402 Cloud. Against a config
 
 Inside GitHub Actions, `deploy apply` automatically uses OIDC credentials when `GITHUB_ACTIONS=true`, `ACTIONS_ID_TOKEN_REQUEST_URL`, and `ACTIONS_ID_TOKEN_REQUEST_TOKEN` are present. In that mode, project intent comes from `--project`, `RUN402_PROJECT_ID`, the app-local workspace link, or the manifest; conflicting selectors are rejected.
 
+### live
+
+- `run402 live --tables <a,b> [--project <id>] [--cursor <cursor>] [--as anon|service]` — stream change hints for live tables as NDJSON (Server-Sent Events under the hood; reconnects on its own)
+- `run402 live --tables <a,b> --once [--cursor <cursor>] [--wait <1..25>]` — one held read: hints since the cursor, or hold up to `--wait` seconds for the first one
+
 ### ci
 - `run402 ci link github [--project <id>] [--manifest <path>] [--repo <owner/repo>] [--branch <name> | --environment <name>] [--repository-id <id>] [--workflow <path>] [--expires-at <iso>] [--route-scope <pattern> ...] [--force]` — create a GitHub Actions OIDC deploy binding and write a workflow
 - `run402 ci list [--project <id>]` — list CI bindings for a project
@@ -1193,6 +1198,8 @@ The cursored project events feed: deploy activations, mailbox suspensions, trans
 
 - `run402 events [--project <id>] [--cursor <cursor>] [--limit <n>] [--source <app|platform>] [--type <name[,name]>]` — read a page of the project's feed (JSON envelope `{events, cursor, has_more, reset}`, plus `platform_incidents` / `platform_status` during an open incident, to stdout). `--project` defaults to the active project.
 - `run402 events --org <org_id> [--cursor <cursor>] [--limit <n>] [--source <app|platform>] [--type <name[,name]>]` — every fact the organization owns (members only; a project service_key cannot read sibling feeds). A **superset** of the project feeds, not a union of them: it also carries **organization-level facts**, which belong to the org and to no project, arrive with `project_id: null`, and are unreachable from any project feed.
+- `run402 live --tables <a,b> [--project <id>] [--cursor <cursor>] [--as anon|service]` — stream change hints for live tables (tables with `"live": true` in the expose manifest) as NDJSON, one JSON object per line: `ready` (`cursor`, `tables`), `change` (`{ table, op, pk: [<primary keys>] | null, n, cursor }`, never row data), `resync` (refetch what you care about), `reconnect` / `disconnected` (the stream reconnects on its own with the last cursor). `--as service` uses the service key and sees every hint, including owner-scoped ones; the default anon audience sees public-policy tables. Stop with Ctrl-C.
+- `run402 live --tables <a,b> --once [--cursor <cursor>] [--wait <1..25>]` — one held read instead of a stream: `{ changes, cursor, resync }` since `--cursor`, holding up to `--wait` seconds for the first hint (woken by the write, not by polling). `resync: true` means refetch. Refusals: `TABLE_NOT_LIVE` names the table and the manifest fix; `AUTH_REQUIRED` for an owner-scoped table without `--as service`; `LIVE_CONNECTION_LIMIT` at the project cap (the held read is never counted).
 
 Cursor contract — **an id is not a cursor**: the response's `cursor` is the high-water mark. Store it (a file in your repo, wherever you keep state) and pass it back as `--cursor` next time; one call returns everything you missed. Both tokens are opaque (`evc_…`, never parse), but they mean different things. An event's `id` names a **fact** — the same event carries the same `id` in the project feed and the org feed, which is how you dedup across both. The page `cursor` names a **position**, and a position only means something inside the row set it came from, so it is bound to that view (project vs org, plus any `--source` / `--type` filters). Replaying a `--project` cursor against `--org`, an unfiltered cursor against a filtered read, or an event `id` in place of a cursor all return `reset: true` instead of resuming — resuming would silently skip exactly the rows the other view omitted. Store each cursor against the read shape that produced it.
 
@@ -2312,6 +2319,20 @@ const refreshed = await fetch(API + '/auth/v1/token?grant_type=refresh_token', {
 - `GET /auth/v1/user` (with `Authorization: Bearer <access_token>`) — returns `display_name`, `avatar_url`, `email_verified_at`, and linked `identities[]`.
 
 ---
+
+## Live changes — push on change, without WebSockets
+
+A page on a run402 host can learn that its data changed without polling. Mark the table live in the expose manifest (`{ "name": "cells", "expose": true, "policy": "public_read_authenticated_write", "live": true }`; `custom` policies are refused), deploy, and subscribe with one line:
+
+```html
+<script>
+  const es = new EventSource("/_run402/live?tables=cells");
+  es.addEventListener("change", (e) => refetch(JSON.parse(e.data)));   // { table, op, pk: [{...}] | null, n }
+  es.addEventListener("resync", () => refetchAll());                     // the one rule: handle resync
+</script>
+```
+
+Hints say *what* changed (table, operation, primary keys), never the row: refetch through `/rest/v1` under your own key, so RLS and the manifest keep deciding what anyone may see. `/_run402/config.json` carries `live: { path: "/_run402/live", tables: [...] }` (or `null`) so a page can build its subscription from the host alone. On a tenant host the identity is the hosted-auth session cookie (sent by `EventSource` same-origin): a signed-in user receives its own `user_owns_rows` hints; an anonymous page receives public-policy hints only, and a `user_owns_rows` subscription without a session is `401 AUTH_REQUIRED`. The server closes every stream after 300 s with a `reconnect` event and `EventSource` resumes from `Last-Event-ID`; when the gateway cannot promise it saw everything since your cursor it sends `resync` naming your tables instead of inventing a gap. Inside a third-party iframe the cookie is not sent, so a framed page gets the anonymous audience. For callers that cannot hold a stream, `GET /_run402/live/changes?tables=cells&cursor=<c>&wait=25` is the held read. Caps: 200 concurrent live connections per project (50 on prototype); over the cap is `429 LIVE_CONNECTION_LIMIT` with `Retry-After`.
 
 ## Build Ideas
 

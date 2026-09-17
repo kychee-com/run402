@@ -1812,6 +1812,27 @@ Every response carries `next_actions[]` (ordered; `[0]` is the recommended step)
 
 The cursored events feed — "what happened since I last looked". Also project-scoped as `r.project(id).events.list(opts)`.
 
+### Live changes (`r.live`, `r.project(id).live`)
+
+Change hints for live tables (`tables[].live: true` in the expose manifest): the table, the operation and the primary keys touched, never row data. Refetch under your own key; RLS keeps deciding what you may see.
+
+```ts
+const p = await r.project("prj_…");
+// Held read: hints since a cursor, or hold up to 25 s for the first one.
+const page = await p.live.changes({ tables: ["cells"], cursor, wait: 25 });
+// { changes: [{ table, op, pk: [{...}] | null, n, cursor }], cursor, resync }
+
+// Reconnecting SSE subscription (Node and browsers; carries the apikey header).
+const sub = p.live.subscribe({ tables: ["cells"] }, (e) => {
+  if (e.type === "change") refetch(e.change);        // { table, op, pk, n, cursor }
+  if (e.type === "resync") refetchAll(e.tables);     // the one rule: handle resync
+});
+// later
+sub.close(); await sub.done;
+```
+
+`LiveEvent` is `ready` (`cursor`, `tables`), `change`, `resync` (`tables`, `reason`), `reconnect` (the server closed at its 300 s lifetime; the loop resumes from the last cursor) or `disconnected` (a retryable failure; `retry_in_ms`). Audience: `{ as: "anon" }` (default; the project anon key, public-policy tables), `{ as: "user", accessToken }` (adds a user Bearer; receives that user's `user_owns_rows` hints), `{ as: "service" }` (service key; every hint). A non-retryable refusal (`TABLE_NOT_LIVE`, `AUTH_REQUIRED`, `VALIDATION_FAILED`) rejects `done` with the gateway's error envelope; `LIVE_CONNECTION_LIMIT` and 5xx back off and retry. The tenant-host stream (`/_run402/live`) needs no SDK at all: `new EventSource("/_run402/live?tables=cells")`.
+
 An **organization** owns each fact and `project_id` says what it is *about*. So `listForOrg` is a **superset** of the project feeds rather than a union of them — it also carries organization-level facts, which belong to no project and arrive with `project_id: null` — and a fact **outlives** the project it describes: deleting a project no longer erases its history, so `project_id` may name a project that is gone.
 
 ```

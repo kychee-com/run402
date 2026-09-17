@@ -115,6 +115,7 @@ function parseCliCommands(): string[] {
   if (existsSync(join(__dirname, "cli/lib/status.mjs"))) cmds.push("status");
   if (existsSync(join(__dirname, "cli/lib/doctor.mjs"))) cmds.push("doctor");
   if (existsSync(join(__dirname, "cli/lib/events.mjs"))) cmds.push("events");
+  if (existsSync(join(__dirname, "cli/lib/live.mjs"))) cmds.push("live");
   if (existsSync(join(__dirname, "cli/lib/errors.mjs"))) cmds.push("errors");
   if (existsSync(join(__dirname, "cli/lib/dev.mjs"))) cmds.push("dev");
   if (existsSync(join(__dirname, "cli/lib/logs.mjs"))) cmds.push("logs");
@@ -155,6 +156,7 @@ function parseOpenClawCommands(): string[] {
   if (existsSync(join(__dirname, "openclaw/scripts/status.mjs"))) cmds.push("status");
   if (existsSync(join(__dirname, "openclaw/scripts/doctor.mjs"))) cmds.push("doctor");
   if (existsSync(join(__dirname, "openclaw/scripts/events.mjs"))) cmds.push("events");
+  if (existsSync(join(__dirname, "openclaw/scripts/live.mjs"))) cmds.push("live");
   if (existsSync(join(__dirname, "openclaw/scripts/errors.mjs"))) cmds.push("errors");
   if (existsSync(join(__dirname, "openclaw/scripts/dev.mjs"))) cmds.push("dev");
   if (existsSync(join(__dirname, "openclaw/scripts/logs.mjs"))) cmds.push("logs");
@@ -580,6 +582,10 @@ const SURFACE: Capability[] = [
   // (GET /orgs/v1/:org_id/events) is the same surface addressed with
   // --org / org_id; the SDK's events.listForOrg is tracked in SDK_ONLY_METHODS.
   { id: "list_project_events",          endpoint: "GET /projects/v1/:id/events",                   mcp: "list_project_events",          cli: "events",                        openclaw: "events" },
+  // tenant-live-changes: a long-lived stream has no MCP tool by design (see the
+  // change design); the held read is the polling-friendly shape for MCP callers
+  // via plain HTTP.
+  { id: "live_changes",                 endpoint: "GET /live/v1 + GET /live/v1/changes (+ /_run402/live* on tenant hosts)", mcp: null, cli: "live", openclaw: "live" },
 
   // ── Agent messaging — coordination rooms (add-agent-messaging) ──────────
   // One CLI family per resource: `rooms` (the room itself: join), `messages`
@@ -1209,6 +1215,9 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   get_operator_status: "admin.getOperatorStatus",
   list_notifications: "admin.listNotifications",
   list_project_events: "events.list",
+  // tenant-live-changes: the CLI verb streams via `live.subscribe`; the held
+  // read `live.changes` is the polling-friendly shape and the mapped method.
+  live_changes: "live.changes",
   join_room: "rooms.registerPresence",
   send_room_message: "rooms.sendMessage",
   read_room_messages: "rooms.listMessages",
@@ -1598,6 +1607,9 @@ describe("SDK surface alignment", () => {
     // runtime-enforced), plus convenience methods consumers can compose
     // without needing their own MCP tool.
     const SDK_ONLY_METHODS = new Set([
+      // tenant-live-changes: the reconnecting SSE subscription rides beside the
+      // mapped held read (`live.changes`); the CLI verb `live` streams through it.
+      "live.subscribe",
       // lightning-cash-topup: the CLI's `--wait` loop; MCP callers poll `get_topup`.
       "billing.waitForTopup",
       // mpp-lightning-over-nwc: one verb (`lightning_wallet` / `wallets lightning`)

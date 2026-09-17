@@ -148,6 +148,11 @@ Requires active tier and a provisioned project on Run402 Cloud. Against a config
 
 Inside GitHub Actions, `deploy apply` automatically uses OIDC credentials when `GITHUB_ACTIONS=true`, `ACTIONS_ID_TOKEN_REQUEST_URL`, and `ACTIONS_ID_TOKEN_REQUEST_TOKEN` are present. In that mode, project intent comes from `--project`, `RUN402_PROJECT_ID`, the app-local workspace link, or the manifest; conflicting selectors are rejected.
 
+### live
+
+- `run402 live --tables <a,b> [--project <id>] [--cursor <cursor>] [--as anon|service]` — stream change hints for live tables as NDJSON (Server-Sent Events under the hood; reconnects on its own)
+- `run402 live --tables <a,b> --once [--cursor <cursor>] [--wait <1..25>]` — one held read: hints since the cursor, or hold up to `--wait` seconds for the first one
+
 ### ci
 - `run402 ci link github [--project <id>] [--manifest <path>] [--repo <owner/repo>] [--branch <name> | --environment <name>] [--repository-id <id>] [--workflow <path>] [--expires-at <iso>] [--route-scope <pattern> ...] [--force]` — create a GitHub Actions OIDC deploy binding and write a workflow
 - `run402 ci list [--project <id>]` — list CI bindings for a project

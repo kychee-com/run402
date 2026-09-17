@@ -158,6 +158,7 @@ const MATRIX = {
   org: { shared: [], specific: ["create", "get", "rename", "whoami", "list", "audit", "member", "invite"] },
   grants: { shared: [], specific: ["create", "revoke"] },
   events: { shared: [], specific: [] },
+  live: { shared: [], specific: [] },
   rooms: { shared: [], specific: [] },
   claims: { shared: [], specific: [] },
   // `gitvault` is RETIRED (repo-surface-consolidation, design D7): every
