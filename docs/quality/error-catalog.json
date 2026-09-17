@@ -2,11 +2,11 @@
   "version": 1,
   "contributions": {
     "gateway": {
-      "revision": "1a1fff1af5489024d64bb6169d2eecfcdf37eb4a",
-      "sourceDigest": "3e944679ecb60f835ad77380eea76c179e199269dc8d075d548542bc30142444"
+      "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+      "sourceDigest": "edf211dd3f0de2adc8322b35dd375a5ebb52f1151ae18c9f4dd8517133f0892f"
     },
     "core": {
-      "revision": "07064336ece055a208c0d71a0f6addb436f64a27"
+      "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7"
     }
   },
   "records": [
@@ -818,6 +818,10 @@
         {
           "owner": "public",
           "source": "cli/lib/jobs.mjs"
+        },
+        {
+          "owner": "public",
+          "source": "cli/lib/live.mjs"
         },
         {
           "owner": "public",
@@ -3799,6 +3803,16 @@
       "topic": "/errors/client/#LIGHTNING_WALLET_STILL_MINTING"
     },
     {
+      "code": "LIVE_CONNECTION_LIMIT",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#LIVE_CONNECTION_LIMIT"
+    },
+    {
       "code": "LOCAL_CREDENTIAL_CACHE_UNSUPPORTED",
       "owners": [
         {
@@ -3991,6 +4005,16 @@
         }
       ],
       "topic": "/errors/client/#MESSAGE_TOO_LONG"
+    },
+    {
+      "code": "METHOD_NOT_ALLOWED",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#METHOD_NOT_ALLOWED"
     },
     {
       "code": "MIGRATE_GATE_ACTIVE",
@@ -5133,6 +5157,16 @@
       "topic": "/errors/gateway/#PROJECT_NOT_FOUND"
     },
     {
+      "code": "PROJECT_NOT_READY",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#PROJECT_NOT_READY"
+    },
+    {
       "code": "PROJECT_PAST_DUE",
       "owners": [
         {
@@ -6117,6 +6151,16 @@
       "topic": "/errors/runtime/#R402_DB_SQL_ERROR"
     },
     {
+      "code": "R402_DB_SQL_RESULT_SHAPE",
+      "owners": [
+        {
+          "owner": "core",
+          "source": "packages/functions/src/db.ts"
+        }
+      ],
+      "topic": "/errors/runtime/#R402_DB_SQL_RESULT_SHAPE"
+    },
+    {
       "code": "R402_DEPLOY_STAGE_FAILED",
       "owners": [
         {
@@ -6993,6 +7037,16 @@
         }
       ],
       "topic": "/errors/gateway/#TABLE_NOT_EXPOSED"
+    },
+    {
+      "code": "TABLE_NOT_LIVE",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#TABLE_NOT_LIVE"
     },
     {
       "code": "TEST_MODE_DISABLED",

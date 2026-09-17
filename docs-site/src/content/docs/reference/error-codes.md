@@ -1319,6 +1319,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="LIGHTNING_WALLET_STILL_MINTING"></a>
 [`LIGHTNING_WALLET_STILL_MINTING`](/errors/client/#LIGHTNING_WALLET_STILL_MINTING)
 
+<a id="live_connection_limit"></a>
+<a id="LIVE_CONNECTION_LIMIT"></a>
+[`LIVE_CONNECTION_LIMIT`](/errors/gateway/#LIVE_CONNECTION_LIMIT)
+
 <a id="local_credential_cache_unsupported"></a>
 <a id="LOCAL_CREDENTIAL_CACHE_UNSUPPORTED"></a>
 [`LOCAL_CREDENTIAL_CACHE_UNSUPPORTED`](/errors/client/#LOCAL_CREDENTIAL_CACHE_UNSUPPORTED)
@@ -1393,6 +1397,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="message_too_long"></a>
 <a id="MESSAGE_TOO_LONG"></a>
 [`MESSAGE_TOO_LONG`](/errors/client/#MESSAGE_TOO_LONG)
+
+<a id="method_not_allowed"></a>
+<a id="METHOD_NOT_ALLOWED"></a>
+[`METHOD_NOT_ALLOWED`](/errors/gateway/#METHOD_NOT_ALLOWED)
 
 <a id="migrate_gate_active"></a>
 <a id="MIGRATE_GATE_ACTIVE"></a>
@@ -1823,6 +1831,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="PROJECT_NOT_FOUND"></a>
 [`PROJECT_NOT_FOUND`](/errors/gateway/#PROJECT_NOT_FOUND)
 
+<a id="project_not_ready"></a>
+<a id="PROJECT_NOT_READY"></a>
+[`PROJECT_NOT_READY`](/errors/gateway/#PROJECT_NOT_READY)
+
 <a id="project_past_due"></a>
 <a id="PROJECT_PAST_DUE"></a>
 [`PROJECT_PAST_DUE`](/errors/gateway/#PROJECT_PAST_DUE)
@@ -2142,6 +2154,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="r402_db_sql_error"></a>
 <a id="R402_DB_SQL_ERROR"></a>
 [`R402_DB_SQL_ERROR`](/errors/runtime/#R402_DB_SQL_ERROR)
+
+<a id="r402_db_sql_result_shape"></a>
+<a id="R402_DB_SQL_RESULT_SHAPE"></a>
+[`R402_DB_SQL_RESULT_SHAPE`](/errors/runtime/#R402_DB_SQL_RESULT_SHAPE)
 
 <a id="r402_deploy_stage_failed"></a>
 <a id="R402_DEPLOY_STAGE_FAILED"></a>
@@ -2480,6 +2496,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="table_not_exposed"></a>
 <a id="TABLE_NOT_EXPOSED"></a>
 [`TABLE_NOT_EXPOSED`](/errors/gateway/#TABLE_NOT_EXPOSED)
+
+<a id="table_not_live"></a>
+<a id="TABLE_NOT_LIVE"></a>
+[`TABLE_NOT_LIVE`](/errors/gateway/#TABLE_NOT_LIVE)
 
 <a id="test_mode_disabled"></a>
 <a id="TEST_MODE_DISABLED"></a>

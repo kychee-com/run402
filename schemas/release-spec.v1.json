@@ -51,18 +51,28 @@
     },
     "routes": {
       "oneOf": [
-        { "type": "null" },
-        { "$ref": "#/$defs/routes" }
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/routes"
+        }
       ]
     },
     "checks": {
       "type": "array",
-      "items": { "$ref": "#/$defs/smokeCheck" }
+      "items": {
+        "$ref": "#/$defs/smokeCheck"
+      }
     },
     "i18n": {
       "oneOf": [
-        { "type": "null" },
-        { "$ref": "#/$defs/i18n" }
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/i18n"
+        }
       ]
     },
     "verify": {
@@ -76,19 +86,28 @@
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["release"],
+          "required": [
+            "release"
+          ],
           "properties": {
             "release": {
-              "enum": ["current", "empty"]
+              "enum": [
+                "current",
+                "empty"
+              ]
             }
           }
         },
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["release_id"],
+          "required": [
+            "release_id"
+          ],
           "properties": {
-            "release_id": { "type": "string" }
+            "release_id": {
+              "type": "string"
+            }
           }
         }
       ]
@@ -99,7 +118,9 @@
       "properties": {
         "migrations": {
           "type": "array",
-          "items": { "$ref": "#/$defs/migration" }
+          "items": {
+            "$ref": "#/$defs/migration"
+          }
         },
         "expose": {
           "type": "object",
@@ -123,16 +144,49 @@
           "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$",
           "description": "Content-tracked migration name for generated/idempotent SQL. The SDK compiles this to <name>_<sha256(sql)[0:16]>; changed content applies once under a new id and identical re-deploys noop. SQL declared with name MUST be idempotent because it re-runs whenever content changes against a database where prior versions may already exist."
         },
-        "checksum": { "type": "string" },
-        "sql": { "type": "string" },
-        "sql_ref": { "$ref": "#/$defs/contentRef" },
-        "sql_path": { "type": "string" },
-        "sql_file": { "type": "string" },
-        "transaction": { "enum": ["required", "none"] }
+        "checksum": {
+          "type": "string"
+        },
+        "sql": {
+          "type": "string"
+        },
+        "sql_ref": {
+          "$ref": "#/$defs/contentRef"
+        },
+        "sql_path": {
+          "type": "string"
+        },
+        "sql_file": {
+          "type": "string"
+        },
+        "transaction": {
+          "enum": [
+            "required",
+            "none"
+          ]
+        }
       },
       "oneOf": [
-        { "required": ["id"], "not": { "required": ["name"] } },
-        { "required": ["name"], "not": { "required": ["id"] } }
+        {
+          "required": [
+            "id"
+          ],
+          "not": {
+            "required": [
+              "name"
+            ]
+          }
+        },
+        {
+          "required": [
+            "name"
+          ],
+          "not": {
+            "required": [
+              "id"
+            ]
+          }
+        }
       ]
     },
     "secrets": {
@@ -141,11 +195,15 @@
       "properties": {
         "require": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         },
         "delete": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         }
       }
     },
@@ -155,7 +213,9 @@
       "properties": {
         "replace": {
           "type": "object",
-          "additionalProperties": { "$ref": "#/$defs/functionSpec" }
+          "additionalProperties": {
+            "$ref": "#/$defs/functionSpec"
+          }
         },
         "patch": {
           "type": "object",
@@ -163,11 +223,15 @@
           "properties": {
             "set": {
               "type": "object",
-              "additionalProperties": { "$ref": "#/$defs/functionSpec" }
+              "additionalProperties": {
+                "$ref": "#/$defs/functionSpec"
+              }
             },
             "delete": {
               "type": "array",
-              "items": { "type": "string" }
+              "items": {
+                "type": "string"
+              }
             }
           }
         }
@@ -178,10 +242,20 @@
       "additionalProperties": false,
       "description": "FunctionSpec. schedule is a sibling of runtime/source/files/config, not config.schedule.",
       "properties": {
-        "runtime": { "enum": ["node22"] },
-        "source": { "$ref": "#/$defs/fileEntry" },
-        "files": { "$ref": "#/$defs/fileSet" },
-        "entrypoint": { "type": "string" },
+        "runtime": {
+          "enum": [
+            "node22"
+          ]
+        },
+        "source": {
+          "$ref": "#/$defs/fileEntry"
+        },
+        "files": {
+          "$ref": "#/$defs/fileSet"
+        },
+        "entrypoint": {
+          "type": "string"
+        },
         "config": {
           "type": "object",
           "additionalProperties": false,
@@ -198,64 +272,127 @@
         },
         "schedule": {
           "oneOf": [
-            { "type": "string", "description": "5-field cron expression." },
-            { "type": "null", "description": "Remove an existing schedule in patch mode." }
+            {
+              "type": "string",
+              "description": "5-field cron expression."
+            },
+            {
+              "type": "null",
+              "description": "Remove an existing schedule in patch mode."
+            }
           ]
         },
         "deps": {
           "type": "array",
-          "items": { "type": "string", "minLength": 1 }
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
         },
         "triggers": {
           "type": "array",
-          "items": { "$ref": "#/$defs/functionTrigger" }
+          "items": {
+            "$ref": "#/$defs/functionTrigger"
+          }
         },
-        "requireAuth": { "type": "boolean" },
-        "require_auth": { "type": "boolean" },
+        "requireAuth": {
+          "type": "boolean"
+        },
+        "require_auth": {
+          "type": "boolean"
+        },
         "requireRole": {
           "oneOf": [
-            { "type": "null" },
-            { "$ref": "#/$defs/functionRequireRole" }
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/functionRequireRole"
+            }
           ]
         },
         "require_role": {
           "oneOf": [
-            { "type": "null" },
-            { "$ref": "#/$defs/functionRequireRole" }
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/functionRequireRole"
+            }
           ]
         },
         "class": { "enum": ["ssr", "standard"] },
         "capabilities": {
           "type": "array",
-          "items": { "type": "string", "minLength": 1 }
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
         }
       }
     },
     "functionTrigger": {
       "type": "object",
       "additionalProperties": true,
-      "required": ["id", "type"],
+      "required": [
+        "id",
+        "type"
+      ],
       "properties": {
-        "id": { "type": "string", "minLength": 1 },
-        "type": { "type": "string", "minLength": 1 }
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "functionRequireRole": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["table", "id_column", "role_column", "allowed"],
+      "required": [
+        "table",
+        "id_column",
+        "role_column",
+        "allowed"
+      ],
       "properties": {
-        "table": { "type": "string", "minLength": 1 },
-        "id_column": { "type": "string", "minLength": 1 },
-        "role_column": { "type": "string", "minLength": 1 },
+        "table": {
+          "type": "string",
+          "minLength": 1
+        },
+        "id_column": {
+          "type": "string",
+          "minLength": 1
+        },
+        "role_column": {
+          "type": "string",
+          "minLength": 1
+        },
         "allowed": {
           "type": "array",
-          "items": { "type": "string", "minLength": 1 },
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
           "minItems": 1
         },
-        "cache_ttl": { "type": "integer", "minimum": 0 },
-        "on_deny": { "enum": ["envelope", "redirect"] },
-        "sign_in_path": { "type": "string", "minLength": 1 }
+        "cache_ttl": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "on_deny": {
+          "enum": [
+            "envelope",
+            "redirect"
+          ]
+        },
+        "sign_in_path": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "site": {
@@ -263,21 +400,34 @@
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["replace"],
+          "required": [
+            "replace"
+          ],
           "properties": {
             "replace": {
               "oneOf": [
-                { "$ref": "#/$defs/fileSet" },
-                { "$ref": "#/$defs/localDirRef" }
+                {
+                  "$ref": "#/$defs/fileSet"
+                },
+                {
+                  "$ref": "#/$defs/localDirRef"
+                }
               ]
             },
-            "public_paths": { "$ref": "#/$defs/sitePublicPaths" }
+            "public_paths": {
+              "$ref": "#/$defs/sitePublicPaths"
+            },
+            "embedding": {
+              "$ref": "#/$defs/siteEmbedding"
+            }
           }
         },
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["patch"],
+          "required": [
+            "patch"
+          ],
           "properties": {
             "patch": {
               "type": "object",
@@ -285,26 +435,53 @@
               "properties": {
                 "put": {
                   "oneOf": [
-                    { "$ref": "#/$defs/fileSet" },
-                    { "$ref": "#/$defs/localDirRef" }
+                    {
+                      "$ref": "#/$defs/fileSet"
+                    },
+                    {
+                      "$ref": "#/$defs/localDirRef"
+                    }
                   ]
                 },
                 "delete": {
                   "type": "array",
-                  "items": { "type": "string" }
+                  "items": {
+                    "type": "string"
+                  }
                 }
               }
             },
-            "public_paths": { "$ref": "#/$defs/sitePublicPaths" }
+            "public_paths": {
+              "$ref": "#/$defs/sitePublicPaths"
+            },
+            "embedding": {
+              "$ref": "#/$defs/siteEmbedding"
+            }
           }
         },
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["public_paths"],
           "properties": {
-            "public_paths": { "$ref": "#/$defs/sitePublicPaths" }
-          }
+            "public_paths": {
+              "$ref": "#/$defs/sitePublicPaths"
+            },
+            "embedding": {
+              "$ref": "#/$defs/siteEmbedding"
+            }
+          },
+          "anyOf": [
+            {
+              "required": [
+                "public_paths"
+              ]
+            },
+            {
+              "required": [
+                "embedding"
+              ]
+            }
+          ]
         }
       ]
     },
@@ -313,20 +490,31 @@
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["mode"],
+          "required": [
+            "mode"
+          ],
           "properties": {
-            "mode": { "const": "implicit" }
+            "mode": {
+              "const": "implicit"
+            }
           }
         },
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["mode", "replace"],
+          "required": [
+            "mode",
+            "replace"
+          ],
           "properties": {
-            "mode": { "const": "explicit" },
+            "mode": {
+              "const": "explicit"
+            },
             "replace": {
               "type": "object",
-              "additionalProperties": { "$ref": "#/$defs/publicStaticPath" }
+              "additionalProperties": {
+                "$ref": "#/$defs/publicStaticPath"
+              }
             }
           }
         }
@@ -335,7 +523,9 @@
     "publicStaticPath": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["asset"],
+      "required": [
+        "asset"
+      ],
       "properties": {
         "asset": {
           "type": "string",
@@ -357,49 +547,78 @@
       "properties": {
         "set": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         },
         "add": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         },
         "remove": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         }
       }
     },
     "routes": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["replace"],
+      "required": [
+        "replace"
+      ],
       "properties": {
         "replace": {
           "type": "array",
-          "items": { "$ref": "#/$defs/route" }
+          "items": {
+            "$ref": "#/$defs/route"
+          }
         }
       }
     },
     "route": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["pattern", "target"],
+      "required": [
+        "pattern",
+        "target"
+      ],
       "properties": {
-        "pattern": { "type": "string" },
+        "pattern": {
+          "type": "string"
+        },
         "methods": {
           "type": "array",
           "minItems": 1,
           "items": {
-            "enum": ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+            "enum": [
+              "GET",
+              "HEAD",
+              "POST",
+              "PUT",
+              "PATCH",
+              "DELETE",
+              "OPTIONS"
+            ]
           }
         },
         "target": {
           "oneOf": [
-            { "$ref": "#/$defs/functionRouteTarget" },
-            { "$ref": "#/$defs/staticRouteTarget" }
+            {
+              "$ref": "#/$defs/functionRouteTarget"
+            },
+            {
+              "$ref": "#/$defs/staticRouteTarget"
+            }
           ]
         },
-        "pricing": { "$ref": "#/$defs/routePricing" },
+        "pricing": {
+          "$ref": "#/$defs/routePricing"
+        },
         "acknowledge_readonly": {
           "const": true,
           "description": "Durable acknowledgement for intentional read-only final-wildcard function routes. Valid only when target.type is function, pattern ends in /*, and methods are limited to GET/HEAD."
@@ -412,15 +631,25 @@
               "target": {
                 "type": "object",
                 "properties": {
-                  "type": { "const": "static" }
+                  "type": {
+                    "const": "static"
+                  }
                 },
-                "required": ["type"]
+                "required": [
+                  "type"
+                ]
               }
             },
-            "required": ["target"]
+            "required": [
+              "target"
+            ]
           },
           "then": {
-            "not": { "required": ["pricing"] }
+            "not": {
+              "required": [
+                "pricing"
+              ]
+            }
           }
         }
       ]
@@ -428,22 +657,35 @@
     "routePricing": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["mode", "amount_usd_micros", "pay_to"],
+      "required": [
+        "mode",
+        "amount_usd_micros",
+        "pay_to"
+      ],
       "properties": {
-        "mode": { "const": "always" },
+        "mode": {
+          "const": "always"
+        },
         "amount_usd_micros": {
           "type": "integer",
           "minimum": 1,
           "maximum": 9007199254740991
         },
-        "pay_to": { "const": "org_default_payout" },
+        "pay_to": {
+          "const": "org_default_payout"
+        },
         "networks": {
           "type": "array",
           "minItems": 1,
           "uniqueItems": true,
-          "default": ["mainnet"],
+          "default": [
+            "mainnet"
+          ],
           "items": {
-            "enum": ["mainnet", "testnet"]
+            "enum": [
+              "mainnet",
+              "testnet"
+            ]
           },
           "description": "Omit to accept production mainnet only. Include testnet explicitly for testnet payments."
         }
@@ -452,18 +694,30 @@
     "functionRouteTarget": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["type", "name"],
+      "required": [
+        "type",
+        "name"
+      ],
       "properties": {
-        "type": { "const": "function" },
-        "name": { "type": "string" }
+        "type": {
+          "const": "function"
+        },
+        "name": {
+          "type": "string"
+        }
       }
     },
     "staticRouteTarget": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["type", "file"],
+      "required": [
+        "type",
+        "file"
+      ],
       "properties": {
-        "type": { "const": "static" },
+        "type": {
+          "const": "static"
+        },
         "file": {
           "type": "string",
           "description": "Relative materialized release static asset path, not a public path."
@@ -477,7 +731,10 @@
     "i18n": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["defaultLocale", "locales"],
+      "required": [
+        "defaultLocale",
+        "locales"
+      ],
       "description": "Routed-locale-context release slice (v2.5+). Omit at the top level to carry forward from the base release; pass top-level i18n: null to clear; pass an object to replace. defaultLocale MUST be byte-identical to one entry in locales[].",
       "properties": {
         "defaultLocale": {
@@ -506,21 +763,31 @@
         },
         "unknownLocalePolicy": {
           "type": "string",
-          "enum": ["reject", "pass-through"],
+          "enum": [
+            "reject",
+            "pass-through"
+          ],
           "description": "What to do when a detect-source signal does not match locales[]. 'reject' (default, backwards-compatible) falls through to the next detect source then to defaultLocale. 'pass-through' returns the lowercased, trimmed signal value verbatim — letting the consumer's app DB decide whether translations exist for the tag. Capability i18n-unknown-locale-policy (issue #413)."
         }
       }
     },
     "fileSet": {
       "type": "object",
-      "additionalProperties": { "$ref": "#/$defs/fileEntry" }
+      "additionalProperties": {
+        "$ref": "#/$defs/fileEntry"
+      }
     },
     "localDirRef": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["__source", "path"],
+      "required": [
+        "__source",
+        "path"
+      ],
       "properties": {
-        "__source": { "const": "local-dir" },
+        "__source": {
+          "const": "local-dir"
+        },
         "path": {
           "type": "string",
           "description": "Local directory path resolved by the SDK/CLI from the manifest directory and stripped before the apply request."
@@ -530,30 +797,53 @@
     },
     "fileEntry": {
       "oneOf": [
-        { "type": "string" },
-        { "$ref": "#/$defs/contentRef" },
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#/$defs/contentRef"
+        },
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["path"],
+          "required": [
+            "path"
+          ],
           "properties": {
-            "path": { "type": "string" },
-            "content_type": { "type": "string" }
+            "path": {
+              "type": "string"
+            },
+            "content_type": {
+              "type": "string"
+            }
           }
         },
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["data"],
+          "required": [
+            "data"
+          ],
           "properties": {
             "data": {
               "oneOf": [
-                { "type": "string" },
-                { "$ref": "#/$defs/contentRef" }
+                {
+                  "type": "string"
+                },
+                {
+                  "$ref": "#/$defs/contentRef"
+                }
               ]
             },
-            "encoding": { "enum": ["utf-8", "base64"] },
-            "content_type": { "type": "string" }
+            "encoding": {
+              "enum": [
+                "utf-8",
+                "base64"
+              ]
+            },
+            "content_type": {
+              "type": "string"
+            }
           }
         }
       ]
@@ -561,16 +851,28 @@
     "contentRef": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["sha256", "size"],
+      "required": [
+        "sha256",
+        "size"
+      ],
       "properties": {
-        "sha256": { "type": "string" },
+        "sha256": {
+          "type": "string"
+        },
         "size": {
           "type": "integer",
           "minimum": 0
         },
-        "content_type": { "type": "string" },
-        "contentType": { "type": "string", "description": "Legacy SDK ContentRef spelling accepted by the normalizer; prefer content_type in manifests." },
-        "integrity": { "type": "string" }
+        "content_type": {
+          "type": "string"
+        },
+        "contentType": {
+          "type": "string",
+          "description": "Legacy SDK ContentRef spelling accepted by the normalizer; prefer content_type in manifests."
+        },
+        "integrity": {
+          "type": "string"
+        }
       }
     },
     "assets": {
@@ -580,20 +882,28 @@
       "properties": {
         "put": {
           "type": "array",
-          "items": { "$ref": "#/$defs/assetPutEntry" }
+          "items": {
+            "$ref": "#/$defs/assetPutEntry"
+          }
         },
         "delete": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Asset keys to remove at activation."
         },
-        "sync": { "$ref": "#/$defs/assetSync" }
+        "sync": {
+          "$ref": "#/$defs/assetSync"
+        }
       }
     },
     "assetPutEntry": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["key"],
+      "required": [
+        "key"
+      ],
       "properties": {
         "key": {
           "type": "string",
@@ -612,29 +922,54 @@
           "minimum": 0,
           "description": "Required when using the wire form (sha256 set)."
         },
-        "content_type": { "type": "string" },
-        "visibility": { "enum": ["public", "private"] },
-        "immutable": { "type": "boolean" }
+        "content_type": {
+          "type": "string"
+        },
+        "visibility": {
+          "enum": [
+            "public",
+            "private"
+          ]
+        },
+        "immutable": {
+          "type": "boolean"
+        }
       }
     },
     "assetSync": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["prefix", "prune"],
+      "required": [
+        "prefix",
+        "prune"
+      ],
       "properties": {
         "prefix": {
           "type": "string",
           "description": "Prefix under which destructive sync operates."
         },
-        "prune": { "const": true },
+        "prune": {
+          "const": true
+        },
         "confirm": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["base_revision", "delete_set_digest", "expected_delete_count"],
+          "required": [
+            "base_revision",
+            "delete_set_digest",
+            "expected_delete_count"
+          ],
           "properties": {
-            "base_revision": { "type": "string" },
-            "delete_set_digest": { "type": "string" },
-            "expected_delete_count": { "type": "integer", "minimum": 0 }
+            "base_revision": {
+              "type": "string"
+            },
+            "delete_set_digest": {
+              "type": "string"
+            },
+            "expected_delete_count": {
+              "type": "integer",
+              "minimum": 0
+            }
           },
           "description": "Confirmation token echoed back from a prior plan; required to commit a destructive sync."
         }
@@ -646,28 +981,44 @@
       "properties": {
         "http": {
           "type": "array",
-          "items": { "$ref": "#/$defs/verifyHttpCheck" }
+          "items": {
+            "$ref": "#/$defs/verifyHttpCheck"
+          }
         }
       }
     },
     "verifyHttpCheck": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id"],
+      "required": [
+        "id"
+      ],
       "properties": {
-        "id": { "type": "string", "minLength": 1 },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
         "path": {
           "type": "string",
           "minLength": 1,
           "description": "Request path resolved against the project public origin."
         },
-        "url": { "type": "string", "minLength": 1 },
+        "url": {
+          "type": "string",
+          "minLength": 1
+        },
         "expect": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["status"],
+          "required": [
+            "status"
+          ],
           "properties": {
-            "status": { "type": "integer", "minimum": 100, "maximum": 599 }
+            "status": {
+              "type": "integer",
+              "minimum": 100,
+              "maximum": 599
+            }
           }
         },
         "expected_status": {
@@ -676,11 +1027,65 @@
           "maximum": 599,
           "description": "Snake-case alias for expect.status."
         },
-        "retries": { "type": "integer", "minimum": 1 }
+        "retries": {
+          "type": "integer",
+          "minimum": 1
+        }
       },
       "allOf": [
-        { "anyOf": [ { "required": ["path"] }, { "required": ["url"] } ] },
-        { "anyOf": [ { "required": ["expect"] }, { "required": ["expected_status"] } ] }
+        {
+          "anyOf": [
+            {
+              "required": [
+                "path"
+              ]
+            },
+            {
+              "required": [
+                "url"
+              ]
+            }
+          ]
+        },
+        {
+          "anyOf": [
+            {
+              "required": [
+                "expect"
+              ]
+            },
+            {
+              "required": [
+                "expected_status"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "siteEmbedding": {
+      "description": "Framing opt-in using platform catalog keys, never origins. Remote validation checks the current catalog. Null resets to deny; omission carries prior state.",
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "frame_ancestors"
+          ],
+          "properties": {
+            "frame_ancestors": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]*$"
+              }
+            }
+          }
+        }
       ]
     }
   }

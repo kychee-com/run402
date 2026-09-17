@@ -1011,6 +1011,9 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="LIGHTNING_WALLET_STILL_MINTING"></a>
 [`LIGHTNING_WALLET_STILL_MINTING`](/errors/client/#LIGHTNING_WALLET_STILL_MINTING)
 
+<a id="LIVE_CONNECTION_LIMIT"></a>
+[`LIVE_CONNECTION_LIMIT`](/errors/gateway/#LIVE_CONNECTION_LIMIT)
+
 <a id="LOCAL_CREDENTIAL_CACHE_UNSUPPORTED"></a>
 [`LOCAL_CREDENTIAL_CACHE_UNSUPPORTED`](/errors/client/#LOCAL_CREDENTIAL_CACHE_UNSUPPORTED)
 
@@ -1067,6 +1070,9 @@ The catalog records owning source locations and pinned external contributions. A
 
 <a id="MESSAGE_TOO_LONG"></a>
 [`MESSAGE_TOO_LONG`](/errors/client/#MESSAGE_TOO_LONG)
+
+<a id="METHOD_NOT_ALLOWED"></a>
+[`METHOD_NOT_ALLOWED`](/errors/gateway/#METHOD_NOT_ALLOWED)
 
 <a id="MIGRATE_GATE_ACTIVE"></a>
 [`MIGRATE_GATE_ACTIVE`](/errors/gateway/#MIGRATE_GATE_ACTIVE)
@@ -1392,6 +1398,9 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="PROJECT_NOT_FOUND"></a>
 [`PROJECT_NOT_FOUND`](/errors/gateway/#PROJECT_NOT_FOUND)
 
+<a id="PROJECT_NOT_READY"></a>
+[`PROJECT_NOT_READY`](/errors/gateway/#PROJECT_NOT_READY)
+
 <a id="PROJECT_PAST_DUE"></a>
 [`PROJECT_PAST_DUE`](/errors/gateway/#PROJECT_PAST_DUE)
 
@@ -1631,6 +1640,9 @@ The catalog records owning source locations and pinned external contributions. A
 
 <a id="R402_DB_SQL_ERROR"></a>
 [`R402_DB_SQL_ERROR`](/errors/runtime/#R402_DB_SQL_ERROR)
+
+<a id="R402_DB_SQL_RESULT_SHAPE"></a>
+[`R402_DB_SQL_RESULT_SHAPE`](/errors/runtime/#R402_DB_SQL_RESULT_SHAPE)
 
 <a id="R402_DEPLOY_STAGE_FAILED"></a>
 [`R402_DEPLOY_STAGE_FAILED`](/errors/runtime/#R402_DEPLOY_STAGE_FAILED)
@@ -1886,6 +1898,9 @@ The catalog records owning source locations and pinned external contributions. A
 
 <a id="TABLE_NOT_EXPOSED"></a>
 [`TABLE_NOT_EXPOSED`](/errors/gateway/#TABLE_NOT_EXPOSED)
+
+<a id="TABLE_NOT_LIVE"></a>
+[`TABLE_NOT_LIVE`](/errors/gateway/#TABLE_NOT_LIVE)
 
 <a id="TEST_MODE_DISABLED"></a>
 [`TEST_MODE_DISABLED`](/errors/gateway/#TEST_MODE_DISABLED)

@@ -221,6 +221,12 @@ Owner: `core:packages/functions/src/db.ts`.
 
 The adapter or runtime reported this diagnostic. Inspect its message, source location and suggested fix; check the installed package version and supported features. Correct the named input or request-context usage before rebuilding or deploying.
 
+<h2 id="R402_DB_SQL_RESULT_SHAPE">R402_DB_SQL_RESULT_SHAPE</h2>
+
+Owner: `core:packages/functions/src/db.ts`.
+
+The adapter or runtime reported this diagnostic. Inspect its message, source location and suggested fix; check the installed package version and supported features. Correct the named input or request-context usage before rebuilding or deploying.
+
 <h2 id="R402_DEPLOY_STAGE_FAILED">R402_DEPLOY_STAGE_FAILED</h2>
 
 Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.

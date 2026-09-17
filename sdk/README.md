@@ -1,6 +1,6 @@
 # @run402/sdk
 
-Typed TypeScript client for the [Run402](https://run402.com) API. The kernel shared by `run402-mcp`, the `run402` CLI, and (eventually) user-deployed functions. Most operations are project-scoped — bind once with `r.project(id)` and call `.apply()` for atomic mixed writes, `.assets.put()` for blob uploads, `.functions.deploy()`, etc.
+Typed TypeScript client for the [Run402](https://run402.com) API. The typed, opinionated workflow layer shared by `run402-mcp` and the `run402` CLI. Most operations are project-scoped: bind with `await r.project(id)`, then compose `.apply()`, `.assets.put()` and other operations. Apply coordinates staged activation and resumable work; it does not promise to roll back committed SQL migrations. Application functions use the separate `@run402/functions` runtime package.
 
 Run402 callers are first-class principals, whether they are people or agents. The SDK preserves the acting principal and authenticator separately from authority: organization roles, grants, delegates, freshness, and spend policy determine which operations are allowed. An agent should act as itself, never through a borrowed human credential.
 
@@ -313,7 +313,7 @@ The `CredentialsProvider` interface has two required methods (`getAuth`, `getPro
 | `snapshots` | Internal project restore points: `create`, `list`, `get`, `restorePlan`, `restore`, `delete`. Restore is a two-step plan/confirm handshake. |
 | `branches` | Contained project data branches: `create`, `list`, `renew`, `delete`. Branches default to expiring, noindex, sandboxed-email copies. |
 | `credentials` | `projectKeys.list`, `projectKeys.status`, `projectKeys.import`, `projectKeys.export`, `projectKeys.remove` for explicit local project-key cache management. |
-| `r.project(id).apply` | **The unified apply primitive.** Callable hero — `r.project(id).apply(spec)` for atomic mixed writes (release slices + assets slice). Sub-methods: `.plan`, `.start`, `.resume`, `.upload`, `.commit`, `.rehearse`, `.status`, `.list`, `.events`, `.resolve`, `.getRelease`, `.getActiveRelease`, `.diff`. Underlying engine routes to `/apply/v1/*`. |
+| `r.project(id).apply` | **The unified apply primitive.** Resolve `const project = await r.project(id)`, then use `project.apply(spec)` for staged multi-resource writes (release slices + assets slice). Sub-methods: `.plan`, `.start`, `.resume`, `.upload`, `.commit`, `.rehearse`, `.status`, `.list`, `.events`, `.resolve`, `.getRelease`, `.getActiveRelease`, `.diff`. Underlying engine routes to `/apply/v1/*`. |
 | `ci` | GitHub Actions OIDC federation over `/ci/v1/*`: `createBinding`, `listBindings`, `getBinding`, `revokeBinding`, `exchangeToken`; plus canonical delegation helpers. `createBinding` accepts `asset_key_scopes` for per-key CI write authorization. |
 | `r.project(id).sites` | `deployDir` — Node entry only (`@run402/sdk/node`); thin wrapper over `r.project(id).apply({ site: dir(...) })` |
 | `r.project(id).assets` | `put` (single asset), `putMany`, `uploadDir` (Node, additive), `syncDir` (Node, destructive only with `prune: true` + confirm token), `prepareDir` (returns `{ manifest, applySlice }` for pre-commit URL injection), `get`, `ls`, `rm`, `sign`, `diagnoseUrl`, `waitFresh`, `diff`. Returns `AssetRef` (single) or `AssetManifest` (batch). |

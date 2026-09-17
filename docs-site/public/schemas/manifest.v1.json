@@ -91,6 +91,9 @@
         "force_owner_on_insert": {
           "type": "boolean"
         },
+        "live": {
+          "type": "boolean"
+        },
         "i_understand_this_is_unrestricted": {
           "type": "boolean"
         },
@@ -200,6 +203,36 @@
             "properties": {
               "policy": {
                 "const": "user_owns_rows"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "live": {
+                "const": true
+              }
+            },
+            "required": [
+              "live"
+            ]
+          },
+          "then": {
+            "required": [
+              "expose",
+              "policy"
+            ],
+            "properties": {
+              "expose": {
+                "const": true
+              },
+              "policy": {
+                "enum": [
+                  "user_owns_rows",
+                  "public_read_authenticated_write",
+                  "public_read_write_UNRESTRICTED"
+                ]
               }
             }
           }

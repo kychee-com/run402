@@ -5,7 +5,7 @@
 <h1 align="center">run402: full-stack backend infrastructure for AI agents</h1>
 
 <p align="center">
-  Postgres, auth, storage, serverless functions and atomic deploys &mdash;
+  Postgres, auth, storage, serverless functions and staged deploys &mdash;
   provisioned, operated and paid for by an agent through the CLI, with a typed SDK for scripting
   and MCP for tool-native hosts. No cloud console, no signup. Open source.
 </p>
@@ -18,7 +18,7 @@
 [![npm: @run402/functions](https://img.shields.io/npm/v/@run402/functions?label=%40run402%2Ffunctions)](https://www.npmjs.com/package/@run402/functions)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
-**Run402 is open-source backend infrastructure for AI agents and coding agents** — a backend-as-a-service addressed to a machine rather than to a person. An autonomous agent provisions a Postgres database, user auth, file storage, serverless functions and site hosting, ships them in one atomic deploy, and pays for the usage itself. Comparable in surface to Supabase, Firebase or Vercel; different in that there is no dashboard to sign into and no human-issued API key to copy.
+**Run402 is open-source backend infrastructure for AI agents and coding agents** — a backend-as-a-service addressed to a machine rather than to a person. An autonomous agent provisions a Postgres database, user auth, file storage, serverless functions and site hosting, ships them through one staged deployment workflow, and pays for the usage itself. Comparable in surface to Supabase, Firebase or Vercel; different in that there is no dashboard to sign into and no human-issued API key to copy.
 
 This is the backend Kychee's open products run on. We needed a layer an agent can drive end to end, with room for whatever each app turns out to need, and nothing off the shelf had all of it, so we built it and opened it the same way we open the apps: this repo holds the agent surfaces (MIT), [`run402-core`](https://github.com/kychee-com/run402-core) holds the full backend (Apache-2.0), and [kysigned](https://github.com/kychee-com/kysigned) is the first product running on it.
 
@@ -169,7 +169,7 @@ Use `run402 up` for a complete application with a deploy manifest. The SDK owns 
 
 ### Same-origin web routes: static site + function ingress
 
-Apply-v1 routes and static public paths are release resources: they activate atomically with the site, functions, migrations, secrets, and subdomains in the same `deploy apply`. Release static asset paths such as `events.html` are distinct from browser-visible public static paths such as `/events`. Use `site.public_paths` for ordinary clean static URLs; keep routes for function ingress and exact, method-aware static aliases.
+Apply-v1 routes and static public paths are release resources: the release pointer activates after the required deployment stages in `deploy apply`. Applied migrations and external side effects are not rolled back by changing that pointer. Release static asset paths such as `events.html` are distinct from browser-visible public static paths such as `/events`. Use `site.public_paths` for ordinary clean static URLs; keep routes for function ingress and exact, method-aware static aliases.
 
 ```json
 {
@@ -437,7 +437,7 @@ const result = await r.up({ name: "my-app", manifest: "run402.json" }, { approva
 console.log(result);
 ```
 
-The SDK is organised into focused namespaces: `actions` (Node recursive action runner), `pay` (bounded arbitrary-URL x402 buyer), `projects`, `snapshots`, `branches`, `archives`, `assets`, `cache`, `ci`, `sites`, `functions`, `jobs`, `secrets`, `subdomains`, `domains`, `email` (+ `webhooks`), `auth`, `apps`, `tier`, `billing`, `contracts`, `ai`, `allowance`, `service`, `admin`, `operator` (the human/email operator session: browser-delegated `login` + `overview` across every wallet that verified your email), `wallets` (signed server-side wallet label), `orgs` (org-owned control plane + `r.org(id)` sub-client), `grants` (per-project capability grants), and `identityLinks` (public, protocol-discriminated human/agent Nostr attribution), plus the `r.project(id).apply` hero for atomic mixed writes (release slices + assets slice via `/apply/v1/*`). Every operation throws a typed `Run402Error` subclass on failure: `PaymentRequired`, `PaymentBuyerError`, `ProjectNotFound`, `Unauthorized`, `ApiError`, `NetworkError`, `LocalError`, `Run402DeployError`. `apply()` automatically re-plans safe current-base `BASE_RELEASE_CONFLICT` races and emits `apply.retry` progress events. See [`sdk/README.md`](./sdk/README.md).
+The SDK is organised into focused namespaces: `actions` (Node recursive action runner), `pay` (bounded arbitrary-URL x402 buyer), `projects`, `snapshots`, `branches`, `archives`, `assets`, `cache`, `ci`, `sites`, `functions`, `jobs`, `secrets`, `subdomains`, `domains`, `email` (+ `webhooks`), `auth`, `apps`, `tier`, `billing`, `contracts`, `ai`, `allowance`, `service`, `admin`, `operator` (the human/email operator session: browser-delegated `login` + `overview` across every wallet that verified your email), `wallets` (signed server-side wallet label), `orgs` (org-owned control plane + `r.org(id)` sub-client), `grants` (per-project capability grants), and `identityLinks` (public, protocol-discriminated human/agent Nostr attribution), plus `const project = await r.project(id); await project.apply(spec)` for staged multi-resource writes (release slices + assets slice via `/apply/v1/*`). Every operation throws a typed `Run402Error` subclass on failure: `PaymentRequired`, `PaymentBuyerError`, `ProjectNotFound`, `Unauthorized`, `ApiError`, `NetworkError`, `LocalError`, `Run402DeployError`. `apply()` automatically re-plans safe current-base `BASE_RELEASE_CONFLICT` races and emits `apply.retry` progress events. See [`sdk/README.md`](./sdk/README.md).
 
 ## Buzz/Nostr identity links
 

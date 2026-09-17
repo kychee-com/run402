@@ -43,3 +43,16 @@ it('first-deploy manifest and exposure validate against owning schemas',async()=
  assert.equal(validateExpose(manifest.database.expose),true,JSON.stringify(validateExpose.errors));
  assert.equal(validate({...manifest,site:{replace:{'index.html':{invented:true}}}}),false);
 });
+
+it('current schema snapshots preserve embedding and live-table fields', async()=>{
+ const {default:Ajv2020}=await import('ajv/dist/2020.js');
+ const {default:Ajv}=await import('ajv');
+ const release=JSON.parse(readFileSync(new URL('../schemas/release-spec.v1.json',import.meta.url),'utf8'));
+ const validate=new Ajv2020({strict:false,validateFormats:false}).compile(release);
+ assert.equal(validate({site:{embedding:{frame_ancestors:['localhost']}}}),true,JSON.stringify(validate.errors));
+ assert.equal(validate({site:{embedding:null}}),true);
+ assert.equal(validate({site:{embedding:{frame_ancestors:['https://untrusted.example']}}}),false);
+ const exposure=JSON.parse(readFileSync(new URL('../docs/quality/manifest.v1.json',import.meta.url),'utf8'));
+ const expose=new Ajv({strict:false,validateFormats:false}).compile(exposure);
+ assert.equal(expose({version:'1',tables:[{name:'notes',expose:true,policy:'user_owns_rows',owner_column:'user_id',live:true}]}),true,JSON.stringify(expose.errors));
+});

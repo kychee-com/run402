@@ -24,7 +24,7 @@ Run402 treats people and agents as first-class principals. An agent uses its own
 npm install @run402/sdk
 ```
 
-Two entry points:
+Entry points:
 
 | Import | Use when | Bundles |
 |---|---|---|

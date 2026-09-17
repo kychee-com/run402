@@ -1,7 +1,7 @@
 {
   "owner": "core",
   "repository": "kychee-com/run402-core",
-  "revision": "07064336ece055a208c0d71a0f6addb436f64a27",
+  "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7",
   "sources": [
     {
       "source": "packages/functions/src/auth/errors.ts",
@@ -45,10 +45,11 @@
     },
     {
       "source": "packages/functions/src/db.ts",
-      "sourceDigest": "bfd2e2e8a07efe5c0bda2045afcbbf647f09c48ca91a25de4b0aa91f2cddce76",
+      "sourceDigest": "175239bc6f8e23115cf02d32516d2100d8f5ccfd99d8c0ac6f29ccdcec3c150c",
       "codes": [
         "R402_DB_QUERY_ERROR",
-        "R402_DB_SQL_ERROR"
+        "R402_DB_SQL_ERROR",
+        "R402_DB_SQL_RESULT_SHAPE"
       ]
     },
     {

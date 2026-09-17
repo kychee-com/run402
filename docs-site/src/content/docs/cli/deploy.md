@@ -503,7 +503,7 @@ if (role !== "operator") return Astro.redirect("/admin/login", 303);
 
 Binary files (images, fonts, PDFs): Set `"encoding": "base64"` and provide base64-encoded data. MIME types are auto-detected from the file extension (`.png` → `image/png`, `.woff2` → `font/woff2`, etc.). Text files use `"encoding": "utf-8"` (the default — can be omitted).
 
-Assets slice: top-level `ReleaseSpec.assets` promotes content-addressed asset entries in the same atomic transaction as site/functions/secrets.
+Assets slice: top-level `ReleaseSpec.assets` stages content-addressed asset entries with the release. Activation changes the active release pointer; applied migrations and external side effects are not undone.
 
 ```json
 "assets": {
@@ -595,7 +595,7 @@ Deploy:
 run402 deploy apply --manifest app.json
 ```
 
-Deploy runs migrations, applies `database.expose`, deploys functions/site/assets, claims subdomains, and updates routes atomically. Set secret values first with `run402 secrets set`; deploy manifests only declare value-free `secrets.require` / `secrets.delete`.
+Deploy stages migrations, `database.expose`, functions/site/assets, subdomains and routes before activation. Inspect each stage and any resumable operation; activation is not a transaction that rolls back every prior effect. Set secret values first with `run402 secrets set`; deploy manifests only declare value-free `secrets.require` / `secrets.delete`.
 
 ### Step-by-Step Deploy
 

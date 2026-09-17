@@ -149,7 +149,7 @@ const client = run402();
 const asset = await client.assets.put(projectId, "uploads/report.pdf", { bytes });
 // asset.cdnUrl is the preferred content-addressed URL for public blobs.
 
-// Whole directory in one apply (atomic with site/functions/secrets if combined).
+// Whole directory in one apply (staged with a combined release before activation).
 const manifest = await client.assets.uploadDir("./assets", {
   project: projectId,
   prefix: "static/",

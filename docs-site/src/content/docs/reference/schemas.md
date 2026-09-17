@@ -164,6 +164,9 @@ Use `run402 up --check` for local validation and `run402 up --plan` for gateway 
         },
         "public_paths": {
           "$ref": "#/$defs/sitePublicPaths"
+        },
+        "embedding": {
+          "$ref": "#/$defs/siteEmbedding"
         }
       }
     },
@@ -198,20 +201,35 @@ Use `run402 up --check` for local validation and `run402 up --plan` for gateway 
         },
         "public_paths": {
           "$ref": "#/$defs/sitePublicPaths"
+        },
+        "embedding": {
+          "$ref": "#/$defs/siteEmbedding"
         }
       }
     },
     {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "public_paths"
-      ],
       "properties": {
         "public_paths": {
           "$ref": "#/$defs/sitePublicPaths"
+        },
+        "embedding": {
+          "$ref": "#/$defs/siteEmbedding"
         }
-      }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "public_paths"
+          ]
+        },
+        {
+          "required": [
+            "embedding"
+          ]
+        }
+      ]
     }
   ]
 }
@@ -469,6 +487,36 @@ Use `run402 up --check` for local validation and `run402 up --plan` for gateway 
 | `expected_status` | `integer` | no | Snake-case alias for expect.status. |
 | `retries` | `integer` | no | See the downloadable schema for constraints. |
 
+<h3 id="release-siteEmbedding">siteEmbedding</h3>
+
+```json
+{
+  "description": "Framing opt-in using platform catalog keys, never origins. Remote validation checks the current catalog. Null resets to deny; omission carries prior state.",
+  "oneOf": [
+    {
+      "type": "null"
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "frame_ancestors"
+      ],
+      "properties": {
+        "frame_ancestors": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]*$"
+          }
+        }
+      }
+    }
+  ]
+}
+```
+
 ## Run402AppSpec
 
 [Download schema](/schemas/run402-app.v1.schema.json). Canonical run402.json app installation manifest consumed by run402 up.
@@ -632,6 +680,7 @@ Use `run402 up --check` for local validation and `run402 up --plan` for gateway 
 | `policy` | `schema` | no | See the downloadable schema for constraints. |
 | `owner_column` | `#/definitions/identifier` | no | See the downloadable schema for constraints. |
 | `force_owner_on_insert` | `boolean` | no | See the downloadable schema for constraints. |
+| `live` | `boolean` | no | See the downloadable schema for constraints. |
 | `i_understand_this_is_unrestricted` | `boolean` | no | See the downloadable schema for constraints. |
 | `custom_sql` | `string` | no | See the downloadable schema for constraints. |
 

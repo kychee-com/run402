@@ -23,314 +23,315 @@ Run `node scripts/documentation-inventory.mjs` to reject newly discovered unclas
 
 | Repo | Source | Purpose / interface | Editorial | Publication |
 |---|---|---|---|---|
-| public | [.agents/skills/bugs/SKILL.md](.agents/skills/bugs/SKILL.md) | guide / cli | pending | not hosted by docs workflow |
-| public | [.claude/skills/bugs/SKILL.md](.claude/skills/bugs/SKILL.md) | maintainer / mixed | pending | not hosted by docs workflow |
-| public | [.github/ISSUE_TEMPLATE/bug_report.md](.github/ISSUE_TEMPLATE/bug_report.md) | guide / cli | pending | not hosted by docs workflow |
-| public | [.github/ISSUE_TEMPLATE/feature_request.md](.github/ISSUE_TEMPLATE/feature_request.md) | guide / cli | pending | not hosted by docs workflow |
-| public | [AGENTS.md](AGENTS.md) | maintainer / mixed | pending | not hosted by docs workflow |
-| public | [CHANGELOG.md](CHANGELOG.md) | history / historical | pending | not hosted by docs workflow |
-| public | [CLAUDE.md](CLAUDE.md) | maintainer / mixed | pending | not hosted by docs workflow |
-| public | [CONTRIBUTING.md](CONTRIBUTING.md) | maintainer / mixed | pending | not hosted by docs workflow |
-| public | [README.md](README.md) | guide / cli | reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed | not hosted by docs workflow |
-| public | [SECURITY.md](SECURITY.md) | guide / cli | pending | not hosted by docs workflow |
-| public | [SKILL.md](SKILL.md) | guide / cli | pending: source changed since editorial review | not hosted by docs workflow |
-| public | [astro/CHANGELOG.md](astro/CHANGELOG.md) | history / historical | pending | not hosted by docs workflow |
-| public | [astro/README.md](astro/README.md) | runtime / application | pending | not hosted by docs workflow |
-| public | [astro/test/fixtures/minimal-site/README.md](astro/test/fixtures/minimal-site/README.md) | runtime / application | reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed | not hosted by docs workflow |
-| public | [buzz/README.md](buzz/README.md) | integration / cli | pending | not hosted by docs workflow |
-| public | [buzz/SKILL.md](buzz/SKILL.md) | integration / cli | pending | not hosted by docs workflow |
-| public | [buzz/references/community-control-plane.md](buzz/references/community-control-plane.md) | integration / cli | pending | not hosted by docs workflow |
-| public | [buzz/references/conversations.md](buzz/references/conversations.md) | integration / cli | pending | not hosted by docs workflow |
-| public | [buzz/references/identity-and-security.md](buzz/references/identity-and-security.md) | integration / cli | pending | not hosted by docs workflow |
-| public | [buzz/references/installation.md](buzz/references/installation.md) | integration / cli | pending | not hosted by docs workflow |
-| public | [buzz/references/preflight.md](buzz/references/preflight.md) | integration / cli | pending | not hosted by docs workflow |
-| public | [buzz/references/receipts.md](buzz/references/receipts.md) | integration / cli | pending | not hosted by docs workflow |
-| public | [cli/README.md](cli/README.md) | guide / cli | reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed | not hosted by docs workflow |
-| public | [cli/lib/admin.mjs](cli/lib/admin.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/agent.mjs](cli/lib/agent.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/ai.mjs](cli/lib/ai.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/allowance.mjs](cli/lib/allowance.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/apps.mjs](cli/lib/apps.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/archives.mjs](cli/lib/archives.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/assets.mjs](cli/lib/assets.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/auth.mjs](cli/lib/auth.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/billing.mjs](cli/lib/billing.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/branches.mjs](cli/lib/branches.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/buzz-notifications.mjs](cli/lib/buzz-notifications.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/buzz.mjs](cli/lib/buzz.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/cache.mjs](cli/lib/cache.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/cdn.mjs](cli/lib/cdn.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/ci.mjs](cli/lib/ci.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/claims.mjs](cli/lib/claims.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/cloud.mjs](cli/lib/cloud.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/command-manifest.mjs](cli/lib/command-manifest.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/contacts.mjs](cli/lib/contacts.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/contracts.mjs](cli/lib/contracts.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/core.mjs](cli/lib/core.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/credentials.mjs](cli/lib/credentials.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/delegates.mjs](cli/lib/delegates.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/deliveries.mjs](cli/lib/deliveries.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/deploy.mjs](cli/lib/deploy.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/dev.mjs](cli/lib/dev.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/doctor.mjs](cli/lib/doctor.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/domains.mjs](cli/lib/domains.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/email.mjs](cli/lib/email.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/errors.mjs](cli/lib/errors.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/escalations.mjs](cli/lib/escalations.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/events.mjs](cli/lib/events.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/feedback.mjs](cli/lib/feedback.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/functions.mjs](cli/lib/functions.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/gitvault.mjs](cli/lib/gitvault.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/grants.mjs](cli/lib/grants.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/identity.mjs](cli/lib/identity.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/image.mjs](cli/lib/image.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/init-astro.mjs](cli/lib/init-astro.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/init.mjs](cli/lib/init.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/jobs.mjs](cli/lib/jobs.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/logs.mjs](cli/lib/logs.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/messages.mjs](cli/lib/messages.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/notifications.mjs](cli/lib/notifications.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/operator.mjs](cli/lib/operator.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/org.mjs](cli/lib/org.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/pay.mjs](cli/lib/pay.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/projects.mjs](cli/lib/projects.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/redeem.mjs](cli/lib/redeem.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/repos.mjs](cli/lib/repos.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/rooms.mjs](cli/lib/rooms.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/secrets.mjs](cli/lib/secrets.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/service.mjs](cli/lib/service.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/sites.mjs](cli/lib/sites.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/snapshots.mjs](cli/lib/snapshots.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/source-access.mjs](cli/lib/source-access.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/status.mjs](cli/lib/status.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/subdomains.mjs](cli/lib/subdomains.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/subscriptions.mjs](cli/lib/subscriptions.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/tier.mjs](cli/lib/tier.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/transfer.mjs](cli/lib/transfer.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/up.mjs](cli/lib/up.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/wallets.mjs](cli/lib/wallets.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/webhook-secret.mjs](cli/lib/webhook-secret.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/lib/webhooks.mjs](cli/lib/webhooks.mjs) | guide / cli | pending | not hosted by docs workflow |
-| public | [cli/llms-cli-assets.txt](cli/llms-cli-assets.txt) | generated / mixed | pending | not hosted by docs workflow |
-| public | [cli/llms-cli-commands.txt](cli/llms-cli-commands.txt) | generated / mixed | pending | not hosted by docs workflow |
-| public | [cli/llms-cli-deploy.txt](cli/llms-cli-deploy.txt) | generated / mixed | pending | not hosted by docs workflow |
-| public | [cli/llms-cli-errors.txt](cli/llms-cli-errors.txt) | generated / mixed | pending | not hosted by docs workflow |
-| public | [cli/llms-cli-frontend.txt](cli/llms-cli-frontend.txt) | generated / mixed | pending | not hosted by docs workflow |
-| public | [cli/llms-cli-full.txt](cli/llms-cli-full.txt) | generated / mixed | pending | not hosted by docs workflow |
-| public | [cli/llms-cli-functions.txt](cli/llms-cli-functions.txt) | generated / mixed | pending | not hosted by docs workflow |
-| public | [cli/llms-cli-ops.txt](cli/llms-cli-ops.txt) | generated / mixed | pending | not hosted by docs workflow |
-| public | [cli/llms-cli-orgs.txt](cli/llms-cli-orgs.txt) | generated / mixed | pending | not hosted by docs workflow |
-| public | [cli/llms-cli-platform.txt](cli/llms-cli-platform.txt) | generated / mixed | pending | not hosted by docs workflow |
-| public | [cli/llms-cli-repos.txt](cli/llms-cli-repos.txt) | generated / mixed | pending | not hosted by docs workflow |
-| public | [cli/llms-cli.txt](cli/llms-cli.txt) | generated / mixed | pending | not hosted by docs workflow |
-| public | [demos/buzz-todo/README.md](demos/buzz-todo/README.md) | example / cli | reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed | not hosted by docs workflow |
-| public | [demos/buzz-todo/site/callback.html](demos/buzz-todo/site/callback.html) | example / cli | pending | not hosted by docs workflow |
-| public | [demos/buzz-todo/site/index.html](demos/buzz-todo/site/index.html) | example / cli | pending | not hosted by docs workflow |
-| public | [demos/dreamdrop/AGENTS.md](demos/dreamdrop/AGENTS.md) | maintainer / mixed | pending | not hosted by docs workflow |
-| public | [demos/dreamdrop/CLAUDE.md](demos/dreamdrop/CLAUDE.md) | maintainer / mixed | pending | not hosted by docs workflow |
-| public | [demos/dreamdrop/README.md](demos/dreamdrop/README.md) | example / cli | reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed | not hosted by docs workflow |
-| public | [demos/identity-lens/README.md](demos/identity-lens/README.md) | example / cli | reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed | not hosted by docs workflow |
-| public | [demos/identity-lens/site/index.html](demos/identity-lens/site/index.html) | example / cli | pending | not hosted by docs workflow |
-| public | [docs-site/README.md](docs-site/README.md) | guide / cli | reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed | not hosted by docs workflow |
-| public | [docs-site/public/robots.txt](docs-site/public/robots.txt) | guide / cli | pending | not hosted by docs workflow |
-| public | [docs-site/src/content/docs/astro/errors.md](docs-site/src/content/docs/astro/errors.md) | guide / cli | pending | pending |
-| public | [docs-site/src/content/docs/astro/images.md](docs-site/src/content/docs/astro/images.md) | guide / cli | pending | pending |
-| public | [docs-site/src/content/docs/astro/index.md](docs-site/src/content/docs/astro/index.md) | guide / cli | pending | pending |
-| public | [docs-site/src/content/docs/auth/db-actor-context.md](docs-site/src/content/docs/auth/db-actor-context.md) | guide / cli | pending | pending |
-| public | [docs-site/src/content/docs/auth/hosted-ui.md](docs-site/src/content/docs/auth/hosted-ui.md) | guide / cli | pending | pending |
-| public | [docs-site/src/content/docs/auth/rendering-modes.md](docs-site/src/content/docs/auth/rendering-modes.md) | guide / cli | pending | pending |
-| public | [docs-site/src/content/docs/auth/sdk.md](docs-site/src/content/docs/auth/sdk.md) | guide / cli | pending | pending |
-| public | [docs-site/src/content/docs/auth/tenant-assertion.md](docs-site/src/content/docs/auth/tenant-assertion.md) | guide / cli | pending | pending |
-| public | [docs-site/src/content/docs/build/astro/index.md](docs-site/src/content/docs/build/astro/index.md) | guide / cli | pending: source changed since editorial review | pending |
-| public | [docs-site/src/content/docs/build/auth.md](docs-site/src/content/docs/build/auth.md) | guide / cli | reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed | pending |
-| public | [docs-site/src/content/docs/build/database.md](docs-site/src/content/docs/build/database.md) | guide / cli | reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed | pending |
-| public | [docs-site/src/content/docs/build/domains.md](docs-site/src/content/docs/build/domains.md) | guide / cli | reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed | pending |
-| public | [docs-site/src/content/docs/build/email.md](docs-site/src/content/docs/build/email.md) | guide / cli | reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed | pending |
-| public | [docs-site/src/content/docs/build/functions.md](docs-site/src/content/docs/build/functions.md) | guide / cli | reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed | pending |
-| public | [docs-site/src/content/docs/build/storage.md](docs-site/src/content/docs/build/storage.md) | guide / cli | reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed | pending |
-| public | [docs-site/src/content/docs/cache/concepts.md](docs-site/src/content/docs/cache/concepts.md) | guide / cli | pending | pending |
-| public | [docs-site/src/content/docs/cli/assets.md](docs-site/src/content/docs/cli/assets.md) | guide / cli | pending | pending |
-| public | [docs-site/src/content/docs/cli/commands.md](docs-site/src/content/docs/cli/commands.md) | guide / cli | pending | pending |
-| public | [docs-site/src/content/docs/cli/deploy.md](docs-site/src/content/docs/cli/deploy.md) | guide / cli | pending | pending |
-| public | [docs-site/src/content/docs/cli/errors.md](docs-site/src/content/docs/cli/errors.md) | guide / cli | pending | pending |
-| public | [docs-site/src/content/docs/cli/frontend.md](docs-site/src/content/docs/cli/frontend.md) | guide / cli | pending | pending |
-| public | [docs-site/src/content/docs/cli/functions.md](docs-site/src/content/docs/cli/functions.md) | guide / cli | pending | pending |
-| public | [docs-site/src/content/docs/cli/ops.md](docs-site/src/content/docs/cli/ops.md) | guide / cli | pending | pending |
-| public | [docs-site/src/content/docs/cli/orgs.md](docs-site/src/content/docs/cli/orgs.md) | guide / cli | pending | pending |
-| public | [docs-site/src/content/docs/cli/platform.md](docs-site/src/content/docs/cli/platform.md) | guide / cli | pending | pending |
-| public | [docs-site/src/content/docs/cli/reference.md](docs-site/src/content/docs/cli/reference.md) | guide / cli | pending | pending |
-| public | [docs-site/src/content/docs/cli/repos.md](docs-site/src/content/docs/cli/repos.md) | guide / cli | pending | pending |
-| public | [docs-site/src/content/docs/concepts/allowances.md](docs-site/src/content/docs/concepts/allowances.md) | guide / cli | reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed | pending |
-| public | [docs-site/src/content/docs/concepts/credentials.md](docs-site/src/content/docs/concepts/credentials.md) | guide / cli | reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed | pending |
-| public | [docs-site/src/content/docs/concepts/interfaces.md](docs-site/src/content/docs/concepts/interfaces.md) | guide / cli | reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed | pending |
-| public | [docs-site/src/content/docs/concepts/projects.md](docs-site/src/content/docs/concepts/projects.md) | guide / cli | reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed | pending |
-| public | [docs-site/src/content/docs/concepts/releases.md](docs-site/src/content/docs/concepts/releases.md) | guide / cli | reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed | pending |
-| public | [docs-site/src/content/docs/errors/auth.md](docs-site/src/content/docs/errors/auth.md) | guide / cli | pending | pending |
-| public | [docs-site/src/content/docs/errors/client.md](docs-site/src/content/docs/errors/client.md) | guide / cli | pending | pending |
-| public | [docs-site/src/content/docs/errors/core.md](docs-site/src/content/docs/errors/core.md) | guide / cli | pending | pending |
-| public | [docs-site/src/content/docs/errors/gateway.md](docs-site/src/content/docs/errors/gateway.md) | guide / cli | pending | pending |
-| public | [docs-site/src/content/docs/errors/index.md](docs-site/src/content/docs/errors/index.md) | guide / cli | pending | pending |
-| public | [docs-site/src/content/docs/errors/runtime.md](docs-site/src/content/docs/errors/runtime.md) | guide / cli | pending | pending |
-| public | [docs-site/src/content/docs/examples/index.md](docs-site/src/content/docs/examples/index.md) | guide / cli | pending: source changed since editorial review | pending |
-| public | [docs-site/src/content/docs/functions/errors.md](docs-site/src/content/docs/functions/errors.md) | guide / cli | pending | pending |
-| public | [docs-site/src/content/docs/getting-started.md](docs-site/src/content/docs/getting-started.md) | guide / cli | reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed | pending |
-| public | [docs-site/src/content/docs/index.mdx](docs-site/src/content/docs/index.mdx) | guide / cli | reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed | pending |
-| public | [docs-site/src/content/docs/mcp/installation.md](docs-site/src/content/docs/mcp/installation.md) | reference / mcp | pending | pending |
-| public | [docs-site/src/content/docs/mcp/lifecycle.md](docs-site/src/content/docs/mcp/lifecycle.md) | reference / mcp | pending | pending |
-| public | [docs-site/src/content/docs/mcp/limits.md](docs-site/src/content/docs/mcp/limits.md) | reference / mcp | pending | pending |
-| public | [docs-site/src/content/docs/mcp/patterns.md](docs-site/src/content/docs/mcp/patterns.md) | reference / mcp | pending | pending |
-| public | [docs-site/src/content/docs/mcp/reference.md](docs-site/src/content/docs/mcp/reference.md) | reference / mcp | pending | pending |
-| public | [docs-site/src/content/docs/mcp/tools.md](docs-site/src/content/docs/mcp/tools.md) | reference / mcp | pending | pending |
-| public | [docs-site/src/content/docs/operate/billing.md](docs-site/src/content/docs/operate/billing.md) | guide / cli | reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed | pending |
-| public | [docs-site/src/content/docs/operate/ci.md](docs-site/src/content/docs/operate/ci.md) | guide / cli | reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed | pending |
-| public | [docs-site/src/content/docs/operate/deploy.md](docs-site/src/content/docs/operate/deploy.md) | guide / cli | reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed | pending |
-| public | [docs-site/src/content/docs/operate/diagnostics.md](docs-site/src/content/docs/operate/diagnostics.md) | guide / cli | reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed | pending |
-| public | [docs-site/src/content/docs/reference/error-codes.md](docs-site/src/content/docs/reference/error-codes.md) | guide / cli | pending | pending |
-| public | [docs-site/src/content/docs/reference/http.mdx](docs-site/src/content/docs/reference/http.mdx) | guide / cli | pending | pending |
-| public | [docs-site/src/content/docs/reference/schemas.md](docs-site/src/content/docs/reference/schemas.md) | guide / cli | pending | pending |
-| public | [docs-site/src/content/docs/sdk/credentials.md](docs-site/src/content/docs/sdk/credentials.md) | reference / sdk | pending | pending |
-| public | [docs-site/src/content/docs/sdk/environment.md](docs-site/src/content/docs/sdk/environment.md) | reference / sdk | pending | pending |
-| public | [docs-site/src/content/docs/sdk/errors.md](docs-site/src/content/docs/sdk/errors.md) | reference / sdk | pending | pending |
-| public | [docs-site/src/content/docs/sdk/identity.md](docs-site/src/content/docs/sdk/identity.md) | reference / sdk | pending | pending |
-| public | [docs-site/src/content/docs/sdk/lifecycle.md](docs-site/src/content/docs/sdk/lifecycle.md) | reference / sdk | pending | pending |
-| public | [docs-site/src/content/docs/sdk/limits.md](docs-site/src/content/docs/sdk/limits.md) | reference / sdk | pending | pending |
-| public | [docs-site/src/content/docs/sdk/organizations.md](docs-site/src/content/docs/sdk/organizations.md) | reference / sdk | pending | pending |
-| public | [docs-site/src/content/docs/sdk/patterns.md](docs-site/src/content/docs/sdk/patterns.md) | reference / sdk | pending | pending |
-| public | [docs-site/src/content/docs/sdk/reference.md](docs-site/src/content/docs/sdk/reference.md) | reference / sdk | pending | pending |
-| public | [docs-site/src/content/docs/sdk/resources.md](docs-site/src/content/docs/sdk/resources.md) | reference / sdk | pending | pending |
-| public | [docs-site/src/content/docs/sdk/scripting.md](docs-site/src/content/docs/sdk/scripting.md) | reference / sdk | reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed | pending |
-| public | [docs-site/src/content/docs/start/first-deploy.md](docs-site/src/content/docs/start/first-deploy.md) | guide / cli | reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed | pending |
-| public | [docs-site/src/content/docs/start/harness.md](docs-site/src/content/docs/start/harness.md) | guide / cli | reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed | pending |
-| public | [docs/gitvault/README.md](docs/gitvault/README.md) | protocol / native | pending | not hosted by docs workflow |
-| public | [docs/gitvault/hpke-second-implementation.md](docs/gitvault/hpke-second-implementation.md) | protocol / native | pending | not hosted by docs workflow |
-| public | [docs/gitvault/protocol-v0.md](docs/gitvault/protocol-v0.md) | protocol / native | pending | not hosted by docs workflow |
-| public | [docs/gitvault/threat-model.md](docs/gitvault/threat-model.md) | protocol / native | pending | not hosted by docs workflow |
-| public | [docs/quality/documentation-policy.md](docs/quality/documentation-policy.md) | maintainer / mixed | pending | not hosted by docs workflow |
-| public | [docs/quality/gaps.md](docs/quality/gaps.md) | maintainer / mixed | pending | not hosted by docs workflow |
-| public | [docs/quality/maintenance-map.md](docs/quality/maintenance-map.md) | maintainer / mixed | pending | not hosted by docs workflow |
-| public | [examples/agent-team/README.md](examples/agent-team/README.md) | example / cli | pending | not hosted by docs workflow |
-| public | [examples/agent-team/assets/grok/README.md](examples/agent-team/assets/grok/README.md) | example / cli | pending | not hosted by docs workflow |
-| public | [examples/agent-team/prompts/claude.md](examples/agent-team/prompts/claude.md) | example / cli | pending | not hosted by docs workflow |
-| public | [examples/agent-team/prompts/codex.md](examples/agent-team/prompts/codex.md) | example / cli | pending | not hosted by docs workflow |
-| public | [examples/agent-team/prompts/grok.md](examples/agent-team/prompts/grok.md) | example / cli | pending | not hosted by docs workflow |
-| public | [examples/agent-team/prompts/protocol.md](examples/agent-team/prompts/protocol.md) | example / cli | pending | not hosted by docs workflow |
-| public | [examples/astro-notes-cms/README.md](examples/astro-notes-cms/README.md) | example / cli | pending | not hosted by docs workflow |
-| public | [examples/kysigned-function-runs/README.md](examples/kysigned-function-runs/README.md) | example / cli | reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed | not hosted by docs workflow |
-| public | [examples/room-invite/README.md](examples/room-invite/README.md) | example / cli | reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed | not hosted by docs workflow |
-| public | [examples/static-config-js/README.md](examples/static-config-js/README.md) | example / cli | reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed | not hosted by docs workflow |
-| public | [examples/static-config-js/index.html](examples/static-config-js/index.html) | example / cli | pending | not hosted by docs workflow |
-| public | [examples/tenant-x402-wallet-stats/README.md](examples/tenant-x402-wallet-stats/README.md) | example / cli | reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed | not hosted by docs workflow |
-| public | [examples/tenant-x402-wallet-stats/static/index.html](examples/tenant-x402-wallet-stats/static/index.html) | example / cli | pending | not hosted by docs workflow |
-| public | [functions/README.md](functions/README.md) | runtime / application | reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed | not hosted by docs workflow |
-| public | [integration-fixtures/fullstack-app/COVERAGE.md](integration-fixtures/fullstack-app/COVERAGE.md) | fixture / native | pending | not hosted by docs workflow |
-| public | [integration-fixtures/fullstack-app/README.md](integration-fixtures/fullstack-app/README.md) | fixture / native | pending | not hosted by docs workflow |
-| public | [integration-fixtures/fullstack-app/site/docs.html](integration-fixtures/fullstack-app/site/docs.html) | fixture / native | pending | not hosted by docs workflow |
-| public | [integration-fixtures/fullstack-app/site/index.html](integration-fixtures/fullstack-app/site/index.html) | fixture / native | pending | not hosted by docs workflow |
-| public | [integration-fixtures/fullstack-app/site/status.html](integration-fixtures/fullstack-app/site/status.html) | fixture / native | pending | not hosted by docs workflow |
-| public | [integration-fixtures/fullstack-app/site/version.txt](integration-fixtures/fullstack-app/site/version.txt) | fixture / native | pending | not hosted by docs workflow |
-| public | [integrations/run402-for-buzz/README.md](integrations/run402-for-buzz/README.md) | integration / cli | pending | not hosted by docs workflow |
-| public | [kygit/README.md](kygit/README.md) | guide / cli | reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed | not hosted by docs workflow |
-| public | [llms-mcp.txt](llms-mcp.txt) | generated / mixed | pending | not hosted by docs workflow |
-| public | [llms.txt](llms.txt) | generated / mixed | pending | not hosted by docs workflow |
-| public | [openclaw/README.md](openclaw/README.md) | guide / cli | reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed | not hosted by docs workflow |
-| public | [openclaw/SKILL.md](openclaw/SKILL.md) | guide / cli | pending: source changed since editorial review | not hosted by docs workflow |
-| public | [r402s-verify/README.md](r402s-verify/README.md) | protocol / native | pending | not hosted by docs workflow |
-| public | [sdk/README.md](sdk/README.md) | reference / sdk | pending | not hosted by docs workflow |
-| public | [sdk/llms-sdk.txt](sdk/llms-sdk.txt) | generated / mixed | pending | not hosted by docs workflow |
-| public | [test-vectors/r402s-v0/README.md](test-vectors/r402s-v0/README.md) | fixture / native | pending | not hosted by docs workflow |
-| public | [test-vectors/r402s-v0/hpke-interop/INTEROP.md](test-vectors/r402s-v0/hpke-interop/INTEROP.md) | fixture / native | pending | not hosted by docs workflow |
-| private | `apps/kygit/404.html` | reference / cli | pending | pending |
-| private | `apps/kygit/about/index.html` | reference / cli | pending | pending |
-| private | `apps/kygit/doodles/README.md` | reference / cli | pending | pending |
-| private | `apps/kygit/europe/index.html` | legal / native | pending | pending |
-| private | `apps/kygit/handoff/index.html` | reference / cli | pending | pending |
-| private | `apps/kygit/how-it-works/index.html` | reference / cli | pending | pending |
-| private | `apps/kygit/index.html` | reference / cli | pending | pending |
-| private | `apps/kygit/invite/index.html` | reference / cli | pending | pending |
-| private | `apps/kygit/llms.txt` | reference / cli | pending | pending |
-| private | `apps/kygit/privacy/index.html` | legal / native | pending | pending |
-| private | `apps/kygit/robots.txt` | reference / cli | pending | pending |
-| private | `apps/kygit/terms/index.html` | legal / native | pending | pending |
-| private | `apps/kygit/vs-github/index.html` | reference / cli | pending | pending |
-| private | `apps/marketing/.well-known/mcp.json` | reference / cli | pending | pending |
-| private | `apps/marketing/404.html` | reference / cli | pending | pending |
-| private | `apps/marketing/agent-allowance/index.html` | reference / cli | pending | pending |
-| private | `apps/marketing/apps/index.html` | reference / cli | pending | pending |
-| private | `apps/marketing/billing/index.html` | reference / cli | pending | pending |
-| private | `apps/marketing/buzz/index.html` | reference / cli | pending | pending |
-| private | `apps/marketing/buzz/install.txt` | reference / cli | pending | pending |
-| private | `apps/marketing/errors/index.html` | reference / cli | pending | pending |
-| private | `apps/marketing/escalations/ack/index.html` | reference / cli | pending | pending |
-| private | `apps/marketing/examples/index.html` | reference / cli | pending | pending |
-| private | `apps/marketing/freelance/index.html` | reference / cli | pending | pending |
-| private | `apps/marketing/getstarted/index.html` | reference / cli | pending | pending |
-| private | `apps/marketing/gitvault/index.html` | reference / cli | pending | pending |
-| private | `apps/marketing/humans/about.html` | reference / cli | pending | pending |
-| private | `apps/marketing/humans/changelog.html` | history / native | pending | pending |
-| private | `apps/marketing/humans/domains.html` | reference / cli | pending | pending |
-| private | `apps/marketing/humans/faq.html` | reference / cli | pending | pending |
-| private | `apps/marketing/humans/index.html` | reference / cli | pending | pending |
-| private | `apps/marketing/humans/legal.html` | reference / cli | pending | pending |
-| private | `apps/marketing/humans/mpp.html` | reference / cli | pending | pending |
-| private | `apps/marketing/humans/privacy.html` | legal / native | pending | pending |
-| private | `apps/marketing/humans/run402-2-0.html` | reference / cli | pending | pending |
-| private | `apps/marketing/humans/terms.html` | legal / native | pending | pending |
-| private | `apps/marketing/humans/vision.html` | reference / cli | pending | pending |
-| private | `apps/marketing/index.html` | reference / cli | pending | pending |
-| private | `apps/marketing/install.txt` | reference / cli | pending | pending |
-| private | `apps/marketing/lab/index.html` | reference / cli | pending | pending |
-| private | `apps/marketing/llms-full.txt` | reference / http | pending | pending |
-| private | `apps/marketing/openapi.json` | reference / http | pending | pending |
-| private | `apps/marketing/operator/passkey/index.html` | reference / cli | pending | pending |
-| private | `apps/marketing/pricing/index.html` | reference / cli | pending | pending |
-| private | `apps/marketing/robots.txt` | reference / cli | pending | pending |
-| private | `apps/marketing/schemas/manifest.example.json` | reference / http | pending | pending |
-| private | `apps/marketing/schemas/manifest.v1.json` | reference / http | pending | pending |
-| private | `apps/marketing/schemas/release-spec.v1.json` | reference / http | pending | pending |
-| private | `apps/marketing/sorting-humans/index.html` | reference / cli | pending | pending |
-| private | `apps/marketing/updates.txt` | history / native | pending | pending |
-| private | `apps/marketing/use-cases/deploy-app-without-aws-account/index.html` | reference / cli | pending | pending |
-| private | `apps/marketing/use-cases/free-postgres-for-prototype/index.html` | reference / cli | pending | pending |
-| private | `apps/marketing/use-cases/index.html` | reference / cli | pending | pending |
-| private | `apps/marketing/use-cases/supabase-alternative-for-agents/index.html` | reference / cli | pending | pending |
-| private | `apps/marketing/use-cases/vercel-alternative-for-agents/index.html` | reference / cli | pending | pending |
-| private | `apps/marketing/zh-cn/index.html` | reference / cli | pending | pending |
-| core | `.claude/commands/publish-core.md` | reference / runtime | pending | source only |
-| core | `.claude/skills/publish-run402-core/SKILL.md` | reference / runtime | pending | source only |
-| core | `AGENTS.md` | reference / runtime | pending | source only |
-| core | `ARCHITECTURE.md` | reference / runtime | reviewed: Core/Cloud boundary and native provider/runtime references; live infrastructure probes not run | source only |
-| core | `CLAUDE.md` | reference / runtime | pending | source only |
-| core | `CLOUD_VS_CORE.md` | reference / runtime | reviewed: Core/Cloud boundary and native provider/runtime references; live infrastructure probes not run | source only |
-| core | `CONTRIBUTING.md` | reference / runtime | reviewed: Core/Cloud boundary and native provider/runtime references; live infrastructure probes not run | source only |
-| core | `README.md` | reference / runtime | reviewed: Core/Cloud boundary and native provider/runtime references; live infrastructure probes not run | source only |
-| core | `SECURITY.md` | reference / runtime | pending | source only |
-| core | `docs/adr/0001-core-cloud-boundary.md` | reference / runtime | pending | source only |
-| core | `docs/adr/0002-functions-runtime-public-source.md` | reference / runtime | pending | source only |
-| core | `docs/adr/0003-release-package-public-semantics.md` | reference / runtime | pending | source only |
-| core | `docs/agent-dx-core-applicability.md` | reference / runtime | pending | source only |
-| core | `docs/deployment/aws-ec2/README.md` | reference / runtime | pending | source only |
-| core | `docs/deployment/aws-email-inbound/README.md` | reference / runtime | pending | source only |
-| core | `docs/deployment/aws-email/README.md` | reference / runtime | reviewed: Core/Cloud boundary and native provider/runtime references; live infrastructure probes not run | source only |
-| core | `docs/open-source-readiness.md` | reference / runtime | pending | source only |
-| core | `docs/runtime-kernel/astro-ssr.md` | reference / runtime | pending | source only |
-| core | `docs/runtime-kernel/capabilities.md` | reference / runtime | pending | source only |
-| core | `docs/runtime-kernel/cloud-vs-core.md` | reference / runtime | pending | source only |
-| core | `docs/runtime-kernel/core-certification.md` | reference / runtime | pending | source only |
-| core | `docs/runtime-kernel/docker-compose-howto.md` | reference / runtime | pending | source only |
-| core | `docs/runtime-kernel/functions-runtime.md` | reference / runtime | reviewed: Core/Cloud boundary and native provider/runtime references; live infrastructure probes not run | source only |
-| core | `docs/runtime-kernel/portable-archives.md` | reference / runtime | pending | source only |
-| core | `docs/runtime-kernel/quickstart.md` | reference / runtime | reviewed: Core/Cloud boundary and native provider/runtime references; live infrastructure probes not run | source only |
-| core | `docs/runtime-kernel/security-defaults.md` | reference / runtime | pending | source only |
-| core | `docs/runtime-kernel/storage-routing.md` | reference / runtime | pending | source only |
-| core | `fixtures/astro-ssr-core/README.md` | reference / runtime | pending | source only |
-| core | `fixtures/runtime-kernel-static-rest/README.md` | reference / runtime | pending | source only |
-| core | `fixtures/storage-routing-core/README.md` | reference / runtime | pending | source only |
-| core | `packages/functions/CHANGELOG.md` | history / native | pending | source only |
-| core | `packages/functions/README.md` | reference / runtime | pending | source only |
-| core | `packages/release/CHANGELOG.md` | history / native | pending | source only |
-| core | `packages/release/README.md` | reference / runtime | pending | source only |
-| core | `packages/release/docs/app-kit.md` | reference / runtime | pending | source only |
-| core | `packages/release/docs/canonicalization.md` | reference / runtime | pending | source only |
-| core | `packages/release/docs/compatibility.md` | reference / runtime | pending | source only |
-| core | `packages/release/docs/field-support.md` | reference / runtime | pending | source only |
-| core | `packages/runtime-kernel/README.md` | reference / runtime | pending | source only |
+| public | [.agents/skills/bugs/SKILL.md](.agents/skills/bugs/SKILL.md) | guide / cli | reviewed contributor instructions: source ownership and native build/test commands retained; product CLI policy applies | not hosted by docs workflow |
+| public | [.claude/skills/bugs/SKILL.md](.claude/skills/bugs/SKILL.md) | maintainer / mixed | reviewed contributor instructions: source ownership and native build/test commands retained; product CLI policy applies | not hosted by docs workflow |
+| public | [.github/ISSUE_TEMPLATE/bug_report.md](.github/ISSUE_TEMPLATE/bug_report.md) | guide / cli | reviewed contributor instructions: source ownership and native build/test commands retained; product CLI policy applies | not hosted by docs workflow |
+| public | [.github/ISSUE_TEMPLATE/feature_request.md](.github/ISSUE_TEMPLATE/feature_request.md) | guide / cli | reviewed contributor instructions: source ownership and native build/test commands retained; product CLI policy applies | not hosted by docs workflow |
+| public | [AGENTS.md](AGENTS.md) | maintainer / mixed | reviewed contributor instructions: source ownership and native build/test commands retained; product CLI policy applies | not hosted by docs workflow |
+| public | [CHANGELOG.md](CHANGELOG.md) | history / historical | excluded from rewrite: dated history; current release note/banner reviewed | not hosted by docs workflow |
+| public | [CLAUDE.md](CLAUDE.md) | maintainer / mixed | reviewed contributor instructions: source ownership and native build/test commands retained; product CLI policy applies | not hosted by docs workflow |
+| public | [CONTRIBUTING.md](CONTRIBUTING.md) | maintainer / mixed | reviewed contributor instructions: source ownership and native build/test commands retained; product CLI policy applies | not hosted by docs workflow |
+| public | [README.md](README.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | not hosted by docs workflow |
+| public | [SECURITY.md](SECURITY.md) | guide / cli | reviewed classification: legal/security contract preserved; no legal or security recertification | not hosted by docs workflow |
+| public | [SKILL.md](SKILL.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | not hosted by docs workflow |
+| public | [astro/CHANGELOG.md](astro/CHANGELOG.md) | history / historical | excluded from rewrite: dated history; current release note/banner reviewed | not hosted by docs workflow |
+| public | [astro/README.md](astro/README.md) | runtime / application | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | not hosted by docs workflow |
+| public | [astro/test/fixtures/minimal-site/README.md](astro/test/fixtures/minimal-site/README.md) | runtime / application | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | not hosted by docs workflow |
+| public | [buzz/README.md](buzz/README.md) | integration / cli | reviewed managed-Buzz exception: identity, zero-mutation preflight and contextual-demo consent preserved; distribution gates apply | not hosted by docs workflow |
+| public | [buzz/SKILL.md](buzz/SKILL.md) | integration / cli | reviewed managed-Buzz exception: identity, zero-mutation preflight and contextual-demo consent preserved; distribution gates apply | not hosted by docs workflow |
+| public | [buzz/references/community-control-plane.md](buzz/references/community-control-plane.md) | integration / cli | reviewed managed-Buzz exception: identity, zero-mutation preflight and contextual-demo consent preserved; distribution gates apply | not hosted by docs workflow |
+| public | [buzz/references/conversations.md](buzz/references/conversations.md) | integration / cli | reviewed managed-Buzz exception: identity, zero-mutation preflight and contextual-demo consent preserved; distribution gates apply | not hosted by docs workflow |
+| public | [buzz/references/identity-and-security.md](buzz/references/identity-and-security.md) | integration / cli | reviewed managed-Buzz exception: identity, zero-mutation preflight and contextual-demo consent preserved; distribution gates apply | not hosted by docs workflow |
+| public | [buzz/references/installation.md](buzz/references/installation.md) | integration / cli | reviewed managed-Buzz exception: identity, zero-mutation preflight and contextual-demo consent preserved; distribution gates apply | not hosted by docs workflow |
+| public | [buzz/references/preflight.md](buzz/references/preflight.md) | integration / cli | reviewed managed-Buzz exception: identity, zero-mutation preflight and contextual-demo consent preserved; distribution gates apply | not hosted by docs workflow |
+| public | [buzz/references/receipts.md](buzz/references/receipts.md) | integration / cli | reviewed managed-Buzz exception: identity, zero-mutation preflight and contextual-demo consent preserved; distribution gates apply | not hosted by docs workflow |
+| public | [cli/README.md](cli/README.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | not hosted by docs workflow |
+| public | [cli/lib/admin.mjs](cli/lib/admin.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/agent.mjs](cli/lib/agent.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/ai.mjs](cli/lib/ai.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/allowance.mjs](cli/lib/allowance.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/apps.mjs](cli/lib/apps.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/archives.mjs](cli/lib/archives.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/assets.mjs](cli/lib/assets.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/auth.mjs](cli/lib/auth.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/billing.mjs](cli/lib/billing.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/branches.mjs](cli/lib/branches.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/buzz-notifications.mjs](cli/lib/buzz-notifications.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/buzz.mjs](cli/lib/buzz.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/cache.mjs](cli/lib/cache.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/cdn.mjs](cli/lib/cdn.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/ci.mjs](cli/lib/ci.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/claims.mjs](cli/lib/claims.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/cloud.mjs](cli/lib/cloud.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/command-manifest.mjs](cli/lib/command-manifest.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/contacts.mjs](cli/lib/contacts.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/contracts.mjs](cli/lib/contracts.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/core.mjs](cli/lib/core.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/credentials.mjs](cli/lib/credentials.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/delegates.mjs](cli/lib/delegates.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/deliveries.mjs](cli/lib/deliveries.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/deploy.mjs](cli/lib/deploy.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/dev.mjs](cli/lib/dev.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/doctor.mjs](cli/lib/doctor.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/domains.mjs](cli/lib/domains.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/email.mjs](cli/lib/email.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/errors.mjs](cli/lib/errors.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/escalations.mjs](cli/lib/escalations.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/events.mjs](cli/lib/events.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/feedback.mjs](cli/lib/feedback.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/functions.mjs](cli/lib/functions.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/gitvault.mjs](cli/lib/gitvault.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/grants.mjs](cli/lib/grants.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/identity.mjs](cli/lib/identity.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/image.mjs](cli/lib/image.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/init-astro.mjs](cli/lib/init-astro.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/init.mjs](cli/lib/init.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/jobs.mjs](cli/lib/jobs.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/live.mjs](cli/lib/live.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/logs.mjs](cli/lib/logs.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/messages.mjs](cli/lib/messages.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/notifications.mjs](cli/lib/notifications.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/operator.mjs](cli/lib/operator.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/org.mjs](cli/lib/org.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/pay.mjs](cli/lib/pay.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/projects.mjs](cli/lib/projects.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/redeem.mjs](cli/lib/redeem.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/repos.mjs](cli/lib/repos.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/rooms.mjs](cli/lib/rooms.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/secrets.mjs](cli/lib/secrets.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/service.mjs](cli/lib/service.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/sites.mjs](cli/lib/sites.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/snapshots.mjs](cli/lib/snapshots.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/source-access.mjs](cli/lib/source-access.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/status.mjs](cli/lib/status.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/subdomains.mjs](cli/lib/subdomains.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/subscriptions.mjs](cli/lib/subscriptions.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/tier.mjs](cli/lib/tier.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/transfer.mjs](cli/lib/transfer.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/up.mjs](cli/lib/up.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/wallets.mjs](cli/lib/wallets.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/webhook-secret.mjs](cli/lib/webhook-secret.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/lib/webhooks.mjs](cli/lib/webhooks.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | not hosted by docs workflow |
+| public | [cli/llms-cli-assets.txt](cli/llms-cli-assets.txt) | generated / mixed | reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply | not hosted by docs workflow |
+| public | [cli/llms-cli-commands.txt](cli/llms-cli-commands.txt) | generated / mixed | reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply | not hosted by docs workflow |
+| public | [cli/llms-cli-deploy.txt](cli/llms-cli-deploy.txt) | generated / mixed | reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply | not hosted by docs workflow |
+| public | [cli/llms-cli-errors.txt](cli/llms-cli-errors.txt) | generated / mixed | reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply | not hosted by docs workflow |
+| public | [cli/llms-cli-frontend.txt](cli/llms-cli-frontend.txt) | generated / mixed | reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply | not hosted by docs workflow |
+| public | [cli/llms-cli-full.txt](cli/llms-cli-full.txt) | generated / mixed | reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply | not hosted by docs workflow |
+| public | [cli/llms-cli-functions.txt](cli/llms-cli-functions.txt) | generated / mixed | reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply | not hosted by docs workflow |
+| public | [cli/llms-cli-ops.txt](cli/llms-cli-ops.txt) | generated / mixed | reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply | not hosted by docs workflow |
+| public | [cli/llms-cli-orgs.txt](cli/llms-cli-orgs.txt) | generated / mixed | reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply | not hosted by docs workflow |
+| public | [cli/llms-cli-platform.txt](cli/llms-cli-platform.txt) | generated / mixed | reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply | not hosted by docs workflow |
+| public | [cli/llms-cli-repos.txt](cli/llms-cli-repos.txt) | generated / mixed | reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply | not hosted by docs workflow |
+| public | [cli/llms-cli.txt](cli/llms-cli.txt) | generated / mixed | reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply | not hosted by docs workflow |
+| public | [demos/buzz-todo/README.md](demos/buzz-todo/README.md) | example / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | not hosted by docs workflow |
+| public | [demos/buzz-todo/site/callback.html](demos/buzz-todo/site/callback.html) | example / cli | reviewed classification: application/UI or conformance data, not a general operating tutorial | not hosted by docs workflow |
+| public | [demos/buzz-todo/site/index.html](demos/buzz-todo/site/index.html) | example / cli | reviewed classification: application/UI or conformance data, not a general operating tutorial | not hosted by docs workflow |
+| public | [demos/dreamdrop/AGENTS.md](demos/dreamdrop/AGENTS.md) | maintainer / mixed | reviewed contributor instructions: source ownership and native build/test commands retained; product CLI policy applies | not hosted by docs workflow |
+| public | [demos/dreamdrop/CLAUDE.md](demos/dreamdrop/CLAUDE.md) | maintainer / mixed | reviewed contributor instructions: source ownership and native build/test commands retained; product CLI policy applies | not hosted by docs workflow |
+| public | [demos/dreamdrop/README.md](demos/dreamdrop/README.md) | example / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | not hosted by docs workflow |
+| public | [demos/identity-lens/README.md](demos/identity-lens/README.md) | example / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | not hosted by docs workflow |
+| public | [demos/identity-lens/site/index.html](demos/identity-lens/site/index.html) | example / cli | reviewed classification: application/UI or conformance data, not a general operating tutorial | not hosted by docs workflow |
+| public | [docs-site/README.md](docs-site/README.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | not hosted by docs workflow |
+| public | [docs-site/public/robots.txt](docs-site/public/robots.txt) | guide / cli | reviewed classification: application/UI or conformance data, not a general operating tutorial | not hosted by docs workflow |
+| public | [docs-site/src/content/docs/astro/errors.md](docs-site/src/content/docs/astro/errors.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | pending |
+| public | [docs-site/src/content/docs/astro/images.md](docs-site/src/content/docs/astro/images.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | pending |
+| public | [docs-site/src/content/docs/astro/index.md](docs-site/src/content/docs/astro/index.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | pending |
+| public | [docs-site/src/content/docs/auth/db-actor-context.md](docs-site/src/content/docs/auth/db-actor-context.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | pending |
+| public | [docs-site/src/content/docs/auth/hosted-ui.md](docs-site/src/content/docs/auth/hosted-ui.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | pending |
+| public | [docs-site/src/content/docs/auth/rendering-modes.md](docs-site/src/content/docs/auth/rendering-modes.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | pending |
+| public | [docs-site/src/content/docs/auth/sdk.md](docs-site/src/content/docs/auth/sdk.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | pending |
+| public | [docs-site/src/content/docs/auth/tenant-assertion.md](docs-site/src/content/docs/auth/tenant-assertion.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | pending |
+| public | [docs-site/src/content/docs/build/astro/index.md](docs-site/src/content/docs/build/astro/index.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | pending |
+| public | [docs-site/src/content/docs/build/auth.md](docs-site/src/content/docs/build/auth.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | pending |
+| public | [docs-site/src/content/docs/build/database.md](docs-site/src/content/docs/build/database.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | pending |
+| public | [docs-site/src/content/docs/build/domains.md](docs-site/src/content/docs/build/domains.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | pending |
+| public | [docs-site/src/content/docs/build/email.md](docs-site/src/content/docs/build/email.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | pending |
+| public | [docs-site/src/content/docs/build/functions.md](docs-site/src/content/docs/build/functions.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | pending |
+| public | [docs-site/src/content/docs/build/storage.md](docs-site/src/content/docs/build/storage.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | pending |
+| public | [docs-site/src/content/docs/cache/concepts.md](docs-site/src/content/docs/cache/concepts.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | pending |
+| public | [docs-site/src/content/docs/cli/assets.md](docs-site/src/content/docs/cli/assets.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | pending |
+| public | [docs-site/src/content/docs/cli/commands.md](docs-site/src/content/docs/cli/commands.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | pending |
+| public | [docs-site/src/content/docs/cli/deploy.md](docs-site/src/content/docs/cli/deploy.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | pending |
+| public | [docs-site/src/content/docs/cli/errors.md](docs-site/src/content/docs/cli/errors.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | pending |
+| public | [docs-site/src/content/docs/cli/frontend.md](docs-site/src/content/docs/cli/frontend.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | pending |
+| public | [docs-site/src/content/docs/cli/functions.md](docs-site/src/content/docs/cli/functions.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | pending |
+| public | [docs-site/src/content/docs/cli/ops.md](docs-site/src/content/docs/cli/ops.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | pending |
+| public | [docs-site/src/content/docs/cli/orgs.md](docs-site/src/content/docs/cli/orgs.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | pending |
+| public | [docs-site/src/content/docs/cli/platform.md](docs-site/src/content/docs/cli/platform.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | pending |
+| public | [docs-site/src/content/docs/cli/reference.md](docs-site/src/content/docs/cli/reference.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | pending |
+| public | [docs-site/src/content/docs/cli/repos.md](docs-site/src/content/docs/cli/repos.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | pending |
+| public | [docs-site/src/content/docs/concepts/allowances.md](docs-site/src/content/docs/concepts/allowances.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | pending |
+| public | [docs-site/src/content/docs/concepts/credentials.md](docs-site/src/content/docs/concepts/credentials.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | pending |
+| public | [docs-site/src/content/docs/concepts/interfaces.md](docs-site/src/content/docs/concepts/interfaces.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | pending |
+| public | [docs-site/src/content/docs/concepts/projects.md](docs-site/src/content/docs/concepts/projects.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | pending |
+| public | [docs-site/src/content/docs/concepts/releases.md](docs-site/src/content/docs/concepts/releases.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | pending |
+| public | [docs-site/src/content/docs/errors/auth.md](docs-site/src/content/docs/errors/auth.md) | guide / cli | reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply | pending |
+| public | [docs-site/src/content/docs/errors/client.md](docs-site/src/content/docs/errors/client.md) | guide / cli | reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply | pending |
+| public | [docs-site/src/content/docs/errors/core.md](docs-site/src/content/docs/errors/core.md) | guide / cli | reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply | pending |
+| public | [docs-site/src/content/docs/errors/gateway.md](docs-site/src/content/docs/errors/gateway.md) | guide / cli | reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply | pending |
+| public | [docs-site/src/content/docs/errors/index.md](docs-site/src/content/docs/errors/index.md) | guide / cli | reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply | pending |
+| public | [docs-site/src/content/docs/errors/runtime.md](docs-site/src/content/docs/errors/runtime.md) | guide / cli | reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply | pending |
+| public | [docs-site/src/content/docs/examples/index.md](docs-site/src/content/docs/examples/index.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | pending |
+| public | [docs-site/src/content/docs/functions/errors.md](docs-site/src/content/docs/functions/errors.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | pending |
+| public | [docs-site/src/content/docs/getting-started.md](docs-site/src/content/docs/getting-started.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | pending |
+| public | [docs-site/src/content/docs/index.mdx](docs-site/src/content/docs/index.mdx) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | pending |
+| public | [docs-site/src/content/docs/mcp/installation.md](docs-site/src/content/docs/mcp/installation.md) | reference / mcp | reviewed native MCP setup/reference: explicit host availability and app_up orchestration; schema/parity gates apply | pending |
+| public | [docs-site/src/content/docs/mcp/lifecycle.md](docs-site/src/content/docs/mcp/lifecycle.md) | reference / mcp | reviewed native MCP setup/reference: explicit host availability and app_up orchestration; schema/parity gates apply | pending |
+| public | [docs-site/src/content/docs/mcp/limits.md](docs-site/src/content/docs/mcp/limits.md) | reference / mcp | reviewed native MCP setup/reference: explicit host availability and app_up orchestration; schema/parity gates apply | pending |
+| public | [docs-site/src/content/docs/mcp/patterns.md](docs-site/src/content/docs/mcp/patterns.md) | reference / mcp | reviewed native MCP setup/reference: explicit host availability and app_up orchestration; schema/parity gates apply | pending |
+| public | [docs-site/src/content/docs/mcp/reference.md](docs-site/src/content/docs/mcp/reference.md) | reference / mcp | reviewed native MCP setup/reference: explicit host availability and app_up orchestration; schema/parity gates apply | pending |
+| public | [docs-site/src/content/docs/mcp/tools.md](docs-site/src/content/docs/mcp/tools.md) | reference / mcp | reviewed native MCP setup/reference: explicit host availability and app_up orchestration; schema/parity gates apply | pending |
+| public | [docs-site/src/content/docs/operate/billing.md](docs-site/src/content/docs/operate/billing.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | pending |
+| public | [docs-site/src/content/docs/operate/ci.md](docs-site/src/content/docs/operate/ci.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | pending |
+| public | [docs-site/src/content/docs/operate/deploy.md](docs-site/src/content/docs/operate/deploy.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | pending |
+| public | [docs-site/src/content/docs/operate/diagnostics.md](docs-site/src/content/docs/operate/diagnostics.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | pending |
+| public | [docs-site/src/content/docs/reference/error-codes.md](docs-site/src/content/docs/reference/error-codes.md) | guide / cli | reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply | pending |
+| public | [docs-site/src/content/docs/reference/http.mdx](docs-site/src/content/docs/reference/http.mdx) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | pending |
+| public | [docs-site/src/content/docs/reference/schemas.md](docs-site/src/content/docs/reference/schemas.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | pending |
+| public | [docs-site/src/content/docs/sdk/credentials.md](docs-site/src/content/docs/sdk/credentials.md) | reference / sdk | reviewed native SDK scripting: explicit CLI default outside scripts, awaited project scope, staged activation; snippet gate applies | pending |
+| public | [docs-site/src/content/docs/sdk/environment.md](docs-site/src/content/docs/sdk/environment.md) | reference / sdk | reviewed native SDK scripting: explicit CLI default outside scripts, awaited project scope, staged activation; snippet gate applies | pending |
+| public | [docs-site/src/content/docs/sdk/errors.md](docs-site/src/content/docs/sdk/errors.md) | reference / sdk | reviewed native SDK scripting: explicit CLI default outside scripts, awaited project scope, staged activation; snippet gate applies | pending |
+| public | [docs-site/src/content/docs/sdk/identity.md](docs-site/src/content/docs/sdk/identity.md) | reference / sdk | reviewed native SDK scripting: explicit CLI default outside scripts, awaited project scope, staged activation; snippet gate applies | pending |
+| public | [docs-site/src/content/docs/sdk/lifecycle.md](docs-site/src/content/docs/sdk/lifecycle.md) | reference / sdk | reviewed native SDK scripting: explicit CLI default outside scripts, awaited project scope, staged activation; snippet gate applies | pending |
+| public | [docs-site/src/content/docs/sdk/limits.md](docs-site/src/content/docs/sdk/limits.md) | reference / sdk | reviewed native SDK scripting: explicit CLI default outside scripts, awaited project scope, staged activation; snippet gate applies | pending |
+| public | [docs-site/src/content/docs/sdk/organizations.md](docs-site/src/content/docs/sdk/organizations.md) | reference / sdk | reviewed native SDK scripting: explicit CLI default outside scripts, awaited project scope, staged activation; snippet gate applies | pending |
+| public | [docs-site/src/content/docs/sdk/patterns.md](docs-site/src/content/docs/sdk/patterns.md) | reference / sdk | reviewed native SDK scripting: explicit CLI default outside scripts, awaited project scope, staged activation; snippet gate applies | pending |
+| public | [docs-site/src/content/docs/sdk/reference.md](docs-site/src/content/docs/sdk/reference.md) | reference / sdk | reviewed native SDK scripting: explicit CLI default outside scripts, awaited project scope, staged activation; snippet gate applies | pending |
+| public | [docs-site/src/content/docs/sdk/resources.md](docs-site/src/content/docs/sdk/resources.md) | reference / sdk | reviewed native SDK scripting: explicit CLI default outside scripts, awaited project scope, staged activation; snippet gate applies | pending |
+| public | [docs-site/src/content/docs/sdk/scripting.md](docs-site/src/content/docs/sdk/scripting.md) | reference / sdk | reviewed native SDK scripting: explicit CLI default outside scripts, awaited project scope, staged activation; snippet gate applies | pending |
+| public | [docs-site/src/content/docs/start/first-deploy.md](docs-site/src/content/docs/start/first-deploy.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | pending |
+| public | [docs-site/src/content/docs/start/harness.md](docs-site/src/content/docs/start/harness.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | pending |
+| public | [docs/gitvault/README.md](docs/gitvault/README.md) | protocol / native | reviewed classification and entry routing: native protocol/schema examples intentionally retained; owning parity/claim gates apply | not hosted by docs workflow |
+| public | [docs/gitvault/hpke-second-implementation.md](docs/gitvault/hpke-second-implementation.md) | protocol / native | reviewed classification and entry routing: native protocol/schema examples intentionally retained; owning parity/claim gates apply | not hosted by docs workflow |
+| public | [docs/gitvault/protocol-v0.md](docs/gitvault/protocol-v0.md) | protocol / native | reviewed classification and entry routing: native protocol/schema examples intentionally retained; owning parity/claim gates apply | not hosted by docs workflow |
+| public | [docs/gitvault/threat-model.md](docs/gitvault/threat-model.md) | protocol / native | reviewed classification and entry routing: native protocol/schema examples intentionally retained; owning parity/claim gates apply | not hosted by docs workflow |
+| public | [docs/quality/documentation-policy.md](docs/quality/documentation-policy.md) | maintainer / mixed | reviewed contributor instructions: source ownership and native build/test commands retained; product CLI policy applies | not hosted by docs workflow |
+| public | [docs/quality/gaps.md](docs/quality/gaps.md) | maintainer / mixed | reviewed contributor instructions: source ownership and native build/test commands retained; product CLI policy applies | not hosted by docs workflow |
+| public | [docs/quality/maintenance-map.md](docs/quality/maintenance-map.md) | maintainer / mixed | reviewed contributor instructions: source ownership and native build/test commands retained; product CLI policy applies | not hosted by docs workflow |
+| public | [examples/agent-team/README.md](examples/agent-team/README.md) | example / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | not hosted by docs workflow |
+| public | [examples/agent-team/assets/grok/README.md](examples/agent-team/assets/grok/README.md) | example / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | not hosted by docs workflow |
+| public | [examples/agent-team/prompts/claude.md](examples/agent-team/prompts/claude.md) | example / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | not hosted by docs workflow |
+| public | [examples/agent-team/prompts/codex.md](examples/agent-team/prompts/codex.md) | example / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | not hosted by docs workflow |
+| public | [examples/agent-team/prompts/grok.md](examples/agent-team/prompts/grok.md) | example / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | not hosted by docs workflow |
+| public | [examples/agent-team/prompts/protocol.md](examples/agent-team/prompts/protocol.md) | example / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | not hosted by docs workflow |
+| public | [examples/astro-notes-cms/README.md](examples/astro-notes-cms/README.md) | example / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | not hosted by docs workflow |
+| public | [examples/kysigned-function-runs/README.md](examples/kysigned-function-runs/README.md) | example / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | not hosted by docs workflow |
+| public | [examples/room-invite/README.md](examples/room-invite/README.md) | example / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | not hosted by docs workflow |
+| public | [examples/static-config-js/README.md](examples/static-config-js/README.md) | example / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | not hosted by docs workflow |
+| public | [examples/static-config-js/index.html](examples/static-config-js/index.html) | example / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | not hosted by docs workflow |
+| public | [examples/tenant-x402-wallet-stats/README.md](examples/tenant-x402-wallet-stats/README.md) | example / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | not hosted by docs workflow |
+| public | [examples/tenant-x402-wallet-stats/static/index.html](examples/tenant-x402-wallet-stats/static/index.html) | example / cli | reviewed classification: application/UI or conformance data, not a general operating tutorial | not hosted by docs workflow |
+| public | [functions/README.md](functions/README.md) | runtime / application | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | not hosted by docs workflow |
+| public | [integration-fixtures/fullstack-app/COVERAGE.md](integration-fixtures/fullstack-app/COVERAGE.md) | fixture / native | reviewed classification: application/UI or conformance data, not a general operating tutorial | not hosted by docs workflow |
+| public | [integration-fixtures/fullstack-app/README.md](integration-fixtures/fullstack-app/README.md) | fixture / native | reviewed classification: application/UI or conformance data, not a general operating tutorial | not hosted by docs workflow |
+| public | [integration-fixtures/fullstack-app/site/docs.html](integration-fixtures/fullstack-app/site/docs.html) | fixture / native | reviewed classification: application/UI or conformance data, not a general operating tutorial | not hosted by docs workflow |
+| public | [integration-fixtures/fullstack-app/site/index.html](integration-fixtures/fullstack-app/site/index.html) | fixture / native | reviewed classification: application/UI or conformance data, not a general operating tutorial | not hosted by docs workflow |
+| public | [integration-fixtures/fullstack-app/site/status.html](integration-fixtures/fullstack-app/site/status.html) | fixture / native | reviewed classification: application/UI or conformance data, not a general operating tutorial | not hosted by docs workflow |
+| public | [integration-fixtures/fullstack-app/site/version.txt](integration-fixtures/fullstack-app/site/version.txt) | fixture / native | reviewed classification: application/UI or conformance data, not a general operating tutorial | not hosted by docs workflow |
+| public | [integrations/run402-for-buzz/README.md](integrations/run402-for-buzz/README.md) | integration / cli | reviewed managed-Buzz exception: identity, zero-mutation preflight and contextual-demo consent preserved; distribution gates apply | not hosted by docs workflow |
+| public | [kygit/README.md](kygit/README.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | not hosted by docs workflow |
+| public | [llms-mcp.txt](llms-mcp.txt) | generated / mixed | reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply | not hosted by docs workflow |
+| public | [llms.txt](llms.txt) | generated / mixed | reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply | not hosted by docs workflow |
+| public | [openclaw/README.md](openclaw/README.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | not hosted by docs workflow |
+| public | [openclaw/SKILL.md](openclaw/SKILL.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | not hosted by docs workflow |
+| public | [r402s-verify/README.md](r402s-verify/README.md) | protocol / native | reviewed classification and entry routing: native protocol/schema examples intentionally retained; owning parity/claim gates apply | not hosted by docs workflow |
+| public | [sdk/README.md](sdk/README.md) | reference / sdk | reviewed native SDK scripting: explicit CLI default outside scripts, awaited project scope, staged activation; snippet gate applies | not hosted by docs workflow |
+| public | [sdk/llms-sdk.txt](sdk/llms-sdk.txt) | generated / mixed | reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply | not hosted by docs workflow |
+| public | [test-vectors/r402s-v0/README.md](test-vectors/r402s-v0/README.md) | fixture / native | reviewed classification: application/UI or conformance data, not a general operating tutorial | not hosted by docs workflow |
+| public | [test-vectors/r402s-v0/hpke-interop/INTEROP.md](test-vectors/r402s-v0/hpke-interop/INTEROP.md) | fixture / native | reviewed classification: application/UI or conformance data, not a general operating tutorial | not hosted by docs workflow |
+| private | `apps/kygit/404.html` | reference / cli | reviewed classification: application/UI or conformance data, not a general operating tutorial | pending |
+| private | `apps/kygit/about/index.html` | reference / cli | reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained | pending |
+| private | `apps/kygit/doodles/README.md` | reference / cli | reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained | pending |
+| private | `apps/kygit/europe/index.html` | legal / native | reviewed classification: legal/security contract preserved; no legal or security recertification | pending |
+| private | `apps/kygit/handoff/index.html` | reference / cli | reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained | pending |
+| private | `apps/kygit/how-it-works/index.html` | protocol / http | reviewed classification and entry routing: native protocol/schema examples intentionally retained; owning parity/claim gates apply | pending |
+| private | `apps/kygit/index.html` | reference / cli | reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained | pending |
+| private | `apps/kygit/invite/index.html` | reference / cli | reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained | pending |
+| private | `apps/kygit/llms.txt` | reference / cli | reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained | pending |
+| private | `apps/kygit/privacy/index.html` | legal / native | reviewed classification: legal/security contract preserved; no legal or security recertification | pending |
+| private | `apps/kygit/robots.txt` | reference / cli | reviewed classification: application/UI or conformance data, not a general operating tutorial | pending |
+| private | `apps/kygit/terms/index.html` | legal / native | reviewed classification: legal/security contract preserved; no legal or security recertification | pending |
+| private | `apps/kygit/vs-github/index.html` | reference / cli | reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained | pending |
+| private | `apps/marketing/.well-known/mcp.json` | reference / cli | reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained | pending |
+| private | `apps/marketing/404.html` | reference / cli | reviewed classification: application/UI or conformance data, not a general operating tutorial | pending |
+| private | `apps/marketing/agent-allowance/index.html` | reference / cli | reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained | pending |
+| private | `apps/marketing/apps/index.html` | application / native | reviewed classification: application/UI or conformance data, not a general operating tutorial | pending |
+| private | `apps/marketing/billing/index.html` | application / native | reviewed classification: application/UI or conformance data, not a general operating tutorial | pending |
+| private | `apps/marketing/buzz/index.html` | reference / cli | reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained | pending |
+| private | `apps/marketing/buzz/install.txt` | reference / cli | reviewed managed-Buzz exception: identity, zero-mutation preflight and contextual-demo consent preserved; distribution gates apply | pending |
+| private | `apps/marketing/errors/index.html` | reference / cli | reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply | pending |
+| private | `apps/marketing/escalations/ack/index.html` | application / native | reviewed classification: application/UI or conformance data, not a general operating tutorial | pending |
+| private | `apps/marketing/examples/index.html` | reference / cli | reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained | pending |
+| private | `apps/marketing/freelance/index.html` | reference / cli | reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained | pending |
+| private | `apps/marketing/getstarted/index.html` | reference / cli | reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained | pending |
+| private | `apps/marketing/gitvault/index.html` | protocol / http | reviewed classification and entry routing: native protocol/schema examples intentionally retained; owning parity/claim gates apply | pending |
+| private | `apps/marketing/humans/about.html` | reference / cli | reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained | pending |
+| private | `apps/marketing/humans/changelog.html` | history / native | excluded from rewrite: dated history; current release note/banner reviewed | pending |
+| private | `apps/marketing/humans/domains.html` | reference / cli | reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained | pending |
+| private | `apps/marketing/humans/faq.html` | reference / cli | reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained | pending |
+| private | `apps/marketing/humans/index.html` | reference / cli | reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained | pending |
+| private | `apps/marketing/humans/legal.html` | legal / native | reviewed classification: legal/security contract preserved; no legal or security recertification | pending |
+| private | `apps/marketing/humans/mpp.html` | reference / cli | reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained | pending |
+| private | `apps/marketing/humans/privacy.html` | legal / native | reviewed classification: legal/security contract preserved; no legal or security recertification | pending |
+| private | `apps/marketing/humans/run402-2-0.html` | history / native | excluded from rewrite: dated history; current release note/banner reviewed | pending |
+| private | `apps/marketing/humans/terms.html` | legal / native | reviewed classification: legal/security contract preserved; no legal or security recertification | pending |
+| private | `apps/marketing/humans/vision.html` | reference / cli | reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained | pending |
+| private | `apps/marketing/index.html` | reference / cli | reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained | pending |
+| private | `apps/marketing/install.txt` | reference / cli | reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained | pending |
+| private | `apps/marketing/lab/index.html` | reference / cli | reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained | pending |
+| private | `apps/marketing/llms-full.txt` | protocol / http | reviewed classification and entry routing: native protocol/schema examples intentionally retained; owning parity/claim gates apply | pending |
+| private | `apps/marketing/openapi.json` | protocol / http | reviewed classification and entry routing: native protocol/schema examples intentionally retained; owning parity/claim gates apply | pending |
+| private | `apps/marketing/operator/passkey/index.html` | application / native | reviewed classification: application/UI or conformance data, not a general operating tutorial | pending |
+| private | `apps/marketing/pricing/index.html` | reference / cli | reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained | pending |
+| private | `apps/marketing/robots.txt` | reference / cli | reviewed classification: application/UI or conformance data, not a general operating tutorial | pending |
+| private | `apps/marketing/schemas/manifest.example.json` | protocol / http | reviewed classification and entry routing: native protocol/schema examples intentionally retained; owning parity/claim gates apply | pending |
+| private | `apps/marketing/schemas/manifest.v1.json` | protocol / http | reviewed classification and entry routing: native protocol/schema examples intentionally retained; owning parity/claim gates apply | pending |
+| private | `apps/marketing/schemas/release-spec.v1.json` | protocol / http | reviewed classification and entry routing: native protocol/schema examples intentionally retained; owning parity/claim gates apply | pending |
+| private | `apps/marketing/sorting-humans/index.html` | reference / cli | reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained | pending |
+| private | `apps/marketing/updates.txt` | history / native | excluded from rewrite: dated history; current release note/banner reviewed | pending |
+| private | `apps/marketing/use-cases/deploy-app-without-aws-account/index.html` | reference / cli | reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained | pending |
+| private | `apps/marketing/use-cases/free-postgres-for-prototype/index.html` | reference / cli | reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained | pending |
+| private | `apps/marketing/use-cases/index.html` | reference / cli | reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained | pending |
+| private | `apps/marketing/use-cases/supabase-alternative-for-agents/index.html` | reference / cli | reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained | pending |
+| private | `apps/marketing/use-cases/vercel-alternative-for-agents/index.html` | reference / cli | reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained | pending |
+| private | `apps/marketing/zh-cn/index.html` | reference / cli | reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained | pending |
+| core | `.claude/commands/publish-core.md` | reference / runtime | reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned | source only |
+| core | `.claude/skills/publish-run402-core/SKILL.md` | reference / runtime | reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned | source only |
+| core | `AGENTS.md` | reference / runtime | reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned | source only |
+| core | `ARCHITECTURE.md` | reference / runtime | reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned | source only |
+| core | `CLAUDE.md` | reference / runtime | reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned | source only |
+| core | `CLOUD_VS_CORE.md` | reference / runtime | reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned | source only |
+| core | `CONTRIBUTING.md` | reference / runtime | reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned | source only |
+| core | `README.md` | reference / runtime | reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned | source only |
+| core | `SECURITY.md` | reference / runtime | reviewed classification: legal/security contract preserved; no legal or security recertification | source only |
+| core | `docs/adr/0001-core-cloud-boundary.md` | reference / runtime | reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned | source only |
+| core | `docs/adr/0002-functions-runtime-public-source.md` | reference / runtime | reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned | source only |
+| core | `docs/adr/0003-release-package-public-semantics.md` | reference / runtime | reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned | source only |
+| core | `docs/agent-dx-core-applicability.md` | reference / runtime | reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned | source only |
+| core | `docs/deployment/aws-ec2/README.md` | reference / runtime | reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned | source only |
+| core | `docs/deployment/aws-email-inbound/README.md` | reference / runtime | reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned | source only |
+| core | `docs/deployment/aws-email/README.md` | reference / runtime | reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned | source only |
+| core | `docs/open-source-readiness.md` | reference / runtime | reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned | source only |
+| core | `docs/runtime-kernel/astro-ssr.md` | reference / runtime | reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned | source only |
+| core | `docs/runtime-kernel/capabilities.md` | reference / runtime | reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned | source only |
+| core | `docs/runtime-kernel/cloud-vs-core.md` | reference / runtime | reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned | source only |
+| core | `docs/runtime-kernel/core-certification.md` | reference / runtime | reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned | source only |
+| core | `docs/runtime-kernel/docker-compose-howto.md` | reference / runtime | reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned | source only |
+| core | `docs/runtime-kernel/functions-runtime.md` | reference / runtime | reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned | source only |
+| core | `docs/runtime-kernel/portable-archives.md` | reference / runtime | reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned | source only |
+| core | `docs/runtime-kernel/quickstart.md` | reference / runtime | reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned | source only |
+| core | `docs/runtime-kernel/security-defaults.md` | reference / runtime | reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned | source only |
+| core | `docs/runtime-kernel/storage-routing.md` | reference / runtime | reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned | source only |
+| core | `fixtures/astro-ssr-core/README.md` | reference / runtime | reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned | source only |
+| core | `fixtures/runtime-kernel-static-rest/README.md` | reference / runtime | reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned | source only |
+| core | `fixtures/storage-routing-core/README.md` | reference / runtime | reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned | source only |
+| core | `packages/functions/CHANGELOG.md` | history / native | excluded from rewrite: dated history; current release note/banner reviewed | source only |
+| core | `packages/functions/README.md` | reference / runtime | reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned | source only |
+| core | `packages/release/CHANGELOG.md` | history / native | excluded from rewrite: dated history; current release note/banner reviewed | source only |
+| core | `packages/release/README.md` | reference / runtime | reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned | source only |
+| core | `packages/release/docs/app-kit.md` | reference / runtime | reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned | source only |
+| core | `packages/release/docs/canonicalization.md` | reference / runtime | reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned | source only |
+| core | `packages/release/docs/compatibility.md` | reference / runtime | reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned | source only |
+| core | `packages/release/docs/field-support.md` | reference / runtime | reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned | source only |
+| core | `packages/runtime-kernel/README.md` | reference / runtime | reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned | source only |

@@ -23,3 +23,7 @@ run402 functions logs hello --project prj_example
 The example assumes the function is named `hello` in the manifest. Direct function invocation and a public routed URL are different access paths. Declaring a route does not make every invocation endpoint anonymous. Configure route/function auth intentionally; do not mistake a public reachability warning for an authorization policy.
 
 Schedules and event triggers can create durable function runs. Inspect `fnrun_` and attempt handles, use stable idempotency keys where required, and distinguish queued work from a completed response. The [function command reference](/cli/functions/) covers list, logs, cancel and redrive. The [function-runs example](https://github.com/kychee-com/run402/tree/main/examples/kysigned-function-runs) shows a complete fixture.
+
+## Read the result and recover
+
+Invocation prints the function response; logs are a separate operation. An authorization failure requires correcting the caller or declared gate, not removing authentication. A runtime failure requires the returned request ID and application logs. If deployment fails, inspect its stage before invoking: uploading code alone is not evidence of activation. Use `run402 functions invoke --help` for request-body file options and keep secrets out of arguments.

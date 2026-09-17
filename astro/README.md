@@ -90,7 +90,7 @@ Astro supports four rendering modes; `auth.*` calls have different semantics in 
 | SSR (default)    | The default; no flag needed.                 | Personalized pages that read the actor.                          | `auth.user()` returns the actor; `auth.*` helpers taint the response so cache bypasses on Set-Cookie / auth. |
 | Prerendered      | `export const prerender = true;` in the page.  | Pure marketing / docs pages that never see the actor.            | `auth.*` throws `R402_AUTH_PRERENDERED`. The page is built once and served as a static asset.              |
 | Server island | Unsupported by this adapter | Build fails with `R402_ASTRO_SERVER_ISLAND_UNSUPPORTED` | Use SSR or client-hydrated components instead. |
-| Client hydrate   | `<SignedIn client:load>…</SignedIn>`.          | Cookie-aware visibility without an SSR pass at all.              | Component fetches `/auth/v1/session` from the browser. No server `auth.*` call.                            |
+| Client hydrate | A supported framework component with Astro client hydration | Application-specific browser interaction | `SignedIn` / `SignedOut` are server components and call `auth.user()`; adding `client:load` does not turn them into browser auth clients. |
 
 Pattern picker:
 
@@ -114,20 +114,11 @@ export const prerender = true;
 
 Server islands (`server:defer` and `server:only`) are rejected at build time by the current adapter. Use the SSR or client-hydrated patterns shown here.
 
-```astro
----
-// Client-hydrated visibility-only (no SSR auth read)
-import { SignedIn, SignedOut, SignIn, UserButton } from "@run402/astro/components";
----
-<SignedIn client:load>
-  <UserButton />
-</SignedIn>
-<SignedOut client:load>
-  <SignIn returnTo="/" />
-</SignedOut>
-```
+Use `SignedIn` / `SignedOut` only in request-time SSR. For browser-only applications, follow the hosted-auth route contract below; do not call server helpers from browser code.
 
 ## Authentication
+
+**Pinned-version caveat:** the published 2.5.0 `SignIn.astro` fails compilation with Astro 7, including when reached through the component barrel. Until a compatible package is released, use the hosted-auth routes and direct component subpaths demonstrated by the [complete notes/CMS fixture](../examples/astro-notes-cms). That fixture builds on patched Astro 7.3.2; do not downgrade to an unpatched compiler to hide the error. The APIs below describe the native component contract.
 
 Run402 ships a complete multi-tenant auth surface — password, OAuth (Google), passkeys, magic-link, hosted sign-up, and full account management — every ceremony minting a host-only session cookie on the tenant origin. **In an Astro project you almost never touch a route or a fetch: you render a component.** The four headless components (`<SignIn>`, `<SignUp>`, `<UserButton>`, `<AccountSecurity>`) own CSRF, freshness step-up, re-auth redirects, session rotation, and the passkey/OAuth ceremonies for you.
 
@@ -439,11 +430,12 @@ run402 logs --request-id req_xyz123 --json          # debug a failed render
 Most projects deploy with `run402 deploy` (above) or `run402 deploy apply --dir dist`. If you write your own deploy script with `@run402/sdk` — e.g. a CI job that assembles a custom `ReleaseSpec` — turn the build into a deploy slice with the one canonical helper. **Do not hand-roll `site` / `public_paths`.**
 
 ```ts
-import { run402 } from "@run402/sdk";
+import { run402 } from "@run402/sdk/node";
 import { buildAstroReleaseSlice } from "@run402/astro/release-slice";
 
 const slice = await buildAstroReleaseSlice("dist");   // point at the BUILD ROOT, not dist/run402/client
-await run402().project(projectId).apply({
+const project = await run402().project(projectId);
+await project.apply({
   database: { migrations },     // your own cross-cutting slices
   ...slice,                     // site + functions (routes intentionally omitted)
 });

@@ -21,7 +21,7 @@ export default run402();
 
 SSR is the default. Prerendered pages run at build time and cannot read a request's actor. Server islands are currently rejected with `R402_ASTRO_SERVER_ISLAND_UNSUPPORTED`; use SSR or supported client-hydrated components instead. The current package declares Astro `>=6 <8` support; check the installed package's peer range during upgrades.
 
-Use hosted `SignIn`, `SignUp`, `UserButton` and `AccountSecurity` components, and the documented signed-in/out presentation components. Presentation gates do not replace server authorization. In request context, `auth.user()` reads the actor and `auth.requireUser()` enforces authentication. Auth-dependent responses are not public cache entries.
+The native component API includes `SignIn`, `SignUp`, `UserButton`, `AccountSecurity` and signed-in/out presentation gates. For the published component/compiler limitation described below, use the fixture’s hosted-route flow. Presentation gates do not replace server authorization. In request context, `auth.user()` reads the actor and `auth.requireUser()` enforces authentication. Auth-dependent responses are not public cache entries.
 
 ## Data and images
 

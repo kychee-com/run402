@@ -9000,6 +9000,10 @@
                           "type": "boolean",
                           "description": "Install a BEFORE INSERT trigger that sets owner_column := auth.uid() when NULL. Requires policy = 'user_owns_rows'."
                         },
+                        "live": {
+                          "type": "boolean",
+                          "description": "tenant-live-changes: emit change hints for this table over /live/v1 and /_run402/live (statement-level NOTIFY triggers installed by the converge). Requires expose: true and a built-in policy; refused on policy = 'custom'."
+                        },
                         "i_understand_this_is_unrestricted": {
                           "type": "boolean",
                           "description": "Required when policy = 'public_read_write_UNRESTRICTED'."
@@ -9371,6 +9375,262 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/live/v1": {
+      "get": {
+        "tags": [
+          "Live"
+        ],
+        "summary": "Change hints for live tables (Server-Sent Events)",
+        "operationId": "liveStream",
+        "description": "tenant-live-changes. `text/event-stream` of change hints for the named live tables of the key's project: `ready` (cursor), `change` (`id` = hint cursor; `data` = `{ table, op, pk: [<primary key objects>] | null, n }`, never row data), `resync` (`{ tables, reason }` — refetch what you care about), `reconnect` (the server closes every stream after 300 s; reconnect with `Last-Event-ID`). A comment heartbeat every 15 s. Audience follows the token: `apikey: <anon_key>` is the anonymous audience (public-policy tables only), `+ Authorization: Bearer <access_token>` the user audience (its own `user_owns_rows` hints), `apikey: <service_key>` sees every hint. A table without `live: true` is `403 TABLE_NOT_LIVE` before any event; an owner-scoped table without an identity is `401 AUTH_REQUIRED`; over the per-project (200; 50 on prototype) or per-task cap is `429 LIVE_CONNECTION_LIMIT` with `Retry-After`. The same stream is served on every tenant host at `/_run402/live?tables=` (no key: the host's own project; a hosted-auth session cookie or user Bearer selects the user audience).",
+        "security": [
+          {
+            "apikey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Must be the key's project."
+          },
+          {
+            "name": "tables",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated live table names."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Cursor to resume from (`Last-Event-ID` is honored too). Outside the replay ring, the stream opens with `resync`."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Event stream.",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "VALIDATION_FAILED: bad tables, cursor or wait.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "AUTH_REQUIRED: an owner-scoped table needs an identity.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TABLE_NOT_LIVE (or FORBIDDEN on a project_id mismatch).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "LIVE_CONNECTION_LIMIT with Retry-After.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/live/v1/changes": {
+      "get": {
+        "tags": [
+          "Live"
+        ],
+        "summary": "Change hints for live tables (held read)",
+        "operationId": "liveChanges",
+        "description": "tenant-live-changes. Hints since `cursor`, or with `wait` (clamped 1..25 s) hold until the first hint arrives, woken by the notification path rather than by polling. `resync: true` (with `tables`) means the cursor could not be answered: refetch. The held read is not counted against the live connection cap. Also served on every tenant host at `/_run402/live/changes`.",
+        "security": [
+          {
+            "apikey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tables",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated live table names."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Cursor from a previous response or a `change` event id."
+          },
+          {
+            "name": "wait",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 25
+            },
+            "description": "Hold up to this many seconds for the first hint. Clamped to 1..25; non-numeric is 400."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Hints since the cursor.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "changes",
+                    "cursor",
+                    "resync"
+                  ],
+                  "properties": {
+                    "changes": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "table",
+                          "op",
+                          "n",
+                          "cursor"
+                        ],
+                        "properties": {
+                          "table": {
+                            "type": "string"
+                          },
+                          "op": {
+                            "type": "string",
+                            "enum": [
+                              "insert",
+                              "update",
+                              "delete"
+                            ]
+                          },
+                          "pk": {
+                            "type": "array",
+                            "nullable": true,
+                            "description": "Primary keys touched by the statement; null is a table-level hint (refetch the table).",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": true
+                            }
+                          },
+                          "n": {
+                            "type": "integer"
+                          },
+                          "cursor": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "cursor": {
+                      "type": "string",
+                      "description": "Continue from here."
+                    },
+                    "resync": {
+                      "type": "boolean"
+                    },
+                    "tables": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Present when resync is true: the tables to refetch."
+                    },
+                    "waited_seconds": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "VALIDATION_FAILED: bad tables, cursor or wait.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "AUTH_REQUIRED: an owner-scoped table needs an identity.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TABLE_NOT_LIVE (or FORBIDDEN on a project_id mismatch).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -19964,7 +20224,7 @@
         ],
         "summary": "Runtime config for a tenant host, as a script",
         "operationId": "tenantRuntimeConfigJs",
-        "description": "Tenant-host reserved path, served on every project subdomain, branch host, and custom domain before routes, static lookup, and SPA fallback. Returns `window.RUN402 = { project_id, api_base, anon_key };` for the project the host resolves to at request time — a branch host answers for the branch, a transferred project answers with its rotated anon key — so a static page never needs a key copied into its HTML: `<script src=\"/_run402/config.js\"></script>`. `Cache-Control: public, max-age=60`. Never carries `service_key`. Not served from api.run402.com.",
+        "description": "Tenant-host reserved path, served on every project subdomain, branch host, and custom domain before routes, static lookup, and SPA fallback. Returns `window.RUN402 = { project_id, api_base, anon_key, embedding, live };` (`live` is `{ path: '/_run402/live', tables: [...] }` or null: the tables that emit change hints on this host) for the project the host resolves to at request time — a branch host answers for the branch, a transferred project answers with its rotated anon key — so a static page never needs a key copied into its HTML: `<script src=\"/_run402/config.js\"></script>`. `Cache-Control: public, max-age=60`. Never carries `service_key`. Not served from api.run402.com.",
         "security": [],
         "responses": {
           "200": {
@@ -19980,6 +20240,151 @@
           },
           "404": {
             "description": "The host resolves to no project.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/_run402/live": {
+      "get": {
+        "tags": [
+          "Stable Hosts"
+        ],
+        "summary": "Change hints for live tables on a tenant host (Server-Sent Events)",
+        "operationId": "tenantLiveStream",
+        "description": "tenant-live-changes. The same stream as `GET /live/v1`, on the app's own host: no key (the host's project is implied), `text/event-stream`, events `ready` / `change` / `resync` / `reconnect`, heartbeat every 15 s, server close at 300 s. Anonymous audience by default; a hosted-auth session cookie (sent by `EventSource` same-origin) or a user `Authorization: Bearer` for this project selects the user audience. Anonymous responses carry `Access-Control-Allow-Origin: *`. Not served from api.run402.com.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "tables",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated live table names."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Cursor to resume from (`Last-Event-ID` is honored too)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Event stream.",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "AUTH_REQUIRED: an owner-scoped table needs an identity.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TABLE_NOT_LIVE, naming the table and the manifest fix.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "LIVE_CONNECTION_LIMIT with Retry-After.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/_run402/live/changes": {
+      "get": {
+        "tags": [
+          "Stable Hosts"
+        ],
+        "summary": "Change hints for live tables on a tenant host (held read)",
+        "operationId": "tenantLiveChanges",
+        "description": "tenant-live-changes. The same held read as `GET /live/v1/changes`, on the app's own host and without a key: hints since `cursor`, or hold up to `wait` seconds (clamped 1..25) for the first one. `resync: true` means refetch. Not served from api.run402.com.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "tables",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "wait",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 25
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Hints since the cursor; the same body as /live/v1/changes.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "AUTH_REQUIRED: an owner-scoped table needs an identity.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TABLE_NOT_LIVE, naming the table and the manifest fix.",
             "content": {
               "application/json": {
                 "schema": {
@@ -45524,6 +45929,27 @@
         },
         "additionalProperties": false
       },
+      "SiteEmbeddingSpec": {
+        "type": "object",
+        "description": "Framing opt-in for the site (tenant-site-embedding). `frame_ancestors` lists platform embedding catalog KEYS, never raw origins; the gateway expands them into the `Content-Security-Policy: frame-ancestors` the host sends and drops `X-Frame-Options`. Catalog: `localhost` (http://localhost:* and http://127.0.0.1:*). Omitted on a later apply = carry the base release's declaration forward; `null` = clear back to the default deny. Unknown keys, duplicates, an empty array, or any other member fail with INVALID_SPEC naming the valid keys.",
+        "required": [
+          "frame_ancestors"
+        ],
+        "properties": {
+          "frame_ancestors": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "enum": [
+                "localhost"
+              ]
+            }
+          }
+        },
+        "additionalProperties": false
+      },
       "ReleaseBase": {
         "oneOf": [
           {
@@ -46522,6 +46948,15 @@
               "additionalProperties": true
             }
           },
+          "embedding": {
+            "description": "The framing opt-in of the release this host serves, as catalog keys, or null (deny).",
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SiteEmbeddingSpec"
+              }
+            ]
+          },
           "emergency_fallback": {
             "type": "object",
             "additionalProperties": true
@@ -46728,6 +47163,10 @@
                   },
                   "public_paths": {
                     "$ref": "#/components/schemas/SitePublicPathsSpec"
+                  },
+                  "embedding": {
+                    "$ref": "#/components/schemas/SiteEmbeddingSpec",
+                    "nullable": true
                   }
                 }
               },
@@ -46750,6 +47189,10 @@
                   },
                   "public_paths": {
                     "$ref": "#/components/schemas/SitePublicPathsSpec"
+                  },
+                  "embedding": {
+                    "$ref": "#/components/schemas/SiteEmbeddingSpec",
+                    "nullable": true
                   }
                 }
               },
@@ -46758,11 +47201,15 @@
                 "properties": {
                   "public_paths": {
                     "$ref": "#/components/schemas/SitePublicPathsSpec"
+                  },
+                  "embedding": {
+                    "$ref": "#/components/schemas/SiteEmbeddingSpec",
+                    "nullable": true
                   }
                 }
               }
             ],
-            "description": "Static site asset changes plus optional public-path authoring. `site.replace` and `site.patch` are mutually exclusive. `site.public_paths.mode: \"explicit\"` requires a complete `replace` map; once explicit, later site patches inherit that mode and do not publish newly added assets unless `public_paths.replace` is supplied. `mode: \"implicit\"` restores filename-derived public reachability."
+            "description": "Static site asset changes plus optional public-path authoring. `site.replace` and `site.patch` are mutually exclusive. `site.public_paths.mode: \"explicit\"` requires a complete `replace` map; once explicit, later site patches inherit that mode and do not publish newly added assets unless `public_paths.replace` is supplied. `mode: \"implicit\"` restores filename-derived public reachability. `site.embedding.frame_ancestors` (catalog keys, e.g. `[\"localhost\"]`) lets the named embedders frame the site: omitted on a later apply carries the base release's declaration forward, `null` returns to the default deny."
           },
           "subdomains": {
             "type": "object",
@@ -47560,6 +48007,15 @@
           },
           "static_manifest_metadata": {
             "$ref": "#/components/schemas/StaticManifestMetadata"
+          },
+          "embedding": {
+            "description": "The release's framing opt-in as catalog keys (tenant-site-embedding), or null when the release denies framing.",
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SiteEmbeddingSpec"
+              }
+            ]
           },
           "static_public_paths": {
             "type": "array",
@@ -50158,6 +50614,10 @@
           "INVALID_AUTH",
           "FORBIDDEN",
           "TABLE_NOT_EXPOSED",
+          "TABLE_NOT_LIVE",
+          "LIVE_CONNECTION_LIMIT",
+          "PROJECT_NOT_READY",
+          "METHOD_NOT_ALLOWED",
           "ADMIN_REQUIRED",
           "PAYMENT_REQUIRED",
           "payment_insufficient_funds",
