@@ -94,6 +94,16 @@ jobs:
         run: |
           npm ci
           npm run build
+      - name: Verify documentation inventory, examples, errors and built links
+        run: |
+          node scripts/documentation-inventory.mjs
+          node scripts/render-documentation-map.mjs --check
+          node scripts/build-reference-schemas.mjs --check
+          node scripts/check-doc-examples.mjs
+          node scripts/build-error-docs.mjs --check
+          node --test scripts/documentation-quality.test.mjs
+          node scripts/check-docs-links.mjs
+
       - name: Build deploy manifest from dist
         run: node scripts/build-docs-deploy-manifest.mjs
       - name: Agent flat docs are regenerated from portal content (single source)
@@ -147,3 +157,18 @@ jobs:
         run: npm run build
       - name: Test kygit
         run: npm test --workspace=kygit
+
+  docs-astro-example:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - name: Install pinned complete Astro example
+        run: npm ci --prefix examples/astro-notes-cms
+      - name: Type-check, build and test auth boundaries
+        run: |
+          npm run check --prefix examples/astro-notes-cms
+          npm run build --prefix examples/astro-notes-cms
+          npm test --prefix examples/astro-notes-cms

@@ -1,49 +1,33 @@
 ---
 title: Overview
-description: Run402 is a full-stack application platform that coding agents can provision, deploy, and operate within a finite spending allowance.
+description: Deploy and operate full-stack applications with the Run402 CLI.
 template: splash
 hero:
-  tagline: The backend an AI agent can provision, operate, and pay for on its own — Postgres, REST, auth, content-addressed storage, serverless functions, email, and atomic full-stack deploys.
+  tagline: A full-stack application platform for people and coding agents. Postgres, auth, storage, functions and hosting, operated through one machine-friendly CLI.
   actions:
-    - text: Getting started
-      link: /getting-started/
+    - text: Deploy your first app
+      link: /start/first-deploy/
       icon: right-arrow
-    - text: View on GitHub
-      link: https://github.com/kychee-com/run402
-      icon: external
-      variant: minimal
+    - text: Write a typed script
+      link: /sdk/scripting/
+      variant: secondary
 ---
 
 import { Card, CardGrid } from "@astrojs/starlight/components";
 
-## You're supervising an agent that builds on Run402
-
-This portal is for the **developer behind the agent**. The agent itself reads the
-flat references below; you get the same material, navigable and searchable.
+**Use the CLI by default.** It returns structured results and recovery guidance for people, agent shells and CI. Use the typed, opinionated SDK for programmatic workflows, MCP for MCP-native hosts, and HTTP for deliberate protocol-level integrations.
 
 <CardGrid>
-  <Card title="CLI" icon="seti:powershell">
-    The full `run402` command reference. [Read it](/cli/reference/) — or fetch the
-    raw index at [`/llms-cli.txt`](https://docs.run402.com/llms-cli.txt), which links
-    one fetchable `/llms-cli-<slice>.txt` per topic (and `/llms-cli-full.txt` for all of it).
+  <Card title="Build" icon="pencil">
+    [Start with an app](/start/first-deploy/), then add [database access](/build/database/), [authentication](/build/auth/), [functions](/build/functions/) or [Astro SSR](/build/astro/).
   </Card>
-  <Card title="SDK" icon="seti:typescript">
-    The typed `@run402/sdk` reference. [Read it](/sdk/reference/) — raw at
-    [`/llms-sdk.txt`](https://docs.run402.com/llms-sdk.txt).
+  <Card title="Operate" icon="setting">
+    [Deploy and verify](/operate/deploy/), [diagnose a failure](/operate/diagnostics/), and [automate with GitHub Actions](/operate/ci/).
   </Card>
-  <Card title="MCP" icon="puzzle">
-    The `run402-mcp` tool reference. [Read it](/mcp/reference/) — raw at
-    [`/llms-mcp.txt`](https://docs.run402.com/llms-mcp.txt).
+  <Card title="Understand" icon="open-book">
+    Learn [how the interfaces fit together](/concepts/interfaces/), [authority and credentials](/concepts/credentials/), [spending](/concepts/allowances/), and [releases](/concepts/releases/).
   </Card>
-  <Card title="Error codes" icon="error">
-    Stable `R402_*` envelope codes with suggested fixes.
-    [Browse the reference](/reference/error-codes/).
+  <Card title="Agents and integrations" icon="puzzle">
+    Agents start at [the first-deploy front door](https://run402.com/llms.txt). Find the [CLI index](/cli/reference/), [SDK reference](/sdk/reference/), [MCP reference](/mcp/reference/), and [HTTP API](/reference/http/).
   </Card>
 </CardGrid>
-
-## The agent's entry points
-
-Agents discover Run402 through the wayfinder at
-[`run402.com/llms.txt`](https://run402.com/llms.txt) and the skill at
-[`/SKILL.md`](https://docs.run402.com/SKILL.md). Those flat files are the source
-of truth for machines; the pages here are the same content rendered for people.

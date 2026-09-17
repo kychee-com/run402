@@ -1,0 +1,187 @@
+{
+  "version": 1,
+  "reviewer": "Codex",
+  "scope": "Editorial checks are independent of executable, live and publication checks. Unlisted sources remain pending.",
+  "entries": {
+    "public:README.md": {
+      "sha256": "083f5f5be9e966505ad4e2121c250197d3b1b701e6b62cb625ba1531ab5153ec",
+      "review": "reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed"
+    },
+    "public:SKILL.md": {
+      "sha256": "05258dcac67306569ceae4c35e944113e458220d64d6c22fb7549d194210dca6",
+      "review": "reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed"
+    },
+    "public:openclaw/SKILL.md": {
+      "sha256": "05258dcac67306569ceae4c35e944113e458220d64d6c22fb7549d194210dca6",
+      "review": "reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed"
+    },
+    "public:openclaw/README.md": {
+      "sha256": "cea1f712514210ac49d9201e18ec41e1041e2c2342872c0a5468091ed5bae7de",
+      "review": "reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed"
+    },
+    "public:cli/README.md": {
+      "sha256": "30e5e835faed3112342339281a46cf3b57b6367581ff90b52a9d9a8d6b414e30",
+      "review": "reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed"
+    },
+    "public:docs-site/README.md": {
+      "sha256": "ea7c514ca8be99311be855cc57f6143c40cbdb1e9127a6035e90d5373caa438b",
+      "review": "reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed"
+    },
+    "public:kygit/README.md": {
+      "sha256": "b274e951b157d16b841f7c68b70267dc631cc0efada0e90305355de5976ead28",
+      "review": "reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed"
+    },
+    "public:functions/README.md": {
+      "sha256": "3c4a6faee3353369e18217146241bc82bc32b1226805a0d38cb800755e9aa499",
+      "review": "reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed"
+    },
+    "public:docs-site/src/content/docs/index.mdx": {
+      "sha256": "8108f9a67742ef089b09406d2722cac878cba426930375565ff01d8508ba00e2",
+      "review": "reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed"
+    },
+    "public:docs-site/src/content/docs/getting-started.md": {
+      "sha256": "46b4f4698e62eee1db34525d7c100cda208e485ea47d75b7b6373280a5b6a76e",
+      "review": "reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed"
+    },
+    "public:docs-site/src/content/docs/start/first-deploy.md": {
+      "sha256": "c5ea98e31609cc6a0bc8eb8e466aebf8066403f5f784f2cd896784b4d8861eac",
+      "review": "reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed"
+    },
+    "public:docs-site/src/content/docs/start/harness.md": {
+      "sha256": "f20d4ce9ff387e79c89e2e72c47e9bd069951043baa0b143e7dac72cf7d0cc49",
+      "review": "reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed"
+    },
+    "public:docs-site/src/content/docs/concepts/allowances.md": {
+      "sha256": "a337e656d497181aa249f113e8e08d71d7447e861c670c9852fdc9b2da439657",
+      "review": "reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed"
+    },
+    "public:docs-site/src/content/docs/concepts/credentials.md": {
+      "sha256": "996f3854339a96b2415079268ccaba80bf73fe97cebc204fdfa4b62b942cbc4f",
+      "review": "reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed"
+    },
+    "public:docs-site/src/content/docs/concepts/interfaces.md": {
+      "sha256": "c9c8b6289c4677b42c90f734682af3b1311e880f1153d139ee7b8bd460fa135f",
+      "review": "reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed"
+    },
+    "public:docs-site/src/content/docs/concepts/projects.md": {
+      "sha256": "d4694e5928a1a388a9a8b1cd628c8b9a27a3c31c0ad3b28957c564649236dcbe",
+      "review": "reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed"
+    },
+    "public:docs-site/src/content/docs/concepts/releases.md": {
+      "sha256": "b7c07c2c5d31e7431bc00a91f8329dee3c6d4d2bc856ce5bf5f4658043a23092",
+      "review": "reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed"
+    },
+    "public:docs-site/src/content/docs/build/auth.md": {
+      "sha256": "4163e53c54a55116e03f4504a4f935be297b465300f40d42e1795309fb72eca7",
+      "review": "reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed"
+    },
+    "public:docs-site/src/content/docs/build/database.md": {
+      "sha256": "0c0bcb83ddbf384863798b4bd77fd3a1dc90a40c6b371dbcec2afebbaa488304",
+      "review": "reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed"
+    },
+    "public:docs-site/src/content/docs/build/domains.md": {
+      "sha256": "33fe8de01f44c9d12f0808ed5ca1649e8d940e1b52f0a664142f6523b6043f9b",
+      "review": "reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed"
+    },
+    "public:docs-site/src/content/docs/build/email.md": {
+      "sha256": "1de5b28e4900fbc40d2dda864e87f240fe9e53fe8f781aba6d6ae786b1efdc63",
+      "review": "reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed"
+    },
+    "public:docs-site/src/content/docs/build/functions.md": {
+      "sha256": "681bbd3a84556fc3be2110ac97f36e05246b4e18869edb1aa8457fca168862f0",
+      "review": "reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed"
+    },
+    "public:docs-site/src/content/docs/build/storage.md": {
+      "sha256": "4c525a03c065996a95c9e3daf6758e0fa42bbf1df2ad21eaac486f9be31e0a37",
+      "review": "reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed"
+    },
+    "public:docs-site/src/content/docs/build/astro/index.md": {
+      "sha256": "c6ae954557c522b1719c5629f7cfaffdbbaebc5986de47bf3fa68164e6628a7b",
+      "review": "reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed"
+    },
+    "public:docs-site/src/content/docs/operate/billing.md": {
+      "sha256": "91ef8d37f4f23af4eef74e1f54edfaa468f24408d6effd21d37bdd8125cb9195",
+      "review": "reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed"
+    },
+    "public:docs-site/src/content/docs/operate/ci.md": {
+      "sha256": "acafb7e71e016664ee7d059d4676212573fe138327d120e6df4b9e76cd721e8d",
+      "review": "reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed"
+    },
+    "public:docs-site/src/content/docs/operate/deploy.md": {
+      "sha256": "69477876541f3871818cf3db900c36ad6caf019b6cd6ae7b6e808b98555d902d",
+      "review": "reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed"
+    },
+    "public:docs-site/src/content/docs/operate/diagnostics.md": {
+      "sha256": "daca943b4df844417df3164054a3d82041fdde30a0362b7dd85bc6000ae5ea9f",
+      "review": "reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed"
+    },
+    "public:docs-site/src/content/docs/sdk/scripting.md": {
+      "sha256": "d7c8adc1bf78c9cc345a3a76d08c1f2ef90a3a98cb206988aa5a5997f4aa3272",
+      "review": "reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed"
+    },
+    "public:docs-site/src/content/docs/examples/index.md": {
+      "sha256": "8f6926213fdff1b492cc29bd490debf6162627f8b4a4503b33021c2128e8bdb4",
+      "review": "reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed"
+    },
+    "public:examples/static-config-js/README.md": {
+      "sha256": "8e844379db87b634f95e92b3b655ae2a5a941e4558d0c7838c669941580dc5e7",
+      "review": "reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed"
+    },
+    "public:examples/room-invite/README.md": {
+      "sha256": "8873ebc3a037b21f593c71101ecb1271a12e93264bc3699b54052f1b98d54291",
+      "review": "reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed"
+    },
+    "public:examples/kysigned-function-runs/README.md": {
+      "sha256": "f87deea7ed5be6d12701312e538e7e1ead559d328b4086102036dbb5720bf86b",
+      "review": "reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed"
+    },
+    "public:examples/tenant-x402-wallet-stats/README.md": {
+      "sha256": "e2ee39af9fba1547245a42f6254334faf3ffa72d567fa67fdf88d568150441b1",
+      "review": "reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed"
+    },
+    "public:demos/identity-lens/README.md": {
+      "sha256": "70d5e0b2deedfe4b9d54a8a8cbe43fc86d245e345ec07f6e62e9aacf05c623f6",
+      "review": "reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed"
+    },
+    "public:demos/buzz-todo/README.md": {
+      "sha256": "102f402624ae2aad02668a32059ce215dc89dc7fc03e9c39db2497dd897bd8ee",
+      "review": "reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed"
+    },
+    "public:demos/dreamdrop/README.md": {
+      "sha256": "acff16f4fec3b49178cae341562ec2759270838ed13c9ce1181a73f2ae890e30",
+      "review": "reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed"
+    },
+    "public:astro/test/fixtures/minimal-site/README.md": {
+      "sha256": "9405b13f63e37631b9366a992e4da48308e0d5c05828dad99aa0d867ccf62a2a",
+      "review": "reviewed: CLI defaults, explicit runtime exceptions, workflow boundaries and links reviewed"
+    },
+    "core:README.md": {
+      "sha256": "2e0553e570a971c929f17b3b038dac67b4fd50037030b101553c486a6f64a552",
+      "review": "reviewed: Core/Cloud boundary and native provider/runtime references; live infrastructure probes not run"
+    },
+    "core:ARCHITECTURE.md": {
+      "sha256": "7b6f63066beeb8bb55136065697c16cff67d1887eba1a3a12b85566ec2a83e10",
+      "review": "reviewed: Core/Cloud boundary and native provider/runtime references; live infrastructure probes not run"
+    },
+    "core:CONTRIBUTING.md": {
+      "sha256": "89873ac98cdb0b66d482f06ff2390001562d7a4418d0c53515f964b28c481951",
+      "review": "reviewed: Core/Cloud boundary and native provider/runtime references; live infrastructure probes not run"
+    },
+    "core:CLOUD_VS_CORE.md": {
+      "sha256": "90812daeea8911689a8514d38da073feeea46040b83894baa416339eadf2fb88",
+      "review": "reviewed: Core/Cloud boundary and native provider/runtime references; live infrastructure probes not run"
+    },
+    "core:docs/runtime-kernel/functions-runtime.md": {
+      "sha256": "e11a91c3212ca7d6719f5d4d5f7d7ddece8c142563924b2a48dfc35e8e04ec2c",
+      "review": "reviewed: Core/Cloud boundary and native provider/runtime references; live infrastructure probes not run"
+    },
+    "core:docs/runtime-kernel/quickstart.md": {
+      "sha256": "1a3acbb0a5e9d627d100edd8bb6cee3d6112444cb8118454dff781bf1e7aea5f",
+      "review": "reviewed: Core/Cloud boundary and native provider/runtime references; live infrastructure probes not run"
+    },
+    "core:docs/deployment/aws-email/README.md": {
+      "sha256": "04d68ff4c5f9161bc1701657aac9ff029bb4eb74f5b8a85405007ad31303344d",
+      "review": "reviewed: Core/Cloud boundary and native provider/runtime references; live infrastructure probes not run"
+    }
+  }
+}

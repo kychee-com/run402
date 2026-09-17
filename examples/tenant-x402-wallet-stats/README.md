@@ -31,7 +31,7 @@ run402 org payout-wallet "$ORG_ID" "$PAYOUT_WALLET_ADDRESS"
 
 ```sh
 cd examples/tenant-x402-wallet-stats
-run402 deploy apply --manifest run402.deploy.ts --project "$PROJECT_ID"
+run402 up --manifest run402.deploy.ts --project "$PROJECT_ID"
 ```
 
 The deploy check expects unauthenticated `POST /wallet-stats` to return `402`.

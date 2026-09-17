@@ -9,7 +9,7 @@ summary: "First-deploy contract: up, output/error JSON, rehearsal, funding, tier
 > CLI: `npm install -g run402@latest`
 > SDK: `npm install @run402/sdk` (typed TS client; same namespaces; Node/Deno/Bun/V8 isolates)
 > Docs URL: https://docs.run402.com/llms-cli.txt
-> API Docs: https://run402.com/llms.txt
+> HTTP API reference: https://run402.com/llms-full.txt
 > Operator: Kychee, Inc.
 > Terms: https://run402.com/humans/terms.html
 > Contact: `run402 feedback send "your message"` (requires active tier)
@@ -21,10 +21,9 @@ Run402 = Postgres + REST + Auth + Storage + static & Astro-SSR site hosting + sa
 Run402 is agent-first because agents are first-class participants, not because people disappear. Use your own principal and authenticator rather than a borrowed human account. Identity records who invoked the command; organization roles, grants, delegates, freshness, and spend policy determine what that principal may do. A founder agent may remain owner of its org-of-one.
 
 Agent-critical facts:
-- Atomic full-stack apply: `run402 deploy apply --manifest app.json` ships DB migrations, site files, function code, secrets, assets, subdomains, i18n, and routes as one transaction; partial failures roll back.
+- Shared full-stack workflow: `run402 up` coordinates planning, staging, migrations, activation and verification. Failures can leave resumable or partial work; promoting an earlier release does not undo migrations. Inspect returned operation state and next actions. `deploy apply` is the advanced apply primitive.
 - No platform token: local allowance (`~/.config/run402/allowance.json`) signs requests. Per-project `anon_key` / `service_key` are runtime data-plane keys (PostgREST/Storage/Functions), permanent, and embeddable/server-side respectively.
-- Agent-paid usage: x402 USDC on Base, MPP pathUSD on Tempo, or sats over Bitcoin Lightning (MPP) from the agent's platform-minted wallet, signed by allowance. Humans may - `run402 allowance <create|status|fund|balance|export>` — `status` reports `wallet.rail` and, on a Lightning profile, a `lightning` block (wallet id, status, custody `run402_hub`, address, budget, starter, `balance_sats`, `budget_remaining_sats`; never the pairing).
- via Stripe credits; CLI behavior is unchanged.
+- Agent-paid usage: x402 USDC on Base, MPP pathUSD on Tempo, or sats over Bitcoin Lightning (MPP) from the agent's platform-minted wallet, signed by allowance. Humans may fund through Stripe credits; CLI behavior is unchanged. `run402 allowance <create|status|fund|balance|export>` — `status` reports `wallet.rail` and, on a Lightning profile, a `lightning` block (wallet id, status, custody `run402_hub`, address, budget, starter, `balance_sats`, `budget_remaining_sats`; never the pairing).
 
 Install + deploy — the only first-deploy path (the front door at <https://run402.com/llms.txt> is the same three lines with a full manifest):
 

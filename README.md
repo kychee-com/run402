@@ -6,8 +6,8 @@
 
 <p align="center">
   Postgres, auth, storage, serverless functions and atomic deploys &mdash;
-  provisioned, operated and paid for by an agent through a typed SDK, a CLI
-  or an MCP server. No cloud console, no signup. Open source.
+  provisioned, operated and paid for by an agent through the CLI, with a typed SDK for scripting
+  and MCP for tool-native hosts. No cloud console, no signup. Open source.
 </p>
 
 [![Tests](https://github.com/kychee-com/run402/actions/workflows/test.yml/badge.svg)](https://github.com/kychee-com/run402/actions/workflows/test.yml)
@@ -28,28 +28,31 @@ One call to [run402](https://run402.com) gives an agent a full Postgres database
 
 An autonomous agent may remain the legitimate owner of the org-of-one it creates. People may join through explicit co-ownership. Agents entering somebody else's organization receive bounded authority instead of borrowing a human account. Different keys. Equal standing. Explicit authority.
 
-This monorepo ships every surface an agent can pick up:
+**Use the CLI by default** to provision, deploy, inspect and recover. Use the typed, opinionated SDK when writing programmatic TypeScript/JavaScript workflows; shell scripts and CI can keep using CLI. MCP serves MCP-native hosts, and direct HTTP supports deliberate lower-level integrations.
+
+This monorepo ships these interfaces:
 
 | Surface | Use when… |
 |---------|-----------|
-| [`@run402/sdk`](./sdk/) | Calling run402 from TypeScript: typed kernel, isomorphic (Node 22 / Deno / Bun / V8 isolates) with a Node entry that auto-loads the local keystore + allowance + x402 / Lightning fetch |
 | [`run402` CLI](./cli/) | Terminal, scripts, CI, agent-controlled shells: JSON in, JSON out, exit code on failure |
+| [`@run402/sdk`](./sdk/) | Calling run402 from TypeScript: typed kernel, isomorphic (Node 22 / Deno / Bun / V8 isolates) with a Node entry that auto-loads the local keystore + allowance + x402 / Lightning fetch |
 | [`run402-mcp`](./src/) | Claude Desktop, Cursor, Cline, Claude Code: core run402 operations as MCP tools |
 | [OpenClaw skill](./openclaw/) | OpenClaw agents (no MCP server required) |
 | [Run402 for Buzz](./buzz/) | Buzz people and agents: install from run402.com, preflight/link one agent's dedicated identities, deploy a contextual demo, then offer human co-ownership through a normal HTTPS/passkey handoff; Buzz remains unchanged |
 | [`@run402/functions`](https://www.npmjs.com/package/@run402/functions) | Imported _inside_ deployed functions (`db(req?)`, `adminDb()`, `auth.user()`, `email`, `ai`, `assets`) and for TypeScript autocomplete in your editor. Source lives in the public [`run402-core`](https://github.com/kychee-com/run402-core) repo under `packages/functions`; run402 Cloud consumes the published npm package when it bundles function zips. |
 | [`@run402/astro`](./astro/) | Astro integration for SSR, ISR cache, hosted auth components, and image variants |
 
-These interfaces share a single typed kernel where appropriate: `@run402/sdk`. MCP tools, CLI subcommands, and OpenClaw scripts are thin shims over SDK calls. `@run402/functions` is the in-function helper that runs inside deployed code; the npm package on the registry is the artifact Cloud bundles. `@run402/astro` layers the SDK and functions runtime into Astro's build and SSR flow. Pick whichever interface fits your runtime.
+These interfaces share a single typed kernel where appropriate: `@run402/sdk`. MCP tools, CLI subcommands, and OpenClaw scripts are thin shims over SDK calls. `@run402/functions` is the in-function helper that runs inside deployed code; the npm package on the registry is the artifact Cloud bundles. `@run402/astro` layers the SDK and functions runtime into Astro's build and SSR flow. The HTTP API is the foundation; the SDK owns shared client workflows and orchestration; CLI and MCP expose them in machine-friendly forms. Native SDK/MCP references explain intentional alternatives.
 
 ## 30-second start
+
+First create the complete `run402.json` and `index.html` from [Your first deploy](https://docs.run402.com/start/first-deploy/). Run these commands in that application directory; `--name` requests a new project.
 
 ```bash
 npm install -g run402@latest
 run402 up --name my-app -y                           # bootstrap allowance/tier/project/link, then deploy manifest
 run402 up verify                                     # rerun app HTTP verification without deploying
 run402 up --verify                                   # deploy, then wait for gateway/edge coherence
-run402 subdomains claim my-app                       # → https://my-app.run402.com
 ```
 
 That's a real Postgres database + a deployed static site, paid for autonomously with testnet USDC.
@@ -112,36 +115,13 @@ Helpers normalize to the same `ReleaseSpec` as JSON manifests. `dir()` walks det
 
 ### Paste-and-go assets: content-addressed URLs with SRI
 
-`assets.put()` returns an `AssetRef` whose `scriptTag()` / `linkTag()` / `imgTag()` emitters produce HTML with the URL, the SRI integrity hash, and modern best-practice attributes (`defer`, `loading="lazy"`, `decoding="async"`, `crossorigin`) already wired. The URL is content-addressed (`pr-<public_id>.run402.com/_blob/<key>-<8hex>.<ext>`), served through the CDN, and never needs invalidation:
+Upload files with the CLI. Keep the returned AssetRef, including immutable identity and image variants, when saving references in application data. Do not reconstruct content hashes or variant URLs yourself.
 
-```ts
-import { run402 } from "@run402/sdk/node";
-const r = run402();
-const p = await r.project(projectId);
-
-const logo  = await p.assets.put("logo.png", { bytes: pngBytes });
-const app   = await p.assets.put("app.js",   { content: jsSource });
-const style = await p.assets.put("app.css",  { content: css });
-
-const html = `
-<!doctype html>
-<html>
-  <head>${style.linkTag()}${app.scriptTag({ type: "module" })}</head>
-  <body>${logo.imgTag("Company logo")}</body>
-</html>
-`;
+```bash
+run402 assets put ./logo.png ./app.js ./app.css --project prj_example
 ```
 
-Binary files must enter the SDK as bytes. In Node, use `readFile(path)` without
-an encoding; in browsers, use `File.arrayBuffer()`. Never read PNG, WASM,
-fonts, audio, video, archives, or other binary formats as UTF-8 and then hash
-or re-encode the resulting string: CAS can verify only the bytes it receives.
-The SDK rejects string sources for known binary keys/MIME types with
-`BINARY_CONTENT_REQUIRES_BYTES` before making a request. Directory helpers
-such as `fileSetFromDir`, `dir`, and `assets.uploadDir` are byte-safe by
-construction.
-
-`immutable: true` is the default: the SDK computes the SHA-256 client-side, the gateway returns a content-hashed URL, and the browser refuses execution on byte mismatch. No cache-invalidation choreography, no waiting, no integrity-attribute construction.
+Use a manifest asset slice when these files must activate with a release. See the [storage guide](https://docs.run402.com/build/storage/) and [native SDK AssetRef helpers](https://docs.run402.com/sdk/patterns/) for HTML emitters and programmatic composition. Binary files must remain bytes; never read them as UTF-8 before uploading.
 
 ### Dark-by-default tables + the expose manifest
 
@@ -173,33 +153,19 @@ run402 projects get-expose   <project_id>
 
 Built-in policies: `user_owns_rows` (rows where `owner_column = auth.uid()`; with `force_owner_on_insert: true` a BEFORE INSERT trigger sets it), `public_read_authenticated_write` (anyone reads, any authenticated user writes), `public_read_write_UNRESTRICTED` (fully open; requires `i_understand_this_is_unrestricted: true`), and `custom` (escape hatch: your own `CREATE POLICY` SQL).
 
-Use `run402 projects validate-expose` or the MCP `validate_manifest` tool for a non-mutating feedback loop before applying. Optional migration SQL is used only to check manifest references; it is not executed as a PostgreSQL dry run, and this does not validate deploy manifests.
+Use `run402 projects validate-expose`  for a non-mutating feedback loop before applying. Optional migration SQL is used only to check manifest references; it is not executed as a PostgreSQL dry run, and this does not validate deploy manifests.
 
 **Auth-as-SDLC:** put the same JSON under `database.expose` in your v2 `ReleaseSpec`. The gateway validates it against your migration SQL during deploy and rejects mismatches with a structured `errors` array listing every violation.
 
-### Slick deploys: `deployDir` + plan/commit + progress
+### Directory deployment (advanced primitive)
 
-`deployDir` walks a local directory, hashes every file client-side, asks the gateway _which_ bytes it doesn't already have, and PUTs only those. Re-deploying an unchanged tree returns immediately with `bytes_uploaded: 0`.
-
-```ts
-import { run402 } from "@run402/sdk/node";
-
-const r = run402();
-const { url, bytes_uploaded, bytes_total } = await r.sites.deployDir({
-  project: projectId,
-  dir: "./dist",
-  onEvent: (e) => process.stderr.write(JSON.stringify(e) + "\n"),
-});
-```
-
-Progress events stream over `onEvent` (or stderr from the CLI) as unified
-`DeployEvent` JSON objects from the v2 deploy primitive.
-
-CLI:
+For a standalone static directory on an existing project:
 
 ```bash
-run402 sites deploy-dir ./dist --project prj_… > result.json 2> events.log
+run402 sites deploy-dir ./dist --project prj_example > result.json 2> events.log
 ```
+
+Use `run402 up` for a complete application with a deploy manifest. The SDK owns file hashing, upload deduplication and release orchestration; the CLI renders progress and the result.
 
 ### Same-origin web routes: static site + function ingress
 
@@ -247,7 +213,7 @@ Apply-v1 routes and static public paths are release resources: they activate ato
 
 Omit `routes` or pass `routes: null` to carry forward base routes. Use `routes: { "replace": [] }` to clear the route table. Route entries are an ordered `replace` list, not a path-keyed map. Function targets use `{ "type": "function", "name": "<materialized function name>" }`. Static route targets use exact patterns only, methods `["GET"]` or `["GET","HEAD"]`, and `{ "pattern": "/events", "methods": ["GET","HEAD"], "target": { "type": "static", "file": "events.html" } }` where `file` is a release static asset path, not a public path, URL, CAS hash, rewrite, or redirect. Use static route targets for method-aware aliases such as static `GET /login` plus function `POST /login`; in explicit public path mode the backing asset can stay private by filename. Direct `/functions/v1/:name` calls remain API-key protected; browser-routed paths are public same-origin ingress.
 
-Function routes can charge a fixed tenant x402 price before the handler runs by adding `pricing: { "mode": "always", "amount_usd_micros": 250000, "pay_to": "org_default_payout" }` to the route entry. `250000` is $0.25 per matching action. The portable ReleaseSpec contract also accepts `receipt: "on_fulfillment"` on a priced function route; a compatible host then requires the function to return `payment.fulfilled(response)` before it authors a receipt. Run402-hosted advertising remains gated off until the standard delegated-signer carrier is available—receipt intent never silently downgrades. Omit `networks` for production mainnet only; include `"testnet"` explicitly for testnet acceptance. Static aliases cannot be priced, direct function invocation is not monetized, and service/admin keys do not bypass a priced browser route. The owning org must have a resolvable payout wallet: set it with `r.org(orgId).setPayoutWallet({ walletAddress })`, `run402 org payout-wallet <org_id> <wallet_address>`, or MCP `set_org_payout_wallet`. Conditional credit systems should expose one fixed-price route such as `POST /api/credits`, then keep the rest of the app behind unpriced routes and app-local authorization.
+Function routes can charge a fixed tenant x402 price before the handler runs by adding `pricing: { "mode": "always", "amount_usd_micros": 250000, "pay_to": "org_default_payout" }` to the route entry. `250000` is $0.25 per matching action. The portable ReleaseSpec contract also accepts `receipt: "on_fulfillment"` on a priced function route; a compatible host then requires the function to return `payment.fulfilled(response)` before it authors a receipt. Run402-hosted advertising remains gated off until the standard delegated-signer carrier is available—receipt intent never silently downgrades. Omit `networks` for production mainnet only; include `"testnet"` explicitly for testnet acceptance. Static aliases cannot be priced, direct function invocation is not monetized, and service/admin keys do not bypass a priced browser route. The owning org must have a resolvable payout wallet: set it with `run402 org payout-wallet <org_id> <wallet_address>`. Conditional credit systems should expose one fixed-price route such as `POST /api/credits`, then keep the rest of the app behind unpriced routes and app-local authorization.
 
 Matching is exact or final-prefix-wildcard only. `/admin` and `/admin/` are exact trailing-slash equivalents; `/admin/*` matches children but not `/admin`, `/admin/`, `/admin.css`, or `/administrator`, so deploy both `/admin` and `/admin/*` for a routed section root. Query strings are ignored for matching and preserved in the handler's full public `req.url`. Exact routes beat prefix routes; longest prefix wins; method-compatible dynamic routes beat static assets. A `POST /login` route can coexist with static `GET /login` HTML. Unsafe method mismatch returns `405`, and matched dynamic route failures fail closed instead of falling back to static files.
 
@@ -326,22 +292,7 @@ export default async (req: Request) => {
 };
 ```
 
-`adminDb().sql(query, params?)` runs raw parameterized SQL and always bypasses RLS. It returns a flat `Promise<Record<string, unknown>[]>` (just the rows, no envelope):
-
-```ts
-import { adminDb, auth } from "@run402/functions";
-
-export default async (req: Request) => {
-  const user = await auth.requireUser();
-
-  const rows = await adminDb().sql(
-    "SELECT count(*)::int AS n FROM items WHERE user_id = $1",
-    [user.id],
-  );
-  const n = (rows[0]?.n as number | undefined) ?? 0;
-  return Response.json({ count: n });
-};
-```
+`adminDb().sql(query, params?)` runs raw parameterized SQL and always bypasses RLS. The current runtime returns the gateway envelope, including `rows` and `row_count`; read `result.rows`, not `result[0]`. Older helper typings incorrectly described a bare array. See the [owning runtime reference](https://github.com/kychee-com/run402-core/tree/main/packages/functions#admindbsqlquery-params--raw-sql-bypassrls) and match local helper types to the runtime version used by your deployment.
 
 `@run402/functions` is auto-bundled into deployed code; install it in your editor for full TypeScript autocomplete (also works at build time for static-site generation with `RUN402_SERVICE_KEY` + `RUN402_PROJECT_ID` set).
 
@@ -349,13 +300,10 @@ export default async (req: Request) => {
 
 `assets.put(key, source, opts?)` uploads bytes from inside a deployed function through the same CAS-backed apply substrate as deploy-time assets. It uses `RUN402_SERVICE_KEY`, accepts a string, `Uint8Array`, or `{ content | bytes }`, and returns an SDK-compatible `AssetRef` with mutable and immutable URLs.
 
-**Calling from outside a function entirely** (raw `curl`/`fetch` from CI scripts, bash bootstrappers, non-TS runtimes): service-key writes go to `/admin/v1/rest/<table>`, not `/rest/v1/*`. The gateway 403s service-role tokens on `/rest/v1/*` so a leaked key can't silently bypass RLS, which means `curl ... > /dev/null` against the wrong path looks like success but writes nothing. SQL-shaped admin work uses `POST /projects/v1/admin/:id/sql` (or `run402 projects sql`).
+**Operating data from outside a function:** use the CLI with an explicit project. For deliberate HTTP integrations, the [native HTTP reference](https://run402.com/llms-full.txt) distinguishes administrative REST from caller-scoped REST. Never expose a service key to the browser.
 
 ```bash
-curl -X POST https://api.run402.com/admin/v1/rest/audit \
-  -H "Authorization: Bearer $RUN402_SERVICE_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"event":"seed","ts":"2026-04-30"}'
+run402 projects sql prj_example "SELECT count(*) FROM audit"
 ```
 
 ### repos: your repository history, encrypted before it leaves the machine
@@ -424,14 +372,7 @@ Before `snapshot` reports that anything landed, the client compares every finali
 
 From the SDK, with identical semantics — vault reads run anywhere, and the verbs that touch a git working tree or the on-disk keystore are Node-only:
 
-```ts
-import { run402 } from "@run402/sdk/node";
-const r = run402();
-
-const vault = await r.gitvault.forProject(projectId);              // cold restart: no local state needed
-const pushed = await r.gitvault.push({ project_id: projectId, snapshot: { message: "wip" } });
-const state = await r.gitvault.verify({ project_id: projectId });
-```
+For typed repository automation, see the [native SDK gitvault reference](https://docs.run402.com/sdk/resources/).
 
 **The encrypted second remote — the zero-migration pattern.** Keep GitHub/GitLab as the primary (collaboration, CI, reviews, unchanged) and add GitVault as the second remote: `git remote add gitvault run402::<org_id>/<project_id>` + `git push gitvault --all`, and a complete, continuously updated copy of your history exists that the storage provider itself cannot read. The reason this matters, said plainly and as capability rather than accusation: a host that can READ private repositories can — under a future policy, an acquisition, a training pipeline, a subpoena, or a breach — index them, train models on them, or hand them to someone who will. Run402 cannot decrypt your gitvault or repository history. Deployment artifacts remain a disclosed plaintext custody boundary.
 
@@ -491,9 +432,9 @@ Two entry points:
 import { run402 } from "@run402/sdk/node";
 
 const r = run402();
-const project = await r.projects.provision({ tier: "prototype" });
-const p = await r.project(project.project_id);
-await p.assets.put("hello.txt", { content: "hi" });
+// Prepare the complete first-deploy manifest and referenced app files.
+const result = await r.up({ name: "my-app", manifest: "run402.json" }, { approval: "yes" });
+console.log(result);
 ```
 
 The SDK is organised into focused namespaces: `actions` (Node recursive action runner), `pay` (bounded arbitrary-URL x402 buyer), `projects`, `snapshots`, `branches`, `archives`, `assets`, `cache`, `ci`, `sites`, `functions`, `jobs`, `secrets`, `subdomains`, `domains`, `email` (+ `webhooks`), `auth`, `apps`, `tier`, `billing`, `contracts`, `ai`, `allowance`, `service`, `admin`, `operator` (the human/email operator session: browser-delegated `login` + `overview` across every wallet that verified your email), `wallets` (signed server-side wallet label), `orgs` (org-owned control plane + `r.org(id)` sub-client), `grants` (per-project capability grants), and `identityLinks` (public, protocol-discriminated human/agent Nostr attribution), plus the `r.project(id).apply` hero for atomic mixed writes (release slices + assets slice via `/apply/v1/*`). Every operation throws a typed `Run402Error` subclass on failure: `PaymentRequired`, `PaymentBuyerError`, `ProjectNotFound`, `Unauthorized`, `ApiError`, `NetworkError`, `LocalError`, `Run402DeployError`. `apply()` automatically re-plans safe current-base `BASE_RELEASE_CONFLICT` races and emits `apply.retry` progress events. See [`sdk/README.md`](./sdk/README.md).

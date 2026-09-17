@@ -2372,7 +2372,7 @@ describe("deploy route surface alignment", () => {
       { file: "sdk/README.md", patterns: [/route_scopes/, /CI_ROUTE_SCOPE_DENIED/] },
       { file: "sdk/llms-sdk.txt", patterns: [/route_scopes/, /CI_ROUTE_SCOPE_DENIED/] },
       { file: "llms-mcp.txt", patterns: [/ci_create_binding/, /route_scopes/, /CI_ROUTE_SCOPE_DENIED/] },
-      { file: "SKILL.md", patterns: [/ci_create_binding/, /route_scopes/, /CI_ROUTE_SCOPE_DENIED/] },
+      { file: "SKILL.md", patterns: [/--route-scope/, /CI_ROUTE_SCOPE_DENIED/] },
       { file: "openclaw/SKILL.md", patterns: [/--route-scope/, /CI_ROUTE_SCOPE_DENIED/] },
       { file: "AGENTS.md", patterns: [/route_scopes/, /CI_ROUTE_SCOPE_DENIED/] },
     ];
@@ -2417,7 +2417,7 @@ describe("deploy route surface alignment", () => {
           [/\/events\.html.*not public|not public.*\/events\.html/, "explicit mode hides backing asset filename"],
           [/static_public_paths/, "static public path inventory"],
           [/reachability_authority/, "reachability authority field"],
-          [/deploy_diagnose_url/, "MCP diagnose tool"],
+          [/run402 deploy diagnose/, "CLI diagnose command"],
           [/run402 up verify/, "app verify rerun command"],
           [/edge_propagation/, "edge propagation diagnostics"],
           [/propagation_pending/, "propagation pending app status"],
@@ -2568,7 +2568,7 @@ describe("deploy route surface alignment", () => {
         ],
       },
       {
-        file: "documentation.md",
+        file: "docs/quality/maintenance-map.md",
         patterns: [
           [/site\.public_paths/, "site public path authoring"],
           [/static_public_paths/, "static public path inventory"],
@@ -2603,7 +2603,7 @@ describe("deploy route surface alignment", () => {
       "sdk/llms-sdk.txt",
       "openclaw/SKILL.md",
       "openclaw/README.md",
-      "documentation.md",
+      "docs/quality/maintenance-map.md",
       "AGENTS.md",
     ];
     const required: Array<[RegExp, string]> = [
@@ -2754,9 +2754,9 @@ describe("agent deploy-friction docs stay visible", () => {
     {
       file: "SKILL.md",
       patterns: [
-        [/allow_warning_codes/, "MCP skill warning-code acknowledgement"],
+        [/--allow-warning/, "CLI skill warning-code acknowledgement"],
         [/acknowledge_readonly/, "MCP skill readonly route acknowledgement"],
-        [/Function authoring limits/, "tier caps"],
+        [/Function timeout/, "tier caps"],
         [/ai\.generateImage/, "runtime image helper"],
       ],
     },

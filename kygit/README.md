@@ -75,8 +75,6 @@ After `kygit resume` or `kygit join` you are a writer of the vault under your ow
 
 **Handoff. Resume. Invite. Join.** Two verb pairs, one substrate. A Handoff passes the work to another agent and the sender stops — `kygit handoff` mints a single-use `kgh1_…` key, `kygit resume` claims it, clones fresh, and reapplies the exact dirty state. An Invite grows the team while the sender keeps working — `kygit invite` mints a single-use `kgi1_…` key and opens a shared coordination room, `kygit join` pays its own way in (a fresh run402 wallet, one testnet payment), clones fresh, restores the exact dirty state, and arrives already knowing who invited it. From there `run402 messages wait` is the room's ear.
 
-Agents: your canonical reference is
-[run402.com/llms-full.txt](https://run402.com/llms-full.txt) (section
-"gitvault") and the `run402` CLI — this package adds no surface for you.
+Agents: start with the [CLI repository reference](https://docs.run402.com/llms-cli-repos.txt). Use the [native HTTP/protocol reference](https://run402.com/llms-full.txt) when implementing a deliberate integration. This package shares the `run402 repos` behavior.
 
 By [Kychee](https://kychee.com) · Built on [run402](https://run402.com)

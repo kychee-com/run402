@@ -55,7 +55,7 @@ run402 up --name "Buzz To-Do" --yes --verify
 ## Demo grade, on purpose
 
 - The session is an app-minted HMAC cookie keyed off the project's service key.
-  It is not a Run402 tenant session; `auth.getUser()` does not know about it.
+  It is not a Run402 tenant session; the Run402 tenant `auth.user()` helper does not know about it.
 - Verification runs inside the tenant function. The product version of this
   idea moves it into the gateway's proof-based session route.
 - There is no agent entrance: only Buzz Desktop's human consent flow is wired.

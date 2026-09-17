@@ -18,9 +18,9 @@ const root = loadSkill("SKILL.md");
 const openclaw = loadSkill("openclaw/SKILL.md");
 const buzz = loadSkill("buzz/SKILL.md");
 
-// ── Root SKILL.md (MCP-based, ships with run402-mcp) ────────────
+// ── Root SKILL.md (generic CLI-first discovery artifact) ────────────
 
-describe("SKILL.md (root, MCP-based)", () => {
+describe("SKILL.md (root, CLI-first)", () => {
   describe("frontmatter", () => {
     it("name = run402", () => assert.equal(root.frontmatter.name, "run402"));
 
@@ -52,17 +52,17 @@ describe("SKILL.md (root, MCP-based)", () => {
       );
     });
 
-    it("installs run402-mcp (the MCP server, not the CLI)", () => {
+    it("installs run402 (the CLI)", () => {
       const install = root.frontmatter.metadata.openclaw.install;
       assert.ok(Array.isArray(install));
       assert.equal(install.length, 1);
       assert.equal(install[0].kind, "node");
       assert.equal(
         install[0].package,
-        "run402-mcp",
-        "root SKILL.md is the MCP-based skill — install must be the run402-mcp package",
+        "run402",
+        "generic SKILL.md must install the CLI",
       );
-      assert.ok(install[0].bins.includes("run402-mcp"));
+      assert.ok(install[0].bins.includes("run402"));
     });
 
     it("primaryEnv is RUN402_API_BASE", () => {
@@ -73,35 +73,11 @@ describe("SKILL.md (root, MCP-based)", () => {
     });
   });
 
-  describe("body — MCP tool references", () => {
-    // The skill teaches the platform via MCP tool names. Pin the tools
-    // every reader should encounter for the modern v1.48 happy path.
-    const TOOLS = [
-      "provision_postgres_project",
-      "run_sql",
-      "rest_query",
-      "validate_manifest",
-      "apply_expose",
-      "get_expose",
-      "deploy_site_dir",
-      "deploy_diagnose_url",
-      "deploy_release_active",
-      "deploy_release_diff",
-      "ci_create_binding",
-      "ci_list_bindings",
-      "assets_put",
-      "deploy_function",
-      "set_tier",
-    ];
-
-    for (const tool of TOOLS) {
-      it(`references tool: ${tool}`, () => {
-        assert.ok(
-          root.body.includes(tool),
-          `body must mention ${tool}`,
-        );
-      });
+  describe("body — default and deliberate alternatives", () => {
+    for (const token of ["Use the CLI by default", "run402 up --name", "app_up", "SDK scripting", "llms-mcp.txt", "HTTP"]) {
+      it(`documents ${token}`, () => assert.ok(root.body.includes(token)));
     }
+    it("shares the checked CLI workflow with OpenClaw", () => assert.equal(root.body, openclaw.body));
   });
 
   describe("body — anti-patterns (deprecated surfaces must not return)", () => {
@@ -132,19 +108,7 @@ describe("SKILL.md (root, MCP-based)", () => {
   });
 
   describe("body — required sections", () => {
-    const sections = [
-      "Quickstart",
-      "The patterns",
-      "Paste-and-go assets",
-      "Dark-by-default tables + the expose manifest",
-      "Tools by category",
-      "Standard Workflow",
-      "Payment Handling",
-      "Tips & Guardrails",
-      "Agent Allowance Setup",
-      "Troubleshooting",
-      "Tools Reference",
-    ];
+    const sections = ["30-second start", "MCP-only hosts and SDK scripting", "Deploying", "Database", "Functions", "Error Envelopes", "Troubleshooting"];
     for (const section of sections) {
       it(`has section: ${section}`, () => {
         assert.ok(root.body.includes(section));

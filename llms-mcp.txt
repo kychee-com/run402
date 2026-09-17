@@ -5,7 +5,7 @@
 > Remote (no install, free discovery tools only): streamable-http at https://mcp.run402.com/mcp — `run402_quickstart` · `x402_price_check` · `experiment_scoreboard`. The remote never handles funds; every paid tool below requires this local server (it holds YOUR wallet).
 > Wayfinder: https://run402.com/llms.txt
 > Sibling references: SDK at https://docs.run402.com/llms-sdk.txt · CLI at https://docs.run402.com/llms-cli.txt · HTTP at https://run402.com/llms-full.txt
-> Source: cli/llms-mcp.txt in https://github.com/kychee-com/run402
+> Source: docs-site/src/content/docs/mcp/ in https://github.com/kychee-com/run402
 
 This file is canonical reference for the `run402-mcp` MCP server's tool surface. Every action is an MCP tool call — natural-language framings work because the schemas are loaded into your context by the host.
 
@@ -15,7 +15,7 @@ Run402 treats you as a first-class participant acting through your own principal
 
 ## Mental model
 
-`run402-mcp` is a thin shim over [`@run402/sdk`](https://docs.run402.com/llms-sdk.txt). Each MCP tool is an argv-parsing wrapper around an SDK method. The configured API target, active project state, allowance, and local project-key cache are shared with the CLI; provisioning a project from any surface makes its `anon_key` and `service_key` available to credential-required operations without treating cached keys as project inventory.
+`run402-mcp` is a thin shim over [`@run402/sdk`](https://docs.run402.com/llms-sdk.txt). Each MCP tool is a schema-parsing wrapper around an SDK method. The configured API target, active project state, allowance, and local project-key cache are shared with the CLI; provisioning a project from any surface makes its `anon_key` and `service_key` available to credential-required operations without treating cached keys as project inventory.
 
 Public Buzz/Nostr identity links are deliberately **not** an MCP mutation tool. Agent creation uses the CLI/SDK EOA ceremony; human creation/revocation uses the normal browser/passkey/Buzz flow at <https://console.run402.com/identity-links/connect>. MCP never asks for a raw signed event, Nostr private key, passkey, session credential, or resource id. Existing reads render every returned active/revoked link with its `identity_link_id`, subject, proof protocol, and lifecycle, explicitly as public attribution rather than organization authority. Project/deploy/transfer reads preserve immutable actor provenance. Unknown future principal/authenticator/authority/proof kinds remain data.
 
@@ -49,16 +49,18 @@ instance can also re-present its original in-memory proof.
 
 ## Quickstart
 
-Six tool calls take you from zero to a deployed static site backed by a real Postgres:
+Use the CLI by default when your host has a shell. This native reference is for MCP hosts. With the local server configured, prepare the complete manifest and referenced app files from [Your first deploy](https://docs.run402.com/start/first-deploy/), then call `app_up` with `name: "my-app"`, the manifest path, and explicit approval for the required setup. The tool calls the shared SDK `up` action. Its schema is authoritative for input names. Inspect deployment status and verification evidence before reporting success.
 
-1. `init` — set up the local allowance, request the testnet faucet, snapshot tier + projects.
-2. `set_tier` with `tier: "prototype"` — free on testnet; verifies x402 setup end-to-end.
-3. `provision_postgres_project` with `name` — returns `project_id`, `anon_key`, `service_key`. Your HTML never needs the key pasted in: load `/_run402/config.js` and read `window.RUN402.anon_key`.
-4. `run_sql` with `sql: "CREATE TABLE …"` — set up your schema. Make migrations idempotent.
-5. `validate_manifest`, then `apply_expose` with a manifest — check and declare which tables are reachable via PostgREST. Tables are dark by default.
-6. `deploy_site_dir` with `dir` — incremental upload, only PUTs bytes the gateway doesn't already have. Auto-claims the subdomain on subsequent deploys.
+`deploy`, `provision_postgres_project`, `run_sql`, `apply_expose` and `deploy_site_dir` are advanced primitives, not a second cold-start recipe. Some CLI mutations deliberately have no MCP tool.
 
-Optional next: `deploy_function` for server logic, `assets_put` for paste-and-go CDN assets, `create_mailbox` → `list_mailboxes` / `set_mailbox_defaults` / `update_mailbox` → `send_email` for transactional mail.
+Call `app_up` with these schema-checked arguments after preparing the files:
+
+<!-- example: mcp-app-up -->
+```json
+{ "name": "my-app", "manifest": "run402.json", "yes": true }
+```
+
+`yes` approves the required setup for this requested deployment; it is not permission to broaden project scope. For an existing destination, pass `project_id` instead of requesting creation with `name`.
 
 ## Portable project archives
 
@@ -379,7 +381,7 @@ The gate applies to both routed (`/your/route`) and direct (`POST /functions/v1/
 Single-asset MCP tools below. For bulk directory work, the `deploy` tool
 accepts an `assets` slice (`assets: { put: [...] }` for additive batch and
 `assets: { put: [...], sync: { prefix, prune, confirm? } }` for declarative
-sync with a prune confirmation token — see [Slick Deploys](#slick-deploys)
+sync with a prune confirmation token — see [Slick Deploys](https://docs.run402.com/mcp/patterns/#slick-deploys)
 and "Bulk asset directories" below).
 
 - `assets_put` — upload (any size up to 5 TiB) via direct-to-S3. Params: `project_id`, `key`, `local_path?` OR `content?` (≤ 1 MB inline), `content_type?`, `visibility?` (`"public"` / `"private"`), `immutable?` (default `true`), `sha256?` (auto-computed when `immutable: true`). Returns `AssetRef`.

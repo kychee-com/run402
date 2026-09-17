@@ -11,11 +11,12 @@ edit the content here, never the `.txt` files:
 
 | Edit this (canonical source) | Regenerates (committed, served at) |
 | --- | --- |
-| `src/content/docs/cli/**` | `../cli/llms-cli.txt` → `docs.run402.com/llms-cli.txt` |
+| `src/content/docs/start/first-deploy.md` | `../llms.txt` → `docs.run402.com/llms.txt` |
+| `src/content/docs/cli/**` | CLI index, named `llms-cli-<topic>.txt` slices and `llms-cli-full.txt` |
 | `src/content/docs/sdk/**` | `../sdk/llms-sdk.txt` → `docs.run402.com/llms-sdk.txt` |
 | `src/content/docs/mcp/**` | `../llms-mcp.txt` → `docs.run402.com/llms-mcp.txt` |
 
-A page joins a bundle by living under its section directory; pages within a
+Only `start/first-deploy.md` enters the 180-line front door. CLI, SDK and MCP pages join their respective bundles by section; pages within a
 bundle are ordered by the frontmatter `order` field. Portal-only pages
 (`index.mdx`, `getting-started.md`, `reference/error-codes.md`) feed no flat file.
 
@@ -30,7 +31,7 @@ node ../scripts/build-agent-flat-docs.mjs --check   # CI gate: fails if committe
 ## Develop & build
 
 ```sh
-npm install
+npm ci
 npm run dev      # local preview at http://localhost:4321
 npm run build    # static output to dist/
 ```
@@ -38,5 +39,5 @@ npm run build    # static output to dist/
 ## Deploy
 
 CI builds `dist/`, then `../scripts/build-docs-deploy-manifest.mjs` enumerates it
-(plus the four root flat files) into `../run402.docs.deploy.json`, which is fed to
-`run402 deploy apply`. Static only — no `@run402/astro` SSR adapter.
+(plus the front door, CLI index/slices/full reference and SDK/MCP flat references) into `../run402.docs.deploy.json`, which is fed to
+the workflow's CLI deployment step. Static only — no `@run402/astro` SSR adapter.

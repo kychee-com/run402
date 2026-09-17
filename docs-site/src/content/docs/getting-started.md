@@ -1,46 +1,18 @@
 ---
 title: Getting started
-description: How an agent (and the developer supervising it) gets from zero to a deployed Run402 project.
+description: The CLI path from application files to a verified deployment.
 ---
 
-Run402 is designed to be driven by an AI coding agent end to end — no human signup,
-no dashboard API keys, no human in the payment loop. This page orients the
-**developer supervising that agent**; the agent itself works from the flat
-references ([`/llms-cli.txt`](https://docs.run402.com/llms-cli.txt) — an index that links one fetchable `/llms-cli-<slice>.txt` per topic,
-[`/llms-sdk.txt`](https://docs.run402.com/llms-sdk.txt),
-[`/llms-mcp.txt`](https://docs.run402.com/llms-mcp.txt)) and the skill at
-[`/SKILL.md`](https://docs.run402.com/SKILL.md).
+**Use the CLI by default.** Follow [Your first deploy](/start/first-deploy/) for a complete manifest, HTML page, installation and deployment command. You do not need to choose an interface before starting.
 
-## Pick an integration surface
+Run commands in the intended app directory. `--name` explicitly requests a new project; an existing project can be selected with `--project`. A globally active project is not deployment intent. `-y` approves required setup for the requested deployment, not unrelated work.
 
-| You / your agent want to… | Use | Reference |
-| --- | --- | --- |
-| Drive Run402 from a shell or CI | the `run402` CLI | [CLI reference](/cli/reference/) |
-| Call Run402 from TypeScript | `@run402/sdk` | [SDK reference](/sdk/reference/) |
-| Wire Run402 into an MCP host (Claude Desktop, Cursor, Claude Code) | `run402-mcp` | [MCP reference](/mcp/reference/) |
+The guide returns a site URL and console URL. Check the actual outcome and application behavior before reporting success. [Deployment guidance](/operate/deploy/) explains local validation, remote planning and verification.
 
-## The 30-second start
+If you are supervising an agent, a useful prompt is: “Build this app with Run402, use the CLI, show me the intended project and required spending, then verify the result and give me the site and console links.” The agent follows the same visible CLI workflow.
 
-The prototype tier is free on testnet — no real money. The front door at
-[`run402.com/llms.txt`](https://run402.com/llms.txt) (rendered here as
-[Your first deploy](/start/first-deploy/)) is the whole first run: one manifest,
-`run402 up --name my-app -y`, two links. The CLI reference covers `run402 deploy apply`, the
-unified deploy primitive underneath `up`. Run402 **plans and stages** a database, functions, a static
-site, secrets, assets, subdomains and routes as one release, then **activates
-them together**. Failed stages are resumable; applied database migrations are
-**not** automatically reversed when you promote an older release.
+## Deliberate alternatives
 
-| Stage | Visible before activation? | Automatically reversible? |
-| --- | --- | --- |
-| CAS uploads | No | Yes (unused bytes are GC'd) |
-| Function staging | No | Yes |
-| Static-site staging | No | Yes |
-| SQL migrations | No | Not necessarily |
-| Release-pointer activation | Atomic | By promoting another release |
-| Cache invalidation | After activation | Recomputed |
+Use the [SDK scripting guide](/sdk/scripting/) for typed loops, composition and in-process integrations. Shell scripts and CI may continue using CLI. Use [MCP](/mcp/reference/) when your host works through tools, especially without shell access. [HTTP](/reference/http/) remains available for other languages and protocol-level integrations.
 
-## When something fails
-
-Run402's Astro/SSR runtime, deploy pipeline, SDK and cache layer return stable
-structured error envelopes. Every one carries a `code`, a `suggestedFix`, and a
-`docs` URL into this site — see the [error-code reference](/reference/error-codes/).
+Before production, understand [credentials](/concepts/credentials/), [spending](/concepts/allowances/) and [release guarantees](/concepts/releases/). Runtime errors, HTTP errors and CLI errors have different shapes; use the [error guide](/errors/).

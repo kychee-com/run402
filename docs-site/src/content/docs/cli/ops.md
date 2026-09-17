@@ -6,6 +6,8 @@ slice: ops
 summary: "auth, billing, contracts, notifications, operator, service, cache, doctor, dev, logs"
 ---
 
+This slice serves customer operators working within their own projects and organizations. Human operator login, project administration and platform administration are distinct authorities. Platform-admin commands require separate platform credentials; they are not a repair shortcut for a customer permission denial.
+
 ### auth
 Manage project user authentication: passwordless email links/codes, trusted invites, passwords, passkeys, and auth settings.
 

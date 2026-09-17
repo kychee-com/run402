@@ -41,6 +41,16 @@ jobs:
           npm ci
           npm run build
 
+      - name: Verify documentation inventory, examples, errors and built links
+        run: |
+          node scripts/documentation-inventory.mjs
+          node scripts/render-documentation-map.mjs --check
+          node scripts/build-reference-schemas.mjs --check
+          node scripts/check-doc-examples.mjs
+          node scripts/build-error-docs.mjs --check
+          node --test scripts/documentation-quality.test.mjs
+          node scripts/check-docs-links.mjs
+
       # Enumerate dist/** + the four root flat files into run402.docs.deploy.json
       # (the CLI's --dir flag is Astro-SSR-adapter only; this static dir needs an
       # explicit per-file manifest).

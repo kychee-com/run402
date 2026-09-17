@@ -1,0 +1,1786 @@
+[
+  {
+    "file": "docs-site/src/content/docs//build/astro/index.md",
+    "line": 8,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "9e8247eeee11d4fa314d049d9d8cd36f8bfdec9d77d0a9eea72327ec9e9461d5",
+    "validation": "cli-command-source"
+  },
+  {
+    "file": "docs-site/src/content/docs//build/astro/index.md",
+    "line": 14,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "8a5dc2ecfad5294b825f1e05d43e043884dc98a109d4770dbc7c3af2c8786cbc",
+    "validation": "runtime-package-or-complete-fixture"
+  },
+  {
+    "file": "docs-site/src/content/docs//build/astro/index.md",
+    "line": 38,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "7ea0e1ef0257f508a9f164df1d4d2ea150cec70a83007587b68d34ce0bb6d430",
+    "validation": "cli-command-source"
+  },
+  {
+    "file": "docs-site/src/content/docs//build/auth.md",
+    "line": 12,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "426acb20de3442b06907f3f08322e13d59cf094f432eb6a8dc65988ae1d31f56",
+    "validation": "cli-command-source"
+  },
+  {
+    "file": "docs-site/src/content/docs//build/database.md",
+    "line": 8,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "66f522923cca13a46e5f008a900338ff76e3a631d53dc551c9c990ed743c2b95",
+    "validation": "cli-command-source"
+  },
+  {
+    "file": "docs-site/src/content/docs//build/domains.md",
+    "line": 8,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "b44681fae6aaf224866c7db6c30f316b2e4334c772523e129bd19ad7080257ee",
+    "validation": "cli-command-source"
+  },
+  {
+    "file": "docs-site/src/content/docs//build/email.md",
+    "line": 8,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "05aa14a0ebd6dae27d3547473656d1df8d7b97027b890d3ed0a410b022543257",
+    "validation": "cli-command-source"
+  },
+  {
+    "file": "docs-site/src/content/docs//build/functions.md",
+    "line": 8,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "bd825cfd28b03f579efb6453a8c7db23dcd39c379cdd7fdba589caf43dbfd488",
+    "validation": "runtime-package-or-complete-fixture"
+  },
+  {
+    "file": "docs-site/src/content/docs//build/functions.md",
+    "line": 16,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "8f73810eb3b11a0eccff41f411680724c5a856b42d2a98eca7ab0b09dcbef1cb",
+    "validation": "cli-command-source"
+  },
+  {
+    "file": "docs-site/src/content/docs//build/storage.md",
+    "line": 8,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "b90d75f517b3d1ff16035c1e0fde3033edacf7eb5d877560ffd8002672e55898",
+    "validation": "cli-command-source"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/assets.md",
+    "line": 35,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "78d7013cf1334cb262815a7fd610950b5ea19fbf2e1d53391f152e296090fc7c",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/assets.md",
+    "line": 51,
+    "language": "json",
+    "kind": "configuration",
+    "sha256": "65bb7106354723ccc3a617ae75fa1cc9416c87894347f0d958c46c25bd9d4fb7",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/assets.md",
+    "line": 81,
+    "language": "js",
+    "kind": "application-or-sdk",
+    "sha256": "085cba08aadfe9332d13ad91e71120381cddc1d1a93f829565c74f8e6011e726",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/assets.md",
+    "line": 147,
+    "language": "javascript",
+    "kind": "output-or-pseudocode",
+    "sha256": "19370f18642d8b74ae3da5376f9a88f207bf16beb68dc5d8d35fa262f343a959",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/assets.md",
+    "line": 283,
+    "language": "js",
+    "kind": "application-or-sdk",
+    "sha256": "d8d46ae20c855fe088f4aa6738263aa0039dcbe8e499228ea49c1bf328616d01",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/commands.md",
+    "line": 26,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "98b5ea970ee6ff6c599d8204f052484bd9cdc2edf20b51c603e4e17ce747e132",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/deploy.md",
+    "line": 23,
+    "language": "json",
+    "kind": "configuration",
+    "sha256": "4972f3e43604fc2efe84d090c69611c6658f814f1a97976d047b819348d885a9",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/deploy.md",
+    "line": 91,
+    "language": "json",
+    "kind": "configuration",
+    "sha256": "7dfe66223609e798e3ca82927b12698b277d478c6df90aa09835d74fa7a5de98",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/deploy.md",
+    "line": 135,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "64bd6185e21068785210228379f5479649c02cd971ab58f6d6a1bca73b9fbed0",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/deploy.md",
+    "line": 143,
+    "language": "json",
+    "kind": "configuration",
+    "sha256": "31011eb4c72d9eb12159b28f8cfc081856584bbc876062ceb7a1ef93ef63663b",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/deploy.md",
+    "line": 161,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "1dd313ba73d0ad6dc9deeec711bcc1ef08a9066e29c5e3bd60a6dbe6904fb394",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/deploy.md",
+    "line": 181,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "1f5c582c40be58917fa708c92f4156c2852e002409c9ebde8854101cb04a6810",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/deploy.md",
+    "line": 197,
+    "language": "json",
+    "kind": "configuration",
+    "sha256": "6d1776f5407749e1cf0285d95a493b82d43b3fc15823cac6e35f93dd999356fd",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/deploy.md",
+    "line": 206,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "a8dc3f7f94ef8a3f21872165b09e6b3146c37ca9420e6332f1ac640c85e8e36b",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/deploy.md",
+    "line": 212,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "5518865facfe7b85f539d80ec8788424c217c9ae13db7de91cba525d004f811d",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/deploy.md",
+    "line": 224,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "c8f5e75f232fb2af650cebfc971ba2480bad2ae58f491861d579dfa72060228f",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/deploy.md",
+    "line": 232,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "6369c3759171f24d2e089accd2a88d474c966cc7d09ee4287a634a128e26dc84",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/deploy.md",
+    "line": 247,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "040a4920e6f03d5822a29a6298ed13e3424f9816bea9674bd1de166ea5b6388a",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/deploy.md",
+    "line": 288,
+    "language": "json",
+    "kind": "configuration",
+    "sha256": "1ed58f98dcf4a8b526a4b322ae9bb6bc8eca414b4f90ca158807a8d5a28c8989",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/deploy.md",
+    "line": 308,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "decbdeee4d917a08052c9a3efb9b7b9e128a410fefe9ce99f45d3edba2e487ba",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/deploy.md",
+    "line": 321,
+    "language": "js",
+    "kind": "application-or-sdk",
+    "sha256": "2937583e7a9bc825877f22e6ee63489196621a913fc4f7e13c2105247a973c3f",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/deploy.md",
+    "line": 340,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "2267481a9c104f59f6dbd0c8a60efebb9892ecf5b87c25bfd660c99a4cd72c11",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/deploy.md",
+    "line": 347,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "21d0e1d3957c5086a30ae224b696109b59c322910bf09a6fd64305105fb90781",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/deploy.md",
+    "line": 374,
+    "language": "yaml",
+    "kind": "output-or-pseudocode",
+    "sha256": "dd0725ea76ec7920c34accfd9819c0a3154d3af09068fede4d8e82d29a41d7d0",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/deploy.md",
+    "line": 397,
+    "language": "json",
+    "kind": "configuration",
+    "sha256": "d4659eaaa47312b98ef15a4123903d5dd77de34cfb5a5b2c089cba28f30cea40",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/deploy.md",
+    "line": 420,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "6fe969dbe8e55b88a122775c11b4dd9868f9ea2e32982eea3971a4d459fd1041",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/deploy.md",
+    "line": 455,
+    "language": "json",
+    "kind": "configuration",
+    "sha256": "1f9977cd1443aa8346fda484915ebe62498ebe74d2be4762f73512cd63d89a9f",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/deploy.md",
+    "line": 493,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "9e48a4876262b7a2b438ea66c13011de4c18d4a28415f18f200e9f18a49519d2",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/deploy.md",
+    "line": 506,
+    "language": "json",
+    "kind": "configuration",
+    "sha256": "bd49ec35a61c22d21464b6b520465e56f82431ffb94e4e3e6c672c578b2286b3",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/deploy.md",
+    "line": 516,
+    "language": "json",
+    "kind": "configuration",
+    "sha256": "e0a97f09f056c720d4c433b8e9eb23f12a0080c9073a05c7de137d88326e6a34",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/deploy.md",
+    "line": 531,
+    "language": "json",
+    "kind": "configuration",
+    "sha256": "d9cf73d223c20d6bc94b0eb980ec1c5497fbf468f339838818db5fe24fcc4af3",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/deploy.md",
+    "line": 542,
+    "language": "sql",
+    "kind": "application-or-sdk",
+    "sha256": "c8a14094898b1cfc517bcbe738f5c3141b9e7415da227db9aad48a8b417937ce",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/deploy.md",
+    "line": 570,
+    "language": "json",
+    "kind": "configuration",
+    "sha256": "5c35d5f38f17afcfdf3f705cc831f627d7081512a8ff6f0a590f28d95046a93a",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/deploy.md",
+    "line": 592,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "64bd6185e21068785210228379f5479649c02cd971ab58f6d6a1bca73b9fbed0",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/deploy.md",
+    "line": 602,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "53037c99f5f77a7c082faafce353ac2760490ceaae8dd31dbaf209f8c82d4ed8",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/frontend.md",
+    "line": 34,
+    "language": "javascript",
+    "kind": "output-or-pseudocode",
+    "sha256": "1d27f640c2a42a66b33aaba34280acafd61c439300b58b8efd0e83ff676913b5",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/frontend.md",
+    "line": 75,
+    "language": "html",
+    "kind": "application-or-sdk",
+    "sha256": "7891973b46e7f5f2616dc500cbbbf0c7541afa4d7f61d7ec657114e193ac9941",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/frontend.md",
+    "line": 135,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "8b249ce10db307bc2d2726c377acdf28ee957de7f9b34b253af8f6f6b02381c7",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/frontend.md",
+    "line": 153,
+    "language": "javascript",
+    "kind": "output-or-pseudocode",
+    "sha256": "1114a79e01d1baccc5301680309120214413365c8aba8c66bfeba58219171489",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/frontend.md",
+    "line": 185,
+    "language": "javascript",
+    "kind": "output-or-pseudocode",
+    "sha256": "2018d30e3d93f850a8eea2bf6f70f01a81f3bd988b7851582d20332c1e14de0c",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/frontend.md",
+    "line": 247,
+    "language": "javascript",
+    "kind": "output-or-pseudocode",
+    "sha256": "e1334bec05b89fd31225f6b33336d8064ba33fcc3137a68c84c56bb7bdc0d156",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/frontend.md",
+    "line": 256,
+    "language": "javascript",
+    "kind": "output-or-pseudocode",
+    "sha256": "b261fc56afb25ff84814cbf1218458b848a8a003e5a0558f2797d111e8683c7b",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/functions.md",
+    "line": 45,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "f3a19795dc9d970e2a4b54f376f4fa54415767c88d322157ba7d4e318faad0d6",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/functions.md",
+    "line": 58,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "1f77b5666e24f417ed423995f5032644929fc8784f92886fb3e10eff14a6899d",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/functions.md",
+    "line": 71,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "bf1e027a00ba7eec11bf6f9d4fe0b5b5bbe9027001ebd5f25a74cef49bab88ce",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/functions.md",
+    "line": 88,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "d3354bc83361a6acf81926c31d3bf4b8b33f84a5f3b5faf11eb44d08af7d1a07",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/functions.md",
+    "line": 101,
+    "language": "javascript",
+    "kind": "output-or-pseudocode",
+    "sha256": "8b325cb7437f6e538b06c6ce7aa6e9ee5287e937f42c498721b20a1a3b292df1",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/functions.md",
+    "line": 179,
+    "language": "json",
+    "kind": "configuration",
+    "sha256": "8defc9faf6e1dc0800b18f8054342ac842b521168b09082b64dfc43e57fb1b5c",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/ops.md",
+    "line": 156,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "09862df315cd2a5efe6f2802f1bd6774c1a1c67dfcacc0df35ae5a774853205f",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/orgs.md",
+    "line": 167,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "051fb890742d0624b91bc3b8b587c68c2d9986db381b2faf5a41eaf6f04c81fd",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/orgs.md",
+    "line": 177,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "404c93429c85e3d60307f2bfde9b75b26bda251336ca778f1a97440876a0b3b2",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/platform.md",
+    "line": 27,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "999dd2cf0aa8fc39f9bc141d48c894126401c94361fb4164fa19ee2f9762acb4",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/platform.md",
+    "line": 35,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "887e5d7cb4a748cad911d441bd340c9a77e4bf20f6d876a817a130254fc8eaca",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/platform.md",
+    "line": 65,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "5891d334f1ac065b03baf993bad538ce8d5222b6d0d01c1d1a55c290db3103ad",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/platform.md",
+    "line": 81,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "8ce427a2c180ccab9e42e72327087c656132f1684c7928a1e71c24d385fd701c",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/platform.md",
+    "line": 104,
+    "language": "json",
+    "kind": "configuration",
+    "sha256": "e67af1b0b5dd5e6779963b16cf0451246c67411d9bffef49bbfeed55b5d0d4a1",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/platform.md",
+    "line": 127,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "860cbdf555b91ec3837a715d4890653e3ce33e19db6379e5397df4af65e2fa22",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/platform.md",
+    "line": 146,
+    "language": "sh",
+    "kind": "commands",
+    "sha256": "03faaf7af2b5dc6d2444bf8c8a8b63ceb8b53d46d9dcd2597f32f9d5bc3bde31",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/reference.md",
+    "line": 30,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "db7235549b6f91c3d73510e417e499a018c05f00e2016d081226b506a2f61004",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/reference.md",
+    "line": 137,
+    "language": "html",
+    "kind": "application-or-sdk",
+    "sha256": "274bf63f3ace34fba83d270ccb72ba6430ffb805bf56c18f011b025a18a41d86",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/reference.md",
+    "line": 178,
+    "language": "json",
+    "kind": "configuration",
+    "sha256": "c76732f58882260659e23be9c61368ea82e34a30ff1f1d0e436a92f965948ae7",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/reference.md",
+    "line": 182,
+    "language": "json",
+    "kind": "configuration",
+    "sha256": "acd797e6add1faad42f8d7277055e09b8782da0d51a19108cf0652e5f38b8ae1",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/reference.md",
+    "line": 186,
+    "language": "json",
+    "kind": "configuration",
+    "sha256": "aa69a0297aa5cb8917fe1933628579754d3ddc90728ca41e79a473095e23ba1c",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/reference.md",
+    "line": 193,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "273ea6bf308ff094979943c622c5a42d9a67b1437577ae06a690500b8d326ef1",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/reference.md",
+    "line": 199,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "ff52130b4ddb1ad2b17d2e70bd72e5f6aa8569aabfac9cafd868a92209ae7a4e",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/reference.md",
+    "line": 210,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "7bba1efb58f68fcfd3ef55c000c68366032149b2f4666d9baab8a921aef77765",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/reference.md",
+    "line": 223,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "0f33cabf3c1dec255a2d7c3c931695a1ee673b472dac5fadffa3fcebd803c1a9",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/reference.md",
+    "line": 244,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "285912fbdaa0e102e38ec2ad27c43a1cfa2b51a817d1bb9b501b672f3bf5d868",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/reference.md",
+    "line": 260,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "7c1a840fa11e4a2f4faef15a21ffcb4773d2ddc3db25300b53330a06b582b0c7",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/repos.md",
+    "line": 23,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "e63a6a74e01ef6f2127f057a3e83308910a234c4932f5c39a4bb91948ebeabd6",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/repos.md",
+    "line": 61,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "7148640aefa8cef548b6ececd3f782cb7cc5da48859435bd5ba6502bdc881a1e",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//concepts/allowances.md",
+    "line": 8,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "7806595012e0cbec854f788c73b0285d62d49408d3d1f36044d06d3c9938c538",
+    "validation": "cli-command-source"
+  },
+  {
+    "file": "docs-site/src/content/docs//concepts/credentials.md",
+    "line": 21,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "97a4520728caa039e027b979176600dbfb8e7d969e77e76c7bcada3d0352092f",
+    "validation": "cli-command-source"
+  },
+  {
+    "file": "docs-site/src/content/docs//concepts/interfaces.md",
+    "line": 8,
+    "language": "text",
+    "kind": "output-or-pseudocode",
+    "sha256": "f2619b201668414f2c7af4886754d4457dd304c20310391b4d1719d1f6ab52ee",
+    "validation": "editorial"
+  },
+  {
+    "file": "docs-site/src/content/docs//concepts/projects.md",
+    "line": 8,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "690afe7d56c2dbb3cee16115e9c3e13bc20c2d056a120888654c763bade96b7f",
+    "validation": "cli-command-source"
+  },
+  {
+    "file": "docs-site/src/content/docs//concepts/releases.md",
+    "line": 10,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "3fa31aad3dbbb96746231629695fdd0b0ea5cdad71ed701c17ca0b2ae08d7c6f",
+    "validation": "cli-command-source"
+  },
+  {
+    "file": "docs-site/src/content/docs//mcp/installation.md",
+    "line": 15,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "98258045db172f4116628c5393c9d6a0a14e4694d659d216a1d5d651f246034b",
+    "validation": "tool-schema-and-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//mcp/installation.md",
+    "line": 31,
+    "language": "json",
+    "kind": "configuration",
+    "sha256": "aa17219dc7503b89ff1e5d54eb0ddef63be84597dbe3440f08112046ff71f1de",
+    "validation": "tool-schema-and-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//mcp/installation.md",
+    "line": 43,
+    "language": "json",
+    "kind": "configuration",
+    "sha256": "aa17219dc7503b89ff1e5d54eb0ddef63be84597dbe3440f08112046ff71f1de",
+    "validation": "tool-schema-and-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//mcp/installation.md",
+    "line": 57,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "5ae02423d372c54ef0fe9548336f01c0ffa61ed79f308a082acbb827782119c8",
+    "validation": "tool-schema-and-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//mcp/limits.md",
+    "line": 50,
+    "language": "sql",
+    "kind": "application-or-sdk",
+    "sha256": "c8a14094898b1cfc517bcbe738f5c3141b9e7415da227db9aad48a8b417937ce",
+    "validation": "tool-schema-and-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//mcp/patterns.md",
+    "line": 32,
+    "language": "json",
+    "kind": "configuration",
+    "sha256": "cf66595ad2533253be612dd204f9ce202b044341ef88c5d8cace13c5f5a0e493",
+    "validation": "tool-schema-and-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//mcp/patterns.md",
+    "line": 79,
+    "language": "json",
+    "kind": "configuration",
+    "sha256": "07e4333b5c5aa68eb689ff6f0b18e9754ab1650ca58701eaa03bd5116b8dd894",
+    "validation": "tool-schema-and-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//mcp/patterns.md",
+    "line": 143,
+    "language": "json",
+    "kind": "configuration",
+    "sha256": "eb46910ebee4d7015a9d8dbb8185c72e7c913b06e2d1fa0856ce00baa0f60094",
+    "validation": "tool-schema-and-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//mcp/patterns.md",
+    "line": 167,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "a680e5ac4eb0ebe339f8a69bc15a3771c5bef3c05f82031737334952c977b396",
+    "validation": "tool-schema-and-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//mcp/patterns.md",
+    "line": 213,
+    "language": "json",
+    "kind": "configuration",
+    "sha256": "36ca941314536b5501f364dee34cf2bb98f53b1d04840f728066847daa518422",
+    "validation": "tool-schema-and-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//mcp/reference.md",
+    "line": 63,
+    "language": "json",
+    "kind": "configuration",
+    "sha256": "0e8eba4998c65fe2e92bf0dc60e12ce464dab988bb8319cd167655ff3bd4cdb1",
+    "validation": "tool-schema-and-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//operate/billing.md",
+    "line": 6,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "7c9b12ec508366f23bcbbdaea9cef90c1777f7e9c691c29d767ee7f73f689b72",
+    "validation": "cli-command-source"
+  },
+  {
+    "file": "docs-site/src/content/docs//operate/ci.md",
+    "line": 8,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "4ffedbfd993ba461e581157848720ae7430b36c51b567f81656cf7118e67e47e",
+    "validation": "cli-command-source"
+  },
+  {
+    "file": "docs-site/src/content/docs//operate/deploy.md",
+    "line": 8,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "66f16d44454aa9b45dd3d7356beb8f2c1e76e5645d34a80ac0ca7469de9291ae",
+    "validation": "cli-command-source"
+  },
+  {
+    "file": "docs-site/src/content/docs//operate/deploy.md",
+    "line": 28,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "fcdd1869a675a37ec4094f7409aad66da526aaf59acd455439806c04237b33af",
+    "validation": "cli-command-source"
+  },
+  {
+    "file": "docs-site/src/content/docs//operate/diagnostics.md",
+    "line": 6,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "cf100466c39ecb6977ab8372a1fcd9e96fbe14ae6a54df15d745fa804ea271cd",
+    "validation": "cli-command-source"
+  },
+  {
+    "file": "docs-site/src/content/docs//reference/schemas.md",
+    "line": 36,
+    "language": "json",
+    "kind": "configuration",
+    "sha256": "9b6088289a8f2901e7b92ddfb4f663278ab56bfd2b650200ae25a0013269fd7d",
+    "validation": "first-deploy-manifest-or-owning-schema"
+  },
+  {
+    "file": "docs-site/src/content/docs//reference/schemas.md",
+    "line": 145,
+    "language": "json",
+    "kind": "configuration",
+    "sha256": "547cf0f86248c1ad94f39c910030b1bb6c8eae9fc4b04d79820b1010a8271511",
+    "validation": "first-deploy-manifest-or-owning-schema"
+  },
+  {
+    "file": "docs-site/src/content/docs//reference/schemas.md",
+    "line": 222,
+    "language": "json",
+    "kind": "configuration",
+    "sha256": "c9fe9978c618ad065dd35ca564a36487f00f8d1a5fb4d6d69d3065f05bf67393",
+    "validation": "first-deploy-manifest-or-owning-schema"
+  },
+  {
+    "file": "docs-site/src/content/docs//reference/schemas.md",
+    "line": 269,
+    "language": "json",
+    "kind": "configuration",
+    "sha256": "abb991df205e79e701831c0ef93fcc89a0755ee722bee55e45ffbaa7de57148c",
+    "validation": "first-deploy-manifest-or-owning-schema"
+  },
+  {
+    "file": "docs-site/src/content/docs//reference/schemas.md",
+    "line": 325,
+    "language": "json",
+    "kind": "configuration",
+    "sha256": "5a6db1802d7f3515060678f77906368420e16f002dc760d59e62c5a6d8aac23c",
+    "validation": "first-deploy-manifest-or-owning-schema"
+  },
+  {
+    "file": "docs-site/src/content/docs//reference/schemas.md",
+    "line": 343,
+    "language": "json",
+    "kind": "configuration",
+    "sha256": "79af3ac651e297ec7a7247116881112c223f14f516eb6a8923e22aaec942236d",
+    "validation": "first-deploy-manifest-or-owning-schema"
+  },
+  {
+    "file": "docs-site/src/content/docs//reference/schemas.md",
+    "line": 361,
+    "language": "json",
+    "kind": "configuration",
+    "sha256": "94399ddf4fa32174975fe479c695448ed5e55d944da096e370771772d9c4bc8b",
+    "validation": "first-deploy-manifest-or-owning-schema"
+  },
+  {
+    "file": "docs-site/src/content/docs//reference/schemas.md",
+    "line": 493,
+    "language": "json",
+    "kind": "configuration",
+    "sha256": "655c5363a5f74b82f43f030d86204c401cc0d7875a9d8365c9eb3109684e8aa2",
+    "validation": "first-deploy-manifest-or-owning-schema"
+  },
+  {
+    "file": "docs-site/src/content/docs//reference/schemas.md",
+    "line": 591,
+    "language": "json",
+    "kind": "configuration",
+    "sha256": "8faa0bfff828ba6ffd53bdfd0ed7216ffa40c8f33f9d878b12b23e6d45122459",
+    "validation": "first-deploy-manifest-or-owning-schema"
+  },
+  {
+    "file": "docs-site/src/content/docs//reference/schemas.md",
+    "line": 601,
+    "language": "json",
+    "kind": "configuration",
+    "sha256": "83d3c55db53f03b579b2e8efd4cd46698f75cafdcd1c17a335b464357535403a",
+    "validation": "first-deploy-manifest-or-owning-schema"
+  },
+  {
+    "file": "docs-site/src/content/docs//reference/schemas.md",
+    "line": 611,
+    "language": "json",
+    "kind": "configuration",
+    "sha256": "8c422682f3394306e42c5abc0b5dc7ca39247e6ac86bd4ab349fd4b94eeddd5b",
+    "validation": "first-deploy-manifest-or-owning-schema"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/credentials.md",
+    "line": 22,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "69ea7a191d7054248a54dffa26b8d571eba8efd1445ef78f30dc31055c0a478f",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/credentials.md",
+    "line": 42,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "3d94b7516ffe33330577834032c08bc2350da12117e0a03b02cc3e88e4a71d54",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/credentials.md",
+    "line": 54,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "47068ad294bbfae13452b64d8cd32dfd16ba39db7c40812635597b499c51ccad",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/environment.md",
+    "line": 9,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "63bc8bc9f094e490e5f271cc9306d45f55825e3b06e64702921debbc4ceec4b2",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/environment.md",
+    "line": 43,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "677f85bd11a09118b1c75d5b06fa4f43d3b80f3b75d0e017cc7924738964594a",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/environment.md",
+    "line": 113,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "3c2bc1495bd2d2c484d7559fef57b3032b98bdca2eb1c55a01610f2ff2c48b86",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/errors.md",
+    "line": 34,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "40a80c3c03fe1b6d90a55bc9ad28ad0afcdadd2970c3fbe61422ee462c1a5728",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/identity.md",
+    "line": 11,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "71402aa93bdc68f870a480785d7894bfca5d43b727ff10cd05e8aaa757110ac7",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/identity.md",
+    "line": 79,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "5ff19e742d4332b65364d1c4c6ed7907aaee2d98c8ea5bd3617356151f6ca3ad",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/identity.md",
+    "line": 122,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "a38a06a233a747bb4d0fa95f7b3fef48b3164652d9b0e0acc4c7c25f9368aca0",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/identity.md",
+    "line": 204,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "7abf4fffeeb879dd350526a2c0309a29b0a1b3a74c62db962c8795f34e4d7813",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/identity.md",
+    "line": 222,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "2aa741bb3a80838077c5b22e9c41f90f9310376c2ba49263fe371cf5677d489a",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/identity.md",
+    "line": 241,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "09664317303198e18ccd8ce2f9ef111a8604f6debd174eee00959840bb6d3863",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/identity.md",
+    "line": 255,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "5e177a01fa81302667d5f785c3d403e0f59e49a5afefd068fdff7fa896df4b4b",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/lifecycle.md",
+    "line": 23,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "f63ffc0c015e037a00dfa06e7f7769eb2cf86427188f7084102cc610ca958195",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/limits.md",
+    "line": 26,
+    "language": "sql",
+    "kind": "application-or-sdk",
+    "sha256": "c8a14094898b1cfc517bcbe738f5c3141b9e7415da227db9aad48a8b417937ce",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/limits.md",
+    "line": 44,
+    "language": "json",
+    "kind": "configuration",
+    "sha256": "6bd1e720d7c3aff6376d2918cc1994d4530ce6eb8460e3e93405f54ab4cad7a0",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/patterns.md",
+    "line": 13,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "d6591e9b725c40c72c88a8dbf5c41647b7dd6353126c384c6643621720f73874",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/patterns.md",
+    "line": 35,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "6dc54818a19ce7e0725a240ad4ed6b7a3bd94c93b669f87dca7752be70fb5718",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/patterns.md",
+    "line": 50,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "ee25617c2a41b9c94de92393fe14adb0c46cb19429314d9be2fff9a91ce2e93d",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/patterns.md",
+    "line": 69,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "e8c3ae01275a4471e69eb2dbc52920bc3c371d1c33b54e966ef7b31ebb35f8e1",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/patterns.md",
+    "line": 111,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "7b653f1249f126f490700cdee3ab6b148148f6b906fa4b84a91246dee1daaf5f",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/patterns.md",
+    "line": 124,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "831dcc067ccf8583f03b6a07e9bf42ffb95b57fa5368efd0a3c7e29cbbbb8ac5",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/patterns.md",
+    "line": 161,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "922ee5a37ff4cbefbf61d0ea1eb3a6b93971520f93143731cbc8b01f0fa82d7e",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/patterns.md",
+    "line": 177,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "7f91b4b243834644116099f3bc29219bdaedd0f88cffd3a3846ec745dde42f91",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/patterns.md",
+    "line": 192,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "eddda3fe1fadf10d44c59190ff5b55917d0999c651d063192cf3f860c0fb5d13",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/patterns.md",
+    "line": 211,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "1bdce5e55071a9de8cc5e41ec0966f86bac3b3808bc042bd6a530b74d30b3db3",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/patterns.md",
+    "line": 255,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "53ec4e53b1cb6cf00f17f6f3aea2c860f20619edaaf526cac0ccf01e99bc5bad",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/patterns.md",
+    "line": 278,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "95543eafa5ae6e9418edf5a67acfcb1429e512c732690f061aa8846ac5b3900c",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/patterns.md",
+    "line": 337,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "2c290bc2dcd8f6f71da792d832df6d31205cfc6d3cbb68d397884885df7c687e",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/patterns.md",
+    "line": 374,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "82a547d40596cf6256f29dcda0efbc958b42b410031f95ed706eeb49ecee4c57",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/patterns.md",
+    "line": 399,
+    "language": "json",
+    "kind": "configuration",
+    "sha256": "cf66595ad2533253be612dd204f9ce202b044341ef88c5d8cace13c5f5a0e493",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/patterns.md",
+    "line": 421,
+    "language": "sql",
+    "kind": "application-or-sdk",
+    "sha256": "3cf07f54853e92e037be8c9277de19fdbce3197ab79102c050155a422dd31d4a",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/patterns.md",
+    "line": 449,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "9a6309c9448c1c27c32cdd1573ca37f2c07c58199243567dea0759633517b86a",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/reference.md",
+    "line": 23,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "cadb7b9af51693f3a434b6dca605c6e02de221110365329ab11996ed0f0e5091",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/reference.md",
+    "line": 40,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "5ced14c0790305b8134409769b67605aae13ff8a0eb3f831ebd0194796b805ad",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 18,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "1a8511e0d7b515f9475ac77d15a821094f44a3f264ce6104bd74a99de273766f",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 28,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "afceecc9e557063fa62123cde09deebe3c9058571ab6b902275e52ff337e20ba",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 41,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "8a370f50a0481fe750803b9551c5893ff5560e19992a394381ebbb5cbb4b7329",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 93,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "5575bb80fc51eff29b27dc8beba59f7fb7c2582899a519ce758113cc3ec8cbfe",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 121,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "5adef13992d8bbc5916795891923219f35f92442ef96e19d525189b8746b00ef",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 127,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "79a058c81295de60ad4d66c3133f32280282c04f0f6fd6381a667c54a25da452",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 150,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "01e10439a193d1df672bb22b3a0e5426a72224db3be576f636ec76e2505e38f5",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 167,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "1c43d36ffe14e56874c792edfd21db93e8add5dce798fbc304f04a62b408d715",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 186,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "8e64b93712e7e57ee00ac9e95cc7d5125eaafe02ea9157ae2b1c56d86aa30439",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 230,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "ed421e87e4ddc14652eb4d83b12494dac604c323dd5489bdc0316090dc1bcf9f",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 243,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "966f0989a82100f6df5ba50e2e36cf29950652832abf26b8b6ae5eb9a40d78f1",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 263,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "ca2f58b5d63dc7d4576d876e910cf910e97f80ed4346c32e9cdae418620991b0",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 287,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "d43965349ee090408547f5802d001194a85aab08cc462254699d4b6a73fa6cf6",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 314,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "6d5a3c7849e19edcbbe9d4ae541d77e3e434915d4aa830f2a04ae9812eb7a79b",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 326,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "d90cc499e2332504ab97b6ed1eb5b2737a4eb766699f1167294862dd6f2d9e2f",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 339,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "920ee733f96a0967596b5b3e27fe5253fe87d9d3242f284a4ec536d6d89d4a70",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 361,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "4896e0a861c18e1fdfe88da2e8d6d77334444d4aa9bc43785d1e1d53c05b3317",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 376,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "862ae979685693e17c99f76ddaa0791cbff5544c722cbbb1963cde68f71a92cb",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 388,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "865ea22af4ba6c2a2e46b11beb7c645c6aa478cf0cc6df93d6d3bdc894ed751f",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 477,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "0c8b269909cfec85b5dd1fc54d993c1feb0ba656381490a267835858dd5ad55c",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 502,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "2af22368bda57c135daed92129272e02a67335f7c6038fc88bb376f32ddafff1",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 523,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "e8693be9ddfd7a86f4e72a61d10cad8699cc45f25be2d8affd9e7f10ff6f5d55",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 541,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "583cf7ff7dab86ed1324deaf84acfcbe61ffa55368a7d4969ccbafe14dacafa0",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 591,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "fe61c73e2732c742efe3e049a33c63865705771e5398b7fc62045ece2c97e518",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 611,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "d3984f12fb77d18890653a68506fb72552a665e6ba5b8f5ba93c1882b7767e16",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 621,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "46a42c4cbe46aa87cc176da8d489c92c050663f87826b17617456e87c137a744",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 637,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "f26aa5d2994b271c8bcd203e19bba22fcd229534380b6459fb5f6c1e9070d9f0",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 652,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "09d2c08db41738ab4a39745ed8cda96c080c168ebb9df4538e8918b131ce9af8",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 675,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "99760e2976607b81350d68398ce9a13f4401b335ef054acd8ac28963553ec59d",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 698,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "458506ae4d1bc39aecca8d3be9921ad87f00306b3a6a1686545cce510cfd0c1d",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 762,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "78d101a7b1d3b1ed9ddc9c0c8a4e6f343de6ef839e0c5c7f32ec0a11200fc4d5",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 776,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "d28a14f67d8ea37807213ff42e4c19dc8adcb1d145e48c053ae3dc4b277ed21f",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 806,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "d54ee6b7ac626e713215bd52d61f4640cb627a8f1fe3c2ccec6825b26cf5f35a",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 852,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "0fef770c5188f915d217213377547767696f34c156342ada239c607e62a0cb8d",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 868,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "050e6df62839da627ebf747afbb11fa0b925bb29b0fe0031078c9c761970bb00",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 903,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "d844d0e32b1643ccfb2a06dd676458cc648ab80940648a4e84976c70db925912",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 926,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "36db71809137078f490bda8bdebef2df5cee210e21dddae68e92c2526c269438",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 943,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "527eb6ee7959db277450a4c66bbdada2d170ab7e4446498b2b34db71d96e3e6a",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 957,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "7b28f4993e62dcdaf12f88a62888f184fd20c828585ec7099aeeecdd3fdba2d1",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 987,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "9966f4baa2173ad4c2a6667de908b3d2a81d895cdd655b70ba2624fef6ff457e",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 1038,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "4992392c9ad79ca14fda3d5257ed8d594455da78b9e3d92be33117591bf1c8e3",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 1064,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "58e6cf22486c380164eb65e68bcb2645cec3d2b4789a9d0f2825c4505c79304e",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 1126,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "af91383acf101a4f42d623c30c2e3511938d78ef4dc60035e9c6c31c32071c57",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 1165,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "e55023b22619495044a0f94d1d59f88c14865f789aafa1cc4d5c51ef9842a977",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 1179,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "e7bd9cb74410a02bec826530ac4ce2741d16f53cd9baa2d585b8bc8c0a5074c5",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 1213,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "d061a7c31d1534fbb8508903733215d74ac621c9adbf98214b5b02e0e8d1863f",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 1248,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "0fb5fe5c19774ee760c0288ff42607bd3c246d6b0cdc30fcedbc8b5ae9f36af6",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 1272,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "283a10ebf8ff2bee2bbe0f140c3c51df66d2ba52d8afd6119dbc81c2cf84fcee",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 1299,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "29f95d288e470a1d15c1cdce00736757e99900f946d74cd9eb1de2b6558ffab0",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 1321,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "53e17bf29750eb80bdd901d26a2965301443e3ea5349b751f8fb9f19840631d0",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 1334,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "57f406ef51c0a82ca47fda5d666e1546df0e15c56cb35678867afb1111198e39",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 1361,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "35ca68803cd1b5f10f24b1d91f5fe75d3d71c65ba9d2c0f39f5d89aeaa877ca8",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 1368,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "ab99c58337ffb3cb33a4e82a4bd1cd53c5d1c05e7fccc5c67416c280d72c1856",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 1385,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "f39d630716b5df5df61178cd727f89be5860062de63edd4cf9efc8af05f2f0a5",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 1394,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "d691908e929a378e71014d8b59cb5537348f992ffd884e7229231830659715f4",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 1408,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "49b817d3aac2abf967a50a690f5e70897c107d3dec5a607ede995becd2c59efe",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 1434,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "c19d68d54ca3d88e3f187be9618a47dc9654ba35abdf8bd9799dd786433c721e",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 1447,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "a42bfdc2fc1a1dd8ee62e637d5884151af0b3295c7297304deb7a58ccdd66ee1",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 1461,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "a457beb105ec16839d85490746f28b53e4a56e9da0ff0ea581478356efb8fe90",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 1496,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "2655a7c076c343be12767fcbd2a5b58ff4a53bfd776a6d96a1ec1ab1458f71c6",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 1506,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "15087e74a3f0f5a2a28e5730ab4c71d5230dc95b18a21e21eb816cacbc84d8d3",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 1531,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "2a4ce0c39f0fd4cf379240232daca7a3875b158f702aeb6c49da6dcf774d08c7",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 1568,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "1273a5d793c6fbbcab7e20b2ac7abad4437e58cef386f59fae923147b7fe8fe2",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/scripting.md",
+    "line": 9,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "3022a02eb2ce4c8c43b9a9cf49864c912b25140914ccc525291eeeee7f67b2eb",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/scripting.md",
+    "line": 21,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "ba3b6ac20065c0fc3df4b21152d0068eb75813db1bed338021cee0d27edcb294",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/scripting.md",
+    "line": 36,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "fd31e1388defd58597b551bb7e2a77c4dce8880fe885acecda7642e921efbf05",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/scripting.md",
+    "line": 51,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "188d8b567034c628d070f155bed8417172b5e1713e547c580c4ed7c49853c0b6",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//start/first-deploy.md",
+    "line": 11,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "67c5d96e2eb44674219079a17c9e3171dd54a222336c859524d1432767e8e96a",
+    "validation": "cli-command-source"
+  },
+  {
+    "file": "docs-site/src/content/docs//start/first-deploy.md",
+    "line": 19,
+    "language": "json",
+    "kind": "configuration",
+    "sha256": "28c310d47bfcc66acaeab13f1321aa7060bd5dd29a2f7b9ebaccf0b3baba230b",
+    "validation": "first-deploy-manifest-or-owning-schema"
+  },
+  {
+    "file": "docs-site/src/content/docs//start/first-deploy.md",
+    "line": 43,
+    "language": "html",
+    "kind": "application-or-sdk",
+    "sha256": "b22f2344904b3d925d57675cda382a6138f13c901e3ccb68455cc58adbde9909",
+    "validation": "runtime-package-or-complete-fixture"
+  },
+  {
+    "file": "docs-site/src/content/docs//start/first-deploy.md",
+    "line": 67,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "33b1053da22f3d669ae5510cdc6ed10e3a8aa55c6cb364e268e053660ca94601",
+    "validation": "cli-command-source"
+  },
+  {
+    "file": "docs-site/src/content/docs//start/first-deploy.md",
+    "line": 75,
+    "language": "json",
+    "kind": "output",
+    "sha256": "35c581992d1e7ce7004f0b89083aaab5ffde471f5fec0db8aa7d6286f9f7c3b9",
+    "validation": "editorial"
+  },
+  {
+    "file": "docs-site/src/content/docs//start/first-deploy.md",
+    "line": 97,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "4fe0bfe664fe853e73a5dac06291598aceb073ef080b93e5855e34d27fc46ec0",
+    "validation": "cli-command-source"
+  },
+  {
+    "file": "docs-site/src/content/docs//start/harness.md",
+    "line": 8,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "d90cd5a37c0eaac6a59724b9829628549bc492fe14ce3da35fb23a79cc37fce1",
+    "validation": "cli-command-source"
+  }
+]

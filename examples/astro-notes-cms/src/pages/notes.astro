@@ -1,0 +1,15 @@
+---
+import { auth } from '@run402/functions';
+import { notesForRequest } from '../lib/notes';
+const { rows, invalid } = await notesForRequest(Astro.request);
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+if (invalid) Astro.response.status = 400;
+---
+<html lang="en"><head><meta charset="utf-8"/><title>My notes</title></head><body>
+<h1>My private notes</h1>
+<form method="post" action="/auth/sign-out"><Fragment set:html={auth.csrfField()}/><button>Sign out</button></form>
+{invalid && <p>Enter a title between 1 and 200 characters.</p>}
+<form method="post" action="/notes"><Fragment set:html={auth.csrfField()}/>
+<label>Title <input name="title" required maxlength="200"/></label><button>Add note</button></form>
+<ul>{rows.map(row => <li>{String(row.title)}</li>)}</ul><a href="/">Home</a>
+</body></html>

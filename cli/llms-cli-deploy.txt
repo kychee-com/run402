@@ -2,6 +2,8 @@
 
 > Slice `deploy` of the Run402 CLI reference. Index (start here): https://docs.run402.com/llms-cli.txt · Whole reference: https://docs.run402.com/llms-cli-full.txt
 
+Use `run402 up` for normal deployments. The commands below expose advanced planning, apply, inspection and recovery primitives. They share the same release model; none promises to reverse committed database migrations.
+
 ## Deploying Apps
 
 ### Unified Apply

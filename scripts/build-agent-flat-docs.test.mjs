@@ -6,7 +6,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { assertByteBudget, assertCliSectionOrder, assertLineBudget, listAgentFlatFiles, renderSliceTable } from "./build-agent-flat-docs.mjs";
+import { assertByteBudget, assertCliSectionOrder, assertLineBudget, listAgentFlatFiles, renderSliceTable, sourcePaths } from "./build-agent-flat-docs.mjs";
 
 describe("build-agent-flat-docs — front-door line budget", () => {
   it("passes at the budget and fails one line past it, naming budget and count", () => {
@@ -99,4 +99,9 @@ describe("build-agent-flat-docs — sliced CLI reference", () => {
     assert.ok(once.includes("| A | https://x/a.txt | covers a | ~2 KB |"));
     assert.ok(once.includes("https://x/full.txt"));
   });
+});
+
+it("front door selects only the canonical source even as Start grows", () => {
+  assert.deepEqual(sourcePaths({section: "start", source: "first-deploy.md"}, "/docs"), ["/docs/start/first-deploy.md"]);
+  assert.ok(sourcePaths({section: "start"}).length >= 1);
 });

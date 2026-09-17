@@ -1,0 +1,12 @@
+---
+title: HTTP API
+description: The native API contract for intentional HTTP integrations.
+---
+
+import HttpReference from '../../../components/HttpReference.astro';
+
+Use [CLI](/start/first-deploy/) for ordinary operations and the [SDK](/sdk/scripting/) for typed scripting. The API is the foundation; the SDK adds opinionated workflows, and CLI/MCP adapt those workflows to their hosts. There is no single HTTP `up` endpoint.
+
+This reference renders a pinned copy of the [public OpenAPI schema](/openapi.json), with native requests and responses. The [complete HTTP guide](https://run402.com/llms-full.txt) explains credentials, payment and recovery. Browser request execution needs appropriate CORS and credentials; keep administrative credentials out of application frontend code.
+
+<HttpReference />

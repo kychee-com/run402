@@ -1,0 +1,270 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://run402.com/schemas/manifest.v1.json",
+  "title": "Run402 Manifest v1",
+  "description": "Declarative authorization contract for a Run402 project. Describes tables, views and RPCs reachable through PostgREST and their RLS policy templates. Author under database.expose in a release manifest and deploy with run402 up; direct HTTP integrations use POST /projects/v1/admin/:id/expose.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "format": "uri",
+      "description": "Optional schema URL for editor tooling. Ignored at apply time."
+    },
+    "version": {
+      "const": "1",
+      "description": "Manifest schema version. Must be \"1\" for this schema."
+    },
+    "tables": {
+      "type": "array",
+      "description": "Tables reachable via /rest/v1/*. Entries with expose:false are documentation-only.",
+      "items": {
+        "$ref": "#/definitions/table"
+      }
+    },
+    "views": {
+      "type": "array",
+      "description": "Security-invoker views projecting columns from a base table.",
+      "items": {
+        "$ref": "#/definitions/view"
+      }
+    },
+    "rpcs": {
+      "type": "array",
+      "description": "Postgres functions callable via /rest/v1/rpc/*, with explicit EXECUTE grants.",
+      "items": {
+        "$ref": "#/definitions/rpc"
+      }
+    }
+  },
+  "definitions": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z_][a-z0-9_]{0,62}$",
+      "description": "Lowercase SQL identifier: [a-z_] followed by up to 62 of [a-z0-9_]."
+    },
+    "role": {
+      "type": "string",
+      "pattern": "^[a-z_][a-z0-9_]{0,62}$",
+      "description": "Postgres role name. Expected values: anon, authenticated, service_role, project_admin."
+    },
+    "columnOrStar": {
+      "oneOf": [
+        {
+          "$ref": "#/definitions/identifier"
+        },
+        {
+          "type": "string",
+          "const": "*"
+        }
+      ],
+      "description": "A column identifier, or \"*\" for all columns."
+    },
+    "table": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "expose"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/definitions/identifier"
+        },
+        "expose": {
+          "type": "boolean"
+        },
+        "policy": {
+          "enum": [
+            "user_owns_rows",
+            "public_read_authenticated_write",
+            "public_read_write_UNRESTRICTED",
+            "custom"
+          ]
+        },
+        "owner_column": {
+          "$ref": "#/definitions/identifier"
+        },
+        "force_owner_on_insert": {
+          "type": "boolean"
+        },
+        "i_understand_this_is_unrestricted": {
+          "type": "boolean"
+        },
+        "custom_sql": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "expose": {
+                "const": true
+              }
+            },
+            "required": [
+              "expose"
+            ]
+          },
+          "then": {
+            "required": [
+              "policy"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "expose": {
+                "const": true
+              },
+              "policy": {
+                "const": "user_owns_rows"
+              }
+            },
+            "required": [
+              "expose",
+              "policy"
+            ]
+          },
+          "then": {
+            "required": [
+              "owner_column"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "expose": {
+                "const": true
+              },
+              "policy": {
+                "const": "public_read_write_UNRESTRICTED"
+              }
+            },
+            "required": [
+              "expose",
+              "policy"
+            ]
+          },
+          "then": {
+            "required": [
+              "i_understand_this_is_unrestricted"
+            ],
+            "properties": {
+              "i_understand_this_is_unrestricted": {
+                "const": true
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "expose": {
+                "const": true
+              },
+              "policy": {
+                "const": "custom"
+              }
+            },
+            "required": [
+              "expose",
+              "policy"
+            ]
+          },
+          "then": {
+            "required": [
+              "custom_sql"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "force_owner_on_insert": {
+                "const": true
+              }
+            },
+            "required": [
+              "force_owner_on_insert"
+            ]
+          },
+          "then": {
+            "properties": {
+              "policy": {
+                "const": "user_owns_rows"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "view": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "base",
+        "select"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/definitions/identifier"
+        },
+        "base": {
+          "$ref": "#/definitions/identifier"
+        },
+        "select": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/columnOrStar"
+          }
+        },
+        "filter": {
+          "type": "string"
+        },
+        "security_invoker": {
+          "type": "boolean",
+          "description": "Always coerced to true on apply. Recorded as-given for GET roundtrip fidelity."
+        },
+        "expose": {
+          "type": "boolean"
+        }
+      }
+    },
+    "rpc": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "signature",
+        "grant_to"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/definitions/identifier"
+        },
+        "signature": {
+          "type": "string",
+          "pattern": "^\\([^;]*\\)$",
+          "description": "Parenthesized argument list, e.g. \"(user_id uuid)\" or \"()\". No semicolons."
+        },
+        "grant_to": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/role"
+          }
+        }
+      }
+    }
+  }
+}

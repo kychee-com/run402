@@ -1,0 +1,106 @@
+{
+  "owner": "core",
+  "repository": "kychee-com/run402-core",
+  "revision": "07064336ece055a208c0d71a0f6addb436f64a27",
+  "sources": [
+    {
+      "source": "packages/functions/src/auth/errors.ts",
+      "sourceDigest": "7213af5dc71af080ab7fbe90e0f7bc21e03edc85d56de187f96ed5ea8526c763",
+      "codes": [
+        "R402_AUTH_FETCH_ABSOLUTE_URL",
+        "R402_AUTH_FRESHNESS_REQUIRED",
+        "R402_AUTH_IDENTITY_LINK_CONFLICT",
+        "R402_AUTH_INSUFFICIENT_MEMBERSHIP",
+        "R402_AUTH_INSUFFICIENT_ROLE",
+        "R402_AUTH_INVALID_CREDENTIALS",
+        "R402_AUTH_MEMBERSHIP_GATE_NOT_WIRED",
+        "R402_AUTH_PRERENDERED",
+        "R402_AUTH_REDUNDANT_USER_FILTER",
+        "R402_AUTH_RENAMED_EXPORT",
+        "R402_AUTH_REQUIRED",
+        "R402_AUTH_RETURN_TO_INVALID",
+        "R402_AUTH_ROLE_GATE_NOT_CONFIGURED",
+        "R402_AUTH_SESSION_BRIDGE_UNVERIFIED",
+        "R402_AUTH_TENANT_SUBJECT_INVALID",
+        "R402_AUTH_TENANT_SUFFIX_REQUIRED",
+        "R402_AUTH_UNKNOWN_EXPORT",
+        "R402_AUTH_UNKNOWN_IDENTITY",
+        "R402_AUTH_UNTRUSTED_CONTEXT"
+      ]
+    },
+    {
+      "source": "packages/functions/src/auth/index.ts",
+      "sourceDigest": "a53638cb789831eaf919c3d77a2e2dd22ab98d7348a0efa2825336aacac11fa8",
+      "codes": [
+        "R402_AUTH_FRESHNESS_REQUIRED"
+      ]
+    },
+    {
+      "source": "packages/functions/src/cache.ts",
+      "sourceDigest": "c334d178b3e446d6bf5d89bebf0ea23c86b9f4b2b076cb7a574ab8cb733c8536",
+      "codes": [
+        "R402_CACHE_INVALIDATION_HOST_FORBIDDEN",
+        "R402_CACHE_INVALIDATION_HOST_REQUIRED"
+      ]
+    },
+    {
+      "source": "packages/functions/src/db.ts",
+      "sourceDigest": "bfd2e2e8a07efe5c0bda2045afcbbf647f09c48ca91a25de4b0aa91f2cddce76",
+      "codes": [
+        "R402_DB_QUERY_ERROR",
+        "R402_DB_SQL_ERROR"
+      ]
+    },
+    {
+      "source": "packages/functions/src/function-runs.ts",
+      "sourceDigest": "a32954204bc28744ed4664c24411bbd828e0f93dec47bb14a7957b259b4c9fc6",
+      "codes": [
+        "R402_FUNCTION_RUN_INVALID_INPUT",
+        "R402_FUNCTION_RUN_MISSING_CONTEXT"
+      ]
+    },
+    {
+      "source": "packages/functions/src/payment.ts",
+      "sourceDigest": "b00e97ee38ec844ce88c5db1f44875eb5c2c86e694ac156091fa09fee941ca22",
+      "codes": [
+        "R402_PAYMENT_FULFILLMENT_CONTEXT_EXPIRED",
+        "R402_PAYMENT_FULFILLMENT_DIRECTIVE_INVALID",
+        "R402_PAYMENT_FULFILLMENT_OUTSIDE_ROUTED_REQUEST",
+        "R402_PAYMENT_FULFILLMENT_RECEIPT_NOT_ENABLED",
+        "R402_PAYMENT_FULFILLMENT_UNSETTLED"
+      ]
+    },
+    {
+      "source": "packages/functions/src/runtime-context.ts",
+      "sourceDigest": "54863840d958cb4bc9bdb8806c42ba8cf22060a9cdfbd3d2441fb37530ceb891",
+      "codes": [
+        "R402_AUTH_ACTOR_HEADER_SPOOF",
+        "R402_SDK_OUTSIDE_REQUEST_CONTEXT"
+      ]
+    },
+    {
+      "source": "packages/runtime-kernel/src/errors.ts",
+      "sourceDigest": "2ed756b6d6a30fbb8e8101d0fabd52c7bbf7d63a35b7e56d7f4fea22f42fa790",
+      "codes": [
+        "astro_ssr_unsupported_feature",
+        "dependency_install_failed",
+        "dependency_install_rejected",
+        "dynamic_runtime_busy",
+        "dynamic_runtime_timeout",
+        "dynamic_runtime_unavailable",
+        "local_executor_failed",
+        "missing_required_secret",
+        "request_body_too_large",
+        "response_body_too_large",
+        "unsupported_capability"
+      ]
+    },
+    {
+      "source": "packages/runtime-kernel/src/projects.ts",
+      "sourceDigest": "70160ae1f01d0f68ff61e8463c9c5b54a8128b3ccbb8b9b7992f3cf776667928",
+      "codes": [
+        "project_not_found"
+      ]
+    }
+  ]
+}

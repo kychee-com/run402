@@ -35,7 +35,7 @@ const BUNDLES = [
   // The FRONT DOOR (first-deploy-front-door spec): the first thing an agent
   // reads. One command, one file, two links — and a line budget so it stays
   // that way. Served at run402.com/llms.txt and docs.run402.com/llms.txt.
-  { id: "front-door", section: "start", out: "llms.txt", flatHeader: "# Run402 — your first deploy", lineBudget: 180 },
+  { id: "front-door", section: "start", source: "first-deploy.md", out: "llms.txt", flatHeader: "# Run402 — your first deploy", lineBudget: 180 },
   // The CLI reference is SLICED (agent-docs-slices): the page whose frontmatter
   // says `slice: index` becomes the short `llms-cli.txt` (first-deploy contract
   // + a table of fetchable slices), every other page becomes its own
@@ -156,8 +156,12 @@ function normalize(text) {
 }
 
 /** Load and order the source pages of one bundle. */
+export function sourcePaths(bundle, contentRoot = CONTENT_ROOT) {
+  return bundle.source ? [join(contentRoot, bundle.section, bundle.source)] : listMarkdown(join(contentRoot, bundle.section));
+}
+
 function loadPages(bundle) {
-  const pages = listMarkdown(join(CONTENT_ROOT, bundle.section)).map((path) => {
+  const pages = sourcePaths(bundle).map((path) => {
     const { data, body } = splitFrontmatter(readFileSync(path, "utf-8"));
     return {
       path,

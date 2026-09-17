@@ -14,50 +14,30 @@ export default defineConfig({
     starlight({
       title: "Run402 Docs",
       description:
-        "Documentation for Run402 — Postgres, REST, auth, content-addressed storage, serverless functions, email and atomic deploys an AI agent can provision and pay for on its own.",
+        "Documentation for Run402 — Postgres, REST, auth, content-addressed storage, serverless functions, email and staged releases, operated through a machine-friendly CLI.",
       social: [
         { icon: "external", label: "Run402 homepage", href: "https://run402.com/" },
         { icon: "github", label: "GitHub", href: "https://github.com/kychee-com/run402" },
       ],
       // Agents fetch the flat llms-*.txt; humans navigate here.
       sidebar: [
-        {
-          label: "Start here",
-          items: [
-            { label: "Your first deploy", slug: "start/first-deploy" },
-            { label: "Getting started", slug: "getting-started" },
-          ],
-        },
-        {
-          label: "References (rendered from the agent docs)",
-          items: [
-            {
-              label: "CLI",
-              // One entry per slice of llms-cli.txt (agent-docs-slices): the
-              // index page is the first-deploy contract, the rest are the
-              // fetchable llms-cli-<slice>.txt files.
-              items: [
-                { label: "Index (start here)", slug: "cli/reference" },
-                { label: "Deploying apps", slug: "cli/deploy" },
-                { label: "Core commands", slug: "cli/commands" },
-                { label: "Repos", slug: "cli/repos" },
-                { label: "Orgs, events, rooms", slug: "cli/orgs" },
-                { label: "Functions, secrets, jobs", slug: "cli/functions" },
-                { label: "Assets, sites, email, AI", slug: "cli/assets" },
-                { label: "Auth, billing, operator, doctor", slug: "cli/ops" },
-                { label: "R402_* error codes", slug: "cli/errors" },
-                { label: "REST + user auth for frontends", slug: "cli/frontend" },
-                { label: "Ideas, pricing, Core, Buzz", slug: "cli/platform" },
-              ],
-            },
-            { label: "SDK", slug: "sdk/reference" },
-            { label: "MCP", slug: "mcp/reference" },
-          ],
-        },
-        {
-          label: "Reference",
-          items: [{ label: "Error codes (R402_*)", slug: "reference/error-codes" }],
-        },
+        { label: "Start", items: [
+          { label: "Overview", slug: "getting-started" },
+          { label: "Your first deploy", slug: "start/first-deploy" },
+          { label: "Agent setup", slug: "start/harness" },
+        ] },
+        { label: "Concepts", items: [{ autogenerate: { directory: "concepts" } }] },
+        { label: "Build", items: [{ autogenerate: { directory: "build" } }] },
+        { label: "Operate", items: [{ autogenerate: { directory: "operate" } }] },
+        { label: "Reference", items: [
+          { label: "CLI", items: [{ autogenerate: { directory: "cli" } }] },
+          { label: "SDK", items: [{ autogenerate: { directory: "sdk" } }] },
+          { label: "MCP", items: [{ autogenerate: { directory: "mcp" } }] },
+          { label: "HTTP API", slug: "reference/http" },
+          { label: "Release schemas", slug: "reference/schemas" },
+          { label: "Errors", slug: "errors" },
+        ] },
+        { label: "Examples", items: [{ autogenerate: { directory: "examples" } }] },
       ],
       editLink: {
         baseUrl: "https://github.com/kychee-com/run402/edit/main/docs-site/",

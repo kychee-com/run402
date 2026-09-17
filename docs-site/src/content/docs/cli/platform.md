@@ -6,11 +6,13 @@ slice: platform
 summary: "build ideas, pricing, self-hosted Core, portable archives, Buzz/Nostr"
 ---
 
+Core/self-hosting and provider operations are deliberate advanced paths. Start ordinary Cloud apps with `run402 up`; do not run platform maintenance or provider setup merely to deploy a customer application.
+
 ## Build Ideas
 
 Complete webapp ideas (DB + auth + frontend + URL): shared todo (title/done/assignee), landing page + waitlist, expense splitter, scheduling poll, recipe book, apartment tracker, micro-blog, gift registry, workout log, flash cards.
 
-Build pattern: provision first for `anon_key`; manifest includes `project_id`, idempotent `migrations` with seed data, site files, authorization manifest (`public_read_write_UNRESTRICTED` + acknowledgement for browser-writable public apps; `user_owns_rows` for user-scoped apps), and subdomain. Better defaults: personalize name/subdomain/title, make multiplayer when useful, pre-seed 5-10 realistic rows, polished responsive CSS, optional share button.
+Build pattern: author complete files with runtime config from `/_run402/config.js`, then use `run402 up` with explicit new/existing destination intent. The manifest includes versioned migrations with seed data, site files, and an authorization manifest (`public_read_write_UNRESTRICTED` + acknowledgement for browser-writable public apps; `user_owns_rows` for user-scoped apps), and subdomain. Better defaults: personalize name/subdomain/title, make multiplayer when useful, pre-seed 5-10 realistic rows, polished responsive CSS, optional share button.
 
 ### Finish a deploy: hand your human two links
 

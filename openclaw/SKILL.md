@@ -1,6 +1,6 @@
 ---
 name: run402
-description: Provision Postgres + REST API + auth + content-addressed storage + serverless functions + email — paid with x402 (USDC on Base) or MPP (pathUSD on Tempo, or sats over Bitcoin Lightning). Prototype tier is free on testnet.
+description: Build, deploy and operate full-stack applications with the Run402 CLI. Postgres, auth, storage, functions and hosting with a free prototype tier and an explicit spending allowance. Use for web apps, database-backed sites, APIs and deployment.
 metadata:
   openclaw:
     emoji: "🐘"
@@ -21,20 +21,27 @@ Run402 gives an agent a real Postgres database with REST API and user auth, cont
 
 Run402 is agent-first because agents are first-class participants, not because people disappear. Act through your own Run402 principal and authenticator; do not borrow a human login, shared cloud account, or another agent's credential. Identity records who acted. Memberships, roles, grants, delegates, freshness, and spend policy determine what you may do. A founder agent may legitimately own its org-of-one; an agent entering somebody else's organization uses bounded authority.
 
-Every example below is a CLI command. The CLI prints JSON to stdout, JSON errors to stderr, and exits 0 on success / 1 on failure — designed for shells, scripts, and agent loops.
+**Use the CLI by default.** General operating examples below use CLI commands; application code and manifests keep their native syntax. The typed, opinionated SDK owns shared orchestration, authentication, payments, validation and safe retries; CLI and MCP are thin adapters over it and the underlying HTTP API. Use the SDK for programmatic TypeScript/JavaScript workflows; shell scripts and CI can keep using CLI. The CLI prints JSON to stdout, JSON errors to stderr, and exits 0 on success / 1 on failure — designed for shells, scripts, and agent loops.
 
 ## 30-second start
+
+Install `npm install -g run402@latest`, then create the complete manifest and app files from https://run402.com/llms.txt in the intended application directory. `--name` explicitly requests a new project; `-y` approves required setup within that deployment intent.
 
 ```bash
 run402 up --name my-app -y                 # bootstrap/link/deploy run402.json, run402.deploy.json, or app.json
 run402 up verify                           # rerun app HTTP verification without deploying
 run402 up --verify                         # deploy, then wait for gateway/edge release coherence
-run402 subdomains claim my-app             # → https://my-app.run402.com
 ```
 
 That's a real Postgres database + a deployed static site, paid for autonomously with testnet USDC.
 
-`run402 up` is the CLI path for local repos with a deploy manifest. It classifies app-shaped `run402.json` through the app-install graph and release-shaped `run402.json` through the same ReleaseSpec normalizer as `deploy apply`; malformed app manifests return `APP_SPEC_INVALID` instead of an internal JavaScript exception. It validates the manifest first, then recursively performs only missing prerequisites through the SDK action runner. Project resolution is `--project`, `.run402/project.json`, manifest `project_id`, approved creation from `--name`; global active state never selects a deployment target. `--check` returns nullable target intent, local evidence and explicit deferred gateway checks in `result.preflight`; it never claims gateway validation. `--print-manifest` exports reloadable snake_case JSON relative to the original manifest directory; `--print-spec` is advanced SDK inspection. Unsupported dynamic/secret/build constructs fail with field paths. `--dry-run` prints planned `steps[]` without mutating. If an app manifest defines `verify.http[]`, `up` reports fresh edge sentinel misses as `propagation_pending` while the host binding converges; tune with `--propagation-budget-s`, use `--no-propagation-wait` to return immediately, and run `run402 up verify` to rerun checks without upload, deploy, project creation, or resource mutation. Add `--verify` to a real deploy when you need `edge_coherence` evidence in the final JSON; a valid non-coherent report exits 2.
+`run402 up` is the CLI path for local repos with a deploy manifest. It classifies app-shaped `run402.json` through the app-install graph and release-shaped `run402.json` through the same ReleaseSpec normalizer as `deploy apply`; malformed app manifests return `APP_SPEC_INVALID` instead of an internal JavaScript exception. It validates the manifest first, then recursively performs only missing prerequisites through the SDK action runner. Project resolution is `--project`, `.run402/project.json`, manifest `project_id`, approved creation from `--name`; global active state never selects a deployment target. `--check` returns nullable target intent, local evidence and explicit deferred gateway checks in `result.preflight`; it never claims gateway validation. `--print-manifest` exports reloadable snake_case JSON relative to the original manifest directory; `--print-spec` is advanced SDK inspection. Unsupported dynamic/secret/build constructs fail with field paths. `--plan` obtains a deployment plan; review it before approving deployment. If an app manifest defines `verify.http[]`, `up` reports fresh edge sentinel misses as `propagation_pending` while the host binding converges; tune with `--propagation-budget-s`, use `--no-propagation-wait` to return immediately, and run `run402 up verify` to rerun checks without upload, deploy, project creation, or resource mutation. Add `--verify` to a real deploy when you need `edge_coherence` evidence in the final JSON; a valid non-coherent report exits 2.
+
+## MCP-only hosts and SDK scripting
+
+If your host has no shell, use https://docs.run402.com/llms-mcp.txt for MCP setup and the `app_up` tool. Do not assume tools are installed or that every CLI operation has an MCP equivalent. For typed scripting use https://docs.run402.com/sdk/scripting/ and the native SDK reference. Direct HTTP is supported for intentional protocol-level integrations at https://run402.com/llms-full.txt.
+
+To update this skill, rerun the installation flow at https://run402.com/install.txt for the same host; a new discovery index does not update an already installed copy.
 
 ## Self-hosted Core target
 
@@ -43,7 +50,7 @@ Use the same commands against a self-hosted Run402 Core Gateway by configuring t
 ```bash
 run402 init --api-base=http://my-core:4020
 run402 projects provision --name my-app    # → anon_key, service_key, project_id
-run402 deploy apply --manifest app.json    # uses the active Core project
+run402 deploy apply --manifest app.json --project <project_id>
 ```
 
 For Core, `init --api-base` stores the target in the active profile and does not create a Cloud allowance, request faucet funds, or require a Cloud tier. The CLI, Node SDK, and MCP all read the same configured target by default. Unsupported Cloud-only manifest slices fail as Core capability errors; they are not silently deployed to Run402 Cloud.
@@ -146,7 +153,7 @@ Examples:
 
 ## Deploying
 
-### `deploy-dir` — the modern path
+### Advanced primitive: `deploy-dir`
 
 `deploy-dir` walks a local directory, hashes each file client-side, and only PUTs bytes the gateway doesn't already have. Re-deploying an unchanged tree returns immediately with `bytes_uploaded: 0`.
 
@@ -167,7 +174,7 @@ Skips `.git/`, `node_modules/`, `.DS_Store` automatically. Symlinks throw (no cy
 
 Pass `--quiet` to suppress events; the final result envelope still goes to stdout.
 
-### `deploy` — one-call full stack
+### Advanced primitive: `deploy apply`
 
 For a database + migrations + manifest + secret dependencies + functions + site + subdomain, set secret values first, then deploy a value-free manifest:
 
@@ -402,7 +409,7 @@ The deploy manifest is a v2 `ReleaseSpec`; put the auth manifest under `database
 
 The `database.expose` entry is auth-as-SDLC — your authorization travels with the release. The gateway validates it against the migration SQL and applies it atomically. If the manifest references a table the migration doesn't create, the deploy is rejected with HTTP 400 and a structured `errors` array listing every violation.
 
-Provision first (`run402 projects provision`) so you have the `anon_key` to embed in your HTML before deploying.
+For a new app, load `/_run402/config.js` and read `window.RUN402` at runtime, then deploy the complete files with `run402 up --name <name>`. Manual provisioning and pasted public keys are only needed for deliberate external-host integrations.
 
 ### GitHub Actions OIDC deploys
 
@@ -1364,7 +1371,7 @@ Suggest $10 to your human for two Hobby projects, or $20 for one Team plus renew
 
 ## Tips & Guardrails
 
-- Provision before authoring HTML. The `anon_key` is permanent and must be embedded in your frontend; write the HTML *after* `provision` returns it.
+- Author complete HTML before deploying. Hosted pages load public project configuration from `/_run402/config.js`; never embed a service key. Use `run402 up` for the shared bootstrap/deploy workflow.
 - Use the manifest for access control, never raw `GRANT/REVOKE` (the SQL endpoint blocks those).
 - `user_owns_rows` is the default for user-scoped data. Reach for `public_read_write_UNRESTRICTED` only on intentionally-public tables (and pass `i_understand_this_is_unrestricted: true`).
 - Make migrations idempotent with `CREATE TABLE IF NOT EXISTS` and `DO`-block `ALTER TABLE` (see Database section).

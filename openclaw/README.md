@@ -36,30 +36,20 @@ In practice, **prefer reading [`SKILL.md`](./SKILL.md)** — it teaches the mode
 - **In-function helpers** — `db(req)` (caller-context, RLS) vs `adminDb()` (bypass) inside deployed functions
 - **Diagnostics** — `run402 logs --request-id <req_…>` reads every function in the project for one request (app output first; `--all` for the raw Lambda stream) and `run402 doctor` answers `{ ok, blocking[], warnings[], checks[] }`, where `ok` means the agent can ship and advisory findings never flip it
 
-## Two skill files in this repo
+## Skill distribution
 
-This skill body is one of two parallel skill bodies that ship from the same monorepo:
-
-| File | Audience | Modality |
-|---|---|---|
-| [`openclaw/SKILL.md`](./SKILL.md) | OpenClaw script-runtime agents | CLI verbs (`run402 …`) — installs the `run402` package |
-| [`SKILL.md`](../SKILL.md) (root) | MCP-host agents (Claude Desktop / Cursor / Cline / Claude Code) | MCP tool names — installs `run402-mcp` |
-
-Both teach the same patterns; pick the file matching your runtime.
+The root `SKILL.md` is the generic CLI-first discovery artifact. `openclaw/SKILL.md` carries the same body for OpenClaw installations. MCP setup and native tool examples live in the dedicated MCP reference.
 
 ## Quick start
 
+Use the CLI by default. Create the manifest and referenced app files from [Your first deploy](https://docs.run402.com/start/first-deploy/), then run:
+
 ```bash
-# Set up allowance (once)
-node scripts/init.mjs                              # composes allowance create + faucet + tier check
-
-# Provision a project
-node scripts/projects.mjs provision --name my-app  # → anon_key, service_key, project_id
-
-# Deploy a directory
-node scripts/sites.mjs deploy-dir ./dist           # incremental upload via plan/commit
-node scripts/subdomains.mjs claim my-app           # → https://my-app.run402.com
+npm install -g run402@latest
+run402 up --name my-app -y
 ```
+
+The root and OpenClaw skills teach the same CLI workflow. MCP-only hosts use the [MCP reference](https://docs.run402.com/mcp/reference/); typed scripts use the [SDK guide](https://docs.run402.com/sdk/scripting/).
 
 ## Output contract
 

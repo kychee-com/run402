@@ -5,7 +5,7 @@ This fixture replaces a cron sweep architecture with Run402 durable function run
 Deploy:
 
 ```sh
-run402 deploy apply --manifest run402.deploy.ts --project "$PROJECT_ID"
+run402 up --manifest run402.deploy.ts --project "$PROJECT_ID"
 ```
 
 Create one durable work item:
@@ -28,11 +28,6 @@ run402 functions runs cancel "$PROJECT_ID" fnrun_...
 run402 functions runs redrive "$PROJECT_ID" fnrun_... --wait
 ```
 
-Manual schedule-trigger run:
-
-```sh
-curl -X POST "https://api.run402.com/projects/v1/admin/$PROJECT_ID/functions/worker/triggers/stale_sweep_every_15m/run" \
-  -H "apikey: $SERVICE_KEY"
-```
+Manual schedule-trigger invocation currently has no dedicated CLI command. Use the [native HTTP trigger reference](https://run402.com/llms-full.txt) when deliberately exercising that endpoint; it is distinct from creating an equivalent function run. The gateway/functions owner tracks this CLI capability gap in [documentation gaps](../../docs/quality/gaps.md). Do not invent a `functions triggers run` command.
 
 The important architecture point: Kysigned needs no cron table or polling loop of its own. Run402 stores each durable request, retries retryable attempts, exposes `fnrun_...` logs, and lets the app redrive a terminal item without inventing a queue noun.

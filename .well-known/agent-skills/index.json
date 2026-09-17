@@ -4,9 +4,9 @@
     {
       "name": "run402",
       "type": "skill-md",
-      "description": "Provision Postgres + REST API + auth + content-addressed storage + serverless functions + email — paid with x402 (USDC on Base) or MPP (pathUSD on Tempo, or sats over Bitcoin Lightning). Prototype tier is free on testnet. Use when the user asks to build a webapp, deploy a site, create a database, generate images, or mentions Run402.",
-      "url": "https://run402.com/skills/run402/dcfbd125deff203453325371b2453a9f19a09ca292d2d34589865dc17ee58e1d/SKILL.md",
-      "digest": "sha256:dcfbd125deff203453325371b2453a9f19a09ca292d2d34589865dc17ee58e1d"
+      "description": "Build, deploy and operate full-stack applications with the Run402 CLI. Postgres, auth, storage, functions and hosting with a free prototype tier and an explicit spending allowance. Use for web apps, database-backed sites, APIs and deployment.",
+      "url": "https://run402.com/skills/run402/6e783a2f8f1ce79b2b1adc764287ecfd3df678a5d9562b296e98251ccaea2dd8/SKILL.md",
+      "digest": "sha256:6e783a2f8f1ce79b2b1adc764287ecfd3df678a5d9562b296e98251ccaea2dd8"
     },
     {
       "name": "run402-buzz",

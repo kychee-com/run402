@@ -89,7 +89,7 @@ Astro supports four rendering modes; `auth.*` calls have different semantics in 
 | ---------------- | ---------------------------------------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | SSR (default)    | The default; no flag needed.                 | Personalized pages that read the actor.                          | `auth.user()` returns the actor; `auth.*` helpers taint the response so cache bypasses on Set-Cookie / auth. |
 | Prerendered      | `export const prerender = true;` in the page.  | Pure marketing / docs pages that never see the actor.            | `auth.*` throws `R402_AUTH_PRERENDERED`. The page is built once and served as a static asset.              |
-| Server island    | `<Component server:defer />` inside a page.    | Mostly-static page with a personalized slot (e.g. user dropdown). | `auth.*` is available **inside** the island. The shell is still cacheable.                                  |
+| Server island | Unsupported by this adapter | Build fails with `R402_ASTRO_SERVER_ISLAND_UNSUPPORTED` | Use SSR or client-hydrated components instead. |
 | Client hydrate   | `<SignedIn client:load>…</SignedIn>`.          | Cookie-aware visibility without an SSR pass at all.              | Component fetches `/auth/v1/session` from the browser. No server `auth.*` call.                            |
 
 Pattern picker:
@@ -112,23 +112,12 @@ export const prerender = true;
 <h1>Welcome to the product</h1>
 ```
 
-```astro
----
-// Server-island mix: shell is cacheable, island streams in
-import UserDropdown from "../components/UserDropdown.astro";
----
-<header>
-  <nav>...</nav>
-  <UserDropdown server:defer>
-    <span slot="fallback">Loading…</span>
-  </UserDropdown>
-</header>
-```
+Server islands (`server:defer` and `server:only`) are rejected at build time by the current adapter. Use the SSR or client-hydrated patterns shown here.
 
 ```astro
 ---
 // Client-hydrated visibility-only (no SSR auth read)
-import { SignedIn, SignedOut, SignIn, UserButton } from "@run402/astro";
+import { SignedIn, SignedOut, SignIn, UserButton } from "@run402/astro/components";
 ---
 <SignedIn client:load>
   <UserButton />

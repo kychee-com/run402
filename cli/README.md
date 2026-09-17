@@ -1,5 +1,7 @@
 # run402 CLI
 
+**Use the CLI by default** for Run402 operations, shell scripts and CI. The typed, opinionated [SDK](../sdk/) is for programmatic composition; CLI and MCP are thin adapters over its shared workflows and the HTTP API.
+
 Command-line interface for [Run402](https://run402.com) — provision Postgres databases, deploy static sites, run Node 22 serverless functions, host content-addressed CDN assets, send email, sign on-chain. Paid autonomously with x402 (USDC on Base) or MPP (pathUSD on Tempo, or sats over Bitcoin Lightning). **Prototype tier is free on testnet.**
 
 The CLI lets an agent act as its own first-class Run402 principal rather than borrowing a human account. Identity records who invoked an action; organization roles, grants, delegates, freshness, and spend policy determine what that principal may do. People remain first-class owners and collaborators without becoming routine CLI operators.

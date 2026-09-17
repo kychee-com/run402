@@ -23,11 +23,15 @@ The Node entry sends bounded client-version metadata on gateway requests using t
 import { run402 } from "@run402/sdk/node";
 
 const r = run402();
-const project = await r.projects.provision({ tier: "prototype" });
-await (await r.project(project.project_id)).assets.put("hello.txt", { content: "hi" });
+// Prepare run402.json and all referenced files from the first-deploy guide.
+const result = await r.up(
+  { name: "my-app", manifest: "run402.json" },
+  { approval: "yes" },
+);
+console.log(result); // Inspect deployment and verification evidence separately.
 ```
 
-That's it — credentials are read, x402 (or Lightning) payments are signed, results are typed.
+The shared workflow resolves credentials and prerequisites, then deploys the manifest. See the [complete first-deploy files](https://docs.run402.com/start/first-deploy/) before running this example. Use the CLI for ordinary operations; use the SDK for typed TypeScript/JavaScript composition.
 
 ## Public Buzz/Nostr identity links
 

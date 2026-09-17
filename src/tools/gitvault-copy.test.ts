@@ -23,10 +23,15 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const read = (rel: string): string => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8");
+
+const readSection = (section: string): string => {
+  const dir = new URL('../../docs-site/src/content/docs/' + section + '/', import.meta.url);
+  return readdirSync(dir).filter(f => f.endsWith('.md')).sort().map(f => readFileSync(new URL(f, dir), 'utf8')).join('\n');
+};
 
 const INDEX_SRC = read("../index.ts");
 const GITVAULT_SRC = read("./gitvault.ts");
@@ -46,10 +51,11 @@ const DOC_SURFACES = {
   "cli/llms-cli.txt": read("../../cli/llms-cli-full.txt"),
   "sdk/llms-sdk.txt": read("../../sdk/llms-sdk.txt"),
   "docs-site cli/reference.md": read("../../docs-site/src/content/docs/cli/repos.md"),
-  "docs-site sdk/reference.md": read("../../docs-site/src/content/docs/sdk/reference.md"),
+  "docs-site sdk/reference.md": readSection("sdk"),
   "cli/lib/gitvault.mjs": read("../../cli/lib/gitvault.mjs"),
   "openclaw/SKILL.md": read("../../openclaw/SKILL.md"),
   "documentation.md": read("../../documentation.md"),
+  "maintenance-map.md": read("../../docs/quality/maintenance-map.md"),
   // repo-first-onramp (task 2.8 doc sweep): the vault-only track's new
   // surfaces. `cli/lib/repos.mjs` prints the SDK's own terminal-loss text
   // verbatim at runtime rather than hardcoding it, but its HELP string is
@@ -71,7 +77,7 @@ const DOC_SURFACES = {
   // banned-phrase / machine-loss-qualifier discipline applies the moment
   // either mentions gitvault, and `read_room_messages`' `wait` parameter
   // (documented here and in its generated flat file) rides alongside.
-  "docs-site mcp/reference.md": read("../../docs-site/src/content/docs/mcp/reference.md"),
+  "docs-site mcp/reference.md": readSection("mcp"),
   "llms-mcp.txt": read("../../llms-mcp.txt"),
 } as const;
 

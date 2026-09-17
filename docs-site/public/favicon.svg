@@ -1,0 +1,20 @@
+<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="glass" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#a5ffe0"/>
+      <stop offset="0.42" stop-color="#00FF9F"/>
+      <stop offset="1" stop-color="#00c97e"/>
+    </linearGradient>
+  </defs>
+  <rect x="6" y="6" width="500" height="500" rx="104" fill="#050807" stroke="#00FF9F" stroke-width="10"/>
+  <text x="140" y="330" text-anchor="middle" font-family="'Cascadia Code',Consolas,monospace" font-weight="700" font-size="200" fill="#00FF9F">&gt;</text>
+  <g>
+    <rect x="240" y="140" width="200" height="60" rx="16" fill="#efe9dc"/>
+    <rect x="240" y="226" width="200" height="60" rx="16" fill="#efe9dc"/>
+  </g>
+  <g>
+    <rect x="240" y="312" width="200" height="60" rx="16" fill="url(#glass)" opacity="0.95"/>
+    <rect x="250" y="319" width="180" height="14" rx="7" fill="#ffffff" opacity="0.5"/>
+    <rect x="241.5" y="313.5" width="197" height="57" rx="14.5" fill="none" stroke="#c8ffe9" stroke-width="3" opacity="0.75"/>
+  </g>
+</svg>

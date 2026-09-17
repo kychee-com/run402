@@ -3,7 +3,7 @@
 > CLI: `npm install -g run402@latest`
 > SDK: `npm install @run402/sdk` (typed TS client; same namespaces; Node/Deno/Bun/V8 isolates)
 > Docs URL: https://docs.run402.com/llms-cli.txt
-> API Docs: https://run402.com/llms.txt
+> HTTP API reference: https://run402.com/llms-full.txt
 > Operator: Kychee, Inc.
 > Terms: https://run402.com/humans/terms.html
 > Contact: `run402 feedback send "your message"` (requires active tier)
@@ -15,10 +15,9 @@ Run402 = Postgres + REST + Auth + Storage + static & Astro-SSR site hosting + sa
 Run402 is agent-first because agents are first-class participants, not because people disappear. Use your own principal and authenticator rather than a borrowed human account. Identity records who invoked the command; organization roles, grants, delegates, freshness, and spend policy determine what that principal may do. A founder agent may remain owner of its org-of-one.
 
 Agent-critical facts:
-- Atomic full-stack apply: `run402 deploy apply --manifest app.json` ships DB migrations, site files, function code, secrets, assets, subdomains, i18n, and routes as one transaction; partial failures roll back.
+- Shared full-stack workflow: `run402 up` coordinates planning, staging, migrations, activation and verification. Failures can leave resumable or partial work; promoting an earlier release does not undo migrations. Inspect returned operation state and next actions. `deploy apply` is the advanced apply primitive.
 - No platform token: local allowance (`~/.config/run402/allowance.json`) signs requests. Per-project `anon_key` / `service_key` are runtime data-plane keys (PostgREST/Storage/Functions), permanent, and embeddable/server-side respectively.
-- Agent-paid usage: x402 USDC on Base, MPP pathUSD on Tempo, or sats over Bitcoin Lightning (MPP) from the agent's platform-minted wallet, signed by allowance. Humans may - `run402 allowance <create|status|fund|balance|export>` — `status` reports `wallet.rail` and, on a Lightning profile, a `lightning` block (wallet id, status, custody `run402_hub`, address, budget, starter, `balance_sats`, `budget_remaining_sats`; never the pairing).
- via Stripe credits; CLI behavior is unchanged.
+- Agent-paid usage: x402 USDC on Base, MPP pathUSD on Tempo, or sats over Bitcoin Lightning (MPP) from the agent's platform-minted wallet, signed by allowance. Humans may fund through Stripe credits; CLI behavior is unchanged. `run402 allowance <create|status|fund|balance|export>` — `status` reports `wallet.rail` and, on a Lightning profile, a `lightning` block (wallet id, status, custody `run402_hub`, address, budget, starter, `balance_sats`, `budget_remaining_sats`; never the pairing).
 
 Install + deploy — the only first-deploy path (the front door at <https://run402.com/llms.txt> is the same three lines with a full manifest):
 
@@ -261,6 +260,8 @@ run402 tier status
 With active tier: unlimited projects/sites/forks/functions/secrets/storage subject to org-pooled `api_calls`/`storage_bytes`; only image generation is per-call ($0.03/image).
 
 ---
+
+Use `run402 up` for normal deployments. The commands below expose advanced planning, apply, inspection and recovery primitives. They share the same release model; none promises to reverse committed database migrations.
 
 ## Deploying Apps
 
@@ -1015,7 +1016,7 @@ All admin subcommands require a platform-admin allowance wallet (or an admin OAu
 - `run402 branches delete [project-id] <branch-project-id> [--json]` — delete a branch project and purge its resources.
 
 ### deploy
-- `run402 deploy apply --manifest app.json [--project <id>] [--check|--print-spec|--print-manifest|--plan|--require-plan <id>] [--no-rehearse] [--json] [--quiet|--final-only] [--allow-warning <code> ...] [--allow-warnings] [--allow-dirty] [-v|--verbose]` — unified apply primitive with `assets` slice support; accepts JSON data manifests and explicit executable typed configs through the same `--manifest` flag. rehearsal against a contained branch is automatic when there is a live release to protect (`--no-rehearse` skips it); `--json` is accepted as a no-op because success output is always JSON. Against a `gitvault_policy: required` project, the deploy-lane capture applies the SAME dirty-tree rule `repos snapshot` does: a dirty work tree refuses `SNAPSHOT_DIRTY_TREE` before any capture, and `--allow-dirty` captures it as-is with the same `modified_captured`/`untracked_captured` disclosure (see the `repos` section above and [Observability](#observability)). The final result always carries a `stats` block; `-v`/`--verbose` also prints a one-line stderr summary.
+- `run402 deploy apply --manifest app.json [--project <id>] [--check|--print-spec|--print-manifest|--plan|--require-plan <id>] [--no-rehearse] [--json] [--quiet|--final-only] [--allow-warning <code> ...] [--allow-warnings] [--allow-dirty] [-v|--verbose]` — unified apply primitive with `assets` slice support; accepts JSON data manifests and explicit executable typed configs through the same `--manifest` flag. rehearsal against a contained branch is automatic when there is a live release to protect (`--no-rehearse` skips it); `--json` is accepted as a no-op because success output is always JSON. Against a `gitvault_policy: required` project, the deploy-lane capture applies the SAME dirty-tree rule `repos snapshot` does: a dirty work tree refuses `SNAPSHOT_DIRTY_TREE` before any capture, and `--allow-dirty` captures it as-is with the same `modified_captured`/`untracked_captured` disclosure (see the `repos` section above and [Observability](https://docs.run402.com/cli/reference/#observability)). The final result always carries a `stats` block; `-v`/`--verbose` also prints a one-line stderr summary.
 - `run402 deploy resume <operation_id> [--project <id>] [--quiet]` — re-run a stuck operation forward
 - `run402 deploy promote <release-id> [--project <id>] [--allow-warning <code>] [--allow-warnings]` — operator pointer-swap (re-point live release without re-running the apply pipeline)
 - `run402 deploy list [--project <id>] [--limit <n>]` — list recent deploy operations
@@ -1102,7 +1103,7 @@ Maintenance: repos fsck, repos gc, repos access, repos policy
 | `invite [--room <key>] [--note-file <path>] [--role <role>] [--ttl <seconds>] [--include-sensitive <glob>]... [--list] [--revoke <invite_id>]` | The second claim kind (kygit-invite): capture the checkpoint exactly like `handoff` — the inviter's own worktree, index, branch, refs, and access are all untouched — register the INVITER's own presence in a coordination room (the project's default room, or `--room <key>` for a named org room), mint a single-use bearer key, `kgi1_<69 chars>`, printed to stdout **alone**, and post ONE room message naming the checkpoint and the invite id — never the key. A Handoff passes the work on and the sender stops; an Invite grows the team while the sender keeps working. Mints at `developer` by default (`--role` overrides, never wider than the minter's own); the key is real authority until claimed or its TTL expires (default 3600s, same 60–86400 range as `handoff`) — the mint result's `warnings[]` says so verbatim. A presence-registration or room-message failure is reported (`inviter_presence`/`room_fact` in the result) and NEVER voids the mint — the key is still printed and the invite remains claimable. The Invite Note (`kygit.invite-note.v1` — same shape as the Handoff Note) comes from `--note-file <path>` or piped stdin, scanned for bare secrets before the commit is written (no override flag). `--list`/`--revoke <invite_id>` read/revoke instead of minting. No MCP tool — mints a bearer secret. |
 | `join <kgi1_…> \| --key-stdin [--to <dir>] [--no-init]` | Claim an Invite Key on ANY machine: folds the SAME cold-start chain `resume` does (allowance → faucet → one x402 prototype payment, announced; `--no-init` opts out; a chain failure is reported and never blocks the claim), clones a fresh checkout, and reapplies the checkpoint with `git stash apply --index` exactly like `resume`. Additionally pins the invite's OWN room locally (`r402.room` — a named room, or the project id when the mint omitted one), adds `.run402/` to `.git/info/exclude` (never `.gitignore`, which is part of the captured tree), registers THIS session's own presence, and posts ONE arrival message. Prints the Invite Note as Markdown by default (`--json` for the raw envelope), then the restore location, the inviter's name/labels/liveness, who else is live in the room, and the last few messages — so your first message needs no lookup. `next_actions` name `run402 messages wait` (block until the other side speaks) and an addressed `run402 messages send "…" --to <name>`. No MCP tool — mutates org membership and writes a working tree. |
 
-Every verb above also accepts `-v`/`--verbose` (one stderr summary line of this call's request stats — round trips, wire time, bytes — coexists with `--human`) and always carries a `stats` block in its JSON result. See [Observability](#observability) below.
+Every verb above also accepts `-v`/`--verbose` (one stderr summary line of this call's request stats — round trips, wire time, bytes — coexists with `--human`) and always carries a `stats` block in its JSON result. See [Observability](https://docs.run402.com/cli/reference/#observability) below.
 
 **After rewriting history (rebase/amend), push with `git push --force` — NOT `--force-with-lease`.** The lease cannot cross git's remote-helper boundary (the helper receives a non-force update and refuses it as non-fast-forward), while plain `--force` through this remote already carries force-with-lease safety: every forced update is compare-and-swapped against the freshly read remote state server-side, so a concurrent push is never silently overwritten. The non-fast-forward refusal itself names this in its `next_actions`.
 
@@ -1816,6 +1817,8 @@ await email.send({ to: "user@example.com", subject: "Welcome!", html: "<h1>Hi</h
 ```
 Throws on rate limit, suppression, missing/invalid default, no mailbox.
 
+This slice serves customer operators working within their own projects and organizations. Human operator login, project administration and platform administration are distinct authorities. Platform-admin commands require separate platform credentials; they are not a repair shortcut for a customer permission denial.
+
 ### auth
 Manage project user authentication: passwordless email links/codes, trusted invites, passwords, passkeys, and auth settings.
 
@@ -2334,11 +2337,13 @@ A page on a run402 host can learn that its data changed without polling. Mark th
 
 Hints say *what* changed (table, operation, primary keys), never the row: refetch through `/rest/v1` under your own key, so RLS and the manifest keep deciding what anyone may see. `/_run402/config.json` carries `live: { path: "/_run402/live", tables: [...] }` (or `null`) so a page can build its subscription from the host alone. On a tenant host the identity is the hosted-auth session cookie (sent by `EventSource` same-origin): a signed-in user receives its own `user_owns_rows` hints; an anonymous page receives public-policy hints only, and a `user_owns_rows` subscription without a session is `401 AUTH_REQUIRED`. The server closes every stream after 300 s with a `reconnect` event and `EventSource` resumes from `Last-Event-ID`; when the gateway cannot promise it saw everything since your cursor it sends `resync` naming your tables instead of inventing a gap. Inside a third-party iframe the cookie is not sent, so a framed page gets the anonymous audience. For callers that cannot hold a stream, `GET /_run402/live/changes?tables=cells&cursor=<c>&wait=25` is the held read. Caps: 200 concurrent live connections per project (50 on prototype); over the cap is `429 LIVE_CONNECTION_LIMIT` with `Retry-After`.
 
+Core/self-hosting and provider operations are deliberate advanced paths. Start ordinary Cloud apps with `run402 up`; do not run platform maintenance or provider setup merely to deploy a customer application.
+
 ## Build Ideas
 
 Complete webapp ideas (DB + auth + frontend + URL): shared todo (title/done/assignee), landing page + waitlist, expense splitter, scheduling poll, recipe book, apartment tracker, micro-blog, gift registry, workout log, flash cards.
 
-Build pattern: provision first for `anon_key`; manifest includes `project_id`, idempotent `migrations` with seed data, site files, authorization manifest (`public_read_write_UNRESTRICTED` + acknowledgement for browser-writable public apps; `user_owns_rows` for user-scoped apps), and subdomain. Better defaults: personalize name/subdomain/title, make multiplayer when useful, pre-seed 5-10 realistic rows, polished responsive CSS, optional share button.
+Build pattern: author complete files with runtime config from `/_run402/config.js`, then use `run402 up` with explicit new/existing destination intent. The manifest includes versioned migrations with seed data, site files, and an authorization manifest (`public_read_write_UNRESTRICTED` + acknowledgement for browser-writable public apps; `user_owns_rows` for user-scoped apps), and subdomain. Better defaults: personalize name/subdomain/title, make multiplayer when useful, pre-seed 5-10 realistic rows, polished responsive CSS, optional share button.
 
 ### Finish a deploy: hand your human two links
 

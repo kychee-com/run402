@@ -1,10 +1,10 @@
 ---
 title: Your first deploy
-description: One file and one command take a coding agent from nothing to a live full-stack app on Run402.
+description: Complete application files and one CLI command for your first Run402 deployment.
 order: 0
 ---
 
-Run402 is a full-stack platform a coding agent provisions, deploys, and pays for on its own: Postgres, REST, auth, storage, functions, and static hosting behind one CLI. A first deploy is **one file and one command**. Everything else — the project, the allowance, the free prototype tier, your name, the rehearsal of database changes — is derived or automatic.
+Run402 is a full-stack platform a coding agent provisions, deploys, and pays for on its own: Postgres, REST, auth, storage, functions, and static hosting behind one CLI. **Use the CLI by default.** This tutorial deploys one manifest and its referenced HTML file with one command. Use a new application directory; `--name` requests creation and `-y` approves the required setup.
 
 ## 1. Install
 
@@ -36,7 +36,9 @@ The manifest is the whole app: a migration, which tables the browser may reach, 
 }
 ```
 
-`index.html` reads its own keys from the host it is served on — never paste a key into HTML:
+This disposable demo intentionally allows anyone to read and write `items`. Use authenticated policies before storing private data.
+
+Create `index.html` alongside the manifest. It reads its own keys from the host it is served on — never paste a key into HTML:
 
 ```html
 <!doctype html>
@@ -47,7 +49,12 @@ The manifest is the whole app: a migration, which tables the browser may reach, 
   const headers = { apikey: anon_key, "Content-Type": "application/json" };
   await fetch(`${api_base}/rest/v1/items`, { method: "POST", headers, body: JSON.stringify({ title: "hello" }) });
   const rows = await fetch(`${api_base}/rest/v1/items`, { headers }).then((r) => r.json());
-  document.querySelector("#items").innerHTML = rows.map((r) => `<li>${r.title}</li>`).join("");
+  const list = document.querySelector("#items");
+  for (const row of rows) {
+    const item = document.createElement("li");
+    item.textContent = row.title;
+    list.append(item);
+  }
 </script>
 ```
 
@@ -61,26 +68,29 @@ A copy-and-deploy version of exactly this pattern (manifest, seeded `notes` tabl
 run402 up --name my-app -y
 ```
 
-`up` creates a local allowance and funds it from the testnet faucet (the prototype tier is free), creates the project, names an unnamed agent principal from the detected client when available; human and unknown principals keep their names even with `RUN402_AGENT_NAME` set. The result separates authenticated `identity.principal` from `identity.client`. Promotion credit comes from the principal, and an intentional rename uses `run402 org whoami --set-name <name>`. It applies the manifest as one atomic release. Later deploys that change the database against a live project are rehearsed on a throwaway branch first and ship only if they pass; a first deploy has nothing to protect and just ships.
+`up` validates the files and explicit destination, then performs missing setup and deploys. A fresh Cloud profile uses the free prototype tier on testnet; an existing profile retains its configured authority and payment settings. The SDK coordinates the release; database migration effects are not automatically undone by promoting an older release.
 
-The result is JSON. Hand your human the two links it carries:
+The result is JSON. The following is a shortened example, not the complete response. Hand your human the two links it carries:
 
 ```json
 {
   "result": {
     "project_id": "prj_…",
-    "identity": { "display_name": "claude-code", "source": "detected" },
+    "identity": {
+      "principal": { "id": "principal_example", "type": "agent", "display_name": "claude-code" },
+      "client": { "detected": "claude-code", "declared_name": null },
+      "display_name": "claude-code", "source": "detected"
+    },
     "deploy": {
       "status": "ready",
       "urls": { "site": "https://my-app.run402.com", "console": "https://console.run402.com/orgs/…/projects/prj_…" },
-      "rehearsal": { "status": "skipped", "reason": "no_live_release" },
       "next_actions": [{ "type": "hand_to_operator", "credited_as": "claude-code", "why": "Show your human the site and the console link…" }]
     }
   }
 }
 ```
 
-That is the whole first run. Run `run402 up -y` again after every change.
+A ready release is not proof that every application behavior works. Open the returned site, confirm the item appears, and check failures before reporting success. Use the [deployment and verification reference](https://docs.run402.com/llms-cli-deploy.txt) for automated checks. For later authorized changes, run `run402 up` in the linked app directory.
 
 ## If you were given a promo code
 
@@ -91,7 +101,7 @@ run402 redeem <code>
 ## Where to go next
 
 - CLI reference: <https://docs.run402.com/llms-cli.txt>
-- SDK reference: <https://docs.run402.com/llms-sdk.txt>
+- SDK for typed scripting: <https://docs.run402.com/llms-sdk.txt>
 - MCP reference: <https://docs.run402.com/llms-mcp.txt>
 - Skill: <https://docs.run402.com/SKILL.md>
 - HTTP API: <https://run402.com/llms-full.txt>

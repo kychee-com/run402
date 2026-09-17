@@ -6,6 +6,8 @@ slice: deploy
 summary: "ReleaseSpec manifest: site, functions, routes, public paths, migrations, secrets, warnings, CI deploys"
 ---
 
+Use `run402 up` for normal deployments. The commands below expose advanced planning, apply, inspection and recovery primitives. They share the same release model; none promises to reverse committed database migrations.
+
 ## Deploying Apps
 
 ### Unified Apply
