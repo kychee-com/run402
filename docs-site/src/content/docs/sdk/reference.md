@@ -1819,13 +1819,17 @@ Change hints for live tables (`tables[].live: true` in the expose manifest): the
 ```ts
 const p = await r.project("prj_…");
 // Held read: hints since a cursor, or hold up to 25 s for the first one.
+let cursor: string | undefined;
 const page = await p.live.changes({ tables: ["cells"], cursor, wait: 25 });
-// { changes: [{ table, op, pk: [{...}] | null, n, cursor }], cursor, resync }
+cursor = page.cursor;
+// page: { changes: [{ table, op, pk: [{...}] | null, n, cursor }], cursor, resync }
 
 // Reconnecting SSE subscription (Node and browsers; carries the apikey header).
+const refetch = async (change: { table: string; pk: Array<Record<string, unknown>> | null }) => { /* read the keys back through the REST API */ };
+const refetchAll = async (tables: string[]) => { /* the one rule: handle resync by refetching */ };
 const sub = p.live.subscribe({ tables: ["cells"] }, (e) => {
-  if (e.type === "change") refetch(e.change);        // { table, op, pk, n, cursor }
-  if (e.type === "resync") refetchAll(e.tables);     // the one rule: handle resync
+  if (e.type === "change") void refetch(e.change);   // { table, op, pk, n, cursor }
+  if (e.type === "resync") void refetchAll(e.tables);
 });
 // later
 sub.close(); await sub.done;
