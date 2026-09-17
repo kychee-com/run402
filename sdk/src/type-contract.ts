@@ -28,6 +28,7 @@ import type {
   StaticManifestMetadata,
   StaticRouteTarget,
   SitePublicPathsSpec,
+  SiteEmbeddingSpec,
 } from "./namespaces/deploy.types.js";
 import type { SecretSummary } from "./namespaces/secrets.js";
 
@@ -114,6 +115,13 @@ type _SitePublicPathOnly = Extract<
   { public_paths: SitePublicPathsSpec }
 >;
 type _StaticPublicPathInventory = ActiveReleaseInventory["static_public_paths"];
+type _InventoryEmbedding = Assert<Equal<ActiveReleaseInventory["embedding"], SiteEmbeddingSpec | null | undefined>>;
+type _SiteEmbeddingOnly = Extract<NonNullable<ReleaseSpec["site"]>, { embedding: SiteEmbeddingSpec | null }>;
+const _SiteEmbeddingOnlySpec: _SiteEmbeddingOnly = { embedding: { frame_ancestors: ["localhost"] } };
+const _SiteEmbeddingCleared: _SiteEmbeddingOnly = { embedding: null };
+void _SiteEmbeddingOnlySpec;
+void _SiteEmbeddingCleared;
+void (null as unknown as _InventoryEmbedding);
 type _StaticReachabilityAuthority = StaticPublicPathInventoryEntry["reachability_authority"] & StaticReachabilityAuthority;
 
 const _ExplicitPublicPathTable: _ExplicitPublicPaths = {

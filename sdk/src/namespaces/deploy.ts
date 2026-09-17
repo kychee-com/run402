@@ -1367,14 +1367,20 @@ function siteToCoreSpec(site: NormalizedSiteSpec): Record<string, unknown> {
       ...(site.public_paths ? { public_paths: site.public_paths } : {}),
     };
   }
-  return { public_paths: site.public_paths };
+  // tenant-site-embedding never reaches core: the catalog is gateway-owned and
+  // core validates site keys against its own list.
+  return site.public_paths ? { public_paths: site.public_paths } : {};
 }
 
 function siteToWire(site: NormalizedSiteSpec): Record<string, unknown> {
+  // tenant-site-embedding: `null` is a meaningful value on the wire (clear), so
+  // it is carried whenever the key is present, unlike public_paths.
+  const embedding = "embedding" in site && site.embedding !== undefined ? { embedding: site.embedding } : {};
   if ("replace" in site && site.replace) {
     return {
       replace: fileSetToWire(site.replace),
       ...(site.public_paths ? { public_paths: site.public_paths } : {}),
+      ...embedding,
     };
   }
   if ("patch" in site && site.patch) {
@@ -1384,9 +1390,13 @@ function siteToWire(site: NormalizedSiteSpec): Record<string, unknown> {
         ...(site.patch.delete ? { delete: site.patch.delete } : {}),
       },
       ...(site.public_paths ? { public_paths: site.public_paths } : {}),
+      ...embedding,
     };
   }
-  return { public_paths: site.public_paths };
+  return {
+    ...(site.public_paths ? { public_paths: site.public_paths } : {}),
+    ...embedding,
+  };
 }
 
 function i18nToWire(i18n: NonNullable<NormalizedReleaseSpec["i18n"]>): Record<string, unknown> {
@@ -2921,7 +2931,7 @@ const FUNCTION_SPEC_FIELDS = new Set([
 const FUNCTION_CONFIG_FIELDS = new Set(["timeoutSeconds", "memoryMb"]);
 const FUNCTION_TRIGGER_FIELDS = new Set(["id", "type", "cron", "timezone", "misfire_policy", "overlap_policy", "mailbox", "events", "run"]);
 const FUNCTION_TRIGGER_RUN_FIELDS = new Set(["event_type", "payload", "retry", "expires_after_seconds"]);
-const SITE_SPEC_FIELDS = new Set(["replace", "patch", "public_paths"]);
+const SITE_SPEC_FIELDS = new Set(["replace", "patch", "public_paths", "embedding"]);
 const SITE_PATCH_FIELDS = new Set(["put", "delete"]);
 const SITE_PUBLIC_PATHS_FIELDS = new Set(["mode", "replace"]);
 const PUBLIC_STATIC_PATH_FIELDS = new Set(["asset", "cache_class"]);
@@ -3298,6 +3308,22 @@ function validateSiteSpec(site: unknown): void {
   if (obj.public_paths !== undefined) {
     validateSitePublicPathsSpec(obj.public_paths, "site.public_paths");
   }
+  if (obj.embedding !== undefined) {
+    validateSiteEmbeddingSpec(obj.embedding, "site.embedding");
+  }
+}
+
+/** tenant-site-embedding. Structural check only: the catalog is the gateway's
+ *  (it names the valid keys in INVALID_SPEC), so a new key never needs an SDK
+ *  release. `null` clears; omitted carries forward. */
+function validateSiteEmbeddingSpec(value: unknown, resource: string): void {
+  if (value === null) return;
+  const obj = requireObject(value, resource);
+  validateKnownFields(obj, resource, new Set(["frame_ancestors"]));
+  if (!Array.isArray(obj.frame_ancestors) || obj.frame_ancestors.length === 0) {
+    throw invalidSpec(`ReleaseSpec.${resource}.frame_ancestors must be a non-empty array of embedding catalog keys (e.g. ["localhost"]); omit ${resource} to carry the previous declaration forward or send null to deny`, `${resource}.frame_ancestors`);
+  }
+  validateStringArray(obj.frame_ancestors, `${resource}.frame_ancestors`);
 }
 
 function validateSitePublicPathsSpec(value: unknown, resource: string): void {
@@ -3799,6 +3825,11 @@ function hasDatabaseContent(database: unknown): boolean {
 }
 
 function hasSiteContent(site: unknown): boolean {
+  // tenant-site-embedding: a declaration (or an explicit null that clears one)
+  // is deploy content on its own, like a public_paths-only site.
+  if (site && typeof site === "object" && "embedding" in site && (site as { embedding?: unknown }).embedding !== undefined) {
+    return true;
+  }
   if (!isRecord(site)) return false;
   if (hasRecordEntries(site.replace)) return true;
   if (isRecord(site.patch)) {
@@ -4328,6 +4359,10 @@ async function normalizeReleaseSpec(
   if (spec.site) {
     const publicPaths =
       "public_paths" in spec.site ? spec.site.public_paths : undefined;
+    // tenant-site-embedding: present (object or null) travels as-is.
+    const embedding = "embedding" in spec.site && spec.site.embedding !== undefined
+      ? { embedding: spec.site.embedding }
+      : {};
     if ("replace" in spec.site && spec.site.replace) {
       const map = await normalizeFileSet(spec.site.replace, rememberRelease);
       // Re-check post-expansion so `dir("dist")` (a LocalDirRef whose keys are
@@ -4336,6 +4371,7 @@ async function normalizeReleaseSpec(
       normalized.site = {
         replace: map,
         ...(publicPaths ? { public_paths: publicPaths } : {}),
+        ...embedding,
       } as NormalizedSiteSpec;
     } else if ("patch" in spec.site && spec.site.patch) {
       const patch: { put?: Record<string, ContentRef>; delete?: string[] } = {};
@@ -4347,9 +4383,13 @@ async function normalizeReleaseSpec(
       normalized.site = {
         patch,
         ...(publicPaths ? { public_paths: publicPaths } : {}),
+        ...embedding,
       } as NormalizedSiteSpec;
-    } else if (publicPaths) {
-      normalized.site = { public_paths: publicPaths } as NormalizedSiteSpec;
+    } else if (publicPaths || "embedding" in embedding) {
+      normalized.site = {
+        ...(publicPaths ? { public_paths: publicPaths } : {}),
+        ...embedding,
+      } as NormalizedSiteSpec;
     }
   }
 

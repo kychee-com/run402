@@ -14,6 +14,7 @@ import type {
   ReleaseSpec,
   RouteHttpMethod,
   SitePublicPathsSpec,
+  SiteEmbeddingSpec,
   WarningEntry,
 } from "../../sdk/dist/index.js";
 
@@ -59,6 +60,16 @@ const publicStaticPathSpec = z
       .describe("Optional static cache class, for example html, immutable_versioned, or revalidating_asset."),
   })
   .strict();
+const siteEmbedding = z
+  .object({
+    frame_ancestors: z
+      .array(z.string())
+      .min(1)
+      .describe("Platform embedding catalog KEYS (never raw origins). `localhost` expands to http://localhost:* and http://127.0.0.1:*; the gateway rejects unknown keys with INVALID_SPEC naming the valid ones."),
+  })
+  .strict()
+  .nullable()
+  .describe("tenant-site-embedding: who may put the site in an iframe. The gateway then sends `Content-Security-Policy: frame-ancestors <expanded origins>` and drops X-Frame-Options on every response of the host. Omit to carry the previous release's declaration forward; null returns to the default deny.");
 const sitePublicPaths = z.union([
   z
     .object({
@@ -248,6 +259,7 @@ export const deploySchema = {
         .object({
           replace: fileMap,
           public_paths: sitePublicPaths.optional(),
+          embedding: siteEmbedding.optional(),
         })
         .strict(),
       z
@@ -259,9 +271,11 @@ export const deploySchema = {
             })
             .strict(),
           public_paths: sitePublicPaths.optional(),
+          embedding: siteEmbedding.optional(),
         })
         .strict(),
-      z.object({ public_paths: sitePublicPaths }).strict(),
+      z.object({ public_paths: sitePublicPaths, embedding: siteEmbedding.optional() }).strict(),
+      z.object({ embedding: siteEmbedding }).strict(),
     ])
     .optional(),
   assets: z
@@ -404,9 +418,10 @@ type DeployArgs = {
     };
   };
   site?:
-    | { replace: FileMapInput; public_paths?: SitePublicPathsSpec }
-    | { patch: { put?: FileMapInput; delete?: string[] }; public_paths?: SitePublicPathsSpec }
-    | { public_paths: SitePublicPathsSpec };
+    | { replace: FileMapInput; public_paths?: SitePublicPathsSpec; embedding?: SiteEmbeddingSpec | null }
+    | { patch: { put?: FileMapInput; delete?: string[] }; public_paths?: SitePublicPathsSpec; embedding?: SiteEmbeddingSpec | null }
+    | { public_paths: SitePublicPathsSpec; embedding?: SiteEmbeddingSpec | null }
+    | { embedding: SiteEmbeddingSpec | null };
   assets?: {
     put?: Array<{
       key: string;

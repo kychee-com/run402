@@ -30,6 +30,7 @@ import type {
   ReleaseRoutesSpec,
   ReleaseSpec,
   SitePublicPathsSpec,
+  SiteEmbeddingSpec,
 } from "../namespaces/deploy.types.js";
 
 function isLocalDirRef(value: unknown): value is LocalDirRef {
@@ -331,7 +332,7 @@ const MANIFEST_REQUIRE_ROLE_FIELDS = new Set([
   "signInPath",
   "sign_in_path",
 ]);
-const MANIFEST_SITE_FIELDS = new Set(["replace", "patch", "public_paths"]);
+const MANIFEST_SITE_FIELDS = new Set(["replace", "patch", "public_paths", "embedding"]);
 const MANIFEST_SITE_PATCH_FIELDS = new Set(["put", "delete"]);
 const MANIFEST_SITE_PUBLIC_PATHS_FIELDS = new Set(["mode", "replace"]);
 const MANIFEST_PUBLIC_STATIC_PATH_FIELDS = new Set(["asset", "cache_class"]);
@@ -439,9 +440,10 @@ export interface DeployManifestFunctionsSpec {
 }
 
 export type DeployManifestSiteSpec =
-  | { replace: DeployManifestFileSet | LocalDirRef; patch?: never; public_paths?: SitePublicPathsSpec }
-  | { patch: { put?: DeployManifestFileSet | LocalDirRef; delete?: string[] }; replace?: never; public_paths?: SitePublicPathsSpec }
-  | { public_paths: SitePublicPathsSpec; replace?: never; patch?: never };
+  | { replace: DeployManifestFileSet | LocalDirRef; patch?: never; public_paths?: SitePublicPathsSpec; embedding?: SiteEmbeddingSpec | null }
+  | { patch: { put?: DeployManifestFileSet | LocalDirRef; delete?: string[] }; replace?: never; public_paths?: SitePublicPathsSpec; embedding?: SiteEmbeddingSpec | null }
+  | { public_paths: SitePublicPathsSpec; replace?: never; patch?: never; embedding?: SiteEmbeddingSpec | null }
+  | { embedding: SiteEmbeddingSpec | null; replace?: never; patch?: never; public_paths?: never };
 
 export interface DeployManifestAssetPutEntry {
   key: string;
@@ -1407,6 +1409,10 @@ function mapSite(
   const publicPaths = Object.prototype.hasOwnProperty.call(raw, "public_paths")
     ? mapSitePublicPaths(raw.public_paths)
     : undefined;
+  // tenant-site-embedding: `null` clears, so presence (not truthiness) decides.
+  const embedding = Object.prototype.hasOwnProperty.call(raw, "embedding")
+    ? { embedding: mapSiteEmbedding(raw.embedding) }
+    : {};
   if (Object.prototype.hasOwnProperty.call(raw, "replace")) {
     if (raw.replace === undefined) {
       throw new LocalError("Deploy manifest site.replace is undefined", CONTEXT);
@@ -1416,6 +1422,7 @@ function mapSite(
         ? resolveLocalDirRef(raw.replace, opts)
         : mapFileSet(raw.replace as DeployManifestFileSet, opts),
       ...(publicPaths ? { public_paths: publicPaths } : {}),
+      ...embedding,
     };
   }
   if (Object.prototype.hasOwnProperty.call(raw, "patch")) {
@@ -1440,13 +1447,17 @@ function mapSite(
     return {
       patch,
       ...(publicPaths ? { public_paths: publicPaths } : {}),
+      ...embedding,
     };
   }
-  if (publicPaths) {
-    return { public_paths: publicPaths };
+  if (publicPaths || "embedding" in embedding) {
+    return {
+      ...(publicPaths ? { public_paths: publicPaths } : {}),
+      ...embedding,
+    } as NonNullable<ReleaseSpec["site"]>;
   }
   throw new LocalError(
-    "Deploy manifest site must include replace, patch, or public_paths",
+    "Deploy manifest site must include replace, patch, public_paths, or embedding",
     CONTEXT,
   );
 }
@@ -2053,4 +2064,20 @@ async function assertAuthoringFileReferences(input: unknown, baseDir: string, ma
     missing.push(ref);
   }
   if (missing.length) throw manifestFileMissingError(missing.sort((a, b) => Number(b.kind === "migration_sql") - Number(a.kind === "migration_sql")), { manifestPath });
+}
+
+/** tenant-site-embedding. Shape only; the gateway owns the catalog and names
+ *  the valid keys in its INVALID_SPEC, so a new key never needs a client release. */
+function mapSiteEmbedding(value: unknown): SiteEmbeddingSpec | null {
+  if (value === null) return null;
+  assertPlainRecord(value, "Deploy manifest site.embedding");
+  assertKnownFields(value as Record<string, unknown>, "Deploy manifest site.embedding", new Set(["frame_ancestors"]));
+  const keys = (value as { frame_ancestors?: unknown }).frame_ancestors;
+  if (!Array.isArray(keys) || keys.length === 0 || keys.some((k) => typeof k !== "string")) {
+    throw new LocalError(
+      'Deploy manifest site.embedding.frame_ancestors must be a non-empty array of embedding catalog keys (e.g. ["localhost"]); omit site.embedding to carry the previous declaration forward or set it to null to deny framing',
+      CONTEXT,
+    );
+  }
+  return { frame_ancestors: keys as SiteEmbeddingSpec["frame_ancestors"] };
 }

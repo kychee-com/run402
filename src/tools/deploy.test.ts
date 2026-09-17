@@ -430,6 +430,34 @@ describe("handleDeploy deploy error formatting", () => {
     assert.match(result.content[0]!.text, /"routes"/);
   });
 
+  it("passes site.embedding through the SDK manifest adapter, including an explicit null (tenant-site-embedding)", async () => {
+    const declared = await handleDeploy({
+      project_id: "prj_xxx",
+      site: {
+        replace: { "index.html": "<h1>app</h1>" },
+        embedding: { frame_ancestors: ["localhost"] },
+      },
+    });
+    assert.equal(declared.isError, undefined, JSON.stringify(declared));
+    assert.deepEqual(
+      (lastApplySpec as { site?: { embedding?: unknown } }).site?.embedding,
+      { frame_ancestors: ["localhost"] },
+    );
+
+    const cleared = await handleDeploy({
+      project_id: "prj_xxx",
+      site: { embedding: null },
+    });
+    assert.equal(cleared.isError, undefined, JSON.stringify(cleared));
+    assert.deepEqual((lastApplySpec as { site?: unknown }).site, { embedding: null });
+
+    const origin = await handleDeploy({
+      project_id: "prj_xxx",
+      site: { replace: { "index.html": "<h1>app</h1>" }, embedding: { frame_ancestors: [] } },
+    });
+    assert.equal(origin.isError, true, "an empty list is refused client-side with the carry-forward / null hint");
+  });
+
   it("passes site.public_paths through the SDK manifest adapter", async () => {
     const result = await handleDeploy({
       project_id: "prj_xxx",

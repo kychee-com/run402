@@ -131,6 +131,7 @@ function formatInventory(title: string, release: {
   effective: boolean;
   site: { paths: unknown[]; totals?: { paths?: number } };
   static_public_paths?: unknown[];
+  embedding?: { frame_ancestors?: unknown[] } | null;
   functions: unknown[];
   secrets: { keys: string[] };
   subdomains: { names: string[] };
@@ -165,6 +166,7 @@ function formatInventory(title: string, release: {
     `| site_paths_returned | ${release.site.paths.length} |`,
     `| site_paths_total | ${siteTotal} |`,
     `| static_public_paths | ${staticPublicPathCount} |`,
+    `| embedding | ${release.embedding === undefined ? "unknown (older gateway)" : release.embedding === null ? "none (deny)" : `frame_ancestors: ${(release.embedding.frame_ancestors ?? []).join(", ")}`} |`,
     `| functions | ${release.functions.length} |`,
     `| secrets | ${release.secrets.keys.length} keys |`,
     `| subdomains | ${release.subdomains.names.length} |`,

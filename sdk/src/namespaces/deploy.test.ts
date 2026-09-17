@@ -6422,3 +6422,74 @@ describe("gitvault: the capture declaration and the activation block on the wire
     assert.equal(plans, 1, "a retry would plan a NEW operation the minted token cannot answer for");
   });
 });
+
+// tenant-site-embedding: `site.embedding` reaches the plan request unchanged on
+// every site form, and an explicit null (clear) is carried, not dropped.
+describe("deploy.apply — site.embedding wire carry", () => {
+  function wiring() {
+    const w = makeWiring(createCiSessionCredentials({ projectId: "prj_test", accessToken: "ci-session" }));
+    const plan: PlanResponse = {
+      plan_id: "plan_embed",
+      operation_id: "op_embed",
+      base_release_id: null,
+      manifest_digest: "embed",
+      missing_content: [],
+      diff: {},
+    };
+    const commit: CommitResponse = {
+      operation_id: "op_embed",
+      status: "ready",
+      release_id: "rel_embed",
+      urls: { site: "https://embed.run402.test" },
+    };
+    w.setHandler((req) => {
+      if (req.path === "/apply/v1/plans") return plan;
+      if (req.path === "/apply/v1/plans/plan_embed/commit") return commit;
+      throw new Error(`unexpected path ${req.path}`);
+    });
+    return w;
+  }
+
+  function planSite(w: ReturnType<typeof makeWiring>): unknown {
+    const planReq = w.requests.find((r) => r.path === "/apply/v1/plans");
+    assert(planReq, "plan request was issued");
+    return (planReq.body as { spec: { site?: unknown } }).spec.site;
+  }
+
+  it("carries the declaration alone and beside public_paths", async () => {
+    const w = wiring();
+    await new Deploy(w.client).apply({
+      project: "prj_test",
+      site: { embedding: { frame_ancestors: ["localhost"] } },
+    });
+    assert.deepEqual(planSite(w), { embedding: { frame_ancestors: ["localhost"] } });
+
+    const w2 = wiring();
+    await new Deploy(w2.client).apply({
+      project: "prj_test",
+      site: { public_paths: { mode: "implicit" }, embedding: { frame_ancestors: ["localhost"] } },
+    });
+    assert.deepEqual(planSite(w2), {
+      public_paths: { mode: "implicit" },
+      embedding: { frame_ancestors: ["localhost"] },
+    });
+  });
+
+  it("carries an explicit null so the gateway clears the declaration", async () => {
+    const w = wiring();
+    await new Deploy(w.client).apply({ project: "prj_test", site: { embedding: null } });
+    assert.deepEqual(planSite(w), { embedding: null });
+  });
+
+  it("refuses an empty or non-array frame_ancestors before any request", async () => {
+    const w = wiring();
+    await assert.rejects(
+      () => new Deploy(w.client).apply({
+        project: "prj_test",
+        site: { embedding: { frame_ancestors: [] } },
+      }),
+      /site\.embedding\.frame_ancestors/,
+    );
+    assert.equal(w.requests.length, 0);
+  });
+});

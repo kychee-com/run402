@@ -458,10 +458,25 @@ export type SitePublicPathsSpec =
   | { mode: "implicit"; replace?: never }
   | { mode: "explicit"; replace: Record<string, PublicStaticPathSpec> };
 
+/** tenant-site-embedding: a platform embedding catalog key. `localhost` expands
+ *  to `http://localhost:*` and `http://127.0.0.1:*`. Raw origins are never
+ *  accepted; the gateway rejects them with INVALID_SPEC naming the valid keys.
+ *  Typed as the known literal plus any string so a new catalog key never needs
+ *  a client release (preserve unknown future strings). */
+export type EmbeddingKey = "localhost" | (string & {});
+
+/** tenant-site-embedding: who may put the site in an iframe. Omitted on a later
+ *  apply carries the base release's declaration forward; `null` clears it back
+ *  to the default deny (`frame-ancestors 'none'` + `X-Frame-Options: DENY`). */
+export interface SiteEmbeddingSpec {
+  frame_ancestors: EmbeddingKey[];
+}
+
 export type SiteSpec =
-  | { replace: FileSet | LocalDirRef; patch?: never; public_paths?: SitePublicPathsSpec }
-  | { patch: { put?: FileSet | LocalDirRef; delete?: string[] }; replace?: never; public_paths?: SitePublicPathsSpec }
-  | { public_paths: SitePublicPathsSpec; replace?: never; patch?: never };
+  | { replace: FileSet | LocalDirRef; patch?: never; public_paths?: SitePublicPathsSpec; embedding?: SiteEmbeddingSpec | null }
+  | { patch: { put?: FileSet | LocalDirRef; delete?: string[] }; replace?: never; public_paths?: SitePublicPathsSpec; embedding?: SiteEmbeddingSpec | null }
+  | { public_paths: SitePublicPathsSpec; replace?: never; patch?: never; embedding?: SiteEmbeddingSpec | null }
+  | { embedding: SiteEmbeddingSpec | null; replace?: never; patch?: never; public_paths?: never };
 
 export interface SubdomainsSpec {
   /** The exact desired set. Currently limited to one element per project —
@@ -789,6 +804,9 @@ export interface DeployResolveResponse {
   route_manifest_sha256?: string | null;
   static_manifest_sha256?: string | null;
   static_manifest_metadata?: StaticManifestMetadata | null;
+  /** tenant-site-embedding: the framing opt-in of the release this host serves
+   *  (catalog keys) or `null`; absent on an older gateway. */
+  embedding?: SiteEmbeddingSpec | null;
   normalized_path?: string | null;
   match: DeployResolveMatch;
   route?: DeployResolveRouteMatch | null;
@@ -1932,6 +1950,9 @@ export interface ReleaseInventoryBase<
     totals?: { paths: number };
   };
   static_public_paths?: StaticPublicPathInventoryEntry[];
+  /** tenant-site-embedding: the release's framing opt-in as catalog keys, or
+   *  `null` (deny). Absent on an older gateway = unknown, not null. */
+  embedding?: SiteEmbeddingSpec | null;
   functions: ReleaseFunctionEntry[];
   secrets: { keys: string[] };
   subdomains: { names: string[] };
@@ -2563,9 +2584,10 @@ export interface NormalizedFunctionSpec {
 }
 
 export type NormalizedSiteSpec =
-  | { replace: Record<string, ContentRef>; patch?: never; public_paths?: SitePublicPathsSpec }
-  | { patch: { put?: Record<string, ContentRef>; delete?: string[] }; replace?: never; public_paths?: SitePublicPathsSpec }
-  | { public_paths: SitePublicPathsSpec; replace?: never; patch?: never };
+  | { replace: Record<string, ContentRef>; patch?: never; public_paths?: SitePublicPathsSpec; embedding?: SiteEmbeddingSpec | null }
+  | { patch: { put?: Record<string, ContentRef>; delete?: string[] }; replace?: never; public_paths?: SitePublicPathsSpec; embedding?: SiteEmbeddingSpec | null }
+  | { public_paths: SitePublicPathsSpec; replace?: never; patch?: never; embedding?: SiteEmbeddingSpec | null }
+  | { embedding: SiteEmbeddingSpec | null; replace?: never; patch?: never; public_paths?: never };
 
 // ─── Events + result ─────────────────────────────────────────────────────────
 
