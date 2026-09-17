@@ -322,7 +322,7 @@ const r = new Run402({
 });
 ```
 
-The `CredentialsProvider` interface has two required methods (`getAuth`, `getProject`) plus optional ones for hosts that want full sticky-default behavior (`saveProject`, `updateProject`, `removeProject`, `setActiveProject`, `getActiveProject`, `readAllowance`, `saveAllowance`, `createAllowance`, `getAllowancePath`).
+The `CredentialsProvider` interface has two required methods (`getAuth`, `getProject`) plus optional ones for hosts that want full sticky-default behavior (`saveProject`, `updateProject`, `removeProject`, `setActiveProject`, `getActiveProject`, `getActiveOrg`, `readAllowance`, `saveAllowance`, `createAllowance`, `getAllowancePath`). `getActiveOrg` is read only to disambiguate a Lightning `ORGANIZATION_SELECTION_REQUIRED` answer (see `r.ai.generateImage`); the Node provider answers it from the profile's `run402 org use` selection.
 
 ## Mental model
 
@@ -2411,8 +2411,24 @@ Private keys never leave AWS KMS. **$0.04/day rental + $0.000005/call.** Signer 
 translate(projectId, opts: { text, to, from?, context? }): Promise<TranslateResult>
 moderate(projectId, text): Promise<ModerateResult>
 usage(projectId): Promise<AiUsageResult>
-generateImage(opts: { prompt, aspect? }): Promise<GenerateImageResult> // $0.03 via x402, no projectId
+generateImage(opts: { prompt, aspect?, orgId? }): Promise<GenerateImageResult> // $0.03 via x402 / MPP, no projectId
 ```
+
+`orgId` is the paying organization and is read only on the MPP Lightning
+rail: a principal that belongs to several organizations is refused
+`ORGANIZATION_SELECTION_REQUIRED` (HTTP 400, `details.organization_ids` lists
+the candidates) unless the body names one; x402 and Tempo ignore it. When
+`orgId` is omitted and the gateway answers that code, `generateImage` retries
+**once** with the single candidate that matches a local context, most
+deliberate first: the provider's current organization
+(`credentials.getActiveOrg()`, the CLI's `run402 org use`) or the active
+project's cached owning `org_id`; only when neither names a candidate, a single
+stored project's owning org. Zero or several matches re-throw the `ApiError`
+with the same `code` and status, the candidates in the message and
+`details.organization_ids` (plus `details.matched_organization_ids`), and
+`nextActions` naming `--org <org_id>` / `run402 org use <org_id>`. An `orgId`
+you passed is never second-guessed: the gateway's refusal is returned as-is.
+Nothing is inferred from membership count alone.
 
 `GenerateImageResult` is `{ image, content_type, aspect, payment }`. `payment` is
 the settlement **observed** for that call, decoded from the response's

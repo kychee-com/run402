@@ -145,6 +145,15 @@ export interface CredentialsProvider {
   /** Get the active/default project id from local state. Optional. */
   getActiveProject?(): Promise<string | null>;
 
+  /**
+   * Get the active/current organization id from local state (the CLI's
+   * `run402 org use`). Optional. Read by the SDK only to disambiguate a
+   * gateway `ORGANIZATION_SELECTION_REQUIRED` answer (the MPP Lightning
+   * rail's paying organization when the principal belongs to several); it
+   * is never sent unprompted and never an authorization input.
+   */
+  getActiveOrg?(): Promise<string | null>;
+
   /** Read the local allowance (wallet). Optional — sandbox providers may omit. */
   readAllowance?(): Promise<AllowanceData | null>;
 

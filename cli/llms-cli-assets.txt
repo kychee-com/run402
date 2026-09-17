@@ -229,11 +229,13 @@ Auth is control-plane auth: current wallet, operator session, or delegate. Domai
 Forking clones schema, site, and functions into a new project. If the app includes a `bootstrap` function, it runs automatically with the provided variables — use it for first-admin setup, demo data seeding, or app configuration. Response includes `bootstrap_result` (the function's return value) or `bootstrap_error` if it failed. Use `run402 apps inspect` to see what `bootstrap_variables` an app expects.
 
 ### image
-$0.03 per image.
+$0.03 per image, via x402, MPP on Tempo, or MPP Lightning (whichever rail the allowance targets).
 
 - `run402 image generate "<prompt>" [--aspect <square|landscape|portrait>] [--output <file>] [--org <org_id>]`
 
 Without `--output`, returns `{"aspect":"...","content_type":"image/png","image":"<base64>"}`.
+
+The paying organization matters only on the Lightning rail: a principal that belongs to more than one organization is refused `400 ORGANIZATION_SELECTION_REQUIRED` (`details.organization_ids` lists the candidates) unless the request names one. `--org <org_id>` names it; omitted, the command derives it from the one shared org chain (`RUN402_ORG` or `RUN402_ROOM`'s org half, else the `.run402.json` binding, else `run402 org use`, else the active project's owning org — see the Organizations slice) and sends that. An empty chain sends no org, which is never an error here: x402 and Tempo ignore it, and a single-org principal needs none. When the gateway still answers `ORGANIZATION_SELECTION_REQUIRED`, the SDK retries once with the single candidate that matches a local context (the current org, the active project's owning org, else a stored project's owning org); zero or several matches surface the code with `details.organization_ids`, a `hint` naming `--org`, and `edit_request` next actions for `--org <org_id>` and `run402 org use <org_id>`. A `403` on a derived org (no billing role there) reports `details.org_source` / `org_source_detail` so you can see which rung supplied it.
 
 ### ai
 Built-in AI helpers. Translation requires the AI Translation add-on on the project. Moderation is free for all projects.

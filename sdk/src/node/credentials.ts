@@ -16,6 +16,7 @@ import {
   removeProject as coreRemoveProject,
 } from "../../core-dist/keystore.js";
 import {
+  getActiveOrgId,
   getActiveProjectId,
   setActiveProjectId,
 } from "../../core-dist/profile-state.js";
@@ -174,6 +175,19 @@ export class NodeCredentialsProvider implements CredentialsProvider {
 
   async getActiveProject(): Promise<string | null> {
     return getActiveProjectId(this.options.profileStatePath, this.activeScope()) ?? null;
+  }
+
+  /**
+   * The profile's current organization (`run402 org use`). The CLI's
+   * org-context resolver writes and reads it per profile WITHOUT a principal
+   * (the "unknown" bucket), so that bucket is the authoritative one; the
+   * principal-scoped bucket is consulted first only so a provider that wrote
+   * it scoped like the active project is honoured too.
+   */
+  async getActiveOrg(): Promise<string | null> {
+    return getActiveOrgId(this.options.profileStatePath, this.activeScope())
+      ?? getActiveOrgId(this.options.profileStatePath)
+      ?? null;
   }
 
   async readAllowance(): Promise<AllowanceData | null> {
