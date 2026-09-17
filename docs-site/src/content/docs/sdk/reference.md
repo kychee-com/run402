@@ -1761,7 +1761,7 @@ Secret values and value-derived hashes are never returned. For deploys, use `sec
 ### `r.subdomains`
 
 ```
-claim(name, deploymentId, opts?: { projectId? }): Promise<SubdomainClaimResult>
+claim({ name, releaseId?, deploymentId?, projectId? }): Promise<SubdomainClaimResult>  // omit both ids to bind the live release
 delete(name, opts?: { projectId? }): Promise<void>
 list(projectId): Promise<SubdomainSummary[]>
 ```

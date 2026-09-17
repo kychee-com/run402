@@ -108,6 +108,18 @@ describe("cold-start bootstrap next_actions (config.mjs chokepoint)", () => {
 });
 
 describe("cold-start bootstrap next_actions (chain hops)", () => {
+  // `init` never buys the tier; `run402 up -y` subscribes prototype itself as
+  // part of the first deploy. A tier-less init therefore hands the agent `up`,
+  // with `tier set prototype` named only as the standalone alternative.
+  it("init's tier-missing next action is run402 up -y, naming tier set as the alternative", async () => {
+    const { upDeployAction } = await import("./cli/lib/next-actions.mjs");
+    const action = upDeployAction();
+    assert.equal(action.type, "deploy");
+    assert.equal(action.command, "run402 up -y");
+    assert.match(action.why, /subscribes the prototype tier/);
+    assert.match(action.why, /run402 tier set prototype/);
+  });
+
   it("tier set with no tier arg names renew_tier", async () => {
     const { run } = await import("./cli/lib/tier.mjs");
     const env = await expectFailEnvelopeAsync(() => run("set", []));

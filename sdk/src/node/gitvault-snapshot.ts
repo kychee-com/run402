@@ -800,11 +800,19 @@ export async function captureSnapshot(options: GitvaultSnapshotOptions): Promise
         modified_more: modifiedCap.more,
         untracked: untrackedCap.list,
         untracked_more: untrackedCap.more,
+        // An unborn HEAD (the agent ran `git init` and never committed) is
+        // the first-push shape: everything is untracked, nothing is wrong.
+        ...(headOid ? {} : { unborn: true }),
       },
-      [
-        { type: "edit_request", why: "Commit your changes, then retry." },
-        { type: "edit_request", why: "Or capture the tree as-is: pass allowDirty:true (SDK) / --allow-dirty (CLI)." },
-      ],
+      headOid
+        ? [
+            { type: "edit_request", why: "Commit your changes, then retry." },
+            { type: "edit_request", why: "Or capture the tree as-is: pass allowDirty:true (SDK) / --allow-dirty (CLI)." },
+          ]
+        : [
+            { type: "commit_changes", command: "git add -A && git commit -m init", why: "This repository has no commits yet. Commit first (git add -A && git commit -m init), or pass --allow-dirty to capture the working tree as-is." },
+            { type: "edit_request", why: "Or capture the tree as-is: pass allowDirty:true (SDK) / --allow-dirty (CLI)." },
+          ],
     );
   }
 

@@ -6,7 +6,7 @@ import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 import { assertKnownFlags, flagValue, normalizeArgv, positionalArgs } from "./argparse.mjs";
 import { createUpdateCheckScheduler, emitUpdateNotice } from "./update-check.mjs";
-import { allowanceAuthHeaders, isCoreApiTarget } from "./config.mjs";
+import { allowanceAuthHeaders, isCoreApiTarget, updateProject } from "./config.mjs";
 import { loadLiveControlPlaneSession } from "../core-dist/control-plane-session.js";
 
 const HELP = `run402 up — Provision/link/deploy the current app
@@ -372,6 +372,16 @@ export async function run(args = []) {
                 console.error(JSON.stringify(event));
               },
       });
+      // Cache the activated deployment id so `run402 subdomains claim` can
+      // pass it as an optimization (the gateway binds the live release
+      // without it). Best-effort: a keystore hiccup never fails `up`.
+      {
+        const deployedProject = result?.result?.project_id ?? result?.result?.deploy?.project_id ?? null;
+        const deploymentId = result?.result?.deploy?.urls?.deployment_id;
+        if (deployedProject && typeof deploymentId === "string" && deploymentId) {
+          try { updateProject(deployedProject, { last_deployment_id: deploymentId }); } catch { /* best-effort cache */ }
+        }
+      }
       // The remote scaffold + first push are best-effort ADDITIONS to an
       // already-successful deploy: a git hiccup here must never flip an
       // otherwise-successful `up` into a failure (the same non-fatal
@@ -384,7 +394,7 @@ export async function run(args = []) {
             createdRepository = await gitInitIfNeeded(workDir);
             result.result.repo = await composeRepoPushStep({ sdk, workDir, projectId, createdRepository, nested });
           } catch (err) {
-            result.result.repo = { status: "failed", first_push: null, first_push_error: { code: err?.code ?? "GITVAULT_SETUP_FAILED", message: err?.message ?? String(err) } };
+            result.result.repo = { status: "failed", first_push: null, first_push_error: { code: err?.code ?? "GITVAULT_SETUP_FAILED", message: err?.message ?? String(err) }, ...repoNextActionsOf(err) };
           }
         }
       }
@@ -405,9 +415,9 @@ export async function run(args = []) {
     } else if (mode === "printSpec") {
       console.log(JSON.stringify(result.result?.spec ?? null, null, 2));
     } else if (human && result?.result?.app_result) {
-      console.log([formatAppUpHuman(result.result.app_result), formatRepoSkipLine(result)].filter(Boolean).join("\n"));
+      console.log([formatAppUpHuman(result.result.app_result), formatRepoSkipLine(result), formatRepoFirstPushErrorLine(result)].filter(Boolean).join("\n"));
     } else if (human && shouldRenderHumanSuccess(result)) {
-      console.log([formatLegacyUpSuccess(result), formatRepoSkipLine(result)].filter(Boolean).join("\n"));
+      console.log([formatLegacyUpSuccess(result), formatRepoSkipLine(result), formatRepoFirstPushErrorLine(result)].filter(Boolean).join("\n"));
     } else {
       console.log(JSON.stringify(result, null, 2));
     }
@@ -688,9 +698,6 @@ async function composeRepoPushStep({ sdk, workDir, projectId, createdRepository,
   // `run402 up --nested` (the caller's own spelling of the way out).
   const scaffold = await scaffoldGitvaultRemote({ repoDir: workDir, projectId, orgId: orgId ?? undefined, createRepoIfMissing: false, nested, nestedCommand: "run402 up --nested" });
   if (createdRepository && scaffold.gitvault) scaffold.gitvault.created_repository = true;
-  // A nested repository the scaffold itself just created is as fresh as one
-  // `up`'s own git init made: nothing committed, every file untracked.
-  const freshRepository = createdRepository || scaffold.gitvault?.created_repository === true;
   const out = { ...scaffold, first_push: null, first_push_error: null };
   if (scaffold.status !== "scaffolded") {
     // Nothing was scaffolded (the app root is inside another repository, or
@@ -702,14 +709,22 @@ async function composeRepoPushStep({ sdk, workDir, projectId, createdRepository,
     out.first_push_error = { code: "GITVAULT_ORG_UNRESOLVED", message: `could not resolve the owning org for ${projectId} — the first push was skipped` };
     return out;
   }
+  // Read BEFORE the push decision: an unborn HEAD is what decides the lane.
+  out.local_git = await readLocalGitState(workDir);
+  // A nested repository the scaffold itself just created is as fresh as one
+  // `up`'s own git init made: nothing committed, every file untracked. So is
+  // a repository the agent `git init`ed itself and never committed to (an
+  // UNBORN HEAD): there is no clean tree to keep, only untracked files, and
+  // the strict lane would refuse SNAPSHOT_DIRTY_TREE on every first push.
+  const freshRepository = createdRepository || scaffold.gitvault?.created_repository === true || out.local_git.unborn === true;
   try {
     let vaultCreated = null;
-    // A repository `up` itself just created has, by definition, nothing
-    // committed yet — every file is untracked, so a clean-tree capture would
-    // refuse SNAPSHOT_DIRTY_TREE on every fresh directory. Capture it as the
-    // synthetic first commit the dirty-tree lane produces (disclosed under
-    // first_push.snapshot); an EXISTING repository keeps the clean-tree rule
-    // and its refusal is reported, never overridden.
+    // A fresh repository has, by definition, nothing committed yet — every
+    // file is untracked, so a clean-tree capture would refuse
+    // SNAPSHOT_DIRTY_TREE on every first push. Capture it as the synthetic
+    // first commit the dirty-tree lane produces (disclosed under
+    // first_push.snapshot); a repository WITH commits keeps the clean-tree
+    // rule and its refusal is reported, never overridden.
     const pushed = await sdk.gitvault.push({
       project_id: projectId,
       org_id: orgId,
@@ -728,15 +743,26 @@ async function composeRepoPushStep({ sdk, workDir, projectId, createdRepository,
     };
   } catch (err) {
     out.first_push_error = { code: err?.body?.code ?? err?.code ?? "GITVAULT_PUSH_FAILED", message: err?.message ?? String(err) };
+    Object.assign(out, repoNextActionsOf(err));
   }
+  return out;
+}
+
+/** `{ next_actions }` derived from a thrown SDK error's own advice, or nothing. */
+function repoNextActionsOf(err) {
+  const actions = Array.isArray(err?.nextActions) ? err.nextActions : Array.isArray(err?.next_actions) ? err.next_actions : [];
+  return actions.length > 0 ? { next_actions: actions.map((a) => ({ type: a?.type, ...(a?.command ? { command: a.command } : {}), ...(a?.why ? { why: a.why } : {}) })) } : {};
+}
+
+/** Branch / HEAD / unborn / dirty of `workDir`, or `{ state: "unavailable" }`. Never throws. */
+async function readLocalGitState(workDir) {
   try {
     const { hardenedGit } = await import("#sdk/node");
     const read = async (args) => { try { return (await hardenedGit(workDir, args)).text().trim(); } catch { return null; } };
     const head = await read(["rev-parse", "--verify", "HEAD"]);
     const status = await read(["status", "--porcelain"]);
-    out.local_git = { branch: await read(["symbolic-ref", "--short", "HEAD"]), head, unborn: head === null, dirty: status === null ? null : status.length > 0 };
-  } catch { out.local_git = { state: "unavailable" }; }
-  return out;
+    return { branch: await read(["symbolic-ref", "--short", "HEAD"]), head, unborn: head === null, dirty: status === null ? null : status.length > 0 };
+  } catch { return { state: "unavailable" }; }
 }
 
 /**
@@ -831,6 +857,20 @@ function formatRepoSkipLine(result) {
   const nestedAction = (Array.isArray(repo.next_actions) ? repo.next_actions : []).find((action) => action?.type === "create_nested_repo");
   const remedy = nestedAction?.command ? ` Give it its own encrypted remote with: ${nestedAction.command}` : "";
   return `Encrypted remote skipped: ${repo.reason ?? "skipped"}${where}.${remedy}`;
+}
+
+/**
+ * One line for the human summary when the first push into the encrypted
+ * remote failed: the error code and the first next action's command (or its
+ * advice) — the deploy itself succeeded, so this is a footnote, never an exit.
+ */
+function formatRepoFirstPushErrorLine(result) {
+  const repo = result?.result?.repo;
+  const error = repo?.first_push_error;
+  if (!error?.code) return null;
+  const first = (Array.isArray(repo.next_actions) ? repo.next_actions : []).find((action) => action?.command || action?.why);
+  const remedy = first?.command ? ` Next: ${first.command}` : first?.why ? ` ${first.why}` : "";
+  return `Encrypted remote first push failed: ${error.code}.${remedy}`;
 }
 
 function formatLegacyUpSuccess(result) {

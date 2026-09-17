@@ -162,6 +162,61 @@ describe("claim_subdomain tool", { concurrency: false }, () => {
   });
 });
 
+describe("claim_subdomain tool target defaults", { concurrency: false }, () => {
+  function claimResponse() {
+    return new Response(
+      JSON.stringify({
+        name: "test",
+        deployment_id: "rel_live",
+        url: "https://test.run402.com",
+        deployment_url: "https://rel-live.sites.run402.com",
+        project_id: "proj-7",
+        created_at: "2026-03-04T00:00:00Z",
+        updated_at: "2026-03-04T00:00:00Z",
+      }),
+      { status: 201, headers: { "Content-Type": "application/json" } },
+    );
+  }
+
+  it("omits deployment_id and release_id when neither is given (gateway binds the live release)", async () => {
+    saveProject("proj-7", {
+      anon_key: "ak",
+      service_key: "sk",
+      tier: "prototype",
+      lease_expires_at: "2026-03-06T00:00:00Z",
+    });
+    let capturedInit: RequestInit | undefined;
+    globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
+      capturedInit = init;
+      return claimResponse();
+    }) as typeof fetch;
+
+    const result = await handleClaimSubdomain({ name: "test", project_id: "proj-7" });
+
+    assert.equal(result.isError, undefined);
+    assert.deepEqual(JSON.parse(capturedInit?.body as string), { name: "test" });
+    assert.ok(result.content[0]!.text.includes("rel_live"));
+  });
+
+  it("sends release_id when given", async () => {
+    saveProject("proj-7", {
+      anon_key: "ak",
+      service_key: "sk",
+      tier: "prototype",
+      lease_expires_at: "2026-03-06T00:00:00Z",
+    });
+    let capturedInit: RequestInit | undefined;
+    globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
+      capturedInit = init;
+      return claimResponse();
+    }) as typeof fetch;
+
+    await handleClaimSubdomain({ name: "test", release_id: "rel_abc", project_id: "proj-7" });
+
+    assert.deepEqual(JSON.parse(capturedInit?.body as string), { name: "test", release_id: "rel_abc" });
+  });
+});
+
 describe("delete_subdomain tool", { concurrency: false }, () => {
   it("returns success on 200", async () => {
     saveProject("proj-5", {

@@ -143,6 +143,48 @@ describe("subdomains.delete", () => {
     assert.equal(result.deleted_at, "2026-05-01T12:00:00.000Z");
   });
 
+  it("sends release_id when releaseId is given and omits deployment_id", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({
+        name: "x",
+        deployment_id: "rel_y",
+        url: "https://x.run402.com",
+        deployment_url: "https://rel-y.sites.run402.com",
+        project_id: "prj_z",
+        created_at: "2026-05-01T12:00:00.000Z",
+        updated_at: "2026-05-01T12:00:00.000Z",
+      }),
+    );
+    const sdk = makeSdk(makeCreds(), fetch);
+    await sdk.subdomains.claim({ name: "x", releaseId: "rel_y", projectId: "prj_known" });
+
+    assert.equal(calls.length, 1);
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), {
+      name: "x",
+      release_id: "rel_y",
+    });
+  });
+
+  it("sends only name when neither deploymentId nor releaseId is given (gateway binds the live release)", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({
+        name: "x",
+        deployment_id: "rel_live",
+        url: "https://x.run402.com",
+        deployment_url: "https://rel-live.sites.run402.com",
+        project_id: "prj_z",
+        created_at: "2026-05-01T12:00:00.000Z",
+        updated_at: "2026-05-01T12:00:00.000Z",
+      }),
+    );
+    const sdk = makeSdk(makeCreds(), fetch);
+    const result = await sdk.subdomains.claim({ name: "x", projectId: "prj_known" });
+
+    assert.equal(calls.length, 1);
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), { name: "x" });
+    assert.equal(result.deployment_id, "rel_live");
+  });
+
   it("falls back to the active project when projectId is omitted", async () => {
     const { fetch, calls } = mockFetch(() =>
       jsonResponse({
@@ -260,6 +302,48 @@ describe("subdomains.claim", () => {
       deployment_id: "dpl_y",
     });
     assert.equal(result.name, "x");
+  });
+
+  it("sends release_id when releaseId is given and omits deployment_id", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({
+        name: "x",
+        deployment_id: "rel_y",
+        url: "https://x.run402.com",
+        deployment_url: "https://rel-y.sites.run402.com",
+        project_id: "prj_z",
+        created_at: "2026-05-01T12:00:00.000Z",
+        updated_at: "2026-05-01T12:00:00.000Z",
+      }),
+    );
+    const sdk = makeSdk(makeCreds(), fetch);
+    await sdk.subdomains.claim({ name: "x", releaseId: "rel_y", projectId: "prj_known" });
+
+    assert.equal(calls.length, 1);
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), {
+      name: "x",
+      release_id: "rel_y",
+    });
+  });
+
+  it("sends only name when neither deploymentId nor releaseId is given (gateway binds the live release)", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({
+        name: "x",
+        deployment_id: "rel_live",
+        url: "https://x.run402.com",
+        deployment_url: "https://rel-live.sites.run402.com",
+        project_id: "prj_z",
+        created_at: "2026-05-01T12:00:00.000Z",
+        updated_at: "2026-05-01T12:00:00.000Z",
+      }),
+    );
+    const sdk = makeSdk(makeCreds(), fetch);
+    const result = await sdk.subdomains.claim({ name: "x", projectId: "prj_known" });
+
+    assert.equal(calls.length, 1);
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), { name: "x" });
+    assert.equal(result.deployment_id, "rel_live");
   });
 
   it("falls back to the active project when projectId is omitted", async () => {

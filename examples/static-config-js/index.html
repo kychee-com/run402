@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Notes</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 40rem; margin: 2rem auto; padding: 0 1rem; }
+    li { margin: 0.5rem 0; }
+    small { color: #666; }
+  </style>
+</head>
+<body>
+  <h1>Notes</h1>
+  <p><small id="where"></small></p>
+  <ul id="notes"><li>Loading…</li></ul>
+
+  <!-- Every Run402 host serves this file for the project the page was loaded
+       from. It defines window.RUN402 = { project_id, api_base, anon_key }.
+       No key is pasted into this HTML; a branch host or a transferred
+       project answers with its own values and the page keeps working. -->
+  <script src="/_run402/config.js"></script>
+  <script type="module">
+    const { project_id, api_base, anon_key } = window.RUN402;
+    document.querySelector("#where").textContent = `project ${project_id} via ${api_base}`;
+
+    const headers = { apikey: anon_key, Authorization: `Bearer ${anon_key}` };
+    const res = await fetch(`${api_base}/rest/v1/notes?select=*&order=created_at.desc`, { headers });
+    const list = document.querySelector("#notes");
+    if (!res.ok) {
+      list.innerHTML = `<li>Request failed: ${res.status} ${res.statusText}</li>`;
+    } else {
+      const rows = await res.json();
+      const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+      list.innerHTML = rows.length
+        ? rows.map((n) => `<li><strong>${esc(n.title)}</strong><br>${esc(n.body)}</li>`).join("")
+        : "<li>No notes yet.</li>";
+    }
+  </script>
+</body>
+</html>

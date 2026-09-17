@@ -401,7 +401,7 @@ Each `AssetPutEntry` carries the locally-computed `sha256` so the gateway can de
 
 - `deploy_site` — deploy from inline file bytes. Params: `project`, `target?`, `files: [{ file, data, encoding? }]`. Free with active tier.
 - `deploy_site_dir` — deploy from a local directory. Routes through the unified apply primitive (CAS-backed) — only uploads bytes the gateway doesn't have. Params: `project`, `dir`, `target?`. Skips `.git/`, `node_modules/`, `.DS_Store`. Symlinks throw.
-- `claim_subdomain` — claim `<name>.run402.com`. Idempotent; auto-reassigns to latest deployment on subsequent deploys. Params: `project_id`, `name`, `deployment_id?`.
+- `claim_subdomain` — claim `<name>.run402.com`. Idempotent; auto-reassigns to latest deployment on subsequent deploys. Params: `project_id`, `name`, `release_id?`, `deployment_id?` — omit both to bind the project's live release.
 - `list_subdomains` / `delete_subdomain` — manage subdomains.
 - `domains_ensure` / `domains_get` / `domains_list` / `domains_check` — manage project-scoped ProjectDomain desired state for web, email sending, inbound receive, mailbox addresses, and health checks.
 - `domains_apply` / `domains_repair` / `domains_test_receive` / `domains_activate` / `domains_disconnect` — apply safe provider actions, repair Run402-owned routing, create inbound receive tests, activate custom mailbox addresses, or disconnect a domain.

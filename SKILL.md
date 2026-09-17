@@ -556,7 +556,7 @@ Archive v1 exports active release/apply state, supported Postgres/RLS/REST data,
 
 - **`deploy_site`** — deploy from inline file bytes.
 - **`deploy_site_dir`** — deploy from a local directory. Routes through the unified apply primitive (CAS-backed) — only uploads bytes the gateway doesn't have.
-- **`claim_subdomain`** — claim `<name>.run402.com` (idempotent; auto-reassigns to latest deployment on subsequent deploys, no re-claim needed).
+- **`claim_subdomain`** — claim `<name>.run402.com` (idempotent; binds the live release unless `release_id` / `deployment_id` is given; auto-reassigns to latest deployment on subsequent deploys, no re-claim needed).
 - **`list_subdomains`** / **`delete_subdomain`** — manage subdomains.
 - **`domains_ensure`** / **`domains_get`** / **`domains_list`** / **`domains_check`** — manage project-scoped ProjectDomain desired state for web, email sending, inbound receive, mailbox addresses, and health checks.
 - **`domains_apply`** / **`domains_repair`** / **`domains_test_receive`** / **`domains_activate`** / **`domains_disconnect`** — apply safe provider actions, repair Run402-owned routing, create inbound receive tests, activate custom mailbox addresses, or disconnect a domain.

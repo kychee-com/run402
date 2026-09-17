@@ -1,7 +1,8 @@
 /**
  * `subdomains` namespace — `*.run402.com` subdomain claims pointing at
- * deployments. `claim` and `delete` accept an optional `projectId` for
- * ownership tracking; `list` requires one.
+ * deployments or releases (defaulting to the project's live release).
+ * `claim` and `delete` accept an optional `projectId` for ownership
+ * tracking; `list` requires one.
  */
 
 import type { Client } from "../kernel.js";
@@ -15,7 +16,14 @@ export interface SubdomainClaimOptions {
 
 export interface SubdomainClaimInput extends SubdomainClaimOptions {
   name: string;
-  deploymentId: string;
+  /**
+   * Target to bind: a legacy `dpl_…` deployment id, or a `rel_…` / `op_…`
+   * id (the gateway resolves either). Omit both this and `releaseId` to
+   * bind the project's live release.
+   */
+  deploymentId?: string;
+  /** A `rel_…` release id to bind. Omit both this and `deploymentId` to bind the project's live release. */
+  releaseId?: string;
 }
 
 export interface SubdomainClaimResult {
@@ -64,10 +72,14 @@ export class Subdomains {
     );
   }
 
-  /** Claim a subdomain and point it at a deployment. */
+  /**
+   * Claim a subdomain and point it at a deployment or release. Omit both
+   * `deploymentId` and `releaseId` to bind the project's live release —
+   * the gateway resolves it, and answers 404 only when the project has no
+   * live release with a site.
+   */
   async claim(input: SubdomainClaimInput): Promise<SubdomainClaimResult> {
     const name = input.name;
-    const depId = input.deploymentId;
     const options: SubdomainClaimOptions = { projectId: input.projectId };
 
     const projectId = await this.#resolveProjectId(options, "claiming subdomain");
@@ -76,7 +88,11 @@ export class Subdomains {
     return this.client.request<SubdomainClaimResult>("/subdomains/v1", {
       method: "POST",
       headers: { Authorization: `Bearer ${project.service_key}` },
-      body: { name, deployment_id: depId },
+      body: {
+        name,
+        ...(input.deploymentId ? { deployment_id: input.deploymentId } : {}),
+        ...(input.releaseId ? { release_id: input.releaseId } : {}),
+      },
       context: "claiming subdomain",
     });
   }

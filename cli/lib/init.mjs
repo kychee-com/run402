@@ -1,7 +1,7 @@
 import { readAllowance, saveAllowance, loadKeyStore, configDir, configureApiBase, getActiveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { fail } from "./sdk-errors.mjs";
-import { setTierAction, deployAction } from "./next-actions.mjs";
+import { upDeployAction, deployAction } from "./next-actions.mjs";
 import { resolveOwningOrgId } from "./org-context.mjs";
 import { getActiveProfile } from "../core-dist/config.js";
 import { readMeta } from "../core-dist/profiles.js";
@@ -77,7 +77,8 @@ Steps (idempotent when re-run with the same rail; pass --switch-rail to change r
   3. Checks on-chain balance; requests faucet if zero
   4. Shows current tier subscription status
   5. Lists local project count
-  6. Suggests next step (tier set or deploy)
+  6. Suggests next step (run402 up -y when no tier is held yet — it subscribes
+     the prototype tier as part of the first deploy — or deploy apply)
 
 Run this once to get started, or again to check your setup.
 `;
@@ -730,10 +731,15 @@ export async function run(args = []) {
   // string mirror of the first action's command (one spelling, surface-wide).
   write("");
   const tierMissing = !tierInfo || !tierInfo.tier || !tierInfo.active;
-  summary.next_actions = [tierMissing ? setTierAction("prototype") : deployAction()];
+  summary.next_actions = [tierMissing ? upDeployAction() : deployAction()];
   summary.next_step = summary.next_actions[0].command;
   if (tierMissing) {
-    write("  Next: run402 tier set prototype");
+    // `up -y` subscribes the prototype tier itself as part of the first
+    // deploy; `init` never buys the tier, so the one command that finishes
+    // the cold start is `up`, with `tier set` named as the standalone option.
+    write("  Next: run402 up -y");
+    write("        Deploy with run402 up -y — it subscribes the prototype tier (free on testnet) as part of the first deploy.");
+    write("        Or subscribe separately: run402 tier set prototype.");
   } else {
     write("  Ready to deploy. Run: run402 deploy apply --manifest app.json");
   }

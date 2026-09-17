@@ -53,6 +53,8 @@ The manifest is the whole app: a migration, which tables the browser may reach, 
 
 `window.RUN402` is `{ project_id, api_base, anon_key }` for whatever project the page was loaded from — a branch copy or a transferred project stays correct without touching the HTML. The anon key is public by design; the service key is never served there.
 
+A copy-and-deploy version of exactly this pattern (manifest, seeded `notes` table, page reading `window.RUN402`) lives in [`examples/static-config-js/`](https://github.com/kychee-com/run402/tree/main/examples/static-config-js).
+
 ## 3. Deploy
 
 ```bash
@@ -70,7 +72,7 @@ The result is JSON. Hand your human the two links it carries:
     "identity": { "display_name": "claude-code", "source": "detected" },
     "deploy": {
       "status": "ready",
-      "urls": { "site": "https://my-app.run402.app", "console": "https://console.run402.com/orgs/…/projects/prj_…" },
+      "urls": { "site": "https://my-app.run402.com", "console": "https://console.run402.com/orgs/…/projects/prj_…" },
       "rehearsal": { "status": "skipped", "reason": "no_live_release" },
       "next_actions": [{ "type": "hand_to_operator", "credited_as": "claude-code", "why": "Show your human the site and the console link…" }]
     }

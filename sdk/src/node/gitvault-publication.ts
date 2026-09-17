@@ -489,6 +489,33 @@ async function listRefsUnderPrefix(repoDir: string, prefix: string): Promise<Map
  * by a local checkout, and "no local repo here" is a normal, silent no-op,
  * never a warning.
  */
+/**
+ * Name prefix of the scratch directory {@link GitvaultVault.buildPacks}
+ * allocates INSIDE the repository's git common dir. Dotted and clearly named
+ * so it can never be mistaken for `objects/`, `refs/`, or a pack directory.
+ */
+export const GITVAULT_PACK_SCRATCH_PREFIX = ".run402-gitvault-packs-";
+
+/**
+ * Allocate the pack-objects scratch directory on the OBJECT STORE's own
+ * filesystem: `<git-common-dir>/.run402-gitvault-packs-XXXXXX`, never under
+ * `os.tmpdir()`.
+ *
+ * `git pack-objects <base>` writes its temporary pack under
+ * `<git-common-dir>/objects/pack/` and then `rename(2)`s it onto
+ * `<base>-<hash>.pack`. When `/tmp` is a different filesystem (tmpfs in a
+ * cloud container) that rename fails INSIDE git with EXDEV ("unable to rename
+ * temporary file … Invalid cross-device link") and no JS-side fallback can
+ * catch it — so the base path has to share the object store's filesystem.
+ * Git ignores unknown siblings of `objects/` and `refs/` (fsck, gc, and
+ * object enumeration never walk them), so a leftover from a crash is inert;
+ * the caller still removes it on every path.
+ */
+export async function allocatePackScratchDir(repoDir: string): Promise<string> {
+  const commonDir = (await hardenedGit(repoDir, ["rev-parse", "--path-format=absolute", "--git-common-dir"])).text().trim();
+  return mkdtempSync(join(commonDir, GITVAULT_PACK_SCRATCH_PREFIX));
+}
+
 export async function reconcileRetainedTipRefs(repoDir: string, state: { refs: GitvaultRefMap; roots: readonly GitvaultRetentionRoot[]; head_target: GitvaultHeadTarget }): Promise<GitvaultRetainedRefsReconcileResult> {
   const empty = (warning: string | null = null): GitvaultRetainedRefsReconcileResult => ({ written: [], deleted: [], retained_count: 0, warning });
   let isRepo: boolean;
@@ -4497,7 +4524,10 @@ export class GitvaultVault {
     if (uniqueTips.length === 0) return [];
     const presentBase: string[] = [];
     for (const b of baseSet) if (GITVAULT_OID40_RE.test(b) && (await hasObject(dir, b))) presentBase.push(b);
-    const tmp = mkdtempSync(join(tmpdir(), "run402-gitvault-packs-"));
+    // On the object store's own filesystem — `git pack-objects` rename(2)s
+    // its temp pack from `objects/pack/` onto this base (see
+    // `allocatePackScratchDir`); a tmpfs `/tmp` would fail that with EXDEV.
+    const tmp = await allocatePackScratchDir(dir);
     try {
       const revs = [...uniqueTips, ...presentBase.map((b) => `^${b}`)].join("\n") + "\n";
       await hardenedGit(dir, ["pack-objects", "--revs", "--no-reuse-delta", "--delta-base-offset", `--max-pack-size=${GITVAULT_MULTI_OBJECT_PACK_TARGET_BYTES}`, "-q", join(tmp, "p")], { input: revs });

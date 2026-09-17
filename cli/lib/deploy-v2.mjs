@@ -40,7 +40,7 @@ import {
 } from "#sdk/node";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
-import { API, allowanceAuthHeaders, getActiveProjectId, resolveProjectId, isCoreApiTarget } from "./config.mjs";
+import { API, allowanceAuthHeaders, getActiveProjectId, resolveProjectId, isCoreApiTarget, updateProject } from "./config.mjs";
 import { delegateTokenFromEnv } from "#sdk/node";
 import { flagValue, normalizeArgv } from "./argparse.mjs";
 import { loadLiveControlPlaneSession } from "../core-dist/control-plane-session.js";
@@ -1050,6 +1050,16 @@ export function collectManifestSourceFiles(spec, baseDir) {
   return [...out];
 }
 
+/**
+ * Persist an activated release's `deployment_id` into the local keystore.
+ * `run402 subdomains claim` reads it as an optimization only — the gateway
+ * binds the live release without it — so this must never throw.
+ */
+export function rememberLastDeployment(projectId, deploymentId) {
+  if (!projectId || typeof deploymentId !== "string" || !deploymentId) return;
+  try { updateProject(projectId, { last_deployment_id: deploymentId }); } catch { /* best-effort cache */ }
+}
+
 async function applyCmd(args) {
   const opts = parseApplyArgs(args);
   const { source, error: sourceError } = resolveApplySource(opts, hasStdinSource());
@@ -1296,6 +1306,10 @@ async function applyCmd(args) {
         onCommitLine: (line) => { if (!opts.quiet) process.stderr.write(`${line}\n`); },
       }),
     );
+    // Cache the activated deployment id so `run402 subdomains claim` can
+    // pass it as an optimization (the gateway defaults to the live release
+    // without it). Best-effort: a keystore hiccup never fails the deploy.
+    rememberLastDeployment(releaseSpec.project, outcome.deploy?.urls?.deployment_id);
     if (!outcome.gitvault) {
       console.log(JSON.stringify({ ...outcome.deploy, stats: sdkStats(sdk) }, null, 2));
       printVerboseStats(opts.verbose, sdk);

@@ -4357,6 +4357,38 @@ describe("CLI e2e happy path", () => {
     }
   });
 
+  it("status --human renders a compact summary instead of JSON", async () => {
+    const { run } = await import("./cli/lib/status.mjs");
+    captureStart();
+    await run(["--human"]);
+    captureStop();
+    const stdout = capturedStdout();
+    assert.ok(!stdout.trim().startsWith("{"), `--human must not emit JSON, got: ${stdout}`);
+    assert.match(stdout, /^Wallet:\s+\S+ 0x[a-fA-F0-9]{40}$/m, `should name the wallet and address, got: ${stdout}`);
+    assert.match(stdout, /^API:\s+https?:\/\//m, "should name the API target");
+    assert.match(stdout, /^Tier:\s+prototype \(active/m, `should render the tier, got: ${stdout}`);
+    assert.match(stdout, /^Project:\s+prj_test123 https:\/\/test\.run402\.com$/m, `should render the active project and site url, got: ${stdout}`);
+    assert.match(stdout, /^Next:\s+run402 /m, "should end with a next action line");
+  });
+
+  it("status rejects --human combined with --json as BAD_USAGE", async () => {
+    const { run } = await import("./cli/lib/status.mjs");
+    let threw = null;
+    captureStart();
+    try {
+      await run(["--human", "--json"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+    }
+    assert.equal(threw?.message, "process.exit(1)", "should exit non-zero");
+    const line = capturedStderr().split("\n").map(s => s.trim()).find(s => s.startsWith("{") && s.endsWith("}"));
+    assert.ok(line, `should emit a JSON error line on stderr, got: ${capturedStderr()}`);
+    const parsed = JSON.parse(line);
+    assert.equal(parsed.code, "BAD_USAGE");
+    assert.match(parsed.message, /--human cannot be combined with --json/);
+    assert.equal(capturedStdout().trim(), "", "must not print a status payload on stdout");
+  });
+
   it("service status", async () => {
     const { run } = await import("./cli/lib/service.mjs");
     captureStart();
@@ -5383,31 +5415,55 @@ describe("CLI canonical error envelope (GH-215, GH-174)", () => {
     assert.ok(/run402 subdomains claim/.test(parsed.hint || ""), `hint should retain usage, got: ${parsed.hint}`);
   });
 
-  it("subdomains claim without deployment emits NO_DEPLOYMENT envelope", async () => {
+  it("subdomains claim without a target sends only name (gateway binds the live release)", async () => {
     const { setActiveProjectId, saveProject } = await import("./cli/lib/config.mjs");
     saveProject("prj_no_deploy_test", { anon_key: "a", service_key: "s" });
     setActiveProjectId("prj_no_deploy_test");
 
     const { run } = await import("./cli/lib/subdomains.mjs");
+    const bodies = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = (input, init) => {
+      const url = typeof input === "string" ? input : input.url;
+      if (url.endsWith("/subdomains/v1") && (init?.method ?? "GET") === "POST") {
+        bodies.push(JSON.parse(init.body));
+      }
+      return prevFetch(input, init);
+    };
     let threw = null;
     captureStart();
     try {
       await run("claim", ["foo"]);
     } catch (e) { threw = e; } finally {
       captureStop();
+      globalThis.fetch = prevFetch;
       const { removeProject } = await import("./cli/lib/config.mjs");
       removeProject("prj_no_deploy_test");
       setActiveProjectId("prj_test123");
     }
-    assert.equal(threw?.message, "process.exit(1)");
-    const parsed = parseStderrJson();
-    assert.equal(parsed.code, "NO_DEPLOYMENT");
-    assert.ok(Array.isArray(parsed.next_actions), "next_actions should be an array");
-    assert.deepEqual(parsed.next_actions, [{
-      type: "deploy",
-      command: "run402 deploy apply",
-      why: "Deploy a site first, then retry claiming the subdomain.",
-    }], `next_actions should populate with typed deploy guidance, got: ${JSON.stringify(parsed.next_actions)}`);
+    assert.equal(threw, null, `claim must not fail client-side without a cached deployment, got: ${threw?.message} ${capturedStderr()}`);
+    assert.deepEqual(bodies, [{ name: "foo" }], "body carries neither deployment_id nor release_id");
+  });
+
+  it("subdomains claim --release sends release_id and no deployment_id", async () => {
+    const { run } = await import("./cli/lib/subdomains.mjs");
+    const bodies = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = (input, init) => {
+      const url = typeof input === "string" ? input : input.url;
+      if (url.endsWith("/subdomains/v1") && (init?.method ?? "GET") === "POST") {
+        bodies.push(JSON.parse(init.body));
+      }
+      return prevFetch(input, init);
+    };
+    captureStart();
+    try {
+      await run("claim", ["foo", "--release", "rel_abc", "--project", "prj_test123"]);
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.deepEqual(bodies, [{ name: "foo", release_id: "rel_abc" }]);
   });
 
   it("blob put with unknown local project emits PROJECT_CREDENTIAL_NOT_FOUND with details.source: local_cache", async () => {

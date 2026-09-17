@@ -161,6 +161,34 @@ describe("snapshot policies", () => {
     assert.deepEqual((caught as { details?: { modified?: string[]; untracked?: string[] } })?.details, { modified: ["staged.txt"], modified_more: 0, untracked: [], untracked_more: 0 });
   });
 
+  it("an UNBORN repository with untracked files refuses with `unborn: true` and a commit_changes next action naming the way out", async () => {
+    const dir = join(root, "unborn");
+    mkdirSync(dir, { recursive: true });
+    await git(dir, ["init", "-q", "-b", "main", "."]);
+    writeFileSync(join(dir, "index.html"), "<h1>hi</h1>\n");
+    writeFileSync(join(dir, "run402.json"), "{}\n");
+    const caught = await refusal(captureSnapshot({ dir, env: env() })) as { code?: string; details?: Record<string, unknown>; nextActions?: Array<{ type?: string; command?: string; why?: string }> } | null;
+    assert.equal(caught?.code, "SNAPSHOT_DIRTY_TREE");
+    assert.equal(caught?.details?.unborn, true);
+    assert.deepEqual(caught?.details?.untracked, ["index.html", "run402.json"]);
+    assert.deepEqual(caught?.details?.modified, []);
+    const first = caught?.nextActions?.[0];
+    assert.equal(first?.type, "commit_changes");
+    assert.equal(first?.command, "git add -A && git commit -m init");
+    assert.match(first?.why ?? "", /no commits yet/);
+    assert.match(first?.why ?? "", /--allow-dirty/);
+    // a repository WITH commits never carries the unborn marker or the unborn action
+    const born = await makeRepo(root);
+    writeFileSync(join(born, "new.txt"), "new\n");
+    const bornCaught = await refusal(captureSnapshot({ dir: born, env: env() })) as { details?: Record<string, unknown>; nextActions?: Array<{ type?: string }> } | null;
+    assert.equal(bornCaught?.details?.unborn, undefined);
+    assert.ok(!bornCaught?.nextActions?.some((a) => a.type === "commit_changes"));
+    // allowDirty still captures the unborn tree as the synthetic first commit
+    const s = await captureSnapshot({ dir, env: env(), allowDirty: true });
+    assert.equal(s.kind, "synthetic");
+    assert.deepEqual(s.untracked_captured, ["index.html", "run402.json"]);
+  });
+
   it("tracked file deleted from the work tree is absent from the synthetic commit (allowDirty)", async () => {
     const dir = await makeRepo(root);
     await commitFile(dir, "gone.txt", "x\n");

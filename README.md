@@ -714,7 +714,7 @@ The full MCP surface: every tool is a thin shim over an SDK call.
 |------|-------------|
 | `deploy_site` | Deploy a static site from inline file bytes. |
 | `deploy_site_dir` | Deploy a static site from a local directory. Routes through the unified apply primitive (CAS-backed); only uploads bytes the gateway doesn't have. |
-| `claim_subdomain` | Claim `<name>.run402.com` (idempotent; reassigns to latest deployment on subsequent deploys). |
+| `claim_subdomain` | Claim `<name>.run402.com` (idempotent; binds the live release unless `release_id` / `deployment_id` is given; reassigns to latest deployment on subsequent deploys). |
 | `list_subdomains` / `delete_subdomain` | Manage subdomains. |
 | `domains_ensure` / `domains_get` / `domains_list` / `domains_check` | Manage project-scoped web/email ProjectDomain desired state and health checks. |
 | `domains_apply` / `domains_repair` / `domains_test_receive` / `domains_activate` / `domains_disconnect` | Apply safe provider actions, repair run402-owned routing, verify inbound receive, activate mailbox addresses, or disconnect a domain. |

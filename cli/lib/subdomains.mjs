@@ -2,7 +2,6 @@ import { resolveProject, resolveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 import { assertKnownFlags, flagValue, normalizeArgv, positionalArgs, failUnknownSubcommand } from "./argparse.mjs";
-import { cliCommandAction } from "./next-actions.mjs";
 
 const HELP = `run402 subdomains — Manage custom subdomains
 
@@ -10,28 +9,30 @@ Usage:
   run402 subdomains <subcommand> [args...]
 
 Subcommands:
-  claim  <name> [--project <id>] [--deployment <id>]   Claim a subdomain
-  delete <name> --confirm [--project <id>]              Release a subdomain. Requires --confirm.
-  list   [--project <id>]                               List subdomains for a project
+  claim  <name> [--project <id>] [--release <id> | --deployment <id>]   Claim a subdomain
+  delete <name> --confirm [--project <id>]                              Release a subdomain. Requires --confirm.
+  list   [--project <id>]                                               List subdomains for a project
 
-Options default to the active project and its last deployment when omitted.
+Options default to the active project. With neither --release nor
+--deployment, claim binds the project's live release.
 
 Examples:
   run402 subdomains claim myapp
-  run402 subdomains claim myapp --deployment dpl_abc123 --project prj_abc123
+  run402 subdomains claim myapp --release rel_abc123 --project prj_abc123
   run402 subdomains delete myapp --confirm
   run402 subdomains list
 
 Notes:
   - Subdomain names: 3-63 chars, lowercase alphanumeric + hyphens
-  - Creates <name>.run402.com pointing to the deployment
+  - Creates <name>.run402.com pointing to the bound release
+  - Or declare it in the deploy manifest: "subdomains": { "set": ["myapp"] }
 `;
 
 const SUB_HELP = {
-  claim: `run402 subdomains claim — Claim a custom subdomain for a deployment
+  claim: `run402 subdomains claim — Claim a custom subdomain for a release
 
 Usage:
-  run402 subdomains claim <name> [--project <id>] [--deployment <id>]
+  run402 subdomains claim <name> [--project <id>] [--release <id> | --deployment <id>]
 
 Arguments:
   <name>              Subdomain name (3-63 chars, lowercase alphanumeric +
@@ -39,15 +40,19 @@ Arguments:
 
 Options:
   --project <id>      Project ID (defaults to the active project)
-  --deployment <id>   Deployment ID to point at (defaults to the project's
-                      last deployment)
+  --release <id>      Release ID (rel_...) to point at. With neither flag,
+                      the project's live release is bound.
+  --deployment <id>   Legacy deployment ID (dpl_...); rel_.../op_... ids are
+                      accepted too.
 
 Notes:
-  - Deploy a site first (or pass --deployment) so there is a target to claim
+  - With no flag the gateway binds the project's live (active) release; a
+    project with no live site answers 404.
+  - A deploy manifest can declare the same thing: "subdomains": { "set": ["<name>"] }
 
 Examples:
   run402 subdomains claim myapp
-  run402 subdomains claim myapp --deployment dpl_abc123 --project prj_abc123
+  run402 subdomains claim myapp --release rel_abc123 --project prj_abc123
 `,
   list: `run402 subdomains list — List subdomains claimed by a project
 
@@ -82,19 +87,20 @@ Examples:
 
 async function claim(args) {
   const parsedArgs = normalizeArgv(args);
-  const valueFlags = ["--project", "--deployment"];
+  const valueFlags = ["--project", "--deployment", "--release"];
   assertKnownFlags(parsedArgs, [...valueFlags, "--help", "-h"], valueFlags);
   const opts = {
     project: flagValue(parsedArgs, "--project"),
     deployment: flagValue(parsedArgs, "--deployment"),
+    release: flagValue(parsedArgs, "--release"),
   };
-  let name, deploymentId;
+  let name;
   const positionals = positionalArgs(parsedArgs, valueFlags);
   if (positionals.length > 1) {
     fail({
       code: "BAD_USAGE",
       message: `Unexpected argument for subdomains claim: ${positionals[1]}`,
-      hint: "Use `run402 subdomains claim <name> --deployment <deployment_id>`.",
+      hint: "Use `run402 subdomains claim <name> [--release <rel_id>]`.",
     });
   }
   if (positionals.length === 1) {
@@ -104,23 +110,26 @@ async function claim(args) {
     fail({
       code: "BAD_USAGE",
       message: "Missing <name>.",
-      hint: "run402 subdomains claim <name> [--project <id>] [--deployment <id>]",
+      hint: "run402 subdomains claim <name> [--project <id>] [--release <id> | --deployment <id>]",
+    });
+  }
+  if (opts.deployment && opts.release) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Pass either --release or --deployment, not both.",
+      hint: "run402 subdomains claim <name> [--release <id> | --deployment <id>]",
     });
   }
   const projectId = resolveProjectId(opts.project);
   const p = resolveProject(opts.project);
-  deploymentId = opts.deployment || deploymentId || p.last_deployment_id;
-  if (!deploymentId) {
-    fail({
-      code: "NO_DEPLOYMENT",
-      message: "no deployment_id specified and no recent deployment found.",
-      hint: "Deploy a site first or pass --deployment <id>.",
-      details: { project_id: projectId },
-      next_actions: [cliCommandAction("deploy", "run402 deploy apply", "Deploy a site first, then retry claiming the subdomain.")],
-    });
-  }
+  // With neither flag, the keystore's cached `last_deployment_id` is only an
+  // optimization; absent one, the gateway resolves the project's live
+  // release itself. Never fail client-side here — a unified-apply deploy
+  // may never have written the cache.
+  const deploymentId = opts.deployment || (opts.release ? undefined : p.last_deployment_id) || undefined;
+  const releaseId = opts.release || undefined;
   try {
-    const data = await getSdk().subdomains.claim({ name, deploymentId, projectId });
+    const data = await getSdk().subdomains.claim({ name, deploymentId, releaseId, projectId });
     console.log(JSON.stringify(data, null, 2));
   } catch (err) {
     reportSdkError(err);

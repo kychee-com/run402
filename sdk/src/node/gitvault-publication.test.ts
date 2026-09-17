@@ -16,9 +16,9 @@
 import { describe, it } from "node:test";
 import { loadGitvaultVectors, OPTOUT_SKIP_MESSAGE, type GitvaultVector } from "./gitvault-vectors.test-helper.js";
 import assert from "node:assert/strict";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, relative } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { LocalError } from "../errors.js";
 import { generateSigningKeypair, hexToBytes, jcs, parseGitvaultStrict, sha256Hex, signGitvaultObject, toBase64url } from "../namespaces/gitvault.crypto.js";
@@ -26,8 +26,10 @@ import type { GitvaultHead, GitvaultHeadsListingPage, GitvaultHeadsListingReques
 import {
   GITVAULT_MAX_CANONICAL_REFS,
   GITVAULT_MAX_REF_UPDATES_PER_TRANSACTION,
+  GITVAULT_PACK_SCRATCH_PREFIX,
   GITVAULT_RETAIN_REF_PREFIX,
   GitvaultVault,
+  allocatePackScratchDir,
   assertNoTransition,
   assertRefMapCardinality,
   checkClaimSetEquality,
@@ -872,6 +874,43 @@ describe("§4.7 checkpoint sets", () => {
     await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] } });
     const absent = `${"0".repeat(39)}1`; // well-formed, and no such object exists here
     await rejectsCode(f.vault.push({ transaction: { updates: [{ ref: "refs/heads/ghost", expected_old_oid: null, new_oid: absent, force: false }] }, checkpoint: true }), "CHECKPOINT_INCOMPLETE");
+  });
+});
+
+describe("buildPacks scratch dir — on the object store's own filesystem, never os.tmpdir() (EXDEV in containers)", () => {
+  it("allocatePackScratchDir lands INSIDE the git common dir, dotted and clearly named", async (t) => {
+    const root = mkdtempSync(join(tmpdir(), "run402-gitvault-packs-scratch-"));
+    t.after(() => rmSync(root, { recursive: true, force: true }));
+    const repo = await makeRepo(root);
+    const scratch = await allocatePackScratchDir(repo);
+    t.after(() => rmSync(scratch, { recursive: true, force: true }));
+    const commonDir = realpathSync(join(repo, ".git"));
+    assert.equal(realpathSync(dirname(scratch)), commonDir, "the scratch dir is a direct child of the git common dir");
+    assert.ok(basename(scratch).startsWith(GITVAULT_PACK_SCRATCH_PREFIX), `dotted, clearly named: ${basename(scratch)}`);
+    assert.ok(statSync(scratch).isDirectory());
+    // the whole point: same device as objects/pack, so git's rename(2) of the temp pack can never hit EXDEV
+    mkdirSync(join(commonDir, "objects", "pack"), { recursive: true });
+    assert.equal(statSync(scratch).dev, statSync(join(commonDir, "objects", "pack")).dev);
+  });
+
+  it("buildPacks produces a pack from a repository and leaves no scratch dir behind; a crash leftover does not break git fsck", async (t) => {
+    const f = await makeVault();
+    t.after(() => rmSync(f.root, { recursive: true, force: true }));
+    const c1 = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    const packs = await f.vault.buildPacks([c1], []);
+    assert.equal(packs.length, 1);
+    assert.equal(new TextDecoder().decode(packs[0]!.subarray(0, 4)), "PACK");
+    const commonDir = (await git(f.repoDir, ["rev-parse", "--path-format=absolute", "--git-common-dir"]));
+    const leftovers = () => readdirSync(commonDir).filter((n) => n.startsWith(GITVAULT_PACK_SCRATCH_PREFIX));
+    assert.deepEqual(leftovers(), [], "the scratch dir is removed after the build");
+    // a leftover from a crashed build is inert: git ignores unknown siblings of objects/ and refs/
+    const stale = join(commonDir, `${GITVAULT_PACK_SCRATCH_PREFIX}crash`);
+    mkdirSync(stale);
+    writeFileSync(join(stale, "p-deadbeef.pack"), "junk");
+    const fsck = await hardenedGit(f.repoDir, ["fsck", "--no-dangling"], { okStatuses: [1, 2] });
+    assert.equal(fsck.status, 0, fsck.text());
+    assert.deepEqual(await f.vault.buildPacks([c1], []).then((p) => p.length), 1, "a later build is unaffected by the leftover");
+    assert.deepEqual(leftovers(), [basename(stale)], "the build cleans only its own scratch dir");
   });
 });
 

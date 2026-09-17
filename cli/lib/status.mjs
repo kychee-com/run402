@@ -7,6 +7,7 @@ import {
   apiTargetKind,
 } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
+import { fail } from "./sdk-errors.mjs";
 import { assertKnownFlags, hasHelp, normalizeArgv } from "./argparse.mjs";
 import { getActiveProfile } from "../core-dist/config.js";
 import { readMeta } from "../core-dist/profiles.js";
@@ -14,7 +15,7 @@ import { readMeta } from "../core-dist/profiles.js";
 const HELP = `run402 status — Show full organization state in one shot
 
 Usage:
-  run402 status [--json]
+  run402 status [--json|--human]
 
 Displays:
   - Wallet identity (local_label, server_label, address)
@@ -26,6 +27,9 @@ Displays:
   - Active API target
 
 Output is JSON by default. --json is accepted as a compatibility no-op.
+--human renders a compact human summary instead (wallet, API target, tier,
+active project, balance, and the next action); it cannot be combined with
+--json.
 Run402 Cloud status requires an allowance; Core target status can still report
 local project state without one.
 `;
@@ -90,7 +94,16 @@ function normalizeProject(raw) {
 export async function run(args = []) {
   args = normalizeArgv(args);
   if (hasHelp(args)) { console.log(HELP); process.exit(0); }
-  assertKnownFlags(args, ["--help", "-h", "--json"]);
+  assertKnownFlags(args, ["--help", "-h", "--json", "--human"]);
+  const human = args.includes("--human");
+  if (human && args.includes("--json")) {
+    fail({
+      code: "BAD_USAGE",
+      message: "--human cannot be combined with --json.",
+      details: { flags: args.filter((arg) => arg === "--human" || arg === "--json") },
+      hint: "JSON is the default; drop --json to keep it, or keep --human alone for the rendered view.",
+    });
+  }
   const allowance = readAllowance();
   const target = {
     api_base: apiBase(),
@@ -99,13 +112,18 @@ export async function run(args = []) {
   };
   if (!allowance) {
     const store = loadKeyStore();
-    console.log(JSON.stringify({
+    const bare = {
       wallet: null,
       target,
       projects: Object.keys(store.projects).map(id => ({ project_id: id })),
       active_project: getActiveProjectId() || null,
       hint: target.kind === "core" ? "Run: run402 projects provision --name my-app" : "Run: run402 init",
-    }));
+    };
+    if (human) {
+      console.log(formatStatusHuman(bare));
+      return;
+    }
+    console.log(JSON.stringify(bare));
     return;
   }
 
@@ -170,5 +188,80 @@ export async function run(args = []) {
     target,
   };
 
+  if (human) {
+    console.log(formatStatusHuman(result));
+    return;
+  }
   console.log(JSON.stringify(result, null, 2));
+}
+
+function usdFromMicros(micros) {
+  if (typeof micros !== "number" || !Number.isFinite(micros)) return null;
+  return `$${(micros / 1_000_000).toFixed(2)}`;
+}
+
+/**
+ * The one next action for the human view, derived from the same state the
+ * JSON carries. Mirrors `init`: `run402 up -y` subscribes the prototype tier
+ * itself as part of the first deploy, so a tier-less account gets ONE command.
+ */
+function statusNextAction(result) {
+  if (!result.wallet) {
+    return result.hint?.replace(/^Run:\s*/, "") ?? "run402 init";
+  }
+  if (!result.tier) {
+    return "run402 up -y  (subscribes the prototype tier, free on testnet, as part of the first deploy; or: run402 tier set prototype)";
+  }
+  if (!result.active_project) {
+    return "run402 up --name <name> -y  (or select an existing project: run402 projects use <project_id>)";
+  }
+  return "run402 up -y  (redeploys the active project from run402.json)";
+}
+
+/**
+ * Compact human rendering of the status payload — the same style as
+ * `run402 up --human`: one fact per line, the next action last. The JSON
+ * shape is untouched; this only formats it.
+ */
+export function formatStatusHuman(result) {
+  const lines = [];
+  if (!result.wallet) {
+    lines.push("Wallet:   none (no allowance on this machine)");
+  } else {
+    const label = result.wallet.server_label
+      ? `${result.wallet.local_label} (${result.wallet.server_label})`
+      : result.wallet.local_label;
+    lines.push(`Wallet:   ${label} ${result.wallet.address}`);
+    if (result.rail) lines.push(`Rail:     ${result.rail}`);
+  }
+  lines.push(`API:      ${result.target.api_base} (${result.target.kind}, ${result.target.api_base_source})`);
+  if (result.wallet) {
+    if (result.tier) {
+      const lifecycle = result.organization_lifecycle_state ? `, org ${result.organization_lifecycle_state}` : "";
+      const expiry = result.lease_perpetual === true
+        ? ", perpetual"
+        : (result.tier.expires ? `, expires ${result.tier.expires}` : "");
+      lines.push(`Tier:     ${result.tier.name} (${result.tier.status}${lifecycle}${expiry})`);
+    } else {
+      lines.push("Tier:     none");
+    }
+  }
+  const projects = Array.isArray(result.projects) ? result.projects : [];
+  if (result.active_project) {
+    const active = projects.find((p) => p?.project_id === result.active_project);
+    const site = active?.site_url ? ` ${active.site_url}` : "";
+    lines.push(`Project:  ${result.active_project}${site}`);
+  } else {
+    lines.push(`Project:  none active${projects.length ? ` (${projects.length} known)` : ""}`);
+  }
+  if (result.balances) {
+    const parts = [];
+    const onChain = usdFromMicros(result.balances.on_chain_usd_micros);
+    if (onChain) parts.push(`${onChain} ${result.balances.on_chain_token} on-chain`);
+    const credit = usdFromMicros(result.balances.prepaid_credit_usd_micros);
+    if (credit) parts.push(`${credit} prepaid credit`);
+    if (parts.length) lines.push(`Balance:  ${parts.join(", ")}`);
+  }
+  lines.push(`Next:     ${statusNextAction(result)}`);
+  return lines.join("\n");
 }

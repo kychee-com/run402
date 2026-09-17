@@ -7,7 +7,7 @@ import test, { mock } from "node:test";
 import { pathToFileURL } from "node:url";
 import { Run402Action } from "../actions.js";
 import { RUN402_APP_SCHEMA_ID } from "../app-up.js";
-import { NodeActions } from "./actions-node.js";
+import { NodeActions, claimSubdomainNextAction, subdomainSlugFromProjectName } from "./actions-node.js";
 import { CLIENT_DETECTION_ENV_VARS, KNOWN_CLIENT_MARKERS, detectClientName } from "./client-detect.js";
 
 test("up check discovers run402.json app manifest and compiles an install graph locally", async () => {
@@ -1492,9 +1492,30 @@ test("up verify.http with no resolvable origin fails loudly with a missing_publi
     const diagnostic = entry?.diagnostic as Record<string, unknown> | undefined;
     assert.equal(diagnostic?.error, "missing_public_origin");
     assert.match(String(diagnostic?.hint ?? ""), /absolute `url`|subdomain/);
+    // The agent must be told what to DO: claim a subdomain (which binds the
+    // live release without any flag) or declare `subdomains.set` in the
+    // manifest. With no project name known the command carries `<name>`.
+    const nextAction = result.result?.verify?.next_action as Record<string, unknown> | null | undefined;
+    assert.ok(nextAction, "verify.next_action present");
+    assert.equal(nextAction?.type, "claim_subdomain");
+    assert.equal(nextAction?.node_id, "verify.http.home");
+    assert.equal(nextAction?.command, "run402 subdomains claim <name>");
+    assert.deepEqual(nextAction?.argv, ["run402", "subdomains", "claim", "<name>"]);
+    assert.match(String(nextAction?.message ?? ""), /"subdomains": \{ "set": \["<name>"\] \}/);
   } finally {
     rmSync(dir, { force: true, recursive: true });
   }
+});
+
+test("claim_subdomain next action slugs the project name into a claimable label", () => {
+  const action = claimSubdomainNextAction("My Cool App!", "home");
+  assert.equal(action.type, "claim_subdomain");
+  assert.equal(action.command, "run402 subdomains claim my-cool-app");
+  assert.deepEqual(action.argv, ["run402", "subdomains", "claim", "my-cool-app"]);
+  assert.match(String(action.message), /"subdomains": \{ "set": \["my-cool-app"\] \}/);
+  assert.equal(subdomainSlugFromProjectName("ab"), null, "too short to claim");
+  assert.equal(subdomainSlugFromProjectName(null), null);
+  assert.equal(claimSubdomainNextAction(null, "x").command, "run402 subdomains claim <name>");
 });
 
 test("up verify reruns deploy-manifest verify.http checks without deploying", async (t) => {

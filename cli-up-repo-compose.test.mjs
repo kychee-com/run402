@@ -158,12 +158,59 @@ describe("run402 up — default apply composes the repo as a best-effort additio
     assert.equal(scaffoldCall.input.project_id, PROJECT);
   });
 
-  it("a second run against the now-existing repository does not re-run git init and keeps the clean-tree rule", async () => {
-    await runJson(["-y", "--json"]);
+  it("a repository the agent already git-inited but never committed to (UNBORN head) takes the fresh lane on the first push", async () => {
+    // The repository exists (up will not git init again) and HEAD is unborn:
+    // every file is untracked, and the strict clean-tree lane would refuse
+    // SNAPSHOT_DIRTY_TREE on the very first push.
+    assert.equal(git(dir, ["rev-parse", "--is-inside-work-tree"]), "true");
+    const payload = await runJson(["-y", "--json"]);
+    const pushCall = calls.find((c) => c.method === "gitvault.push");
+    assert.equal(pushCall.input.snapshot?.allowDirty, true, "an unborn repository is captured as its synthetic first commit");
+    assert.equal(payload.result.repo.first_push.captured_dirty, true);
+    assert.equal(payload.result.repo.local_git.unborn, true);
+  });
+
+  it("a first-push failure is reported with the error's next_actions in JSON and as one --human line, never failing the deploy", async () => {
+    impl.push = async () => {
+      const err = new Error("the work tree is dirty — refusing to capture by default");
+      err.code = "SNAPSHOT_DIRTY_TREE";
+      err.details = { unborn: true, untracked: ["index.html"] };
+      err.nextActions = [
+        { type: "commit_changes", command: "git add -A && git commit -m init", why: "This repository has no commits yet." },
+        { type: "edit_request", why: "Or capture the tree as-is: --allow-dirty." },
+      ];
+      throw err;
+    };
+    const payload = await runJson(["-y", "--json"]);
+    assert.equal(payload.result.project_id, PROJECT, "the deploy result is unaffected");
+    assert.equal(payload.result.repo.status, "scaffolded");
+    assert.equal(payload.result.repo.first_push, null);
+    assert.equal(payload.result.repo.first_push_error.code, "SNAPSHOT_DIRTY_TREE");
+    assert.deepEqual(payload.result.repo.next_actions, [
+      { type: "commit_changes", command: "git add -A && git commit -m init", why: "This repository has no commits yet." },
+      { type: "edit_request", why: "Or capture the tree as-is: --allow-dirty." },
+    ]);
+    captureStart();
+    try {
+      await run(["-y", "--human"]);
+    } finally {
+      captureStop();
+    }
+    const text = stdout.join("\n");
+    assert.match(text, /Success! Project is up/);
+    assert.match(text, /Encrypted remote first push failed: SNAPSHOT_DIRTY_TREE\. Next: git add -A && git commit -m init/);
+  });
+
+  it("a second run against a repository WITH commits does not re-run git init and keeps the clean-tree rule", async () => {
+    git(dir, ["add", "-A"]);
+    git(dir, ["-c", "user.name=up-test", "-c", "user.email=up-test@example.com", "commit", "-q", "--allow-empty", "-m", "init"]);
+    const payload = await runJson(["-y", "--json"]);
     const scaffoldCall = calls.find((c) => c.method === "gitvault.scaffoldRemote");
     assert.ok(scaffoldCall);
     const pushCall = calls.find((c) => c.method === "gitvault.push");
-    assert.equal(pushCall.input.snapshot, undefined, "an existing repository is never captured dirty behind the agent's back");
+    assert.equal(pushCall.input.snapshot, undefined, "a repository with commits is never captured dirty behind the agent's back");
+    assert.equal(payload.result.repo.local_git.unborn, false);
+    assert.equal(payload.result.repo.next_actions, undefined);
   });
 
   it("a scaffold/push failure never fails an otherwise-successful deploy", async () => {

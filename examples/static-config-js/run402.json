@@ -1,0 +1,26 @@
+{
+  "$schema": "https://run402.com/schemas/release-spec.v1.json",
+  "database": {
+    "migrations": [
+      {
+        "id": "001_notes",
+        "sql": "CREATE TABLE IF NOT EXISTS notes (id serial PRIMARY KEY, title text NOT NULL, body text NOT NULL DEFAULT '', created_at timestamptz NOT NULL DEFAULT now());"
+      },
+      {
+        "id": "002_seed_notes",
+        "sql": "INSERT INTO notes (title, body) SELECT 'Hello from Run402', 'This row was inserted by the 002_seed_notes migration.' WHERE NOT EXISTS (SELECT 1 FROM notes);"
+      }
+    ],
+    "expose": {
+      "version": "1",
+      "tables": [
+        { "name": "notes", "expose": true, "policy": "public_read_authenticated_write" }
+      ]
+    }
+  },
+  "site": {
+    "replace": {
+      "index.html": { "path": "index.html", "content_type": "text/html" }
+    }
+  }
+}

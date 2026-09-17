@@ -205,6 +205,8 @@ interface AppResourceState {
 
 interface AppVerifyContext {
   projectId: string;
+  /** Human project name, when known — slugged into the `claim_subdomain` next action. */
+  projectName?: string | null;
   claimedHosts: Set<string>;
   bindings: SubdomainBindingFreshness[];
   propagationBudgetMs: number;
@@ -645,6 +647,7 @@ export class NodeActions implements Run402Actions {
         deploy.urls?.site ?? deploy.urls?.subdomain ?? projectKeys.site_url ?? null;
       const verification = await this.#verifyHttpChecks(verifyChecks, publicOrigin, run, {
         projectId: resolved.projectId,
+        projectName: input.name ?? manifest.appSpec?.project.name ?? null,
         claimedHosts: claimedHostsFromRelease(releaseSpec, publicOrigin),
         bindings: deploy.subdomain_bindings ?? [],
         propagationBudgetMs: propagationBudgetMs(input),
@@ -828,6 +831,7 @@ export class NodeActions implements Run402Actions {
     const scoped = await this.sdk.project(resolved.projectId);
     const verification = await this.#verifyHttpChecks(checks, publicOrigin, run, {
       projectId: resolved.projectId,
+      projectName: input.name ?? null,
       claimedHosts: new Set(),
       bindings: [],
       propagationBudgetMs: propagationBudgetMs(input),
@@ -1285,6 +1289,7 @@ export class NodeActions implements Run402Actions {
     const scoped = await this.sdk.project(resolved.projectId);
     const verification = await this.#verifyHttpChecks(manifest.appSpec.verify?.http ?? [], publicOrigin, run, {
       projectId: resolved.projectId,
+      projectName: input.name ?? manifest.appSpec.project.name ?? resolved.link?.name ?? null,
       claimedHosts: new Set(),
       bindings: [],
       propagationBudgetMs: propagationBudgetMs(input),
@@ -1542,6 +1547,7 @@ export class NodeActions implements Run402Actions {
       resources.webhooks = webhooks;
       const verifyContext: AppVerifyContext = {
         projectId: resolved.projectId,
+        projectName: input.name ?? manifest.appSpec.project.name ?? null,
         claimedHosts: claimedHostsFromRelease(normalized.spec, publicOrigin),
         bindings: deploy.subdomain_bindings ?? [],
         propagationBudgetMs: propagationBudgetMs(input),
@@ -1987,6 +1993,7 @@ export class NodeActions implements Run402Actions {
           node_id: `verify.http.${check.id}`,
           message,
         });
+        nextAction ??= claimSubdomainNextAction(context.projectName ?? null, check.id);
         continue;
       }
       const retries = Math.max(1, check.retries ?? 1);
@@ -2980,6 +2987,40 @@ function propagationWarning(
       budget_remaining_s: Math.ceil(Math.max(0, remainingMs) / 1000),
       edge_propagation: edge ?? null,
     },
+  };
+}
+
+/**
+ * Slug a human project name into a claimable `<name>.run402.com` label
+ * (3-63 chars, lowercase alphanumeric + hyphens), or null when it cannot be.
+ */
+export function subdomainSlugFromProjectName(name: string | null | undefined): string | null {
+  if (typeof name !== "string") return null;
+  const slug = name
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/-{2,}/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 63)
+    .replace(/-+$/g, "");
+  return slug.length >= 3 ? slug : null;
+}
+
+/**
+ * The `missing_public_origin` remedy: a path check cannot resolve without a
+ * public origin, and the fix is to bind a subdomain — either right now via
+ * `run402 subdomains claim <name>` (which binds the live release with no
+ * further flags) or declaratively in the manifest's `subdomains.set`.
+ */
+export function claimSubdomainNextAction(projectName: string | null, checkId: string): Run402AppUpNextAction {
+  const name = subdomainSlugFromProjectName(projectName) ?? "<name>";
+  return {
+    type: "claim_subdomain",
+    code: "VERIFY_FAILED",
+    node_id: `verify.http.${checkId}`,
+    message: `The project has no public origin, so path checks cannot resolve. Claim a subdomain with \`run402 subdomains claim ${name}\` (binds the live release), or add \`"subdomains": { "set": ["${name}"] }\` to the deploy manifest and redeploy; then rerun \`run402 up verify\`.`,
+    command: `run402 subdomains claim ${name}`,
+    argv: ["run402", "subdomains", "claim", name],
   };
 }
 

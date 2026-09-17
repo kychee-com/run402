@@ -760,7 +760,14 @@ export type NextActionType =
   // named manifest / file, or re-run from the directory that holds one.
   | "create_manifest"
   | "create_file"
-  | "run_in_directory";
+  | "run_in_directory"
+  // A gitvault capture refused on an UNBORN repository (no commits yet, so
+  // every file is untracked): commit first, or capture the tree as-is.
+  | "commit_changes"
+  // `run402 up` verify.http path checks found no public origin: bind a
+  // subdomain (`run402 subdomains claim <name>` binds the live release, or
+  // declare `subdomains.set` in the manifest) and rerun `up verify`.
+  | "claim_subdomain";
 
 /**
  * A single advisory "what to do next" entry. Mirrors the gateway's
