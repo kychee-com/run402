@@ -1,4 +1,4 @@
-import { reviewStatus } from './documentation-inventory.mjs';
+import { reviewStatus, publicationStatus } from './documentation-inventory.mjs';
 import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
@@ -21,7 +21,7 @@ for (const [repo, base] of [['private', priv], ['core', core]]) {
       interface: historical || legal || application ? 'native' : protocol ? 'http' : repo === 'core' ? 'runtime' : 'cli',
       exception: historical ? 'Dated history preserved; current guidance links and new entries reviewed.' : legal ? 'Legal/security obligations preserved; product instructions reviewed separately.' : application ? 'Browser UI and its native application code; not a shell tutorial.' : repo === 'core' ? 'Native runtime/provider contract and self-hosting references; normal operations prefer CLI.' : protocol ? 'Native protocol/schema contract; general onboarding is CLI-first.' : 'Native browser application code retained; general operations prefer CLI.',
       checks: repo === 'private' ? ['hosted-docs', 'gitvault-page-truth'] : ['core-applicability'],
-      evidence: {editorial: reviewStatus(repo, path, sha256), local: 'See coordinated implementation evidence for named check results.', publication: repo === 'private' ? 'pending' : 'source only'}});
+      evidence: {editorial: reviewStatus(repo, path, sha256), local: 'See coordinated implementation evidence for named check results.', publication: publicationStatus(repo, path, sha256)}});
   }
 }
 fs.writeFileSync(`${pub}/docs/quality/external-inventory.json`, JSON.stringify(data, null, 2) + '\n');

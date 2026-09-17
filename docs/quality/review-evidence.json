@@ -736,12 +736,12 @@
       "review": "reviewed classification and entry routing: native protocol/schema examples intentionally retained; owning parity/claim gates apply"
     },
     "public:docs/quality/documentation-policy.md": {
-      "sha256": "af32214fa169dbdfa43562a9adbdaeecdf4333149e1359f091be4cee89dd6f6d",
-      "review": "reviewed contributor instructions: source ownership and native build/test commands retained; product CLI policy applies"
+      "sha256": "e4c0d7c2131c842b9b38fdc3ed87d5ddb9471aaba3b656f2d0e9048857f3930a",
+      "review": "reviewed: final evidence and explicit remaining product/live-acceptance limitations"
     },
     "public:docs/quality/gaps.md": {
-      "sha256": "d5b77bb4cf258e174d3fe27bec4fcf212101e13ab965adfa11507b6c75732cce",
-      "review": "reviewed contributor instructions: source ownership and native build/test commands retained; product CLI policy applies"
+      "sha256": "a02c1e4cae8c1111a2e82654b73fc93fc278f8b17c718780bff2ee55c6bfb4b6",
+      "review": "reviewed: final evidence and explicit remaining product/live-acceptance limitations"
     },
     "public:docs/quality/maintenance-map.md": {
       "sha256": "cbf8aa0742081704161aea2fbd7d3d55614057592c390503529da21646320cbb",

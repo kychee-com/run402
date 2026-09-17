@@ -1,0 +1,1383 @@
+{
+  "version": 1,
+  "portal": {
+    "checkedAt": "2026-09-17T20:03:28.545Z",
+    "flatFiles": [
+      {
+        "url": "https://docs.run402.com/llms-cli.txt",
+        "sha256": "f5a1cc662fb7692299602f5e1d7b48fc3418627a046d128d50315d8c694494f4"
+      },
+      {
+        "url": "https://docs.run402.com/llms-cli-deploy.txt",
+        "sha256": "70398ee7ee52e80907bf9ba3daa35b62528808f920c72497e19fe9888f24cc28"
+      },
+      {
+        "url": "https://docs.run402.com/llms-cli-commands.txt",
+        "sha256": "b3decd804ab9f698f5f98a711c5675ddb8bd7e1e05cbd65447fa78852cb3f224"
+      },
+      {
+        "url": "https://docs.run402.com/llms-cli-repos.txt",
+        "sha256": "a8f977dbc74f24045c81d6162e70c12b60100b7fd4651250e48692293b814f0c"
+      },
+      {
+        "url": "https://docs.run402.com/llms-cli-orgs.txt",
+        "sha256": "4968370e3bb6beca8be081cdb6a410e92604a090978b4fbd25a62654fe5a3733"
+      },
+      {
+        "url": "https://docs.run402.com/llms-cli-functions.txt",
+        "sha256": "7b74b80d66d0479677f4762de1c0382cc6793f61bef07a1271f371636a96fc3a"
+      },
+      {
+        "url": "https://docs.run402.com/llms-cli-assets.txt",
+        "sha256": "a9411fb010a950a42ddeec06ec320ad52694053192362c16f4398da686f99307"
+      },
+      {
+        "url": "https://docs.run402.com/llms-cli-ops.txt",
+        "sha256": "c493bd78651b99ac3a37ef7cd7fa7e7bac691056c801a6818d0b481795ea9bea"
+      },
+      {
+        "url": "https://docs.run402.com/llms-cli-errors.txt",
+        "sha256": "780d5a97d59de0332979dcccf476b088e8bfe33442a061c7067be1a3a8a72bfd"
+      },
+      {
+        "url": "https://docs.run402.com/llms-cli-frontend.txt",
+        "sha256": "5771248b33da43dce8cfe224b52df20d3b101dc46fbd251db998ec53eade6edb"
+      },
+      {
+        "url": "https://docs.run402.com/llms-cli-platform.txt",
+        "sha256": "12418cc518da3e9006128dd088d42b24c23ff8051928f8b95b544165f354573b"
+      },
+      {
+        "url": "https://docs.run402.com/llms-cli-full.txt",
+        "sha256": "94aaa801db2546013677040beedd5eb9332b210dc31f25e6d06971a39bf6a24a"
+      },
+      {
+        "url": "https://docs.run402.com/llms-sdk.txt",
+        "sha256": "179852f110548f34eb8e083befd5110c7bef5ff129a71be9a62a8063d9caee9c"
+      },
+      {
+        "url": "https://docs.run402.com/llms-mcp.txt",
+        "sha256": "95b722d27b15dbc0e3c9d20fccd4844965cfcda3c1a29fa84226035f6b5e9ca5"
+      },
+      {
+        "url": "https://docs.run402.com/SKILL.md",
+        "sha256": "95b2d7f9241b1f4eb9f5ca82db4c499d3d98a3278aea2d256b7abff3ace1f4a9"
+      },
+      {
+        "url": "https://docs.run402.com/openapi.json",
+        "sha256": "c7334655aa6a4d3485b4e7408fc1ac2b4107ce22b9b3c9d0042ebdc1a01121c6"
+      },
+      {
+        "url": "https://docs.run402.com/schemas/release-spec.v1.json",
+        "sha256": "68e2e24d0bfda426468005da8e6a56d17241d0d093a846ae471ca1ca5dfb2326"
+      },
+      {
+        "url": "https://docs.run402.com/schemas/manifest.v1.json",
+        "sha256": "0a7db619d19941817426614d1ef478c5e64d7d39a289c0283b08a25a555d6688"
+      }
+    ],
+    "pages": 68,
+    "errorAnchors": 693,
+    "status": "pass"
+  },
+  "apex": {
+    "checkedAt": "2026-09-17T20:07:11.160Z",
+    "status": "pass",
+    "apexFlatFiles": 15,
+    "hostedHtmlPages": 41,
+    "legacyErrorAnchors": 693,
+    "distribution": {
+      "status": "pass",
+      "mode": "live",
+      "skills": [
+        {
+          "name": "run402",
+          "digest": "sha256:95b2d7f9241b1f4eb9f5ca82db4c499d3d98a3278aea2d256b7abff3ace1f4a9"
+        },
+        {
+          "name": "run402-buzz",
+          "digest": "sha256:a87c3f3dc608d8f7b5c696d2845477c0b8196669afe488d8081bfbd29da5b186"
+        }
+      ],
+      "index_url": "https://run402.com/.well-known/agent-skills/index.json"
+    },
+    "cleanInstall": [
+      {
+        "host": "shell",
+        "installedDigest": "95b2d7f9241b1f4eb9f5ca82db4c499d3d98a3278aea2d256b7abff3ace1f4a9",
+        "update": "verified",
+        "nextAction": "CLI first-deploy files"
+      },
+      {
+        "host": "mcp-only",
+        "installedDigest": "95b2d7f9241b1f4eb9f5ca82db4c499d3d98a3278aea2d256b7abff3ace1f4a9",
+        "update": "verified",
+        "nextAction": "MCP reference and app_up; no shell assumption"
+      }
+    ],
+    "buzz": "artifact closure + managed route/preflight/consent inspected; no onboarding mutation"
+  },
+  "previousArtifacts": "Both prior index artifacts retained with original digest; checked 2026-09-17.",
+  "ci": {
+    "public": "https://github.com/kychee-com/run402/actions/runs/35268213516",
+    "portal": "https://github.com/kychee-com/run402/actions/runs/35268213577",
+    "core": "https://github.com/kychee-com/run402-core/actions/runs/35268170470",
+    "site": "https://github.com/kychee-com/run402-private/actions/runs/35268577417",
+    "kygit": "https://github.com/kychee-com/run402-private/actions/runs/35268577624",
+    "privateDocs": "https://github.com/kychee-com/run402-private/actions/runs/35268577612"
+  },
+  "limitations": [
+    "No live disposable application deployment or two-user RLS acceptance without designated project/profile and spend policy.",
+    "Private MPP Lightning pin check fails on a missing pre-existing archived manifest path (run 35268577589); all documentation deployment and affected checks pass."
+  ],
+  "entries": {
+    "public:.agents/skills/bugs/SKILL.md": {
+      "sha256": "3af3fbb5e34b7aab67ade62fc69c6ef5ec9141c46df165e57a742cafff75010b",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:.claude/skills/bugs/SKILL.md": {
+      "sha256": "cc991a23249a891609588e0523a6ae7ed8233d215aea8341e263b872a7059015",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:.github/ISSUE_TEMPLATE/bug_report.md": {
+      "sha256": "fb03c2cdba80bbcbd829c6f4a379e7ef6907076e3194fdf3cd0592b109e9e1f5",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:.github/ISSUE_TEMPLATE/feature_request.md": {
+      "sha256": "ff8c75674098453b25466b4d985f02dbe7691ead227a4666545c3d75e0cc7a78",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:AGENTS.md": {
+      "sha256": "86de265d9e366e3a086ab890b315d2b3b51512f0d0514809fef9538c1296e2e9",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:CHANGELOG.md": {
+      "sha256": "1a913c887eb402dd69398b04b21c047deda978d88df6971c5b25cb75de949613",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:CLAUDE.md": {
+      "sha256": "1565155937271e46ccad4a288dd43e254ae2de314b884e2ce81fc6344cf7b65b",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:CONTRIBUTING.md": {
+      "sha256": "3adebcfffc950d173832623307db184edc84ed44c77acad89f2362812150deff",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:README.md": {
+      "sha256": "a15ccacdc32278353960723d11db8bc6815e2ed73d79948775b4007df8404fe9",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:SECURITY.md": {
+      "sha256": "4cfd047b6683a07180c3b1b93e2c043a7423e8ae08d36f190611e88a7f685032",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:SKILL.md": {
+      "sha256": "95b2d7f9241b1f4eb9f5ca82db4c499d3d98a3278aea2d256b7abff3ace1f4a9",
+      "publication": "hosted digest verified: 2026-09-17; portal/apex 23751749"
+    },
+    "public:astro/CHANGELOG.md": {
+      "sha256": "16c50e7c4492b8fd062c01880facc4215e78c7f80b4542c19a8090ef288db16c",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:astro/README.md": {
+      "sha256": "535227e2256874fcc4b228e4e869547b546c5181e0a82cabf2584f8c38e4c9f5",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:astro/test/fixtures/minimal-site/README.md": {
+      "sha256": "9405b13f63e37631b9366a992e4da48308e0d5c05828dad99aa0d867ccf62a2a",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:buzz/README.md": {
+      "sha256": "344a42b0e6d4ee7500f820e1bc170a11eb780df9f78a65672a8a8419db2cd538",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:buzz/SKILL.md": {
+      "sha256": "8102cc05de406ef06b93e5e80f524ee9d3308119a8560bf4cf2053793015aa62",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:buzz/references/community-control-plane.md": {
+      "sha256": "7c7c7a0076902d1e60bbcd4ae6ff877712dfdc7efc874fa6ff6a820ea99f1fed",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:buzz/references/conversations.md": {
+      "sha256": "898f6eea9d91dc2bdf7148f87b64cc3d873ec43f034a776061547ca097d298d1",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:buzz/references/identity-and-security.md": {
+      "sha256": "91d82e59150c084d0169ec91b10689e8a264cae9a2ee605cab847a3bcfcc8d3e",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:buzz/references/installation.md": {
+      "sha256": "9bc8352e3ba9350d0e171b6dccdcbaca0bc9c8112d5be5f0f5be377040a858e3",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:buzz/references/preflight.md": {
+      "sha256": "dd64190f5a4aa931e925f7eb2c85203feee5367a860fa4d2a8332bf2d0a67f1c",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:buzz/references/receipts.md": {
+      "sha256": "6c178a2e8379701be3f4b9d1e4ed3a6f50aef1e38d4faa170266de3084ba43c4",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/README.md": {
+      "sha256": "b147637a32f0f276cd639d14d84ae29565402d1cfa8bf870875bd670b3e294a1",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/admin.mjs": {
+      "sha256": "eb92a98b4eae26d15dbcc0c56b0ff608dc6c039f5c71911bb71f3480df755026",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/agent.mjs": {
+      "sha256": "3e7141dffe788d2bc1b349f604ed2c8fe0f04dcbf2426fb78a3a6ddb431a75a0",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/ai.mjs": {
+      "sha256": "07eb0674358611a0182c386a046f13c3dcda8dd748e6699a0fd72989121e3242",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/allowance.mjs": {
+      "sha256": "29a77c240122faa28c650224904a05adc1b9e8b6e4e8cb3b0a7d3e790eca1607",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/apps.mjs": {
+      "sha256": "4786734a5e27262997b5d20ab8667e635eac721cffd45fd6a17b83dea02f9f3d",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/archives.mjs": {
+      "sha256": "314f9413b4b612879bad477eee0431f648df44a68c06578aa6844c7c702536d7",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/assets.mjs": {
+      "sha256": "973d63b520e25da37bee89b54a641238c552eb7bf16c88c502e9b7517788484d",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/auth.mjs": {
+      "sha256": "4d0fbde900018e8bded7c659ce8b64a5b5e23e0dcecc04789eddbc6c3bedf991",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/billing.mjs": {
+      "sha256": "f87357392ce7f65448b7094b90ec682eee2e199b070826234ab44f87cde6f337",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/branches.mjs": {
+      "sha256": "342684506c008835b8f8e1ca55adc9dc03c1c34732acee6ff7ee1384ee505dac",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/buzz-notifications.mjs": {
+      "sha256": "5ec54d247a305e8e35f085a69c6b53238b32a2e052c958853d8409733653cd0b",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/buzz.mjs": {
+      "sha256": "106c035be44ad177a9887b2cbcad9973edc0e38689879de4f930d1fcb68a552d",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/cache.mjs": {
+      "sha256": "cf6e6590434a44e4b8d9937006a13c268196e2938e910e339c0f741f09ce118d",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/cdn.mjs": {
+      "sha256": "cab2a3eb059e6f85a22e8bca70ab21400d5caa1455ec289562278f4ad73dd9a1",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/ci.mjs": {
+      "sha256": "97e9027e4b882588a68cdfb9580ae5682ccd6923314078c4c119a6df10de778d",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/claims.mjs": {
+      "sha256": "eaddb20d035eacedcfb8f36510c4e7275b4488cc1800c50fe6512451afea349a",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/cloud.mjs": {
+      "sha256": "d64d4ee26e753cfea91272cda693a8a868309d4c7d260447881311b3ce628647",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/command-manifest.mjs": {
+      "sha256": "ddca7816087597ea421d10f069ce0554bad0063c3505c3cc55a579922b1c8386",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/contacts.mjs": {
+      "sha256": "2ec62f01e242c582dd8730a1160d04a1f27029eb79045f852915bf6f3198d883",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/contracts.mjs": {
+      "sha256": "48b42636150de7607ac5e0decd6ddfa798e7735d81dc068f5602a9faba1ba0b2",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/core.mjs": {
+      "sha256": "391f13ed7d37eb7330061f40448aa6919521ecadf705f68183944becefefac92",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/credentials.mjs": {
+      "sha256": "65831136200d5642fb5b37f1fef8cab7d4e05a1949ba65522e7ce37df2279bd8",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/delegates.mjs": {
+      "sha256": "95cac1dd6b49d75df5d4cd36b04074ab46b123f7797106f134d64551c6d9c4f6",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/deliveries.mjs": {
+      "sha256": "691b230b325780603f60626e393515bad6b7373960a0206e1a6e59f3dc96c573",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/deploy.mjs": {
+      "sha256": "ce0b8d37fa68a8cc36785c7c623aab851252fb4210e56b4a1dd8b286a84d8d21",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/dev.mjs": {
+      "sha256": "c71402cd7e1843878a7a04554195bf09bf30f85e424f8e1b137d06d172c7ae7f",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/doctor.mjs": {
+      "sha256": "11ab2a8b2955617e92afaafe36cfaab8a57407fb61129e1f7aa93d06fa0fb6f7",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/domains.mjs": {
+      "sha256": "70c187ce386a25e93cb6f6e0e5c6dfa3d372d95ea45feae9c2a27ccb76407444",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/email.mjs": {
+      "sha256": "698d10c819661794e4b3df86cabe8e5251c711e71349c3688ee5003b8ec1c315",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/errors.mjs": {
+      "sha256": "ebad8631b649f3bea9ea9bb101d7cc77369c0fa25a0846e9c67b1a6279301ece",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/escalations.mjs": {
+      "sha256": "020f7052a89bee564aec4bd4bab221307acf18e6e81de5410dfab01bc61c5da8",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/events.mjs": {
+      "sha256": "fb3dcc57bf57fb4b64d908605945ca8583163f46fb4bf4f766a17df59e30fae1",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/feedback.mjs": {
+      "sha256": "d856ffb3a80c5c84ff2dc19912d6d713f9380fb2b3a93592efaea26210ca3337",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/functions.mjs": {
+      "sha256": "9aa87a974e36a8f3e7be27a937c9c626691d0fde430646168e5baefc635dd573",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/gitvault.mjs": {
+      "sha256": "f6e73c004be88ef498bd34e0596c51903d91154d46b9f04da56ba7b3d0f226ef",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/grants.mjs": {
+      "sha256": "5f54cb28adc6a89bf4a79612ad1f159afa5f26e3784352285b44772583394f01",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/identity.mjs": {
+      "sha256": "e7300e0028163e03a89b701e4c7d54c7468082787f42fefc7744573a7ded9731",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/image.mjs": {
+      "sha256": "3eacad6f6bf633f802952fa5d2fe854b320b21c1271d725e0ee7af365103b9b7",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/init-astro.mjs": {
+      "sha256": "d46b08d6212bc38fac5b51f74f528f5740c6633edde08a652d6454b63d68847b",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/init.mjs": {
+      "sha256": "4ffcb1d0db69625c0450e22821d8b53718d89e329792d099c6c4252f6a1ca52b",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/jobs.mjs": {
+      "sha256": "d9c64a9fe14f21e10dd8c92c8ef5d6409ebc084230448b22f80d78f6961d7db7",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/live.mjs": {
+      "sha256": "972c56ab4b19947a5eb9e63dee4b8926afcb538710267a0c2b092c8a4dc24245",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/logs.mjs": {
+      "sha256": "f67138f1caa5bdbb154d86d2b87e93474dda13acad83e44b6a724e3b1bac257a",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/messages.mjs": {
+      "sha256": "ea1fa5f270f07ac5f76398feca59d012424efcf3be5316f350b99c75954c98c2",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/notifications.mjs": {
+      "sha256": "433fbd26a79846d7df51100246f786a29fd3c682d10e08371615ba59150f20c4",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/operator.mjs": {
+      "sha256": "80f1b72d0e7d87ec213850f7a589417e8d906c07e51569db7b5d9c4e1c39d611",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/org.mjs": {
+      "sha256": "4e33ed856bee3a79f5d991ec03391d1cc70f04203fdd014fbb44f7cfa8513049",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/pay.mjs": {
+      "sha256": "30031eb6a640041673971524b005b8184997e50503c8823a3230bf96e5de93c8",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/projects.mjs": {
+      "sha256": "bbfbbab1d759e0f03f9ee1fd336fa922dfead9bf0ac4dd1a859321f7863561d2",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/redeem.mjs": {
+      "sha256": "900f597e6b8ae1585d5d52fad67dd0e5800ec61334e57f94e56638c1bc483df7",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/repos.mjs": {
+      "sha256": "bcc634438e39dfac57bb96585d614f3ffce0e0ddf3bc27c734c254435832ab0c",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/rooms.mjs": {
+      "sha256": "c5a56fa5f7212deb288d12ec5273fb976c6ec0677b4b429cb7aeb8ab8fe9c8df",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/secrets.mjs": {
+      "sha256": "f69fc7a4ab073e24738df01455e694a467050393faa25cc58e6d8e31aea7d325",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/service.mjs": {
+      "sha256": "32c97ad8622c8716c0cf3a12d4e3739c0044c2f625103f1ffb9ba9b310d74c3a",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/sites.mjs": {
+      "sha256": "1bfef3d85eb01f377230652aeb99a591d477e912e185c626f03d4fbea09374f7",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/snapshots.mjs": {
+      "sha256": "c9a49ddbf2a3efaf4d3bacb88713b8db2e4f659e60167d0e4914e3b94ec4a6ce",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/source-access.mjs": {
+      "sha256": "c5f1da4954f72e603190d5b724a87119e8ae72a5f96f98e63f62f29d8e3b07b3",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/status.mjs": {
+      "sha256": "c8c73d2f3a82e7a9a81adb35685bdc7334ce44b48afdad961d056d0d336d3bca",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/subdomains.mjs": {
+      "sha256": "c1194b9d54b0c5feaec2b423ee2654878d1562e049fb3318ba56ddcb1020d997",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/subscriptions.mjs": {
+      "sha256": "46fbd3b8f20f86e84d06df7d1a86f0f6c391b562be0eafe68274464edb1a9106",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/tier.mjs": {
+      "sha256": "4f4365ce0b2455b736c51f3d5c456c65b396f4ad16ae27427a169627d458dc15",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/transfer.mjs": {
+      "sha256": "4da3c60eec49adbd66264062428aeef0d58ddc7a28aaca7c86225cb75923f021",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/up.mjs": {
+      "sha256": "7fc3c082bf34161c0f4e252142194b4124f15b87d8fddb330676422d371950bb",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/wallets.mjs": {
+      "sha256": "1ad294e4026f2f7b594175633853d13b778593e1b3e6bcd88a96f04e4462a90d",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/webhook-secret.mjs": {
+      "sha256": "44ca4011f1fed4a30cbe74a43501b0dfd9df44354317b355c4d4ac34b922bf90",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/lib/webhooks.mjs": {
+      "sha256": "addd1d7cde5efde42387d26d8d91062086823adcc7a7480b3e0e042a2a0e879b",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:cli/llms-cli-assets.txt": {
+      "sha256": "a9411fb010a950a42ddeec06ec320ad52694053192362c16f4398da686f99307",
+      "publication": "hosted digest verified: 2026-09-17; portal/apex 23751749"
+    },
+    "public:cli/llms-cli-commands.txt": {
+      "sha256": "b3decd804ab9f698f5f98a711c5675ddb8bd7e1e05cbd65447fa78852cb3f224",
+      "publication": "hosted digest verified: 2026-09-17; portal/apex 23751749"
+    },
+    "public:cli/llms-cli-deploy.txt": {
+      "sha256": "70398ee7ee52e80907bf9ba3daa35b62528808f920c72497e19fe9888f24cc28",
+      "publication": "hosted digest verified: 2026-09-17; portal/apex 23751749"
+    },
+    "public:cli/llms-cli-errors.txt": {
+      "sha256": "780d5a97d59de0332979dcccf476b088e8bfe33442a061c7067be1a3a8a72bfd",
+      "publication": "hosted digest verified: 2026-09-17; portal/apex 23751749"
+    },
+    "public:cli/llms-cli-frontend.txt": {
+      "sha256": "5771248b33da43dce8cfe224b52df20d3b101dc46fbd251db998ec53eade6edb",
+      "publication": "hosted digest verified: 2026-09-17; portal/apex 23751749"
+    },
+    "public:cli/llms-cli-full.txt": {
+      "sha256": "94aaa801db2546013677040beedd5eb9332b210dc31f25e6d06971a39bf6a24a",
+      "publication": "hosted digest verified: 2026-09-17; portal/apex 23751749"
+    },
+    "public:cli/llms-cli-functions.txt": {
+      "sha256": "7b74b80d66d0479677f4762de1c0382cc6793f61bef07a1271f371636a96fc3a",
+      "publication": "hosted digest verified: 2026-09-17; portal/apex 23751749"
+    },
+    "public:cli/llms-cli-ops.txt": {
+      "sha256": "c493bd78651b99ac3a37ef7cd7fa7e7bac691056c801a6818d0b481795ea9bea",
+      "publication": "hosted digest verified: 2026-09-17; portal/apex 23751749"
+    },
+    "public:cli/llms-cli-orgs.txt": {
+      "sha256": "4968370e3bb6beca8be081cdb6a410e92604a090978b4fbd25a62654fe5a3733",
+      "publication": "hosted digest verified: 2026-09-17; portal/apex 23751749"
+    },
+    "public:cli/llms-cli-platform.txt": {
+      "sha256": "12418cc518da3e9006128dd088d42b24c23ff8051928f8b95b544165f354573b",
+      "publication": "hosted digest verified: 2026-09-17; portal/apex 23751749"
+    },
+    "public:cli/llms-cli-repos.txt": {
+      "sha256": "a8f977dbc74f24045c81d6162e70c12b60100b7fd4651250e48692293b814f0c",
+      "publication": "hosted digest verified: 2026-09-17; portal/apex 23751749"
+    },
+    "public:cli/llms-cli.txt": {
+      "sha256": "f5a1cc662fb7692299602f5e1d7b48fc3418627a046d128d50315d8c694494f4",
+      "publication": "hosted digest verified: 2026-09-17; portal/apex 23751749"
+    },
+    "public:demos/buzz-todo/README.md": {
+      "sha256": "102f402624ae2aad02668a32059ce215dc89dc7fc03e9c39db2497dd897bd8ee",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:demos/buzz-todo/site/callback.html": {
+      "sha256": "be444202bd293f425fb188fd87aae1d6669bed6376f233b9b6504754870dd190",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:demos/buzz-todo/site/index.html": {
+      "sha256": "f469b296a576c8827125d383f193df469c38f5911756a32320694ac1bf65d6ad",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:demos/dreamdrop/AGENTS.md": {
+      "sha256": "7addedf47588fdb90e61fc8a5f662f0c534967cb6542840ccdd36849eb5f9822",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:demos/dreamdrop/CLAUDE.md": {
+      "sha256": "7addedf47588fdb90e61fc8a5f662f0c534967cb6542840ccdd36849eb5f9822",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:demos/dreamdrop/README.md": {
+      "sha256": "acff16f4fec3b49178cae341562ec2759270838ed13c9ce1181a73f2ae890e30",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:demos/identity-lens/README.md": {
+      "sha256": "70d5e0b2deedfe4b9d54a8a8cbe43fc86d245e345ec07f6e62e9aacf05c623f6",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:demos/identity-lens/site/index.html": {
+      "sha256": "4fe72dc0db5c4e4f7040df2de3e76fe71281314d285786c935f10a8c7833c0eb",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:docs-site/README.md": {
+      "sha256": "ea7c514ca8be99311be855cc57f6143c40cbdb1e9127a6035e90d5373caa438b",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:docs-site/public/robots.txt": {
+      "sha256": "14ec90d8c3f5e1b44cd751017e7fa83c32a400928221cd5a22401b26eeec4af8",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:docs-site/src/content/docs/astro/errors.md": {
+      "sha256": "84f5a1dc273f64fd44d6ecca25c141ed8a83f8e988d13bbee9eab0e467c22d30",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/astro/images.md": {
+      "sha256": "2c23903aea1bdf375d7e496dcdb8627fa632724c01cfb9356e49ff105ae37bff",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/astro/index.md": {
+      "sha256": "b0061ba4063579e48a22181131110bd122be1d6159c43b543c5a58a18c7f3f04",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/auth/db-actor-context.md": {
+      "sha256": "1bfc351feaf80eb955276c58ef148e0768d4ea37478a6bfaafad8a7f3cc2e588",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/auth/hosted-ui.md": {
+      "sha256": "a9dc1b9889acccdcafa4ccf2913e7d45a13e1ba1062d67c04d424e72bf074cc8",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/auth/rendering-modes.md": {
+      "sha256": "27aa4bbc09a1868c16477c91fffb7bd15539f1897d86f77f3b14a3db1ca6254a",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/auth/sdk.md": {
+      "sha256": "34ffea19751e4a263001a673556feb06c3113663a35e15a57272dcf1f1c1e842",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/auth/tenant-assertion.md": {
+      "sha256": "e6c0b59d176501b896ff8873d83fbd6bf9d5965f4040fa619d5a10451dfccd33",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/build/astro/index.md": {
+      "sha256": "e5c79573e656e4b9261ad2c4a48986f6af750707915d3139c9752536572887f8",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/build/auth.md": {
+      "sha256": "4163e53c54a55116e03f4504a4f935be297b465300f40d42e1795309fb72eca7",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/build/database.md": {
+      "sha256": "0c0bcb83ddbf384863798b4bd77fd3a1dc90a40c6b371dbcec2afebbaa488304",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/build/domains.md": {
+      "sha256": "3963bf7a64fd5def594f265463afa14549da96bf1a0f4aa856a2a23ec0fdba20",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/build/email.md": {
+      "sha256": "a800ffdd327b7ee9016bbd5a2cff75e35a830e4110e6a919b97788071e447325",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/build/functions.md": {
+      "sha256": "55c258c658d6b2151e0be4f02eb23254fbb5730554db9e67974bd7c6b75bf48c",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/build/storage.md": {
+      "sha256": "6241e1bb043250f3f1beba3b6153dbbe336a115101a001151c552e066ecdbeaa",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/cache/concepts.md": {
+      "sha256": "220d73b28411b8150a04d85ca2a157fb011a8b4e92b6f403650b4d83ee336ef4",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/cli/assets.md": {
+      "sha256": "3c77e9a53b3becdd53ea1836c5c5e45f1cfbe1ebb99a61a423bbaced137e76ee",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/cli/commands.md": {
+      "sha256": "f82f75391f0ca91e00d5af1a53c60875af4218fa141843aec0645ff93e9a5fa1",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/cli/deploy.md": {
+      "sha256": "eacf9a0c730f3c4cd4773c5f1e7ab5c92252d02e910820f97e4eee8439e1c6ee",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/cli/errors.md": {
+      "sha256": "d99f6ca42bc0c30a7053311ef56c6a70ead8746023de58115480ec08e04b7ee1",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/cli/frontend.md": {
+      "sha256": "00be97a5da73a3a91bbcd9046bcd0df8e185c89b446ce8b2c3f2216075151a18",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/cli/functions.md": {
+      "sha256": "11c069f4c52226b4fe55e53c5c5f31d7526b3f4abb2471b9bc0a5c964f4cf116",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/cli/ops.md": {
+      "sha256": "ffbecc96c942da51b4d8f00ac38f7b97f3949492f1a696fb072042903b44849f",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/cli/orgs.md": {
+      "sha256": "7865045e5b0d404d2977a6e88924e81643de79a26e50b53e97409e74bea102f4",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/cli/platform.md": {
+      "sha256": "c2b90174898e17ae9fed00a1993effaf460104ad105fe5ca8ecb04a6651e0939",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/cli/reference.md": {
+      "sha256": "e494d05f702a37d2e5dfe5e0773a350f2f09238f3a18a1bfe29187d69738667b",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/cli/repos.md": {
+      "sha256": "50f4c53186ab58fa4f648c6518810dd92d353d3ec9e3cf6a28e77dd8b7cb17f8",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/concepts/allowances.md": {
+      "sha256": "a337e656d497181aa249f113e8e08d71d7447e861c670c9852fdc9b2da439657",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/concepts/credentials.md": {
+      "sha256": "996f3854339a96b2415079268ccaba80bf73fe97cebc204fdfa4b62b942cbc4f",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/concepts/interfaces.md": {
+      "sha256": "c9c8b6289c4677b42c90f734682af3b1311e880f1153d139ee7b8bd460fa135f",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/concepts/projects.md": {
+      "sha256": "d4694e5928a1a388a9a8b1cd628c8b9a27a3c31c0ad3b28957c564649236dcbe",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/concepts/releases.md": {
+      "sha256": "b7c07c2c5d31e7431bc00a91f8329dee3c6d4d2bc856ce5bf5f4658043a23092",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/errors/auth.md": {
+      "sha256": "0d8bd165c691c3e4e70b54c3264a8a91165069ab83ef2470368c4eb3c0305884",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/errors/client.md": {
+      "sha256": "9e631e4cbdcf944b85192908ee9ba6d288bae07154cd4a1ebce221ee90e167bc",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/errors/core.md": {
+      "sha256": "3895ce9dbcc472a34be85c939f1546097d8dbc7c07f3efdf3065bae3ca3b1de8",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/errors/gateway.md": {
+      "sha256": "cbed8762bafcedb030bb6688886d31de68bf3e211bbf5dadc1bdf6807c380549",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/errors/index.md": {
+      "sha256": "8303f141298d69856eb5da5ffd0b438b6e6823c7805aef682a8dcea36a4d8132",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/errors/runtime.md": {
+      "sha256": "8e4c6e9706f8d28493bf948aadfdea9bd2f7aa4bf8b7f43dacbda67a8954c784",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/examples/index.md": {
+      "sha256": "e246a68ef7ac25e6ef69eff8fe6b740bcbe9f285f1c11c3066bbe5f69c901ce1",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/functions/errors.md": {
+      "sha256": "07d06c1c4c33993bf1672897ee863bed902e16d9dedcda79dd223f0ab9a33e8d",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/getting-started.md": {
+      "sha256": "46b4f4698e62eee1db34525d7c100cda208e485ea47d75b7b6373280a5b6a76e",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/index.mdx": {
+      "sha256": "8108f9a67742ef089b09406d2722cac878cba426930375565ff01d8508ba00e2",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/mcp/installation.md": {
+      "sha256": "cf9f1a6683919bf87fb0a85850b512bf9d18d2318ac00164a10d117eb8e8eecb",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/mcp/lifecycle.md": {
+      "sha256": "4b9d7a5293e36f9ee0cf868db05d354ca67ff39a651781f6def51d159360770d",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/mcp/limits.md": {
+      "sha256": "f3c2871db79835c6fccc8ee537de9294e87165a6683f35542154b116211c5be4",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/mcp/patterns.md": {
+      "sha256": "6a0afbb9ad175c8ce3a80a2cc31344704d29aa017abc979ffbbd3c4d74806a9b",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/mcp/reference.md": {
+      "sha256": "7d6afab204bcfe2875084e0a54b4f71d5b4911a406ee2c451ef04b9b1c20ef1f",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/mcp/tools.md": {
+      "sha256": "c0f925ca3d67808ba210a8f621052a0f01890543bb846c32e4c240a661a55a06",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/operate/billing.md": {
+      "sha256": "91ef8d37f4f23af4eef74e1f54edfaa468f24408d6effd21d37bdd8125cb9195",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/operate/ci.md": {
+      "sha256": "55bb49140a602488cf47cd361bb8c646aa5827bbcfebc88828713805c5ca67bd",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/operate/deploy.md": {
+      "sha256": "69477876541f3871818cf3db900c36ad6caf019b6cd6ae7b6e808b98555d902d",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/operate/diagnostics.md": {
+      "sha256": "daca943b4df844417df3164054a3d82041fdde30a0362b7dd85bc6000ae5ea9f",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/reference/error-codes.md": {
+      "sha256": "a2c86bc8b2d9455494b592eaacbaa0b40e02d81b8b1a4e4922b7965a79cfffa2",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/reference/http.mdx": {
+      "sha256": "e14be1a4da52cc9d4580bfcf233bd26780b0e59946865d3616ed6770690fe389",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/reference/schemas.md": {
+      "sha256": "89eface8f32c6a23a32c4c4be54b06a54e9a5554e6a4344c5ecd1bf28042cfed",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/sdk/credentials.md": {
+      "sha256": "de6aa8c1d42abfeec422394f17864255b9078f9c8b74f47bb8d9bad367581492",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/sdk/environment.md": {
+      "sha256": "a8a7f02627c44c046a41c9cb4b218c474dd31e049e4002f146ee13ae0c92f8c3",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/sdk/errors.md": {
+      "sha256": "02dc7e806f6c6019db183b7e5747a8ccbe020e5d3e3cc97a18297d5403cd76f3",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/sdk/identity.md": {
+      "sha256": "d5b062af00f3ff34ec76cd1bdb960b11517129c3fb15ac23e3383df755cab8ba",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/sdk/lifecycle.md": {
+      "sha256": "5ea28ace23eee961aa77e5e2016417032f465ca2285366fb78bcc176f592be4c",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/sdk/limits.md": {
+      "sha256": "71a406735b6eb30a5d8a6073e7ea0f9dafdb7a72d7a33b902fedd04bf97fef38",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/sdk/organizations.md": {
+      "sha256": "c6e6b982f06a1485e7da9f83cfea7959e42e9a55c001c009a6c63f8a9436843e",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/sdk/patterns.md": {
+      "sha256": "758052cd0dc54703e07b9925f82fa9f2d7af8d94e70af3e8e591b9ab59c59d79",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/sdk/reference.md": {
+      "sha256": "5993a46c345356201b7bb11499be5f089d9341d4940f03ebbf09e2b34b23fa49",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/sdk/resources.md": {
+      "sha256": "8bfdaeb146185b7cf44a388f3495a35168a1d3b28a514db70bc5500daad7f69e",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/sdk/scripting.md": {
+      "sha256": "d7c8adc1bf78c9cc345a3a76d08c1f2ef90a3a98cb206988aa5a5997f4aa3272",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/start/first-deploy.md": {
+      "sha256": "c5ea98e31609cc6a0bc8eb8e466aebf8066403f5f784f2cd896784b4d8861eac",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs-site/src/content/docs/start/harness.md": {
+      "sha256": "f20d4ce9ff387e79c89e2e72c47e9bd069951043baa0b143e7dac72cf7d0cc49",
+      "publication": "hosted verified: 2026-09-17; portal 23751749"
+    },
+    "public:docs/gitvault/README.md": {
+      "sha256": "18ccb57b69585a4e86e3a7631a45c7c619ed234d1902489bb014658de5b841b9",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:docs/gitvault/hpke-second-implementation.md": {
+      "sha256": "5611834f6e7afd9dc77720e345b6a5e4acb8ec587d39bd3a01e1b8e467068908",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:docs/gitvault/protocol-v0.md": {
+      "sha256": "a094bec1d36f55312d14001c1fbe42d62e9608eb0347233030c78458e73316b9",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:docs/gitvault/threat-model.md": {
+      "sha256": "41382e08d3ec23331a7192157e0259e470b298ea760e68c1954eb7a70091c753",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:docs/quality/documentation-policy.md": {
+      "sha256": "e4c0d7c2131c842b9b38fdc3ed87d5ddb9471aaba3b656f2d0e9048857f3930a",
+      "publication": "source-only acceptance record; published in final evidence commit (see git history)"
+    },
+    "public:docs/quality/gaps.md": {
+      "sha256": "a02c1e4cae8c1111a2e82654b73fc93fc278f8b17c718780bff2ee55c6bfb4b6",
+      "publication": "source-only acceptance record; published in final evidence commit (see git history)"
+    },
+    "public:docs/quality/maintenance-map.md": {
+      "sha256": "cbf8aa0742081704161aea2fbd7d3d55614057592c390503529da21646320cbb",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:examples/agent-team/README.md": {
+      "sha256": "74addc2e7445517d3dcd89acefe87093a3c0947c257542f486edc1a1b4cdffc8",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:examples/agent-team/assets/grok/README.md": {
+      "sha256": "2166788562bccf20a43627a4a9d8e007f9bbcb7a0b39cf0a3606afde5d4ac388",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:examples/agent-team/prompts/claude.md": {
+      "sha256": "34f81054133fce98f6881788be0eed874516f059642499f3fe447ab021fbdd12",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:examples/agent-team/prompts/codex.md": {
+      "sha256": "79a79c056cf285f864bad0a476c2fe9d9a96dc0b628bdb0cf29556ed43577402",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:examples/agent-team/prompts/grok.md": {
+      "sha256": "f04545860d9390fe3ae8270929cddaaaac66a80461c4b7f45fc46abea45f6b7c",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:examples/agent-team/prompts/protocol.md": {
+      "sha256": "e1fd7b49beaa4899e08ba25ecb6c5b1e1f0aa086ef53104635f51d0fa675d3b2",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:examples/astro-notes-cms/README.md": {
+      "sha256": "8cdbf2faf7445f9d8084e3ce5d2c15db6dc8197a32cd611004c9cbf23523a727",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:examples/kysigned-function-runs/README.md": {
+      "sha256": "f87deea7ed5be6d12701312e538e7e1ead559d328b4086102036dbb5720bf86b",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:examples/room-invite/README.md": {
+      "sha256": "8873ebc3a037b21f593c71101ecb1271a12e93264bc3699b54052f1b98d54291",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:examples/static-config-js/README.md": {
+      "sha256": "8e844379db87b634f95e92b3b655ae2a5a941e4558d0c7838c669941580dc5e7",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:examples/static-config-js/index.html": {
+      "sha256": "6d02f615b651868737d12f910d6526aaa4a2057e06f3edf6274b519a2c120909",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:examples/tenant-x402-wallet-stats/README.md": {
+      "sha256": "e2ee39af9fba1547245a42f6254334faf3ffa72d567fa67fdf88d568150441b1",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:examples/tenant-x402-wallet-stats/static/index.html": {
+      "sha256": "fe1e5beaa04b1e43746348ec4ab99ae32bdce8c6fa5cdb7bb98f53303bcdfe75",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:functions/README.md": {
+      "sha256": "3c4a6faee3353369e18217146241bc82bc32b1226805a0d38cb800755e9aa499",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:integration-fixtures/fullstack-app/COVERAGE.md": {
+      "sha256": "4cbe434fa965ca2e9a65f6776b2ed75ddea6ab603e78e2812c7aac1ac02f3700",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:integration-fixtures/fullstack-app/README.md": {
+      "sha256": "093860d1f901a0d7a923f22c4feeb3f38671daf5b27c994aef061d0ca73ec12e",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:integration-fixtures/fullstack-app/site/docs.html": {
+      "sha256": "38e2d7fce3fc65d23f5430fcc59f9becff9ab6d54999c66a8b73cbee48f00d57",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:integration-fixtures/fullstack-app/site/index.html": {
+      "sha256": "854a60405fc9fd33926ab242a06fee0ca0008bf3bffba5599be4d3da47c3a771",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:integration-fixtures/fullstack-app/site/status.html": {
+      "sha256": "59ec22f2556286b0cbbc03b73f20219d79baee70fbb3d131190063e4fa3146bd",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:integration-fixtures/fullstack-app/site/version.txt": {
+      "sha256": "9a9f48abc1e2d8dd5d329f8f97f21296433b342ca5acbb084fb30c1189da3cb9",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:integrations/run402-for-buzz/README.md": {
+      "sha256": "8071d963f047d45c3a4f875874c7162c9b69fd41b37ac3607339e510172b0c30",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:kygit/README.md": {
+      "sha256": "b274e951b157d16b841f7c68b70267dc631cc0efada0e90305355de5976ead28",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:llms-mcp.txt": {
+      "sha256": "95b722d27b15dbc0e3c9d20fccd4844965cfcda3c1a29fa84226035f6b5e9ca5",
+      "publication": "hosted digest verified: 2026-09-17; portal/apex 23751749"
+    },
+    "public:llms.txt": {
+      "sha256": "7c27fa706ebf8ff911980c0763ed379f4948410f28add0b8d0bed1520048877c",
+      "publication": "hosted digest verified: 2026-09-17; portal/apex 23751749"
+    },
+    "public:openclaw/README.md": {
+      "sha256": "cea1f712514210ac49d9201e18ec41e1041e2c2342872c0a5468091ed5bae7de",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:openclaw/SKILL.md": {
+      "sha256": "95b2d7f9241b1f4eb9f5ca82db4c499d3d98a3278aea2d256b7abff3ace1f4a9",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:r402s-verify/README.md": {
+      "sha256": "ecbc14a68a42f168fb4c8d13cbfe84b36c5dddf22b1e46738b6c5b8e3da817de",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:sdk/README.md": {
+      "sha256": "e4f7ff09ae584b56890bbe8553a8200858021aae4beb5b2ca13db0bc402d3e5f",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:sdk/llms-sdk.txt": {
+      "sha256": "179852f110548f34eb8e083befd5110c7bef5ff129a71be9a62a8063d9caee9c",
+      "publication": "hosted digest verified: 2026-09-17; portal/apex 23751749"
+    },
+    "public:test-vectors/r402s-v0/README.md": {
+      "sha256": "f0d7b9fd588b33b07ced9f5fb142e4f63e2ec9715bf3840cdffbd7c08fab41bf",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "public:test-vectors/r402s-v0/hpke-interop/INTEROP.md": {
+      "sha256": "5317493e1acd00871e658d874dc354aa43e0afa826e1b39cc3d35fbd1c94fced",
+      "publication": "source published: 23751749; no separate hosted acceptance required"
+    },
+    "private:apps/kygit/404.html": {
+      "sha256": "7fe883eebe0e5548ec58307d3ff18ac102d1319cf11786dfe91d485aa8e60ac4",
+      "publication": "source published: 610b2e05d; native metadata/legal/asset purpose retained"
+    },
+    "private:apps/kygit/about/index.html": {
+      "sha256": "ae930e714988dfab4ddaef9bef012722bff1a83bf6bfa2bb0db3d6ba58aa7a97",
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
+    },
+    "private:apps/kygit/doodles/README.md": {
+      "sha256": "c3a685dbae6bfabbc01e2637cdba71622cbbda6932e7c43d838633305b5a6d4d",
+      "publication": "source published: 610b2e05d; native metadata/legal/asset purpose retained"
+    },
+    "private:apps/kygit/europe/index.html": {
+      "sha256": "36e69db6062efbfdf795d413ba8188614942325b5a5ca66af865c16978f5ffc9",
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
+    },
+    "private:apps/kygit/handoff/index.html": {
+      "sha256": "bb30378e86010281796c20dfe2c9897ca33dc9c20e547f484b712b93601ad318",
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
+    },
+    "private:apps/kygit/how-it-works/index.html": {
+      "sha256": "24ab9573ec6d40708f162ee4f4a0e8c260bd51c64a74eb81378deba214c036f4",
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
+    },
+    "private:apps/kygit/index.html": {
+      "sha256": "164cd50a8771f163727a60761ebe5313f144eeaaf8a3f5ec6f12a0c3222e1cb0",
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
+    },
+    "private:apps/kygit/invite/index.html": {
+      "sha256": "bdb9b1770b65e918942633473c7db2fba8a3d2477be39d6c39b28cdc2b200dd1",
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
+    },
+    "private:apps/kygit/llms.txt": {
+      "sha256": "d61d39e0b3bad84cdc75ec8bd119be51d03d002ad15908782a49ee4dc56a9c16",
+      "publication": "hosted reference/distribution verified: 2026-09-17; site 610b2e05d"
+    },
+    "private:apps/kygit/privacy/index.html": {
+      "sha256": "41887e5a2b6bfa7ba7ce864f128969343ac0353f1dd95ee8712e101f13943572",
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
+    },
+    "private:apps/kygit/robots.txt": {
+      "sha256": "38945deb24a5d0ebe67faa72a46b659bea641f106f13d43b60dc6c2fdcb44011",
+      "publication": "source published: 610b2e05d; native metadata/legal/asset purpose retained"
+    },
+    "private:apps/kygit/terms/index.html": {
+      "sha256": "b7bcab62fbc87a0227922350bd48fb7dd16b57ef431b3420cbb35c4051e1646f",
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
+    },
+    "private:apps/kygit/vs-github/index.html": {
+      "sha256": "f7ad3f51838d1b22adaeb387dce471b1496ee3bd05c871119554cae929b217ef",
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
+    },
+    "private:apps/marketing/.well-known/mcp.json": {
+      "sha256": "9536f16fb6627eff8f0430be2740fd1a86b910eb4a9c4c9f59776a414958aefc",
+      "publication": "source published: 610b2e05d; native metadata/legal/asset purpose retained"
+    },
+    "private:apps/marketing/404.html": {
+      "sha256": "6ad822e7c8b2e44aeeffce5248d76264f09f6a612c7799c2187ffa9ee47a58d8",
+      "publication": "source published: 610b2e05d; native metadata/legal/asset purpose retained"
+    },
+    "private:apps/marketing/agent-allowance/index.html": {
+      "sha256": "1196f77ff9280076e9e7367b349210b285bb1db005788ab60aad34e4f0d2531d",
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
+    },
+    "private:apps/marketing/apps/index.html": {
+      "sha256": "f0eb954525a714ead40d288cde1383ce8472ee2d1ded061e56b4cc56e5ddbe3a",
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
+    },
+    "private:apps/marketing/billing/index.html": {
+      "sha256": "555e0ff6b205ed03616288be905094610613052fbc8b9c7d1e8fcbbc60a17e81",
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
+    },
+    "private:apps/marketing/buzz/index.html": {
+      "sha256": "cc1ab8ebcaac23869c8005a2eba2d2d5f0d0478624c41a2885eac68c92a3bcdd",
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
+    },
+    "private:apps/marketing/buzz/install.txt": {
+      "sha256": "c8a955d72a81fb8d6982a989a7c12a817ea3231d6082d5b3583403e74bb406f8",
+      "publication": "hosted reference/distribution verified: 2026-09-17; site 610b2e05d"
+    },
+    "private:apps/marketing/errors/index.html": {
+      "sha256": "112d162e8b3a141913a962a9a4752e806ab2ca22471879a20a6cbdf693e81982",
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
+    },
+    "private:apps/marketing/escalations/ack/index.html": {
+      "sha256": "456a2ec5eb53ce19d427ffeb5e0c852190b9d772dee60cbd9ecad9a4cebd5d13",
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
+    },
+    "private:apps/marketing/examples/index.html": {
+      "sha256": "9656f6ab6d279c04ed0b5ab5b366422bba69c1600494d0e67cc212a7f5558d77",
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
+    },
+    "private:apps/marketing/freelance/index.html": {
+      "sha256": "4d9257dcff75e5ac0068d4f83376ac6a66b9eeb178859068f6d9ac0b69ace696",
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
+    },
+    "private:apps/marketing/getstarted/index.html": {
+      "sha256": "9931e2a54cf1fae49f7948526e8e5d73e076b008f43e04b74596940ad473ac2e",
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
+    },
+    "private:apps/marketing/gitvault/index.html": {
+      "sha256": "fc695ba9f126570adec02ba3d068d8f377bc782a37d45e8a77486e4833065f09",
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
+    },
+    "private:apps/marketing/humans/about.html": {
+      "sha256": "411698a671807e8c73cc1938ea13c234d6d5816508bd503add3ba5b186935acb",
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
+    },
+    "private:apps/marketing/humans/changelog.html": {
+      "sha256": "6ab0848af717e6a3c98c00186889e32e6e2c07c8ea2534ee016ac8ee86efca50",
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
+    },
+    "private:apps/marketing/humans/domains.html": {
+      "sha256": "0a7986034d24dc649c75b521666efa739d54c6074e7d69816d2463f0a39190c3",
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
+    },
+    "private:apps/marketing/humans/faq.html": {
+      "sha256": "7068961b75e18f8ed501da57f5ceb2a448fb8fb8b5aedb25d320af6b5b5fce83",
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
+    },
+    "private:apps/marketing/humans/index.html": {
+      "sha256": "0014a63f9afd4d1edf2abeada94233af95f618a3dad9e44f10fb7ef1740f44c0",
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
+    },
+    "private:apps/marketing/humans/legal.html": {
+      "sha256": "b090158f22f1e217ae39e7a1b292f7d2c22fc19834bb94fe132b1259aa337e0e",
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
+    },
+    "private:apps/marketing/humans/mpp.html": {
+      "sha256": "8d9a9f544b06637ae51641fb9bf5d4eab977abc26b69ed8f5c80b202a58bb67d",
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
+    },
+    "private:apps/marketing/humans/privacy.html": {
+      "sha256": "b6d974a8d9b6c7c218ad7089eebdc622c7de1c2017f257dc4c0d440298fbec8a",
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
+    },
+    "private:apps/marketing/humans/run402-2-0.html": {
+      "sha256": "06bab51dc0bcfeaaeea702c004ca2d62139964621aa60e88b2027039dc2b85dc",
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
+    },
+    "private:apps/marketing/humans/terms.html": {
+      "sha256": "4594b2d03138041c590dc2ae3f2ae51aa960864477334520058cfb265dab826d",
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
+    },
+    "private:apps/marketing/humans/vision.html": {
+      "sha256": "dca90b679888e7d147d69b138bfaccaea7f2a48f5f8a4a2f81423a63653c5b98",
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
+    },
+    "private:apps/marketing/index.html": {
+      "sha256": "09ebad32a05c1a7f1e7f14efc4bc8215f897b8dcf0acde87f8ba94168ef49963",
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
+    },
+    "private:apps/marketing/install.txt": {
+      "sha256": "e001e1ba9fede4435f9df4c7a7a3d6837eec6ef1c994b6b14c1914b7b57077ef",
+      "publication": "hosted reference/distribution verified: 2026-09-17; site 610b2e05d"
+    },
+    "private:apps/marketing/lab/index.html": {
+      "sha256": "e74342e686c10cb5b3c3d100a54399fa0046e08910f480283441d0be611e7ffd",
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
+    },
+    "private:apps/marketing/llms-full.txt": {
+      "sha256": "7ab59e104d5349a28b31102c360b744c456698879921710cbf1805d7fc290315",
+      "publication": "hosted reference/distribution verified: 2026-09-17; site 610b2e05d"
+    },
+    "private:apps/marketing/openapi.json": {
+      "sha256": "c7334655aa6a4d3485b4e7408fc1ac2b4107ce22b9b3c9d0042ebdc1a01121c6",
+      "publication": "source published: 610b2e05d; native metadata/legal/asset purpose retained"
+    },
+    "private:apps/marketing/operator/passkey/index.html": {
+      "sha256": "3fe03bc568496b0ee1477037fa578920a0df22fb5ab9a8d220d55d48e21e03f6",
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
+    },
+    "private:apps/marketing/pricing/index.html": {
+      "sha256": "2e56427262a6a9ffc8ce8391f26acd60aa2a20934ea8f77b57ee06bfff102df8",
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
+    },
+    "private:apps/marketing/robots.txt": {
+      "sha256": "b8fd68180f29708c27553c49edf53e73cf434102fb7d99ce99885c042e4f55b9",
+      "publication": "source published: 610b2e05d; native metadata/legal/asset purpose retained"
+    },
+    "private:apps/marketing/schemas/manifest.example.json": {
+      "sha256": "a8f6f0e2fd593de0edcd7c55285bd97b4fa0bb9e7783c299265a7e73ba852ab6",
+      "publication": "hosted reference/distribution verified: 2026-09-17; site 610b2e05d"
+    },
+    "private:apps/marketing/schemas/manifest.v1.json": {
+      "sha256": "0a7db619d19941817426614d1ef478c5e64d7d39a289c0283b08a25a555d6688",
+      "publication": "hosted reference/distribution verified: 2026-09-17; site 610b2e05d"
+    },
+    "private:apps/marketing/schemas/release-spec.v1.json": {
+      "sha256": "68e2e24d0bfda426468005da8e6a56d17241d0d093a846ae471ca1ca5dfb2326",
+      "publication": "hosted reference/distribution verified: 2026-09-17; site 610b2e05d"
+    },
+    "private:apps/marketing/sorting-humans/index.html": {
+      "sha256": "42daac3b5ac5a3d665898f5c26f1c68ba1d41309886f8653f50bdca8c31f70e6",
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
+    },
+    "private:apps/marketing/updates.txt": {
+      "sha256": "e73c9306e5986a923d6352156f1900d5ff0c8a6fb03d3dffb98976fcf0c75670",
+      "publication": "source published: 610b2e05d; native metadata/legal/asset purpose retained"
+    },
+    "private:apps/marketing/use-cases/deploy-app-without-aws-account/index.html": {
+      "sha256": "7fa36cd41b7d5f8eb047cbf35645de8ea530294f4ed8f2be5a4901f0802833f0",
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
+    },
+    "private:apps/marketing/use-cases/free-postgres-for-prototype/index.html": {
+      "sha256": "b9b7a872811a72382387d7c4d4a1f4348ada9e0cde2c753fd116fce36b6ba295",
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
+    },
+    "private:apps/marketing/use-cases/index.html": {
+      "sha256": "7f106f7282624db52f027f2432553028601a28ddcb76ffeb6f7e3c9abb8ee368",
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
+    },
+    "private:apps/marketing/use-cases/supabase-alternative-for-agents/index.html": {
+      "sha256": "32febcae1bf1d7aa279ca3e829741a556778fe82fa6eb80988a952d6e36b7d99",
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
+    },
+    "private:apps/marketing/use-cases/vercel-alternative-for-agents/index.html": {
+      "sha256": "2e8c991c9ce3d7f361df49fbd48548df89b21ac22797cf109cd566c0438a9329",
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
+    },
+    "private:apps/marketing/zh-cn/index.html": {
+      "sha256": "edb5355b16992dcd15217d85cab2d5db1505b900ade65c388437354f26a5ea93",
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
+    },
+    "core:.claude/commands/publish-core.md": {
+      "sha256": "dc9f694bbfa01ed83474dde6d95b2c8766e2a688ad77f57afcd46e2350f1a95d",
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
+    },
+    "core:.claude/skills/publish-run402-core/SKILL.md": {
+      "sha256": "46146c65f2cc8e8e8d6bdfc591754eab99df95488f1675940bfa92c8af38bd6a",
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
+    },
+    "core:AGENTS.md": {
+      "sha256": "2407657e0df156709815955a8b00e7779c4c16f76c30cfc432b4a695942ebaee",
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
+    },
+    "core:ARCHITECTURE.md": {
+      "sha256": "7b6f63066beeb8bb55136065697c16cff67d1887eba1a3a12b85566ec2a83e10",
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
+    },
+    "core:CLAUDE.md": {
+      "sha256": "336cc4fbf19beaada7ccf9986414fa91851a8d7a07dfb3ccbe800a69eed0ab49",
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
+    },
+    "core:CLOUD_VS_CORE.md": {
+      "sha256": "90812daeea8911689a8514d38da073feeea46040b83894baa416339eadf2fb88",
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
+    },
+    "core:CONTRIBUTING.md": {
+      "sha256": "89873ac98cdb0b66d482f06ff2390001562d7a4418d0c53515f964b28c481951",
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
+    },
+    "core:README.md": {
+      "sha256": "2e0553e570a971c929f17b3b038dac67b4fd50037030b101553c486a6f64a552",
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
+    },
+    "core:SECURITY.md": {
+      "sha256": "0d4fd4cfc4ae803663e4638f5a9631b994ae530ce64f1dce3a49653d6ad4174e",
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
+    },
+    "core:docs/adr/0001-core-cloud-boundary.md": {
+      "sha256": "96d1efa71ee1c0c31a301748080097472f13b11865f82f16071aba8a65c225a7",
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
+    },
+    "core:docs/adr/0002-functions-runtime-public-source.md": {
+      "sha256": "907f9e86a952c79f89a5877c568c0ffdce1017cb19e951e5563a592930e4c732",
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
+    },
+    "core:docs/adr/0003-release-package-public-semantics.md": {
+      "sha256": "27f60c416028255ca50874eb74ea18f4a102b5d6a771c9a2b8c5f806fc857b03",
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
+    },
+    "core:docs/agent-dx-core-applicability.md": {
+      "sha256": "b2a08be36620115f30d62156f5dce71058553d6c6d82b49f1d013f9265997a5d",
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
+    },
+    "core:docs/deployment/aws-ec2/README.md": {
+      "sha256": "3076b1b224214942b8dcd5cac606659644bc7fd45d63b78256ccda13a00ea714",
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
+    },
+    "core:docs/deployment/aws-email-inbound/README.md": {
+      "sha256": "52c65b0417d1f77b7f3cb945579312ed43b2e6fd3a5f055206646e4c3b9298b8",
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
+    },
+    "core:docs/deployment/aws-email/README.md": {
+      "sha256": "e02ff92e0419be2fd8ca62309dde92f7271ac53576a922d10eb238bb019b1dbf",
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
+    },
+    "core:docs/open-source-readiness.md": {
+      "sha256": "58a630bbe1cb4488270ccd9444cc5d1636b4d3e43b4b03da061d3c89bae9f3fb",
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
+    },
+    "core:docs/runtime-kernel/astro-ssr.md": {
+      "sha256": "6ad10911f12daa443c2f6ce5d07edba8242dc7d10f9922ae1bcc6846d1b54419",
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
+    },
+    "core:docs/runtime-kernel/capabilities.md": {
+      "sha256": "ad2dc35b239a07243873ecab48debfe4de687d2a517471921bc32df59d9646b8",
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
+    },
+    "core:docs/runtime-kernel/cloud-vs-core.md": {
+      "sha256": "a8375c790b7b1025ea0dcef0f2a038f89c49e469db4cf51f0e800f4339480762",
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
+    },
+    "core:docs/runtime-kernel/core-certification.md": {
+      "sha256": "09d8adb72602e88eb8f15769c476c2bbeba7a465bcd7119ffed808a388163bd8",
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
+    },
+    "core:docs/runtime-kernel/docker-compose-howto.md": {
+      "sha256": "0636ec2d48ff964f7f176dcc02ce0ebf28bdf5532f94ef1b030fedc942191a39",
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
+    },
+    "core:docs/runtime-kernel/functions-runtime.md": {
+      "sha256": "cedf3460c370b620020a5642d02372ddd28eae99bdd99d1bd4244cb98e59e0dc",
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
+    },
+    "core:docs/runtime-kernel/portable-archives.md": {
+      "sha256": "27237699c7fb9fa36adfd172cdfb1d6dbcb1ad6d120eff776f6a4dab8070a17c",
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
+    },
+    "core:docs/runtime-kernel/quickstart.md": {
+      "sha256": "1a3acbb0a5e9d627d100edd8bb6cee3d6112444cb8118454dff781bf1e7aea5f",
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
+    },
+    "core:docs/runtime-kernel/security-defaults.md": {
+      "sha256": "e2e89b120e43ce268ba492deb835dd80a8947c9c6e6b159e9a30998527298236",
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
+    },
+    "core:docs/runtime-kernel/storage-routing.md": {
+      "sha256": "7f89625f6ec0d1b3681931da3b402e533901756d0814ecab3d225245804c79a2",
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
+    },
+    "core:fixtures/astro-ssr-core/README.md": {
+      "sha256": "5480a8a81f82eff06cc1f68ae97e8b93e6009179ec18b0ac5955dc9fb3a4387c",
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
+    },
+    "core:fixtures/runtime-kernel-static-rest/README.md": {
+      "sha256": "89ed48e4e2fa42fd6260b60a9bceab88de53c7a5e92103404ec25f95b90b74fb",
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
+    },
+    "core:fixtures/storage-routing-core/README.md": {
+      "sha256": "e28d075c3f9133845de15790009b2977b4e69a04042a0da01ada56319b63cf4d",
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
+    },
+    "core:packages/functions/CHANGELOG.md": {
+      "sha256": "b0e2a776350f113017129f2988a3e79773bf16aedf526c13272eda3df0083009",
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
+    },
+    "core:packages/functions/README.md": {
+      "sha256": "d9d7724bb9938c0da61937f7c3f7f66fe1206957048851d0abc9027738ba1756",
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
+    },
+    "core:packages/release/CHANGELOG.md": {
+      "sha256": "bf5f8a7a80413c5467ecbcf5ecb508e64d14cdb89b74bfb43c3ebcdefb985793",
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
+    },
+    "core:packages/release/README.md": {
+      "sha256": "6aa4b56d70671ccc6d72e2a68d8aae9d206ae39c45cb07cbd969fe1d4db723fb",
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
+    },
+    "core:packages/release/docs/app-kit.md": {
+      "sha256": "aecceb7dfd6748b0351fe34609f9c280889b9fe4daf5c1cfd599b9c1fdd62cc5",
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
+    },
+    "core:packages/release/docs/canonicalization.md": {
+      "sha256": "7b810f7551ce2117746189f70103fefc4f0c531270f05eb07c106ef247bc03ed",
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
+    },
+    "core:packages/release/docs/compatibility.md": {
+      "sha256": "4ae0312bff39c87eef9195a968e8db556b9e5a58007b0d50d688085d37db59fe",
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
+    },
+    "core:packages/release/docs/field-support.md": {
+      "sha256": "f474ba4f57f141f26afd83deaf93811e7aeba68962ec64469120afb5a1ff50bb",
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
+    },
+    "core:packages/runtime-kernel/README.md": {
+      "sha256": "190e436e84a04a859506b0a5a65e3dc8949978b1ff69959b343c75b616d84c85",
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
+    }
+  }
+}

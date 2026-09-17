@@ -2,7 +2,7 @@
   {
     "repository": "private",
     "path": "apps/kygit/404.html",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "7fe883eebe0e5548ec58307d3ff18ac102d1319cf11786dfe91d485aa8e60ac4",
     "owner": "hosted-docs",
@@ -16,13 +16,13 @@
     "evidence": {
       "editorial": "reviewed classification: application/UI or conformance data, not a general operating tutorial",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "source published: 610b2e05d; native metadata/legal/asset purpose retained"
     }
   },
   {
     "repository": "private",
     "path": "apps/kygit/about/index.html",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "ae930e714988dfab4ddaef9bef012722bff1a83bf6bfa2bb0db3d6ba58aa7a97",
     "owner": "hosted-docs",
@@ -36,13 +36,13 @@
     "evidence": {
       "editorial": "reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
     }
   },
   {
     "repository": "private",
     "path": "apps/kygit/doodles/README.md",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "c3a685dbae6bfabbc01e2637cdba71622cbbda6932e7c43d838633305b5a6d4d",
     "owner": "hosted-docs",
@@ -56,13 +56,13 @@
     "evidence": {
       "editorial": "reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "source published: 610b2e05d; native metadata/legal/asset purpose retained"
     }
   },
   {
     "repository": "private",
     "path": "apps/kygit/europe/index.html",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "36e69db6062efbfdf795d413ba8188614942325b5a5ca66af865c16978f5ffc9",
     "owner": "hosted-docs",
@@ -76,13 +76,13 @@
     "evidence": {
       "editorial": "reviewed classification: legal/security contract preserved; no legal or security recertification",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
     }
   },
   {
     "repository": "private",
     "path": "apps/kygit/handoff/index.html",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "bb30378e86010281796c20dfe2c9897ca33dc9c20e547f484b712b93601ad318",
     "owner": "hosted-docs",
@@ -96,13 +96,13 @@
     "evidence": {
       "editorial": "reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
     }
   },
   {
     "repository": "private",
     "path": "apps/kygit/how-it-works/index.html",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "24ab9573ec6d40708f162ee4f4a0e8c260bd51c64a74eb81378deba214c036f4",
     "owner": "hosted-docs",
@@ -116,13 +116,13 @@
     "evidence": {
       "editorial": "reviewed classification and entry routing: native protocol/schema examples intentionally retained; owning parity/claim gates apply",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
     }
   },
   {
     "repository": "private",
     "path": "apps/kygit/index.html",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "164cd50a8771f163727a60761ebe5313f144eeaaf8a3f5ec6f12a0c3222e1cb0",
     "owner": "hosted-docs",
@@ -136,13 +136,13 @@
     "evidence": {
       "editorial": "reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
     }
   },
   {
     "repository": "private",
     "path": "apps/kygit/invite/index.html",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "bdb9b1770b65e918942633473c7db2fba8a3d2477be39d6c39b28cdc2b200dd1",
     "owner": "hosted-docs",
@@ -156,13 +156,13 @@
     "evidence": {
       "editorial": "reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
     }
   },
   {
     "repository": "private",
     "path": "apps/kygit/llms.txt",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "d61d39e0b3bad84cdc75ec8bd119be51d03d002ad15908782a49ee4dc56a9c16",
     "owner": "hosted-docs",
@@ -176,13 +176,13 @@
     "evidence": {
       "editorial": "reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "hosted reference/distribution verified: 2026-09-17; site 610b2e05d"
     }
   },
   {
     "repository": "private",
     "path": "apps/kygit/privacy/index.html",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "41887e5a2b6bfa7ba7ce864f128969343ac0353f1dd95ee8712e101f13943572",
     "owner": "hosted-docs",
@@ -196,13 +196,13 @@
     "evidence": {
       "editorial": "reviewed classification: legal/security contract preserved; no legal or security recertification",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
     }
   },
   {
     "repository": "private",
     "path": "apps/kygit/robots.txt",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "38945deb24a5d0ebe67faa72a46b659bea641f106f13d43b60dc6c2fdcb44011",
     "owner": "hosted-docs",
@@ -216,13 +216,13 @@
     "evidence": {
       "editorial": "reviewed classification: application/UI or conformance data, not a general operating tutorial",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "source published: 610b2e05d; native metadata/legal/asset purpose retained"
     }
   },
   {
     "repository": "private",
     "path": "apps/kygit/terms/index.html",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "b7bcab62fbc87a0227922350bd48fb7dd16b57ef431b3420cbb35c4051e1646f",
     "owner": "hosted-docs",
@@ -236,13 +236,13 @@
     "evidence": {
       "editorial": "reviewed classification: legal/security contract preserved; no legal or security recertification",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
     }
   },
   {
     "repository": "private",
     "path": "apps/kygit/vs-github/index.html",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "f7ad3f51838d1b22adaeb387dce471b1496ee3bd05c871119554cae929b217ef",
     "owner": "hosted-docs",
@@ -256,13 +256,13 @@
     "evidence": {
       "editorial": "reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
     }
   },
   {
     "repository": "private",
     "path": "apps/marketing/.well-known/mcp.json",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "9536f16fb6627eff8f0430be2740fd1a86b910eb4a9c4c9f59776a414958aefc",
     "owner": "hosted-docs",
@@ -276,13 +276,13 @@
     "evidence": {
       "editorial": "reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "source published: 610b2e05d; native metadata/legal/asset purpose retained"
     }
   },
   {
     "repository": "private",
     "path": "apps/marketing/404.html",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "6ad822e7c8b2e44aeeffce5248d76264f09f6a612c7799c2187ffa9ee47a58d8",
     "owner": "hosted-docs",
@@ -296,13 +296,13 @@
     "evidence": {
       "editorial": "reviewed classification: application/UI or conformance data, not a general operating tutorial",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "source published: 610b2e05d; native metadata/legal/asset purpose retained"
     }
   },
   {
     "repository": "private",
     "path": "apps/marketing/agent-allowance/index.html",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "1196f77ff9280076e9e7367b349210b285bb1db005788ab60aad34e4f0d2531d",
     "owner": "hosted-docs",
@@ -316,13 +316,13 @@
     "evidence": {
       "editorial": "reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
     }
   },
   {
     "repository": "private",
     "path": "apps/marketing/apps/index.html",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "f0eb954525a714ead40d288cde1383ce8472ee2d1ded061e56b4cc56e5ddbe3a",
     "owner": "hosted-docs",
@@ -336,13 +336,13 @@
     "evidence": {
       "editorial": "reviewed classification: application/UI or conformance data, not a general operating tutorial",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
     }
   },
   {
     "repository": "private",
     "path": "apps/marketing/billing/index.html",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "555e0ff6b205ed03616288be905094610613052fbc8b9c7d1e8fcbbc60a17e81",
     "owner": "hosted-docs",
@@ -356,13 +356,13 @@
     "evidence": {
       "editorial": "reviewed classification: application/UI or conformance data, not a general operating tutorial",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
     }
   },
   {
     "repository": "private",
     "path": "apps/marketing/buzz/index.html",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "cc1ab8ebcaac23869c8005a2eba2d2d5f0d0478624c41a2885eac68c92a3bcdd",
     "owner": "hosted-docs",
@@ -376,13 +376,13 @@
     "evidence": {
       "editorial": "reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
     }
   },
   {
     "repository": "private",
     "path": "apps/marketing/buzz/install.txt",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "c8a955d72a81fb8d6982a989a7c12a817ea3231d6082d5b3583403e74bb406f8",
     "owner": "hosted-docs",
@@ -396,13 +396,13 @@
     "evidence": {
       "editorial": "reviewed managed-Buzz exception: identity, zero-mutation preflight and contextual-demo consent preserved; distribution gates apply",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "hosted reference/distribution verified: 2026-09-17; site 610b2e05d"
     }
   },
   {
     "repository": "private",
     "path": "apps/marketing/errors/index.html",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "112d162e8b3a141913a962a9a4752e806ab2ca22471879a20a6cbdf693e81982",
     "owner": "hosted-docs",
@@ -416,13 +416,13 @@
     "evidence": {
       "editorial": "reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
     }
   },
   {
     "repository": "private",
     "path": "apps/marketing/escalations/ack/index.html",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "456a2ec5eb53ce19d427ffeb5e0c852190b9d772dee60cbd9ecad9a4cebd5d13",
     "owner": "hosted-docs",
@@ -436,13 +436,13 @@
     "evidence": {
       "editorial": "reviewed classification: application/UI or conformance data, not a general operating tutorial",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
     }
   },
   {
     "repository": "private",
     "path": "apps/marketing/examples/index.html",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "9656f6ab6d279c04ed0b5ab5b366422bba69c1600494d0e67cc212a7f5558d77",
     "owner": "hosted-docs",
@@ -456,13 +456,13 @@
     "evidence": {
       "editorial": "reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
     }
   },
   {
     "repository": "private",
     "path": "apps/marketing/freelance/index.html",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "4d9257dcff75e5ac0068d4f83376ac6a66b9eeb178859068f6d9ac0b69ace696",
     "owner": "hosted-docs",
@@ -476,13 +476,13 @@
     "evidence": {
       "editorial": "reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
     }
   },
   {
     "repository": "private",
     "path": "apps/marketing/getstarted/index.html",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "9931e2a54cf1fae49f7948526e8e5d73e076b008f43e04b74596940ad473ac2e",
     "owner": "hosted-docs",
@@ -496,13 +496,13 @@
     "evidence": {
       "editorial": "reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
     }
   },
   {
     "repository": "private",
     "path": "apps/marketing/gitvault/index.html",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "fc695ba9f126570adec02ba3d068d8f377bc782a37d45e8a77486e4833065f09",
     "owner": "hosted-docs",
@@ -516,13 +516,13 @@
     "evidence": {
       "editorial": "reviewed classification and entry routing: native protocol/schema examples intentionally retained; owning parity/claim gates apply",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
     }
   },
   {
     "repository": "private",
     "path": "apps/marketing/humans/about.html",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "411698a671807e8c73cc1938ea13c234d6d5816508bd503add3ba5b186935acb",
     "owner": "hosted-docs",
@@ -536,13 +536,13 @@
     "evidence": {
       "editorial": "reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
     }
   },
   {
     "repository": "private",
     "path": "apps/marketing/humans/changelog.html",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "6ab0848af717e6a3c98c00186889e32e6e2c07c8ea2534ee016ac8ee86efca50",
     "owner": "hosted-docs",
@@ -556,13 +556,13 @@
     "evidence": {
       "editorial": "excluded from rewrite: dated history; current release note/banner reviewed",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
     }
   },
   {
     "repository": "private",
     "path": "apps/marketing/humans/domains.html",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "0a7986034d24dc649c75b521666efa739d54c6074e7d69816d2463f0a39190c3",
     "owner": "hosted-docs",
@@ -576,13 +576,13 @@
     "evidence": {
       "editorial": "reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
     }
   },
   {
     "repository": "private",
     "path": "apps/marketing/humans/faq.html",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "7068961b75e18f8ed501da57f5ceb2a448fb8fb8b5aedb25d320af6b5b5fce83",
     "owner": "hosted-docs",
@@ -596,13 +596,13 @@
     "evidence": {
       "editorial": "reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
     }
   },
   {
     "repository": "private",
     "path": "apps/marketing/humans/index.html",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "0014a63f9afd4d1edf2abeada94233af95f618a3dad9e44f10fb7ef1740f44c0",
     "owner": "hosted-docs",
@@ -616,13 +616,13 @@
     "evidence": {
       "editorial": "reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
     }
   },
   {
     "repository": "private",
     "path": "apps/marketing/humans/legal.html",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "b090158f22f1e217ae39e7a1b292f7d2c22fc19834bb94fe132b1259aa337e0e",
     "owner": "hosted-docs",
@@ -636,13 +636,13 @@
     "evidence": {
       "editorial": "reviewed classification: legal/security contract preserved; no legal or security recertification",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
     }
   },
   {
     "repository": "private",
     "path": "apps/marketing/humans/mpp.html",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "8d9a9f544b06637ae51641fb9bf5d4eab977abc26b69ed8f5c80b202a58bb67d",
     "owner": "hosted-docs",
@@ -656,13 +656,13 @@
     "evidence": {
       "editorial": "reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
     }
   },
   {
     "repository": "private",
     "path": "apps/marketing/humans/privacy.html",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "b6d974a8d9b6c7c218ad7089eebdc622c7de1c2017f257dc4c0d440298fbec8a",
     "owner": "hosted-docs",
@@ -676,13 +676,13 @@
     "evidence": {
       "editorial": "reviewed classification: legal/security contract preserved; no legal or security recertification",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
     }
   },
   {
     "repository": "private",
     "path": "apps/marketing/humans/run402-2-0.html",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "06bab51dc0bcfeaaeea702c004ca2d62139964621aa60e88b2027039dc2b85dc",
     "owner": "hosted-docs",
@@ -696,13 +696,13 @@
     "evidence": {
       "editorial": "excluded from rewrite: dated history; current release note/banner reviewed",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
     }
   },
   {
     "repository": "private",
     "path": "apps/marketing/humans/terms.html",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "4594b2d03138041c590dc2ae3f2ae51aa960864477334520058cfb265dab826d",
     "owner": "hosted-docs",
@@ -716,13 +716,13 @@
     "evidence": {
       "editorial": "reviewed classification: legal/security contract preserved; no legal or security recertification",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
     }
   },
   {
     "repository": "private",
     "path": "apps/marketing/humans/vision.html",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "dca90b679888e7d147d69b138bfaccaea7f2a48f5f8a4a2f81423a63653c5b98",
     "owner": "hosted-docs",
@@ -736,13 +736,13 @@
     "evidence": {
       "editorial": "reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
     }
   },
   {
     "repository": "private",
     "path": "apps/marketing/index.html",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "09ebad32a05c1a7f1e7f14efc4bc8215f897b8dcf0acde87f8ba94168ef49963",
     "owner": "hosted-docs",
@@ -756,13 +756,13 @@
     "evidence": {
       "editorial": "reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
     }
   },
   {
     "repository": "private",
     "path": "apps/marketing/install.txt",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "e001e1ba9fede4435f9df4c7a7a3d6837eec6ef1c994b6b14c1914b7b57077ef",
     "owner": "hosted-docs",
@@ -776,13 +776,13 @@
     "evidence": {
       "editorial": "reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "hosted reference/distribution verified: 2026-09-17; site 610b2e05d"
     }
   },
   {
     "repository": "private",
     "path": "apps/marketing/lab/index.html",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "e74342e686c10cb5b3c3d100a54399fa0046e08910f480283441d0be611e7ffd",
     "owner": "hosted-docs",
@@ -796,13 +796,13 @@
     "evidence": {
       "editorial": "reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
     }
   },
   {
     "repository": "private",
     "path": "apps/marketing/llms-full.txt",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "7ab59e104d5349a28b31102c360b744c456698879921710cbf1805d7fc290315",
     "owner": "hosted-docs",
@@ -816,13 +816,13 @@
     "evidence": {
       "editorial": "reviewed classification and entry routing: native protocol/schema examples intentionally retained; owning parity/claim gates apply",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "hosted reference/distribution verified: 2026-09-17; site 610b2e05d"
     }
   },
   {
     "repository": "private",
     "path": "apps/marketing/openapi.json",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "c7334655aa6a4d3485b4e7408fc1ac2b4107ce22b9b3c9d0042ebdc1a01121c6",
     "owner": "hosted-docs",
@@ -836,13 +836,13 @@
     "evidence": {
       "editorial": "reviewed classification and entry routing: native protocol/schema examples intentionally retained; owning parity/claim gates apply",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "source published: 610b2e05d; native metadata/legal/asset purpose retained"
     }
   },
   {
     "repository": "private",
     "path": "apps/marketing/operator/passkey/index.html",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "3fe03bc568496b0ee1477037fa578920a0df22fb5ab9a8d220d55d48e21e03f6",
     "owner": "hosted-docs",
@@ -856,13 +856,13 @@
     "evidence": {
       "editorial": "reviewed classification: application/UI or conformance data, not a general operating tutorial",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
     }
   },
   {
     "repository": "private",
     "path": "apps/marketing/pricing/index.html",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "2e56427262a6a9ffc8ce8391f26acd60aa2a20934ea8f77b57ee06bfff102df8",
     "owner": "hosted-docs",
@@ -876,13 +876,13 @@
     "evidence": {
       "editorial": "reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
     }
   },
   {
     "repository": "private",
     "path": "apps/marketing/robots.txt",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "b8fd68180f29708c27553c49edf53e73cf434102fb7d99ce99885c042e4f55b9",
     "owner": "hosted-docs",
@@ -896,13 +896,13 @@
     "evidence": {
       "editorial": "reviewed classification: application/UI or conformance data, not a general operating tutorial",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "source published: 610b2e05d; native metadata/legal/asset purpose retained"
     }
   },
   {
     "repository": "private",
     "path": "apps/marketing/schemas/manifest.example.json",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "a8f6f0e2fd593de0edcd7c55285bd97b4fa0bb9e7783c299265a7e73ba852ab6",
     "owner": "hosted-docs",
@@ -916,13 +916,13 @@
     "evidence": {
       "editorial": "reviewed classification and entry routing: native protocol/schema examples intentionally retained; owning parity/claim gates apply",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "hosted reference/distribution verified: 2026-09-17; site 610b2e05d"
     }
   },
   {
     "repository": "private",
     "path": "apps/marketing/schemas/manifest.v1.json",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "0a7db619d19941817426614d1ef478c5e64d7d39a289c0283b08a25a555d6688",
     "owner": "hosted-docs",
@@ -936,13 +936,13 @@
     "evidence": {
       "editorial": "reviewed classification and entry routing: native protocol/schema examples intentionally retained; owning parity/claim gates apply",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "hosted reference/distribution verified: 2026-09-17; site 610b2e05d"
     }
   },
   {
     "repository": "private",
     "path": "apps/marketing/schemas/release-spec.v1.json",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "68e2e24d0bfda426468005da8e6a56d17241d0d093a846ae471ca1ca5dfb2326",
     "owner": "hosted-docs",
@@ -956,13 +956,13 @@
     "evidence": {
       "editorial": "reviewed classification and entry routing: native protocol/schema examples intentionally retained; owning parity/claim gates apply",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "hosted reference/distribution verified: 2026-09-17; site 610b2e05d"
     }
   },
   {
     "repository": "private",
     "path": "apps/marketing/sorting-humans/index.html",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "42daac3b5ac5a3d665898f5c26f1c68ba1d41309886f8653f50bdca8c31f70e6",
     "owner": "hosted-docs",
@@ -976,13 +976,13 @@
     "evidence": {
       "editorial": "reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
     }
   },
   {
     "repository": "private",
     "path": "apps/marketing/updates.txt",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "e73c9306e5986a923d6352156f1900d5ff0c8a6fb03d3dffb98976fcf0c75670",
     "owner": "hosted-docs",
@@ -996,13 +996,13 @@
     "evidence": {
       "editorial": "excluded from rewrite: dated history; current release note/banner reviewed",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "source published: 610b2e05d; native metadata/legal/asset purpose retained"
     }
   },
   {
     "repository": "private",
     "path": "apps/marketing/use-cases/deploy-app-without-aws-account/index.html",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "7fa36cd41b7d5f8eb047cbf35645de8ea530294f4ed8f2be5a4901f0802833f0",
     "owner": "hosted-docs",
@@ -1016,13 +1016,13 @@
     "evidence": {
       "editorial": "reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
     }
   },
   {
     "repository": "private",
     "path": "apps/marketing/use-cases/free-postgres-for-prototype/index.html",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "b9b7a872811a72382387d7c4d4a1f4348ada9e0cde2c753fd116fce36b6ba295",
     "owner": "hosted-docs",
@@ -1036,13 +1036,13 @@
     "evidence": {
       "editorial": "reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
     }
   },
   {
     "repository": "private",
     "path": "apps/marketing/use-cases/index.html",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "7f106f7282624db52f027f2432553028601a28ddcb76ffeb6f7e3c9abb8ee368",
     "owner": "hosted-docs",
@@ -1056,13 +1056,13 @@
     "evidence": {
       "editorial": "reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
     }
   },
   {
     "repository": "private",
     "path": "apps/marketing/use-cases/supabase-alternative-for-agents/index.html",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "32febcae1bf1d7aa279ca3e829741a556778fe82fa6eb80988a952d6e36b7d99",
     "owner": "hosted-docs",
@@ -1076,13 +1076,13 @@
     "evidence": {
       "editorial": "reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
     }
   },
   {
     "repository": "private",
     "path": "apps/marketing/use-cases/vercel-alternative-for-agents/index.html",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "2e8c991c9ce3d7f361df49fbd48548df89b21ac22797cf109cd566c0438a9329",
     "owner": "hosted-docs",
@@ -1096,13 +1096,13 @@
     "evidence": {
       "editorial": "reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
     }
   },
   {
     "repository": "private",
     "path": "apps/marketing/zh-cn/index.html",
-    "revision": "e69ba0c0e2400aeeb5d872f97c8f9e245a80de87",
+    "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "edb5355b16992dcd15217d85cab2d5db1505b900ade65c388437354f26a5ea93",
     "owner": "hosted-docs",
@@ -1116,13 +1116,13 @@
     "evidence": {
       "editorial": "reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "pending"
+      "publication": "hosted verified: 2026-09-17; site 610b2e05d"
     }
   },
   {
     "repository": "core",
     "path": ".claude/commands/publish-core.md",
-    "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7",
+    "revision": "4f95b27b02aada541797e124087e00b795253d94",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "dc9f694bbfa01ed83474dde6d95b2c8766e2a688ad77f57afcd46e2350f1a95d",
     "owner": "core",
@@ -1135,13 +1135,13 @@
     "evidence": {
       "editorial": "reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "source only"
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
     }
   },
   {
     "repository": "core",
     "path": ".claude/skills/publish-run402-core/SKILL.md",
-    "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7",
+    "revision": "4f95b27b02aada541797e124087e00b795253d94",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "46146c65f2cc8e8e8d6bdfc591754eab99df95488f1675940bfa92c8af38bd6a",
     "owner": "core",
@@ -1154,13 +1154,13 @@
     "evidence": {
       "editorial": "reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "source only"
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
     }
   },
   {
     "repository": "core",
     "path": "AGENTS.md",
-    "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7",
+    "revision": "4f95b27b02aada541797e124087e00b795253d94",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "2407657e0df156709815955a8b00e7779c4c16f76c30cfc432b4a695942ebaee",
     "owner": "core",
@@ -1173,13 +1173,13 @@
     "evidence": {
       "editorial": "reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "source only"
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
     }
   },
   {
     "repository": "core",
     "path": "ARCHITECTURE.md",
-    "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7",
+    "revision": "4f95b27b02aada541797e124087e00b795253d94",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "7b6f63066beeb8bb55136065697c16cff67d1887eba1a3a12b85566ec2a83e10",
     "owner": "core",
@@ -1192,13 +1192,13 @@
     "evidence": {
       "editorial": "reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "source only"
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
     }
   },
   {
     "repository": "core",
     "path": "CLAUDE.md",
-    "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7",
+    "revision": "4f95b27b02aada541797e124087e00b795253d94",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "336cc4fbf19beaada7ccf9986414fa91851a8d7a07dfb3ccbe800a69eed0ab49",
     "owner": "core",
@@ -1211,13 +1211,13 @@
     "evidence": {
       "editorial": "reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "source only"
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
     }
   },
   {
     "repository": "core",
     "path": "CLOUD_VS_CORE.md",
-    "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7",
+    "revision": "4f95b27b02aada541797e124087e00b795253d94",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "90812daeea8911689a8514d38da073feeea46040b83894baa416339eadf2fb88",
     "owner": "core",
@@ -1230,13 +1230,13 @@
     "evidence": {
       "editorial": "reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "source only"
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
     }
   },
   {
     "repository": "core",
     "path": "CONTRIBUTING.md",
-    "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7",
+    "revision": "4f95b27b02aada541797e124087e00b795253d94",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "89873ac98cdb0b66d482f06ff2390001562d7a4418d0c53515f964b28c481951",
     "owner": "core",
@@ -1249,13 +1249,13 @@
     "evidence": {
       "editorial": "reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "source only"
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
     }
   },
   {
     "repository": "core",
     "path": "README.md",
-    "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7",
+    "revision": "4f95b27b02aada541797e124087e00b795253d94",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "2e0553e570a971c929f17b3b038dac67b4fd50037030b101553c486a6f64a552",
     "owner": "core",
@@ -1268,13 +1268,13 @@
     "evidence": {
       "editorial": "reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "source only"
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
     }
   },
   {
     "repository": "core",
     "path": "SECURITY.md",
-    "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7",
+    "revision": "4f95b27b02aada541797e124087e00b795253d94",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "0d4fd4cfc4ae803663e4638f5a9631b994ae530ce64f1dce3a49653d6ad4174e",
     "owner": "core",
@@ -1287,13 +1287,13 @@
     "evidence": {
       "editorial": "reviewed classification: legal/security contract preserved; no legal or security recertification",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "source only"
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
     }
   },
   {
     "repository": "core",
     "path": "docs/adr/0001-core-cloud-boundary.md",
-    "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7",
+    "revision": "4f95b27b02aada541797e124087e00b795253d94",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "96d1efa71ee1c0c31a301748080097472f13b11865f82f16071aba8a65c225a7",
     "owner": "core",
@@ -1306,13 +1306,13 @@
     "evidence": {
       "editorial": "reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "source only"
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
     }
   },
   {
     "repository": "core",
     "path": "docs/adr/0002-functions-runtime-public-source.md",
-    "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7",
+    "revision": "4f95b27b02aada541797e124087e00b795253d94",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "907f9e86a952c79f89a5877c568c0ffdce1017cb19e951e5563a592930e4c732",
     "owner": "core",
@@ -1325,13 +1325,13 @@
     "evidence": {
       "editorial": "reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "source only"
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
     }
   },
   {
     "repository": "core",
     "path": "docs/adr/0003-release-package-public-semantics.md",
-    "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7",
+    "revision": "4f95b27b02aada541797e124087e00b795253d94",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "27f60c416028255ca50874eb74ea18f4a102b5d6a771c9a2b8c5f806fc857b03",
     "owner": "core",
@@ -1344,13 +1344,13 @@
     "evidence": {
       "editorial": "reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "source only"
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
     }
   },
   {
     "repository": "core",
     "path": "docs/agent-dx-core-applicability.md",
-    "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7",
+    "revision": "4f95b27b02aada541797e124087e00b795253d94",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "b2a08be36620115f30d62156f5dce71058553d6c6d82b49f1d013f9265997a5d",
     "owner": "core",
@@ -1363,13 +1363,13 @@
     "evidence": {
       "editorial": "reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "source only"
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
     }
   },
   {
     "repository": "core",
     "path": "docs/deployment/aws-ec2/README.md",
-    "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7",
+    "revision": "4f95b27b02aada541797e124087e00b795253d94",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "3076b1b224214942b8dcd5cac606659644bc7fd45d63b78256ccda13a00ea714",
     "owner": "core",
@@ -1382,13 +1382,13 @@
     "evidence": {
       "editorial": "reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "source only"
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
     }
   },
   {
     "repository": "core",
     "path": "docs/deployment/aws-email-inbound/README.md",
-    "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7",
+    "revision": "4f95b27b02aada541797e124087e00b795253d94",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "52c65b0417d1f77b7f3cb945579312ed43b2e6fd3a5f055206646e4c3b9298b8",
     "owner": "core",
@@ -1401,13 +1401,13 @@
     "evidence": {
       "editorial": "reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "source only"
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
     }
   },
   {
     "repository": "core",
     "path": "docs/deployment/aws-email/README.md",
-    "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7",
+    "revision": "4f95b27b02aada541797e124087e00b795253d94",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "e02ff92e0419be2fd8ca62309dde92f7271ac53576a922d10eb238bb019b1dbf",
     "owner": "core",
@@ -1420,13 +1420,13 @@
     "evidence": {
       "editorial": "reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "source only"
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
     }
   },
   {
     "repository": "core",
     "path": "docs/open-source-readiness.md",
-    "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7",
+    "revision": "4f95b27b02aada541797e124087e00b795253d94",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "58a630bbe1cb4488270ccd9444cc5d1636b4d3e43b4b03da061d3c89bae9f3fb",
     "owner": "core",
@@ -1439,13 +1439,13 @@
     "evidence": {
       "editorial": "reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "source only"
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
     }
   },
   {
     "repository": "core",
     "path": "docs/runtime-kernel/astro-ssr.md",
-    "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7",
+    "revision": "4f95b27b02aada541797e124087e00b795253d94",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "6ad10911f12daa443c2f6ce5d07edba8242dc7d10f9922ae1bcc6846d1b54419",
     "owner": "core",
@@ -1458,13 +1458,13 @@
     "evidence": {
       "editorial": "reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "source only"
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
     }
   },
   {
     "repository": "core",
     "path": "docs/runtime-kernel/capabilities.md",
-    "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7",
+    "revision": "4f95b27b02aada541797e124087e00b795253d94",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "ad2dc35b239a07243873ecab48debfe4de687d2a517471921bc32df59d9646b8",
     "owner": "core",
@@ -1477,13 +1477,13 @@
     "evidence": {
       "editorial": "reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "source only"
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
     }
   },
   {
     "repository": "core",
     "path": "docs/runtime-kernel/cloud-vs-core.md",
-    "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7",
+    "revision": "4f95b27b02aada541797e124087e00b795253d94",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "a8375c790b7b1025ea0dcef0f2a038f89c49e469db4cf51f0e800f4339480762",
     "owner": "core",
@@ -1496,13 +1496,13 @@
     "evidence": {
       "editorial": "reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "source only"
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
     }
   },
   {
     "repository": "core",
     "path": "docs/runtime-kernel/core-certification.md",
-    "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7",
+    "revision": "4f95b27b02aada541797e124087e00b795253d94",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "09d8adb72602e88eb8f15769c476c2bbeba7a465bcd7119ffed808a388163bd8",
     "owner": "core",
@@ -1515,13 +1515,13 @@
     "evidence": {
       "editorial": "reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "source only"
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
     }
   },
   {
     "repository": "core",
     "path": "docs/runtime-kernel/docker-compose-howto.md",
-    "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7",
+    "revision": "4f95b27b02aada541797e124087e00b795253d94",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "0636ec2d48ff964f7f176dcc02ce0ebf28bdf5532f94ef1b030fedc942191a39",
     "owner": "core",
@@ -1534,13 +1534,13 @@
     "evidence": {
       "editorial": "reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "source only"
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
     }
   },
   {
     "repository": "core",
     "path": "docs/runtime-kernel/functions-runtime.md",
-    "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7",
+    "revision": "4f95b27b02aada541797e124087e00b795253d94",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "cedf3460c370b620020a5642d02372ddd28eae99bdd99d1bd4244cb98e59e0dc",
     "owner": "core",
@@ -1553,13 +1553,13 @@
     "evidence": {
       "editorial": "reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "source only"
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
     }
   },
   {
     "repository": "core",
     "path": "docs/runtime-kernel/portable-archives.md",
-    "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7",
+    "revision": "4f95b27b02aada541797e124087e00b795253d94",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "27237699c7fb9fa36adfd172cdfb1d6dbcb1ad6d120eff776f6a4dab8070a17c",
     "owner": "core",
@@ -1572,13 +1572,13 @@
     "evidence": {
       "editorial": "reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "source only"
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
     }
   },
   {
     "repository": "core",
     "path": "docs/runtime-kernel/quickstart.md",
-    "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7",
+    "revision": "4f95b27b02aada541797e124087e00b795253d94",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "1a3acbb0a5e9d627d100edd8bb6cee3d6112444cb8118454dff781bf1e7aea5f",
     "owner": "core",
@@ -1591,13 +1591,13 @@
     "evidence": {
       "editorial": "reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "source only"
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
     }
   },
   {
     "repository": "core",
     "path": "docs/runtime-kernel/security-defaults.md",
-    "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7",
+    "revision": "4f95b27b02aada541797e124087e00b795253d94",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "e2e89b120e43ce268ba492deb835dd80a8947c9c6e6b159e9a30998527298236",
     "owner": "core",
@@ -1610,13 +1610,13 @@
     "evidence": {
       "editorial": "reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "source only"
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
     }
   },
   {
     "repository": "core",
     "path": "docs/runtime-kernel/storage-routing.md",
-    "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7",
+    "revision": "4f95b27b02aada541797e124087e00b795253d94",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "7f89625f6ec0d1b3681931da3b402e533901756d0814ecab3d225245804c79a2",
     "owner": "core",
@@ -1629,13 +1629,13 @@
     "evidence": {
       "editorial": "reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "source only"
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
     }
   },
   {
     "repository": "core",
     "path": "fixtures/astro-ssr-core/README.md",
-    "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7",
+    "revision": "4f95b27b02aada541797e124087e00b795253d94",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "5480a8a81f82eff06cc1f68ae97e8b93e6009179ec18b0ac5955dc9fb3a4387c",
     "owner": "core",
@@ -1648,13 +1648,13 @@
     "evidence": {
       "editorial": "reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "source only"
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
     }
   },
   {
     "repository": "core",
     "path": "fixtures/runtime-kernel-static-rest/README.md",
-    "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7",
+    "revision": "4f95b27b02aada541797e124087e00b795253d94",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "89ed48e4e2fa42fd6260b60a9bceab88de53c7a5e92103404ec25f95b90b74fb",
     "owner": "core",
@@ -1667,13 +1667,13 @@
     "evidence": {
       "editorial": "reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "source only"
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
     }
   },
   {
     "repository": "core",
     "path": "fixtures/storage-routing-core/README.md",
-    "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7",
+    "revision": "4f95b27b02aada541797e124087e00b795253d94",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "e28d075c3f9133845de15790009b2977b4e69a04042a0da01ada56319b63cf4d",
     "owner": "core",
@@ -1686,13 +1686,13 @@
     "evidence": {
       "editorial": "reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "source only"
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
     }
   },
   {
     "repository": "core",
     "path": "packages/functions/CHANGELOG.md",
-    "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7",
+    "revision": "4f95b27b02aada541797e124087e00b795253d94",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "b0e2a776350f113017129f2988a3e79773bf16aedf526c13272eda3df0083009",
     "owner": "core",
@@ -1705,13 +1705,13 @@
     "evidence": {
       "editorial": "excluded from rewrite: dated history; current release note/banner reviewed",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "source only"
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
     }
   },
   {
     "repository": "core",
     "path": "packages/functions/README.md",
-    "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7",
+    "revision": "4f95b27b02aada541797e124087e00b795253d94",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "d9d7724bb9938c0da61937f7c3f7f66fe1206957048851d0abc9027738ba1756",
     "owner": "core",
@@ -1724,13 +1724,13 @@
     "evidence": {
       "editorial": "reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "source only"
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
     }
   },
   {
     "repository": "core",
     "path": "packages/release/CHANGELOG.md",
-    "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7",
+    "revision": "4f95b27b02aada541797e124087e00b795253d94",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "bf5f8a7a80413c5467ecbcf5ecb508e64d14cdb89b74bfb43c3ebcdefb985793",
     "owner": "core",
@@ -1743,13 +1743,13 @@
     "evidence": {
       "editorial": "excluded from rewrite: dated history; current release note/banner reviewed",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "source only"
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
     }
   },
   {
     "repository": "core",
     "path": "packages/release/README.md",
-    "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7",
+    "revision": "4f95b27b02aada541797e124087e00b795253d94",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "6aa4b56d70671ccc6d72e2a68d8aae9d206ae39c45cb07cbd969fe1d4db723fb",
     "owner": "core",
@@ -1762,13 +1762,13 @@
     "evidence": {
       "editorial": "reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "source only"
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
     }
   },
   {
     "repository": "core",
     "path": "packages/release/docs/app-kit.md",
-    "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7",
+    "revision": "4f95b27b02aada541797e124087e00b795253d94",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "aecceb7dfd6748b0351fe34609f9c280889b9fe4daf5c1cfd599b9c1fdd62cc5",
     "owner": "core",
@@ -1781,13 +1781,13 @@
     "evidence": {
       "editorial": "reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "source only"
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
     }
   },
   {
     "repository": "core",
     "path": "packages/release/docs/canonicalization.md",
-    "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7",
+    "revision": "4f95b27b02aada541797e124087e00b795253d94",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "7b810f7551ce2117746189f70103fefc4f0c531270f05eb07c106ef247bc03ed",
     "owner": "core",
@@ -1800,13 +1800,13 @@
     "evidence": {
       "editorial": "reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "source only"
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
     }
   },
   {
     "repository": "core",
     "path": "packages/release/docs/compatibility.md",
-    "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7",
+    "revision": "4f95b27b02aada541797e124087e00b795253d94",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "4ae0312bff39c87eef9195a968e8db556b9e5a58007b0d50d688085d37db59fe",
     "owner": "core",
@@ -1819,13 +1819,13 @@
     "evidence": {
       "editorial": "reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "source only"
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
     }
   },
   {
     "repository": "core",
     "path": "packages/release/docs/field-support.md",
-    "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7",
+    "revision": "4f95b27b02aada541797e124087e00b795253d94",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "f474ba4f57f141f26afd83deaf93811e7aeba68962ec64469120afb5a1ff50bb",
     "owner": "core",
@@ -1838,13 +1838,13 @@
     "evidence": {
       "editorial": "reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "source only"
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
     }
   },
   {
     "repository": "core",
     "path": "packages/runtime-kernel/README.md",
-    "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7",
+    "revision": "4f95b27b02aada541797e124087e00b795253d94",
     "sourceState": "working-tree snapshot; revision is baseline",
     "sha256": "190e436e84a04a859506b0a5a65e3dc8949978b1ff69959b343c75b616d84c85",
     "owner": "core",
@@ -1857,7 +1857,7 @@
     "evidence": {
       "editorial": "reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned",
       "local": "See coordinated implementation evidence for named check results.",
-      "publication": "source only"
+      "publication": "source published: 4f95b27; Core CI passed; no package release required"
     }
   }
 ]
