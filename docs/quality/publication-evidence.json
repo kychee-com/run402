@@ -127,7 +127,6 @@
     "privateDocs": "https://github.com/kychee-com/run402-private/actions/runs/35268577612"
   },
   "limitations": [
-    "No live disposable application deployment or two-user RLS acceptance without designated project/profile and spend policy.",
     "Private MPP Lightning pin check fails on a missing pre-existing archived manifest path (run 35268577589); all documentation deployment and affected checks pass."
   ],
   "entries": {
@@ -864,8 +863,8 @@
       "publication": "source published: 23751749; no separate hosted acceptance required"
     },
     "public:docs/quality/documentation-policy.md": {
-      "sha256": "e4c0d7c2131c842b9b38fdc3ed87d5ddb9471aaba3b656f2d0e9048857f3930a",
-      "publication": "source-only acceptance record; published in final evidence commit (see git history)"
+      "sha256": "6201bd851068272051f0008eee9fc0bafd87a49a89ead6d897730052a3589180",
+      "publication": "source-only acceptance record; published with fresh-agent evidence (see git history)"
     },
     "public:docs/quality/gaps.md": {
       "sha256": "a02c1e4cae8c1111a2e82654b73fc93fc278f8b17c718780bff2ee55c6bfb4b6",
@@ -1379,5 +1378,34 @@
       "sha256": "190e436e84a04a859506b0a5a65e3dc8949978b1ff69959b343c75b616d84c85",
       "publication": "source published: 4f95b27; Core CI passed; no package release required"
     }
+  },
+  "liveAcceptance": {
+    "date": "2026-09-18",
+    "method": "Fresh subagent, fork_turns none; no previous conversation or implementation hints",
+    "url": "https://orbit-radio-sepolia.run402.com",
+    "project": "prj_1789712164384_0135",
+    "profile": "orbit-radio-sepolia",
+    "network": "Base Sepolia",
+    "testUsdcSpent": "0.10",
+    "realFundsSpent": "0",
+    "checks": [
+      "Edge verification: coherent; / and /index.html HTTP 200",
+      "Browser publish/load and persisted read/append RPCs",
+      "Malformed pattern rejected with HTTP 400",
+      "Direct table PATCH/DELETE denied with HTTP 403 TABLE_NOT_EXPOSED"
+    ],
+    "retention": "User-requested live demo and two sample melodies retained; isolated wallet retains 0.15 test USDC",
+    "limits": [
+      "Does not certify separate Astro fixture private multi-user RLS",
+      "Audible playback not independently listened to"
+    ],
+    "friction": [
+      "Custom table exposure grants anon SELECT only; INSERT policy alone insufficient and custom GRANT is blocked",
+      "Unrestricted quickstart policy rejected by automatic review; validated read/append RPCs worked",
+      "Wallet creation next-action hint omitted wallet name",
+      "Network sandbox denial appeared as X402_INITIAL_REQUEST_FAILED",
+      "Verbose CLI output; unignored operational logs captured by automatic source snapshot",
+      "Unexercised service-key REST-reference inconsistency reported"
+    ]
   }
 }

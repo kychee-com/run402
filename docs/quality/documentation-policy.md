@@ -6,7 +6,7 @@ Use CLI by default for Run402 operations. Use the typed, opinionated SDK for pro
 
 ## Review and publication evidence
 
-A passing build is not a prose review or proof of deployment. Each entry has independent editorial, local-check and publication evidence. Pending entries remain pending until reviewed and verified. Historical records, normative protocols, legal text, generated mirrors and CI fixtures have explicit exceptions. Product and translated website pages are in scope. [Publication evidence](docs/quality/publication-evidence.json) records hosted checks and CI runs. The remaining live application acceptance requires an explicitly designated disposable project/profile and spending policy.
+A passing build is not a prose review or proof of deployment. Each entry has independent editorial, local-check and publication evidence. Pending entries remain pending until reviewed and verified. Historical records, normative protocols, legal text, generated mirrors and CI fixtures have explicit exceptions. Product and translated website pages are in scope. [Publication evidence](docs/quality/publication-evidence.json) records hosted checks and CI runs. Fresh-agent live application acceptance passed on Base Sepolia on 2026-09-18; see publication evidence for scope and the retained demo.
 
 Run `node scripts/documentation-inventory.mjs` to reject newly discovered unclassified sources and contradictory default guidance. Register sources with `--write`, review their classification, and regenerate this view. Source hashes identify the bytes inspected; cross-repo snapshots require refresh when their owners change.
 

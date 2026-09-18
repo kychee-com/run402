@@ -3807,16 +3807,16 @@
       "purpose": "maintainer",
       "interface": "mixed",
       "exception": "Repository development and implementation instructions; product operations still prefer CLI.",
-      "sha256": "e4c0d7c2131c842b9b38fdc3ed87d5ddb9471aaba3b656f2d0e9048857f3930a",
+      "sha256": "6201bd851068272051f0008eee9fc0bafd87a49a89ead6d897730052a3589180",
       "outputs": [],
       "url": null,
       "checks": [
         "inventory-policy"
       ],
       "evidence": {
-        "editorial": "reviewed: final evidence and explicit remaining product/live-acceptance limitations",
+        "editorial": "reviewed: fresh-agent live acceptance and its explicit scope limitations",
         "local": "see named check results",
-        "publication": "source-only acceptance record; published in final evidence commit (see git history)"
+        "publication": "source-only acceptance record; published with fresh-agent evidence (see git history)"
       }
     },
     {

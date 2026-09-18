@@ -736,8 +736,8 @@
       "review": "reviewed classification and entry routing: native protocol/schema examples intentionally retained; owning parity/claim gates apply"
     },
     "public:docs/quality/documentation-policy.md": {
-      "sha256": "e4c0d7c2131c842b9b38fdc3ed87d5ddb9471aaba3b656f2d0e9048857f3930a",
-      "review": "reviewed: final evidence and explicit remaining product/live-acceptance limitations"
+      "sha256": "6201bd851068272051f0008eee9fc0bafd87a49a89ead6d897730052a3589180",
+      "review": "reviewed: fresh-agent live acceptance and its explicit scope limitations"
     },
     "public:docs/quality/gaps.md": {
       "sha256": "a02c1e4cae8c1111a2e82654b73fc93fc278f8b17c718780bff2ee55c6bfb4b6",
