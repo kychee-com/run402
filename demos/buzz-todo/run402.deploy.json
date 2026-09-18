@@ -3,7 +3,8 @@
   "database": {
     "migrations": [
       { "id": "001_buzz_todo", "sql_file": "db/001_buzz_todo.sql" },
-      { "id": "002_buzz_profiles", "sql_file": "db/002_buzz_profiles.sql" }
+      { "id": "002_buzz_profiles", "sql_file": "db/002_buzz_profiles.sql" },
+      { "id": "003_buzz_pane_claim", "sql_file": "db/003_buzz_pane_claim.sql" }
     ]
   },
   "secrets": {
@@ -26,7 +27,8 @@
         "/": { "asset": "index.html", "cache_class": "html" },
         "/callback": { "asset": "callback.html", "cache_class": "html" }
       }
-    }
+    },
+    "embedding": { "frame_ancestors": ["localhost"] }
   },
   "functions": {
     "replace": {
@@ -53,6 +55,11 @@
       },
       {
         "pattern": "/api/buzz/complete",
+        "methods": ["POST"],
+        "target": { "type": "function", "name": "buzz-todo-api" }
+      },
+      {
+        "pattern": "/api/buzz/claim",
         "methods": ["POST"],
         "target": { "type": "function", "name": "buzz-todo-api" }
       },

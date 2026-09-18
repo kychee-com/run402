@@ -4,13 +4,19 @@
 //   POST /api/buzz/start     → one-time challenge + buzz://nostr-bind deep link
 //   POST /api/buzz/complete  → verify the kind-24243 event Buzz Desktop signed,
 //                              consume the challenge, upsert the user, set a cookie
-//   GET  /api/me             → who am I (from the cookie)
+//   POST /api/buzz/claim     → the tab that started the challenge picks up the
+//                              session after another tab completed it (device
+//                              flow; this is how the Buzz pane signs in when the
+//                              callback lands in the system browser)
+//   GET  /api/me             → who am I (from the cookie or bearer token)
 //   POST /api/logout         → clear the cookie
 //   GET|POST|PATCH|DELETE /api/tasks → the signed-in user's tasks
 //
 // The verifier mirrors what Buzz Desktop signs (desktop/src-tauri/src/nostr_bind.rs):
 // kind 24243, empty content, exactly nine tags in a fixed order, BIP-340 signature.
-// The session is an app-minted HMAC cookie keyed off the project's service key.
+// The session is an app-minted HMAC token keyed off the project's service key,
+// carried as a cookie or, where third-party cookies are blocked (the site framed
+// inside Buzz Desktop), as an Authorization: Bearer header the page stores itself.
 // This is intentionally NOT a Run402 tenant session — that is Idea 2's product work.
 
 import { createHash, createHmac, randomBytes, randomInt, randomUUID, timingSafeEqual } from "node:crypto";
@@ -238,7 +244,13 @@ export function newChallenge(origin, nowMs = Date.now()) {
     verification_code: String(randomInt(0, 1_000_000)).padStart(6, "0"),
     origin,
     expires_at: new Date(nowMs + CHALLENGE_TTL_MS).toISOString(),
+    // Held by the starting tab only; never part of the deep link or the signed event.
+    claim_token: randomBytes(32).toString("base64url"),
   };
+}
+
+export function hashClaimToken(token) {
+  return createHash("sha256").update(`buzz-todo-claim:${token}`).digest("hex");
 }
 
 // ---------------------------------------------------------------------------
@@ -278,6 +290,13 @@ function cookieValue(request) {
     if (name === COOKIE) return rest.join("=");
   }
   return null;
+}
+
+/** Bearer first (the page chose to send it), then the cookie. */
+function sessionToken(request) {
+  const auth = request.headers.get("authorization") ?? "";
+  if (/^bearer\s+/i.test(auth)) return auth.replace(/^bearer\s+/i, "").trim();
+  return cookieValue(request);
 }
 
 function setCookie(token) {
@@ -371,9 +390,9 @@ export default async function handler(request) {
       const origin = publicOrigin(request, ctx);
       const challenge = newChallenge(origin);
       await db.sql(
-        `INSERT INTO buzz_challenges (id, nonce, verification_code, origin, expires_at)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [challenge.id, challenge.nonce, challenge.verification_code, challenge.origin, challenge.expires_at],
+        `INSERT INTO buzz_challenges (id, nonce, verification_code, origin, expires_at, claim_token_hash)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [challenge.id, challenge.nonce, challenge.verification_code, challenge.origin, challenge.expires_at, hashClaimToken(challenge.claim_token)],
       );
       // Opportunistic sweep of stale challenges.
       await db.sql(`DELETE FROM buzz_challenges WHERE created_at < now() - interval '1 hour'`);
@@ -385,7 +404,45 @@ export default async function handler(request) {
         expires_at: challenge.expires_at,
         deep_link: buildDeepLink(challenge, callbackUrl),
         callback_url: callbackUrl,
+        claim_token: challenge.claim_token,
       });
+    }
+
+    if (path === "/api/buzz/claim" && request.method === "POST") {
+      // Device-flow pickup: the starting tab polls with its private claim token.
+      // 202 until the callback tab has consumed the challenge; one claim only.
+      const { challenge_id, claim_token } = await readJson(request);
+      if (typeof challenge_id !== "string" || !/^[0-9a-f-]{36}$/i.test(challenge_id) || typeof claim_token !== "string" || !claim_token) {
+        return fail("BUZZ_CLAIM_INVALID", "challenge_id and claim_token are required");
+      }
+      const found = await db.sql(
+        `SELECT id, expires_at, consumed_at, claimed_at, pubkey, claim_token_hash
+           FROM buzz_challenges WHERE id = $1::uuid`,
+        [challenge_id],
+      );
+      const challenge = found.rows[0];
+      if (!challenge || !challenge.claim_token_hash) return fail("BUZZ_CHALLENGE_UNKNOWN", "no such challenge; start again", 404);
+      const expected = Buffer.from(challenge.claim_token_hash, "hex");
+      const actual = Buffer.from(hashClaimToken(claim_token), "hex");
+      if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
+        return fail("BUZZ_CHALLENGE_UNKNOWN", "no such challenge; start again", 404);
+      }
+      if (challenge.claimed_at) return fail("BUZZ_CLAIM_REPLAYED", "this sign-in was already picked up", 409);
+      if (!challenge.consumed_at || !HEX64.test(challenge.pubkey ?? "")) {
+        if (Date.parse(challenge.expires_at) <= Date.now()) return fail("BUZZ_CHALLENGE_EXPIRED", "challenge expired; start again", 410);
+        return json({ ok: true, pending: true }, 202);
+      }
+      const claimed = await db.sql(
+        `UPDATE buzz_challenges SET claimed_at = now()
+          WHERE id = $1::uuid AND claimed_at IS NULL RETURNING pubkey`,
+        [challenge.id],
+      );
+      if (claimed.rows.length !== 1) return fail("BUZZ_CLAIM_REPLAYED", "this sign-in was already picked up", 409);
+      const pubkey = claimed.rows[0].pubkey;
+      const npub = npubFromHex(pubkey);
+      const user = presentUser(await refreshProfile(db, (await loadUser(db, pubkey)) ?? { pubkey, npub }));
+      const token = mintSession(pubkey);
+      return json({ ok: true, pending: false, pubkey, npub, user, session_token: token }, 200, { "set-cookie": setCookie(token) });
     }
 
     if (path === "/api/buzz/complete" && request.method === "POST") {
@@ -422,7 +479,7 @@ export default async function handler(request) {
     }
 
     // Everything below needs a session.
-    const session = readSession(cookieValue(request));
+    const session = readSession(sessionToken(request));
     if (!session) return fail("UNAUTHENTICATED", "sign in with Buzz first", 401);
 
     if (path === "/api/avatar" && request.method === "GET") {

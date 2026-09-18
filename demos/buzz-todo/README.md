@@ -24,8 +24,18 @@ POST /api/buzz/complete { event } ───────────────�
                                                                      nine tags == challenge,
                                                                      fresh, consume once,
 ◀── Set-Cookie ◀───────────────────────────────────────────────────  upsert user(pubkey)
+starting tab: POST /api/buzz/claim { challenge_id, claim_token } ─▶ 202 until consumed, then
+◀── { session_token } + Set-Cookie, once ◀─────────────────────────  the same session
 GET /api/tasks ───────────────────────────────────────────────────▶ tasks WHERE pubkey
 ```
+
+The claim step is what makes the app work framed inside Buzz Desktop (the
+bundled run402 panel, opted in through `site.embedding.frame_ancestors`):
+Buzz hands the signed proof to the system browser, whose cookie jar the pane
+never sees, so the tab that started the challenge polls with a private claim
+token that is neither in the deep link nor in the signed event. The page keeps
+the returned token in `localStorage` and sends it as `Authorization: Bearer`
+because a framed third-party cookie may be blocked by the webview.
 
 Buzz Desktop validates the deep link (https origin, callback on that exact
 origin, fixed protocol fields) and signs an event with exactly nine tags in a
@@ -38,9 +48,10 @@ challenge byte for byte before consuming it.
 
 | Path | What |
 | --- | --- |
-| `run402.deploy.json` | Release spec: one migration, two pages, one function, five routes, the `buzz-todo` subdomain |
+| `run402.deploy.json` | Release spec: three migrations, two pages, one function, seven routes, the `buzz-todo` subdomain, the Buzz embedding opt-in |
 | `db/001_buzz_todo.sql` | `buzz_users`, `buzz_challenges`, `tasks` |
-| `functions/api.mjs` | Challenge mint, event verification, session cookie, tasks CRUD |
+| `db/003_buzz_pane_claim.sql` | claim-token columns on `buzz_challenges` for the in-pane pickup |
+| `functions/api.mjs` | Challenge mint, event verification, claim pickup, session cookie/bearer, tasks CRUD |
 | `site/index.html` | Sign-in button, six-digit code screen, task list |
 | `site/callback.html` | Reads the Buzz fragment once, scrubs it, completes sign-in |
 

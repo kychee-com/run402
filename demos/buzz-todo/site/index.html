@@ -99,9 +99,19 @@
   const show = (name) => views.forEach((v) => { $(v).hidden = v !== name; });
   const channel = "BroadcastChannel" in window ? new BroadcastChannel("buzz-todo-auth") : null;
   let countdownTimer = null;
+  // Framed inside Buzz Desktop the cookie is third-party and may be blocked, so the
+  // page also keeps the session token itself and sends it as a bearer.
+  const TOKEN_KEY = "buzz_todo_session";
+  const storage = (() => { try { return window.localStorage; } catch { return null; } })();
+  const getToken = () => { try { return storage?.getItem(TOKEN_KEY) || null; } catch { return null; } };
+  const setToken = (t) => { try { t ? storage?.setItem(TOKEN_KEY, t) : storage?.removeItem(TOKEN_KEY); } catch {} };
+  let pendingClaim = null; // { challenge_id, claim_token } while the code screen is up
 
   async function api(path, init = {}) {
-    const res = await fetch(path, { credentials: "same-origin", headers: { "content-type": "application/json" }, ...init });
+    const headers = { "content-type": "application/json", ...(init.headers || {}) };
+    const token = getToken();
+    if (token) headers.authorization = `Bearer ${token}`;
+    const res = await fetch(path, { credentials: "same-origin", ...init, headers });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw Object.assign(new Error(body.message || res.statusText), { code: body.code, status: res.status });
     return body;
@@ -147,6 +157,7 @@
     $("signin-error").hidden = true;
     try {
       const c = await api("/api/buzz/start", { method: "POST", body: "{}" });
+      pendingClaim = c.claim_token ? { challenge_id: c.challenge_id, claim_token: c.claim_token } : null;
       $("code").textContent = c.verification_code;
       $("open-buzz").href = c.deep_link;
       $("copy").textContent = "Copy";
@@ -172,18 +183,32 @@
     }
   });
 
-  $("cancel").addEventListener("click", () => { stopCountdown(); stopPolling(); show("signed-out"); });
+  $("cancel").addEventListener("click", () => { stopCountdown(); stopPolling(); pendingClaim = null; show("signed-out"); });
 
   // While the code is showing, keep checking whether the callback tab signed us in.
-  // The cookie is shared across tabs, so /api/me flips to 200 as soon as it lands.
-  let pollTimer = null;
+  // The callback may land in another tab of this browser (shared cookie) or, when
+  // this page is framed inside Buzz Desktop, in the system browser: either way the
+  // starting tab claims the session with its private claim token (device flow).
+  let pollTimer = null, polling = false;
   function startPolling() { stopPolling(); pollTimer = setInterval(refreshIfSignedIn, 2500); }
   function stopPolling() { if (pollTimer) clearInterval(pollTimer); pollTimer = null; }
   async function refreshIfSignedIn() {
+    if (polling) return;
+    polling = true;
     try {
-      await api("/api/me");
-    } catch {
-      return; // not yet — stay on the code screen
+      if (pendingClaim) {
+        const r = await api("/api/buzz/claim", { method: "POST", body: JSON.stringify(pendingClaim) });
+        if (r.pending) return; // not yet — stay on the code screen
+        if (r.session_token) setToken(r.session_token);
+        pendingClaim = null;
+      } else {
+        await api("/api/me");
+      }
+    } catch (e) {
+      if (e.status === 409 || e.status === 410 || e.status === 404) { pendingClaim = null; } // claim spent or expired: fall back to /api/me
+      return;
+    } finally {
+      polling = false;
     }
     stopCountdown(); stopPolling();
     boot();
@@ -210,6 +235,7 @@
 
   $("signout").addEventListener("click", async () => {
     await api("/api/logout", { method: "POST", body: "{}" }).catch(() => {});
+    setToken(null);
     show("signed-out");
   });
 
