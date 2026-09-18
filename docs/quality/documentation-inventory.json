@@ -2030,16 +2030,16 @@
       "purpose": "example",
       "interface": "cli",
       "exception": "Application code, manifests and test probes remain native; capability gaps are explicit.",
-      "sha256": "102f402624ae2aad02668a32059ce215dc89dc7fc03e9c39db2497dd897bd8ee",
+      "sha256": "a50343d8bc18975e9602214953e50ba913c818090c4725763532109611df0994",
       "outputs": [],
       "url": null,
       "checks": [
         "inventory-policy"
       ],
       "evidence": {
-        "editorial": "reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate",
+        "editorial": "pending: source changed since editorial review",
         "local": "see named check results",
-        "publication": "source published: 23751749; no separate hosted acceptance required"
+        "publication": "pending: source changed since publication evidence"
       }
     },
     {
@@ -2070,16 +2070,16 @@
       "purpose": "example",
       "interface": "cli",
       "exception": "Application code, manifests and test probes remain native; capability gaps are explicit.",
-      "sha256": "f469b296a576c8827125d383f193df469c38f5911756a32320694ac1bf65d6ad",
+      "sha256": "012fd749dbd635ca9d993943dd03b666983049f98bfb5c0e5a2fa75d072c9507",
       "outputs": [],
       "url": null,
       "checks": [
         "inventory-policy"
       ],
       "evidence": {
-        "editorial": "reviewed classification: application/UI or conformance data, not a general operating tutorial",
+        "editorial": "pending: source changed since editorial review",
         "local": "see named check results",
-        "publication": "source published: 23751749; no separate hosted acceptance required"
+        "publication": "pending: source changed since publication evidence"
       }
     },
     {
