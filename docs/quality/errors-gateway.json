@@ -1,9 +1,9 @@
 {
   "owner": "gateway",
   "repository": "kychee-com/run402-private",
-  "revision": "d92b7d8c7d60a1e3e808a1fc7778d8fba23480a7",
+  "revision": "720bc1be85d4f84dc9bf4d90931fd8d9b3a0e68c",
   "source": "packages/gateway/src/utils/error-envelope.ts",
-  "sourceDigest": "f32ca5ee6e3554f14faa054dc197fe303232eda640dd4b25585c462e0edfe2aa",
+  "sourceDigest": "9325c73696c21004613eeb350b1e5567f6d2ab0971aa10b302e3573814801d75",
   "codes": [
     "VALIDATION_FAILED",
     "AUTH_REQUIRED",
@@ -95,6 +95,8 @@
     "INVALID_IDEMPOTENCY_KEY",
     "IDEMPOTENCY_KEY_PAYER_REQUIRED",
     "RATE_LIMITED",
+    "FAUCET_CONFIRMATION_PENDING",
+    "FAUCET_TRANSFER_REVERTED",
     "QUOTA_EXCEEDED",
     "INSUFFICIENT_BALANCE",
     "PROJECT_HAS_NO_ORGANIZATION",

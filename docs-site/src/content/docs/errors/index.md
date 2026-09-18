@@ -468,8 +468,14 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="EXPORT_SCOPE_UNSUPPORTED"></a>
 [`EXPORT_SCOPE_UNSUPPORTED`](/errors/gateway/#EXPORT_SCOPE_UNSUPPORTED)
 
+<a id="FAUCET_CONFIRMATION_PENDING"></a>
+[`FAUCET_CONFIRMATION_PENDING`](/errors/gateway/#FAUCET_CONFIRMATION_PENDING)
+
 <a id="FAUCET_FAILED"></a>
 [`FAUCET_FAILED`](/errors/client/#FAUCET_FAILED)
+
+<a id="FAUCET_TRANSFER_REVERTED"></a>
+[`FAUCET_TRANSFER_REVERTED`](/errors/gateway/#FAUCET_TRANSFER_REVERTED)
 
 <a id="FILE_NOT_FOUND"></a>
 [`FILE_NOT_FOUND`](/errors/client/#FILE_NOT_FOUND)

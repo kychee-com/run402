@@ -10268,7 +10268,7 @@
         ],
         "summary": "Request testnet USDC",
         "operationId": "faucetDrip",
-        "description": "Sends testnet USDC to the specified wallet address on Base Sepolia. Rate limited to 1 drip per IP per 24 hours.",
+        "description": "Sends testnet USDC to the specified wallet address on Base Sepolia. Rate limited to 1 drip per IP and destination wallet per 24 hours. Success waits for on-chain confirmation. An unknown confirmation outcome returns FAUCET_CONFIRMATION_PENDING with the broadcast transaction hash; inspect that transaction or balance instead of requesting another drip.",
         "requestBody": {
           "required": true,
           "content": {
@@ -10290,7 +10290,7 @@
         },
         "responses": {
           "200": {
-            "description": "USDC sent",
+            "description": "USDC transfer confirmed",
             "content": {
               "application/json": {
                 "schema": {
@@ -10309,6 +10309,12 @@
                     "network": {
                       "type": "string",
                       "example": "base-sepolia"
+                    },
+                    "funding_status": {
+                      "type": "string",
+                      "enum": [
+                        "confirmed"
+                      ]
                     }
                   }
                 }
@@ -10316,11 +10322,39 @@
             }
           },
           "429": {
-            "description": "Rate limited — 1 drip per IP per 24 hours",
+            "description": "RATE_LIMITED. Top-level and details contain limit_scope (ip or wallet), retry_after (seconds), and retry_at (UTC). next_actions carries the same retry timing. Limits are unchanged.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until the rejecting faucet cooldown expires.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "FAUCET_TRANSFER_REVERTED: confirmed reverted transaction; funds were not delivered and the existing cooldown remains.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Confirmation pending or faucet unavailable. FAUCET_CONFIRMATION_PENDING preserves transaction_hash and directs balance inspection; never automatically repeat an uncertain drip.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
                 }
               }
             }
@@ -10335,7 +10369,7 @@
         ],
         "summary": "Admin faucet drip (no rate limit)",
         "operationId": "adminFaucetDrip",
-        "description": "Admin-only faucet with no rate limit and optional custom amount. Requires x-admin-key.",
+        "description": "Admin-only faucet with no rate limit and optional custom amount. Requires x-admin-key. Success waits for on-chain confirmation. An unknown confirmation outcome returns FAUCET_CONFIRMATION_PENDING with the broadcast transaction hash; inspect that transaction or balance instead of requesting another drip.",
         "security": [
           {
             "serviceKey": [],
@@ -10366,7 +10400,7 @@
         },
         "responses": {
           "200": {
-            "description": "USDC sent",
+            "description": "USDC transfer confirmed",
             "content": {
               "application/json": {
                 "schema": {
@@ -10383,6 +10417,12 @@
                     },
                     "network": {
                       "type": "string"
+                    },
+                    "funding_status": {
+                      "type": "string",
+                      "enum": [
+                        "confirmed"
+                      ]
                     }
                   }
                 }
@@ -10398,6 +10438,26 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "FAUCET_TRANSFER_REVERTED: confirmed reverted transaction; funds were not delivered and the existing cooldown remains.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Confirmation pending or faucet unavailable. FAUCET_CONFIRMATION_PENDING preserves transaction_hash and directs balance inspection; never automatically repeat an uncertain drip.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
                 }
               }
             }

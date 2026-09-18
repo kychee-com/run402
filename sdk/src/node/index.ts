@@ -21,6 +21,7 @@
  */
 
 import { readFileSync } from "node:fs";
+export { fundingRecovery, fundingBlocksBootstrap, type FundingRecovery } from "./funding-recovery.js";
 import {
   DEFAULT_API_BASE,
   getApiBase,

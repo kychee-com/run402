@@ -595,9 +595,17 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="EXPORT_SCOPE_UNSUPPORTED"></a>
 [`EXPORT_SCOPE_UNSUPPORTED`](/errors/gateway/#EXPORT_SCOPE_UNSUPPORTED)
 
+<a id="faucet_confirmation_pending"></a>
+<a id="FAUCET_CONFIRMATION_PENDING"></a>
+[`FAUCET_CONFIRMATION_PENDING`](/errors/gateway/#FAUCET_CONFIRMATION_PENDING)
+
 <a id="faucet_failed"></a>
 <a id="FAUCET_FAILED"></a>
 [`FAUCET_FAILED`](/errors/client/#FAUCET_FAILED)
+
+<a id="faucet_transfer_reverted"></a>
+<a id="FAUCET_TRANSFER_REVERTED"></a>
+[`FAUCET_TRANSFER_REVERTED`](/errors/gateway/#FAUCET_TRANSFER_REVERTED)
 
 <a id="file_not_found"></a>
 <a id="FILE_NOT_FOUND"></a>

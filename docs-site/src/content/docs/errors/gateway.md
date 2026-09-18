@@ -545,6 +545,18 @@ Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
 
 The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
 
+<h2 id="FAUCET_CONFIRMATION_PENDING">FAUCET_CONFIRMATION_PENDING</h2>
+
+Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+The faucet broadcast a transfer but could not confirm its receipt within the bounded wait. Inspect the returned transaction_hash or run `run402 allowance balance`. Do not request another drip while the outcome is unknown.
+
+<h2 id="FAUCET_TRANSFER_REVERTED">FAUCET_TRANSFER_REVERTED</h2>
+
+Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+The faucet transaction reverted. No funds were delivered; the existing cooldown remains. Report the returned transaction_hash to support.
+
 <h2 id="FLOW_NOT_FOUND">FLOW_NOT_FOUND</h2>
 
 Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.

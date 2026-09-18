@@ -47,6 +47,8 @@ export interface AllowanceCreateResult {
 }
 
 export interface FaucetResult {
+  /** Present on gateways that wait for on-chain confirmation. */
+  fundingStatus?: "confirmed";
   transactionHash: string;
   /** Display-formatted amount, e.g. `"0.25"`. Computed from `amountUsdMicros`. */
   amount: string;
@@ -62,6 +64,7 @@ export interface FaucetOptions {
 }
 
 interface FaucetWireBody {
+  funding_status?: "confirmed";
   transaction_hash: string;
   amount_usd_micros: number;
   token: string;
@@ -196,6 +199,7 @@ export class Allowance {
       context: "requesting faucet funds",
     });
     const result: FaucetResult = {
+      ...(wire.funding_status ? { fundingStatus: wire.funding_status } : {}),
       transactionHash: wire.transaction_hash,
       amountUsdMicros: wire.amount_usd_micros,
       amount: (wire.amount_usd_micros / 1_000_000).toFixed(2),

@@ -6,6 +6,7 @@ import { resolveOwningOrgId } from "./org-context.mjs";
 import { getActiveProfile } from "../core-dist/config.js";
 import { readMeta } from "../core-dist/profiles.js";
 import { mkdirSync } from "fs";
+import { fundingRecovery, fundingBlocksBootstrap } from "#sdk/node";
 
 const USDC_ABI = [{ name: "balanceOf", type: "function", stateMutability: "view", inputs: [{ name: "account", type: "address" }], outputs: [{ name: "", type: "uint256" }] }];
 const USDC_SEPOLIA = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
@@ -416,6 +417,8 @@ export async function run(args = []) {
 
   // 3. Balance — check on-chain, faucet if zero
   let balance = 0;
+  let fundingError;
+  let fundingPending = false;
 
   if (isMpp) {
     // Tempo Moderato: read pathUSD balance
@@ -458,12 +461,15 @@ export async function run(args = []) {
           if (balance > 0) {
             line("Balance", `${(balance / 1e6).toFixed(2)} pathUSD (funded)`);
           } else {
+            fundingPending = true;
             line("Balance", "faucet sent — not yet confirmed on-chain");
           }
         } else {
+          fundingError = data.error ?? new Error("Faucet failed");
           line("Balance", `faucet failed: ${data.error?.message || "unknown error"}`);
         }
       } catch (err) {
+        fundingError = err;
         line("Balance", `faucet error: ${err.message}`);
       }
     } else {
@@ -497,9 +503,11 @@ export async function run(args = []) {
         if (balance > 0) {
           line("Balance", `${(balance / 1e6).toFixed(2)} USDC (funded)`);
         } else {
+          fundingPending = true;
           line("Balance", "faucet sent — not yet confirmed on-chain");
         }
       } catch (err) {
+        fundingError = err;
         line("Balance", `faucet failed: ${errorMessage(err)}`);
       }
     } else {
@@ -731,9 +739,27 @@ export async function run(args = []) {
   // string mirror of the first action's command (one spelling, surface-wide).
   write("");
   const tierMissing = !tierInfo || !tierInfo.tier || !tierInfo.active;
+  summary.funding = fundingRecovery(fundingError, fundingPending);
+  const fundingBlocked = fundingBlocksBootstrap(summary.funding, {
+    activeTier: !tierMissing, onChainBalance: balance,
+    prepaidBalance: summary.balances.prepaid_credit_usd_micros,
+    lightningBalance: summary.lightning?.balance_sats,
+  });
   summary.next_actions = [tierMissing ? upDeployAction() : deployAction()];
-  summary.next_step = summary.next_actions[0].command;
-  if (tierMissing) {
+  if (fundingBlocked) {
+    const quotedWallet = `'${walletName.replaceAll("'", "'\\''")}'`;
+    summary.next_actions = summary.funding.next_actions.map(action => ({ ...action,
+      ...(["retry", "check_balance"].includes(action.type) ? {
+        command: `run402 --wallet ${quotedWallet} allowance ${action.type === "retry" ? "fund" : "balance"}`,
+      } : {}),
+    }));
+  }
+  summary.next_step = summary.next_actions[0].command ?? null;
+  if (fundingBlocked) {
+    line("Funding", summary.funding.status);
+    write(`  ${summary.next_actions[0].why}`);
+    if (summary.next_step) write(`  Next: ${summary.next_step}`);
+  } else if (tierMissing) {
     // `up -y` subscribes the prototype tier itself as part of the first
     // deploy; `init` never buys the tier, so the one command that finishes
     // the cold start is `up`, with `tier set` named as the standalone option.

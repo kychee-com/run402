@@ -2,8 +2,8 @@
   "version": 1,
   "contributions": {
     "gateway": {
-      "revision": "d92b7d8c7d60a1e3e808a1fc7778d8fba23480a7",
-      "sourceDigest": "f32ca5ee6e3554f14faa054dc197fe303232eda640dd4b25585c462e0edfe2aa"
+      "revision": "720bc1be85d4f84dc9bf4d90931fd8d9b3a0e68c",
+      "sourceDigest": "9325c73696c21004613eeb350b1e5567f6d2ab0971aa10b302e3573814801d75"
     },
     "core": {
       "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7"
@@ -1921,6 +1921,16 @@
       "topic": "/errors/gateway/#EXPORT_SCOPE_UNSUPPORTED"
     },
     {
+      "code": "FAUCET_CONFIRMATION_PENDING",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#FAUCET_CONFIRMATION_PENDING"
+    },
+    {
       "code": "FAUCET_FAILED",
       "owners": [
         {
@@ -1929,6 +1939,16 @@
         }
       ],
       "topic": "/errors/client/#FAUCET_FAILED"
+    },
+    {
+      "code": "FAUCET_TRANSFER_REVERTED",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#FAUCET_TRANSFER_REVERTED"
     },
     {
       "code": "FILE_NOT_FOUND",

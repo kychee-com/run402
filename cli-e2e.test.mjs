@@ -4271,6 +4271,32 @@ describe("CLI e2e happy path", () => {
     assert.ok(!/Projects\s+\d+\s+active/.test(out), `must not use the misleading "N active" wording, got: ${out}`);
   });
 
+  it("init surfaces faucet cooldown and never recommends an immediately blocked deploy", async () => {
+    const { run } = await import("./cli/lib/init.mjs");
+    const previous = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const url = typeof input === "string" ? input : input.url ?? String(input);
+      const raw = init?.body ?? (input instanceof Request ? await input.clone().text() : null);
+      const body = typeof raw === "string" ? JSON.parse(raw) : raw;
+      if (url.includes("/faucet/v1")) return json({ code: "RATE_LIMITED", message: "Faucet cooldown", details: {retry_after: 83160, retry_at: "2026-09-20T10:00:00Z", limit_scope: "ip"} }, 429);
+      if (url.includes("/tiers/v1/status")) return json({tier:null,active:false});
+      if (url.includes("/billing/")) return json({exists:false,available_usd_micros:0});
+      if (body?.jsonrpc === "2.0" && body.method === "eth_call") return json({jsonrpc:"2.0", id:body.id, result:"0x"+"0".repeat(64)});
+      if (Array.isArray(body)) return json(body.map(r=>({jsonrpc:"2.0",id:r.id,result:r.method==="eth_call"?"0x"+"0".repeat(64):"0x14a34"})));
+      return previous(input,init);
+    };
+    captureStart();
+    try { await run([]); } finally { captureStop(); globalThis.fetch=previous; }
+    const summary=JSON.parse(capturedStdout());
+    assert.equal(summary.funding.status,"blocked");
+    assert.equal(summary.funding.retry_after,83160);
+    assert.equal(summary.funding.limit_scope,"ip");
+    assert.match(summary.next_step,/allowance fund/);
+    assert.doesNotMatch(summary.next_step,/up|deploy/);
+    assert.match(capturedStderr(),/2026-09-20T10:00:00Z/);
+    assert.doesNotMatch(capturedStderr(),/Next: run402 up|Ready to deploy/);
+  });
+
   it("init emits JSON on stdout and human lines on stderr (GH-32)", async () => {
     const { run } = await import("./cli/lib/init.mjs");
     captureStart();

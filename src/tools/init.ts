@@ -5,6 +5,7 @@ import { readAllowance, saveAllowance } from "../allowance.js";
 import { loadKeyStore } from "../keystore.js";
 import { getSdk } from "../sdk.js";
 import { isToolAvailable } from "../tool-profiles.js";
+import { fundingRecovery, fundingBlocksBootstrap } from "../../sdk/dist/node/index.js";
 
 const TEMPO_RPC = "https://rpc.moderato.tempo.xyz/";
 
@@ -79,6 +80,7 @@ export async function handleInit(args: { rail?: "x402" | "mpp" | "lightning" }):
 
   // 3. Faucet — request if not yet funded
   let faucetStatus = "skipped (already funded)";
+  let fundingError: unknown;
 
   if (!allowance.funded) {
     if (rail === "mpp") {
@@ -100,9 +102,11 @@ export async function handleInit(args: { rail?: "x402" | "mpp" | "lightning" }):
           saveAllowance(allowance);
           faucetStatus = "funded (Tempo pathUSD)";
         } else {
+          fundingError = data.error ?? new Error("Faucet failed");
           faucetStatus = `failed: ${data.error?.message || "unknown error"}`;
         }
       } catch (err) {
+        fundingError = err;
         faucetStatus = `error: ${(err as Error).message}`;
       }
     } else {
@@ -113,6 +117,7 @@ export async function handleInit(args: { rail?: "x402" | "mpp" | "lightning" }):
         // Re-read allowance to pick up the funded/lastFaucet fields the SDK wrote.
         allowance = readAllowance() ?? allowance;
       } catch (err) {
+        fundingError = err;
         const msg = (err as Error)?.message ?? String(err);
         faucetStatus = `failed: ${msg}`;
       }
@@ -173,7 +178,12 @@ export async function handleInit(args: { rail?: "x402" | "mpp" | "lightning" }):
   // sent them to tools they do not have — and told them to do something they did
   // not come to do. A buyer's next step is the purchase, tier or no tier.
   lines.push(``);
-  if (tierDisplay === "(none)") {
+  const recovery = fundingRecovery(fundingError);
+  if (fundingBlocksBootstrap(recovery, { activeTier: tierDisplay !== "(none)" })) {
+    lines.push(`**Funding ${recovery!.status}.** ${recovery!.next_actions[0]!.why}`);
+    if (recovery!.transaction_hash) lines.push(`Transaction: \`${recovery!.transaction_hash}\`.`);
+    lines.push(`\nFunding recovery: \`${JSON.stringify(recovery)}\``);
+  } else if (tierDisplay === "(none)") {
     lines.push(
       isToolAvailable("set_tier")
         ? `**Next:** Use \`set_tier\` to subscribe to a tier (e.g. prototype).`
