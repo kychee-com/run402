@@ -64,9 +64,10 @@ function normalizeListProjectsResult(result: ListProjectsResult | { projects?: W
 // SDK the odd layer out — the gateway, the in-function `adminDb().sql()`
 // runtime, and the CLI all speak row_count. One logical operation, one shape.
 
-function normalizeExposeValidationResult(value: ExposeManifestValidationResult | { has_errors?: boolean; errors?: ExposeManifestValidationIssue[]; warnings?: ExposeManifestValidationIssue[] }): ExposeManifestValidationResult {
+function normalizeExposeValidationResult(value: ExposeManifestValidationResult | { has_errors?: boolean; errors?: ExposeManifestValidationIssue[]; warnings?: ExposeManifestValidationIssue[]; effective_access?: ExposeManifestValidationResult["effective_access"] }): ExposeManifestValidationResult {
   if ("hasErrors" in value) return value as ExposeManifestValidationResult;
   return {
+    ...(value.effective_access ? { effective_access: value.effective_access } : {}),
     hasErrors: value.has_errors === true,
     errors: Array.isArray(value.errors) ? value.errors : [],
     warnings: Array.isArray(value.warnings) ? value.warnings : [],

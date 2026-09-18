@@ -25,7 +25,7 @@ The manifest is the whole app: a migration, which tables the browser may reach, 
     ],
     "expose": {
       "version": "1",
-      "tables": [{ "name": "items", "expose": true, "policy": "public_read_write_UNRESTRICTED", "i_understand_this_is_unrestricted": true }]
+      "tables": [{ "name": "items", "expose": true, "policy": "public_read_append_only" }]
     }
   },
   "site": {
@@ -36,7 +36,7 @@ The manifest is the whole app: a migration, which tables the browser may reach, 
 }
 ```
 
-This disposable demo intentionally allows anyone to read and write `items`. Use authenticated policies before storing private data.
+This demo allows public reads and new submissions. Visitors cannot edit or delete existing items. Use an authenticated policy for private or user-owned data.
 
 Create `index.html` alongside the manifest. It reads its own keys from the host it is served on — never paste a key into HTML:
 

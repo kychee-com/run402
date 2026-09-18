@@ -414,7 +414,7 @@ The manifest itself is a JSON object:
 }
 ```
 
-Built-in policies: `user_owns_rows` (rows where `owner_column = auth.uid()`), `public_read_authenticated_write` (anyone reads, any auth user writes), `public_read_write_UNRESTRICTED` (fully open; requires `i_understand_this_is_unrestricted: true`), `custom` (provide `custom_sql`).
+Built-in policies: `user_owns_rows` (rows where `owner_column = auth.uid()`), `public_read_authenticated_write` (anyone reads, any auth user writes), `public_read_append_only` (anyone reads and inserts; update/delete denied), `public_read_write_UNRESTRICTED` (fully open; requires `i_understand_this_is_unrestricted: true`), `custom` (provide `custom_sql`).
 
 For `user_owns_rows`, `force_owner_on_insert: true` creates an idempotent per-table trigger named `<table>_set_owner` backed by `<table>_set_owner_fn`. The generated shape is:
 

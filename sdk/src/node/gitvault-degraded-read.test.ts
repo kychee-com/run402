@@ -86,7 +86,7 @@ describe("gitvault degraded read — trigger discipline (design D4)", () => {
 
   it("the payment-capable client's X402_INITIAL_REQUEST_FAILED (no response ever existed) is network-class; a later-phase payment failure is not", () => {
     const mk = (code: string) =>
-      new PaymentAttemptError({ code, message: "m", phase: "initial_request" as never, paymentAttemptId: "pat_x", providerStarted: false, mutationState: "not_started" as never, safeToRetry: true, cause: new TypeError("fetch failed") });
+      new PaymentAttemptError({ code, category: code === "X402_INITIAL_REQUEST_FAILED" ? "network" : "payment", message: "m", phase: "initial_request" as never, paymentAttemptId: "pat_x", providerStarted: false, mutationState: "not_started" as never, safeToRetry: true, cause: new TypeError("fetch failed") });
     assert.equal(isNetworkClassGitvaultReadError(mk("X402_INITIAL_REQUEST_FAILED")), true);
     assert.equal(isNetworkClassGitvaultReadError(mk("X402_PAYMENT_SIGNING_FAILED")), false);
   });

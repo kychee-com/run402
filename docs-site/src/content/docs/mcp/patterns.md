@@ -61,7 +61,8 @@ Convergent: applying the same manifest twice is a no-op; items removed between a
 |---|---|
 | `user_owns_rows` | Rows where `owner_column = auth.uid()`. With `force_owner_on_insert: true`, a BEFORE INSERT trigger sets it automatically. Default for user-scoped data. |
 | `public_read_authenticated_write` | Anyone reads. Any authenticated user writes any row. For shared boards / collaborative content. |
-| `public_read_write_UNRESTRICTED` | Fully open. Requires `i_understand_this_is_unrestricted: true`. Only for guestbooks / waitlists / feedback forms. |
+| `public_read_append_only` | Anyone reads and inserts; update/delete denied. For guestbooks, waitlists and feedback forms. |
+| `public_read_write_UNRESTRICTED` | Anyone can read, insert, update and delete. Requires `i_understand_this_is_unrestricted: true`. |
 | `custom` | Escape hatch. Provide `custom_sql` with `CREATE POLICY` statements. |
 
 Views always run with `security_invoker=true` — they inherit the underlying table's RLS. RPCs are not exposed unless listed in `rpcs[]` (a database event trigger revokes PUBLIC EXECUTE on every newly-created function).
@@ -257,3 +258,5 @@ Validation rules (gateway-authoritative):
 - Deploy-time validation. Missing table or column at activation fails with `DEPLOY_INVALID_ROLE_GATE` (HTTP 422) *before* flipping the live release. The `deploy` tool surfaces the structured envelope.
 
 The gate applies to both routed (`/your/route`) and direct (`POST /functions/v1/:name` with API key plus user JWT) invocation. Direct invocation still requires the API key at the edge; the gate runs after API-key auth, against the user JWT.
+
+`app_up` returns the shared workflow envelope, including verification and backup outcomes. Its `result.app_result` display projection is marked `run402.up.summary`; `expand_result` retrieves the same execution’s redacted detail through the returned `result_ref`. SDK callers retain the complete typed `run402.up.result`.

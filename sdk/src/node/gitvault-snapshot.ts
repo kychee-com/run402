@@ -651,6 +651,8 @@ function statPresentPaths(top: string, candidates: string[]): Array<{ path: stri
  * use, so the two can never drift into disagreeing about what "the captured
  * set" means — which would show up as a deploy that refuses an untouched tree.
  */
+const isPlatformRuntimePath = (path: string) => path.split("/").includes(".run402");
+
 async function enumerateCapturedPaths(
   top: string,
   excludeArgs: string[],
@@ -658,7 +660,10 @@ async function enumerateCapturedPaths(
 ): Promise<Array<{ path: string; mode: Entry["mode"]; size: number }>> {
   const others = untracked ?? (await hardenedGit(top, ["ls-files", "-z", "--others", "--exclude-standard", ...excludeArgs])).nul();
   const tracked = (await hardenedGit(top, ["ls-files", "-z", "--cached"])).nul();
-  const candidates = [...new Set([...tracked, ...others])].sort();
+  // Platform-owned runtime state is never source, even if accidentally tracked.
+  const candidates = [...new Set([...tracked, ...others])]
+    .filter((path) => !isPlatformRuntimePath(path))
+    .sort();
   return statPresentPaths(top, candidates);
 }
 
@@ -773,7 +778,7 @@ export async function captureSnapshot(options: GitvaultSnapshotOptions): Promise
   // Both lists are collected in full (not just a boolean) — SNAPSHOT_DIRTY_TREE
   // discloses them below, and an `allowDirty` capture discloses them again as
   // `modified_captured` / `untracked_captured` on the result.
-  const untracked = (await hardenedGit(top, ["ls-files", "-z", "--others", "--exclude-standard", ...excludeArgs])).nul();
+  const untracked = (await hardenedGit(top, ["ls-files", "-z", "--others", "--exclude-standard", ...excludeArgs])).nul().filter((path) => !isPlatformRuntimePath(path));
   let modified: string[];
   if (!headOid) {
     modified = (await hardenedGit(top, ["ls-files", "-z"])).nul(); // unborn HEAD with a populated index — every entry is new
@@ -781,6 +786,8 @@ export async function captureSnapshot(options: GitvaultSnapshotOptions): Promise
     await hardenedGit(top, ["update-index", "-q", "--refresh"], { okStatuses: [1] });
     modified = (await hardenedGit(top, ["diff-index", "--name-only", "-z", "HEAD", "--"])).nul();
   }
+  modified = modified.filter((path) => !isPlatformRuntimePath(path));
+  const hasTrackedRuntime = (await hardenedGit(top, ["ls-files", "-z", "--cached"])).nul().some(isPlatformRuntimePath);
   const dirty = untracked.length > 0 || modified.length > 0;
 
   // Fail fast and free: this refusal fires BEFORE any object is created,
@@ -816,7 +823,7 @@ export async function captureSnapshot(options: GitvaultSnapshotOptions): Promise
     );
   }
 
-  if (!dirty && headOid) {
+  if (!dirty && headOid && !hasTrackedRuntime) {
     const tree = (await hardenedGit(top, ["rev-parse", "HEAD^{tree}"])).text().trim();
     // The captured set is recorded for a clean tree too, through the SAME
     // enumerate+hash path the dirty branch uses. Reading it off `HEAD`'s tree

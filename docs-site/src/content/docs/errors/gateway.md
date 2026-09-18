@@ -1877,6 +1877,12 @@ Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
 
 The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
 
+<h2 id="REST_PERMISSION_DENIED">REST_PERMISSION_DENIED</h2>
+
+Owner: `public:sdk/src/rest-diagnostics.ts`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
+
 <h2 id="REVIEWED_PLAN_ID_MISMATCH">REVIEWED_PLAN_ID_MISMATCH</h2>
 
 Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.

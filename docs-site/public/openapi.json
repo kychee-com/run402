@@ -8987,6 +8987,7 @@
                           "enum": [
                             "user_owns_rows",
                             "public_read_authenticated_write",
+                            "public_read_append_only",
                             "public_read_write_UNRESTRICTED",
                             "custom"
                           ],
@@ -45714,6 +45715,58 @@
           "has_errors": {
             "type": "boolean",
             "description": "True when errors is non-empty."
+          },
+          "effective_access": {
+            "type": "array",
+            "description": "Declared access preview; pending until PostgreSQL rehearsal/apply. Custom operations may be null. Row checks remain runtime checks.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "table": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string",
+                  "enum": [
+                    "anon",
+                    "authenticated"
+                  ]
+                },
+                "declared_operations": {
+                  "type": "array",
+                  "nullable": true,
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "required_privileges": {
+                  "type": "array",
+                  "nullable": true,
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "validation": {
+                  "type": "string",
+                  "enum": [
+                    "pending",
+                    "structural"
+                  ]
+                },
+                "row_checks": {
+                  "type": "string",
+                  "enum": [
+                    "runtime"
+                  ]
+                },
+                "findings": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         },
         "additionalProperties": false
@@ -47821,6 +47874,58 @@
           },
           "gitvault": {
             "$ref": "#/components/schemas/GitvaultPlanRider"
+          },
+          "effective_access": {
+            "type": "array",
+            "description": "Declared access preview; pending until PostgreSQL rehearsal/apply. Custom operations may be null. Row checks remain runtime checks.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "table": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string",
+                  "enum": [
+                    "anon",
+                    "authenticated"
+                  ]
+                },
+                "declared_operations": {
+                  "type": "array",
+                  "nullable": true,
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "required_privileges": {
+                  "type": "array",
+                  "nullable": true,
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "validation": {
+                  "type": "string",
+                  "enum": [
+                    "pending",
+                    "structural"
+                  ]
+                },
+                "row_checks": {
+                  "type": "string",
+                  "enum": [
+                    "runtime"
+                  ]
+                },
+                "findings": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       },

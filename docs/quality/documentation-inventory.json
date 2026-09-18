@@ -110,16 +110,16 @@
       "purpose": "history",
       "interface": "historical",
       "exception": "Dated release records; add current entries without rewriting history.",
-      "sha256": "1a913c887eb402dd69398b04b21c047deda978d88df6971c5b25cb75de949613",
+      "sha256": "fc41aa3d404e15268adddb0ab7c85a69ef20df9ec3e14684429fe3958929ce69",
       "outputs": [],
       "url": null,
       "checks": [
         "inventory-policy"
       ],
       "evidence": {
-        "editorial": "excluded from rewrite: dated history; current release note/banner reviewed",
+        "editorial": "reviewed server-first DX behavior: append-only contributions, shared result display, transport truth and automatic runtime-file exclusion; publication remains separate",
         "local": "see named check results",
-        "publication": "source published: 23751749; no separate hosted acceptance required"
+        "publication": "pending: source changed since publication evidence"
       }
     },
     {
@@ -170,16 +170,16 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "a15ccacdc32278353960723d11db8bc6815e2ed73d79948775b4007df8404fe9",
+      "sha256": "ecb4e0f4a7ddbfdc53b74b38550124a47d3cfca65d5ae94eaf2db287725186d7",
       "outputs": [],
       "url": null,
       "checks": [
         "inventory-policy"
       ],
       "evidence": {
-        "editorial": "reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate",
+        "editorial": "reviewed server-first DX behavior: append-only contributions, shared result display, transport truth and automatic runtime-file exclusion; publication remains separate",
         "local": "see named check results",
-        "publication": "source published: 23751749; no separate hosted acceptance required"
+        "publication": "pending: source changed since publication evidence"
       }
     },
     {
@@ -450,16 +450,16 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "b147637a32f0f276cd639d14d84ae29565402d1cfa8bf870875bd670b3e294a1",
+      "sha256": "b17ddbc39693c46944c9724e75a264e5326888b648b718e3598062801e77ab5a",
       "outputs": [],
       "url": null,
       "checks": [
         "inventory-policy"
       ],
       "evidence": {
-        "editorial": "reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate",
+        "editorial": "reviewed server-first DX behavior: append-only contributions, shared result display, transport truth and automatic runtime-file exclusion; publication remains separate",
         "local": "see named check results",
-        "publication": "source published: 23751749; no separate hosted acceptance required"
+        "publication": "pending: source changed since publication evidence"
       }
     },
     {
@@ -1710,16 +1710,16 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "7fc3c082bf34161c0f4e252142194b4124f15b87d8fddb330676422d371950bb",
+      "sha256": "a9f4f2e07b89e359edcf76ae88d0001600053f3f3719520e3655bf54f32870b8",
       "outputs": [],
       "url": null,
       "checks": [
         "inventory-policy"
       ],
       "evidence": {
-        "editorial": "reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution",
+        "editorial": "reviewed server-first DX behavior: append-only contributions, shared result display, transport truth and automatic runtime-file exclusion; publication remains separate",
         "local": "see named check results",
-        "publication": "source published: 23751749; no separate hosted acceptance required"
+        "publication": "pending: source changed since publication evidence"
       }
     },
     {
@@ -1730,16 +1730,16 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "1ad294e4026f2f7b594175633853d13b778593e1b3e6bcd88a96f04e4462a90d",
+      "sha256": "5f6276979edb0ee33bb7a1066b5205b2f36577128a6245e9131c06bb78f5d3f9",
       "outputs": [],
       "url": null,
       "checks": [
         "inventory-policy"
       ],
       "evidence": {
-        "editorial": "reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution",
+        "editorial": "reviewed server-first DX behavior: append-only contributions, shared result display, transport truth and automatic runtime-file exclusion; publication remains separate",
         "local": "see named check results",
-        "publication": "source published: 23751749; no separate hosted acceptance required"
+        "publication": "pending: source changed since publication evidence"
       }
     },
     {
@@ -1830,16 +1830,16 @@
       "purpose": "generated",
       "interface": "mixed",
       "exception": "Edit docs-site source; validate deterministic generated bytes.",
-      "sha256": "70398ee7ee52e80907bf9ba3daa35b62528808f920c72497e19fe9888f24cc28",
+      "sha256": "35843d1e8038eaa42138641b20db0f87698e58027a69bf9ec64e349b55e29d2f",
       "outputs": [],
       "url": null,
       "checks": [
         "inventory-policy"
       ],
       "evidence": {
-        "editorial": "reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply",
+        "editorial": "generated from reviewed canonical server-first DX sources; local tests separate from publication",
         "local": "see named check results",
-        "publication": "hosted digest verified: 2026-09-17; portal/apex 23751749"
+        "publication": "pending: source changed since publication evidence"
       }
     },
     {
@@ -1890,16 +1890,16 @@
       "purpose": "generated",
       "interface": "mixed",
       "exception": "Edit docs-site source; validate deterministic generated bytes.",
-      "sha256": "94aaa801db2546013677040beedd5eb9332b210dc31f25e6d06971a39bf6a24a",
+      "sha256": "b9461d49d0d4108db300794b2ea0ec771a245b3273ef7c40ac22633fa16c0935",
       "outputs": [],
       "url": null,
       "checks": [
         "inventory-policy"
       ],
       "evidence": {
-        "editorial": "reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply",
+        "editorial": "generated from reviewed canonical server-first DX sources; local tests separate from publication",
         "local": "see named check results",
-        "publication": "hosted digest verified: 2026-09-17; portal/apex 23751749"
+        "publication": "pending: source changed since publication evidence"
       }
     },
     {
@@ -2010,16 +2010,16 @@
       "purpose": "generated",
       "interface": "mixed",
       "exception": "Edit docs-site source; validate deterministic generated bytes.",
-      "sha256": "f5a1cc662fb7692299602f5e1d7b48fc3418627a046d128d50315d8c694494f4",
+      "sha256": "34b7215b4037e026488a37f8ca7027f36996f8376119297ce204d470b0425a36",
       "outputs": [],
       "url": null,
       "checks": [
         "inventory-policy"
       ],
       "evidence": {
-        "editorial": "reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply",
+        "editorial": "generated from reviewed canonical server-first DX sources; local tests separate from publication",
         "local": "see named check results",
-        "publication": "hosted digest verified: 2026-09-17; portal/apex 23751749"
+        "publication": "pending: source changed since publication evidence"
       }
     },
     {
@@ -2440,7 +2440,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "0c0bcb83ddbf384863798b4bd77fd3a1dc90a40c6b371dbcec2afebbaa488304",
+      "sha256": "8f03dc41daf497572a07160285036915918c2c48a3fd880225af34d1c49a748d",
       "outputs": [],
       "url": "https://docs.run402.com/build/database/",
       "checks": [
@@ -2448,9 +2448,9 @@
         "site-links"
       ],
       "evidence": {
-        "editorial": "reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate",
+        "editorial": "reviewed server-first DX behavior: append-only contributions, shared result display, transport truth and automatic runtime-file exclusion; publication remains separate",
         "local": "see named check results",
-        "publication": "hosted verified: 2026-09-17; portal 23751749"
+        "publication": "pending: source changed since publication evidence"
       }
     },
     {
@@ -2612,7 +2612,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "eacf9a0c730f3c4cd4773c5f1e7ab5c92252d02e910820f97e4eee8439e1c6ee",
+      "sha256": "d66f0110d8c2cdfd79361ebd6cffd3d18497eae17ee7b45716b92934cff43c6b",
       "outputs": [
         "cli/llms-cli-full.txt"
       ],
@@ -2622,9 +2622,9 @@
         "site-links"
       ],
       "evidence": {
-        "editorial": "reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate",
+        "editorial": "reviewed server-first DX behavior: append-only contributions, shared result display, transport truth and automatic runtime-file exclusion; publication remains separate",
         "local": "see named check results",
-        "publication": "hosted verified: 2026-09-17; portal 23751749"
+        "publication": "pending: source changed since publication evidence"
       }
     },
     {
@@ -2945,7 +2945,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "9e631e4cbdcf944b85192908ee9ba6d288bae07154cd4a1ebce221ee90e167bc",
+      "sha256": "31cdb9452ccfbcc3f0bc496aa8377115b1f70299431f326ed75a9f45c2340ddb",
       "outputs": [],
       "url": "https://docs.run402.com/errors/client/",
       "checks": [
@@ -2953,9 +2953,9 @@
         "site-links"
       ],
       "evidence": {
-        "editorial": "reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply",
+        "editorial": "generated from reviewed canonical server-first DX sources; local tests separate from publication",
         "local": "see named check results",
-        "publication": "hosted verified: 2026-09-17; portal 23751749"
+        "publication": "pending: source changed since publication evidence"
       }
     },
     {
@@ -2987,7 +2987,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "cbed8762bafcedb030bb6688886d31de68bf3e211bbf5dadc1bdf6807c380549",
+      "sha256": "894204572a77d8b96b475f86daa45e391c1768c8967b5cddda93188ad41fb619",
       "outputs": [],
       "url": "https://docs.run402.com/errors/gateway/",
       "checks": [
@@ -2995,9 +2995,9 @@
         "site-links"
       ],
       "evidence": {
-        "editorial": "reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply",
+        "editorial": "generated from reviewed canonical server-first DX sources; local tests separate from publication",
         "local": "see named check results",
-        "publication": "hosted verified: 2026-09-17; portal 23751749"
+        "publication": "pending: source changed since publication evidence"
       }
     },
     {
@@ -3008,7 +3008,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "8303f141298d69856eb5da5ffd0b438b6e6823c7805aef682a8dcea36a4d8132",
+      "sha256": "c5a765f4023048328e96b23a920d151e99c82ab9872246297834eceba9052c3d",
       "outputs": [],
       "url": "https://docs.run402.com/errors/",
       "checks": [
@@ -3016,9 +3016,9 @@
         "site-links"
       ],
       "evidence": {
-        "editorial": "reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply",
+        "editorial": "generated from reviewed canonical server-first DX sources; local tests separate from publication",
         "local": "see named check results",
-        "publication": "hosted verified: 2026-09-17; portal 23751749"
+        "publication": "pending: source changed since publication evidence"
       }
     },
     {
@@ -3203,7 +3203,7 @@
       "purpose": "reference",
       "interface": "mcp",
       "exception": "Native MCP setup, schemas and tool examples.",
-      "sha256": "6a0afbb9ad175c8ce3a80a2cc31344704d29aa017abc979ffbbd3c4d74806a9b",
+      "sha256": "488b174992ad4245512b410becc2dc6caaa3547d5c457798a9ed49de8296a6dc",
       "outputs": [
         "llms-mcp.txt"
       ],
@@ -3213,9 +3213,9 @@
         "site-links"
       ],
       "evidence": {
-        "editorial": "reviewed native MCP setup/reference: explicit host availability and app_up orchestration; schema/parity gates apply",
+        "editorial": "reviewed server-first DX behavior: append-only contributions, shared result display, transport truth and automatic runtime-file exclusion; publication remains separate",
         "local": "see named check results",
-        "publication": "hosted verified: 2026-09-17; portal 23751749"
+        "publication": "pending: source changed since publication evidence"
       }
     },
     {
@@ -3356,7 +3356,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "a2c86bc8b2d9455494b592eaacbaa0b40e02d81b8b1a4e4922b7965a79cfffa2",
+      "sha256": "3630c3b62faff156e0375a3e9a29bc3e78ab20f8f82c9530cf2eb6dfde16cd69",
       "outputs": [],
       "url": "https://docs.run402.com/reference/error-codes/",
       "checks": [
@@ -3364,9 +3364,9 @@
         "site-links"
       ],
       "evidence": {
-        "editorial": "reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply",
+        "editorial": "generated from reviewed canonical server-first DX sources; local tests separate from publication",
         "local": "see named check results",
-        "publication": "hosted verified: 2026-09-17; portal 23751749"
+        "publication": "pending: source changed since publication evidence"
       }
     },
     {
@@ -3587,7 +3587,7 @@
       "purpose": "reference",
       "interface": "sdk",
       "exception": "Native typed scripting and SDK reference examples.",
-      "sha256": "758052cd0dc54703e07b9925f82fa9f2d7af8d94e70af3e8e591b9ab59c59d79",
+      "sha256": "2f8942af5894649074d2a79ecb10b298805103e2690de47c70cece8ae3414dc0",
       "outputs": [
         "sdk/llms-sdk.txt"
       ],
@@ -3598,9 +3598,9 @@
         "sdk-snippets"
       ],
       "evidence": {
-        "editorial": "reviewed native SDK scripting: explicit CLI default outside scripts, awaited project scope, staged activation; snippet gate applies",
+        "editorial": "reviewed server-first DX behavior: append-only contributions, shared result display, transport truth and automatic runtime-file exclusion; publication remains separate",
         "local": "see named check results",
-        "publication": "hosted verified: 2026-09-17; portal 23751749"
+        "publication": "pending: source changed since publication evidence"
       }
     },
     {
@@ -3683,7 +3683,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "c5ea98e31609cc6a0bc8eb8e466aebf8066403f5f784f2cd896784b4d8861eac",
+      "sha256": "e04798350a1f291bb86d99827ea69d62c123619b54e037bd753bfa531ea71bed",
       "outputs": [
         "llms.txt"
       ],
@@ -3693,9 +3693,9 @@
         "site-links"
       ],
       "evidence": {
-        "editorial": "reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate",
+        "editorial": "reviewed server-first DX behavior: append-only contributions, shared result display, transport truth and automatic runtime-file exclusion; publication remains separate",
         "local": "see named check results",
-        "publication": "hosted verified: 2026-09-17; portal 23751749"
+        "publication": "pending: source changed since publication evidence"
       }
     },
     {
@@ -3807,16 +3807,16 @@
       "purpose": "maintainer",
       "interface": "mixed",
       "exception": "Repository development and implementation instructions; product operations still prefer CLI.",
-      "sha256": "6201bd851068272051f0008eee9fc0bafd87a49a89ead6d897730052a3589180",
+      "sha256": "aa72a7b7119fbc020c732a92beb71fb45c4556067dd6c6e223c2da2d10b5ecd1",
       "outputs": [],
       "url": null,
       "checks": [
         "inventory-policy"
       ],
       "evidence": {
-        "editorial": "reviewed: fresh-agent live acceptance and its explicit scope limitations",
+        "editorial": "reviewed server-first DX behavior: append-only contributions, shared result display, transport truth and automatic runtime-file exclusion; publication remains separate",
         "local": "see named check results",
-        "publication": "source-only acceptance record; published with fresh-agent evidence (see git history)"
+        "publication": "pending: source changed since publication evidence"
       }
     },
     {
@@ -4307,16 +4307,16 @@
       "purpose": "generated",
       "interface": "mixed",
       "exception": "Edit docs-site source; validate deterministic generated bytes.",
-      "sha256": "95b722d27b15dbc0e3c9d20fccd4844965cfcda3c1a29fa84226035f6b5e9ca5",
+      "sha256": "df250f7c7af22538290077e899511843df435b1ebacf39496666f16481e28821",
       "outputs": [],
       "url": null,
       "checks": [
         "inventory-policy"
       ],
       "evidence": {
-        "editorial": "reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply",
+        "editorial": "generated from reviewed canonical server-first DX sources; local tests separate from publication",
         "local": "see named check results",
-        "publication": "hosted digest verified: 2026-09-17; portal/apex 23751749"
+        "publication": "pending: source changed since publication evidence"
       }
     },
     {
@@ -4327,16 +4327,16 @@
       "purpose": "generated",
       "interface": "mixed",
       "exception": "Edit docs-site source; validate deterministic generated bytes.",
-      "sha256": "7c27fa706ebf8ff911980c0763ed379f4948410f28add0b8d0bed1520048877c",
+      "sha256": "9b8561cc14921a5b11d315435bd976744347c3e041ab3e211f3cddc9137466c0",
       "outputs": [],
       "url": null,
       "checks": [
         "inventory-policy"
       ],
       "evidence": {
-        "editorial": "reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply",
+        "editorial": "generated from reviewed canonical server-first DX sources; local tests separate from publication",
         "local": "see named check results",
-        "publication": "hosted digest verified: 2026-09-17; portal/apex 23751749"
+        "publication": "pending: source changed since publication evidence"
       }
     },
     {
@@ -4407,7 +4407,7 @@
       "purpose": "reference",
       "interface": "sdk",
       "exception": "Native typed scripting and SDK reference examples.",
-      "sha256": "e4f7ff09ae584b56890bbe8553a8200858021aae4beb5b2ca13db0bc402d3e5f",
+      "sha256": "bb14e354b19d7c1ab8a686ee62a774bd990c2f1eee8e60bd3b328f2f12584b08",
       "outputs": [],
       "url": null,
       "checks": [
@@ -4415,9 +4415,9 @@
         "sdk-snippets"
       ],
       "evidence": {
-        "editorial": "reviewed native SDK scripting: explicit CLI default outside scripts, awaited project scope, staged activation; snippet gate applies",
+        "editorial": "reviewed server-first DX behavior: append-only contributions, shared result display, transport truth and automatic runtime-file exclusion; publication remains separate",
         "local": "see named check results",
-        "publication": "source published: 23751749; no separate hosted acceptance required"
+        "publication": "pending: source changed since publication evidence"
       }
     },
     {
@@ -4428,16 +4428,16 @@
       "purpose": "generated",
       "interface": "mixed",
       "exception": "Edit docs-site source; validate deterministic generated bytes.",
-      "sha256": "179852f110548f34eb8e083befd5110c7bef5ff129a71be9a62a8063d9caee9c",
+      "sha256": "2cc335d123424d76ea166582f4fce2d6dfea1d4c2483a31b0070d5ab02023e0e",
       "outputs": [],
       "url": null,
       "checks": [
         "inventory-policy"
       ],
       "evidence": {
-        "editorial": "reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply",
+        "editorial": "generated from reviewed canonical server-first DX sources; local tests separate from publication",
         "local": "see named check results",
-        "publication": "hosted digest verified: 2026-09-17; portal/apex 23751749"
+        "publication": "pending: source changed since publication evidence"
       }
     },
     {

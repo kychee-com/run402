@@ -2303,7 +2303,7 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 
 <a id="rest_permission_denied"></a>
 <a id="REST_PERMISSION_DENIED"></a>
-[`REST_PERMISSION_DENIED`](/errors/client/#REST_PERMISSION_DENIED)
+[`REST_PERMISSION_DENIED`](/errors/gateway/#REST_PERMISSION_DENIED)
 
 <a id="reveal_required"></a>
 <a id="REVEAL_REQUIRED"></a>

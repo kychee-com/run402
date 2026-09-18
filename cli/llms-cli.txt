@@ -267,7 +267,7 @@ This file is the index: everything above is the whole first-deploy contract. The
 
 | Slice | Fetch | Covers | Size |
 |---|---|---|---|
-| Deploying apps | https://docs.run402.com/llms-cli-deploy.txt | ReleaseSpec manifest: site, functions, routes, public paths, migrations, secrets, warnings, CI deploys | ~50 KB |
+| Deploying apps | https://docs.run402.com/llms-cli-deploy.txt | ReleaseSpec manifest: site, functions, routes, public paths, migrations, secrets, warnings, CI deploys | ~51 KB |
 | Core commands | https://docs.run402.com/llms-cli-commands.txt | up, init, pay, status, wallets, allowance, tier, credentials, projects, apply, deploy, ci, transfer | ~30 KB |
 | Repos (encrypted git remotes) | https://docs.run402.com/llms-cli-repos.txt | repos: host-blind encrypted git remotes (create, snapshot, mirror, fsck, handoff, invite, join) | ~44 KB |
 | Orgs, events, rooms, escalations, errors | https://docs.run402.com/llms-cli-orgs.txt | org/grants, events, rooms/claims, escalations, error fingerprints | ~38 KB |

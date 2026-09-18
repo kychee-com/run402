@@ -178,7 +178,9 @@ async function cmdNew(args) {
   saveAllowance({ address, privateKey, created, funded: false, rail }, join(profileDir(name), "allowance.json"));
   writeMeta(name, { name, address, label: name, rail, created });
   await maybePushLabel(name, name, address);
-  out({ local_label: name, address, rail, created: true, next: rail === "lightning" ? `run402 --wallet ${name} init lightning  (mints the Lightning allowance on the platform)` : `run402 wallets use   (or --wallet  <command>)` });
+  // requireName constrains aliases to shell-safe lowercase identifiers.
+  const command = rail === "lightning" ? `run402 --wallet ${name} init lightning` : `run402 wallets use ${name}`;
+  out({ local_label: name, address, rail, created: true, next: command, next_actions: [{ type: "run_command", command, why: rail === "lightning" ? "Initialize this Lightning wallet." : "Select the wallet you just created." }] });
 }
 
 function cmdUse(args) {

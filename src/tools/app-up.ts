@@ -1,3 +1,5 @@
+import { storeResult } from "../result-store.js";
+import { prepareWorkflowOutput } from "@run402/sdk/node";
 import { z } from "zod";
 import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
@@ -61,7 +63,10 @@ export async function handleAppUp(args: {
     return {
       content: [{
         type: "text",
-        text: JSON.stringify(result.result?.app_result ?? result, null, 2),
+        text: JSON.stringify(prepareWorkflowOutput(result, args.dir ?? process.cwd(), { storeDetails: (detail) => {
+          const stored = storeResult("app_up", [detail], { shown: 0 });
+          return stored.ref ? { ref: stored.ref, next_action: { type: "expand_result", ref: stored.ref, why: "Read the redacted detail for this execution with expand_result." } } : null;
+        } }), null, 2),
       }],
     };
   } catch (err) {

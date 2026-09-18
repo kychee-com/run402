@@ -1,3 +1,4 @@
+import { prepareWorkflowOutput } from "#sdk/node";
 import { mergeEdgeVerification } from "#sdk";
 import { dirname } from "node:path";
 import { createInterface } from "node:readline/promises";
@@ -368,9 +369,7 @@ export async function run(args = []) {
           ? (event) => console.log(JSON.stringify({ type: "action.event", event }))
           : quiet
             ? undefined
-            : (event) => {
-                console.error(JSON.stringify(event));
-              },
+            : undefined,
       });
       // Cache the activated deployment id so `run402 subdomains claim` can
       // pass it as an optimization (the gateway binds the live release
@@ -419,7 +418,7 @@ export async function run(args = []) {
     } else if (human && shouldRenderHumanSuccess(result)) {
       console.log([formatLegacyUpSuccess(result), formatRepoSkipLine(result), formatRepoFirstPushErrorLine(result)].filter(Boolean).join("\n"));
     } else {
-      console.log(JSON.stringify(result, null, 2));
+      console.log(JSON.stringify(prepareWorkflowOutput(result, workDir), null, 2));
     }
     if (shouldExitNonZeroForUpResult(result)) {
       process.exitCode = 1;

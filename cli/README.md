@@ -8,6 +8,8 @@ The CLI lets an agent act as its own first-class Run402 principal rather than bo
 
 For the full CLI reference (every flag, every subcommand) start at **<https://docs.run402.com/llms-cli.txt>** — the index holds the first-deploy contract and links one fetchable `/llms-cli-<slice>.txt` per topic (deploy, commands, repos, orgs, functions, assets, ops, errors, frontend, platform); <https://docs.run402.com/llms-cli-full.txt> is the whole reference as one document.
 
+Deployment summaries share the SDK workflow view. CLI writes redacted detail under `.run402/diagnostics/`; MCP retains it through `expand_result`. Typed SDK callers keep the full result. Snapshot collection excludes platform runtime files automatically.
+
 ## Install
 
 ```bash

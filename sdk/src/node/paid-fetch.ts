@@ -330,6 +330,7 @@ export function _setPaidStackLoadersForTest(loaders?: {
 }
 
 interface TrackedPaymentContext {
+  transportFailure?: unknown;
   id: string;
   request: {
     method: string;
@@ -1987,7 +1988,13 @@ export function createTrackedX402Fetch(
       // From this line onward a thrown transport error has an unknown outcome.
       context.providerStarted = true;
     }
-    const response = await (opts.fetch ?? sdkFetch)(nextInput, nextInit);
+    let response: Response;
+    try {
+      response = await (opts.fetch ?? sdkFetch)(nextInput, nextInit);
+    } catch (cause) {
+      context.transportFailure = cause;
+      throw cause;
+    }
 
     if (!paymentBearing && response.status === 402) {
       context.phase = "challenge_received";
@@ -2195,6 +2202,7 @@ export function createTrackedX402Fetch(
         });
         throw new PaymentAttemptError({
           code,
+          category: code === "X402_INITIAL_REQUEST_FAILED" && context.transportFailure === cause ? "network" : "payment",
           message: providerStarted
             ? "The x402 payment request failed after provider dispatch; its outcome is unknown."
             : journalFailure

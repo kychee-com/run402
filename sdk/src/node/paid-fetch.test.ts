@@ -735,6 +735,7 @@ describe("createTrackedX402Fetch", () => {
     await assert.rejects(fetchFn("https://paid.example/path?token=secret-token"), (err) => {
       assert.ok(err instanceof PaymentAttemptError);
       assert.equal(err.code, "X402_INITIAL_REQUEST_FAILED");
+      assert.equal(err.toJSON().category, "network");
       assert.equal(err.phase, "initial_request");
       assert.equal(err.paymentAttemptId, attemptId);
       assert.equal(err.safeToRetry, true);
@@ -744,6 +745,16 @@ describe("createTrackedX402Fetch", () => {
       assert.doesNotMatch(serialized, /secret-token/);
       assert.doesNotMatch(serialized, /cause/);
       assert.match(serialized, /"type":"retry"/);
+      return true;
+    });
+  });
+
+  it("does not label an unrelated wrapper failure as network", async () => {
+    const { store } = memoryStore();
+    const fetchFn = createTrackedX402Fetch(() => async () => { throw new TypeError("callback bug"); }, {}, { store, createAttemptId: () => attemptId, fetch: async () => new Response("ok") });
+    await assert.rejects(fetchFn("https://paid.example/path"), (err) => {
+      assert.ok(err instanceof PaymentAttemptError);
+      assert.equal(err.toJSON().category, "payment");
       return true;
     });
   });

@@ -78,7 +78,12 @@ describe("app_up tool", () => {
       },
     }]);
     const parsed = JSON.parse(result.content[0]!.text);
-    assert.equal(parsed.kind, "run402.up.result");
-    assert.equal(parsed.status, "planned");
+    assert.equal(parsed.action, "up");
+    assert.equal(parsed.result.app_result.kind, "run402.up.summary");
+    assert.equal(parsed.result.app_result.status, "planned");
+    assert.equal(parsed.dry_run, true);
+    assert.equal(parsed.target, "cloud");
+    assert.ok(parsed.result_ref);
+    assert.equal(parsed.next_actions.at(-1).type, "expand_result");
   });
 });

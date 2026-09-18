@@ -361,6 +361,7 @@ export class PaymentAttemptError extends Run402Error {
 
   constructor(init: {
     code: string;
+    category?: "network" | "payment";
     message: string;
     phase: PaymentAttemptPhase;
     paymentAttemptId: string;
@@ -415,7 +416,7 @@ export class PaymentAttemptError extends Run402Error {
         error: "payment_attempt_failed",
         message: init.message,
         code: init.code,
-        category: "payment",
+        category: init.category ?? "payment",
         source: "sdk",
         retryable,
         safe_to_retry: init.safeToRetry,

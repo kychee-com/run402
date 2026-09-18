@@ -832,3 +832,5 @@ export { resolveApplicationScope, loadApplicationScanInput } from "./app-scope.j
 export { scanDeploymentSources } from "./source-scan.js";
 export { describeLocalPreflight } from "./preflight.js";
 export { serializeDeployManifest } from "./manifest-export.js";
+
+export { prepareWorkflowOutput } from "./workflow-output.js";

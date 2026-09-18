@@ -4,6 +4,8 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
 
 ## Unreleased
 
+- Server-first agent DX: append-only public contribution policy; effective-access preview types; faithful pre-payment network errors; shared curated CLI/MCP output with redacted detail; snapshot-safe platform diagnostics; complete named-wallet next actions. MCP `app_up` now returns the shared action envelope (a display projection is under `result.app_result`, marked `run402.up.summary`; detailed SDK results remain `run402.up.result`), retaining deploy verification and backup outcomes previously omitted. Default `up` progress is now opt-in via `--json-stream`; typed SDK results retain full detail.
+
 - Recommend CLI for operations, the typed SDK for programmatic scripting, and MCP for tool-native hosts; align generic/OpenClaw installed skills.
 - Organize docs by task, retain complete SDK/MCP flat references, add HTTP/schema and error destinations, and track per-file review/publication evidence.
 - Validate first-deploy files and schema, native SDK/MCP examples, source generation and built links. Correct authoring-schema content_type and externally resolved project selection.

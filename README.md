@@ -44,6 +44,8 @@ This monorepo ships these interfaces:
 
 These interfaces share a single typed kernel where appropriate: `@run402/sdk`. MCP tools, CLI subcommands, and OpenClaw scripts are thin shims over SDK calls. `@run402/functions` is the in-function helper that runs inside deployed code; the npm package on the registry is the artifact Cloud bundles. `@run402/astro` layers the SDK and functions runtime into Astro's build and SSR flow. The HTTP API is the foundation; the SDK owns shared client workflows and orchestration; CLI and MCP expose them in machine-friendly forms. Native SDK/MCP references explain intentional alternatives.
 
+Deployment summaries share the SDK workflow view. CLI writes redacted detail under `.run402/diagnostics/`; MCP retains it through `expand_result`. Typed SDK callers keep the full result. Snapshot collection excludes platform runtime files automatically.
+
 ## 30-second start
 
 First create the complete `run402.json` and `index.html` from [Your first deploy](https://docs.run402.com/start/first-deploy/). Run these commands in that application directory; `--name` requests a new project.

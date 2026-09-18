@@ -277,3 +277,14 @@ describe("wallets — provenance", () => {
     assert.ok(!/↪ wallet:/.test(r.stderr), `expected no provenance line, got: ${r.stderr}`);
   });
 });
+
+it("named-wallet recovery uses the created alias and rejects shell-sensitive names", () => {
+  const created = jsonOut(run(["wallets", "new", "dx-test_1"]));
+  assert.equal(created.next_actions[0].command, "run402 wallets use dx-test_1");
+  assert.equal(created.next, created.next_actions[0].command);
+  const before = jsonOut(run(["wallets", "list"]));
+  for (const name of ["bad name", "bad;name", "$(bad)"]) {
+    assert.notEqual(run(["wallets", "new", name]).status, 0);
+  }
+  assert.deepEqual(jsonOut(run(["wallets", "list"])), before);
+});

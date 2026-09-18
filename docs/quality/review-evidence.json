@@ -24,8 +24,8 @@
       "review": "reviewed contributor instructions: source ownership and native build/test commands retained; product CLI policy applies"
     },
     "public:CHANGELOG.md": {
-      "sha256": "1a913c887eb402dd69398b04b21c047deda978d88df6971c5b25cb75de949613",
-      "review": "excluded from rewrite: dated history; current release note/banner reviewed"
+      "sha256": "fc41aa3d404e15268adddb0ab7c85a69ef20df9ec3e14684429fe3958929ce69",
+      "review": "reviewed server-first DX behavior: append-only contributions, shared result display, transport truth and automatic runtime-file exclusion; publication remains separate"
     },
     "public:CLAUDE.md": {
       "sha256": "1565155937271e46ccad4a288dd43e254ae2de314b884e2ce81fc6344cf7b65b",
@@ -36,8 +36,8 @@
       "review": "reviewed contributor instructions: source ownership and native build/test commands retained; product CLI policy applies"
     },
     "public:README.md": {
-      "sha256": "a15ccacdc32278353960723d11db8bc6815e2ed73d79948775b4007df8404fe9",
-      "review": "reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate"
+      "sha256": "ecb4e0f4a7ddbfdc53b74b38550124a47d3cfca65d5ae94eaf2db287725186d7",
+      "review": "reviewed server-first DX behavior: append-only contributions, shared result display, transport truth and automatic runtime-file exclusion; publication remains separate"
     },
     "public:SECURITY.md": {
       "sha256": "4cfd047b6683a07180c3b1b93e2c043a7423e8ae08d36f190611e88a7f685032",
@@ -92,8 +92,8 @@
       "review": "reviewed managed-Buzz exception: identity, zero-mutation preflight and contextual-demo consent preserved; distribution gates apply"
     },
     "public:cli/README.md": {
-      "sha256": "b147637a32f0f276cd639d14d84ae29565402d1cfa8bf870875bd670b3e294a1",
-      "review": "reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate"
+      "sha256": "b17ddbc39693c46944c9724e75a264e5326888b648b718e3598062801e77ab5a",
+      "review": "reviewed server-first DX behavior: append-only contributions, shared result display, transport truth and automatic runtime-file exclusion; publication remains separate"
     },
     "public:cli/lib/admin.mjs": {
       "sha256": "eb92a98b4eae26d15dbcc0c56b0ff608dc6c039f5c71911bb71f3480df755026",
@@ -344,12 +344,12 @@
       "review": "reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution"
     },
     "public:cli/lib/up.mjs": {
-      "sha256": "7fc3c082bf34161c0f4e252142194b4124f15b87d8fddb330676422d371950bb",
-      "review": "reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution"
+      "sha256": "a9f4f2e07b89e359edcf76ae88d0001600053f3f3719520e3655bf54f32870b8",
+      "review": "reviewed server-first DX behavior: append-only contributions, shared result display, transport truth and automatic runtime-file exclusion; publication remains separate"
     },
     "public:cli/lib/wallets.mjs": {
-      "sha256": "1ad294e4026f2f7b594175633853d13b778593e1b3e6bcd88a96f04e4462a90d",
-      "review": "reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution"
+      "sha256": "5f6276979edb0ee33bb7a1066b5205b2f36577128a6245e9131c06bb78f5d3f9",
+      "review": "reviewed server-first DX behavior: append-only contributions, shared result display, transport truth and automatic runtime-file exclusion; publication remains separate"
     },
     "public:cli/lib/webhook-secret.mjs": {
       "sha256": "44ca4011f1fed4a30cbe74a43501b0dfd9df44354317b355c4d4ac34b922bf90",
@@ -368,8 +368,8 @@
       "review": "reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply"
     },
     "public:cli/llms-cli-deploy.txt": {
-      "sha256": "70398ee7ee52e80907bf9ba3daa35b62528808f920c72497e19fe9888f24cc28",
-      "review": "reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply"
+      "sha256": "35843d1e8038eaa42138641b20db0f87698e58027a69bf9ec64e349b55e29d2f",
+      "review": "generated from reviewed canonical server-first DX sources; local tests separate from publication"
     },
     "public:cli/llms-cli-errors.txt": {
       "sha256": "780d5a97d59de0332979dcccf476b088e8bfe33442a061c7067be1a3a8a72bfd",
@@ -380,8 +380,8 @@
       "review": "reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply"
     },
     "public:cli/llms-cli-full.txt": {
-      "sha256": "94aaa801db2546013677040beedd5eb9332b210dc31f25e6d06971a39bf6a24a",
-      "review": "reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply"
+      "sha256": "b9461d49d0d4108db300794b2ea0ec771a245b3273ef7c40ac22633fa16c0935",
+      "review": "generated from reviewed canonical server-first DX sources; local tests separate from publication"
     },
     "public:cli/llms-cli-functions.txt": {
       "sha256": "7b74b80d66d0479677f4762de1c0382cc6793f61bef07a1271f371636a96fc3a",
@@ -404,8 +404,8 @@
       "review": "reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply"
     },
     "public:cli/llms-cli.txt": {
-      "sha256": "f5a1cc662fb7692299602f5e1d7b48fc3418627a046d128d50315d8c694494f4",
-      "review": "reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply"
+      "sha256": "34b7215b4037e026488a37f8ca7027f36996f8376119297ce204d470b0425a36",
+      "review": "generated from reviewed canonical server-first DX sources; local tests separate from publication"
     },
     "public:demos/buzz-todo/README.md": {
       "sha256": "102f402624ae2aad02668a32059ce215dc89dc7fc03e9c39db2497dd897bd8ee",
@@ -488,8 +488,8 @@
       "review": "reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate"
     },
     "public:docs-site/src/content/docs/build/database.md": {
-      "sha256": "0c0bcb83ddbf384863798b4bd77fd3a1dc90a40c6b371dbcec2afebbaa488304",
-      "review": "reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate"
+      "sha256": "8f03dc41daf497572a07160285036915918c2c48a3fd880225af34d1c49a748d",
+      "review": "reviewed server-first DX behavior: append-only contributions, shared result display, transport truth and automatic runtime-file exclusion; publication remains separate"
     },
     "public:docs-site/src/content/docs/build/domains.md": {
       "sha256": "3963bf7a64fd5def594f265463afa14549da96bf1a0f4aa856a2a23ec0fdba20",
@@ -520,8 +520,8 @@
       "review": "reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate"
     },
     "public:docs-site/src/content/docs/cli/deploy.md": {
-      "sha256": "eacf9a0c730f3c4cd4773c5f1e7ab5c92252d02e910820f97e4eee8439e1c6ee",
-      "review": "reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate"
+      "sha256": "d66f0110d8c2cdfd79361ebd6cffd3d18497eae17ee7b45716b92934cff43c6b",
+      "review": "reviewed server-first DX behavior: append-only contributions, shared result display, transport truth and automatic runtime-file exclusion; publication remains separate"
     },
     "public:docs-site/src/content/docs/cli/errors.md": {
       "sha256": "d99f6ca42bc0c30a7053311ef56c6a70ead8746023de58115480ec08e04b7ee1",
@@ -580,20 +580,20 @@
       "review": "reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply"
     },
     "public:docs-site/src/content/docs/errors/client.md": {
-      "sha256": "9e631e4cbdcf944b85192908ee9ba6d288bae07154cd4a1ebce221ee90e167bc",
-      "review": "reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply"
+      "sha256": "31cdb9452ccfbcc3f0bc496aa8377115b1f70299431f326ed75a9f45c2340ddb",
+      "review": "generated from reviewed canonical server-first DX sources; local tests separate from publication"
     },
     "public:docs-site/src/content/docs/errors/core.md": {
       "sha256": "3895ce9dbcc472a34be85c939f1546097d8dbc7c07f3efdf3065bae3ca3b1de8",
       "review": "reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply"
     },
     "public:docs-site/src/content/docs/errors/gateway.md": {
-      "sha256": "cbed8762bafcedb030bb6688886d31de68bf3e211bbf5dadc1bdf6807c380549",
-      "review": "reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply"
+      "sha256": "894204572a77d8b96b475f86daa45e391c1768c8967b5cddda93188ad41fb619",
+      "review": "generated from reviewed canonical server-first DX sources; local tests separate from publication"
     },
     "public:docs-site/src/content/docs/errors/index.md": {
-      "sha256": "8303f141298d69856eb5da5ffd0b438b6e6823c7805aef682a8dcea36a4d8132",
-      "review": "reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply"
+      "sha256": "c5a765f4023048328e96b23a920d151e99c82ab9872246297834eceba9052c3d",
+      "review": "generated from reviewed canonical server-first DX sources; local tests separate from publication"
     },
     "public:docs-site/src/content/docs/errors/runtime.md": {
       "sha256": "8e4c6e9706f8d28493bf948aadfdea9bd2f7aa4bf8b7f43dacbda67a8954c784",
@@ -628,8 +628,8 @@
       "review": "reviewed native MCP setup/reference: explicit host availability and app_up orchestration; schema/parity gates apply"
     },
     "public:docs-site/src/content/docs/mcp/patterns.md": {
-      "sha256": "6a0afbb9ad175c8ce3a80a2cc31344704d29aa017abc979ffbbd3c4d74806a9b",
-      "review": "reviewed native MCP setup/reference: explicit host availability and app_up orchestration; schema/parity gates apply"
+      "sha256": "488b174992ad4245512b410becc2dc6caaa3547d5c457798a9ed49de8296a6dc",
+      "review": "reviewed server-first DX behavior: append-only contributions, shared result display, transport truth and automatic runtime-file exclusion; publication remains separate"
     },
     "public:docs-site/src/content/docs/mcp/reference.md": {
       "sha256": "7d6afab204bcfe2875084e0a54b4f71d5b4911a406ee2c451ef04b9b1c20ef1f",
@@ -656,8 +656,8 @@
       "review": "reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate"
     },
     "public:docs-site/src/content/docs/reference/error-codes.md": {
-      "sha256": "a2c86bc8b2d9455494b592eaacbaa0b40e02d81b8b1a4e4922b7965a79cfffa2",
-      "review": "reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply"
+      "sha256": "3630c3b62faff156e0375a3e9a29bc3e78ab20f8f82c9530cf2eb6dfde16cd69",
+      "review": "generated from reviewed canonical server-first DX sources; local tests separate from publication"
     },
     "public:docs-site/src/content/docs/reference/http.mdx": {
       "sha256": "e14be1a4da52cc9d4580bfcf233bd26780b0e59946865d3616ed6770690fe389",
@@ -696,8 +696,8 @@
       "review": "reviewed native SDK scripting: explicit CLI default outside scripts, awaited project scope, staged activation; snippet gate applies"
     },
     "public:docs-site/src/content/docs/sdk/patterns.md": {
-      "sha256": "758052cd0dc54703e07b9925f82fa9f2d7af8d94e70af3e8e591b9ab59c59d79",
-      "review": "reviewed native SDK scripting: explicit CLI default outside scripts, awaited project scope, staged activation; snippet gate applies"
+      "sha256": "2f8942af5894649074d2a79ecb10b298805103e2690de47c70cece8ae3414dc0",
+      "review": "reviewed server-first DX behavior: append-only contributions, shared result display, transport truth and automatic runtime-file exclusion; publication remains separate"
     },
     "public:docs-site/src/content/docs/sdk/reference.md": {
       "sha256": "5993a46c345356201b7bb11499be5f089d9341d4940f03ebbf09e2b34b23fa49",
@@ -712,8 +712,8 @@
       "review": "reviewed native SDK scripting: explicit CLI default outside scripts, awaited project scope, staged activation; snippet gate applies"
     },
     "public:docs-site/src/content/docs/start/first-deploy.md": {
-      "sha256": "c5ea98e31609cc6a0bc8eb8e466aebf8066403f5f784f2cd896784b4d8861eac",
-      "review": "reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate"
+      "sha256": "e04798350a1f291bb86d99827ea69d62c123619b54e037bd753bfa531ea71bed",
+      "review": "reviewed server-first DX behavior: append-only contributions, shared result display, transport truth and automatic runtime-file exclusion; publication remains separate"
     },
     "public:docs-site/src/content/docs/start/harness.md": {
       "sha256": "f20d4ce9ff387e79c89e2e72c47e9bd069951043baa0b143e7dac72cf7d0cc49",
@@ -736,8 +736,8 @@
       "review": "reviewed classification and entry routing: native protocol/schema examples intentionally retained; owning parity/claim gates apply"
     },
     "public:docs/quality/documentation-policy.md": {
-      "sha256": "6201bd851068272051f0008eee9fc0bafd87a49a89ead6d897730052a3589180",
-      "review": "reviewed: fresh-agent live acceptance and its explicit scope limitations"
+      "sha256": "aa72a7b7119fbc020c732a92beb71fb45c4556067dd6c6e223c2da2d10b5ecd1",
+      "review": "reviewed server-first DX behavior: append-only contributions, shared result display, transport truth and automatic runtime-file exclusion; publication remains separate"
     },
     "public:docs/quality/gaps.md": {
       "sha256": "a02c1e4cae8c1111a2e82654b73fc93fc278f8b17c718780bff2ee55c6bfb4b6",
@@ -836,12 +836,12 @@
       "review": "reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate"
     },
     "public:llms-mcp.txt": {
-      "sha256": "95b722d27b15dbc0e3c9d20fccd4844965cfcda3c1a29fa84226035f6b5e9ca5",
-      "review": "reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply"
+      "sha256": "df250f7c7af22538290077e899511843df435b1ebacf39496666f16481e28821",
+      "review": "generated from reviewed canonical server-first DX sources; local tests separate from publication"
     },
     "public:llms.txt": {
-      "sha256": "7c27fa706ebf8ff911980c0763ed379f4948410f28add0b8d0bed1520048877c",
-      "review": "reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply"
+      "sha256": "9b8561cc14921a5b11d315435bd976744347c3e041ab3e211f3cddc9137466c0",
+      "review": "generated from reviewed canonical server-first DX sources; local tests separate from publication"
     },
     "public:openclaw/README.md": {
       "sha256": "cea1f712514210ac49d9201e18ec41e1041e2c2342872c0a5468091ed5bae7de",
@@ -856,12 +856,12 @@
       "review": "reviewed classification and entry routing: native protocol/schema examples intentionally retained; owning parity/claim gates apply"
     },
     "public:sdk/README.md": {
-      "sha256": "e4f7ff09ae584b56890bbe8553a8200858021aae4beb5b2ca13db0bc402d3e5f",
-      "review": "reviewed native SDK scripting: explicit CLI default outside scripts, awaited project scope, staged activation; snippet gate applies"
+      "sha256": "bb14e354b19d7c1ab8a686ee62a774bd990c2f1eee8e60bd3b328f2f12584b08",
+      "review": "reviewed server-first DX behavior: append-only contributions, shared result display, transport truth and automatic runtime-file exclusion; publication remains separate"
     },
     "public:sdk/llms-sdk.txt": {
-      "sha256": "179852f110548f34eb8e083befd5110c7bef5ff129a71be9a62a8063d9caee9c",
-      "review": "reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply"
+      "sha256": "2cc335d123424d76ea166582f4fce2d6dfea1d4c2483a31b0070d5ab02023e0e",
+      "review": "generated from reviewed canonical server-first DX sources; local tests separate from publication"
     },
     "public:test-vectors/r402s-v0/README.md": {
       "sha256": "f0d7b9fd588b33b07ced9f5fb142e4f63e2ec9715bf3840cdffbd7c08fab41bf",

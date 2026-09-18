@@ -1753,7 +1753,7 @@ The catalog records owning source locations and pinned external contributions. A
 [`response_body_too_large`](/errors/core/#response_body_too_large)
 
 <a id="REST_PERMISSION_DENIED"></a>
-[`REST_PERMISSION_DENIED`](/errors/client/#REST_PERMISSION_DENIED)
+[`REST_PERMISSION_DENIED`](/errors/gateway/#REST_PERMISSION_DENIED)
 
 <a id="REVEAL_REQUIRED"></a>
 [`REVEAL_REQUIRED`](/errors/client/#REVEAL_REQUIRED)

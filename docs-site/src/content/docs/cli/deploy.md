@@ -634,3 +634,9 @@ A successful first vault push reports `repo.first_push.snapshot` (ID, kind, back
 Function HTTP 400/429 responses can carry `x-cache: Error from cloudfront`. Judge them against the application’s expected status and body; preserve `Retry-After` for rate limits. That header alone does not establish edge failure.
 
 Source-resolution steps report `source_available: true` after resolving an existing directory. `git_state` distinguishes `has_commit`, `unborn`, `not_repository`, and `unavailable`. A null `commit` does not mean the source is missing; an unborn repository has local files but no local commit. Resolution does not create a commit.
+
+## Deployment output
+
+`run402 up` returns JSON with the destination, release, verification and backup outcomes, warnings and next actions. Repetitive progress is opt-in with `--json-stream`. Applied runs can include a local `result_ref` pointing to redacted detail in `.run402/diagnostics/`; read the returned file to inspect that same execution. Diagnostics are private, bounded and excluded from source snapshots. Check, plan-only and read-only output does not create diagnostic files. MCP uses its existing `expand_result` handle instead of a local path. SDK scripts retain the full typed result.
+
+An initial connection failure before payment dispatch is classified as `network`, preserving `X402_INITIAL_REQUEST_FAILED` and safe retry details. A failure after possible payment dispatch still requires reconciliation.

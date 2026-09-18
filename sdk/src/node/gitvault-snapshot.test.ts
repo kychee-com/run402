@@ -424,3 +424,30 @@ describe("snapshot commitment", () => {
     assert.equal(snapshotCommitment(k, "src_" + "ab".repeat(16), "0000000000000001", oid), expected);
   });
 });
+
+describe("platform diagnostics are not application source", () => {
+  it("excludes runtime diagnostics while retaining untracked JSON source", async () => {
+    const dir = await makeRepo(root);
+    mkdirSync(join(dir, ".run402", "diagnostics"), { recursive: true });
+    writeFileSync(join(dir, ".run402", "diagnostics", "result.json"), "private diagnostic");
+    writeFileSync(join(dir, "app-data.json"), "{}");
+    const snapshot = await captureSnapshot({ dir, env: env(), allowDirty: true });
+    assert.ok(snapshot.paths.includes("app-data.json"));
+    assert.ok(!snapshot.paths.some((path) => path.includes(".run402/")));
+  });
+});
+
+it("runtime-only dirt does not refuse capture and tracked runtime is absent from materialization", async () => {
+  const dir = await makeRepo(root);
+  mkdirSync(join(dir, ".run402", "diagnostics"), { recursive: true });
+  writeFileSync(join(dir, ".run402", "diagnostics", "result.json"), "private diagnostic");
+  const clean = await captureSnapshot({ dir, env: env() });
+  assert.equal(clean.kind, "head");
+  await git(dir, ["add", "-f", ".run402"]);
+  await git(dir, ["commit", "-m", "accidentally tracked runtime"]);
+  const filtered = await captureSnapshot({ dir, env: env() });
+  assert.equal(filtered.kind, "synthetic");
+  const out = await materializeSnapshot(dir, filtered.oid, join(root, "filtered-build"));
+  assert.equal(existsSync(join(out, ".run402")), false);
+  assert.equal(readFileSync(join(out, "README.md"), "utf8"), "hello\n");
+});

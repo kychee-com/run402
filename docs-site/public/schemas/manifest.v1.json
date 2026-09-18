@@ -81,6 +81,7 @@
           "enum": [
             "user_owns_rows",
             "public_read_authenticated_write",
+            "public_read_append_only",
             "public_read_write_UNRESTRICTED",
             "custom"
           ]
@@ -231,6 +232,7 @@
                 "enum": [
                   "user_owns_rows",
                   "public_read_authenticated_write",
+                  "public_read_append_only",
                   "public_read_write_UNRESTRICTED"
                 ]
               }

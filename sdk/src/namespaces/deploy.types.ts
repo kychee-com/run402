@@ -262,6 +262,18 @@ export interface ContentTrackedMigrationSpec extends BaseMigrationSpec {
   id?: never;
 }
 
+export type ExposePolicy = "user_owns_rows" | "public_read_authenticated_write" | "public_read_append_only" | "public_read_write_UNRESTRICTED" | "custom";
+export interface EffectiveAccessPreview {
+  table: string;
+  role: "anon" | "authenticated";
+  declared_operations: string[] | null;
+  required_privileges: string[] | null;
+  validation: "pending" | "structural";
+  row_checks: "runtime";
+  findings?: string[];
+  added_privileges?: string[];
+}
+
 /** Declarative authorization manifest. Pass-through shape — the gateway
  *  validates the schema. See https://run402.com/schemas/manifest.v1.json. */
 export interface ExposeManifest {
@@ -1593,6 +1605,7 @@ function formatAllowedMethods(methods: RouteHttpMethod[] | string[] | null | und
 // ─── Plan + commit + operation ───────────────────────────────────────────────
 
 export interface PlanResponse {
+  effective_access?: EffectiveAccessPreview[];
   /** Present on the v2 plan envelope. Older gateways omitted it; the SDK
    *  preserves backward compatibility and still normalizes both shapes. */
   kind?: "plan_response";

@@ -745,7 +745,7 @@
   },
   {
     "file": "docs-site/src/content/docs//mcp/patterns.md",
-    "line": 79,
+    "line": 80,
     "language": "json",
     "kind": "configuration",
     "sha256": "07e4333b5c5aa68eb689ff6f0b18e9754ab1650ca58701eaa03bd5116b8dd894",
@@ -753,7 +753,7 @@
   },
   {
     "file": "docs-site/src/content/docs//mcp/patterns.md",
-    "line": 145,
+    "line": 146,
     "language": "json",
     "kind": "configuration",
     "sha256": "eb46910ebee4d7015a9d8dbb8185c72e7c913b06e2d1fa0856ce00baa0f60094",
@@ -761,7 +761,7 @@
   },
   {
     "file": "docs-site/src/content/docs//mcp/patterns.md",
-    "line": 169,
+    "line": 170,
     "language": "ts",
     "kind": "application-or-sdk",
     "sha256": "a680e5ac4eb0ebe339f8a69bc15a3771c5bef3c05f82031737334952c977b396",
@@ -769,7 +769,7 @@
   },
   {
     "file": "docs-site/src/content/docs//mcp/patterns.md",
-    "line": 215,
+    "line": 216,
     "language": "json",
     "kind": "configuration",
     "sha256": "36ca941314536b5501f364dee34cf2bb98f53b1d04840f728066847daa518422",
@@ -1764,7 +1764,7 @@
     "line": 19,
     "language": "json",
     "kind": "configuration",
-    "sha256": "28c310d47bfcc66acaeab13f1321aa7060bd5dd29a2f7b9ebaccf0b3baba230b",
+    "sha256": "33c4319878b81c51ad96a38e35407a17dad40a6c45a34792709321c9e11c4a63",
     "validation": "first-deploy-manifest-or-owning-schema"
   },
   {

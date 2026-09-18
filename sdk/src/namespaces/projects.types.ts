@@ -7,7 +7,7 @@
  */
 
 import type { ProjectKeys } from "../credentials.js";
-import type { ExposeManifest } from "./deploy.types.js";
+import type { ExposeManifest, EffectiveAccessPreview } from "./deploy.types.js";
 import type { OperationActorSnapshot } from "./identity-links.types.js";
 
 // ─── provision ──────────────────────────────────────────────────────────
@@ -446,6 +446,7 @@ export interface ExposeManifestValidationIssue {
 }
 
 export interface ExposeManifestValidationResult {
+  effective_access?: EffectiveAccessPreview[];
   hasErrors: boolean;
   errors: ExposeManifestValidationIssue[];
   warnings: ExposeManifestValidationIssue[];

@@ -19,3 +19,5 @@ Tables are dark until exposed. `TABLE_NOT_EXPOSED` means the exposure declaratio
 Browser code uses public project config and the user's session; server code normally uses caller-scoped `db(req)` or `db()` in the supported request context. `adminDb()` bypasses row policies and belongs only in explicitly privileged server operations. Never solve a denied browser request by shipping a service key.
 
 See [REST and frontend examples](/cli/frontend/) and [authentication](/build/auth/) for native application code. CLI is for operating the database; the deployed app still makes runtime data requests.
+
+Use `public_read_append_only` for public contribution tables: readers may insert new rows but cannot edit or delete existing rows. Constraints still validate submissions. Custom policies receive the scoped table and owned-sequence privileges they require during server apply; do not duplicate them with GRANT statements. Plan and validation responses distinguish pending access previews from PostgreSQL structural checks, and row predicates remain runtime checks.

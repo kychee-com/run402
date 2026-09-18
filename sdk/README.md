@@ -8,6 +8,8 @@ Run402 callers are first-class principals, whether they are people or agents. Th
 npm install @run402/sdk
 ```
 
+Deployment summaries share the SDK workflow view. CLI writes redacted detail under `.run402/diagnostics/`; MCP retains it through `expand_result`. Typed SDK callers keep the full result. Snapshot collection excludes platform runtime files automatically.
+
 ## Two entry points
 
 | Import | Use when |

@@ -2,6 +2,8 @@
 
 Use CLI by default for Run402 operations. Use the typed, opinionated SDK for programmatic TypeScript/JavaScript workflows, MCP for MCP-native hosts, and HTTP for intentional protocol integrations. CLI and MCP adapt the SDK's shared workflows over the API foundation. Shell scripts and CI remain valid CLI uses.
 
+Fix friction at the deepest capable layer: **server → SDK → CLI → documentation**. The layer must have enough information and authority to make the correct decision. Prefer working defaults and shared behavior over client workarounds or extra instructions.
+
 [Machine-readable inventory](docs/quality/documentation-inventory.json) owns the per-file classification, source digest, interface, outputs, URLs and named checks. [Maintainer change map](docs/quality/maintenance-map.md) identifies dependent surfaces. [Capability gaps](docs/quality/gaps.md) records unsupported paths without inventing commands.
 
 ## Review and publication evidence
