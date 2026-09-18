@@ -267,7 +267,7 @@ describe("up argv and JSON output", () => {
     assert.deepEqual(stderr, [], "--json-stream progress belongs on stdout NDJSON only");
   });
 
-  it("emits stale update notices on stderr without polluting up --json stdout", async () => {
+  it("suppresses stale update notices for default quiet JSON output", async () => {
     const dir = seedStaleUpdateCache();
     upImpl = async () => ({ ok: true, project_id: "prj_123" });
     const { run } = await import("./cli/lib/up.mjs");
@@ -281,9 +281,7 @@ describe("up argv and JSON output", () => {
     }
 
     assert.deepEqual(JSON.parse(stdout.join("\n")), { ok: true, project_id: "prj_123" });
-    const notice = stderr.map((line) => JSON.parse(line)).find((line) => line.type === "cli.update_available");
-    assert.equal(notice.current, CURRENT_CLI_VERSION);
-    assert.equal(notice.latest, STALE_LATEST_VERSION);
+    assert.deepEqual(stderr, [], "default JSON output suppresses unsolicited update notices");
   });
 
   it("emits stale update notices as json-stream events and suppresses non-stream quiet notices", async () => {
