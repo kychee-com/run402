@@ -79,3 +79,13 @@ test("diagnostics prune expired files and bound retention to 32 results", () => 
     assert.ok(!names.some((name) => first.result_ref.endsWith(name)));
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+test("realistic release summaries bound repeated inventories while retaining denial and backup evidence", () => {
+ const paths = Array.from({length: 20}, (_, i) => ({path:`/${i}`,state:"coherent",status:200,expected_release_id:"rel_1",observed_release_id:"rel_1"}));
+ const report = {coherent:true, pending_count:0,path_count:20,paths};
+ const value = {mode:"apply",result:{project_id:"prj_1",deploy:{release_id:"rel_1",urls:{site:"https://app.test"},diff:{is_noop:false,summary:{site_added:100},site:{added:Array(100).fill("file")}},warnings:[{code:"NOTICE"}],edge_coherence:report,activation_snapshot:{edge:report}},edge_coherence:{coherent:true,attempts:1,report},repo:{status:"failed",first_push_error:"backup unavailable"}}};
+ const view = prepareWorkflowOutput(value,"/unused",{storeDetails:()=>({ref:"detail",next_action:{type:"expand_result"}})}) as any;
+ assert.equal(view.result.deploy.release_id,"rel_1");assert.equal(view.result.repo.first_push_error,"backup unavailable");assert.equal(view.result.edge_coherence.coherent,true);
+ assert.equal(view.result.deploy.activation_snapshot,undefined);assert.equal(view.result.deploy.edge_coherence,undefined);
+ assert.ok(JSON.stringify(view).length<4000);assert.equal(view.result.deploy.warnings[0].code,"NOTICE");
+});

@@ -362,6 +362,7 @@ export class PaymentAttemptError extends Run402Error {
   constructor(init: {
     code: string;
     category?: "network" | "payment";
+    transportCode?: string;
     message: string;
     phase: PaymentAttemptPhase;
     paymentAttemptId: string;
@@ -406,6 +407,7 @@ export class PaymentAttemptError extends Run402Error {
       payment_attempt_id: init.paymentAttemptId,
       phase: init.phase,
       provider_started: init.providerStarted,
+      ...(init.transportCode ? { transport_code: init.transportCode } : {}),
       response_status: init.responseStatus ?? null,
       ...(init.request ? { request: init.request } : {}),
     };

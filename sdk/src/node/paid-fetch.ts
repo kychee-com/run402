@@ -2200,8 +2200,10 @@ export function createTrackedX402Fetch(
           ...(context.responseStatus !== null ? { response_status: context.responseStatus } : {}),
           last_error_code: code,
         });
+        const transportCode = code === "X402_INITIAL_REQUEST_FAILED" && context.transportFailure === cause ? initialTransportCode(cause) : null;
         throw new PaymentAttemptError({
           code,
+          ...(transportCode ? { transportCode } : {}),
           category: code === "X402_INITIAL_REQUEST_FAILED" && context.transportFailure === cause ? "network" : "payment",
           message: providerStarted
             ? "The x402 payment request failed after provider dispatch; its outcome is unknown."
@@ -2209,7 +2211,7 @@ export function createTrackedX402Fetch(
               ? "The x402 payment was not dispatched because its durable attempt could not be recorded."
               : phase === "payment_signing"
                 ? "The x402 payment authorization could not be created; no payment was dispatched."
-                : "The initial request failed before an x402 payment was dispatched.",
+                : context.transportFailure === cause ? `Network request failed${transportCode ? " (" + transportCode + ")" : ""} before payment dispatch. Check connectivity to the API; no payment was dispatched.` : "The initial request failed before an x402 payment was dispatched.",
           phase,
           paymentAttemptId: context.id,
           providerStarted,
@@ -2334,4 +2336,16 @@ function writeRecordBestEffort(
     // The failure already carries the in-process structured outcome. Never
     // replace a known successful response with a local journal write error.
   }
+}
+
+/** Safe cause-code vocabulary only: never expose raw request/error text. */
+function initialTransportCode(cause: unknown): string | null {
+  const known = new Set(["ENOTFOUND", "EAI_AGAIN", "ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENETUNREACH", "EHOSTUNREACH", "UND_ERR_CONNECT_TIMEOUT", "UND_ERR_SOCKET"]);
+  let current = cause;
+  for (let i = 0; i < 5 && current && typeof current === "object"; i++) {
+    const error = current as { code?: unknown; cause?: unknown };
+    if (typeof error.code === "string" && known.has(error.code)) return error.code;
+    current = error.cause;
+  }
+  return null;
 }

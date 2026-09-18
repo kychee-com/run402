@@ -53,7 +53,7 @@ import {
   type Run402ObservedRelease,
 } from "../app-up.js";
 import type { Run402ExecutionMode, Run402ReviewedPlanRequirement } from "../config.js";
-import { LocalError, Run402DeployError } from "../errors.js";
+import { LocalError, Run402DeployError, isRun402Error } from "../errors.js";
 import type { Run402 } from "../index.js";
 import type {
   DeployEvent,
@@ -291,7 +291,14 @@ export class NodeActions implements Run402Actions {
       }
     } catch (err) {
       run.failLast(err);
-      if (err instanceof LocalError) throw err;
+      if (isRun402Error(err)) {
+        const body = err.body && typeof err.body === "object" ? err.body : {};
+        Object.defineProperty(err, "body", { value: { ...body, workflow: {
+          action: input.type,
+          steps: run.steps.map(({ id, action, state, mutation }) => ({ id, action, state, mutation })),
+        } }, configurable: true });
+        throw err;
+      }
       throw withActionDetails(
         new LocalError(
           err instanceof Error ? err.message : String(err),

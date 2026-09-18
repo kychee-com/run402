@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { realpathSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test, { mock } from "node:test";
@@ -2314,3 +2314,18 @@ for (const generation of ["7", "", "oops", "-1", "9007199254740992"]) {
     assert.equal(result.result?.verify?.status, "verified");
   });
 }
+
+test("workflow retains the original deploy recovery code and completed mutation steps", async () => {
+ const { Run402DeployError } = await import("../errors.js");
+ const dir=realpathSync(mkdtempSync(join(tmpdir(),"run402-recovery-")));
+ writeFileSync(join(dir,"run402.json"),JSON.stringify({database:{migrations:[{id:"001",sql:"CREATE TABLE notes(id int);"}]}}));
+ const sdk:any=fakeSdk({calls:[],allowanceConfigured:true,tierActive:true,activeProject:null});
+ const error=new Run402DeployError("Review access",{code:"PUBLIC_ACCESS_POLICY_APPLY",phase:"plan",context:"test",body:{next_actions:[{type:"review_warnings",warning_codes:["PUBLIC_ACCESS_POLICY_APPLY"]}]}});
+ sdk.project=async()=>({apply:async()=>{throw error;}});
+ try {
+  await assert.rejects(new NodeActions(sdk,{targetKind:"cloud",cwd:dir}).up({name:"recovery"},{approval:"yes"}), (caught:any)=>{
+   assert.equal(caught,error);assert.equal(caught.code,"PUBLIC_ACCESS_POLICY_APPLY");assert.equal(caught.nextActions[0].type,"review_warnings");
+   assert.ok(caught.body.workflow.steps.some((step:any)=>step.action==="projects.provision"&&step.state==="succeeded"&&step.mutation));return true;
+  });
+ } finally {rmSync(dir,{recursive:true,force:true});}
+});

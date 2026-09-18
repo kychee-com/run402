@@ -111,7 +111,7 @@ Approval and recursion:
 - Deploy warnings use the same review surface as `deploy apply`: prefer repeatable `--allow-warning <code>` and reserve broad `--allow-warnings` for reviewed exceptional cases.
 - App manifests AND deploy manifests can define `verify.http[]`. After apply, `up` fetches those URLs and records per-check status in `result.app_result.verification.http[]` (app manifests) or `result.verification.http[]` + a `result.verify` rollup (deploy manifests; a hard verify failure exits 1). Fresh managed-subdomain or custom-domain misses that carry Run402 edge sentinels (`x-run402-edge` or JSON codes such as `SUBDOMAIN_NOT_CONFIGURED`) are treated as propagation, not as permanent verify failure, while the deploy binding is fresh or `deploy resolve` reports `edge_propagation.status !== "settled"`.
 - `--propagation-budget-s` controls the wall-clock wait for those fresh edge misses (default 120 seconds). `--no-propagation-wait` returns immediately with app `status: "propagation_pending"` and `verify.status: "propagation_pending"`; the result includes `propagation_wait_ms`, warnings, `next_action`, and diagnostic `edge_propagation` / `resolve` payloads when available.
-- `--verify` waits after a successful deploy apply for gateway/edge release coherence and attaches `result.edge_coherence` plus `result.deploy.edge_coherence`. It uses the same `--propagation-budget-s` budget (default 120 seconds), emits `deploy.verify.poll` progress events, and exits 2 if the report is valid but still not coherent.
+- `--verify` waits after a successful deploy apply for gateway/edge release coherence and attaches `result.edge_coherence` plus `result.deploy.edge_coherence`. It uses the same `--propagation-budget-s` budget (default 120 seconds), emits `deploy.verify.poll` progress events only in explicit stream/human mode, and exits 2 if the report is valid but still not coherent.
 - `run402 up verify` reruns the manifest HTTP verification (app or deploy manifest) without resource mutation, upload, deploy, or project creation. It resolves the project from `--project`, `.run402/project.json`, the manifest project id, then active project, and is the recovery command to run after propagation settles. A manifest without `verify.http[]` fails `VERIFY_CHECKS_REQUIRED`.
 
 Output: stdout is the action result, e.g. `{ "action": "up", "dry_run": false, "target": "cloud", "steps": [...], "result": { "project_id": "prj_...", "manifest_path": "...", "deploy": {...} } }`. Stderr carries JSON action-step events unless `--quiet`.
@@ -896,6 +896,8 @@ Source-resolution steps report `source_available: true` after resolving an exist
 
 An initial connection failure before payment dispatch is classified as `network`, preserving `X402_INITIAL_REQUEST_FAILED` and safe retry details. A failure after possible payment dispatch still requires reconciliation.
 
+An explicitly declared append-only policy on a new table deploys without a second acknowledgment. Public-write widening on existing tables, changed custom policies and legacy custom-policy convergence still require review; the CLI reports the precise `--allow-warning` flag. An unchanged compiler-applied custom policy does not prompt again. Default results contain one verification summary, release URLs and backup outcome; repeated inventories remain in `result_ref`.
+
 ## Command Reference
 
 ### up
@@ -920,7 +922,7 @@ run402 pay https://seller.example/translate --method POST \
 ```
 
 ### status
-`run402 status` — show full organization state in one shot (wallet, rail, balances, tier, projects, active project). Read-only, JSON output. Includes a `wallet: { local_label, server_label, address }` object naming the active named wallet (`local_label` is the local selector, `server_label` the server-synced display name or null), a top-level `rail`, and a `balances: { on_chain_usd_micros, on_chain_token, prepaid_credit_usd_micros, held_usd_micros }` object. The on-chain token tracks the rail (USDC on x402, pathUSD on mpp); prepaid credit is rail-independent.
+`run402 status` — show full organization state in one shot (wallet, rail, balances, tier, projects, active project). Read-only, JSON output. Includes a `wallet: { local_label, server_label, address }` object naming the active named wallet (`local_label` is the local selector, `server_label` the server-synced display name or null), a top-level `rail`, and a `balances: { on_chain_usd_micros, on_chain_token, prepaid_credit_usd_micros, held_usd_micros }` object. The on-chain token tracks the rail (USDC on x402, pathUSD on mpp); prepaid credit is rail-independent. Remote reads carry `remote_status` entries for tier, billing and projects (`available` or `unavailable`, with safe error code/category). `projects_source` distinguishes server inventory from `local_cache`. Null remote values after failed reads are unknown, not evidence that initialization or funding is needed.
 
 ### wallets
 Manage multiple named wallets (profiles) on one machine. Keys never leave the machine (non-custodial). The `default` wallet lives at the config-dir root; named wallets live under `{config_dir}/profiles/<name>/`.

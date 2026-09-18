@@ -1,3 +1,4 @@
+import { readRemoteStatus } from "../../sdk/dist/node/index.js";
 import { readAllowance } from "../allowance.js";
 import { loadKeyStore, getActiveProjectId } from "../keystore.js";
 import { getActiveProfile, readMeta } from "../config.js";
@@ -44,14 +45,7 @@ export async function handleStatus(
 
   // Parallel SDK calls — each swallowed to a best-effort null so missing
   // data doesn't block the summary.
-  const [tier, billing, remote] = await Promise.all([
-    sdk.tier.status().catch(() => null),
-    sdk.billing.checkBalance(wallet).catch(() => null),
-    // Membership-scoped named inventory (project-findability) — SIWX wallet auth
-    // is signed from the allowance. Best-effort: a missing allowance just yields
-    // null and falls back to the local keystore below.
-    sdk.projects.list().catch(() => null),
-  ]);
+  const { tier, billing, remote, availability, next_actions } = await readRemoteStatus(sdk, wallet);
 
   // Local keystore
   const store = loadKeyStore();
@@ -92,7 +86,7 @@ export async function handleStatus(
     const state = tier.active ? "active" : "inactive";
     lines.push(`| tier | ${tier.tier} (${state}, expires ${expiry}) |`);
   } else {
-    lines.push(`| tier | (none) |`);
+    lines.push(`| tier | ${availability.tier?.state === "unavailable" ? "(unavailable)" : "(none)"} |`);
   }
 
   // Projects
@@ -110,10 +104,11 @@ export async function handleStatus(
   }
 
   // Next step
-  if (!tier?.tier) {
+  if (!tier?.tier && availability.tier?.state !== "unavailable") {
     lines.push(``);
     lines.push(`**Next:** Use \`set_tier\` to subscribe to a tier.`);
   }
 
+  if (next_actions.length) lines.push("", next_actions[0]!.why);
   return { content: [{ type: "text", text: lines.join("\n") }] };
 }

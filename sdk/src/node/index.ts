@@ -834,3 +834,5 @@ export { describeLocalPreflight } from "./preflight.js";
 export { serializeDeployManifest } from "./manifest-export.js";
 
 export { prepareWorkflowOutput } from "./workflow-output.js";
+
+export { readRemoteStatus } from "./remote-status.js";

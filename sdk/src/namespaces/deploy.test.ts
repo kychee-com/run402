@@ -3211,6 +3211,7 @@ describe("Deploy.apply (plan warnings)", () => {
           warnings: plan.warnings,
           unacknowledged_warnings: plan.warnings,
           unacknowledged_warning_codes: ["MISSING_REQUIRED_SECRET"],
+          next_actions: [{ type: "review_warnings", warning_codes: ["MISSING_REQUIRED_SECRET"], why: "Review these warnings, then pass the reviewed codes as allowWarningCodes." }],
           allowed_warning_codes: [],
         });
         return true;

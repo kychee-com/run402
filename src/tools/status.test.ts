@@ -87,7 +87,8 @@ describe("status tool", () => {
     const result = await handleStatus({} as Record<string, never>);
     assert.equal(result.isError, undefined); // not an error
     const text = result.content[0]!.text;
-    assert.ok(text.includes("(unavailable)"));
+    assert.ok(text.includes("| tier | (unavailable) |"));
+    assert.doesNotMatch(text, /Use `set_tier`/);
     assert.ok(text.includes("(none)"));
   });
 });

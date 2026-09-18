@@ -1,3 +1,4 @@
+import { readRemoteStatus } from "#sdk/node";
 import {
   readAllowance,
   loadKeyStore,
@@ -134,12 +135,11 @@ export async function run(args = []) {
   // projects.list() is the membership-scoped named inventory (project-findability);
   // SIWX wallet auth is signed from the allowance. Best-effort — a missing
   // allowance yields null and we fall back to the local keystore below.
-  const [tier, billing, remote, walletBalance] = await Promise.all([
-    getSdk().tier.status().catch(() => null),
-    getSdk().billing.checkBalance(wallet).catch(() => null),
-    getSdk().projects.list().catch(() => null),
+  const [status, walletBalance] = await Promise.all([
+    readRemoteStatus(getSdk(), wallet),
     readWalletBalanceUsdMicros(rail, allowance.address),
   ]);
+  const { tier, billing, remote } = status;
 
   // Local keystore
   const store = loadKeyStore();
@@ -169,6 +169,9 @@ export async function run(args = []) {
       address: allowance.address,
     },
     rail,
+    remote_status: status.availability,
+    next_actions: status.next_actions,
+    projects_source: remote ? "remote" : "local_cache",
     balances: {
       on_chain_usd_micros: walletBalance,
       on_chain_token: rail === "mpp" ? "pathUSD" : "USDC",
@@ -209,6 +212,7 @@ function statusNextAction(result) {
   if (!result.wallet) {
     return result.hint?.replace(/^Run:\s*/, "") ?? "run402 init";
   }
+  if (result.remote_status?.tier?.state === "unavailable") return "Check connectivity/authentication and retry run402 status; tier state is unavailable.";
   if (!result.tier) {
     return "run402 up -y  (subscribes the prototype tier, free on testnet, as part of the first deploy; or: run402 tier set prototype)";
   }
@@ -243,7 +247,7 @@ export function formatStatusHuman(result) {
         : (result.tier.expires ? `, expires ${result.tier.expires}` : "");
       lines.push(`Tier:     ${result.tier.name} (${result.tier.status}${lifecycle}${expiry})`);
     } else {
-      lines.push("Tier:     none");
+      lines.push(result.remote_status?.tier?.state === "unavailable" ? "Tier:     unavailable (remote status failed)" : "Tier:     none");
     }
   }
   const projects = Array.isArray(result.projects) ? result.projects : [];

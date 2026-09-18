@@ -4185,7 +4185,7 @@ function abortOnConfirmationWarnings(
   const first = missing ?? unacknowledged[0]!;
   const unacknowledgedCodes = Array.from(new Set(unacknowledged.map((w) => w.code))).sort();
   throw new Run402DeployError(
-    `Deploy plan returned unacknowledged warning ${first.code}; resolve it, retry with allowWarningCodes for reviewed warning codes, or retry with allowWarnings after explicit review.`,
+    `Deploy plan requires review of ${first.code}. Review the affected access or resources, then acknowledge only the reviewed warning codes.`,
     {
       code: first.code || "DEPLOY_WARNING_REQUIRES_CONFIRMATION",
       phase: "plan",
@@ -4196,6 +4196,7 @@ function abortOnConfirmationWarnings(
         warnings: blocking,
         unacknowledged_warnings: unacknowledged,
         unacknowledged_warning_codes: unacknowledgedCodes,
+        next_actions: [{ type: "review_warnings", warning_codes: unacknowledgedCodes, why: "Review these warnings, then pass the reviewed codes as allowWarningCodes." }],
         allowed_warning_codes: Array.from(allowWarningCodes).sort(),
       },
       context: "planning deploy",

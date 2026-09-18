@@ -40,6 +40,39 @@ function diagnosticPath(dir: string, value: unknown): string | null {
   return path;
 }
 
+const pick = (value: unknown, keys: string[]): Record<string, unknown> => object(value)
+  ? Object.fromEntries(keys.filter(key => key in value).map(key => [key, value[key]])) : {};
+const OUTCOME = ["status", "state", "code", "category", "reason", "message", "error", "mutation_state", "safe_to_retry", "retryable", "warnings", "next_actions", "cost", "costs", "network", "rail", "payment"];
+function verification(value: unknown): unknown {
+  if (!object(value)) return value;
+  const report = object(value.report) ? value.report : value;
+  const summary = pick(report, [...OUTCOME, "coherent", "checked_at", "pending_count", "path_count", "total_path_count", "vantage", "strength"]);
+  if (Array.isArray(report.paths)) {
+    summary.confidence_counts = report.paths.reduce<Record<string, number>>((counts, path) => {
+      const key = object(path) && typeof path.observed_confidence === "string" ? path.observed_confidence : "unknown";
+      counts[key] = (counts[key] ?? 0) + 1; return counts;
+    }, {});
+    const pending = report.paths.filter(path => !object(path) || path.state !== "coherent");
+    if (pending.length) summary.paths = pending.slice(0, 10).map(path => pick(path, ["path", "state", "status", "observed_confidence"]));
+    if (pending.length > 10) summary.paths_truncated = true;
+  }
+  return { ...summary, ...pick(value, ["attempts", "elapsedMs"]) };
+}
+function deployment(value: unknown): unknown {
+  if (!object(value)) return value;
+  const summary = pick(value, [...OUTCOME, "release_id", "operation_id", "release_generation", "urls", "rehearsal"]);
+  if (object(value.urls)) summary.urls = pick(value.urls, ["site", "console", "deployment", "deployment_id"]);
+  if (object(value.diff)) summary.diff = pick(value.diff, ["is_noop", "summary"]);
+  return summary;
+}
+function repository(value: unknown): unknown {
+  if (!object(value)) return value;
+  const summary = pick(value, [...OUTCOME, "first_push_error", "gitvault_error", "local_git", "toplevel", "gitvault", "first_push"]);
+  if (object(value.gitvault)) summary.gitvault = pick(value.gitvault, [...OUTCOME, "name", "url", "allocated", "created_repository", "already_present", "nested", "enclosing_toplevel", "excluded_in_enclosing"]);
+  if (object(value.first_push)) summary.first_push = pick(value.first_push, ["generation", "form", "gitvault_commit", "snapshot", "captured_dirty"]);
+  return summary;
+}
+
 /** Preserve outcome and recovery fields, and point to the same execution's redacted detail. */
 export function prepareWorkflowOutput<T>(value: T, dir: string, options: { storeDetails?: (detail: unknown) => { ref: string; next_action: Record<string, unknown> } | null } = {}): T | Record<string, unknown> {
   if (!object(value) || !object(value.result)) return value;
@@ -54,6 +87,9 @@ export function prepareWorkflowOutput<T>(value: T, dir: string, options: { store
   } catch { return value; } // never lose detail when local storage is unavailable
   if (!ref) return value;
   const result = { ...value.result };
+  if (object(result.deploy)) result.deploy = deployment(result.deploy);
+  if (object(result.repo)) result.repo = repository(result.repo);
+  if (object(result.edge_coherence)) result.edge_coherence = verification(result.edge_coherence);
   delete result.app_graph;
   delete result.spec;
   delete result.manifest;
@@ -64,7 +100,8 @@ export function prepareWorkflowOutput<T>(value: T, dir: string, options: { store
     delete app.schema_url;
     app.kind = "run402.up.summary";
     app.schema_version = "run402.up.summary.v1";
-    if (object(app.release)) { app.release = { ...app.release }; delete (app.release as Record<string, unknown>).spec; }
+    if (object(app.release)) app.release = deployment(app.release);
+    if (object(app.verification)) app.verification = verification(app.verification);
     result.app_result = app;
   }
   if (object(result.plan)) {
@@ -73,13 +110,12 @@ export function prepareWorkflowOutput<T>(value: T, dir: string, options: { store
     for (const key of ["site", "functions", "routes", "assets", "missing_content"]) delete plan[key];
     result.plan = plan;
   }
-  const steps = Array.isArray(value.steps) ? value.steps.map((step) => {
+  const steps = Array.isArray(value.steps) ? value.steps.filter(step => object(step) && (step.mutation === true || step.state === "failed")).map((step) => {
     if (!object(step)) return step;
-    const { result: _result, input: _input, ...rest } = step;
-    return rest;
+    return pick(step, ["id", "action", "state", "mutation", "code", "reason", "next_actions"]);
   }) : value.steps;
   return {
-    ...value, steps, result,
+    ...value, steps, step_count: Array.isArray(value.steps) ? value.steps.length : 0, result,
     result_ref: ref,
     truncation: { kind: "display", has_more: true, redacted: true },
     next_actions: [...(Array.isArray(value.next_actions) ? value.next_actions : []), action ?? {

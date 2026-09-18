@@ -727,7 +727,7 @@ describe("createTrackedX402Fetch", () => {
         store,
         createAttemptId: () => attemptId,
         fetch: async () => {
-          throw new TypeError("socket failed with secret-token");
+          throw new TypeError("socket failed with secret-token", { cause: Object.assign(new Error("secret-token"), { code: "ENOTFOUND" }) });
         },
       },
     );
@@ -736,6 +736,8 @@ describe("createTrackedX402Fetch", () => {
       assert.ok(err instanceof PaymentAttemptError);
       assert.equal(err.code, "X402_INITIAL_REQUEST_FAILED");
       assert.equal(err.toJSON().category, "network");
+      assert.match(err.message, /ENOTFOUND/);
+      assert.equal((err.toJSON().details as any).transport_code, "ENOTFOUND");
       assert.equal(err.phase, "initial_request");
       assert.equal(err.paymentAttemptId, attemptId);
       assert.equal(err.safeToRetry, true);

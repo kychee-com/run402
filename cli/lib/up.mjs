@@ -272,7 +272,7 @@ export async function run(args = []) {
   const yes = parsed.includes("-y") || parsed.includes("--yes");
   const jsonStream = parsed.includes("--json-stream");
   const human = parsed.includes("--human");
-  const quiet = parsed.includes("--quiet") || parsed.includes("--final-only") || jsonStream;
+  const quiet = !human || parsed.includes("--quiet") || parsed.includes("--final-only") || jsonStream;
   const mode = parseExecutionMode(parsed);
   if (mode === "printManifest" && jsonStream) {
     fail({ code: "BAD_USAGE", message: "--print-manifest emits one authoring JSON object; omit --json-stream.", details: { flag: "--json-stream" } });

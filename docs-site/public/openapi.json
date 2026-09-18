@@ -45717,6 +45717,7 @@
             "description": "True when errors is non-empty."
           },
           "effective_access": {
+            "description": "Access preview remains structurally pending. New explicitly append-only tables require no redundant confirmation; public-write widening on existing data and changed or legacy custom policies require review. Unchanged compiler-applied policies do not prompt again.",
             "type": "array",
             "description": "Declared access preview; pending until PostgreSQL rehearsal/apply. Custom operations may be null. Row checks remain runtime checks.",
             "items": {
@@ -47876,6 +47877,7 @@
             "$ref": "#/components/schemas/GitvaultPlanRider"
           },
           "effective_access": {
+            "description": "Access preview remains structurally pending. New explicitly append-only tables require no redundant confirmation; public-write widening on existing data and changed or legacy custom policies require review. Unchanged compiler-applied policies do not prompt again.",
             "type": "array",
             "description": "Declared access preview; pending until PostgreSQL rehearsal/apply. Custom operations may be null. Row checks remain runtime checks.",
             "items": {

@@ -169,6 +169,11 @@ export function reportSdkError(err) {
     payload.hint = "This key was not claimable (already used, expired, revoked, or this route requires a wallet, not a session) — you were not charged; no payment was made for this attempt.";
   }
 
+  if (Array.isArray(payload.unacknowledged_warning_codes)) {
+    const codes = payload.unacknowledged_warning_codes.filter(code => typeof code === "string" && /^[A-Z][A-Z0-9_]*$/.test(code));
+    if (codes.length) payload.hint = "After reviewing the warnings, retry the same command with " + codes.map(code => "--allow-warning " + code).join(" ") + ".";
+  }
+
   // Keep `status: "error"` as the outer envelope even if the response body
   // happened to contain its own `status` field (e.g. `{"status":"degraded"}`
   // from /health 503 responses). Downstream scripts match on this sentinel.
