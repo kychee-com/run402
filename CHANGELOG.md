@@ -4,6 +4,8 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
 
 ## Unreleased
 
+- SDK bootstrap checks actual Base Sepolia USDC balance before requesting faucet funding, so externally funded agent wallets work without a faucet-used marker. Unavailable balance reads stop funding rather than assume an empty wallet.
+
 - Init preserves structured faucet cooldown/confirmation state and suppresses immediate deployment guidance while funding is blocked. Shared SDK recovery drives CLI and MCP.
 
 - Blind-build DX fixes: access review follows actual policy changes; concise shared deployment/verification/backup summaries; quiet default verification; SDK errors retain their original code and recovery through workflows; remote status distinguishes unavailable from absent, and pre-dispatch network errors expose safe cause codes. Room credentials are scoped to coordination instructions.

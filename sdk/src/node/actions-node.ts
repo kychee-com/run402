@@ -1,4 +1,5 @@
 import { serializeDeployManifest, manifestExportUnsupported } from "./manifest-export.js";
+import { prototypeBalance } from "./prototype-balance.js";
 import { describeLocalPreflight } from "./preflight.js";
 import { resolveApplicationScope, materializeTemplates } from "./app-scope.js";
 import { scanDeploymentSources } from "./source-scan.js";
@@ -2139,13 +2140,14 @@ export class NodeActions implements Run402Actions {
         details: { address: status.address, path: status.path ?? null },
       });
       if (!opts.fund) return;
-      if (status.faucet_used) {
+      const balance = await prototypeBalance(status.address);
+      if (balance > 0n) {
         run.skipStep({
           action: "allowance.faucet",
-          description: "Allowance faucet marker already present",
+          description: "Allowance already has Base Sepolia USDC",
           mutation: false,
           auto: true,
-          details: { address: status.address, last_faucet: status.lastFaucet ?? null },
+          details: { address: status.address, balance_usd_micros: balance.toString() },
         });
         return;
       }

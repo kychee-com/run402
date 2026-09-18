@@ -7,8 +7,43 @@ import test, { mock } from "node:test";
 import { pathToFileURL } from "node:url";
 import { Run402Action } from "../actions.js";
 import { RUN402_APP_SCHEMA_ID } from "../app-up.js";
-import { NodeActions, claimSubdomainNextAction, subdomainSlugFromProjectName } from "./actions-node.js";
 import { CLIENT_DETECTION_ENV_VARS, KNOWN_CLIENT_MARKERS, detectClientName } from "./client-detect.js";
+
+let testBalance: bigint | Error = 0n;
+mock.module("./prototype-balance.js", { namedExports: {
+  prototypeBalance: async () => { if (testBalance instanceof Error) throw testBalance; return testBalance; },
+} });
+const { NodeActions, claimSubdomainNextAction, subdomainSlugFromProjectName } = await import("./actions-node.js");
+
+test("sponsored wallet bootstrap skips faucet without a faucet marker", async () => {
+  const calls: string[] = [];
+  const sdk = fakeSdk({ calls, allowanceConfigured: true, tierActive: false, activeProject: null });
+  testBalance = 250_000n;
+  try {
+    const result = await new NodeActions(sdk, { targetKind: "cloud" }).run({ type: Run402Action.ProjectsProvision, name: "sponsored" }, { autoPrerequisites: true, approval: "yes" });
+    assert.equal(result.result?.project_id, "prj_new");
+    assert.ok(!calls.some(c => c.startsWith("allowance.faucet:")));
+    assert.ok(calls.some(c => c.startsWith("tier.set:")));
+  } finally { testBalance = 0n; }
+});
+
+test("unavailable balance does not trigger a faucet transfer", async () => {
+  const calls: string[] = [];
+  const sdk = fakeSdk({ calls, allowanceConfigured: true, tierActive: false, activeProject: null });
+  testBalance = new Error("RPC unavailable");
+  try {
+    await assert.rejects(new NodeActions(sdk, { targetKind: "cloud" }).run({ type: Run402Action.ProjectsProvision, name: "sponsored" }, { autoPrerequisites: true, approval: "yes" }), /RPC unavailable/);
+    assert.ok(!calls.some(c => c.startsWith("allowance.faucet:")));
+  } finally { testBalance = 0n; }
+});
+
+test("spent wallet's old faucet marker does not suppress funding", async () => {
+  const calls: string[] = [];
+  const sdk = fakeSdk({ calls, allowanceConfigured: true, tierActive: false, activeProject: null });
+  sdk.allowance.status = async () => ({ configured: true, address: "0x0000000000000000000000000000000000000001", faucet_used: true });
+  await new NodeActions(sdk, { targetKind: "cloud" }).run({ type: Run402Action.ProjectsProvision, name: "spent" }, { autoPrerequisites: true, approval: "yes" });
+  assert.ok(calls.some(c => c.startsWith("allowance.faucet:")));
+});
 
 test("up check discovers run402.json app manifest and compiles an install graph locally", async () => {
   const dir = mkdtempSync(join(tmpdir(), "run402-app-up-check-"));

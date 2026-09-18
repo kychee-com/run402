@@ -4271,6 +4271,32 @@ describe("CLI e2e happy path", () => {
     assert.ok(!/Projects\s+\d+\s+active/.test(out), `must not use the misleading "N active" wording, got: ${out}`);
   });
 
+  it("init preserves an externally funded wallet and skips the faucet without a marker", async () => {
+    const { run } = await import("./cli/lib/init.mjs");
+    const { readAllowance, saveAllowance } = await import("./cli/lib/config.mjs");
+    const original = readAllowance();
+    saveAllowance({ ...original, funded: false });
+    const previous = globalThis.fetch;
+    let faucetCalls = 0;
+    globalThis.fetch = async (input, init) => {
+      const url = typeof input === "string" ? input : input.url ?? String(input);
+      const raw = init?.body ?? (input instanceof Request ? await input.clone().text() : null);
+      const body = typeof raw === "string" ? JSON.parse(raw) : raw;
+      if (url.includes("/faucet/v1")) { faucetCalls++; return json({ error: "must not request faucet" }, 429); }
+      const rpc = r => ({ jsonrpc: "2.0", id: r.id, result: r.method === "eth_call" ? "0x" + (250000).toString(16).padStart(64, "0") : "0x14a34" });
+      if (body?.jsonrpc === "2.0") return json(rpc(body));
+      if (Array.isArray(body)) return json(body.map(rpc));
+      return previous(input, init);
+    };
+    captureStart();
+    try {
+      await run([]);
+      assert.equal(faucetCalls, 0);
+      assert.equal(readAllowance().address, original.address);
+      assert.equal(readAllowance().funded, false);
+    } finally { captureStop(); globalThis.fetch = previous; saveAllowance(original); }
+  });
+
   it("init surfaces faucet cooldown and never recommends an immediately blocked deploy", async () => {
     const { run } = await import("./cli/lib/init.mjs");
     const previous = globalThis.fetch;
