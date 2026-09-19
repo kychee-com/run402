@@ -89,3 +89,15 @@ test("realistic release summaries bound repeated inventories while retaining den
  assert.equal(view.result.deploy.activation_snapshot,undefined);assert.equal(view.result.deploy.edge_coherence,undefined);
  assert.ok(JSON.stringify(view).length<4000);assert.equal(view.result.deploy.warnings[0].code,"NOTICE");
 });
+
+test("CLI and MCP projections retain the exact committed static continuity facts", () => {
+  const dir = mkdtempSync(join(tmpdir(), "run402-continuity-output-"));
+  const continuity = { mode: "absent_public_paths", origin_retention_seconds: 3600, scope: "previously_public_non_html", source_release_id: "rel_previous", source_release_generation: 2, retained_path_count: 3, origin_available_until: "2026-09-19T15:00:00.000Z" };
+  const original = { mode: "apply", result: { deploy: { release_id: "rel_current", static_continuity: continuity } } };
+  try {
+    const cli = prepareWorkflowOutput(original, dir) as Record<string, any>;
+    const mcp = prepareWorkflowOutput(original, dir, { storeDetails: () => ({ ref: "result-1", next_action: { type: "expand_result" } }) }) as Record<string, any>;
+    assert.deepEqual(cli.result.deploy.static_continuity, continuity);
+    assert.deepEqual(mcp.result.deploy.static_continuity, continuity);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
