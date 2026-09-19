@@ -2903,7 +2903,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "b7c07c2c5d31e7431bc00a91f8329dee3c6d4d2bc856ce5bf5f4658043a23092",
+      "sha256": "9206d8a88758c7b63dbc27c53a4b78b4ae0ec2fc20a61812ead1e2d65c376e15",
       "outputs": [],
       "url": "https://docs.run402.com/concepts/releases/",
       "checks": [
@@ -2911,9 +2911,9 @@
         "site-links"
       ],
       "evidence": {
-        "editorial": "reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate",
+        "editorial": "pending: source changed since editorial review",
         "local": "see named check results",
-        "publication": "hosted verified: 2026-09-17; portal 23751749"
+        "publication": "pending: source changed since publication evidence"
       }
     },
     {
