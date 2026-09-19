@@ -2911,7 +2911,7 @@
         "site-links"
       ],
       "evidence": {
-        "editorial": "pending: source changed since editorial review",
+        "editorial": "reviewed one-hour origin boundary, current-path precedence, explicit public aliases, and issuer credential rotation; live acceptance tracked separately",
         "local": "see named check results",
         "publication": "pending: source changed since publication evidence"
       }
