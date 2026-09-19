@@ -6494,3 +6494,20 @@ describe("deploy.apply — site.embedding wire carry", () => {
     assert.equal(w.requests.length, 0);
   });
 });
+
+
+describe('static continuity result parity', () => {
+  for (const polled of [false, true]) it(polled ? 'preserves committed facts through polling' : 'preserves committed facts on immediate completion', async () => {
+    const w = makeWiring();
+    const continuity = { mode: 'absent_public_paths', origin_retention_seconds: 3600, scope: 'previously_public_non_html', source_release_id: 'rel_A', source_release_generation: 1, retained_path_count: 2, origin_available_until: '2026-09-19T13:00:00.000Z' };
+    w.setHandler(req => {
+      if (req.path === '/apply/v1/plans') return { plan_id: 'plan_continuity', operation_id: 'op_continuity', manifest_digest: 'ff', missing_content: [], diff: {}, warnings: [] };
+      if (req.path.endsWith('/commit') && polled) return { operation_id: 'op_continuity', status: 'running' };
+      if (req.path.endsWith('/commit') || req.path === '/apply/v1/operations/op_continuity') return { operation_id: 'op_continuity', status: 'ready', release_id: 'rel_B', urls: {}, static_continuity: continuity, warnings: [{ code: 'STATIC_PATHS_REMAIN_REACHABLE', severity: 'info', requires_confirmation: false, message: 'Retained', details: continuity }] };
+      throw new Error('unexpected ' + req.path);
+    });
+    const result = await new Deploy(w.client).apply({ project: 'prj_test', site: { replace: { 'index.html': 'B' } } });
+    assert.deepEqual(result.static_continuity, continuity);
+    assert.equal(result.warnings[0].details?.origin_available_until, continuity.origin_available_until);
+  });
+});

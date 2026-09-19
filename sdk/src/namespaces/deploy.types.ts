@@ -699,6 +699,7 @@ export type KnownDeployResolveMatch =
   | "static_exact"
   | "static_index"
   | "spa_fallback"
+  | "retained_public_path"
   | "spa_fallback_missing"
   | "route_function"
   | "route_static_alias"
@@ -806,6 +807,9 @@ export interface NormalizedDeployResolveRequest {
 }
 
 export interface DeployResolveResponse {
+  static_continuity?: StaticContinuity;
+  current_host_release_id?: string | null;
+  current_host_release_generation?: number | null;
   hostname: string;
   host_binding_id?: string | null;
   binding_status?: string | null;
@@ -980,12 +984,13 @@ export function normalizeDeployResolveRequest(
 export function isDeployResolveStaticHit(
   response: DeployResolveResponse,
 ): response is DeployResolveResponse & {
-  match: "static_exact" | "static_index" | "spa_fallback";
+  match: "static_exact" | "static_index" | "spa_fallback" | "retained_public_path";
 } {
   return (
     response.match === "static_exact" ||
     response.match === "static_index" ||
-    response.match === "spa_fallback"
+    response.match === "spa_fallback" ||
+    response.match === "retained_public_path"
   );
 }
 
@@ -1031,6 +1036,7 @@ export function summarizeDeployResult(result: DeployResult): DeploySummary {
     release_id: result.release_id,
     operation_id: result.operation_id,
     ...(typeof diff.is_noop === "boolean" ? { is_noop: diff.is_noop } : {}),
+    ...(result.static_continuity ? { static_continuity: result.static_continuity } : {}),
     headline: "",
     warnings: summarizeDeployWarnings(result.warnings),
   };
@@ -1605,6 +1611,7 @@ function formatAllowedMethods(methods: RouteHttpMethod[] | string[] | null | und
 // ─── Plan + commit + operation ───────────────────────────────────────────────
 
 export interface PlanResponse {
+  static_continuity?: StaticContinuity;
   effective_access?: EffectiveAccessPreview[];
   /** Present on the v2 plan envelope. Older gateways omitted it; the SDK
    *  preserves backward compatibility and still normalizes both shapes. */
@@ -1944,6 +1951,20 @@ export interface ReleaseInventoryBase<
   project_id: string;
   parent_id: string | null;
   status: ReleaseInventoryStatus | null;
+  static_continuity?: StaticContinuity;
+  static_continuity_paths?: {
+    plan_id: string;
+    total_count: number;
+    paths: string[];
+    entries?: Array<{
+      public_path: string;
+      source_release_id: string;
+      source_release_generation: number;
+      origin_retention_seconds?: number;
+      origin_available_until?: string;
+    }>;
+    next_cursor: string | null;
+  };
   manifest_digest: string | null;
   created_at: string | null;
   created_by: string | null;
@@ -2104,6 +2125,8 @@ export interface ReleaseInventoryOptions {
 }
 
 export interface ReleaseInventoryByIdOptions extends ReleaseInventoryOptions {
+  staticContinuityPlanId?: string;
+  staticContinuityCursor?: string;
   releaseId: string;
 }
 
@@ -2194,6 +2217,7 @@ export interface DeploySummaryWarnings {
 }
 
 export interface DeploySummary {
+  static_continuity?: StaticContinuity;
   schema_version: "deploy-summary.v1";
   release_id: string;
   operation_id: string;
@@ -2324,6 +2348,8 @@ export type CommitStatus =
   | "failed";
 
 export interface CommitResponse {
+  warnings?: WarningEntry[];
+  static_continuity?: StaticContinuity;
   operation_id: string;
   status: CommitStatus;
   release_id?: string;
@@ -2346,6 +2372,8 @@ export interface CommitRestorePoint {
 }
 
 export interface OperationSnapshot {
+  warnings?: WarningEntry[];
+  static_continuity?: StaticContinuity;
   operation_id: string;
   project_id: string;
   plan_id: string;
@@ -2693,6 +2721,7 @@ export type DeployEvent =
     };
 
 export interface DeployResult {
+  static_continuity?: StaticContinuity;
   release_id: string;
   operation_id: string;
   urls: Record<string, string>;
@@ -2922,6 +2951,7 @@ export interface PromoteOptions {
  * no payment-required hook (promote uses existing-release content).
  */
 export interface PromoteResult {
+  static_continuity?: StaticContinuity;
   status: "ok";
   /** The release id now live on the project. Equal to the input releaseId. */
   release_id: string;
@@ -2950,4 +2980,16 @@ export interface DeployOperation {
   result(): Promise<DeployResult>;
   /** Latest snapshot from the gateway. */
   snapshot(): Promise<OperationSnapshot>;
+}
+
+/** Automatic origin continuity for previously public non-HTML paths. */
+export interface StaticContinuity {
+  mode: 'absent_public_paths';
+  origin_retention_seconds: 3600;
+  scope: 'previously_public_non_html';
+  source_release_id: string | null;
+  source_release_generation: number | null;
+  retained_path_count: number;
+  /** Omitted for plans; null when this release has no retired origin deadline. */
+  origin_available_until?: string | null;
 }

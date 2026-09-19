@@ -662,6 +662,8 @@ export class Deploy {
     return this.client.request<ReleaseInventory>(
       appendQuery(`/apply/v1/releases/${encodeURIComponent(opts.releaseId)}`, {
         site_limit: siteLimit,
+        static_continuity_plan_id: opts.staticContinuityPlanId,
+        static_continuity_cursor: opts.staticContinuityCursor,
       }),
       { headers, context: "fetching release inventory" },
     );
@@ -2431,8 +2433,9 @@ async function pollUntilReady(
       operation_id: commit.operation_id,
       urls: commit.urls,
       diff,
-      warnings,
+      warnings: [...warnings.filter(w => !commit.warnings?.some(updated => updated.code === w.code)), ...(commit.warnings ?? [])],
       ...(commit.subdomain_bindings ? { subdomain_bindings: commit.subdomain_bindings } : {}),
+      ...(commit.static_continuity ? { static_continuity: commit.static_continuity } : {}),
       ...(commit.edge ? { edge: commit.edge } : {}),
       // The gateway's riders (poll / watch_errors / hand_to_operator) ride the
       // synchronous ready response and nowhere else — dropping them here is
@@ -2569,8 +2572,9 @@ async function pollSnapshotUntilReady(
         operation_id: snapshot.operation_id,
         urls: snapshot.urls,
         diff,
-        warnings,
+        warnings: [...warnings.filter(w => !snapshot.warnings?.some(updated => updated.code === w.code)), ...(snapshot.warnings ?? [])],
         ...(snapshot.subdomain_bindings ? { subdomain_bindings: snapshot.subdomain_bindings } : {}),
+        ...(snapshot.static_continuity ? { static_continuity: snapshot.static_continuity } : {}),
         ...(snapshot.edge ? { edge: snapshot.edge } : {}),
         // The gateway now attaches the same riders to a ready operation
         // snapshot as to a synchronous ready commit (poll / watch_errors /
