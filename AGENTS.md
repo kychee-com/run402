@@ -352,4 +352,6 @@ The release commands themselves live in `run402-private/.claude/commands/` and a
 
 ### Coordination identity is not deployment authority
 
+**Cloud sessions (Claude Code on the web).** The container starts with no wallet. `.claude/hooks/session-start.sh` imports `RUN402_FLEET_WALLET_KEY` from the cloud environment's settings as the `platform-deploy` profile and exports `RUN402_ROOM`, so the commands above work unchanged. That cloud wallet (the hook prints its address) is a dedicated developer member of the fleet org, not a human's key: coordination only, never funded, never a deployment wallet. If the hook reports the key unset, room commands fail `WALLET_NOT_FOUND`; say so in your handoff rather than inventing a wallet.
+
 The shared `platform-deploy` profile in the room instructions is for fleet coordination only. It is not authorization to build unrelated apps as that human principal. For a new independent demo, use the agent's own named wallet/profile and its free prototype setup, selected per command; preserve the global default. For existing authorized project work, use that project's intended credentials. Never copy a room wallet into deployment commands merely because it joined the room. Scope `--wallet platform-deploy` to room, message and claim commands, including skill announcements.
