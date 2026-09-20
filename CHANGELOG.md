@@ -4,7 +4,7 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
 
 ## Unreleased
 
-- Fresh-wallet bootstrap tolerates RPC balance visibility lag after a successful faucet: retry only proven pre-payment balance misses for up to 30 seconds, preserving the payment idempotency key without another faucet transfer. Deploy examples now use prototype-compatible 10-second/128-MB function limits.
+- Payment selection refreshes balances before creating a new payment payload, fixing a zero balance cached before faucet funding. Fresh-wallet bootstrap also tolerates RPC visibility lag after a successful faucet: retry only proven pre-payment balance misses for up to 30 seconds, preserving the payment idempotency key without another faucet transfer. Deploy examples now use prototype-compatible 10-second/128-MB function limits.
 
 - SDK bootstrap checks actual Base Sepolia USDC balance before requesting faucet funding, so externally funded agent wallets work without a faucet-used marker. Unavailable balance reads stop funding rather than assume an empty wallet.
 

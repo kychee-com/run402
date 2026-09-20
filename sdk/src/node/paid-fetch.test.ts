@@ -575,6 +575,25 @@ describe("createLazyPaidFetch", () => {
     assert.equal(response.status, 200);
     assert.equal(signerCalls, 2, "funding recovery must retain the selected payer");
   });
+
+  it("first payment sees funding received after an unpaid request initialized the wrapper", async () => {
+    saveAllowance(allowance(ADDRESS_A, PRIVATE_KEY_A));
+    let funded = false;
+    balanceReader = async () => funded ? 250_000n : 0n;
+    simulatePaymentChallenge = true;
+    globalThis.fetch = async (input, init) => {
+      if (String(input).endsWith("/faucet/v1")) {
+        funded = true;
+        return new Response("{}", { status: 200 });
+      }
+      return new Response("{}", { status: new Headers(init?.headers).has("PAYMENT-SIGNATURE") ? 200 : 402 });
+    };
+    const fetchFn = createLazyPaidFetch();
+    assert.equal((await fetchFn("https://api.run402.test/faucet/v1", { method: "POST" })).status, 200);
+    assert.equal((await fetchFn("https://api.run402.test/tiers/v1/prototype", { method: "POST" })).status, 200);
+    assert.equal(paidPayers.length, 1, "first payment succeeds, no failed-payment retry needed");
+    assert.equal(stackLoadCount, 1, "refresh balances without recreating the payment client");
+  });
 });
 
 describe("run402 payment wiring", () => {
@@ -657,6 +676,10 @@ function fakeX402Stack(): X402Stack {
     registerPolicy(policy: (version: number, requirements: unknown[]) => unknown[]): void {
       this.policy = policy;
     }
+    async createPaymentPayload(required: { x402Version: number; accepts: unknown[] }): Promise<unknown> {
+      this.policy?.(required.x402Version, required.accepts);
+      return {};
+    }
   }
 
   return {
@@ -684,7 +707,7 @@ function fakeX402Stack(): X402Stack {
         if (simulatePaymentChallenge) {
           const challenge = await fetchFn(input, init);
           if (challenge.status !== 402) return challenge;
-          client.policy?.(2, [{ network: "eip155:8453", amount: "1" }]);
+          await client.createPaymentPayload({ x402Version: 2, accepts: [{ network: "eip155:8453", amount: "1" }] });
           const payer = client.registrations.get("eip155:8453")?.signer.address ??
             client.registrations.get("eip155:84532")?.signer.address;
           if (payer) paidPayers.push(payer);

@@ -679,6 +679,15 @@ export async function setupPaidFetch(options: PaidFetchOptions = {}): Promise<Co
     await refreshBalances();
 
     const client = new stack.x402Client();
+    // Initialization may happen on an unpaid request (including the faucet),
+    // before funds arrive. Select requirements from a fresh balance snapshot
+    // whenever a new payment payload is created, in both automatic and buyer
+    // flows. Keep the selected signers and any replayable proof unchanged.
+    const createPaymentPayload = client.createPaymentPayload.bind(client);
+    client.createPaymentPayload = async (required) => {
+      await refreshBalances();
+      return createPaymentPayload(required);
+    };
     if (mainnetSigner) {
       client.register(
         "eip155:8453",
