@@ -1055,6 +1055,12 @@ Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
 
 The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
 
+<h2 id="INVALID_ISSUER">INVALID_ISSUER</h2>
+
+Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
+
 <h2 id="INVALID_LABEL">INVALID_LABEL</h2>
 
 Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
@@ -1164,6 +1170,18 @@ Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
 The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
 
 <h2 id="ISSUER_DISABLED">ISSUER_DISABLED</h2>
+
+Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
+
+<h2 id="ISSUER_NAME_TAKEN">ISSUER_NAME_TAKEN</h2>
+
+Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
+
+<h2 id="ISSUER_NOT_FOUND">ISSUER_NOT_FOUND</h2>
 
 Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
 

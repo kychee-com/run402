@@ -1,9 +1,9 @@
 {
   "owner": "gateway",
   "repository": "kychee-com/run402-private",
-  "revision": "720bc1be85d4f84dc9bf4d90931fd8d9b3a0e68c",
+  "revision": "447823191eed2ac3af2de6ae1402179dc5ec26e2",
   "source": "packages/gateway/src/utils/error-envelope.ts",
-  "sourceDigest": "9325c73696c21004613eeb350b1e5567f6d2ab0971aa10b302e3573814801d75",
+  "sourceDigest": "45a6e5a7a1d52a9f274671fa66f34bf999ea6f838a5b104923822cfff2e5ae89",
   "codes": [
     "VALIDATION_FAILED",
     "AUTH_REQUIRED",
@@ -424,6 +424,9 @@
     "ISSUER_DAILY_MINT_CAP_REACHED",
     "ISSUER_DISABLED",
     "PUBLIC_MINT_NOT_ENABLED",
+    "INVALID_ISSUER",
+    "ISSUER_NOT_FOUND",
+    "ISSUER_NAME_TAKEN",
     "INVALID_SECRET_NAME",
     "EMAIL_SEND_IDENTITY_REGISTRATION_FAILED",
     "INVALID_DOMAIN_AUTHORITY",
