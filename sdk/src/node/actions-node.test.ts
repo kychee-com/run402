@@ -7,6 +7,7 @@ import test, { mock } from "node:test";
 import { pathToFileURL } from "node:url";
 import { Run402Action } from "../actions.js";
 import { RUN402_APP_SCHEMA_ID } from "../app-up.js";
+import { X402BalanceError } from "./paid-fetch.js";
 import { CLIENT_DETECTION_ENV_VARS, KNOWN_CLIENT_MARKERS, detectClientName } from "./client-detect.js";
 
 let testBalance: bigint | Error = 0n;
@@ -43,6 +44,40 @@ test("spent wallet's old faucet marker does not suppress funding", async () => {
   sdk.allowance.status = async () => ({ configured: true, address: "0x0000000000000000000000000000000000000001", faucet_used: true });
   await new NodeActions(sdk, { targetKind: "cloud" }).run({ type: Run402Action.ProjectsProvision, name: "spent" }, { autoPrerequisites: true, approval: "yes" });
   assert.ok(calls.some(c => c.startsWith("allowance.faucet:")));
+});
+
+test("fresh provisioning survives faucet RPC lag without another drip or payment key", async () => {
+  const calls: string[] = [];
+  const sdk = fakeSdk({ calls, allowanceConfigured: false, tierActive: false, activeProject: null });
+  const keys: Array<string | undefined> = [];
+  const setTier = sdk.tier.set;
+  sdk.tier.set = async (tier, input) => {
+    keys.push(input?.idempotencyKey);
+    if (keys.length === 1) throw new X402BalanceError("X402_INSUFFICIENT_FUNDS", "RPC lag", {});
+    return setTier(tier, input);
+  };
+  const result = await new NodeActions(sdk, { targetKind: "cloud" }).run(
+    { type: Run402Action.ProjectsProvision, name: "fresh" },
+    { autoPrerequisites: true, approval: "yes", idempotencyKey: "fresh-test" },
+  );
+  assert.equal(result.result?.project_id, "prj_new");
+  assert.equal(calls.filter(c => c.startsWith("allowance.faucet:")).length, 1);
+  assert.equal(keys.length, 2);
+  assert.ok(keys[0]);
+  assert.equal(keys[0], keys[1]);
+});
+
+test("existing funds do not enable automatic insufficient-funds retries", async () => {
+  const sdk = fakeSdk({ calls: [], allowanceConfigured: true, tierActive: false, activeProject: null });
+  let calls = 0;
+  sdk.tier.set = async () => { calls++; throw new X402BalanceError("X402_INSUFFICIENT_FUNDS", "spent", {}); };
+  testBalance = 250_000n;
+  try {
+    await assert.rejects(new NodeActions(sdk, { targetKind: "cloud" }).run(
+      { type: Run402Action.ProjectsProvision, name: "existing" }, { autoPrerequisites: true, approval: "yes" },
+    ), /spent/);
+    assert.equal(calls, 1);
+  } finally { testBalance = 0n; }
 });
 
 test("up check discovers run402.json app manifest and compiles an install graph locally", async () => {

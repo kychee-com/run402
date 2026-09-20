@@ -20,6 +20,8 @@ Your HTML never needs a pasted key: load `/_run402/config.js` and read `window.R
 
 Manifest format mirrors a v2 `ReleaseSpec`. For editor autocomplete, use top-level `"$schema": "https://run402.com/schemas/release-spec.v1.json"`; the CLI accepts that metadata and strips it before planning.
 
+The example uses prototype-compatible function limits: 10 seconds and 128 MB. Larger values require a tier that supports them. `--check` validates locally; it does not certify the target organization's tier limits.
+
 ```json
 {
   "$schema": "https://run402.com/schemas/release-spec.v1.json",
@@ -48,7 +50,7 @@ Manifest format mirrors a v2 `ReleaseSpec`. For editor autocomplete, use top-lev
       "api": {
         "runtime": "node22",
         "source": { "data": "export default async (req) => new Response('ok')" },
-        "config": { "timeout_seconds": 30, "memory_mb": 256 },
+        "config": { "timeout_seconds": 10, "memory_mb": 128 },
         "triggers": [{
           "id": "api_every_15m",
           "type": "schedule",

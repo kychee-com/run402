@@ -129,15 +129,15 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/deploy.md",
-    "line": 23,
+    "line": 25,
     "language": "json",
     "kind": "configuration",
-    "sha256": "4972f3e43604fc2efe84d090c69611c6658f814f1a97976d047b819348d885a9",
+    "sha256": "a5bd62b9927ca6cec891f869fe615b224ce7f31f997a9ffdb07cbde2124e0cde",
     "validation": "cli-help-output-sync"
   },
   {
     "file": "docs-site/src/content/docs//cli/deploy.md",
-    "line": 91,
+    "line": 93,
     "language": "json",
     "kind": "configuration",
     "sha256": "7dfe66223609e798e3ca82927b12698b277d478c6df90aa09835d74fa7a5de98",
@@ -145,7 +145,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/deploy.md",
-    "line": 137,
+    "line": 139,
     "language": "bash",
     "kind": "commands",
     "sha256": "64bd6185e21068785210228379f5479649c02cd971ab58f6d6a1bca73b9fbed0",
@@ -153,7 +153,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/deploy.md",
-    "line": 145,
+    "line": 147,
     "language": "json",
     "kind": "configuration",
     "sha256": "31011eb4c72d9eb12159b28f8cfc081856584bbc876062ceb7a1ef93ef63663b",
@@ -161,7 +161,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/deploy.md",
-    "line": 163,
+    "line": 165,
     "language": "bash",
     "kind": "commands",
     "sha256": "1dd313ba73d0ad6dc9deeec711bcc1ef08a9066e29c5e3bd60a6dbe6904fb394",
@@ -169,7 +169,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/deploy.md",
-    "line": 183,
+    "line": 185,
     "language": "ts",
     "kind": "application-or-sdk",
     "sha256": "1f5c582c40be58917fa708c92f4156c2852e002409c9ebde8854101cb04a6810",
@@ -177,7 +177,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/deploy.md",
-    "line": 199,
+    "line": 201,
     "language": "json",
     "kind": "configuration",
     "sha256": "6d1776f5407749e1cf0285d95a493b82d43b3fc15823cac6e35f93dd999356fd",
@@ -185,7 +185,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/deploy.md",
-    "line": 208,
+    "line": 210,
     "language": "bash",
     "kind": "commands",
     "sha256": "a8dc3f7f94ef8a3f21872165b09e6b3146c37ca9420e6332f1ac640c85e8e36b",
@@ -193,7 +193,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/deploy.md",
-    "line": 214,
+    "line": 216,
     "language": "bash",
     "kind": "commands",
     "sha256": "5518865facfe7b85f539d80ec8788424c217c9ae13db7de91cba525d004f811d",
@@ -201,7 +201,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/deploy.md",
-    "line": 226,
+    "line": 228,
     "language": "bash",
     "kind": "commands",
     "sha256": "c8f5e75f232fb2af650cebfc971ba2480bad2ae58f491861d579dfa72060228f",
@@ -209,7 +209,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/deploy.md",
-    "line": 234,
+    "line": 236,
     "language": "bash",
     "kind": "commands",
     "sha256": "6369c3759171f24d2e089accd2a88d474c966cc7d09ee4287a634a128e26dc84",
@@ -217,7 +217,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/deploy.md",
-    "line": 249,
+    "line": 251,
     "language": "bash",
     "kind": "commands",
     "sha256": "040a4920e6f03d5822a29a6298ed13e3424f9816bea9674bd1de166ea5b6388a",
@@ -225,7 +225,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/deploy.md",
-    "line": 290,
+    "line": 292,
     "language": "json",
     "kind": "configuration",
     "sha256": "1ed58f98dcf4a8b526a4b322ae9bb6bc8eca414b4f90ca158807a8d5a28c8989",
@@ -233,7 +233,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/deploy.md",
-    "line": 310,
+    "line": 312,
     "language": "ts",
     "kind": "application-or-sdk",
     "sha256": "decbdeee4d917a08052c9a3efb9b7b9e128a410fefe9ce99f45d3edba2e487ba",
@@ -241,7 +241,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/deploy.md",
-    "line": 323,
+    "line": 325,
     "language": "js",
     "kind": "application-or-sdk",
     "sha256": "2937583e7a9bc825877f22e6ee63489196621a913fc4f7e13c2105247a973c3f",
@@ -249,7 +249,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/deploy.md",
-    "line": 342,
+    "line": 344,
     "language": "bash",
     "kind": "commands",
     "sha256": "2267481a9c104f59f6dbd0c8a60efebb9892ecf5b87c25bfd660c99a4cd72c11",
@@ -257,7 +257,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/deploy.md",
-    "line": 349,
+    "line": 351,
     "language": "bash",
     "kind": "commands",
     "sha256": "21d0e1d3957c5086a30ae224b696109b59c322910bf09a6fd64305105fb90781",
@@ -265,7 +265,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/deploy.md",
-    "line": 376,
+    "line": 378,
     "language": "yaml",
     "kind": "output-or-pseudocode",
     "sha256": "dd0725ea76ec7920c34accfd9819c0a3154d3af09068fede4d8e82d29a41d7d0",
@@ -273,7 +273,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/deploy.md",
-    "line": 399,
+    "line": 401,
     "language": "json",
     "kind": "configuration",
     "sha256": "d4659eaaa47312b98ef15a4123903d5dd77de34cfb5a5b2c089cba28f30cea40",
@@ -281,7 +281,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/deploy.md",
-    "line": 422,
+    "line": 424,
     "language": "bash",
     "kind": "commands",
     "sha256": "6fe969dbe8e55b88a122775c11b4dd9868f9ea2e32982eea3971a4d459fd1041",
@@ -289,7 +289,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/deploy.md",
-    "line": 457,
+    "line": 459,
     "language": "json",
     "kind": "configuration",
     "sha256": "1f9977cd1443aa8346fda484915ebe62498ebe74d2be4762f73512cd63d89a9f",
@@ -297,7 +297,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/deploy.md",
-    "line": 495,
+    "line": 497,
     "language": "ts",
     "kind": "application-or-sdk",
     "sha256": "9e48a4876262b7a2b438ea66c13011de4c18d4a28415f18f200e9f18a49519d2",
@@ -305,7 +305,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/deploy.md",
-    "line": 508,
+    "line": 510,
     "language": "json",
     "kind": "configuration",
     "sha256": "bd49ec35a61c22d21464b6b520465e56f82431ffb94e4e3e6c672c578b2286b3",
@@ -313,7 +313,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/deploy.md",
-    "line": 518,
+    "line": 520,
     "language": "json",
     "kind": "configuration",
     "sha256": "e0a97f09f056c720d4c433b8e9eb23f12a0080c9073a05c7de137d88326e6a34",
@@ -321,7 +321,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/deploy.md",
-    "line": 533,
+    "line": 535,
     "language": "json",
     "kind": "configuration",
     "sha256": "d9cf73d223c20d6bc94b0eb980ec1c5497fbf468f339838818db5fe24fcc4af3",
@@ -329,7 +329,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/deploy.md",
-    "line": 544,
+    "line": 546,
     "language": "sql",
     "kind": "application-or-sdk",
     "sha256": "c8a14094898b1cfc517bcbe738f5c3141b9e7415da227db9aad48a8b417937ce",
@@ -337,7 +337,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/deploy.md",
-    "line": 572,
+    "line": 574,
     "language": "json",
     "kind": "configuration",
     "sha256": "5c35d5f38f17afcfdf3f705cc831f627d7081512a8ff6f0a590f28d95046a93a",
@@ -345,7 +345,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/deploy.md",
-    "line": 594,
+    "line": 596,
     "language": "bash",
     "kind": "commands",
     "sha256": "64bd6185e21068785210228379f5479649c02cd971ab58f6d6a1bca73b9fbed0",
@@ -353,7 +353,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/deploy.md",
-    "line": 604,
+    "line": 606,
     "language": "bash",
     "kind": "commands",
     "sha256": "53037c99f5f77a7c082faafce353ac2760490ceaae8dd31dbaf209f8c82d4ed8",

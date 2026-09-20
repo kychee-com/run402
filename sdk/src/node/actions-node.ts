@@ -1,5 +1,6 @@
 import { serializeDeployManifest, manifestExportUnsupported } from "./manifest-export.js";
 import { prototypeBalance } from "./prototype-balance.js";
+import { afterFaucet } from "./funded-payment.js";
 import { describeLocalPreflight } from "./preflight.js";
 import { resolveApplicationScope, materializeTemplates } from "./app-scope.js";
 import { scanDeploymentSources } from "./source-scan.js";
@@ -2129,7 +2130,7 @@ export class NodeActions implements Run402Actions {
     };
   }
 
-  async #ensureAllowance(run: ActionRun, opts: { fund: boolean } = { fund: false }): Promise<void> {
+  async #ensureAllowance(run: ActionRun, opts: { fund: boolean } = { fund: false }): Promise<boolean> {
     const status = await this.sdk.allowance.status();
     if (status.configured) {
       run.skipStep({
@@ -2139,7 +2140,7 @@ export class NodeActions implements Run402Actions {
         auto: true,
         details: { address: status.address, path: status.path ?? null },
       });
-      if (!opts.fund) return;
+      if (!opts.fund) return false;
       const balance = await prototypeBalance(status.address);
       if (balance > 0n) {
         run.skipStep({
@@ -2149,7 +2150,7 @@ export class NodeActions implements Run402Actions {
           auto: true,
           details: { address: status.address, balance_usd_micros: balance.toString() },
         });
-        return;
+        return false;
       }
     } else {
       const createStep = run.addStep({
@@ -2161,7 +2162,7 @@ export class NodeActions implements Run402Actions {
       await run.approve(createStep, ["allowance.create"], "Create a local allowance wallet.");
       if (run.dryRun) {
         run.setState(createStep, "planned");
-        return;
+        return false;
       }
       run.setState(createStep, "running");
       const created = await this.sdk.allowance.create();
@@ -2169,7 +2170,7 @@ export class NodeActions implements Run402Actions {
         address: created.address,
         path: created.path ?? null,
       });
-      if (!opts.fund) return;
+      if (!opts.fund) return false;
     }
 
     const faucetStep = run.addStep({
@@ -2182,7 +2183,7 @@ export class NodeActions implements Run402Actions {
     await run.approve(faucetStep, ["allowance.faucet"], "Request testnet USDC for the local allowance.");
     if (run.dryRun) {
       run.setState(faucetStep, "planned");
-      return;
+      return false;
     }
     run.setState(faucetStep, "running");
     const faucet = await this.sdk.allowance.faucet({
@@ -2193,6 +2194,7 @@ export class NodeActions implements Run402Actions {
       amount: faucet.amount,
       network: faucet.network,
     });
+    return true;
   }
 
   async #ensureCloudTier(run: ActionRun, desiredTier: TierName): Promise<void> {
@@ -2251,7 +2253,7 @@ export class NodeActions implements Run402Actions {
     }
 
     const idempotencyKey = run.childKey("tier.set");
-    await this.#ensureAllowance(run, { fund: true });
+    const justFunded = await this.#ensureAllowance(run, { fund: true });
     const step = run.addStep({
       action: Run402Action.TierSet,
       description: `Ensure active ${desiredTier} tier`,
@@ -2266,7 +2268,8 @@ export class NodeActions implements Run402Actions {
     });
     await run.approve(step, ["tier.set"], `Subscribe, renew, or upgrade to ${desiredTier}.`);
     run.setState(step, "running");
-    const result = await this.sdk.tier.set(desiredTier, { idempotencyKey });
+    const pay = () => this.sdk.tier.set(desiredTier, { idempotencyKey });
+    const result = await (justFunded ? afterFaucet(pay) : pay());
     run.setState(step, "succeeded", { tier: result.tier, action: result.action });
   }
 
