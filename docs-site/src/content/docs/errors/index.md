@@ -2103,6 +2103,9 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="WRITE_AUTH_VERIFY_FAILED"></a>
 [`WRITE_AUTH_VERIFY_FAILED`](/errors/gateway/#WRITE_AUTH_VERIFY_FAILED)
 
+<a id="X402_AMOUNT_EXCEEDS_FIRST_PARTY_CAP"></a>
+[`X402_AMOUNT_EXCEEDS_FIRST_PARTY_CAP`](/errors/client/#X402_AMOUNT_EXCEEDS_FIRST_PARTY_CAP)
+
 <a id="X402_ATTEMPT_ID_ALREADY_EXISTS"></a>
 [`X402_ATTEMPT_ID_ALREADY_EXISTS`](/errors/client/#X402_ATTEMPT_ID_ALREADY_EXISTS)
 

@@ -2768,6 +2768,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="WRITE_AUTH_VERIFY_FAILED"></a>
 [`WRITE_AUTH_VERIFY_FAILED`](/errors/gateway/#WRITE_AUTH_VERIFY_FAILED)
 
+<a id="x402_amount_exceeds_first_party_cap"></a>
+<a id="X402_AMOUNT_EXCEEDS_FIRST_PARTY_CAP"></a>
+[`X402_AMOUNT_EXCEEDS_FIRST_PARTY_CAP`](/errors/client/#X402_AMOUNT_EXCEEDS_FIRST_PARTY_CAP)
+
 <a id="x402_attempt_id_already_exists"></a>
 <a id="X402_ATTEMPT_ID_ALREADY_EXISTS"></a>
 [`X402_ATTEMPT_ID_ALREADY_EXISTS`](/errors/client/#X402_ATTEMPT_ID_ALREADY_EXISTS)

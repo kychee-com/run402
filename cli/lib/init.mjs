@@ -541,7 +541,16 @@ export async function run(args = []) {
         voucher_id: redemption.voucher_id,
         amount_usd_micros: redemption.amount_usd_micros,
         already_redeemed: redemption.already_redeemed,
+        next_actions: Array.isArray(redemption.next_actions) ? redemption.next_actions : [],
       };
+      // Relate the gift to what it buys, in the gateway's own words: its
+      // `set_tier` next action names the largest tier the credit covers, and
+      // that purchase settles from credit — no wallet funding step between.
+      const covers = summary.voucher.next_actions.find((a) => a?.type === "set_tier" && typeof a.cli === "string");
+      if (covers) {
+        const tierName = covers.highest_affordable_tier ?? covers.cli.replace(/^run402 tier set\s+/, "");
+        line("Credit", `$${credited} covers ${tierName} — ${covers.cli} (settles from credit; no wallet funds needed)`);
+      }
     } catch (err) {
       // Faithful: name what failed and keep going. `voucher_error` is a
       // first-class summary field, not an omission the caller has to infer.
@@ -763,9 +772,14 @@ export async function run(args = []) {
     // `up -y` subscribes the prototype tier itself as part of the first
     // deploy; `init` never buys the tier, so the one command that finishes
     // the cold start is `up`, with `tier set` named as the standalone option.
+    const creditCovers = summary.voucher?.next_actions?.find((a) => a?.type === "set_tier" && typeof a.cli === "string");
     write("  Next: run402 up -y");
     write("        Deploy with run402 up -y — it subscribes the prototype tier (free on testnet) as part of the first deploy.");
-    write("        Or subscribe separately: run402 tier set prototype.");
+    if (creditCovers) {
+      write(`        Your credit covers ${creditCovers.highest_affordable_tier ?? "a larger tier"}: ${creditCovers.cli} — then run402 up -y.`);
+    } else {
+      write("        Or subscribe separately: run402 tier set prototype.");
+    }
   } else {
     write("  Ready to deploy. Run: run402 deploy apply --manifest app.json");
   }

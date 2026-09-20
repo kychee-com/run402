@@ -148,6 +148,116 @@ export type X402BalanceErrorCode =
  * Both states are emitted before payment payload creation, so
  * `mutationState` is always `not_started`.
  */
+/**
+ * The largest amount a first-party (api.run402.com) challenge may ask for:
+ * the team tier. Every gateway price is at or under it, so a challenge above
+ * it is not a price, it is a compromised or misconfigured host — refuse to
+ * sign rather than trust a number the server chose. Arbitrary-URL purchases
+ * through `pay.fetch` are bounded separately by the caller's `maxUsdMicros`.
+ */
+export const FIRST_PARTY_MAX_PAYMENT_USD_MICROS = 20_000_000;
+
+function originOf(url: string | undefined): string | null {
+  if (!url) return null;
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
+}
+
+function challengeOrigin(required: unknown): string | null {
+  const resource = (required as { resource?: { url?: unknown } } | null)?.resource;
+  return typeof resource?.url === "string" ? originOf(resource.url) : null;
+}
+
+/**
+ * Refuse a first-party challenge whose every accepted requirement exceeds the
+ * first-party cap. Requirements at or under the cap are left alone; the
+ * selector picks among them as usual.
+ */
+export function assertFirstPartyPaymentWithinCap(required: unknown, firstPartyOrigin: string | null): void {
+  if (!firstPartyOrigin || challengeOrigin(required) !== firstPartyOrigin) return;
+  const accepts = (required as { accepts?: unknown }).accepts;
+  if (!Array.isArray(accepts) || accepts.length === 0) return;
+  const amounts = accepts
+    .map((entry) => Number((entry as { amount?: unknown })?.amount))
+    .filter((amount) => Number.isFinite(amount));
+  if (amounts.length === 0) return;
+  const smallest = Math.min(...amounts);
+  if (smallest <= FIRST_PARTY_MAX_PAYMENT_USD_MICROS) return;
+  throw new PaymentBuyerCapError(smallest);
+}
+
+/** A first-party challenge above the largest known price. Never retried blindly. */
+export class PaymentBuyerCapError extends Run402Error {
+  readonly kind = "local_error" as const;
+  readonly code = "X402_AMOUNT_EXCEEDS_FIRST_PARTY_CAP" as const;
+  constructor(requestedUsdMicros: number) {
+    super(
+      "The run402 API asked for a payment above the largest known tier price; refusing to sign it.",
+      null,
+      {
+        error: "X402_AMOUNT_EXCEEDS_FIRST_PARTY_CAP",
+        code: "X402_AMOUNT_EXCEEDS_FIRST_PARTY_CAP",
+        category: "payment",
+        source: "sdk",
+        retryable: false,
+        safe_to_retry: false,
+        mutation_state: "not_started",
+        details: {
+          phase: "payment_signing",
+          payment_started: false,
+          requested_usd_micros: requestedUsdMicros,
+          cap_usd_micros: FIRST_PARTY_MAX_PAYMENT_USD_MICROS,
+        },
+        next_actions: [{
+          type: "verify_api_base",
+          why: "Check RUN402_API_BASE points at the real gateway; a genuine price never exceeds the team tier.",
+        }],
+      },
+      "signing an x402 payment",
+    );
+  }
+}
+
+/**
+ * A gateway 402 that names the caller's prepaid credit (`credit.available_usd_micros`,
+ * `credit.price_usd_micros`, `credit.shortfall_usd_micros`) turns a bare
+ * "insufficient USDC" into the actual situation: credit was checked first and
+ * fell short by a known amount, and a voucher or top-up closes the gap without
+ * any on-chain funds. Only an insufficient-funds verdict is reshaped; an RPC
+ * failure stays an RPC failure.
+ */
+function withCreditShortfall(error: X402BalanceError, challengeBody: Record<string, unknown> | null): X402BalanceError {
+  const credit = challengeBody?.credit;
+  if (error.code !== "X402_INSUFFICIENT_FUNDS" || !credit || typeof credit !== "object") return error;
+  const c = credit as Record<string, unknown>;
+  const available = Number(c.available_usd_micros);
+  const price = Number(c.price_usd_micros);
+  const shortfall = Number(c.shortfall_usd_micros);
+  if (![available, price, shortfall].every(Number.isFinite)) return error;
+  const priorDetails = (error.body as { details?: Record<string, unknown> } | null)?.details ?? {};
+  const enriched = new X402BalanceError(
+    "X402_INSUFFICIENT_FUNDS",
+    `Prepaid credit ($${(available / 1_000_000).toFixed(2)}) does not cover this ($${(price / 1_000_000).toFixed(2)}), and the wallet holds no USDC for the $${(shortfall / 1_000_000).toFixed(2)} shortfall.`,
+    {
+      ...priorDetails,
+      credit: { available_usd_micros: available, price_usd_micros: price, shortfall_usd_micros: shortfall },
+    },
+    error.cause,
+  );
+  const body = enriched.body as { next_actions?: unknown[] } | null;
+  if (body) {
+    body.next_actions = [
+      { type: "redeem_voucher", cli: "run402 redeem <code>", why: "A promo code credits the organization; credit settles a tier with no on-chain payment." },
+      { type: "top_up", why: "Add prepaid credit to the organization (Lightning or card), then retry." },
+      { type: "fund_wallet", why: "Or fund the allowance wallet with USDC on an accepted network for the shortfall, then retry." },
+    ];
+  }
+  return enriched;
+}
+
 export class X402BalanceError extends Run402Error {
   readonly kind = "local_error" as const;
   readonly code: X402BalanceErrorCode;
@@ -331,6 +441,13 @@ export function _setPaidStackLoadersForTest(loaders?: {
 
 interface TrackedPaymentContext {
   transportFailure?: unknown;
+  /**
+   * The JSON body of the 402 challenge, when it parsed. The gateway names the
+   * caller's prepaid credit and the shortfall here (`credit`), which is what
+   * turns a bare "insufficient USDC" into "you are $2 short; redeem a voucher
+   * or top up" — the balance preflight never sees the response otherwise.
+   */
+  challengeBody?: Record<string, unknown> | null;
   id: string;
   request: {
     method: string;
@@ -679,12 +796,23 @@ export async function setupPaidFetch(options: PaidFetchOptions = {}): Promise<Co
     await refreshBalances();
 
     const client = new stack.x402Client();
+    // Spend controls are run402's, not the library's. `@x402/core` >= 2.22 ships
+    // a client-side default of $1 per payment; inherited silently, it refused to
+    // sign a $5 hobby or $20 team purchase from every fresh install (the
+    // 2026-09-20 launch-voucher rehearsal found it). The first-party cap below
+    // is explicit and derived from the price list; arbitrary-URL purchases are
+    // bounded by `pay.fetch`'s own `maxUsdMicros`. Asset selection is already
+    // run402's (known USDC per network), so nothing the library's default
+    // allow-list protected is left open.
+    if (typeof client.setSpendControls === "function") client.setSpendControls(false);
+    const firstPartyOrigin = originOf(options.apiBase);
     // Initialization may happen on an unpaid request (including the faucet),
     // before funds arrive. Select requirements from a fresh balance snapshot
     // whenever a new payment payload is created, in both automatic and buyer
     // flows. Keep the selected signers and any replayable proof unchanged.
     const createPaymentPayload = client.createPaymentPayload.bind(client);
     client.createPaymentPayload = async (required) => {
+      assertFirstPartyPaymentWithinCap(required, firstPartyOrigin);
       await refreshBalances();
       return createPaymentPayload(required);
     };
@@ -2007,6 +2135,10 @@ export function createTrackedX402Fetch(
 
     if (!paymentBearing && response.status === 402) {
       context.phase = "challenge_received";
+      context.challengeBody = await response.clone().json().then(
+        (body: unknown) => (body && typeof body === "object" && !Array.isArray(body) ? body as Record<string, unknown> : null),
+        () => null,
+      );
       ensureIntent(context, store, now);
     } else if (paymentBearing) {
       context.phase = "payment_response";
@@ -2175,7 +2307,7 @@ export function createTrackedX402Fetch(
             mutation_state: "not_started",
             last_error_code: balanceError.code,
           });
-          throw balanceError;
+          throw withCreditShortfall(balanceError, context.challengeBody ?? null);
         }
         if (cause instanceof PaymentAttemptError) throw cause;
         if (cause instanceof Run402Error && !context.providerStarted) {

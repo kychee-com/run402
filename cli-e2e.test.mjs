@@ -1316,8 +1316,9 @@ describe("CLI e2e happy path", () => {
     assert.ok(captured().includes("subscribe"), "should show action");
   });
 
-  // GH-110: help text must reflect actual prototype pricing ($0.10/7d), not "free/testnet"
-  it("tier --help shows prototype as $0.10/7d (GH-110)", async () => {
+  // GH-110: help text must reflect actual prototype pricing ($0.10, paid once,
+  // perpetual since kygit-handoff D4), not "free/testnet"
+  it("tier --help shows prototype as $0.10, perpetual (GH-110)", async () => {
     const { run } = await import("./cli/lib/tier.mjs");
     let threw = null;
     captureStart();
@@ -1335,9 +1336,11 @@ describe("CLI e2e happy path", () => {
       `tier --help must not advertise prototype as 'free/testnet' — server charges $0.10. Got: ${out}`,
     );
     assert.ok(
-      /\$0\.10\/7d/.test(out),
-      `tier --help must describe prototype as '$0.10/7d' to match server pricing. Got: ${out}`,
+      /\$0\.10, perpetual/.test(out),
+      `tier --help must describe prototype as '$0.10, perpetual' to match server pricing. Got: ${out}`,
     );
+    assert.doesNotMatch(out, /\$0\.10\/7d/, "the retired 7-day prototype lease must not resurface");
+    assert.match(out, /prepaid credit first/i, "tier set must say credit settles first");
   });
 
   it("tier status surfaces HTML gateway errors without SyntaxError (GH-83)", async () => {

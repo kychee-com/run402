@@ -7763,6 +7763,16 @@
       "topic": "/errors/gateway/#WRITE_AUTH_VERIFY_FAILED"
     },
     {
+      "code": "X402_AMOUNT_EXCEEDS_FIRST_PARTY_CAP",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/node/paid-fetch.ts"
+        }
+      ],
+      "topic": "/errors/client/#X402_AMOUNT_EXCEEDS_FIRST_PARTY_CAP"
+    },
+    {
       "code": "X402_ATTEMPT_ID_ALREADY_EXISTS",
       "owners": [
         {
