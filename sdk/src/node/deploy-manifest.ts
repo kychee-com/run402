@@ -194,14 +194,31 @@ export function manifestFileMissingError(
       ...(opts.manifestPath ? { manifest_path: opts.manifestPath } : {}),
       missing,
     },
-    next_actions: missing.map((entry) => ({
-      type: "create_file",
-      path: entry.path,
-      field_path: entry.field_path,
-      kind: entry.kind,
-      why: `${entry.field_path} points at a ${LOCAL_FILE_KIND_LABEL[entry.kind]} that does not exist. Create it at that path, or fix the reference in the manifest, then re-run.`,
-    })),
+    next_actions: [
+      ...missing.map((entry) => ({
+        type: "create_file",
+        path: entry.path,
+        field_path: entry.field_path,
+        kind: entry.kind,
+        why: `${entry.field_path} points at a ${LOCAL_FILE_KIND_LABEL[entry.kind]} that does not exist. Create it at that path, or fix the reference in the manifest, then re-run.`,
+      })),
+      checkManifestNextAction(opts.manifestPath),
+    ],
   });
+}
+
+/**
+ * The `check_manifest` next action: `run402 up --check` validates the
+ * manifest and prints the preflight (file references, the site inventory by
+ * content type, function and migration counts) with no gateway call, so an
+ * agent can confirm a fix before spending an upload.
+ */
+export function checkManifestNextAction(manifestPath?: string): Record<string, unknown> {
+  return {
+    type: "check_manifest",
+    argv: ["run402", "up", ...(manifestPath ? ["--manifest", manifestPath] : []), "--check"],
+    why: "After the fix, validate locally: prints the preflight with the site inventory by content type and makes no gateway call.",
+  };
 }
 
 /**
@@ -243,6 +260,7 @@ export function manifestNotFoundError(path: string, context: string): LocalError
           content: JSON.stringify(starter, null, 2),
           why: "No file exists at the path given to --manifest. Create it (this minimal site manifest deploys as-is) or point --manifest at the file you meant.",
         },
+        checkManifestNextAction(path),
       ],
     },
   );

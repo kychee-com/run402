@@ -763,6 +763,7 @@ export type NextActionType =
   // named manifest / file, or re-run from the directory that holds one.
   | "create_manifest"
   | "create_file"
+  | "check_manifest"
   | "run_in_directory"
   // A gitvault capture refused on an UNBORN repository (no commits yet, so
   // every file is untracked): commit first, or capture the tree as-is.

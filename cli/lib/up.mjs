@@ -29,7 +29,9 @@ Options:
                       (prototype, hobby, team; default prototype).
   -y, --yes           Approve recursive prerequisites/local writes (allowance,
                       tier, project creation, workspace link) for non-interactive runs.
-  --check             Validate the manifest/config locally. No gateway calls,
+  --check             Validate the manifest/config locally and print the
+                      preflight, including the site inventory by content type
+                      (e.g. 2 paths: text/html, image/webp). No gateway calls,
                       uploads, or local writes.
   --print-manifest    Export reloadable snake_case authoring JSON; relative paths
                       use the original manifest directory. Unsupported constructs fail.

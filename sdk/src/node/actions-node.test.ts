@@ -2291,7 +2291,9 @@ test("preflight reports missing SQL and site files together", async () => {
     await assert.rejects(actions.up({}, { mode: "check" }), (err: any) => {
       assert.equal(err.code, "MANIFEST_FILE_MISSING");
       assert.deepEqual(new Set(err.details.missing.map((item: any) => item.kind)), new Set(["migration_sql", "site_file"]));
-      assert.equal(err.nextActions.length, 2);
+      assert.equal(err.nextActions.length, 3);
+      assert.deepEqual(err.nextActions.slice(0, 2).map((a: any) => a.type), ["create_file", "create_file"]);
+      assert.equal(err.nextActions[2].type, "check_manifest");
       return true;
     });
     assert.deepEqual(calls, []);

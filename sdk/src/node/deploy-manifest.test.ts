@@ -1152,11 +1152,12 @@ describe("local filesystem references", () => {
           const details = err.details as { manifest_path: string; missing: Array<{ kind: string }> };
           assert.equal(details.manifest_path, join(root, "run402.deploy.json"));
           assert.equal(details.missing.length, 2);
-          assert.equal(err.nextActions?.length, 2);
+          assert.equal(err.nextActions?.length, 3);
           assert.equal(err.nextActions?.[0]?.type, "create_file");
           assert.equal(err.nextActions?.[0]?.path, join(root, "fn", "api.mjs"));
           assert.equal(err.nextActions?.[0]?.field_path, "functions.replace.api.source");
           assert.equal(err.nextActions?.[1]?.path, join(root, "site", "index.html"));
+          assert.equal(err.nextActions?.[2]?.type, "check_manifest");
           return true;
         },
       );

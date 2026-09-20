@@ -5329,7 +5329,7 @@ const CONTENT_TYPE_BY_EXT: Record<string, string> = {
   sql: "application/sql",
 };
 
-function guessContentType(path: string): string {
+export function guessContentType(path: string): string {
   const ix = path.lastIndexOf(".");
   if (ix < 0) return "application/octet-stream";
   const ext = path.slice(ix + 1).toLowerCase();

@@ -1,6 +1,36 @@
-import type { ReleaseSpec } from "../namespaces/deploy.types.js";
+import type { ContentSource, ReleaseSpec } from "../namespaces/deploy.types.js";
+import { guessContentType } from "../namespaces/deploy.js";
 import { collectLocalFileReferences, collectAuthoringFileReferences } from "./deploy-manifest.js";
 import { scanDeploymentSources } from "./source-scan.js";
+
+/**
+ * The content type a site entry will ship with: an explicit `contentType`
+ * on a wrapper, `FsFileSource` or `ContentRef` wins; otherwise the path's
+ * extension decides, exactly as the deploy planner infers it.
+ */
+function siteEntryContentType(path: string, source: ContentSource): string {
+  if (source && typeof source === "object" && !(source instanceof Uint8Array) && !(source instanceof ArrayBuffer)) {
+    const explicit = (source as { contentType?: unknown }).contentType;
+    if (typeof explicit === "string" && explicit.length > 0) return explicit;
+  }
+  return guessContentType(path);
+}
+
+/**
+ * `summary.site` for `--check`: how many paths the site slice ships and a
+ * per-content-type tally, so "can I ship a .webp?" is answered by the
+ * preflight rather than by reading the SDK.
+ */
+export function summarizeSiteInventory(spec: Partial<ReleaseSpec>): { paths: number; by_content_type: Record<string, number> } {
+  const entries = spec.site?.replace ?? spec.site?.patch?.put ?? {};
+  const by_content_type: Record<string, number> = {};
+  for (const [path, source] of Object.entries(entries)) {
+    const type = siteEntryContentType(path, source as ContentSource);
+    by_content_type[type] = (by_content_type[type] ?? 0) + 1;
+  }
+  const sorted = Object.fromEntries(Object.entries(by_content_type).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+  return { paths: Object.keys(entries).length, by_content_type: sorted };
+}
 
 export interface LocalPreflightTarget {
   project_id: string | null;
@@ -27,7 +57,7 @@ export function describeLocalPreflight(input: {
     app_root: input.appRoot, manifest_path: input.manifestPath, gateway_validated: false as const,
     target: { ...input.target, api_base: input.apiBase ?? null, profile: input.profile ?? null }, checks,
     warnings: [...scan.findings.filter((finding) => finding.severity !== "error"), ...warningRoutes.map((route) => ({ code: "LOCAL_ROUTE_TARGET_UNDECLARED", message: "Route references a function absent from functions.replace; review this target.", pattern: route.pattern }))],
-    summary: { file_references: input.buildDeferred ? null : refs.length, functions: Object.keys(spec.functions?.replace ?? spec.functions?.patch?.set ?? {}).length, migrations: spec.database?.migrations?.length ?? 0, routes: spec.routes?.replace?.length ?? 0 },
+    summary: { file_references: input.buildDeferred ? null : refs.length, site: summarizeSiteInventory(spec), functions: Object.keys(spec.functions?.replace ?? spec.functions?.patch?.set ?? {}).length, migrations: spec.database?.migrations?.length ?? 0, routes: spec.routes?.replace?.length ?? 0 },
     next_actions: input.target.project_id ? [{ type: "review_plan", ...(input.manifestPath ? { argv: ["run402", ...(input.entryPoint === "deploy apply" ? ["deploy", "apply"] : ["up"]), "--manifest", input.manifestPath, "--project", input.target.project_id, "--plan"] } : { sdk_call: "project(project_id).apply.plan(spec)" }), why: "Review gateway-authoritative policy, cost and current state." }] : [{ type: "select_project", safe_to_auto_execute: false, why: input.target.source === "create" ? "Create intent is selected; the new project must exist before gateway plan review." : "Choose an existing project or an explicit new-project name before deploying." }],
   };
 }
