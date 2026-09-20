@@ -64,6 +64,7 @@ export interface X402Stack {
   base: unknown;
   baseSepolia: unknown;
   x402Client: new () => {
+    setSpendControls?: (controls: unknown) => unknown;
     register: (network: string, scheme: unknown) => void;
     registerPolicy: (fn: (version: number, reqs: unknown[]) => unknown[]) => void;
     createPaymentPayload: (required: unknown) => Promise<unknown>;

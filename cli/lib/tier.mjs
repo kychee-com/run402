@@ -10,9 +10,15 @@ Usage:
 
 Subcommands:
   status                Show current tier, expiry, pool usage, and function caps when returned
-  set <tier>            Subscribe, renew, or upgrade (pays via x402)
+  set <tier>            Subscribe, renew, or upgrade (prepaid credit first, else x402/MPP)
 
-Tiers: prototype ($0.10/7d, free with testnet faucet), hobby ($5/30d), team ($20/30d)
+Tiers: prototype ($0.10, perpetual, free with testnet faucet), hobby ($5/30d), team ($20/30d)
+
+Prepaid credit pays first. A promo code (run402 redeem <code>) or a top-up
+sits on the organization's balance; 'tier set' settles from it with no payment
+challenge and no USDC in the wallet, and the receipt says paid_with: "credit".
+Only a balance that falls short goes to x402 / MPP, and that error names the
+exact shortfall a voucher or top-up would cover.
 
 Tier is per organization. A single subscription covers every project on
 the account; api_calls and storage_bytes are pooled across all of them.
@@ -62,7 +68,7 @@ Options:
                            fresh key for a deliberate second renewal.
 
 Tiers:
-  prototype           $0.10/7d (free with testnet faucet)
+  prototype           $0.10, perpetual (free with testnet faucet)
   hobby               $5/30d
   team                $20/30d
 

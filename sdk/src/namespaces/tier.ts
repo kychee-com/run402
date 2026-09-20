@@ -149,6 +149,16 @@ export interface TierSetResult {
   lease_started_at: string;
   lease_expires_at: string;
   allowance_remaining_usd_micros: number;
+  /**
+   * What settled the purchase. `credit` means the organization's prepaid
+   * balance paid, ahead of the paywall: no 402, no signed authorization, and
+   * no USDC needed in the wallet. Absent on gateways older than 2026-09-20.
+   */
+  paid_with?: "credit" | "x402" | "mpp";
+  /** Prepaid credit consumed by this purchase (0 unless `paid_with` is `credit`). */
+  credit_used_usd_micros?: number;
+  /** The organization's prepaid credit after this purchase. */
+  credit_remaining_usd_micros?: number;
 }
 
 export interface TierSetOptions {

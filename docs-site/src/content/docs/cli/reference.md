@@ -248,6 +248,13 @@ run402 tier set hobby        # $5 for 30 days (real money)
 run402 tier set team         # $20 for 30 days (real money)
 ```
 
+Prepaid credit pays first. A promo code (`run402 redeem <code>`) or a top-up sits on the
+organization's balance, and `tier set` settles from it ahead of the payment paywall: no 402,
+no signed authorization, no USDC in the wallet, receipt `paid_with: "credit"` with
+`credit_remaining_usd_micros`. Only a balance that falls short goes to x402 / MPP, and that
+`X402_INSUFFICIENT_FUNDS` error carries `details.credit` (available, price, shortfall) with
+`redeem_voucher` / `top_up` next actions.
+
 Tier is organization-scoped. Subscribe/renew/upgrade applies to every project in the org; `api_calls` / `storage_bytes` quota is org-pooled across linked wallets (`billing link-wallet`). Quota errors include `details.scope: "organization" | "project"` (`project` = orphan fallback after org purge before cascade). `tier set` refetches status and returns `status_after` with refreshed pool usage.
 
 Retry-safety: `tier set` and `projects provision` accept `--idempotency-key <key>` so a retried subscribe/renew/create collapses onto one charge instead of double-billing. `provision` auto-derives the key from `--name` when omitted (re-running `provision --name X` returns the same project); `tier set` is caller-supplied only — use a fresh key for a deliberate second renewal.

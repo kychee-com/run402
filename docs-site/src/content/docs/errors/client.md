@@ -1271,6 +1271,12 @@ Owner: `public:cli/lib/ci.mjs`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
+<h2 id="X402_AMOUNT_EXCEEDS_FIRST_PARTY_CAP">X402_AMOUNT_EXCEEDS_FIRST_PARTY_CAP</h2>
+
+Owner: `public:sdk/src/node/paid-fetch.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
 <h2 id="X402_ATTEMPT_ID_ALREADY_EXISTS">X402_ATTEMPT_ID_ALREADY_EXISTS</h2>
 
 Owner: `public:sdk/src/node/paid-fetch.ts`.

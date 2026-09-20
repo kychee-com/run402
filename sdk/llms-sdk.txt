@@ -2425,6 +2425,13 @@ caps alongside that project's slice of the pool.
 
 Both are optional because older gateways do not return them at the top level.
 
+`set` settles from the organization's prepaid credit first (a redeemed promo code or a
+top-up), ahead of the payment paywall: no 402 is issued, no authorization is signed, and
+the wallet needs no USDC. `TierSetResult.paid_with` reads `"credit"` then, with
+`credit_used_usd_micros` and `credit_remaining_usd_micros`. Only a balance that falls short
+goes to x402 / MPP, and the resulting `X402_INSUFFICIENT_FUNDS` carries `details.credit`
+(available, price, shortfall) with `redeem_voucher` / `top_up` next actions.
+
 `set` auto-detects subscribe / renew / upgrade / downgrade based on current state.
 For tier pricing, call `r.projects.getQuote()` (the SDK does not expose a separate
 `tier.quote()` method).

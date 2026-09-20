@@ -347,6 +347,30 @@ export type PaymentAttemptMutationState =
  * blind retry. The raw cause remains available in-process but is deliberately
  * omitted from `toJSON()` and the canonical body.
  */
+/**
+ * The underlying failure, CLASSIFIED rather than quoted (`details.failure`). A raw cause message
+ * can carry a URL with a token, a key path, or a provider's echo of a secret
+ * (`errors.test.ts` pins that none of that ever serializes), so only the
+ * error's name, its code, and a recognized reason cross into the envelope.
+ */
+const CAUSE_REASONS: ReadonlyArray<[RegExp, string]> = [
+  [/maxAmountPerPayment|spendControls/i, "The payment library's own per-payment spend cap refused the amount. run402 sets its caps explicitly; upgrade the run402 CLI/SDK."],
+  [/Facilitator does not support|unsupported network|no supported payment kinds/i, "No registered signer matches the accepted network or scheme."],
+  [/user rejected|denied|signature/i, "The signer refused or could not produce the authorization signature."],
+];
+
+function summarizeCause(cause: unknown): { error_name: string; code?: string; reason?: string } | null {
+  if (!cause || typeof cause !== "object") return null;
+  const c = cause as { name?: unknown; code?: unknown; message?: unknown };
+  const message = typeof c.message === "string" ? c.message : "";
+  const reason = CAUSE_REASONS.find(([pattern]) => pattern.test(message))?.[1];
+  return {
+    error_name: typeof c.name === "string" ? c.name : "Error",
+    ...(typeof c.code === "string" ? { code: c.code } : {}),
+    ...(reason ? { reason } : {}),
+  };
+}
+
 export class PaymentAttemptError extends Run402Error {
   readonly kind = "payment_attempt_error" as const;
   readonly code: string;
@@ -410,6 +434,10 @@ export class PaymentAttemptError extends Run402Error {
       ...(init.transportCode ? { transport_code: init.transportCode } : {}),
       response_status: init.responseStatus ?? null,
       ...(init.request ? { request: init.request } : {}),
+      // The underlying failure, in words. A signing refusal without its reason
+      // ("could not be created") is undebuggable from a terminal; the cause
+      // never carries keys, headers, or proofs, only the library's message.
+      ...(summarizeCause(init.cause) ? { failure: summarizeCause(init.cause) } : {}),
     };
     super(
       init.message,
