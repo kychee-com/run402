@@ -20,8 +20,8 @@
       "review": "reviewed contributor instructions: source ownership and native build/test commands retained; product CLI policy applies"
     },
     "public:AGENTS.md": {
-      "sha256": "86de265d9e366e3a086ab890b315d2b3b51512f0d0514809fef9538c1296e2e9",
-      "review": "reviewed contributor instructions: source ownership and native build/test commands retained; product CLI policy applies"
+      "sha256": "88932c644f50c584cd79ac022d4b8333a4f19354aad059a37915915d9d961390",
+      "review": "Reviewed explicit-id synchronous project scoping against SDK overloads and scoped tests; no-argument lookup remains asynchronous."
     },
     "public:CHANGELOG.md": {
       "sha256": "fc41aa3d404e15268adddb0ab7c85a69ef20df9ec3e14684429fe3958929ce69",
@@ -332,8 +332,8 @@
       "review": "reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution"
     },
     "public:cli/lib/subscriptions.mjs": {
-      "sha256": "46fbd3b8f20f86e84d06df7d1a86f0f6c391b562be0eafe68274464edb1a9106",
-      "review": "reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution"
+      "sha256": "37743186653c9eb005a2d0c357e44c08ef0836edf5d800b3acb425124531db29",
+      "review": "Reviewed subscriptions --binding help against the accepted flag list and parser; --contact remains a compatibility alias; current noun used in usage errors."
     },
     "public:cli/lib/tier.mjs": {
       "sha256": "4f4365ce0b2455b736c51f3d5c456c65b396f4ad16ae27427a169627d458dc15",
