@@ -392,7 +392,10 @@ CI deploy restrictions are part of the client contract: allowed top-level fields
 
 ### Dark-by-default tables + the expose manifest
 
-Tables you create are unreachable via `/rest/v1/*` until your manifest declares them with `expose: true`. The manifest is convergent — applying it twice is a no-op; items removed between applies have their policies, grants, triggers, and views dropped.
+Tables you create are not readable by anonymous callers via `/rest/v1/*` until your manifest declares them with `expose: true`. The manifest is convergent — applying it twice is a no-op; items removed between applies have their policies, grants, triggers, and views dropped.
+
+Anonymous REST access requires manifest exposure. Authenticated callers have separate table privileges and remain subject to RLS: an enabled table with no applicable SELECT policy returns `200 []`. Omitting a table from the manifest is not a universal server-only boundary for authenticated users. Enable RLS and define the intended policies for private data; never infer privacy solely from an empty query result.
+
 
 The manifest itself is a JSON object:
 

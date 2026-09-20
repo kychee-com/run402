@@ -192,3 +192,5 @@ with `run402 jobs artifacts get <job_id> <file> --output <path>` (auth is the
 project service key, same as the rest of the jobs API). Discover recorded
 filenames from the `artifacts` map; a 404 means the job has not completed or
 the filename was not recorded for that run.
+
+Due durable runs wait automatically while project concurrency slots are occupied. Waiting does not consume an execution attempt or retry budget. Keep the original run ID and inspect its status; do not cancel and recreate work merely because capacity is busy. Lifecycle and exhausted-quota blocks still require recovery.

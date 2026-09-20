@@ -1619,3 +1619,5 @@ After `accept`, the project carries a persistent `secrets_rotation_advised` advi
 What does NOT transfer: tier lease (stays with the original owner's organization; no Phase 1A proration), KMS signers (`r.contracts.*` — wallet-scoped), GitHub repo ownership (handle out of band), on-chain balance on any wallet.
 
 `r.orgs.setDisplayName(name)` — `PATCH /agent/v1/me`; the name promotion credit (`hand_to_operator.credited_as`), `r.up()`'s room presence, and audit surfaces show for this principal (1–64 chars). `r.up()` sets a detected default when it is empty.
+
+Due durable runs wait automatically while project concurrency slots are occupied. Waiting does not consume an execution attempt or retry budget. Keep the original run ID and inspect its status; do not cancel and recreate work merely because capacity is busy. Lifecycle and exhausted-quota blocks still require recovery.

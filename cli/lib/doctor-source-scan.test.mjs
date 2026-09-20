@@ -123,13 +123,13 @@ describe("scanFileContent — browser-only patterns", () => {
     assert.ok(findings.some((f) => f.attempted_name === "localStorage.wl_session"));
   });
 
-  it("warns on Authorization: Bearer in browser-context code", () => {
-    const findings = scanFileContent(`
-      fetch("/api", { headers: { "Authorization": "Bearer " + token } });
-    `);
-    const f = findings.find((x) => x.attempted_name?.startsWith("Authorization"));
-    assert.ok(f);
-    assert.equal(f.severity, SCAN_SEVERITY.WARN, "Bearer is a warn, not an error");
+  it("accepts documented SPA Bearer calls and server integrations without auth warnings", () => {
+    for (const filePath of ["src/app.js", "src/api/client.ts", "src/pages/proxy.astro"]) {
+      const findings = scanFileContent(`fetch("https://api.run402.com/rest/v1/items", {
+        headers: { apikey: config.anon_key, Authorization: "Bearer " + session.access_token }
+      });`, { filePath });
+      assert.deepEqual(findings, []);
+    }
   });
 });
 

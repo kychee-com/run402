@@ -1126,7 +1126,10 @@ CI deploy restrictions are part of the client contract: allowed top-level fields
 
 ### Dark-by-default tables + the expose manifest
 
-Tables you create are unreachable via `/rest/v1/*` until your manifest declares them with `expose: true`. The manifest is convergent — applying it twice is a no-op; items removed between applies have their policies, grants, triggers, and views dropped.
+Tables you create are not readable by anonymous callers via `/rest/v1/*` until your manifest declares them with `expose: true`. The manifest is convergent — applying it twice is a no-op; items removed between applies have their policies, grants, triggers, and views dropped.
+
+Anonymous REST access requires manifest exposure. Authenticated callers have separate table privileges and remain subject to RLS: an enabled table with no applicable SELECT policy returns `200 []`. Omitting a table from the manifest is not a universal server-only boundary for authenticated users. Enable RLS and define the intended policies for private data; never infer privacy solely from an empty query result.
+
 
 The manifest itself is a JSON object:
 
@@ -2820,6 +2823,8 @@ After `accept`, the project carries a persistent `secrets_rotation_advised` advi
 What does NOT transfer: tier lease (stays with the original owner's organization; no Phase 1A proration), KMS signers (`r.contracts.*` — wallet-scoped), GitHub repo ownership (handle out of band), on-chain balance on any wallet.
 
 `r.orgs.setDisplayName(name)` — `PATCH /agent/v1/me`; the name promotion credit (`hand_to_operator.credited_as`), `r.up()`'s room presence, and audit surfaces show for this principal (1–64 chars). `r.up()` sets a detected default when it is empty.
+
+Due durable runs wait automatically while project concurrency slots are occupied. Waiting does not consume an execution attempt or retry budget. Keep the original run ID and inspect its status; do not cancel and recreate work merely because capacity is busy. Lifecycle and exhausted-quota blocks still require recovery.
 
 ## Org membership & project grants (`r.orgs`, `r.org(id)`, `r.grants` — org-owned control plane; first-class orgs)
 

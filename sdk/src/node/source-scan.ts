@@ -116,7 +116,8 @@ const HALLUCINATED_AUTH_PROPERTIES = [
   { name: "auth.protect", canonical: "auth.requireUser() / auth.requireRole(...)" },
 ];
 
-/** Browser-only patterns that should NEVER appear in SSR / Lambda code.
+/** Unsupported legacy browser-session patterns. Bearer headers alone are valid
+ * in SPA token clients and server integrations, so are not evidence of misuse.
  *  These are caught at scan time because the SDK doesn't ship a
  *  shim — the line just fails to execute. */
 const BROWSER_ONLY_PATTERNS = [
@@ -125,15 +126,7 @@ const BROWSER_ONLY_PATTERNS = [
     name: "localStorage.wl_session",
     canonical: "auth.user() (browser sessions are HttpOnly cookies; no localStorage)",
   },
-  {
-    // Matches: `Authorization: "Bearer ..."` (bare key + string value)
-    //          `"Authorization": "Bearer ..."` (string key + string value)
-    //          `'Authorization': 'Bearer ...'` (single quotes)
-    pattern: /['"]?Authorization['"]?\s*[:,]\s*['"]Bearer\s/g,
-    name: "Authorization: Bearer (in browser code)",
-    canonical: "Browser code doesn't carry JWTs. Use auth.fetch() for same-origin SSR fetches.",
-    severity: SCAN_SEVERITY.WARN, // Bearer is fine in server-side machine code; gated by file path.
-  },
+
 ];
 
 /** Scan a single file's content. Returns the array of findings (zero
@@ -211,7 +204,7 @@ export function scanFileContent(content: string, opts: ScanOptions = {}) {
     while ((match = entry.pattern.exec(content)) !== null) {
       findings.push({
         code: "R402_AUTH_UNKNOWN_EXPORT",
-        severity: entry.severity ?? SCAN_SEVERITY.ERROR,
+        severity: SCAN_SEVERITY.ERROR,
         file: filePath,
         line: lineNumberFor(content, match.index),
         attempted_name: entry.name,

@@ -219,7 +219,7 @@ The application authentication contract rejected or could not establish the requ
 
 Owner: `public:sdk/src/node/source-scan.ts`, `gateway:packages/gateway/src/utils/error-envelope.ts`, `core:packages/functions/src/auth/errors.ts`.
 
-An unsupported auth namespace member or sentinel export was accessed. Follow the diagnostic’s canonical replacement, such as `auth.user()` or `auth.requireUser()`. Do not invent `auth.getUser` or `auth.protect`. The legacy top-level `getUser(req)` is a separate compatibility helper, not the same export as a namespace member.
+An unsupported auth namespace member or sentinel export was accessed. Follow the diagnostic’s canonical replacement, such as `auth.user()` or `auth.requireUser()`. Do not invent `auth.getUser` or `auth.protect`. The legacy top-level `getUser(req)` is a throwing sentinel too; replace it with `auth.user()` in the deployed request context.
 
 <h2 id="R402_AUTH_UNKNOWN_IDENTITY">R402_AUTH_UNKNOWN_IDENTITY</h2>
 

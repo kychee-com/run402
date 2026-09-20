@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Accept valid Bearer-token API calls in source scanning; retain refusal of unsupported auth helpers. Clarify anonymous table exposure versus authenticated RLS and automatic durable-run capacity waiting.
+
 All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions are kept in lockstep across the three packages in this repo. `@run402/functions` lives in the public `run402-core` repo and publishes on its own cadence.
 
 ## Unreleased

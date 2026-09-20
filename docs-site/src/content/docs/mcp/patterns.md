@@ -23,7 +23,10 @@ If you suspect cache staleness, `diagnose_public_url` returns expected vs observ
 
 ### Dark-by-default tables + the expose manifest
 
-**Tables you create are unreachable via `/rest/v1/*` until your manifest declares them with `expose: true`.** This is the "agent created a table, forgot RLS, data leaked" footgun-eliminator. The manifest is the single source of truth.
+**Tables you create are not readable by anonymous callers via `/rest/v1/*` until your manifest declares them with `expose: true`.** This prevents accidental anonymous reads. The manifest is the single source of truth.
+
+Anonymous REST access requires manifest exposure. Authenticated callers have separate table privileges and remain subject to RLS: an enabled table with no applicable SELECT policy returns `200 []`. Omitting a table from the manifest is not a universal server-only boundary for authenticated users. Enable RLS and define the intended policies for private data; never infer privacy solely from an empty query result.
+
 
 JSON Schema: <https://run402.com/schemas/manifest.v1.json>. Set `$schema` on your manifest object and any editor gives autocomplete.
 
