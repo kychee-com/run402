@@ -20,8 +20,10 @@ Notes:
     result with "already_redeemed": true and never credits twice.
   - Being in a grace state does not block you. Redeeming is how an owner funds
     a renewal, so it is never gated.
-  - One gift per organization: past the lifetime ceiling you get 403
-    PROMO_LIMIT_REACHED with the exact numbers.
+  - One gift per organization, per issuer: past the lifetime ceiling for a
+    code's issuer you get 403 PROMO_LIMIT_REACHED with the exact numbers. A
+    code from a different issuer (a launch voucher handed to you by the
+    platform) has its own ceiling.
 
 To fold this into first-time setup instead, use:
   run402 init --voucher <code>

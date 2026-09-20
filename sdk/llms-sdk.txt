@@ -2582,8 +2582,9 @@ calls through the allowance rail — no on-chain payment.
 
 `RedeemVoucherResult` carries `amount_usd_micros`, the post-credit
 `balance_usd_micros`, `organization_id`, `redeemed_at`, `already_redeemed`,
-`promo_lifetime_ceiling_usd_micros`, and `next_actions[]` (usually the tier the
-new balance now covers, with a ready-to-run `cli` string).
+`promo_lifetime_ceiling_usd_micros` (the ceiling that applied — per issuer, so
+a launch voucher from the platform has its own), and `next_actions[]` (usually
+the tier the new balance now covers, with a ready-to-run `cli` string).
 
 ### `r.service`
 

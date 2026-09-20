@@ -2,8 +2,8 @@
   "version": 1,
   "contributions": {
     "gateway": {
-      "revision": "720bc1be85d4f84dc9bf4d90931fd8d9b3a0e68c",
-      "sourceDigest": "9325c73696c21004613eeb350b1e5567f6d2ab0971aa10b302e3573814801d75"
+      "revision": "447823191eed2ac3af2de6ae1402179dc5ec26e2",
+      "sourceDigest": "45a6e5a7a1d52a9f274671fa66f34bf999ea6f838a5b104923822cfff2e5ae89"
     },
     "core": {
       "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7"
@@ -3411,6 +3411,16 @@
       "topic": "/errors/gateway/#INVALID_IDEMPOTENCY_KEY"
     },
     {
+      "code": "INVALID_ISSUER",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#INVALID_ISSUER"
+    },
+    {
       "code": "INVALID_LABEL",
       "owners": [
         {
@@ -3667,6 +3677,26 @@
         }
       ],
       "topic": "/errors/gateway/#ISSUER_DISABLED"
+    },
+    {
+      "code": "ISSUER_NAME_TAKEN",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#ISSUER_NAME_TAKEN"
+    },
+    {
+      "code": "ISSUER_NOT_FOUND",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#ISSUER_NOT_FOUND"
     },
     {
       "code": "ISSUER_OUTSTANDING_CAP_REACHED",

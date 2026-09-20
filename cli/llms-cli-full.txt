@@ -229,7 +229,8 @@ run402 init --voucher R402-K8F3-Q2W9  # same redemption, folded into setup
   `voucher_error` in its JSON summary, and finishes normally.
 - Failures: `404 VOUCHER_NOT_FOUND` (unknown or malformed), `410
   VOUCHER_EXPIRED`, `409 VOUCHER_ALREADY_REDEEMED` (a different organization
-  used it), `403 PROMO_LIMIT_REACHED` (this org is at its lifetime ceiling).
+  used it), `403 PROMO_LIMIT_REACHED` (this org is at its lifetime ceiling for
+  that code's issuer; a code from another issuer has its own).
 
 Minting codes is not an agent operation — it needs an issuer key no tenant holds.
 

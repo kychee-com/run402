@@ -897,6 +897,9 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="INVALID_IDEMPOTENCY_KEY"></a>
 [`INVALID_IDEMPOTENCY_KEY`](/errors/gateway/#INVALID_IDEMPOTENCY_KEY)
 
+<a id="INVALID_ISSUER"></a>
+[`INVALID_ISSUER`](/errors/gateway/#INVALID_ISSUER)
+
 <a id="INVALID_LABEL"></a>
 [`INVALID_LABEL`](/errors/gateway/#INVALID_LABEL)
 
@@ -971,6 +974,12 @@ The catalog records owning source locations and pinned external contributions. A
 
 <a id="ISSUER_DISABLED"></a>
 [`ISSUER_DISABLED`](/errors/gateway/#ISSUER_DISABLED)
+
+<a id="ISSUER_NAME_TAKEN"></a>
+[`ISSUER_NAME_TAKEN`](/errors/gateway/#ISSUER_NAME_TAKEN)
+
+<a id="ISSUER_NOT_FOUND"></a>
+[`ISSUER_NOT_FOUND`](/errors/gateway/#ISSUER_NOT_FOUND)
 
 <a id="ISSUER_OUTSTANDING_CAP_REACHED"></a>
 [`ISSUER_OUTSTANDING_CAP_REACHED`](/errors/gateway/#ISSUER_OUTSTANDING_CAP_REACHED)

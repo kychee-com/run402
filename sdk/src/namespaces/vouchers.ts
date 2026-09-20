@@ -51,7 +51,11 @@ export interface RedeemVoucherResult {
    * reported honestly rather than dressed up as a fresh redemption.
    */
   already_redeemed: boolean;
-  /** Lifetime promo-credit ceiling for one organization. */
+  /**
+   * The lifetime promo-credit ceiling that applied: what this organization may
+   * ever redeem from THIS voucher's issuer, in total. A code from a different
+   * issuer (a launch voucher handed out by the platform) has its own ceiling.
+   */
   promo_lifetime_ceiling_usd_micros: number;
   next_actions: VoucherNextAction[];
 }

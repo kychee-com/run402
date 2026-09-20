@@ -1167,6 +1167,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="INVALID_IDEMPOTENCY_KEY"></a>
 [`INVALID_IDEMPOTENCY_KEY`](/errors/gateway/#INVALID_IDEMPOTENCY_KEY)
 
+<a id="invalid_issuer"></a>
+<a id="INVALID_ISSUER"></a>
+[`INVALID_ISSUER`](/errors/gateway/#INVALID_ISSUER)
+
 <a id="invalid_label"></a>
 <a id="INVALID_LABEL"></a>
 [`INVALID_LABEL`](/errors/gateway/#INVALID_LABEL)
@@ -1266,6 +1270,14 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="issuer_disabled"></a>
 <a id="ISSUER_DISABLED"></a>
 [`ISSUER_DISABLED`](/errors/gateway/#ISSUER_DISABLED)
+
+<a id="issuer_name_taken"></a>
+<a id="ISSUER_NAME_TAKEN"></a>
+[`ISSUER_NAME_TAKEN`](/errors/gateway/#ISSUER_NAME_TAKEN)
+
+<a id="issuer_not_found"></a>
+<a id="ISSUER_NOT_FOUND"></a>
+[`ISSUER_NOT_FOUND`](/errors/gateway/#ISSUER_NOT_FOUND)
 
 <a id="issuer_outstanding_cap_reached"></a>
 <a id="ISSUER_OUTSTANDING_CAP_REACHED"></a>
