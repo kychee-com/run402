@@ -35,11 +35,13 @@ import {
 const HELP = `run402 subscriptions — which events go where
 
 Usage:
-  run402 subscriptions add --contact <binding_id> [--project <id>] [--source app|platform] [--type a,b] [--class a,b]
+  run402 subscriptions add --binding <binding_id> [--project <id>] [--source app|platform] [--type a,b] [--class a,b]
   run402 subscriptions list
   run402 subscriptions rm <subscription_id>
 
 Notes:
+  - <binding_id> is the id of an ACTIVE telegram row in \`run402 contacts list\`.
+    \`--contact <binding_id>\` is accepted as an alias of \`--binding\`.
   - Absent dimensions are wildcards; an explicit empty list matches NOTHING.
   - A subscription naming a platform-emitted event type cannot match today —
     the delivery pipeline carries app and agent-messaging sources only. The
@@ -59,22 +61,28 @@ function splitCsv(value) {
     .filter((s) => s.length > 0);
 }
 
+/** Value flags `subscriptions add` accepts. Exported so the help/parser
+ *  consistency test can assert every flag HELP teaches is one the parser
+ *  takes — the v4.82.0 split rewrote HELP to `--contact` while the parser
+ *  kept `--binding`, and nothing caught the drift. `--contact` stays as an
+ *  alias for anyone who learned it from that help text. */
+export const SUBSCRIPTIONS_ADD_VALUE_FLAGS = ["--binding", "--contact", "--project", "--source", "--type", "--class"];
+export const SUBSCRIPTIONS_ADD_USAGE =
+  "run402 subscriptions add --binding <binding_id> [--project <id>] [--source app|platform] [--type a,b] [--class a,b]";
+export { HELP as SUBSCRIPTIONS_HELP };
+
 async function rulesAdd(args) {
   const a = normalizeArgv(args);
-  const valueFlags = ["--binding", "--project", "--source", "--type", "--class"];
+  const valueFlags = SUBSCRIPTIONS_ADD_VALUE_FLAGS;
   assertKnownFlags(a, [...valueFlags, "--help", "-h"], valueFlags);
   const positionals = positionalArgs(a, valueFlags);
   if (positionals.length > 0) {
-    fail({ code: "BAD_USAGE", message: `Unexpected argument for notifications rules add: ${positionals[0]}` });
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for subscriptions add: ${positionals[0]}` });
   }
 
-  const bindingId = flagValue(a, "--binding");
+  const bindingId = flagValue(a, "--binding") ?? flagValue(a, "--contact");
   if (!bindingId) {
-    fail({
-      code: "BAD_USAGE",
-      message:
-        "Usage: run402 notifications rules add --binding <binding_id> [--project <id>] [--source app|platform] [--type a,b] [--class a,b]",
-    });
+    fail({ code: "BAD_USAGE", message: `Usage: ${SUBSCRIPTIONS_ADD_USAGE}` });
   }
   const projectId = flagValue(a, "--project");
   const source = flagValue(a, "--source");
