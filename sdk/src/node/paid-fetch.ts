@@ -238,7 +238,7 @@ function withCreditShortfall(error: X402BalanceError, challengeBody: Record<stri
   const shortfall = Number(c.shortfall_usd_micros);
   if (![available, price, shortfall].every(Number.isFinite)) return error;
   const priorDetails = (error.body as { details?: Record<string, unknown> } | null)?.details ?? {};
-  const enriched = new X402BalanceError(
+  return new X402BalanceError(
     "X402_INSUFFICIENT_FUNDS",
     `Prepaid credit ($${(available / 1_000_000).toFixed(2)}) does not cover this ($${(price / 1_000_000).toFixed(2)}), and the wallet holds no USDC for the $${(shortfall / 1_000_000).toFixed(2)} shortfall.`,
     {
@@ -246,16 +246,12 @@ function withCreditShortfall(error: X402BalanceError, challengeBody: Record<stri
       credit: { available_usd_micros: available, price_usd_micros: price, shortfall_usd_micros: shortfall },
     },
     error.cause,
-  );
-  const body = enriched.body as { next_actions?: unknown[] } | null;
-  if (body) {
-    body.next_actions = [
+    [
       { type: "redeem_voucher", cli: "run402 redeem <code>", why: "A promo code credits the organization; credit settles a tier with no on-chain payment." },
       { type: "top_up", why: "Add prepaid credit to the organization (Lightning or card), then retry." },
       { type: "fund_wallet", why: "Or fund the allowance wallet with USDC on an accepted network for the shortfall, then retry." },
-    ];
-  }
-  return enriched;
+    ],
+  );
 }
 
 export class X402BalanceError extends Run402Error {
@@ -268,6 +264,7 @@ export class X402BalanceError extends Run402Error {
     message: string,
     details: Record<string, unknown>,
     cause?: unknown,
+    nextActions?: import("../errors.js").NextAction[],
   ) {
     const rpcFailure = code !== "X402_INSUFFICIENT_FUNDS";
     super(
@@ -287,7 +284,7 @@ export class X402BalanceError extends Run402Error {
           payment_started: false,
           ...details,
         },
-        next_actions: rpcFailure
+        next_actions: nextActions ?? (rpcFailure
           ? [
               {
                 type: "retry",
@@ -299,7 +296,7 @@ export class X402BalanceError extends Run402Error {
                 type: "fund_wallet",
                 why: "Fund the configured allowance wallet on an accepted network, then retry.",
               },
-            ],
+            ]),
       },
       "checking x402 USDC balance",
     );
