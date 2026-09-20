@@ -291,36 +291,50 @@ export class Run402 {
    * (so you can address a different project ad-hoc through a scoped handle).
    *
    * Resolution rules:
-   * - Explicit `id`: scope is bound to that id immediately. The keystore is
-   *   NOT consulted at construction; the first method call that needs keys
-   *   will throw `ProjectNotFound` if the id is unknown.
-   * - No argument: the SDK calls `credentials.getActiveProject()`. Throws
-   *   `LocalError` (context: "scoping client to project") when the provider
-   *   does not implement `getActiveProject` or returns `null`.
+   * - Explicit `id`: scope is bound to that id immediately and SYNCHRONOUSLY —
+   *   `r.project(id).apply(spec)` is the documented hero and needs no `await`
+   *   (an `await` on the returned client is a harmless no-op, so existing
+   *   awaiting callers keep working). The keystore is NOT consulted at
+   *   construction; the first method call that needs keys will throw
+   *   `ProjectNotFound` if the id is unknown.
+   * - No argument: the SDK calls `credentials.getActiveProject()`, which is
+   *   async, so this form returns a Promise. Throws `LocalError` (context:
+   *   "scoping client to project") when the provider does not implement
+   *   `getActiveProject` or returns `null`.
+   *
+   * Until 4.90.x both forms returned a Promise, so a plain-JavaScript caller
+   * writing the documented `r.project(id).apply.plan(...)` got
+   * `undefined.plan` at runtime while TypeScript callers were saved only by the
+   * Promise type. The overload makes the explicit-id contract match its docs.
    *
    * `project()` does NOT mutate keystore state — use {@link useProject} for
    * the persist-then-scope shorthand.
    */
-  async project(id?: string): Promise<ScopedRun402> {
-    let resolvedId = id;
-    if (resolvedId === undefined) {
-      const getter = this.#client.credentials.getActiveProject;
-      if (!getter) {
-        throw new LocalError(
-          "r.project() with no id requires a credential provider that implements getActiveProject(). Pass an explicit id, or use @run402/sdk/node.",
-          "scoping client to project",
-        );
-      }
-      const active = await getter.call(this.#client.credentials);
-      if (!active) {
-        throw new LocalError(
-          "No active project set. Call `r.projects.use(id)` (or `run402 projects use <id>`) to set one, or pass an explicit id to `r.project(id)`.",
-          "scoping client to project",
-        );
-      }
-      resolvedId = active;
+  project(id: string): ScopedRun402;
+  project(): Promise<ScopedRun402>;
+  project(id?: string): ScopedRun402 | Promise<ScopedRun402> {
+    if (id !== undefined) {
+      return new ScopedRun402(this, this.#client, id);
     }
-    return new ScopedRun402(this, this.#client, resolvedId);
+    return this.#projectFromActive();
+  }
+
+  async #projectFromActive(): Promise<ScopedRun402> {
+    const getter = this.#client.credentials.getActiveProject;
+    if (!getter) {
+      throw new LocalError(
+        "r.project() with no id requires a credential provider that implements getActiveProject(). Pass an explicit id, or use @run402/sdk/node.",
+        "scoping client to project",
+      );
+    }
+    const active = await getter.call(this.#client.credentials);
+    if (!active) {
+      throw new LocalError(
+        "No active project set. Call `r.projects.use(id)` (or `run402 projects use <id>`) to set one, or pass an explicit id to `r.project(id)`.",
+        "scoping client to project",
+      );
+    }
+    return new ScopedRun402(this, this.#client, active);
   }
 
   /**

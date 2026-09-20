@@ -125,8 +125,8 @@ The SDK is the canonical kernel — a single typed client with a `CredentialsPro
 
 ### Project-scoped sub-client (`r.project(id?)`)
 
-- `r.project(id)` — bind to an explicit id; no keystore lookup at construction (lazy: errors surface from the first method call that needs keys).
-- `r.project()` — resolve from `credentials.getActiveProject()`. Throws `LocalError` (context: "scoping client to project") when the provider has no active-project state or returns null.
+- `r.project(id)` — bind to an explicit id, **synchronously** (returns `ScopedRun402`, so `r.project(id).apply(spec)` needs no `await`; awaiting it is a harmless no-op); no keystore lookup at construction (lazy: errors surface from the first method call that needs keys).
+- `r.project()` — resolve from `credentials.getActiveProject()`; this form is async and returns `Promise<ScopedRun402>`. Throws `LocalError` (context: "scoping client to project") when the provider has no active-project state or returns null.
 - `r.useProject(id)` — sugar: `r.projects.use(id)` + `r.project(id)` in one call. Mutates persistent keystore state (the active project is shared with concurrent CLI runs); use `r.project(id)` for transient in-script scoping.
 - The drift-protection test in `sdk/src/scoped.test.ts` asserts every project-id-bearing namespace method has a corresponding wrapper — adding a new method without a wrapper fails CI.
 

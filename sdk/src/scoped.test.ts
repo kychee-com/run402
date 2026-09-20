@@ -99,6 +99,20 @@ describe("r.project() resolution", () => {
     assert.equal(projectLookupCalls, 0, "getProject must NOT be called at construction");
   });
 
+  it("explicit id is SYNCHRONOUS: the documented `r.project(id).apply` hero needs no await", () => {
+    // Regression: through 4.90.x `project()` was `async` for both forms, so a
+    // plain-JavaScript caller writing the documented hero got `undefined.plan`
+    // ("Cannot read properties of undefined (reading 'plan')") at runtime.
+    const { fetch } = mockFetch(() => jsonResponse({}));
+    const sdk = makeSdk(makeCreds({}), fetch);
+    const p = sdk.project("prj_sync");
+    assert.ok(p instanceof ScopedRun402, "explicit id returns the client itself, not a Promise");
+    assert.equal(typeof p.apply, "function");
+    assert.equal(typeof p.apply.plan, "function");
+    assert.equal(typeof p.apply.status, "function");
+    assert.equal(p.projectId, "prj_sync");
+  });
+
   it("no-arg call resolves from credentials.getActiveProject()", async () => {
     const creds = makeCreds({
       async getActiveProject() {

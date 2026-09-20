@@ -32,7 +32,9 @@ describe("live.changes", () => {
       calls.push({ url: String(input), headers: Object.fromEntries(new Headers(init?.headers).entries()) });
       return new Response(JSON.stringify({ changes: [], cursor: "0000abcd-4", resync: false, waited_seconds: 5 }), { status: 200, headers: { "content-type": "application/json" } });
     });
-    const page = await r.project("prj_1").then((p) => p.live.changes({ tables: ["cells", "notes"], cursor: "0000abcd-3", wait: 5 }));
+    // `r.project(id)` is synchronous for an explicit id (4.91+), so the scoped
+    // client is used directly; the held read is what is awaited.
+    const page = await r.project("prj_1").live.changes({ tables: ["cells", "notes"], cursor: "0000abcd-3", wait: 5 });
     assert.equal(page.cursor, "0000abcd-4");
     assert.equal(calls[0].url, "https://api.example/live/v1/changes?project_id=prj_1&tables=cells%2Cnotes&cursor=0000abcd-3&wait=5");
     assert.equal(calls[0].headers.apikey, "anon-key");
