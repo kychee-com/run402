@@ -316,6 +316,9 @@ import { setNotificationPreferencesSchema, handleSetNotificationPreferences } fr
 import { listNotificationsSchema, handleListNotifications } from "./tools/list-notifications.js";
 import { listProjectEventsSchema, handleListProjectEvents } from "./tools/list-project-events.js";
 import { joinRoomSchema, handleJoinRoom } from "./tools/join-room.js";
+import { listRoomsSchema, handleListRooms } from "./tools/list-rooms.js";
+import { getRoomSchema, handleGetRoom } from "./tools/get-room.js";
+import { leaveRoomSchema, handleLeaveRoom } from "./tools/leave-room.js";
 import { sendRoomMessageSchema, handleSendRoomMessage } from "./tools/send-room-message.js";
 import { raiseEscalationSchema, handleRaiseEscalation } from "./tools/raise-escalation.js";
 import { getEscalationSchema, handleGetEscalation } from "./tools/get-escalation.js";
@@ -1419,6 +1422,27 @@ server.tool(
   "Arrive in a project's coordination room: register (or reuse) this session's presence and see who else is live, what they're working on, and what they've claimed — the one-call 'arrive and look' before starting work. Every project has a default room (project_id addresses it; the room key IS the project id) and orgs can have named rooms (org_id + room_key) for multi-repo products; rooms auto-vivify. Pass requested_name to choose your own name — honored when free, deterministically suffixed on collision (Opus -> Opus-2) with the outcome reported, never an error — and task so other agents know what you're doing. Presences are per-SESSION (two sessions of the same agent are two presences) and expire after ~1h of silence; names are unique per room forever. Reach for this at the start of any session on a project other agents might also be working on.",
   joinRoomSchema,
   async (args) => handleJoinRoom(args),
+);
+
+server.tool(
+  "list_rooms",
+  "Which rooms can I reach in this org. Rooms are derived from use — a room is the pair (org_id, room_key), auto-vivified on first write — so a key nobody has written under is not a room and is not listed. Returns {rooms: [{org_id, room_key, project_id, live_presences, last_activity_at}]}, newest activity first; project_id is non-null exactly when the key is a project id (that project's default room). Pass org_id, or project_id for its owning org; omit both to use the checkout's own context.",
+  listRoomsSchema,
+  async (args) => handleListRooms(args),
+);
+
+server.tool(
+  "get_room",
+  "Look at one room WITHOUT joining it: is anyone here, and when did anything last happen. join_room would answer the same question by registering your presence, which changes the room; this does not. Returns the room summary {org_id, room_key, project_id, live_presences, last_activity_at}; a key nothing has been written under reads as empty (live_presences: 0, last_activity_at: null), never 404. A room key is a label: a project id (prj_…) or any label matching /^[a-z0-9][a-z0-9._-]{0,63}$/.",
+  getRoomSchema,
+  async (args) => handleGetRoom(args),
+);
+
+server.tool(
+  "leave_room",
+  "You are done: release this session's presence so it stops reading as live and stops holding its claims. Presence otherwise expires after ~1h of silence, so a finished session that never leaves keeps holding repo:<glob> claims for the rest of that hour and the next agent sees a phantom colleague. Omit presence_id to release the presence this server registered at join_room; pass one to release a specific presence of your OWN principal (a crashed predecessor). Idempotent: an already-expired, already-released, or another principal's presence reports left: false rather than failing.",
+  leaveRoomSchema,
+  async (args) => handleLeaveRoom(args),
 );
 
 server.tool(

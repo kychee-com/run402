@@ -269,9 +269,11 @@ export const COMMAND_MANIFEST = [
   // add-room-invite design D9: `rooms join` is one verb, two forms — no
   // positional registers a presence (the behaviorally-tested path, unchanged
   // by the optional positional below since minimalArgs stays empty); a
-  // `kri1_…` positional claims a room seat first (a real x402 payment + an
+  // `kri1_…` positional redeems the key first (a real x402 payment + an
   // org-membership mutation), so that form is never behaviorally exercised
   // here — the same reasoning `repos join`'s own row states.
+  { path: ["rooms", "list"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
+  { path: ["rooms", "get"], positionals: [p("room_key")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["run402-dev"], runStyle: "sub" },
   { path: ["rooms", "join"], positionals: [p("key", { required: false })], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
   { path: ["rooms", "invite"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "mints a single-use bearer key from a live room, registering the inviter's presence and posting a real room message — never run against the gate's own checkout" },
   { path: ["rooms", "leave"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
@@ -540,15 +542,6 @@ export const SKIPPED_FAMILIES = {
 export const RESERVED_SUBCOMMANDS = {
   "source-access:export": "moved to `repos recovery-bundle` — the artifact `repos recover --bundle` consumes belongs to the repos family",
   "source-access:status": "moved to `repos access` — your own wrapper custody rides its member_custody block; the org advisory is `doctor --only recovery_posture`",
-  "rooms:who": "renamed to `rooms join` — an interrogative must not name a write",
-  "rooms:send": "moved to `messages send` — the verb acts on a message",
-  // The routes and SDK methods for room list/get exist (agent-room-lifecycle);
-  // only these two SPELLINGS are held back, because they were freed from
-  // meaning "list/get MESSAGES" and a reused spelling changes meaning without
-  // ever failing. One major, then they may name the room.
-  "rooms:list": "moved to `messages list` — the verb acts on a message",
-  "rooms:get": "moved to `messages get` — the verb acts on a message",
-  "rooms:ack": "moved to `messages ack` — the verb acts on a message",
   "escalations:contacts": "merged into `contacts` — the ladder and Telegram channels are one question",
   // Every `gitvault <verb>` spelling. Nine
   // answer COMMAND_MOVED naming their `repos` successor; `push` and

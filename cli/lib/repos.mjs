@@ -2067,15 +2067,15 @@ async function invite(args) {
     console.error(`invite minted: role ${result.minted_role}, expires ${result.expires_at}, room ${result.room?.room_key ?? "(unknown)"}`);
     console.error(`recipient runs: kygit join <key printed below>`);
     if (result.inviter_presence && result.inviter_presence.registered === false) {
-      console.error(`note: your own presence was not registered (${result.inviter_presence.error}) — the invite still mints and is claimable`);
+      console.error(`note: your own presence was not registered (${result.inviter_presence.error}) — the invite still mints and can be redeemed`);
     }
-    if (result.room_fact && result.room_fact.posted === false) {
-      console.error(`note: the room fact was not posted (${result.room_fact.reason}) — the invite still mints and remains claimable`);
+    if (result.room_message && result.room_message.posted === false) {
+      console.error(`note: the room message was not posted (${result.room_message.reason}) — the invite still mints and can still be redeemed`);
     }
-    // The inviter's own fact must not wake the inviter's next `messages wait`:
+    // The inviter's own message must not wake the inviter's next `messages wait`:
     // advance this checkout's stored cursor past it (best-effort).
-    if (result.room?.room_key && result.room_fact?.posted && typeof result.room_fact.cursor === "string") {
-      try { updateRoomState(result.room.organization_id, result.room.room_key, { cursor: result.room_fact.cursor }); } catch { /* never fails a mint */ }
+    if (result.room?.room_key && result.room_message?.posted && typeof result.room_message.cursor === "string") {
+      try { updateRoomState(result.room.organization_id, result.room.room_key, { cursor: result.room_message.cursor }); } catch { /* never fails a mint */ }
     }
     if (asJson) {
       printJson(sdk, result);

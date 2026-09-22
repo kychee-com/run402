@@ -716,11 +716,11 @@ export interface GitvaultInviteRoom {
   room_key: string;
 }
 
-/** Best-effort report of whether {@link Gitvault.invite}'s room fact was posted — a failure here (e.g. the daily quota) never voids the mint (design D4). */
-export interface GitvaultInviteRoomFactResult {
+/** Best-effort report of whether {@link Gitvault.invite}'s room message was posted — a failure here (e.g. the daily quota) never voids the mint (design D4). */
+export interface GitvaultInviteRoomMessageResult {
   posted: boolean;
   message_id?: string;
-  /** The posted fact's room cursor — a CLI advances the inviter's stored cursor past it, so the inviter's own `messages wait` is woken by the joiner's arrival, never by its own fact. */
+  /** The posted message's room cursor — a CLI advances the inviter's stored cursor past it, so the inviter's own `messages wait` is woken by the joiner's arrival, never by its own message. */
   cursor?: string;
   reason?: string;
 }
@@ -752,7 +752,7 @@ export interface GitvaultInviteMintResult {
   /** The full local capture result, for a caller that wants more than the summarized `capture` block. */
   snapshot: import("../node/gitvault-snapshot.js").GitvaultHandoffSnapshot;
   inviter_presence: GitvaultInvitePresenceResult;
-  room_fact: GitvaultInviteRoomFactResult;
+  room_message: GitvaultInviteRoomMessageResult;
   warnings: { code: string; message: string }[];
   next_actions: NextAction[];
 }
@@ -3039,9 +3039,9 @@ export class Gitvault {
    * `inviter_presence_id`; a registration failure is reported and the mint
    * proceeds without one), seal the vault's current epoch key under a fresh
    * `wrap_key`, mint through the gateway at `developer` (or `role`,
-   * attenuated to never exceed the minter's own), and post ONE fact from
+   * attenuated to never exceed the minter's own), and post ONE message from
    * the inviter's presence naming the checkpoint and the invite id (never
-   * the key) — a fact-post failure is reported in `room_fact` and never
+   * the key) — a message-post failure is reported in `room_message` and never
    * voids the mint (design D4). The assembled `kgi1_…` key is returned
    * exactly ONCE — nothing here or downstream persists it. Creating an
    * invite never touches the inviter's worktree, index, branch, refs, or
@@ -3294,10 +3294,10 @@ export class Gitvault {
       );
     }
 
-    // design D4: post the fact AFTER the mint succeeds — a mint refusal must
-    // leave no orphan message, and a fact-post failure never voids a mint
+    // design D4: post the message AFTER the mint succeeds — a mint refusal must
+    // leave no orphan message, and a message-post failure never voids a mint
     // the caller may already have copied the key from.
-    let roomFact: GitvaultInviteRoomFactResult = { posted: false, reason: "inviter presence was not registered" };
+    let roomMessage: GitvaultInviteRoomMessageResult = { posted: false, reason: "inviter presence was not registered" };
     if (inviterPresence) {
       const receiptShort = snapshot.oid.slice(0, 12);
       const inviteShort = response.invite_id.slice(0, 8);
@@ -3308,9 +3308,9 @@ export class Gitvault {
           ...(options.sessionKey !== undefined ? { sessionKey: options.sessionKey } : {}),
           idempotencyKey: `invite:${response.invite_id}:minted`,
         });
-        roomFact = { posted: true, message_id: sent.message_id, cursor: sent.cursor };
+        roomMessage = { posted: true, message_id: sent.message_id, cursor: sent.cursor };
       } catch (e) {
-        roomFact = { posted: false, reason: e instanceof Error ? e.message : String(e) };
+        roomMessage = { posted: false, reason: e instanceof Error ? e.message : String(e) };
       }
     }
 
@@ -3352,7 +3352,7 @@ export class Gitvault {
       },
       snapshot,
       inviter_presence: inviterPresenceReport,
-      room_fact: roomFact,
+      room_message: roomMessage,
       warnings: response.warnings ?? [],
       next_actions: nextActions,
     };

@@ -44,6 +44,8 @@ const INVITE_VALUE_FLAGS = [...ROOM_FLAGS, "--note", "--note-file", "--expires-i
 const HELP = `run402 rooms — arrive in a room, see who is live, leave when done
 
 Usage:
+  run402 rooms list [--org <org_id>]
+  run402 rooms get <room_key> [--org <org_id>]
   run402 rooms join [--name <name>] [--task <text>]
   run402 rooms join <kri1_…> [--json]
   run402 rooms invite [--note <text> | --note-file <path> | stdin]
@@ -57,7 +59,7 @@ Addressing:
                     wallet profile's selected org
 
 Room Invite (mint a key from the room you stand in, join through one):
-  - \`rooms invite\` mints a single-use \`kri1_…\` bearer key. Whoever claims it
+  - \`rooms invite\` mints a single-use \`kri1_…\` bearer key. Whoever redeems it
     FIRST becomes a permanent \`viewer\` of this org — the narrowest membership
     that can message, and NEVER wider: there is no --role, and a viewer can
     never be auto-admitted as a vault writer. To bring a collaborator into the
@@ -66,8 +68,8 @@ Room Invite (mint a key from the room you stand in, join through one):
   - The key is printed to stdout EXACTLY ONCE (\`--json\` still keeps it out of
     stderr). It is not recoverable if lost — mint a new one.
   - \`rooms join <kri1_…>\` folds a funded-wallet chain (allowance → faucet if
-    empty → briefly wait for settlement) and pays a $0.01 testnet seat via
-    x402 to claim it — the payment IS the join, so a joiner with no funds
+    empty → briefly wait for settlement) and pays a $0.01 testnet charge via
+    x402 to redeem it — the payment IS the join, so a joiner with no funds
     fails closed rather than joining unpaid. No tier is purchased, no project
     is created. A same-payer replay never pays twice.
   - After a key-form join: the host org becomes this wallet's current org,
@@ -78,6 +80,14 @@ Room Invite (mint a key from the room you stand in, join through one):
     stranger's clone).
 
 Notes:
+  - A room key is a label: a project id (prj_…) or any label matching
+    /^[a-z0-9][a-z0-9._-]{0,63}$/. A project's default room is keyed by the
+    project id verbatim, with no prefix.
+  - list enumerates the rooms this credential can reach in the org (derived
+    from use — a key nobody has written under is not a room), newest activity
+    first. get inspects one room WITHOUT joining it (joining registers a
+    presence, which changes what you are looking at); an unused key reads as
+    empty (live_presences: 0, last_activity_at: null), never 404.
   - join registers this session's presence and returns who else is live, what
     they are working on, and what they have claimed — the arrive-and-look call.
   - A quiet session's presence now resumes automatically across an idle gap
@@ -94,7 +104,7 @@ Notes:
     the output says why. Omit --task and join best-effort fills it from your
     harness's own thread title (Claude Code or Codex) — set
     RUN402_NO_TASK_FROM_TITLE=1 to opt out.
-  - leave gives up THIS session's seat: its presence stops reading as live and
+  - leave releases THIS session's presence: it stops reading as live and
     its claims stop being held by a live session. Takes no argument — it uses
     the presence this checkout cached when it joined. Pass a \`prs_…\` only to
     release a specific one. Idempotent: a presence already gone (or belonging
@@ -103,11 +113,6 @@ Notes:
   - Presence otherwise expires after ~1h of silence, which is why leaving
     matters: without it a finished session keeps holding its claims for the
     rest of that hour.
-  - Enumerating reachable rooms and inspecting one are available on the API
-    and in the SDK (\`rooms.list\` / \`rooms.get\`) but NOT yet as CLI
-    spellings: \`rooms list\` and \`rooms get\` currently answer with their
-    message successors, and a spelling that changes meaning never fails. They
-    wait one major.
   - The messages themselves are \`run402 messages\`.
 `;
 
@@ -171,6 +176,62 @@ async function who(args) {
   }
 }
 
+/**
+ * `run402 rooms list` — the rooms this credential can reach in the org
+ * (`GET /orgs/v1/:org_id/rooms`), newest activity first. Rooms are derived
+ * from use, so a key nobody has written under is not listed.
+ */
+async function list(argv) {
+  const args = normalizeArgv(argv);
+  const valueFlags = ["--org", "--project"];
+  assertKnownFlags(args, [...valueFlags, "--help", "-h"], valueFlags);
+  requirePositionalCount(positionalArgs(args, valueFlags), valueFlags, {
+    min: 0, max: 0, command: "run402 rooms list [--org <org_id>]",
+  });
+  // An explicit --org is the whole address for a list; otherwise the org is
+  // whatever the room chain (RUN402_ROOM, a binding, the project default)
+  // resolves to.
+  const explicitOrg = flagValue(args, "--org");
+  const room = explicitOrg
+    ? { orgId: explicitOrg, orgSource: "flag", orgSourceDetail: "--org" }
+    : await resolveRoom({ project: flagValue(args, "--project") });
+  try {
+    const page = await getSdk().rooms.list(room.orgId);
+    console.log(JSON.stringify({
+      org_id: room.orgId,
+      org_source: room.orgSource ?? null,
+      org_source_detail: room.orgSourceDetail ?? null,
+      ...page,
+    }, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+/**
+ * `run402 rooms get <room_key>` — look at one room WITHOUT joining it
+ * (`GET /orgs/v1/:org_id/rooms/:room_key`). An unused key reads as empty,
+ * never 404.
+ */
+async function get(argv) {
+  const args = normalizeArgv(argv);
+  const valueFlags = ["--org", "--project"];
+  assertKnownFlags(args, [...valueFlags, "--help", "-h"], valueFlags);
+  const positionals = positionalArgs(args, valueFlags);
+  requirePositionalCount(positionals, valueFlags, {
+    min: 1, max: 1, command: "run402 rooms get <room_key> [--org <org_id>]", missing: "Missing required argument: <room_key>.",
+  });
+  const room = await resolveRoom({
+    org: flagValue(args, "--org"), room: positionals[0], project: flagValue(args, "--project"),
+  });
+  try {
+    const summary = await getSdk().rooms.get(room.orgId, room.roomKey);
+    console.log(JSON.stringify(summary, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
 async function leave(argv) {
   const args = normalizeArgv(argv);
   assertKnownFlags(args, [...ROOM_FLAGS, "--help", "-h"], ROOM_FLAGS);
@@ -184,8 +245,8 @@ async function leave(argv) {
     project: flagValue(args, "--project"),
   });
 
-  // No argument is the normal case: a session that is DONE knows which seat
-  // is its own, and asking it to name one would be asking it to look up a
+  // No argument is the normal case: a session that is DONE knows which
+  // presence is its own, and asking it to name one would be asking it to look up a
   // thing it already told us at join.
   const cached = cachedPresenceId(room.orgId, room.roomKey);
   const presenceId = positionals[0] ?? cached;
@@ -202,7 +263,7 @@ async function leave(argv) {
     const result = await getSdk().rooms.leave(room.orgId, room.roomKey, presenceId);
     // Only forget the cached id when the one we released WAS it. An explicit
     // id that turned out to be someone else's must not evict this session's
-    // own seat from the cache as a side effect.
+    // own presence from the cache as a side effect.
     if (result.left && presenceId === cached) {
       updateRoomState(room.orgId, room.roomKey, { presence_id: null });
     }
@@ -257,9 +318,9 @@ async function readRoomInviteNote(a) {
  * this checkout stands in: register-or-resume the inviter's OWN presence
  * FIRST (reusing {@link ensurePresence}, the same logic `rooms join`'s
  * no-key form already runs) so the row carries `inviter_presence_id`, mint,
- * post ONE room fact naming the invite id (never the key), echo the
+ * post ONE room message naming the invite id (never the key), echo the
  * gateway's blast-radius warning to stderr, and print the `kri1_` key to
- * stdout EXACTLY ONCE. A presence or fact failure is reported on the result
+ * stdout EXACTLY ONCE. A presence or message failure is reported on the result
  * and never voids the mint.
  */
 async function invite(argv) {
@@ -305,10 +366,10 @@ async function invite(argv) {
     console.error(`invite minted: role ${result.role}, expires ${result.expires_at}, room ${result.room?.room_key ?? room.roomKey}`);
     console.error("recipient runs: run402 rooms join <key printed below>");
 
-    // design D7: post ONE room fact AFTER the mint succeeds — never before
+    // design D7: post ONE room message AFTER the mint succeeds — never before
     // (a mint refusal must leave no orphan message), and never naming the
     // key, only the invite id.
-    let roomFact = { posted: false, reason: "inviter presence was not registered" };
+    let roomMessage = { posted: false, reason: "inviter presence was not registered" };
     if (inviterPresence) {
       const inviteShort = result.invite_id.slice(0, 8);
       try {
@@ -317,22 +378,22 @@ async function invite(argv) {
           presenceId: inviterPresence.presence_id,
           idempotencyKey: `room-invite:${result.invite_id}:minted`,
         });
-        roomFact = { posted: true, message_id: sent.message_id, cursor: sent.cursor };
-        // The inviter's own fact must not wake the inviter's next `messages
+        roomMessage = { posted: true, message_id: sent.message_id, cursor: sent.cursor };
+        // The inviter's own message must not wake the inviter's next `messages
         // wait` — advance this checkout's stored cursor past it (best-effort).
         try { updateRoomState(room.orgId, room.roomKey, { cursor: sent.cursor }); } catch { /* never fails a mint */ }
       } catch (e) {
-        roomFact = { posted: false, reason: e instanceof Error ? e.message : String(e) };
+        roomMessage = { posted: false, reason: e instanceof Error ? e.message : String(e) };
       }
     }
     if (inviterPresenceReport.registered === false) {
-      console.error(`note: your own presence was not registered (${inviterPresenceReport.error}) — the invite still mints and is claimable`);
+      console.error(`note: your own presence was not registered (${inviterPresenceReport.error}) — the invite still mints and can be redeemed`);
     }
-    if (roomFact.posted === false && inviterPresence) {
-      console.error(`note: the room fact was not posted (${roomFact.reason}) — the invite still mints and remains claimable`);
+    if (roomMessage.posted === false && inviterPresence) {
+      console.error(`note: the room message was not posted (${roomMessage.reason}) — the invite still mints and can still be redeemed`);
     }
 
-    const finalResult = { ...result, inviter_presence: inviterPresenceReport, room_fact: roomFact };
+    const finalResult = { ...result, inviter_presence: inviterPresenceReport, room_message: roomMessage };
     if (asJson) {
       printInviteResultJson(finalResult);
     } else {
@@ -357,7 +418,7 @@ function printInviteResultKeyOnly(result) {
  * `run402 rooms join <kri1_…>` (add-room-invite design D9/D10) — parse the
  * key CLIENT-SIDE first (a wrong-kind vault key refuses by name before ANY
  * network call, including the faucet), fold `ensureFundedWallet` (allowance
- * → faucet-if-empty → brief settlement poll, announced on stderr), claim
+ * → faucet-if-empty → brief settlement poll, announced on stderr), redeem
  * through the SDK's paid fetch, then leave arrival state exactly where
  * `run402 messages wait` reads it: the host org as this wallet's current
  * org; the binding written to `.run402.json` outside a git repository, or
@@ -384,8 +445,8 @@ async function joinWithKey(key, a) {
     await ensureFundedWallet((line) => console.error(line));
     const result = await getSdk().rooms.join(key);
 
-    // Arrival state (design D10) — best-effort throughout: the claim already
-    // succeeded, and none of this may fail a completed join.
+    // Arrival state (design D10) — best-effort throughout: the redemption
+    // already succeeded, and none of this may fail a completed join.
     try {
       const { setSelectedOrgId } = await import("./org-context.mjs");
       setSelectedOrgId(result.org_id);
@@ -415,7 +476,7 @@ async function joinWithKey(key, a) {
     if (typeof result.cursor === "string") {
       try { updateRoomState(result.org_id, result.room.room_key, { cursor: result.cursor }); } catch { /* best-effort */ }
     }
-    // Live-proof defect A: cache the presence the CLAIM ITSELF registered,
+    // Live-proof defect A: cache the presence the REDEMPTION ITSELF registered,
     // exactly the way `registerFreshPresence`'s no-key `join` already does
     // via `rememberPresence` — without this, the joiner's very next
     // coordination call (no cached presence_id) registers a SECOND presence
@@ -430,20 +491,20 @@ async function joinWithKey(key, a) {
     }
 
     if (asJson) {
-      printClaimResultJson(result, nextActions);
+      printJoinResultJson(result, nextActions);
     } else {
-      renderClaimResultText(result, nextActions);
+      renderJoinResultText(result, nextActions);
     }
   } catch (err) {
     reportSdkError(err);
   }
 }
 
-function printClaimResultJson(result, nextActions) {
+function printJoinResultJson(result, nextActions) {
   console.log(JSON.stringify({ ...result, next_actions: nextActions }, null, 2));
 }
 
-function renderClaimResultText(result, nextActions) {
+function renderJoinResultText(result, nextActions) {
   // The note is plain text, not a structured schema — printed verbatim as
   // Markdown (it may already contain Markdown formatting the inviter wrote).
   if (result.note) {
@@ -452,9 +513,9 @@ function renderClaimResultText(result, nextActions) {
   }
   console.error(`joined org ${result.org_id}, room ${result.room.room_key} — role ${result.membership.role}`);
   if (result.deduplicated) {
-    console.error("note: this key was already claimed by this same payer — no second payment was made (safe replay)");
+    console.error("note: this key was already redeemed by this same payer — no second payment was made (safe replay)");
   }
-  console.error(`seat: $${(result.seat.amount_usd_micros / 1_000_000).toFixed(2)} on ${result.seat.network}${result.seat.charge_id ? ` (charge ${result.seat.charge_id})` : ""}`);
+  console.error(`charge: $${(result.seat.amount_usd_micros / 1_000_000).toFixed(2)} on ${result.seat.network}${result.seat.charge_id ? ` (charge ${result.seat.charge_id})` : ""}`);
   if (result.inviter) {
     const labels = [result.inviter.program, result.inviter.model].filter(Boolean).join("/");
     const liveness = result.inviter.state === "active" ? "live" : result.inviter.state;
@@ -485,7 +546,7 @@ export async function run(sub, args) {
   switch (sub) {
     case "join": {
       // `run402 rooms join <kri1_…>` (add-room-invite design D9): a
-      // positional key form claims a seat and arrives; no positional keeps
+      // positional key form redeems the key and arrives; no positional keeps
       // the existing arrive-and-look behavior unchanged.
       const a = normalizeArgv(argv);
       const positionals = positionalArgs(a, ["--name", "--task", ...ROOM_FLAGS]);
@@ -506,39 +567,14 @@ export async function run(sub, args) {
       await leave(argv);
       break;
     }
-    // `list` and `get` are NOT here, and this is deliberate rather than
-    // missing: the ROUTES exist (agent-room-lifecycle) and the SDK exposes
-    // them as `rooms.list` / `rooms.get`. These two SPELLINGS are reserved —
-    // a freed spelling stays dead for one major before anything reuses it.
-    // Reissuing them now with room semantics would never fail — an agent
-    // holding `rooms list` would get a successful response containing
-    // different data and nothing would tell it the world moved.
-    // Retired here, and NOT aliased: each answers with its successor so one
-    // failed call teaches the new model, where an alias would teach the old
-    // one forever.
-    case "who":
-      fail({
-        code: "COMMAND_REMOVED",
-        message: "`run402 rooms who` was renamed to `run402 rooms join`.",
-        hint: "run402 rooms join --name <name> --task <text>",
-        details: { was: "rooms who", now: "rooms join", why: "an interrogative must not name a write — it registers a presence" },
-      });
+    case "list": {
+      await list(argv);
       break;
-    case "list":
-    case "get":
-    case "send":
-    case "ack":
-      fail({
-        code: "COMMAND_REMOVED",
-        message: `\`run402 rooms ${sub}\` moved to \`run402 messages ${sub}\`.`,
-        hint: `run402 messages ${sub}`,
-        details: {
-          was: `rooms ${sub}`,
-          now: `messages ${sub}`,
-          why: "the verb acts on a message, not on the room that contains it",
-        },
-      });
+    }
+    case "get": {
+      await get(argv);
       break;
+    }
     default:
       failUnknownSubcommand("rooms", sub, {
         hint: "Run `run402 rooms --help` for usage.",

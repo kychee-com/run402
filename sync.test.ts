@@ -592,30 +592,26 @@ const SURFACE: Capability[] = [
   { id: "live_changes",                 endpoint: "GET /live/v1 + GET /live/v1/changes (+ /_run402/live* on tenant hosts)", mcp: null, cli: "live", openclaw: "live" },
 
   // ── Agent messaging — coordination rooms (add-agent-messaging) ──────────
-  // One CLI family per resource: `rooms` (the room itself: join), `messages`
-  // (the messages in it: send/list/get/ack) and `claims`. The split is
-  // legible-cli-surface — four of the old `rooms` verbs acted on a message. join_room folds presence-register + who + claims
-  // into the single arrival call; read_room_messages folds list + get-one
-  // (message_id param). Org-scoped addressing (org_id + room_key) and the
-  // default-room resolution (rooms.forProject) ride the same tools/commands.
+  // One CLI family per resource: `rooms` (the room itself: list/get/join/
+  // leave), `messages` (the messages in it: send/list/get/ack) and `claims`.
+  // join_room folds presence-register + who + claims into the single arrival
+  // call; read_room_messages folds list + get-one (message_id param).
+  // Org-scoped addressing (org_id + room_key) and the default-room
+  // resolution (rooms.forProject) ride the same tools/commands.
   // add-room-invite: `run402 rooms join` is ONE CLI verb with two forms — no
   // positional registers a presence (the route below); a `kri1_…` positional
-  // claims a room-seat FIRST (`POST /rooms/v1/invites/:invite_id/claim`,
+  // redeems the key FIRST (`POST /rooms/v1/invites/:invite_id/redeem`,
   // x402-paid, folded in the same way `operator_login`'s endpoint parenthetically
-  // names its own second route) and only then arrives. The claim's own SDK
+  // names its own second route) and only then arrives. The redemption's own SDK
   // method (`rooms.join`) has no capability row of its own — same law as
   // `operator.devicePoll` sharing the `login` verb — see SDK_ONLY_METHODS.
-  { id: "join_room",                    endpoint: "POST /orgs/v1/:org_id/rooms/:room_key/presences (+ POST /rooms/v1/invites/:invite_id/claim)", mcp: "join_room",                    cli: "rooms:join", openclaw: "rooms:join" },
-  { id: "leave_room",                   endpoint: "DELETE /orgs/v1/:org_id/rooms/:room_key/presences/:presence_id", mcp: null, cli: "rooms:leave", openclaw: "rooms:leave" },
-  // list_rooms / get_room ship on the API and the SDK but NOT as CLI
-  // spellings: `rooms list` and `rooms get` were freed from meaning "list/get
-  // MESSAGES" and a reused spelling changes meaning without ever failing
-  // (agent-room-lifecycle D5 / legible-cli-surface D3b). They wait one major.
-  // MCP is a deliberate non-goal — join_room already folds presence + who +
-  // claims into arrival, and an agent handed its room by its harness would
-  // never reach for a discovery tool.
-  { id: "list_rooms",                   endpoint: "GET /orgs/v1/:org_id/rooms", mcp: null, cli: null, openclaw: null },
-  { id: "get_room",                     endpoint: "GET /orgs/v1/:org_id/rooms/:room_key", mcp: null, cli: null, openclaw: null },
+  { id: "join_room",                    endpoint: "POST /orgs/v1/:org_id/rooms/:room_key/presences (+ POST /rooms/v1/invites/:invite_id/redeem)", mcp: "join_room",                    cli: "rooms:join", openclaw: "rooms:join" },
+  { id: "leave_room",                   endpoint: "DELETE /orgs/v1/:org_id/rooms/:room_key/presences/:presence_id", mcp: "leave_room", cli: "rooms:leave", openclaw: "rooms:leave" },
+  // Rooms are derived from use: list_rooms enumerates the rooms a credential
+  // can reach, get_room inspects one WITHOUT joining it (an unused key reads
+  // as empty, never 404).
+  { id: "list_rooms",                   endpoint: "GET /orgs/v1/:org_id/rooms", mcp: "list_rooms", cli: "rooms:list", openclaw: "rooms:list" },
+  { id: "get_room",                     endpoint: "GET /orgs/v1/:org_id/rooms/:room_key", mcp: "get_room", cli: "rooms:get", openclaw: "rooms:get" },
   { id: "send_room_message",            endpoint: "POST /orgs/v1/:org_id/rooms/:room_key/messages", mcp: "send_room_message",            cli: "messages:send", openclaw: "messages:send" },
   { id: "read_room_messages",           endpoint: "GET /orgs/v1/:org_id/rooms/:room_key/messages", mcp: "read_room_messages",           cli: "messages:list", openclaw: "messages:list" },
   // kygit-invite design D6/D7: the agent's ear — a blocking wait built on
@@ -1653,7 +1649,7 @@ describe("SDK surface alignment", () => {
       // so it is not a second capability - it is the same one, spelled the
       // way it used to be. Delete it when the `message` vocabulary is reused.
       "admin.sendMessage",
-      // add-room-invite: the key-form claim `rooms join <kri1_…>` runs —
+      // add-room-invite: the key-form redemption `rooms join <kri1_…>` runs —
       // it has no capability row of its own, the same law as
       // `operator.devicePoll` sharing the `login` verb above: `join_room`'s
       // own CLI spelling (`rooms:join`) already covers both forms, and a
@@ -2304,10 +2300,7 @@ describe("SURFACE consistency", () => {
    * agent-facing verb is invisible to agents — so an entry here is a dated
    * decision, not a parking space. State what unblocks it.
    */
-  const SDK_ONLY_FOR_NOW: Record<string, string> = {
-    list_rooms: "the `rooms list` SPELLING was freed from meaning `messages list` and must stay dead one major before naming the room (agent-room-lifecycle D5); SDK: rooms.list",
-    get_room: "the `rooms get` SPELLING was freed from meaning `messages get` and must stay dead one major before naming the room (agent-room-lifecycle D5); SDK: rooms.get",
-  };
+  const SDK_ONLY_FOR_NOW: Record<string, string> = {};
 
   it("every capability is covered by at least one interface", () => {
     const uncovered = SURFACE.filter(c => !c.mcp && !c.cli && !c.openclaw && !(c.id in SDK_ONLY_FOR_NOW));

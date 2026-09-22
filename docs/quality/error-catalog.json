@@ -1414,10 +1414,6 @@
         {
           "owner": "public",
           "source": "cli/lib/notifications.mjs"
-        },
-        {
-          "owner": "public",
-          "source": "cli/lib/rooms.mjs"
         }
       ],
       "topic": "/errors/client/#COMMAND_REMOVED"

@@ -256,7 +256,7 @@ mock.module("./cli/lib/sdk.mjs", {
             capture: { modified_captured: 1, untracked_captured: 1, sensitive_excluded: [".env"], ignored_not_transferred_count: 0 },
             snapshot: { oid: "b".repeat(40) },
             inviter_presence: { registered: true, presence_id: "prs_inviter", name: "Opus" },
-            room_fact: { posted: true, message_id: "msg_1" },
+            room_message: { posted: true, message_id: "msg_1" },
             warnings: [{ code: "INVITE_KEY_CONFERS_ROLE", message: "Anyone holding this key becomes a developer of this org until first use or 2026-09-02T11:00:00.000Z." }],
             next_actions: [{ type: "join_invite", command: "kygit join kgi1_…" }, { type: "wait_room", command: "run402 messages wait" }],
           })))(input);
@@ -1991,7 +1991,7 @@ describe("run402 repos invite — mint a single-use Invite Key (kygit-invite des
     assert.equal(payload.state, "revoked");
   });
 
-  it("reports a not-posted room fact on stderr without failing the invite", async () => {
+  it("reports a not-posted room message on stderr without failing the invite", async () => {
     impl.invite = async () => ({
       invite_key: INVITE_KEY, invite_id: "3fa85f64-5717-4562-b3fc-2c963f66afa6", kind: "invite",
       minted_role: "developer", expires_at: "2026-09-02T11:00:00.000Z",
@@ -2001,12 +2001,12 @@ describe("run402 repos invite — mint a single-use Invite Key (kygit-invite des
       capture: { modified_captured: 0, untracked_captured: 0, sensitive_excluded: [], ignored_not_transferred_count: 0 },
       snapshot: { oid: "b".repeat(40) },
       inviter_presence: { registered: true, presence_id: "prs_1", name: "Opus" },
-      room_fact: { posted: false, reason: "daily message quota exceeded" },
+      room_message: { posted: false, reason: "daily message quota exceeded" },
       warnings: [], next_actions: [],
     });
     const notePath = writeNoteFile({ summary: "wip" });
     await human("invite", ["--project", PROJECT, "--note-file", notePath]);
-    assert.ok(stderr.some((l) => l.includes("the room fact was not posted (daily message quota exceeded)")));
+    assert.ok(stderr.some((l) => l.includes("the room message was not posted (daily message quota exceeded)")));
   });
 
   it("rejects an Invite Note file that is not valid JSON", async () => {
