@@ -1629,6 +1629,8 @@ After `accept`, the project carries a persistent `secrets_rotation_advised` advi
 
 What does NOT transfer: tier lease (stays with the original owner's organization; no Phase 1A proration), KMS signers (`r.contracts.*` — wallet-scoped), GitHub repo ownership (handle out of band), on-chain balance on any wallet.
 
+`r.orgs.adopt.challenge({ wallet, token? })` + `r.orgs.adopt.submit({ siwx, token?, orgId?, displayName? })` — adopt the org your wallet's agent owns (`POST /orgs/v1/adopt/challenge`, `POST /orgs/v1/adopt`): the raw dual-proof seam (write-capable sign-in session bearer + a fresh `SIGN-IN-WITH-X` signature over the challenge nonce). `submit` returns `AdoptResult`, a discriminated union: `{ status: "adopted", org_id, display_name, role, already_owned? }` or `{ status: "select_org", selectable_orgs }` (returned, never thrown — re-submit with `orgId`). The Node convenience `adoptOrg(r, { wallet?, orgId?, displayName?, token? })` from `@run402/sdk/node` runs the whole dance (read the cached session → challenge → `signOrgAdopt(nonce)` with the active wallet → submit); a stale session throws `StepUpRequiredError`.
+
 `r.orgs.setDisplayName(name)` — `PATCH /agent/v1/me`; the name promotion credit (`hand_to_operator.credited_as`), `r.up()`'s room presence, and audit surfaces show for this principal (1–64 chars). `r.up()` sets a detected default when it is empty.
 
 Due durable runs wait automatically while project concurrency slots are occupied. Waiting does not consume an execution attempt or retry budget. Keep the original run ID and inspect its status; do not cancel and recreate work merely because capacity is busy. Lifecycle and exhausted-quota blocks still require recovery.

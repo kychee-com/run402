@@ -101,6 +101,66 @@
       "topic": "/errors/gateway/#ADMIN_SQL_READ_ONLY"
     },
     {
+      "code": "ADOPT_CHALLENGE_INVALID",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#ADOPT_CHALLENGE_INVALID"
+    },
+    {
+      "code": "ADOPT_NOTHING_TO_ADOPT",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#ADOPT_NOTHING_TO_ADOPT"
+    },
+    {
+      "code": "ADOPT_SELF",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#ADOPT_SELF"
+    },
+    {
+      "code": "ADOPT_SOURCE_DISABLED",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#ADOPT_SOURCE_DISABLED"
+    },
+    {
+      "code": "ADOPT_SOURCE_NOT_AGENT",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#ADOPT_SOURCE_NOT_AGENT"
+    },
+    {
+      "code": "ADOPT_SOURCE_TOO_COMPLEX",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#ADOPT_SOURCE_TOO_COMPLEX"
+    },
+    {
       "code": "ALLOCATION_SUPERSEDED",
       "owners": [
         {
@@ -1281,66 +1341,6 @@
         }
       ],
       "topic": "/errors/client/#CI_SUBJECT_REQUIRED"
-    },
-    {
-      "code": "CLAIM_CHALLENGE_INVALID",
-      "owners": [
-        {
-          "owner": "gateway",
-          "source": "packages/gateway/src/utils/error-envelope.ts"
-        }
-      ],
-      "topic": "/errors/gateway/#CLAIM_CHALLENGE_INVALID"
-    },
-    {
-      "code": "CLAIM_NOTHING_TO_CLAIM",
-      "owners": [
-        {
-          "owner": "gateway",
-          "source": "packages/gateway/src/utils/error-envelope.ts"
-        }
-      ],
-      "topic": "/errors/gateway/#CLAIM_NOTHING_TO_CLAIM"
-    },
-    {
-      "code": "CLAIM_SELF",
-      "owners": [
-        {
-          "owner": "gateway",
-          "source": "packages/gateway/src/utils/error-envelope.ts"
-        }
-      ],
-      "topic": "/errors/gateway/#CLAIM_SELF"
-    },
-    {
-      "code": "CLAIM_SOURCE_DISABLED",
-      "owners": [
-        {
-          "owner": "gateway",
-          "source": "packages/gateway/src/utils/error-envelope.ts"
-        }
-      ],
-      "topic": "/errors/gateway/#CLAIM_SOURCE_DISABLED"
-    },
-    {
-      "code": "CLAIM_SOURCE_NOT_AGENT",
-      "owners": [
-        {
-          "owner": "gateway",
-          "source": "packages/gateway/src/utils/error-envelope.ts"
-        }
-      ],
-      "topic": "/errors/gateway/#CLAIM_SOURCE_NOT_AGENT"
-    },
-    {
-      "code": "CLAIM_SOURCE_TOO_COMPLEX",
-      "owners": [
-        {
-          "owner": "gateway",
-          "source": "packages/gateway/src/utils/error-envelope.ts"
-        }
-      ],
-      "topic": "/errors/gateway/#CLAIM_SOURCE_TOO_COMPLEX"
     },
     {
       "code": "CLIENT_DIAGNOSTIC_EVENT_INVALID",
@@ -7043,7 +7043,7 @@
       "owners": [
         {
           "owner": "public",
-          "source": "cli/lib/operator.mjs"
+          "source": "cli/lib/org.mjs"
         },
         {
           "owner": "gateway",

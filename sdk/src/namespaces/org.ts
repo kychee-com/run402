@@ -286,8 +286,144 @@ export class ScopedOrg {
  * Org collection + identity — `r.orgs.*`. Operations that are not bound to a
  * single org: create a new org, list the caller's orgs, resolve the principal.
  */
-export class Orgs {
+// ── Adopt the org your wallet's agent owns ────────────────────────────────────
+
+/**
+ * An adopt challenge (`POST /orgs/v1/adopt/challenge`). The wallet must sign a
+ * fresh SIWX message carrying {@link AdoptChallenge.nonce}; that signed message
+ * becomes the `SIGN-IN-WITH-X` header on {@link OrgAdopt.submit}. Reveals
+ * nothing about the wallet's orgs — control is proven only at adopt time.
+ */
+export interface AdoptChallenge {
+  challenge_id: string;
+  nonce: string;
+  expires_at: string;
+  sign_instructions?: { scheme?: string; nonce?: string; note?: string; [key: string]: unknown };
+  [key: string]: unknown;
+}
+
+/** Input to {@link OrgAdopt.challenge}. */
+export interface AdoptChallengeInput {
+  /** The wallet (0x EVM address) whose agent-owned org is being adopted. */
+  wallet: string;
+  /**
+   * The human's write-capable control-plane session bearer. Falls back to the
+   * client's default auth when omitted — pass it explicitly unless the client was
+   * constructed with control-plane-session credentials.
+   */
+  token?: string;
+}
+
+/** Input to {@link OrgAdopt.submit}. */
+export interface AdoptSubmitInput {
+  /**
+   * The fresh SIWX proof over the challenge nonce — the value of the
+   * `SIGN-IN-WITH-X` header (the wallet proof). In Node, build it with
+   * `signOrgAdopt` from `@run402/sdk/node`.
+   */
+  siwx: string;
+  /** The human's control-plane session bearer (see {@link AdoptChallengeInput.token}). */
+  token?: string;
+  /**
+   * Target org id. Omit on the first submit; supply it on the second round when
+   * the first returned `select_org` (the wallet's agent owns more than one org).
+   * The same `token` + `siwx` are reused — no re-challenge, no re-sign.
+   */
+  orgId?: string;
+  /** Optional label to set on the adopted org at the same time. `null`/`""` clears. */
+  displayName?: string | null;
+}
+
+/** One org offered for selection when a wallet's agent owns more than one (`select_org`). */
+export interface SelectableOrg {
+  org_id: string;
+  display_name: string | null;
+  tier: string;
+  [key: string]: unknown;
+}
+
+/**
+ * Result of {@link OrgAdopt.submit}. A discriminated union: `"adopted"` on
+ * success, or `"select_org"` when the wallet's agent owns more than one org and
+ * the caller must re-submit with a chosen `orgId`. `select_org` is a normal
+ * (non-error) result — it is returned, never thrown.
+ */
+export type AdoptResult =
+  | {
+      status: "adopted";
+      org_id: string;
+      display_name: string | null;
+      role: string;
+      /** True when the human already owned the org (idempotent re-adopt). */
+      already_owned?: boolean;
+      [key: string]: unknown;
+    }
+  | {
+      status: "select_org";
+      selectable_orgs: SelectableOrg[];
+      [key: string]: unknown;
+    };
+
+/**
+ * Adopt the org your wallet's agent owns — `r.orgs.adopt.*`. The isomorphic
+ * (raw-proof) seam: `challenge` issues a nonce; `submit` posts the dual proof
+ * (control-plane session bearer + a fresh `SIGN-IN-WITH-X` wallet signature). The
+ * Node convenience `signOrgAdopt` / `adoptOrg` in `@run402/sdk/node`
+ * runs the whole dance (read session → challenge → sign → submit).
+ */
+export class OrgAdopt {
   constructor(private readonly client: Client) {}
+
+  /** Request a single-use challenge nonce the wallet must sign (`POST /orgs/v1/adopt/challenge`). */
+  async challenge(input: AdoptChallengeInput): Promise<AdoptChallenge> {
+    if (!input?.wallet) {
+      throw new LocalError("orgs.adopt.challenge requires { wallet }", "requesting org adopt challenge");
+    }
+    return this.client.request<AdoptChallenge>("/orgs/v1/adopt/challenge", {
+      method: "POST",
+      body: { wallet: input.wallet },
+      ...(input.token ? { headers: { Authorization: `Bearer ${input.token}` }, withAuth: false } : {}),
+      context: "requesting org adopt challenge",
+    });
+  }
+
+  /**
+   * Execute the adopt (`POST /orgs/v1/adopt`) carrying both proofs: the
+   * control-plane session bearer (the human) and the `SIGN-IN-WITH-X` wallet
+   * signature. Returns a discriminated {@link AdoptResult}; a `select_org` result
+   * is returned (not thrown). Throws {@link StepUpRequiredError} when the session
+   * is not passkey-fresh, and `ApiError` (`WALLET_PROOF_INVALID`) on a bad proof.
+   */
+  async submit(input: AdoptSubmitInput): Promise<AdoptResult> {
+    if (!input?.siwx) {
+      throw new LocalError("orgs.adopt.submit requires { siwx } (the SIGN-IN-WITH-X proof)", "adopting org");
+    }
+    const headers: Record<string, string> = { "SIGN-IN-WITH-X": input.siwx };
+    if (input.token) headers.Authorization = `Bearer ${input.token}`;
+    const body: Record<string, unknown> = {};
+    if (input.orgId !== undefined) body.org_id = input.orgId;
+    if (input.displayName !== undefined) body.display_name = input.displayName;
+    return this.client.request<AdoptResult>("/orgs/v1/adopt", {
+      method: "POST",
+      body,
+      headers,
+      withAuth: !input.token,
+      context: "adopting org",
+    });
+  }
+}
+
+export class Orgs {
+  /**
+   * Adopt the org your wallet's agent owns: `r.orgs.adopt.challenge()` +
+   * `.submit()`. The raw dual-proof seam; the Node convenience `adoptOrg` in
+   * `@run402/sdk/node` runs the full dance.
+   */
+  readonly adopt: OrgAdopt;
+
+  constructor(private readonly client: Client) {
+    this.adopt = new OrgAdopt(client);
+  }
 
   /**
    * Create an empty org on the `prototype` tier (`POST /orgs/v1`); the caller

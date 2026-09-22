@@ -44,42 +44,42 @@ function makeSdk(fetchImpl: typeof globalThis.fetch): Run402 {
   return new Run402({ apiBase: "https://api.example.test", credentials: creds, fetch: fetchImpl });
 }
 
-describe("operator.claimWalletOrg.challenge", () => {
+describe("orgs.adopt.challenge", () => {
   it("POSTs the challenge with the control-plane session bearer and { wallet }", async () => {
     const { fetch, calls } = mockFetch((call) => {
       assert.equal(call.method, "POST");
-      assert.equal(call.url, "https://api.example.test/agent/v1/operator/claim-wallet-org/challenge");
+      assert.equal(call.url, "https://api.example.test/orgs/v1/adopt/challenge");
       assert.equal(call.headers.get("authorization"), "Bearer tok_human");
       assert.deepEqual(call.body, { wallet: "0xWallet" });
       return jsonResponse({ challenge_id: "ch_1", nonce: "nonce_abc", expires_at: "2026-06-09T00:05:00Z" }, 201);
     });
-    const res = await makeSdk(fetch).operator.claimWalletOrg.challenge({ wallet: "0xWallet", token: "tok_human" });
+    const res = await makeSdk(fetch).orgs.adopt.challenge({ wallet: "0xWallet", token: "tok_human" });
     assert.equal(res.nonce, "nonce_abc");
     assert.equal(calls.length, 1);
   });
 });
 
-describe("operator.claimWalletOrg.submit", () => {
+describe("orgs.adopt.submit", () => {
   it("sends BOTH proofs on one request: Bearer + SIGN-IN-WITH-X", async () => {
     const { fetch, calls } = mockFetch((call) => {
       assert.equal(call.method, "POST");
-      assert.equal(call.url, "https://api.example.test/agent/v1/operator/claim-wallet-org");
+      assert.equal(call.url, "https://api.example.test/orgs/v1/adopt");
       assert.equal(call.headers.get("authorization"), "Bearer tok_human");
       assert.equal(call.headers.get("sign-in-with-x"), "wallet-proof-over-nonce");
-      return jsonResponse({ status: "claimed", org_id: "org_1", display_name: "Kychee", role: "owner", already_owned: false });
+      return jsonResponse({ status: "adopted", org_id: "org_1", display_name: "Kychee", role: "owner", already_owned: false });
     });
-    const res = await makeSdk(fetch).operator.claimWalletOrg.submit({ token: "tok_human", siwx: "wallet-proof-over-nonce" });
-    assert.equal(res.status, "claimed");
-    if (res.status === "claimed") assert.equal(res.org_id, "org_1");
+    const res = await makeSdk(fetch).orgs.adopt.submit({ token: "tok_human", siwx: "wallet-proof-over-nonce" });
+    assert.equal(res.status, "adopted");
+    if (res.status === "adopted") assert.equal(res.org_id, "org_1");
     assert.equal(calls.length, 1);
   });
 
   it("omits org_id on the first submit", async () => {
     const { fetch } = mockFetch((call) => {
       assert.ok(!("org_id" in call.body), "first submit must not carry org_id");
-      return jsonResponse({ status: "claimed", org_id: "org_1", display_name: null, role: "owner" });
+      return jsonResponse({ status: "adopted", org_id: "org_1", display_name: null, role: "owner" });
     });
-    await makeSdk(fetch).operator.claimWalletOrg.submit({ token: "t", siwx: "s" });
+    await makeSdk(fetch).orgs.adopt.submit({ token: "t", siwx: "s" });
   });
 
   it("returns select_org as a value (not thrown) and re-submit reuses the same proof + adds org_id", async () => {
@@ -100,17 +100,17 @@ describe("operator.claimWalletOrg.submit", () => {
         });
       }
       assert.equal(call.body.org_id, "org_b");
-      return jsonResponse({ status: "claimed", org_id: "org_b", display_name: "B", role: "owner" });
+      return jsonResponse({ status: "adopted", org_id: "org_b", display_name: "B", role: "owner" });
     });
     const sdk = makeSdk(fetch);
-    const first = await sdk.operator.claimWalletOrg.submit({ token: "t", siwx: "s" });
+    const first = await sdk.orgs.adopt.submit({ token: "t", siwx: "s" });
     assert.equal(first.status, "select_org");
     if (first.status === "select_org") {
       assert.equal(first.selectable_orgs.length, 2);
       assert.equal(first.selectable_orgs[1]!.tier, "prototype");
     }
-    const second = await sdk.operator.claimWalletOrg.submit({ token: "t", siwx: "s", orgId: "org_b" });
-    assert.equal(second.status, "claimed");
+    const second = await sdk.orgs.adopt.submit({ token: "t", siwx: "s", orgId: "org_b" });
+    assert.equal(second.status, "adopted");
   });
 
   it("throws StepUpRequiredError on a 403 STEP_UP_REQUIRED", async () => {
@@ -119,13 +119,13 @@ describe("operator.claimWalletOrg.submit", () => {
         {
           error: "step up required",
           code: "STEP_UP_REQUIRED",
-          details: { op_class: "org.claim_wallet", required_amr: ["passkey"], max_age_seconds: 300, reason: "stale" },
+          details: { op_class: "org.adopt", required_amr: ["passkey"], max_age_seconds: 300, reason: "stale" },
         },
         403,
       ),
     );
     await assert.rejects(
-      () => makeSdk(fetch).operator.claimWalletOrg.submit({ token: "t", siwx: "s" }),
+      () => makeSdk(fetch).orgs.adopt.submit({ token: "t", siwx: "s" }),
       (err: unknown) => isStepUpRequired(err),
     );
   });

@@ -59,6 +59,42 @@ Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
 
 The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
 
+<h2 id="ADOPT_CHALLENGE_INVALID">ADOPT_CHALLENGE_INVALID</h2>
+
+Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
+
+<h2 id="ADOPT_NOTHING_TO_ADOPT">ADOPT_NOTHING_TO_ADOPT</h2>
+
+Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
+
+<h2 id="ADOPT_SELF">ADOPT_SELF</h2>
+
+Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
+
+<h2 id="ADOPT_SOURCE_DISABLED">ADOPT_SOURCE_DISABLED</h2>
+
+Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
+
+<h2 id="ADOPT_SOURCE_NOT_AGENT">ADOPT_SOURCE_NOT_AGENT</h2>
+
+Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
+
+<h2 id="ADOPT_SOURCE_TOO_COMPLEX">ADOPT_SOURCE_TOO_COMPLEX</h2>
+
+Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
+
 <h2 id="ALLOCATION_SUPERSEDED">ALLOCATION_SUPERSEDED</h2>
 
 Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
@@ -312,42 +348,6 @@ Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
 The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
 
 <h2 id="CHECKPOINT_SET_LIMIT_EXCEEDED">CHECKPOINT_SET_LIMIT_EXCEEDED</h2>
-
-Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
-
-The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
-
-<h2 id="CLAIM_CHALLENGE_INVALID">CLAIM_CHALLENGE_INVALID</h2>
-
-Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
-
-The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
-
-<h2 id="CLAIM_NOTHING_TO_CLAIM">CLAIM_NOTHING_TO_CLAIM</h2>
-
-Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
-
-The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
-
-<h2 id="CLAIM_SELF">CLAIM_SELF</h2>
-
-Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
-
-The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
-
-<h2 id="CLAIM_SOURCE_DISABLED">CLAIM_SOURCE_DISABLED</h2>
-
-Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
-
-The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
-
-<h2 id="CLAIM_SOURCE_NOT_AGENT">CLAIM_SOURCE_NOT_AGENT</h2>
-
-Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
-
-The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
-
-<h2 id="CLAIM_SOURCE_TOO_COMPLEX">CLAIM_SOURCE_TOO_COMPLEX</h2>
 
 Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
 
@@ -2035,7 +2035,7 @@ The gateway rejected or could not complete the request. Its response carries the
 
 <h2 id="STEP_UP_REQUIRED">STEP_UP_REQUIRED</h2>
 
-Owner: `public:cli/lib/operator.mjs`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
+Owner: `public:cli/lib/org.mjs`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
 
 The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
 

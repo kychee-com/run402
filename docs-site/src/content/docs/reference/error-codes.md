@@ -41,6 +41,30 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="ADMIN_SQL_READ_ONLY"></a>
 [`ADMIN_SQL_READ_ONLY`](/errors/gateway/#ADMIN_SQL_READ_ONLY)
 
+<a id="adopt_challenge_invalid"></a>
+<a id="ADOPT_CHALLENGE_INVALID"></a>
+[`ADOPT_CHALLENGE_INVALID`](/errors/gateway/#ADOPT_CHALLENGE_INVALID)
+
+<a id="adopt_nothing_to_adopt"></a>
+<a id="ADOPT_NOTHING_TO_ADOPT"></a>
+[`ADOPT_NOTHING_TO_ADOPT`](/errors/gateway/#ADOPT_NOTHING_TO_ADOPT)
+
+<a id="adopt_self"></a>
+<a id="ADOPT_SELF"></a>
+[`ADOPT_SELF`](/errors/gateway/#ADOPT_SELF)
+
+<a id="adopt_source_disabled"></a>
+<a id="ADOPT_SOURCE_DISABLED"></a>
+[`ADOPT_SOURCE_DISABLED`](/errors/gateway/#ADOPT_SOURCE_DISABLED)
+
+<a id="adopt_source_not_agent"></a>
+<a id="ADOPT_SOURCE_NOT_AGENT"></a>
+[`ADOPT_SOURCE_NOT_AGENT`](/errors/gateway/#ADOPT_SOURCE_NOT_AGENT)
+
+<a id="adopt_source_too_complex"></a>
+<a id="ADOPT_SOURCE_TOO_COMPLEX"></a>
+[`ADOPT_SOURCE_TOO_COMPLEX`](/errors/gateway/#ADOPT_SOURCE_TOO_COMPLEX)
+
 <a id="allocation_superseded"></a>
 <a id="ALLOCATION_SUPERSEDED"></a>
 [`ALLOCATION_SUPERSEDED`](/errors/gateway/#ALLOCATION_SUPERSEDED)
@@ -371,30 +395,6 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="ci_subject_required"></a>
 <a id="CI_SUBJECT_REQUIRED"></a>
 [`CI_SUBJECT_REQUIRED`](/errors/client/#CI_SUBJECT_REQUIRED)
-
-<a id="claim_challenge_invalid"></a>
-<a id="CLAIM_CHALLENGE_INVALID"></a>
-[`CLAIM_CHALLENGE_INVALID`](/errors/gateway/#CLAIM_CHALLENGE_INVALID)
-
-<a id="claim_nothing_to_claim"></a>
-<a id="CLAIM_NOTHING_TO_CLAIM"></a>
-[`CLAIM_NOTHING_TO_CLAIM`](/errors/gateway/#CLAIM_NOTHING_TO_CLAIM)
-
-<a id="claim_self"></a>
-<a id="CLAIM_SELF"></a>
-[`CLAIM_SELF`](/errors/gateway/#CLAIM_SELF)
-
-<a id="claim_source_disabled"></a>
-<a id="CLAIM_SOURCE_DISABLED"></a>
-[`CLAIM_SOURCE_DISABLED`](/errors/gateway/#CLAIM_SOURCE_DISABLED)
-
-<a id="claim_source_not_agent"></a>
-<a id="CLAIM_SOURCE_NOT_AGENT"></a>
-[`CLAIM_SOURCE_NOT_AGENT`](/errors/gateway/#CLAIM_SOURCE_NOT_AGENT)
-
-<a id="claim_source_too_complex"></a>
-<a id="CLAIM_SOURCE_TOO_COMPLEX"></a>
-[`CLAIM_SOURCE_TOO_COMPLEX`](/errors/gateway/#CLAIM_SOURCE_TOO_COMPLEX)
 
 <a id="client_diagnostic_event_invalid"></a>
 <a id="CLIENT_DIAGNOSTIC_EVENT_INVALID"></a>

@@ -374,7 +374,7 @@ describe("run402 provision --org", () => {
   });
 });
 
-describe("run402 operator claim-wallet-org", () => {
+describe("run402 org adopt", () => {
   it("exits 1 with loopback-login guidance when no control-plane session is cached", async () => {
     const stderr = [];
     const origErr = console.error;
@@ -382,7 +382,7 @@ describe("run402 operator claim-wallet-org", () => {
     console.error = (...a) => stderr.push(a.join(" "));
     let exitCode = null;
     try {
-      await runOperator("claim-wallet-org", []);
+      await runOrg("adopt", []);
     } catch (e) {
       const m = /process\.exit\((\d+)\)/.exec(e.message);
       exitCode = m ? Number(m[1]) : null;

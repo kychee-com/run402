@@ -143,7 +143,7 @@ const MATRIX = {
     ],
   },
   agent: { shared: [], specific: ["contact"] },
-  operator: { shared: ["login", "logout", "overview", "whoami", "claim-wallet-org"], specific: [] },
+  operator: { shared: ["login", "logout", "overview", "whoami"], specific: [] },
   service: { shared: [], specific: ["status", "health"] },
   cache: { shared: ["inspect", "invalidate"], specific: [] },
   // RETIRED (legible-cli-surface): one help — the migration map — and no

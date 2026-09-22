@@ -664,7 +664,7 @@ const SURFACE: Capability[] = [
   { id: "operator_overview", endpoint: "GET /agent/v1/operator/overview (operator-session bearer)", mcp: null, cli: "operator:overview", openclaw: "operator:overview" },
   { id: "operator_logout",   endpoint: "POST /agent/v1/operator/session/revoke",                   mcp: null, cli: "operator:logout",   openclaw: "operator:logout" },
   { id: "operator_whoami",   endpoint: "(local)",                                                  mcp: null, cli: "operator:whoami",   openclaw: "operator:whoami" },
-  { id: "claim_wallet_org",  endpoint: "POST /agent/v1/operator/claim-wallet-org (+ /challenge)",   mcp: null, cli: "operator:claim-wallet-org", openclaw: "operator:claim-wallet-org" },
+  { id: "adopt_org",         endpoint: "POST /orgs/v1/adopt (+ /challenge)",                        mcp: null, cli: "org:adopt", openclaw: "org:adopt" },
   { id: "operator_approve",  endpoint: "POST /agent/v1/control-plane/write-auth/challenges (+ /cli/token)", mcp: null, cli: "operator:approve",  openclaw: "operator:approve" },
   { id: "operator_status",   endpoint: "(local)",                                                  mcp: null, cli: "operator:status",   openclaw: "operator:status" },
 
@@ -1264,8 +1264,8 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   operator_logout: "operator.revoke",
   operator_whoami: null, // local-only cache read (core/operator-session.ts)
   // Claim maps to the submit step; the challenge step is in SDK_ONLY_METHODS and
-  // the full dance is the Node convenience `claimWalletOrg` (a standalone export).
-  claim_wallet_org: "operator.claimWalletOrg.submit",
+  // the full dance is the Node convenience `adoptOrg` (a standalone export).
+  adopt_org: "orgs.adopt.submit",
   operator_approve: "operator.approval.requestChallenge",
   operator_status: null, // local-only cache read (core/write-auth-session.ts)
 
@@ -1619,10 +1619,10 @@ describe("SDK surface alignment", () => {
       // rides the whoami door on every surface (`org whoami --set-name`,
       // MCP `whoami` `set_display_name`), so it has no verb of its own.
       "orgs.setDisplayName",
-      // Claim challenge is the first step of the claim-wallet-org flow; the
-      // `claim_wallet_org` capability maps to the submit step, and the Node
-      // convenience `claimWalletOrg` composes challenge + sign + submit.
-      "operator.claimWalletOrg.challenge",
+      // Adopt challenge is the first step of the org adopt flow; the
+      // `adopt_org` capability maps to the submit step, and the Node
+      // convenience `adoptOrg` composes challenge + sign + submit.
+      "orgs.adopt.challenge",
       // gitvault-recovery-custody: the wrapper-states read has no verb of
       // its own — `repos access` composes it into its member_custody block
       // (the capability row maps to gitvault.access, the primary read).

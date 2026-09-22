@@ -5,10 +5,10 @@
  * (collection) or `r.org(id).*` (scoped instance) followed by markdown
  * formatting. Mutations are owner-gated + step-up gated server-side.
  *
- * The wallet-org CLAIM flow is intentionally CLI + SDK only — it needs a
- * write-capable control-plane session (browser loopback login) + a fresh passkey
- * step-up, which does not fit the MCP tool model. Use `run402 operator
- * claim-wallet-org` or the SDK `claimWalletOrg` Node convenience.
+ * The org ADOPT flow is intentionally CLI + SDK only — it needs a
+ * write-capable sign-in session (browser loopback login) + a fresh passkey
+ * step-up, which does not fit the MCP tool model. Use `run402 org adopt`
+ * or the SDK `adoptOrg` Node convenience.
  */
 
 import { z } from "zod";

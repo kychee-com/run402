@@ -694,8 +694,8 @@ export type {
 export * from "../namespaces/gitvault.crypto.js";
 export { signCiDelegation } from "./ci.js";
 export type { SignCiDelegationOptions } from "./ci.js";
-export { signWalletOrgClaim, claimWalletOrg } from "./operator-claim.js";
-export type { SignWalletOrgClaimOptions, ClaimWalletOrgOptions } from "./operator-claim.js";
+export { signOrgAdopt, adoptOrg } from "./org-adopt.js";
+export type { SignOrgAdoptOptions, AdoptOrgOptions } from "./org-adopt.js";
 export {
   importArchiveToCore,
   inspectArchive,

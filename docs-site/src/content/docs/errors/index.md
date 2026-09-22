@@ -48,6 +48,24 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="ADMIN_SQL_READ_ONLY"></a>
 [`ADMIN_SQL_READ_ONLY`](/errors/gateway/#ADMIN_SQL_READ_ONLY)
 
+<a id="ADOPT_CHALLENGE_INVALID"></a>
+[`ADOPT_CHALLENGE_INVALID`](/errors/gateway/#ADOPT_CHALLENGE_INVALID)
+
+<a id="ADOPT_NOTHING_TO_ADOPT"></a>
+[`ADOPT_NOTHING_TO_ADOPT`](/errors/gateway/#ADOPT_NOTHING_TO_ADOPT)
+
+<a id="ADOPT_SELF"></a>
+[`ADOPT_SELF`](/errors/gateway/#ADOPT_SELF)
+
+<a id="ADOPT_SOURCE_DISABLED"></a>
+[`ADOPT_SOURCE_DISABLED`](/errors/gateway/#ADOPT_SOURCE_DISABLED)
+
+<a id="ADOPT_SOURCE_NOT_AGENT"></a>
+[`ADOPT_SOURCE_NOT_AGENT`](/errors/gateway/#ADOPT_SOURCE_NOT_AGENT)
+
+<a id="ADOPT_SOURCE_TOO_COMPLEX"></a>
+[`ADOPT_SOURCE_TOO_COMPLEX`](/errors/gateway/#ADOPT_SOURCE_TOO_COMPLEX)
+
 <a id="ALLOCATION_SUPERSEDED"></a>
 [`ALLOCATION_SUPERSEDED`](/errors/gateway/#ALLOCATION_SUPERSEDED)
 
@@ -296,24 +314,6 @@ The catalog records owning source locations and pinned external contributions. A
 
 <a id="CI_SUBJECT_REQUIRED"></a>
 [`CI_SUBJECT_REQUIRED`](/errors/client/#CI_SUBJECT_REQUIRED)
-
-<a id="CLAIM_CHALLENGE_INVALID"></a>
-[`CLAIM_CHALLENGE_INVALID`](/errors/gateway/#CLAIM_CHALLENGE_INVALID)
-
-<a id="CLAIM_NOTHING_TO_CLAIM"></a>
-[`CLAIM_NOTHING_TO_CLAIM`](/errors/gateway/#CLAIM_NOTHING_TO_CLAIM)
-
-<a id="CLAIM_SELF"></a>
-[`CLAIM_SELF`](/errors/gateway/#CLAIM_SELF)
-
-<a id="CLAIM_SOURCE_DISABLED"></a>
-[`CLAIM_SOURCE_DISABLED`](/errors/gateway/#CLAIM_SOURCE_DISABLED)
-
-<a id="CLAIM_SOURCE_NOT_AGENT"></a>
-[`CLAIM_SOURCE_NOT_AGENT`](/errors/gateway/#CLAIM_SOURCE_NOT_AGENT)
-
-<a id="CLAIM_SOURCE_TOO_COMPLEX"></a>
-[`CLAIM_SOURCE_TOO_COMPLEX`](/errors/gateway/#CLAIM_SOURCE_TOO_COMPLEX)
 
 <a id="CLIENT_DIAGNOSTIC_EVENT_INVALID"></a>
 [`CLIENT_DIAGNOSTIC_EVENT_INVALID`](/errors/gateway/#CLIENT_DIAGNOSTIC_EVENT_INVALID)

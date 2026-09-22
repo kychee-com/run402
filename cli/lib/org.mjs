@@ -33,6 +33,7 @@ Usage:
   run402 org rename [<org_id>] --name <display_name>   (or: --clear to remove the label)
   run402 org payout-wallet [<org_id>] <wallet_address>  (or: --clear to remove the explicit default)
   run402 org slug   <slug> [--org <org_id>]
+  run402 org adopt  [--org <org_id>] [--name <label>]
   run402 org whoami
   run402 org whoami --set-name <name>
   run402 org use     <org_id>
@@ -562,6 +563,58 @@ async function payoutWallet(args) {
  * `--idempotency-key` is omitted, so a retried call after a dropped response
  * can never double-bill.
  */
+/**
+ * `run402 org adopt` — become the owner of the org your wallet's agent
+ * created (an ownership transfer on org memberships; the wallet stays on the
+ * agent, which is downgraded to developer). Dual proof: the write-capable
+ * sign-in session + a fresh signature from the active wallet over a server
+ * nonce. The Node convenience runs the whole dance (read session → challenge
+ * → sign → submit). Step-up failures and the multi-org `select_org`
+ * round-trip are surfaced here, not thrown at the user.
+ */
+async function adopt(args) {
+  const a = normalizeArgv(args);
+  const valueFlags = ["--org", "--name"];
+  assertKnownFlags(a, [...valueFlags, "--help", "-h"], valueFlags);
+  requirePositionalCount(a, valueFlags, { min: 0, max: 0, command: "run402 org adopt [--org <org_id>] [--name <label>]" });
+  const orgId = flagValue(a, "--org");
+  const name = flagValue(a, "--name");
+  try {
+    const { adoptOrg } = await import("#sdk/node");
+    const result = await adoptOrg(getSdk(), {
+      orgId: orgId ?? undefined,
+      displayName: name ?? undefined,
+    });
+    // CLI output contract (cli-output-shape): no top-level `status` envelope.
+    // The gateway's discriminator becomes an explicit `adopted` boolean.
+    if (result && result.status === "select_org") {
+      console.log(JSON.stringify({
+        adopted: false,
+        selectable_orgs: result.selectable_orgs,
+        hint: "Your wallet's agent owns more than one org. Re-run with --org <org_id> to adopt one.",
+      }, null, 2));
+      return;
+    }
+    console.log(JSON.stringify({
+      adopted: true,
+      org_id: result.org_id,
+      display_name: result.display_name,
+      role: result.role,
+      already_owned: result.already_owned ?? false,
+    }, null, 2));
+  } catch (err) {
+    const { isStepUpRequired } = await import("#sdk/node");
+    if (isStepUpRequired(err)) {
+      return fail({
+        code: "STEP_UP_REQUIRED",
+        message: "Adopting an org needs a fresh passkey step-up.",
+        hint: "Run 'run402 operator login --step-up', then re-run 'run402 org adopt'.",
+      });
+    }
+    reportSdkError(err);
+  }
+}
+
 async function slug(args) {
   const a = normalizeArgv(args);
   const valueFlags = ["--org", "--idempotency-key"];
@@ -894,6 +947,7 @@ export async function run(sub, args) {
     case "rename": await rename(args); break;
     case "payout-wallet": await payoutWallet(args); break;
     case "slug": await slug(args); break;
+    case "adopt": await adopt(args); break;
     case "whoami": await whoami(args); break;
     case "use": await use(args); break;
     case "current": await current(args); break;

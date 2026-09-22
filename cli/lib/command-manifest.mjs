@@ -441,7 +441,6 @@ export const COMMAND_MANIFEST = [
   { path: ["operator", "logout"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
   { path: ["operator", "overview"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
   { path: ["operator", "whoami"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
-  { path: ["operator", "claim-wallet-org"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
   { path: ["operator", "approve"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["--action", "org.project.create", "--org", "org_gate1", "--no-open"] },
 
   // ── auth ─────────────────────────────────────────────────────────────────
