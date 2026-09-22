@@ -1052,12 +1052,12 @@ Staff moderation actions (independent of lifecycle): `run402 admin archive <proj
 
 ## Project transfer (unified noun, owned-org recipient)
 
-Hand off or move a project without redeploying — one noun, three recipient shapes. `--to` routes by value: a **wallet** is a two-party SIWX transfer (recipient completes with `accept`); an **email** is an email→org transfer (recipient completes with `claim`, claiming into an org they own). `--to-org` moves the project into another org you already own; same-actor owned-org moves complete immediately in the first gateway release. Owner-side mutations on pending wallet/email transfers freeze for the 72-hour window so the recipient reviews exactly what they will own.
+Hand off or move a project without redeploying — one noun, three recipient shapes. `--to` routes by value: a **wallet** is a two-party SIWX transfer; an **email** is accepted by a principal whose verified email matches, into an org they own or a new one; both complete with the one `accept`. `--to-org` moves the project into another org you already own; same-actor owned-org moves complete immediately in the first gateway release. Owner-side mutations on pending wallet/email transfers freeze for the 72-hour window so the recipient reviews exactly what they will own.
 
 ```bash
 # Initiate (you must currently own/admin the project). --to routes by recipient kind:
 run402 transfer init --to 0xRECIPIENT --project <project_id> [--message "..."]            # wallet
-run402 transfer init --to alice@example.com --project <project_id> [--retain-collaborator developer]  # email
+run402 transfer init --to alice@example.com --project <project_id> [--retain-member developer]  # email
 run402 transfer init --to-org <org_id> --project <project_id> [--message "..."]           # owned org; completes immediately
 
 # Either party can inspect the safe preview document (kind-agnostic)
@@ -1066,13 +1066,12 @@ run402 transfer preview <transfer_id>
 # Cancel a pending transfer of any kind (any authorized party)
 run402 transfer cancel <transfer_id> [--reason "..."]
 
-# WALLET recipient completes (your wallet must equal the transfer's to_wallet)
-run402 transfer accept <transfer_id>
+# The recipient completes — one accept for both addresses. Wallet: your wallet must equal
+# the transfer's to_wallet. Email: your verified email must match; --org names the receiving
+# org you own (omit it to create a new org).
+run402 transfer accept <transfer_id> [--org <org_id>] [--accept-retained-member]
 
-# EMAIL recipient completes — claim into an org (omit --into to create a new org)
-run402 transfer claim <transfer_id> [--into <org_id>] [--accept-retained-collaborator]
-
-# OWNED-ORG moves have no follow-up accept/claim step in the same-actor release
+# OWNED-ORG moves have no follow-up accept step in the same-actor release
 
 # Inbox / outbox (pending rows are tagged recipient_kind)
 run402 transfer list                 # incoming (default)

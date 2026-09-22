@@ -1708,12 +1708,12 @@
     "line": 1566,
     "language": "",
     "kind": "output-or-pseudocode",
-    "sha256": "2a4ce0c39f0fd4cf379240232daca7a3875b158f702aeb6c49da6dcf774d08c7",
+    "sha256": "daa1a6e30828d9283f7ede73a9604880185d46589acdff774ffc4cf09834a4df",
     "validation": "sdk-snippets"
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 1603,
+    "line": 1604,
     "language": "ts",
     "kind": "application-or-sdk",
     "sha256": "1273a5d793c6fbbcab7e20b2ac7abad4437e58cef386f59fae923147b7fe8fe2",

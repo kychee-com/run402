@@ -1561,33 +1561,34 @@ r.admin.rules.delete(ruleId: string): Promise<DeleteRoutingRuleResult>
 
 ### `r.admin.transfers` (unified project transfer, owned-org recipient)
 
-Project transfer is exposed as a sub-namespace at `r.admin.transfers` — one noun, three recipient shapes. A **wallet** recipient completes via `accept` (both sides sign SIWX); an **email** recipient completes via `claim` (the recipient claims into an org); an **owned org** recipient completes immediately at initiate time in the same-actor first release. `initiate` is body-discriminated (`toWallet` XOR `toEmail` XOR `toOrgId`); `preview` / `cancel` / `listIncoming` / `listOutgoing` are kind-agnostic for pending rows and tag each row with `recipient_kind`. (The pre-v1.93 `*Handoff` methods and `/handoffs` routes are gone.)
+Project transfer is exposed as a sub-namespace at `r.admin.transfers` — one noun, three recipient shapes. A **wallet** recipient (both sides sign SIWX) and an **email** recipient (a principal whose verified email matches, into an org it owns or a new one) both complete via the one `accept`; an **owned org** recipient completes immediately at initiate time in the same-actor first release. `initiate` is body-discriminated (`toWallet` XOR `toEmail` XOR `toOrgId`); `preview` / `cancel` / `listIncoming` / `listOutgoing` are kind-agnostic for pending rows and tag each row with `recipient_kind`. 
 
 ```
 initiate({ projectId, toWallet, billingPolicy?, message?, kysignedRecordId? })   // wallet recipient
   : Promise<InitiateTransferResult>            // { transfer_id, expires_at, project_summary, your_unused_lease_days, lease_refundable: false, terms_sha256 }
-initiate({ projectId, toEmail, message?, retainCollaborator? })                  // email recipient
+initiate({ projectId, toEmail, message?, retainMember? })                        // email recipient
   : Promise<InitiateEmailTransferResult>       // { status: "ok", transfer_id, to_email, expires_at }
 initiate({ projectId, toOrgId, message? })                                      // owned-org recipient, same-actor only
   : Promise<InitiateOrgTransferResult>         // { status: "accepted", project_id, to_organization_id, transfer_id?, completed_at?, anon_key, service_key, ... }
   // initiate({ toOrgId }) persists returned keys via saveProject + setActiveProject when supported.
 // Exactly one of toWallet / toEmail / toOrgId — multiple-or-none throws a local VALIDATION_ERROR before any request.
-// billingPolicy + kysignedRecordId are wallet-only; retainCollaborator is email-only.
+// billingPolicy + kysignedRecordId are wallet-only; retainMember is email-only.
 preview(transferId: string): Promise<ProjectTransferPreview>
   // { transfer_id, project_id, status, recipient_kind, from_wallet_display, to_wallet_display, to_email?, to_org_id?,
   //   billing_policy, message, initiated_at, expires_at, terms_sha256, custom_domains[], subdomains[],
   //   functions[], secret_names[] (NEVER values), mailbox_summary, ci_bindings_to_be_revoked[], signers[],
-  //   github_repo_note, billing_implications, retain_collaborator? }
-accept(transferId: string): Promise<AcceptTransferResult>          // WALLET completion
-  // { project_id, from_wallet, to_wallet, new_organization_id, completed_at,
-  //   secrets_rotation_advised: true, secret_names_inherited[], secrets_count_inherited, github_repo_note,
-  //   anon_key, service_key }  // #428: new owner's project keys. accept() persists them via
-  //   saveProject + setActiveProject (when the provider supports them), mirroring provision.
-claim(transferId, { organizationId?, acceptRetainedCollaborator? }): Promise<ClaimTransferResult>   // EMAIL completion
-  // { status: "accepted", project_id, to_organization_id, created_new_org, retained_collaborator_principal_id,
-  //   anon_key, service_key }  // project-transfer-claim-credentials: symmetric with accept. claim() persists
-  //   the keys via saveProject + setActiveProject (when the provider supports them). Claim auth is principal-based
-  //   (control-plane session OR verified-email SIWX) — don't assume a wallet is present.
+  //   github_repo_note, billing_implications, retain_member? }
+accept(transferId, { orgId?, acceptRetainedMember? }): Promise<AcceptTransferResult>   // the ONE completion
+  // wallet-addressed row → AcceptWalletTransferResult:
+  //   { project_id, from_wallet, to_wallet, new_organization_id, completed_at,
+  //     secrets_rotation_advised: true, secret_names_inherited[], secrets_count_inherited, github_repo_note,
+  //     anon_key, service_key }
+  // email-addressed row (orgId / acceptRetainedMember apply here) → AcceptEmailTransferResult:
+  //   { status: "accepted", project_id, to_organization_id, created_new_org, retained_member_principal_id,
+  //     credentials_revoked?, credentials_issued?, anon_key, service_key }
+  // Both persist the new owner's keys via saveProject + setActiveProject (when the provider supports
+  // them), mirroring provision. The email path's auth is principal-based (a sign-in session OR a
+  // verified-email SIWX match) — don't assume a wallet is present.
 cancel(transferId: string, reason?: string): Promise<CancelTransferResult>   // kind-agnostic
   // { transfer_id, status: "cancelled", cancelled_by, cancellation_reason, cancelled_at }
 listIncoming(opts?: { limit?, offset? }): Promise<TransferSummary[]>   // pending rows, unioned (recipient_kind-tagged)
@@ -1596,7 +1597,7 @@ listOutgoing(opts?: { limit?, offset? }): Promise<TransferSummary[]>   // pendin
 
 `billingPolicy` defaults to `"migrate"` on wallet transfers (the only Phase 1A policy — the project moves into the recipient's organization). The `kysignedRecordId` field is wallet-only and stored verbatim in Phase 1A; Phase 1B will verify it against the canonical terms hash. Owned-org `toOrgId` moves are same-actor only in the first gateway release: caller must be an active owner of both source and destination orgs. Initiate authority is owner-OR-admin.
 
-**Email recipient — retain-member.** Pass `retainCollaborator: { role: "developer" }` on the email `initiate` to keep a `developer` membership in the recipient's org after the transfer (only `developer` is valid; the subject is always the initiating owner — gateway rejects with `INVALID_RETAIN_ROLE` / `RETAIN_SUBJECT_REQUIRED`). The recipient sees the offer as `ProjectTransferPreview.retain_collaborator` (a `RetainCollaboratorPreview` `{ principal_id, role, sender_label, scope, note, accept_field }`, or `null`) and accepts by passing `acceptRetainedCollaborator: true` to `claim`; the result then carries `retained_collaborator_principal_id` (or `null`). Omitting the accept (the default) is a full severance.
+**Email recipient — retain-member.** Pass `retainMember: { role: "developer" }` on the email `initiate` to keep a `developer` membership in the recipient's org after the transfer (only `developer` is valid; the subject is always the initiating owner — gateway rejects with `INVALID_RETAIN_ROLE` / `RETAIN_SUBJECT_REQUIRED`). The recipient sees the offer as `ProjectTransferPreview.retain_member` (a `RetainMemberPreview` `{ principal_id, role, sender_label, scope, note, accept_field }`, or `null`) and accepts by passing `acceptRetainedMember: true` to `accept`; the result then carries `retained_member_principal_id` (or `null`). Omitting the accept (the default) is a full severance.
 
 While a transfer is `pending` (72h TTL), every owner-side mutation against the project throws `TransferFreezeError` (status 409, code `PROJECT_HAS_PENDING_TRANSFER`). The error carries `transferId`, `projectId`, `cancelPath`, and `previewPath` lifted from the gateway's `next_actions[]`, so agents can present an actionable resolution:
 

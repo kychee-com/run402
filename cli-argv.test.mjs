@@ -2599,23 +2599,23 @@ describe("deploy verify edge coherence", () => {
   });
 });
 
-describe("transfer retain-collaborator argv validation (v1.91)", () => {
-  it("transfer init rejects an invalid --retain-collaborator role before network", async () => {
+describe("transfer retain-member argv validation", () => {
+  it("transfer init rejects an invalid --retain-member role before network", async () => {
     const { run } = await import("./cli/lib/transfer.mjs");
     const err = await expectExit1(() =>
-      run("init", ["--to", "alice@example.com", "--retain-collaborator", "owner"]),
+      run("init", ["--to", "alice@example.com", "--retain-member", "owner"]),
     );
     assert.equal(err.code, "BAD_FLAG");
-    assert.match(err.message, /retain-collaborator/);
+    assert.match(err.message, /retain-member/);
   });
 
-  it("transfer init rejects --retain-collaborator on the wallet rail before network", async () => {
+  it("transfer init rejects --retain-member on the wallet rail before network", async () => {
     const { run } = await import("./cli/lib/transfer.mjs");
     const err = await expectExit1(() =>
       run("init", [
         "--to",
         "0xC0ffee0000000000000000000000000000000000",
-        "--retain-collaborator",
+        "--retain-member",
         "developer",
       ]),
     );
@@ -2623,14 +2623,38 @@ describe("transfer retain-collaborator argv validation (v1.91)", () => {
     assert.match(err.message, /email recipients/);
   });
 
-  it("transfer init rejects --retain-collaborator on the owned-org rail before network", async () => {
+  it("transfer init rejects --retain-member on the owned-org rail before network", async () => {
     const { run } = await import("./cli/lib/transfer.mjs");
     const err = await expectExit1(() =>
-      run("init", ["--to-org", "org_123", "--retain-collaborator", "developer"]),
+      run("init", ["--to-org", "org_123", "--retain-member", "developer"]),
     );
     assert.equal(err.code, "BAD_FLAG");
     assert.match(err.message, /email recipients/);
     assert.equal(calls.length, 0, "invalid argv must not hit the network");
+  });
+});
+
+describe("transfer accept argv (the one completion)", () => {
+  it("accept rejects the deleted --into flag before network", async () => {
+    const { run } = await import("./cli/lib/transfer.mjs");
+    const err = await expectExit1(() => run("accept", ["ptx_1", "--into", "org_1"]));
+    assert.equal(err.code, "UNKNOWN_FLAG");
+    assert.equal(err.details.flag, "--into");
+    assert.equal(calls.length, 0, "invalid argv must not hit the network");
+  });
+
+  it("accept rejects --accept-retained-collaborator (renamed --accept-retained-member) before network", async () => {
+    const { run } = await import("./cli/lib/transfer.mjs");
+    const err = await expectExit1(() => run("accept", ["ptx_1", "--accept-retained-collaborator"]));
+    assert.equal(err.code, "UNKNOWN_FLAG");
+    assert.equal(calls.length, 0, "invalid argv must not hit the network");
+  });
+
+  it("transfer claim is not a subcommand", async () => {
+    const { run } = await import("./cli/lib/transfer.mjs");
+    const err = await expectExit1(() => run("claim", ["ptx_1"]));
+    assert.equal(err.code, "UNKNOWN_SUBCOMMAND");
+    assert.equal(calls.length, 0);
   });
 });
 

@@ -91,7 +91,7 @@ PLATFORM — everything else, and the things still finding a home
   billing     Email organizations, Stripe tier checkout, email packs
   contracts   KMS signers ($0.04/day rental + $0.000005/sign)
   jobs        Submit and inspect platform-managed jobs
-  transfer    Two-party project transfer (init, preview, list, accept, cancel)
+  transfer    Project transfer to a wallet, an email, or an owned org (init, preview, list, accept, cancel)
   cloud       Cloud portability archive export (archives create/download/status)
   archives    Inspect and verify portable project archives locally
   gitvault    RETIRED — moved to repos (repo-surface-consolidation); every spelling answers COMMAND_MOVED/COMMAND_REMOVED

@@ -213,7 +213,6 @@ export const COMMAND_MANIFEST = [
   { path: ["transfer", "preview"], positionals: [p("transfer_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["tr_gate1"] },
   { path: ["transfer", "list"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
   { path: ["transfer", "accept"], positionals: [p("transfer_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["tr_gate1"] },
-  { path: ["transfer", "claim"], positionals: [p("transfer_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["tr_gate1"] },
   { path: ["transfer", "cancel"], positionals: [p("transfer_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["tr_gate1"] },
 
   // ── org ──────────────────────────────────────────────────────────────────

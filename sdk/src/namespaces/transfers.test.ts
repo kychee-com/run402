@@ -197,7 +197,7 @@ describe("admin.transfers.initiate (owned org)", () => {
     for (const extra of [
       { billingPolicy: "migrate" },
       { kysignedRecordId: "ks_1" },
-      { retainCollaborator: { role: "developer" } },
+      { retainMember: { role: "developer" } },
     ]) {
       await assert.rejects(
         () => (r.admin.transfers.initiate as (i: unknown) => Promise<unknown>)({
@@ -233,29 +233,29 @@ describe("admin.transfers.initiate (email)", () => {
     assert.equal(calls.length, 1);
   });
 
-  it("sends retain_collaborator only when set", async () => {
+  it("sends retain_member only when set", async () => {
     const { fetch, calls } = mockFetch(() =>
       jsonResponse({ status: "ok", transfer_id: "ptx_r1", to_email: "alice@example.com", expires_at: "x" }, 201),
     );
     await makeSdk(fetch).admin.transfers.initiate({
       projectId: "prj_abc",
       toEmail: "alice@example.com",
-      retainCollaborator: { role: "developer" },
+      retainMember: { role: "developer" },
     });
     assert.deepEqual(JSON.parse(String(calls[0].body)), {
       to_email: "alice@example.com",
-      retain_collaborator: { role: "developer" },
+      retain_member: { role: "developer" },
     });
   });
 
-  it("omits retain_collaborator when not requested", async () => {
+  it("omits retain_member when not requested", async () => {
     const { fetch, calls } = mockFetch(() =>
       jsonResponse({ status: "ok", transfer_id: "ptx_r2", to_email: "alice@example.com", expires_at: "x" }, 201),
     );
     await makeSdk(fetch).admin.transfers.initiate({ projectId: "prj_abc", toEmail: "alice@example.com" });
     const body = JSON.parse(String(calls[0].body));
     assert.deepEqual(body, { to_email: "alice@example.com" });
-    assert.ok(!("retain_collaborator" in body));
+    assert.ok(!("retain_member" in body));
   });
 });
 
@@ -306,14 +306,14 @@ describe("admin.transfers.preview", () => {
     assert.deepEqual(res.secret_names, ["DB_URL"]);
   });
 
-  it("surfaces recipient_kind and the retain_collaborator block on an email transfer", async () => {
+  it("surfaces recipient_kind and the retain_member block on an email transfer", async () => {
     const block = {
       principal_id: "prn_sender",
       role: "developer" as const,
       sender_label: "Bob",
       scope: "organization",
       note: "stay on",
-      accept_field: "accept_retained_collaborator",
+      accept_field: "accept_retained_member",
     };
     const { fetch } = mockFetch(() =>
       jsonResponse({
@@ -349,13 +349,13 @@ describe("admin.transfers.preview", () => {
           functions_count: 0,
           custom_domains_count: 0,
         },
-        retain_collaborator: block,
+        retain_member: block,
       }),
     );
     const res = await makeSdk(fetch).admin.transfers.preview("ptx_e1");
     assert.equal(res.recipient_kind, "email");
     assert.equal(res.to_email, "alice@example.com");
-    assert.deepEqual(res.retain_collaborator, block);
+    assert.deepEqual(res.retain_member, block);
   });
 });
 
@@ -456,20 +456,20 @@ describe("admin.transfers.accept (wallet completion)", () => {
   });
 });
 
-describe("admin.transfers.claim (email completion)", () => {
-  it("POSTs /agent/v1/transfers/:id/claim with org_id when given, {} otherwise", async () => {
+describe("admin.transfers.accept (email-addressed row, the same route)", () => {
+  it("POSTs /agent/v1/transfers/:id/accept with org_id when given, {} otherwise", async () => {
     const r1 = mockFetch((call) => {
-      assert.equal(call.url, "https://api.example.test/agent/v1/transfers/ptx_e1/claim");
+      assert.equal(call.url, "https://api.example.test/agent/v1/transfers/ptx_e1/accept");
       assert.deepEqual(JSON.parse(String(call.body)), { org_id: "org_9" });
       return jsonResponse({
         status: "accepted",
         project_id: "prj_abc",
         to_organization_id: "org_9",
         created_new_org: false,
-        retained_collaborator_principal_id: null,
+        retained_member_principal_id: null,
       });
     });
-    const res = await makeSdk(r1.fetch).admin.transfers.claim("ptx_e1", { organizationId: "org_9" });
+    const res = await makeSdk(r1.fetch).admin.transfers.accept("ptx_e1", { orgId: "org_9" });
     assert.equal(res.status, "accepted");
     assert.equal(res.to_organization_id, "org_9");
 
@@ -480,14 +480,14 @@ describe("admin.transfers.claim (email completion)", () => {
         project_id: "prj_abc",
         to_organization_id: "org_new",
         created_new_org: true,
-        retained_collaborator_principal_id: null,
+        retained_member_principal_id: null,
       });
     });
-    const res2 = await makeSdk(r2.fetch).admin.transfers.claim("ptx_e1");
+    const res2 = await makeSdk(r2.fetch).admin.transfers.accept("ptx_e1");
     assert.equal(res2.created_new_org, true);
   });
 
-  it("surfaces and persists the new owner's keys via saveProject + setActiveProject (symmetric with accept)", async () => {
+  it("surfaces and persists the new owner's keys via saveProject + setActiveProject (symmetric with the wallet path)", async () => {
     const saved: Array<{ id: string; keys: unknown }> = [];
     let activated: string | null = null;
     const creds: CredentialsProvider = {
@@ -510,13 +510,13 @@ describe("admin.transfers.claim (email completion)", () => {
         project_id: "prj_new",
         to_organization_id: "org_1",
         created_new_org: false,
-        retained_collaborator_principal_id: null,
+        retained_member_principal_id: null,
         anon_key: "anon_jwt",
         service_key: "svc_jwt",
       }),
     );
     const r = new Run402({ apiBase: "https://api.example.test", credentials: creds, fetch });
-    const res = await r.admin.transfers.claim("ptx_e1");
+    const res = await r.admin.transfers.accept("ptx_e1");
     assert.equal(res.anon_key, "anon_jwt");
     assert.equal(res.service_key, "svc_jwt");
     assert.deepEqual(saved, [{ id: "prj_new", keys: { anon_key: "anon_jwt", service_key: "svc_jwt" } }]);
@@ -530,50 +530,50 @@ describe("admin.transfers.claim (email completion)", () => {
         project_id: "prj_abc",
         to_organization_id: "org_1",
         created_new_org: false,
-        retained_collaborator_principal_id: null,
+        retained_member_principal_id: null,
         anon_key: "anon_jwt",
         service_key: "svc_jwt",
       }),
     );
-    const res = await makeSdk(fetch).admin.transfers.claim("ptx_e1");
+    const res = await makeSdk(fetch).admin.transfers.accept("ptx_e1");
     assert.equal(res.service_key, "svc_jwt");
   });
 
-  it("sends accept_retained_collaborator only when true and surfaces the retained principal", async () => {
+  it("sends accept_retained_member only when true and surfaces the retained principal", async () => {
     const { fetch, calls } = mockFetch(() =>
       jsonResponse({
         status: "accepted",
         project_id: "prj_abc",
         to_organization_id: "org_1",
         created_new_org: false,
-        retained_collaborator_principal_id: "prn_sender",
+        retained_member_principal_id: "prn_sender",
       }),
     );
-    const res = await makeSdk(fetch).admin.transfers.claim("ptx_r1", {
-      organizationId: "org_1",
-      acceptRetainedCollaborator: true,
+    const res = await makeSdk(fetch).admin.transfers.accept("ptx_r1", {
+      orgId: "org_1",
+      acceptRetainedMember: true,
     });
     assert.deepEqual(JSON.parse(String(calls[0].body)), {
       org_id: "org_1",
-      accept_retained_collaborator: true,
+      accept_retained_member: true,
     });
-    assert.equal(res.retained_collaborator_principal_id, "prn_sender");
+    assert.equal(res.retained_member_principal_id, "prn_sender");
   });
 
-  it("omits accept_retained_collaborator by default (full severance)", async () => {
+  it("omits accept_retained_member by default (full severance)", async () => {
     const { fetch, calls } = mockFetch(() =>
       jsonResponse({
         status: "accepted",
         project_id: "prj_abc",
         to_organization_id: "org_1",
         created_new_org: false,
-        retained_collaborator_principal_id: null,
+        retained_member_principal_id: null,
       }),
     );
-    await makeSdk(fetch).admin.transfers.claim("ptx_r2");
+    await makeSdk(fetch).admin.transfers.accept("ptx_r2");
     const body = JSON.parse(String(calls[0].body));
     assert.deepEqual(body, {});
-    assert.ok(!("accept_retained_collaborator" in body));
+    assert.ok(!("accept_retained_member" in body));
   });
 });
 

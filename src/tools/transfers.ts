@@ -2,10 +2,10 @@
  * MCP tools for the unified project-transfer flow (v1.93+; owned-org recipient
  * shape v1.96+). Each handler is a thin shim over `r.admin.transfers.*`
  * followed by markdown formatting. One noun, three recipient shapes: a wallet
- * recipient (`to_wallet`, completed via `accept_project_transfer`), an email
- * recipient (`to_email`, completed via `claim_project_transfer`), or an owned
- * org recipient (`to_org_id`, same-actor move that completes immediately in the
- * first gateway release).
+ * recipient (`to_wallet`) and an email recipient (`to_email`), both completed
+ * via `accept_project_transfer` (the row's recipient kind picks the
+ * credential), or an owned org recipient (`to_org_id`, same-actor move that
+ * completes immediately in the first gateway release).
  */
 
 import { z } from "zod";
@@ -28,7 +28,7 @@ export const initiateProjectTransferSchema = {
   to_email: z
     .string()
     .optional()
-    .describe("Recipient EMAIL. Provide EXACTLY ONE of `to_wallet`, `to_email`, or `to_org_id`. An email recipient completes the transfer via `claim_project_transfer` (they claim it into an org they own)."),
+    .describe("Recipient EMAIL. Provide EXACTLY ONE of `to_wallet`, `to_email`, or `to_org_id`. An email recipient completes the transfer via `accept_project_transfer` with a principal whose verified email matches (into an org they own, or a new one)."),
   to_org_id: z
     .string()
     .optional()
@@ -45,10 +45,10 @@ export const initiateProjectTransferSchema = {
     .string()
     .optional()
     .describe("Wallet rail only. Optional KySigned record id. Phase 1A stores this verbatim (no verification)."),
-  retain_collaborator_role: z
+  retain_member_role: z
     .enum(["developer"])
     .optional()
-    .describe("Email rail only (v1.91): keep a `developer` membership in the recipient's org after the transfer completes. The recipient must accept it at claim time (`accept_retained_collaborator`). Omit for a full severance."),
+    .describe("Email rail only: keep a `developer` membership in the recipient's org after the transfer completes. The recipient must accept it at accept time (`accept_retained_member`). Omit for a full severance."),
 };
 
 export async function handleInitiateProjectTransfer(args: {
@@ -59,7 +59,7 @@ export async function handleInitiateProjectTransfer(args: {
   billing_policy?: "migrate";
   message?: string;
   kysigned_record_id?: string;
-  retain_collaborator_role?: "developer";
+  retain_member_role?: "developer";
 }): Promise<ToolResult> {
   const hasWallet = typeof args.to_wallet === "string" && args.to_wallet.length > 0;
   const hasEmail = typeof args.to_email === "string" && args.to_email.length > 0;
@@ -71,9 +71,9 @@ export async function handleInitiateProjectTransfer(args: {
       isError: true,
     };
   }
-  if (!hasEmail && args.retain_collaborator_role) {
+  if (!hasEmail && args.retain_member_role) {
     return {
-      content: [{ type: "text", text: "`retain_collaborator_role` applies only to `to_email` transfers." }],
+      content: [{ type: "text", text: "`retain_member_role` applies only to `to_email` transfers." }],
       isError: true,
     };
   }
@@ -111,8 +111,8 @@ export async function handleInitiateProjectTransfer(args: {
         projectId: args.project_id,
         toEmail: args.to_email as string,
         message: args.message,
-        retainCollaborator: args.retain_collaborator_role
-          ? { role: args.retain_collaborator_role }
+        retainMember: args.retain_member_role
+          ? { role: args.retain_member_role }
           : undefined,
       });
       const lines = [
@@ -121,7 +121,7 @@ export async function handleInitiateProjectTransfer(args: {
         `- to_email: ${res.to_email}`,
         `- expires_at: ${res.expires_at} (72h)`,
         ``,
-        `The recipient completes by verifying ${res.to_email} and claiming the project into an org (the email analog of accept). Owner-side mutations on this project are blocked until it is claimed, cancelled, or expires. Use \`cancel_project_transfer\` with the transfer id to reverse.`,
+        `The recipient completes by accepting with a principal whose verified email is ${res.to_email} (\`accept_project_transfer\`, optionally naming the receiving org). Owner-side mutations on this project are blocked until it is accepted, cancelled, or expires. Use \`cancel_project_transfer\` with the transfer id to reverse.`,
       ];
       return { content: [{ type: "text", text: lines.join("\n") }] };
     }
@@ -175,7 +175,7 @@ export async function handlePreviewProjectTransfer(args: {
     }
     lines.push(`- billing_policy: ${p.billing_policy}`);
     lines.push(`- source_owner: organization \`${p.source_organization?.org_id ?? "unresolved"}\``);
-    lines.push(`- destination_owner: ${p.destination_organization ? `organization \`${p.destination_organization.org_id}\`` : "unresolved until acceptance/claim"}`);
+    lines.push(`- destination_owner: ${p.destination_organization ? `organization \`${p.destination_organization.org_id}\`` : "unresolved until accepted"}`);
     lines.push(`- initiated_by: ${formatActor(p.initiated_by)}`);
     lines.push(`- recipient_principal: ${formatPrincipal(p.recipient_principal)}`);
     lines.push(`- initiated_at: ${p.initiated_at}`);
@@ -183,8 +183,8 @@ export async function handlePreviewProjectTransfer(args: {
     lines.push(`- terms_sha256: ${p.terms_sha256}`);
     if (p.kysigned_record_id) lines.push(`- kysigned_record_id: ${p.kysigned_record_id}`);
     if (p.message) lines.push(`- message: ${p.message}`);
-    if (p.retain_collaborator) {
-      lines.push(`- retain_collaborator: ${p.retain_collaborator.sender_label} keeps \`${p.retain_collaborator.role}\` (accept with claim's accept_retained_collaborator)`);
+    if (p.retain_member) {
+      lines.push(`- retain_member: ${p.retain_member.sender_label} keeps \`${p.retain_member.role}\` (accept with accept_retained_member)`);
     }
     lines.push(``, `What transfers:`);
     lines.push(`- custom_domains: ${p.custom_domains.length}`);
@@ -203,19 +203,42 @@ export async function handlePreviewProjectTransfer(args: {
   }
 }
 
-// ─── accept_project_transfer (WALLET completion) ────────────────────────────
+// ─── accept_project_transfer (the one completion) ───────────────────────────
 
 export const acceptProjectTransferSchema = {
   transfer_id: z
     .string()
-    .describe("WALLET transfer id to accept. Your wallet must equal the transfer's to_wallet. Atomically flips ownership, revokes the previous owner's CI bindings on the project, and stamps a `secrets_rotation_advised` advisory. (Email transfers complete via `claim_project_transfer`.)"),
+    .describe("Transfer id to accept. The row's recipient kind picks the credential: a wallet-addressed transfer needs your wallet to equal its to_wallet; an email-addressed transfer needs a principal whose verified email matches. Atomically flips ownership, revokes the previous owner's CI bindings on the project, and stamps a `secrets_rotation_advised` advisory."),
+  org_id: z
+    .string()
+    .optional()
+    .describe("Email-addressed transfers only. The org you own to receive the project. Omit to create a brand-new org."),
+  accept_retained_member: z
+    .boolean()
+    .optional()
+    .describe("Email-addressed transfers only. Accept the sender's retained-`developer`-membership offer (see the preview's retain_member). Omit (the default) for a full severance."),
 };
 
 export async function handleAcceptProjectTransfer(args: {
   transfer_id: string;
+  org_id?: string;
+  accept_retained_member?: boolean;
 }): Promise<ToolResult> {
   try {
-    const res = await getSdk().admin.transfers.accept(args.transfer_id);
+    const res = await getSdk().admin.transfers.accept(args.transfer_id, {
+      orgId: args.org_id,
+      acceptRetainedMember: args.accept_retained_member,
+    });
+    if ("status" in res) {
+      const lines = [
+        `Transfer \`${args.transfer_id}\` accepted. Project \`${res.project_id}\` is now in org \`${res.to_organization_id}\`${res.created_new_org ? " (new org created)" : ""}.`,
+      ];
+      if (res.retained_member_principal_id) {
+        lines.push(`- retained_member_principal_id: ${res.retained_member_principal_id}`);
+      }
+      lines.push(``, `The new owner's project keys were persisted to the local keystore; the service_key is not printed here.`);
+      return { content: [{ type: "text", text: lines.join("\n") }] };
+    }
     const lines = [
       `Transfer accepted. Project \`${res.project_id}\` is now owned by ${res.to_wallet}.`,
       `- completed_at: ${res.completed_at}`,
@@ -230,47 +253,6 @@ export async function handleAcceptProjectTransfer(args: {
     return { content: [{ type: "text", text: lines.join("\n") }] };
   } catch (err) {
     return mapSdkError(err, "accepting project transfer");
-  }
-}
-
-// ─── claim_project_transfer (EMAIL completion) ──────────────────────────────
-
-export const claimProjectTransferSchema = {
-  transfer_id: z
-    .string()
-    .describe("EMAIL transfer id to claim. The transfer's addressed email must match your verified email. The email analog of `accept_project_transfer`."),
-  org_id: z
-    .string()
-    .optional()
-    .describe("Organization to claim the project into (you must own/admin it). Omit to claim into a brand-new org."),
-  accept_retained_collaborator: z
-    .boolean()
-    .optional()
-    .describe("Accept the sender's v1.91 retained-`developer`-membership offer (see the preview's retain_collaborator). Omit (the default) for a full severance."),
-};
-
-export async function handleClaimProjectTransfer(args: {
-  transfer_id: string;
-  org_id?: string;
-  accept_retained_collaborator?: boolean;
-}): Promise<ToolResult> {
-  try {
-    const res = await getSdk().admin.transfers.claim(args.transfer_id, {
-      organizationId: args.org_id,
-      acceptRetainedCollaborator: args.accept_retained_collaborator,
-    });
-    const lines = [
-      `Transfer \`${args.transfer_id}\` claimed. Project \`${res.project_id}\` is now in org \`${res.to_organization_id}\`${res.created_new_org ? " (new org created)" : ""}.`,
-      `- status: ${res.status}`,
-    ];
-    if (res.retained_collaborator_principal_id) {
-      lines.push(`- retained_collaborator_principal_id: ${res.retained_collaborator_principal_id}`);
-    }
-    lines.push(``, `The new owner's project keys were returned and persisted to the local keystore (mirroring accept) — you can deploy / set secrets / run SQL on the project immediately. The service_key JWT is not printed here.`);
-    lines.push(``, `Rotation advised: project keys are \`project_id\`-derived and do not rotate on transfer, so the former owner still knows them — the project carries a \`secrets_rotation_advised\` advisory. Rotate inherited secret VALUES via \`set_secret\`.`);
-    return { content: [{ type: "text", text: lines.join("\n") }] };
-  } catch (err) {
-    return mapSdkError(err, "claiming project transfer");
   }
 }
 

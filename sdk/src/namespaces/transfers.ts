@@ -4,7 +4,7 @@
  *
  * Exposed as `r.admin.transfers.*`. Project transfer is ONE capability,
  * body-discriminated by recipient kind: a wallet recipient (`toWallet`, SIWX
- * bilateral signing), an email recipient (`toEmail`, the recipient claims into
+ * bilateral signing), an email recipient (`toEmail`, the recipient accepts into
  * an org), or an owned org recipient (`toOrgId`, same-actor org move). All ride
  * the same `/transfers` surface — there is no separate `/handoffs` noun (the
  * gateway removed it in `unify-project-transfer-surface`).
@@ -14,16 +14,19 @@
  *   GET  /agent/v1/transfers/incoming            — inbox (pending kinds, unioned)
  *   GET  /agent/v1/transfers/outgoing            — outbox (pending kinds, unioned)
  *   GET  /agent/v1/transfers/:transfer_id        — preview (kind-agnostic)
- *   POST /agent/v1/transfers/:transfer_id/accept — WALLET completion (recipient SIWX-signs)
- *   POST /agent/v1/transfers/:transfer_id/claim  — EMAIL completion (recipient claims into an org)
+ *   POST /agent/v1/transfers/:transfer_id/accept — the ONE completion; the row's recipient kind
+ *                                                  picks the credential (wallet: to_wallet's SIWX;
+ *                                                  email: a principal whose verified email matches,
+ *                                                  body { org_id?, accept_retained_member? })
  *   POST /agent/v1/transfers/:transfer_id/cancel — cancel (kind-agnostic)
  *
  * Owner-side mutations against a project with a pending transfer return
  * 409 `PROJECT_HAS_PENDING_TRANSFER`. The SDK kernel surfaces that as
- * {@link TransferFreezeError} so agents can guide the user to cancel. Calling
- * the wrong completion for a row's kind (e.g. `accept` on an email row) returns
- * 409 `WRONG_COMPLETION_FOR_TRANSFER_KIND`; the thrown error exposes
- * `nextActions` pointing at the sibling completion on the SAME `transfer_id`.
+ * {@link TransferFreezeError} so agents can guide the user to cancel. Accepting
+ * with the wrong credential for a row's kind (e.g. a wallet signature on an
+ * email-addressed row) returns 409 `WRONG_COMPLETION_FOR_TRANSFER_KIND`; the
+ * thrown error exposes an `accept_transfer` next action naming the credential
+ * the row needs, on the SAME `transfer_id`.
  */
 
 import type { OperationActorSnapshot, PrincipalRepresentation } from "./identity-links.types.js";
@@ -69,14 +72,14 @@ export interface InitiateWalletTransferInput {
   /** Optional KySigned record id (Phase 1A: informational only, stored verbatim, not verified). */
   kysignedRecordId?: string;
   /** Retention is an email-only opt-in; not allowed on the wallet path. */
-  retainCollaborator?: never;
+  retainMember?: never;
 }
 
-/** Initiate a transfer addressed to an email (the recipient claims into an org via `claim`). */
+/** Initiate a transfer addressed to an email (the recipient accepts into an org via `accept`). */
 export interface InitiateEmailTransferInput {
   /** Project id to transfer. Caller must currently own/admin it. */
   projectId: string;
-  /** Recipient email; claimed at the recipient's first verified login. */
+  /** Recipient email; accepted by a principal whose verified email matches. */
   toEmail: string;
   /** Mutually exclusive with {@link InitiateEmailTransferInput.toEmail}; not allowed on the email path. */
   toWallet?: never;
@@ -88,11 +91,11 @@ export interface InitiateEmailTransferInput {
    * Opt in (v1.91) to retaining a `developer` membership in the recipient's org
    * after the transfer completes. Only `role: "developer"` is accepted, and the
    * subject is always the initiating owner (you can only retain yourself). The
-   * recipient must explicitly accept it at claim time (see
-   * {@link ClaimTransferInput.acceptRetainedCollaborator}); omitting this is a
+   * recipient must explicitly accept it at accept time (see
+   * {@link AcceptTransferOptions.acceptRetainedMember}); omitting this is a
    * full severance, the default.
    */
-  retainCollaborator?: { role: "developer" } | null;
+  retainMember?: { role: "developer" } | null;
   /** Billing policy is wallet-path only; not allowed on the email path. */
   billingPolicy?: never;
   /** KySigned record id is wallet-path only; not allowed on the email path. */
@@ -119,7 +122,7 @@ export interface InitiateOrgTransferInput {
   /** KySigned record id is wallet-path only; not allowed on the org path. */
   kysignedRecordId?: never;
   /** Retention is an email-only opt-in; not allowed on the org path. */
-  retainCollaborator?: never;
+  retainMember?: never;
 }
 
 /** Inputs to `r.admin.transfers.initiate(...)` — wallet XOR email XOR org. */
@@ -144,7 +147,7 @@ export interface InitiateTransferResult {
   terms_sha256: string;
 }
 
-/** Result of an email-addressed `initiate`. The recipient completes via `claim`. */
+/** Result of an email-addressed `initiate`. The recipient completes via `accept`. */
 export interface InitiateEmailTransferResult {
   status: "ok";
   transfer_id: string;
@@ -176,7 +179,8 @@ export interface InitiateOrgTransferResult {
   [key: string]: unknown;
 }
 
-export interface AcceptTransferResult {
+/** Result of accepting a WALLET-addressed transfer. */
+export interface AcceptWalletTransferResult {
   project_id: string;
   from_wallet: string;
   to_wallet: string;
@@ -193,6 +197,34 @@ export interface AcceptTransferResult {
   /** Verbatim reminder that GitHub repo ownership is NOT part of the transfer. */
   github_repo_note: string;
 }
+
+/**
+ * Result of accepting an EMAIL-addressed transfer. Symmetric with the wallet
+ * result: the completion returns the new owner's project keys
+ * (`project-transfer-accept-credentials`), and `accept` persists them to the
+ * keystore so the new owner can operate the project immediately.
+ */
+export interface AcceptEmailTransferResult {
+  status: "accepted";
+  project_id: string;
+  to_organization_id: string;
+  created_new_org: boolean;
+  /**
+   * The sender's principal id retained as a `developer` of the new org, or
+   * `null` when no membership was retained (declined, not offered, or no-op).
+   */
+  retained_member_principal_id: string | null;
+  /** Present when the gateway reports the credential rotation it performed. */
+  credentials_revoked?: boolean;
+  credentials_issued?: boolean;
+  /** New owner's project anon key (stateless `project_id`-derived JWT). `accept` persists it. */
+  anon_key: string;
+  /** New owner's project service key (stateless `project_id`-derived JWT). Full project access; persisted on accept. */
+  service_key: string;
+}
+
+/** Result of {@link Transfers.accept} — the row's recipient kind decides which shape comes back. */
+export type AcceptTransferResult = AcceptWalletTransferResult | AcceptEmailTransferResult;
 
 export interface CancelTransferResult {
   transfer_id: string;
@@ -302,12 +334,12 @@ export interface BillingImplications {
 }
 
 /**
- * The sender-retained-membership offer block on an email transfer preview
- * (v1.91), or `null` when the sender requested no retention. `accept_field`
- * names the claim body field the recipient sets to accept
- * (`"accept_retained_collaborator"`).
+ * The sender-retained-membership offer block on an email transfer preview,
+ * or `null` when the sender requested no retention. `accept_field` names the
+ * accept body field the recipient sets to accept
+ * (`"accept_retained_member"`).
  */
-export interface RetainCollaboratorPreview {
+export interface RetainMemberPreview {
   principal_id: string;
   role: "developer";
   sender_label: string;
@@ -319,7 +351,7 @@ export interface RetainCollaboratorPreview {
 
 /**
  * Kind-agnostic preview document. Wallet-identity fields are `null` on email
- * and org rows; `to_email` and `retain_collaborator` are populated on email
+ * and org rows; `to_email` and `retain_member` are populated on email
  * rows, while org rows carry `to_org_id` / `to_organization_id` when returned.
  */
 export interface ProjectTransferPreview {
@@ -354,49 +386,26 @@ export interface ProjectTransferPreview {
   signers: SignerPreview[];
   github_repo_note: string;
   billing_implications: BillingImplications;
-  /** v1.91 sender-retained-membership offer (email rows), or `null` when none was requested. */
-  retain_collaborator?: RetainCollaboratorPreview | null;
+  /** Sender-retained-membership offer (email rows), or `null` when none was requested. */
+  retain_member?: RetainMemberPreview | null;
   initiated_by?: OperationActorSnapshot | null;
   source_organization?: { org_id: string } | null;
   destination_organization?: { org_id: string } | null;
   recipient_principal?: PrincipalRepresentation | null;
 }
 
-// ─── Email completion (claim) ──────────────────────────────────────────────
+// ─── Accept options ─────────────────────────────────────────────────────────
 
-/** Inputs to {@link Transfers.claim}. */
-export interface ClaimTransferInput {
-  /** Org (organization) to claim into. Omit to claim into a brand-new org. */
-  organizationId?: string;
+/** Options to {@link Transfers.accept}; both fields apply to EMAIL-addressed rows only. */
+export interface AcceptTransferOptions {
+  /** Org to receive the project. Omit to create a brand-new wallet-less org. */
+  orgId?: string;
   /**
-   * Accept the sender's v1.91 retained-`developer`-membership offer (see the
-   * preview's `retain_collaborator` block). Only an explicit `true`
-   * materializes the membership in the new org; omitting it (the default) is a
-   * full severance.
+   * Accept the sender's retained-`developer`-membership offer (see the
+   * preview's `retain_member` block). Only an explicit `true` materializes the
+   * membership in the new org; omitting it (the default) is a full severance.
    */
-  acceptRetainedCollaborator?: boolean;
-}
-
-/**
- * Result of {@link Transfers.claim}. Symmetric with wallet {@link Transfers.accept}:
- * the email completion returns the new owner's project keys
- * (`project-transfer-claim-credentials`), and `claim` persists them to the
- * keystore so the claimant can operate the project immediately.
- */
-export interface ClaimTransferResult {
-  status: "accepted";
-  project_id: string;
-  to_organization_id: string;
-  created_new_org: boolean;
-  /**
-   * The sender's principal id retained as a `developer` of the new org (v1.91),
-   * or `null` when no membership was retained (declined, not offered, or no-op).
-   */
-  retained_collaborator_principal_id: string | null;
-  /** New owner's project anon key (stateless `project_id`-derived JWT). `claim` persists it. */
-  anon_key: string;
-  /** New owner's project service key (stateless `project_id`-derived JWT). Full project access; persisted on claim. */
-  service_key: string;
+  acceptRetainedMember?: boolean;
 }
 
 // ─── Class ───────────────────────────────────────────────────────────────────
@@ -409,7 +418,7 @@ export class Transfers {
    * (`toEmail`), OR an owned org (`toOrgId`), exactly one. Caller must
    * currently own/admin `projectId` (gateway re-reads owner from DB, not cache).
    * Wallet/email recipients create a `pending` row with a 72h expiry and freeze
-   * owner-side mutations until accepted/claimed/cancelled/expired. The first
+   * owner-side mutations until accepted/cancelled/expired. The first
    * org-recipient gateway release is same-actor only and completes immediately.
    */
   async initiate(input: InitiateWalletTransferInput): Promise<InitiateTransferResult>;
@@ -436,7 +445,7 @@ export class Transfers {
     if (hasOrg) {
       rejectDefinedField(input, "billingPolicy", "org");
       rejectDefinedField(input, "kysignedRecordId", "org");
-      rejectDefinedField(input, "retainCollaborator", "org");
+      rejectDefinedField(input, "retainMember", "org");
       const body: Record<string, unknown> = { to_org_id: toOrgId };
       if (input.message !== undefined) body.message = input.message;
       const result = await this.client.request<InitiateOrgTransferResult>(path, {
@@ -452,8 +461,8 @@ export class Transfers {
       rejectDefinedField(input, "kysignedRecordId", "email");
       const body: Record<string, unknown> = { to_email: toEmail };
       if (input.message !== undefined) body.message = input.message;
-      const retain = (input as InitiateEmailTransferInput).retainCollaborator;
-      if (retain !== undefined) body.retain_collaborator = retain;
+      const retain = (input as InitiateEmailTransferInput).retainMember;
+      if (retain !== undefined) body.retain_member = retain;
       return this.client.request<InitiateEmailTransferResult>(path, {
         method: "POST",
         body,
@@ -461,7 +470,7 @@ export class Transfers {
       });
     }
     const w = input as InitiateWalletTransferInput;
-    rejectDefinedField(w, "retainCollaborator", "wallet");
+    rejectDefinedField(w, "retainMember", "wallet");
     const body: Record<string, unknown> = { to_wallet: toWallet };
     if (w.billingPolicy !== undefined) body.billing_policy = w.billingPolicy;
     if (w.message !== undefined) body.message = w.message;
@@ -479,7 +488,7 @@ export class Transfers {
    * principal, or offering-org member); other callers receive 403. Preview
    * lists secret NAMES (not values), custom domains, functions, CI bindings
    * that will be revoked at completion, the billing implications, and — on
-   * email rows — the `retain_collaborator` offer.
+   * email rows — the `retain_member` offer.
    */
   async preview(transferId: string): Promise<ProjectTransferPreview> {
     return this.client.request<ProjectTransferPreview>(
@@ -489,42 +498,27 @@ export class Transfers {
   }
 
   /**
-   * Accept an incoming WALLET transfer. The caller's wallet must equal the
-   * transfer's `to_wallet`. The accept transaction atomically flips ownership,
-   * revokes A's CI bindings on the project, enqueues notifications to both
-   * parties, and stamps the persistent `secrets_rotation_advised` advisory.
+   * Accept an incoming transfer — the ONE completion, whatever the row's
+   * address. A wallet-addressed row is accepted by the `to_wallet`'s SIWX
+   * signature; an email-addressed row by a principal (sign-in session or
+   * SIWX) whose verified email matches, into an org it owns (`orgId`) or,
+   * omitted, a newly created wallet-less org. Both paths run the same atomic
+   * transaction: ownership flip, grant/CI revoke, notification enqueue, the
+   * persistent `secrets_rotation_advised` advisory, and an audit row. Both
+   * return the new owner's project keys, which `accept` persists to the
+   * keystore so the new owner can operate the project immediately.
    */
-  async accept(transferId: string): Promise<AcceptTransferResult> {
+  async accept(transferId: string, opts: AcceptTransferOptions = {}): Promise<AcceptTransferResult> {
+    const body: Record<string, unknown> = {};
+    if (opts.orgId !== undefined) body.org_id = opts.orgId;
+    if (opts.acceptRetainedMember !== undefined) body.accept_retained_member = opts.acceptRetainedMember;
     const result = await this.client.request<AcceptTransferResult>(
       `/agent/v1/transfers/${encodeURIComponent(transferId)}/accept`,
       {
         method: "POST",
-        body: {},
+        body,
         context: "accepting project transfer",
       },
-    );
-    await persistProjectKeys(this.client, result);
-    return result;
-  }
-
-  /**
-   * Claim an incoming EMAIL transfer into an org. Omit `organizationId` to claim
-   * into a brand-new org. The claim atomically flips ownership (the email analog
-   * of {@link Transfers.accept}) and returns the new owner's project keys, which
-   * `claim` persists to the keystore — symmetric with `accept` — so the claimant can operate the
-   * project immediately. Note the claim auth model is principal-based (a
-   * control-plane session or a verified-email SIWX match), so — unlike `accept`
-   * — a wallet is not assumed to be present.
-   */
-  async claim(transferId: string, opts: ClaimTransferInput = {}): Promise<ClaimTransferResult> {
-    const body: Record<string, unknown> = {};
-    if (opts.organizationId !== undefined) body.org_id = opts.organizationId;
-    if (opts.acceptRetainedCollaborator !== undefined) {
-      body.accept_retained_collaborator = opts.acceptRetainedCollaborator;
-    }
-    const result = await this.client.request<ClaimTransferResult>(
-      `/agent/v1/transfers/${encodeURIComponent(transferId)}/claim`,
-      { method: "POST", body, context: "claiming project transfer" },
     );
     await persistProjectKeys(this.client, result);
     return result;
@@ -593,7 +587,7 @@ async function persistProjectKeys(
 
 function rejectDefinedField(
   input: InitiateTransferInput,
-  field: "billingPolicy" | "kysignedRecordId" | "retainCollaborator",
+  field: "billingPolicy" | "kysignedRecordId" | "retainMember",
   recipient: "wallet" | "email" | "org",
 ): void {
   if ((input as unknown as Record<string, unknown>)[field] !== undefined) {

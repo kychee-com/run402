@@ -691,11 +691,10 @@ const SURFACE: Capability[] = [
   { id: "demote_user",     endpoint: "POST /projects/v1/admin/:id/demote-user",  mcp: "demote_user",  cli: "projects:demote-user",  openclaw: "projects:demote-user" },
   { id: "admin_project_finance", endpoint: "GET /admin/api/finance/project/:id", mcp: null, cli: "projects:costs", openclaw: "projects:costs" },
 
-  // ── Project transfer (unified noun) — wallet (accept) + email (claim) + owned-org (immediate) ──
+  // ── Project transfer (unified noun) — wallet + email (one accept) + owned-org (immediate) ──
   { id: "initiate_project_transfer", endpoint: "POST /projects/v1/:project_id/transfers",       mcp: "initiate_project_transfer", cli: "transfer:init",    openclaw: "transfer:init" },
   { id: "preview_project_transfer",  endpoint: "GET /agent/v1/transfers/:transfer_id",          mcp: "preview_project_transfer",  cli: "transfer:preview", openclaw: "transfer:preview" },
   { id: "accept_project_transfer",   endpoint: "POST /agent/v1/transfers/:transfer_id/accept",  mcp: "accept_project_transfer",   cli: "transfer:accept",  openclaw: "transfer:accept" },
-  { id: "claim_project_transfer",    endpoint: "POST /agent/v1/transfers/:transfer_id/claim",   mcp: "claim_project_transfer",    cli: "transfer:claim",   openclaw: "transfer:claim" },
   { id: "cancel_project_transfer",   endpoint: "POST /agent/v1/transfers/:transfer_id/cancel",  mcp: "cancel_project_transfer",   cli: "transfer:cancel",  openclaw: "transfer:cancel" },
   { id: "list_incoming_transfers",   endpoint: "GET /agent/v1/transfers/incoming",              mcp: "list_incoming_transfers",   cli: "transfer:list",    openclaw: "transfer:list" },
   { id: "list_outgoing_transfers",   endpoint: "GET /agent/v1/transfers/outgoing",              mcp: "list_outgoing_transfers",   cli: null,               openclaw: null },
@@ -1282,7 +1281,6 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   initiate_project_transfer: "admin.transfers.initiate",
   preview_project_transfer: "admin.transfers.preview",
   accept_project_transfer: "admin.transfers.accept",
-  claim_project_transfer: "admin.transfers.claim",
   cancel_project_transfer: "admin.transfers.cancel",
   list_incoming_transfers: "admin.transfers.listIncoming",
   list_outgoing_transfers: "admin.transfers.listOutgoing",

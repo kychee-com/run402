@@ -89,7 +89,7 @@ const MATRIX = {
   ci: { shared: [], specific: ["link", "list", "revoke"] },
   transfer: {
     shared: [],
-    specific: ["init", "preview", "list", "accept", "claim", "cancel"],
+    specific: ["init", "preview", "list", "accept", "cancel"],
   },
   functions: {
     shared: [],
