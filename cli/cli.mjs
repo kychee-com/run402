@@ -36,7 +36,7 @@ SET UP — get an agent funded and entitled
   wallets     Manage multiple named wallets (list, new, use, rename, bind, import)
   allowance   Manage your agent allowance (create, fund, balance, status)
   tier        Manage your tier and its lease (status, set)
-  redeem      Redeem a promo code for run402 credit
+  redeem      Redeem a promo code into your organization's allowance
   pay         Call an arbitrary x402-priced URL with a bounded payment
 
 BUILD & SHIP — the app and everything it serves

@@ -25,8 +25,9 @@ import type { ProjectTier } from "./projects.types.js";
 export interface OrganizationDetail {
   /** Canonical organization id (UUID). */
   org_id: string;
-  available_usd_micros: number;
-  /** Held/reserved portion of the balance; absent on gateways that predate the field. */
+  /** The organization's allowance: its Run402-held prepaid balance. */
+  allowance_usd_micros: number;
+  /** Held/reserved portion of the allowance; absent on gateways that predate the field. */
   held_usd_micros?: number;
   email_credits_remaining: number;
   tier: ProjectTier | null;
@@ -72,7 +73,7 @@ export interface CreateCheckoutResult {
 }
 
 /**
- * A Lightning cash top-up (lightning-cash-topup). `amount_usd_micros` is a
+ * A Lightning allowance top-up. `amount_usd_micros` is a
  * QUOTE fixed at mint (`usd_value_is_quote: true`) and is what settlement
  * credits. Never carries the provider's credential.
  */

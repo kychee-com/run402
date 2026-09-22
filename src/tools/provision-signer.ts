@@ -4,7 +4,7 @@ import { mapSdkError } from "../errors.js";
 
 export const provisionSignerSchema = {
   project_id: z.string().describe("The project ID"),
-  chain: z.enum(["base-mainnet", "base-sepolia"]).describe("Which EVM chain. Cost: $0.04/day rental, requires $1.20 in cash credit at creation."),
+  chain: z.enum(["base-mainnet", "base-sepolia"]).describe("Which EVM chain. Cost: $0.04/day rental, requires $1.20 of allowance at creation."),
   recovery_address: z.string().optional().describe("Optional 0x-prefixed address for auto-drain on day-90 deletion"),
 };
 

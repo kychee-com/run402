@@ -12,7 +12,7 @@ Subcommands:
   create-email <email>                     Create an email organization
   link-wallet [<org_id>] <wallet_address>  Link a wallet to an email organization
   checkout <identifier> --product <p>      Create an org checkout
-  topup <identifier> --sats <n> [--wait] [--qr <file.png>]   Top up the cash balance over Lightning (a bolt11 invoice; --qr also writes a scannable PNG)
+  topup <identifier> --sats <n> [--wait] [--qr <file.png>]   Top up the allowance over Lightning (a bolt11 invoice; --qr also writes a scannable PNG)
   auto-recharge [<org_id>] <on|off> [--threshold <n>]
   balance <identifier>                     Balance by organization id (UUID), wallet (0x...), or email
   history <identifier> [--limit <n>]       Ledger history by organization id (UUID), wallet, or email
@@ -86,7 +86,7 @@ Examples:
   run402 billing history 0x1234... --limit 100
   run402 billing history 00000000-0000-4000-8000-000000000001
 `,
-  balance: `run402 billing balance — Show balance for a organization
+  balance: `run402 billing balance — Show an organization's allowance
 
 Usage:
   run402 billing balance <identifier>
@@ -262,7 +262,7 @@ async function topup(args) {
     });
     console.log(JSON.stringify(final, null, 2));
     if (final.status === "paid" || final.status === "paid_late") {
-      console.error(`Received — ${final.amount_sats} sats credited $${(final.amount_usd_micros / 1_000_000).toFixed(2)} to the balance${final.status === "paid_late" ? " (paid after the invoice expired; still credited)" : ""}.`);
+      console.error(`Received — ${final.amount_sats} sats added $${(final.amount_usd_micros / 1_000_000).toFixed(2)} to the allowance${final.status === "paid_late" ? " (paid after the invoice expired; still credited)" : ""}.`);
     } else if (final.status === "expired") {
       console.error("No payment was observed before the invoice expired. If you already paid, it still credits on its own (the gateway keeps checking for an hour after expiry) — read the top-up again, or rerun with the same --idempotency-key. Otherwise mint a fresh one with the same command.");
       process.exitCode = 2;

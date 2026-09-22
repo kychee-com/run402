@@ -222,34 +222,34 @@ export class PaymentBuyerCapError extends Run402Error {
 }
 
 /**
- * A gateway 402 that names the caller's prepaid credit (`credit.available_usd_micros`,
- * `credit.price_usd_micros`, `credit.shortfall_usd_micros`) turns a bare
- * "insufficient USDC" into the actual situation: credit was checked first and
- * fell short by a known amount, and a voucher or top-up closes the gap without
- * any on-chain funds. Only an insufficient-funds verdict is reshaped; an RPC
- * failure stays an RPC failure.
+ * A gateway 402 that names the caller's allowance (`allowance.allowance_usd_micros`,
+ * `allowance.price_usd_micros`, `allowance.shortfall_usd_micros`) turns a bare
+ * "insufficient USDC" into the actual situation: the organization's allowance
+ * was checked first and fell short by a known amount, and a voucher or top-up
+ * closes the gap without any on-chain funds. Only an insufficient-funds verdict
+ * is reshaped; an RPC failure stays an RPC failure.
  */
-function withCreditShortfall(error: X402BalanceError, challengeBody: Record<string, unknown> | null): X402BalanceError {
-  const credit = challengeBody?.credit;
-  if (error.code !== "X402_INSUFFICIENT_FUNDS" || !credit || typeof credit !== "object") return error;
-  const c = credit as Record<string, unknown>;
-  const available = Number(c.available_usd_micros);
-  const price = Number(c.price_usd_micros);
-  const shortfall = Number(c.shortfall_usd_micros);
-  if (![available, price, shortfall].every(Number.isFinite)) return error;
+function withAllowanceShortfall(error: X402BalanceError, challengeBody: Record<string, unknown> | null): X402BalanceError {
+  const block = challengeBody?.allowance;
+  if (error.code !== "X402_INSUFFICIENT_FUNDS" || !block || typeof block !== "object") return error;
+  const a = block as Record<string, unknown>;
+  const allowance = Number(a.allowance_usd_micros);
+  const price = Number(a.price_usd_micros);
+  const shortfall = Number(a.shortfall_usd_micros);
+  if (![allowance, price, shortfall].every(Number.isFinite)) return error;
   const priorDetails = (error.body as { details?: Record<string, unknown> } | null)?.details ?? {};
   return new X402BalanceError(
     "X402_INSUFFICIENT_FUNDS",
-    `Prepaid credit ($${(available / 1_000_000).toFixed(2)}) does not cover this ($${(price / 1_000_000).toFixed(2)}), and the wallet holds no USDC for the $${(shortfall / 1_000_000).toFixed(2)} shortfall.`,
+    `The organization's allowance ($${(allowance / 1_000_000).toFixed(2)}) does not cover this ($${(price / 1_000_000).toFixed(2)}), and the wallet holds no USDC for the $${(shortfall / 1_000_000).toFixed(2)} shortfall.`,
     {
       ...priorDetails,
-      credit: { available_usd_micros: available, price_usd_micros: price, shortfall_usd_micros: shortfall },
+      allowance: { allowance_usd_micros: allowance, price_usd_micros: price, shortfall_usd_micros: shortfall },
     },
     error.cause,
     [
-      { type: "redeem_voucher", cli: "run402 redeem <code>", why: "A promo code credits the organization; credit settles a tier with no on-chain payment." },
-      { type: "top_up", why: "Add prepaid credit to the organization (Lightning or card), then retry." },
-      { type: "fund_wallet", why: "Or fund the allowance wallet with USDC on an accepted network for the shortfall, then retry." },
+      { type: "redeem_voucher", cli: "run402 redeem <code>", why: "A promo code adds to the organization's allowance, which settles a tier with no on-chain payment." },
+      { type: "top_up", why: "Top up the organization's allowance (Lightning or card), then retry." },
+      { type: "fund_wallet", why: "Or fund the wallet with USDC on an accepted network for the shortfall, then retry." },
     ],
   );
 }
@@ -440,7 +440,7 @@ interface TrackedPaymentContext {
   transportFailure?: unknown;
   /**
    * The JSON body of the 402 challenge, when it parsed. The gateway names the
-   * caller's prepaid credit and the shortfall here (`credit`), which is what
+   * organization's allowance and the shortfall here (`allowance`), which is what
    * turns a bare "insufficient USDC" into "you are $2 short; redeem a voucher
    * or top up" — the balance preflight never sees the response otherwise.
    */
@@ -2304,7 +2304,7 @@ export function createTrackedX402Fetch(
             mutation_state: "not_started",
             last_error_code: balanceError.code,
           });
-          throw withCreditShortfall(balanceError, context.challengeBody ?? null);
+          throw withAllowanceShortfall(balanceError, context.challengeBody ?? null);
         }
         if (cause instanceof PaymentAttemptError) throw cause;
         if (cause instanceof Run402Error && !context.providerStarted) {

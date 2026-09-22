@@ -1174,7 +1174,7 @@ server.tool(
 
 server.tool(
   "redeem_voucher",
-  "Redeem a promo code (voucher) for Run402 prepaid credit. Use this whenever the user hands you a code like R402-K8F3-Q2W9. The credit spends like any other prepaid balance — a tier purchase settles from it with no on-chain payment. Works before or after setup, and retrying the same code is safe (a repeat returns the original result and never credits twice).",
+  "Redeem a promo code (voucher) into the organization's allowance. Use this whenever the user hands you a code like R402-K8F3-Q2W9. The allowance spends the same however it was funded — a tier purchase settles from it with no on-chain payment. Works before or after setup, and retrying the same code is safe (a repeat returns the original result and never adds the amount twice).",
   redeemVoucherSchema,
   async (args) => handleRedeemVoucher(args),
 );
@@ -1571,7 +1571,7 @@ server.tool(
 
 server.tool(
   "create_lightning_topup",
-  "Top up an organization's cash balance over Lightning: mints a bolt11 invoice (no Stripe, no funds move until paid). Use when a human says 'top up N sats'. Pay it from any Lightning wallet, then get_topup until paid.",
+  "Top up an organization's allowance over Lightning: mints a bolt11 invoice (no Stripe, no funds move until paid). Use when a human says 'top up N sats'. Pay it from any Lightning wallet, then get_topup until paid.",
   createLightningTopupSchema,
   async (args) => handleCreateLightningTopup(args),
 );
@@ -1846,7 +1846,7 @@ server.tool(
 
 server.tool(
   "provision_signer",
-  "Provision an AWS KMS-backed Ethereum signer for signing smart-contract write transactions. Private keys never leave KMS. Cost: $0.04/day rental ($1.20/month) plus $0.000005 per contract call. Requires $1.20 in cash credit at creation (30 days of rent). Non-custodial.",
+  "Provision an AWS KMS-backed Ethereum signer for signing smart-contract write transactions. Private keys never leave KMS. Cost: $0.04/day rental ($1.20/month) plus $0.000005 per contract call. Requires $1.20 of allowance at creation (30 days of rent). Non-custodial.",
   provisionSignerSchema,
   async (args) => handleProvisionSigner(args),
 );

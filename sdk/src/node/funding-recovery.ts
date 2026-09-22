@@ -10,10 +10,10 @@ export interface FundingRecovery {
 }
 
 export function fundingBlocksBootstrap(recovery: FundingRecovery | null, evidence: {
-  activeTier: boolean; onChainBalance?: number | null; prepaidBalance?: number | null; lightningBalance?: number | null;
+  activeTier: boolean; onChainBalance?: number | null; allowanceBalance?: number | null; lightningBalance?: number | null;
 }): boolean {
   return recovery !== null && !evidence.activeTier && !(Number(evidence.onChainBalance) > 0)
-    && !(Number(evidence.prepaidBalance) > 0) && !(Number(evidence.lightningBalance) > 0);
+    && !(Number(evidence.allowanceBalance) > 0) && !(Number(evidence.lightningBalance) > 0);
 }
 
 export function fundingRecovery(error: unknown, pending = false): FundingRecovery | null {

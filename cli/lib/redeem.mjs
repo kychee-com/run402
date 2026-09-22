@@ -2,14 +2,13 @@ import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 import { assertKnownFlags, normalizeArgv, positionalArgs } from "./argparse.mjs";
 
-const HELP = `run402 redeem — Redeem a promo code for run402 credit
+const HELP = `run402 redeem — Redeem a promo code into your organization's allowance
 
 Usage:
   run402 redeem <code> [--json]
 
-A promo code credits your organization with run402 prepaid credit. That credit
-spends like any other prepaid balance — a tier purchase settles from it with no
-on-chain payment.
+A promo code adds to your organization's allowance, which spends like any
+other allowance — a tier purchase settles from it with no on-chain payment.
 
 Notes:
   - Order does not matter. This works as your very first authenticated call
@@ -17,7 +16,7 @@ Notes:
   - Codes are forgiving: case-insensitive and hyphens are optional, so
     'R402-K8F3-Q2W9' and 'r402k8f3q2w9' are the same code.
   - Retrying is safe. A repeat by the same organization returns the original
-    result with "already_redeemed": true and never credits twice.
+    result with "already_redeemed": true and never adds the amount twice.
   - Being in a grace state does not block you. Redeeming is how an owner funds
     a renewal, so it is never gated.
   - One gift per organization, per issuer: past the lifetime ceiling for a
@@ -64,10 +63,10 @@ export async function run(args = []) {
     // in a field a human skims past.
     console.error("");
     console.error(
-      `  Voucher    ${usd(data.amount_usd_micros)} credited` +
-        `${data.already_redeemed ? " (already redeemed " + data.redeemed_at + " — no second credit)" : ""}`,
+      `  Voucher    ${usd(data.amount_usd_micros)} added` +
+        `${data.already_redeemed ? " (already redeemed " + data.redeemed_at + " — not added twice)" : ""}`,
     );
-    console.error(`  Balance    ${usd(data.balance_usd_micros)} available`);
+    console.error(`  Allowance  ${usd(data.balance_usd_micros)}`);
     const next = Array.isArray(data.next_actions) ? data.next_actions.find((a) => a?.cli) : null;
     if (next?.cli) console.error(`\n  Next: ${next.cli}`);
     console.error("");

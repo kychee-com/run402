@@ -222,7 +222,7 @@ function addCodeGuidance(
       return true;
     case "PAYMENT_REQUIRED":
     case "INSUFFICIENT_FUNDS":
-      lines.push(`\nNext step: Submit payment or fund the allowance, then retry the request.`);
+      lines.push(`\nNext step: Submit payment (top up the organization's allowance or fund the wallet), then retry the request.`);
       return true;
     case "PAYMENT_INTENT_PENDING":
       lines.push(`\nNext step: Repeat the identical request with the same payer and Idempotency-Key after Retry-After. Do not authorize a fresh key while settlement is unresolved.`);

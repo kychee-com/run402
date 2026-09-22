@@ -38,7 +38,7 @@ describe("check_balance tool", () => {
       new Response(
         JSON.stringify({
           org_id: "00000000-0000-4000-8000-000000000001",
-          available_usd_micros: 2500000,
+          allowance_usd_micros: 2500000,
           email_credits_remaining: 42,
           tier: "prototype",
           lease_expires_at: "2026-05-07T14:49:10.884Z",
@@ -63,7 +63,7 @@ describe("check_balance tool", () => {
       return new Response(
         JSON.stringify({
           org_id: "00000000-0000-4000-8000-000000000001",
-          available_usd_micros: 0,
+          allowance_usd_micros: 0,
           email_credits_remaining: 0,
           tier: null,
           lease_expires_at: null,
@@ -83,7 +83,7 @@ describe("check_balance tool", () => {
       new Response(
         JSON.stringify({
           org_id: "00000000-0000-4000-8000-000000000001",
-          available_usd_micros: 0,
+          allowance_usd_micros: 0,
           email_credits_remaining: 0,
           tier: null,
           lease_expires_at: null,

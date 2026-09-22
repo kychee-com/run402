@@ -34,7 +34,7 @@ const REDEEMED = {
   redeemed_at: "2026-08-09T20:00:00.000Z",
   already_redeemed: false,
   promo_lifetime_ceiling_usd_micros: 1_000_000,
-  next_actions: [{ type: "set_tier", cli: "run402 tier set prototype", why: "The credit covers it." }],
+  next_actions: [{ type: "set_tier", cli: "run402 tier set prototype", why: "The allowance covers it." }],
 };
 
 // Mock the chain layer. Without this, init reads a real Base Sepolia balance,
@@ -115,11 +115,11 @@ describe("run402 redeem", () => {
     assert.equal(parsed.amount_usd_micros, 1_000_000);
     // The pipe contract: the payload is stdout, the human-readable progress is
     // stderr. A summary line on stdout would break `| jq`.
-    assert.match(stderr.join("\n"), /Voucher\s+\$1\.00 credited/);
+    assert.match(stderr.join("\n"), /Voucher\s+\$1\.00 added/);
     assert.match(stderr.join("\n"), /run402 tier set prototype/);
   });
 
-  it("renders a replay honestly instead of as a fresh credit", async () => {
+  it("renders a replay honestly instead of as a fresh redemption", async () => {
     redeemImpl = async () => ({ ...REDEEMED, already_redeemed: true });
     const { run } = await import("./cli/lib/redeem.mjs");
     captureStart();

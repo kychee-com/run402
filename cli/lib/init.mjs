@@ -32,8 +32,8 @@ Usage:
                              silently flipping billing networks.
 
 Options:
-  --voucher <code> Redeem a promo code after setup and credit this
-                  organization. Never blocks setup: if the code is invalid,
+  --voucher <code> Redeem a promo code after setup into this
+                  organization's allowance. Never blocks setup: if the code is invalid,
                   expired, already used, or the call fails, init warns and
                   finishes normally with 'voucher_error' in the summary.
                   Equivalent to running 'run402 redeem <code>' afterwards.
@@ -286,7 +286,7 @@ export async function run(args = []) {
       });
     }
     // This branch configures a Core/API target and returns without setting up
-    // an allowance — there is no organization here to credit, and promo
+    // a wallet — there is no organization here to credit, and promo
     // vouchers are a Run402 Cloud concept. Say so instead of accepting the
     // flag and silently dropping it.
     if (voucherCode) {
@@ -517,8 +517,8 @@ export async function run(args = []) {
 
   // 3b. Promo code, when one was handed to us.
   //
-  // This runs BEFORE the balance read below so the credited amount shows up in
-  // `prepaid_credit_usd_micros` without a second round-trip, and AFTER the
+  // This runs BEFORE the balance read below so the redeemed amount shows up in
+  // `allowance_usd_micros` without a second round-trip, and AFTER the
   // wallet exists so the redemption authenticates as this agent.
   //
   // NOTHING here may fail init. An advertised gift that dead-ends a build is
@@ -530,12 +530,12 @@ export async function run(args = []) {
   if (voucherCode) {
     try {
       const redemption = await getSdk().vouchers.redeem(voucherCode);
-      const credited = (redemption.amount_usd_micros / 1_000_000).toFixed(2);
+      const redeemed = (redemption.amount_usd_micros / 1_000_000).toFixed(2);
       line(
         "Voucher",
         redemption.already_redeemed
-          ? `$${credited} already credited (no second credit)`
-          : `$${credited} credited`,
+          ? `$${redeemed} already added to the allowance (not added twice)`
+          : `$${redeemed} added to the allowance`,
       );
       summary.voucher = {
         voucher_id: redemption.voucher_id,
@@ -544,12 +544,12 @@ export async function run(args = []) {
         next_actions: Array.isArray(redemption.next_actions) ? redemption.next_actions : [],
       };
       // Relate the gift to what it buys, in the gateway's own words: its
-      // `set_tier` next action names the largest tier the credit covers, and
-      // that purchase settles from credit — no wallet funding step between.
+      // `set_tier` next action names the largest tier the allowance covers, and
+      // that purchase settles from the allowance — no wallet funding step between.
       const covers = summary.voucher.next_actions.find((a) => a?.type === "set_tier" && typeof a.cli === "string");
       if (covers) {
         const tierName = covers.highest_affordable_tier ?? covers.cli.replace(/^run402 tier set\s+/, "");
-        line("Credit", `$${credited} covers ${tierName} — ${covers.cli} (settles from credit; no wallet funds needed)`);
+        line("Allowance", `$${redeemed} covers ${tierName} — ${covers.cli} (settles from the allowance; no wallet funds needed)`);
       }
     } catch (err) {
       // Faithful: name what failed and keep going. `voucher_error` is a
@@ -572,7 +572,7 @@ export async function run(args = []) {
   summary.balances = {
     on_chain_usd_micros: balance,
     on_chain_token: isMpp ? "pathUSD" : "USDC",
-    prepaid_credit_usd_micros: hasBilling ? billing.available_usd_micros : null,
+    allowance_usd_micros: hasBilling ? billing.allowance_usd_micros : null,
     held_usd_micros: hasBilling ? (billing.held_usd_micros ?? 0) : null,
   };
 
@@ -751,7 +751,7 @@ export async function run(args = []) {
   summary.funding = fundingRecovery(fundingError, fundingPending);
   const fundingBlocked = fundingBlocksBootstrap(summary.funding, {
     activeTier: !tierMissing, onChainBalance: balance,
-    prepaidBalance: summary.balances.prepaid_credit_usd_micros,
+    allowanceBalance: summary.balances.allowance_usd_micros,
     lightningBalance: summary.lightning?.balance_sats,
   });
   summary.next_actions = [tierMissing ? upDeployAction() : deployAction()];
@@ -772,11 +772,11 @@ export async function run(args = []) {
     // `up -y` sets the prototype tier itself as part of the first
     // deploy; `init` never buys the tier, so the one command that finishes
     // the cold start is `up`, with `tier set` named as the standalone option.
-    const creditCovers = summary.voucher?.next_actions?.find((a) => a?.type === "set_tier" && typeof a.cli === "string");
+    const allowanceCovers = summary.voucher?.next_actions?.find((a) => a?.type === "set_tier" && typeof a.cli === "string");
     write("  Next: run402 up -y");
     write("        Deploy with run402 up -y — it sets the prototype tier (free on testnet) as part of the first deploy.");
-    if (creditCovers) {
-      write(`        Your credit covers ${creditCovers.highest_affordable_tier ?? "a larger tier"}: ${creditCovers.cli} — then run402 up -y.`);
+    if (allowanceCovers) {
+      write(`        Your allowance covers ${allowanceCovers.highest_affordable_tier ?? "a larger tier"}: ${allowanceCovers.cli} — then run402 up -y.`);
     } else {
       write("        Or set it separately: run402 tier set prototype.");
     }

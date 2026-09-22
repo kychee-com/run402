@@ -21,7 +21,7 @@ Usage:
 Displays:
   - Wallet identity (local_label, server_label, address)
   - Payment rail (x402 | mpp)
-  - Balances (on_chain_usd_micros + on_chain_token, prepaid_credit_usd_micros, held_usd_micros)
+  - Balances (on_chain_usd_micros + on_chain_token, allowance_usd_micros, held_usd_micros)
   - Tier and lease (name, status, expiry)
   - Projects (from server, with fallback to local keystore)
   - Active project ID
@@ -131,7 +131,7 @@ export async function run(args = []) {
   const wallet = allowance.address.toLowerCase();
   const rail = allowance.rail || "x402";
 
-  // Parallel API calls: tier + billing balance + server-side projects + on-chain wallet balance.
+  // Parallel API calls: tier + wallet + server-side projects + on-chain wallet balance.
   // projects.list() is the membership-scoped named inventory (project-findability);
   // SIWX wallet auth is signed from the allowance. Best-effort — a missing
   // allowance yields null and we fall back to the local keystore below.
@@ -155,12 +155,12 @@ export async function run(args = []) {
   const walletName = getActiveProfile();
   const walletMeta = readMeta(walletName);
 
-  // Balances are grouped under one object so the on-chain and
-  // prepaid-credit numbers are unambiguous and rail-legible.
+  // Balances are grouped under one object so the on-chain (wallet) and
+  // allowance numbers are unambiguous and rail-legible.
   //   - on_chain_usd_micros / on_chain_token: on-chain USDC (x402) or pathUSD
-  //     (mpp), null if the RPC read failed
-  //   - prepaid_credit_usd_micros / held_usd_micros: Run402-held credits,
-  //     rail-independent, null when no organization exists
+  //     (mpp) in the wallet, null if the RPC read failed
+  //   - allowance_usd_micros / held_usd_micros: the organization's Run402-held
+  //     allowance, rail-independent, null when no organization exists
   const hasBilling = billing && billing.exists !== false;
   const result = {
     wallet: {
@@ -175,7 +175,7 @@ export async function run(args = []) {
     balances: {
       on_chain_usd_micros: walletBalance,
       on_chain_token: rail === "mpp" ? "pathUSD" : "USDC",
-      prepaid_credit_usd_micros: hasBilling ? billing.available_usd_micros : null,
+      allowance_usd_micros: hasBilling ? billing.allowance_usd_micros : null,
       held_usd_micros: hasBilling ? (billing.held_usd_micros ?? 0) : null,
     },
     tier: tier && tier.tier
@@ -262,8 +262,8 @@ export function formatStatusHuman(result) {
     const parts = [];
     const onChain = usdFromMicros(result.balances.on_chain_usd_micros);
     if (onChain) parts.push(`${onChain} ${result.balances.on_chain_token} on-chain`);
-    const credit = usdFromMicros(result.balances.prepaid_credit_usd_micros);
-    if (credit) parts.push(`${credit} prepaid credit`);
+    const allowance = usdFromMicros(result.balances.allowance_usd_micros);
+    if (allowance) parts.push(`${allowance} allowance`);
     if (parts.length) lines.push(`Balance:  ${parts.join(", ")}`);
   }
   lines.push(`Next:     ${statusNextAction(result)}`);

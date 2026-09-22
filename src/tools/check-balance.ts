@@ -5,7 +5,7 @@ import { mapSdkError } from "../errors.js";
 export const checkBalanceSchema = {
   wallet: z
     .string()
-    .describe("Wallet address (0x...) to check billing balance for"),
+    .describe("Wallet address (0x...) whose organization allowance to check"),
 };
 
 export async function handleCheckBalance(args: {
@@ -16,14 +16,14 @@ export async function handleCheckBalance(args: {
   try {
     const body = await getSdk().billing.checkBalance(wallet);
 
-    const availableUsd = (body.available_usd_micros / 1_000_000).toFixed(2);
+    const allowanceUsd = (body.allowance_usd_micros / 1_000_000).toFixed(2);
 
     const lines = [
-      `## Billing: ${wallet}`,
+      `## Allowance: ${wallet}`,
       ``,
       `| Field | Value |`,
       `|-------|-------|`,
-      `| available | $${availableUsd} |`,
+      `| allowance | $${allowanceUsd} |`,
       `| email credits | ${body.email_credits_remaining} |`,
       `| tier | ${body.tier ?? "(none)"} |`,
       `| lease expires | ${body.lease_expires_at ?? "(none)"} |`,

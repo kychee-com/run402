@@ -69,15 +69,16 @@ export async function handleStatus(
     `| rail | ${rail} |`,
   ];
 
-  // Prepaid credit (Run402-held, rail-independent). The on-chain wallet
-  // balance is not read here — use `run402 status` (CLI) for that figure.
+  // The organization's allowance (Run402-held, rail-independent). The
+  // on-chain wallet balance is not read here — use `run402 status` (CLI) for
+  // that figure.
   if (billing) {
-    const available = (billing.available_usd_micros / 1_000_000).toFixed(2);
+    const allowanceUsd = (billing.allowance_usd_micros / 1_000_000).toFixed(2);
     const held = ((billing.held_usd_micros ?? 0) / 1_000_000).toFixed(2);
-    lines.push(`| prepaid_credit | $${available} |`);
+    lines.push(`| allowance | $${allowanceUsd} |`);
     lines.push(`| held | $${held} |`);
   } else {
-    lines.push(`| prepaid_credit | (unavailable) |`);
+    lines.push(`| allowance | (unavailable) |`);
   }
 
   // Tier

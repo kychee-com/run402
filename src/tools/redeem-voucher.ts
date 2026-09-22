@@ -22,16 +22,16 @@ export async function handleRedeemVoucher(args: {
       ``,
       `| Field | Value |`,
       `|-------|-------|`,
-      `| credited | ${usd(body.amount_usd_micros)} |`,
-      `| balance | ${usd(body.balance_usd_micros)} available |`,
+      `| added | ${usd(body.amount_usd_micros)} |`,
+      `| allowance | ${usd(body.balance_usd_micros)} |`,
       `| organization | \`${body.organization_id}\` |`,
       `| redeemed_at | ${body.redeemed_at} |`,
       ``,
       // Faithful: a replay is reported as a replay. Rendering it as a fresh
-      // credit would tell the agent its balance just grew when it did not.
+      // redemption would tell the agent its allowance just grew when it did not.
       body.already_redeemed
-        ? `This organization had already redeemed this code — the original credit stands and no second credit was made.`
-        : `Credit is on the organization's prepaid balance and spends like any other prepaid credit.`,
+        ? `This organization had already redeemed this code — the original redemption stands and nothing was added twice.`
+        : `The amount is in the organization's allowance and spends like any other allowance.`,
     ];
 
     // Anticipatory: the single highest-probability next call after money

@@ -10,14 +10,14 @@ Usage:
 
 Subcommands:
   status                Show current tier, expiry, pool usage, and function caps when returned
-  set <tier>            Start, renew, or upgrade the lease (prepaid credit first, else x402/MPP)
+  set <tier>            Start, renew, or upgrade the lease (the allowance first, else x402/MPP)
 
 Tiers: prototype ($0.10 once, the free tier: no lease, never expires; covered by the testnet faucet), hobby ($5/30d), team ($20/30d)
 
-Prepaid credit pays first. A promo code (run402 redeem <code>) or a top-up
-sits on the organization's balance; 'tier set' settles from it with no payment
-challenge and no USDC in the wallet, and the receipt says paid_with: "credit".
-Only a balance that falls short goes to x402 / MPP, and that error names the
+The organization's allowance pays first. A promo code (run402 redeem <code>)
+or a top-up adds to the allowance; 'tier set' settles from it with no payment
+challenge and no USDC in the wallet, and the receipt says paid_with: "allowance".
+Only an allowance that falls short goes to x402 / MPP, and that error names the
 exact shortfall a voucher or top-up would cover.
 
 Tier is per organization. One tier covers every project on the account;

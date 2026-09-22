@@ -34,7 +34,7 @@ function render(t: LightningTopup, title: string): string {
   if (t.status === "pending" && t.bolt11) {
     lines.push(``, `Pay from any Lightning wallet:`, ``, `\`\`\``, `lightning:${t.bolt11}`, `\`\`\``, ``, `Then call \`get_topup\` until the status is \`paid\`.`);
   } else if (t.status === "paid" || t.status === "paid_late") {
-    lines.push(``, `The balance was credited $${usd}${t.status === "paid_late" ? " (paid after the invoice expired; still credited)" : ""}.`);
+    lines.push(``, `The allowance gained $${usd}${t.status === "paid_late" ? " (paid after the invoice expired; still credited)" : ""}.`);
   } else if (t.status === "expired") {
     lines.push(``, `The invoice expired unpaid. Mint a fresh one with \`create_lightning_topup\`.`);
   }

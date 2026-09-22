@@ -26,10 +26,12 @@ export async function handleTierSet(args: {
     if (body.previous_tier) {
       lines.push(`| previous_tier | ${body.previous_tier} |`);
     }
-    lines.push(
-      `| expires | ${body.lease_expires_at} |`,
-      `| allowance | $${(body.allowance_remaining_usd_micros / 1_000_000).toFixed(2)} |`,
-    );
+    lines.push(`| expires | ${body.lease_expires_at} |`);
+    if (body.paid_with) lines.push(`| paid_with | ${body.paid_with} |`);
+    if (body.paid_with === "allowance" && typeof body.allowance_used_usd_micros === "number") {
+      lines.push(`| allowance_used | $${(body.allowance_used_usd_micros / 1_000_000).toFixed(2)} |`);
+    }
+    lines.push(`| allowance | $${(body.allowance_remaining_usd_micros / 1_000_000).toFixed(2)} |`);
 
     return { content: [{ type: "text", text: lines.join("\n") }] };
   } catch (err) {
@@ -54,8 +56,8 @@ export async function handleTierSet(args: {
       }
       lines.push(``);
       lines.push(
-        `The user's agent allowance or payment agent must send the required amount. ` +
-        `Once payment is confirmed, retry this tool call.`,
+        `Top up the organization's allowance (or redeem a voucher), or fund the wallet ` +
+        `with the required amount. Once payment is confirmed, retry this tool call.`,
       );
       return { content: [{ type: "text", text: lines.join("\n") }] };
     }

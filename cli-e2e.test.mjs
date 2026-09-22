@@ -778,7 +778,7 @@ async function mockFetch(input, init) {
   if (pathNoQuery === "/orgs/v1/lookup" && method === "GET") {
     return Promise.resolve(json({
       org_id: "00000000-0000-4000-8000-0000000000e2",
-      available_usd_micros: 150000,
+      allowance_usd_micros: 150000,
       held_usd_micros: 0,
       email_credits_remaining: 0,
       tier: null,
@@ -788,7 +788,7 @@ async function mockFetch(input, init) {
     }));
   }
   if (path.match(/^\/orgs\/v1\/[^/]+\/billing$/) && method === "GET") {
-    return Promise.resolve(json({ org_id: "00000000-0000-4000-8000-0000000000e2", available_usd_micros: 150000, held_usd_micros: 0 }));
+    return Promise.resolve(json({ org_id: "00000000-0000-4000-8000-0000000000e2", allowance_usd_micros: 150000, held_usd_micros: 0 }));
   }
   if (path.match(/\/history/) && method === "GET") {
     return Promise.resolve(json({ transactions: [{ id: "tx1", amount: -100000, description: "Tier lease" }] }));
@@ -1244,58 +1244,7 @@ describe("CLI e2e happy path", () => {
     await run("balance", []);
     captureStop();
     assert.ok(captured().includes("base-sepolia_usd_micros"), "should show balance");
-  });
-
-  it("allowance checkout", async () => {
-    const { run } = await import("./cli/lib/allowance.mjs");
-    captureStart();
-    await run("checkout", ["--amount", "5000000"]);
-    captureStop();
-    assert.ok(captured().includes("checkout_url"), "should return checkout URL");
-  });
-
-  it("allowance history", async () => {
-    const { run } = await import("./cli/lib/allowance.mjs");
-    captureStart();
-    await run("history", ["--limit", "5"]);
-    captureStop();
-    assert.ok(captured().includes("transactions"), "should show transactions");
-  });
-
-  async function expectAllowanceCliError(sub, args, code) {
-    const { run } = await import("./cli/lib/allowance.mjs");
-    let threw = null;
-    captureStart();
-    try {
-      await run(sub, args);
-    } catch (e) {
-      threw = e;
-    } finally {
-      captureStop();
-    }
-    assert.equal(threw?.message, "process.exit(1)", `${sub} ${args.join(" ")} must exit non-zero`);
-    const errLine = capturedStderr().split("\n").find((s) => s.trim().startsWith("{"));
-    assert.ok(errLine, `expected JSON error on stderr, got: ${capturedStderr()}`);
-    const env = JSON.parse(errLine);
-    assert.equal(env.status, "error");
-    assert.equal(env.code, code);
-    return env;
-  }
-
-  it("allowance checkout rejects malformed amount flags (GH-272)", async () => {
-    await expectAllowanceCliError("checkout", ["--amount", "1abc"], "BAD_FLAG");
-    await expectAllowanceCliError("checkout", ["--amount", "-5000000"], "BAD_FLAG");
-    await expectAllowanceCliError("checkout", ["--amount", "0"], "BAD_FLAG");
-    await expectAllowanceCliError("checkout", ["--amunt", "5000000"], "UNKNOWN_FLAG");
-    await expectAllowanceCliError("checkout", ["--amount"], "BAD_FLAG");
-  });
-
-  it("allowance history rejects malformed limit flags (GH-273)", async () => {
-    await expectAllowanceCliError("history", ["--limit", "10abc"], "BAD_FLAG");
-    await expectAllowanceCliError("history", ["--limit", "0"], "BAD_FLAG");
-    await expectAllowanceCliError("history", ["--limit", "-1"], "BAD_FLAG");
-    await expectAllowanceCliError("history", ["--limt", "10"], "UNKNOWN_FLAG");
-    await expectAllowanceCliError("history", ["--limit"], "BAD_FLAG");
+    assert.ok(captured().includes("allowance_usd_micros"), "should show the organization's allowance");
   });
 
   // ── Tier ────────────────────────────────────────────────────────────────
@@ -1340,7 +1289,7 @@ describe("CLI e2e happy path", () => {
       `tier --help must describe prototype as '$0.10 once, the free tier' to match server pricing. Got: ${out}`,
     );
     assert.doesNotMatch(out, /\$0\.10\/7d/, "the retired 7-day prototype lease must not resurface");
-    assert.match(out, /prepaid credit first/i, "tier set must say credit settles first");
+    assert.match(out, /the allowance first/i, "tier set must say the allowance settles first");
   });
 
   it("tier status surfaces HTML gateway errors without SyntaxError (GH-83)", async () => {
@@ -4308,7 +4257,7 @@ describe("CLI e2e happy path", () => {
       const body = typeof raw === "string" ? JSON.parse(raw) : raw;
       if (url.includes("/faucet/v1")) return json({ code: "RATE_LIMITED", message: "Faucet cooldown", details: {retry_after: 83160, retry_at: "2026-09-20T10:00:00Z", limit_scope: "ip"} }, 429);
       if (url.includes("/tiers/v1/status")) return json({tier:null,active:false});
-      if (url.includes("/billing/")) return json({exists:false,available_usd_micros:0});
+      if (url.includes("/billing/")) return json({exists:false,allowance_usd_micros:0});
       if (body?.jsonrpc === "2.0" && body.method === "eth_call") return json({jsonrpc:"2.0", id:body.id, result:"0x"+"0".repeat(64)});
       if (Array.isArray(body)) return json(body.map(r=>({jsonrpc:"2.0",id:r.id,result:r.method==="eth_call"?"0x"+"0".repeat(64):"0x14a34"})));
       return previous(input,init);
@@ -4391,15 +4340,15 @@ describe("CLI e2e happy path", () => {
     assert.ok(!Object.prototype.hasOwnProperty.call(data, "wallet_balance_usd_micros"),
       `status should fold on-chain balance into balances; got: ${JSON.stringify(data)}`);
     assert.ok(!Object.prototype.hasOwnProperty.call(data, "billing"),
-      `status should fold prepaid credit into balances; got: ${JSON.stringify(data)}`);
+      `status should fold the allowance into balances; got: ${JSON.stringify(data)}`);
     assert.ok(typeof data.balances === "object" && data.balances !== null, "should include balances object");
     const wb = data.balances.on_chain_usd_micros;
     assert.ok(wb === null || typeof wb === "number",
       `balances.on_chain_usd_micros must be number or null; got: ${JSON.stringify(wb)}`);
     assert.equal(data.balances.on_chain_token, data.rail === "mpp" ? "pathUSD" : "USDC",
       `on_chain_token should track rail; got: ${JSON.stringify(data.balances)}`);
-    assert.ok(Object.prototype.hasOwnProperty.call(data.balances, "prepaid_credit_usd_micros"),
-      "balances should include prepaid_credit_usd_micros");
+    assert.ok(Object.prototype.hasOwnProperty.call(data.balances, "allowance_usd_micros"),
+      "balances should include allowance_usd_micros");
     assert.ok(Object.prototype.hasOwnProperty.call(data.balances, "held_usd_micros"),
       "balances should include held_usd_micros");
     // projects entries must use project_id

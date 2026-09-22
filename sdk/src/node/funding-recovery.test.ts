@@ -16,7 +16,7 @@ it('existing tier or independently confirmed funds remain usable despite faucet 
  assert.equal(fundingBlocksBootstrap(r,{activeTier:false}),true);
  assert.equal(fundingBlocksBootstrap(r,{activeTier:true}),false);
  assert.equal(fundingBlocksBootstrap(r,{activeTier:false,onChainBalance:250000}),false);
- assert.equal(fundingBlocksBootstrap(r,{activeTier:false,prepaidBalance:250000}),false);
+ assert.equal(fundingBlocksBootstrap(r,{activeTier:false,allowanceBalance:250000}),false);
  assert.equal(fundingBlocksBootstrap(r,{activeTier:false,lightningBalance:100}),false);
  assert.equal(fundingBlocksBootstrap(null,{activeTier:false}),false);
 });

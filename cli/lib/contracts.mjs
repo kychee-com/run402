@@ -14,7 +14,7 @@ import {
 const HELP = `run402 contracts — KMS-backed Ethereum signers for smart-contract calls
 
   Pricing: $0.04/day per signer ($1.20/month) plus $0.000005 per contract call.
-  Signer creation requires $1.20 in cash credit (30 days of rent).
+  Signer creation requires $1.20 of allowance (30 days of rent).
   Non-custodial: see https://run402.com/humans/terms.html#non-custodial-kms-wallets
 
 Usage:

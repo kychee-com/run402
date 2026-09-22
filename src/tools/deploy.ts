@@ -544,7 +544,7 @@ export async function handleDeploy(
               "```json\n" +
               JSON.stringify(body, null, 2) +
               "\n```\n\n" +
-              "Resolve payment via the project's allowance and retry this tool call.",
+              "Resolve payment via the organization's allowance or the wallet, and retry this tool call.",
           },
         ],
       };

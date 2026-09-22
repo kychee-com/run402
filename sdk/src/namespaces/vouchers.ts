@@ -1,9 +1,8 @@
 /**
- * `vouchers` namespace — redeem a promo code for platform credit.
+ * `vouchers` namespace — redeem a promo code into the organization's allowance.
  *
- * A promo code credits your organization with run402 prepaid credit. That
- * credit spends like any other prepaid balance: a tier purchase settles from
- * it with no on-chain payment.
+ * A promo code adds to your organization's allowance, which spends like any
+ * other allowance: a tier purchase settles from it with no on-chain payment.
  *
  * Two properties make this safe to call from anywhere in an agent's lifecycle:
  *
@@ -11,7 +10,7 @@
  *   call a brand-new wallet makes (the organization is provisioned on demand),
  *   or long after `run402 init`. There is no init-before-redeem requirement.
  * - **Retrying is safe.** A repeat by the same organization returns the ORIGINAL
- *   result with `already_redeemed: true` and never credits twice, so a call that
+ *   result with `already_redeemed: true` and never adds twice, so a call that
  *   times out client-side can simply be re-issued.
  *
  * This namespace is deliberately thin and semantically blind: it forwards an
@@ -39,20 +38,20 @@ export interface VoucherNextAction {
 
 export interface RedeemVoucherResult {
   voucher_id: string;
-  /** Credit applied by this voucher. */
+  /** Amount this voucher added to the allowance. */
   amount_usd_micros: number;
-  /** The organization's available prepaid balance AFTER the credit. */
+  /** The organization's allowance AFTER the redemption. */
   balance_usd_micros: number;
   organization_id: string;
   redeemed_at: string;
   /**
    * True when THIS organization had already redeemed this code. The original
-   * result is returned unchanged and no second credit was made — a replay is
+   * result is returned unchanged and nothing was added twice — a replay is
    * reported honestly rather than dressed up as a fresh redemption.
    */
   already_redeemed: boolean;
   /**
-   * The lifetime promo-credit ceiling that applied: what this organization may
+   * The lifetime promo-allowance ceiling that applied: what this organization may
    * ever redeem from THIS voucher's issuer, in total. A code from a different
    * issuer (a launch voucher handed out by the platform) has its own ceiling.
    */

@@ -72,7 +72,7 @@ const ACCOUNT_ID = "00000000-0000-4000-8000-000000000001";
 function accountDetail(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     org_id: ACCOUNT_ID,
-    available_usd_micros: 0,
+    allowance_usd_micros: 0,
     email_credits_remaining: 0,
     tier: "prototype",
     lease_expires_at: "2026-05-07T14:49:10.884Z",
@@ -107,7 +107,7 @@ describe("billing.checkBalance / getAccount", () => {
     assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "test-siwx");
 
     assert.equal(result.org_id, ACCOUNT_ID);
-    assert.equal(result.available_usd_micros, 0);
+    assert.equal(result.allowance_usd_micros, 0);
     assert.equal(result.email_credits_remaining, 0);
     assert.equal(result.tier, "prototype");
     assert.equal(result.lease_expires_at, "2026-05-07T14:49:10.884Z");
@@ -117,7 +117,7 @@ describe("billing.checkBalance / getAccount", () => {
 
   it("resolves an email through the ?email= lookup and preserves null tier/lease", async () => {
     const { fetch, calls } = mockFetch(() =>
-      jsonResponse(accountDetail({ available_usd_micros: 1000000, tier: null, lease_expires_at: null, auto_recharge_threshold: 0 })),
+      jsonResponse(accountDetail({ allowance_usd_micros: 1000000, tier: null, lease_expires_at: null, auto_recharge_threshold: 0 })),
     );
     const sdk = makeSdk(fetch);
     const result = await sdk.billing.getOrganization("user@example.com");

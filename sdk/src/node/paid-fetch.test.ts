@@ -1232,13 +1232,13 @@ function memoryStore(): {
   };
 }
 
-describe("credit shortfall on a 402 (prepaid-credit-settlement)", () => {
+describe("allowance shortfall on a 402 (allowance-settlement)", () => {
   const attemptId = "pat_0123456789abcdef0123456789abcdef";
-  it("folds the gateway's credit block into X402_INSUFFICIENT_FUNDS with voucher and top-up next actions", async () => {
+  it("folds the gateway's allowance block into X402_INSUFFICIENT_FUNDS with voucher and top-up next actions", async () => {
     const { store } = memoryStore();
     const challenge = {
       error: "Payment required",
-      credit: { available_usd_micros: 3_000_000, price_usd_micros: 5_000_000, shortfall_usd_micros: 2_000_000 },
+      allowance: { allowance_usd_micros: 3_000_000, price_usd_micros: 5_000_000, shortfall_usd_micros: 2_000_000 },
     };
     const fetchFn = createTrackedX402Fetch(
       (baseFetch) => async (input, init) => {
@@ -1260,7 +1260,7 @@ describe("credit shortfall on a 402 (prepaid-credit-settlement)", () => {
       assert.ok(err instanceof X402BalanceError);
       assert.equal(err.code, "X402_INSUFFICIENT_FUNDS");
       const json = err.toJSON() as { details: Record<string, unknown>; nextActions: Array<{ type: string }> };
-      assert.deepEqual(json.details.credit, challenge.credit);
+      assert.deepEqual(json.details.allowance, challenge.allowance);
       assert.equal((json.details as any).balances["eip155:84532"], "0", "the preflight's own details survive");
       assert.match(err.message, /\$3\.00/);
       assert.match(err.message, /\$2\.00/);
@@ -1269,7 +1269,7 @@ describe("credit shortfall on a 402 (prepaid-credit-settlement)", () => {
     });
   });
 
-  it("leaves a 402 without a credit block, and an RPC failure, exactly as they were", async () => {
+  it("leaves a 402 without an allowance block, and an RPC failure, exactly as they were", async () => {
     const make = (code: "X402_INSUFFICIENT_FUNDS" | "X402_RPC_UNAVAILABLE", body: unknown) =>
       createTrackedX402Fetch(
         (baseFetch) => async (input, init) => {
@@ -1281,14 +1281,14 @@ describe("credit shortfall on a 402 (prepaid-credit-settlement)", () => {
       );
     await assert.rejects(make("X402_INSUFFICIENT_FUNDS", { error: "Payment required" })("https://api.run402.com/tiers/v1/hobby"), (err) => {
       assert.ok(err instanceof X402BalanceError);
-      assert.equal((err.toJSON().details as any).credit, undefined);
+      assert.equal((err.toJSON().details as any).allowance, undefined);
       assert.deepEqual((err.toJSON().nextActions as any[]).map((a) => a.type), ["fund_wallet"]);
       return true;
     });
-    await assert.rejects(make("X402_RPC_UNAVAILABLE", { credit: { available_usd_micros: 1, price_usd_micros: 2, shortfall_usd_micros: 1 } })("https://api.run402.com/tiers/v1/hobby"), (err) => {
+    await assert.rejects(make("X402_RPC_UNAVAILABLE", { allowance: { allowance_usd_micros: 1, price_usd_micros: 2, shortfall_usd_micros: 1 } })("https://api.run402.com/tiers/v1/hobby"), (err) => {
       assert.ok(err instanceof X402BalanceError);
       assert.equal(err.code, "X402_RPC_UNAVAILABLE");
-      assert.equal((err.toJSON().details as any).credit, undefined, "an RPC failure is not reshaped into a shortfall");
+      assert.equal((err.toJSON().details as any).allowance, undefined, "an RPC failure is not reshaped into a shortfall");
       return true;
     });
   });
