@@ -3,6 +3,7 @@ import type { Client } from "../kernel.js";
 import { LocalError } from "../errors.js";
 import type {
   AgentLightningWallet,
+  AgentLightningWalletFacts,
   AgentLightningWalletWaitOptions,
 } from "./agent.types.js";
 
@@ -62,8 +63,8 @@ export class AgentLightningWallets {
   }
 
   /** Revoke: the sub-wallet is deleted on the Hub and the pairing stops paying. */
-  async revoke(): Promise<AgentLightningWallet> {
-    return this.client.request<AgentLightningWallet>("/agent/v1/lightning-wallet", {
+  async revoke(): Promise<AgentLightningWalletFacts> {
+    return this.client.request<AgentLightningWalletFacts>("/agent/v1/lightning-wallet", {
       method: "DELETE",
       context: "revoking the Lightning wallet",
     });

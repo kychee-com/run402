@@ -27,6 +27,12 @@ export interface AgentLightningWallet {
   next_actions?: Array<{ type: string; why: string; call?: string }>;
 }
 
+/**
+ * The wallet as a revocation reports it: the pairing secret is handed out only
+ * by the read that first sees the wallet active, never by a revoke.
+ */
+export type AgentLightningWalletFacts = Omit<AgentLightningWallet, "pairing">;
+
 export interface AgentLightningWalletWaitOptions {
   /** How long to poll for the broker to activate the wallet (default 30 s). */
   timeoutMs?: number;

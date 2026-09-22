@@ -1,15 +1,25 @@
 /**
  * The secret gate (code-mode MCP, design D5/D6).
  *
- * Every method in `SECRET_RETURNING_METHODS` must refuse on a `sandbox`
- * client with `SECRET_REQUIRES_CLI` BEFORE any request: the fetch below fails
- * the test if it is ever reached. The command in the refusal is the one the
- * registry builds from the call's own arguments, and it never carries a
- * secret the call was handed.
+ * Runtime half: every method in `SECRET_RETURNING_METHODS` must refuse on a
+ * `sandbox` client with `SECRET_REQUIRES_CLI` BEFORE any request: the fetch
+ * below fails the test if it is ever reached. The command in the refusal is
+ * the one the registry builds from the call's own arguments, and it never
+ * carries a secret the call was handed.
+ *
+ * Drift half: this file owns the inventory. It type-checks the Node SDK
+ * entry, walks every namespace reachable from the `NodeRun402` client, and
+ * reads each public method's parameter and result types (the `*.types.ts`
+ * interfaces they are built from included). A method whose types carry a
+ * field matching the secret-name list and that no registry entry names fails
+ * the build, so a new secret-bearing field cannot ship ungated.
  */
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import ts from "typescript";
 
 import { run402 } from "./index.js";
 import type { CredentialsProvider } from "../credentials.js";
@@ -195,3 +205,200 @@ describe("secret gate: the same calls pass the gate everywhere else", () => {
     assert.equal(reached.length, 1, "a grant without a key carries no secret and is not gated");
   });
 });
+
+// ── Drift half ──────────────────────────────────────────────────────────────
+
+/**
+ * The secret-name list (design D5), matched against every property name in a
+ * method's parameter and result types and against its positional parameter
+ * names, after camelCase is folded to snake_case: `service_key`,
+ * `private_key`, `secret`, `token`, `pairing`, `preimage`, `handoff_key`,
+ * `invite_key`, and any other `*_key` except `anon_key`; `*_secret` and
+ * `*_token` are the same words in compound names (`webhook_signing_secret`,
+ * `control_plane_session_token`). Boolean-typed fields (`has_anon_key`) name
+ * a fact about a key, not the key, and are skipped.
+ */
+export function isSecretFieldName(raw: string): boolean {
+  const name = raw.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase();
+  if (NOT_SECRET_FIELD_NAMES.has(name)) return false;
+  if (["service_key", "private_key", "secret", "token", "pairing", "preimage", "handoff_key", "invite_key"].includes(name)) return true;
+  if (name === "anon_key") return false;
+  return name.endsWith("_key") || name.endsWith("_secret") || name.endsWith("_token");
+}
+
+/**
+ * Field names the pattern matches that are never a credential, wherever they
+ * appear. Each is a label, a public value, or a request-dedup handle.
+ */
+const NOT_SECRET_FIELD_NAMES = new Set([
+  "idempotency_key", // request dedup handle, chosen by the caller
+  "client_idempotency_key", // the same, for a vault epoch rotation
+  "reuse_idempotency_key", // a next action's hint to replay with the same dedup handle
+  "room_key", // a room's label
+  "app_key", // an app install-state label
+  "by_key", // an asset manifest's map keyed by asset key
+  "ensure_key", // an app-graph node's dedup label
+  "session_key", // the opaque per-session presence identity, never an authority
+  "public_key", // public by construction
+  "service_public_key", // the vault service's public key
+]);
+
+/**
+ * One field at one path in one method's types that the pattern matches and is
+ * not a credential there. Keyed `<method> <in|out> <path>`, each with the
+ * reason it is safe to hand a snippet.
+ */
+const NOT_SECRET_PATHS: Record<string, string> = {
+  "wallets.faucet out =>.token": "the token SYMBOL (\"USDC\") the faucet sent",
+  "domains.testReceive out =>.receive_test.token": "the nonce an inbound test email carries to be matched, not a credential",
+  "credentials.status out =>.legacy_key": "the retiring key's label (\"k0\"), never its value",
+  "snapshots.restorePlan out =>.restore_plan.confirm.token": "a single-use confirmation handle for this restore plan, not a credential",
+  "repos.acquireMaintenanceLease out =>.holder_token": "the fencing handle of one maintenance lease on one vault, useless outside it",
+  "repos.deploy out =>.activation_token": "a signed, public vault object recording the activation",
+  "repos.recover out =>.member_recovery.bundle_key": "the storage key NAME of the bundle sidecar that opened, not key material",
+  "session.sourceAccessWrappers out =>.encryption_key": "the member's public encryption-key record (its `public_key`, fingerprint, suite)",
+};
+
+const SKIPPED_PROPERTIES = new Set(["sdk", "client", "parent", "idempotency", "capabilities"]);
+const OPAQUE_TYPES = new Set([
+  "Promise", "Array", "ReadonlyArray", "Map", "Set", "Uint8Array", "Date", "Function", "AsyncIterable",
+  "AsyncIterableIterator", "AsyncGenerator", "Response", "Headers", "Request", "AbortSignal", "ReadableStream", "Blob", "URL",
+]);
+
+interface SecretHit { method: string; where: string }
+
+function scanNodeClientForSecretFields(exempt: (key: string) => boolean = (key) => NOT_SECRET_PATHS[key] !== undefined): SecretHit[] {
+  const sdkRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+  const configPath = join(sdkRoot, "tsconfig.json");
+  const parsed = ts.parseJsonConfigFileContent(ts.readConfigFile(configPath, ts.sys.readFile).config, ts.sys, sdkRoot);
+  const entry = join(sdkRoot, "src", "node", "index.ts");
+  const program = ts.createProgram({ rootNames: [entry], options: parsed.options });
+  const checker = program.getTypeChecker();
+  const source = program.getSourceFile(entry);
+  assert.ok(source, "the Node SDK entry type-checks");
+  const moduleSymbol = checker.getSymbolAtLocation(source!);
+  const nodeRun402 = checker.getExportsOfModule(moduleSymbol!).find((sym) => sym.name === "NodeRun402");
+  assert.ok(nodeRun402, "NodeRun402 is exported from the Node entry");
+
+  const isClassInstance = (type: ts.Type): boolean => Boolean(type.getSymbol() && (type.getSymbol()!.flags & ts.SymbolFlags.Class));
+  const declOf = (sym: ts.Symbol): ts.Declaration | undefined => sym.valueDeclaration ?? sym.declarations?.[0];
+  const isPublic = (decl: ts.Declaration): boolean =>
+    (ts.getCombinedModifierFlags(decl) & (ts.ModifierFlags.Private | ts.ModifierFlags.Protected)) === 0;
+
+  /**
+   * The first secret-named field reachable in `type`, as a dotted path, or
+   * null. `exempt(path)` names a path that is not a credential; the search
+   * continues past it, so an exemption never hides a sibling secret.
+   */
+  function findSecret(type: ts.Type, depth: number, seen: Set<ts.Type>, path: string[], exempt: (where: string) => boolean): string | null {
+    if (depth > 6 || seen.has(type)) return null;
+    seen.add(type);
+    if (type.isUnionOrIntersection()) {
+      for (const member of type.types) {
+        const hit = findSecret(member, depth, seen, path, exempt);
+        if (hit) return hit;
+      }
+      return null;
+    }
+    if (!(type.flags & ts.TypeFlags.Object)) return null;
+    const symbol = type.getSymbol();
+    const typeArgs = (type as ts.TypeReference).target ? checker.getTypeArguments(type as ts.TypeReference) : [];
+    for (const arg of typeArgs) {
+      const hit = findSecret(arg, depth + 1, seen, path, exempt);
+      if (hit) return hit;
+    }
+    if (symbol && OPAQUE_TYPES.has(symbol.name)) return null;
+    if (type.getCallSignatures().length > 0 || isClassInstance(type)) return null;
+    for (const prop of type.getProperties()) {
+      const decl = declOf(prop);
+      if (!decl) continue;
+      const propType = checker.getTypeOfSymbolAtLocation(prop, decl);
+      if (propType.getCallSignatures().length > 0) continue;
+      if (propType.flags & (ts.TypeFlags.Boolean | ts.TypeFlags.BooleanLiteral)) continue;
+      const here = [...path, prop.name];
+      if (isSecretFieldName(prop.name) && !exempt(here.join("."))) return here.join(".");
+      const hit = findSecret(propType, depth + 1, seen, here, exempt);
+      if (hit) return hit;
+    }
+    return null;
+  }
+
+  const hits: SecretHit[] = [];
+  const record = (method: string, where: string) => hits.push({ method, where });
+
+  function walk(type: ts.Type, prefix: string, depth: number): void {
+    for (const prop of type.getProperties()) {
+      if (prop.name.startsWith("_") || prop.name.startsWith("#") || SKIPPED_PROPERTIES.has(prop.name)) continue;
+      const decl = declOf(prop);
+      if (!decl || !isPublic(decl)) continue;
+      const propType = checker.getTypeOfSymbolAtLocation(prop, decl);
+      const path = prefix ? `${prefix}.${prop.name}` : prop.name;
+      const signatures = propType.getCallSignatures();
+      if (signatures.length > 0) {
+        for (const signature of signatures) {
+          const exemptIn = (where: string) => exempt(`${path} in ${where}`);
+          const exemptOut = (where: string) => exempt(`${path} out ${where}`);
+          for (const param of signature.getParameters()) {
+            if (isSecretFieldName(param.name) && !exempt(`${path} param ${param.name}`)) {
+              record(path, `param ${param.name}`);
+              continue;
+            }
+            const paramType = checker.getTypeOfSymbolAtLocation(param, declOf(param) ?? decl);
+            const hit = findSecret(paramType, 0, new Set(), [`(${param.name})`], exemptIn);
+            if (hit) record(path, `in ${hit}`);
+          }
+          const hit = findSecret(signature.getReturnType(), 0, new Set(), ["=>"], exemptOut);
+          if (hit) record(path, `out ${hit}`);
+        }
+      } else if (depth < 3 && isClassInstance(propType)) {
+        walk(propType, path, depth + 1);
+      }
+    }
+  }
+
+  walk(checker.getDeclaredTypeOfSymbol(nodeRun402!), "", 0);
+  return hits;
+}
+
+describe("secret gate: the registry owns every secret-bearing method (drift)", () => {
+  it("the secret-name list matches the design's names and a new compound field", () => {
+    for (const name of ["service_key", "serviceKey", "private_key", "privateKey", "secret", "token", "pairing", "preimage", "handoff_key", "invite_key", "pairing_secret", "webhook_signing_secret", "control_plane_session_token", "write_approval_token", "access_token", "api_key"]) {
+      assert.equal(isSecretFieldName(name), true, name);
+    }
+    for (const name of ["anon_key", "has_anon_key_label", "idempotencyKey", "room_key", "public_key", "token_type", "tokens_used", "key_id", "secrets"]) {
+      assert.equal(isSecretFieldName(name), false, name);
+    }
+  });
+
+  it("every method whose types carry a secret-named field is registered", () => {
+    const hits = scanNodeClientForSecretFields();
+    const seen = new Set(hits.map((hit) => hit.method));
+    for (const known of ["grants.create", "repos.handoff", "projects.keys", "agent.lightningWallet.mint", "credentials.issue"]) {
+      assert.ok(seen.has(known), `the scan sees ${known}'s secret field (a vacuous scan would pass everything)`);
+    }
+    const registered = new Set(Object.keys(SECRET_RETURNING_METHODS));
+    const unregistered = hits
+      .filter((hit) => !registered.has(hit.method))
+      .map((hit) => `${hit.method} (${hit.where})`);
+    assert.deepEqual(
+      [...new Set(unregistered)],
+      [],
+      "These SDK methods return or take a secret-named field but are not in SECRET_RETURNING_METHODS " +
+        "(sdk/src/secret-gate.ts). Gate each with gateSecret() and register its CLI command, " +
+        "or, when the field is not a credential, add it to NOT_SECRET_FIELD_NAMES / NOT_SECRET_PATHS here with the reason.",
+    );
+  });
+
+  it("every exemption still names a field the scan would otherwise flag", () => {
+    // An exemption for a path that no longer exists is dead weight that could
+    // hide a future field of the same name; keep the list honest.
+    const hits = scanNodeClientForSecretFieldsUnfiltered();
+    for (const key of Object.keys(NOT_SECRET_PATHS)) {
+      assert.ok(hits.has(key), `NOT_SECRET_PATHS entry no longer matches anything: ${key}`);
+    }
+  });
+});
+
+function scanNodeClientForSecretFieldsUnfiltered(): Set<string> {
+  return new Set(scanNodeClientForSecretFields(() => false).map((hit) => `${hit.method} ${hit.where}`));
+}
