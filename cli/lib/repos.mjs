@@ -897,7 +897,7 @@ async function printCreateResult({ sdk, projectId, vault, adopted, name, verbose
     (vault.deduplicated ? "already existed — nothing was re-allocated" : `allocated (genesis ${vault.genesis_sha256})`),
   );
   if (address) console.error(`address: ${address}`);
-  else if (!orgSlug) console.error("no named address yet — set an org slug (run402 org slug <slug>) to get run402::<slug>/<name> addresses");
+  else if (!orgSlug) console.error("no named address yet — set an org slug (run402 orgs slug <slug>) to get run402::<slug>/<name> addresses");
   else console.error(`no address set — run 'run402 repos rename <name> --project ${projectId}' to set one`);
   if (remoteScaffolded) {
     console.error(`remote '${vault.remote.name}' -> ${vault.remote.url} (${vault.remote.reason})`);
@@ -1297,7 +1297,7 @@ async function rename(args) {
         : `name "${result.repo_name}" set for ${projectId}`,
     );
     if (address) console.error(`address: ${address}`);
-    else console.error("this org has no slug yet — set one with `run402 org slug <slug>` to get a full run402::<slug>/<name> address");
+    else console.error("this org has no slug yet — set one with `run402 orgs slug <slug>` to get a full run402::<slug>/<name> address");
     printVerboseStats(a, sdk);
   } catch (err) {
     reportSdkError(err);

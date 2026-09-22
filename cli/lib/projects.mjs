@@ -328,7 +328,7 @@ async function provision(args) {
       code: "BAD_USAGE",
       message: "--org must not be empty.",
       details: { field: "--org" },
-      hint: "Pass an org id (run402 org list), or omit --org for the cold-start path.",
+      hint: "Pass an org id (run402 orgs list), or omit --org for the cold-start path.",
     });
   }
   // Validate --name when provided. Omitted --name lets the server pick a

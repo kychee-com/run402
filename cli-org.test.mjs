@@ -34,6 +34,7 @@ const originalExit = process.exit;
 let calls = [];
 let stdout = [];
 let runOrg;
+let runWhoami;
 let runGrants;
 let runProjects;
 
@@ -181,7 +182,8 @@ before(async () => {
   writeWallet();
   globalThis.fetch = mockFetch;
   process.exit = (code) => { throw new Error(`process.exit(${code})`); };
-  ({ run: runOrg } = await import("./cli/lib/org.mjs"));
+  ({ run: runOrg } = await import("./cli/lib/orgs.mjs"));
+  ({ run: runWhoami } = await import("./cli/lib/whoami.mjs"));
   ({ run: runGrants } = await import("./cli/lib/grants.mjs"));
   ({ run: runProjects } = await import("./cli/lib/projects.mjs"));
 });
@@ -199,10 +201,10 @@ beforeEach(() => { calls = []; });
 
 function lastCall() { return calls[calls.length - 1]; }
 
-describe("run402 org", () => {
-  it("whoami GETs /agent/v1/whoami with local SIWX", async () => {
+describe("run402 orgs", () => {
+  it("run402 whoami GETs /agent/v1/whoami with local SIWX", async () => {
     capture();
-    await runOrg("whoami", []);
+    await runWhoami([]);
     uncapture();
     assert.equal(lastCall().url, `${API}/agent/v1/whoami`);
     assert.equal(lastCall().method, "GET");
@@ -210,6 +212,17 @@ describe("run402 org", () => {
     assert.equal(output.principal.id, "prn_1");
     assert.equal(output.authenticator_id, output.active_authenticator.authenticator_id);
     assert.deepEqual(output.linked_identities, [], "an unlinked principal must render an empty list, not synthesized identity data");
+  });
+
+  it("run402 whoami --set-name PATCHes /agent/v1/me with the trimmed display_name", async () => {
+    capture();
+    await runWhoami(["--set-name", "  gate-agent  "]);
+    uncapture();
+    assert.equal(lastCall().url, `${API}/agent/v1/me`);
+    assert.equal(lastCall().method, "PATCH");
+    assert.deepEqual(lastCall().body, { display_name: "gate-agent" });
+    const output = JSON.parse(stdout.join("\n"));
+    assert.ok(Array.isArray(output.write_approvals));
   });
 
   it("list GETs /orgs/v1 and joins the account overview (GET /agent/v1/me/overview)", async () => {
@@ -223,20 +236,20 @@ describe("run402 org", () => {
   });
 
   it("members GETs the members route", async () => {
-    capture(); await runOrg("member", ["list", "11111111-1111-4111-8111-111111111111"]); uncapture();
+    capture(); await runOrg("members", ["list", "11111111-1111-4111-8111-111111111111"]); uncapture();
     assert.equal(lastCall().url, `${API}/orgs/v1/11111111-1111-4111-8111-111111111111/members`);
     assert.equal(lastCall().method, "GET");
   });
 
   it("add-member POSTs { wallet } and omits role by default", async () => {
-    capture(); await runOrg("member", ["add", "11111111-1111-4111-8111-111111111111", TEST_ADDRESS]); uncapture();
+    capture(); await runOrg("members", ["add", "11111111-1111-4111-8111-111111111111", TEST_ADDRESS]); uncapture();
     assert.equal(lastCall().url, `${API}/orgs/v1/11111111-1111-4111-8111-111111111111/members`);
     assert.equal(lastCall().method, "POST");
     assert.deepEqual(lastCall().body, { wallet: TEST_ADDRESS });
   });
 
   it("add-member maps --role into the body", async () => {
-    capture(); await runOrg("member", ["add", "11111111-1111-4111-8111-111111111111", TEST_ADDRESS, "--role", "admin"]); uncapture();
+    capture(); await runOrg("members", ["add", "11111111-1111-4111-8111-111111111111", TEST_ADDRESS, "--role", "admin"]); uncapture();
     assert.deepEqual(lastCall().body, { wallet: TEST_ADDRESS, role: "admin" });
   });
 
@@ -247,7 +260,7 @@ describe("run402 org", () => {
     try {
       capture();
       console.error = (...a) => errs.push(a.join(" ")); // fail() emits the envelope on stderr
-      await assert.rejects(runOrg("member", ["add", "11111111-1111-4111-8111-111111111111", TEST_ADDRESS]), (e) => /process\.exit\(1\)/.test(e.message));
+      await assert.rejects(runOrg("members", ["add", "11111111-1111-4111-8111-111111111111", TEST_ADDRESS]), (e) => /process\.exit\(1\)/.test(e.message));
       uncapture();
       const out = errs.join("\n");
       assert.match(out, /GITVAULT_WRITER_NOT_ADMITTED/);
@@ -264,7 +277,7 @@ describe("run402 org", () => {
   it("member add of a viewer never reaches the writer gate (nothing to admit)", async () => {
     globalThis.__orgVaults = [{ repo_id: "src_" + "b".repeat(32), project_id: "prj_v1", project_name: null, repo_name: "notes", org_slug: null, gitvault_policy: "required", newest_generation: "5", source_bytes: "0", genesis_admitted_at: null, created_at: "2026-09-03T00:00:00.000Z" }];
     try {
-      capture(); await runOrg("member", ["add", "11111111-1111-4111-8111-111111111111", TEST_ADDRESS, "--role", "viewer"]); uncapture();
+      capture(); await runOrg("members", ["add", "11111111-1111-4111-8111-111111111111", TEST_ADDRESS, "--role", "viewer"]); uncapture();
       const parsed = JSON.parse(stdout.join("\n"));
       assert.equal(parsed.role, "viewer");
     } finally {
@@ -274,21 +287,21 @@ describe("run402 org", () => {
   });
 
   it("set-role PATCHes .../members/:principal with positional order (org, principal, role)", async () => {
-    capture(); await runOrg("member", ["role", "11111111-1111-4111-8111-111111111111", "prn_2", "owner"]); uncapture();
+    capture(); await runOrg("members", ["role", "11111111-1111-4111-8111-111111111111", "prn_2", "owner"]); uncapture();
     assert.equal(lastCall().url, `${API}/orgs/v1/11111111-1111-4111-8111-111111111111/members/prn_2`);
     assert.equal(lastCall().method, "PATCH");
     assert.deepEqual(lastCall().body, { role: "owner" });
   });
 
   it("remove-member DELETEs .../members/:principal", async () => {
-    capture(); await runOrg("member", ["rm", "11111111-1111-4111-8111-111111111111", "prn_2"]); uncapture();
+    capture(); await runOrg("members", ["rm", "11111111-1111-4111-8111-111111111111", "prn_2"]); uncapture();
     assert.equal(lastCall().url, `${API}/orgs/v1/11111111-1111-4111-8111-111111111111/members/prn_2`);
     assert.equal(lastCall().method, "DELETE");
   });
 
   it("members without an arg fails locally (no network call)", async () => {
     capture();
-    await assert.rejects(runOrg("member", ["list"]), (e) => /process\.exit\(1\)/.test(e.message));
+    await assert.rejects(runOrg("members", ["list"]), (e) => /process\.exit\(1\)/.test(e.message));
     uncapture();
     assert.equal(calls.length, 0);
   });
@@ -377,7 +390,7 @@ describe("run402 provision --org", () => {
   });
 });
 
-describe("run402 org adopt", () => {
+describe("run402 orgs adopt", () => {
   it("exits 1 with login guidance when no sign-in session is cached", async () => {
     const stderr = [];
     const origErr = console.error;

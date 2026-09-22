@@ -4,9 +4,9 @@
 // principal that belongs to several organizations with
 // `400 ORGANIZATION_SELECTION_REQUIRED` unless the body names `org_id`. The
 // CLI derives it from the ONE shared org chain when `--org` is absent
-// (`resolveOrg`: env, binding, `org use`, the active project's owning org) and
+// (`resolveOrg`: env, binding, `orgs use`, the active project's owning org) and
 // never refuses an x402 purchase for lacking one. This file pins:
-//   - no --org, a current org (`org use`)          → body carries org_id
+//   - no --org, a current org (`orgs use`)          → body carries org_id
 //   - no --org, an active project with a cached org → body carries that org
 //   - no --org, no context                          → body carries NO org_id
 //   - --org                                         → the flag wins
@@ -229,7 +229,7 @@ describe("image generate — the paying organization", () => {
     const envelope = await runImage(["a cat"]);
     assert.equal(envelope.code, "FORBIDDEN");
     assert.equal(envelope.details.org_source, "profile");
-    assert.equal(envelope.details.org_source_detail, "org use");
+    assert.equal(envelope.details.org_source_detail, "orgs use");
     assert.match(envelope.hint, /--org <org_id>/);
   });
 });

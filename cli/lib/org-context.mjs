@@ -57,7 +57,7 @@ export const ROOM_ENV = "RUN402_ROOM";
 export const PROJECT_ENV = "RUN402_PROJECT_ID";
 
 /** Command groups that must stay usable while selection is ambiguous. */
-const CONFLICT_EXEMPT = new Set(["org", "wallets", "doctor"]);
+const CONFLICT_EXEMPT = new Set(["orgs", "wallets", "doctor"]);
 
 /** `org_id` is a UUID at every API boundary (`uuidParam` on every route). */
 const ORG_ID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
@@ -78,7 +78,7 @@ function assertOrgIdShape(orgId, origin) {
   fail({
     code: "BAD_ORG_ID",
     message: `Invalid organization id ${JSON.stringify(describeRejectedValue(orgId))} (from ${origin}).`,
-    hint: "An org_id is a UUID. Run 'run402 org list' to see the organizations you belong to.",
+    hint: "An org_id is a UUID. Run 'run402 orgs list' to see the organizations you belong to.",
     details: { org_id: describeRejectedValue(orgId), origin },
     next_actions: [listOrgsAction()],
   });
@@ -118,7 +118,7 @@ async function readGitvaultPinnedOrgId(cwd) {
 
 function listOrgsAction() {
   return nextAction("edit_request", {
-    command: "run402 org list",
+    command: "run402 orgs list",
     why: "List the organizations this wallet belongs to.",
   });
 }
@@ -126,7 +126,7 @@ function listOrgsAction() {
 function orgRequiredActions() {
   return [
     nextAction("edit_request", {
-      command: "run402 org use <org_id>",
+      command: "run402 orgs use <org_id>",
       why: "Select a current organization for this wallet profile.",
     }),
     listOrgsAction(),
@@ -266,7 +266,7 @@ export async function resolveOrg(input = {}, opts = {}) {
   // --- Class 4: profile state ----------------------------------------------
   const selected = trimmed(coreGetActiveOrgId());
   if (selected) {
-    return { orgId: assertOrgIdShape(selected, "org use"), source: "profile", sourceDetail: "org use" };
+    return { orgId: assertOrgIdShape(selected, "orgs use"), source: "profile", sourceDetail: "orgs use" };
   }
   const activeProject = trimmed(getActiveProjectId());
   if (activeProject) {
@@ -278,7 +278,7 @@ export async function resolveOrg(input = {}, opts = {}) {
   fail({
     code: "ORG_REQUIRED",
     message: "No organization specified and no current organization set.",
-    hint: `Pass --org <org_id>, set ${ORG_ENV}, bind this directory in .run402.json, or run: run402 org use <org_id>`,
+    hint: `Pass --org <org_id>, set ${ORG_ENV}, bind this directory in .run402.json, or run: run402 orgs use <org_id>`,
     next_actions: orgRequiredActions(),
   });
   return null; // unreachable — fail() exits
@@ -301,17 +301,17 @@ export async function resolveOrgId(a, opts = {}) {
  * Every Org-Scoped Command").
  *
  * `<org_id>` is optional sugar on every verb that acts on an organization —
- * `org get`, `org member add`, `billing link-wallet`, … A leading positional
+ * `orgs get`, `orgs members add`, `billing link-wallet`, … A leading positional
  * that IS an org id (a UUID) addresses that org; anything else is the verb's
  * own next positional (a wallet, an email, a principal) and the org comes from
  * the shared chain: `--org`, then `RUN402_ORG`, then the `.run402.json`
- * binding, then `org use`. So inside a bound checkout the two-agent case reads
- * `run402 org member add 0xB… --role developer` with nothing else to know.
+ * binding, then `orgs use`. So inside a bound checkout the two-agent case reads
+ * `run402 orgs members add 0xB… --role developer` with nothing else to know.
  *
  * Naming the org twice with different values (positional AND `--org`) is
  * `AMBIGUOUS_ORG`, never a silent pick — the same refusal the env-vs-binding
  * pair gets. A non-org first positional with no chain answer fails
- * `ORG_REQUIRED` and NAMES the rejected value, so `org get foo` says why `foo`
+ * `ORG_REQUIRED` and NAMES the rejected value, so `orgs get foo` says why `foo`
  * did not count rather than reporting a bare "no organization".
  *
  * Returns the org id with provenance plus the REMAINING positionals; bound
@@ -350,7 +350,7 @@ export async function takeOrgPositional(a, valueFlags = [], opts = {}) {
     message: typeof first === "string"
       ? `No organization specified and no current organization set (${JSON.stringify(first)} is not an org_id — an org_id is a UUID).`
       : "No organization specified and no current organization set.",
-    hint: `Pass --org <org_id> (or a leading <org_id> positional), set ${ORG_ENV}, bind this directory in .run402.json, or run: run402 org use <org_id>`,
+    hint: `Pass --org <org_id> (or a leading <org_id> positional), set ${ORG_ENV}, bind this directory in .run402.json, or run: run402 orgs use <org_id>`,
     ...(typeof first === "string" ? { details: { rejected_positional: first } } : {}),
     next_actions: orgRequiredActions(),
   });
@@ -388,7 +388,7 @@ export function getSelectedOrgId() {
 }
 
 /** Record the profile's selected organization. */
-export function setSelectedOrgId(orgId, origin = "org use") {
+export function setSelectedOrgId(orgId, origin = "orgs use") {
   coreSetActiveOrgId(assertOrgIdShape(orgId, origin));
 }
 

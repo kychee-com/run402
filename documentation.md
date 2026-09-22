@@ -63,7 +63,7 @@ Run `node scripts/documentation-inventory.mjs` to reject newly discovered unclas
 | public | [cli/lib/cache.mjs](cli/lib/cache.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | source published: 23751749; no separate hosted acceptance required |
 | public | [cli/lib/cdn.mjs](cli/lib/cdn.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | source published: 23751749; no separate hosted acceptance required |
 | public | [cli/lib/ci.mjs](cli/lib/ci.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
-| public | [cli/lib/claims.mjs](cli/lib/claims.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | source published: 23751749; no separate hosted acceptance required |
+| public | [cli/lib/claims.mjs](cli/lib/claims.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/cloud.mjs](cli/lib/cloud.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | source published: 23751749; no separate hosted acceptance required |
 | public | [cli/lib/command-manifest.mjs](cli/lib/command-manifest.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/contacts.mjs](cli/lib/contacts.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
@@ -94,7 +94,7 @@ Run `node scripts/documentation-inventory.mjs` to reject newly discovered unclas
 | public | [cli/lib/logs.mjs](cli/lib/logs.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | source published: 23751749; no separate hosted acceptance required |
 | public | [cli/lib/messages.mjs](cli/lib/messages.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | source published: 23751749; no separate hosted acceptance required |
 | public | [cli/lib/notifications.mjs](cli/lib/notifications.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | source published: 23751749; no separate hosted acceptance required |
-| public | [cli/lib/org.mjs](cli/lib/org.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
+| public | [cli/lib/orgs.mjs](cli/lib/orgs.mjs) | guide / cli | pending | pending |
 | public | [cli/lib/pay.mjs](cli/lib/pay.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/projects.mjs](cli/lib/projects.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/redeem.mjs](cli/lib/redeem.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |

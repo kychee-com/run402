@@ -2816,7 +2816,7 @@ export class Gitvault {
     const localWriterKeyId = identity?.signing_fingerprint ?? null;
     if (!localWriterKeyId || !repoFile.writer_set_pin?.writers.some((w) => w.writer_key_id === localWriterKeyId)) {
       throw new LocalError(
-        "this keystore's signing key is not an admitted writer of this vault — minting a handoff requires an ACTIVE writer (design D4); an existing writer must add this key first (`run402 org members add` / repos access sync), or push once to reconcile if a pending admission already exists",
+        "this keystore's signing key is not an admitted writer of this vault — minting a handoff requires an ACTIVE writer (design D4); an existing writer must add this key first (`run402 orgs members add` / repos access sync), or push once to reconcile if a pending admission already exists",
         "minting a handoff",
         { code: "GITVAULT_WRITER_NOT_ADMITTED" },
       );
@@ -5208,7 +5208,7 @@ export class Gitvault {
    * the envelope-recipients read, no declaration, no owner step-up — any
    * surviving writer can run it. `push()` runs it automatically when the
    * gate names an outstanding removal; this is the explicit entry point
-   * (`run402 org member rm` drives it on every vault the caller can).
+   * (`run402 orgs members rm` drives it on every vault the caller can).
    */
   async rotateEpochForMemberRemoval(options: GitvaultVaultHandleOptions & { client_idempotency_key?: string } = {}): Promise<import("../node/gitvault-publication.js").GitvaultRotationResult> {
     const handle = await this.open(options);

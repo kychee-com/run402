@@ -19,7 +19,7 @@ settled payment context and emails the wallet/payment stats to
 - The project owner org has an active payout wallet. If needed:
 
 ```sh
-run402 org payout-wallet "$ORG_ID" "$PAYOUT_WALLET_ADDRESS"
+run402 orgs payout-wallet "$ORG_ID" "$PAYOUT_WALLET_ADDRESS"
 ```
 
 - The project has one send-ready mailbox, or an explicit default outbound

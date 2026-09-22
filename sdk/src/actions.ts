@@ -118,7 +118,7 @@ export interface Run402UpIdentity {
   /** Whether the detected client became the display name, and why not when
    *  it did not: `applied` (it did); `name_already_set` (the principal was
    *  already named — nothing written; rename with `RUN402_AGENT_NAME=<name>`
-   *  or `run402 org whoami --set-name <name>`); `explicit_name_wins`
+   *  or `run402 whoami --set-name <name>`); `explicit_name_wins`
    *  (`identityName` / `RUN402_AGENT_NAME` took precedence);
    *  `nothing_detected` (no client marker and no `RUN402_CLIENT`). */
   detection?: {

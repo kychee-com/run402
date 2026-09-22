@@ -675,7 +675,7 @@ export async function run(sub, args = []) {
         for (const org of posture) {
           const label = `org ${org.org_id} (${org.vault_count} vault${org.vault_count === 1 ? "" : "s"})`;
           if (org.control_plane_configured === false) {
-            gaps.push(`${label}: no human owner with a working control-plane login — if this org's agent machine dies, nobody can sign in to recover it. Invite a backup human (run402 org invite create ${org.org_id} --email <their-email> --role owner) and have them complete login at console.run402.com.`);
+            gaps.push(`${label}: no human owner with a working control-plane login — if this org's agent machine dies, nobody can sign in to recover it. Invite a backup human (run402 orgs invite create ${org.org_id} --email <their-email> --role owner) and have them complete login at console.run402.com.`);
           }
           if (org.source_backup_configured === false) {
             gaps.push(`${label}: no human member holds a working source-access key — vault history has no member-side decryption backup. Have a member complete source enrollment at console.run402.com/account → Source access.`);

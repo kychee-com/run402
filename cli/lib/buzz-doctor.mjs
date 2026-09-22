@@ -230,7 +230,7 @@ async function checkRun402Cli({ cwd, env, argv, run402Executable, updateCheck })
     install_confidence: install.confidence,
     package_manager: install.package_manager,
     compatibility_source: "version_and_capability_probe",
-    required_capabilities: ["doctor --buzz", "doctor --buzz-agent", "wallets current", "org whoami", "identity link nostr"],
+    required_capabilities: ["doctor --buzz", "doctor --buzz-agent", "wallets current", "whoami", "identity link nostr"],
   };
   if (update?.status === "warning") {
     const rawAction = update?.value?.next_actions?.[0];

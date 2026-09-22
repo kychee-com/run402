@@ -754,7 +754,7 @@ export class NodeActions implements Run402Actions {
         }
         run.skipStep({
           action: "identity.name.set",
-          description: "No display name is known for this principal; nothing was written (set RUN402_AGENT_NAME=<name>, RUN402_CLIENT=<client>, or run `run402 org whoami --set-name <name>`)",
+          description: "No display name is known for this principal; nothing was written (set RUN402_AGENT_NAME=<name>, RUN402_CLIENT=<client>, or run `run402 whoami --set-name <name>`)",
           mutation: false,
           auto: true,
           details: { source: "undetected", detected: null },
@@ -772,7 +772,7 @@ export class NodeActions implements Run402Actions {
       await run.approve(
         step,
         ["identity.name.set"],
-        `Name this principal "${desired}" (promotion credit and room presence use it; change any time with run402 org whoami --set-name).`,
+        `Name this principal "${desired}" (promotion credit and room presence use it; change any time with run402 whoami --set-name).`,
       );
       run.setState(step, "running");
       try {
@@ -788,7 +788,7 @@ export class NodeActions implements Run402Actions {
       // so, write nothing (an existing name is never overwritten by a guess).
       run.skipStep({
         action: "identity.name.set",
-        description: `Detected client "${detectedName}" but the principal is already named "${displayName}"; nothing written — set RUN402_AGENT_NAME=<name> or run \`run402 org whoami --set-name <name>\` to rename`,
+        description: `Detected client "${detectedName}" but the principal is already named "${displayName}"; nothing written — set RUN402_AGENT_NAME=<name> or run \`run402 whoami --set-name <name>\` to rename`,
         mutation: false,
         auto: true,
         details: { source: "existing", display_name: displayName, detected: detectedName, reason: "name_already_set" },

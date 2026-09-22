@@ -85,7 +85,7 @@ function readCommandSource(filePath: string): string | null {
 function parseCliCommands(): string[] {
   const cmds: string[] = [];
   const reserved = reservedSubcommands();
-  for (const mod of ["admin", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "feedback", "agent", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "deliveries", "contacts", "subscriptions", "webhook-secret", "cloud", "archives", "core", "rooms", "messages", "claims", "escalations", "gitvault", "repos", "source-access"]) {
+  for (const mod of ["admin", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "feedback", "agent", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "orgs", "identity", "buzz", "grants", "delegates", "deliveries", "contacts", "subscriptions", "webhook-secret", "cloud", "archives", "core", "rooms", "messages", "claims", "escalations", "gitvault", "repos", "source-access"]) {
     for (const sub of parseSubcommands(join(__dirname, "cli/lib", `${mod}.mjs`))) {
       if (reserved.has(`${mod}:${sub}`)) continue;
       cmds.push(`${mod}:${sub}`);
@@ -104,8 +104,8 @@ function parseCliCommands(): string[] {
   for (const action of parseJobsArtifactsActions()) {
     cmds.push(`jobs:artifacts:${action}`);
   }
-  for (const action of parseOrgGroupActions("memberAction")) cmds.push(`org:member:${action}`);
-  for (const action of parseOrgGroupActions("inviteAction")) cmds.push(`org:invite:${action}`);
+  for (const action of parseOrgGroupActions("memberAction")) cmds.push(`orgs:members:${action}`);
+  for (const action of parseOrgGroupActions("inviteAction")) cmds.push(`orgs:invite:${action}`);
   for (const action of parseNotificationsGroupActions("channelsAction")) cmds.push(`notifications:channels:${action}`);
   for (const action of parseNotificationsGroupActions("rulesAction")) cmds.push(`notifications:rules:${action}`);
   // Bare `run402 deploy` is the deploy itself (deploy.mjs dispatches anything
@@ -132,7 +132,7 @@ function parseCliCommands(): string[] {
 function parseOpenClawCommands(): string[] {
   const cmds: string[] = [];
   const reserved = reservedSubcommands();
-  for (const mod of ["admin", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "feedback", "agent", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "deliveries", "contacts", "subscriptions", "webhook-secret", "cloud", "archives", "core", "rooms", "messages", "claims", "escalations", "gitvault", "repos", "source-access"]) {
+  for (const mod of ["admin", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "feedback", "agent", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "orgs", "identity", "buzz", "grants", "delegates", "deliveries", "contacts", "subscriptions", "webhook-secret", "cloud", "archives", "core", "rooms", "messages", "claims", "escalations", "gitvault", "repos", "source-access"]) {
     for (const sub of parseSubcommands(join(__dirname, "openclaw/scripts", `${mod}.mjs`))) {
       if (reserved.has(`${mod}:${sub}`)) continue;
       cmds.push(`${mod}:${sub}`);
@@ -151,8 +151,8 @@ function parseOpenClawCommands(): string[] {
   for (const action of parseJobsArtifactsActions()) {
     cmds.push(`jobs:artifacts:${action}`);
   }
-  for (const action of parseOrgGroupActions("memberAction")) cmds.push(`org:member:${action}`);
-  for (const action of parseOrgGroupActions("inviteAction")) cmds.push(`org:invite:${action}`);
+  for (const action of parseOrgGroupActions("memberAction")) cmds.push(`orgs:members:${action}`);
+  for (const action of parseOrgGroupActions("inviteAction")) cmds.push(`orgs:invite:${action}`);
   for (const action of parseNotificationsGroupActions("channelsAction")) cmds.push(`notifications:channels:${action}`);
   for (const action of parseNotificationsGroupActions("rulesAction")) cmds.push(`notifications:rules:${action}`);
   if (existsSync(join(__dirname, "openclaw/scripts/deploy.mjs"))) cmds.push("deploy");
@@ -256,11 +256,11 @@ function parseCoreProjectActions(relativePath: string): string[] {
 }
 
 /** Parse the nested `org member <action>` / `org invite <action>` leaf actions
- *  from cli/lib/org.mjs (matched on `memberAction === "..."` / `inviteAction ===
+ *  from cli/lib/orgs.mjs (matched on `memberAction === "..."` / `inviteAction ===
  *  "..."`), mirroring `jobs artifacts`. The groups dispatch via `if (sub === ...)`
  *  so parseSubcommands skips them; these surface their leaves instead. */
 function parseOrgGroupActions(varName: "memberAction" | "inviteAction"): string[] {
-  const filePath = join(__dirname, "cli/lib/org.mjs");
+  const filePath = join(__dirname, "cli/lib/orgs.mjs");
   if (!existsSync(filePath)) return [];
   const src = readFileSync(filePath, "utf-8");
   const actions: string[] = [];
@@ -666,7 +666,7 @@ const SURFACE: Capability[] = [
   // person's session must not become the agent's ambient authority).
   { id: "login",             endpoint: "POST /agent/v1/control-plane/cli/token (+ /cli/device, /cli/device/token)", mcp: null, cli: "login", openclaw: "login" },
   { id: "logout",            endpoint: "POST /agent/v1/control-plane/session/revoke",              mcp: null, cli: "logout",    openclaw: "logout" },
-  { id: "adopt_org",         endpoint: "POST /orgs/v1/adopt (+ /challenge)",                        mcp: null, cli: "org:adopt", openclaw: "org:adopt" },
+  { id: "adopt_org",         endpoint: "POST /orgs/v1/adopt (+ /challenge)",                        mcp: null, cli: "orgs:adopt", openclaw: "orgs:adopt" },
   { id: "approve",           endpoint: "POST /agent/v1/control-plane/write-approval/challenges (+ /cli/token)", mcp: null, cli: "approve", openclaw: "approve" },
 
   // ── Additional billing ─────────────────────────────────────────────────
@@ -700,37 +700,36 @@ const SURFACE: Capability[] = [
   { id: "list_outgoing_transfers",   endpoint: "GET /agent/v1/transfers/outgoing",              mcp: "list_outgoing_transfers",   cli: null,               openclaw: null },
 
   // ── Org-owned control plane: identity, membership, grants (v1.77+) ──────
-  { id: "create_org",          endpoint: "POST /orgs/v1",                                 mcp: "create_org",            cli: "org:create",        openclaw: "org:create" },
-  { id: "get_org",             endpoint: "GET /orgs/v1/:org_id",                          mcp: "get_org",               cli: "org:get",           openclaw: "org:get" },
-  { id: "rename_org",          endpoint: "PATCH /orgs/v1/:org_id",                        mcp: "rename_org",            cli: "org:rename",        openclaw: "org:rename" },
-  { id: "set_org_payout_wallet", endpoint: "PATCH /orgs/v1/:org_id/payout-wallet",         mcp: "set_org_payout_wallet", cli: "org:payout-wallet", openclaw: "org:payout-wallet" },
+  { id: "create_org",          endpoint: "POST /orgs/v1",                                 mcp: "create_org",            cli: "orgs:create",        openclaw: "orgs:create" },
+  { id: "get_org",             endpoint: "GET /orgs/v1/:org_id",                          mcp: "get_org",               cli: "orgs:get",           openclaw: "orgs:get" },
+  { id: "rename_org",          endpoint: "PATCH /orgs/v1/:org_id",                        mcp: "rename_org",            cli: "orgs:rename",        openclaw: "orgs:rename" },
+  { id: "set_org_payout_wallet", endpoint: "PATCH /orgs/v1/:org_id/payout-wallet",         mcp: "set_org_payout_wallet", cli: "orgs:payout-wallet", openclaw: "orgs:payout-wallet" },
   // repo-first-onramp task 4 (design D6): the slug CLAIM spends money and is
   // a permanent handle — CLI/SDK only, no MCP tool (documentation.md's
   // gitvault row's "mutating verbs are CLI-only" law extends to this sibling
   // org-owned naming surface for the same reasons: a paid, side-effecting,
   // hard-to-undo mutation belongs to a command the caller typed).
-  { id: "org_slug",            endpoint: "POST /orgs/v1/:org_id/slug",                    mcp: null,                    cli: "org:slug",          openclaw: "org:slug" },
-  { id: "whoami",              endpoint: "GET /agent/v1/whoami",                          mcp: "whoami",                cli: "whoami",            openclaw: "whoami" },
-  { id: "org_whoami",          endpoint: "GET /agent/v1/whoami (+ PATCH /agent/v1/me)",   mcp: null,                    cli: "org:whoami",        openclaw: "org:whoami" },
-  { id: "list_orgs",           endpoint: "GET /orgs/v1 (+ GET /agent/v1/me/overview)",    mcp: "list_orgs",             cli: "org:list",          openclaw: "org:list" },
-  { id: "list_org_members",    endpoint: "GET /orgs/v1/:org_id/members",                      mcp: "list_org_members",      cli: "org:member:list",   openclaw: "org:member:list" },
-  { id: "add_org_member",      endpoint: "POST /orgs/v1/:org_id/members",                     mcp: "add_org_member",        cli: "org:member:add",    openclaw: "org:member:add" },
-  { id: "set_org_member_role", endpoint: "PATCH /orgs/v1/:org_id/members/:principal_id",      mcp: "set_org_member_role",   cli: "org:member:role",   openclaw: "org:member:role" },
-  { id: "remove_org_member",   endpoint: "DELETE /orgs/v1/:org_id/members/:principal_id",     mcp: "remove_org_member",     cli: "org:member:rm",     openclaw: "org:member:rm" },
+  { id: "org_slug",            endpoint: "POST /orgs/v1/:org_id/slug",                    mcp: null,                    cli: "orgs:slug",          openclaw: "orgs:slug" },
+  { id: "whoami",              endpoint: "GET /agent/v1/whoami (+ PATCH /agent/v1/me)", mcp: "whoami",                cli: "whoami",            openclaw: "whoami" },
+  { id: "list_orgs",           endpoint: "GET /orgs/v1 (+ GET /agent/v1/me/overview)",    mcp: "list_orgs",             cli: "orgs:list",          openclaw: "orgs:list" },
+  { id: "list_org_members",    endpoint: "GET /orgs/v1/:org_id/members",                      mcp: "list_org_members",      cli: "orgs:members:list",   openclaw: "orgs:members:list" },
+  { id: "add_org_member",      endpoint: "POST /orgs/v1/:org_id/members",                     mcp: "add_org_member",        cli: "orgs:members:add",    openclaw: "orgs:members:add" },
+  { id: "set_org_member_role", endpoint: "PATCH /orgs/v1/:org_id/members/:principal_id",      mcp: "set_org_member_role",   cli: "orgs:members:role",   openclaw: "orgs:members:role" },
+  { id: "remove_org_member",   endpoint: "DELETE /orgs/v1/:org_id/members/:principal_id",     mcp: "remove_org_member",     cli: "orgs:members:rm",     openclaw: "orgs:members:rm" },
   // gitvault-agent-envelopes D3: the owner's independent-credential rotation path — no MCP tool by design (owner + step-up mutation, CLI-only like every other gitvault mutating verb).
-  { id: "revoke_org_member_encryption_key", endpoint: "DELETE /orgs/v1/:org_id/members/:principal_id/encryption-key", mcp: null, cli: "org:member:revoke-key", openclaw: "org:member:revoke-key" },
-  { id: "org_audit",           endpoint: "GET /orgs/v1/:org_id/audit",                        mcp: null,                    cli: "org:audit",         openclaw: "org:audit" },
+  { id: "revoke_org_member_encryption_key", endpoint: "DELETE /orgs/v1/:org_id/members/:principal_id/encryption-key", mcp: null, cli: "orgs:members:revoke-key", openclaw: "orgs:members:revoke-key" },
+  { id: "org_audit",           endpoint: "GET /orgs/v1/:org_id/audit",                        mcp: null,                    cli: "orgs:audit",         openclaw: "orgs:audit" },
   // Current-org selection (add-cli-current-org): LOCAL state, like wallets:use
   // and the local half of projects:use. No endpoint — the org id is resolved
   // client-side and only travels as a path segment on the calls that use it.
-  { id: "org_use",             endpoint: "(local)",                                           mcp: null,                    cli: "org:use",           openclaw: "org:use" },
-  { id: "org_current",         endpoint: "(local)",                                           mcp: null,                    cli: "org:current",       openclaw: "org:current" },
-  { id: "org_clear",           endpoint: "(local)",                                           mcp: null,                    cli: "org:clear",         openclaw: "org:clear" },
-  { id: "org_bind",            endpoint: "(local)",                                           mcp: null,                    cli: "org:bind",          openclaw: "org:bind" },
-  { id: "org_unbind",          endpoint: "(local)",                                           mcp: null,                    cli: "org:unbind",        openclaw: "org:unbind" },
-  { id: "org_invite_list",     endpoint: "GET /orgs/v1/:org_id/invites",                      mcp: null,                    cli: "org:invite:list",   openclaw: "org:invite:list" },
-  { id: "org_invite_create",   endpoint: "POST /orgs/v1/:org_id/invites",                     mcp: null,                    cli: "org:invite:create", openclaw: "org:invite:create" },
-  { id: "org_invite_rm",       endpoint: "DELETE /orgs/v1/:org_id/invites/:principal_id",     mcp: null,                    cli: "org:invite:rm",     openclaw: "org:invite:rm" },
+  { id: "org_use",             endpoint: "(local)",                                           mcp: null,                    cli: "orgs:use",           openclaw: "orgs:use" },
+  { id: "org_current",         endpoint: "(local)",                                           mcp: null,                    cli: "orgs:current",       openclaw: "orgs:current" },
+  { id: "org_clear",           endpoint: "(local)",                                           mcp: null,                    cli: "orgs:clear",         openclaw: "orgs:clear" },
+  { id: "org_bind",            endpoint: "(local)",                                           mcp: null,                    cli: "orgs:bind",          openclaw: "orgs:bind" },
+  { id: "org_unbind",          endpoint: "(local)",                                           mcp: null,                    cli: "orgs:unbind",        openclaw: "orgs:unbind" },
+  { id: "org_invite_list",     endpoint: "GET /orgs/v1/:org_id/invites",                      mcp: null,                    cli: "orgs:invite:list",   openclaw: "orgs:invite:list" },
+  { id: "org_invite_create",   endpoint: "POST /orgs/v1/:org_id/invites",                     mcp: null,                    cli: "orgs:invite:create", openclaw: "orgs:invite:create" },
+  { id: "org_invite_rm",       endpoint: "DELETE /orgs/v1/:org_id/invites/:principal_id",     mcp: null,                    cli: "orgs:invite:rm",     openclaw: "orgs:invite:rm" },
   { id: "create_project_grant", endpoint: "POST /projects/v1/:id/grants",                 mcp: "create_project_grant",  cli: "grants:create",     openclaw: "grants:create" },
   { id: "revoke_project_grant", endpoint: "DELETE /projects/v1/:id/grants/:grant_id",     mcp: "revoke_project_grant",  cli: "grants:revoke",     openclaw: "grants:revoke" },
   // Project credentials. `mcp: null` follows the delegates precedent below:
@@ -1287,7 +1286,6 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   set_org_payout_wallet: "org.setPayoutWallet",
   org_slug: "org.setSlug",
   whoami: "orgs.whoami",
-  org_whoami: "orgs.whoami",
   list_orgs: "orgs.list",
   list_org_members: "org.members.list",
   add_org_member: "org.members.add",
@@ -1611,7 +1609,7 @@ describe("SDK surface alignment", () => {
       "agent.lightningWallet.revoke",
       "agent.lightningWallet.waitForActive",
       // principal-display-name (first-deploy-agent-dx): `PATCH /agent/v1/me`
-      // rides the whoami door on every surface (`org whoami --set-name`,
+      // rides the whoami door on every surface (`whoami --set-name`,
       // MCP `whoami` `set_display_name`), so it has no verb of its own.
       "orgs.setDisplayName",
       // Adopt challenge is the first step of the org adopt flow; the
@@ -1975,7 +1973,7 @@ describe("SDK surface alignment", () => {
       // `run402 approve`: requestChallenge is mapped to `approve`;
       // exchangeClaimCode is the second half of the same loopback dance.
       "writeApproval.exchangeClaimCode",
-      // The account reads: `run402 org list` joins me.overview into the
+      // The account reads: `run402 orgs list` joins me.overview into the
       // membership list (`list_orgs` maps to orgs.list); `run402 doctor` and
       // MCP `whoami` read me.status. Neither has a verb of its own.
       "me.overview",

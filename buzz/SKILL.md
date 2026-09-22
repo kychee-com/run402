@@ -32,7 +32,7 @@ Treat the user's explicit setup request after that disclosure as authorization t
 - Never use `buzz://nostr-bind` for an agent proof. It signs as the desktop owner/device identity, not the managed agent.
 - During setup, do not select or purchase a tier, create a project, provision infrastructure, write application source, deploy, transfer, delete, or spend. The only permitted setup mutations are a necessary user-global CLI install/update, deliberate creation of the one named agent wallet after profile inspection, ordinary Run402 profile initialization, and the disclosed public identity link.
 - Do not use an ambient `RUN402_WALLET`, directory binding, `wallets use` selection, or default profile for this ceremony. Choose one explicit dedicated profile label and pass it with `--wallet` on every profile-sensitive Run402 command.
-- Do not overwrite or relink a human root, treasury, recovery, production-owner, or unrelated profile. Stop unless explicitly scoped `run402 org whoami` resolves a dedicated `agent` principal using `siwx_eoa`.
+- Do not overwrite or relink a human root, treasury, recovery, production-owner, or unrelated profile. Stop unless explicitly scoped `run402 whoami` resolves a dedicated `agent` principal using `siwx_eoa`.
 - Accept only a standalone seven-field kind-1 event with `tags: []` or the fixture-frozen empty-condition NIP-OA `auth` tag. Never rewrite a signed event.
 
 Read [references/identity-and-security.md](references/identity-and-security.md) when reasoning about custody, proof permanence, compromise, revocation, or production adoption. Read [references/community-control-plane.md](references/community-control-plane.md) whenever human adoption, community installation, another Buzz agent, enrollment, drift, or fallback is present. Read [references/receipts.md](references/receipts.md) before reporting readiness, deploy, or failure.
@@ -67,7 +67,7 @@ Read [references/conversations.md](references/conversations.md) when rendering t
    - confirms a dedicated agent EOA principal;
    - reuses the intended active Nostr link, refuses a different active agent link, or creates the intended link through the released Buzz signer boundary;
    - reports the profile label, public wallet address, and `selection_source: explicit_argument` before any link mutation;
-   - independently verifies the public proof and final `run402 org whoami`; and
+   - independently verifies the public proof and final `run402 whoami`; and
    - emits one structured ready or blocked result.
 
 5. Branch on `status`, not prose. On `blocked`, report the exact `stage`, stable `code`, `mutation_state`, and the single `next_action`. `RUN402_WALLET_NOT_FOUND` means confirm the label, create it with the separately reported `wallets new` command, and rerun setup. Do not invent a secret-export workaround or claim readiness.
@@ -155,7 +155,7 @@ After affirmative approval:
 
 1. Build the offered application from scratch; there is no bundled demo or template.
 2. Avoid another planning interview unless missing information materially changes scope, cost, external effects, or safety.
-3. Reconfirm `run402 --wallet <profile> org whoami` and the intended active identity link before mutation, using the `profile_label` from the ready receipt.
+3. Reconfirm `run402 --wallet <profile> whoami` and the intended active identity link before mutation, using the `profile_label` from the ready receipt.
 4. Inspect the repository and current Run402 capabilities. Prefer an existing linked project when appropriate and distinguish the acting principal from the organization that owns the project.
 5. As a teammate of the human's organization (after `buzz join`), that organization already holds its tier and balance: provision with `--org <org_id>`, run no faucet or tier step, and never discuss funding. Unless the community's Buzz route is organization-wide (`project_scope: org`), a project you provision is not routed until an organization owner adds it (`run402 buzz notifications projects <buzzper_id> --add <project_id>`, or `scope <buzzper_id> --org` once for everything), so its deploys and crashes reach Telegram but not the channel: say so in one line of your first reply, with the project id, so the owner can add it. On the org-of-one path, for the canonical pre-launch demo, use the Base Sepolia faucet and prototype tier automatically. Do not mention a price, cost, purchase, spend, or funding decision in ordinary Buzz conversation. Preserve `network: base_sepolia`, `funding_source: faucet`, and the observed tier in the expanded receipt. For a real-value rail, use the ordinary spend-disclosure boundary.
 6. Validate locally and use the applicable plan/rehearsal path before apply.

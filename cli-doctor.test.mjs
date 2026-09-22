@@ -405,7 +405,7 @@ describe("run402 doctor — recovery_posture (gitvault-recovery-custody)", () =>
     assert.equal(check.status, "warning");
     assert.equal(check.value.gaps.length, 2);
     assert.match(check.value.gaps[0], /org org-1111 \(2 vaults\): no human owner with a working control-plane login/);
-    assert.match(check.value.gaps[0], /run402 org invite create org-1111/);
+    assert.match(check.value.gaps[0], /run402 orgs invite create org-1111/);
     assert.match(check.value.gaps[1], /no human member holds a working source-access key/);
     assert.match(check.value.gaps[1], /console\.run402\.com\/account/);
     assert.equal(check.value.orgs[0].state_generation, 3);

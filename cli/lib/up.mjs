@@ -104,7 +104,7 @@ coordination only. RUN402_AGENT_NAME=<name> sets the name, overriding an
 existing one; RUN402_CLIENT=<name> declares the client when it is not
 auto-detected. A detected client that was not applied (the principal is
 already named) is still reported. Change the name any time with
-'run402 org whoami --set-name <name>'. Reported under result.identity
+'run402 whoami --set-name <name>'. Reported under result.identity
 (source, detected, detection).
   --json              Emit one final JSON object on stdout (default; compatibility no-op).
   --human             Emit the legacy human success/blocking summary on stdout.

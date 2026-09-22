@@ -50,7 +50,7 @@ export interface GenerateImageOptions {
    * When omitted and the gateway answers `ORGANIZATION_SELECTION_REQUIRED`,
    * the SDK retries ONCE with the one candidate from
    * `details.organization_ids` that matches a local context — the
-   * provider's active organization (`run402 org use`) or the active
+   * provider's active organization (`run402 orgs use`) or the active
    * project's cached owning org, else any locally stored project's owning
    * org. Zero or several matches surface the error with the candidate ids
    * and a next action naming `--org` / `orgId`. Nothing is ever inferred
@@ -242,7 +242,7 @@ function organizationSelectionError(err: Run402Error, candidates: string[], matc
     : {};
   const reason = matches.length > 1
     ? `${matches.length} of them (${matches.join(", ")}) match this machine's local context, so none was chosen`
-    : "none of them matches this machine's local context (run402 org use, the active project, or a stored project)";
+    : "none of them matches this machine's local context (run402 orgs use, the active project, or a stored project)";
   const message =
     `The paying organization is required: this principal belongs to ${candidates.length} organizations ` +
     `(${candidates.join(", ")}) and ${reason}; name one with orgId (CLI: --org <org_id>) while generating image (HTTP ${err.status ?? 400})`;
@@ -254,7 +254,7 @@ function organizationSelectionError(err: Run402Error, candidates: string[], matc
     },
     {
       type: "edit_request",
-      command: "run402 org use <org_id>",
+      command: "run402 orgs use <org_id>",
       why: "Select a current organization for this profile so every later call inherits it.",
     },
     ...(Array.isArray(envelope.next_actions) ? (envelope.next_actions as NextAction[]) : []),

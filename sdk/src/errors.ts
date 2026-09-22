@@ -736,7 +736,7 @@ export class TransferFreezeError extends Run402Error {
  * vault birth. `sync_writers` / `request_writer_sync` (gitvault-multi-writer
  * rev 47, D10) are the writer dimension's own pair — `sync_writers` rides
  * `POST /orgs/v1/:org_id/members`'s own gateway response (the caller's next
- * `org members add`/`repos access sync` admits a just-added member as a
+ * `orgs members add`/`repos access sync` admits a just-added member as a
  * writer on every vault it can reach); `request_writer_sync` is CLIENT-
  * constructed (`GitvaultVault#assertCallerIsWriter`, task 5.8) when a local
  * push pre-check refuses because this session's own key is not (or is no

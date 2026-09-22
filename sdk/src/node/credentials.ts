@@ -179,7 +179,7 @@ export class NodeCredentialsProvider implements CredentialsProvider {
   }
 
   /**
-   * The profile's current organization (`run402 org use`). The CLI's
+   * The profile's current organization (`run402 orgs use`). The CLI's
    * org-context resolver writes and reads it per profile WITHOUT a principal
    * (the "unknown" bucket), so that bucket is the authoritative one; the
    * principal-scoped bucket is consulted first only so a provider that wrote

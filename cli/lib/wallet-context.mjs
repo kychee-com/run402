@@ -104,7 +104,7 @@ export function splitWalletFlag(rawArgv = []) {
  * a file left with no keys is deleted rather than committed empty.
  *
  * The file is shared by tiers (`wallet` from `wallets bind`, `org`/`room` from
- * `org bind`) and unknown keys are preserved, so one tier can never clobber
+ * `orgs bind`) and unknown keys are preserved, so one tier can never clobber
  * another's binding — which a whole-file write did until this existed.
  */
 export function updateBindingFile(dir, patch) {

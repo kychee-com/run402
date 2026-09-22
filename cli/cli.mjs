@@ -72,13 +72,13 @@ AUTHORITY — who may act, and with what credential
   credentials Manage local credential material (project-keys)
   delegates   Scoped deploy credentials for agents (create, list, revoke, rotate)
   grants      Per-project capability grants for agent/CI principals (create, revoke)
-  org         Org membership, invites & audit (whoami, list, member, invite, audit)
+  orgs        Organizations, members, invites & audit (list, get, members, invite, audit)
   identity    Public proof-backed external agent identity links
   auth        Manage project user authentication (magic link, passwords, settings)
   ci          Link GitHub Actions OIDC deploy bindings
   login       Sign in as a person (browser passkey; --device for a read-only session)
   logout      End your sign-in session and clear it from this machine
-  whoami      Who this CLI acts as: principal, memberships, session grade
+  whoami      Who this CLI acts as: principal, memberships, session grade (--set-name sets your name)
   approve     Write approval for one action on one target (provision, deploy, secrets)
 
 DELIVER — reach a human when something happens
@@ -287,8 +287,8 @@ switch (cmd) {
     await run(sub, rest);
     break;
   }
-  case "org": {
-    const { run } = await import("./lib/org.mjs");
+  case "orgs": {
+    const { run } = await import("./lib/orgs.mjs");
     await run(sub, rest);
     break;
   }

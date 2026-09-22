@@ -6,7 +6,7 @@ description: Explicit destinations and attributable human, agent and CI actions.
 An organization owns projects. People and agents act as distinct principals with attributable actions; membership, roles, grants, grant keys and spending policy determine authority. An agent may own the organization it founded. A person joining as co-owner is an explicit authority change.
 
 ```bash
-run402 org whoami
+run402 whoami
 run402 projects list
 run402 projects get prj_example
 ```

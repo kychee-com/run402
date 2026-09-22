@@ -19,7 +19,7 @@
  *                          through the ONE shared chain (cli-org-context):
  *                          an optional leading <org_id> positional, else
  *                          --org, else RUN402_ORG, else the .run402.json
- *                          binding, else `org use`. The gate drives every
+ *                          binding, else `orgs use`. The gate drives every
  *                          such entry through --org AND RUN402_ORG with no
  *                          positional and fails on any "Missing <org_id>".
  *                          Any entry with an `org_id` positional MUST be
@@ -209,31 +209,30 @@ export const COMMAND_MANIFEST = [
   { path: ["transfer", "accept"], positionals: [p("transfer_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["tr_gate1"] },
   { path: ["transfer", "cancel"], positionals: [p("transfer_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["tr_gate1"] },
 
-  // ── org ──────────────────────────────────────────────────────────────────
-  { path: ["org", "create"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
-  { path: ["org", "list"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
-  { path: ["org", "get"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG] },
-  { path: ["org", "rename"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG, "--name", "Gate"] },
-  { path: ["org", "payout-wallet"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG, "0x1111111111111111111111111111111111111111"] },
+  // ── orgs ──────────────────────────────────────────────────────────────────
+  { path: ["orgs", "create"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
+  { path: ["orgs", "list"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
+  { path: ["orgs", "get"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG] },
+  { path: ["orgs", "rename"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG, "--name", "Gate"] },
+  { path: ["orgs", "payout-wallet"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG, "0x1111111111111111111111111111111111111111"] },
   // `--org` (not a positional org_id
   // like rename/payout-wallet above) goes through resolveOrg's SHAPE
   // validation (a real UUID) — "org_gate1" fails that locally, so this needs
-  // the same UUID-shaped fixture `org use` below already established.
-  { path: ["org", "slug"], positionals: [p("slug")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["acme", "--org", "11111111-2222-3333-4444-555555555555"] },
-  { path: ["org", "whoami"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
-  { path: ["org", "audit"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG] },
-  { path: ["org", "use"], positionals: [p("org_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["11111111-2222-3333-4444-555555555555"] },
-  { path: ["org", "current"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
-  { path: ["org", "clear"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
-  { path: ["org", "bind"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["--org", "11111111-2222-3333-4444-555555555555"] },
-  { path: ["org", "unbind"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
-  { path: ["org", "member", "list"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG] },
-  { path: ["org", "member", "add"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG, "0x1111111111111111111111111111111111111111"] },
-  { path: ["org", "member", "role"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG, "--principal", "prn_gate1", "--role", "viewer"] },
-  { path: ["org", "member", "rm"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG, "--principal", "prn_gate1"] },
-  { path: ["org", "invite", "list"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG] },
-  { path: ["org", "invite", "create"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG, "--email", "gate@example.com"] },
-  { path: ["org", "invite", "rm"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG, "--principal", "prn_gate1"] },
+  // the same UUID-shaped fixture `orgs use` below already established.
+  { path: ["orgs", "slug"], positionals: [p("slug")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["acme", "--org", "11111111-2222-3333-4444-555555555555"] },
+  { path: ["orgs", "audit"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG] },
+  { path: ["orgs", "use"], positionals: [p("org_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["11111111-2222-3333-4444-555555555555"] },
+  { path: ["orgs", "current"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
+  { path: ["orgs", "clear"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
+  { path: ["orgs", "bind"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["--org", "11111111-2222-3333-4444-555555555555"] },
+  { path: ["orgs", "unbind"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
+  { path: ["orgs", "members", "list"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG] },
+  { path: ["orgs", "members", "add"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG, "0x1111111111111111111111111111111111111111"] },
+  { path: ["orgs", "members", "role"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG, "--principal", "prn_gate1", "--role", "viewer"] },
+  { path: ["orgs", "members", "rm"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG, "--principal", "prn_gate1"] },
+  { path: ["orgs", "invite", "list"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG] },
+  { path: ["orgs", "invite", "create"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG, "--email", "gate@example.com"] },
+  { path: ["orgs", "invite", "rm"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG, "--principal", "prn_gate1"] },
 
   // ── grants ───────────────────────────────────────────────────────────────
   { path: ["grants", "create"], positionals: [p("wallet")], projectScoped: true, legacyPositionalProject: true, minimalArgs: ["0x1111111111111111111111111111111111111111", "--capability", "deploy"] },

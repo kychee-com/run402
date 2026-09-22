@@ -227,7 +227,7 @@ describe("wallets — conflict + fail-closed", () => {
 
   it("env vs binding mismatch is a hard error on a normal command", () => {
     writeFileSync(join(workDir, ".run402.json"), JSON.stringify({ wallet: "client-a" }));
-    const r = run(["org", "current"], { env: { RUN402_WALLET: "kychon" } });
+    const r = run(["orgs", "current"], { env: { RUN402_WALLET: "kychon" } });
     assert.notEqual(r.status, 0);
     const env = errEnvelope(r);
     assert.equal(env.code, "WALLET_SELECTION_CONFLICT");
@@ -237,12 +237,12 @@ describe("wallets — conflict + fail-closed", () => {
 
   it("--wallet resolves the conflict", () => {
     writeFileSync(join(workDir, ".run402.json"), JSON.stringify({ wallet: "client-a" }));
-    const r = run(["--wallet", "kychon", "org", "current"], { env: { RUN402_WALLET: "client-a" } });
+    const r = run(["--wallet", "kychon", "orgs", "current"], { env: { RUN402_WALLET: "client-a" } });
     assert.equal(r.status, 0, r.stderr);
   });
 
   it("selecting an unknown wallet fails closed on a normal command", () => {
-    const r = run(["--wallet", "ghost", "org", "current"]);
+    const r = run(["--wallet", "ghost", "orgs", "current"]);
     assert.notEqual(r.status, 0);
     assert.equal(errEnvelope(r).code, "WALLET_NOT_FOUND");
   });
@@ -258,21 +258,21 @@ describe("wallets — conflict + fail-closed", () => {
 describe("wallets — provenance", () => {
   it("does not emit a provenance line for a non-default selection by default", () => {
     run(["wallets", "new", "kychon"]);
-    const r = run(["--wallet", "kychon", "org", "current"]);
+    const r = run(["--wallet", "kychon", "orgs", "current"]);
     assert.equal(r.status, 0, r.stderr);
     assert.ok(!/↪ wallet:/.test(r.stderr), `expected no provenance line, got: ${r.stderr}`);
   });
 
   it("can emit a provenance line when explicitly requested", () => {
     run(["wallets", "new", "kychon"]);
-    const r = run(["--wallet", "kychon", "org", "current"], { env: { RUN402_WALLET_PROVENANCE: "1" } });
+    const r = run(["--wallet", "kychon", "orgs", "current"], { env: { RUN402_WALLET_PROVENANCE: "1" } });
     assert.equal(r.status, 0, r.stderr);
     assert.match(r.stderr, /wallet: kychon/);
   });
 
   it("stays silent for the default wallet", () => {
     run(["wallets", "new", "default"]); // default wallet
-    const r = run(["org", "current"]);
+    const r = run(["orgs", "current"]);
     assert.equal(r.status, 0, r.stderr);
     assert.ok(!/↪ wallet:/.test(r.stderr), `expected no provenance line, got: ${r.stderr}`);
   });

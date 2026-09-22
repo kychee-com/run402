@@ -49,7 +49,7 @@ Options:
                   client (claude-code, codex, cursor, or grok; RUN402_CLIENT=<name>
                   declares one that is not auto-detected) and otherwise writes
                   nothing; RUN402_AGENT_NAME=<name> sets or overrides it. Change
-                  it any time with \`run402 org whoami --set-name <name>\`.
+                  it any time with \`run402 whoami --set-name <name>\`.
   --git-remote    Also 'git init' the current directory when it is not a
                   repository yet, so the gitvault remote can be added there.
                   Opt-in on purpose: init is often run outside a project
@@ -736,7 +736,7 @@ export async function run(args = []) {
     if (rows.length === 1) {
       line("Org", `${rows[0].org_id}${rows[0].display_name ? ` (${rows[0].display_name})` : ""}`);
     } else if (rows.length > 1) {
-      line("Org", `${rows.length} organizations — run402 org list`);
+      line("Org", `${rows.length} organizations — run402 orgs list`);
     }
   } catch {
     // Best-effort, exactly like the billing read: a listing failure must never

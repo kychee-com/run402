@@ -11,7 +11,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const REQUIRED_CAPABILITIES = [
   ["init", "--help"],
   ["wallets", "current", "--help"],
-  ["org", "whoami", "--help"],
+  ["whoami", "--help"],
   ["identity", "link", "nostr", "begin", "--help"],
   ["identity", "link", "nostr", "complete", "--help"],
   ["identity", "link", "list", "--help"],
@@ -625,7 +625,7 @@ export async function runSetup({
   }
 
   let profileState = "reused";
-  let whoamiResult = execute(globalRun402Bin, walletArgs(wallet, ["org", "whoami"]), { encoding: "utf8", shell: false });
+  let whoamiResult = execute(globalRun402Bin, walletArgs(wallet, ["whoami"]), { encoding: "utf8", shell: false });
   if (whoamiResult?.error || whoamiResult?.status !== 0) {
     if (!needsInitialization(whoamiResult)) {
       boundedFailure(
@@ -644,7 +644,7 @@ export async function runSetup({
       "Resolve the reported Run402 initialization problem, then rerun setup.",
     );
     profileState = "initialized";
-    whoamiResult = execute(globalRun402Bin, walletArgs(wallet, ["org", "whoami"]), { encoding: "utf8", shell: false });
+    whoamiResult = execute(globalRun402Bin, walletArgs(wallet, ["whoami"]), { encoding: "utf8", shell: false });
     if (whoamiResult?.error || whoamiResult?.status !== 0) {
       boundedFailure(
         "principal_confirmation",
@@ -665,7 +665,7 @@ export async function runSetup({
   const identity = assertAgentWhoami(whoami);
   if (identity.address.toLowerCase() !== selectedWalletAddress.toLowerCase()) {
     throw new BuzzSetupError("principal_confirmation", "RUN402_WALLET_ADDRESS_MISMATCH", "The selected profile address changed between local inspection and authenticated principal confirmation.", {
-      nextAction: `Stop and inspect run402 --wallet ${wallet} wallets current plus org whoami before retrying.`,
+      nextAction: `Stop and inspect run402 --wallet ${wallet} wallets current plus whoami before retrying.`,
       details: { profile_label: wallet, wallet_address: selectedWalletAddress },
     });
   }
@@ -758,7 +758,7 @@ export async function runSetup({
     execute,
     "final_identity_verification",
     globalRun402Bin,
-    walletArgs(wallet, ["org", "whoami"]),
+    walletArgs(wallet, ["whoami"]),
     "RUN402_WHOAMI_FAILED",
     "Verify the dedicated agent profile and intended public identity link, then rerun setup.",
   );
@@ -768,7 +768,7 @@ export async function runSetup({
     || finalIdentity.principal.id !== identity.principal.id
     || finalIdentity.address.toLowerCase() !== identity.address.toLowerCase()) {
     throw new BuzzSetupError("final_identity_verification", "IDENTITY_LINK_VERIFICATION_MISMATCH", "Final whoami does not show the independently verified Buzz identity link.", {
-      nextAction: "Stop before deployment and inspect run402 org whoami plus identity link show.",
+      nextAction: "Stop before deployment and inspect run402 whoami plus identity link show.",
       details: { identity_link_id: link.identity_link_id },
     });
   }

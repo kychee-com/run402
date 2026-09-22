@@ -265,11 +265,11 @@ describe("command manifest invariants", () => {
       // The platform-admin family is the one deliberate exception — an admin
       // targets a TENANT org it is never "in", so no chain rung can supply it
       // and the positional stays required (and explicit).
-      // `org use <org_id>` is the chain's own WRITER (it sets the selection
+      // `orgs use <org_id>` is the chain's own WRITER (it sets the selection
       // the chain later reads), not a verb acting on an org — it keeps its
       // required positional too.
       const orgPositional = entry.positionals.find((pos) => pos.name === "org_id");
-      const chainWriter = entry.path[0] === "org" && entry.path[1] === "use";
+      const chainWriter = entry.path[0] === "orgs" && entry.path[1] === "use";
       if (orgPositional && entry.path[0] !== "admin" && !chainWriter) {
         assert.ok(entry.orgScoped, `${id}: takes an org_id positional — declare orgScoped: true and resolve it through takeOrgPositional`);
         assert.equal(orgPositional.required, false, `${id}: the org_id positional is optional sugar over the org chain — declare { required: false }`);
@@ -369,7 +369,7 @@ describe("--json is accepted by every non-projectScoped command", () => {
 // rungs of the shared chain — the --org flag and RUN402_ORG — and must not
 // come back with "Missing <org_id>", ORG_REQUIRED, a rejected --org, or a
 // positional-confusion BAD_USAGE. This is what makes the two-agent case read
-// `run402 org member add 0xB… --role developer` inside a bound checkout, and
+// `run402 orgs members add 0xB… --role developer` inside a bound checkout, and
 // what stops a verb from re-growing its own "<org_id> is required" rule.
 // ───────────────────────────────────────────────────────────────────────────
 

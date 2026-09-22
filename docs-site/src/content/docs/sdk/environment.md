@@ -24,7 +24,7 @@ const r = new Run402({
 });
 ```
 
-The `CredentialsProvider` interface has two required methods (`getAuth`, `getProject`) plus optional ones for hosts that want full sticky-default behavior (`saveProject`, `updateProject`, `removeProject`, `setActiveProject`, `getActiveProject`, `getActiveOrg`, `readWallet`, `saveWallet`, `createWallet`, `getWalletPath`). `getActiveOrg` is read only to disambiguate a Lightning `ORGANIZATION_SELECTION_REQUIRED` answer (see `r.ai.generateImage`); the Node provider answers it from the profile's `run402 org use` selection.
+The `CredentialsProvider` interface has two required methods (`getAuth`, `getProject`) plus optional ones for hosts that want full sticky-default behavior (`saveProject`, `updateProject`, `removeProject`, `setActiveProject`, `getActiveProject`, `getActiveOrg`, `readWallet`, `saveWallet`, `createWallet`, `getWalletPath`). `getActiveOrg` is read only to disambiguate a Lightning `ORGANIZATION_SELECTION_REQUIRED` answer (see `r.ai.generateImage`); the Node provider answers it from the profile's `run402 orgs use` selection.
 
 ## Mental model
 

@@ -90,7 +90,7 @@ export function upDeployAction() {
  */
 export function setOrgSlugAction() {
   return nextAction("set_org_slug", {
-    command: "run402 org slug <slug>",
+    command: "run402 orgs slug <slug>",
     why: "This organization has no slug set yet, so its repos have no run402::<slug>/<name> address. Owner-only.",
   });
 }

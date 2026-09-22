@@ -7,7 +7,7 @@
  *
  * The org ADOPT flow is intentionally CLI + SDK only — it needs a
  * write-capable sign-in session (browser loopback login) + a fresh passkey
- * step-up, which does not fit the MCP tool model. Use `run402 org adopt`
+ * step-up, which does not fit the MCP tool model. Use `run402 orgs adopt`
  * or the SDK `adoptOrg` Node convenience.
  */
 

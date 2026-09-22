@@ -30,7 +30,7 @@ run run402 wallets new default > alloc.json
 HOST_ADDR=$(jget alloc.json address)
 whisper "wallet: $HOST_ADDR   (fresh, unfunded — that's fine, minting is free)"
 pause
-run run402 org list > orgs.json
+run run402 orgs list > orgs.json
 ORG=$(jget orgs.json orgs.0.org_id)
 whisper "org: $ORG   role: $(jget orgs.json orgs.0.role)   (my org-of-one; no tier, no project)"
 say "A wallet becomes the owner of its own organization on first contact. No signup."
@@ -92,14 +92,14 @@ pause
 
 # ── ACT 4 ────────────────────────────────────────────────────────────────
 act "ACT 4 — Who is in my organization now"
-run run402 org member list "$ORG" > members.json
+run run402 orgs members list "$ORG" > members.json
 node -e '
   const j = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
   for (const m of j.members) console.log("   " + m.role.padEnd(8) + " " + m.wallet + (m.wallet.toLowerCase() === process.argv[2].toLowerCase() ? "   ← me" : "   ← the guest"));
 ' members.json "$HOST_ADDR"
 pause
 say "Viewer. The narrowest thing that can message. Not developer, not admin, and no --role exists to widen it here."
-run run402 org invite list "$ORG" > invites.json
+run run402 orgs invite list "$ORG" > invites.json
 whisper "   pending invites: $(jget invites.json invites.length)   (claimed keys leave nothing behind)"
 pause
 

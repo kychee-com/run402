@@ -347,7 +347,7 @@ Credential resolution is **surface-aware and never ambient**: `run402({ surface 
 me.overview({ token? }): Promise<AccountOverview>
   // GET /agent/v1/me/overview → { scope: { kind: "principal" | "wallet", principal, wallet_count,
   // organization_count }, session, rollup, organizations[], wallets[], advisories[] }. Counts only.
-  // `run402 org list` joins it into the membership list.
+  // `run402 orgs list` joins it into the membership list.
 me.status({ token? }): Promise<MeStatusResult>
   // GET /agent/v1/me/status → { contact: { email_status, passkey_status, recovery_gap },
   // reachability?, critical_items[], skipped_notifications[], organizations[], projects[],
@@ -1320,12 +1320,12 @@ the candidates) unless the body names one; x402 and Tempo ignore it. When
 `orgId` is omitted and the gateway answers that code, `generateImage` retries
 **once** with the single candidate that matches a local context, most
 deliberate first: the provider's current organization
-(`credentials.getActiveOrg()`, the CLI's `run402 org use`) or the active
+(`credentials.getActiveOrg()`, the CLI's `run402 orgs use`) or the active
 project's cached owning `org_id`; only when neither names a candidate, a single
 stored project's owning org. Zero or several matches re-throw the `ApiError`
 with the same `code` and status, the candidates in the message and
 `details.organization_ids` (plus `details.matched_organization_ids`), and
-`nextActions` naming `--org <org_id>` / `run402 org use <org_id>`. An `orgId`
+`nextActions` naming `--org <org_id>` / `run402 orgs use <org_id>`. An `orgId`
 you passed is never second-guessed: the gateway's refusal is returned as-is.
 Nothing is inferred from membership count alone.
 

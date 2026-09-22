@@ -144,7 +144,7 @@ describe("resolveOrg — class precedence", () => {
     const r = await orgCtx.resolveOrg({}, { cwd: bareDir, env: {} });
     assert.equal(r.orgId, SELECTED);
     assert.equal(r.source, "profile");
-    assert.equal(r.sourceDetail, "org use");
+    assert.equal(r.sourceDetail, "orgs use");
   });
 
   it("derives from the env-named project when no org is named directly", async () => {
@@ -178,8 +178,8 @@ describe("resolveOrg — ambiguity", () => {
     assert.equal(r.source, "env");
   });
 
-  it("the org command family stays usable while ambiguous", async () => {
-    const r = await orgCtx.resolveOrg({}, { cwd: deepDir, cmd: "org", env: { RUN402_ORG: A } });
+  it("the orgs command family stays usable while ambiguous", async () => {
+    const r = await orgCtx.resolveOrg({}, { cwd: deepDir, cmd: "orgs", env: { RUN402_ORG: A } });
     assert.equal(r.orgId, A);
   });
 
@@ -195,7 +195,7 @@ describe("resolveOrg — failure and validation", () => {
     const envelope = await expectFailure(() => orgCtx.resolveOrg({}, { cwd: bareDir, env: {} }));
     assert.equal(envelope.code, "ORG_REQUIRED");
     const commands = envelope.next_actions.map((n) => n.command).join(" | ");
-    for (const form of ["org use", "--org", "RUN402_ORG", ".run402.json", "projects use"]) {
+    for (const form of ["orgs use", "--org", "RUN402_ORG", ".run402.json", "projects use"]) {
       assert.ok(commands.includes(form), `next_actions should offer ${form}, got: ${commands}`);
     }
   });
@@ -352,9 +352,9 @@ describe("one resolver serves every org-scoped family", () => {
   });
 });
 
-describe("org use / current / clear", () => {
+describe("orgs use / current / clear", () => {
   it("use persists, current reports with provenance, clear empties it truthfully", async () => {
-    const { run: runOrg } = await import("./cli/lib/org.mjs");
+    const { run: runOrg } = await import("./cli/lib/orgs.mjs");
     const out = [];
     const originalLog = console.log;
     console.log = (...a) => out.push(a.join(" "));
@@ -388,12 +388,12 @@ describe("org use / current / clear", () => {
 });
 
 describe("the Agent Trace recovery paths, end to end", () => {
-  it("ORG_REQUIRED -> org use -> the same call succeeds", async () => {
+  it("ORG_REQUIRED -> orgs use -> the same call succeeds", async () => {
     // 1. Nothing configured: the wall names every way forward.
     const envelope = await expectFailure(() => orgCtx.resolveOrg({}, { cwd: bareDir, env: {} }));
     assert.equal(envelope.code, "ORG_REQUIRED");
-    const recovery = envelope.next_actions.find((n) => n.command?.startsWith("run402 org use"));
-    assert.ok(recovery, "the wall must offer `org use` as a recovery action");
+    const recovery = envelope.next_actions.find((n) => n.command?.startsWith("run402 orgs use"));
+    assert.ok(recovery, "the wall must offer `orgs use` as a recovery action");
 
     // 2. Take the offered action.
     orgCtx.setSelectedOrgId(SELECTED);
@@ -473,7 +473,7 @@ describe("state.json stays readable by an older CLI", () => {
   });
 });
 
-describe("org bind — the bootstrap, not the chain", () => {
+describe("orgs bind — the bootstrap, not the chain", () => {
   it("merges into the binding file without clobbering a wallet key", async () => {
     const { updateBindingFile, readBindingFile } = await import("./cli/lib/wallet-context.mjs");
     const dir = join(tempDir, "mergecheck");
@@ -488,7 +488,7 @@ describe("org bind — the bootstrap, not the chain", () => {
     const dir = join(tempDir, "unbindcheck");
     mkdirSync(dir, { recursive: true });
     updateBindingFile(dir, { wallet: "w", org: A, room: "r" });
-    updateBindingFile(dir, { org: null, room: null });   // `org unbind`
+    updateBindingFile(dir, { org: null, room: null });   // `orgs unbind`
     assert.deepEqual(readBindingFile(dir), { wallet: "w" });
     updateBindingFile(dir, { wallet: null });            // `wallets unbind`
     assert.deepEqual(readBindingFile(dir), {});

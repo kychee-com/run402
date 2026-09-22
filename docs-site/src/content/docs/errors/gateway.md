@@ -679,7 +679,7 @@ The gateway rejected or could not complete the request. Its response carries the
 
 <h2 id="GITVAULT_WRITER_NOT_ADMITTED">GITVAULT_WRITER_NOT_ADMITTED</h2>
 
-Owner: `public:sdk/src/namespaces/gitvault.ts`, `public:sdk/src/node/gitvault-writer-state.ts`, `public:cli/lib/org.mjs`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
+Owner: `public:sdk/src/namespaces/gitvault.ts`, `public:sdk/src/node/gitvault-writer-state.ts`, `public:cli/lib/orgs.mjs`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
 
 The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
 
@@ -2047,7 +2047,7 @@ The gateway rejected or could not complete the request. Its response carries the
 
 <h2 id="STEP_UP_REQUIRED">STEP_UP_REQUIRED</h2>
 
-Owner: `public:cli/lib/org.mjs`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
+Owner: `public:cli/lib/orgs.mjs`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
 
 The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
 

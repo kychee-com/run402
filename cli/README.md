@@ -82,7 +82,7 @@ A hosted git remote, encrypted before it leaves the machine — no deploy, no ma
 
 **Invite / join.** The second claim kind beside handoff/resume: a Handoff passes the work on and the sender stops; an Invite grows the team while the sender keeps working. `run402 repos invite [--room <key>] [--note-file <path>]` captures the checkpoint exactly like `handoff` — the inviter's own worktree, index, branch, refs, and access are all untouched — registers the inviter's presence in a coordination room (the project's default room, or `--room <key>` for a named org room), mints a single-use bearer key (`kgi1_…`, printed to stdout exactly once), and posts ONE room message naming the checkpoint (never the key). `run402 repos join <kgi1_…>` folds the SAME cold-start chain `resume` does before the claim, clones fresh, restores the exact dirty state, pins the invite's room locally, registers its own presence, posts ONE arrival message, and reports the inviter (name, labels, liveness), the room's other live presences, and the last few messages. `run402 messages wait` is the room's blocking read from there — the agent's ear, never an error on silence. Neither `invite` nor `join` has an MCP tool, same reasoning as `handoff`/`resume`.
 
-**Named addressing.** `run402 org slug <slug>` (owner-only, small one-time fee) sets an org's globally-unique, address-form slug, after which `run402::<slug>/<name>` addresses any repo under it — `git push` to a name that doesn't exist yet push-to-creates it. `run402 repos rename <name> [--project <id>]` claims the per-org-unique `<name>` half explicitly (no fee); `repos create` claims one automatically, best-effort, when the org already has a slug. Also CLI/SDK-only — no MCP tool.
+**Named addressing.** `run402 orgs slug <slug>` (owner-only, small one-time fee) sets an org's globally-unique, address-form slug, after which `run402::<slug>/<name>` addresses any repo under it — `git push` to a name that doesn't exist yet push-to-creates it. `run402 repos rename <name> [--project <id>]` claims the per-org-unique `<name>` half explicitly (no fee); `repos create` claims one automatically, best-effort, when the org already has a slug. Also CLI/SDK-only — no MCP tool.
 
 ### Wallet
 
@@ -355,7 +355,7 @@ A person signs in; the agent is your wallet (`run402 status` shows the wallet's 
 - `run402 whoami` — principal, memberships, `session.grade`, and the write approvals cached on this machine.
 - `run402 approve --action <capability> (--org <org_id> | --project <project_id>)` — passkey-signed write approval for one action on one target; a person without a wallet needs it to provision, deploy, or write secrets (an interactive `provision`/`deploy` opens it for you).
 - `run402 logout` — revoke the session server-side and clear it and every write approval locally.
-- `run402 org list` — your orgs joined with the account overview (tier, lifecycle, quotas, allowance, advisories).
+- `run402 orgs list` — your orgs joined with the account overview (tier, lifecycle, quotas, allowance, advisories).
 
 Not exposed as MCP tools by design — MCP authenticates as the agent (wallet), and a person's session must not become its ambient authority.
 

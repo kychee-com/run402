@@ -256,7 +256,7 @@ async function cmdRename(args) {
 function cmdBind(args) {
   let name = args.find((a) => a && !a.startsWith("-"));
   name = name ? requireName(name) : getActiveProfile();
-  // MERGE, never clobber: the same file carries `org`/`room` from `org bind`.
+  // MERGE, never clobber: the same file carries `org`/`room` from `orgs bind`.
   const { contents } = updateBindingFile(process.cwd(), { wallet: name });
   const result = {
     wallet: name,

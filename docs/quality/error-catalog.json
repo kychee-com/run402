@@ -209,7 +209,7 @@
         },
         {
           "owner": "public",
-          "source": "cli/lib/org.mjs"
+          "source": "cli/lib/orgs.mjs"
         }
       ],
       "topic": "/errors/client/#AMBIGUOUS_ORG"
@@ -901,7 +901,7 @@
         },
         {
           "owner": "public",
-          "source": "cli/lib/org.mjs"
+          "source": "cli/lib/orgs.mjs"
         },
         {
           "owner": "public",
@@ -2621,7 +2621,7 @@
         },
         {
           "owner": "public",
-          "source": "cli/lib/org.mjs"
+          "source": "cli/lib/orgs.mjs"
         },
         {
           "owner": "gateway",
@@ -4273,7 +4273,7 @@
       "owners": [
         {
           "owner": "public",
-          "source": "cli/lib/org.mjs"
+          "source": "cli/lib/orgs.mjs"
         }
       ],
       "topic": "/errors/client/#NO_ORGS"
@@ -4465,7 +4465,7 @@
       "owners": [
         {
           "owner": "public",
-          "source": "cli/lib/org.mjs"
+          "source": "cli/lib/orgs.mjs"
         }
       ],
       "topic": "/errors/client/#ORG_UNRESOLVED"
@@ -7061,7 +7061,7 @@
       "owners": [
         {
           "owner": "public",
-          "source": "cli/lib/org.mjs"
+          "source": "cli/lib/orgs.mjs"
         },
         {
           "owner": "gateway",

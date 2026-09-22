@@ -213,7 +213,7 @@ function makeRunner(overrides = {}) {
       state.initialized = true;
       return ok({ initialized: true });
     }
-    if (commandArgs.join(" ") === "org whoami") {
+    if (commandArgs.join(" ") === "whoami") {
       if (selectedWallet !== state.targetProfile) return ok(whoami(state, false, AMBIENT_WALLET, "human"));
       if (!state.initialized) return fail("NO_WALLET", "Initialize", [{ type: "initialize_wallet" }]);
       whoamiCalls += 1;

@@ -17,7 +17,7 @@ Options:
   --org <org_id>      The paying organization when the wallet belongs to more
                       than one (Lightning rail); x402 ignores it. Omitted, it
                       is the current org (RUN402_ORG, the .run402.json binding,
-                      run402 org use, or the active project's owning org)
+                      run402 orgs use, or the active project's owning org)
   --help, -h          Show this help message
 
 Examples:
@@ -53,7 +53,7 @@ Options:
   --org <org_id>      The paying organization when the wallet belongs to more
                       than one (Lightning rail); x402 ignores it. Omitted, it
                       is the current org (RUN402_ORG, the .run402.json binding,
-                      run402 org use, or the active project's owning org)
+                      run402 orgs use, or the active project's owning org)
 
 Notes:
   - Requires a funded wallet (run402 init && run402 wallets fund)
@@ -112,7 +112,7 @@ export async function run(sub, args) {
 
   // The paying organization rides the ONE shared org chain (--org, then
   // RUN402_ORG / RUN402_ROOM / RUN402_PROJECT_ID, then the .run402.json
-  // binding, then `org use` / the active project's owning org). Only the
+  // binding, then `orgs use` / the active project's owning org). Only the
   // Lightning rail reads it — a multi-org principal is refused
   // ORGANIZATION_SELECTION_REQUIRED without one — and x402 ignores it, so
   // resolving it is never a reason to refuse an x402 purchase: `optional`
@@ -150,12 +150,12 @@ function reportOrgSelectionError(err, org) {
       code,
       message: err.message,
       hint:
-        `Pass --org <org_id> (one of: ${ids.join(", ") || "run402 org list"}) or select a current organization with ` +
-        "run402 org use <org_id>. Only the Lightning rail needs it; x402 ignores it.",
+        `Pass --org <org_id> (one of: ${ids.join(", ") || "run402 orgs list"}) or select a current organization with ` +
+        "run402 orgs use <org_id>. Only the Lightning rail needs it; x402 ignores it.",
       details: { ...details, organization_ids: ids, org_source: org?.source ?? null, org_source_detail: org?.sourceDetail ?? null },
       next_actions: err.nextActions ?? [
         nextAction("edit_request", { command: 'run402 image generate "<prompt>" --org <org_id>', why: "Name the paying organization on this call." }),
-        nextAction("edit_request", { command: "run402 org use <org_id>", why: "Select a current organization for this profile." }),
+        nextAction("edit_request", { command: "run402 orgs use <org_id>", why: "Select a current organization for this profile." }),
       ],
     });
   }
@@ -165,7 +165,7 @@ function reportOrgSelectionError(err, org) {
       message: err.message,
       hint:
         `The paying organization ${org.orgId} came from ${org.sourceDetail} (${org.source}) and this principal holds no billing role there. ` +
-        "Pass --org <org_id> for an organization you can bill, or run: run402 org use <org_id>",
+        "Pass --org <org_id> for an organization you can bill, or run: run402 orgs use <org_id>",
       details: { ...details, org_source: org.source, org_source_detail: org.sourceDetail },
       next_actions: err.nextActions,
     });

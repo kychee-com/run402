@@ -32,12 +32,12 @@ ADDR_CLAUDE=$(jget "$DEMO_DIR/cfg/claude.json" address)
 ADDR_CODEX=$(jget "$DEMO_DIR/cfg/codex.json" address)
 
 note "── organization (Grok's, created on first contact)"
-RUN402_CONFIG_DIR="$DEMO_DIR/cfg/grok" run402 org list > "$DEMO_DIR/cfg/orgs.json"
+RUN402_CONFIG_DIR="$DEMO_DIR/cfg/grok" run402 orgs list > "$DEMO_DIR/cfg/orgs.json"
 ORG=$(jget "$DEMO_DIR/cfg/orgs.json" orgs.0.org_id)
 [ -n "$ORG" ] || die "could not resolve Grok's org"
 ok "  org $ORG"
 for a in "$ADDR_CLAUDE" "$ADDR_CODEX"; do
-  RUN402_CONFIG_DIR="$DEMO_DIR/cfg/grok" run402 org member add "$ORG" "$a" --role developer > /dev/null
+  RUN402_CONFIG_DIR="$DEMO_DIR/cfg/grok" run402 orgs members add "$ORG" "$a" --role developer > /dev/null
   ok "  + developer $a"
 done
 
