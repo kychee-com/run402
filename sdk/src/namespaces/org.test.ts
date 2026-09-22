@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { Run402, ApiError, isLocalError } from "../index.js";
+import { Run402, ApiError, Unauthorized, isLocalError, isRetryableRun402Error } from "../index.js";
 import type { CredentialsProvider } from "../credentials.js";
 
 const LEASE_STARTED_AT = "2026-06-19T12:00:00.000Z";
@@ -138,15 +138,24 @@ describe("r.orgs.create", () => {
     assert.equal(org.display_name, null);
   });
 
-  it("surfaces FREE_ORG_OWNER_LIMIT_EXCEEDED as an ApiError preserving the code", async () => {
+  it("surfaces FREE_ORG_OWNER_LIMIT_EXCEEDED (403, a policy refusal with next_actions) preserving the code, never retryable", async () => {
+    // The free-org cap is a policy refusal: 403 with next_actions, never a
+    // 429 — waiting does not help, so nothing retries it. The kernel maps a
+    // 403 to `Unauthorized`; the code and next_actions ride on the error.
     const { fetch } = mockFetch(() =>
-      jsonResponse({ error: "too many free orgs", code: "FREE_ORG_OWNER_LIMIT_EXCEEDED" }, 429),
+      jsonResponse({
+        error: "too many free orgs",
+        code: "FREE_ORG_OWNER_LIMIT_EXCEEDED",
+        next_actions: [{ type: "renew_tier", method: "POST", path: "/tiers/v1/:tier", why: "Set a paid tier on an existing organization; the ceiling counts only free-tier organizations you own." }],
+      }, 403),
     );
     await assert.rejects(
       () => makeSdk(fetch).orgs.create({ displayName: "x" }),
       (err: unknown) => {
-        assert.ok(err instanceof ApiError);
-        assert.equal((err as ApiError).code, "FREE_ORG_OWNER_LIMIT_EXCEEDED");
+        assert.ok(err instanceof Unauthorized);
+        assert.equal((err as Unauthorized).status, 403);
+        assert.equal((err as Unauthorized).code, "FREE_ORG_OWNER_LIMIT_EXCEEDED");
+        assert.equal(isRetryableRun402Error(err), false);
         return true;
       },
     );

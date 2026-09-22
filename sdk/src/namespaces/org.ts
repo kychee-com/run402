@@ -293,8 +293,9 @@ export class Orgs {
    * Create an empty org on the `prototype` tier (`POST /orgs/v1`); the caller
    * becomes `owner`. Accepts only an optional `displayName` — there is no tier
    * input at create. The response reports the created org's tier/lease state.
-   * Step-up gated; the soft per-owner
-   * free-org cap may return `FREE_ORG_OWNER_LIMIT_EXCEEDED`.
+   * Step-up gated; the soft per-owner free-org cap answers 403
+   * `FREE_ORG_OWNER_LIMIT_EXCEEDED` with `next_actions` (a policy refusal,
+   * never a 429 — raised as {@link Unauthorized} carrying that `code`).
    */
   async create(input: CreateOrgInput = {}): Promise<OrgSummary> {
     const body: Record<string, unknown> = {};
