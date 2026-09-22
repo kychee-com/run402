@@ -1731,6 +1731,9 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="REMOTE_BUILD_UNSUPPORTED"></a>
 [`REMOTE_BUILD_UNSUPPORTED`](/errors/client/#REMOTE_BUILD_UNSUPPORTED)
 
+<a id="REMOTE_SCHEME_UNSUPPORTED"></a>
+[`REMOTE_SCHEME_UNSUPPORTED`](/errors/client/#REMOTE_SCHEME_UNSUPPORTED)
+
 <a id="REMOVED_COMMAND"></a>
 [`REMOVED_COMMAND`](/errors/client/#REMOVED_COMMAND)
 

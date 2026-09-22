@@ -23,52 +23,7 @@
     "repos recover",
     "repos recovery-bundle"
   ],
-  "retired_spellings": [
-    {
-      "spelling": "gitvault init",
-      "successor": "moved to `repos create --project <project_id>`"
-    },
-    {
-      "spelling": "gitvault status",
-      "successor": "moved to `repos view`"
-    },
-    {
-      "spelling": "gitvault snapshot",
-      "successor": "moved to `repos snapshot`"
-    },
-    {
-      "spelling": "gitvault policy",
-      "successor": "moved to `repos policy`"
-    },
-    {
-      "spelling": "gitvault compact",
-      "successor": "moved to `repos gc`"
-    },
-    {
-      "spelling": "gitvault prune",
-      "successor": "moved to `repos gc`"
-    },
-    {
-      "spelling": "gitvault verify",
-      "successor": "moved to `repos fsck`"
-    },
-    {
-      "spelling": "gitvault mirror",
-      "successor": "moved to `repos mirror`"
-    },
-    {
-      "spelling": "gitvault recover",
-      "successor": "moved to `repos recover`"
-    },
-    {
-      "spelling": "gitvault push",
-      "successor": "removed — its one-release deprecation-alias window is over; `git push` / `repos snapshot`"
-    },
-    {
-      "spelling": "gitvault reconcile",
-      "successor": "removed — a workaround with no permanent successor; read `repos access` instead"
-    }
-  ],
+  "retired_spellings": [],
   "capabilities": {
     "revocation_live": true,
     "human_envelope_add_live": true,
@@ -80,10 +35,6 @@
     "handoff_live": true,
     "handoff_dirty_default": "capture",
     "invite_live": true,
-    "join_live": true,
-    "remote_schemes": [
-      "run402",
-      "kygit"
-    ]
+    "join_live": true
   }
 }

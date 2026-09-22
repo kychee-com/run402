@@ -14,7 +14,7 @@
  * descriptions in src/index.ts (what an agent reads before it calls anything),
  * the tool module itself, and EVERY public doc surface that mentions the vault
  * (the CLI/SDK docs-site sources and their generated flat files, README.md,
- * SKILL.md, sdk/README.md, cli/lib/gitvault.mjs). Docs are where this copy rots
+ * SKILL.md, sdk/README.md). Docs are where this copy rots
  * fastest — nobody re-reads a reference section when the protocol changes, and a
  * broadened sentence reads like better writing.
  *
@@ -52,7 +52,6 @@ const DOC_SURFACES = {
   "sdk/llms-sdk.txt": read("../../sdk/llms-sdk.txt"),
   "docs-site cli/reference.md": read("../../docs-site/src/content/docs/cli/repos.md"),
   "docs-site sdk/reference.md": readSection("sdk"),
-  "cli/lib/gitvault.mjs": read("../../cli/lib/gitvault.mjs"),
   "openclaw/SKILL.md": read("../../openclaw/SKILL.md"),
   "documentation.md": read("../../documentation.md"),
   "maintenance-map.md": read("../../docs/quality/maintenance-map.md"),
@@ -66,12 +65,6 @@ const DOC_SURFACES = {
   // llms.txt gained its first-ever gitvault mention in this change (task 2.8)
   // — a pitch-level bullet, so it belongs under the gate from day one.
   "llms.txt": read("../../llms.txt"),
-  // kygit-handoff: the standalone brand-door package's own README already
-  // carried the confidentiality claim verbatim before this change (kygit is
-  // "the vault under its own name") — belongs under the banned-phrase /
-  // machine-loss-qualifier gate the moment that's true, same reasoning as
-  // llms.txt above.
-  "kygit/README.md": read("../../kygit/README.md"),
   // kygit-invite: the second claim kind's own doc surfaces — `join`
   // restores a working tree exactly like `resume`, so the SAME
   // banned-phrase / machine-loss-qualifier discipline applies the moment

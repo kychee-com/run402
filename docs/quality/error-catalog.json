@@ -1401,15 +1401,7 @@
       "owners": [
         {
           "owner": "public",
-          "source": "cli/lib/gitvault.mjs"
-        },
-        {
-          "owner": "public",
           "source": "cli/lib/projects.mjs"
-        },
-        {
-          "owner": "public",
-          "source": "cli/lib/source-access.mjs"
         }
       ],
       "topic": "/errors/client/#COMMAND_MOVED"
@@ -1420,10 +1412,6 @@
         {
           "owner": "public",
           "source": "cli/lib/escalations.mjs"
-        },
-        {
-          "owner": "public",
-          "source": "cli/lib/gitvault.mjs"
         },
         {
           "owner": "public",
@@ -6463,6 +6451,16 @@
       "topic": "/errors/client/#REMOTE_BUILD_UNSUPPORTED"
     },
     {
+      "code": "REMOTE_SCHEME_UNSUPPORTED",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/namespaces/gitvault.ts"
+        }
+      ],
+      "topic": "/errors/client/#REMOTE_SCHEME_UNSUPPORTED"
+    },
+    {
       "code": "REMOVED_COMMAND",
       "owners": [
         {
@@ -7272,14 +7270,6 @@
         {
           "owner": "public",
           "source": "cli/lib/argparse.mjs"
-        },
-        {
-          "owner": "public",
-          "source": "cli/lib/gitvault.mjs"
-        },
-        {
-          "owner": "public",
-          "source": "cli/lib/source-access.mjs"
         }
       ],
       "topic": "/errors/client/#UNKNOWN_SUBCOMMAND"

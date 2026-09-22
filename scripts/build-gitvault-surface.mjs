@@ -6,8 +6,8 @@
  *
  * The surface file is what run402-private's page-truth gate reads after
  * resolving the PUBLISHED `run402` package: the live `repos` family verbs,
- * every retired `gitvault <verb>` spelling (mechanically read off
- * `RESERVED_SUBCOMMANDS`, never hand-listed), and the capability ledger
+ * an empty `retired_spellings` list (a removed verb is deleted, never
+ * tombstoned, so there is nothing to name), and the capability ledger
  * beside `command-manifest.mjs`. Shipped inside the `run402` package
  * (`cli/package.json`'s `files`) so any consumer resolves it by installing
  * the CLI — no new endpoint, no new registry.
@@ -19,7 +19,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { COMMAND_MANIFEST, RESERVED_SUBCOMMANDS } from "../cli/lib/command-manifest.mjs";
+import { COMMAND_MANIFEST } from "../cli/lib/command-manifest.mjs";
 import { GITVAULT_CAPABILITIES } from "../cli/lib/gitvault-capabilities.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -41,22 +41,10 @@ export function buildGitvaultSurface() {
     entry.path.join(" "),
   );
 
-  // Every retired `gitvault <verb>` spelling, mechanically read off
-  // RESERVED_SUBCOMMANDS — the same single source sync.test.ts already
-  // enforces for the CLI surface. `successor` carries the tombstone's own
-  // description text (names the `repos`/git successor, or explains why a
-  // spelling has none).
-  const retired_spellings = Object.entries(RESERVED_SUBCOMMANDS)
-    .filter(([key]) => key.startsWith("gitvault:"))
-    .map(([key, successor]) => ({
-      spelling: key.replace("gitvault:", "gitvault "),
-      successor,
-    }));
-
   const surface = {
     surface_version: pkg.version,
     verbs,
-    retired_spellings,
+    retired_spellings: [],
     capabilities: { ...GITVAULT_CAPABILITIES },
   };
 

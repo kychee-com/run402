@@ -33,17 +33,9 @@ describe("cli/gitvault-surface.json", () => {
     assert.ok(surface.verbs.includes("repos resume"));
   });
 
-  it("derives retired_spellings from RESERVED_SUBCOMMANDS' gitvault entries, mechanically", () => {
+  it("names no retired spellings — a removed verb is deleted, never tombstoned", () => {
     const { surface } = buildGitvaultSurface();
-    assert.ok(Array.isArray(surface.retired_spellings));
-    const spellings = surface.retired_spellings.map((r) => r.spelling);
-    assert.ok(spellings.includes("gitvault status"));
-    assert.ok(spellings.includes("gitvault push"));
-    for (const entry of surface.retired_spellings) {
-      assert.match(entry.spelling, /^gitvault /);
-      assert.equal(typeof entry.successor, "string");
-      assert.ok(entry.successor.length > 0);
-    }
+    assert.deepEqual(surface.retired_spellings, []);
   });
 
   it("carries the CLI package version as surface_version", () => {
@@ -63,7 +55,6 @@ describe("cli/gitvault-surface.json", () => {
       "join_live",
       "mirror_live",
       "recover_live",
-      "remote_schemes",
       "revocation_live",
       "snapshot_dirty_default",
     ]);

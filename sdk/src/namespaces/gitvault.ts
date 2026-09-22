@@ -2527,7 +2527,12 @@ export class Gitvault {
           continue; // not a repository, or no such remote — try the other name
         }
         if (!url) continue;
-        const parsed = parseGitvaultRemoteUrl(url);
+        let parsed: GitvaultRemoteAddress | null;
+        try {
+          parsed = parseGitvaultRemoteUrl(url);
+        } catch {
+          continue; // another scheme's remote — not a vault remote
+        }
         if (!parsed) continue;
         if (gitvaultRemoteAddressForm(parsed) === "id") {
           // Id-form: the URL's second half IS the real project id — the
@@ -3316,14 +3321,10 @@ export class Gitvault {
 
     const nextActions: NextAction[] = [...(response.next_actions ?? [])];
     if (!nextActions.some((a) => a.type === "join_invite")) {
-      // design D9: "CLI-synthesized, the recipient's exact command" —
-      // rendered by DOOR, same as every other remote-facing command this
-      // module renders (`gitvaultRemoteScheme()` is the one place that
-      // decides `run402` vs `kygit`, per `RUN402_REMOTE_SCHEME`).
-      const door = gitvaultRemoteScheme();
+      // design D9: "CLI-synthesized, the recipient's exact command".
       nextActions.push({
         type: "join_invite",
-        command: door === "kygit" ? `kygit join ${key}` : `run402 repos join ${key}`,
+        command: `run402 repos join ${key}`,
         why: "Run this on the other agent's machine to redeem the invite.",
         safe_to_auto_execute: false,
       });
@@ -6031,36 +6032,21 @@ export function gitvaultDegradedReadNote(source: GitvaultDegradedReadSource): st
   return `degraded read from ${source.destination}: ${GITVAULT_DEGRADED_READ_STATEMENT}`;
 }
 
-/**
- * The remote door (kygit-handoff design D8): `"run402"` (the canonical,
- * plumbing spelling — accepted forever) or `"kygit"` (what the
- * `@kychee/kygit` shim renders once it sets `RUN402_REMOTE_SCHEME=kygit`
- * before exec). The gateway never sees this — `address` and every registry
- * `next_actions` command stay `run402::`; only client-side RENDERING reads
- * it. Any other value falls back to `"run402"` rather than emitting an
- * unparseable scheme.
- */
-export function gitvaultRemoteScheme(): "run402" | "kygit" {
-  return typeof process !== "undefined" && process.env?.RUN402_REMOTE_SCHEME === "kygit" ? "kygit" : "run402";
-}
-
-/** `<door>::<org_id>/<project_id>` — what `git-remote-run402`/`git-remote-kygit` resolves. */
+/** `run402::<org_id>/<project_id>` — what `git-remote-run402` resolves. */
 export function gitvaultRemoteUrl(orgId: string, projectId: string): string {
-  return `${gitvaultRemoteScheme()}::${orgId}/${projectId}`;
+  return `run402::${orgId}/${projectId}`;
 }
 
 /**
- * `<door>::<org-slug>/<repo-name>` — the address-form remote builder
+ * `run402::<org-slug>/<repo-name>` — the address-form remote builder
  * (repo-first-onramp task 4, design D6). Same string shape as
  * {@link gitvaultRemoteUrl} (the wire slot admits both forms undiscriminated
  * — see {@link gitvaultRemoteAddressForm}); kept as its own named function so
  * a call site states which form it means rather than reusing the id-form
- * builder for a semantically different pair of arguments. Rendered by
- * {@link gitvaultRemoteScheme} (kygit-handoff design D8) — `run402 repos
- * create` renders `run402::`, `kygit create` renders `kygit::`.
+ * builder for a semantically different pair of arguments.
  */
 export function gitvaultRemoteUrlForRepo(orgSlug: string, repoName: string): string {
-  return `${gitvaultRemoteScheme()}::${orgSlug}/${repoName}`;
+  return `run402::${orgSlug}/${repoName}`;
 }
 
 /** What {@link parseGitvaultRemoteUrl} returns — the two undiscriminated address halves. */
@@ -6070,14 +6056,24 @@ export interface GitvaultRemoteAddress {
 }
 
 /**
- * Parse a `run402::<org>/<project>` OR `kygit::<org>/<project>` remote URL
- * (kygit-handoff design D8) into ONE canonical, scheme-less address — the
- * door never changes resolution, only rendering. `null` when it is neither.
+ * Parse a `run402::<org>/<project>` remote URL into its two address halves.
+ * `run402::` is the one remote scheme: `null` for anything that is not a
+ * `<scheme>::` address at all, and a typed `REMOTE_SCHEME_UNSUPPORTED`
+ * refusal naming the scheme for any other `<scheme>::` spelling.
  */
 export function parseGitvaultRemoteUrl(url: string): GitvaultRemoteAddress | null {
-  const m = /^(?:run402|kygit)::([^/]+)\/(.+)$/.exec(url.trim());
-  if (!m) return null;
-  return { org_id: m[1]!, project_id: m[2]! };
+  const trimmed = url.trim();
+  const m = /^run402::([^/]+)\/(.+)$/.exec(trimmed);
+  if (m) return { org_id: m[1]!, project_id: m[2]! };
+  const other = /^([A-Za-z][A-Za-z0-9+.-]*)::/.exec(trimmed);
+  if (other && other[1] !== "run402") {
+    throw new LocalError(
+      `remote scheme '${other[1]}::' is not supported; the one vault remote scheme is run402::<org>/<name>`,
+      "parsing a vault remote address",
+      { code: "REMOTE_SCHEME_UNSUPPORTED", details: { scheme: other[1] } },
+    );
+  }
+  return null;
 }
 
 /** Which address form a parsed `run402::` remote is (repo-first-onramp task 4, design D6). */

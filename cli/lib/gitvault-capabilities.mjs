@@ -59,8 +59,4 @@ export const GITVAULT_CAPABILITIES = {
   // while the inviter keeps working.
   invite_live: true,
   join_live: true,
-  // Both remote door spellings resolve identically (design D8):
-  // `run402::` (canonical, plumbing) and `kygit::` (rendered by
-  // `@kychee/kygit` once it sets `RUN402_REMOTE_SCHEME=kygit`).
-  remote_schemes: ["run402", "kygit"],
 };

@@ -790,7 +790,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "3b534eb0d0f3a06d85caf22d8d42f222f6e2084d180b5cae45a09c54b11b388b",
+      "sha256": "6bde1c39bda84732497693896885585fbcf0fe20aea9d59375d0367b0ea46769",
       "outputs": [],
       "url": null,
       "checks": [
@@ -930,7 +930,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "842d277cac1b5f7efc7aab48dc23b61f82c4cb3ea42f54061ace73d620b44c82",
+      "sha256": "2b043bd607a2c6bf97bf7614539b875c9ec13d9facd6b94d8e25e64955f99121",
       "outputs": [],
       "url": null,
       "checks": [
@@ -1071,26 +1071,6 @@
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
       "sha256": "9dc192ff718e91eaa0b942ec5b3af5fed95c39f9e6c871d686164a303bbdd012",
-      "outputs": [],
-      "url": null,
-      "checks": [
-        "inventory-policy"
-      ],
-      "evidence": {
-        "editorial": "pending: source changed since editorial review",
-        "local": "see named check results",
-        "publication": "pending: source changed since publication evidence"
-      }
-    },
-    {
-      "repository": "public",
-      "path": "cli/lib/gitvault.mjs",
-      "owner": "client-docs",
-      "audience": "developers and agents",
-      "purpose": "guide",
-      "interface": "cli",
-      "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "fc267d0c294b3803a54e7263118a8e1b7e516a6e5993ac81cbf6190fe488d4b8",
       "outputs": [],
       "url": null,
       "checks": [
@@ -1430,7 +1410,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "3e621c5caa12ac60bfddd4a5076df65ad7b0fc63241f85c73ffd49ebfa540bc0",
+      "sha256": "1bcbea9755def1656b961bb7944f5c7af765937c4f49a9faa8ff742eccb289cd",
       "outputs": [],
       "url": null,
       "checks": [
@@ -1540,26 +1520,6 @@
         "editorial": "pending: source changed since editorial review",
         "local": "see named check results",
         "publication": "pending: source changed since publication evidence"
-      }
-    },
-    {
-      "repository": "public",
-      "path": "cli/lib/source-access.mjs",
-      "owner": "client-docs",
-      "audience": "developers and agents",
-      "purpose": "guide",
-      "interface": "cli",
-      "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "c5f1da4954f72e603190d5b724a87119e8ae72a5f96f98e63f62f29d8e3b07b3",
-      "outputs": [],
-      "url": null,
-      "checks": [
-        "inventory-policy"
-      ],
-      "evidence": {
-        "editorial": "reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution",
-        "local": "see named check results",
-        "publication": "source published: 23751749; no separate hosted acceptance required"
       }
     },
     {
@@ -2925,7 +2885,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "fdbd023a50ee67aee8f25976aa5c433021c1968a0849d4720cb52283fd2d3974",
+      "sha256": "1e360f415f293784b9d5b88520af47d241535c04b8bc811227394e8496baa95d",
       "outputs": [],
       "url": "https://docs.run402.com/errors/client/",
       "checks": [
@@ -2988,7 +2948,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "96b5598be824eb3d9352cf9378b5f93fc91711e21c3335cfdbcd4d564ff3ec5a",
+      "sha256": "06910b3cc8b6dd84775e30cf0d8a18305238031820680340cded965db6d80142",
       "outputs": [],
       "url": "https://docs.run402.com/errors/",
       "checks": [
@@ -3336,7 +3296,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "abc1f2f7b9f148871f14497a5b116ef96d5ac5a960197360d18b700a0b95d0eb",
+      "sha256": "b5c51cccb2c66ed4ea996e1fdf3b09496e5c551654e7044bb0e6f68c7002a00e",
       "outputs": [],
       "url": "https://docs.run402.com/reference/error-codes/",
       "checks": [
@@ -4257,26 +4217,6 @@
         "editorial": "reviewed managed-Buzz exception: identity, zero-mutation preflight and contextual-demo consent preserved; distribution gates apply",
         "local": "see named check results",
         "publication": "source published: 23751749; no separate hosted acceptance required"
-      }
-    },
-    {
-      "repository": "public",
-      "path": "kygit/README.md",
-      "owner": "client-docs",
-      "audience": "developers and agents",
-      "purpose": "guide",
-      "interface": "cli",
-      "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "9d37be77c445f69527aabcb0a83afc189f201ab2e7bfe00a7c61be9ed4c9e517",
-      "outputs": [],
-      "url": null,
-      "checks": [
-        "inventory-policy"
-      ],
-      "evidence": {
-        "editorial": "pending: source changed since editorial review",
-        "local": "see named check results",
-        "publication": "pending: source changed since publication evidence"
       }
     },
     {

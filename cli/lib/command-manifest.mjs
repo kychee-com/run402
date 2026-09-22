@@ -281,12 +281,6 @@ export const COMMAND_MANIFEST = [
   { path: ["claims", "list"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
   { path: ["claims", "release"], positionals: [p("claim_id")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["clm_1"], runStyle: "sub" },
 
-  // ── gitvault — no manifest entries ──────────────────────
-  // `cli/lib/gitvault.mjs`'s dispatcher handles every `gitvault <verb>` and
-  // answers a structural COMMAND_MOVED (or, for `push`/`reconcile`,
-  // COMMAND_REMOVED) redirect that dispatches nothing — see
-  // RESERVED_SUBCOMMANDS below, and "gitvault" in SKIPPED_FAMILIES.
-
   // ── repos (the consolidated 15-verb family) ─
   // Every verb needs a real principal keystore and, for most, an allocated
   // repo and a local git working tree, so the gate runs structural checks
@@ -501,20 +495,6 @@ export const SKIPPED_FAMILIES = {
   // Split into `deliveries` / `contacts` / `subscriptions`; every subcommand
   // answers COMMAND_REMOVED naming its successor.
   "notifications": "reserved group; split by legible-cli-surface",
-  // The gitvault dispatcher answers COMMAND_MOVED/COMMAND_REMOVED for every
-  // `gitvault <verb>` (see RESERVED_SUBCOMMANDS below for the per-verb list)
-  // — the family stays dispatched in cli.mjs (so the redirect fires instead
-  // of UNKNOWN_COMMAND) but has zero manifest entries, since a redirect
-  // dispatches nothing.
-  "gitvault": "retired; every subcommand answers COMMAND_MOVED/COMMAND_REMOVED naming its `repos`/git successor",
-  // Shipped in exactly one release (v4.54.0, live for hours) before the
-  // one-noun review caught it: a gateway route namespace is not a CLI noun.
-  // Both verbs answer COMMAND_MOVED into the repos family for one release,
-  // then the spelling is reserved and answers nothing.
-  "source-access": "retired same-day; `export` -> `repos recovery-bundle`, `status` -> `repos access` (member_custody block)",
-  // `repo` singular resolves identically to `repos` — same
-  // module, same case block in cli.mjs, so it needs no manifest of its own.
-  "repo": "alias for `repos`, resolves identically (design D1)",
 };
 
 /**
@@ -530,23 +510,5 @@ export const SKIPPED_FAMILIES = {
  * which the family list cannot express.
  */
 export const RESERVED_SUBCOMMANDS = {
-  "source-access:export": "moved to `repos recovery-bundle` — the artifact `repos recover --bundle` consumes belongs to the repos family",
-  "source-access:status": "moved to `repos access` — your own wrapper custody rides its member_custody block; the org advisory is `doctor --only recovery_posture`",
   "escalations:contacts": "merged into `contacts` — the ladder and Telegram channels are one question",
-  // Every `gitvault <verb>` spelling. Nine
-  // answer COMMAND_MOVED naming their `repos` successor; `push` and
-  // `reconcile` answer COMMAND_REMOVED (no equivalent successor for either —
-  // `push`'s one-release alias window is over, `reconcile` was a workaround
-  // with no permanent replacement, only a read at `repos access`).
-  "gitvault:init": "moved to `repos create --project <project_id>`",
-  "gitvault:status": "moved to `repos view`",
-  "gitvault:snapshot": "moved to `repos snapshot`",
-  "gitvault:policy": "moved to `repos policy`",
-  "gitvault:compact": "moved to `repos gc`",
-  "gitvault:prune": "moved to `repos gc`",
-  "gitvault:verify": "moved to `repos fsck`",
-  "gitvault:mirror": "moved to `repos mirror`",
-  "gitvault:recover": "moved to `repos recover`",
-  "gitvault:push": "removed — its one-release deprecation-alias window is over; `git push` / `repos snapshot`",
-  "gitvault:reconcile": "removed — a workaround with no permanent successor; read `repos access` instead",
 };

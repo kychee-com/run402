@@ -79,7 +79,6 @@ Run `node scripts/documentation-inventory.mjs` to reject newly discovered unclas
 | public | [cli/lib/events.mjs](cli/lib/events.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/feedback.mjs](cli/lib/feedback.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/functions.mjs](cli/lib/functions.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
-| public | [cli/lib/gitvault.mjs](cli/lib/gitvault.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/grants.mjs](cli/lib/grants.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/identity.mjs](cli/lib/identity.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | source published: 23751749; no separate hosted acceptance required |
 | public | [cli/lib/image.mjs](cli/lib/image.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
@@ -102,7 +101,6 @@ Run `node scripts/documentation-inventory.mjs` to reject newly discovered unclas
 | public | [cli/lib/service.mjs](cli/lib/service.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/sites.mjs](cli/lib/sites.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/snapshots.mjs](cli/lib/snapshots.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
-| public | [cli/lib/source-access.mjs](cli/lib/source-access.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | source published: 23751749; no separate hosted acceptance required |
 | public | [cli/lib/status.mjs](cli/lib/status.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/subdomains.mjs](cli/lib/subdomains.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/subscriptions.mjs](cli/lib/subscriptions.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
@@ -231,7 +229,6 @@ Run `node scripts/documentation-inventory.mjs` to reject newly discovered unclas
 | public | [integration-fixtures/fullstack-app/site/status.html](integration-fixtures/fullstack-app/site/status.html) | fixture / native | reviewed classification: application/UI or conformance data, not a general operating tutorial | source published: 23751749; no separate hosted acceptance required |
 | public | [integration-fixtures/fullstack-app/site/version.txt](integration-fixtures/fullstack-app/site/version.txt) | fixture / native | reviewed classification: application/UI or conformance data, not a general operating tutorial | source published: 23751749; no separate hosted acceptance required |
 | public | [integrations/run402-for-buzz/README.md](integrations/run402-for-buzz/README.md) | integration / cli | reviewed managed-Buzz exception: identity, zero-mutation preflight and contextual-demo consent preserved; distribution gates apply | source published: 23751749; no separate hosted acceptance required |
-| public | [kygit/README.md](kygit/README.md) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [llms-mcp.txt](llms-mcp.txt) | generated / mixed | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [llms.txt](llms.txt) | generated / mixed | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [openclaw/README.md](openclaw/README.md) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |

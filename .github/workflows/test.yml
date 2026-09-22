@@ -134,30 +134,6 @@ jobs:
       - name: Build @run402/astro
         run: npm run build --workspace=astro
 
-  # `kygit` is the KyGit brand door over `run402 repos` (openspec:
-  # kygit-cli-shim, kychee-com/run402-private); its verb table is derived at
-  # runtime from the workspace-sibling run402's own gitvault-surface.json, so
-  # these tests also assert that resolution.
-  kygit:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        node-version: [22, 24]
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
-        with:
-          node-version: ${{ matrix.node-version }}
-      - run: npm ci
-      # The forwarder test drives the REAL run402 remote helper end to end
-      # (kygit/git-remote-kygit.test.mjs), and that helper imports the built
-      # SDK (cli/sdk/dist). A bare `npm ci` leaves no dist behind — see the
-      # identical fix in publish-kygit.yml — so build first.
-      - name: Build run402 (the forwarder test needs cli/sdk/dist)
-        run: npm run build
-      - name: Test kygit
-        run: npm test --workspace=kygit
-
   docs-astro-example:
     runs-on: ubuntu-latest
     steps:

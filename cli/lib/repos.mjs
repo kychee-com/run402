@@ -2,8 +2,6 @@
  * `run402 repos` — the consolidated encrypted-repository family. One noun,
  * thirteen verbs, each one either a `gh repo` verb, a `git` verb meaning what
  * it means in git, or a plain-English verb for an operation with no analog.
- * `repo` singular resolves identically (`cli.mjs` dispatches both spellings
- * here).
  *
  * ARCHITECTURAL LAW: every piece of protocol behavior — crypto core,
  * keystore, creation journal, snapshot + capture, publication state
@@ -16,10 +14,6 @@
  * Pipe contract (docs/style.md): the payload is JSON on stdout; every human
  * line (progress, the terminal-loss statement, advisories) goes to stderr,
  * so `run402 repos view | jq` stays clean.
- *
- * `cli/lib/gitvault.mjs` is a tombstone that answers every `gitvault <verb>`
- * spelling with a typed `COMMAND_MOVED` (naming its `repos` successor) or
- * `COMMAND_REMOVED` (for `reconcile`, which has none) error.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
@@ -33,7 +27,6 @@ import { resolveGitvaultTarget } from "./gitvault-target.mjs";
 import { nextAction, setOrgSlugAction, setRepoNameAction } from "./next-actions.mjs";
 import { resolveHarnessLabels, resolveSessionKey, resolveTaskLabel, persistSessionKey } from "./harness-context.mjs";
 import { updateRoomState } from "./rooms-context.mjs";
-import { printKeystoreLocation } from "./gitvault.mjs";
 import {
   GITVAULT_BYO_HEADLINE_STATEMENT,
   GITVAULT_BYO_NO_PAYLOAD_COPY_STATEMENT,
@@ -53,6 +46,19 @@ import {
   failUnknownSubcommand,
   validateRegularFile,
 } from "./argparse.mjs";
+
+/**
+ * Where the keystore lives — printed after `repos create` allocates and
+ * after `repos snapshot` publishes.
+ */
+async function printKeystoreLocation() {
+  try {
+    const { getGitvaultKeystoreRoot } = await import("#sdk/node");
+    console.error(`keystore: ${getGitvaultKeystoreRoot()} — back this up; whole-keystore loss is terminal for repo history`);
+  } catch {
+    // Never let a diagnostic line fail a command that already succeeded.
+  }
+}
 
 /** Value-taking flags every vault-targeting subcommand accepts. */
 const COMMON_VALUE_FLAGS = ["--project", "--repo"];
@@ -1195,19 +1201,8 @@ async function view(args) {
     }
     const verifyRefsAction = nextAction("verify_refs", { command: "run402 repos fsck", why: "Walk the signed chain and materialize verified refs." });
     const combinedNextActions = s.vault ? [verifyRefsAction, ...(s.next_actions ?? [])] : (s.next_actions ?? []);
-    // kygit-handoff design D8 — the mirror of the OLD `npm i -g run402`
-    // bug, pointing the other way: a `kygit::` remote with no
-    // `git-remote-kygit` on PATH fails every push/clone/fetch inside git.
-    let warnings = s.warnings ?? [];
-    if (s.remote?.url?.startsWith("kygit::")) {
-      const { isExecutableOnPath } = await import("./path-lookup.mjs");
-      if (!isExecutableOnPath("git-remote-kygit")) {
-        warnings = [...warnings, { kind: "kygit_helper_missing", message: "this checkout's remote is kygit:: but git-remote-kygit is not on PATH", setup_command: "npm i -g @kychee/kygit" }];
-      }
-    }
     const out = {
       ...s,
-      warnings,
       refs: { known: false, reason: "not_materialized" },
       mirror,
       next_actions: combinedNextActions,
@@ -1246,7 +1241,7 @@ async function view(args) {
     // vault warnings below — informational, never blocking, and it clears on
     // the first successful mirror write or sync.
     if (mirror?.finding) console.error(`finding (${mirror.finding.kind}): ${mirror.finding.message} — ${mirror.finding.setup_command}`);
-    for (const w of warnings) console.error(`warning (${w.kind}): ${w.message}${w.setup_command ? ` — ${w.setup_command}` : ""}`);
+    for (const w of s.warnings ?? []) console.error(`warning (${w.kind}): ${w.message}${w.setup_command ? ` — ${w.setup_command}` : ""}`);
     for (const n of combinedNextActions) console.error(`next: ${n.why ?? n.action ?? n.type}${n.command ? ` — ${n.command}` : ""}`);
     printVerboseStats(a, sdk);
   } catch (err) {
@@ -1458,7 +1453,12 @@ async function detectSlugFormRemote(a, repoDir) {
       continue;
     }
     if (!url) continue;
-    const address = parseGitvaultRemoteUrl(url);
+    let address;
+    try {
+      address = parseGitvaultRemoteUrl(url);
+    } catch {
+      continue; // another scheme's remote — not a vault address
+    }
     if (address && gitvaultRemoteAddressForm(address) === "slug") return address;
   }
   return null;

@@ -2275,6 +2275,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="REMOTE_BUILD_UNSUPPORTED"></a>
 [`REMOTE_BUILD_UNSUPPORTED`](/errors/client/#REMOTE_BUILD_UNSUPPORTED)
 
+<a id="remote_scheme_unsupported"></a>
+<a id="REMOTE_SCHEME_UNSUPPORTED"></a>
+[`REMOTE_SCHEME_UNSUPPORTED`](/errors/client/#REMOTE_SCHEME_UNSUPPORTED)
+
 <a id="removed_command"></a>
 <a id="REMOVED_COMMAND"></a>
 [`REMOVED_COMMAND`](/errors/client/#REMOVED_COMMAND)

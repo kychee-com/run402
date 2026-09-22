@@ -95,8 +95,6 @@ PLATFORM — everything else, and the things still finding a home
   jobs        Submit and inspect platform-managed jobs
   transfer    Project transfer to a wallet, an email, or an owned org (init, preview, list, accept, cancel)
   archives    Portable project archives (create, status, download --target cloud; inspect, verify; import --target core)
-  gitvault    RETIRED — moved to repos (repo-surface-consolidation); every spelling answers COMMAND_MOVED/COMMAND_REMOVED
-  source-access RETIRED — moved into repos (recovery-bundle + access); every spelling answers COMMAND_MOVED
   buzz        Buzz human/community/agent control-plane workflows
   apps        Browse and manage the app marketplace
   ai          AI translation and moderation tools
@@ -232,14 +230,6 @@ switch (cmd) {
     await run(sub, rest);
     break;
   }
-  // `repo` singular resolves identically to `repos` (design D1 — agents type
-  // what `gh repo` already taught them). Its own case block, not a
-  // fall-through, so cli-conventions-gate's per-line family scanner sees it.
-  case "repo": {
-    const { run } = await import("./lib/repos.mjs");
-    await run(sub, rest);
-    break;
-  }
   case "snapshots": {
     const { run } = await import("./lib/snapshots.mjs");
     await run(sub, rest);
@@ -322,11 +312,6 @@ switch (cmd) {
   }
   case "claims": {
     const { run } = await import("./lib/claims.mjs");
-    await run(sub, rest);
-    break;
-  }
-  case "gitvault": {
-    const { run } = await import("./lib/gitvault.mjs");
     await run(sub, rest);
     break;
   }
@@ -446,11 +431,6 @@ switch (cmd) {
   case "approve": {
     const { run } = await import("./lib/approve.mjs");
     await run([sub, ...rest].filter(Boolean));
-    break;
-  }
-  case "source-access": {
-    const { run } = await import("./lib/source-access.mjs");
-    await run(sub, rest);
     break;
   }
   case "auth": {

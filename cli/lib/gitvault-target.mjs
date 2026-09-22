@@ -79,7 +79,12 @@ export async function repoOwnGitvaultTarget(repoDir) {
       continue; // no such remote — try the other conventional name
     }
     if (!url) continue;
-    const address = parseGitvaultRemoteUrl(url);
+    let address;
+    try {
+      address = parseGitvaultRemoteUrl(url);
+    } catch {
+      continue; // another scheme's remote — not a vault address
+    }
     if (!address) continue; // exists, but isn't a run402 address — try the other name
     if (gitvaultRemoteAddressForm(address) === "id") {
       // id-form already carries both halves in the address string — no
