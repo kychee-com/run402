@@ -39,7 +39,7 @@ describe("Buzz SDK namespace", () => {
         authoritative_for_run402: false,
       },
       status: "completed",
-      handoff_url: null,
+      offer_url: null,
       deployment_context: null,
       current_buzz_human_adoption_id: null,
       completed_buzz_human_adoption: {

@@ -203,9 +203,9 @@ export async function handleWhoami(args: { set_display_name?: string } = {}): Pr
       lines.push(`  - community_installations: ${me.buzz.community_installations.length}`);
       lines.push(`  - agent_enrollments: ${me.buzz.agent_enrollments.length}`);
       lines.push(`  - drift: ${me.buzz.drift.length}`);
-      const availableOffer = me.buzz.human_adoption_offers?.find((offer) => offer.status === "available" && offer.handoff_url);
+      const availableOffer = me.buzz.human_adoption_offers?.find((offer) => offer.status === "available" && offer.offer_url);
       if (availableOffer) {
-        lines.push(`  - adoption_handoff: ${availableOffer.handoff_url}`);
+        lines.push(`  - adoption_offer: ${availableOffer.offer_url}`);
         lines.push(`  - adoption_poll: \`run402 buzz adopt offer show ${availableOffer.buzz_human_adoption_offer_id}\``);
       } else if (me.buzz.capabilities?.human_adoption_offers) {
         lines.push("  - adoption_offer: `run402 buzz adopt offer --help` (agent-executed; MCP does not create or sign adoption offers)");

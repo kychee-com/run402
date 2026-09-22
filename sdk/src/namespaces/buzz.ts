@@ -113,7 +113,7 @@ export class BuzzHumanAdoptions {
   }
 }
 
-/** Durable agent-created HTTPS handoffs. Creating an offer is inert; the human
+/** Durable agent-created HTTPS offer pages. Creating an offer is inert; the human
  * receives authority only after a separately authenticated, passkey-stepped-up
  * browser attempt completes with the exact Buzz proof. */
 export class BuzzHumanAdoptionOffers {
@@ -636,7 +636,7 @@ export class Buzz {
     return this.humanAdoptions.create(input);
   }
 
-  /** Create the canonical conversational HTTPS handoff without starting consent. */
+  /** Create the canonical conversational HTTPS offer without starting consent. */
   offerAdoption(input: BuzzHumanAdoptionOfferCreateInput): Promise<BuzzHumanAdoptionOffer> {
     return this.humanAdoptionOffers.create(input);
   }

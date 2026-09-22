@@ -2,8 +2,8 @@
   "version": 1,
   "contributions": {
     "gateway": {
-      "revision": "447823191eed2ac3af2de6ae1402179dc5ec26e2",
-      "sourceDigest": "45a6e5a7a1d52a9f274671fa66f34bf999ea6f838a5b104923822cfff2e5ae89"
+      "revision": "ee85310e1361494e0dee7677575d5fdc156362c4",
+      "sourceDigest": "5b690df1805232b11e450763196c33486e3b776fde2f76301d34497458fc9e42"
     },
     "core": {
       "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7"
@@ -5817,14 +5817,14 @@
       "topic": "/errors/auth/#R402_AUTH_MEMBERSHIP_GATE_NOT_WIRED"
     },
     {
-      "code": "R402_AUTH_OAUTH_HANDOFF_INVALID",
+      "code": "R402_AUTH_OAUTH_BRIDGE_INVALID",
       "owners": [
         {
           "owner": "gateway",
           "source": "packages/gateway/src/utils/error-envelope.ts"
         }
       ],
-      "topic": "/errors/auth/#R402_AUTH_OAUTH_HANDOFF_INVALID"
+      "topic": "/errors/auth/#R402_AUTH_OAUTH_BRIDGE_INVALID"
     },
     {
       "code": "R402_AUTH_PASSKEY_CHALLENGE_INVALID",

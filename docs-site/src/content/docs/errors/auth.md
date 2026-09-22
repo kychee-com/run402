@@ -113,7 +113,7 @@ Owner: `core:packages/functions/src/auth/errors.ts`.
 
 The application authentication contract rejected or could not establish the requested actor context. Follow the returned message and suggested fix. Use supported auth helpers in request context; do not manufacture actor headers or bypass role/freshness gates.
 
-<h2 id="R402_AUTH_OAUTH_HANDOFF_INVALID">R402_AUTH_OAUTH_HANDOFF_INVALID</h2>
+<h2 id="R402_AUTH_OAUTH_BRIDGE_INVALID">R402_AUTH_OAUTH_BRIDGE_INVALID</h2>
 
 Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
 

@@ -31,7 +31,7 @@ describe("MCP Buzz control-plane formatting", () => {
               buzz_human_adoption_offer_id: `buzzhao_${"4".repeat(32)}`,
               org_id: `org_${"2".repeat(32)}`,
               status: "available",
-              handoff_url: `https://console.run402.com/buzz/adoptions/buzzhao_${"4".repeat(32)}`,
+              offer_url: `https://console.run402.com/buzz/adoptions/buzzhao_${"4".repeat(32)}`,
             }],
             human_adoptions: [],
             community_installations: [{

@@ -237,7 +237,7 @@ export interface BuzzHumanAdoptionOffer {
     authoritative_for_run402: false;
   };
   status: BuzzHumanAdoptionOfferStatus;
-  handoff_url: string | null;
+  offer_url: string | null;
   deployment_context: BuzzHumanAdoptionDeploymentContext | null;
   current_buzz_human_adoption_id: string | null;
   completed_buzz_human_adoption: {
@@ -380,7 +380,7 @@ export interface BuzzPrincipalControlPlaneStatus {
     buzz_human_adoption_offer_id: string;
     org_id: string;
     status: BuzzHumanAdoptionOfferStatus;
-    handoff_url: string | null;
+    offer_url: string | null;
   }>;
   human_adoptions: Array<{
     buzz_human_adoption_id: string;

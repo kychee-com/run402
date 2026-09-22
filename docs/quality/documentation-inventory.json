@@ -310,7 +310,7 @@
       "purpose": "integration",
       "interface": "cli",
       "exception": "Managed Buzz installation/consent contract remains independently owned.",
-      "sha256": "3e74a53cbacc756782984a090520ea4f6b855505b0a9659d49def6cdb41c48d5",
+      "sha256": "051e75e6189b4a75a2a7103596da787f107117460f880f18f623b45d6efd245e",
       "outputs": [],
       "url": null,
       "checks": [
@@ -430,7 +430,7 @@
       "purpose": "integration",
       "interface": "cli",
       "exception": "Managed Buzz installation/consent contract remains independently owned.",
-      "sha256": "45bd8d8d1545dd9cd4bc4f22fb11f09dd69d5b1fade51420116a2992678ec172",
+      "sha256": "dbaa6d7449eeb7ee53dc7dbefa28c8b897cae89c6db95c5f464d8553f658a5a9",
       "outputs": [],
       "url": null,
       "checks": [
@@ -2904,7 +2904,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "7b5177ab1fe403946f2a011ac05e963734e3abaf02bdc8f606fc946c6e35ce91",
+      "sha256": "17cc00ce761ed5410f8ae31f75da29fb66a87f8568fcb5b91b620df356257bd1",
       "outputs": [],
       "url": "https://docs.run402.com/errors/auth/",
       "checks": [
@@ -2988,7 +2988,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "6d418a38023ef8e363258db47524c27fc1363e9f13b40976138e1e695c154aa4",
+      "sha256": "648d6f3271260f9e42491d129a515718e192f1ddcd6edfc6d38bfa1d086071b4",
       "outputs": [],
       "url": "https://docs.run402.com/errors/",
       "checks": [
@@ -3336,7 +3336,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "fe9ed7e0c1b365569b680eb15022d7ebae86a20ba47e9189fbd3f87c87fb653a",
+      "sha256": "57611e805a55b5a5e2b18893e376c08afcc040010be01485ec78e2721140abff",
       "outputs": [],
       "url": "https://docs.run402.com/reference/error-codes/",
       "checks": [

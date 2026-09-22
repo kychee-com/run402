@@ -179,7 +179,7 @@ After affirmative approval:
     ```text
     Done—I built it, deployed it, and verified it at <verified URL>.
     Would you also like to become a co-owner of the Run402 organization that owns this deployment?
-    Become an owner: <handoff_url>
+    Become an owner: <offer_url>
     ```
 
     Do not expose a `buzz://` URL, verification code, raw resource id, event JSON, terminal command, or testnet price in chat. The hosted flow owns login, passkey enrollment/step-up, the short Buzz signing attempt, and completion.

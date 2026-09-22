@@ -84,7 +84,7 @@ describe("run402 buzz CLI", () => {
           return {
             buzz_human_adoption_offer_id: `buzzhao_${"1".repeat(32)}`,
             status: "available",
-            handoff_url: `https://console.run402.com/buzz/adoptions/buzzhao_${"1".repeat(32)}`,
+            offer_url: `https://console.run402.com/buzz/adoptions/buzzhao_${"1".repeat(32)}`,
           };
         },
       },

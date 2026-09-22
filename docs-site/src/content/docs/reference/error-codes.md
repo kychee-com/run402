@@ -2055,9 +2055,9 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="R402_AUTH_MEMBERSHIP_GATE_NOT_WIRED"></a>
 [`R402_AUTH_MEMBERSHIP_GATE_NOT_WIRED`](/errors/auth/#R402_AUTH_MEMBERSHIP_GATE_NOT_WIRED)
 
-<a id="r402_auth_oauth_handoff_invalid"></a>
-<a id="R402_AUTH_OAUTH_HANDOFF_INVALID"></a>
-[`R402_AUTH_OAUTH_HANDOFF_INVALID`](/errors/auth/#R402_AUTH_OAUTH_HANDOFF_INVALID)
+<a id="r402_auth_oauth_bridge_invalid"></a>
+<a id="R402_AUTH_OAUTH_BRIDGE_INVALID"></a>
+[`R402_AUTH_OAUTH_BRIDGE_INVALID`](/errors/auth/#R402_AUTH_OAUTH_BRIDGE_INVALID)
 
 <a id="r402_auth_passkey_challenge_invalid"></a>
 <a id="R402_AUTH_PASSKEY_CHALLENGE_INVALID"></a>

@@ -689,7 +689,7 @@ function consoleRepair() {
     type: "restore_run402_console_access",
     surface: "buzz_settings",
     command: "Open Buzz Desktop > Settings > Agents, select this agent, allow HTTPS access to https://console.run402.com, restart the agent, then rerun Run402 setup.",
-    why: "The no-terminal human adoption handoff requires the Run402 console origin.",
+    why: "The no-terminal human adoption offer requires the Run402 console origin.",
   });
 }
 
