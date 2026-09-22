@@ -918,7 +918,7 @@ async function printCreateResult({ sdk, projectId, vault, adopted, name, verbose
   console.error(vault.terminal_loss_statement);
   await printKeystoreLocation();
   console.error("");
-  console.error("nothing was deployed — this is a vault-only repo. Deploy later with `run402 deploy apply`, or never.");
+  console.error("nothing was deployed — this is a vault-only repo. Deploy later with `run402 deploy`, or never.");
   printVerboseStats(verboseArgv, sdk);
 }
 

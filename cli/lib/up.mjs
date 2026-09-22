@@ -53,7 +53,7 @@ Options:
   --propagation-budget-s <n>
                       Maximum wall-clock seconds to wait for fresh edge
                       propagation during app HTTP verification (default 120).
-  --verify            After a deploy apply, wait for gateway/edge release
+  --verify            After the deploy, wait for gateway/edge release
                       coherence and attach the report to the final result.
   --no-propagation-wait
                       Return propagation_pending immediately when the edge is

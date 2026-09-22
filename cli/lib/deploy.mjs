@@ -1,72 +1,40 @@
 import { failUnknownSubcommand } from "./argparse.mjs";
 
-const HELP = `run402 deploy — Unified deploy operations
-
-Usage:
-  run402 deploy <subcommand> [options]
-
-Subcommands:
-  apply --manifest <file>       Apply a v2 ReleaseSpec manifest
-  rehearse <plan_id>            Rehearse a persisted plan on a contained branch
-  resume <operation_id>         Resume a stuck operation
-  list [--project <id>]         List recent deploy operations
-  events <operation_id>         Fetch event stream for an operation
-  verify <operation_id>         Verify gateway and edge coherence
-  diagnose <url>                Diagnose public URL routing
-  resolve --url <url>           Low-level resolve diagnostics
-  release ...                   Inspect release inventory and diffs
-
-Examples:
-  run402 deploy apply --manifest app.json
-  run402 deploy resume op_123
-  run402 deploy release active --project prj_123
-
-Manifest sketch:
-  {
-    "database": {
-      "migrations": [{ "id": "001_init", "sql_path": "schema.sql" }]
-    },
-    "site": {
-      "replace": { "index.html": { "path": "dist/index.html" } }
-    },
-    "functions": {
-      "replace": {
-        "api": {
-          "runtime": "node22",
-          "source": { "path": "api.mjs" }
-        }
-      }
-    },
-    "secrets": { "require": ["OPENAI_API_KEY"] },
-    "subdomains": { "set": ["my-app"] }
-  }
-`;
+/**
+ * `run402 deploy` is the one word that is both a verb and a family: bare
+ * `run402 deploy [--manifest <path>] [--project <project_id>] …` performs the
+ * deploy, and `run402 deploy <subcommand>` dispatches the family. Every
+ * subcommand and the deploy itself live in deploy-v2.mjs; this file only
+ * decides which one the argv names.
+ */
 
 export async function run(args) {
   const sub = args[0];
-  if (!sub || sub === "--help" || sub === "-h") {
-    console.log(HELP);
-    process.exit(0);
-  }
+  const { runDeployV2 } = await import("./deploy-v2.mjs");
 
   switch (sub) {
-  case "apply":
     case "rehearse":
     case "promote":
     case "resume":
+    case "status":
     case "list":
     case "events":
     case "verify":
-    case "diagnose":
     case "resolve":
-    case "release": {
-      const { runDeployV2 } = await import("./deploy-v2.mjs");
+    case "releases":
       await runDeployV2(sub, args.slice(1));
       return;
-    }
     default:
-      failUnknownSubcommand("deploy", sub, {
-        hint: "Use `run402 deploy apply --manifest <file>` for deployments.",
-      });
+      break;
   }
+
+  // A bare word that is not a subcommand is a typo, never a manifest: the
+  // deploy takes no positionals. Everything else — no arguments at all, a
+  // flag, --help — is the deploy itself.
+  if (typeof sub === "string" && !sub.startsWith("-")) {
+    failUnknownSubcommand("deploy", sub, {
+      hint: "Use `run402 deploy --manifest <path>` to deploy, or one of the subcommands.",
+    });
+  }
+  await runDeployV2("deploy", args);
 }

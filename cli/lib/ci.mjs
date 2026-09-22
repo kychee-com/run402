@@ -34,7 +34,7 @@ Subcommands:
 `;
 
 const SUB_HELP = {
-  link: `run402 ci link github — Link GitHub Actions OIDC for deploy apply
+  link: `run402 ci link github — Link GitHub Actions OIDC for run402 deploy
 
 Usage:
   run402 ci link github [--project <id>] [--manifest <path>] [--repo <owner/repo>] [--branch <name> | --environment <name>] [--repository-id <id>] [--workflow <path>] [--expires-at <iso>] [--route-scope <pattern> ...] [--force]
@@ -245,7 +245,7 @@ ${environmentLine}    steps:
       - name: Deploy to run402
         # Redirect stdin from /dev/null: a CI runner's stdin is a FIFO/file that
         # older run402 CLIs counted as a second manifest source alongside --manifest.
-        run: npx --yes run402@${RUN402_VERSION} deploy apply --manifest ${shellQuote(manifest)} --project ${shellQuote(projectId)} < /dev/null
+        run: npx --yes run402@${RUN402_VERSION} deploy --manifest ${shellQuote(manifest)} --project ${shellQuote(projectId)} < /dev/null
 `;
 }
 

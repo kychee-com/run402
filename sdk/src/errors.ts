@@ -787,7 +787,7 @@ export type NextActionType =
   | "revoke_invite"
   | "wait_room"
   | "send_room_message"
-  // Local manifest hops (`run402 up` / `deploy apply --check`): write the
+  // Local manifest hops (`run402 up` / `deploy --check`): write the
   // named manifest / file, or re-run from the directory that holds one.
   | "create_manifest"
   | "create_file"

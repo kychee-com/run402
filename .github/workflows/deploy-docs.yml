@@ -63,7 +63,7 @@ jobs:
       # paths legitimately emit filename-derived widening notices, so warnings
       # are allowed.
       - name: Deploy to run402
-        run: npx --yes run402@latest deploy apply --project 'prj_1780488560350_0018' --allow-warnings < run402.docs.deploy.json
+        run: npx --yes run402@latest deploy --project 'prj_1780488560350_0018' --allow-warnings < run402.docs.deploy.json
 
       # Smoke: the portal root serves HTML and the flat files (the llms-cli.txt
       # index, one of its slices, the full CLI reference, SDK, MCP, SKILL.md)

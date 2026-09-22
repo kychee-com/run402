@@ -68,9 +68,6 @@ const MATRIX = {
     ],
     specific: ["provision", "list", "rename", "sql", "costs", "validate-expose"],
   },
-  // `run402 apply` is a root alias for `run402 deploy apply` (see cli.mjs); its
-  // --help prints the deploy-apply help (heading-checked in a dedicated suite).
-  apply: { shared: [], specific: [] },
   snapshots: {
     shared: ["create", "list", "get", "restore", "delete"],
     specific: [],
@@ -86,7 +83,9 @@ const MATRIX = {
   cloud: { shared: ["archives"], specific: [] },
   archives: { shared: ["inspect", "verify"], specific: [] },
   core: { shared: ["projects"], specific: [] },
-  deploy: { shared: [], specific: ["apply", "rehearse", "promote", "resume", "list", "events", "verify", "diagnose", "resolve", "release"] },
+  // Bare `run402 deploy` is the deploy itself; `deploy --help` is checked in
+  // a dedicated suite below (the v2 manifest + route shape).
+  deploy: { shared: [], specific: ["rehearse", "promote", "resume", "status", "list", "events", "verify", "resolve", "releases"] },
   ci: { shared: [], specific: ["link", "list", "revoke"] },
   transfer: {
     shared: [],
@@ -190,7 +189,7 @@ const EMAIL_WEBHOOKS = {
   specific: ["update", "register"],
 };
 
-const DEPLOY_RELEASE = {
+const DEPLOY_RELEASES = {
   shared: [],
   specific: ["get", "active", "diff"],
 };
@@ -343,11 +342,18 @@ describe("CLI --help contract", () => {
     assertHelp(await runCli(["-h"]), "run402 -h");
   });
 
-  it("deploy apply help includes the route manifest shape", async () => {
-    const result = await runCli(["deploy", "apply", "--help"]);
-    assertHelp(result, "run402 deploy apply --help", {
-      expectHeadingStartsWith: "run402 deploy apply",
+  it("deploy help includes the route manifest shape", async () => {
+    const result = await runCli(["deploy", "--help"]);
+    assertHelp(result, "run402 deploy --help", {
+      expectHeadingStartsWith: "run402 deploy —",
     });
+    assert.match(result.stdout, /run402 up/, "deploy --help states how it differs from up");
+    assert.match(result.stdout, /--no-rehearse/);
+    assert.doesNotMatch(result.stdout, /\s--rehearse\s/);
+    assert.match(result.stdout, /<plan_id>/);
+    assert.match(result.stdout, /<operation_id>/);
+    assert.match(result.stdout, /<release_id>/);
+    assert.doesNotMatch(result.stdout, /<id>/);
     assert.match(result.stdout, /site\.public_paths/);
     assert.match(result.stdout, /"public_paths"\s*:\s*\{\s*"mode"\s*:\s*"explicit"/);
     assert.match(result.stdout, /"\/events"\s*:\s*\{\s*"asset"\s*:\s*"events\.html"/);
@@ -482,17 +488,17 @@ describe("CLI --help contract", () => {
     }
   });
 
-  describe("run402 deploy release (nested)", () => {
-    it("deploy release --help prints usage without side effects", async () => {
-      assertHelp(await runCli(["deploy", "release", "--help"]),
-        "run402 deploy release --help",
-        { expectHeadingStartsWith: "run402 deploy release" });
+  describe("run402 deploy releases (nested)", () => {
+    it("deploy releases --help prints usage without side effects", async () => {
+      assertHelp(await runCli(["deploy", "releases", "--help"]),
+        "run402 deploy releases --help",
+        { expectHeadingStartsWith: "run402 deploy releases" });
     });
-    for (const action of DEPLOY_RELEASE.specific) {
-      it(`deploy release ${action} --help prints PER-SUBCOMMAND help`, async () => {
-        assertHelp(await runCli(["deploy", "release", action, "--help"]),
-          `run402 deploy release ${action} --help`,
-          { expectHeadingStartsWith: `run402 deploy release ${action}` });
+    for (const action of DEPLOY_RELEASES.specific) {
+      it(`deploy releases ${action} --help prints PER-SUBCOMMAND help`, async () => {
+        assertHelp(await runCli(["deploy", "releases", action, "--help"]),
+          `run402 deploy releases ${action} --help`,
+          { expectHeadingStartsWith: `run402 deploy releases ${action}` });
       });
     }
   });
@@ -513,27 +519,6 @@ describe("CLI --help contract", () => {
   });
 
 
-
-  // `run402 apply` is a root-level alias that dispatches straight into
-  // runDeployV2("apply", ...) — its help must be the deploy-apply help, not a
-  // separate (drifting) page.
-  describe("run402 apply (root alias for deploy apply)", () => {
-    it("apply --help prints the deploy-apply help", async () => {
-      const result = await runCli(["apply", "--help"]);
-      assertHelp(result, "run402 apply --help", {
-        expectHeadingStartsWith: "run402 deploy apply",
-      });
-      assert.match(result.stdout, /--no-rehearse/,
-        `run402 apply --help must document automatic rehearsal and its --no-rehearse escape\nstdout:\n${result.stdout}`);
-      assert.doesNotMatch(result.stdout, /\s--rehearse\s/,
-        `run402 apply --help must not offer a --rehearse flag any more (rehearsal is automatic)\nstdout:\n${result.stdout}`);
-    });
-    it("apply -h prints the deploy-apply help", async () => {
-      assertHelp(await runCli(["apply", "-h"]), "run402 apply -h", {
-        expectHeadingStartsWith: "run402 deploy apply",
-      });
-    });
-  });
 
   describe("run402 credentials project-keys (nested)", () => {
     for (const action of CREDENTIALS_PROJECT_KEYS.shared) {

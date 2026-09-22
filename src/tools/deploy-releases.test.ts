@@ -5,10 +5,10 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 import {
-  handleDeployReleaseActive,
-  handleDeployReleaseDiff,
-  handleDeployReleaseGet,
-} from "./deploy-release.js";
+  handleDeployReleasesActive,
+  handleDeployReleasesDiff,
+  handleDeployReleasesGet,
+} from "./deploy-releases.js";
 import { _resetSdk } from "../sdk.js";
 
 const originalFetch = globalThis.fetch;
@@ -40,14 +40,14 @@ afterEach(() => {
   _resetSdk();
 });
 
-describe("deploy release observability MCP tools", () => {
+describe("deploy releases observability MCP tools", () => {
   it("returns release inventory without requiring allowance auth", async () => {
     globalThis.fetch = makeFetch((path) => {
       assert.equal(path, "/apply/v1/releases/rel_%2Fone?site_limit=2");
       return inventory({ release_id: "rel_/one", state_kind: "effective" });
     });
 
-    const result = await handleDeployReleaseGet({
+    const result = await handleDeployReleasesGet({
       project_id: "prj_test",
       release_id: "rel_/one",
       site_limit: 2,
@@ -75,7 +75,7 @@ describe("deploy release observability MCP tools", () => {
       return inventory({ release_id: "rel_active", state_kind: "current_live" });
     });
 
-    const result = await handleDeployReleaseActive({ project_id: "prj_test" });
+    const result = await handleDeployReleasesActive({ project_id: "prj_test" });
 
     assert.equal(result.isError, undefined);
     assert.ok(result.content[0]!.text.includes("Active Release Inventory"));
@@ -140,7 +140,7 @@ describe("deploy release observability MCP tools", () => {
       };
     });
 
-    const result = await handleDeployReleaseDiff({
+    const result = await handleDeployReleasesDiff({
       project_id: "prj_test",
       from: "empty",
       to: "active",
@@ -166,7 +166,7 @@ describe("deploy release observability MCP tools", () => {
       );
     }) as typeof fetch;
 
-    const result = await handleDeployReleaseActive({ project_id: "prj_test" });
+    const result = await handleDeployReleasesActive({ project_id: "prj_test" });
 
     assert.equal(result.isError, true);
     assert.ok(result.content[0]!.text.includes("NO_ACTIVE_RELEASE"));

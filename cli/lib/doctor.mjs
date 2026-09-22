@@ -978,7 +978,7 @@ export async function run(sub, args = []) {
             details: findings,
           },
           hint: errorFindings.length > 0
-            ? scanDirOverride ? "Findings are from the explicit arbitrary scan directory; they do not establish that an application deploy will be refused." : "Fix the findings in this application. The same scoped source scan gates up and deploy apply."
+            ? scanDirOverride ? "Findings are from the explicit arbitrary scan directory; they do not establish that an application deploy will be refused." : "Fix the findings in this application. The same scoped source scan gates up and deploy."
             : "Source scan emitted warnings (non-blocking). Review and address when convenient.",
         });
       }

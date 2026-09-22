@@ -11,20 +11,20 @@ import { setTierSchema, handleSetTier } from "./tools/set-tier.js";
 import { deploySiteSchema, handleDeploySite } from "./tools/deploy-site.js";
 import { deploySiteDirSchema, handleDeploySiteDir } from "./tools/deploy-site-dir.js";
 import { deploySchema, handleDeploy } from "./tools/deploy.js";
-import { appUpSchema, handleAppUp } from "./tools/app-up.js";
-import { deployDiagnoseUrlSchema, handleDeployDiagnoseUrl } from "./tools/deploy-diagnose-url.js";
+import { upSchema, handleUp } from "./tools/up.js";
+import { deployResolveSchema, handleDeployResolve } from "./tools/deploy-resolve.js";
 import { deployResumeSchema, handleDeployResume } from "./tools/deploy-resume.js";
 import { deployListSchema, handleDeployList } from "./tools/deploy-list.js";
 import { deployEventsSchema, handleDeployEvents } from "./tools/deploy-events.js";
 import { deployVerifyEdgeSchema, handleDeployVerifyEdge } from "./tools/deploy-verify-edge.js";
 import {
-  deployReleaseActiveSchema,
-  deployReleaseDiffSchema,
-  deployReleaseGetSchema,
-  handleDeployReleaseActive,
-  handleDeployReleaseDiff,
-  handleDeployReleaseGet,
-} from "./tools/deploy-release.js";
+  deployReleasesActiveSchema,
+  deployReleasesDiffSchema,
+  deployReleasesGetSchema,
+  handleDeployReleasesActive,
+  handleDeployReleasesDiff,
+  handleDeployReleasesGet,
+} from "./tools/deploy-releases.js";
 import {
   ciCreateBindingSchema,
   ciGetBindingSchema,
@@ -477,10 +477,10 @@ server.tool(
 );
 
 server.tool(
-  "app_up",
-  "Plan or run the canonical app-aware `run402 up` workflow from a local path or repo URL. Delegates to the SDK and returns the shared app-up result envelope with graph steps, resources, diagnostics, and next_actions.",
-  appUpSchema,
-  async (args) => handleAppUp(args),
+  "up",
+  "Plan or run the canonical app-aware `run402 up` workflow from a local path or repo URL: any missing setup (wallet, tier, project, workspace link), then the deploy. Delegates to the SDK and returns the shared up result envelope with graph steps, resources, diagnostics, and next_actions. `deploy` only deploys.",
+  upSchema,
+  async (args) => handleUp(args),
 );
 
 server.tool(
@@ -597,7 +597,7 @@ server.tool(
 
 server.tool(
   "deploy_rehearse",
-  "ADVANCED. Rehearsal is automatic in `deploy` / `app_up` for a migration-bearing plan against a project with a live release (the result's `rehearsal` block says passed or why it was skipped); this tool rehearses an already-persisted plan on a contained branch without committing and returns the report. A project with no live release rehearses on an empty branch. Source project and plan stay untouched.",
+  "ADVANCED. Rehearsal is automatic in `deploy` / `up` for a migration-bearing plan against a project with a live release (the result's `rehearsal` block says passed or why it was skipped); this tool rehearses an already-persisted plan on a contained branch without committing and returns the report. A project with no live release rehearses on an empty branch. Source project and plan stay untouched.",
   deployRehearseSchema,
   async (args) => handleDeployRehearse(args),
 );
@@ -844,10 +844,10 @@ server.tool(
 );
 
 server.tool(
-  "deploy_diagnose_url",
+  "deploy_resolve",
   "Read-only authenticated diagnostics for a Run402 public URL or host/path pair. Explains whether the current live release would serve the URL, including match, diagnostic body status, static manifest/cache metadata when returned, structured warnings for ignored query/fragment, and next steps. This does not fetch bytes, purge cache, mutate deploy state, or expose internal CAS URLs.",
-  deployDiagnoseUrlSchema,
-  async (args) => handleDeployDiagnoseUrl(args),
+  deployResolveSchema,
+  async (args) => handleDeployResolve(args),
 );
 
 server.tool(
@@ -879,24 +879,24 @@ server.tool(
 );
 
 server.tool(
-  "deploy_release_get",
+  "deploy_releases_get",
   "Fetch a release inventory by id. Returns release metadata, effective/desired state kind, site path inventory, function inventory, secret keys, subdomains, and applied migrations. Use `site_limit` to cap large site inventories. Canonical SDK errors are preserved.",
-  deployReleaseGetSchema,
-  async (args) => handleDeployReleaseGet(args),
+  deployReleasesGetSchema,
+  async (args) => handleDeployReleasesGet(args),
 );
 
 server.tool(
-  "deploy_release_active",
+  "deploy_releases_active",
   "Fetch the current-live release inventory for a project. Returns `release_id: null` with an empty current-live inventory when no release is active yet. Use this before deploy diffs to understand what is currently serving. Canonical SDK errors are preserved.",
-  deployReleaseActiveSchema,
-  async (args) => handleDeployReleaseActive(args),
+  deployReleasesActiveSchema,
+  async (args) => handleDeployReleasesActive(args),
 );
 
 server.tool(
-  "deploy_release_diff",
+  "deploy_releases_diff",
   "Diff two release targets for a project. `from` may be `empty`, `active`, or a release id; `to` may be `active` or a release id. Returns release-to-release diff buckets and `migrations.applied_between_releases`. Semantic gateway errors such as invalid targets, same-release diffs, or no active release are preserved.",
-  deployReleaseDiffSchema,
-  async (args) => handleDeployReleaseDiff(args),
+  deployReleasesDiffSchema,
+  async (args) => handleDeployReleasesDiff(args),
 );
 
 // ─── CI/OIDC binding tools ─────────────────────────────────────────────────
@@ -1954,7 +1954,7 @@ server.tool(
 
 server.tool(
   "whoami",
-  "Resolve the caller's control-plane principal and its org memberships (GET /agent/v1/whoami), optionally setting the principal's display name first (`set_display_name` → PATCH /agent/v1/me; 1–64 chars — the name promotion credit, `app_up`'s room presence, and audit surfaces show for this principal). A wallet authenticates; ownership is the org. Returns the principal (id/type/display_name/created_at), authenticator_id, and every org membership (org_id, display_name, role, status). This is the REMOTE identity — for the local wallet/profile state use `status`.",
+  "Resolve the caller's control-plane principal and its org memberships (GET /agent/v1/whoami), optionally setting the principal's display name first (`set_display_name` → PATCH /agent/v1/me; 1–64 chars — the name promotion credit, `up`'s room presence, and audit surfaces show for this principal). A wallet authenticates; ownership is the org. Returns the principal (id/type/display_name/created_at), authenticator_id, and every org membership (org_id, display_name, role, status). This is the REMOTE identity — for the local wallet/profile state use `status`.",
   whoamiSchema,
   async (args) => handleWhoami(args),
 );

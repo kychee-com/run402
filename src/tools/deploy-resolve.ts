@@ -7,12 +7,12 @@ import {
 } from "../../sdk/dist/index.js";
 
 /**
- * MCP `deploy_diagnose_url` tool — read-only public URL diagnostics for the
+ * MCP `deploy_resolve` tool — read-only public URL diagnostics for the
  * current live deploy release. This wraps SDK `p.apply.resolve(...)`; it is
  * not a fetch proxy, cache purge, or internal CAS URL inspector.
  */
 
-export const deployDiagnoseUrlSchema = {
+export const deployResolveSchema = {
   project_id: z
     .string()
     .describe("Project ID used for local apikey lookup. It is not sent as a query parameter."),
@@ -34,7 +34,7 @@ export const deployDiagnoseUrlSchema = {
     .describe("HTTP method to diagnose. Defaults to gateway behavior when omitted."),
 };
 
-export async function handleDeployDiagnoseUrl(args: {
+export async function handleDeployResolve(args: {
   project_id: string;
   url?: string;
   host?: string;
@@ -64,7 +64,7 @@ export async function handleDeployDiagnoseUrl(args: {
       content: [
         {
           type: "text",
-          text: `Error diagnosing deploy URL: ${(err as Error)?.message ?? String(err)}`,
+          text: `Error resolving deploy URL: ${(err as Error)?.message ?? String(err)}`,
         },
       ],
       isError: true,
@@ -94,7 +94,7 @@ export async function handleDeployDiagnoseUrl(args: {
       ],
     };
   } catch (err) {
-    return mapSdkError(err, "diagnosing deploy URL");
+    return mapSdkError(err, "resolving deploy URL");
   }
 }
 

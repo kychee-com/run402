@@ -79,7 +79,7 @@ Steps (idempotent when re-run with the same rail; pass --switch-rail to change r
   4. Shows current tier subscription status
   5. Lists local project count
   6. Suggests next step (run402 up -y when no tier is held yet — it subscribes
-     the prototype tier as part of the first deploy — or deploy apply)
+     the prototype tier as part of the first deploy — or run402 deploy)
 
 Run this once to get started, or again to check your setup.
 `;
@@ -781,7 +781,7 @@ export async function run(args = []) {
       write("        Or subscribe separately: run402 tier set prototype.");
     }
   } else {
-    write("  Ready to deploy. Run: run402 deploy apply --manifest app.json");
+    write("  Ready to deploy. Run: run402 deploy --manifest app.json");
   }
   write("");
 

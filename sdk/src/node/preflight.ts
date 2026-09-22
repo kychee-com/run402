@@ -40,7 +40,7 @@ export interface LocalPreflightTarget {
 
 export function describeLocalPreflight(input: {
   appRoot: string; manifestPath: string | null; spec?: Partial<ReleaseSpec>; authoring?: unknown;
-  entryPoint?: "up" | "deploy apply"; target: LocalPreflightTarget; buildDeferred?: boolean; apiBase?: string; profile?: string;
+  entryPoint?: "up" | "deploy"; target: LocalPreflightTarget; buildDeferred?: boolean; apiBase?: string; profile?: string;
 }) {
   const spec = input.spec ?? {};
   const refs = input.authoring ? collectAuthoringFileReferences(input.authoring, input.appRoot) : collectLocalFileReferences(spec);
@@ -58,6 +58,6 @@ export function describeLocalPreflight(input: {
     target: { ...input.target, api_base: input.apiBase ?? null, profile: input.profile ?? null }, checks,
     warnings: [...scan.findings.filter((finding) => finding.severity !== "error"), ...warningRoutes.map((route) => ({ code: "LOCAL_ROUTE_TARGET_UNDECLARED", message: "Route references a function absent from functions.replace; review this target.", pattern: route.pattern }))],
     summary: { file_references: input.buildDeferred ? null : refs.length, site: summarizeSiteInventory(spec), functions: Object.keys(spec.functions?.replace ?? spec.functions?.patch?.set ?? {}).length, migrations: spec.database?.migrations?.length ?? 0, routes: spec.routes?.replace?.length ?? 0 },
-    next_actions: input.target.project_id ? [{ type: "review_plan", ...(input.manifestPath ? { argv: ["run402", ...(input.entryPoint === "deploy apply" ? ["deploy", "apply"] : ["up"]), "--manifest", input.manifestPath, "--project", input.target.project_id, "--plan"] } : { sdk_call: "project(project_id).apply.plan(spec)" }), why: "Review gateway-authoritative policy, cost and current state." }] : [{ type: "select_project", safe_to_auto_execute: false, why: input.target.source === "create" ? "Create intent is selected; the new project must exist before gateway plan review." : "Choose an existing project or an explicit new-project name before deploying." }],
+    next_actions: input.target.project_id ? [{ type: "review_plan", ...(input.manifestPath ? { argv: ["run402", ...(input.entryPoint === "deploy" ? ["deploy"] : ["up"]), "--manifest", input.manifestPath, "--project", input.target.project_id, "--plan"] } : { sdk_call: "project(project_id).apply.plan(spec)" }), why: "Review gateway-authoritative policy, cost and current state." }] : [{ type: "select_project", safe_to_auto_execute: false, why: input.target.source === "create" ? "Create intent is selected; the new project must exist before gateway plan review." : "Choose an existing project or an explicit new-project name before deploying." }],
   };
 }

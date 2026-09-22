@@ -944,10 +944,10 @@ function capturedStderr() {
 // Snapshot of ambient GitHub-Actions OIDC env vars at file load. When this
 // test runs inside a workflow that has `permissions: id-token: write`,
 // GitHub injects ACTIONS_ID_TOKEN_REQUEST_URL / _TOKEN and sets
-// GITHUB_ACTIONS=true. The CLI's `deploy apply` reads those (see
+// GITHUB_ACTIONS=true. The CLI's `deploy` reads those (see
 // `hasGithubActionsOidcEnv` in cli/lib/deploy-v2.mjs) and takes the
 // CI-OIDC token-exchange path — which calls a real endpoint not handled by
-// this file's mockFetch, breaking every `deploy apply` test. The dedicated
+// this file's mockFetch, breaking every `deploy` test. The dedicated
 // CI test file (cli-deploy-ci.test.mjs) sets these env vars deliberately;
 // everything in this file expects them absent. `before()` deletes them and
 // `after()` restores the original values.
@@ -2188,7 +2188,7 @@ describe("CLI e2e happy path", () => {
 
   // ── Deploy ──────────────────────────────────────────────────────────────
 
-  it("deploy apply", async () => {
+  it("deploy", async () => {
     const { run } = await import("./cli/lib/deploy.mjs");
     // Write a manifest file
     const manifestPath = join(tempDir, "manifest.json");
@@ -2197,10 +2197,10 @@ describe("CLI e2e happy path", () => {
       site: { replace: { "index.html": "<h1>Hello</h1>" } },
     }));
     captureStart();
-    await run(["apply", "--manifest", manifestPath, "--project", "prj_test123"]);
+    await run(["--manifest", manifestPath, "--project", "prj_test123"]);
     captureStop();
     const body = JSON.parse(capturedStdout());
-    assert.equal(body.status, undefined, "deploy apply must not emit a top-level status field");
+    assert.equal(body.status, undefined, "deploy must not emit a top-level status field");
     assert.equal(body.release_id, "rel_v2_test");
     assert.equal(body.urls.deployment_id, "dpl_test456");
   });
@@ -2467,13 +2467,13 @@ describe("CLI e2e happy path", () => {
     assert.match(parsed.message, /--project requires a value/);
   });
 
-  it("deploy release get wraps the inventory payload", async () => {
+  it("deploy releases get wraps the inventory payload", async () => {
     const { run } = await import("./cli/lib/deploy.mjs");
     captureStart();
-    await run(["release", "get", "rel_v2_test", "--project", "prj_test123", "--site-limit", "2"]);
+    await run(["releases", "get", "rel_v2_test", "--project", "prj_test123", "--site-limit", "2"]);
     captureStop();
     const body = JSON.parse(captured());
-    assert.equal(body.status, undefined, "deploy release get must not emit a top-level status field");
+    assert.equal(body.status, undefined, "deploy releases get must not emit a top-level status field");
     assert.equal(body.release.kind, "release_inventory");
     assert.equal(body.release.release_id, "rel_v2_test");
     assert.equal(body.release.routes.entries[0].pattern, "/api/*");
@@ -2481,24 +2481,24 @@ describe("CLI e2e happy path", () => {
     assert.equal(body.release.static_public_paths[0].asset_path, "events.html");
   });
 
-  it("deploy release active wraps the active inventory payload", async () => {
+  it("deploy releases active wraps the active inventory payload", async () => {
     const { run } = await import("./cli/lib/deploy.mjs");
     captureStart();
-    await run(["release", "active", "--project", "prj_test123"]);
+    await run(["releases", "active", "--project", "prj_test123"]);
     captureStop();
     const body = JSON.parse(captured());
-    assert.equal(body.status, undefined, "deploy release active must not emit a top-level status field");
+    assert.equal(body.status, undefined, "deploy releases active must not emit a top-level status field");
     assert.equal(body.release.state_kind, "current_live");
     assert.equal(body.release.routes.entries.length, 1);
     assert.equal(body.release.static_public_paths[0].reachability_authority, "explicit_public_path");
     assert.equal(body.release.warnings[0].code, "ROUTE_SHADOWS_STATIC_PATH");
   });
 
-  it("deploy release diff wraps the diff payload", async () => {
+  it("deploy releases diff wraps the diff payload", async () => {
     const { run } = await import("./cli/lib/deploy.mjs");
     captureStart();
     await run([
-      "release",
+      "releases",
       "diff",
       "--from",
       "empty",
@@ -2511,14 +2511,14 @@ describe("CLI e2e happy path", () => {
     ]);
     captureStop();
     const body = JSON.parse(captured());
-    assert.equal(body.status, undefined, "deploy release diff must not emit a top-level status field");
+    assert.equal(body.status, undefined, "deploy releases diff must not emit a top-level status field");
     assert.equal(body.diff.kind, "release_diff");
     assert.deepEqual(body.diff.migrations.applied_between_releases, ["001_init"]);
     assert.equal(body.diff.routes.added[0].pattern, "/api/*");
   });
 
-  it("deploy release get rejects unknown flags before network (GH-329)", async () => {
-    const result = await runBadDeployArgv(["release", "get", "rel_v2_test", "--project", TEST_PROJECT.project_id, "--wat"], /\/apply\/v1\/releases\/rel_v2_test(?:\?|$)/);
+  it("deploy releases get rejects unknown flags before network (GH-329)", async () => {
+    const result = await runBadDeployArgv(["releases", "get", "rel_v2_test", "--project", TEST_PROJECT.project_id, "--wat"], /\/apply\/v1\/releases\/rel_v2_test(?:\?|$)/);
     assert.equal(result.threw?.message, "process.exit(1)");
     assert.equal(result.endpointCalled, false, "must not call release get with an unknown flag");
     const parsed = JSON.parse(result.stderr);
@@ -2526,8 +2526,8 @@ describe("CLI e2e happy path", () => {
     assert.match(parsed.message, /Unknown flag.*--wat/);
   });
 
-  it("deploy release get rejects extra release ids before network (GH-329)", async () => {
-    const result = await runBadDeployArgv(["release", "get", "rel_v2_test", "rel_extra", "--project", TEST_PROJECT.project_id], /\/apply\/v1\/releases\/rel_v2_test(?:\?|$)/);
+  it("deploy releases get rejects extra release ids before network (GH-329)", async () => {
+    const result = await runBadDeployArgv(["releases", "get", "rel_v2_test", "rel_extra", "--project", TEST_PROJECT.project_id], /\/apply\/v1\/releases\/rel_v2_test(?:\?|$)/);
     assert.equal(result.threw?.message, "process.exit(1)");
     assert.equal(result.endpointCalled, false, "must not call release get with extra release ids");
     const parsed = JSON.parse(result.stderr);
@@ -2535,8 +2535,8 @@ describe("CLI e2e happy path", () => {
     assert.match(parsed.message, /Unexpected argument/);
   });
 
-  it("deploy release active rejects extra args before network (GH-329)", async () => {
-    const result = await runBadDeployArgv(["release", "active", "rel_extra", "--project", TEST_PROJECT.project_id], /\/apply\/v1\/releases\/active(?:\?|$)/);
+  it("deploy releases active rejects extra args before network (GH-329)", async () => {
+    const result = await runBadDeployArgv(["releases", "active", "rel_extra", "--project", TEST_PROJECT.project_id], /\/apply\/v1\/releases\/active(?:\?|$)/);
     assert.equal(result.threw?.message, "process.exit(1)");
     assert.equal(result.endpointCalled, false, "must not call release active with extra args");
     const parsed = JSON.parse(result.stderr);
@@ -2544,8 +2544,8 @@ describe("CLI e2e happy path", () => {
     assert.match(parsed.message, /Unexpected argument/);
   });
 
-  it("deploy release active rejects missing --site-limit value before network (GH-329)", async () => {
-    const result = await runBadDeployArgv(["release", "active", "--project", TEST_PROJECT.project_id, "--site-limit"], /\/apply\/v1\/releases\/active(?:\?|$)/);
+  it("deploy releases active rejects missing --site-limit value before network (GH-329)", async () => {
+    const result = await runBadDeployArgv(["releases", "active", "--project", TEST_PROJECT.project_id, "--site-limit"], /\/apply\/v1\/releases\/active(?:\?|$)/);
     assert.equal(result.threw?.message, "process.exit(1)");
     assert.equal(result.endpointCalled, false, "must not call release active when --site-limit has no value");
     const parsed = JSON.parse(result.stderr);
@@ -2553,8 +2553,8 @@ describe("CLI e2e happy path", () => {
     assert.match(parsed.message, /--site-limit requires a value|--site-limit must be a positive integer/);
   });
 
-  it("deploy release diff rejects unknown flags before network (GH-329)", async () => {
-    const result = await runBadDeployArgv(["release", "diff", "--from", "empty", "--to", "active", "--project", TEST_PROJECT.project_id, "--wat"], /\/apply\/v1\/releases\/diff(?:\?|$)/);
+  it("deploy releases diff rejects unknown flags before network (GH-329)", async () => {
+    const result = await runBadDeployArgv(["releases", "diff", "--from", "empty", "--to", "active", "--project", TEST_PROJECT.project_id, "--wat"], /\/apply\/v1\/releases\/diff(?:\?|$)/);
     assert.equal(result.threw?.message, "process.exit(1)");
     assert.equal(result.endpointCalled, false, "must not call release diff with an unknown flag");
     const parsed = JSON.parse(result.stderr);
@@ -2562,8 +2562,8 @@ describe("CLI e2e happy path", () => {
     assert.match(parsed.message, /Unknown flag.*--wat/);
   });
 
-  it("deploy release diff rejects extra args before network (GH-329)", async () => {
-    const result = await runBadDeployArgv(["release", "diff", "--from", "empty", "--to", "active", "extra", "--project", TEST_PROJECT.project_id], /\/apply\/v1\/releases\/diff(?:\?|$)/);
+  it("deploy releases diff rejects extra args before network (GH-329)", async () => {
+    const result = await runBadDeployArgv(["releases", "diff", "--from", "empty", "--to", "active", "extra", "--project", TEST_PROJECT.project_id], /\/apply\/v1\/releases\/diff(?:\?|$)/);
     assert.equal(result.threw?.message, "process.exit(1)");
     assert.equal(result.endpointCalled, false, "must not call release diff with extra args");
     const parsed = JSON.parse(result.stderr);
@@ -2571,12 +2571,12 @@ describe("CLI e2e happy path", () => {
     assert.match(parsed.message, /Unexpected argument/);
   });
 
-  it("deploy diagnose prints a structured URL diagnostic envelope", async () => {
+  it("deploy resolve prints a structured URL diagnostic envelope", async () => {
     await seedTestProject();
     const { run } = await import("./cli/lib/deploy.mjs");
     captureStart();
     await run([
-      "diagnose",
+      "resolve",
       "--project",
       "prj_test123",
       "https://example.com/events?utm=x#hero",
@@ -2597,12 +2597,12 @@ describe("CLI e2e happy path", () => {
     assert.equal(body.resolution.static_manifest_metadata.file_count, 1);
   });
 
-  it("deploy diagnose defaults to the active project", async () => {
+  it("deploy resolve defaults to the active project", async () => {
     await seedTestProject();
 
     const { run } = await import("./cli/lib/deploy.mjs");
     captureStart();
-    await run(["diagnose", "https://example.com/events"]);
+    await run(["resolve", "https://example.com/events"]);
     captureStop();
     const body = JSON.parse(captured());
     assert.equal(body.status, undefined, "stdout must not emit a top-level status field");
@@ -2655,12 +2655,12 @@ describe("CLI e2e happy path", () => {
     assert.equal(body.next_steps[0].code, "redeploy_static_asset");
   });
 
-  it("deploy diagnose summarizes route method misses with allowed methods", async () => {
+  it("deploy resolve summarizes route method misses with allowed methods", async () => {
     await seedTestProject();
     const { run } = await import("./cli/lib/deploy.mjs");
     captureStart();
     await run([
-      "diagnose",
+      "resolve",
       "--project",
       "prj_test123",
       "https://example.com/events",
@@ -2713,7 +2713,7 @@ describe("CLI e2e happy path", () => {
     assert.match(capturedStderr(), /Do not combine --url/);
   });
 
-  it("deploy release diff rejects missing selectors before network", async () => {
+  it("deploy releases diff rejects missing selectors before network", async () => {
     const { run } = await import("./cli/lib/deploy.mjs");
     const prevFetch = globalThis.fetch;
     let releaseDiffCalled = false;
@@ -2726,7 +2726,7 @@ describe("CLI e2e happy path", () => {
     let threw = null;
     captureStart();
     try {
-      await run(["release", "diff", "--from", "empty", "--project", "prj_test123"]);
+      await run(["releases", "diff", "--from", "empty", "--project", "prj_test123"]);
     } catch (e) {
       threw = e;
     } finally {
@@ -2752,8 +2752,8 @@ describe("CLI e2e happy path", () => {
     return envelope;
   }
 
-  // ── GH-232: deploy apply (v2 unified primitive) must reject empty specs ──
-  // `deploy apply --manifest` / `--spec` must not silently send empty specs
+  // ── GH-232: deploy (v2 unified primitive) must reject empty specs ──
+  // `deploy --manifest` / `--spec` must not silently send empty specs
   // to the gateway.
   async function deployApplyAndCapture(args) {
     const { run } = await import("./cli/lib/deploy.mjs");
@@ -2783,7 +2783,7 @@ describe("CLI e2e happy path", () => {
     let threw = null;
     captureStart();
     try {
-      await run(["apply", ...args]);
+      await run([...args]);
     } catch (e) {
       threw = e;
     } finally {
@@ -2808,28 +2808,28 @@ describe("CLI e2e happy path", () => {
     const { threw, stderr, deployCalled } = await deployApplyAndCapture(args);
     assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
       `should exit non-zero, got: ${threw && threw.message}`);
-    assert.equal(deployCalled, false, "must not POST to /apply/v1/plans on bad deploy apply usage");
+    assert.equal(deployCalled, false, "must not POST to /apply/v1/plans on bad deploy usage");
     const parsed = parseStderrEnvelope(stderr);
     assert.equal(parsed.code, "BAD_USAGE");
     assert.match(parsed.message, messagePattern);
   }
 
-  // ── GH-266/GH-268: deploy apply argument/source validation ──
-  it("deploy apply rejects unknown flags (GH-266)", async () => {
+  // ── GH-266/GH-268: deploy argument/source validation ──
+  it("deploy rejects unknown flags (GH-266)", async () => {
     await assertDeployApplyBadUsage(
       ["--spec", nonEmptyDeploySpec(), "--project", "prj_test123", "--alllow-warning", "CODE"],
       /Unknown flag.*--alllow-warning/,
     );
   });
 
-  it("deploy apply rejects missing --allow-warning values", async () => {
+  it("deploy rejects missing --allow-warning values", async () => {
     await assertDeployApplyBadUsage(
       ["--spec", nonEmptyDeploySpec(), "--project", "prj_test123", "--allow-warning"],
       /--allow-warning requires a value/,
     );
   });
 
-  it("deploy apply rejects extra positional arguments (GH-266)", async () => {
+  it("deploy rejects extra positional arguments (GH-266)", async () => {
     const manifestPath = await writeDeployManifest("gh266-positional.json");
     await assertDeployApplyBadUsage(
       ["--manifest", manifestPath, "unexpected.json", "--project", "prj_test123"],
@@ -2837,7 +2837,7 @@ describe("CLI e2e happy path", () => {
     );
   });
 
-  it("deploy apply rejects --manifest combined with --spec (GH-268)", async () => {
+  it("deploy rejects --manifest combined with --spec (GH-268)", async () => {
     const manifestPath = await writeDeployManifest("gh268-manifest-and-spec.json");
     await assertDeployApplyBadUsage(
       ["--manifest", manifestPath, "--spec", nonEmptyDeploySpec(), "--project", "prj_test123"],
@@ -2845,7 +2845,7 @@ describe("CLI e2e happy path", () => {
     );
   });
 
-  it("deploy apply rejects repeated --manifest flags (GH-266)", async () => {
+  it("deploy rejects repeated --manifest flags (GH-266)", async () => {
     const firstManifestPath = await writeDeployManifest("gh266-repeated-manifest-1.json");
     const secondManifestPath = await writeDeployManifest("gh266-repeated-manifest-2.json");
     await assertDeployApplyBadUsage(
@@ -2854,7 +2854,7 @@ describe("CLI e2e happy path", () => {
     );
   });
 
-  it("deploy apply rejects repeated --spec flags (GH-266)", async () => {
+  it("deploy rejects repeated --spec flags (GH-266)", async () => {
     await assertDeployApplyBadUsage(
       ["--spec", nonEmptyDeploySpec(), "--spec", nonEmptyDeploySpec(), "--project", "prj_test123"],
       /--spec.*only be provided once/,
@@ -2879,7 +2879,6 @@ describe("CLI e2e happy path", () => {
         // Absolute: the suite runs from a scratch cwd (see REPO_ROOT above).
         join(REPO_ROOT, "cli", "cli.mjs"),
         "deploy",
-        "apply",
         "--spec",
         "{}",
         "--project",
@@ -2899,7 +2898,7 @@ describe("CLI e2e happy path", () => {
     assert.doesNotMatch(parsed.message, /Only one deploy manifest source/);
   });
 
-  it("deploy apply rejects empty manifest file (GH-232)", async () => {
+  it("deploy rejects empty manifest file (GH-232)", async () => {
     const { writeFileSync: wf } = await import("node:fs");
     const manifestPath = join(tempDir, "gh232-empty-manifest.json");
     wf(manifestPath, JSON.stringify({}));
@@ -2916,7 +2915,7 @@ describe("CLI e2e happy path", () => {
     assert.ok(parsed.hint, `hint should be present, got: ${JSON.stringify(parsed)}`);
   });
 
-  it("deploy apply rejects --spec '{}' (GH-232)", async () => {
+  it("deploy rejects --spec '{}' (GH-232)", async () => {
     const { threw, stderr, deployCalled } = await deployApplyAndCapture(
       ["--spec", "{}", "--project", "prj_test123"]);
     assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
@@ -2926,7 +2925,7 @@ describe("CLI e2e happy path", () => {
     assert.equal(parsed.code, "MANIFEST_EMPTY");
   });
 
-  it("deploy apply rejects --spec with only project_id (GH-232)", async () => {
+  it("deploy rejects --spec with only project_id (GH-232)", async () => {
     const { threw, stderr, deployCalled } = await deployApplyAndCapture(
       ["--spec", JSON.stringify({ project_id: "prj_test123" })]);
     assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
@@ -2936,7 +2935,7 @@ describe("CLI e2e happy path", () => {
     assert.equal(parsed.code, "MANIFEST_EMPTY");
   });
 
-  it("deploy apply rejects --spec with empty site.replace (GH-232)", async () => {
+  it("deploy rejects --spec with empty site.replace (GH-232)", async () => {
     const { threw, stderr, deployCalled } = await deployApplyAndCapture(
       ["--spec", JSON.stringify({ site: { replace: {} } }), "--project", "prj_test123"]);
     assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
@@ -2946,7 +2945,7 @@ describe("CLI e2e happy path", () => {
     assert.equal(parsed.code, "MANIFEST_EMPTY");
   });
 
-  it("deploy apply accepts routes.replace=[] as deployable content", async () => {
+  it("deploy accepts routes.replace=[] as deployable content", async () => {
     const { threw, deployCalled } = await deployApplyAndCapture(
       ["--spec", JSON.stringify({ routes: { replace: [] } }), "--project", "prj_test123"]);
     assert.ok(!threw || !/MANIFEST_EMPTY/.test(threw.message),
@@ -2954,7 +2953,7 @@ describe("CLI e2e happy path", () => {
     assert.equal(deployCalled, true, "routes.replace=[] must reach /apply/v1/plans");
   });
 
-  it("deploy apply accepts public-path-only site specs and forwards public_paths", async () => {
+  it("deploy accepts public-path-only site specs and forwards public_paths", async () => {
     const { threw, deployCalled, planBodies } = await deployApplyAndCapture(
       ["--spec", JSON.stringify({
         site: { public_paths: { mode: "explicit", replace: {} } },
@@ -2967,7 +2966,7 @@ describe("CLI e2e happy path", () => {
     });
   });
 
-  it("deploy apply rejects function timeout tier violations before planning", async () => {
+  it("deploy rejects function timeout tier violations before planning", async () => {
     const { threw, stderr, deployCalled } = await deployApplyAndCapture(
       ["--spec", JSON.stringify({
         functions: {
@@ -2992,7 +2991,7 @@ describe("CLI e2e happy path", () => {
     assert.equal(parsed.details.limit_source, "local_static_fallback");
   });
 
-  it("deploy apply rejects function memory tier violations before planning", async () => {
+  it("deploy rejects function memory tier violations before planning", async () => {
     const { threw, stderr, deployCalled } = await deployApplyAndCapture(
       ["--spec", JSON.stringify({
         functions: {
@@ -3016,7 +3015,7 @@ describe("CLI e2e happy path", () => {
     assert.equal(parsed.details.limit_source, "local_static_fallback");
   });
 
-  it("deploy apply rejects too-frequent scheduled functions before planning", async () => {
+  it("deploy rejects too-frequent scheduled functions before planning", async () => {
     const { threw, stderr, deployCalled } = await deployApplyAndCapture(
       ["--spec", JSON.stringify({
         functions: {
@@ -3041,7 +3040,7 @@ describe("CLI e2e happy path", () => {
     assert.equal(parsed.details.limit_source, "local_static_fallback");
   });
 
-  it("deploy apply rejects scheduled function count tier violations before planning", async () => {
+  it("deploy rejects scheduled function count tier violations before planning", async () => {
     const { threw, stderr, deployCalled } = await deployApplyAndCapture(
       ["--spec", JSON.stringify({
         functions: {
@@ -3071,7 +3070,7 @@ describe("CLI e2e happy path", () => {
     assert.equal(parsed.details.limit_source, "local_static_fallback");
   });
 
-  it("deploy apply --allow-warning acknowledges a specific client route warning", async () => {
+  it("deploy --allow-warning acknowledges a specific client route warning", async () => {
     const { threw, stdout, stderr, deployCalled } = await deployApplyAndCapture(
       ["--spec", JSON.stringify({
         routes: {
@@ -3093,7 +3092,7 @@ describe("CLI e2e happy path", () => {
     assert.equal(body.warnings[0]?.code, "WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS");
   });
 
-  it("deploy apply --final-only suppresses progress events but keeps the result envelope", async () => {
+  it("deploy --final-only suppresses progress events but keeps the result envelope", async () => {
     const { threw, stdout, stderr } = await deployApplyAndCapture(
       ["--spec", nonEmptyDeploySpec(), "--project", "prj_test123", "--final-only"],
     );
@@ -3105,7 +3104,7 @@ describe("CLI e2e happy path", () => {
     assert.equal(body.release_id, "rel_v2_test");
   });
 
-  it("deploy apply rejects malformed site.public_paths before gateway calls", async () => {
+  it("deploy rejects malformed site.public_paths before gateway calls", async () => {
     const { threw, stderr, deployCalled } = await deployApplyAndCapture(
       ["--spec", JSON.stringify({
         site: { public_paths: { mode: "implicit", replace: { "/events": { asset: "events.html" } } } },
@@ -3117,7 +3116,7 @@ describe("CLI e2e happy path", () => {
     assert.match(parsed.message, /site\.public_paths\.replace|implicit mode/);
   });
 
-  it("deploy apply rejects path-keyed route maps before gateway calls", async () => {
+  it("deploy rejects path-keyed route maps before gateway calls", async () => {
     const { threw, stderr, deployCalled } = await deployApplyAndCapture(
       ["--spec", JSON.stringify({ routes: { "/api/*": { function: "api" } } }), "--project", "prj_test123"]);
     assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
@@ -3127,7 +3126,7 @@ describe("CLI e2e happy path", () => {
     assert.match(parsed.message, /routes\.replace|Path-keyed route maps/);
   });
 
-  it("deploy apply rejects secrets.set before gateway calls", async () => {
+  it("deploy rejects secrets.set before gateway calls", async () => {
     const { threw, stderr, deployCalled } = await deployApplyAndCapture(
       ["--spec", JSON.stringify({
         project_id: "prj_test123",
@@ -3142,7 +3141,7 @@ describe("CLI e2e happy path", () => {
     assert.equal(parsed.details.field, "secrets.set");
   });
 
-  it("deploy apply rejects secrets.replace_all before gateway calls", async () => {
+  it("deploy rejects secrets.replace_all before gateway calls", async () => {
     const { threw, stderr, deployCalled } = await deployApplyAndCapture(
       ["--spec", JSON.stringify({
         project_id: "prj_test123",
@@ -3157,7 +3156,7 @@ describe("CLI e2e happy path", () => {
     assert.equal(parsed.details.field, "secrets.replace_all");
   });
 
-  it("deploy apply rejects CI manifests that declare secrets", async () => {
+  it("deploy rejects CI manifests that declare secrets", async () => {
     const previous = {
       GITHUB_ACTIONS: process.env.GITHUB_ACTIONS,
       ACTIONS_ID_TOKEN_REQUEST_URL: process.env.ACTIONS_ID_TOKEN_REQUEST_URL,
@@ -3195,7 +3194,7 @@ describe("CLI e2e happy path", () => {
     }
   });
 
-  it("deploy apply accepts --spec with non-empty site.replace (GH-232)", async () => {
+  it("deploy accepts --spec with non-empty site.replace (GH-232)", async () => {
     const { threw, deployCalled } = await deployApplyAndCapture(
       ["--spec", JSON.stringify({ site: { replace: { "index.html": { data: "x" } } } }),
         "--project", "prj_test123"]);
@@ -3207,7 +3206,7 @@ describe("CLI e2e happy path", () => {
       "non-empty site.replace must reach /apply/v1/plans");
   });
 
-  it("deploy apply accepts manifest path entries and migration sql_path via the SDK adapter", async () => {
+  it("deploy accepts manifest path entries and migration sql_path via the SDK adapter", async () => {
     const { writeFileSync: wf } = await import("node:fs");
     const migrationPath = join(tempDir, "001_init.sql");
     const indexPath = join(tempDir, "index.html");
@@ -3225,10 +3224,10 @@ describe("CLI e2e happy path", () => {
 
     assert.equal(threw, null);
     assert.equal(deployCalled, true,
-      "path-backed deploy apply manifest must reach /apply/v1/plans");
+      "path-backed deploy manifest must reach /apply/v1/plans");
   });
 
-  it("deploy apply refuses contentType in a manifest and names content_type (one spelling on the wire)", async () => {
+  it("deploy refuses contentType in a manifest and names content_type (one spelling on the wire)", async () => {
     const { writeFileSync: wf } = await import("node:fs");
     const indexPath = join(tempDir, "index-camel.html");
     const manifestPath = join(tempDir, "deploy-apply-camel.json");

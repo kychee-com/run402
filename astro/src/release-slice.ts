@@ -16,7 +16,7 @@
  *     ...slice,
  *   });
  *
- * The same primitive backs the CLI's `run402 deploy apply --dir <build>` for
+ * The same primitive backs the CLI's `run402 deploy --dir <build>` for
  * symmetry: direct-SDK and CLI callers produce byte-identical specs (modulo
  * idempotency key) from the same build output.
  */

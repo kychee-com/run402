@@ -302,7 +302,7 @@ describe("command manifest invariants", () => {
     }
     for (const family of Object.keys(SKIPPED_FAMILIES)) {
       assert.ok(families.has(family), `SKIPPED_FAMILIES lists "${family}" which cli.mjs no longer dispatches`);
-      assert.ok(!manifestFamilies.has(family) || family === "apply",
+      assert.ok(!manifestFamilies.has(family),
         `"${family}" is both allowlisted and present in the manifest`);
     }
   });

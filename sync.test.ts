@@ -98,8 +98,8 @@ function parseCliCommands(): string[] {
   for (const action of parseSubcommands(join(__dirname, "cli/lib/buzz-notifications.mjs"))) cmds.push(`buzz:notifications:${action}`);
   for (const action of parseCloudArchiveActions("cli/lib/cloud.mjs")) cmds.push(`cloud:archives:${action}`);
   for (const action of parseCoreProjectActions("cli/lib/core.mjs")) cmds.push(`core:projects:${action}`);
-  for (const action of parseDeployReleaseActions()) {
-    cmds.push(`deploy:release:${action}`);
+  for (const action of parseDeployReleasesActions()) {
+    cmds.push(`deploy:releases:${action}`);
   }
   for (const action of parseJobsArtifactsActions()) {
     cmds.push(`jobs:artifacts:${action}`);
@@ -108,6 +108,9 @@ function parseCliCommands(): string[] {
   for (const action of parseOrgGroupActions("inviteAction")) cmds.push(`org:invite:${action}`);
   for (const action of parseNotificationsGroupActions("channelsAction")) cmds.push(`notifications:channels:${action}`);
   for (const action of parseNotificationsGroupActions("rulesAction")) cmds.push(`notifications:rules:${action}`);
+  // Bare `run402 deploy` is the deploy itself (deploy.mjs dispatches anything
+  // that is not a family word into it), so it is a top-level verb here.
+  if (existsSync(join(__dirname, "cli/lib/deploy.mjs"))) cmds.push("deploy");
   if (existsSync(join(__dirname, "cli/lib/init.mjs"))) cmds.push("init");
   if (existsSync(join(__dirname, "cli/lib/pay.mjs"))) cmds.push("pay");
   if (existsSync(join(__dirname, "cli/lib/redeem.mjs"))) cmds.push("redeem");
@@ -139,8 +142,8 @@ function parseOpenClawCommands(): string[] {
   for (const action of parseSubcommands(join(__dirname, "cli/lib/buzz-notifications.mjs"))) cmds.push(`buzz:notifications:${action}`);
   for (const action of parseCloudArchiveActions("cli/lib/cloud.mjs")) cmds.push(`cloud:archives:${action}`);
   for (const action of parseCoreProjectActions("cli/lib/core.mjs")) cmds.push(`core:projects:${action}`);
-  for (const action of parseDeployReleaseActions()) {
-    cmds.push(`deploy:release:${action}`);
+  for (const action of parseDeployReleasesActions()) {
+    cmds.push(`deploy:releases:${action}`);
   }
   for (const action of parseJobsArtifactsActions()) {
     cmds.push(`jobs:artifacts:${action}`);
@@ -149,6 +152,7 @@ function parseOpenClawCommands(): string[] {
   for (const action of parseOrgGroupActions("inviteAction")) cmds.push(`org:invite:${action}`);
   for (const action of parseNotificationsGroupActions("channelsAction")) cmds.push(`notifications:channels:${action}`);
   for (const action of parseNotificationsGroupActions("rulesAction")) cmds.push(`notifications:rules:${action}`);
+  if (existsSync(join(__dirname, "openclaw/scripts/deploy.mjs"))) cmds.push("deploy");
   if (existsSync(join(__dirname, "openclaw/scripts/init.mjs"))) cmds.push("init");
   if (existsSync(join(__dirname, "openclaw/scripts/pay.mjs"))) cmds.push("pay");
   if (existsSync(join(__dirname, "openclaw/scripts/redeem.mjs"))) cmds.push("redeem");
@@ -163,7 +167,7 @@ function parseOpenClawCommands(): string[] {
   return cmds.sort();
 }
 
-function parseDeployReleaseActions(): string[] {
+function parseDeployReleasesActions(): string[] {
   const filePath = join(__dirname, "cli/lib/deploy-v2.mjs");
   if (!existsSync(filePath)) return [];
   const src = readFileSync(filePath, "utf-8");
@@ -177,7 +181,7 @@ function parseDeployReleaseActions(): string[] {
 /** Parse the nested `jobs artifacts <action>` leaf actions from cli/lib/jobs.mjs.
  *  The `artifacts` group is dispatched via an `if (sub === "artifacts")` branch
  *  (not a switch case) so per-action `--help` resolves correctly; its actions
- *  are matched on `if (action === "...")`, mirroring `deploy release`. */
+ *  are matched on `if (action === "...")`, mirroring `deploy releases`. */
 function parseJobsArtifactsActions(): string[] {
   const filePath = join(__dirname, "cli/lib/jobs.mjs");
   if (!existsSync(filePath)) return [];
@@ -301,7 +305,7 @@ interface Capability {
 
 const SURFACE: Capability[] = [
   // ── Init / status (local-only) ──────────────────────────────────────────
-  { id: "up",                endpoint: "(compound local+gateway action)",       mcp: "app_up",                        cli: "up",                  openclaw: "up" },
+  { id: "up",                endpoint: "(compound local+gateway action)",       mcp: "up",                            cli: "up",                  openclaw: "up" },
   { id: "init",              endpoint: "(local)",                              mcp: "init",                          cli: "init",                openclaw: "init" },
   { id: "pay_url",           endpoint: "(external x402 URL)",                  mcp: "pay_url",                       cli: "pay",                 openclaw: "pay" },
   // Redeeming is on every surface on purpose: a promo code can arrive in a
@@ -471,18 +475,18 @@ const SURFACE: Capability[] = [
   { id: "domains_disconnect",   endpoint: "DELETE /projects/v1/:project_id/domains/:domain",    mcp: "domains_disconnect",   cli: "domains:disconnect",   openclaw: "domains:disconnect" },
 
   // ── Unified apply ────────────────────────────────────────────────────────
-  { id: "deploy",            endpoint: "POST /apply/v1/plans",                            mcp: "deploy",            cli: "deploy:apply",      openclaw: "deploy:apply" },
+  { id: "deploy",            endpoint: "POST /apply/v1/plans",                            mcp: "deploy",            cli: "deploy",            openclaw: "deploy" },
   { id: "deploy_rehearse",   endpoint: "POST /apply/v1/plans/:plan_id/rehearse",           mcp: "deploy_rehearse",   cli: "deploy:rehearse",   openclaw: "deploy:rehearse" },
   { id: "deploy_resume",     endpoint: "POST /apply/v1/operations/:operation_id/resume",            mcp: "deploy_resume",     cli: "deploy:resume",     openclaw: "deploy:resume" },
+  { id: "deploy_status",     endpoint: "GET /apply/v1/operations/:operation_id",                    mcp: null,                cli: "deploy:status",     openclaw: "deploy:status" },
   { id: "deploy_promote",    endpoint: "POST /apply/v1/releases/:release_id/promote",              mcp: null,                cli: "deploy:promote",    openclaw: "deploy:promote" },
   { id: "deploy_list",       endpoint: "GET /apply/v1/operations",                        mcp: "deploy_list",       cli: "deploy:list",       openclaw: "deploy:list" },
   { id: "deploy_events",     endpoint: "GET /apply/v1/operations/:operation_id/events",             mcp: "deploy_events",     cli: "deploy:events",     openclaw: "deploy:events" },
   { id: "deploy_verify_edge", endpoint: "GET /apply/v1/operations/:operation_id/edge-coherence",     mcp: "deploy_verify_edge", cli: "deploy:verify",     openclaw: "deploy:verify" },
-  { id: "deploy_release_get",    endpoint: "GET /apply/v1/releases/:release_id",                  mcp: "deploy_release_get",    cli: "deploy:release:get",    openclaw: "deploy:release:get" },
-  { id: "deploy_release_active", endpoint: "GET /apply/v1/releases/active",               mcp: "deploy_release_active", cli: "deploy:release:active", openclaw: "deploy:release:active" },
-  { id: "deploy_release_diff",   endpoint: "GET /apply/v1/releases/diff",                 mcp: "deploy_release_diff",   cli: "deploy:release:diff",   openclaw: "deploy:release:diff" },
-  { id: "deploy_diagnose_url",   endpoint: "GET /apply/v1/resolve",                       mcp: "deploy_diagnose_url",   cli: "deploy:diagnose",       openclaw: "deploy:diagnose" },
-  { id: "deploy_resolve",        endpoint: "GET /apply/v1/resolve",                       mcp: null,                    cli: "deploy:resolve",        openclaw: "deploy:resolve" },
+  { id: "deploy_releases_get",    endpoint: "GET /apply/v1/releases/:release_id",         mcp: "deploy_releases_get",    cli: "deploy:releases:get",    openclaw: "deploy:releases:get" },
+  { id: "deploy_releases_active", endpoint: "GET /apply/v1/releases/active",              mcp: "deploy_releases_active", cli: "deploy:releases:active", openclaw: "deploy:releases:active" },
+  { id: "deploy_releases_diff",   endpoint: "GET /apply/v1/releases/diff",                mcp: "deploy_releases_diff",   cli: "deploy:releases:diff",   openclaw: "deploy:releases:diff" },
+  { id: "deploy_resolve",         endpoint: "GET /apply/v1/resolve",                      mcp: "deploy_resolve",         cli: "deploy:resolve",         openclaw: "deploy:resolve" },
 
   // ── CI/OIDC federation ──────────────────────────────────────────────────
   { id: "ci_link_github",    endpoint: "POST /ci/v1/bindings",                              mcp: "ci_create_binding", cli: "ci:link",          openclaw: "ci:link" },
@@ -1127,13 +1131,13 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   deploy_rehearse: "_applyEngine.rehearse",
   deploy_promote: "_applyEngine.promote",
   deploy_resume: "_applyEngine.resume",
+  deploy_status: "_applyEngine.status",
   deploy_list: "_applyEngine.list",
   deploy_events: "_applyEngine.events",
   deploy_verify_edge: "_applyEngine.edgeCoherence",
-  deploy_release_get: "_applyEngine.getRelease",
-  deploy_release_active: "_applyEngine.getActiveRelease",
-  deploy_release_diff: "_applyEngine.diff",
-  deploy_diagnose_url: "_applyEngine.resolve",
+  deploy_releases_get: "_applyEngine.getRelease",
+  deploy_releases_active: "_applyEngine.getActiveRelease",
+  deploy_releases_diff: "_applyEngine.diff",
   deploy_resolve: "_applyEngine.resolve",
   ci_link_github: "ci.createBinding",
   ci_list_bindings: "ci.listBindings",
@@ -1464,7 +1468,7 @@ const EXPECTED_OPENCLAW_COMMANDS = SURFACE
 
 // CLI dispatch-through commands that are routing prefixes, not leaf commands.
 // The scanner finds them as case statements but they just delegate to sub-modules.
-const CLI_DISPATCH_COMMANDS = ["email:webhooks", "deploy:release", "cloud:archives", "core:projects"];
+const CLI_DISPATCH_COMMANDS = ["email:webhooks", "deploy:releases", "cloud:archives", "core:projects"];
 
 // CLI aliases that route to the same handler as a primary command already in
 // SURFACE. Listed here so the "no untracked commands" check doesn't fail.
@@ -1692,7 +1696,6 @@ describe("SDK surface alignment", () => {
       "_applyEngine.plan",
       "_applyEngine.upload",
       "_applyEngine.commit",
-      "_applyEngine.status",
       "_applyEngine.waitEdgeCoherent",
       // CI token exchange is intentionally credential-helper-only in v1.
       "ci.exchangeToken",
@@ -1867,7 +1870,7 @@ describe("SDK surface alignment", () => {
       // `run402 repos snapshot --dry-run` (`repos_snapshot`'s OWN verb, a
       // flag-selected mode, not a second verb) and `git-remote-run402`'s
       // `option dry-run true` — no SURFACE row of its own, the same way
-      // `deploy apply --rehearse` is a mode of `deploy` rather than a second
+      // `deploy --no-rehearse` is a mode of `deploy` rather than a second
       // capability.
       "gitvault.planPush",
       // kygit-handoff design D10: `repos handoff --list`/`--revoke` are
@@ -2394,8 +2397,7 @@ describe("deploy route surface alignment", () => {
           [/\/events\.html.*not public|not public.*\/events\.html/, "explicit mode hides backing asset filename"],
           [/static_public_paths/, "static public path inventory"],
           [/reachability_authority/, "reachability authority field"],
-          [/deploy_diagnose_url/, "MCP diagnose tool"],
-          [/run402 deploy diagnose/, "CLI diagnose command"],
+          [/deploy_resolve/, "MCP resolve tool"],
           [/run402 deploy resolve/, "CLI resolve command"],
           [/run402 up verify/, "app verify rerun command"],
           [/edge_propagation/, "edge propagation diagnostics"],
@@ -2417,7 +2419,7 @@ describe("deploy route surface alignment", () => {
           [/\/events\.html.*not public|not public.*\/events\.html/, "explicit mode hides backing asset filename"],
           [/static_public_paths/, "static public path inventory"],
           [/reachability_authority/, "reachability authority field"],
-          [/run402 deploy diagnose/, "CLI diagnose command"],
+          [/run402 deploy resolve/, "CLI resolve command"],
           [/run402 up verify/, "app verify rerun command"],
           [/edge_propagation/, "edge propagation diagnostics"],
           [/propagation_pending/, "propagation pending app status"],
@@ -2436,7 +2438,7 @@ describe("deploy route surface alignment", () => {
           [/\/events\.html.*not public|not public.*\/events\.html/, "explicit mode hides backing asset filename"],
           [/static_public_paths/, "static public path inventory"],
           [/reachability_authority/, "reachability authority field"],
-          [/deploy_diagnose_url/, "MCP diagnose tool"],
+          [/deploy_resolve/, "MCP resolve tool"],
           [/run402 up verify/, "app verify rerun command"],
           [/edge_propagation/, "edge propagation diagnostics"],
           [/propagation_pending/, "propagation pending app status"],
@@ -2456,7 +2458,6 @@ describe("deploy route surface alignment", () => {
           [/\/events\.html.*not public|not public.*\/events\.html/, "explicit mode hides backing asset filename"],
           [/static_public_paths/, "static public path inventory"],
           [/reachability_authority/, "reachability authority field"],
-          [/run402 deploy diagnose/, "CLI diagnose command"],
           [/run402 deploy resolve/, "CLI resolve command"],
           [/run402 up verify/, "app verify rerun command"],
           [/edge_propagation/, "edge propagation diagnostics"],
@@ -2477,7 +2478,6 @@ describe("deploy route surface alignment", () => {
           [/\/events\.html.*not public|not public.*\/events\.html/, "explicit mode hides backing asset filename"],
           [/static_public_paths/, "static public path inventory"],
           [/reachability_authority/, "reachability authority field"],
-          [/run402 deploy diagnose/, "CLI diagnose command"],
           [/run402 deploy resolve/, "CLI resolve command"],
           [/run402 up verify/, "app verify rerun command"],
           [/edge_propagation/, "edge propagation diagnostics"],
@@ -2540,7 +2540,6 @@ describe("deploy route surface alignment", () => {
           [/\/events\.html.*not public|not public.*\/events\.html/, "explicit mode hides backing asset filename"],
           [/static_public_paths/, "static public path inventory"],
           [/reachability_authority/, "reachability authority field"],
-          [/run402 deploy diagnose/, "CLI diagnose command"],
           [/run402 deploy resolve/, "CLI resolve command"],
           [/run402 up verify/, "app verify rerun command"],
           [/edge_propagation/, "edge propagation diagnostics"],
@@ -2559,7 +2558,7 @@ describe("deploy route surface alignment", () => {
           [/site\.public_paths/, "site public path authoring"],
           [/static_public_paths/, "static public path inventory"],
           [/reachability_authority/, "reachability authority field"],
-          [/run402 deploy diagnose/, "CLI diagnose command"],
+          [/run402 deploy resolve/, "CLI resolve command"],
           [/run402 up verify/, "app verify rerun command"],
           [/edge_propagation/, "edge propagation diagnostics"],
           [/"type": "static", "file": "events\.html"/, "static route target JSON"],
@@ -2574,8 +2573,8 @@ describe("deploy route surface alignment", () => {
           [/static_public_paths/, "static public path inventory"],
           [/reachability_authority/, "reachability authority field"],
           [/stable static asset identity \/ public URL diagnostics/, "documentation checklist row"],
-          [/deploy_diagnose_url/, "MCP diagnose tool"],
-          [/run402 deploy diagnose/, "CLI diagnose command"],
+          [/deploy_resolve/, "MCP resolve tool"],
+          [/run402 deploy resolve/, "CLI resolve command"],
           [/run402 up verify/, "app verify rerun command"],
           [/edge_propagation/, "edge propagation diagnostics"],
           [/propagation_pending/, "propagation pending app status"],
@@ -2657,7 +2656,7 @@ describe("deploy route surface alignment", () => {
     assert.match(mcpDeploy, /ROUTE_HTTP_METHODS/, "MCP deploy schema must share route method constants");
     assert.match(mcpDeploy, /Raw Deploy Result/, "MCP deploy success must include raw deploy result JSON");
 
-    const releaseTool = readFileSync(join(__dirname, "src/tools/deploy-release.ts"), "utf-8");
+    const releaseTool = readFileSync(join(__dirname, "src/tools/deploy-releases.ts"), "utf-8");
     assert.match(releaseTool, /\| routes \|/, "MCP release inventory summary must include route count");
     assert.match(releaseTool, /routes_added_removed_changed/, "MCP release diff summary must include route buckets");
     assert.match(releaseTool, /static_manifest_sha256/, "MCP release inventory summary must include static manifest digest");

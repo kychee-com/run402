@@ -67,8 +67,8 @@ describe("splitWalletFlag", () => {
     assert.deepEqual(r.walletFlag, { flag: "--wallet", value: "kychon" });
   });
   it("strips --wallet=<value> mid-args", () => {
-    const r = splitWalletFlag(["deploy", "apply", "--wallet=foo", "--manifest", "x"]);
-    assert.deepEqual(r.argv, ["deploy", "apply", "--manifest", "x"]);
+    const r = splitWalletFlag(["deploy", "--wallet=foo", "--manifest", "x"]);
+    assert.deepEqual(r.argv, ["deploy", "--manifest", "x"]);
     assert.equal(r.walletFlag.value, "foo");
   });
   it("leaves --profile to `repos`, which owns it as the AWS credential profile", () => {

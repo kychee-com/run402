@@ -4,7 +4,7 @@
  * Proves the coding-agent DX:
  *   run402 init --api-base=http://core:4020
  *   run402 projects provision --name my-app
- *   run402 deploy apply --manifest app.json --project prj_core_test
+ *   run402 deploy --manifest app.json --project prj_core_test
  */
 
 import { describe, it, beforeEach, afterEach } from "node:test";
@@ -224,10 +224,10 @@ describe("CLI Core target", () => {
     const { runDeployV2 } = await import("./cli/lib/deploy-v2.mjs");
     captureStart();
     const beforeApply = calls.length;
-    await assert.rejects(runDeployV2("apply", ["--manifest", manifestPath, "--quiet"]), /process.exit\(1\)/);
+    await assert.rejects(runDeployV2("deploy", ["--manifest", manifestPath, "--quiet"]), /process.exit\(1\)/);
     assert.equal(calls.length, beforeApply, "missing intent never contacts Core");
     captureStart();
-    await runDeployV2("apply", ["--manifest", manifestPath, "--project", "prj_core_test", "--quiet"]);
+    await runDeployV2("deploy", ["--manifest", manifestPath, "--project", "prj_core_test", "--quiet"]);
     parsed = stdoutJson();
     assert.equal(parsed.release_id, "rel_core_test");
 

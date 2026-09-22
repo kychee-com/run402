@@ -62,8 +62,8 @@ export function setTierAction(tier = "prototype") {
 
 export function deployAction() {
   return nextAction("deploy", {
-    command: "run402 deploy apply --manifest app.json",
-    why: "Apply your release manifest to deploy.",
+    command: "run402 deploy --manifest app.json",
+    why: "Deploy your release manifest.",
   });
 }
 

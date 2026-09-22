@@ -43,8 +43,7 @@ BUILD & SHIP — the app and everything it serves
   up          Provision/link/deploy the current app with SDK orchestration
   projects    Manage projects (provision, list, get, sql, delete)
   repos       Host-blind encrypted git repos: create/view/list, snapshot/mirror/recover, fsck/gc/access/policy (repo aliases repos)
-  deploy      Unified deploy operations (requires active tier)
-  apply       Alias for deploy apply; supports --rehearse for migration rehearsal
+  deploy      Deploy a release; subcommands inspect and steer deploys (requires active tier)
   functions   Manage serverless functions (deploy, invoke, logs, list, delete)
   secrets     Manage project secrets (set, list, delete)
   sites       Deploy static sites
@@ -118,8 +117,7 @@ Examples:
   run402 allowance create
   run402 allowance fund
   run402 pay https://seller.example/resource --max-usd 0.05
-  run402 deploy apply --manifest app.json
-  run402 apply --manifest app.json --rehearse --json
+  run402 deploy --manifest app.json
   run402 snapshots list --project prj_...
   run402 branches create --project prj_... --ttl-days 7 --json
   run402 cloud archives create --project prj_... --wait --output ./project.r402ar --json
@@ -245,11 +243,6 @@ switch (cmd) {
   case "repo": {
     const { run } = await import("./lib/repos.mjs");
     await run(sub, rest);
-    break;
-  }
-  case "apply": {
-    const { runDeployV2 } = await import("./lib/deploy-v2.mjs");
-    await runDeployV2("apply", [sub, ...rest].filter(Boolean));
     break;
   }
   case "snapshots": {

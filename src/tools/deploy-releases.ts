@@ -6,11 +6,11 @@ import type { OperationActorSnapshot } from "../../sdk/dist/index.js";
 
 /**
  * MCP release observability tools. These wrap read-only apikey-gated SDK
- * calls; unlike deploy apply/resume/list/events, they do not preflight wallet
+ * calls; unlike deploy/resume/list/events, they do not preflight wallet
  * allowance auth.
  */
 
-export const deployReleaseGetSchema = {
+export const deployReleasesGetSchema = {
   project_id: z
     .string()
     .describe("Project ID that owns the release."),
@@ -26,7 +26,7 @@ export const deployReleaseGetSchema = {
     .describe("Maximum site path entries to include. Gateway default: 5000."),
 };
 
-export const deployReleaseActiveSchema = {
+export const deployReleasesActiveSchema = {
   project_id: z
     .string()
     .describe("Project ID to inspect."),
@@ -39,7 +39,7 @@ export const deployReleaseActiveSchema = {
     .describe("Maximum site path entries to include. Gateway default: 5000."),
 };
 
-export const deployReleaseDiffSchema = {
+export const deployReleasesDiffSchema = {
   project_id: z
     .string()
     .describe("Project ID to inspect."),
@@ -57,7 +57,7 @@ export const deployReleaseDiffSchema = {
     .describe("Maximum entries per site diff bucket. Gateway default: 1000."),
 };
 
-export async function handleDeployReleaseGet(args: {
+export async function handleDeployReleasesGet(args: {
   project_id: string;
   release_id: string;
   site_limit?: number;
@@ -79,7 +79,7 @@ export async function handleDeployReleaseGet(args: {
   }
 }
 
-export async function handleDeployReleaseActive(args: {
+export async function handleDeployReleasesActive(args: {
   project_id: string;
   site_limit?: number;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
@@ -99,7 +99,7 @@ export async function handleDeployReleaseActive(args: {
   }
 }
 
-export async function handleDeployReleaseDiff(args: {
+export async function handleDeployReleasesDiff(args: {
   project_id: string;
   from: string;
   to: string;

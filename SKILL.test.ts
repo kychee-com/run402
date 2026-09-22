@@ -74,7 +74,7 @@ describe("SKILL.md (root, CLI-first)", () => {
   });
 
   describe("body — default and deliberate alternatives", () => {
-    for (const token of ["Use the CLI by default", "run402 up --name", "app_up", "SDK scripting", "llms-mcp.txt", "HTTP"]) {
+    for (const token of ["Use the CLI by default", "run402 up --name", "`up` tool", "SDK scripting", "llms-mcp.txt", "HTTP"]) {
       it(`documents ${token}`, () => assert.ok(root.body.includes(token)));
     }
     it("shares the checked CLI workflow with OpenClaw", () => assert.equal(root.body, openclaw.body));
@@ -171,9 +171,8 @@ describe("openclaw/SKILL.md (CLI-based)", () => {
       "run402 projects validate-expose",
       "run402 projects apply-expose",
       "run402 sites deploy-dir",
-      "run402 deploy release active",
-      "run402 deploy release diff",
-      "run402 deploy diagnose",
+      "run402 deploy releases active",
+      "run402 deploy releases diff",
       "run402 deploy resolve",
       "run402 ci link github",
       "run402 ci list",

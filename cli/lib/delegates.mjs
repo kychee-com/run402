@@ -32,7 +32,7 @@ Notes:
   - A delegate can never be an owner, and is revocable and expiring.
   - The token is shown ONCE and is not recoverable. Store it immediately;
     if you lose it, 'rotate' issues a new one.
-  - Use it with: RUN402_DELEGATE_TOKEN=<token> run402 deploy apply ...
+  - Use it with: RUN402_DELEGATE_TOKEN=<token> run402 deploy ...
   - JSON in, JSON out.
 
 Why this exists:

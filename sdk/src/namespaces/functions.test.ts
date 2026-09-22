@@ -107,7 +107,7 @@ describe("functions.deploy", () => {
     });
 
     // Routed through unified apply — never the deleted admin route, never a
-    // service-key bearer (auth shifts to the project.deploy apply credential).
+    // service-key bearer (auth shifts to the project.deploy credential).
     const planCall = calls.find((c) => c.url.endsWith("/apply/v1/plans"));
     assert(planCall, "posted an /apply/v1/plans plan");
     assert.equal(planCall!.method, "POST");

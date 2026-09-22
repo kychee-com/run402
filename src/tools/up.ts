@@ -4,7 +4,7 @@ import { z } from "zod";
 import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
 
-export const appUpSchema = {
+export const upSchema = {
   source: z.string().optional().describe("Local app directory or public Git repository URL. Defaults to the current directory."),
   name: z.string().optional().describe("Project/app instance name, for example kysigned2."),
   project_id: z.string().optional().describe("Existing project id to install into."),
@@ -14,7 +14,7 @@ export const appUpSchema = {
   dry_run: z.boolean().optional().describe("Plan only. No gateway mutation, build execution, release commit, local link write, or prune."),
   yes: z.boolean().optional().describe("Approve non-interactive prerequisite, spend, and local-write prompts."),
   allow_prune: z.boolean().optional().describe("Approve destructive managed-resource prune steps."),
-  max_spend_usd: z.number().nonnegative().optional().describe("Maximum spend app_up may approve for readiness steps."),
+  max_spend_usd: z.number().nonnegative().optional().describe("Maximum spend up may approve for readiness steps."),
   build_mode: z.enum(["local", "remote", "sandbox"]).optional().describe("Override app build mode."),
   allow_shell_build: z.boolean().optional().describe("Approve shell-string build commands after review."),
   idempotency_key: z.string().optional().describe("Root idempotency key for resumable app-up graph mutations."),
@@ -24,7 +24,7 @@ export const appUpSchema = {
 
 type McpResult = { content: Array<{ type: "text"; text: string }>; isError?: boolean };
 
-export async function handleAppUp(args: {
+export async function handleUp(args: {
   source?: string;
   name?: string;
   project_id?: string;
@@ -64,12 +64,12 @@ export async function handleAppUp(args: {
       content: [{
         type: "text",
         text: JSON.stringify(prepareWorkflowOutput(result, args.dir ?? process.cwd(), { storeDetails: (detail) => {
-          const stored = storeResult("app_up", [detail], { shown: 0 });
+          const stored = storeResult("up", [detail], { shown: 0 });
           return stored.ref ? { ref: stored.ref, next_action: { type: "expand_result", ref: stored.ref, why: "Read the redacted detail for this execution with expand_result." } } : null;
         } }), null, 2),
       }],
     };
   } catch (err) {
-    return mapSdkError(err, "running app_up");
+    return mapSdkError(err, "running up");
   }
 }

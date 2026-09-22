@@ -62,7 +62,7 @@ export async function handleDeployRehearse(args: {
       plan_id: planId,
       ...(replanned ? { replanned } : {}),
       rehearsal,
-      commit_command: `run402 deploy apply --require-plan ${planId}`,
+      commit_command: `run402 deploy --require-plan ${planId}`,
     }, rehearsal.report.status !== "passed");
   } catch (err) {
     return mapSdkError(err, "rehearsing deploy plan");

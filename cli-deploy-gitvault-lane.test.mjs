@@ -98,7 +98,7 @@ describe("the deploy lane speaks gitvault", () => {
   });
 });
 
-describe("deploy apply dirty-tree refusal (Observability + dirty-tree-refusal)", () => {
+describe("deploy dirty-tree refusal (Observability + dirty-tree-refusal)", () => {
   /**
    * `--allow-dirty` must reach `applyWithGitvault` (which threads it into
    * `gitvault.deploy`'s `snapshot.allowDirty`, same option name captureSnapshot

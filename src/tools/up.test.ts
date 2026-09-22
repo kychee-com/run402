@@ -39,15 +39,15 @@ mock.module("../errors.js", {
   },
 });
 
-const { handleAppUp } = await import("./app-up.js");
+const { handleUp } = await import("./up.js");
 
 beforeEach(() => {
   calls = [];
 });
 
-describe("app_up tool", () => {
+describe("up tool", () => {
   it("delegates to SDK up and returns the shared app result envelope", async () => {
-    const result = await handleAppUp({
+    const result = await handleUp({
       source: ".",
       name: "kysigned2",
       dry_run: true,

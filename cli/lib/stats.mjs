@@ -8,7 +8,7 @@
  * line per request to stderr, automatically, for every SDK caller (CLI, MCP,
  * `git-remote-run402`). This module is the thin CLI-edge reader of that
  * per-instance accumulator: it turns `sdk.stats()` into the `stats` envelope
- * field every `repos` verb's result and `deploy apply`'s final result carry
+ * field every `repos` verb's result and `deploy`'s final result carry
  * (always on), plus the `-v`/`--verbose` stderr summary line.
  *
  * `sdk.stats()` reflects only calls made through the ONE `Run402` instance
@@ -47,7 +47,7 @@ function writeVerboseStatsLine(sdk) {
 /**
  * One stderr summary line, only when verbose was requested. Coexists with
  * `--human`. `verbose` is either normalized argv (checked for `-v`/
- * `--verbose`) or a plain boolean, for callers (e.g. `deploy apply`) that
+ * `--verbose`) or a plain boolean, for callers (e.g. `deploy`) that
  * already parsed their own flags into an options object.
  */
 export function printVerboseStats(verbose, sdk) {

@@ -176,7 +176,7 @@ export const whoamiSchema = {
     .max(64)
     .optional()
     .describe(
-      "Set this principal's display name (PATCH /agent/v1/me) before reading it back. The name promotion credit (`hand_to_operator.credited_as`), `app_up`'s room presence, and audit surfaces show for this principal; `app_up` sets a detected default when it is empty.",
+      "Set this principal's display name (PATCH /agent/v1/me) before reading it back. The name promotion credit (`hand_to_operator.credited_as`), `up`'s room presence, and audit surfaces show for this principal; `up` sets a detected default when it is empty.",
     ),
 };
 

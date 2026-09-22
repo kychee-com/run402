@@ -169,8 +169,8 @@ function reviewedPlanPayload(
     diff: { resources: { site: { added: ["index.html"] } } },
     next_actions: [{
       type: "retry",
-      command: `run402 deploy apply --require-plan ${planId} --plan-fingerprint ${fingerprint}`,
-      argv: ["run402", "deploy", "apply", "--require-plan", planId, "--plan-fingerprint", fingerprint],
+      command: `run402 deploy --require-plan ${planId} --plan-fingerprint ${fingerprint}`,
+      argv: ["run402", "deploy", "--require-plan", planId, "--plan-fingerprint", fingerprint],
       why: "Apply exactly this reviewed plan before it expires.",
     }],
   };
@@ -226,7 +226,7 @@ beforeEach(() => {
 });
 
 describe("typed release config CLI modes", () => {
-  it("smoke-tests deploy apply check, print-spec, plan, mismatch, and successful require-plan", async () => {
+  it("smoke-tests deploy check, print-spec, plan, mismatch, and successful require-plan", async () => {
     await seedDeployAllowance();
     const root = mkdtempSync(join(tmpdir(), "run402-cli-typed-smoke-"));
     try {
@@ -236,7 +236,7 @@ describe("typed release config CLI modes", () => {
       const fingerprint = "run402-reviewed-plan-v1:" + "c".repeat(64);
 
       const check = await captureSuccess(() =>
-        run(["apply", "--manifest", manifestPath, "--check"]),
+        run(["--manifest", manifestPath, "--check"]),
       );
       assert.equal(check.json.ok, true);
       assert.equal(check.json.mode, "check");
@@ -246,7 +246,7 @@ describe("typed release config CLI modes", () => {
 
       calls = [];
       const printed = await captureSuccess(() =>
-        run(["apply", "--manifest", manifestPath, "--print-spec"]),
+        run(["--manifest", manifestPath, "--print-spec"]),
       );
       assert.equal(printed.json.project, "prj_test123");
       assert.equal(printed.json.site.replace["index.html"], "v1");
@@ -261,11 +261,11 @@ describe("typed release config CLI modes", () => {
       }, async () => {
         calls = [];
         const planned = await captureSuccess(() =>
-          run(["apply", "--manifest", manifestPath, "--plan"]),
+          run(["--manifest", manifestPath, "--plan"]),
         );
         assert.equal(planned.json.plan_id, planId);
         assert.equal(planned.json.plan_fingerprint, fingerprint);
-        assert.deepEqual(planned.json.next_actions[0].argv.slice(0, 4), ["run402", "deploy", "apply", "--require-plan"]);
+        assert.deepEqual(planned.json.next_actions[0].argv.slice(0, 3), ["run402", "deploy", "--require-plan"]);
         assert.equal(calls.filter((call) => call.path === "/apply/v1/plans").length, 1);
         assert.equal(calls.some((call) => /\/commit$/.test(call.path)), false, "--plan must not commit");
       });
@@ -279,8 +279,8 @@ describe("typed release config CLI modes", () => {
             plan_id: body.required_plan.plan_id,
             next_actions: [{
               type: "retry",
-              command: `run402 deploy apply --manifest ${manifestPath} --plan`,
-              argv: ["run402", "deploy", "apply", "--manifest", manifestPath, "--plan"],
+              command: `run402 deploy --manifest ${manifestPath} --plan`,
+              argv: ["run402", "deploy", "--manifest", manifestPath, "--plan"],
               why: "Create a fresh reviewed plan.",
             }],
           }, 409);
@@ -289,7 +289,7 @@ describe("typed release config CLI modes", () => {
       }, async () => {
         calls = [];
         const err = await expectExit1(() =>
-          run(["apply", "--manifest", manifestPath, "--require-plan", planId, "--plan-fingerprint", fingerprint]),
+          run(["--manifest", manifestPath, "--require-plan", planId, "--plan-fingerprint", fingerprint]),
         );
         assert.equal(err.code, "PLAN_APPROVAL_MISMATCH");
         assert.equal(err.next_actions[0].argv.at(-1), "--plan");
@@ -316,7 +316,7 @@ describe("typed release config CLI modes", () => {
       }, async () => {
         calls = [];
         const applied = await captureSuccess(() =>
-          run(["apply", "--manifest", manifestPath, "--require-plan", planId, "--plan-fingerprint", fingerprint, "--quiet"]),
+          run(["--manifest", manifestPath, "--require-plan", planId, "--plan-fingerprint", fingerprint, "--quiet"]),
         );
         assert.equal(applied.json.release_id, "rel_reviewed_smoke");
         assert.equal(calls.filter((call) => call.path === "/apply/v1/plans").length, 1);
@@ -361,13 +361,13 @@ describe("typed release config CLI modes", () => {
     }
   });
 
-  it("deploy apply rejects warning flags with --require-plan before SDK/network work", async () => {
+  it("deploy rejects warning flags with --require-plan before SDK/network work", async () => {
     const root = mkdtempSync(join(tmpdir(), "run402-cli-require-plan-warning-"));
     try {
       const manifestPath = writeTypedDeployConfig(root);
       const { run } = await import("./cli/lib/deploy.mjs");
       const err = await expectExit1(() =>
-        run(["apply", "--manifest", manifestPath, "--require-plan", "plan_1", "--allow-warnings"]),
+        run(["--manifest", manifestPath, "--require-plan", "plan_1", "--allow-warnings"]),
       );
       assert.equal(err.code, "BAD_USAGE");
       assert.equal(err.details.flag, "--require-plan");
@@ -462,7 +462,7 @@ describe("typed release config CLI modes", () => {
       assert.equal(calls.length, 0);
 
       const { run: runDeploy } = await import("./cli/lib/deploy.mjs");
-      const deployErr = await expectExit1(() => runDeploy(["apply", "--manifest", manifestPath, "--check"]));
+      const deployErr = await expectExit1(() => runDeploy(["--manifest", manifestPath, "--check"]));
       assert.equal(deployErr.code, "MANIFEST_FILE_MISSING");
       assert.equal(deployErr.next_actions[0].path, join(root, "public", "index.html"));
       assert.equal(calls.length, 0);
@@ -541,7 +541,7 @@ describe("deployment intent guard", () => {
     const manifest = join(app, "app.json");
     writeFileSync(manifest, JSON.stringify({ site: { replace: { "index.html": { data: "new app" } } } }));
     const before = calls.length;
-    const err = await expectExit1(() => run(["apply", "--manifest", manifest]));
+    const err = await expectExit1(() => run(["--manifest", manifest]));
     assert.equal(err.code, "UP_PROJECT_REQUIRED");
     assert.equal(err.next_actions.length, 1);
     assert.equal(err.next_actions[0].type, "select_project");
@@ -558,7 +558,7 @@ describe("shared authoring export", () => {
       const { run: up } = await import("./cli/lib/up.mjs");
       const { run: deploy } = await import("./cli/lib/deploy.mjs");
       const a = await captureSuccess(() => up(["--manifest", path, "--print-manifest"]));
-      const b = await captureSuccess(() => deploy(["apply", "--manifest", path, "--print-manifest"]));
+      const b = await captureSuccess(() => deploy(["--manifest", path, "--print-manifest"]));
       assert.deepEqual(a.json, b.json);
       assert.equal(a.json.project_id, undefined);
       assert.deepEqual(a.json.functions.replace.api.config, { timeout_seconds: 5 });

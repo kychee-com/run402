@@ -1,6 +1,9 @@
 /**
- * `run402 deploy apply` and `run402 deploy resume` — CLI wrappers over the
- * unified deploy primitive (`r.deploy.apply` / `r.deploy.resume`).
+ * `run402 deploy` (the deploy itself) and its family — `rehearse`, `promote`,
+ * `resume`, `status`, `list`, `events`, `verify`, `resolve`, `releases` — CLI
+ * wrappers over the unified deploy primitive (`r.project(id).apply` and its
+ * sub-methods). `run402 up` does missing setup first and then runs this same
+ * deploy.
  *
  * Manifest format mirrors the MCP `deploy` tool's input schema:
  *   {
@@ -49,13 +52,33 @@ import { editRequestAction, nextAction, retryAction } from "./next-actions.mjs";
 import { createUpdateCheckScheduler, emitUpdateNotice } from "./update-check.mjs";
 import { sdkStats, printVerboseStats } from "./stats.mjs";
 
-const APPLY_HELP = `run402 deploy apply — Unified deploy primitive (v1.34+)
+const DEPLOY_HELP = `run402 deploy — Deploy a release from a manifest (the unified deploy primitive)
 
 Usage:
-  run402 deploy apply --manifest <path> [--project <id>] [--check|--print-spec|--print-manifest|--plan|--require-plan <id>] [--no-rehearse] [--quiet|--final-only] [--json]
-  run402 deploy apply --spec '<json>' [--project <id>] [--check|--print-spec|--print-manifest|--plan|--require-plan <id>] [--no-rehearse] [--quiet|--final-only] [--json]
-  run402 deploy apply --dir <build-output> [--manifest <path>] [--project <id>]
-  cat spec.json | run402 deploy apply [--project <id>]
+  run402 deploy [--project <project_id>] [--check|--print-spec|--print-manifest|--plan|--require-plan <plan_id>] [--no-rehearse] [--quiet|--final-only] [--json]
+  run402 deploy --manifest <path> [--project <project_id>] [...same options]
+  run402 deploy --spec '<json>' [--project <project_id>] [...same options]
+  run402 deploy --dir <build-output> [--manifest <path>] [--project <project_id>]
+  cat spec.json | run402 deploy [--project <project_id>]
+  run402 deploy <subcommand> [options]
+
+Without --manifest, --spec, --dir, or piped stdin, the manifest is discovered in
+the current directory (run402.json, run402.deploy.json, app.json, or an
+executable run402.deploy.{ts,mts,js,mjs}); when none is there the command fails
+with MANIFEST_NOT_FOUND. \`run402 up\` does any missing setup (wallet, tier,
+project, workspace link) and then runs this same deploy; \`run402 deploy\`
+only deploys.
+
+Subcommands:
+  rehearse <plan_id>            Rehearse a persisted plan on a contained branch
+  promote <release_id>          Point the live release at an existing release
+  resume <operation_id>         Resume a stuck operation
+  status <operation_id>         Fetch one deploy operation's snapshot
+  list [--project <project_id>] List recent deploy operations
+  events <operation_id>         Fetch the event stream for an operation
+  verify <operation_id>         Verify gateway and edge coherence
+  resolve <url>                 Explain what a public URL would serve
+  releases get|active|diff      Inspect release inventory and diffs
 
 Manifest format mirrors the MCP \`deploy\` tool's ReleaseSpec:
   {
@@ -100,7 +123,7 @@ Options:
                           database/secrets/subdomains/i18n in the manifest while
                           the slice carries the build output. Requires
                           @run402/astro installed in the project.
-  --project <id>          Override project_id from the manifest
+  --project <project_id>  Override project_id from the manifest
   --check                 Validate and normalize locally. No gateway calls or uploads.
   --print-spec            Advanced SDK-native inspection JSON, not authoring input.
   --print-manifest        Export snake_case authoring JSON relative to the original manifest
@@ -110,7 +133,7 @@ Options:
                           against a project with a live release is rehearsed on a contained
                           branch and committed only on a passing report (result.rehearsal);
                           a first deploy has nothing to protect and commits directly.
-  --require-plan <id>     Apply only if this reviewed plan still matches.
+  --require-plan <plan_id> Deploy only if this reviewed plan still matches.
   --json                  No-op compatibility flag; success output is always JSON.
   --quiet                 Suppress per-event JSON-line stderr (final result still on stdout)
   --final-only            Alias for --quiet; final success/error envelope is still preserved
@@ -172,9 +195,9 @@ const EXECUTABLE_MANIFEST_EXTENSIONS = new Set([".ts", ".mts", ".cts", ".js", ".
 const RESUME_HELP = `run402 deploy resume — Resume a stuck deploy operation
 
 Usage:
-  run402 deploy resume <operation_id> [--project <id>] [--quiet]
+  run402 deploy resume <operation_id> [--project <project_id>] [--quiet]
 
-Used when a previous \`deploy apply\` ended in \`activation_pending\` or
+Used when a previous \`deploy\` ended in \`activation_pending\` or
 \`schema_settling\` (e.g. transient gateway failure between SQL commit and
 the pointer-swap activation). The gateway re-runs only the failed phase
 forward — SQL is never replayed.
@@ -184,13 +207,25 @@ Output:
   stderr: one JSON event per line (suppressed with --quiet)
 `;
 
+const STATUS_HELP = `run402 deploy status — Fetch one deploy operation's snapshot
+
+Usage:
+  run402 deploy status <operation_id> [--project <project_id>]
+
+Options:
+  --project <project_id>  Project ID that owns the operation (default: active project)
+
+Output:
+  stdout: { "operation_id": "op_...", "status": "...", "release_id": "rel_..." | null, "urls": {...} | null, ... }
+`;
+
 const LIST_HELP = `run402 deploy list — List recent deploy operations for a project
 
 Usage:
-  run402 deploy list [--project <id>] [--limit <n>]
+  run402 deploy list [--project <project_id>] [--limit <n>]
 
 Options:
-  --project <id>          Project ID to list operations for (default: active project)
+  --project <project_id>  Project ID to list operations for (default: active project)
   --limit <n>             Maximum number of operations to return
 
 Output:
@@ -200,10 +235,10 @@ Output:
 const EVENTS_HELP = `run402 deploy events — Fetch the recorded event stream for a deploy operation
 
 Usage:
-  run402 deploy events <operation_id> [--project <id>]
+  run402 deploy events <operation_id> [--project <project_id>]
 
 Options:
-  --project <id>          Project ID that owns the operation (default: active project)
+  --project <project_id>  Project ID that owns the operation (default: active project)
 
 Output:
   stdout: { "events": [...] }
@@ -212,16 +247,16 @@ Output:
 const VERIFY_HELP = `run402 deploy verify — Verify gateway and edge coherence
 
 Usage:
-  run402 deploy verify <operation_id> [--project <id>] [--wait] [--timeout <seconds>] [--json]
-  run402 deploy verify --operation <operation_id> [--project <id>] [--wait] [--timeout <seconds>] [--json]
+  run402 deploy verify <operation_id> [--project <project_id>] [--wait] [--timeout <seconds>] [--json]
+  run402 deploy verify --operation <operation_id> [--project <project_id>] [--wait] [--timeout <seconds>] [--json]
 
 Checks that the gateway's live release and the edge pointers observed by
 Run402 agree for the deployment operation. Use --wait to poll until the report
 is coherent or the timeout elapses.
 
 Options:
-  --operation <id>       Operation id to verify. Equivalent to the positional id.
-  --project <id>         Project ID that owns the operation (default: active project)
+  --operation <operation_id>  Operation id to verify. Equivalent to the positional id.
+  --project <project_id>      Project ID that owns the operation (default: active project)
   --wait                 Poll until coherent or timeout
   --timeout <seconds>    Maximum wait time with --wait (default 60)
   --json                 No-op compatibility flag; output is always JSON
@@ -236,10 +271,10 @@ Output:
   stderr: one JSON poll progress line per attempt when --wait is set
 `;
 
-const REHEARSE_HELP = `run402 deploy rehearse — Run a plan on a contained branch (ADVANCED; rehearsal is automatic in up / deploy apply)
+const REHEARSE_HELP = `run402 deploy rehearse — Run a plan on a contained branch (ADVANCED; rehearsal is automatic in up / deploy)
 
 Usage:
-  run402 deploy rehearse [<plan_id>] [--manifest <path>] [--project <id>] [--teardown on_pass|keep|always] [--json]
+  run402 deploy rehearse [<plan_id>] [--manifest <path>] [--project <project_id>] [--teardown on_pass|keep|always] [--json]
 
 Options:
   <plan_id>           An already-persisted plan. Its bytes must be uploaded; when
@@ -254,18 +289,18 @@ Options:
                       the current directory the same way run402 up does.
   --teardown <mode>   on_pass (default: passed rehearsals delete their branch;
                       failed rehearsals keep it), keep, always.
-  --project <id>      Project for operator-approval metadata and project resolution.
+  --project <project_id>  Project for write-approval metadata and project resolution.
 
 Nothing is committed. The result carries the rehearsal report and the exact
-bound commit command (run402 deploy apply --require-plan <plan_id>).
+bound commit command (run402 deploy --require-plan <plan_id>).
 `;
 
-const RELEASE_HELP = `run402 deploy release — Inspect deploy release inventory and diffs
+const RELEASES_HELP = `run402 deploy releases — Inspect deploy release inventory and diffs
 
 Usage:
-  run402 deploy release get <release_id> [--project <id>] [--site-limit <n>]
-  run402 deploy release active [--project <id>] [--site-limit <n>]
-  run402 deploy release diff --from <empty|active|release_id> --to <active|release_id> [--project <id>] [--limit <n>]
+  run402 deploy releases get <release_id> [--project <project_id>] [--site-limit <n>]
+  run402 deploy releases active [--project <project_id>] [--site-limit <n>]
+  run402 deploy releases diff --from <empty|active|release_id> --to <active|release_id> [--project <project_id>] [--limit <n>]
 
 Subcommands:
   get       Fetch the inventory for a specific release id
@@ -277,94 +312,83 @@ Output:
   diff:       { "diff": {...} }     # includes route added/removed/changed diff buckets
 `;
 
-const RELEASE_GET_HELP = `run402 deploy release get — Fetch a release inventory by id
+const RELEASES_GET_HELP = `run402 deploy releases get — Fetch a release inventory by id
 
 Usage:
-  run402 deploy release get <release_id> [--project <id>] [--site-limit <n>]
+  run402 deploy releases get <release_id> [--project <project_id>] [--site-limit <n>]
 
 Options:
-  --project <id>          Project ID that owns the release (default: active project)
+  --project <project_id>  Project ID that owns the release (default: active project)
   --site-limit <n>        Maximum site path entries to include (gateway default: 5000)
 
 Output:
   stdout: { "release": {...} }  # preserves full routes inventory and warnings
 `;
 
-const RELEASE_ACTIVE_HELP = `run402 deploy release active — Fetch the active release inventory
+const RELEASES_ACTIVE_HELP = `run402 deploy releases active — Fetch the active release inventory
 
 Usage:
-  run402 deploy release active [--project <id>] [--site-limit <n>]
+  run402 deploy releases active [--project <project_id>] [--site-limit <n>]
 
 Options:
-  --project <id>          Project ID to inspect (default: active project)
+  --project <project_id>  Project ID to inspect (default: active project)
   --site-limit <n>        Maximum site path entries to include (gateway default: 5000)
 
 Output:
   stdout: { "release": {...} }  # preserves full routes inventory and warnings
 `;
 
-const RELEASE_DIFF_HELP = `run402 deploy release diff — Diff two release targets
+const RELEASES_DIFF_HELP = `run402 deploy releases diff — Diff two release targets
 
 Usage:
-  run402 deploy release diff --from <empty|active|release_id> --to <active|release_id> [--project <id>] [--limit <n>]
+  run402 deploy releases diff --from <empty|active|release_id> --to <active|release_id> [--project <project_id>] [--limit <n>]
 
 Options:
   --from <target>         Diff source: empty, active, or rel_...
   --to <target>           Diff target: active or rel_...
-  --project <id>          Project ID to inspect (default: active project)
+  --project <project_id>  Project ID to inspect (default: active project)
   --limit <n>             Maximum entries per site diff bucket (gateway default: 1000)
 
 Output:
   stdout: { "diff": {...} }  # preserves routes.added/removed/changed
 `;
 
-const DIAGNOSE_HELP = `run402 deploy diagnose — Diagnose a Run402 public URL
+const RESOLVE_HELP = `run402 deploy resolve — Explain what a Run402 public URL would serve
 
 Usage:
-  run402 deploy diagnose --project <id> <url> [--method GET]
-  run402 deploy diagnose <url> [--method GET]       # uses active project
+  run402 deploy resolve <url> [--project <project_id>] [--method GET]
+  run402 deploy resolve --url <url> [--project <project_id>] [--method GET]
+  run402 deploy resolve --host <host> [--path /x] [--project <project_id>] [--method GET]
 
-Diagnoses how a project-owned Run402 subdomain or custom domain resolves
+Resolves how a project-owned Run402 subdomain or custom domain would answer
 against the current live release. This is not an HTTP fetch, cache purge, or
 CAS URL lookup. Query strings and fragments in URL input are ignored for route
 resolution and reported in structured warnings.
 
 Options:
-  --project <id>          Project ID for local apikey lookup (default: active project)
-  --method <method>       HTTP method to diagnose (default: GET)
+  --project <project_id>  Project ID for local apikey lookup (default: active project)
+  --url <url>             Absolute HTTP(S) public URL; same as the positional <url>
+  --host <host>           Clean hostname without scheme/path/query/fragment
+  --path </path>          Public URL path for host/path mode
+  --method <method>       HTTP method to resolve (default: GET)
+
+Do not combine --url (or a positional URL) with --host or --path. Misses still
+exit 0; inspect would_serve and diagnostic_status in the result payload.
 
 Output:
   stdout: { "would_serve": true|false, "diagnostic_status": 200|404|..., "match": "...", "summary": "...", "request": {...}, "warnings": [...], "resolution": {...}, "next_steps": [...] }
 `;
 
-const RESOLVE_HELP = `run402 deploy resolve — Low-level deploy URL diagnostics
-
-Usage:
-  run402 deploy resolve --project <id> --url <url> [--method GET]
-  run402 deploy resolve --project <id> --host <host> [--path /x] [--method GET]
-  run402 deploy resolve --url <url> [--method GET]       # uses active project
-
-Options:
-  --project <id>          Project ID for local apikey lookup (default: active project)
-  --url <url>             Absolute HTTP(S) public URL to diagnose
-  --host <host>           Clean hostname without scheme/path/query/fragment
-  --path </path>          Public URL path for host/path mode
-  --method <method>       HTTP method to diagnose (default: GET)
-
-Do not combine --url with --host or --path. Successful diagnostic misses still
-exit 0; inspect would_serve and diagnostic_status in the result payload.
-`;
-
 export async function runDeployV2(sub, args) {
-  if (sub === "apply") return await applyCmd(args);
+  if (sub === "deploy") return await deployCmd(args);
   if (sub === "rehearse") return await rehearseCmd(args);
   if (sub === "promote") return await promoteCmd(args);
   if (sub === "resume") return await resumeCmd(args);
+  if (sub === "status") return await statusCmd(args);
   if (sub === "list") return await listCmd(args);
   if (sub === "events") return await eventsCmd(args);
   if (sub === "verify") return await verifyCmd(args);
-  if (sub === "release") return await releaseCmd(args);
-  if (sub === "diagnose") return await diagnoseCmd(args);
+  if (sub === "releases") return await releasesCmd(args);
   if (sub === "resolve") return await resolveCmd(args);
   fail({
     code: "BAD_USAGE",
@@ -373,11 +397,11 @@ export async function runDeployV2(sub, args) {
   });
 }
 
-const REHEARSE_MANIFEST_CANDIDATES = ["run402.json", "run402.deploy.json", "app.json", "run402.deploy.ts", "run402.deploy.mts", "run402.deploy.js", "run402.deploy.mjs"];
+const DEPLOY_MANIFEST_CANDIDATES = ["run402.json", "run402.deploy.json", "app.json", "run402.deploy.ts", "run402.deploy.mts", "run402.deploy.js", "run402.deploy.mjs"];
 
-/** The manifest `deploy rehearse` would plan from in `dir`, discovered the way `up` does, or null. */
-export function discoverRehearseManifest(dir = process.cwd()) {
-  for (const name of REHEARSE_MANIFEST_CANDIDATES) {
+/** The manifest `deploy` / `deploy rehearse` would plan from in `dir`, discovered the way `up` does, or null. */
+export function discoverDeployManifest(dir = process.cwd()) {
+  for (const name of DEPLOY_MANIFEST_CANDIDATES) {
     const candidate = resolve(dir, name);
     if (existsSync(candidate)) return candidate;
   }
@@ -438,13 +462,13 @@ async function rehearseCmd(rawArgs) {
     positionals.push(arg);
   }
   if (positionals.length > 1) {
-    fail({ code: "BAD_USAGE", message: "Usage: run402 deploy rehearse [<plan_id>] [--manifest <path>] [--project <id>] [--teardown on_pass|keep|always] [--json]" });
+    fail({ code: "BAD_USAGE", message: "Usage: run402 deploy rehearse [<plan_id>] [--manifest <path>] [--project <project_id>] [--teardown on_pass|keep|always] [--json]" });
   }
   const givenPlanId = positionals[0] ?? null;
   const explicitManifest = flagValue(args, "--manifest");
   const manifestPath = explicitManifest
     ? (isAbsolute(explicitManifest) ? explicitManifest : resolve(process.cwd(), explicitManifest))
-    : discoverRehearseManifest();
+    : discoverDeployManifest();
   if (explicitManifest && !existsSync(manifestPath)) {
     fail({ code: "BAD_USAGE", message: `Manifest not found: ${manifestPath}`, details: { flag: "--manifest", path: explicitManifest } });
   }
@@ -452,7 +476,7 @@ async function rehearseCmd(rawArgs) {
     fail({
       code: "BAD_USAGE",
       message: "Nothing to rehearse: pass a <plan_id>, or run from a directory with a manifest (run402.json, run402.deploy.json, app.json), or pass --manifest <path>.",
-      details: { searched: REHEARSE_MANIFEST_CANDIDATES },
+      details: { searched: DEPLOY_MANIFEST_CANDIDATES },
     });
   }
   // When --teardown is absent, omit it from the request body entirely — the
@@ -521,7 +545,7 @@ async function rehearseCmd(rawArgs) {
       ...(manifestPath ? { manifest_path: manifestPath } : {}),
       ...(replanned ? { replanned } : {}),
       rehearsal,
-      commit_command: `run402 deploy apply --require-plan ${planId}`,
+      commit_command: `run402 deploy --require-plan ${planId}`,
     }, null, 2));
     if (rehearsal.report.status !== "passed") process.exit(1);
   } catch (err) {
@@ -532,7 +556,7 @@ async function rehearseCmd(rawArgs) {
 const PROMOTE_HELP = `run402 deploy promote — Operator pointer-swap recovery (v1.58+)
 
 Usage:
-  run402 deploy promote <release-id> [--project <id>] [--allow-warning <code>] [--allow-warnings] [--quiet]
+  run402 deploy promote <release_id> [--project <project_id>] [--allow-warning <code>] [--allow-warnings] [--quiet]
 
 Re-points the project's live release at an existing release row without
 re-running the apply pipeline. Designed for "oops on a real project ID"
@@ -569,9 +593,9 @@ The result's edge.state reports convergence and edge.verify_url is the direct,
 operation-scoped HTTP verification endpoint.
 
 Options:
-  <release-id>            Required positional. The release to promote to.
+  <release_id>            Required positional. The release to promote to.
                           Format: rel_*
-  --project <id>          Project id. Falls back to active project, then
+  --project <project_id>  Project id. Falls back to active project, then
                           RUN402_PROJECT_ID env var.
   --allow-warning <code>  Acknowledge a specific blocking warning
                           (repeatable).
@@ -755,12 +779,12 @@ function makeStderrEventWriter(quiet) {
 
 function emitDeployUpdateNotice(subcommand, args, { quiet = false } = {}) {
   const scheduler = createUpdateCheckScheduler({
-    command: ["run402", "deploy", subcommand, ...args],
+    command: ["run402", "deploy", ...(subcommand ? [subcommand] : []), ...args],
   });
   emitUpdateNotice(scheduler.cachedNotice, { quiet });
 }
 
-function parseApplyArgs(args) {
+function parseDeployArgs(args) {
   const opts = {
     manifest: null,
     spec: null,
@@ -780,7 +804,7 @@ function parseApplyArgs(args) {
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === "--help" || arg === "-h") {
-      console.log(APPLY_HELP);
+      console.log(DEPLOY_HELP);
       process.exit(0);
     }
     if (arg === "--manifest" || arg === "--spec" || arg === "--dir" || arg === "--project" || arg === "--allow-warning" || arg === "--require-plan" || arg === "--plan-fingerprint" || arg === "--teardown") {
@@ -844,13 +868,13 @@ function parseApplyArgs(args) {
     if (typeof arg === "string" && arg.startsWith("-")) {
       fail({
         code: "BAD_USAGE",
-        message: `Unknown flag for deploy apply: ${arg}`,
+        message: `Unknown flag for deploy: ${arg}`,
         details: { flag: arg, allowed_flags: allowedFlags },
       });
     }
     fail({
       code: "BAD_USAGE",
-      message: `Unexpected argument for deploy apply: ${arg}`,
+      message: `Unexpected argument for deploy: ${arg}`,
       details: { argument: arg },
     });
   }
@@ -878,7 +902,7 @@ function setApplyMode(opts, mode, flag) {
   if (opts.mode !== null) {
     fail({
       code: "BAD_USAGE",
-      message: "Choose only one execution mode for deploy apply.",
+      message: "Choose only one execution mode for deploy.",
       details: { existing_mode: opts.mode, flag },
     });
   }
@@ -1060,11 +1084,34 @@ export function rememberLastDeployment(projectId, deploymentId) {
   try { updateProject(projectId, { last_deployment_id: deploymentId }); } catch { /* best-effort cache */ }
 }
 
-async function applyCmd(args) {
-  const opts = parseApplyArgs(args);
-  const { source, error: sourceError } = resolveApplySource(opts, hasStdinSource());
+async function deployCmd(args) {
+  const opts = parseDeployArgs(args);
+  const stdinPresent = hasStdinSource();
+  if (opts.manifest === null && opts.spec === null && opts.dir === null && !stdinPresent) {
+    // Bare `run402 deploy`: the manifest is the one in the current directory,
+    // discovered the way `up` discovers it. None there is a typed refusal,
+    // never a help page — `deploy` is a verb.
+    const discovered = discoverDeployManifest();
+    if (!discovered) {
+      fail({
+        code: "MANIFEST_NOT_FOUND",
+        message: `No deploy manifest found in ${process.cwd()}. Add run402.json, run402.deploy.json or app.json here, or pass --manifest <path>.`,
+        details: { dir: process.cwd(), candidates: DEPLOY_MANIFEST_CANDIDATES },
+        next_actions: [
+          {
+            type: "create_manifest",
+            path: "run402.json",
+            content: JSON.stringify({ site: { replace: { "index.html": { path: "index.html" } } } }, null, 2),
+            why: "Write a deploy manifest, then re-run `run402 deploy`. This minimal site manifest deploys as-is; add database/functions/routes slices later.",
+          },
+        ],
+      });
+    }
+    opts.manifest = discovered;
+  }
+  const { source, error: sourceError } = resolveApplySource(opts, stdinPresent);
   if (sourceError) fail(sourceError);
-  emitDeployUpdateNotice("apply", args, { quiet: opts.quiet });
+  emitDeployUpdateNotice(null, args, { quiet: opts.quiet });
 
   let raw;
   let manifestPath = null;
@@ -1121,11 +1168,11 @@ async function applyCmd(args) {
   }
 
   // Reject empty specs client-side. Without this guard,
-  // `run402 deploy apply --spec '{}'` (and `--manifest <empty>`) would silently
+  // `run402 deploy --spec '{}'` (and `--manifest <empty>`) would silently
   // send an empty ReleaseSpec to /apply/v1/plans with no signal that nothing
   // was deployed.
   //
-  // `deploy apply` is v2-only — only meaningful keys are the v2 ReleaseSpec
+  // `deploy` is v2-only — only meaningful keys are the v2 ReleaseSpec
   // shape (database, site, functions, secrets, subdomains, domains).
   // For object-typed sections the "container is non-empty" check isn't enough
   // — `site:{replace:{}}` has one key but ships nothing. We recurse one level
@@ -1233,7 +1280,7 @@ async function applyCmd(args) {
       ok: true,
       mode: "check",
       project_id: target.project_id,
-      ...describeLocalPreflight({ entryPoint: "deploy apply", appRoot: manifestPath ? dirname(manifestPath) : resolve(opts.dir || process.cwd()), manifestPath, authoring: normalizedManifest.manifest, spec: releaseSpec, target, apiBase: API }),
+      ...describeLocalPreflight({ entryPoint: "deploy", appRoot: manifestPath ? dirname(manifestPath) : resolve(opts.dir || process.cwd()), manifestPath, authoring: normalizedManifest.manifest, spec: releaseSpec, target, apiBase: API }),
     }, null, 2));
     return;
   }
@@ -1302,7 +1349,7 @@ async function applyCmd(args) {
         target: isCoreApiTarget() ? "core" : "cloud",
         ...(opts.allowDirty ? { allowDirty: true } : {}),
         // The `gitvault_commit` line is printed ALWAYS, and to stderr, so
-        // `run402 deploy apply | jq` stays clean (the pipe contract).
+        // `run402 deploy | jq` stays clean (the pipe contract).
         onCommitLine: (line) => { if (!opts.quiet) process.stderr.write(`${line}\n`); },
       }),
     );
@@ -1435,14 +1482,14 @@ const CI_DEPLOY_ERROR_GUIDANCE = {
     next_actions: [
       editRequestAction("run402 ci link github --route-scope <pattern>", "Add a CI route scope for every exact or prefix path the workflow may deploy."),
       nextAction("edit_request", { why: "Use exact scopes such as --route-scope /admin or prefix scopes such as --route-scope /api/*." }),
-      editRequestAction("run402 deploy apply", "Run route changes locally when they are outside the CI delegation."),
+      editRequestAction("run402 deploy", "Run route changes locally when they are outside the CI delegation."),
     ],
   },
   forbidden_plan: {
     hint: "The gateway rejected this deploy plan for CI. Keep CI deploys to the allowed resources and re-link if policy changed.",
     next_actions: [
       nextAction("edit_request", { why: "Inspect the gateway error details for the rejected resource." }),
-      editRequestAction("run402 deploy apply", "Run operations outside the CI allowlist locally."),
+      editRequestAction("run402 deploy", "Run operations outside the CI allowlist locally."),
     ],
   },
   payment_required: {
@@ -1456,7 +1503,7 @@ const CI_DEPLOY_ERROR_GUIDANCE = {
 
 /**
  * The gateway's envelope for gitvault deploy errors — `upgrade_client` first,
- * then `grandfather_policy` — is relayed untouched: `applyCmd` deploys
+ * then `grandfather_policy` — is relayed untouched: `deployCmd` deploys
  * through `applyWithGitvault`, which declares `{capture_id,
  * snapshot_oid_hmac}` at plan time and presents an activation token at
  * commit, satisfying `gitvault_policy: required`, so no client-side rewrite
@@ -1493,8 +1540,8 @@ function enhanceDeployWarningError(err) {
         ? [code]
         : [];
   const allowWarningCommand = unacknowledgedCodes.length > 0
-    ? `run402 deploy apply ${unacknowledgedCodes.map((warningCode) => `--allow-warning ${warningCode}`).join(" ")}`
-    : "run402 deploy apply --allow-warning <code>";
+    ? `run402 deploy ${unacknowledgedCodes.map((warningCode) => `--allow-warning ${warningCode}`).join(" ")}`
+    : "run402 deploy --allow-warning <code>";
   const allowWarningAction = editRequestAction(
     allowWarningCommand,
     unacknowledgedCodes.length > 0
@@ -1505,9 +1552,9 @@ function enhanceDeployWarningError(err) {
     ...(affected.length > 0
       ? [editRequestAction("run402 secrets set <project> <KEY> --stdin", `Set or inspect affected secrets: ${Array.from(new Set(affected)).join(", ")}`)]
       : []),
-    retryAction("run402 deploy apply", "Retry after resolving warnings."),
+    retryAction("run402 deploy", "Retry after resolving warnings."),
     allowWarningAction,
-    editRequestAction("run402 deploy apply --allow-warnings", "Use only when every warning was explicitly reviewed."),
+    editRequestAction("run402 deploy --allow-warnings", "Use only when every warning was explicitly reviewed."),
   ];
   enhanced.body = {
     ...existingBody,
@@ -1516,7 +1563,7 @@ function enhanceDeployWarningError(err) {
     hint: existingBody.hint ||
       routeGuidance?.hint ||
       (code === "MISSING_REQUIRED_SECRET"
-        ? "Set the missing secret values with `run402 secrets set <project> <KEY> --stdin` or `--file <path>`, then retry deploy apply."
+        ? "Set the missing secret values with `run402 secrets set <project> <KEY> --stdin` or `--file <path>`, then retry the deploy."
         : "Review the plan warnings, then retry with --allow-warning <code> for reviewed warnings if you intentionally accept them."),
     next_actions: Array.isArray(existingBody.next_actions) && existingBody.next_actions.length > 0
       ? existingBody.next_actions
@@ -1536,22 +1583,22 @@ const ROUTE_WARNING_GUIDANCE = {
       nextAction("edit_request", { why: "Review application auth and authorization in the routed function." }),
       nextAction("edit_request", { why: "Add CSRF protection for cookie-authenticated POST/PUT/PATCH/DELETE routes." }),
       nextAction("edit_request", { why: "Implement CORS and OPTIONS explicitly when cross-origin callers are intended." }),
-      retryAction("run402 deploy apply --allow-warning <code>", "Acknowledge only the warning that has requires_confirmation: true, after review."),
+      retryAction("run402 deploy --allow-warning <code>", "Acknowledge only the warning that has requires_confirmation: true, after review."),
     ],
   },
   ROUTE_TARGET_CARRIED_FORWARD: {
     hint: "A carried-forward route still points at a base-release function target.",
     next_actions: [
-      editRequestAction("run402 deploy release active", "Inspect the active release."),
-      editRequestAction("run402 deploy apply --manifest <path>", "Deploy routes.replace if the target should change in this release."),
+      editRequestAction("run402 deploy releases active", "Inspect the active release."),
+      editRequestAction("run402 deploy --manifest <path>", "Deploy routes.replace if the target should change in this release."),
     ],
   },
   ROUTE_SHADOWS_STATIC_PATH: {
     hint: "A dynamic route shadows a static site path.",
     next_actions: [
       nextAction("edit_request", { why: "Inspect the warning details for affected static paths." }),
-      editRequestAction("run402 deploy release active", "Inspect live routes."),
-      retryAction("run402 deploy apply --allow-warnings", "Retry only when dynamic shadowing is intentional."),
+      editRequestAction("run402 deploy releases active", "Inspect live routes."),
+      retryAction("run402 deploy --allow-warnings", "Retry only when dynamic shadowing is intentional."),
     ],
   },
   WILDCARD_ROUTE_SHADOWS_STATIC_PATHS: {
@@ -1559,7 +1606,7 @@ const ROUTE_WARNING_GUIDANCE = {
     next_actions: [
       nextAction("edit_request", { why: "Review affected route/static path details." }),
       nextAction("edit_request", { why: "Split exact routes or move static paths if the shadowing is accidental." }),
-      retryAction("run402 deploy apply --allow-warnings", "Retry only when the wildcard shadowing is intentional."),
+      retryAction("run402 deploy --allow-warnings", "Retry only when the wildcard shadowing is intentional."),
     ],
   },
   METHOD_SPECIFIC_ROUTE_ALLOWS_GET_STATIC_FALLBACK: {
@@ -1575,7 +1622,7 @@ const ROUTE_WARNING_GUIDANCE = {
       nextAction("edit_request", { why: "Add the mutation methods the routed function supports, such as POST." }),
       nextAction("edit_request", { why: "Omit methods to allow every supported method when the route is an API surface." }),
       nextAction("edit_request", { why: "Set acknowledge_readonly: true on an intentionally read-only GET/HEAD wildcard function route." }),
-      retryAction("run402 deploy apply --allow-warning WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS", "Use only as a reviewed CLI escape hatch."),
+      retryAction("run402 deploy --allow-warning WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS", "Use only as a reviewed CLI escape hatch."),
     ],
   },
   ROUTE_TABLE_NEAR_LIMIT: {
@@ -1674,7 +1721,7 @@ function rejectLegacySecretManifest(spec, details) {
   if (Array.isArray(secrets) && secrets.length > 0) {
     fail({
       code: "UNSAFE_SECRET_MANIFEST",
-      message: "Deploy manifests must not contain secret values. Legacy secrets arrays are no longer supported by deploy apply.",
+      message: "Deploy manifests must not contain secret values. Secrets arrays are not a deploy manifest shape.",
       hint: "Run `run402 secrets set <project> <KEY> --file <path>` first, then use `\"secrets\": { \"require\": [\"KEY\"] }` in the deploy manifest.",
       details: { ...details, field: "secrets", legacy_shape: "array" },
     });
@@ -1734,6 +1781,31 @@ async function resumeCmd(args) {
   }
 }
 
+async function statusCmd(args) {
+  const parsed = parseDeploySubcommandArgs(args, {
+    command: "deploy status",
+    help: STATUS_HELP,
+    valueFlags: ["--project"],
+  });
+  const [operationId] = expectPositionals(parsed.positionals, {
+    command: "run402 deploy status <operation_id>",
+    min: 1,
+    max: 1,
+    missing: "Missing <operation_id>.",
+  });
+  const project = resolveProjectId(parsed.flags["--project"] ?? null);
+  // A delegate holds `deploy` and the gateway accepts it on this route; refusing
+  // locally would tell a wallet-less holder to run `run402 init` (see 4.11.2).
+  if (!delegateTokenFromEnv()) allowanceAuthHeaders("/apply/v1/operations");
+
+  try {
+    const result = await getSdk()._applyEngine.status(operationId, { project });
+    console.log(JSON.stringify(result, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
 async function listCmd(args) {
   const parsed = parseDeploySubcommandArgs(args, {
     command: "deploy list",
@@ -1741,7 +1813,7 @@ async function listCmd(args) {
     valueFlags: ["--project", "--limit"],
   });
   expectPositionals(parsed.positionals, {
-    command: "run402 deploy list [--project <id>] [--limit <n>]",
+    command: "run402 deploy list [--project <project_id>] [--limit <n>]",
     max: 0,
   });
   const opts = {
@@ -1764,10 +1836,10 @@ async function listCmd(args) {
     fail({
       code: "DELEGATE_SCOPE_INSUFFICIENT",
       message: "Listing deploy operations is not available to a delegate.",
-      hint: "Use `run402 deploy events <operation_id>` or `deploy verify <operation_id>` for a specific operation, which a delegate CAN read. A full listing needs the project apikey or the owner wallet.",
+      hint: "Use `run402 deploy status <operation_id>`, `deploy events <operation_id>` or `deploy verify <operation_id>` for a specific operation, which a delegate CAN read. A full listing needs the project apikey or the owner wallet.",
       details: { command: "deploy list", credential: "delegate", route: "GET /apply/v1/operations" },
       next_actions: [
-        { type: "run_command", command: "run402 deploy events <operation_id>", why: "Per-operation reads are within a delegate's deploy scope." },
+        { type: "run_command", command: "run402 deploy status <operation_id>", why: "Per-operation reads are within a delegate's deploy scope." },
       ],
     });
   }
@@ -1818,7 +1890,7 @@ async function verifyCmd(args) {
     booleanFlags: ["--wait", "--json"],
   });
   const positionals = expectPositionals(parsed.positionals, {
-    command: "run402 deploy verify <operation_id> [--project <id>] [--wait]",
+    command: "run402 deploy verify <operation_id> [--project <project_id>] [--wait]",
     max: 1,
   });
   const positionalOperationId = positionals[0] ?? null;
@@ -1835,7 +1907,7 @@ async function verifyCmd(args) {
     fail({
       code: "BAD_USAGE",
       message: "Missing <operation_id>.",
-      hint: "run402 deploy verify <operation_id> [--project <id>] [--wait]",
+      hint: "run402 deploy verify <operation_id> [--project <project_id>] [--wait]",
     });
   }
   const project = resolveProjectId(parsed.flags["--project"] ?? null);
@@ -1906,30 +1978,30 @@ function summarizeEdgeCoherencePaths(paths) {
   }));
 }
 
-async function releaseCmd(args) {
+async function releasesCmd(args) {
   const action = args[0];
   if (!action || action === "--help" || action === "-h") {
-    console.log(RELEASE_HELP);
+    console.log(RELEASES_HELP);
     process.exit(0);
   }
-  if (action === "get") return await releaseGetCmd(args.slice(1));
-  if (action === "active") return await releaseActiveCmd(args.slice(1));
-  if (action === "diff") return await releaseDiffCmd(args.slice(1));
+  if (action === "get") return await releasesGetCmd(args.slice(1));
+  if (action === "active") return await releasesActiveCmd(args.slice(1));
+  if (action === "diff") return await releasesDiffCmd(args.slice(1));
   fail({
     code: "BAD_USAGE",
-    message: `Unknown deploy release subcommand: ${action}`,
+    message: `Unknown deploy releases subcommand: ${action}`,
     details: { subcommand: action },
   });
 }
 
-async function releaseGetCmd(args) {
+async function releasesGetCmd(args) {
   const parsed = parseDeploySubcommandArgs(args, {
-    command: "deploy release get",
-    help: RELEASE_GET_HELP,
+    command: "deploy releases get",
+    help: RELEASES_GET_HELP,
     valueFlags: ["--project", "--site-limit"],
   });
   const [releaseId] = expectPositionals(parsed.positionals, {
-    command: "run402 deploy release get <release_id>",
+    command: "run402 deploy releases get <release_id>",
     min: 1,
     max: 1,
     missing: "Missing <release_id>.",
@@ -1954,14 +2026,14 @@ async function releaseGetCmd(args) {
   }
 }
 
-async function releaseActiveCmd(args) {
+async function releasesActiveCmd(args) {
   const parsed = parseDeploySubcommandArgs(args, {
-    command: "deploy release active",
-    help: RELEASE_ACTIVE_HELP,
+    command: "deploy releases active",
+    help: RELEASES_ACTIVE_HELP,
     valueFlags: ["--project", "--site-limit"],
   });
   expectPositionals(parsed.positionals, {
-    command: "run402 deploy release active [--project <id>] [--site-limit <n>]",
+    command: "run402 deploy releases active [--project <project_id>] [--site-limit <n>]",
     max: 0,
   });
   const opts = {
@@ -1983,14 +2055,14 @@ async function releaseActiveCmd(args) {
   }
 }
 
-async function releaseDiffCmd(args) {
+async function releasesDiffCmd(args) {
   const parsed = parseDeploySubcommandArgs(args, {
-    command: "deploy release diff",
-    help: RELEASE_DIFF_HELP,
+    command: "deploy releases diff",
+    help: RELEASES_DIFF_HELP,
     valueFlags: ["--project", "--from", "--to", "--limit"],
   });
   expectPositionals(parsed.positionals, {
-    command: "run402 deploy release diff --from <target> --to <target>",
+    command: "run402 deploy releases diff --from <target> --to <target>",
     max: 0,
   });
   const opts = {
@@ -2003,7 +2075,7 @@ async function releaseDiffCmd(args) {
     fail({
       code: "BAD_USAGE",
       message: "Missing --from or --to release target.",
-      hint: "run402 deploy release diff --from empty --to active",
+      hint: "run402 deploy releases diff --from empty --to active",
     });
   }
   if (opts.to === "empty") {
@@ -2026,41 +2098,6 @@ async function releaseDiffCmd(args) {
   }
 }
 
-async function diagnoseCmd(args) {
-  const opts = { project: null, url: null, method: "GET" };
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    if (arg === "--help" || arg === "-h") { console.log(DIAGNOSE_HELP); process.exit(0); }
-    if (arg === "--json") { continue; }
-    if (arg === "--project" && args[i + 1]) { opts.project = args[++i]; continue; }
-    if (arg === "--method" && args[i + 1]) { opts.method = args[++i]; continue; }
-    if (arg?.startsWith("--project=")) { opts.project = arg.slice("--project=".length); continue; }
-    if (arg?.startsWith("--method=")) { opts.method = arg.slice("--method=".length); continue; }
-    if (arg?.startsWith("-")) {
-      fail({ code: "BAD_USAGE", message: `Unknown flag for deploy diagnose: ${arg}`, details: { flag: arg } });
-    }
-    if (!opts.url) {
-      opts.url = arg;
-      continue;
-    }
-    fail({
-      code: "BAD_USAGE",
-      message: "deploy diagnose accepts exactly one URL argument.",
-      hint: "run402 deploy diagnose --project prj_... https://example.com/path --method GET",
-    });
-  }
-  if (!opts.url) {
-    fail({
-      code: "BAD_USAGE",
-      message: "Missing <url>.",
-      hint: "run402 deploy diagnose --project prj_... https://example.com/path --method GET",
-    });
-  }
-
-  const project = resolveProjectId(opts.project);
-  await printResolveEnvelope({ project, url: opts.url, method: opts.method });
-}
-
 async function resolveCmd(args) {
   const opts = { project: null, url: null, host: null, path: null, method: "GET" };
   for (let i = 0; i < args.length; i++) {
@@ -2077,21 +2114,32 @@ async function resolveCmd(args) {
     if (arg?.startsWith("--host=")) { opts.host = arg.slice("--host=".length); continue; }
     if (arg?.startsWith("--path=")) { opts.path = arg.slice("--path=".length); continue; }
     if (arg?.startsWith("--method=")) { opts.method = arg.slice("--method=".length); continue; }
-    fail({ code: "BAD_USAGE", message: `Unknown argument for deploy resolve: ${arg}`, details: { argument: arg } });
+    if (arg?.startsWith("-")) {
+      fail({ code: "BAD_USAGE", message: `Unknown flag for deploy resolve: ${arg}`, details: { flag: arg } });
+    }
+    if (opts.url) {
+      fail({
+        code: "BAD_USAGE",
+        message: "deploy resolve accepts exactly one URL.",
+        hint: "run402 deploy resolve https://example.com/path --project prj_... --method GET",
+        details: { argument: arg, already_have: opts.url },
+      });
+    }
+    opts.url = arg;
   }
 
   if (opts.url && (opts.host || opts.path)) {
     fail({
       code: "BAD_USAGE",
-      message: "Do not combine --url with --host or --path.",
+      message: "Do not combine --url (or a positional URL) with --host or --path.",
       details: { url: Boolean(opts.url), host: Boolean(opts.host), path: Boolean(opts.path) },
     });
   }
   if (!opts.url && !opts.host) {
     fail({
       code: "BAD_USAGE",
-      message: "Missing resolve input. Pass --url <url> or --host <host> [--path /x].",
-      hint: "run402 deploy resolve --project prj_... --url https://example.com/",
+      message: "Missing <url>. Pass a URL, --url <url>, or --host <host> [--path /x].",
+      hint: "run402 deploy resolve https://example.com/ --project prj_...",
     });
   }
 

@@ -13,7 +13,7 @@
  * canonical repo-root paths (preserving the git-tag raw.githubusercontent.com pins)
  * and become reachable at /llms-*.txt + /SKILL.md.
  *
- * The resulting manifest is fed to the SAME `run402 deploy apply --manifest ... --project ...`
+ * The resulting manifest is fed to the SAME `run402 deploy --manifest ... --project ...`
  * OIDC invocation the docs project already uses — no SSR runtime, no new auth path.
  *
  * Usage:

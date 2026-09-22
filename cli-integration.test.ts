@@ -410,10 +410,10 @@ describe("CLI integration (live API, no mocks)", { timeout: 180_000 }, () => {
     assert.ok(deploymentId, `Expected deployment_id in: ${out}`);
   });
 
-  it("deploy release active", async () => {
+  it("deploy releases active", async () => {
     const { runDeployV2 } = await import("./cli/lib/deploy-v2.mjs");
     captureStart();
-    await runDeployV2("release", ["active", "--project", projectId, "--site-limit", "10"]);
+    await runDeployV2("releases", ["active", "--project", projectId, "--site-limit", "10"]);
     captureStop();
     const data = capturedJson();
     assert.equal(data.status, "ok");
@@ -609,7 +609,7 @@ describe("CLI integration (live API, no mocks)", { timeout: 180_000 }, () => {
       }),
     );
     captureStart();
-    await runDeployV2("apply", ["--manifest", manifestPath, "--project", mppProjectId, "--quiet"]);
+    await runDeployV2("deploy", ["--manifest", manifestPath, "--project", mppProjectId, "--quiet"]);
     captureStop();
     const out = captured();
     const data = capturedJson();

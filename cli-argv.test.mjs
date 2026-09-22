@@ -2440,8 +2440,8 @@ describe("email --attach parsing", () => {
   });
 });
 
-describe("deploy apply manifest source precedence", () => {
-  // Regression: `run402 ci link github` workflows run `deploy apply --manifest`
+describe("deploy manifest source precedence", () => {
+  // Regression: `run402 ci link github` workflows run `deploy --manifest`
   // in GitHub Actions, where the runner's stdin is a FIFO/file. An explicit
   // source flag must win over that incidental stdin (else BAD_USAGE: "Only one
   // deploy manifest source").

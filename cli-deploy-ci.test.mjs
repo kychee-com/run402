@@ -1,5 +1,5 @@
 /**
- * Focused tests for `run402 deploy apply` under GitHub Actions OIDC.
+ * Focused tests for `run402 deploy` under GitHub Actions OIDC.
  *
  * These run through the real CLI module so we prove the command does not need
  * a local allowance file when CI credentials are available.
@@ -160,7 +160,7 @@ beforeEach(() => {
   clearEnv();
 });
 
-describe("deploy apply GitHub Actions OIDC", () => {
+describe("deploy GitHub Actions OIDC", () => {
   it("uses OIDC credentials, sends no local keys, and does not require allowance", async () => {
     process.env.GITHUB_ACTIONS = "true";
     process.env.ACTIONS_ID_TOKEN_REQUEST_URL = OIDC_URL;
@@ -168,7 +168,7 @@ describe("deploy apply GitHub Actions OIDC", () => {
     process.env.RUN402_PROJECT_ID = "prj_ci_env";
 
     captureStart();
-    await runDeployV2("apply", [
+    await runDeployV2("deploy", [
       "--spec",
       JSON.stringify({ site: { replace: { "index.html": { data: "hello" } } } }),
       "--quiet",
@@ -193,7 +193,7 @@ describe("deploy apply GitHub Actions OIDC", () => {
     assert.equal(plan.body.spec.project_id, "prj_ci_env");
 
     const parsedStdout = JSON.parse(stdout.join("\n"));
-    assert.equal(parsedStdout.status, undefined, "deploy apply must not emit a top-level status field");
+    assert.equal(parsedStdout.status, undefined, "deploy must not emit a top-level status field");
     assert.equal(parsedStdout.release_id, "rel_ci_test");
   });
 
@@ -201,7 +201,7 @@ describe("deploy apply GitHub Actions OIDC", () => {
     captureStart();
     let threw = null;
     try {
-      await runDeployV2("apply", [
+      await runDeployV2("deploy", [
         "--spec",
         JSON.stringify({
           project_id: "prj_local",
@@ -242,7 +242,7 @@ describe("deploy apply GitHub Actions OIDC", () => {
     captureStart();
     let threw = null;
     try {
-      await runDeployV2("apply", [
+      await runDeployV2("deploy", [
         "--spec",
         JSON.stringify({
           project_id: "prj_ci_manifest",
@@ -287,7 +287,7 @@ describe("deploy apply GitHub Actions OIDC", () => {
     captureStart();
     let threw = null;
     try {
-      await runDeployV2("apply", [
+      await runDeployV2("deploy", [
         "--spec",
         JSON.stringify({
           project_id: "prj_ci_manifest",
@@ -324,7 +324,7 @@ describe("deploy apply GitHub Actions OIDC", () => {
     for (const routes of [null, { replace: [] }]) {
       calls = [];
       captureStart();
-      await runDeployV2("apply", [
+      await runDeployV2("deploy", [
         "--spec",
         JSON.stringify({
           site: { replace: { "index.html": { data: "hello" } } },
@@ -338,7 +338,7 @@ describe("deploy apply GitHub Actions OIDC", () => {
       assert.ok(plan, "should ask the gateway to authorize route scope");
       assert.deepEqual(plan.body.spec.routes, routes);
       const parsedStdout = JSON.parse(stdout.join("\n"));
-      assert.equal(parsedStdout.status, undefined, "deploy apply must not emit a top-level status field");
+      assert.equal(parsedStdout.status, undefined, "deploy must not emit a top-level status field");
       assert.equal(parsedStdout.release_id, "rel_ci_test");
     }
   });
@@ -365,7 +365,7 @@ describe("deploy apply GitHub Actions OIDC", () => {
     captureStart();
     let threw = null;
     try {
-      await runDeployV2("apply", [
+      await runDeployV2("deploy", [
         "--spec",
         JSON.stringify({
           site: { replace: { "index.html": { data: "hello" } } },

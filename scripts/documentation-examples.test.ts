@@ -4,14 +4,14 @@ import {readFileSync,mkdtempSync,writeFileSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {z} from 'zod';
-import {appUpSchema} from '../src/tools/app-up.js';
+import {upSchema} from '../src/tools/up.js';
 import {loadDeployManifest,findMissingLocalFileReferences} from '../sdk/src/node/deploy-manifest.js';
 import {checkCli} from './check-doc-examples.mjs';
-it('MCP quickstart arguments match the exported app_up schema',()=>{
+it('MCP quickstart arguments match the exported up schema',()=>{
  const doc=readFileSync(new URL('../docs-site/src/content/docs/mcp/reference.md',import.meta.url),'utf8');
- const body=doc.match(/<!-- example: mcp-app-up -->\s*```json\n([\s\S]*?)```/)?.[1];assert.ok(body);
- const parsed=z.object(appUpSchema).strict().parse(JSON.parse(body));assert.equal(parsed.yes,true);assert.equal(parsed.manifest,'run402.json');
- assert.equal(z.object(appUpSchema).strict().safeParse({approval:true}).success,false);
+ const body=doc.match(/<!-- example: mcp-up -->\s*```json\n([\s\S]*?)```/)?.[1];assert.ok(body);
+ const parsed=z.object(upSchema).strict().parse(JSON.parse(body));assert.equal(parsed.yes,true);assert.equal(parsed.manifest,'run402.json');
+ assert.equal(z.object(upSchema).strict().safeParse({approval:true}).success,false);
 });
 it('invented command paths and flags fail without executing a mutation',()=>{
  assert.deepEqual(checkCli('run402 up --check'),[]);

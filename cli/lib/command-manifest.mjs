@@ -186,18 +186,21 @@ export const COMMAND_MANIFEST = [
   { path: ["core", "projects", "import"], positionals: [p("archive_path")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["__FIXTURE_FILE__", "--name", "gate-import"] },
 
   // ── deploy (unified deploy v2) ───────────────────────────────────────────
-  { path: ["deploy", "apply"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["--spec", "{}", "--check"], runStyle: "deployV2" },
+  // Bare `run402 deploy` IS the deploy (a verb); the family's subcommands
+  // follow. Dispatched flat through deploy.mjs so the gate exercises the
+  // same argv decision a person's shell does.
+  { path: ["deploy"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["--spec", "{}", "--check"], runStyle: "flat" },
   { path: ["deploy", "rehearse"], positionals: [p("plan_id", { required: false })], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["plan_gate1"], runStyle: "deployV2" },
   { path: ["deploy", "promote"], positionals: [p("release_id")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["rel_gate1"], runStyle: "deployV2" },
   { path: ["deploy", "resume"], positionals: [p("operation_id")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["op_gate1"], runStyle: "deployV2" },
+  { path: ["deploy", "status"], positionals: [p("operation_id")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["op_gate1"], runStyle: "deployV2" },
   { path: ["deploy", "list"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "deployV2" },
   { path: ["deploy", "events"], positionals: [p("operation_id")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["op_gate1"], runStyle: "deployV2" },
   { path: ["deploy", "verify"], positionals: [p("operation_id", { required: false })], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["op_gate1"], runStyle: "deployV2" },
-  { path: ["deploy", "release", "get"], positionals: [p("release_id")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["rel_gate1"], runStyle: "deployV2" },
-  { path: ["deploy", "release", "active"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "deployV2" },
-  { path: ["deploy", "release", "diff"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["--from", "empty", "--to", "active"], runStyle: "deployV2" },
-  { path: ["deploy", "diagnose"], positionals: [p("url")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["https://example.com/"], runStyle: "deployV2" },
-  { path: ["deploy", "resolve"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["--url", "https://example.com/"], runStyle: "deployV2" },
+  { path: ["deploy", "releases", "get"], positionals: [p("release_id")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["rel_gate1"], runStyle: "deployV2" },
+  { path: ["deploy", "releases", "active"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "deployV2" },
+  { path: ["deploy", "releases", "diff"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["--from", "empty", "--to", "active"], runStyle: "deployV2" },
+  { path: ["deploy", "resolve"], positionals: [p("url", { required: false })], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["https://example.com/"], runStyle: "deployV2" },
 
   // ── ci ───────────────────────────────────────────────────────────────────
   { path: ["ci", "link"], positionals: [p("provider")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["github"] },
@@ -497,7 +500,6 @@ export const COMMAND_MANIFEST = [
 // Families deliberately absent from the manifest, consumed by the gate's
 // completeness check against cli.mjs's dispatch switch.
 export const SKIPPED_FAMILIES = {
-  "apply": "pure alias for `deploy apply` (covered by the deploy family)",
   "dev": "interactive wrapper that spawns `astro dev`",
   // RESERVED, not dispatched: every `run402 message …` fails with
   // COMMAND_REMOVED pointing at `feedback send` / `messages send` /

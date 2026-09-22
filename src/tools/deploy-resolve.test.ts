@@ -26,7 +26,7 @@ mock.module("../sdk.js", {
   },
 });
 
-const { handleDeployDiagnoseUrl } = await import("./deploy-diagnose-url.js");
+const { handleDeployResolve } = await import("./deploy-resolve.js");
 
 beforeEach(() => {
   lastResolveInput = null;
@@ -39,7 +39,7 @@ beforeEach(() => {
   });
 });
 
-describe("deploy_diagnose_url", () => {
+describe("deploy_resolve", () => {
   it("calls SDK apply.resolve with URL input and renders structured output", async () => {
     nextResolveImpl = async () => ({
       hostname: "example.com",
@@ -49,7 +49,7 @@ describe("deploy_diagnose_url", () => {
       fallback_state: "not_used",
     });
 
-    const result = await handleDeployDiagnoseUrl({
+    const result = await handleDeployResolve({
       project_id: "prj_test",
       url: "https://example.com/?utm=x#hero",
       method: "GET",
@@ -95,7 +95,7 @@ describe("deploy_diagnose_url", () => {
       },
     });
 
-    const result = await handleDeployDiagnoseUrl({
+    const result = await handleDeployResolve({
       project_id: "prj_test",
       host: "example.com",
       path: "/events",
@@ -131,7 +131,7 @@ describe("deploy_diagnose_url", () => {
       },
     });
 
-    const result = await handleDeployDiagnoseUrl({
+    const result = await handleDeployResolve({
       project_id: "prj_test",
       host: "example.com",
       path: "/assets/app.js",
@@ -159,7 +159,7 @@ describe("deploy_diagnose_url", () => {
       target_file: "events.html",
     });
 
-    const result = await handleDeployDiagnoseUrl({
+    const result = await handleDeployResolve({
       project_id: "prj_test",
       url: "https://example.com/events",
       method: "POST",
@@ -191,7 +191,7 @@ describe("deploy_diagnose_url", () => {
       },
     });
 
-    const result = await handleDeployDiagnoseUrl({
+    const result = await handleDeployResolve({
       project_id: "prj_test",
       url: "https://fresh.run402.com/",
       method: "GET",
@@ -206,7 +206,7 @@ describe("deploy_diagnose_url", () => {
   });
 
   it("rejects URL and host/path conflicts before SDK calls", async () => {
-    const result = await handleDeployDiagnoseUrl({
+    const result = await handleDeployResolve({
       project_id: "prj_test",
       url: "https://example.com/",
       host: "example.com",
@@ -226,7 +226,7 @@ describe("deploy_diagnose_url", () => {
       }, "diagnosing deploy URL");
     };
 
-    const result = await handleDeployDiagnoseUrl({
+    const result = await handleDeployResolve({
       project_id: "prj_test",
       host: "bad_host",
     });
