@@ -24,7 +24,7 @@ This is the backend Kychee's open products run on. We needed a layer an agent ca
 
 One call to [run402](https://run402.com) gives an agent a full Postgres database, REST API, user auth, content-addressed file storage, static site hosting, serverless functions, and image generation, paid with x402 (USDC on Base) or MPP (pathUSD on Tempo, or sats over Bitcoin Lightning) — or card-funded allowance. The prototype tier is free on testnet.
 
-**Run402 is agent-first because agents are first-class participants, not because people disappear.** A person or agent acts through its own Run402 principal and authenticator, and its actions remain attributable. Identity answers who acted; memberships, roles, grants, grant keys (the CLI still says `delegates`; renamed next), freshness, and spend policy determine what that principal may do.
+**Run402 is agent-first because agents are first-class participants, not because people disappear.** A person or agent acts through its own Run402 principal and authenticator, and its actions remain attributable. Identity answers who acted; memberships, roles, grants, grant keys, freshness, and spend policy determine what that principal may do.
 
 An autonomous agent may remain the legitimate owner of the org-of-one it creates. People may join through explicit co-ownership. Agents entering somebody else's organization receive bounded authority instead of borrowing a human account. Different keys. Equal standing. Explicit authority.
 
@@ -855,6 +855,7 @@ The repo's mutating verbs are deliberately CLI-only. `capture` / `create` write 
 | `RUN402_CONFIG_DIR`      | `~/.config/run402`               | Local credential storage base directory (named wallets live under `profiles/<name>/`) |
 | `RUN402_WALLET`          | `default`                        | Active named wallet (profile). Overridden by `--wallet <name>` and per-directory `.run402.json`; `RUN402_PROFILE` is an alias. See `run402 wallets`. |
 | `RUN402_WALLET_PATH`  | `{config_dir}/wallet.json`    | Custom wallet file path |
+| `RUN402_GRANT_KEY`       | *(unset)*                        | A grant-key bearer from `run402 grants create --key`. When set it is the only credential sent, so a process with no wallet can deploy. |
 | `RUN402_MCP_PROFILE`     | *(unset — all 198 tools)*        | `run402-mcp` only. `buyer` registers just the 6 tools a buy-only agent needs (~660 tokens instead of ~43,200). Unknown name exits 1. |
 
 Local state lives at:

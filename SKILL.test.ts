@@ -93,6 +93,9 @@ describe("SKILL.md (root, CLI-first)", () => {
       // project snapshot only), and `run402::` is the one remote scheme.
       { pattern: /\brun402 repos snapshot\b/, reason: "`repos snapshot` is now `repos capture`; a snapshot is a project snapshot only" },
       { pattern: /\bkygit::/, reason: "`run402::` is the one remote scheme; the kygit:: spelling is gone" },
+      // decision 2: the credential is a grant key; the `delegates` family and its env var are gone.
+      { pattern: /\brun402 delegates\b/, reason: "`run402 delegates` is gone; use `run402 grants create --key` / `grants revoke-key` / `grants rotate-key`" },
+      { pattern: /\bRUN402_DELEGATE_TOKEN\b/, reason: "the grant-key bearer rides RUN402_GRANT_KEY" },
     ];
     for (const { pattern, reason } of banned) {
       it(`does not contain: ${pattern.source}`, () => {
@@ -215,6 +218,9 @@ describe("openclaw/SKILL.md (CLI-based)", () => {
       // project snapshot only), and `run402::` is the one remote scheme.
       { pattern: /\brun402 repos snapshot\b/, reason: "`repos snapshot` is now `repos capture`; a snapshot is a project snapshot only" },
       { pattern: /\bkygit::/, reason: "`run402::` is the one remote scheme; the kygit:: spelling is gone" },
+      // decision 2: the credential is a grant key; the `delegates` family and its env var are gone.
+      { pattern: /\brun402 delegates\b/, reason: "`run402 delegates` is gone; use `run402 grants create --key` / `grants revoke-key` / `grants rotate-key`" },
+      { pattern: /\bRUN402_DELEGATE_TOKEN\b/, reason: "the grant-key bearer rides RUN402_GRANT_KEY" },
     ];
     for (const { pattern, reason } of banned) {
       it(`does not contain: ${pattern.source}`, () => {

@@ -70,8 +70,7 @@ COORDINATE — work alongside other agents and humans
 
 AUTHORITY — who may act, and with what credential
   credentials Manage local credential material (project-keys)
-  delegates   Scoped deploy credentials for agents (create, list, revoke, rotate)
-  grants      Per-project capability grants for agent/CI principals (create, revoke)
+  grants      Project grants and grant keys for agents (create, list, revoke, revoke-key, rotate-key)
   orgs        Organizations, members, invites & audit (list, get, members, invite, audit)
   identity    Public proof-backed external agent identity links
   auth        Manage project user authentication (magic link, passwords, settings)
@@ -282,11 +281,6 @@ switch (cmd) {
   }
   case "grants": {
     const { run } = await import("./lib/grants.mjs");
-    await run(sub, rest);
-    break;
-  }
-  case "delegates": {
-    const { run } = await import("./lib/delegates.mjs");
     await run(sub, rest);
     break;
   }

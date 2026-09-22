@@ -2,7 +2,7 @@
 
 [OpenClaw](https://openclaw.ai) skill for [Run402](https://run402.com) — provision Postgres databases, deploy static sites, run serverless functions, host content-addressed CDN assets, send email, and sign on-chain. Paid autonomously via x402.
 
-Run402 treats the OpenClaw agent as a first-class participant acting through its own principal and authenticator—not as a hidden process borrowing a human account. The agent's authority remains explicit and bounded by its organization role, grant, delegate, freshness, and spend policy. People remain first-class owners and members without having to work in a cloud console.
+Run402 treats the OpenClaw agent as a first-class participant acting through its own principal and authenticator—not as a hidden process borrowing a human account. The agent's authority remains explicit and bounded by its organization role, grant, grant key, freshness, and spend policy. People remain first-class owners and members without having to work in a cloud console.
 
 This is the **CLI-shaped** distribution. The skill body in [`SKILL.md`](./SKILL.md) teaches the platform exclusively via `run402 <verb>` commands — it doesn't depend on an MCP host.
 

@@ -68,7 +68,6 @@ Run `node scripts/documentation-inventory.mjs` to reject newly discovered unclas
 | public | [cli/lib/contacts.mjs](cli/lib/contacts.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/contracts.mjs](cli/lib/contracts.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/credentials.mjs](cli/lib/credentials.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
-| public | [cli/lib/delegates.mjs](cli/lib/delegates.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/deliveries.mjs](cli/lib/deliveries.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/dev.mjs](cli/lib/dev.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/doctor.mjs](cli/lib/doctor.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |

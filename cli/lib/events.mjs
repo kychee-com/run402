@@ -95,7 +95,7 @@ Event shape:
 
 Auth:
   --project: the project's own service_key, your SIWX wallet, a control-plane
-             session, or a scoped delegate with project.read.
+             session, or a grant key with project.read.
   --org:     wallet / control-plane session with an active org membership
              (a project service_key cannot read sibling projects' events).
   The feed is read-only and never lifecycle-gated: a frozen project's feed

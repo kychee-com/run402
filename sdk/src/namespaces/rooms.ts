@@ -24,7 +24,7 @@
  *
  * Writes (presence registration, sends, acks, claims) need a
  * principal-backed credential — SIWX, control-plane session, or a
- * `run402_agent_key` delegate; a project service_key is read-only in its own
+ * `run402_agent_key` grant key; a project service_key is read-only in its own
  * default room. Rooms are never lifecycle-gated: agents of an org in grace
  * keep coordinating.
  */
@@ -127,7 +127,7 @@ export class Rooms {
    * Enumeration is DERIVED from use: a key nobody has written under is not a
    * room and is not listed. What comes back is exactly what per-room
    * authorization would admit one at a time — a member sees the org's rooms,
-   * a delegate or grant-holder sees the named rooms plus the default rooms of
+   * a grant-key or grant holder sees the named rooms plus the default rooms of
    * the projects it reaches (never a sibling project's), and a project
    * service_key sees only its own.
    */
@@ -559,7 +559,7 @@ export class Rooms {
    * key (`kri1_…`) whose redeemer becomes a permanent `viewer` of the org,
    * the narrowest membership that can message (design D4: never `--role`,
    * never wider, never auto-admitted as a vault writer). Requires
-   * `developer`+ (session, wallet, or admin credential — a delegate is
+   * `developer`+ (session, wallet, or admin credential — a grant key is
    * refused, since a room invite confers org membership).
    *
    * `invite_id` and `master_secret` are generated LOCALLY (design D3): the

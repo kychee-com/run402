@@ -51,7 +51,7 @@ export interface PrincipalSnapshot {
 export type AuthoritySnapshot =
   | { kind: "organization_membership"; organization_id: string; membership_id: string; role: string }
   | { kind: "project_grant"; organization_id: string; project_id: string; grant_id: string; scope: string[] }
-  | { kind: "delegate"; organization_id: string; project_id: string; grant_id: string; delegate_id: string; scope: string[] }
+  | { kind: "grant_key"; organization_id: string; project_id: string; grant_id: string; grant_key_id: string; scope: string[] }
   | { kind: "ci"; organization_id: string; project_id: string; credential_id: string }
   | { kind: "system"; reason_code: string }
   | { kind: "legacy" }

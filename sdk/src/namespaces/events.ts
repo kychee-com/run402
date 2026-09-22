@@ -45,7 +45,7 @@ export class Events {
    * Read a page of a project's events feed
    * (`GET /projects/v1/:project_id/events`). Accepted credentials: the
    * project's own service_key, a SIWX/control-plane principal with
-   * `project.read`, or a scoped delegate. `opts.source` / `opts.eventType`
+   * `project.read`, or a grant key. `opts.source` / `opts.eventType`
    * filter to the app lane, the platform lane, or one-or-more event types;
    * both compose with `cursor`/`limit` unchanged.
    */

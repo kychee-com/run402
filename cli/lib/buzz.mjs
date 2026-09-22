@@ -67,7 +67,7 @@ Advanced recovery reads:
 Security:
   - JSON stdout only; progress and pending-state advice go to stderr.
   - This command never accepts an nsec, private key, mnemonic, seed, service key,
-    delegate token, recovery code, or payment material.
+    grant key, recovery code, or payment material.
   - Buzz signatures are public evidence. Run402 authority still comes only from
     human/agent principals, org membership, and project grants.
   - Every command in this group has zero spend impact.

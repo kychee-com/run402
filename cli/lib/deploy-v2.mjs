@@ -44,7 +44,7 @@ import {
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 import { API, walletAuthHeaders, getActiveProjectId, resolveProjectId, isCoreApiTarget, updateProject } from "./config.mjs";
-import { delegateTokenFromEnv } from "#sdk/node";
+import { grantKeyFromEnv } from "#sdk/node";
 import { flagValue, normalizeArgv } from "./argparse.mjs";
 import { loadLiveControlPlaneSession } from "../core-dist/control-plane-session.js";
 import { withAutoApprove } from "./sign-in.mjs";
@@ -486,10 +486,10 @@ async function rehearseCmd(rawArgs) {
     fail({ code: "BAD_USAGE", message: "--teardown must be one of: on_pass, keep, always", details: { flag: "--teardown", value: teardown } });
   }
   const project = flagValue(args, "--project") ?? undefined;
-  // A delegate is a complete deploy credential and the gateway explicitly
+  // A grant key is a complete deploy credential and the gateway explicitly
   // supports rehearsing with one (the route rejects only CI sessions).
   // Rehearsal is the SAFE path; never make it the harder one.
-  if (!isCoreApiTarget() && !loadLiveControlPlaneSession() && !delegateTokenFromEnv()) {
+  if (!isCoreApiTarget() && !loadLiveControlPlaneSession() && !grantKeyFromEnv()) {
     walletAuthHeaders(`/apply/v1/plans/${givenPlanId ?? "_"}/rehearse`);
   }
   const sdk = getSdk();
@@ -723,9 +723,9 @@ async function promoteCmd(args) {
 
   // Preserve the aggressive early-exit when no local wallet is configured
   // — same as apply.
-  // A delegate holds `deploy` and the gateway accepts it on this route; refusing
+  // A grant key holds `deploy` and the gateway accepts it on this route; refusing
   // locally would tell a wallet-less holder to run `run402 init` (see 4.11.2).
-  if (!delegateTokenFromEnv()) walletAuthHeaders("/apply/v1/releases");
+  if (!grantKeyFromEnv()) walletAuthHeaders("/apply/v1/releases");
 
   try {
     // Call the engine directly (matches the pattern used by apply / resume
@@ -1295,20 +1295,20 @@ async function deployCmd(args) {
 
 
   let sdkOpts;
-  const delegateToken = delegateTokenFromEnv();
+  const grantKey = grantKeyFromEnv();
   if (useGithubActionsOidc) {
     sdkOpts = {
       credentials: githubActionsCredentials({ projectId: releaseSpec.project_id, apiBase: API }),
       disablePaidFetch: true,
     };
-  } else if (delegateToken) {
-    // A delegate is a complete, self-contained deploy credential: the owner
+  } else if (grantKey) {
+    // A grant key is a complete, self-contained deploy credential: the owner
     // minted it with their wallet and handed it over, so this process needs no
     // wallet of its own. Skipping the guard is the point — an agent that
     // lost its local state (or never had a wallet) can still deploy. Paid fetch
-    // is disabled for the same reason it is under CI: a delegate authorizes
+    // is disabled for the same reason it is under CI: a grant key authorizes
     // deploys, not spending.
-    sdkOpts = { delegateToken, disablePaidFetch: true };
+    sdkOpts = { grantKey, disablePaidFetch: true };
   } else if (!isCoreApiTarget() && !loadLiveControlPlaneSession()) {
     // Aggressive early exit when no local wallet is configured — unless a
     // wallet-less person is deploying via their sign-in session
@@ -1766,9 +1766,9 @@ async function resumeCmd(args) {
   emitDeployUpdateNotice("resume", args, { quiet: opts.quiet });
   const project = resolveProjectId(opts.project);
 
-  // A delegate holds `deploy` and the gateway accepts it on this route; refusing
+  // A grant key holds `deploy` and the gateway accepts it on this route; refusing
   // locally would tell a wallet-less holder to run `run402 init` (see 4.11.2).
-  if (!delegateTokenFromEnv()) walletAuthHeaders("/apply/v1/operations");
+  if (!grantKeyFromEnv()) walletAuthHeaders("/apply/v1/operations");
 
   try {
     const result = await getSdk({ disablePaidFetch: true })._applyEngine.resume(opts.operationId, {
@@ -1794,9 +1794,9 @@ async function statusCmd(args) {
     missing: "Missing <operation_id>.",
   });
   const project = resolveProjectId(parsed.flags["--project"] ?? null);
-  // A delegate holds `deploy` and the gateway accepts it on this route; refusing
+  // A grant key holds `deploy` and the gateway accepts it on this route; refusing
   // locally would tell a wallet-less holder to run `run402 init` (see 4.11.2).
-  if (!delegateTokenFromEnv()) walletAuthHeaders("/apply/v1/operations");
+  if (!grantKeyFromEnv()) walletAuthHeaders("/apply/v1/operations");
 
   try {
     const result = await getSdk()._applyEngine.status(operationId, { project });
@@ -1822,24 +1822,24 @@ async function listCmd(args) {
   };
 
   const project = resolveProjectId(opts.project);
-  // NOT ungated for delegates, deliberately: /apply/v1/operations (list) is
+  // NOT ungated for grant keys, deliberately: /apply/v1/operations (list) is
   // `apikeyAuth` only — unlike get/events/resume/promote, which accept a
-  // delegate bearer. Listing every operation on a project is broader than
+  // grant-key bearer. Listing every operation on a project is broader than
   // the per-operation reads a deploy credential is scoped to. If this is
   // ever widened, widen the ROUTE first, then this guard.
   //
   // The refusal is correct; the REMEDY must still be honest. Falling through
-  // to NO_WALLET would tell a delegate holder to run `run402 init`, which
+  // to NO_WALLET would tell a grant-key holder to run `run402 init`, which
   // is wrong for a credential that is wallet-less by design — the same
   // misleading-remedy shape removed from the payment path in 4.11.2.
-  if (delegateTokenFromEnv()) {
+  if (grantKeyFromEnv()) {
     fail({
-      code: "DELEGATE_SCOPE_INSUFFICIENT",
-      message: "Listing deploy operations is not available to a delegate.",
-      hint: "Use `run402 deploy status <operation_id>`, `deploy events <operation_id>` or `deploy verify <operation_id>` for a specific operation, which a delegate CAN read. A full listing needs the project apikey or the owner wallet.",
-      details: { command: "deploy list", credential: "delegate", route: "GET /apply/v1/operations" },
+      code: "GRANT_KEY_SCOPE_INSUFFICIENT",
+      message: "Listing deploy operations is not available to a grant key.",
+      hint: "Use `run402 deploy status <operation_id>`, `deploy events <operation_id>` or `deploy verify <operation_id>` for a specific operation, which a grant key CAN read. A full listing needs the project apikey or the owner wallet.",
+      details: { command: "deploy list", credential: "grant_key", route: "GET /apply/v1/operations" },
       next_actions: [
-        { type: "run_command", command: "run402 deploy status <operation_id>", why: "Per-operation reads are within a delegate's deploy scope." },
+        { type: "run_command", command: "run402 deploy status <operation_id>", why: "Per-operation reads are within a grant key's deploy scope." },
       ],
     });
   }
@@ -1870,9 +1870,9 @@ async function eventsCmd(args) {
   const opts = { operationId, project: parsed.flags["--project"] ?? null };
 
   const project = resolveProjectId(opts.project);
-  // A delegate holds `deploy` and the gateway accepts it on this route; refusing
+  // A grant key holds `deploy` and the gateway accepts it on this route; refusing
   // locally would tell a wallet-less holder to run `run402 init` (see 4.11.2).
-  if (!delegateTokenFromEnv()) walletAuthHeaders("/apply/v1/operations");
+  if (!grantKeyFromEnv()) walletAuthHeaders("/apply/v1/operations");
 
   try {
     const result = await getSdk()._applyEngine.events(opts.operationId, { project });
@@ -1916,9 +1916,9 @@ async function verifyCmd(args) {
     ? 60
     : parsePositiveInt(parsed.flags["--timeout"], "--timeout");
 
-  // A delegate holds `deploy` and the gateway accepts it on this route; refusing
+  // A grant key holds `deploy` and the gateway accepts it on this route; refusing
   // locally would tell a wallet-less holder to run `run402 init` (see 4.11.2).
-  if (!delegateTokenFromEnv()) walletAuthHeaders("/apply/v1/operations");
+  if (!grantKeyFromEnv()) walletAuthHeaders("/apply/v1/operations");
 
   try {
     let result;

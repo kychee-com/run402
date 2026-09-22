@@ -484,10 +484,6 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="DEFAULT_MAILBOX_REQUIRED"></a>
 [`DEFAULT_MAILBOX_REQUIRED`](/errors/gateway/#DEFAULT_MAILBOX_REQUIRED)
 
-<a id="delegate_scope_insufficient"></a>
-<a id="DELEGATE_SCOPE_INSUFFICIENT"></a>
-[`DELEGATE_SCOPE_INSUFFICIENT`](/errors/client/#DELEGATE_SCOPE_INSUFFICIENT)
-
 <a id="dependency_install_failed"></a>
 [`dependency_install_failed`](/errors/core/#dependency_install_failed)
 
@@ -690,6 +686,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="github_repository_id_required"></a>
 <a id="GITHUB_REPOSITORY_ID_REQUIRED"></a>
 [`GITHUB_REPOSITORY_ID_REQUIRED`](/errors/client/#GITHUB_REPOSITORY_ID_REQUIRED)
+
+<a id="grant_key_scope_insufficient"></a>
+<a id="GRANT_KEY_SCOPE_INSUFFICIENT"></a>
+[`GRANT_KEY_SCOPE_INSUFFICIENT`](/errors/client/#GRANT_KEY_SCOPE_INSUFFICIENT)
 
 <a id="grant_not_found"></a>
 <a id="GRANT_NOT_FOUND"></a>

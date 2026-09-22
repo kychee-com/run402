@@ -25,7 +25,7 @@
  * project-scoped (`r.project(id).errors.list(…)`), mirroring `r.events`.
  *
  * Auth: the addressed project's OWN key when it is cached locally; otherwise
- * the client's principal (SIWX wallet / session / delegate) with
+ * the client's principal (SIWX wallet / session / grant key) with
  * `project.read`. A key for a different project gets 403, never a 404 that
  * would confirm existence.
  */
@@ -104,7 +104,7 @@ function sleepRacingSignal(ms: number, signal?: AbortSignal): Promise<void> {
 /**
  * The credential for an error read. The project's own service key when it is
  * cached locally (the historical path); otherwise the client's principal
- * credential — a SIWX wallet, session, or delegate — which the gateway
+ * credential — a SIWX wallet, session, or grant key — which the gateway
  * authorizes through `project.read`. That second path is how the agent a Buzz
  * page addresses runs `run402 errors list --project …` on a project it never
  * deployed: an org member or teammate holds no project key and does not need

@@ -1,7 +1,7 @@
 export type ProjectOperationPlane = "control" | "data" | "local";
 export type ProjectOperationAuthMode =
   | "principal"
-  | "delegate"
+  | "grant_key"
   | "service_key"
   | "project_credential"
   | "anon_key";
@@ -22,7 +22,7 @@ export const PROJECT_OPERATION_AUTH_CLASSIFICATIONS = [
     operation: "projects.list",
     scope: "project",
     plane: "control",
-    authModes: ["principal", "delegate"],
+    authModes: ["principal", "grant_key"],
     defaultAuthMode: "principal",
     requiresProjectId: false,
     mayUseLocalCredentialCache: false,
@@ -31,7 +31,7 @@ export const PROJECT_OPERATION_AUTH_CLASSIFICATIONS = [
     operation: "projects.get",
     scope: "project",
     plane: "control",
-    authModes: ["principal", "delegate"],
+    authModes: ["principal", "grant_key"],
     defaultAuthMode: "principal",
     requiresProjectId: true,
     mayUseLocalCredentialCache: false,
@@ -40,7 +40,7 @@ export const PROJECT_OPERATION_AUTH_CLASSIFICATIONS = [
     operation: "projects.use",
     scope: "project",
     plane: "control",
-    authModes: ["principal", "delegate"],
+    authModes: ["principal", "grant_key"],
     defaultAuthMode: "principal",
     requiresProjectId: true,
     mayUseLocalCredentialCache: false,
@@ -79,7 +79,7 @@ export const PROJECT_OPERATION_AUTH_CLASSIFICATIONS = [
     operation: "domains.add",
     scope: "project",
     plane: "control",
-    authModes: ["principal", "delegate", "service_key"],
+    authModes: ["principal", "grant_key", "service_key"],
     defaultAuthMode: "principal",
     requiresProjectId: true,
     mayUseLocalCredentialCache: false,
@@ -88,7 +88,7 @@ export const PROJECT_OPERATION_AUTH_CLASSIFICATIONS = [
     operation: "domains.list",
     scope: "project",
     plane: "control",
-    authModes: ["principal", "delegate", "service_key"],
+    authModes: ["principal", "grant_key", "service_key"],
     defaultAuthMode: "principal",
     requiresProjectId: true,
     mayUseLocalCredentialCache: false,
@@ -97,7 +97,7 @@ export const PROJECT_OPERATION_AUTH_CLASSIFICATIONS = [
     operation: "domains.status",
     scope: "project",
     plane: "control",
-    authModes: ["principal", "delegate", "service_key"],
+    authModes: ["principal", "grant_key", "service_key"],
     defaultAuthMode: "principal",
     requiresProjectId: true,
     mayUseLocalCredentialCache: false,
@@ -106,7 +106,7 @@ export const PROJECT_OPERATION_AUTH_CLASSIFICATIONS = [
     operation: "domains.delete",
     scope: "project",
     plane: "control",
-    authModes: ["principal", "delegate", "service_key"],
+    authModes: ["principal", "grant_key", "service_key"],
     defaultAuthMode: "principal",
     requiresProjectId: true,
     mayUseLocalCredentialCache: false,

@@ -857,6 +857,10 @@
         },
         {
           "owner": "public",
+          "source": "cli/lib/grants.mjs"
+        },
+        {
+          "owner": "public",
           "source": "cli/lib/image.mjs"
         },
         {
@@ -1603,16 +1607,6 @@
       "topic": "/errors/gateway/#DEFAULT_MAILBOX_REQUIRED"
     },
     {
-      "code": "DELEGATE_SCOPE_INSUFFICIENT",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "cli/lib/deploy-v2.mjs"
-        }
-      ],
-      "topic": "/errors/client/#DELEGATE_SCOPE_INSUFFICIENT"
-    },
-    {
       "code": "dependency_install_failed",
       "owners": [
         {
@@ -2155,6 +2149,16 @@
         }
       ],
       "topic": "/errors/client/#GITHUB_REPOSITORY_ID_REQUIRED"
+    },
+    {
+      "code": "GRANT_KEY_SCOPE_INSUFFICIENT",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "cli/lib/deploy-v2.mjs"
+        }
+      ],
+      "topic": "/errors/client/#GRANT_KEY_SCOPE_INSUFFICIENT"
     },
     {
       "code": "GRANT_NOT_FOUND",

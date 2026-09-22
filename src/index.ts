@@ -163,6 +163,10 @@ import {
   handleCreateProjectGrant,
   revokeProjectGrantSchema,
   handleRevokeProjectGrant,
+  listProjectGrantsSchema,
+  handleListProjectGrants,
+  revokeProjectGrantKeySchema,
+  handleRevokeProjectGrantKey,
 } from "./tools/grants.js";
 
 // New tools — user role management
@@ -1129,7 +1133,7 @@ server.tool(
 
 server.tool(
   "list_tenant_payments",
-  "List redacted tenant x402 payment records for priced function web routes on a project (GET /projects/v1/:project_id/tenant-payments). Requires project.tenant_payments.read: org developer+ or read-scoped project grant/delegate. Raw X-PAYMENT headers, authorization hashes, and internal metadata are never returned.",
+  "List redacted tenant x402 payment records for priced function web routes on a project (GET /projects/v1/:project_id/tenant-payments). Requires project.tenant_payments.read: org developer+ or read-scoped project grant or grant key. Raw X-PAYMENT headers, authorization hashes, and internal metadata are never returned.",
   listTenantPaymentsSchema,
   async (args) => handleListTenantPayments(args),
 );
@@ -2003,16 +2007,30 @@ server.tool(
 
 server.tool(
   "create_project_grant",
-  "Issue a per-project capability grant to a wallet (for agent/CI principals that aren't broad org members). Params: `project_id`, `wallet`, `capability` (e.g. `deploy`, `functions:write`), optional `policy` / `expires_at`. Requires you to be an owner of the project's org.",
+  "Issue a per-project capability grant to a wallet (for agent/CI principals that aren't broad org members). Params: `project_id`, `wallet`, `capability` (e.g. `deploy`, `functions:write`), optional `policy` / `expires_at`. Issues the grant only: an agent with its own wallet signs via SIWX; a grant key for an agent without one is minted with the CLI (`run402 grants create --key`), because its token prints once. Requires you to be an owner of the project's org.",
   createProjectGrantSchema,
   async (args) => handleCreateProjectGrant(args),
 );
 
 server.tool(
+  "list_project_grants",
+  "List a project's capability grants with their grant keys nested (GET /projects/v1/:project_id/grants): grant id, capability, wallet, expiry, revocation, and each key's id, kind, and state. Never returns a token. Minting or rotating a grant key prints a secret once, so it is CLI-only (`run402 grants create --key`, `run402 grants rotate-key`). Params: `project_id`. Requires you to be an owner of the project's org.",
+  listProjectGrantsSchema,
+  async (args) => handleListProjectGrants(args),
+);
+
+server.tool(
   "revoke_project_grant",
-  "Revoke a per-project capability grant by id. Params: `project_id`, `grant_id`. Requires you to be an owner of the project's org.",
+  "Revoke a per-project capability grant by id, and with it every grant key minted against it. Params: `project_id`, `grant_id`. Requires you to be an owner of the project's org.",
   revokeProjectGrantSchema,
   async (args) => handleRevokeProjectGrant(args),
+);
+
+server.tool(
+  "revoke_project_grant_key",
+  "Revoke one grant key by id (DELETE /projects/v1/:project_id/grant-keys/:key_id); the grant and its other keys stay. Params: `project_id`, `key_id`. Requires you to be an owner of the project's org.",
+  revokeProjectGrantKeySchema,
+  async (args) => handleRevokeProjectGrantKey(args),
 );
 
 // ─── repos — the host-blind encrypted git repo family (read-only surface) ───

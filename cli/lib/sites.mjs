@@ -1,7 +1,7 @@
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { dirname, join, resolve } from "path";
-import { fileSetFromDir, delegateTokenFromEnv } from "#sdk/node";
+import { fileSetFromDir, grantKeyFromEnv } from "#sdk/node";
 import { walletAuthHeaders, resolveProjectId, updateProject } from "./config.mjs";
 import { resolveFilePathsInManifest } from "./manifest.mjs";
 import { getSdk } from "./sdk.mjs";
@@ -220,9 +220,9 @@ async function deploy(args) {
   if (opts.manifest) resolveFilePathsInManifest(manifest, dirname(resolve(opts.manifest)));
 
   // Preserve the aggressive early exit when no local wallet is configured.
-  // A delegate holds `deploy` and /apply/v1/plans accepts it; refusing locally
+  // A grant key holds `deploy` and /apply/v1/plans accepts it; refusing locally
   // would tell a wallet-less holder to run `run402 init` (see 4.11.2).
-  if (!delegateTokenFromEnv()) walletAuthHeaders("/apply/v1/plans");
+  if (!grantKeyFromEnv()) walletAuthHeaders("/apply/v1/plans");
 
   const stage = stageFilesToTempDir(manifest.files || []);
   try {
@@ -289,9 +289,9 @@ async function deployDir(args) {
   if (opts.target !== undefined) failUnsupportedTarget();
 
   // Preserve the aggressive early exit when no local wallet is configured.
-  // A delegate holds `deploy` and /apply/v1/plans accepts it; refusing locally
+  // A grant key holds `deploy` and /apply/v1/plans accepts it; refusing locally
   // would tell a wallet-less holder to run `run402 init` (see 4.11.2).
-  if (!delegateTokenFromEnv()) walletAuthHeaders("/apply/v1/plans");
+  if (!grantKeyFromEnv()) walletAuthHeaders("/apply/v1/plans");
 
   let fileSet;
   try {

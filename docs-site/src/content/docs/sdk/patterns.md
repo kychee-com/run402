@@ -326,7 +326,7 @@ Runtime route failure codes to branch on: `ROUTE_MANIFEST_LOAD_FAILED` (manifest
 
 #### Node deploy convenience
 
-- `r.sites.deployDir(...)` — Node-only thin wrapper that uses `fileSetFromDir(dir)`, grant keys to `apply`, and emits unified `DeployEvent` shapes.
+- `r.sites.deployDir(...)` — Node-only thin wrapper that uses `fileSetFromDir(dir)`, hands off to `apply`, and emits unified `DeployEvent` shapes.
 
 ### GitHub Actions OIDC — CI credentials + the same deploy primitive
 

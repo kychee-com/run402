@@ -148,7 +148,12 @@ async function mockFetch(input, init) {
   // Echo-style canned responses; shape doesn't matter for these wiring assertions.
   if (method === "DELETE") return Promise.resolve(json({ status: "revoked" }));
   if (url.endsWith("/grants") && method === "POST") {
-    return Promise.resolve(json({ status: "ok", grant_id: "grt_1", principal_id: "prn_1" }, 201));
+    return Promise.resolve(json({
+      status: "ok",
+      grant_id: "grt_1",
+      principal_id: "prn_1",
+      ...(body?.key ? { key: { key_id: "key_1", kind: "run402_agent_key", token: "gk_token_once", expires_at: null } } : {}),
+    }, 201));
   }
   if (url.endsWith("/members") && method === "POST") {
     globalThis.__memberPosts = (globalThis.__memberPosts ?? 0) + 1;
@@ -412,16 +417,16 @@ describe("run402 orgs adopt", () => {
 });
 
 describe("run402 grants", () => {
-  it("create POSTs wallet + capability (positional order)", async () => {
-    capture(); await runGrants("create", ["prj_1", TEST_ADDRESS, "deploy"]); uncapture();
+  it("create POSTs wallet + capability", async () => {
+    capture(); await runGrants("create", [TEST_ADDRESS, "--capability", "deploy", "--project", "prj_1"]); uncapture();
     assert.equal(lastCall().url, `${API}/projects/v1/prj_1/grants`);
     assert.equal(lastCall().method, "POST");
     assert.deepEqual(lastCall().body, { wallet: TEST_ADDRESS, capability: "deploy" });
   });
 
-  it("create maps --expires → expires_at and --policy JSON → policy", async () => {
+  it("create maps --expires-at → expires_at and --policy JSON → policy", async () => {
     capture();
-    await runGrants("create", ["prj_1", TEST_ADDRESS, "functions:write", "--policy", '{"paths":["/api/*"]}', "--expires", "2026-12-31T00:00:00Z"]);
+    await runGrants("create", [TEST_ADDRESS, "--capability", "functions:write", "--project", "prj_1", "--policy", '{"paths":["/api/*"]}', "--expires-at", "2026-12-31T00:00:00Z"]);
     uncapture();
     assert.deepEqual(lastCall().body, {
       wallet: TEST_ADDRESS,
@@ -431,9 +436,51 @@ describe("run402 grants", () => {
     });
   });
 
+  it("create --key mints the first grant key in the same request and prints its token once", async () => {
+    capture();
+    await runGrants("create", [TEST_ADDRESS, "--capability", "deploy", "--project", "prj_1", "--key", "--spend-cap", '{"v":1,"currency":"usd_micros","per_period":5000000,"period":"month"}', "--expires-at", "2026-12-31T00:00:00Z"]);
+    uncapture();
+    assert.deepEqual(lastCall().body, {
+      wallet: TEST_ADDRESS,
+      capability: "deploy",
+      expires_at: "2026-12-31T00:00:00Z",
+      key: {
+        spend_cap: { v: 1, currency: "usd_micros", per_period: 5000000, period: "month" },
+        expires_at: "2026-12-31T00:00:00Z",
+      },
+    });
+    const out = JSON.parse(stdout.join("\n"));
+    assert.equal(out.key.token, "gk_token_once");
+  });
+
+  it("create refuses key-only flags without --key", async () => {
+    capture();
+    await assert.rejects(runGrants("create", [TEST_ADDRESS, "--capability", "deploy", "--project", "prj_1", "--scope", '{"v":1,"capabilities":["deploy"]}']), /process\.exit\(1\)/);
+    uncapture();
+    assert.equal(calls.length, 0);
+  });
+
+  it("list GETs the grants route", async () => {
+    capture(); await runGrants("list", ["--project", "prj_1"]); uncapture();
+    assert.equal(lastCall().url, `${API}/projects/v1/prj_1/grants`);
+    assert.equal(lastCall().method, "GET");
+  });
+
   it("revoke DELETEs the grant route", async () => {
-    capture(); await runGrants("revoke", ["prj_1", "grt_1"]); uncapture();
+    capture(); await runGrants("revoke", ["grt_1", "--project", "prj_1"]); uncapture();
     assert.equal(lastCall().url, `${API}/projects/v1/prj_1/grants/grt_1`);
     assert.equal(lastCall().method, "DELETE");
+  });
+
+  it("revoke-key DELETEs the grant-keys route", async () => {
+    capture(); await runGrants("revoke-key", ["key_1", "--project", "prj_1"]); uncapture();
+    assert.equal(lastCall().url, `${API}/projects/v1/prj_1/grant-keys/key_1`);
+    assert.equal(lastCall().method, "DELETE");
+  });
+
+  it("rotate-key POSTs the rotate route", async () => {
+    capture(); await runGrants("rotate-key", ["key_1", "--project", "prj_1"]); uncapture();
+    assert.equal(lastCall().url, `${API}/projects/v1/prj_1/grant-keys/key_1/rotate`);
+    assert.equal(lastCall().method, "POST");
   });
 });

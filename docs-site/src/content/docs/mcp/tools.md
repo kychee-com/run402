@@ -256,8 +256,12 @@ A wallet **authenticates**; the **org (organization)** owns projects. Authorizat
 - `set_org_member_role` — change a member's role. Params: `org_id`, `principal_id`, `role`. Owner-gated. Demoting the only active owner → `409 LAST_OWNER`.
 - `remove_org_member` — remove a member. Params: `org_id`, `principal_id`. Owner-gated. Removing the only active owner → `409 LAST_OWNER`.
 The wallet-org CLAIM flow is CLI/SDK only (browser loopback login + step-up); there is no MCP claim tool.
-- `create_project_grant` — issue a per-project capability grant to a wallet (agent/CI principals). Params: `project_id`, `wallet`, `capability` (e.g. `deploy`, `functions:write`), optional `policy` / `expires_at`. Requires owner of the project's org.
-- `revoke_project_grant` — revoke a grant. Params: `project_id`, `grant_id`. Requires owner of the project's org.
+- `create_project_grant` — issue a per-project capability grant to a wallet (agent/CI principals). Params: `project_id`, `wallet`, `capability` (e.g. `deploy`, `functions:write`), optional `policy` / `expires_at`. Issues the grant only. Requires owner of the project's org.
+- `list_project_grants` — the project's grants with their grant keys nested (id, kind, state); never a token. Params: `project_id`. Requires owner of the project's org.
+- `revoke_project_grant` — revoke a grant and every grant key minted against it. Params: `project_id`, `grant_id`. Requires owner of the project's org.
+- `revoke_project_grant_key` — revoke one grant key; the grant and its other keys stay. Params: `project_id`, `key_id`. Requires owner of the project's org.
+
+Minting and rotating a grant key return its token once, so they are CLI/SDK-only (`run402 grants create --key`, `run402 grants rotate-key`, `r.grants.createKey`, `r.grants.rotateKey`): MCP output lands in an agent transcript, where a once-printed secret must never be persisted.
 
 ### Project events feed
 

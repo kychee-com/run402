@@ -62,7 +62,7 @@ Output:
 
 Auth:
   The project's cached service_key when present; otherwise your wallet /
-  session / delegate, which the gateway authorizes with project.read — an org
+  session / grant key, which the gateway authorizes with project.read — an org
   member or teammate agent following an error fingerprint's drill-down needs
   no project key.
 

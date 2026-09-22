@@ -36,7 +36,7 @@ import type {
   BuzzPrincipalControlPlaneStatus,
 } from "./buzz.types.js";
 
-const SECRET_FIELD = /(?:private.?key|secret|mnemonic|seed|derivation|nsec|nostr.?key|service.?key|delegate.?token|recovery.?code)/i;
+const SECRET_FIELD = /(?:private.?key|secret|mnemonic|seed|derivation|nsec|nostr.?key|service.?key|grant.?key|recovery.?code)/i;
 
 function rejectSecrets(value: unknown, path = "$", seen = new Set<object>()): void {
   if (!value || typeof value !== "object") return;

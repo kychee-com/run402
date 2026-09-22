@@ -87,9 +87,9 @@ export class Credentials {
    * (`POST /projects/v1/:project_id/credentials`).
    *
    * Requires owner membership on the project's owning org PLUS a fresh
-   * step-up, and a delegate can never satisfy it — a scoped agent credential
+   * step-up, and a grant key can never satisfy it — a scoped agent credential
    * must not be able to escalate itself into a permanent root. If you are
-   * running unattended and hold only a delegate, use {@link mintToken}.
+   * running unattended and hold only a grant key, use {@link mintToken}.
    *
    * The returned `secret` is shown ONCE. Persist it before doing anything
    * else; there is no read that returns it, only `rotate()` for a new one.
@@ -213,8 +213,8 @@ export class Credentials {
    * Mint a SHORT-LIVED project token (`POST /projects/v1/:project_id/tokens`).
    *
    * This is the cold-restart recovery path, and the one credential call a
-   * delegate CAN make with no human present: an agent that lost its local
-   * state but still holds a delegate gets back to work unattended. There is no
+   * grant key CAN make with no human present: an agent that lost its local
+   * state but still holds a grant key gets back to work unattended. There is no
    * step-up, because there is nobody to prompt; what it hands back expires, so
    * it cannot become a durable root.
    *

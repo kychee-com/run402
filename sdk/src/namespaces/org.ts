@@ -466,7 +466,7 @@ export class Orgs {
    * Set the caller's own display name (`PATCH /agent/v1/me`) — the name
    * promotion credit (`hand_to_member.credited_as`), `up`'s room presence,
    * and audit surfaces show for this principal. 1–64 characters after
-   * trimming, no control characters. Self-only: a delegate names the
+   * trimming, no control characters. Self-only: a grant key names the
    * principal it acts for. Returns the same body `whoami()` returns.
    */
   async setDisplayName(displayName: string): Promise<WhoAmIResult> {

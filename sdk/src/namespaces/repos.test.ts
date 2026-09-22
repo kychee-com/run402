@@ -1264,7 +1264,7 @@ describe("computeOpenProofOutcome — fsck's D210 auto-submission decision logic
     assert.equal(called, false);
   });
 
-  it("principal resolution returning null (e.g. a delegate-authenticated caller GET /agent/v1/whoami cannot resolve) is REPORTED, never thrown, and submit is never called", async () => {
+  it("principal resolution returning null (e.g. a grant-key-authenticated caller GET /agent/v1/whoami cannot resolve) is REPORTED, never thrown, and submit is never called", async () => {
     let submitCalled = false;
     const out = await computeOpenProofOutcome({
       write: true,

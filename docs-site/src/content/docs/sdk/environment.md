@@ -92,7 +92,7 @@ Local check returns `result.preflight` with nullable target/provenance, `gateway
 - Write `.run402/project.json` atomically when `up` needs to remember an explicit/created project. Schema: `{ schema_version: "run402.workspace-project.v1", project_id, name?, target?, created_at, updated_at? }`.
 - On Run402 Cloud, recursively ensure the local wallet and tier (default bootstrap tier `prototype`) only when missing; existing active tiers are not downgraded or renewed just because `up` ran.
 - On Run402 Core, skip Cloud wallet/tier prerequisites and fail closed if no Core project is selected.
-- Grant key the final deploy to `r.project(id).apply(spec, opts)`.
+- Hand the final deploy to `r.project(id).apply(spec, opts)`.
 
 Action options:
 - `mode: "check"` validates local manifest/config and file references only. No gateway calls, uploads, prerequisite mutations, or local writes.

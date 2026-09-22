@@ -422,7 +422,7 @@ export class Billing {
   /**
    * lightning-cash-topup: mint a bolt11 invoice that tops up the org's cash
    * balance when paid. No funds move at creation; any active org member or a
-   * delegate for one of the org's projects may call it.
+   * grant key for one of the org's projects may call it.
    */
   async createLightningTopup(
     organizationId: string,

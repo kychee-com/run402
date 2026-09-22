@@ -39,7 +39,6 @@ import { WriteApproval } from "./namespaces/write-approval.js";
 import { Me } from "./namespaces/me.js";
 import { Orgs, ScopedOrg } from "./namespaces/org.js";
 import { Grants } from "./namespaces/grants.js";
-import { Delegates } from "./namespaces/delegates.js";
 import { Events } from "./namespaces/events.js";
 import { Live } from "./namespaces/live.js";
 import { Rooms } from "./namespaces/rooms.js";
@@ -136,17 +135,13 @@ export class Run402 {
    */
   readonly orgs: Orgs;
   /**
-   * Per-project capability grants for agent/CI principals. Also available
-   * project-scoped as `r.project(id).grants`.
+   * Per-project capability grants for agent/CI principals, and the grant keys
+   * minted against them — scoped, revocable credentials an owner hands an
+   * agent without a wallet of its own, and the supported way back in when a
+   * project's API keys are lost (they are issued once at create and never
+   * re-issued). Also available project-scoped as `r.project(id).grants`.
    */
   readonly grants: Grants;
-  /**
-   * Scoped, revocable deploy credentials an owner mints for an agent. The
-   * supported way back in when a project's API keys are lost (they are issued
-   * once at create and never re-issued). Also project-scoped as
-   * `r.project(id).delegates`.
-   */
-  readonly delegates: Delegates;
   /**
    * Cursored project events feed — "what happened since I last looked".
    * Also available project-scoped as `r.project(id).events`.
@@ -282,7 +277,6 @@ export class Run402 {
     this.me = new Me(client);
     this.orgs = new Orgs(client);
     this.grants = new Grants(client);
-    this.delegates = new Delegates(client);
     this.events = new Events(client);
     this.live = new Live(client);
     this.rooms = new Rooms(client);
@@ -559,12 +553,12 @@ export {
 } from "./ci-credentials.js";
 export type * from "./ci-credentials.js";
 export {
-  DELEGATE_CREDENTIALS,
-  DELEGATE_TOKEN_ENV,
-  delegateTokenFromEnv,
-  isDelegateCredentials,
-} from "./delegate-credentials.js";
-export type * from "./delegate-credentials.js";
+  GRANT_KEY_CREDENTIALS,
+  GRANT_KEY_ENV,
+  grantKeyFromEnv,
+  isGrantKeyCredentials,
+} from "./grant-key-credentials.js";
+export type * from "./grant-key-credentials.js";
 export * from "./app-up.js";
 export {
   CONTROL_PLANE_SESSION_CREDENTIALS,
@@ -634,8 +628,6 @@ export type { AdoptChallenge, AdoptChallengeInput, AdoptSubmitInput, AdoptResult
 export type * from "./namespaces/org.types.js";
 export { Grants } from "./namespaces/grants.js";
 export type * from "./namespaces/grants.types.js";
-export { Delegates } from "./namespaces/delegates.js";
-export type * from "./namespaces/delegates.types.js";
 export { Events } from "./namespaces/events.js";
 export type * from "./namespaces/events.types.js";
 export type * from "./namespaces/live.types.js";

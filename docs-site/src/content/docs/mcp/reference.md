@@ -38,7 +38,7 @@ the same events for arbitrary sellers.
 
 `pay_url` is the general x402 buyer tool for external HTTP(S) endpoints. Params:
 `url`, optional `method`, `body`, `idempotency_key`, `max_usd_micros`
-(default `100000`, or $0.10), and `require_receipt`. It grant keys to SDK
+(default `100000`, or $0.10), and `require_receipt`. It hands off to SDK
 `pay.fetch`. `require_receipt: true` requires a verified wallet-rooted offer
 before payment and a matching receipt afterward. Structured content is the
 complete `x402-commerce-result.v1` envelope; the text view curates amount and

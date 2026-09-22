@@ -289,7 +289,7 @@ Not in V0. No namespace, prefix, or layout reservation exists (round-3 M17). Cha
 
 ### 9.1 Authorization matrix
 
-`gitvault.create` (owner); **`gitvault.writer`** bundle = {read_head, read_ciphertext, upload, publish} (the deploy delegate's scope); `gitvault.read_envelope` (recipient only); `gitvault.compact`, `gitvault.prune` (owner); **`gitvault.repair`** (owner + step-up); **`gitvault.policy.manage`** (owner + step-up); **`gitvault.override_unvaulted`** (owner + step-up or explicit emergency grant). No purge/export capabilities exist. Unauthorized/nonexistent/wrong-project indistinguishable (`403 VAULT_ACCESS_DENIED`); every error code carries registry `next_action` prose, surfaced on the wire as structured `next_actions[]` entries.
+`gitvault.create` (owner); **`gitvault.writer`** bundle = {read_head, read_ciphertext, upload, publish} (the deploy grant key's scope); `gitvault.read_envelope` (recipient only); `gitvault.compact`, `gitvault.prune` (owner); **`gitvault.repair`** (owner + step-up); **`gitvault.policy.manage`** (owner + step-up); **`gitvault.override_unvaulted`** (owner + step-up or explicit emergency grant). No purge/export capabilities exist. Unauthorized/nonexistent/wrong-project indistinguishable (`403 VAULT_ACCESS_DENIED`); every error code carries registry `next_action` prose, surfaced on the wire as structured `next_actions[]` entries.
 
 ### 9.2 Routes
 

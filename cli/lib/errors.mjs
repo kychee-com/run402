@@ -110,7 +110,7 @@ Exit codes (the promote gate — only when --fail-on-new is set):
 
 Auth:
   The addressed project's own service_key when it is cached locally; otherwise
-  your wallet / session / delegate, which the gateway authorizes with
+  your wallet / session / grant key, which the gateway authorizes with
   project.read — an org member or teammate agent needs no project key. A key
   for project A requesting project B's errors gets 403 (never a 404 that
   leaks existence). Read-only; never lifecycle-gated.

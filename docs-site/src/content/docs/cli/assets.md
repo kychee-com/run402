@@ -134,7 +134,7 @@ Typed errors a caller can branch on (`catch (e) { if (e.code === "...") }`):
 
 Mutable URL loop only: `run402 cdn wait-fresh <mutable-url> --sha <new-sha>` blocks until CDN serves new SHA. Do not use on immutable URLs.
 
-Resume removed in v2.1.0. CLI grant keys to `sdk.assets.put` via unified apply (`apply/v1/plans -> content/v1/plans -> S3 PUT -> commit`). `--concurrency` / `--no-resume` accepted but ignored; resume semantics live at apply-plan level (24h TTL).
+Resume removed in v2.1.0. CLI delegates to `sdk.assets.put` via unified apply (`apply/v1/plans -> content/v1/plans -> S3 PUT -> commit`). `--concurrency` / `--no-resume` accepted but ignored; resume semantics live at apply-plan level (24h TTL).
 
 Private blobs (`--private`): no CDN URL returned; read via authenticated gateway path `GET /storage/v1/blob/<key>` with apikey, or via `run402 assets sign` for time-boxed external sharing.
 

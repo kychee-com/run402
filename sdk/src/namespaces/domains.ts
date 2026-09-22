@@ -3,7 +3,7 @@
  *
  * Domain operations are project-scoped control-plane actions. They use the
  * SDK credential provider's server auth (SIWX, control-plane session, or
- * delegate) and deliberately do not require local project-key cache entries.
+ * grant key) and deliberately do not require local project-key cache entries.
  */
 
 import type { Client } from "../kernel.js";

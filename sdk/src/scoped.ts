@@ -170,14 +170,13 @@ import type { DeleteSecretResult, SecretListResult, SecretSetOptions } from "./n
 import type {
   CreateGrantInput,
   GrantCreateResult,
+  GrantKeyCreateResult,
+  GrantKeyInput,
+  GrantKeyRevokeResult,
+  GrantKeyRotateResult,
+  GrantListResult,
   GrantRevokeResult,
 } from "./namespaces/grants.types.js";
-import type {
-  CreateDelegateInput,
-  DelegateCreateResult,
-  DelegateListResult,
-  DelegateRevokeResult,
-} from "./namespaces/delegates.types.js";
 import type {
   ListEventsOptions,
   ProjectEventFeedPage,
@@ -383,25 +382,20 @@ class ScopedGrants {
   create(input: CreateGrantInput): Promise<GrantCreateResult> {
     return this.parent.grants.create(this.projectId, input);
   }
+  list(): Promise<GrantListResult> {
+    return this.parent.grants.list(this.projectId);
+  }
   revoke(grantId: string): Promise<GrantRevokeResult> {
     return this.parent.grants.revoke(this.projectId, grantId);
   }
-}
-
-class ScopedDelegates {
-  constructor(private readonly parent: Run402, private readonly projectId: string) {}
-
-  create(input: CreateDelegateInput): Promise<DelegateCreateResult> {
-    return this.parent.delegates.create(this.projectId, input);
+  createKey(grantId: string, input?: GrantKeyInput): Promise<GrantKeyCreateResult> {
+    return this.parent.grants.createKey(this.projectId, grantId, input);
   }
-  list(): Promise<DelegateListResult> {
-    return this.parent.delegates.list(this.projectId);
+  revokeKey(keyId: string): Promise<GrantKeyRevokeResult> {
+    return this.parent.grants.revokeKey(this.projectId, keyId);
   }
-  revoke(delegateId: string): Promise<DelegateRevokeResult> {
-    return this.parent.delegates.revoke(this.projectId, delegateId);
-  }
-  rotate(delegateId: string): Promise<DelegateCreateResult> {
-    return this.parent.delegates.rotate(this.projectId, delegateId);
+  rotateKey(keyId: string): Promise<GrantKeyRotateResult> {
+    return this.parent.grants.rotateKey(this.projectId, keyId);
   }
 }
 
@@ -1039,10 +1033,8 @@ export class ScopedRun402 {
   readonly jobs: ScopedJobs;
   readonly secrets: ScopedSecrets;
   readonly subdomains: ScopedSubdomains;
-  /** Per-project capability grants (agent/CI principals), project-id pre-bound. */
+  /** Per-project capability grants and their grant keys, project-id pre-bound. */
   readonly grants: ScopedGrants;
-  /** Scoped deploy credentials for agents (mint / list / revoke / rotate), project-id pre-bound. */
-  readonly delegates: ScopedDelegates;
   /** Cursored project events feed, project-id pre-bound. */
   readonly events: ScopedEvents;
   readonly live: ScopedLive;
@@ -1068,7 +1060,6 @@ export class ScopedRun402 {
     this.secrets = new ScopedSecrets(parent, projectId);
     this.subdomains = new ScopedSubdomains(parent, projectId);
     this.grants = new ScopedGrants(parent, projectId);
-    this.delegates = new ScopedDelegates(parent, projectId);
     this.events = new ScopedEvents(parent, projectId);
     this.live = new ScopedLive(parent, projectId);
     this.errors = new ScopedErrors(parent, projectId);

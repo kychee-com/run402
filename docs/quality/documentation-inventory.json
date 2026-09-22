@@ -90,7 +90,7 @@
       "purpose": "maintainer",
       "interface": "mixed",
       "exception": "Repository development and implementation instructions; product operations still prefer CLI.",
-      "sha256": "13d926aa680339772ef1cd8b4160b6d532f7250bc3b0830689ca285bcbac8ed6",
+      "sha256": "612fdf98ca6cf3289412813e31fdc700bcd83b62b0ed769b049aef629dfa4ee7",
       "outputs": [],
       "url": null,
       "checks": [
@@ -110,7 +110,7 @@
       "purpose": "history",
       "interface": "historical",
       "exception": "Dated release records; add current entries without rewriting history.",
-      "sha256": "abe2d8550db2fa61ccafcc19b6f583079f20f264766af45cdaeb8bec045b8348",
+      "sha256": "b6d6332de1fb92d9cf30a70063e9f8f2414ddea109e7083b7ba9ea012904e747",
       "outputs": [],
       "url": null,
       "checks": [
@@ -170,7 +170,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "81ea3f63f27e0a1a6e50c464e87287158ff78dc44edb5d1da250ad2c8d73539d",
+      "sha256": "eb4541047ea8aeff9240c0a1106517b816e83e26cec006f93e257bc356e6152f",
       "outputs": [],
       "url": null,
       "checks": [
@@ -210,7 +210,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "5411bcf2c3fe41df26194dc7cf845dac6babe433b77988fe0ea8c12c8214cda4",
+      "sha256": "2e236fe211ff86b74bae4f8374c710ff6062d068d4e3660ac50a9ce92cffb808",
       "outputs": [],
       "url": null,
       "checks": [
@@ -450,7 +450,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "b546fcfe0c0aa4c469920e0bcd2c31cbe1da0a2e71f43e17df8bebfb9894d47e",
+      "sha256": "345872dd3a9fb6e83b693cd4c9dbf6cea2bc5d761aa91d0ba83a4088379a4efd",
       "outputs": [],
       "url": null,
       "checks": [
@@ -690,7 +690,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "d2b671d86063137285a505b22ddc63bea5d9238bd3f9838c7c40ec545f973429",
+      "sha256": "fefed10765feba17feb7db788a2b315d8b4fce0445b684b4221f8dde66653b85",
       "outputs": [],
       "url": null,
       "checks": [
@@ -790,7 +790,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "c39abb33bb1d05e78a6cffec1735eba52d717fa3b410410555ab38211de7066f",
+      "sha256": "7f79825f4cce977aa2e52c8058497a8111178bf9d5987c6e973a4eaab0ce6217",
       "outputs": [],
       "url": null,
       "checks": [
@@ -850,27 +850,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "0f90c9e762c17dfad80a471eb2ab6d05bda6595bf8dee19bd059a1e4ef1a9c22",
-      "outputs": [],
-      "url": null,
-      "checks": [
-        "inventory-policy"
-      ],
-      "evidence": {
-        "editorial": "pending: source changed since editorial review",
-        "local": "see named check results",
-        "publication": "pending: source changed since publication evidence"
-      }
-    },
-    {
-      "repository": "public",
-      "path": "cli/lib/delegates.mjs",
-      "owner": "client-docs",
-      "audience": "developers and agents",
-      "purpose": "guide",
-      "interface": "cli",
-      "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "8954074a3eb4ddfe5929b064cc84fbe27607d2bd8652ad34267ee62f8c83093d",
+      "sha256": "31ec3ffc08da0ab8f5763694229f06be421d7c6e81bde308824b7305f12c8c02",
       "outputs": [],
       "url": null,
       "checks": [
@@ -990,7 +970,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "0222643bb45f9bf250eff864aca5d3c42d2f6509b5feeeb5ac644db749bed44c",
+      "sha256": "72e77fa42ce2aaeaf05c9dcf1b0593a422890a91136b04eb6ea173e75fac4591",
       "outputs": [],
       "url": null,
       "checks": [
@@ -1030,7 +1010,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "18fad136282ae7931e5b1df83f557db3286da29fb47bfeef0b252738476f65ce",
+      "sha256": "9ad52010fbae3897f10a7f759c7bf6175dabee881ff8f45feda0ec904a34aca3",
       "outputs": [],
       "url": null,
       "checks": [
@@ -1090,7 +1070,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "d5a8bf3d7e9dbb74305b142d2ee03cb6722dcadc9e6f1cade48782fac0a63c50",
+      "sha256": "02b245f6a9da85989bcc3ebadacb06e593659cb7d05a7310b81523146059ed6d",
       "outputs": [],
       "url": null,
       "checks": [
@@ -1270,7 +1250,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "2e3ab98d144d20c173227017872968d5053904bd9ef71246b034687084648ec5",
+      "sha256": "fa62108d7a938abb81887d55ccb0d8f2684872fa0268870edc16cf6e5fe4dba6",
       "outputs": [],
       "url": null,
       "checks": [
@@ -1370,7 +1350,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "779ccf18b178e408886db41e500863b685d487704578b6a5e3aa27d98f7fb6df",
+      "sha256": "b0ba19328388ce193d165ad8d69fd9fd9661b877e168f98053328cc2bf1e20bd",
       "outputs": [],
       "url": null,
       "checks": [
@@ -1490,7 +1470,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "8589b2a08469966aca9deca23d8b7dfca51a770f30d8db86d0a7e1fb1baac6d7",
+      "sha256": "a470f04112a913ea5fbe9184b5decc1167524d5b30e278950dbf4f19433c5ca6",
       "outputs": [],
       "url": null,
       "checks": [
@@ -1730,7 +1710,7 @@
       "purpose": "generated",
       "interface": "mixed",
       "exception": "Edit docs-site source; validate deterministic generated bytes.",
-      "sha256": "ceebcab10476e6abba361a26fe384dc4821f99f914c4bf82f902184425633747",
+      "sha256": "0438bd5e2a5e74b2e60b689bc148ba3eb322ccc6b9e39fe592b746947ee2d448",
       "outputs": [],
       "url": null,
       "checks": [
@@ -1830,7 +1810,7 @@
       "purpose": "generated",
       "interface": "mixed",
       "exception": "Edit docs-site source; validate deterministic generated bytes.",
-      "sha256": "f9e70139008e0ddab1ddd097a1da3c806256f874f40904d38b82b8c8c10a7722",
+      "sha256": "b948c6c9676cbf677d522e42223ed1a1d077878eab5a1f036a83a7dbc6bc5615",
       "outputs": [],
       "url": null,
       "checks": [
@@ -1890,7 +1870,7 @@
       "purpose": "generated",
       "interface": "mixed",
       "exception": "Edit docs-site source; validate deterministic generated bytes.",
-      "sha256": "1f1ce6b702b5d6a85f487c53f3cc80f3b90000600e73d096aaec06afa9212156",
+      "sha256": "f5e1140c6a7a52ccd0402e54313f2e5dae8b9c25a50c02ecfd0890583b031d21",
       "outputs": [],
       "url": null,
       "checks": [
@@ -1950,7 +1930,7 @@
       "purpose": "generated",
       "interface": "mixed",
       "exception": "Edit docs-site source; validate deterministic generated bytes.",
-      "sha256": "ad66a7da80a26074f1ee63b2fbfa26e07b60e2b7eb04b8ed9ea4d87cfdfee3ef",
+      "sha256": "e054f6c5cd0f16b175250d2d4be91822c17685ea4b41acff95db48ff18f4cfa7",
       "outputs": [],
       "url": null,
       "checks": [
@@ -2506,7 +2486,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "9184e26e198958c113a188add17d583dc15b28b14837ad65f25b5922e39d431f",
+      "sha256": "4becfdefecf5238184ccb3e9256d92195f8877585d307fadce405a8301e50139",
       "outputs": [
         "cli/llms-cli-full.txt"
       ],
@@ -2667,7 +2647,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "75290a1a91c517ef25ef2658d5b95be3cd48d19c0d91ccb880a376ee24124ddf",
+      "sha256": "de7a82b09c5f1cad77396ca746703228ef3ae804ce903203c79e3c59e924ebc4",
       "outputs": [
         "cli/llms-cli-full.txt"
       ],
@@ -2713,7 +2693,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "afebc53448b98bb37ba4fe9424c40c887689caa2b2397bb3b983ddf662281b2a",
+      "sha256": "68b404cdbaa698f2f0778fe20ced17a4a4162fb9a19e27222f4a8ed1d10b5652",
       "outputs": [
         "cli/llms-cli-full.txt"
       ],
@@ -2885,7 +2865,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "a5577834757f1eeef3efc8ae3eeb8663304f180fc11f56c19d3988eeb847ca98",
+      "sha256": "3cedef039b6fdaf298b19196145a4184431c023dafd16e012351d5d6e6b6d09a",
       "outputs": [],
       "url": "https://docs.run402.com/errors/client/",
       "checks": [
@@ -2948,7 +2928,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "56b61c1248372413508c9a830a63538b864dd8d35bae475964e464fd14a4a940",
+      "sha256": "1c5cef22675d556b1e3cd76146589715ee84fdc5d529f59768a50c72b92a4d83",
       "outputs": [],
       "url": "https://docs.run402.com/errors/",
       "checks": [
@@ -3166,7 +3146,7 @@
       "purpose": "reference",
       "interface": "mcp",
       "exception": "Native MCP setup, schemas and tool examples.",
-      "sha256": "b6dba641acf0a9b49d3173879067cb6192c158ce133023d2196d48690ba0f8bc",
+      "sha256": "c41b1c763b8bb2904a036dce52de9fee8d181ce4fa12f25ba7f72bdbe99abdca",
       "outputs": [
         "llms-mcp.txt"
       ],
@@ -3189,7 +3169,7 @@
       "purpose": "reference",
       "interface": "mcp",
       "exception": "Native MCP setup, schemas and tool examples.",
-      "sha256": "a88dab99f69d5c1ea7edddce17d6cd9ffc2d5916853174825166c709eb80886b",
+      "sha256": "60091122ed8a4bf8e23a1b75a66a7fd7f69cceeebfe76d423c5855187fdd4025",
       "outputs": [
         "llms-mcp.txt"
       ],
@@ -3296,7 +3276,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "ab450890b3d98379a1088c4f9ba1e9359039e38cb53856ee43d8df41fbb8a796",
+      "sha256": "67e4baf1055fae10f2b4a753917845fc6f83382d33d84d9b339ea037d5d4dd94",
       "outputs": [],
       "url": "https://docs.run402.com/reference/error-codes/",
       "checks": [
@@ -3359,7 +3339,7 @@
       "purpose": "reference",
       "interface": "sdk",
       "exception": "Native typed scripting and SDK reference examples.",
-      "sha256": "2ed299e5ff5f95735b03b1e7bb3a9c99bf5f25111807ad7245562924dfc4c169",
+      "sha256": "a2f1a0c0d39dbae1094a3ac7fe74e84c97a9d519250b04d957f93d1fe0d73926",
       "outputs": [
         "sdk/llms-sdk.txt"
       ],
@@ -3383,7 +3363,7 @@
       "purpose": "reference",
       "interface": "sdk",
       "exception": "Native typed scripting and SDK reference examples.",
-      "sha256": "8802154394ec677ef80072299c57b8e02469f5ba50379e80fcbd1e4e293ef7d1",
+      "sha256": "1c1bf08aa510b49d2679f8cbbbc7deca42152756490608f61c5a9c7c8207c693",
       "outputs": [
         "sdk/llms-sdk.txt"
       ],
@@ -3503,7 +3483,7 @@
       "purpose": "reference",
       "interface": "sdk",
       "exception": "Native typed scripting and SDK reference examples.",
-      "sha256": "e1127cd1394a3baf1a4a14750e640e9e9a474db7daecfc5811583ed477cc02e1",
+      "sha256": "0e3bb97d02467100bb92ab47747761bd2289b8ff4454a06869974f5eb701c511",
       "outputs": [
         "sdk/llms-sdk.txt"
       ],
@@ -3527,7 +3507,7 @@
       "purpose": "reference",
       "interface": "sdk",
       "exception": "Native typed scripting and SDK reference examples.",
-      "sha256": "aafb6e4aefeb7c1a931f120a2b9fab22f7303e1170a28a8208fb216529e32943",
+      "sha256": "9b39f88f49aa1134ee59f496826641557c6019a6f946d77fc7ab3a8ca627d187",
       "outputs": [
         "sdk/llms-sdk.txt"
       ],
@@ -3575,7 +3555,7 @@
       "purpose": "reference",
       "interface": "sdk",
       "exception": "Native typed scripting and SDK reference examples.",
-      "sha256": "82f0a6322d656adfe5b2033b2619c4be858a4e43e189edef13d1e3d785e6e502",
+      "sha256": "a21395e40f55c6aa947e5bc649aab61b58ae4ffc0927fa03e290575f601fb534",
       "outputs": [
         "sdk/llms-sdk.txt"
       ],
@@ -3707,7 +3687,7 @@
       "purpose": "protocol",
       "interface": "native",
       "exception": "Normative wire/security documentation; preserve exact claims and mirrors.",
-      "sha256": "ae9b505ebd77c779ada35f6dcbe1eae31e5fe2fa756f1c1222d055812de140bd",
+      "sha256": "09b9a928e25d9b17ad4e49ac5f9bf205327a1d4700ec9cfceb6095237bdcf393",
       "outputs": [],
       "url": null,
       "checks": [
@@ -3727,7 +3707,7 @@
       "purpose": "protocol",
       "interface": "native",
       "exception": "Normative wire/security documentation; preserve exact claims and mirrors.",
-      "sha256": "dccbcbb2e81ac27da19d49fd9003e5a0e82556f02f9d67b583aed9e63fe7d4cc",
+      "sha256": "0c6f46d0a7af2ed51b1eef9fdf29b54db3ae43d90ba4f4ac8fa59bd55e4c03e0",
       "outputs": [],
       "url": null,
       "checks": [
@@ -3787,7 +3767,7 @@
       "purpose": "maintainer",
       "interface": "mixed",
       "exception": "Repository development and implementation instructions; product operations still prefer CLI.",
-      "sha256": "a3d376071049e5257954a1713e3ea83f67c9977881e33d9bb0fcbadaff780d7d",
+      "sha256": "5a91490c9cfb519f7d828767a4808b3a23b15a540113551009a5051a1ae6d44f",
       "outputs": [],
       "url": null,
       "checks": [
@@ -4227,7 +4207,7 @@
       "purpose": "generated",
       "interface": "mixed",
       "exception": "Edit docs-site source; validate deterministic generated bytes.",
-      "sha256": "20743692de3fbb85aa5dca4c02b830c2699b9d3858f503134969bc709a13d9a6",
+      "sha256": "68c6b289c66dba31a4be2433d13634e8069b373cc6e0e3931ed7ef6ef31f4d99",
       "outputs": [],
       "url": null,
       "checks": [
@@ -4267,7 +4247,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "3ef49698e78e2db9a70b993c920699a80e4497f6ae224f38c8c34e5f39c8350b",
+      "sha256": "f5768f03ac7197eced9eec5852d794a9c7cefc8b5fbe55f1cddad500a97fc04c",
       "outputs": [],
       "url": null,
       "checks": [
@@ -4287,7 +4267,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "5411bcf2c3fe41df26194dc7cf845dac6babe433b77988fe0ea8c12c8214cda4",
+      "sha256": "2e236fe211ff86b74bae4f8374c710ff6062d068d4e3660ac50a9ce92cffb808",
       "outputs": [],
       "url": null,
       "checks": [
@@ -4327,7 +4307,7 @@
       "purpose": "reference",
       "interface": "sdk",
       "exception": "Native typed scripting and SDK reference examples.",
-      "sha256": "f03bc4b027aad3c5d33bf4c8f2b2d8a469f75159c29a7c7329e6f5595e3c519f",
+      "sha256": "9aa12c9f2934b6f38daf3f8da25255ca3b6211b7975ed9117fc0f67c1d2ed305",
       "outputs": [],
       "url": null,
       "checks": [
@@ -4348,7 +4328,7 @@
       "purpose": "generated",
       "interface": "mixed",
       "exception": "Edit docs-site source; validate deterministic generated bytes.",
-      "sha256": "a91e20954d11aeea469673b147e41ef76a065913e600dad14fef5c5d0219399f",
+      "sha256": "cc6d40c7bcb523f53bf3116d56771540bed9c7e43b8624a731b07e298f7a0aaf",
       "outputs": [],
       "url": null,
       "checks": [

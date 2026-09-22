@@ -85,7 +85,7 @@ function readCommandSource(filePath: string): string | null {
 function parseCliCommands(): string[] {
   const cmds: string[] = [];
   const reserved = reservedSubcommands();
-  for (const mod of ["admin", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "feedback", "agent", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "orgs", "identity", "buzz", "grants", "delegates", "deliveries", "contacts", "subscriptions", "webhook-secret", "archives", "rooms", "messages", "claims", "escalations", "repos", "events", "errors"]) {
+  for (const mod of ["admin", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "feedback", "agent", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "orgs", "identity", "buzz", "grants", "deliveries", "contacts", "subscriptions", "webhook-secret", "archives", "rooms", "messages", "claims", "escalations", "repos", "events", "errors"]) {
     for (const sub of parseSubcommands(join(__dirname, "cli/lib", `${mod}.mjs`))) {
       if (reserved.has(`${mod}:${sub}`)) continue;
       cmds.push(`${mod}:${sub}`);
@@ -128,7 +128,7 @@ function parseCliCommands(): string[] {
 function parseOpenClawCommands(): string[] {
   const cmds: string[] = [];
   const reserved = reservedSubcommands();
-  for (const mod of ["admin", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "feedback", "agent", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "orgs", "identity", "buzz", "grants", "delegates", "deliveries", "contacts", "subscriptions", "webhook-secret", "archives", "rooms", "messages", "claims", "escalations", "repos", "events", "errors"]) {
+  for (const mod of ["admin", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "feedback", "agent", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "orgs", "identity", "buzz", "grants", "deliveries", "contacts", "subscriptions", "webhook-secret", "archives", "rooms", "messages", "claims", "escalations", "repos", "events", "errors"]) {
     for (const sub of parseSubcommands(join(__dirname, "openclaw/scripts", `${mod}.mjs`))) {
       if (reserved.has(`${mod}:${sub}`)) continue;
       cmds.push(`${mod}:${sub}`);
@@ -701,8 +701,13 @@ const SURFACE: Capability[] = [
   { id: "org_invite_create",   endpoint: "POST /orgs/v1/:org_id/invites",                     mcp: null,                    cli: "orgs:invite:create", openclaw: "orgs:invite:create" },
   { id: "org_invite_rm",       endpoint: "DELETE /orgs/v1/:org_id/invites/:principal_id",     mcp: null,                    cli: "orgs:invite:rm",     openclaw: "orgs:invite:rm" },
   { id: "create_project_grant", endpoint: "POST /projects/v1/:id/grants",                 mcp: "create_project_grant",  cli: "grants:create",     openclaw: "grants:create" },
+  { id: "list_project_grants",  endpoint: "GET /projects/v1/:id/grants",                  mcp: "list_project_grants",   cli: "grants:list",       openclaw: "grants:list" },
   { id: "revoke_project_grant", endpoint: "DELETE /projects/v1/:id/grants/:grant_id",     mcp: "revoke_project_grant",  cli: "grants:revoke",     openclaw: "grants:revoke" },
-  // Project credentials. `mcp: null` follows the delegates precedent below:
+  { id: "revoke_project_grant_key", endpoint: "DELETE /projects/v1/:id/grant-keys/:key_id", mcp: "revoke_project_grant_key", cli: "grants:revoke-key", openclaw: "grants:revoke-key" },
+  // Rotating a grant key returns its token once: `mcp: null`, same reason as
+  // the project credentials below.
+  { id: "rotate_project_grant_key", endpoint: "POST /projects/v1/:id/grant-keys/:key_id/rotate", mcp: null, cli: "grants:rotate-key", openclaw: "grants:rotate-key" },
+  // Project credentials. `mcp: null` because
   // issue/rotate/token return a one-time secret, and MCP renders tool output
   // into an agent transcript — exactly where agent-response-design.md says
   // credential-create / credential-rotate / token-mint must never be persisted.
@@ -714,11 +719,6 @@ const SURFACE: Capability[] = [
   { id: "rotate_project_credential", endpoint: "POST /projects/v1/:id/credentials/:credential_id/rotate", mcp: null, cli: "credentials:rotate", openclaw: "credentials:rotate" },
   { id: "revoke_project_credential", endpoint: "DELETE /projects/v1/:id/credentials/:credential_id",    mcp: null, cli: "credentials:revoke", openclaw: "credentials:revoke" },
   { id: "mint_project_token",        endpoint: "POST /projects/v1/:id/tokens",                          mcp: null, cli: "credentials:token",  openclaw: "credentials:token" },
-
-  { id: "create_project_delegate", endpoint: "POST /projects/v1/:id/delegates",                        mcp: null, cli: "delegates:create", openclaw: "delegates:create" },
-  { id: "list_project_delegates",  endpoint: "GET /projects/v1/:id/delegates",                         mcp: null, cli: "delegates:list",   openclaw: "delegates:list" },
-  { id: "revoke_project_delegate", endpoint: "DELETE /projects/v1/:id/delegates/:delegate_id",         mcp: null, cli: "delegates:revoke", openclaw: "delegates:revoke" },
-  { id: "rotate_project_delegate", endpoint: "POST /projects/v1/:id/delegates/:delegate_id/rotate",    mcp: null, cli: "delegates:rotate", openclaw: "delegates:rotate" },
 
   // ── Auth (project user) ────────────────────────────────────────────────
   { id: "request_magic_link", endpoint: "POST /auth/v1/magic-link",           mcp: "request_magic_link", cli: "auth:magic-link",    openclaw: "auth:magic-link" },
@@ -1268,17 +1268,16 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   org_invite_create: "org.invites.create",
   org_invite_rm: "org.invites.revoke",
   create_project_grant: "grants.create",
+  list_project_grants: "grants.list",
   revoke_project_grant: "grants.revoke",
+  revoke_project_grant_key: "grants.revokeKey",
+  rotate_project_grant_key: "grants.rotateKey",
   issue_project_credential: "credentials.issue",
   list_project_credentials: "credentials.list",
   project_credential_status: "credentials.status",
   rotate_project_credential: "credentials.rotate",
   revoke_project_credential: "credentials.revoke",
   mint_project_token: "credentials.mintToken",
-  create_project_delegate: "delegates.create",
-  list_project_delegates: "delegates.list",
-  revoke_project_delegate: "delegates.revoke",
-  rotate_project_delegate: "delegates.rotate",
 
   // Auth
   request_magic_link: "auth.requestMagicLink",
@@ -1567,6 +1566,9 @@ describe("SDK surface alignment", () => {
     // runtime-enforced), plus convenience methods consumers can compose
     // without needing their own MCP tool.
     const SDK_ONLY_METHODS = new Set([
+      // Minting another key against an existing grant: `grants create --key`
+      // mints the first key with the grant; a second key is an SDK call.
+      "grants.createKey",
       // tenant-live-changes: the reconnecting SSE subscription rides beside the
       // mapped held read (`live.changes`); the CLI verb `live` streams through it.
       "live.subscribe",
@@ -1674,10 +1676,10 @@ describe("SDK surface alignment", () => {
       // surface — it calls this automatically in write mode and surfaces
       // the outcome as `open_proof`, no new flag needed. This method is the
       // manual/explicit escape hatch (resubmitting after fixing a local
-      // keystore issue, or a delegate-authenticated caller that already
+      // keystore issue, or a grant-key-authenticated caller that already
       // resolved its own principal_id some other way, since GET
       // /agent/v1/whoami — fsck's own auto-resolution path — does not
-      // accept a delegate bearer); no dedicated CLI verb/MCP tool of its
+      // accept a grant-key bearer); no dedicated CLI verb/MCP tool of its
       // own, same "composable primitive" pattern as confirmRecipient/
       // repinRecipient/publishPinManifestUpdate above.
       "repos.submitProofOfOpen",

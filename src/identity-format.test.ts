@@ -31,7 +31,7 @@ describe("identity and provenance formatting", () => {
     }), /\(revoked\)/);
   });
 
-  it("renders immutable delegate actor provenance", () => {
+  it("renders immutable grant-key actor provenance", () => {
     const rendered = formatActor({
       schema_version: 1,
       principal: {
@@ -48,16 +48,16 @@ describe("identity and provenance formatting", () => {
         }],
       },
       authenticator: {
-        authenticator_id: "auth_delegate",
+        authenticator_id: "auth_grant_key",
         kind: "run402_agent_key",
-        public_subject: "dlg_123",
+        public_subject: "gk_123",
       },
       authority: {
-        kind: "delegate",
+        kind: "grant_key",
         organization_id: "org_1",
         project_id: "prj_1",
         grant_id: "grant_1",
-        delegate_id: "delegate_1",
+        grant_key_id: "grant_key_1",
         scope: ["deploy.write"],
       },
       captured_at: capturedAt,
@@ -65,7 +65,7 @@ describe("identity and provenance formatting", () => {
 
     assert.match(rendered, /Fizz/);
     assert.match(rendered, /npub1agent/);
-    assert.match(rendered, /authority: delegate/);
+    assert.match(rendered, /authority: grant_key/);
     assert.doesNotMatch(rendered, /owner/);
   });
 

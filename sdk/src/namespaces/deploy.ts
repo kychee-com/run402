@@ -22,7 +22,7 @@
 import { normalizeEdgeEvidence } from "./edge-evidence.js";
 import type { Client } from "../kernel.js";
 import { isCiSessionCredentials } from "../ci-credentials.js";
-import { isDelegateCredentials } from "../delegate-credentials.js";
+import { isGrantKeyCredentials } from "../grant-key-credentials.js";
 import { isKnownBinaryContent, isUtf8StringSource } from "../validation.js";
 import { assertCiDeployableSpec } from "./ci.js";
 import {
@@ -5132,11 +5132,11 @@ async function apikeyHeaders(
   client: Client,
   projectId: string,
 ): Promise<Record<string, string>> {
-  // A CI session and a delegate both already authorize these routes via
+  // A CI session and a grant key both already authorize these routes via
   // `Authorization: Bearer`, supplied by the kernel's getAuth. Attaching an
   // apikey beside a bearer mixes credential families on one request, which the
   // kernel explicitly forbids — so stand down and let the bearer carry it.
-  if (isCiClient(client) || isDelegateClient(client)) return {};
+  if (isCiClient(client) || isGrantKeyClient(client)) return {};
   const project = await client.getProject(projectId);
   if (project?.anon_key) return { apikey: project.anon_key };
   const minted = await mintedAnonToken(client, projectId);
@@ -5198,8 +5198,8 @@ function isCiClient(client: Client): boolean {
   return isCiSessionCredentials(client.credentials);
 }
 
-function isDelegateClient(client: Client): boolean {
-  return isDelegateCredentials(client.credentials);
+function isGrantKeyClient(client: Client): boolean {
+  return isGrantKeyCredentials(client.credentials);
 }
 
 function makeEmitter(

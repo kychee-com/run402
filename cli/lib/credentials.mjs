@@ -39,7 +39,7 @@ Project credentials (on the gateway — named, revocable, rotatable):
                                 Revoke immediately, freeing the name
   token [--project <project_id>] [--kind <anon|service>]
                                 Mint a SHORT-LIVED token. Works with only a
-                                delegate — the unattended recovery path.
+                                grant key — the unattended recovery path.
 
 Local cache (on this machine):
   project-keys                  Manage the local project-key cache
@@ -49,7 +49,7 @@ Notes:
     plus a fresh step-up, so a scoped agent credential can never escalate
     itself into a permanent root. Authenticate with a wallet (SIWX) or a
     sign-in session ('run402 login').
-  - 'token' is the exception: a delegate can mint one with no human present.
+  - 'token' is the exception: a grant key can mint one with no human present.
   - Secrets are returned EXACTLY ONCE and are never recoverable. Full JSON goes
     to stdout so you can pipe it; the warnings go to stderr.
 
@@ -106,7 +106,7 @@ Usage:
 The secret is printed ONCE, on stdout, inside the JSON. Pipe it:
   run402 credentials issue --kind service --name ci | jq -r .secret
 
-Requires owner membership on the project's org plus a fresh step-up. A delegate
+Requires owner membership on the project's org plus a fresh step-up. A grant key
 can NEVER do this; use 'run402 credentials token' instead.
 `,
   list: `run402 credentials list — list a project's credentials
@@ -157,7 +157,7 @@ Usage:
   run402 credentials token [--project <project_id>] [--kind <anon|service>]
 
 The cold-restart recovery path, and the ONE credential call an agent can make
-with no human present: a delegate is accepted here. There is no step-up because
+with no human present: a grant key is accepted here. There is no step-up because
 there is nobody to prompt, and what you get back expires, so it cannot become a
 durable root. Defaults to --kind service.
 `,

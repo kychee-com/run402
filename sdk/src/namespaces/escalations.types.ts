@@ -10,8 +10,8 @@
 export interface EscalationRaisedBy {
   /** The control-plane principal the judgement belongs to. */
   principal_id: string;
-  /** Set when the raiser was a scoped delegate rather than a member. */
-  delegate_id: string | null;
+  /** Set when the raiser held a grant key rather than a membership. */
+  grant_key_id: string | null;
   /** The coordination-room presence name, when the agent supplied one. */
   presence_name: string | null;
 }
@@ -117,7 +117,7 @@ export interface EscalationList {
   escalations: Escalation[];
   /**
    * `organization` when the caller is a member (sees every escalation);
-   * `own` for a delegate or grant-only principal (sees only what it raised).
+   * `own` for a grant-key or grant-only principal (sees only what it raised).
    */
   scope: "organization" | "own";
   has_more: boolean;

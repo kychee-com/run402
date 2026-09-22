@@ -1047,7 +1047,7 @@ export async function computeOpenProofOutcome(input: {
         receipt: null,
         error: {
           code: "VAULT_PROOF_OF_OPEN_PRINCIPAL_UNRESOLVED",
-          message: "GET /agent/v1/whoami returned no resolvable principal for this credential (delegate bearers are not accepted by whoami) — submit via r.repos.submitProofOfOpen(repoId, principalId, evidence) directly instead",
+          message: "GET /agent/v1/whoami returned no resolvable principal for this credential (grant-key bearers are not accepted by whoami) — submit via r.repos.submitProofOfOpen(repoId, principalId, evidence) directly instead",
         },
       };
     }
@@ -3429,7 +3429,7 @@ export class Repos {
 
     // ensure wallet — A fresh machine has no wallet, and the redeem route
     // accepts ONLY a SIWX wallet signature (a control-plane session,
-    // delegate, or service key is refused HANDOFF_REDEEM_REQUIRES_WALLET —
+    // grant key, or service key is refused HANDOFF_REDEEM_REQUIRES_WALLET —
     // the keystore key the redemption publishes is what makes the recipient a
     // real key-holder). Nothing upstream creates the wallet for an
     // unpaid request, so `resume` does it here, exactly as `repos resume

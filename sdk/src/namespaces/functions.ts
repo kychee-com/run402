@@ -296,7 +296,7 @@ export class Functions {
     opts: FunctionLogsOptions = {},
   ): Promise<FunctionLogsResult> {
     // The project's own service key when cached; otherwise the client's
-    // principal credential (SIWX / session / delegate), which the gateway
+    // principal credential (SIWX / session / grant key), which the gateway
     // authorizes with project.read — the agent a Buzz page addresses runs
     // the logs drill-down an error fingerprint hands it without a key.
     const project = await this.client.getProjectCredentials(projectId);

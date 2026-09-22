@@ -154,7 +154,7 @@ const MATRIX = {
   subscriptions: { shared: ["add", "list", "rm"], specific: [] },
   "webhook-secret": { shared: ["rotate"], specific: [] },
   orgs: { shared: [], specific: ["create", "get", "rename", "list", "audit", "members", "invite"] },
-  grants: { shared: [], specific: ["create", "revoke"] },
+  grants: { shared: [], specific: ["create", "list", "revoke", "revoke-key", "rotate-key"] },
   events: { shared: ["list"], specific: [] },
   live: { shared: [], specific: [] },
   rooms: { shared: [], specific: [] },

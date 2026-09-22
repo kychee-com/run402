@@ -235,13 +235,10 @@ export const COMMAND_MANIFEST = [
 
   // ── grants ───────────────────────────────────────────────────────────────
   { path: ["grants", "create"], positionals: [p("wallet")], projectScoped: true, legacyPositionalProject: true, minimalArgs: ["0x1111111111111111111111111111111111111111", "--capability", "deploy"] },
+  { path: ["grants", "list"], positionals: [], projectScoped: true, legacyPositionalProject: true, minimalArgs: [] },
   { path: ["grants", "revoke"], positionals: [p("grant_id")], projectScoped: true, legacyPositionalProject: true, minimalArgs: ["grt_gate1"] },
-
-  // ── delegates ────────────────────────────────────────────────────────────
-  { path: ["delegates", "create"], legacyPositionalProject: false, positionals: [], projectScoped: true, minimalArgs: ["--grant", "11111111-1111-1111-1111-111111111111"] },
-  { path: ["delegates", "list"], legacyPositionalProject: false, positionals: [], projectScoped: true, minimalArgs: [] },
-  { path: ["delegates", "revoke"], legacyPositionalProject: false, positionals: [p("delegate_id")], projectScoped: true, minimalArgs: ["dlg_gate1"] },
-  { path: ["delegates", "rotate"], legacyPositionalProject: false, positionals: [p("delegate_id")], projectScoped: true, minimalArgs: ["dlg_gate1"] },
+  { path: ["grants", "revoke-key"], positionals: [p("key_id")], projectScoped: true, legacyPositionalProject: true, minimalArgs: ["key_gate1"] },
+  { path: ["grants", "rotate-key"], positionals: [p("key_id")], projectScoped: true, legacyPositionalProject: true, minimalArgs: ["key_gate1"] },
 
   // ── events / live ────────────────────────────────────────────────────────
   { path: ["events", "list"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },

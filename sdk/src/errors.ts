@@ -217,7 +217,7 @@ export class ProjectNotFound extends Run402Error {
  * `NOT_AUTHORIZED`, `STEP_UP_REQUIRED`) — since 402 is reserved for
  * genuine payment challenges, this now also covers non-payment 403 denials
  * such as quota (`QUOTA_EXCEEDED`), lifecycle (`PROJECT_FROZEN` /
- * `PROJECT_DORMANT`), and delegate spend-cap denials. Check `body.code` (or
+ * `PROJECT_DORMANT`), and grant-key spend-cap denials. Check `body.code` (or
  * use `formatCanonicalErrorContext`-style parsing) to distinguish these
  * from a true auth failure.
  */
@@ -837,7 +837,7 @@ function synthesizeNextActions(code: string | undefined): NextAction[] {
         {
           type: "authenticate",
           auth: "SIWX",
-          why: "Provide SIWX wallet auth (or a session/delegate bearer) and retry the request.",
+          why: "Provide SIWX wallet auth (or a sign-in session or grant-key bearer) and retry the request.",
         },
       ];
     default:

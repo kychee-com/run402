@@ -811,9 +811,9 @@ describe("Run402 for Buzz setup state machine", () => {
 
   it("refuses unexpected human or non-EOA principals before linking", async () => {
     const humanCalls = await expectBlocked({ principalType: "human" }, "RUN402_AGENT_PRINCIPAL_REQUIRED");
-    const delegatedCalls = await expectBlocked({ authenticatorKind: "run402_agent_key" }, "RUN402_AGENT_PRINCIPAL_REQUIRED");
+    const grantKeyCalls = await expectBlocked({ authenticatorKind: "run402_agent_key" }, "RUN402_AGENT_PRINCIPAL_REQUIRED");
     assert.equal(count(humanCalls, "nostr begin --pubkey"), 0);
-    assert.equal(count(delegatedCalls, "nostr begin --pubkey"), 0);
+    assert.equal(count(grantKeyCalls, "nostr begin --pubkey"), 0);
   });
 
   it("preserves stable errors for expired challenge, Buzz proof, completion, and final verification", async () => {

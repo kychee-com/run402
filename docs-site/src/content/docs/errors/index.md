@@ -381,9 +381,6 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="DEFAULT_MAILBOX_REQUIRED"></a>
 [`DEFAULT_MAILBOX_REQUIRED`](/errors/gateway/#DEFAULT_MAILBOX_REQUIRED)
 
-<a id="DELEGATE_SCOPE_INSUFFICIENT"></a>
-[`DELEGATE_SCOPE_INSUFFICIENT`](/errors/client/#DELEGATE_SCOPE_INSUFFICIENT)
-
 <a id="dependency_install_failed"></a>
 [`dependency_install_failed`](/errors/core/#dependency_install_failed)
 
@@ -539,6 +536,9 @@ The catalog records owning source locations and pinned external contributions. A
 
 <a id="GITHUB_REPOSITORY_ID_REQUIRED"></a>
 [`GITHUB_REPOSITORY_ID_REQUIRED`](/errors/client/#GITHUB_REPOSITORY_ID_REQUIRED)
+
+<a id="GRANT_KEY_SCOPE_INSUFFICIENT"></a>
+[`GRANT_KEY_SCOPE_INSUFFICIENT`](/errors/client/#GRANT_KEY_SCOPE_INSUFFICIENT)
 
 <a id="GRANT_NOT_FOUND"></a>
 [`GRANT_NOT_FOUND`](/errors/gateway/#GRANT_NOT_FOUND)

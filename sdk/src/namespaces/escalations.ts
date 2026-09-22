@@ -57,7 +57,7 @@
  *   bounded number of times and then rests OPEN — never auto-resolved.
  * - **Acknowledging is not resolving.** Ack says a human owns it (which is
  *   what unblocks you); resolve says it is finished.
- * - **Raising is delegate-capable**, deliberately: the most compartmentalized
+ * - **Raising is grant-key-capable**, deliberately: the most compartmentalized
  *   agent is exactly the one most likely to need a human. A project
  *   `service_key` is rejected — an app reporting facts has the events lane;
  *   an escalation is judgement and needs a principal to attribute.
@@ -133,7 +133,7 @@ export class Escalations {
 
   /**
    * List escalations (`GET /orgs/v1/:org_id/escalations`). An org member sees
-   * every escalation; a delegate or grant-only principal sees ONLY what it
+   * every escalation; a grant-key or grant-only principal sees ONLY what it
    * raised — the response's `scope` says which. Paged newest-first: a capped
    * page reports `has_more` and hands back `next_cursor`.
    */

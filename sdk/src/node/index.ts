@@ -70,12 +70,12 @@ export interface NodeRun402Options {
   /** Override the credentials provider. Defaults to the local Node keystore + wallet provider. */
   credentials?: CredentialsProvider;
   /**
-   * A delegate bearer minted by a project owner (`run402 delegates create`).
-   * When set — here or via `RUN402_DELEGATE_TOKEN` — it becomes the sole
+   * A grant-key bearer minted by a project owner (`run402 grants create --key`).
+   * When set — here or via `RUN402_GRANT_KEY` — it becomes the sole
    * credential class, so a process with no wallet and no cached project keys
-   * can still deploy. See `../delegate-credentials.ts`.
+   * can still deploy. See `../grant-key-credentials.ts`.
    */
-  delegateToken?: string;
+  grantKey?: string;
   /**
    * Explicit async x402 signer (for example KMS/HSM backed). The provider
    * exposes only a public address plus signing operations, never a raw key.
@@ -151,7 +151,7 @@ export function run402(opts: NodeRun402Options = {}): NodeRun402 {
     profileStatePath: opts.profileStatePath,
     surface: opts.surface,
     authMode: opts.authMode,
-    delegateToken: opts.delegateToken,
+    grantKey: opts.grantKey,
   });
   let lazyPaidFetch: LazyPaidFetch | undefined;
   if (!opts.fetch && !opts.disablePaidFetch) {
@@ -798,9 +798,9 @@ export {
   isDeployError,
   isRetryableRun402Error,
   isCiSessionCredentials,
-  isDelegateCredentials,
-  delegateTokenFromEnv,
-  DELEGATE_TOKEN_ENV,
+  isGrantKeyCredentials,
+  grantKeyFromEnv,
+  GRANT_KEY_ENV,
   projectOperationAuthClassification,
   isDeployResolveRouteHit,
   isDeployResolveStaticHit,

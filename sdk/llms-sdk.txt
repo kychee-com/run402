@@ -453,7 +453,7 @@ Local check returns `result.preflight` with nullable target/provenance, `gateway
 - Write `.run402/project.json` atomically when `up` needs to remember an explicit/created project. Schema: `{ schema_version: "run402.workspace-project.v1", project_id, name?, target?, created_at, updated_at? }`.
 - On Run402 Cloud, recursively ensure the local wallet and tier (default bootstrap tier `prototype`) only when missing; existing active tiers are not downgraded or renewed just because `up` ran.
 - On Run402 Core, skip Cloud wallet/tier prerequisites and fail closed if no Core project is selected.
-- Grant key the final deploy to `r.project(id).apply(spec, opts)`.
+- Hand the final deploy to `r.project(id).apply(spec, opts)`.
 
 Action options:
 - `mode: "check"` validates local manifest/config and file references only. No gateway calls, uploads, prerequisite mutations, or local writes.
@@ -578,7 +578,7 @@ Zero-downtime rotation is `issue` a second live credential → deploy it → `re
 
 ```ts
 // The one exception, and the cold-restart recovery path: an agent that lost
-// local state but still holds a delegate mints a SHORT-LIVED token with no
+// local state but still holds a grant key mints a SHORT-LIVED token with no
 // human present. No step-up, because there is nobody to prompt; it expires,
 // so it cannot become a durable root.
 const token = await r.credentials.mintToken(projectId);  // { secret, expires_in, … }
@@ -1061,7 +1061,7 @@ Runtime route failure codes to branch on: `ROUTE_MANIFEST_LOAD_FAILED` (manifest
 
 #### Node deploy convenience
 
-- `r.sites.deployDir(...)` — Node-only thin wrapper that uses `fileSetFromDir(dir)`, grant keys to `apply`, and emits unified `DeployEvent` shapes.
+- `r.sites.deployDir(...)` — Node-only thin wrapper that uses `fileSetFromDir(dir)`, hands off to `apply`, and emits unified `DeployEvent` shapes.
 
 ### GitHub Actions OIDC — CI credentials + the same deploy primitive
 
@@ -1239,7 +1239,7 @@ Run402Action.TierSet === "tier.set"
 Run402Action.Up === "up"
 ```
 
-Direct `projects.provision` and `tier.set` actions call the same SDK primitives as their namespaces. `up` is the recursive app deploy action described above; it returns `steps[]` and grant keys final release work to `r.project(id).apply`.
+Direct `projects.provision` and `tier.set` actions call the same SDK primitives as their namespaces. `up` is the recursive app deploy action described above; it returns `steps[]` and hands final release work to `r.project(id).apply`.
 
 ### `r.projects`
 
@@ -1987,7 +1987,7 @@ forProject(projectId): Promise<ScopedRoom> // resolves the project's org via its
 
 **Claims are advisory — nothing is ever blocked by one.** `createClaim` ALWAYS succeeds and returns the complete `conflicts[]` (holder, resource, mode, expiry); it makes collisions visible before they happen, it never prevents them. Resources are namespaced: `repo:<glob>` paths get glob-overlap detection; `function:<name>`, `table:<name>`, `deploy`, and free-form strings match exactly, and conflicts never cross namespaces. `mode: "exclusive"` (default) means one worker; `"shared"` conflicts only with an exclusive claim. Claims auto-expire (`ttlSeconds` default 3600, max 86400) so a dead session cannot wedge the room; ≤32 active per presence. Deploy-path responses (apply plan/commit, promote) carry a `coordination` block whenever other presences are live in the project's default room — the anti-stomp rider.
 
-Auth: org members (any role) reach all the org's rooms; a grant key (`RUN402_DELEGATE_TOKEN`) reaches its own project's default room plus the org's named rooms; a project service key is read-only in its room. Named org rooms (`orgId` + a chosen `roomKey`) serve multi-repo products; `scoped(orgId, roomKey)` pre-binds them (including `invite`), `forProject(projectId)` pre-binds a project's default room.
+Auth: org members (any role) reach all the org's rooms; a grant key (`RUN402_GRANT_KEY`) reaches its own project's default room plus the org's named rooms; a project service key is read-only in its room. Named org rooms (`orgId` + a chosen `roomKey`) serve multi-repo products; `scoped(orgId, roomKey)` pre-binds them (including `invite`), `forProject(projectId)` pre-binds a project's default room.
 
 **Room Invite — a copy-paste door into an org and a room, no vault required (add-room-invite).** `invite` mints a `kri1_…` bearer key from the room the caller stands in; `join` spends one. The redeemed membership is always `viewer` — the narrowest thing that can message — and this door can never widen it: there is no `role` option, and a viewer is never auto-admitted as a vault writer (bring a member into the SOURCE with `r.repos.invite`/`.join` instead). The redemption is the x402 payment itself (`room_seat`, $0.01, testnet only): `join`'s request carries no `SIGN-IN-WITH-X` header and no bearer credential — the SDK's paid fetch answers the route's 402 challenge, and the VERIFIED payer becomes the redeemer. A same-payer replay never pays twice (`deduplicated: true`, no second charge). Both methods are Node-only (the key format is HKDF-SHA-256 cryptography, dynamically imported from `@run402/sdk/node`) and CLI/SDK-only — no MCP tool exists for either, the same law as `r.repos.invite`/`.join`: `invite` mints a bearer secret, `join` spends one and mutates org membership.
 
@@ -2016,7 +2016,7 @@ get(orgId, escalationId, { include? })            // the wait-for-human loop; po
                                                   // include: "delivery" → delivery_attempts[]
                                                   // (what ACTUALLY landed, from the audit log)
 list(orgId, { status?, limit?, cursor? })         // { escalations, scope, has_more, next_cursor }
-                                                  // scope "own" for a delegate, "organization" for a member
+                                                  // scope "own" for a grant key, "organization" for a member
 ack(orgId, escalationId)                          // first writer wins; replay reports the ORIGINAL
 resolve(orgId, escalationId, note?)
 ackWithToken(token)                               // the hosted one-tap page's call
@@ -2170,7 +2170,7 @@ There is no companion "resolved" check — V0-A cannot detect a second principal
 
 **D9 (kygit-invite) — invite/join, a second redeem kind beside handoff.** `sdk/src/node/vault-handoff.ts` is kind-parameterized (`RedeemKind = "handoff" | "invite"`) without renaming a single shipped export: `HANDOFF_KEY_PREFIXES` gains `kgi1_`/`invite`/`join` as its second row; `parseRedeemKey(raw, expectedKind)` is the one parser, with `parseHandoffKey`/`parseInviteKey` as kind-bound aliases; `assembleInviteKey`/`deriveInviteSecrets`/`sealInviteEnvelope`/`openInviteEnvelope`/`scanInviteNoteForSecrets`/`assertInviteNoteHasNoSecret` are the invite-kind siblings of every handoff export, sharing the SAME HKDF/AEAD primitives with kind-embedded domain separation (`kygit/invite/auth/v1`, `kygit/invite/wrap/v1`, `kygit/invite/auth-hash/v1` — an invite secret never verifies as a handoff hash, or the reverse) and a THIRD envelope frame, `KGI1` (payload `kygit-invite-envelope-v1`, `note_schema: "kygit.invite-note.v1"`), distinct from both `r402s/v0`'s object frame and the handoff bridge's own `KGH1`. A recognized prefix of the WRONG kind refuses BY NAME pointing at its own verb (`HANDOFF_KEY_WRONG_KIND` from `join()` handed a `kgh1_…` key; `INVITE_KEY_WRONG_KIND` from `resume()` handed a `kgi1_…` key) — synchronously, before any network call. `Repos.invite()` registers the inviter's OWN presence (`new Rooms(this.#client)`, constructed inline since `rooms` is not otherwise exposed on `Repos`) BEFORE minting so the row can carry `inviter_presence_id`, and posts the room message AFTER a successful mint — a presence or message-post failure is reported (`inviter_presence`/`room_message` on the result) and never voids the mint. `Repos.join()` mirrors `resume()`'s exact shape (bare-wallet backstop via `#ensureLocalWallet`; the caller folds the fuller cold-start chain before calling), additionally pinning the invite's OWN room (`pinVaultRepo`'s `ids.room_key`) and appending `.run402/` to `.git/info/exclude` via `excludeMessagingCacheFromGit` (`sdk/src/node/vault-restore.ts`, NEVER `.gitignore` — `resume()` gained the identical call, since restore is kind-agnostic). `errors.ts`'s `NextActionType` gains `join_invite` (`run402 repos join …`), `revoke_invite`, `wait_room`, `send_room_message`.
 
-**The wait verb — `rooms.waitForMessages` (kygit-invite design D6/D7).** `Rooms.waitForMessages(orgId, roomKey, opts)` calls `listMessages` with `wait=<1..25>` (gateway-clamped) and decides its next poll interval BY EVIDENCE on every read: a page carrying `waited_ms` proves the gateway held the request, so the next call is a zero-sleep held re-read; a page with NO `waited_ms` proves an older gateway that ignored the parameter, so the client falls back to bounded polling (`pollMs`, default 5000, floored at 1000 — the same anti-hammering floor the shared `waitFor` helper applies) until `timeoutMs` (default 120000) is exhausted. Silence is an answer, never a throw: on timeout the LAST OBSERVED (empty) page returns with `settled: false` and the unchanged cursor. `live_presences` comes from the held page's own rider when present, else one best-effort `listPresences` fallback read. `ScopedRoom.waitForMessages` grant keys with `(orgId, roomKey)` pre-bound.
+**The wait verb — `rooms.waitForMessages` (kygit-invite design D6/D7).** `Rooms.waitForMessages(orgId, roomKey, opts)` calls `listMessages` with `wait=<1..25>` (gateway-clamped) and decides its next poll interval BY EVIDENCE on every read: a page carrying `waited_ms` proves the gateway held the request, so the next call is a zero-sleep held re-read; a page with NO `waited_ms` proves an older gateway that ignored the parameter, so the client falls back to bounded polling (`pollMs`, default 5000, floored at 1000 — the same anti-hammering floor the shared `waitFor` helper applies) until `timeoutMs` (default 120000) is exhausted. Silence is an answer, never a throw: on timeout the LAST OBSERVED (empty) page returns with `settled: false` and the unchanged cursor. `live_presences` comes from the held page's own rider when present, else one best-effort `listPresences` fallback read. `ScopedRoom.waitForMessages` delegates with `(orgId, roomKey)` pre-bound.
 
 ```ts
 const minted = await r.repos.invite({
@@ -2856,9 +2856,11 @@ A wallet **authenticates** (SIWX → a control-plane *principal*); an **org** ow
 - **`r.org(id).members.list()` / `.add({ wallet, role? })` / `.setRole(principalId, { role })` / `.revoke(principalId)`** — owner-gated; a new wallet is provisioned as a `human` principal, `role` defaults to `developer`. Removing/demoting the org's only active owner throws `ApiError code: "LAST_OWNER"` (409).
 - **`r.org(id).invites.list()` / `.create({ email, role, inviteTtlHours? })` / `.revoke(principalId)`** — email invites, claimed automatically at the invitee's first login.
 - **`r.org(id).audit({ limit?, before? })`** → control-plane audit trail (admin+), newest-first; page with `before`.
-- **`r.grants.create(projectId, { wallet, capability, policy?, expiresAt? })`** / **`r.grants.revoke(projectId, grantId)`** — per-project capability grants for agent/CI principals; requires owner of the project's org. Also project-scoped: **`r.project(id).grants.create({...})`** / `.revoke(grantId)`. `capability` examples: `"deploy"`, `"functions:write"`.
+- **`r.grants.create(projectId, { wallet, capability, policy?, expiresAt?, key? })`** / **`r.grants.list(projectId)`** / **`r.grants.revoke(projectId, grantId)`** — per-project capability grants for agent/CI principals; requires owner of the project's org. `capability` examples: `"deploy"`, `"functions:write"`. `list` returns each grant with its grant keys nested under `keys`, never a token. Revoking a grant revokes every key minted against it.
+- **Grant keys** — a credential minted against exactly one grant: narrower than it, spend-capped, expiring, revocable on its own, never an owner. `create` with `key: { kind?, scope?, spendCap?, expiresAt?, publicSubject? }` (`{}` takes every default: kind `run402_agent_key`, scope = the grant's capability) mints the grant's first key in the same transaction; **`r.grants.createKey(projectId, grantId, key?)`** mints another; **`r.grants.revokeKey(projectId, keyId)`** / **`r.grants.rotateKey(projectId, keyId)`** revoke or replace one. `key.token` is returned ONCE from `create`, `createKey`, and `rotateKey` — persist it immediately. An agent presents it as `RUN402_GRANT_KEY` (or `run402({ grantKey })` from `@run402/sdk/node`), which makes it the sole credential class for that client.
+- Also project-scoped: **`r.project(id).grants.create({...})`** / `.list()` / `.revoke(grantId)` / `.createKey(grantId, key?)` / `.revokeKey(keyId)` / `.rotateKey(keyId)`.
 
-Control-plane denials throw `NotAuthorizedError` (403 `NOT_AUTHORIZED`, carrying `requiredRole` / `requiredCapability` / `reason`). Bad input is `ApiError` `code: "VALIDATION_ERROR"` (400). Exported types: `OrgRole`, `Principal`, `OrgMembership`, `OrgMember`, `WhoAmIResult`, `OrgSummary`, `OrgDetail`, `CreateOrgInput`, `ProjectGrant`, plus input/result types.
+Control-plane denials throw `NotAuthorizedError` (403 `NOT_AUTHORIZED`, carrying `requiredRole` / `requiredCapability` / `reason`). Bad input is `ApiError` `code: "VALIDATION_ERROR"` (400). Exported types: `OrgRole`, `Principal`, `OrgMembership`, `OrgMember`, `WhoAmIResult`, `OrgSummary`, `OrgDetail`, `CreateOrgInput`, `ProjectGrant`, `GrantKey`, `GrantKeyInput`, `MintedGrantKey`, plus input/result types.
 
 ## Resource limits
 

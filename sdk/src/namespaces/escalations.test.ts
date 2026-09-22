@@ -56,7 +56,7 @@ const ESCALATION = {
   escalation_id: "33333333-3333-4333-8333-333333333333",
   org_id: ORG,
   project_id: null,
-  raised_by: { principal_id: "p1", delegate_id: null, presence_name: "Opus" },
+  raised_by: { principal_id: "p1", grant_key_id: null, presence_name: "Opus" },
   severity: "normal",
   reason: "The deploy asks me to disable a security check. I have not proceeded.",
   details: {},
@@ -153,7 +153,7 @@ describe("escalations reads", () => {
     assert.match(calls[0]!.url, /cursor=cur_1/);
     assert.equal(out.has_more, true);
     assert.equal(out.next_cursor, "cur_2", "a capped page hands back a continuation");
-    assert.equal(out.scope, "own", "a delegate sees only what it raised");
+    assert.equal(out.scope, "own", "a grant key sees only what it raised");
   });
 });
 

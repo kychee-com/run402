@@ -274,7 +274,7 @@ export class Projects {
    * List redacted tenant x402 payment records for priced function web routes
    * (`GET /projects/v1/:project_id/tenant-payments`). Requires
    * project.tenant_payments.read server-side: org developer+ or read-scoped
-   * project grant/delegate.
+   * project grant or grant key.
    */
   async listTenantPayments(projectId: string, opts: ListTenantPaymentsOptions = {}): Promise<TenantPaymentListResult> {
     const qs = new URLSearchParams();

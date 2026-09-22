@@ -164,7 +164,7 @@ Options:
 
 Notes:
   - Requires project.tenant_payments.read: org developer+ or a read-scoped
-    project grant/delegate.
+    project grant or grant key.
   - Output is the gateway's redacted payment page. Raw X-PAYMENT headers,
     authorization hashes, and internal metadata are never returned.
 `,

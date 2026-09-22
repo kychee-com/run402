@@ -41,7 +41,7 @@ Zero-downtime rotation is `issue` a second live credential → deploy it → `re
 
 ```ts
 // The one exception, and the cold-restart recovery path: an agent that lost
-// local state but still holds a delegate mints a SHORT-LIVED token with no
+// local state but still holds a grant key mints a SHORT-LIVED token with no
 // human present. No step-up, because there is nobody to prompt; it expires,
 // so it cannot become a durable root.
 const token = await r.credentials.mintToken(projectId);  // { secret, expires_in, … }

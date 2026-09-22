@@ -481,7 +481,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/orgs.md",
-    "line": 153,
+    "line": 158,
     "language": "bash",
     "kind": "commands",
     "sha256": "fdf27bb0938a56edd5d76a2fe59b721405d62974241dee71cc087d95713dc5db",
@@ -489,7 +489,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/orgs.md",
-    "line": 163,
+    "line": 168,
     "language": "bash",
     "kind": "commands",
     "sha256": "051241e43bb6641a67066fb637eeaf529c86b77d929b41efdbacb431f69e8989",
@@ -932,7 +932,7 @@
     "line": 42,
     "language": "ts",
     "kind": "application-or-sdk",
-    "sha256": "3d94b7516ffe33330577834032c08bc2350da12117e0a03b02cc3e88e4a71d54",
+    "sha256": "70c2e752c0e44e183e47ac8cc11b46d68e6d50d899b244a4858e694699473ee2",
     "validation": "sdk-snippets"
   },
   {
@@ -1468,7 +1468,7 @@
     "line": 803,
     "language": "",
     "kind": "output-or-pseudocode",
-    "sha256": "d28a14f67d8ea37807213ff42e4c19dc8adcb1d145e48c053ae3dc4b277ed21f",
+    "sha256": "00e98c05c84eff524913a34c8df20b4761893dc5f9c70af8ccf917b740fd64bb",
     "validation": "sdk-snippets"
   },
   {
