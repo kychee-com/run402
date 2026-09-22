@@ -76,9 +76,9 @@ Steps (idempotent when re-run with the same rail; pass --switch-rail to change r
   1. Creates config directory (~/.config/run402)
   2. Creates agent allowance if none exists
   3. Checks on-chain balance; requests faucet if zero
-  4. Shows current tier subscription status
+  4. Shows current tier and lease status
   5. Lists local project count
-  6. Suggests next step (run402 up -y when no tier is held yet — it subscribes
+  6. Suggests next step (run402 up -y when no tier is held yet — it sets
      the prototype tier as part of the first deploy — or run402 deploy)
 
 Run this once to get started, or again to check your setup.
@@ -769,16 +769,16 @@ export async function run(args = []) {
     write(`  ${summary.next_actions[0].why}`);
     if (summary.next_step) write(`  Next: ${summary.next_step}`);
   } else if (tierMissing) {
-    // `up -y` subscribes the prototype tier itself as part of the first
+    // `up -y` sets the prototype tier itself as part of the first
     // deploy; `init` never buys the tier, so the one command that finishes
     // the cold start is `up`, with `tier set` named as the standalone option.
     const creditCovers = summary.voucher?.next_actions?.find((a) => a?.type === "set_tier" && typeof a.cli === "string");
     write("  Next: run402 up -y");
-    write("        Deploy with run402 up -y — it subscribes the prototype tier (free on testnet) as part of the first deploy.");
+    write("        Deploy with run402 up -y — it sets the prototype tier (free on testnet) as part of the first deploy.");
     if (creditCovers) {
       write(`        Your credit covers ${creditCovers.highest_affordable_tier ?? "a larger tier"}: ${creditCovers.cli} — then run402 up -y.`);
     } else {
-      write("        Or subscribe separately: run402 tier set prototype.");
+      write("        Or set it separately: run402 tier set prototype.");
     }
   } else {
     write("  Ready to deploy. Run: run402 deploy --manifest app.json");

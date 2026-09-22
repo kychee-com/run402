@@ -15,7 +15,7 @@ export async function handleCreateEmailOrganization(args: {
     return {
       content: [{
         type: "text",
-        text: `## Email Organization Created\n\n- **Organization ID:** \`${body.id}\`\n- **Email:** ${body.email}\n- **Email credits:** ${body.email_credits_remaining}\n${body.verification_sent ? "\nA verification email has been sent. Check your inbox." : ""}\n\nThis organization can pay via Stripe for tier subscriptions and email packs. To add on-chain x402 access later, link a wallet with \`link_wallet_to_organization\`.`,
+        text: `## Email Organization Created\n\n- **Organization ID:** \`${body.id}\`\n- **Email:** ${body.email}\n- **Email credits:** ${body.email_credits_remaining}\n${body.verification_sent ? "\nA verification email has been sent. Check your inbox." : ""}\n\nThis organization can pay via Stripe for tier leases and email packs. To add on-chain x402 access later, link a wallet with \`link_wallet_to_organization\`.`,
       }],
     };
   } catch (err) {

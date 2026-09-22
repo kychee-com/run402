@@ -2,7 +2,7 @@
  * cli-integration.test.ts — Full lifecycle integration test against LIVE production.
  *
  * NO MOCKS. Every command hits https://api.run402.com for real.
- * Uses a pre-funded allowance wallet, subscribes to prototype tier ($0.10
+ * Uses a pre-funded allowance wallet, sets the prototype tier ($0.10
  * testnet USDC), provisions a real project, runs SQL, deploys site, manages
  * functions/secrets/storage/subdomains, publishes, forks, and tears everything down.
  *
@@ -207,7 +207,7 @@ describe("CLI integration (live API, no mocks)", { timeout: 180_000 }, () => {
     captureStop();
     const out = captured();
     assert.ok(
-      out.includes("subscribe") || out.includes("renew") || out.includes("prototype"),
+      out.includes("start") || out.includes("renew") || out.includes("prototype"),
       `Expected tier action in: ${out}`,
     );
   });
@@ -578,7 +578,7 @@ describe("CLI integration (live API, no mocks)", { timeout: 180_000 }, () => {
     captureStop();
     const out = captured();
     assert.ok(
-      out.includes("subscribe") || out.includes("renew") || out.includes("prototype"),
+      out.includes("start") || out.includes("renew") || out.includes("prototype"),
       `Expected tier action in: ${out}`,
     );
   });

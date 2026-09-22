@@ -122,7 +122,7 @@ describe("tier.status", () => {
     );
   });
 
-  it("accepts null tier and null lease timestamps for unsubscribed wallets", async () => {
+  it("accepts null tier and null lease timestamps for a wallet whose org holds no tier", async () => {
     const runtimeBody = {
       wallet: "0xfeed000000000000000000000000000000000000",
       tier: null,
@@ -151,7 +151,7 @@ describe("tier.status", () => {
 describe("tier.set idempotency", () => {
   const setBody = {
     wallet: "0xad17000000000000000000000000000000000000",
-    action: "subscribe",
+    action: "start",
     tier: "prototype",
     previous_tier: null,
     lease_started_at: "2026-04-23T14:49:10.884Z",

@@ -105,7 +105,7 @@ describe("formatApiError", () => {
     assert.ok(text.includes("Mutation state: none"));
     assert.ok(text.includes("Trace: trc_abc"));
     assert.ok(text.includes("get_usage"));
-    assert.ok(text.includes("set_tier"));
+    assert.ok(text.includes("tier_set"));
     assert.ok(!text.includes("lease may have expired"));
   });
 
@@ -234,7 +234,7 @@ describe("formatApiError", () => {
     assert.ok(text.includes("next=2026-04-15T00:00:00Z"));
     assert.ok(text.includes("purge_at=2026-07-14T00:00:00Z"));
     assert.ok(text.includes("soft-delete grace window"));
-    assert.ok(text.includes("set_tier"));
+    assert.ok(text.includes("tier_set"));
     assert.ok(text.includes("Renew URL: /tiers/v1/prototype"));
   });
 
@@ -275,7 +275,7 @@ describe("formatApiError", () => {
     );
     const text = result.content[0]!.text;
     assert.ok(text.includes("soft-delete grace window"));
-    assert.ok(text.includes("set_tier"));
+    assert.ok(text.includes("tier_set"));
   });
 
   it("leaves non-lifecycle 402 guidance unchanged when lifecycle_state is absent", () => {
@@ -362,7 +362,7 @@ describe("formatApiError", () => {
     assert.ok(/owner.*membership/i.test(text));
     // must NOT fall through to the generic 403 lease-expired guidance
     assert.ok(!text.includes("lease may have expired"));
-    assert.ok(!text.includes("set_tier"));
+    assert.ok(!text.includes("tier_set"));
   });
 
   it("maps 403 FORBIDDEN to permission guidance, not the generic lease-expired text", () => {

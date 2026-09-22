@@ -25,7 +25,7 @@ Public Buzz/Nostr identity links are deliberately **not** an MCP mutation tool. 
 
 Buzz human-adoption offers/attempts, community installation, and agent enrollment are also intentionally not MCP mutation tools. `whoami` renders their independent capability/state, including a current normal HTTPS ownership transfer and exact `run402 buzz adopt offer show …` poll command; project reads identify enrollment provenance. MCP never receives a human sign-in session, passkey step-up, or Buzz signing capability. A durable offer is inert and a click is not completion. Authoritative completed polling distinguishes the terminal consent receipt, public human identity attribution, and ordinary membership; only membership grants org authority, and link/membership revocation are independent.
 
-Tools that require payment (`provision_postgres_project`, `set_tier`, `deploy`, `generate_image`) return 402 payment details as informational text (not an error) — the LLM should reason about cost, guide the user through funding if needed, and retry the same tool call.
+Tools that require payment (`provision_postgres_project`, `tier_set`, `deploy`, `generate_image`) return 402 payment details as informational text (not an error) — the LLM should reason about cost, guide the user through funding if needed, and retry the same tool call.
 
 After a successful purchase, `generate_image` reports what actually settled —
 amount, network and transaction — and, when the settlement network is a testnet,

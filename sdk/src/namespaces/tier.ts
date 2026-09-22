@@ -1,6 +1,6 @@
 /**
- * `tier` namespace — tier subscription / renewal / upgrade against
- * `/tiers/v1*`. Requires allowance SIWX auth; `set` flows through x402
+ * `tier` namespace — set (start / renew / upgrade) the organization's tier
+ * lease against `/tiers/v1*`. Requires allowance SIWX auth; `set` flows through x402
  * for the actual payment.
  */
 
@@ -141,9 +141,16 @@ export interface TierStatusResult {
   }>;
 }
 
+/**
+ * What `set` did: `start` begins a lease (or activates the free prototype
+ * tier), `renew` extends the same tier from its current expiry, `upgrade`
+ * moves to a higher tier with a prorated refund to the allowance.
+ */
+export type TierSetAction = "start" | "renew" | "upgrade";
+
 export interface TierSetResult {
   wallet: string;
-  action: string;
+  action: TierSetAction;
   tier: string;
   previous_tier: string | null;
   lease_started_at: string;
@@ -165,7 +172,7 @@ export interface TierSetOptions {
   /**
    * Idempotency key for safe retries (durable-side-effects doctrine). When set,
    * the SDK sends it as the `Idempotency-Key` header so retrying the same
-   * subscribe/renew intent does not double-charge. The key is caller-supplied:
+   * start/renew intent does not double-charge. The key is caller-supplied:
    * it represents one payment intent, a boundary only the caller knows (a
    * deliberate second renewal must use a fresh key). The SDK does not
    * auto-derive one — that cannot distinguish a retry from a new renewal.
@@ -176,7 +183,7 @@ export interface TierSetOptions {
 export class Tier {
   constructor(private readonly client: Client) {}
 
-  /** Check current tier subscription — tier name, status, and expiry. */
+  /** Check the organization's current tier — tier name, status, and lease expiry. */
   async status(): Promise<TierStatusResult> {
     return this.client.request<TierStatusResult>("/tiers/v1/status", {
       context: "checking tier status",
@@ -184,8 +191,8 @@ export class Tier {
   }
 
   /**
-   * Subscribe, renew, or upgrade a tier. Auto-detects the action based on
-   * allowance state. Payment flows through the injected fetch (x402 in
+   * Set the organization's tier: start, renew, or upgrade the lease. The
+   * gateway auto-detects the action from the current tier state. Payment flows through the injected fetch (x402 in
    * Node with an allowance). Throws {@link PaymentRequired} when the
    * wrapper cannot fund the call.
    */
@@ -193,7 +200,7 @@ export class Tier {
     return this.client.request<TierSetResult>(`/tiers/v1/${tier}`, {
       method: "POST",
       body: {},
-      // Retry-safety: a caller-supplied key collapses a retried subscribe/renew
+      // Retry-safety: a caller-supplied key collapses a retried start/renew
       // onto one charge. Omitted by default — tier renewal is not auto-keyed.
       ...(opts.idempotencyKey ? { headers: { "Idempotency-Key": opts.idempotencyKey } } : {}),
       context: "setting tier",

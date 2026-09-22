@@ -10,9 +10,9 @@
  * Cold-walking the buyer profile:
  *
  *   allowance_status  ->  "Use `allowance_create` ..."   NOT in the buyer profile
- *   init              ->  "Next: Use `set_tier` ..."     NOT in the buyer profile
+ *   init              ->  "Next: Use `tier_set` ..."     NOT in the buyer profile
  *
- * and `set_tier` is not merely absent, it is irrelevant — a tier is for hosting
+ * and `tier_set` is not merely absent, it is irrelevant — a tier is for hosting
  * projects, not for buying a $0.03 image. This is the same defect class as our
  * ClawHub skill opening with `run402 wallet status` for four months: a surface
  * naming a command that does not exist FOR THE USER BEING ADDRESSED.

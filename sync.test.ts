@@ -379,7 +379,7 @@ const SURFACE: Capability[] = [
   // ── Project lifecycle ────────────────────────────────────────────────────
   { id: "get_quote",         endpoint: "POST /projects/v1/quote",                mcp: "get_quote",                    cli: "projects:quote",      openclaw: "projects:quote" },
   { id: "provision",         endpoint: "POST /projects/v1",                      mcp: "provision_postgres_project",    cli: "projects:provision",  openclaw: "projects:provision" },
-  { id: "set_tier",           endpoint: "POST /tiers/v1/:tier",                   mcp: "set_tier",                      cli: "tier:set",            openclaw: "tier:set" },
+  { id: "tier_set",           endpoint: "POST /tiers/v1/:tier",                   mcp: "tier_set",                      cli: "tier:set",            openclaw: "tier:set" },
   { id: "delete",            endpoint: "DELETE /projects/v1/:id",                mcp: "delete_project",                cli: "projects:delete",     openclaw: "projects:delete" },
   { id: "export_project_archive", endpoint: "POST /projects/v1/:project_id/archives", mcp: "export_project_archive", cli: "cloud:archives:create", openclaw: "cloud:archives:create" },
   { id: "download_project_archive", endpoint: "GET /projects/v1/:project_id/archives/:archive_id/download", mcp: null, cli: "cloud:archives:download", openclaw: "cloud:archives:download" },
@@ -1038,7 +1038,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   // Project lifecycle
   get_quote: "projects.getQuote",
   provision: "projects.provision",
-  set_tier: "tier.set",
+  tier_set: "tier.set",
   delete: "projects.delete",
   export_project_archive: "archives.export",
   download_project_archive: "archives.download",

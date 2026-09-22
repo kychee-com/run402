@@ -22,7 +22,7 @@ Displays:
   - Wallet identity (local_label, server_label, address)
   - Payment rail (x402 | mpp)
   - Balances (on_chain_usd_micros + on_chain_token, prepaid_credit_usd_micros, held_usd_micros)
-  - Tier subscription (name, status, expiry)
+  - Tier and lease (name, status, expiry)
   - Projects (from server, with fallback to local keystore)
   - Active project ID
   - Active API target
@@ -205,7 +205,7 @@ function usdFromMicros(micros) {
 
 /**
  * The one next action for the human view, derived from the same state the
- * JSON carries. Mirrors `init`: `run402 up -y` subscribes the prototype tier
+ * JSON carries. Mirrors `init`: `run402 up -y` sets the prototype tier
  * itself as part of the first deploy, so a tier-less account gets ONE command.
  */
 function statusNextAction(result) {
@@ -214,7 +214,7 @@ function statusNextAction(result) {
   }
   if (result.remote_status?.tier?.state === "unavailable") return "Check connectivity/authentication and retry run402 status; tier state is unavailable.";
   if (!result.tier) {
-    return "run402 up -y  (subscribes the prototype tier, free on testnet, as part of the first deploy; or: run402 tier set prototype)";
+    return "run402 up -y  (sets the prototype tier, free on testnet, as part of the first deploy; or: run402 tier set prototype)";
   }
   if (!result.active_project) {
     return "run402 up --name <name> -y  (or select an existing project: run402 projects use <project_id>)";

@@ -377,7 +377,7 @@ export class NodeActions implements Run402Actions {
   ): Promise<Run402ActionResult<TierSetResult>> {
     if (this.#targetKind() === "core") {
       throw run.error(
-        "Tier subscriptions are a Run402 Cloud capability and are skipped on Run402 Core targets.",
+        "Tier leases are a Run402 Cloud capability and are skipped on Run402 Core targets.",
         "RUN402_CLOUD_ACTION_UNAVAILABLE",
         { action: input.type, target: this.#targetKind() },
       );
@@ -393,7 +393,7 @@ export class NodeActions implements Run402Actions {
       auto: false,
       details: { tier: input.tier, idempotency_key: idempotencyKey ?? null },
     });
-    await run.approve(step, ["tier.set"], `Subscribe, renew, or upgrade the ${input.tier} tier.`);
+    await run.approve(step, ["tier.set"], `Set the ${input.tier} tier (start, renew, or upgrade).`);
     if (run.dryRun) {
       run.setState(step, "planned");
       return run.result({} as TierSetResult);
@@ -2219,7 +2219,7 @@ export class NodeActions implements Run402Actions {
           reason: "dry_run",
         },
       });
-      await run.approve(step, ["tier.set"], `Subscribe to ${desiredTier} if no active tier exists.`);
+      await run.approve(step, ["tier.set"], `Set the ${desiredTier} tier if no active tier exists.`);
       run.setState(step, "planned");
       return;
     }
@@ -2266,7 +2266,7 @@ export class NodeActions implements Run402Actions {
         idempotency_key: idempotencyKey,
       },
     });
-    await run.approve(step, ["tier.set"], `Subscribe, renew, or upgrade to ${desiredTier}.`);
+    await run.approve(step, ["tier.set"], `Set the ${desiredTier} tier (start, renew, or upgrade).`);
     run.setState(step, "running");
     const pay = () => this.sdk.tier.set(desiredTier, { idempotencyKey });
     const result = await (justFunded ? afterFaucet(pay) : pay());

@@ -42,7 +42,7 @@ afterEach(() => {
 });
 
 describe("tier_status tool", () => {
-  it("returns tier info for subscribed wallet", async () => {
+  it("returns tier info for a wallet whose org holds a tier", async () => {
     globalThis.fetch = (async () =>
       new Response(
         JSON.stringify({
@@ -81,7 +81,7 @@ describe("tier_status tool", () => {
     assert.equal(result.isError, undefined);
   });
 
-  it("returns guidance when no tier subscription", async () => {
+  it("returns guidance when the org holds no tier", async () => {
     globalThis.fetch = (async () =>
       new Response(
         JSON.stringify({

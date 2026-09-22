@@ -3,20 +3,20 @@ import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
 import { PaymentRequired } from "../../sdk/dist/index.js";
 
-export const setTierSchema = {
+export const tierSetSchema = {
   tier: z
     .enum(["prototype", "hobby", "team"])
-    .describe("Target tier — subscribes, renews, or upgrades automatically based on wallet state"),
+    .describe("Target tier — starts, renews, or upgrades the lease automatically based on the org's current tier state"),
 };
 
-export async function handleSetTier(args: {
+export async function handleTierSet(args: {
   tier: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   try {
     const body = await getSdk().tier.set(args.tier as "prototype" | "hobby" | "team");
 
     const lines = [
-      `## Tier ${body.action === "subscribe" ? "Subscribed" : body.action === "renew" ? "Renewed" : "Upgraded"}`,
+      `## Tier ${body.action === "start" ? "Started" : body.action === "renew" ? "Renewed" : "Upgraded"}`,
       ``,
       `| Field | Value |`,
       `|-------|-------|`,

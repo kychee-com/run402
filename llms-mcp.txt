@@ -21,7 +21,7 @@ Public Buzz/Nostr identity links are deliberately **not** an MCP mutation tool. 
 
 Buzz human-adoption offers/attempts, community installation, and agent enrollment are also intentionally not MCP mutation tools. `whoami` renders their independent capability/state, including a current normal HTTPS ownership transfer and exact `run402 buzz adopt offer show …` poll command; project reads identify enrollment provenance. MCP never receives a human sign-in session, passkey step-up, or Buzz signing capability. A durable offer is inert and a click is not completion. Authoritative completed polling distinguishes the terminal consent receipt, public human identity attribution, and ordinary membership; only membership grants org authority, and link/membership revocation are independent.
 
-Tools that require payment (`provision_postgres_project`, `set_tier`, `deploy`, `generate_image`) return 402 payment details as informational text (not an error) — the LLM should reason about cost, guide the user through funding if needed, and retry the same tool call.
+Tools that require payment (`provision_postgres_project`, `tier_set`, `deploy`, `generate_image`) return 402 payment details as informational text (not an error) — the LLM should reason about cost, guide the user through funding if needed, and retry the same tool call.
 
 After a successful purchase, `generate_image` reports what actually settled —
 amount, network and transaction — and, when the settlement network is a testnet,
@@ -105,7 +105,7 @@ Safe retry policy:
 - `safe_to_retry: true` alone is not a retry signal; it means duplicate-safe, not likely-to-succeed. Lifecycle-gated writes, auth token exchanges, and passkey verifies need the indicated action before retrying.
 - The `deploy` tool uses SDK `apply`, which already re-plans and retries safe `BASE_RELEASE_CONFLICT` races for omitted/current-base specs. A handled retry appears as a `deploy.retry` progress event; exhausted retries include `attempts`, `max_retries`, and `last_retry_code`. Static activation/config failures reported from `activation_pending` throw promptly with gateway metadata instead of polling until timeout. Do not hand-roll this specific deploy race loop around MCP calls.
 - 5xx with `safe_to_retry: false`, or `mutation_state` is `committed` / `partial` / `unknown` → inspect or poll state before retrying. For deploys, use `deploy_resume` / event polling.
-- Lifecycle / payment errors → take the action, don't blind-retry. `PROJECT_FROZEN` → `set_tier`; `PAYMENT_REQUIRED` → submit payment, then retry.
+- Lifecycle / payment errors → take the action, don't blind-retry. `PROJECT_FROZEN` → `tier_set`; `PAYMENT_REQUIRED` → submit payment, then retry.
 
 ## The patterns
 
@@ -529,9 +529,9 @@ Tier rate limits: prototype 10/day, hobby 50/day, team 500/day. Unique recipient
 
 ### Tier & billing
 
-Tier is per organization, not per project. `set_tier` applies immediately to every project in the organization. `api_calls` / `storage_bytes` / `emailsPerDay` / `maxFunctions` / `maxScheduledFunctions` / `maxSecrets` are pooled across every non-terminal project in the organization; per-function caps (`functionTimeoutSec`, `functionMemoryMb`, `minScheduleIntervalMinutes`) stay per-instance. Multi-wallet organizations (via `link_wallet_to_organization`) share the same pool. Quota-denial error envelopes include `details.scope: "organization" | "project"` — `"organization"` for the pooled path, `"project"` for the orphan fallback (project whose organization row was purged but cascade has not yet run).
+Tier is per organization, not per project. `tier_set` applies immediately to every project in the organization. `api_calls` / `storage_bytes` / `emailsPerDay` / `maxFunctions` / `maxScheduledFunctions` / `maxSecrets` are pooled across every non-terminal project in the organization; per-function caps (`functionTimeoutSec`, `functionMemoryMb`, `minScheduleIntervalMinutes`) stay per-instance. Multi-wallet organizations (via `link_wallet_to_organization`) share the same pool. Quota-denial error envelopes include `details.scope: "organization" | "project"` — `"organization"` for the pooled path, `"project"` for the orphan fallback (project whose organization row was purged but cascade has not yet run).
 
-- `set_tier` — start / renew / upgrade. Auto-detects action. x402 or MPP payment. Params: `tier` (`prototype` / `hobby` / `team`). Organization-wide effect.
+- `tier_set` — set the tier: start / renew / upgrade the lease. Auto-detects the action and reports it as `action: start | renew | upgrade`. Prototype is the free tier (no lease). x402 or MPP payment. Params: `tier` (`prototype` / `hobby` / `team`). Organization-wide effect.
 - `tier_status` — current organization tier, lease, and `pool_usage` pooled across every project in the organization; function authoring caps when returned.
 - `get_quote` — pricing (free, no auth).
 - `create_email_organization` — Stripe-only organization by email (no wallet). Params: `email`. Idempotent.
@@ -600,7 +600,7 @@ Hand off or move a project without redeploying — one noun, three recipient sha
 - `list_incoming_transfers` — pending transfers OFFERED TO you (wallet-, email-, and future org-addressed rows, unioned; each entry carries `recipient_kind` + `preview_path`).
 - `list_outgoing_transfers` — pending transfers INITIATED BY you (pending rows unioned and tagged by `recipient_kind`).
 
-The freeze covers owner-side mutations (deploy, secret CRUD, function CRUD, custom-domain bind/unbind, scheduled-function changes, mailbox config, CI binding CRUD, project rename). Data-plane traffic (`/rest/v1/*`, function invocation, mailbox send/receive) keeps serving. Payment-path routes (`set_tier`, billing) keep working. The cancel route is intentionally never blocked.
+The freeze covers owner-side mutations (deploy, secret CRUD, function CRUD, custom-domain bind/unbind, scheduled-function changes, mailbox config, CI binding CRUD, project rename). Data-plane traffic (`/rest/v1/*`, function invocation, mailbox send/receive) keeps serving. Payment-path routes (`tier_set`, billing) keep working. The cancel route is intentionally never blocked.
 
 What does NOT transfer: tier lease (stays with the original owner's organization; no Phase 1A proration), KMS signers (wallet-scoped, not project-scoped), GitHub repo ownership (handle out of band), on-chain balance on any wallet.
 
@@ -696,7 +696,7 @@ The lifecycle state machine lives on `internal.organizations`. The grace clock t
 | `dormant` | +44d | Scheduled functions pause. |
 | `purged` | +104d | Cascade: schemas dropped, Lambdas deleted, mailboxes tombstoned. Subdomains become claimable 14 days later. |
 
-`set_tier` at any point during grace reactivates the **organization** inline and clears every project's timers in one transaction. Each `list_projects` entry exposes:
+`tier_set` at any point during grace reactivates the **organization** inline and clears every project's timers in one transaction. Each `list_projects` entry exposes:
 
 - `effective_status` — derived for serving / UX (`active` / `past_due` / `frozen` / `dormant` / `archived` / `deleted`). When a single project is moderate-archived or user-deleted, this differs from the organization lifecycle.
 - `organization_lifecycle_state` — the raw per-organization state; identical across all projects on the same organization.
@@ -744,8 +744,8 @@ Suggest $10 to your human for two Hobby projects, or $20 for one Team plus renew
 
 | You see | Likely cause / fix |
 |---|---|
-| `402 payment_required` on `set_tier` | Allowance is empty. Call `request_faucet` (testnet) or fund with real USDC. If the user gave you a promo code, `redeem_voucher` credits the balance instead. |
-| `403` with `lifecycle_state: frozen` | Project past lease + 14 days. `set_tier` reactivates instantly. |
+| `402 payment_required` on `tier_set` | Allowance is empty. Call `request_faucet` (testnet) or fund with real USDC. If the user gave you a promo code, `redeem_voucher` credits the balance instead. |
+| `403` with `lifecycle_state: frozen` | Project past lease + 14 days. `tier_set` reactivates instantly. |
 | `403 admin_required` | Tool is staff only (e.g., `admin_set_lease_perpetual`, `admin_archive_project`, `admin_reactivate_project`). Use a staff allowance wallet; project owners can't toggle these on their own. |
 | `403 NOT_AUTHORIZED` on a control-plane action | Org-owned control plane: the wallet authenticated, but its principal lacks the org role/grant for this action — not a payment or lease issue. `details` carries `required_role` / `required_capability` / `reason`. Obtain a covering org membership/role or per-project grant; high-stakes ops (delete, transfer, membership change) need an active `owner` membership. Returned as 403 even when the project doesn't exist (existence isn't leaked), so also re-check the `project_id`. |
 | `409 LAST_OWNER` on `remove_org_member` / `set_org_member_role` | An org must keep at least one active `owner`. The change would remove or demote the last one. Promote another member to `owner` first (`set_org_member_role`), then retry. |
@@ -756,7 +756,7 @@ Suggest $10 to your human for two Hobby projects, or $20 for one Team plus renew
 | `429 rate_limited` | 100 req/sec project cap. Back off using `retry_after`. |
 | CDN serves old bytes | Use the immutable `cdn_url` from `assets_put`, or call `wait_for_cdn_freshness` on a mutable URL. |
 | `422 relation already exists` on redeploy | Wrap migrations in `CREATE TABLE IF NOT EXISTS` + `DO`-block `ALTER TABLE`. |
-| `insufficient_funds` right after faucet | Wait for the faucet tx to confirm (~5s on Base Sepolia) before subscribing. |
+| `insufficient_funds` right after faucet | Wait for the faucet tx to confirm (~5s on Base Sepolia) before setting the tier. |
 
 ## Install
 

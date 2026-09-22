@@ -8,9 +8,9 @@
  * 2026-07-30 (kychee-com/run402-private#635) found two:
  *
  *   allowance_status  ->  "Use `allowance_create` to create one."
- *   init              ->  "**Next:** Use `set_tier` to subscribe to a tier."
+ *   init              ->  "**Next:** Use `tier_set` to set a tier."
  *
- * Neither tool is registered under `buyer`. `set_tier` is worse than absent —
+ * Neither tool is registered under `buyer`. `tier_set` is worse than absent —
  * a tier buys project hosting, which is not what someone buying a $0.03 image
  * came for.
  *
@@ -76,8 +76,8 @@ function toolProfiles() {
  * asks people to write. That hole made an earlier version of this file pass
  * while the original bug sat in the tree, twice.
  *
- * Comments are stripped first: a comment explaining that `set_tier` is withheld
- * must not read as a recommendation of `set_tier`.
+ * Comments are stripped first: a comment explaining that `tier_set` is withheld
+ * must not read as a recommendation of `tier_set`.
  */
 function guidanceStatements(text) {
   const stripped = text

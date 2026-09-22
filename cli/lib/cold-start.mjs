@@ -96,7 +96,7 @@ export async function ensureFundedWallet(announce = () => {}) {
 export async function foldColdStartChain(announce = () => {}) {
   const funded = await ensureFundedWallet(announce);
 
-  announce("subscribing to the prototype tier (one x402 testnet payment, perpetual)");
+  announce("setting the prototype tier (one x402 testnet payment; the free tier, no lease)");
   const tier = await getSdk().tier.set("prototype");
   announce(`prototype tier active${tier?.status === "already_active" ? " (already active)" : ""}`);
   return { allowance_created: funded.allowance_created, faucet_requested: funded.faucet_requested, tier };

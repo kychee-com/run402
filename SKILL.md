@@ -1427,7 +1427,7 @@ run402 operator logout           # revoke server-side + clear the local cache
 | `429 rate_limited` | 100 req/sec project cap. Back off using `retry_after`. |
 | CDN serves old bytes | Use the immutable URL from the upload response, or `run402 cdn wait-fresh <url> --sha <hex>`. |
 | `422 relation already exists` on redeploy | Wrap migrations in `CREATE TABLE IF NOT EXISTS` + `DO`-block `ALTER TABLE`. |
-| `insufficient_funds` right after faucet | Wait for the faucet tx to confirm (~5s on Base Sepolia) before subscribing. |
+| `insufficient_funds` right after faucet | Wait for the faucet tx to confirm (~5s on Base Sepolia) before setting the tier. |
 
 ## Tools Reference
 

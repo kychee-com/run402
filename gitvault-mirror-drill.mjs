@@ -207,23 +207,23 @@ async function main() {
   console.log(`  balances: ${JSON.stringify(initResult.json?.balances)}`);
   console.log(`  tier: ${JSON.stringify(initResult.json?.tier)}`);
 
-  step("2b. Ensure an active prototype tier (subscribe/renew if needed)");
+  step("2b. Ensure an active prototype tier (set/renew if needed)");
   const tierStatus = runCli(["tier", "status", ...WALLET_ARGS], { label: "tier status" });
   console.log(`  tier status: ${JSON.stringify(tierStatus.json)}`);
   // `run402 tier status` returns a top-level boolean `active` and a plain
   // string `tier` name (e.g. {"tier":"prototype","active":true,...}) — NOT
   // a nested `{tier:{status}}` shape. This drill script previously checked
-  // the wrong fields (always undefined) and re-subscribed on EVERY run even
+  // the wrong fields (always undefined) and set the tier again on EVERY run even
   // when a tier was already active for weeks — a real drill-script bug
   // (needless spend), unrelated to the SDK/gateway fixes this drill exists
   // to verify. Fixed 2026-08-26 during the fix-and-rerun pass.
   const tierActive = tierStatus.json?.active === true;
   if (!tierActive) {
-    console.log("  no active tier — subscribing to prototype ($0.10 x402)");
+    console.log("  no active tier — setting prototype ($0.10 x402)");
     const tierSet = runCli(["tier", "set", "prototype", ...WALLET_ARGS], { label: "tier set prototype" });
     console.log(`  tier set result: ${JSON.stringify(tierSet.json)}`);
   } else {
-    console.log("  tier already active — skipping subscribe (renew-on-set would also be safe, but unnecessary spend)");
+    console.log("  tier already active — skipping tier set (renew-on-set would also be safe, but unnecessary spend)");
   }
 
   // ── 3. Provision a throwaway project ──

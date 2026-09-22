@@ -909,7 +909,7 @@ export class Admin {
   /**
    * Operator "un-archive" — flips `projects.archived_at` back to NULL. It does
    * not touch organization-level lifecycle. To reactivate a grace-state
-   * organization, either subscribe a new tier or set `lease_perpetual: true`
+   * organization, either set a tier or set `lease_perpetual: true`
    * via {@link setLeasePerpetual}.
    *
    * Platform-admin only. Calls `POST /projects/v1/admin/:id/reactivate`.

@@ -743,7 +743,7 @@ The full MCP surface: every tool is a thin shim over an SDK call.
 
 | Tool | Description |
 |------|-------------|
-| `set_tier` | Subscribe / renew / upgrade a tier (auto-detects action). x402 or MPP payment. |
+| `tier_set` | Set the tier: start / renew / upgrade the lease (auto-detects action). x402 or MPP payment. |
 | `tier_status` | Current tier, lease expiry, usage, and function authoring caps when returned. |
 | `get_quote` | Tier pricing (free, no auth). |
 | `create_email_organization` / `link_wallet_to_organization` | Email-based organizations; hybrid Stripe + x402. |

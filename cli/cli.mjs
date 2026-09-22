@@ -35,7 +35,7 @@ SET UP — get an agent funded and entitled
   init mpp    Set up with MPP payment rail (Tempo Moderato testnet)
   wallets     Manage multiple named wallets (list, new, use, rename, bind, import)
   allowance   Manage your agent allowance (create, fund, balance, status)
-  tier        Manage tier subscription (status, set)
+  tier        Manage your tier and its lease (status, set)
   redeem      Redeem a promo code for run402 credit
   pay         Call an arbitrary x402-priced URL with a bounded payment
 
@@ -132,7 +132,7 @@ Examples:
 Getting started:
   run402 init               Set up with x402 (Base Sepolia)
   run402 init mpp           Set up with MPP (Tempo Moderato)
-  run402 tier set prototype  Subscribe to a tier
+  run402 tier set prototype  Set a tier (prototype is free)
   run402 up --name my-app -y  Create and deploy this app (explicit destination)
   run402 ci link github --project prj_... --manifest run402.deploy.json
 `;

@@ -1747,7 +1747,7 @@ function fakeSdk(opts: {
       async set(_tier: string, input?: { idempotencyKey?: string }) {
         opts.calls.push(`tier.set:${input?.idempotencyKey ?? ""}`);
         opts.tierActive = true;
-        return { tier: "prototype", action: "subscribe" };
+        return { tier: "prototype", action: "start" };
       },
     },
     projects: {

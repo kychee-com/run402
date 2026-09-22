@@ -7,7 +7,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { provisionSchema, handleProvision } from "./tools/provision.js";
 import { runSqlSchema, handleRunSql } from "./tools/run-sql.js";
 import { restQuerySchema, handleRestQuery } from "./tools/rest-query.js";
-import { setTierSchema, handleSetTier } from "./tools/set-tier.js";
+import { tierSetSchema, handleTierSet } from "./tools/tier-set.js";
 import { deploySiteSchema, handleDeploySite } from "./tools/deploy-site.js";
 import { deploySiteDirSchema, handleDeploySiteDir } from "./tools/deploy-site-dir.js";
 import { deploySchema, handleDeploy } from "./tools/deploy.js";
@@ -1004,21 +1004,21 @@ server.tool(
 
 server.tool(
   "tier_status",
-  "Check current tier subscription — tier name, status, expiry, usage, and function authoring caps when returned (max timeout, memory, scheduled functions, min cron interval). Requires allowance auth.",
+  "Check the organization's current tier — tier name, status, lease expiry, usage, and function authoring caps when returned (max timeout, memory, scheduled functions, min cron interval). Requires allowance auth.",
   tierStatusSchema,
   async (args) => handleTierStatus(args),
 );
 
 server.tool(
-  "set_tier",
-  "Subscribe, renew, or upgrade tier. Auto-detects action based on allowance state. Returns success or payment details if x402 payment is needed.",
-  setTierSchema,
-  async (args) => handleSetTier(args),
+  "tier_set",
+  "Set the organization's tier: start, renew, or upgrade the lease. Auto-detects the action from the current tier state; the response reports it as `action: start | renew | upgrade`. Prototype is the free tier (no lease). Returns success or payment details if x402 payment is needed.",
+  tierSetSchema,
+  async (args) => handleTierSet(args),
 );
 
 server.tool(
   "delete_project",
-  "Immediately and irreversibly delete a project: the gateway runs the full destructive cascade (drop tenant schema, delete Lambda functions, release subdomains, tombstone mailbox, remove sender domain, wipe secrets and app versions) and sets status=purged. This tool also removes the project from the local key store. Distinct from the automatic lease-expiry grace window — this action is the explicit purge and cannot be undone. To recover from a missed renewal use `set_tier` instead.",
+  "Immediately and irreversibly delete a project: the gateway runs the full destructive cascade (drop tenant schema, delete Lambda functions, release subdomains, tombstone mailbox, remove sender domain, wipe secrets and app versions) and sets status=purged. This tool also removes the project from the local key store. Distinct from the automatic lease-expiry grace window — this action is the explicit purge and cannot be undone. To recover from a missed renewal use `tier_set` instead.",
   deleteProjectSchema,
   async (args) => handleDeleteProject(args),
 );
@@ -1048,7 +1048,7 @@ server.tool(
 
 server.tool(
   "admin_reactivate_project",
-  "Operator un-archive — flips `projects.archived_at` back to NULL. In v1.57 this was narrowed: it no longer touches organization-level lifecycle. To reactivate a grace-state organization, subscribe a tier (`tier_set`) or enable lease-perpetual (`admin_set_lease_perpetual`). Platform-admin only. Calls POST /projects/v1/admin/:id/reactivate.",
+  "Operator un-archive — flips `projects.archived_at` back to NULL. In v1.57 this was narrowed: it no longer touches organization-level lifecycle. To reactivate a grace-state organization, set a tier (`tier_set`) or enable lease-perpetual (`admin_set_lease_perpetual`). Platform-admin only. Calls POST /projects/v1/admin/:id/reactivate.",
   adminReactivateProjectSchema,
   async (args) => handleAdminReactivateProject(args),
 );
@@ -1611,7 +1611,7 @@ server.tool(
 
 server.tool(
   "status",
-  "Full organization snapshot — allowance, billing balance, tier subscription, projects, and active project. Single-call overview.",
+  "Full organization snapshot — allowance, tier and lease, projects, and active project. Single-call overview.",
   statusSchema,
   async (args) => handleStatus(args as Record<string, never>),
 );

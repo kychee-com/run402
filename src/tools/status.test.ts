@@ -88,7 +88,7 @@ describe("status tool", () => {
     assert.equal(result.isError, undefined); // not an error
     const text = result.content[0]!.text;
     assert.ok(text.includes("| tier | (unavailable) |"));
-    assert.doesNotMatch(text, /Use `set_tier`/);
+    assert.doesNotMatch(text, /Use `tier_set`/);
     assert.ok(text.includes("(none)"));
   });
 });

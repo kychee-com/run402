@@ -166,9 +166,9 @@ Tier rate limits: prototype 10/day, hobby 50/day, team 500/day. Unique recipient
 
 ### Tier & billing
 
-Tier is per organization, not per project. `set_tier` applies immediately to every project in the organization. `api_calls` / `storage_bytes` / `emailsPerDay` / `maxFunctions` / `maxScheduledFunctions` / `maxSecrets` are pooled across every non-terminal project in the organization; per-function caps (`functionTimeoutSec`, `functionMemoryMb`, `minScheduleIntervalMinutes`) stay per-instance. Multi-wallet organizations (via `link_wallet_to_organization`) share the same pool. Quota-denial error envelopes include `details.scope: "organization" | "project"` — `"organization"` for the pooled path, `"project"` for the orphan fallback (project whose organization row was purged but cascade has not yet run).
+Tier is per organization, not per project. `tier_set` applies immediately to every project in the organization. `api_calls` / `storage_bytes` / `emailsPerDay` / `maxFunctions` / `maxScheduledFunctions` / `maxSecrets` are pooled across every non-terminal project in the organization; per-function caps (`functionTimeoutSec`, `functionMemoryMb`, `minScheduleIntervalMinutes`) stay per-instance. Multi-wallet organizations (via `link_wallet_to_organization`) share the same pool. Quota-denial error envelopes include `details.scope: "organization" | "project"` — `"organization"` for the pooled path, `"project"` for the orphan fallback (project whose organization row was purged but cascade has not yet run).
 
-- `set_tier` — start / renew / upgrade. Auto-detects action. x402 or MPP payment. Params: `tier` (`prototype` / `hobby` / `team`). Organization-wide effect.
+- `tier_set` — set the tier: start / renew / upgrade the lease. Auto-detects the action and reports it as `action: start | renew | upgrade`. Prototype is the free tier (no lease). x402 or MPP payment. Params: `tier` (`prototype` / `hobby` / `team`). Organization-wide effect.
 - `tier_status` — current organization tier, lease, and `pool_usage` pooled across every project in the organization; function authoring caps when returned.
 - `get_quote` — pricing (free, no auth).
 - `create_email_organization` — Stripe-only organization by email (no wallet). Params: `email`. Idempotent.
@@ -237,7 +237,7 @@ Hand off or move a project without redeploying — one noun, three recipient sha
 - `list_incoming_transfers` — pending transfers OFFERED TO you (wallet-, email-, and future org-addressed rows, unioned; each entry carries `recipient_kind` + `preview_path`).
 - `list_outgoing_transfers` — pending transfers INITIATED BY you (pending rows unioned and tagged by `recipient_kind`).
 
-The freeze covers owner-side mutations (deploy, secret CRUD, function CRUD, custom-domain bind/unbind, scheduled-function changes, mailbox config, CI binding CRUD, project rename). Data-plane traffic (`/rest/v1/*`, function invocation, mailbox send/receive) keeps serving. Payment-path routes (`set_tier`, billing) keep working. The cancel route is intentionally never blocked.
+The freeze covers owner-side mutations (deploy, secret CRUD, function CRUD, custom-domain bind/unbind, scheduled-function changes, mailbox config, CI binding CRUD, project rename). Data-plane traffic (`/rest/v1/*`, function invocation, mailbox send/receive) keeps serving. Payment-path routes (`tier_set`, billing) keep working. The cancel route is intentionally never blocked.
 
 What does NOT transfer: tier lease (stays with the original owner's organization; no Phase 1A proration), KMS signers (wallet-scoped, not project-scoped), GitHub repo ownership (handle out of band), on-chain balance on any wallet.
 

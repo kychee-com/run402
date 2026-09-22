@@ -106,7 +106,7 @@ export async function handleStatus(
   // Next step
   if (!tier?.tier && availability.tier?.state !== "unavailable") {
     lines.push(``);
-    lines.push(`**Next:** Use \`set_tier\` to subscribe to a tier.`);
+    lines.push(`**Next:** Use \`tier_set\` to set a tier (prototype is free).`);
   }
 
   if (next_actions.length) lines.push("", next_actions[0]!.why);

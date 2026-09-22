@@ -173,7 +173,7 @@ export async function handleInit(args: { rail?: "x402" | "mpp" | "lightning" }):
   // Next step.
   //
   // Under a buy-only profile BOTH branches were wrong, not just the no-tier one.
-  // A tier buys PROJECT HOSTING; `set_tier`, `provision_postgres_project` and
+  // A tier buys PROJECT HOSTING; `tier_set`, `provision_postgres_project` and
   // `deploy` are none of them registered for a buyer, so whichever branch fired
   // sent them to tools they do not have — and told them to do something they did
   // not come to do. A buyer's next step is the purchase, tier or no tier.
@@ -185,8 +185,8 @@ export async function handleInit(args: { rail?: "x402" | "mpp" | "lightning" }):
     lines.push(`\nFunding recovery: \`${JSON.stringify(recovery)}\``);
   } else if (tierDisplay === "(none)") {
     lines.push(
-      isToolAvailable("set_tier")
-        ? `**Next:** Use \`set_tier\` to subscribe to a tier (e.g. prototype).`
+      isToolAvailable("tier_set")
+        ? `**Next:** Use \`tier_set\` to set a tier (prototype is free).`
         // The faucet funds Base Sepolia ONLY, so following this path settles on
         // testnet and never produces a real payment. The mainnet on-ramp exists
         // (send USDC to the exported address) but was documented ONLY in

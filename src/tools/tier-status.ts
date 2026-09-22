@@ -18,7 +18,7 @@ export async function handleTierStatus(
         content: [
           {
             type: "text",
-            text: `## Tier Status\n\nNo active tier subscription. Use \`set_tier\` to subscribe, then \`provision_postgres_project\` to create a project.`,
+            text: `## Tier Status\n\nNo active tier. Use \`tier_set\` to set one (prototype is free), then \`provision_postgres_project\` to create a project.`,
           },
         ],
       };

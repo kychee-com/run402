@@ -255,12 +255,12 @@ no signed authorization, no USDC in the wallet, receipt `paid_with: "credit"` wi
 `X402_INSUFFICIENT_FUNDS` error carries `details.credit` (available, price, shortfall) with
 `redeem_voucher` / `top_up` next actions.
 
-Tier is organization-scoped. Subscribe/renew/upgrade applies to every project in the org; `api_calls` / `storage_bytes` quota is org-pooled across linked wallets (`billing link-wallet`). Quota errors include `details.scope: "organization" | "project"` (`project` = orphan fallback after org purge before cascade). `tier set` refetches status and returns `status_after` with refreshed pool usage.
+Tier is organization-scoped. A start/renew/upgrade applies to every project in the org; `api_calls` / `storage_bytes` quota is org-pooled across linked wallets (`billing link-wallet`). Quota errors include `details.scope: "organization" | "project"` (`project` = orphan fallback after org purge before cascade). `tier set` refetches status and returns `status_after` with refreshed pool usage.
 
-Retry-safety: `tier set` and `projects provision` accept `--idempotency-key <key>` so a retried subscribe/renew/create collapses onto one charge instead of double-billing. `provision` auto-derives the key from `--name` when omitted (re-running `provision --name X` returns the same project); `tier set` is caller-supplied only — use a fresh key for a deliberate second renewal.
+Retry-safety: `tier set` and `projects provision` accept `--idempotency-key <key>` so a retried start/renew/create collapses onto one charge instead of double-billing. `provision` auto-derives the key from `--name` when omitted (re-running `provision --name X` returns the same project); `tier set` is caller-supplied only — use a fresh key for a deliberate second renewal.
 
-Server action detection:
-- No tier or expired -> subscribe
+Server action detection (reported as `action: start | renew | upgrade`):
+- No tier or expired -> start
 - Same tier, active -> renew (extends from current expiry)
 - Higher tier -> upgrade (prorated refund to billing allowance)
 - Lower tier, active -> downgrade (prorated refund if usage fits)

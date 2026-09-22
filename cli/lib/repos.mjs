@@ -1872,7 +1872,7 @@ async function foldColdStartForResume(sdk) {
     return {
       performed: false,
       error: { code, message },
-      next_action: { type: "renew_tier", command: "run402 tier set prototype", why: "The resume proceeded without a tier of your own; the perpetual prototype tier is what lets this wallet create and deploy projects." },
+      next_action: { type: "renew_tier", command: "run402 tier set prototype", why: "The resume proceeded without a tier of your own; the free prototype tier is what lets this wallet create and deploy projects." },
     };
   }
 }

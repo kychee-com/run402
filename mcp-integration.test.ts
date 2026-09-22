@@ -6,7 +6,7 @@
  * `@run402/sdk/node` can auto-pay x402 and succeed — the same flow the CLI uses.
  *
  * Covers:
- *   - set_tier (x402 payment for prototype tier)
+ *   - tier_set (x402 payment for prototype tier)
  *   - provision (SIWX auth + project creation)
  *   - deploy_function (service_key auth + function deploy)
  *   - invoke_function (service_key auth + function invocation)
@@ -125,17 +125,17 @@ describe("MCP integration (live API, no mocks)", { timeout: 180_000 }, () => {
 
   // ── Tier (x402 payment) ─────────────────────────────────────────────
 
-  it("set_tier — subscribe/renew prototype via x402 auto-payment", async () => {
-    const { handleSetTier } = await import("./src/tools/set-tier.js");
-    const result = await handleSetTier({ tier: "prototype" });
+  it("tier_set — start/renew prototype via x402 auto-payment", async () => {
+    const { handleTierSet } = await import("./src/tools/tier-set.js");
+    const result = await handleTierSet({ tier: "prototype" });
     const out = text(result);
 
     // Two valid outcomes:
-    // 1. Auto-paid → "Tier Subscribed/Renewed/Upgraded"
+    // 1. Auto-paid → "Tier Started/Renewed/Upgraded"
     // 2. 402 informational → tier already active (server may return plain 402
     //    without x402 protocol headers when wallet already has an active tier)
     assert.equal(result.isError, undefined, `Expected no isError, got: ${out}`);
-    const paid = out.includes("Subscribed") || out.includes("Renewed") || out.includes("Upgraded");
+    const paid = out.includes("Started") || out.includes("Renewed") || out.includes("Upgraded");
     const alreadyActive = out.includes("Payment Required") && out.includes("already active");
     assert.ok(paid || alreadyActive, `Expected tier success or already-active 402, got: ${out}`);
   });
@@ -223,7 +223,7 @@ describe("MCP integration (live API, no mocks)", { timeout: 180_000 }, () => {
         }
       }
 
-      // Payment required (no x402 protocol) — treat as acceptable like set_tier
+      // Payment required (no x402 protocol) — treat as acceptable like tier_set
       if (!result.isError && out.includes("Payment Required")) {
         assert.ok(true, "generate_image returned 402 informational (x402 payment may not have fired)");
         return;

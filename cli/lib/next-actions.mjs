@@ -56,7 +56,7 @@ export function selectProjectAction() {
 export function setTierAction(tier = "prototype") {
   return nextAction("renew_tier", {
     command: `run402 tier set ${tier}`,
-    why: "Subscribe the account to a tier (free on testnet), then retry.",
+    why: "Set a tier for the organization (prototype is free), then retry.",
   });
 }
 
@@ -69,14 +69,14 @@ export function deployAction() {
 
 /**
  * The cold-start deploy when the account holds no tier yet: `run402 up -y`
- * subscribes the prototype tier itself as part of the first deploy, so `init`
+ * sets the prototype tier itself as part of the first deploy, so `init`
  * hands the agent ONE command instead of `tier set` + a separate deploy.
  * `tier set prototype` stays named as the standalone alternative.
  */
 export function upDeployAction() {
   return nextAction("deploy", {
     command: "run402 up -y",
-    why: "Deploy with run402 up -y — it subscribes the prototype tier (free on testnet) as part of the first deploy. Or subscribe separately: run402 tier set prototype.",
+    why: "Deploy with run402 up -y — it sets the prototype tier (free on testnet) as part of the first deploy. Or set it separately: run402 tier set prototype.",
   });
 }
 

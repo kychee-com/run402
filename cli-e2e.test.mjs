@@ -187,7 +187,7 @@ async function mockFetch(input, init) {
   if (path.startsWith("/tiers/v1/") && method === "POST") {
     const tier = path.split("/").pop();
     return Promise.resolve(json({
-      wallet: "0xtest", action: "subscribe", tier,
+      wallet: "0xtest", action: "start", tier,
       previous_tier: null, lease_started_at: "2026-03-15T00:00:00.000Z",
       lease_expires_at: "2026-03-22T00:00:00.000Z", allowance_remaining_usd_micros: 0,
     }));
@@ -791,7 +791,7 @@ async function mockFetch(input, init) {
     return Promise.resolve(json({ org_id: "00000000-0000-4000-8000-0000000000e2", available_usd_micros: 150000, held_usd_micros: 0 }));
   }
   if (path.match(/\/history/) && method === "GET") {
-    return Promise.resolve(json({ transactions: [{ id: "tx1", amount: -100000, description: "Tier subscription" }] }));
+    return Promise.resolve(json({ transactions: [{ id: "tx1", amount: -100000, description: "Tier lease" }] }));
   }
   if (path.match(/^\/orgs\/v1\/[^/]+\/checkouts$/) && method === "POST") {
     return Promise.resolve(json({
@@ -1313,12 +1313,12 @@ describe("CLI e2e happy path", () => {
     captureStart();
     await run("set", ["prototype"]);
     captureStop();
-    assert.ok(captured().includes("subscribe"), "should show action");
+    assert.ok(captured().includes("\"action\": \"start\""), "should show action");
   });
 
-  // GH-110: help text must reflect actual prototype pricing ($0.10, paid once,
-  // perpetual since kygit-handoff D4), not "free/testnet"
-  it("tier --help shows prototype as $0.10, perpetual (GH-110)", async () => {
+  // GH-110: help text must reflect actual prototype pricing ($0.10, paid
+  // once; the free tier has no lease), not "free/testnet"
+  it("tier --help shows prototype as $0.10 once, the free tier (GH-110)", async () => {
     const { run } = await import("./cli/lib/tier.mjs");
     let threw = null;
     captureStart();
@@ -1336,8 +1336,8 @@ describe("CLI e2e happy path", () => {
       `tier --help must not advertise prototype as 'free/testnet' — server charges $0.10. Got: ${out}`,
     );
     assert.ok(
-      /\$0\.10, perpetual/.test(out),
-      `tier --help must describe prototype as '$0.10, perpetual' to match server pricing. Got: ${out}`,
+      /\$0\.10 once, the free tier/.test(out),
+      `tier --help must describe prototype as '$0.10 once, the free tier' to match server pricing. Got: ${out}`,
     );
     assert.doesNotMatch(out, /\$0\.10\/7d/, "the retired 7-day prototype lease must not resurface");
     assert.match(out, /prepaid credit first/i, "tier set must say credit settles first");

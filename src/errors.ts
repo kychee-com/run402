@@ -94,7 +94,7 @@ export function formatApiError(
       case 402:
         if (inGrace) {
           lines.push(
-            `\nNext step: Project is in the soft-delete grace window — control-plane mutations are blocked. Use \`set_tier\` to renew/upgrade and reactivate the project in one transaction.`,
+            `\nNext step: Project is in the soft-delete grace window — control-plane mutations are blocked. Use \`tier_set\` to renew/upgrade and reactivate the project in one transaction.`,
           );
         }
         break;
@@ -106,11 +106,11 @@ export function formatApiError(
           // reserves 402 for genuine payment challenges. Give the same
           // richer grace-window guidance as the 402 branch above.
           lines.push(
-            `\nNext step: Project is in the soft-delete grace window — control-plane mutations are blocked. Use \`set_tier\` to renew/upgrade and reactivate the project in one transaction.`,
+            `\nNext step: Project is in the soft-delete grace window — control-plane mutations are blocked. Use \`tier_set\` to renew/upgrade and reactivate the project in one transaction.`,
           );
         } else {
           lines.push(
-            `\nNext step: The project lease may have expired. Use \`get_usage\` to check status, or \`set_tier\` to renew the lease.`,
+            `\nNext step: The project lease may have expired. Use \`get_usage\` to check status, or \`tier_set\` to renew the lease.`,
           );
         }
         break;
@@ -134,7 +134,7 @@ export function formatApiError(
     }
   } else if ((res.status === 402 || res.status === 403) && inGrace) {
     lines.push(
-      `\nNext step: Project is in the soft-delete grace window — control-plane mutations are blocked. Use \`set_tier\` to renew/upgrade and reactivate the project in one transaction.`,
+      `\nNext step: Project is in the soft-delete grace window — control-plane mutations are blocked. Use \`tier_set\` to renew/upgrade and reactivate the project in one transaction.`,
     );
   }
 
@@ -247,7 +247,7 @@ function addCodeGuidance(
     case "PROJECT_FROZEN":
     case "PROJECT_DORMANT":
     case "PROJECT_PAST_DUE":
-      lines.push(`\nNext step: Use \`get_usage\` to inspect lifecycle state, or \`set_tier\` to renew/reactivate the project.`);
+      lines.push(`\nNext step: Use \`get_usage\` to inspect lifecycle state, or \`tier_set\` to renew/reactivate the project.`);
       return true;
     case "RATE_LIMITED":
       lines.push(`\nNext step: Rate limit hit. Wait and retry.`);

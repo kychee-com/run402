@@ -264,6 +264,6 @@ describe('init blocked funding recovery', () => {
   mockFetch({faucetOk:false,faucetBody:{code:'RATE_LIMITED',error:'Rate limited',details:{limit_scope:'ip',retry_after:83160,retry_at:'2026-09-20T10:00:00Z'}}});
   const result=await handleInit({});const text=result.content[0]!.text;
   assert.match(text,/Funding blocked/);assert.match(text,/2026-09-20T10:00:00Z/);
-  assert.doesNotMatch(text,/\*\*Next:\*\* Use `set_tier`|Ready to deploy|Ready to buy/);
+  assert.doesNotMatch(text,/\*\*Next:\*\* Use `tier_set`|Ready to deploy|Ready to buy/);
  });
 });

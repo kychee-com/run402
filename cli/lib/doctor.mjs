@@ -539,7 +539,7 @@ export async function run(sub, args = []) {
               : `organization lifecycle is '${lifecycle}' — the control plane is gated until the tier is reactivated`,
         hint: status === "unknown"
           ? "Tier resolved, but organization lifecycle could not be determined. Check `run402 tier status` before assuming the account is healthy."
-          : "Run 'run402 tier set prototype' to subscribe, renew, or reactivate the tier.",
+          : "Run 'run402 tier set prototype' to set, renew, or reactivate the tier.",
       });
     }
   } catch (err) {

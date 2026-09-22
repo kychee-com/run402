@@ -385,7 +385,7 @@ mock.module("./cli/lib/cold-start.mjs", {
       coldStartCalls.push({ announce });
       return (coldStartImpl ?? (async (a) => {
         a?.("allowance created: 0xabc");
-        a?.("subscribing to the prototype tier (one x402 testnet payment, perpetual)");
+        a?.("setting the prototype tier (one x402 testnet payment; the free tier, no lease)");
         return { allowance_created: true, faucet_requested: false, tier: { status: "active" } };
       }))(announce);
     },
@@ -1792,7 +1792,7 @@ describe("run402 repos resume — a resumed agent is a NEW run402 wallet: the co
     assert.ok(calls.find((c) => c.method === "gitvault.resume"), "the claim still runs");
     // Ordering: the fold's announce lines land on stderr BEFORE resume's own "resuming" line.
     const foldLine = stderr.findIndex((l) => l.includes("folding the cold-start chain"));
-    const chainLine = stderr.findIndex((l) => l.includes("subscribing to the prototype tier"));
+    const chainLine = stderr.findIndex((l) => l.includes("setting the prototype tier"));
     assert.ok(foldLine >= 0 && chainLine > foldLine, "the fold is announced, then each chain step");
     assert.equal(payload.cold_start.performed, true);
     assert.equal(payload.cold_start.allowance_created, true);
@@ -2186,7 +2186,7 @@ describe("run402 repos join — a joined agent is a NEW run402 wallet: the cold-
     assert.equal(coldStartCalls.length, 1, "the chain folds exactly once");
     assert.ok(calls.find((c) => c.method === "gitvault.join"), "the claim still runs");
     const foldLine = stderr.findIndex((l) => l.includes("folding the cold-start chain"));
-    const chainLine = stderr.findIndex((l) => l.includes("subscribing to the prototype tier"));
+    const chainLine = stderr.findIndex((l) => l.includes("setting the prototype tier"));
     assert.ok(foldLine >= 0 && chainLine > foldLine, "the fold is announced, then each chain step");
     assert.equal(payload.cold_start.performed, true);
     assert.equal(payload.cold_start.allowance_created, true);

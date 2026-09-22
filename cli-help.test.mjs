@@ -611,7 +611,7 @@ describe("CLI --help contract", () => {
       [["functions", "list"],          "run402 functions — Manage serverless functions"],
       [["domains", "list"],            "run402 domains — Manage ProjectDomain lifecycle"],
       [["ai", "moderate"],             "run402 ai — AI translation and moderation tools"],
-      [["tier", "status"],             "run402 tier — Manage your Run402 tier subscription"],
+      [["tier", "status"],             "run402 tier — Manage your Run402 tier and its lease"],
       [["service", "status"],          "run402 service — Run402 service health and availability"],
       [["domains", "connect"],         "run402 domains — Manage ProjectDomain lifecycle"],
       [["contracts", "get-signer"],    "run402 contracts — KMS-backed Ethereum signers"],
