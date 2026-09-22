@@ -296,9 +296,14 @@ function formatNextActions(actions: unknown[]): string[] {
         stringField(obj, "label") ??
         stringField(obj, "description") ??
         stringField(obj, "message") ??
-        stringField(obj, "hint");
+        stringField(obj, "hint") ??
+        stringField(obj, "why");
+      // A client-resolvable action names its literal command (e.g. the
+      // `approve_write` a WriteApprovalRequiredError synthesizes, or a gateway
+      // `register_contact` / `contact_staff` / `hand_to_member` that carries one).
+      const command = stringField(obj, "command");
       if (name) {
-        lines.push(`- ${name}${description ? `: ${description}` : ""}`);
+        lines.push(`- ${name}${description ? `: ${description}` : ""}${command ? ` (\`${command}\`)` : ""}`);
         continue;
       }
     }

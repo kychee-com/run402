@@ -134,6 +134,28 @@ describe("formatApiError", () => {
     assert.ok(text.includes("check_usage: Inspect current limits"));
   });
 
+  it("renders a next action's why and literal command (register_contact, contact_staff, approve_write)", () => {
+    const result = formatApiError(
+      {
+        status: 403,
+        body: {
+          message: "Nobody can be notified.",
+          code: "CONTACT_EMAIL_NOT_VERIFIED",
+          next_actions: [
+            { type: "register_contact", method: "POST", path: "/agent/v1/contact", why: "Register a verified contact email." },
+            { type: "contact_staff", why: "Only Run402 staff can lift this." },
+            { type: "approve_write", command: "run402 approve --action project.deploy --project prj_x" },
+          ],
+        },
+      },
+      "binding a notification channel",
+    );
+    const text = result.content[0]!.text;
+    assert.ok(text.includes("register_contact: Register a verified contact email."));
+    assert.ok(text.includes("contact_staff: Only Run402 staff can lift this."));
+    assert.ok(text.includes("approve_write (`run402 approve --action project.deploy --project prj_x`)"));
+  });
+
   it("formats canonical details when requested", () => {
     const lines = formatCanonicalErrorContext(
       {
