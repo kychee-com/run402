@@ -328,8 +328,8 @@ async function linkGithub(args) {
     signedDelegation = signCiDelegation(values, { apiBase: API });
   } catch (err) {
     fail({
-      code: "NO_ALLOWANCE",
-      message: err?.message || "No local allowance configured.",
+      code: "NO_WALLET",
+      message: err?.message || "No local wallet configured.",
       hint: "Run: run402 init",
     });
   }

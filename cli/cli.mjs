@@ -31,10 +31,9 @@ Usage:
 Commands, grouped by when you reach for them:
 
 SET UP — get an agent funded and entitled
-  init        Set up allowance, funding, and check tier status (x402 default)
+  init        Set up the local wallet, funding, and check tier status (x402 default)
   init mpp    Set up with MPP payment rail (Tempo Moderato testnet)
-  wallets     Manage multiple named wallets (list, new, use, rename, bind, import)
-  allowance   Manage your agent allowance (create, fund, balance, status)
+  wallets     Manage local wallets (list, current, new, use, fund, balance, import)
   tier        Manage your tier and its lease (status, set)
   redeem      Redeem a promo code into your organization's allowance
   pay         Call an arbitrary x402-priced URL with a bounded payment
@@ -56,7 +55,7 @@ OPERATE — what happened, and is it healthy
   live        Change hints for live tables as NDJSON (SSE; --once for one held read)
   errors      Grouped error fingerprints + a promote/revert verdict (release-baselined)
   logs        Fetch function logs by request id (--request-id req_...)
-  status      Show full account state (allowance, balance, tier, projects)
+  status      Show full account state (wallet, allowance, tier, projects)
   doctor      Health and config diagnostics (JSON by default; includes --buzz preflight)
   service     Run402 service health and availability (status, health)
   snapshots   Create/list/restore/delete project data snapshots
@@ -114,8 +113,8 @@ Run 'run402 <command> --help' for detailed usage of each command.
 
 Examples:
   run402 up --name my-app -y
-  run402 allowance create
-  run402 allowance fund
+  run402 init
+  run402 wallets fund
   run402 pay https://seller.example/resource --max-usd 0.05
   run402 deploy --manifest app.json
   run402 snapshots list --project prj_...
@@ -214,11 +213,6 @@ switch (cmd) {
   }
   case "credentials": {
     const { run } = await import("./lib/credentials.mjs");
-    await run(sub, rest);
-    break;
-  }
-  case "allowance": {
-    const { run } = await import("./lib/allowance.mjs");
     await run(sub, rest);
     break;
   }

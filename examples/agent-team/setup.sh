@@ -25,7 +25,7 @@ mkdir -p "$DEMO_DIR/cfg" "$DEMO_DIR/work"
 note "── wallets"
 for r in $ROLES; do
   mkdir -p "$DEMO_DIR/cfg/$r"
-  RUN402_CONFIG_DIR="$DEMO_DIR/cfg/$r" run402 allowance create > "$DEMO_DIR/cfg/$r.json"
+  RUN402_CONFIG_DIR="$DEMO_DIR/cfg/$r" run402 wallets new default > "$DEMO_DIR/cfg/$r.json"
   ok "  $(role_name "$r")  $(jget "$DEMO_DIR/cfg/$r.json" address)"
 done
 ADDR_CLAUDE=$(jget "$DEMO_DIR/cfg/claude.json" address)

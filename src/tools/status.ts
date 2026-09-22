@@ -1,5 +1,5 @@
 import { readRemoteStatus } from "../../sdk/dist/node/index.js";
-import { readAllowance } from "../allowance.js";
+import { readWallet } from "../wallet.js";
 import { loadKeyStore, getActiveProjectId } from "../keystore.js";
 import { getActiveProfile, readMeta } from "../config.js";
 import { getSdk } from "../sdk.js";
@@ -11,36 +11,36 @@ type McpResult = { content: Array<{ type: "text"; text: string }>; isError?: boo
 export async function handleStatus(
   _args: Record<string, never>,
 ): Promise<McpResult> {
-  // readAllowance throws on a malformed-shape file — translate to a
+  // readWallet throws on a malformed-shape file — translate to a
   // friendly MCP error rather than crashing with a noble-curves stack trace.
-  let allowance;
+  let localWallet;
   try {
-    allowance = readAllowance();
+    localWallet = readWallet();
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return {
       content: [
         {
           type: "text",
-          text: `Allowance file is malformed: ${msg}`,
+          text: `Wallet file is malformed: ${msg}`,
         },
       ],
       isError: true,
     };
   }
-  if (!allowance) {
+  if (!localWallet) {
     return {
       content: [
         {
           type: "text",
-          text: "No agent allowance found. Use `init` or `allowance_create` to create one.",
+          text: "No local wallet found. Use `init` or `wallet_create` to create one.",
         },
       ],
       isError: true,
     };
   }
 
-  const wallet = allowance.address.toLowerCase();
+  const wallet = localWallet.address.toLowerCase();
   const sdk = getSdk();
 
   // Parallel SDK calls — each swallowed to a best-effort null so missing
@@ -55,7 +55,7 @@ export async function handleStatus(
   // Active named wallet (from RUN402_WALLET in the MCP server env, else default).
   const walletName = getActiveProfile();
   const walletMeta = readMeta(walletName);
-  const rail = allowance.rail || "x402";
+  const rail = localWallet.rail || "x402";
 
   // Build summary
   const lines: string[] = [
@@ -65,7 +65,7 @@ export async function handleStatus(
     `|-------|-------|`,
     `| local_label | ${walletName} |`,
     `| server_label | ${walletMeta?.label ?? "(none)"} |`,
-    `| address | \`${allowance.address}\` |`,
+    `| address | \`${localWallet.address}\` |`,
     `| rail | ${rail} |`,
   ];
 

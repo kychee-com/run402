@@ -2,7 +2,7 @@ import { z } from "zod";
 import { LocalError } from "../../sdk/dist/index.js";
 import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
-import { requireAllowanceAuth } from "../allowance-auth.js";
+import { requireWalletAuth } from "../wallet-auth.js";
 import { updateProject } from "../keystore.js";
 import type { DeployEvent } from "../../sdk/dist/node/sites-node.js";
 
@@ -36,7 +36,7 @@ export async function handleDeploySiteDir(args: {
   project: string;
   dir: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const auth = requireAllowanceAuth("/apply/v1/plans");
+  const auth = requireWalletAuth("/apply/v1/plans");
   if ("error" in auth) return auth.error;
 
   const events: DeployEvent[] = [];

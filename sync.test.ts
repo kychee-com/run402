@@ -85,7 +85,7 @@ function readCommandSource(filePath: string): string | null {
 function parseCliCommands(): string[] {
   const cmds: string[] = [];
   const reserved = reservedSubcommands();
-  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "feedback", "agent", "operator", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "deliveries", "contacts", "subscriptions", "webhook-secret", "cloud", "archives", "core", "rooms", "messages", "claims", "escalations", "gitvault", "repos", "source-access"]) {
+  for (const mod of ["admin", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "feedback", "agent", "operator", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "deliveries", "contacts", "subscriptions", "webhook-secret", "cloud", "archives", "core", "rooms", "messages", "claims", "escalations", "gitvault", "repos", "source-access"]) {
     for (const sub of parseSubcommands(join(__dirname, "cli/lib", `${mod}.mjs`))) {
       if (reserved.has(`${mod}:${sub}`)) continue;
       cmds.push(`${mod}:${sub}`);
@@ -129,7 +129,7 @@ function parseCliCommands(): string[] {
 function parseOpenClawCommands(): string[] {
   const cmds: string[] = [];
   const reserved = reservedSubcommands();
-  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "feedback", "agent", "operator", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "deliveries", "contacts", "subscriptions", "webhook-secret", "cloud", "archives", "core", "rooms", "messages", "claims", "escalations", "gitvault", "repos", "source-access"]) {
+  for (const mod of ["admin", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "feedback", "agent", "operator", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "deliveries", "contacts", "subscriptions", "webhook-secret", "cloud", "archives", "core", "rooms", "messages", "claims", "escalations", "gitvault", "repos", "source-access"]) {
     for (const sub of parseSubcommands(join(__dirname, "openclaw/scripts", `${mod}.mjs`))) {
       if (reserved.has(`${mod}:${sub}`)) continue;
       cmds.push(`${mod}:${sub}`);
@@ -357,7 +357,7 @@ const SURFACE: Capability[] = [
 
   // ── Named wallets / profiles (local-only management; selection via --wallet) ─
   { id: "wallets_list",      endpoint: "(local)",                              mcp: null, cli: "wallets:list",     openclaw: "wallets:list" },
-  { id: "wallets_current",   endpoint: "(local)",                              mcp: null, cli: "wallets:current",  openclaw: "wallets:current" },
+  { id: "wallets_current",   endpoint: "(local)",                              mcp: "wallet_status", cli: "wallets:current",  openclaw: "wallets:current" },
   { id: "wallets_new",       endpoint: "(local)",                              mcp: null, cli: "wallets:new",      openclaw: "wallets:new" },
   { id: "wallets_use",       endpoint: "(local)",                              mcp: null, cli: "wallets:use",      openclaw: "wallets:use" },
   { id: "wallets_rename",    endpoint: "(local)",                              mcp: null, cli: "wallets:rename",   openclaw: "wallets:rename" },
@@ -398,7 +398,7 @@ const SURFACE: Capability[] = [
   { id: "delete_project_branch", endpoint: "DELETE /projects/v1/:project_id/branches/:branch_project_id", mcp: "delete_project_branch", cli: "branches:delete", openclaw: "branches:delete" },
 
   // ── Faucet ───────────────────────────────────────────────────────────────
-  { id: "faucet",            endpoint: "POST /faucet/v1",                        mcp: "request_faucet",                cli: "allowance:fund",      openclaw: "allowance:fund" },
+  { id: "faucet",            endpoint: "POST /faucet/v1",                        mcp: "request_faucet",                cli: "wallets:fund",        openclaw: "wallets:fund" },
 
   // ── Database / Admin ─────────────────────────────────────────────────────
   { id: "run_sql",           endpoint: "POST /projects/v1/admin/:id/sql",        mcp: "run_sql",                       cli: "projects:sql",        openclaw: "projects:sql" },
@@ -502,7 +502,7 @@ const SURFACE: Capability[] = [
   { id: "list_versions",     endpoint: "GET /projects/v1/admin/:id/versions",       mcp: "list_versions", cli: "apps:versions", openclaw: "apps:versions" },
 
   // ── Billing ──────────────────────────────────────────────────────────────
-  { id: "check_balance",     endpoint: "GET /orgs/v1/lookup?wallet=",           mcp: "check_balance",  cli: "allowance:balance", openclaw: "allowance:balance" },
+  { id: "check_balance",     endpoint: "GET /orgs/v1/lookup?wallet=",           mcp: "check_balance",  cli: "wallets:balance", openclaw: "wallets:balance" },
   { id: "list_projects",     endpoint: "GET /projects/v1",                           mcp: "list_projects",  cli: "projects:list",  openclaw: "projects:list" },
   { id: "list_tenant_payments", endpoint: "GET /projects/v1/:project_id/tenant-payments", mcp: "list_tenant_payments", cli: "projects:tenant-payments", openclaw: "projects:tenant-payments" },
   { id: "rename_project",    endpoint: "PATCH /projects/v1/:project_id",             mcp: "rename_project", cli: "projects:rename", openclaw: "projects:rename" },
@@ -672,8 +672,7 @@ const SURFACE: Capability[] = [
   { id: "create_checkout",   endpoint: "POST /orgs/v1/:org_id/checkouts",        mcp: "create_checkout",     cli: "billing:checkout",  openclaw: "billing:checkout" },
   { id: "create_lightning_topup", endpoint: "POST /orgs/v1/:org_id/checkouts (rail: lightning)", mcp: "create_lightning_topup", cli: "billing:topup", openclaw: "billing:topup" },
   { id: "get_topup",         endpoint: "GET /orgs/v1/:org_id/checkouts/:topup_id", mcp: "get_topup",          cli: null,                openclaw: null },
-  { id: "allowance_checkout", endpoint: "POST /orgs/v1/:org_id/checkouts (local wallet convenience)", mcp: null, cli: "allowance:checkout", openclaw: "allowance:checkout" },
-  { id: "billing_history",   endpoint: "GET /orgs/v1/:org_id/billing/history", mcp: "billing_history", cli: "allowance:history", openclaw: "allowance:history" },
+  { id: "billing_history",   endpoint: "GET /orgs/v1/:org_id/billing/history", mcp: "billing_history", cli: null, openclaw: null },
 
   // ── Version management ─────────────────────────────────────────────────
   { id: "update_version",    endpoint: "PATCH /projects/v1/admin/:id/versions/:version_id", mcp: "update_version", cli: "apps:update", openclaw: "apps:update" },
@@ -776,13 +775,12 @@ const SURFACE: Capability[] = [
   // ── Tier management ────────────────────────────────────────────────────
   { id: "tier_status",       endpoint: "GET /tiers/v1/status",             mcp: "tier_status",      cli: "tier:status",      openclaw: "tier:status" },
 
-  // ── Allowance management ───────────────────────────────────────────────
-  { id: "allowance_status",  endpoint: "(local)",                          mcp: "allowance_status", cli: "allowance:status", openclaw: "allowance:status" },
-  // The Lightning allowance (mpp-lightning-over-nwc): one verb on every
+  // ── Local wallet ───────────────────────────────────────────────────────
+  // The Lightning wallet (mpp-lightning-over-nwc): one verb on every
   // surface; `init lightning` is the same mint through the existing `init`.
   { id: "lightning_wallet",  endpoint: "/agent/v1/lightning-wallet",       mcp: "lightning_wallet", cli: "wallets:lightning", openclaw: "wallets:lightning" },
-  { id: "allowance_create",  endpoint: "(local)",                          mcp: "allowance_create", cli: "allowance:create", openclaw: "allowance:create" },
-  { id: "allowance_export",  endpoint: "(local)",                          mcp: "allowance_export", cli: "allowance:export", openclaw: "allowance:export" },
+  { id: "wallet_create",  endpoint: "(local)",                          mcp: "wallet_create", cli: null, openclaw: null },
+  { id: "wallet_export",  endpoint: "(local)",                          mcp: "wallet_export", cli: null, openclaw: null },
 
   // ── Service status (public, unauthenticated) ───────────────────────────
   { id: "service_status",    endpoint: "GET /status",                      mcp: "service_status",   cli: "service:status",   openclaw: "service:status" },
@@ -1005,7 +1003,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
 
   // Named wallets — local profile management (no SDK gateway method).
   wallets_list: null,
-  wallets_current: null,
+  wallets_current: "wallets.status",
   wallets_new: null,
   wallets_use: null,
   org_use: null,
@@ -1050,7 +1048,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   list_project_branches: "branches.list",
   renew_project_branch: "branches.renew",
   delete_project_branch: "branches.delete",
-  faucet: "allowance.faucet",
+  faucet: "wallets.faucet",
 
   // Database / Admin
   run_sql: "projects.sql",
@@ -1168,7 +1166,6 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   create_lightning_topup: "billing.createLightningTopup",
   lightning_wallet: "agent.lightningWallet.mint",
   get_topup: "billing.getTopup",
-  allowance_checkout: "billing.createCheckout",
   billing_history: "billing.history",
   create_email_organization: "billing.createEmailOrganization",
   link_wallet_to_organization: "billing.linkWallet",
@@ -1337,10 +1334,9 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   // Tier
   tier_status: "tier.status",
 
-  // Allowance (local-managed via Node provider)
-  allowance_status: "allowance.status",
-  allowance_create: "allowance.create",
-  allowance_export: "allowance.export",
+  // Local wallet (managed via the Node provider)
+  wallet_create: "wallets.create",
+  wallet_export: "wallets.export",
 
   // Service
   service_status: "service.status",
@@ -2118,7 +2114,7 @@ describe("CLI/MCP SDK-boundary guard", () => {
       // delegate to `sdk.assets.put` (which routes through the apply
       // hero). Those allowlist entries are kept out so a regression that
       // reintroduces raw HTTP from a tool file fails the guard.
-      ["cli/lib/allowance.mjs", [/\bfetch\(TEMPO_RPC\b/]], // Tempo faucet/RPC
+      ["cli/lib/wallets.mjs", [/\bfetch\(TEMPO_RPC\b/]], // Tempo faucet/RPC
       ["cli/lib/init.mjs", [/\bfetch\(TEMPO_RPC\b/]], // Tempo faucet/RPC
       ["cli/lib/ci.mjs", [/\bfetch\(`https:\/\/api\.github\.com\/repos\//]], // GitHub repository lookup
       ["src/tools/init.ts", [/\bfetch\(TEMPO_RPC\b/]], // Tempo faucet/RPC

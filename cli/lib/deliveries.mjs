@@ -7,12 +7,12 @@
  * produces them, which is now `contacts` and `subscriptions`.
  *
  * HTTP paths are unchanged (`/agent/v1/notifications*`) — this is client
- * vocabulary, and the allowance auth headers below are PATH-scoped, so they
+ * vocabulary, and the SIWX auth headers below are PATH-scoped, so they
  * must keep naming the real route. Renaming them would ship broken auth
  * against a live path, which is exactly how the `feedback` rename nearly went
  * wrong.
  */
-import { allowanceAuthHeaders } from "./config.mjs";
+import { walletAuthHeaders } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 import {
@@ -47,7 +47,7 @@ async function list(args) {
   if (extra.length > 0) {
     fail({ code: "BAD_USAGE", message: `Unexpected argument for notifications list: ${extra[0]}` });
   }
-  allowanceAuthHeaders("/agent/v1/notifications");
+  walletAuthHeaders("/agent/v1/notifications");
   const opts = {};
   const type = flagValue(parsedArgs, "--type");
   const since = flagValue(parsedArgs, "--since");
@@ -72,7 +72,7 @@ async function get(args) {
   if (positionals.length !== 1) {
     fail({ code: "BAD_USAGE", message: "Usage: run402 notifications get <id>" });
   }
-  allowanceAuthHeaders("/agent/v1/notifications");
+  walletAuthHeaders("/agent/v1/notifications");
   try {
     const data = await getSdk().admin.getNotification(positionals[0]);
     console.log(JSON.stringify(data, null, 2));

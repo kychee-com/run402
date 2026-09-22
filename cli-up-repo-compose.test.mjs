@@ -334,14 +334,14 @@ describe("run402 up --repo-only — vault-only, zero deploy ceremony", () => {
     process.env.RUN402_CONFIG_DIR = join(scratch, "repo-only-cfg");
     process.chdir(dir);
     // --repo-only calls projects.provision directly (bypassing sdk.up()'s
-    // own auto-prerequisite flow), so it needs a local allowance to exist —
-    // written directly rather than through `allowance create`, which would
-    // call this same mocked SDK's (absent) `allowance.create`.
-    const { saveAllowance } = await import("./cli/lib/config.mjs");
+    // own auto-prerequisite flow), so it needs a local wallet to exist —
+    // written directly rather than through the SDK, which would
+    // call this same mocked SDK's (absent) `wallets.create`.
+    const { saveWallet } = await import("./cli/lib/config.mjs");
     const { generatePrivateKey, privateKeyToAccount } = await import("viem/accounts");
     const privateKey = generatePrivateKey();
     const account = privateKeyToAccount(privateKey);
-    saveAllowance({ address: account.address, privateKey, created: new Date().toISOString(), funded: false, rail: "x402" });
+    saveWallet({ address: account.address, privateKey, created: new Date().toISOString(), funded: false, rail: "x402" });
   });
 
   it("provisions, scaffolds, and pushes, but never calls the deploy flow", async () => {

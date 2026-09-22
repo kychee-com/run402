@@ -2,7 +2,7 @@ import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { mkdtempSync, writeFileSync, existsSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, statSync, existsSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import {
   configureApiBase,
@@ -10,7 +10,7 @@ import {
   getApiBaseSource,
   getApiTargetConfigPath,
   getApiTargetKind,
-  getAllowancePath,
+  getWalletPath,
   getConfigBaseDir,
   getConfigDir,
   getDeployApiBase,
@@ -21,11 +21,15 @@ import {
   isValidProfileName,
   readApiTargetConfig,
 } from "./config.js";
+import { listProfileNames } from "./profiles.js";
+
+/** The wallet key file's name before it was `wallet.json`. */
+const PREVIOUS = "allowance.json";
 
 const origApiBase = process.env.RUN402_API_BASE;
 const origDeployApiBase = process.env.RUN402_DEPLOY_API_BASE;
 const origConfigDir = process.env.RUN402_CONFIG_DIR;
-const origAllowancePath = process.env.RUN402_ALLOWANCE_PATH;
+const origWalletPath = process.env.RUN402_WALLET_PATH;
 const origWallet = process.env.RUN402_WALLET;
 const origProfile = process.env.RUN402_PROFILE;
 
@@ -49,8 +53,8 @@ afterEach(() => {
   else delete process.env.RUN402_DEPLOY_API_BASE;
   if (origConfigDir !== undefined) process.env.RUN402_CONFIG_DIR = origConfigDir;
   else delete process.env.RUN402_CONFIG_DIR;
-  if (origAllowancePath !== undefined) process.env.RUN402_ALLOWANCE_PATH = origAllowancePath;
-  else delete process.env.RUN402_ALLOWANCE_PATH;
+  if (origWalletPath !== undefined) process.env.RUN402_WALLET_PATH = origWalletPath;
+  else delete process.env.RUN402_WALLET_PATH;
   if (origWallet !== undefined) process.env.RUN402_WALLET = origWallet;
   else delete process.env.RUN402_WALLET;
   if (origProfile !== undefined) process.env.RUN402_PROFILE = origProfile;
@@ -214,36 +218,79 @@ describe("config", () => {
     assert.equal(getKeystorePath(), join("/tmp/test-config", "credentials", "project-keys.v1.json"));
   });
 
-  it("derives allowance path from config dir", () => {
+  it("derives wallet path from config dir", () => {
     process.env.RUN402_CONFIG_DIR = "/tmp/test-config";
-    delete process.env.RUN402_ALLOWANCE_PATH;
-    assert.equal(getAllowancePath(), join("/tmp/test-config", "allowance.json"));
+    delete process.env.RUN402_WALLET_PATH;
+    assert.equal(getWalletPath(), join("/tmp/test-config", "wallet.json"));
   });
 
-  it("returns custom allowance path from RUN402_ALLOWANCE_PATH env", () => {
-    process.env.RUN402_ALLOWANCE_PATH = "/custom/path/allowance.json";
-    assert.equal(getAllowancePath(), "/custom/path/allowance.json");
+  it("returns custom wallet path from RUN402_WALLET_PATH env", () => {
+    process.env.RUN402_WALLET_PATH = "/custom/path/wallet.json";
+    assert.equal(getWalletPath(), "/custom/path/wallet.json");
   });
 
-  it("RUN402_ALLOWANCE_PATH takes precedence over RUN402_CONFIG_DIR", () => {
+  it("RUN402_WALLET_PATH takes precedence over RUN402_CONFIG_DIR", () => {
     process.env.RUN402_CONFIG_DIR = "/tmp/test-config";
-    process.env.RUN402_ALLOWANCE_PATH = "/other/place/wallet.json";
-    assert.equal(getAllowancePath(), "/other/place/wallet.json");
+    process.env.RUN402_WALLET_PATH = "/other/place/wallet.json";
+    assert.equal(getWalletPath(), "/other/place/wallet.json");
   });
 
-  it("RUN402_ALLOWANCE_PATH skips legacy wallet.json migration", () => {
+  it("RUN402_WALLET_PATH skips the wallet file move", () => {
     const tmp = mkdtempSync(join(tmpdir(), "config-test-"));
     try {
-      writeFileSync(join(tmp, "wallet.json"), "{}");
+      writeFileSync(join(tmp, PREVIOUS), "{}");
       process.env.RUN402_CONFIG_DIR = tmp;
-      process.env.RUN402_ALLOWANCE_PATH = "/custom/allowance.json";
-      assert.equal(getAllowancePath(), "/custom/allowance.json");
-      // wallet.json should NOT have been renamed
-      assert.ok(existsSync(join(tmp, "wallet.json")), "wallet.json should still exist");
-      assert.ok(!existsSync(join(tmp, "allowance.json")), "allowance.json should not have been created");
+      process.env.RUN402_WALLET_PATH = "/custom/wallet.json";
+      assert.equal(getWalletPath(), "/custom/wallet.json");
+      assert.ok(existsSync(join(tmp, PREVIOUS)), "the previous file is untouched under an explicit path");
+      assert.ok(!existsSync(join(tmp, "wallet.json")), "wallet.json should not have been created");
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }
+  });
+});
+
+describe("config — one-time wallet file move", () => {
+  beforeEach(() => {
+    delete process.env.RUN402_WALLET_PATH;
+    delete process.env.RUN402_WALLET;
+    delete process.env.RUN402_PROFILE;
+  });
+
+  it("moves the previous file to wallet.json in the base dir and every profile, 0600, content intact", () => {
+    withTempConfig((tmp) => {
+      writeFileSync(join(tmp, PREVIOUS), '{"address":"root"}', { mode: 0o644 });
+      mkdirSync(join(tmp, "profiles", "kychon"), { recursive: true });
+      writeFileSync(join(tmp, "profiles", "kychon", PREVIOUS), '{"address":"kychon"}', { mode: 0o644 });
+      assert.equal(getWalletPath(), join(tmp, "wallet.json"));
+      assert.ok(!existsSync(join(tmp, PREVIOUS)), "root file moved");
+      assert.equal(readFileSync(join(tmp, "wallet.json"), "utf-8"), '{"address":"root"}');
+      assert.ok(!existsSync(join(tmp, "profiles", "kychon", PREVIOUS)), "profile file moved");
+      assert.equal(readFileSync(join(tmp, "profiles", "kychon", "wallet.json"), "utf-8"), '{"address":"kychon"}');
+      if (process.platform !== "win32") {
+        assert.equal(statSync(join(tmp, "wallet.json")).mode & 0o777, 0o600);
+        assert.equal(statSync(join(tmp, "profiles", "kychon", "wallet.json")).mode & 0o777, 0o600);
+      }
+    });
+  });
+
+  it("never overwrites an existing wallet.json", () => {
+    withTempConfig((tmp) => {
+      writeFileSync(join(tmp, "wallet.json"), '{"address":"current"}');
+      writeFileSync(join(tmp, PREVIOUS), '{"address":"previous"}');
+      assert.equal(getWalletPath(), join(tmp, "wallet.json"));
+      assert.equal(readFileSync(join(tmp, "wallet.json"), "utf-8"), '{"address":"current"}');
+      assert.ok(existsSync(join(tmp, PREVIOUS)), "the previous file is left alone when wallet.json exists");
+    });
+  });
+
+  it("profile enumeration sees a wallet still stored under the previous name", () => {
+    withTempConfig((tmp) => {
+      mkdirSync(join(tmp, "profiles", "acme"), { recursive: true });
+      writeFileSync(join(tmp, "profiles", "acme", PREVIOUS), "{}");
+      assert.deepEqual(listProfileNames(), ["acme"]);
+      assert.ok(existsSync(join(tmp, "profiles", "acme", "wallet.json")));
+    });
   });
 });
 
@@ -252,7 +299,7 @@ describe("config — wallet profiles", () => {
     process.env.RUN402_CONFIG_DIR = "/tmp/test-config";
     delete process.env.RUN402_WALLET;
     delete process.env.RUN402_PROFILE;
-    delete process.env.RUN402_ALLOWANCE_PATH;
+    delete process.env.RUN402_WALLET_PATH;
   });
 
   it("default profile resolves to the base config dir (zero migration)", () => {
@@ -260,7 +307,7 @@ describe("config — wallet profiles", () => {
     assert.equal(getConfigDir(), "/tmp/test-config");
     assert.equal(getConfigBaseDir(), "/tmp/test-config");
     assert.equal(getKeystorePath(), join("/tmp/test-config", "credentials", "project-keys.v1.json"));
-    assert.equal(getAllowancePath(), join("/tmp/test-config", "allowance.json"));
+    assert.equal(getWalletPath(), join("/tmp/test-config", "wallet.json"));
   });
 
   it("RUN402_WALLET nests the config dir under profiles/<name>", () => {
@@ -268,7 +315,7 @@ describe("config — wallet profiles", () => {
     assert.equal(getActiveProfile(), "kychon");
     assert.equal(getConfigDir(), join("/tmp/test-config", "profiles", "kychon"));
     assert.equal(getKeystorePath(), join("/tmp/test-config", "profiles", "kychon", "credentials", "project-keys.v1.json"));
-    assert.equal(getAllowancePath(), join("/tmp/test-config", "profiles", "kychon", "allowance.json"));
+    assert.equal(getWalletPath(), join("/tmp/test-config", "profiles", "kychon", "wallet.json"));
     // base dir + profiles dir are unaffected by the active profile
     assert.equal(getConfigBaseDir(), "/tmp/test-config");
     assert.equal(getProfilesDir(), join("/tmp/test-config", "profiles"));

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
-import { requireAllowanceAuth } from "../allowance-auth.js";
+import { requireWalletAuth } from "../wallet-auth.js";
 import { formatActor } from "../identity-format.js";
 
 /**
@@ -37,7 +37,7 @@ export async function handleDeployList(args: {
   limit?: number;
   cursor?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const auth = requireAllowanceAuth("/apply/v1/operations");
+  const auth = requireWalletAuth("/apply/v1/operations");
   if ("error" in auth) return auth.error;
 
   try {

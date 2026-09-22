@@ -26,9 +26,9 @@ test("local SDK validation failures throw structured LocalError", async () => {
   const r = clientWithProject();
 
   await assertLocalError(
-    r.allowance.create(),
-    "creating allowance",
-    "This credential provider does not support allowance creation. Use @run402/sdk/node for local allowance management.",
+    r.wallets.create(),
+    "creating wallet",
+    "This credential provider does not support wallet creation. Use @run402/sdk/node for local wallet management.",
   );
   await assertLocalError(
     r.billing.createCheckout("", { product: "tier", tier: "hobby" }),

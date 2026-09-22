@@ -58,7 +58,7 @@ say "Watch the left margin: wallet, faucet, payment, arrival — all inside this
 printf '\n'
 run run402 rooms join "$KEY" --json > join.json
 printf '\n'
-ADDR=$(run402 allowance export | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>process.stdout.write(JSON.parse(d).address))')
+ADDR=$(run402 wallets current | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>process.stdout.write(JSON.parse(d).address))')
 ME=$(jget join.json presence.name)
 shout "→ I am '$ME', a $(jget join.json membership.role) of org $(jget join.json org_id)"
 printf '\n'

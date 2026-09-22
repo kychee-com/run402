@@ -1,18 +1,18 @@
 /**
- * The Lightning allowance on the CLI: mint the agent's budgeted wallet on
- * Run402's Hub, keep its pairing in the active profile's allowance.json
+ * The Lightning wallet on the CLI: mint the agent's budgeted wallet on
+ * Run402's Hub, keep its pairing in the active profile's wallet.json
  * beside the Base key, report its balance, revoke it. Shared by
  * `run402 init lightning`, `run402 wallets lightning …`, and
- * `run402 allowance status`. The pairing secret is never printed.
+ * `run402 wallets current`. The pairing secret is never printed.
  */
-import { readAllowance, saveAllowance } from "../core-dist/allowance.js";
+import { readWallet, saveWallet } from "../core-dist/wallet.js";
 import { getSdk } from "./sdk.mjs";
 
 export const LIGHTNING_MINT_TIMEOUT_MS = 45_000;
 
 /** Public facts only: never the pairing. */
-export function describeLightning(allowance, wallet = null, balance = null) {
-  const local = allowance?.lightning ?? null;
+export function describeLightning(localWallet, wallet = null, balance = null) {
+  const local = localWallet?.lightning ?? null;
   if (!local && !wallet) return null;
   return {
     wallet_id: wallet?.wallet_id ?? local?.wallet_id ?? null,
@@ -29,8 +29,8 @@ export function describeLightning(allowance, wallet = null, balance = null) {
 }
 
 /** Balance and remaining budget over NWC, best-effort (null on any failure). */
-export async function readLightningBalance(allowance) {
-  const nwc = allowance?.lightning?.nwc;
+export async function readLightningBalance(localWallet) {
+  const nwc = localWallet?.lightning?.nwc;
   if (!nwc) return null;
   try {
     const { NwcWallet, closeNwcConnections } = await import("#sdk/node");
@@ -46,9 +46,9 @@ export async function readLightningBalance(allowance) {
   }
 }
 
-function storePairing(allowance, wallet) {
+function storePairing(localWallet, wallet) {
   const next = {
-    ...allowance,
+    ...localWallet,
     rail: "lightning",
     lightning: {
       wallet_id: wallet.wallet_id,
@@ -60,46 +60,46 @@ function storePairing(allowance, wallet) {
       minted_at: wallet.activated_at ?? new Date().toISOString(),
     },
   };
-  saveAllowance(next);
+  saveWallet(next);
   return next;
 }
 
 /**
  * Ensure the active profile holds an active Lightning wallet. Returns
- * `{ allowance, wallet, outcome }` where outcome is `stored` (pairing just
+ * `{ localWallet, wallet, outcome }` where outcome is `stored` (pairing just
  * saved), `present` (already held locally), `minting` (the platform is still
  * minting; rerun later), `unavailable` (no Hub on this gateway), or
  * `pairing_lost` (the wallet is active but its one-time pairing was handed to
  * another machine; revoke and mint again).
  */
 export async function ensureLightningWallet(options = {}) {
-  let allowance = readAllowance();
-  if (!allowance) throw new Error("no allowance configured; run `run402 init` first");
-  if (allowance.lightning?.nwc) {
+  let localWallet = readWallet();
+  if (!localWallet) throw new Error("no local wallet configured; run `run402 init` first");
+  if (localWallet.lightning?.nwc) {
     let wallet = null;
     try { wallet = await getSdk().agent.lightningWallet.get(); } catch { /* offline read is fine */ }
-    if (wallet && wallet.status !== "active") return { allowance, wallet, outcome: wallet.status };
-    return { allowance, wallet, outcome: "present" };
+    if (wallet && wallet.status !== "active") return { localWallet, wallet, outcome: wallet.status };
+    return { localWallet, wallet, outcome: "present" };
   }
   let wallet;
   try {
     wallet = await getSdk().agent.lightningWallet.mint({ timeoutMs: options.timeoutMs ?? LIGHTNING_MINT_TIMEOUT_MS });
   } catch (err) {
     const code = err?.body?.code ?? err?.code;
-    if (code === "LIGHTNING_WALLET_NOT_AVAILABLE") return { allowance, wallet: null, outcome: "unavailable", error: err };
-    if (code === "LIGHTNING_WALLET_STILL_MINTING") return { allowance, wallet: null, outcome: "minting", error: err };
+    if (code === "LIGHTNING_WALLET_NOT_AVAILABLE") return { localWallet, wallet: null, outcome: "unavailable", error: err };
+    if (code === "LIGHTNING_WALLET_STILL_MINTING") return { localWallet, wallet: null, outcome: "minting", error: err };
     throw err;
   }
-  if (wallet.status === "minting") return { allowance, wallet, outcome: "minting" };
-  if (wallet.status !== "active") return { allowance, wallet, outcome: wallet.status };
-  if (typeof wallet.pairing !== "string") return { allowance, wallet, outcome: "pairing_lost" };
-  allowance = storePairing(allowance, wallet);
-  return { allowance, wallet, outcome: "stored" };
+  if (wallet.status === "minting") return { localWallet, wallet, outcome: "minting" };
+  if (wallet.status !== "active") return { localWallet, wallet, outcome: wallet.status };
+  if (typeof wallet.pairing !== "string") return { localWallet, wallet, outcome: "pairing_lost" };
+  localWallet = storePairing(localWallet, wallet);
+  return { localWallet, wallet, outcome: "stored" };
 }
 
 /** Revoke on the platform and forget the pairing locally; the rail returns to x402. */
 export async function revokeLightningWallet() {
-  const allowance = readAllowance();
+  const localWallet = readWallet();
   let wallet = null;
   try {
     wallet = await getSdk().agent.lightningWallet.revoke();
@@ -107,9 +107,9 @@ export async function revokeLightningWallet() {
     const code = err?.body?.code ?? err?.code;
     if (code !== "LIGHTNING_WALLET_NOT_FOUND") throw err;
   }
-  if (allowance) {
-    const { lightning: _dropped, ...rest } = allowance;
-    saveAllowance({ ...rest, rail: rest.rail === "lightning" ? "x402" : rest.rail });
+  if (localWallet) {
+    const { lightning: _dropped, ...rest } = localWallet;
+    saveWallet({ ...rest, rail: rest.rail === "lightning" ? "x402" : rest.rail });
   }
   return wallet;
 }

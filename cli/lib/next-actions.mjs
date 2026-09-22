@@ -35,7 +35,7 @@ export function retryAction(command, why) {
 export function initializeWalletAction() {
   return nextAction("initialize_wallet", {
     command: "run402 init",
-    why: "Create and fund an agent allowance, then retry.",
+    why: "Create and fund a local wallet, then retry.",
   });
 }
 

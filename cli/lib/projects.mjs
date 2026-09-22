@@ -1,5 +1,5 @@
 import { readFileSync } from "fs";
-import { allowanceAuthHeaders, resolveProjectId, getActiveProjectId, isCoreApiTarget } from "./config.mjs";
+import { walletAuthHeaders, resolveProjectId, getActiveProjectId, isCoreApiTarget } from "./config.mjs";
 import { loadLiveOperatorSession } from "../core-dist/operator-session.js";
 import { loadLiveControlPlaneSession } from "../core-dist/control-plane-session.js";
 import { withAutoApprove } from "./operator.mjs";
@@ -84,7 +84,7 @@ Notes:
     project:write grant) on the owning org; it works even if the project was
     never provisioned from this machine.
   - 'rest' uses PostgREST query syntax (table name + optional query string)
-  - 'provision' requires a funded allowance on Run402 Cloud. Against a
+  - 'provision' requires a funded wallet on Run402 Cloud. Against a
     configured Run402 Core target, it creates a local Core project without
     payment.
   - 'apply-expose' declares the full authorization surface (tables, views, RPCs)
@@ -197,8 +197,8 @@ Options:
                       from --name when omitted; an unnamed provision stays un-keyed.
 
 Notes:
-  - Payment is automatic via x402 on Run402 Cloud; requires a funded allowance.
-    Against a configured Run402 Core target, no Cloud tier/allowance/payment is
+  - Payment is automatic via x402 on Run402 Cloud; requires a funded wallet.
+    Against a configured Run402 Core target, no Cloud tier/wallet/payment is
     required.
   - The new project becomes the active project after provisioning
 
@@ -246,7 +246,7 @@ Environment:
   RUN402_ADMIN_COOKIE Optional admin OAuth cookie header, e.g. "run402_admin=..."
 
 Notes:
-  - Platform-admin only. The configured allowance wallet must be an admin
+  - Platform-admin only. The configured wallet must be an admin
     wallet, or RUN402_ADMIN_COOKIE must contain an admin OAuth cookie.
   - Project service keys are not enough for this endpoint.
   - Output is the gateway's per-project finance JSON: revenue, direct cost,
@@ -361,10 +361,10 @@ async function provision(args) {
       });
     }
   }
-  // Aggressive early exit when no agent allowance is configured — but only when
+  // Aggressive early exit when no local wallet is configured — but only when
   // there's also no operator (control-plane) session, since a wallet-less human
   // provisions into an org via their operator approval instead of a wallet.
-  if (!isCoreApiTarget() && !loadLiveControlPlaneSession()) allowanceAuthHeaders("/projects/v1");
+  if (!isCoreApiTarget() && !loadLiveControlPlaneSession()) walletAuthHeaders("/projects/v1");
 
   const activeBefore = getActiveProjectId();
   try {
@@ -495,7 +495,7 @@ async function validateExpose(args = []) {
   }
   const activeProjectId = getActiveProjectId();
   const project = projectFlag || projectId || activeProjectId || undefined;
-  if (!project) allowanceAuthHeaders("/projects/v1/expose/validate");
+  if (!project) walletAuthHeaders("/projects/v1/expose/validate");
   const migration = migrationFile ? readFileSync(migrationFile, "utf-8") : migrationSql;
 
   try {

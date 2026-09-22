@@ -1,5 +1,5 @@
 /**
- * Allowance auth helper — generates SIWX (Sign-In With X / EIP-4361) headers for Run402 API.
+ * SIWX auth helper — generates SIWX (Sign-In With X / EIP-4361) headers for Run402 API.
  * Uses @noble/curves (lighter than viem) for signing.
  */
 
@@ -7,9 +7,9 @@ import { randomBytes } from "node:crypto";
 import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { keccak_256 } from "@noble/hashes/sha3.js";
 import { bytesToHex } from "@noble/hashes/utils.js";
-import { readAllowance } from "./allowance.js";
+import { readWallet } from "./wallet.js";
 import { getApiBase } from "./config.js";
-import type { AllowanceData } from "./allowance.js";
+import type { WalletData } from "./wallet.js";
 
 export interface SIWxAuthHeaders {
   "SIGN-IN-WITH-X": string;
@@ -29,7 +29,7 @@ export function toChecksumAddress(address: string): string {
 }
 
 /**
- * EIP-191 personal_sign: sign a message with the allowance's private key.
+ * EIP-191 personal_sign: sign a message with the wallet's private key.
  */
 function personalSign(privateKeyHex: string, address: string, message: string): string {
   const msgBytes = new TextEncoder().encode(message);
@@ -83,7 +83,7 @@ interface SIWEMessageOpts {
 }
 
 export interface SIWxAuthOptions extends SIWEMessageOpts {
-  allowance: Pick<AllowanceData, "address" | "privateKey">;
+  wallet: Pick<WalletData, "address" | "privateKey">;
   type?: "eip191";
 }
 
@@ -116,12 +116,12 @@ export function formatSIWEMessage(opts: SIWEMessageOpts, address: string): strin
 }
 
 export function buildSIWxAuthHeaders(opts: SIWxAuthOptions): SIWxAuthHeaders {
-  const message = formatSIWEMessage(opts, opts.allowance.address);
-  const signature = personalSign(opts.allowance.privateKey, opts.allowance.address, message);
+  const message = formatSIWEMessage(opts, opts.wallet.address);
+  const signature = personalSign(opts.wallet.privateKey, opts.wallet.address, message);
 
   const payload: Record<string, unknown> = {
     domain: opts.domain,
-    address: toChecksumAddress(opts.allowance.address),
+    address: toChecksumAddress(opts.wallet.address),
     statement: opts.statement,
     uri: opts.uri,
     version: opts.version ?? "1",
@@ -143,18 +143,18 @@ export function buildSIWxAuthHeaders(opts: SIWxAuthOptions): SIWxAuthHeaders {
 
 /**
  * Get SIWX auth headers for the Run402 API.
- * Returns null if no allowance is configured.
+ * Returns null if no local wallet is configured.
  *
  * @param path - API path (e.g. "/projects/v1") used to build the SIWE uri field.
  */
-export function getAllowanceAuthHeaders(path: string, allowancePath?: string): SIWxAuthHeaders | null {
-  // readAllowance throws on a malformed-shape allowance file. The
-  // CLI's higher-level readAllowance wrapper surfaces this as a structured
-  // BAD_ALLOWANCE_FILE envelope; here we preserve the public contract that
+export function getWalletAuthHeaders(path: string, walletPath?: string): SIWxAuthHeaders | null {
+  // readWallet throws on a malformed-shape wallet file. The
+  // CLI's higher-level readWallet wrapper surfaces this as a structured
+  // BAD_WALLET_FILE envelope; here we preserve the public contract that
   // this helper returns SIWxAuthHeaders | null. Re-throw so callers above
   // the CLI's wrapper (e.g. SDK paid-fetch) can decide whether to swallow it.
-  const allowance = readAllowance(allowancePath);
-  if (!allowance || !allowance.address || !allowance.privateKey) return null;
+  const localWallet = readWallet(walletPath);
+  if (!localWallet || !localWallet.address || !localWallet.privateKey) return null;
 
   const apiBase = getApiBase();
   const url = new URL(apiBase);
@@ -166,7 +166,7 @@ export function getAllowanceAuthHeaders(path: string, allowancePath?: string): S
   const expirationTime = new Date(now.getTime() + 5 * 60 * 1000).toISOString();
 
   return buildSIWxAuthHeaders({
-    allowance,
+    wallet: localWallet,
     domain,
     uri,
     statement: "Sign in to Run402",

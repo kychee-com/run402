@@ -1,13 +1,13 @@
 import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
-import { requireAllowanceAuth } from "../allowance-auth.js";
+import { requireWalletAuth } from "../wallet-auth.js";
 
 export const rotateWebhookSecretSchema = {};
 
 export async function handleRotateWebhookSecret(
   _args: Record<string, never>,
 ): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const auth = requireAllowanceAuth("/agent/v1/webhook-secret/rotate");
+  const auth = requireWalletAuth("/agent/v1/webhook-secret/rotate");
   if ("error" in auth) return auth.error;
 
   try {

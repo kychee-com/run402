@@ -1005,7 +1005,7 @@ describe("functions.rebuild", () => {
     const result = await sdk.functions.rebuild("prj_known", "hello");
     assert.equal(calls[0]!.url, "https://api.example.test/projects/v1/prj_known/functions/hello/rebuild");
     assert.equal(calls[0]!.method, "POST");
-    // Wallet/allowance auth (walletAuth on the gateway) — not the service key.
+    // Wallet/SIWX auth (walletAuth on the gateway) — not the service key.
     assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "test");
     assert.equal(calls[0]!.headers["Authorization"], undefined);
     assert.equal(result.rebuilt, true);

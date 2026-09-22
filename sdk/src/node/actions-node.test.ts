@@ -18,37 +18,37 @@ const { NodeActions, addSubdomainNextAction, subdomainSlugFromProjectName } = aw
 
 test("sponsored wallet bootstrap skips faucet without a faucet marker", async () => {
   const calls: string[] = [];
-  const sdk = fakeSdk({ calls, allowanceConfigured: true, tierActive: false, activeProject: null });
+  const sdk = fakeSdk({ calls, walletConfigured: true, tierActive: false, activeProject: null });
   testBalance = 250_000n;
   try {
     const result = await new NodeActions(sdk, { targetKind: "cloud" }).run({ type: Run402Action.ProjectsProvision, name: "sponsored" }, { autoPrerequisites: true, approval: "yes" });
     assert.equal(result.result?.project_id, "prj_new");
-    assert.ok(!calls.some(c => c.startsWith("allowance.faucet:")));
+    assert.ok(!calls.some(c => c.startsWith("wallets.faucet:")));
     assert.ok(calls.some(c => c.startsWith("tier.set:")));
   } finally { testBalance = 0n; }
 });
 
 test("unavailable balance does not trigger a faucet transfer", async () => {
   const calls: string[] = [];
-  const sdk = fakeSdk({ calls, allowanceConfigured: true, tierActive: false, activeProject: null });
+  const sdk = fakeSdk({ calls, walletConfigured: true, tierActive: false, activeProject: null });
   testBalance = new Error("RPC unavailable");
   try {
     await assert.rejects(new NodeActions(sdk, { targetKind: "cloud" }).run({ type: Run402Action.ProjectsProvision, name: "sponsored" }, { autoPrerequisites: true, approval: "yes" }), /RPC unavailable/);
-    assert.ok(!calls.some(c => c.startsWith("allowance.faucet:")));
+    assert.ok(!calls.some(c => c.startsWith("wallets.faucet:")));
   } finally { testBalance = 0n; }
 });
 
 test("spent wallet's old faucet marker does not suppress funding", async () => {
   const calls: string[] = [];
-  const sdk = fakeSdk({ calls, allowanceConfigured: true, tierActive: false, activeProject: null });
-  sdk.allowance.status = async () => ({ configured: true, address: "0x0000000000000000000000000000000000000001", faucet_used: true });
+  const sdk = fakeSdk({ calls, walletConfigured: true, tierActive: false, activeProject: null });
+  sdk.wallets.status = async () => ({ configured: true, address: "0x0000000000000000000000000000000000000001", faucet_used: true });
   await new NodeActions(sdk, { targetKind: "cloud" }).run({ type: Run402Action.ProjectsProvision, name: "spent" }, { autoPrerequisites: true, approval: "yes" });
-  assert.ok(calls.some(c => c.startsWith("allowance.faucet:")));
+  assert.ok(calls.some(c => c.startsWith("wallets.faucet:")));
 });
 
 test("fresh provisioning survives faucet RPC lag without another drip or payment key", async () => {
   const calls: string[] = [];
-  const sdk = fakeSdk({ calls, allowanceConfigured: false, tierActive: false, activeProject: null });
+  const sdk = fakeSdk({ calls, walletConfigured: false, tierActive: false, activeProject: null });
   const keys: Array<string | undefined> = [];
   const setTier = sdk.tier.set;
   sdk.tier.set = async (tier, input) => {
@@ -61,14 +61,14 @@ test("fresh provisioning survives faucet RPC lag without another drip or payment
     { autoPrerequisites: true, approval: "yes", idempotencyKey: "fresh-test" },
   );
   assert.equal(result.result?.project_id, "prj_new");
-  assert.equal(calls.filter(c => c.startsWith("allowance.faucet:")).length, 1);
+  assert.equal(calls.filter(c => c.startsWith("wallets.faucet:")).length, 1);
   assert.equal(keys.length, 2);
   assert.ok(keys[0]);
   assert.equal(keys[0], keys[1]);
 });
 
 test("existing funds do not enable automatic insufficient-funds retries", async () => {
-  const sdk = fakeSdk({ calls: [], allowanceConfigured: true, tierActive: false, activeProject: null });
+  const sdk = fakeSdk({ calls: [], walletConfigured: true, tierActive: false, activeProject: null });
   let calls = 0;
   sdk.tier.set = async () => { calls++; throw new X402BalanceError("X402_INSUFFICIENT_FUNDS", "spent", {}); };
   testBalance = 250_000n;
@@ -96,7 +96,7 @@ test("up check discovers run402.json app manifest and compiles an install graph 
   const calls: string[] = [];
   const sdk = fakeSdk({
     calls,
-    allowanceConfigured: false,
+    walletConfigured: false,
     tierActive: false,
     activeProject: null,
   });
@@ -142,7 +142,7 @@ test("up check blocks fast with missing required secret usage and no gateway cal
   const calls: string[] = [];
   const sdk = fakeSdk({
     calls,
-    allowanceConfigured: false,
+    walletConfigured: false,
     tierActive: false,
     activeProject: null,
   });
@@ -172,7 +172,7 @@ test("up dry-run for run402.json returns graph without gateway calls or local li
   const calls: string[] = [];
   const sdk = fakeSdk({
     calls,
-    allowanceConfigured: false,
+    walletConfigured: false,
     tierActive: false,
     activeProject: null,
   });
@@ -202,7 +202,7 @@ test("up app apply blocks fast with missing required secret usage as shared next
   const calls: string[] = [];
   const sdk = fakeSdk({
     calls,
-    allowanceConfigured: true,
+    walletConfigured: true,
     tierActive: true,
     activeProject: null,
   });
@@ -235,7 +235,7 @@ test("up app apply blocks with name guidance when manifest needs input.name", as
   const calls: string[] = [];
   const sdk = fakeSdk({
     calls,
-    allowanceConfigured: true,
+    walletConfigured: true,
     tierActive: true,
     activeProject: null,
   });
@@ -269,7 +269,7 @@ test("up app apply fails fast when --name collides with an existing project", as
   const calls: string[] = [];
   const sdk = fakeSdk({
     calls,
-    allowanceConfigured: true,
+    walletConfigured: true,
     tierActive: true,
     activeProject: null,
     existingProjects: [{
@@ -309,7 +309,7 @@ test("up project creation does not reuse a stable idempotency key by default", a
   const calls: string[] = [];
   const sdk = fakeSdk({
     calls,
-    allowanceConfigured: true,
+    walletConfigured: true,
     tierActive: true,
     activeProject: null,
   });
@@ -340,7 +340,7 @@ test("up project creation preserves explicit idempotency keys", async () => {
   const calls: string[] = [];
   const sdk = fakeSdk({
     calls,
-    allowanceConfigured: true,
+    walletConfigured: true,
     tierActive: true,
     activeProject: null,
   });
@@ -365,7 +365,7 @@ test("up app apply blocks remote build with explicit unsupported next action", a
   const calls: string[] = [];
   const sdk = fakeSdk({
     calls,
-    allowanceConfigured: true,
+    walletConfigured: true,
     tierActive: true,
     activeProject: null,
   });
@@ -461,7 +461,7 @@ writeFileSync("frontend/dist/index.html", "<h1>" + process.env.RUN402_PUBLIC_ORI
     secrets,
     appliedSpecs,
     installStates,
-    allowanceConfigured: true,
+    walletConfigured: true,
     tierActive: true,
     activeProject: null,
   });
@@ -557,7 +557,7 @@ test("up app apply reports propagation_pending for a fresh edge sentinel miss", 
   const calls: string[] = [];
   const sdk = fakeSdk({
     calls,
-    allowanceConfigured: true,
+    walletConfigured: true,
     tierActive: true,
     activeProject: null,
     deploySubdomainBindings: [{
@@ -611,7 +611,7 @@ test("up verify reruns app HTTP checks without deploying", async (t) => {
   const calls: string[] = [];
   const sdk = fakeSdk({
     calls,
-    allowanceConfigured: true,
+    walletConfigured: true,
     tierActive: true,
     activeProject: null,
   });
@@ -676,7 +676,7 @@ writeFileSync("dist/seed.sql", "insert into seed values ('post-build');\\n");
   const sdk = fakeSdk({
     calls,
     appliedSpecs,
-    allowanceConfigured: true,
+    walletConfigured: true,
     tierActive: true,
     activeProject: null,
   });
@@ -709,7 +709,7 @@ test("up accepts repository URL sources and records commit metadata", async () =
   const calls: string[] = [];
   const sdk = fakeSdk({
     calls,
-    allowanceConfigured: false,
+    walletConfigured: false,
     tierActive: false,
     activeProject: null,
   });
@@ -733,7 +733,7 @@ test("up accepts repository URL sources and records commit metadata", async () =
 // A repo source is cloned into an OS temp dir. `cleanupDir` was returned for
 // exactly that purpose and nothing read it, so every `run402 up <git-url>` left
 // its full checkout behind — on success AND on failure. An agent looping
-// deploys grows /tmp without bound and, on a fixed-allowance container, starts
+// deploys grows /tmp without bound and, on a fixed-wallet container, starts
 // failing writes with no hint at the cause. These pin the cleanup on both paths.
 function tempCheckouts(): string[] {
   return readdirSync(tmpdir()).filter((n) => n.startsWith("run402-app-source-"));
@@ -749,7 +749,7 @@ test("up removes the cloned checkout after a successful repo-source run", async 
   execFileSync("git", ["commit", "-m", "init"], { cwd: repo, stdio: "ignore" });
   const before = tempCheckouts();
   try {
-    const actions = new NodeActions(fakeSdk({ calls: [], allowanceConfigured: false, tierActive: false, activeProject: null }), { targetKind: "cloud" });
+    const actions = new NodeActions(fakeSdk({ calls: [], walletConfigured: false, tierActive: false, activeProject: null }), { targetKind: "cloud" });
     await actions.up({ source: pathToFileURL(repo).href, name: "cleanup-ok" }, { mode: "check" });
     assert.deepEqual(tempCheckouts().filter((d) => !before.includes(d)), [], "checkout must not survive a successful run");
   } finally {
@@ -769,7 +769,7 @@ test("up removes the cloned checkout even when the run fails after cloning", asy
   execFileSync("git", ["commit", "-m", "init"], { cwd: repo, stdio: "ignore" });
   const before = tempCheckouts();
   try {
-    const actions = new NodeActions(fakeSdk({ calls: [], allowanceConfigured: false, tierActive: false, activeProject: null }), { targetKind: "cloud" });
+    const actions = new NodeActions(fakeSdk({ calls: [], walletConfigured: false, tierActive: false, activeProject: null }), { targetKind: "cloud" });
     await assert.rejects(
       () => actions.up({ source: pathToFileURL(repo).href, name: "cleanup-fail" }, { mode: "check" }),
       (err: any) => err?.code === "UP_MANIFEST_REQUIRED",
@@ -788,7 +788,7 @@ test("up dry-run plans recursive steps without gateway mutations or local writes
   const calls: string[] = [];
   const sdk = fakeSdk({
     calls,
-    allowanceConfigured: false,
+    walletConfigured: false,
     tierActive: false,
     activeProject: null,
   });
@@ -803,9 +803,9 @@ test("up dry-run plans recursive steps without gateway mutations or local writes
 
     assert.equal(result.dry_run, true);
     assert.equal(result.result?.project_id, null);
-    assert.deepEqual(calls, ["allowance.status"]);
+    assert.deepEqual(calls, ["wallets.status"]);
     assert.equal(existsSync(join(dir, ".run402", "project.json")), false);
-    assert.ok(result.steps.some((step) => step.action === "allowance.create" && step.state === "planned"));
+    assert.ok(result.steps.some((step) => step.action === "wallets.create" && step.state === "planned"));
     assert.ok(result.steps.some((step) => step.action === "tier.set" && step.state === "planned"));
     assert.ok(result.steps.some((step) => step.action === "projects.provision" && step.state === "planned"));
     assert.ok(result.steps.some((step) => step.action === "deploy.apply" && step.state === "planned"));
@@ -873,7 +873,7 @@ test("up check fails MANIFEST_FILE_MISSING when a function source path does not 
     functions: { replace: { api: { runtime: "node22", source: { path: "fn/api.mjs" } } } },
   }));
   const calls: string[] = [];
-  const sdk = fakeSdk({ calls, allowanceConfigured: false, tierActive: false, activeProject: null });
+  const sdk = fakeSdk({ calls, walletConfigured: false, tierActive: false, activeProject: null });
   try {
     const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
     await assert.rejects(
@@ -909,7 +909,7 @@ test("up check on a build-free run402.json validates the release slice's file re
     },
   })));
   const calls: string[] = [];
-  const sdk = fakeSdk({ calls, allowanceConfigured: false, tierActive: false, activeProject: null });
+  const sdk = fakeSdk({ calls, walletConfigured: false, tierActive: false, activeProject: null });
   try {
     const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
     // The migration file is read first during normalization, so it is the one named.
@@ -954,7 +954,7 @@ test("up from a parent directory names manifests one directory down in UP_MANIFE
   writeFileSync(join(dir, "cairn", "run402.json"), JSON.stringify({ site: { replace: { "index.html": { data: "x" } } } }));
   writeFileSync(join(dir, "node_modules", "pkg", "app.json"), "{}");
   writeFileSync(join(dir, ".hidden", "app.json"), "{}");
-  const sdk = fakeSdk({ calls: [], allowanceConfigured: false, tierActive: false, activeProject: null });
+  const sdk = fakeSdk({ calls: [], walletConfigured: false, tierActive: false, activeProject: null });
   try {
     const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
     await assert.rejects(
@@ -983,7 +983,7 @@ test("up from a parent directory names manifests one directory down in UP_MANIFE
 
 test("up with an explicit --manifest that does not exist fails MANIFEST_NOT_FOUND", async () => {
   const dir = mkdtempSync(join(tmpdir(), "run402-up-manifest-enoent-"));
-  const sdk = fakeSdk({ calls: [], allowanceConfigured: false, tierActive: false, activeProject: null });
+  const sdk = fakeSdk({ calls: [], walletConfigured: false, tierActive: false, activeProject: null });
   try {
     const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
     for (const name of ["run402.json", "missing.deploy.json"]) {
@@ -1011,7 +1011,7 @@ test("up check validates locally without gateway calls", async () => {
   const calls: string[] = [];
   const sdk = fakeSdk({
     calls,
-    allowanceConfigured: false,
+    walletConfigured: false,
     tierActive: false,
     activeProject: null,
   });
@@ -1048,7 +1048,7 @@ test("up check accepts a release-shaped run402.json without treating it as an ap
   const calls: string[] = [];
   const sdk = fakeSdk({
     calls,
-    allowanceConfigured: false,
+    walletConfigured: false,
     tierActive: false,
     activeProject: null,
   });
@@ -1076,7 +1076,7 @@ test("up check reports a malformed app-shaped run402.json with path and repair",
   writeFileSync(manifestPath, JSON.stringify(invalidApp));
   const sdk = fakeSdk({
     calls: [],
-    allowanceConfigured: false,
+    walletConfigured: false,
     tierActive: false,
     activeProject: null,
   });
@@ -1108,7 +1108,7 @@ test("up requires explicit manifest for executable configs", async () => {
   writeFileSync(join(dir, "run402.deploy.ts"), "export default { site: { replace: {} } };\n");
   const sdk = fakeSdk({
     calls: [],
-    allowanceConfigured: false,
+    walletConfigured: false,
     tierActive: false,
     activeProject: null,
   });
@@ -1138,7 +1138,7 @@ test("up plan returns same-surface require-plan next action", async () => {
   const calls: string[] = [];
   const sdk = fakeSdk({
     calls,
-    allowanceConfigured: true,
+    walletConfigured: true,
     tierActive: true,
     activeProject: null,
   });
@@ -1180,7 +1180,7 @@ test("up deploys when workspace link and active tier are configured", async () =
   const calls: string[] = [];
   const sdk = fakeSdk({
     calls,
-    allowanceConfigured: true,
+    walletConfigured: true,
     tierActive: true,
     activeProject: null,
   });
@@ -1192,14 +1192,14 @@ test("up deploys when workspace link and active tier are configured", async () =
     assert.equal(result.result?.project_id, "prj_ready");
     assert.equal(result.result?.deploy?.release_id, "rel_123");
     assert.deepEqual(calls, [
-      "allowance.status",
+      "wallets.status",
       "tier.status",
       "projects.keys:prj_ready",
       "project:prj_ready",
       "project.apply:prj_ready",
     ]);
     assert.ok(result.steps.some((step) => step.action === "tier.set" && step.state === "skipped"));
-    assert.ok(!result.steps.some((step) => step.action === "allowance.faucet" && step.state === "running"));
+    assert.ok(!result.steps.some((step) => step.action === "wallets.faucet" && step.state === "running"));
   } finally {
     rmSync(dir, { force: true, recursive: true });
   }
@@ -1222,7 +1222,7 @@ test("up apply does not synthesize deploy idempotency without an explicit key", 
   const sdk = fakeSdk({
     calls,
     deployOptions,
-    allowanceConfigured: true,
+    walletConfigured: true,
     tierActive: true,
     activeProject: null,
   });
@@ -1256,7 +1256,7 @@ test("up apply preserves explicit deploy idempotency keys", async () => {
   const sdk = fakeSdk({
     calls,
     deployOptions,
-    allowanceConfigured: true,
+    walletConfigured: true,
     tierActive: true,
     activeProject: null,
   });
@@ -1288,7 +1288,7 @@ test("up apply preserves deploy activation phase details in action events", asyn
   const streamed: unknown[] = [];
   const sdk = fakeSdk({
     calls,
-    allowanceConfigured: true,
+    walletConfigured: true,
     tierActive: true,
     activeProject: null,
     deployEvents: [
@@ -1341,7 +1341,7 @@ test("up refuses to reuse a nameless workspace link when --name is supplied", as
   const calls: string[] = [];
   const sdk = fakeSdk({
     calls,
-    allowanceConfigured: true,
+    walletConfigured: true,
     tierActive: true,
     activeProject: null,
   });
@@ -1381,7 +1381,7 @@ test("up refuses to reuse a workspace link from another target", async () => {
   const calls: string[] = [];
   const sdk = fakeSdk({
     calls,
-    allowanceConfigured: true,
+    walletConfigured: true,
     tierActive: true,
     activeProject: null,
   });
@@ -1409,7 +1409,7 @@ test("projects provision can run SDK-owned recursive prerequisites when explicit
   const calls: string[] = [];
   const sdk = fakeSdk({
     calls,
-    allowanceConfigured: false,
+    walletConfigured: false,
     tierActive: false,
     activeProject: null,
   });
@@ -1426,15 +1426,15 @@ test("projects provision can run SDK-owned recursive prerequisites when explicit
 
   assert.equal(result.result?.project_id, "prj_new");
   assert.deepEqual(calls, [
-    "allowance.status",
-    "allowance.create",
+    "wallets.status",
+    "wallets.create",
     "tier.status",
-    "allowance.status",
-    "allowance.faucet:action:provision-root:allowance.faucet",
+    "wallets.status",
+    "wallets.faucet:action:provision-root:wallets.faucet",
     "tier.set:action:provision-root:tier.set",
     "projects.provision:provision-root",
   ]);
-  assert.ok(result.steps.some((step) => step.action === "allowance.faucet" && step.details?.idempotency_key === "action:provision-root:allowance.faucet"));
+  assert.ok(result.steps.some((step) => step.action === "wallets.faucet" && step.details?.idempotency_key === "action:provision-root:wallets.faucet"));
   assert.ok(result.steps.some((step) => step.action === Run402Action.TierSet && step.details?.idempotency_key === "action:provision-root:tier.set"));
 });
 
@@ -1448,7 +1448,7 @@ test("up runs deploy-manifest verify.http checks after apply and surfaces verifi
   const calls: string[] = [];
   const sdk = fakeSdk({
     calls,
-    allowanceConfigured: true,
+    walletConfigured: true,
     tierActive: true,
     activeProject: null,
   });
@@ -1502,7 +1502,7 @@ test("up verify.http prefers the deploy result's own site url over a missing key
   const calls: string[] = [];
   const sdk = fakeSdk({
     calls,
-    allowanceConfigured: true,
+    walletConfigured: true,
     tierActive: true,
     activeProject: null,
     keysSiteUrl: null,
@@ -1538,7 +1538,7 @@ test("up verify.http with no resolvable origin fails loudly with a missing_publi
   const calls: string[] = [];
   const sdk = fakeSdk({
     calls,
-    allowanceConfigured: true,
+    walletConfigured: true,
     tierActive: true,
     activeProject: null,
     keysSiteUrl: null,
@@ -1598,7 +1598,7 @@ test("up verify reruns deploy-manifest verify.http checks without deploying", as
   const calls: string[] = [];
   const sdk = fakeSdk({
     calls,
-    allowanceConfigured: true,
+    walletConfigured: true,
     tierActive: true,
     activeProject: null,
   });
@@ -1637,7 +1637,7 @@ test("up verify fails VERIFY_CHECKS_REQUIRED for a deploy manifest without a ver
   const calls: string[] = [];
   const sdk = fakeSdk({
     calls,
-    allowanceConfigured: true,
+    walletConfigured: true,
     tierActive: true,
     activeProject: null,
   });
@@ -1662,7 +1662,7 @@ test("up refuses to overwrite a workspace link changed during execution", async 
   const calls: string[] = [];
   const sdk = fakeSdk({
     calls,
-    allowanceConfigured: true,
+    walletConfigured: true,
     tierActive: true,
     activeProject: "prj_active",
   });
@@ -1696,7 +1696,7 @@ test("up refuses to overwrite a workspace link changed during execution", async 
 
 function fakeSdk(opts: {
   calls: string[];
-  allowanceConfigured: boolean;
+  walletConfigured: boolean;
   tierActive: boolean;
   activeProject: string | null;
   secrets?: Array<{ key: string; value: string }>;
@@ -1719,20 +1719,20 @@ function fakeSdk(opts: {
   const webhooks: Array<Record<string, unknown>> = [];
   return {
     apiBase: "https://api.example.test",
-    allowance: {
+    wallets: {
       async status() {
-        opts.calls.push("allowance.status");
-        return opts.allowanceConfigured
+        opts.calls.push("wallets.status");
+        return opts.walletConfigured
           ? { configured: true, address: "0x0000000000000000000000000000000000000001", faucet_used: false }
           : { configured: false, address: "" };
       },
       async create() {
-        opts.calls.push("allowance.create");
-        opts.allowanceConfigured = true;
+        opts.calls.push("wallets.create");
+        opts.walletConfigured = true;
         return { address: "0x0000000000000000000000000000000000000001", created: "2026-06-30T00:00:00.000Z" };
       },
       async faucet(input?: { idempotencyKey?: string }) {
-        opts.calls.push(`allowance.faucet:${input?.idempotencyKey ?? ""}`);
+        opts.calls.push(`wallets.faucet:${input?.idempotencyKey ?? ""}`);
         return { transactionHash: "0xabc", amount: "0.25", amountUsdMicros: 250_000, token: "USDC", network: "base-sepolia" };
       },
     },
@@ -1917,7 +1917,7 @@ function fakeSdk(opts: {
 // display_name from a wallet subject, so `up` names a principal exactly when
 // whoami reports null and keeps a chosen name untouched.
 function identityAwareSdk(calls: string[], whoami: { display_name: string | null; subject: string | null; type?: string }) {
-  const sdk = fakeSdk({ calls, allowanceConfigured: true, tierActive: true, activeProject: null }) as unknown as Record<string, unknown>;
+  const sdk = fakeSdk({ calls, walletConfigured: true, tierActive: true, activeProject: null }) as unknown as Record<string, unknown>;
   const set: string[] = [];
   sdk.orgs = {
     async whoami() {
@@ -2178,7 +2178,7 @@ test("unlinked up never selects the global project, even with yes, plan, or inte
   try {
     for (const options of [{ approval: "yes" as const }, { mode: "plan" as const }, { approval: { mode: "interactive" as const, approve: async () => true } }]) {
       const calls: string[] = [];
-      const actions = new NodeActions(fakeSdk({ calls, allowanceConfigured: false, tierActive: false, activeProject: "prj_unrelated_live" }), { targetKind: "cloud", cwd: dir });
+      const actions = new NodeActions(fakeSdk({ calls, walletConfigured: false, tierActive: false, activeProject: "prj_unrelated_live" }), { targetKind: "cloud", cwd: dir });
       await assert.rejects(actions.up({}, options), (err: any) => {
         assert.equal(err.code, "UP_PROJECT_REQUIRED");
         assert.equal(err.nextActions.length, 1);
@@ -2194,7 +2194,7 @@ test("unlinked up never selects the global project, even with yes, plan, or inte
 test("up checks conflicting explicit, manifest, link and API selectors before cold-wallet prerequisites", async () => {
   const dir = mkdtempSync(join(tmpdir(), "run402-target-conflicts-"));
   const calls: string[] = [];
-  const actions = new NodeActions(fakeSdk({ calls, allowanceConfigured: false, tierActive: false, activeProject: "prj_unrelated_live" }), { targetKind: "cloud", cwd: dir });
+  const actions = new NodeActions(fakeSdk({ calls, walletConfigured: false, tierActive: false, activeProject: "prj_unrelated_live" }), { targetKind: "cloud", cwd: dir });
   try {
     writeFileSync(join(dir, "run402.json"), JSON.stringify({ project_id: "prj_manifest", site: { replace: { "index.html": { data: "new" } } } }));
     await assert.rejects(actions.up({ projectId: "prj_other" }, { approval: "yes" }), { code: "RUN402_PROJECT_CONFLICT" });
@@ -2210,7 +2210,7 @@ test("up checks conflicting explicit, manifest, link and API selectors before co
 test("four sibling apps produce one unranked selection action; parent links never select a child", async () => {
   const dir = mkdtempSync(join(tmpdir(), "run402-four-apps-"));
   const calls: string[] = [];
-  const sdk = fakeSdk({ calls, allowanceConfigured: true, tierActive: true, activeProject: "prj_unrelated_live" });
+  const sdk = fakeSdk({ calls, walletConfigured: true, tierActive: true, activeProject: "prj_unrelated_live" });
   try {
     mkdirSync(join(dir, ".run402"));
     writeFileSync(join(dir, ".run402/project.json"), JSON.stringify({ schema_version: "run402.workspace-project.v1", project_id: "prj_parent" }));
@@ -2241,7 +2241,7 @@ test("local preflight has nullable intent, real file evidence and deferred gatew
   try {
     writeFileSync(join(dir, "api.js"), "export default () => 'hello';");
     writeFileSync(join(dir, "run402.json"), JSON.stringify({ functions: { replace: { api: { source: { path: "api.js" }, config: { timeout_seconds: 5 } } } } }));
-    const actions = new NodeActions(fakeSdk({ calls, allowanceConfigured: false, tierActive: false, activeProject: "prj_unrelated" }), { cwd: dir, targetKind: "cloud" });
+    const actions = new NodeActions(fakeSdk({ calls, walletConfigured: false, tierActive: false, activeProject: "prj_unrelated" }), { cwd: dir, targetKind: "cloud" });
     const checked = await actions.up({}, { mode: "check" });
     const preflight = checked.result?.preflight as any;
     assert.equal(checked.result?.project_id, null);
@@ -2266,7 +2266,7 @@ test("selected app scan ignores a sibling bearer fixture and blocks its own sour
     mkdirSync(dir); mkdirSync(sibling);
     writeFileSync(join(dir, "run402.json"), JSON.stringify({ site: { replace: { "index.html": "ok" } } }));
     writeFileSync(join(sibling, "test.js"), 'fetch("/", {headers:{Authorization:"Bearer fixture"}}); await getSession();');
-    const actions = new NodeActions(fakeSdk({ calls, allowanceConfigured: false, tierActive: false, activeProject: "prj_unrelated" }), { cwd: root });
+    const actions = new NodeActions(fakeSdk({ calls, walletConfigured: false, tierActive: false, activeProject: "prj_unrelated" }), { cwd: root });
     await actions.up({ dir }, { mode: "check" });
     mkdirSync(join(dir, "src"));
     writeFileSync(join(dir, "src", "bad.js"), "await getSession();");
@@ -2287,7 +2287,7 @@ test("preflight reports missing SQL and site files together", async () => {
   try {
     writeFileSync(join(root, "run402.json"), JSON.stringify({ database: { migrations: [{ name: "first", sql_path: "first.sql" }] }, site: { replace: { "index.html": { path: "index.html" } } } }));
     const calls: string[] = [];
-    const actions = new NodeActions(fakeSdk({ calls, allowanceConfigured: false, tierActive: false, activeProject: null }), { cwd: root });
+    const actions = new NodeActions(fakeSdk({ calls, walletConfigured: false, tierActive: false, activeProject: null }), { cwd: root });
     await assert.rejects(actions.up({}, { mode: "check" }), (err: any) => {
       assert.equal(err.code, "MANIFEST_FILE_MISSING");
       assert.deepEqual(new Set(err.details.missing.map((item: any) => item.kind)), new Set(["migration_sql", "site_file"]));
@@ -2327,7 +2327,7 @@ for (const { status, expected } of [{ status: 400, expected: 400 }, { status: 42
       verify: { http: [{ id: "function", url: "https://example.test/api/leave-light", expect: { status: expected } }] },
     }));
     const calls: string[] = [];
-    const sdk = fakeSdk({ calls, allowanceConfigured: true, tierActive: true, activeProject: null });
+    const sdk = fakeSdk({ calls, walletConfigured: true, tierActive: true, activeProject: null });
     const response = new Response('{"error":"application_error"}', { status, headers: { "x-cache": "Error from cloudfront", "retry-after": "60" } });
     const fetchMock = mock.method(globalThis, "fetch", async () => response.clone());
     t.after(() => fetchMock.mock.restore());
@@ -2356,7 +2356,7 @@ for (const state of ["not_repository", "unborn", "has_commit"] as const) {
       if (state !== "not_repository") execFileSync("git", ["init", "-q", dir]);
       writeFileSync(join(dir, "run402.json"), JSON.stringify(appManifest()));
       if (state === "has_commit") execFileSync("git", ["-C", dir, "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "--allow-empty", "-qm", "initial"]);
-      const actions = new NodeActions(fakeSdk({ calls: [], allowanceConfigured: true, tierActive: true, activeProject: null }), { targetKind: "cloud", cwd: dir });
+      const actions = new NodeActions(fakeSdk({ calls: [], walletConfigured: true, tierActive: true, activeProject: null }), { targetKind: "cloud", cwd: dir });
       const result = await actions.up({}, { mode: "check" });
       const source = result.steps.find(step => step.action === "app.source.resolve")?.details;
       assert.equal(source?.source_available, true);
@@ -2376,7 +2376,7 @@ for (const generation of ["7", "", "oops", "-1", "9007199254740992"]) {
     writeFileSync(join(dir, "run402.deploy.json"), JSON.stringify({ project_id: "prj_ready", site: { replace: { "index.html": { data: "ok" } } }, verify: { http: [{ id: "home", url: "https://example.com/", expect: { status: 200 } }] } }));
     const fetchMock = mock.method(globalThis, "fetch", async () => new Response("ok", { status: 200, headers: { "x-run402-release-id": "rel_headers", "x-run402-release-generation": generation } }));
     t.after(() => { fetchMock.mock.restore(); rmSync(dir, { recursive: true, force: true }); });
-    const actions = new NodeActions(fakeSdk({ calls: [], allowanceConfigured: true, tierActive: true, activeProject: null }), { targetKind: "cloud", cwd: dir });
+    const actions = new NodeActions(fakeSdk({ calls: [], walletConfigured: true, tierActive: true, activeProject: null }), { targetKind: "cloud", cwd: dir });
     const result = await actions.up({ verifyOnly: true });
     const observation = result.result?.verification?.http[0]?.observed_release;
     assert.equal(observation?.release_id, "rel_headers");
@@ -2391,7 +2391,7 @@ test("workflow retains the original deploy recovery code and completed mutation 
  const { Run402DeployError } = await import("../errors.js");
  const dir=realpathSync(mkdtempSync(join(tmpdir(),"run402-recovery-")));
  writeFileSync(join(dir,"run402.json"),JSON.stringify({database:{migrations:[{id:"001",sql:"CREATE TABLE notes(id int);"}]}}));
- const sdk:any=fakeSdk({calls:[],allowanceConfigured:true,tierActive:true,activeProject:null});
+ const sdk:any=fakeSdk({calls:[],walletConfigured:true,tierActive:true,activeProject:null});
  const error=new Run402DeployError("Review access",{code:"PUBLIC_ACCESS_POLICY_APPLY",phase:"plan",context:"test",body:{next_actions:[{type:"review_warnings",warning_codes:["PUBLIC_ACCESS_POLICY_APPLY"]}]}});
  sdk.project=async()=>({apply:async()=>{throw error;}});
  try {

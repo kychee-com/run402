@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { saveAllowance } from "../../../core/src/allowance.js";
+import { saveWallet } from "../../../core/src/wallet.js";
 import { LocalError } from "../errors.js";
 import {
   buildCiDelegationResourceUri,
@@ -18,7 +18,7 @@ const TEST_PRIVATE_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae78
 const TEST_ADDRESS = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
 
 let tempDir: string;
-let allowancePath: string;
+let walletPath: string;
 
 const CANONICAL = {
   project_id: "prj_abc",
@@ -34,7 +34,7 @@ const CANONICAL = {
 
 beforeEach(() => {
   tempDir = mkdtempSync(join(tmpdir(), "run402-ci-sign-test-"));
-  allowancePath = join(tempDir, "allowance.json");
+  walletPath = join(tempDir, "wallet.json");
 });
 
 afterEach(() => {
@@ -43,10 +43,10 @@ afterEach(() => {
 
 describe("signCiDelegation", () => {
   it("signs the canonical CI delegation with one Resource URI", () => {
-    saveAllowance({ address: TEST_ADDRESS, privateKey: TEST_PRIVATE_KEY }, allowancePath);
+    saveWallet({ address: TEST_ADDRESS, privateKey: TEST_PRIVATE_KEY }, walletPath);
 
     const signed = signCiDelegation(CANONICAL, {
-      allowancePath,
+      walletPath,
       apiBase: "https://api.run402.com",
       issuedAt: "2026-05-03T00:00:00.000Z",
       expirationTime: "2026-05-03T00:05:00.000Z",
@@ -62,11 +62,11 @@ describe("signCiDelegation", () => {
   });
 
   it("signs scoped route delegations with the scoped canonical bytes", () => {
-    saveAllowance({ address: TEST_ADDRESS, privateKey: TEST_PRIVATE_KEY }, allowancePath);
+    saveWallet({ address: TEST_ADDRESS, privateKey: TEST_PRIVATE_KEY }, walletPath);
     const values = { ...CANONICAL, route_scopes: ["/admin/*", "/admin"] };
 
     const signed = signCiDelegation(values, {
-      allowancePath,
+      walletPath,
       apiBase: "https://api.run402.com",
       issuedAt: "2026-05-03T00:00:00.000Z",
       expirationTime: "2026-05-03T00:05:00.000Z",
@@ -78,12 +78,12 @@ describe("signCiDelegation", () => {
     assert.match(decoded.statement, /^Route scopes: \/admin,\/admin\/\*$/m);
   });
 
-  it("fails actionably when no allowance exists", () => {
+  it("fails actionably when no local wallet exists", () => {
     assert.throws(
-      () => signCiDelegation(CANONICAL, { allowancePath }),
+      () => signCiDelegation(CANONICAL, { walletPath }),
       (err: unknown) =>
         err instanceof LocalError &&
-        /run402 init|run402 allowance create/.test(err.message),
+        /run402 init/.test(err.message),
     );
   });
 });

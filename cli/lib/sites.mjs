@@ -2,7 +2,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs"
 import { tmpdir } from "os";
 import { dirname, join, resolve } from "path";
 import { fileSetFromDir, delegateTokenFromEnv } from "#sdk/node";
-import { allowanceAuthHeaders, resolveProjectId, updateProject } from "./config.mjs";
+import { walletAuthHeaders, resolveProjectId, updateProject } from "./config.mjs";
 import { resolveFilePathsInManifest } from "./manifest.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
@@ -64,7 +64,7 @@ Notes:
   - Progress events are emitted as JSON-line objects on stderr by default
     (one object per line). Final result envelope goes to stdout. Pass --quiet
     to silence stderr.
-  - Free with active tier - requires allowance auth
+  - Free with active tier - requires SIWX auth
 `;
 
 const SUB_HELP = {
@@ -90,7 +90,7 @@ Manifest format (JSON):
 
 Notes:
   - Must include at least index.html in the files array
-  - Free with active tier - requires allowance auth
+  - Free with active tier - requires SIWX auth
 
 Examples:
   run402 sites deploy --manifest site.json
@@ -139,7 +139,7 @@ Progress events:
 Notes:
   - Re-deploying an unchanged tree makes no S3 PUTs (returns immediately
     with bytes_uploaded: 0)
-  - Free with active tier - requires allowance auth
+  - Free with active tier - requires SIWX auth
 
 Examples:
   run402 sites deploy-dir ./dist --project prj_abc
@@ -219,10 +219,10 @@ async function deploy(args) {
   const manifest = JSON.parse(raw);
   if (opts.manifest) resolveFilePathsInManifest(manifest, dirname(resolve(opts.manifest)));
 
-  // Preserve the aggressive early exit when no allowance is configured.
+  // Preserve the aggressive early exit when no local wallet is configured.
   // A delegate holds `deploy` and /apply/v1/plans accepts it; refusing locally
   // would tell a wallet-less holder to run `run402 init` (see 4.11.2).
-  if (!delegateTokenFromEnv()) allowanceAuthHeaders("/apply/v1/plans");
+  if (!delegateTokenFromEnv()) walletAuthHeaders("/apply/v1/plans");
 
   const stage = stageFilesToTempDir(manifest.files || []);
   try {
@@ -288,10 +288,10 @@ async function deployDir(args) {
   const projectId = resolveProjectId(opts.project);
   if (opts.target !== undefined) failUnsupportedTarget();
 
-  // Preserve the aggressive early exit when no allowance is configured.
+  // Preserve the aggressive early exit when no local wallet is configured.
   // A delegate holds `deploy` and /apply/v1/plans accepts it; refusing locally
   // would tell a wallet-less holder to run `run402 init` (see 4.11.2).
-  if (!delegateTokenFromEnv()) allowanceAuthHeaders("/apply/v1/plans");
+  if (!delegateTokenFromEnv()) walletAuthHeaders("/apply/v1/plans");
 
   let fileSet;
   try {

@@ -45,7 +45,7 @@ export interface OperatorSessionTokenResponse {
  * Path to the cached operator session: `{base}/operator-session.json`, at the
  * BASE config dir — NOT the per-profile dir, because the session is email-
  * scoped and shared across all local named wallets. `RUN402_OPERATOR_SESSION_PATH`
- * overrides for testing, mirroring `RUN402_ALLOWANCE_PATH`.
+ * overrides for testing, mirroring `RUN402_WALLET_PATH`.
  */
 export function getOperatorSessionPath(): string {
   return process.env.RUN402_OPERATOR_SESSION_PATH || join(getConfigBaseDir(), "operator-session.json");
@@ -54,8 +54,8 @@ export function getOperatorSessionPath(): string {
 /**
  * If the session file is readable by group or other (any low 0o077 bit set),
  * tighten it to 0600 and warn once on stderr — the bearer token is as sensitive
- * as the allowance private key. Best-effort: POSIX-only, silent elsewhere.
- * Mirrors the self-heal in `allowance.ts`.
+ * as the wallet private key. Best-effort: POSIX-only, silent elsewhere.
+ * Mirrors the self-heal in `wallet.ts`.
  */
 function selfHealPermissions(p: string): void {
   if (process.platform === "win32") return;

@@ -62,7 +62,7 @@ describe("service_health tool", () => {
     assert.ok(text.includes("dns failure"));
   });
 
-  it("works with no allowance file (fresh install)", async () => {
+  it("works with no local wallet file (fresh install)", async () => {
     globalThis.fetch = (async () => jsonResponse({
       status: "healthy",
       checks: { postgres: "ok" },

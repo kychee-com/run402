@@ -1,14 +1,14 @@
 import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
 import { formatBytesDecimal } from "../format-bytes.js";
-import { requireAllowanceAuth } from "../allowance-auth.js";
+import { requireWalletAuth } from "../wallet-auth.js";
 
 export const tierStatusSchema = {};
 
 export async function handleTierStatus(
   _args: Record<string, never>,
 ): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const auth = requireAllowanceAuth("/tiers/v1/status");
+  const auth = requireWalletAuth("/tiers/v1/status");
   if ("error" in auth) return auth.error;
 
   try {

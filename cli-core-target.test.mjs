@@ -26,7 +26,7 @@ const originalError = console.error;
 const originalExit = process.exit;
 const originalConfigDir = process.env.RUN402_CONFIG_DIR;
 const originalApiBase = process.env.RUN402_API_BASE;
-const originalAllowancePath = process.env.RUN402_ALLOWANCE_PATH;
+const originalWalletPath = process.env.RUN402_WALLET_PATH;
 const originalWallet = process.env.RUN402_WALLET;
 const originalProfile = process.env.RUN402_PROFILE;
 const originalGithubActions = process.env.GITHUB_ACTIONS;
@@ -159,7 +159,7 @@ beforeEach(() => {
   tempDir = mkdtempSync(join(tmpdir(), "run402-core-target-"));
   process.env.RUN402_CONFIG_DIR = tempDir;
   delete process.env.RUN402_API_BASE;
-  delete process.env.RUN402_ALLOWANCE_PATH;
+  delete process.env.RUN402_WALLET_PATH;
   delete process.env.RUN402_WALLET;
   delete process.env.RUN402_PROFILE;
   delete process.env.GITHUB_ACTIONS;
@@ -180,8 +180,8 @@ afterEach(() => {
   else delete process.env.RUN402_CONFIG_DIR;
   if (originalApiBase !== undefined) process.env.RUN402_API_BASE = originalApiBase;
   else delete process.env.RUN402_API_BASE;
-  if (originalAllowancePath !== undefined) process.env.RUN402_ALLOWANCE_PATH = originalAllowancePath;
-  else delete process.env.RUN402_ALLOWANCE_PATH;
+  if (originalWalletPath !== undefined) process.env.RUN402_WALLET_PATH = originalWalletPath;
+  else delete process.env.RUN402_WALLET_PATH;
   if (originalWallet !== undefined) process.env.RUN402_WALLET = originalWallet;
   else delete process.env.RUN402_WALLET;
   if (originalProfile !== undefined) process.env.RUN402_PROFILE = originalProfile;
@@ -198,14 +198,14 @@ afterEach(() => {
 });
 
 describe("CLI Core target", () => {
-  it("initializes, provisions, and applies to Core without Cloud allowance setup", async () => {
+  it("initializes, provisions, and applies to Core without Cloud wallet setup", async () => {
     const { run: runInit } = await import("./cli/lib/init.mjs");
     await runInit(["--api-base", CORE]);
     let parsed = stdoutJson();
     assert.equal(parsed.api_base, CORE);
     assert.equal(parsed.target.kind, "core");
     assert.equal(parsed.payment_required, false);
-    assert.equal(existsSync(join(tempDir, "allowance.json")), false);
+    assert.equal(existsSync(join(tempDir, "wallet.json")), false);
 
     const { run: runProjects } = await import("./cli/lib/projects.mjs");
     captureStart();
@@ -214,7 +214,7 @@ describe("CLI Core target", () => {
     assert.equal(parsed.project_id, "prj_core_test");
     assert.equal(parsed.anon_key, "r402_anon_test");
     assert.equal(parsed.service_key, "r402_service_test");
-    assert.equal(existsSync(join(tempDir, "allowance.json")), false);
+    assert.equal(existsSync(join(tempDir, "wallet.json")), false);
 
     const manifestPath = join(tempDir, "app.json");
     writeFileSync(manifestPath, JSON.stringify({

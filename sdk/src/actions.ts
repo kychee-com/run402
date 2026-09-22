@@ -147,8 +147,8 @@ export interface Run402ActionApprovalRequest {
 }
 
 export type Run402ActionMutation =
-  | "allowance.create"
-  | "allowance.faucet"
+  | "wallets.create"
+  | "wallets.faucet"
   | "tier.set"
   | "projects.provision"
   | "workspace.link.write"

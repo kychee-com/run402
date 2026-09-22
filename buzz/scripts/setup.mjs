@@ -285,7 +285,7 @@ function isCompatible(runner, run402Bin, wallet, version) {
 
 function needsInitialization(result) {
   const envelope = parseEnvelope(result?.stderr);
-  if (envelope?.code === "NO_ALLOWANCE") return true;
+  if (envelope?.code === "NO_WALLET") return true;
   return Array.isArray(envelope?.next_actions)
     && envelope.next_actions.some((action) => action?.type === "initialize_wallet");
 }

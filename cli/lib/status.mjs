@@ -1,6 +1,6 @@
 import { readRemoteStatus } from "#sdk/node";
 import {
-  readAllowance,
+  readWallet,
   loadKeyStore,
   getActiveProjectId,
   apiBase,
@@ -31,11 +31,11 @@ Output is JSON by default. --json is accepted as a compatibility no-op.
 --human renders a compact human summary instead (wallet, API target, tier,
 active project, balance, and the next action); it cannot be combined with
 --json.
-Run402 Cloud status requires an allowance; Core target status can still report
+Run402 Cloud status requires a wallet; Core target status can still report
 local project state without one.
 `;
 
-// USDC / pathUSD constants (match allowance.mjs)
+// USDC / pathUSD constants (match wallet.mjs)
 const USDC_ABI = [{ name: "balanceOf", type: "function", stateMutability: "view", inputs: [{ name: "account", type: "address" }], outputs: [{ name: "", type: "uint256" }] }];
 const USDC_MAINNET = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 const USDC_SEPOLIA = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
@@ -105,13 +105,13 @@ export async function run(args = []) {
       hint: "JSON is the default; drop --json to keep it, or keep --human alone for the rendered view.",
     });
   }
-  const allowance = readAllowance();
+  const localWallet = readWallet();
   const target = {
     api_base: apiBase(),
     api_base_source: apiBaseSource(),
     kind: apiTargetKind(),
   };
-  if (!allowance) {
+  if (!localWallet) {
     const store = loadKeyStore();
     const bare = {
       wallet: null,
@@ -128,16 +128,16 @@ export async function run(args = []) {
     return;
   }
 
-  const wallet = allowance.address.toLowerCase();
-  const rail = allowance.rail || "x402";
+  const wallet = localWallet.address.toLowerCase();
+  const rail = localWallet.rail || "x402";
 
-  // Parallel API calls: tier + wallet + server-side projects + on-chain wallet balance.
+  // Parallel API calls: tier + allowance + server-side projects + on-chain wallet balance.
   // projects.list() is the membership-scoped named inventory (project-findability);
-  // SIWX wallet auth is signed from the allowance. Best-effort — a missing
-  // allowance yields null and we fall back to the local keystore below.
+  // SIWX wallet auth is signed from the wallet. Best-effort — a missing
+  // wallet yields null and we fall back to the local keystore below.
   const [status, walletBalance] = await Promise.all([
     readRemoteStatus(getSdk(), wallet),
-    readWalletBalanceUsdMicros(rail, allowance.address),
+    readWalletBalanceUsdMicros(rail, localWallet.address),
   ]);
   const { tier, billing, remote } = status;
 
@@ -166,7 +166,7 @@ export async function run(args = []) {
     wallet: {
       local_label: walletName,
       server_label: walletMeta?.label ?? null,
-      address: allowance.address,
+      address: localWallet.address,
     },
     rail,
     remote_status: status.availability,
@@ -230,7 +230,7 @@ function statusNextAction(result) {
 export function formatStatusHuman(result) {
   const lines = [];
   if (!result.wallet) {
-    lines.push("Wallet:   none (no allowance on this machine)");
+    lines.push("Wallet:   none (no local wallet on this machine)");
   } else {
     const label = result.wallet.server_label
       ? `${result.wallet.local_label} (${result.wallet.server_label})`

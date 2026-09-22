@@ -41,7 +41,7 @@ afterEach(() => {
 });
 
 describe("deploy releases observability MCP tools", () => {
-  it("returns release inventory without requiring allowance auth", async () => {
+  it("returns release inventory without requiring SIWX auth", async () => {
     globalThis.fetch = makeFetch((path) => {
       assert.equal(path, "/apply/v1/releases/rel_%2Fone?site_limit=2");
       return inventory({ release_id: "rel_/one", state_kind: "effective" });

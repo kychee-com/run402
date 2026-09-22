@@ -99,7 +99,7 @@ export class Projects {
   }
 
   /**
-   * Provision a new Postgres project. Requires allowance auth; payment
+   * Provision a new Postgres project. Requires SIWX auth; payment
    * flows through the configured fetch wrapper (x402 in Node, session
    * budget in sandbox). Returned keys are persisted to the local store
    * when the credential provider supports it.
@@ -192,7 +192,7 @@ export class Projects {
    *   50, max 200).
    *
    * @throws {Run402Error} with `context: "listing projects"` on the usual
-   *   auth/network failures (e.g. `Unauthorized` when no allowance is
+   *   auth/network failures (e.g. `Unauthorized` when no local wallet is
    *   configured and the gateway rejects the missing SIWX header).
    */
   async list(opts: ListProjectsOptions = {}): Promise<ListProjectsResult> {

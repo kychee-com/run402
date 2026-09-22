@@ -62,7 +62,7 @@ mock.module("./cli/lib/sdk.mjs", {
 
 mock.module("./cli/lib/cold-start.mjs", {
   namedExports: {
-    ensureFundedWallet: async () => ({ allowance_created: false, faucet_requested: false, address: "0xabc" }),
+    ensureFundedWallet: async () => ({ wallet_created: false, faucet_requested: false, address: "0xabc" }),
   },
 });
 

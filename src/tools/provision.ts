@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
-import { requireAllowanceAuth } from "../allowance-auth.js";
+import { requireWalletAuth } from "../wallet-auth.js";
 import { PaymentRequired } from "../../sdk/dist/index.js";
 
 export const provisionSchema = {
@@ -24,7 +24,7 @@ export async function handleProvision(args: {
   name?: string;
   org_id?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const auth = requireAllowanceAuth("/projects/v1");
+  const auth = requireWalletAuth("/projects/v1");
   if ("error" in auth) return auth.error;
 
   const tier = args.tier || "prototype";
@@ -70,7 +70,7 @@ export async function handleProvision(args: {
       }
       lines.push(``);
       lines.push(
-        `The user's agent allowance or payment agent must send the required amount. ` +
+        `The user's agent wallet or payment agent must send the required amount. ` +
         `Once payment is confirmed, retry this tool call.`,
       );
       return { content: [{ type: "text", text: lines.join("\n") }] };

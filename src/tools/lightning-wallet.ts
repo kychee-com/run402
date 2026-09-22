@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { readAllowance, saveAllowance } from "../allowance.js";
+import { readWallet, saveWallet } from "../wallet.js";
 import { mapSdkError } from "../errors.js";
 import { getSdk } from "../sdk.js";
 import type { AgentLightningWallet } from "../../sdk/dist/index.js";
@@ -31,8 +31,8 @@ function render(wallet: AgentLightningWallet, title: string, extra: string[] = [
 }
 
 /**
- * The Lightning allowance: one budgeted, isolated sub-wallet per agent on
- * Run402's Hub. `mint` stores the one-time pairing in the local allowance
+ * The Lightning wallet: one budgeted, isolated sub-wallet per agent on
+ * Run402's Hub. `mint` stores the one-time pairing in the local wallet
  * (never in the tool output) and makes Lightning the default rail.
  */
 export async function handleLightningWallet(args: { action?: "mint" | "get" | "revoke" }): Promise<McpResult> {
@@ -40,7 +40,7 @@ export async function handleLightningWallet(args: { action?: "mint" | "get" | "r
   try {
     if (action === "get") {
       const wallet = await getSdk().agent.lightningWallet.get();
-      const local = readAllowance();
+      const local = readWallet();
       const held = Boolean(local?.lightning?.nwc);
       return { content: [{ type: "text", text: render(wallet, "Lightning wallet", [
         `| pairing_on_this_machine | ${held ? "yes" : "no"} |`,
@@ -49,16 +49,16 @@ export async function handleLightningWallet(args: { action?: "mint" | "get" | "r
     }
     if (action === "revoke") {
       const wallet = await getSdk().agent.lightningWallet.revoke();
-      const local = readAllowance();
+      const local = readWallet();
       if (local) {
         const { lightning: _dropped, ...rest } = local;
-        saveAllowance({ ...rest, rail: rest.rail === "lightning" ? "x402" : rest.rail });
+        saveWallet({ ...rest, rail: rest.rail === "lightning" ? "x402" : rest.rail });
       }
       return { content: [{ type: "text", text: render(wallet, "Lightning wallet revoked", [``, `The rail is back on x402. Mint again with \`lightning_wallet\` once the deletion completes.`]) }] };
     }
-    let local = readAllowance();
+    let local = readWallet();
     if (!local) {
-      return { content: [{ type: "text", text: "No allowance yet. Run `init` first (it creates the Base allowance the Lightning wallet sits beside)." }], isError: true };
+      return { content: [{ type: "text", text: "No local wallet yet. Run `init` first (it creates the Base wallet the Lightning wallet sits beside)." }], isError: true };
     }
     if (local.lightning?.nwc) {
       const wallet = await getSdk().agent.lightningWallet.get();
@@ -87,7 +87,7 @@ export async function handleLightningWallet(args: { action?: "mint" | "get" | "r
         minted_at: wallet.activated_at ?? new Date().toISOString(),
       },
     };
-    saveAllowance(local);
+    saveWallet(local);
     return { content: [{ type: "text", text: render(wallet, "Lightning wallet minted", [``, `The pairing is stored locally (never shown). Lightning is now the default rail: paid calls answer a Lightning challenge first and fall back to x402.`]) }] };
   } catch (err) {
     return mapSdkError(err, `${action === "get" ? "reading" : action === "revoke" ? "revoking" : "minting"} the Lightning wallet`);

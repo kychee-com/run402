@@ -7,7 +7,7 @@
  * lives inside provider implementations — never in the kernel.
  *
  * Node consumers use {@link NodeCredentialsProvider} from `@run402/sdk/node`
- * which wraps the local keystore + allowance. Sandbox consumers supply their
+ * which wraps the local keystore + wallet. Sandbox consumers supply their
  * own implementation bound to a session token issued by the supervisor.
  *
  * The two required methods (`getAuth`, `getProjectCredentials`) support every API call.
@@ -34,14 +34,14 @@ export interface ProjectCredentialCacheInfo {
   profile?: string;
 }
 
-export interface AllowanceData {
+export interface WalletData {
   address: string;
   privateKey: string;
   created?: string;
   funded?: boolean;
   lastFaucet?: string;
   rail?: "x402" | "mpp" | "lightning";
-  /** The Lightning allowance: a budgeted wallet on Run402's Hub; `nwc` is the pairing secret and never leaves the machine. */
+  /** The Lightning wallet: a budgeted wallet on Run402's Hub; `nwc` is the pairing secret and never leaves the machine. */
   lightning?: {
     wallet_id: string;
     nwc: string;
@@ -154,17 +154,17 @@ export interface CredentialsProvider {
    */
   getActiveOrg?(): Promise<string | null>;
 
-  /** Read the local allowance (wallet). Optional — sandbox providers may omit. */
-  readAllowance?(): Promise<AllowanceData | null>;
+  /** Read the local wallet (wallet). Optional — sandbox providers may omit. */
+  readWallet?(): Promise<WalletData | null>;
 
-  /** Persist the local allowance. Optional. */
-  saveAllowance?(data: AllowanceData): Promise<void>;
+  /** Persist the local wallet. Optional. */
+  saveWallet?(data: WalletData): Promise<void>;
 
-  /** Generate a fresh allowance keypair. Optional — Node default uses secp256k1 + keccak for the Ethereum address. */
-  createAllowance?(): Promise<AllowanceData>;
+  /** Generate a fresh wallet keypair. Optional — Node default uses secp256k1 + keccak for the Ethereum address. */
+  createWallet?(): Promise<WalletData>;
 
-  /** Return the absolute path to the local allowance file, for diagnostic output. Optional. */
-  getAllowancePath?(): string;
+  /** Return the absolute path to the local wallet file, for diagnostic output. Optional. */
+  getWalletPath?(): string;
 
   /** Return safe provenance for the local project credential cache. Optional. */
   getProjectCredentialCacheInfo?(): ProjectCredentialCacheInfo;

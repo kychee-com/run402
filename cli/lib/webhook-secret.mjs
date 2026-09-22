@@ -6,7 +6,7 @@
  * `notifications:*` group.
  */
 
-import { allowanceAuthHeaders } from "./config.mjs";
+import { walletAuthHeaders } from "./config.mjs";
 import { operatorProofs } from "./operator-proofs.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError } from "./sdk-errors.mjs";

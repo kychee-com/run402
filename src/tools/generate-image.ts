@@ -44,7 +44,7 @@ function renderSettlement(payment: { network: string; transaction: string } | nu
   const tx = `tx ${payment.transaction}`;
   return testnet
     ? `\nPaid $0.03 USDC on ${where} — ${tx}.\nThis is TEST money: it is not a real payment and cannot appear on the wall. ` +
-        `To pay on mainnet, fund the address from \`allowance_export\` with USDC on Base.`
+        `To pay on mainnet, fund the address from \`wallet_export\` with USDC on Base.`
     : `\nPaid $0.03 USDC on ${where} — ${tx}.`;
 }
 
@@ -97,7 +97,7 @@ export async function handleGenerateImage(args: {
       lines.push(``);
       // This is the moment of intent: the agent wants the image and now knows
       // it costs three cents. Text that names no mechanism — "the user's
-      // agent allowance or payment agent must send the required amount" —
+      // agent wallet or payment agent must send the required amount" —
       // leaves a cold agent nothing it can execute: a dead end at exactly
       // the step that converts.
       //
@@ -107,15 +107,15 @@ export async function handleGenerateImage(args: {
       lines.push(`**Next steps — tools on this same server:**`);
       lines.push(``);
       lines.push(
-        `1. \`allowance_status\` — check whether this agent already has a wallet and funds.`,
+        `1. \`wallet_status\` — check whether this agent already has a wallet and funds.`,
       );
       lines.push(
-        `2. \`init\` — one-call bootstrap: creates a local allowance wallet and requests ` +
+        `2. \`init\` — one-call bootstrap: creates a local wallet and requests ` +
           `faucet USDC. **This funds Base Sepolia (testnet)**, so the payment settles in ` +
           `test money — good for trying the endpoint, but it is not a real purchase.`,
       );
       lines.push(
-        `3. To pay for real, fund the address from \`allowance_export\` with USDC on ` +
+        `3. To pay for real, fund the address from \`wallet_export\` with USDC on ` +
           `**Base mainnet**, then retry.`,
       );
       lines.push(``);

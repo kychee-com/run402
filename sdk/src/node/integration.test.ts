@@ -44,7 +44,7 @@ afterEach(() => {
 });
 
 describe("run402() Node factory", () => {
-  it("constructs a Run402 instance with no keystore and no allowance", () => {
+  it("constructs a Run402 instance with no keystore and no local wallet", () => {
     const r = run402({ disablePaidFetch: true });
     assert.ok(r instanceof Run402);
     assert.ok(r.projects);
@@ -76,7 +76,7 @@ describe("run402() Node factory", () => {
   it("rejects ambiguous explicit payment configuration at construction", () => {
     assert.throws(
       () => run402({
-        allowancePath: join(tempDir, "payer.json"),
+        walletPath: join(tempDir, "payer.json"),
         paymentSigner: {
           async getSigner() {
             return null;

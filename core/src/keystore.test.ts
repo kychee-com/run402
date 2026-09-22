@@ -7,7 +7,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { loadKeyStore, saveKeyStore, getProject, saveProject, removeProject, getActiveProjectId, setActiveProjectId, clearActiveProjectId } from "./keystore.js";
 import type { StoredProject, KeyStore } from "./keystore.js";
-import { saveAllowance } from "./allowance.js";
+import { saveWallet } from "./wallet.js";
 import { setActiveProjectId as setProfileActiveProjectId, clearActiveProjectId as clearProfileActiveProjectId } from "./profile-state.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -145,14 +145,14 @@ describe("core keystore", () => {
   describe("active project id is scoped by the current wallet's principal (kychee-com/run402#559a)", () => {
     // `setActiveProjectId`/`getActiveProjectId` here must scope by the SAME
     // principal `NodeCredentialsProvider.setActiveProject`
-    // (sdk/src/node/credentials.ts) uses — the CURRENT wallet's allowance
+    // (sdk/src/node/credentials.ts) uses — the CURRENT wallet's key
     // address — or a pre-existing principal-LESS ("unknown"-bucket) write
     // permanently shadows every later wallet-scoped one for every reader in
     // this module (resolveProjectId, `projects current`, gitvault target
-    // resolution, ...). Default (no explicit `path`) so `getAllowancePath()`
+    // resolution, ...). Default (no explicit `path`) so `getWalletPath()`
     // resolves from the same `RUN402_CONFIG_DIR` these tests already set.
 
-    // Built, not hand-typed: `readAllowance`'s ADDRESS_RE demands EXACTLY 40
+    // Built, not hand-typed: `readWallet`'s ADDRESS_RE demands EXACTLY 40
     // hex chars, and a hand-counted literal one or two short still LOOKS
     // plausible while silently failing validation — which would make every
     // test below exercise the malformed-address fallback (principal: null,
@@ -170,7 +170,7 @@ describe("core keystore", () => {
       // a DIFFERENT, stale project.
       setProfileActiveProjectId("prj_B_stale", undefined, {});
 
-      saveAllowance({
+      saveWallet({
         address: ADDR_A,
         privateKey: "0x" + "a".repeat(64),
         created: new Date().toISOString(),
@@ -185,8 +185,8 @@ describe("core keystore", () => {
       );
     });
 
-    it("switching wallets (different allowance address) resolves the flat fallback, never a DIFFERENT wallet's stale scoped entry", () => {
-      saveAllowance({
+    it("switching wallets (different wallet address) resolves the flat fallback, never a DIFFERENT wallet's stale scoped entry", () => {
+      saveWallet({
         address: ADDR_B,
         privateKey: "0x" + "b".repeat(64),
         created: new Date().toISOString(),
@@ -194,7 +194,7 @@ describe("core keystore", () => {
       });
       setActiveProjectId("prj_wallet_two");
 
-      saveAllowance({
+      saveWallet({
         address: ADDR_C,
         privateKey: "0x" + "c".repeat(64),
         created: new Date().toISOString(),
@@ -206,22 +206,22 @@ describe("core keystore", () => {
       assert.equal(getActiveProjectId(), "prj_wallet_two");
     });
 
-    it("unparseable allowance JSON degrades to the unscoped bucket rather than throwing", () => {
-      writeFileSync(join(tempDir, "allowance.json"), "NOT VALID JSON{{{", "utf-8");
-      // Must not throw — the malformed allowance is a wallet-validity concern
+    it("unparseable wallet JSON degrades to the unscoped bucket rather than throwing", () => {
+      writeFileSync(join(tempDir, "wallet.json"), "NOT VALID JSON{{{", "utf-8");
+      // Must not throw — the malformed wallet file is a wallet-validity concern
       // for other code paths, not a reason to fail active-project resolution.
       setActiveProjectId("prj_no_wallet");
       assert.equal(getActiveProjectId(), "prj_no_wallet");
     });
 
-    it("valid-JSON-but-wrong-shape allowance (readAllowance's own throw, GH-194) also degrades rather than propagating", () => {
-      writeFileSync(join(tempDir, "allowance.json"), JSON.stringify({ notAnAddress: true }), "utf-8");
+    it("valid-JSON-but-wrong-shape wallet (readWallet's own throw, GH-194) also degrades rather than propagating", () => {
+      writeFileSync(join(tempDir, "wallet.json"), JSON.stringify({ notAnAddress: true }), "utf-8");
       setActiveProjectId("prj_bad_shape");
       assert.equal(getActiveProjectId(), "prj_bad_shape");
     });
 
     it("keystore.js's clearActiveProjectId clears the WALLET-scoped entry, unlike profile-state.js's unscoped one (cli-e2e.test.mjs GH-40 regression)", () => {
-      saveAllowance({
+      saveWallet({
         address: ADDR_D,
         privateKey: "0x" + "d".repeat(64),
         created: new Date().toISOString(),

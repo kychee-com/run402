@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
-import { requireAllowanceAuth } from "../allowance-auth.js";
+import { requireWalletAuth } from "../wallet-auth.js";
 
 export const setAgentContactSchema = {
   name: z.string().describe("Agent name"),
@@ -14,7 +14,7 @@ export async function handleSetAgentContact(args: {
   email?: string;
   webhook?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const auth = requireAllowanceAuth("/agent/v1/contact");
+  const auth = requireWalletAuth("/agent/v1/contact");
   if ("error" in auth) return auth.error;
 
   try {

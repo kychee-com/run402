@@ -2,7 +2,7 @@
  * cli-integration.test.ts — Full lifecycle integration test against LIVE production.
  *
  * NO MOCKS. Every command hits https://api.run402.com for real.
- * Uses a pre-funded allowance wallet, sets the prototype tier ($0.10
+ * Uses a pre-funded wallet, sets the prototype tier ($0.10
  * testnet USDC), provisions a real project, runs SQL, deploys site, manages
  * functions/secrets/storage/subdomains, publishes, forks, and tears everything down.
  *
@@ -97,16 +97,16 @@ before(async () => {
   process.env.RUN402_CONFIG_DIR = tempDir;
   process.env.RUN402_API_BASE = API;
 
-  // Seed the allowance file with the pre-funded wallet so paid commands work
+  // Seed the wallet file with the pre-funded wallet so paid commands work
   const { privateKeyToAccount } = await import("viem/accounts");
   const account = privateKeyToAccount(buyerKey as `0x${string}`);
-  const allowanceData = {
+  const walletData = {
     address: account.address,
     privateKey: buyerKey,
     created: new Date().toISOString(),
     funded: true,
   };
-  writeFileSync(join(tempDir, "allowance.json"), JSON.stringify(allowanceData), { mode: 0o600 });
+  writeFileSync(join(tempDir, "wallet.json"), JSON.stringify(walletData), { mode: 0o600 });
 
   // Override process.exit so CLI errors don't kill the test runner
   (process as { exit: (code?: number) => never }).exit = ((code?: number) => {
@@ -151,27 +151,20 @@ beforeEach(() => {
 // ─── Tests — sequential, full lifecycle ──────────────────────────────────────
 
 describe("CLI integration (live API, no mocks)", { timeout: 180_000 }, () => {
-  // ── Allowance (pre-seeded from BUYER_PRIVATE_KEY) ──────────────────────
+  // ── Wallet (pre-seeded from BUYER_PRIVATE_KEY) ──────────────────────
 
-  it("allowance status", async () => {
-    const { run } = await import("./cli/lib/allowance.mjs");
+  it("wallets current", async () => {
+    const { run } = await import("./cli/lib/wallets.mjs");
     captureStart();
-    await run("status", []);
-    captureStop();
-    assert.ok(captured().includes("ok"), "should show ok status");
-  });
-
-  it("allowance export", async () => {
-    const { run } = await import("./cli/lib/allowance.mjs");
-    captureStart();
-    await run("export", []);
+    await run("current", []);
     captureStop();
     const out = JSON.parse(captured());
-    assert.match(out.address, /^0x[a-fA-F0-9]{40}$/, "should emit allowance address JSON");
+    assert.match(out.address, /^0x[a-fA-F0-9]{40}$/, "should emit wallet address JSON");
+    assert.equal(out.configured, true);
   });
 
-  it("allowance balance", async () => {
-    const { run } = await import("./cli/lib/allowance.mjs");
+  it("wallets balance", async () => {
+    const { run } = await import("./cli/lib/wallets.mjs");
     captureStart();
     await run("balance", []);
     captureStop();
@@ -552,8 +545,8 @@ describe("CLI integration (live API, no mocks)", { timeout: 180_000 }, () => {
     assert.ok(out.includes("Tempo"), `Expected 'Tempo' in: ${out}`);
     assert.ok(out.includes("pathUSD"), `Expected 'pathUSD' in: ${out}`);
     assert.ok(out.includes("mpp"), `Expected 'mpp' in: ${out}`);
-    const allowance = JSON.parse(readFileSync(join(tempDir, "allowance.json"), "utf-8"));
-    assert.equal(allowance.rail, "mpp", "rail should be mpp");
+    const localWallet = JSON.parse(readFileSync(join(tempDir, "wallet.json"), "utf-8"));
+    assert.equal(localWallet.rail, "mpp", "rail should be mpp");
   });
 
   it("mpp: tier set prototype — pay via MPP on Tempo", async () => {
@@ -633,8 +626,8 @@ describe("CLI integration (live API, no mocks)", { timeout: 180_000 }, () => {
     captureStop();
     const out = captured();
     assert.ok(out.includes("x402"), `Expected 'x402' in: ${out}`);
-    const allowance = JSON.parse(readFileSync(join(tempDir, "allowance.json"), "utf-8"));
-    assert.equal(allowance.rail, "x402", "rail should be x402");
+    const localWallet = JSON.parse(readFileSync(join(tempDir, "wallet.json"), "utf-8"));
+    assert.equal(localWallet.rail, "x402", "rail should be x402");
   });
 
   // ── Cleanup ───────────────────────────────────────────────────────────

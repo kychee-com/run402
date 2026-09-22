@@ -2,7 +2,7 @@
  * Opt-in live settlement smoke test.
  *
  * Required:
- *   RUN402_X402_BUYER_LIVE_URL=https://...   funded local allowance/signer
+ *   RUN402_X402_BUYER_LIVE_URL=https://...   funded local wallet/signer
  * Optional:
  *   RUN402_X402_BUYER_LIVE_METHOD=POST
  *   RUN402_X402_BUYER_LIVE_BODY='{"ping":true}'

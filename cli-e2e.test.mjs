@@ -1200,28 +1200,30 @@ describe("CLI billing validation regressions", () => {
 
 describe("CLI e2e happy path", () => {
 
-  // ── Allowance ───────────────────────────────────────────────────────────
+  // ── Wallet ───────────────────────────────────────────────────────────
 
-  it("allowance create", async () => {
-    const { run } = await import("./cli/lib/allowance.mjs");
+  it("wallets new default", async () => {
+    const { run } = await import("./cli/lib/wallets.mjs");
     captureStart();
-    await run("create", []);
+    await run("new", ["default"]);
     captureStop();
-    assert.ok(captured().includes('"created":true'), "should report created:true");
-    assert.ok(existsSync(join(tempDir, "allowance.json")), "allowance.json should exist");
+    assert.ok(captured().includes('"created": true'), "should report created: true");
+    assert.ok(existsSync(join(tempDir, "wallet.json")), "wallet.json should exist");
   });
 
-  it("allowance status", async () => {
-    const { run } = await import("./cli/lib/allowance.mjs");
+  it("wallets current", async () => {
+    const { run } = await import("./cli/lib/wallets.mjs");
     captureStart();
-    await run("status", []);
+    await run("current", []);
     captureStop();
-    assert.ok(captured().includes('"wallet"'), "should emit wallet payload");
-    assert.ok(captured().includes('"address"'), "should include address inside wallet");
+    const out = JSON.parse(captured());
+    assert.match(out.address, /^0x[a-fA-F0-9]{40}$/, "should emit the wallet address");
+    assert.equal(out.configured, true);
+    assert.equal(out.local_label, "default");
   });
 
-  it("allowance fund", async () => {
-    const { run } = await import("./cli/lib/allowance.mjs");
+  it("wallets fund", async () => {
+    const { run } = await import("./cli/lib/wallets.mjs");
     captureStart();
     await run("fund", []);
     captureStop();
@@ -1229,17 +1231,8 @@ describe("CLI e2e happy path", () => {
     assert.ok(captured().includes("base-sepolia"), "should show balance or faucet result");
   });
 
-  it("allowance export", async () => {
-    const { run } = await import("./cli/lib/allowance.mjs");
-    captureStart();
-    await run("export", []);
-    captureStop();
-    const out = JSON.parse(captured());
-    assert.match(out.address, /^0x[a-fA-F0-9]{40}$/, "should emit allowance address JSON");
-  });
-
-  it("allowance balance", async () => {
-    const { run } = await import("./cli/lib/allowance.mjs");
+  it("wallets balance", async () => {
+    const { run } = await import("./cli/lib/wallets.mjs");
     captureStart();
     await run("balance", []);
     captureStop();
@@ -1370,7 +1363,7 @@ describe("CLI e2e happy path", () => {
   });
 
   // GH-176: --name validation rejects empty string, control chars, over-length.
-  // Validation runs before any network call, so allowance state is irrelevant.
+  // Validation runs before any network call, so wallet state is irrelevant.
   it("projects provision --name '' rejects empty name (GH-176)", async () => {
     const { run } = await import("./cli/lib/projects.mjs");
     let threw = null;
@@ -1907,11 +1900,11 @@ describe("CLI e2e happy path", () => {
     assert.ok(captured().includes("api_calls"), "should show usage for active project");
   });
 
-  it("projects costs defaults to active project and uses allowance admin auth", async () => {
+  it("projects costs defaults to active project and uses wallet admin auth", async () => {
     const { run } = await import("./cli/lib/projects.mjs");
-    const { saveAllowance, setActiveProjectId } = await import("./cli/lib/config.mjs");
+    const { saveWallet, setActiveProjectId } = await import("./cli/lib/config.mjs");
     setActiveProjectId("prj_test123");
-    saveAllowance({
+    saveWallet({
       address: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
       privateKey: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
       created: "2026-01-01T00:00:00.000Z",
@@ -1953,7 +1946,7 @@ describe("CLI e2e happy path", () => {
     }
     assert.ok(seenUrl && seenUrl.includes("/admin/api/finance/project/prj_test123?window=7d"),
       `costs should hit the active project finance URL; got: ${seenUrl}`);
-    assert.equal(typeof seenSiwx, "string", "costs should send allowance SIWX auth when no admin cookie is set");
+    assert.equal(typeof seenSiwx, "string", "costs should send wallet SIWX auth when no admin cookie is set");
     assert.equal(seenAdminMode, "1", "costs should explicitly request admin mode for admin-wallet auth");
     assert.equal(seenCookie, null);
     const parsed = JSON.parse(capturedStdout());
@@ -1998,14 +1991,14 @@ describe("CLI e2e happy path", () => {
   });
 
   // v1.57: projects pin was removed in favor of admin lease-perpetual.
-  // Same auth shape — allowance SIWX, X-Admin-Mode: 1, no Bearer service_key.
+  // Same auth shape — wallet SIWX, X-Admin-Mode: 1, no Bearer service_key.
   // The mockFetch lease-perpetual route echoes the request body back as the
   // `lease_perpetual` field of the response, so verifying the response shape
   // is equivalent to verifying the body went out correctly.
-  it("admin lease-perpetual uses allowance admin auth, not project service key auth", async () => {
+  it("admin lease-perpetual uses wallet admin auth, not project service key auth", async () => {
     const { run } = await import("./cli/lib/admin.mjs");
-    const { saveAllowance } = await import("./cli/lib/config.mjs");
-    saveAllowance({
+    const { saveWallet } = await import("./cli/lib/config.mjs");
+    saveWallet({
       address: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
       privateKey: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
       created: "2026-01-01T00:00:00.000Z",
@@ -2049,7 +2042,7 @@ describe("CLI e2e happy path", () => {
       `lease-perpetual should hit the admin endpoint; got: ${seenUrl}`,
     );
     assert.equal(seenMethod, "POST");
-    assert.equal(typeof seenSiwx, "string", "lease-perpetual should send allowance SIWX admin-wallet auth");
+    assert.equal(typeof seenSiwx, "string", "lease-perpetual should send wallet SIWX admin-wallet auth");
     assert.equal(seenAdminMode, "1", "lease-perpetual should explicitly request admin mode");
     assert.equal(seenAuthorization, null, "lease-perpetual must not use a service_key as Bearer auth");
     const parsed = JSON.parse(capturedStdout());
@@ -2156,9 +2149,9 @@ describe("CLI e2e happy path", () => {
 
   async function runDeployListLimit(limitValue) {
     const { run } = await import("./cli/lib/deploy.mjs");
-    const { saveAllowance } = await import("./cli/lib/config.mjs");
+    const { saveWallet } = await import("./cli/lib/config.mjs");
     await seedTestProject();
-    saveAllowance({
+    saveWallet({
       address: "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
       privateKey: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
       created: "2026-03-15T00:00:00.000Z",
@@ -2211,9 +2204,9 @@ describe("CLI e2e happy path", () => {
 
   async function runBadDeployArgv(args, endpointPattern) {
     const { run } = await import("./cli/lib/deploy.mjs");
-    const { saveAllowance } = await import("./cli/lib/config.mjs");
+    const { saveWallet } = await import("./cli/lib/config.mjs");
     await seedTestProject();
-    saveAllowance({
+    saveWallet({
       address: "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
       privateKey: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
       created: "2026-03-15T00:00:00.000Z",
@@ -2311,9 +2304,9 @@ describe("CLI e2e happy path", () => {
 
   it("deploy resume polls with the active project's apikey", async () => {
     const { run } = await import("./cli/lib/deploy.mjs");
-    const { saveAllowance } = await import("./cli/lib/config.mjs");
+    const { saveWallet } = await import("./cli/lib/config.mjs");
     await seedTestProject();
-    saveAllowance({
+    saveWallet({
       address: "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
       privateKey: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
       created: "2026-03-15T00:00:00.000Z",
@@ -2706,8 +2699,8 @@ describe("CLI e2e happy path", () => {
   // to the gateway.
   async function deployApplyAndCapture(args) {
     const { run } = await import("./cli/lib/deploy.mjs");
-    const { saveAllowance } = await import("./cli/lib/config.mjs");
-    saveAllowance({
+    const { saveWallet } = await import("./cli/lib/config.mjs");
+    saveWallet({
       address: "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
       privateKey: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
       created: "2026-03-15T00:00:00.000Z",
@@ -4205,16 +4198,16 @@ describe("CLI e2e happy path", () => {
     assert.ok(captured().includes("deleted") || captured().includes("ok"), "should delete project");
   });
 
-  // ── Init (runs after allowance exists) ──────────────────────────────────
+  // ── Init (runs after wallet exists) ──────────────────────────────────
 
-  it("init (allowance already exists)", async () => {
+  it("init (wallet already exists)", async () => {
     const { run } = await import("./cli/lib/init.mjs");
     captureStart();
     await run();
     captureStop();
     const out = captured();
     assert.ok(out.includes("Config"), "should show config dir");
-    assert.ok(out.includes("Allowance"), "should show allowance");
+    assert.ok(out.includes("Wallet"), "should show the wallet");
     assert.ok(out.includes("Balance") || out.includes("USDC"), "should show balance");
     assert.ok(out.includes("Tier") || out.includes("prototype"), "should show tier");
     // GH-32: the Projects line must say "saved", not the misleading "active"
@@ -4224,9 +4217,9 @@ describe("CLI e2e happy path", () => {
 
   it("init preserves an externally funded wallet and skips the faucet without a marker", async () => {
     const { run } = await import("./cli/lib/init.mjs");
-    const { readAllowance, saveAllowance } = await import("./cli/lib/config.mjs");
-    const original = readAllowance();
-    saveAllowance({ ...original, funded: false });
+    const { readWallet, saveWallet } = await import("./cli/lib/config.mjs");
+    const original = readWallet();
+    saveWallet({ ...original, funded: false });
     const previous = globalThis.fetch;
     let faucetCalls = 0;
     globalThis.fetch = async (input, init) => {
@@ -4243,9 +4236,9 @@ describe("CLI e2e happy path", () => {
     try {
       await run([]);
       assert.equal(faucetCalls, 0);
-      assert.equal(readAllowance().address, original.address);
-      assert.equal(readAllowance().funded, false);
-    } finally { captureStop(); globalThis.fetch = previous; saveAllowance(original); }
+      assert.equal(readWallet().address, original.address);
+      assert.equal(readWallet().funded, false);
+    } finally { captureStop(); globalThis.fetch = previous; saveWallet(original); }
   });
 
   it("init surfaces faucet cooldown and never recommends an immediately blocked deploy", async () => {
@@ -4268,7 +4261,7 @@ describe("CLI e2e happy path", () => {
     assert.equal(summary.funding.status,"blocked");
     assert.equal(summary.funding.retry_after,83160);
     assert.equal(summary.funding.limit_scope,"ip");
-    assert.match(summary.next_step,/allowance fund/);
+    assert.match(summary.next_step,/wallets fund/);
     assert.doesNotMatch(summary.next_step,/up|deploy/);
     assert.match(capturedStderr(),/2026-09-20T10:00:00Z/);
     assert.doesNotMatch(capturedStderr(),/Next: run402 up|Ready to deploy/);
@@ -4513,8 +4506,8 @@ describe("CLI e2e happy path", () => {
     assert.ok(out.includes("pathUSD"), "should show pathUSD");
     assert.ok(out.includes("mpp"), "should show mpp rail");
     // Verify rail saved
-    const allowance = JSON.parse(readFileSync(join(tempDir, "allowance.json"), "utf-8"));
-    assert.equal(allowance.rail, "mpp", "rail should be mpp");
+    const localWallet = JSON.parse(readFileSync(join(tempDir, "wallet.json"), "utf-8"));
+    assert.equal(localWallet.rail, "mpp", "rail should be mpp");
   });
 
   // GH-81: after MPP faucet succeeds, the JSON summary must reflect the polled
@@ -4536,16 +4529,16 @@ describe("CLI e2e happy path", () => {
       `balances.on_chain_usd_micros must reflect polled balance (>0) after faucet; got: ${parsed.balances.on_chain_usd_micros}`);
   });
 
-  it("allowance status (MPP rail)", async () => {
-    const { run } = await import("./cli/lib/allowance.mjs");
+  it("wallets current (MPP rail)", async () => {
+    const { run } = await import("./cli/lib/wallets.mjs");
     captureStart();
-    await run("status", []);
+    await run("current", []);
     captureStop();
     assert.ok(captured().includes("mpp"), "should show mpp rail");
   });
 
-  it("allowance balance (MPP rail)", async () => {
-    const { run } = await import("./cli/lib/allowance.mjs");
+  it("wallets balance (MPP rail)", async () => {
+    const { run } = await import("./cli/lib/wallets.mjs");
     captureStart();
     await run("balance", []);
     captureStop();
@@ -4554,9 +4547,9 @@ describe("CLI e2e happy path", () => {
     assert.ok(out.includes("mpp"), "should show mpp rail");
   });
 
-  it("allowance fund (MPP rail)", async () => {
+  it("wallets fund (MPP rail)", async () => {
     tempoRpcCallCount = 0; // reset so first call returns 0, faucet tops up
-    const { run } = await import("./cli/lib/allowance.mjs");
+    const { run } = await import("./cli/lib/wallets.mjs");
     captureStart();
     await run("fund", []);
     captureStop();
@@ -4574,8 +4567,8 @@ describe("CLI e2e happy path", () => {
     assert.ok(out.includes("Base Sepolia"), "should show Base Sepolia network");
     assert.ok(out.includes("x402"), "should show x402 rail");
     // Verify rail switched back
-    const allowance = JSON.parse(readFileSync(join(tempDir, "allowance.json"), "utf-8"));
-    assert.equal(allowance.rail, "x402", "rail should be x402");
+    const localWallet = JSON.parse(readFileSync(join(tempDir, "wallet.json"), "utf-8"));
+    assert.equal(localWallet.rail, "x402", "rail should be x402");
   });
 
   // ── Subcommand --help / -h (GH #48–67) ────────────────────────────────────
@@ -5250,14 +5243,14 @@ describe("CLI destructive delete --confirm guard (GH-212)", () => {
 
 // ── init <rail> --switch-rail guard (GH-210) ────────────────────────────────
 // `run402 init mpp` (or `init` with x402 default) must NOT silently switch the
-// persisted payment rail when the existing allowance is on the other rail.
+// persisted payment rail when the existing wallet is on the other rail.
 // Switching is destructive in the sense that it changes which network the
 // agent's autonomous payments will land on; it must be explicit.
 
 describe("CLI init rail-switch guard (GH-210)", () => {
-  async function seedAllowance(rail) {
-    const { saveAllowance } = await import("./cli/lib/config.mjs");
-    saveAllowance({
+  async function seedWallet(rail) {
+    const { saveWallet } = await import("./cli/lib/config.mjs");
+    saveWallet({
       address: "0x1234567890123456789012345678901234567890",
       privateKey: "0x" + "11".repeat(32),
       created: "2026-01-01T00:00:00.000Z",
@@ -5266,15 +5259,15 @@ describe("CLI init rail-switch guard (GH-210)", () => {
     });
   }
 
-  async function clearAllowance() {
-    const { ALLOWANCE_FILE } = await import("./cli/lib/config.mjs");
-    try { rmSync(ALLOWANCE_FILE, { force: true }); } catch {}
+  async function clearWallet() {
+    const { WALLET_FILE } = await import("./cli/lib/config.mjs");
+    try { rmSync(WALLET_FILE, { force: true }); } catch {}
   }
 
-  it("init mpp (no flag) on x402 allowance refuses and leaves rail unchanged", async () => {
-    await seedAllowance("x402");
-    const { ALLOWANCE_FILE } = await import("./cli/lib/config.mjs");
-    const before = JSON.parse(readFileSync(ALLOWANCE_FILE, "utf8"));
+  it("init mpp (no flag) on x402 wallet refuses and leaves rail unchanged", async () => {
+    await seedWallet("x402");
+    const { WALLET_FILE } = await import("./cli/lib/config.mjs");
+    const before = JSON.parse(readFileSync(WALLET_FILE, "utf8"));
     const { run } = await import("./cli/lib/init.mjs");
     let threw = null;
     captureStart();
@@ -5293,13 +5286,13 @@ describe("CLI init rail-switch guard (GH-210)", () => {
     assert.ok(/--switch-rail/.test(parsed.message), `message should mention --switch-rail, got: ${parsed.message}`);
     assert.equal(parsed.details?.current_rail, "x402");
     assert.equal(parsed.details?.requested_rail, "mpp");
-    const after = JSON.parse(readFileSync(ALLOWANCE_FILE, "utf8"));
-    assert.equal(after.rail, before.rail, "allowance.rail must NOT change without --switch-rail");
-    assert.equal(after.address, before.address, "allowance.address must not change");
+    const after = JSON.parse(readFileSync(WALLET_FILE, "utf8"));
+    assert.equal(after.rail, before.rail, "wallet.rail must NOT change without --switch-rail");
+    assert.equal(after.address, before.address, "wallet.address must not change");
   });
 
-  it("init mpp --switch-rail on x402 allowance proceeds and updates rail", async () => {
-    await seedAllowance("x402");
+  it("init mpp --switch-rail on x402 wallet proceeds and updates rail", async () => {
+    await seedWallet("x402");
     const { run } = await import("./cli/lib/init.mjs");
     let threw = null;
     captureStart();
@@ -5309,15 +5302,15 @@ describe("CLI init rail-switch guard (GH-210)", () => {
       captureStop();
     }
     assert.equal(threw, null, `should succeed, got: ${threw?.message || ""} / ${capturedStderr()}`);
-    const { ALLOWANCE_FILE } = await import("./cli/lib/config.mjs");
-    const after = JSON.parse(readFileSync(ALLOWANCE_FILE, "utf8"));
+    const { WALLET_FILE } = await import("./cli/lib/config.mjs");
+    const after = JSON.parse(readFileSync(WALLET_FILE, "utf8"));
     assert.equal(after.rail, "mpp", "rail should be updated to mpp");
     const out = captured();
     assert.ok(/Switched from x402/.test(out), `should retain "Switched from x402" UX note, got: ${out}`);
   });
 
-  it("init x402 on x402 allowance is idempotent (no flag needed)", async () => {
-    await seedAllowance("x402");
+  it("init x402 on x402 wallet is idempotent (no flag needed)", async () => {
+    await seedWallet("x402");
     const { run } = await import("./cli/lib/init.mjs");
     let threw = null;
     captureStart();
@@ -5327,13 +5320,13 @@ describe("CLI init rail-switch guard (GH-210)", () => {
       captureStop();
     }
     assert.equal(threw, null, `same-rail re-run should succeed, got: ${threw?.message || ""} / ${capturedStderr()}`);
-    const { ALLOWANCE_FILE } = await import("./cli/lib/config.mjs");
-    const after = JSON.parse(readFileSync(ALLOWANCE_FILE, "utf8"));
+    const { WALLET_FILE } = await import("./cli/lib/config.mjs");
+    const after = JSON.parse(readFileSync(WALLET_FILE, "utf8"));
     assert.equal(after.rail, "x402", "rail should remain x402");
   });
 
-  it("init mpp on mpp allowance is idempotent (no flag needed)", async () => {
-    await seedAllowance("mpp");
+  it("init mpp on mpp wallet is idempotent (no flag needed)", async () => {
+    await seedWallet("mpp");
     const { run } = await import("./cli/lib/init.mjs");
     let threw = null;
     captureStart();
@@ -5343,13 +5336,13 @@ describe("CLI init rail-switch guard (GH-210)", () => {
       captureStop();
     }
     assert.equal(threw, null, `same-rail re-run should succeed, got: ${threw?.message || ""} / ${capturedStderr()}`);
-    const { ALLOWANCE_FILE } = await import("./cli/lib/config.mjs");
-    const after = JSON.parse(readFileSync(ALLOWANCE_FILE, "utf8"));
+    const { WALLET_FILE } = await import("./cli/lib/config.mjs");
+    const after = JSON.parse(readFileSync(WALLET_FILE, "utf8"));
     assert.equal(after.rail, "mpp", "rail should remain mpp");
   });
 
-  it("init mpp with no existing allowance succeeds (no rail to switch from)", async () => {
-    await clearAllowance();
+  it("init mpp with no existing wallet succeeds (no rail to switch from)", async () => {
+    await clearWallet();
     const { run } = await import("./cli/lib/init.mjs");
     let threw = null;
     captureStart();
@@ -5359,15 +5352,15 @@ describe("CLI init rail-switch guard (GH-210)", () => {
       captureStop();
     }
     assert.equal(threw, null, `fresh init should succeed, got: ${threw?.message || ""} / ${capturedStderr()}`);
-    const { ALLOWANCE_FILE } = await import("./cli/lib/config.mjs");
-    const after = JSON.parse(readFileSync(ALLOWANCE_FILE, "utf8"));
-    assert.equal(after.rail, "mpp", "fresh allowance should be created with rail=mpp");
+    const { WALLET_FILE } = await import("./cli/lib/config.mjs");
+    const after = JSON.parse(readFileSync(WALLET_FILE, "utf8"));
+    assert.equal(after.rail, "mpp", "fresh wallet should be created with rail=mpp");
   });
 
-  it("init x402 (default) on mpp allowance refuses and leaves rail unchanged", async () => {
-    await seedAllowance("mpp");
-    const { ALLOWANCE_FILE } = await import("./cli/lib/config.mjs");
-    const before = JSON.parse(readFileSync(ALLOWANCE_FILE, "utf8"));
+  it("init x402 (default) on mpp wallet refuses and leaves rail unchanged", async () => {
+    await seedWallet("mpp");
+    const { WALLET_FILE } = await import("./cli/lib/config.mjs");
+    const before = JSON.parse(readFileSync(WALLET_FILE, "utf8"));
     const { run } = await import("./cli/lib/init.mjs");
     let threw = null;
     captureStart();
@@ -5384,8 +5377,8 @@ describe("CLI init rail-switch guard (GH-210)", () => {
     assert.equal(parsed.code, "RAIL_SWITCH_REQUIRES_CONFIRM");
     assert.equal(parsed.details?.current_rail, "mpp");
     assert.equal(parsed.details?.requested_rail, "x402");
-    const after = JSON.parse(readFileSync(ALLOWANCE_FILE, "utf8"));
-    assert.equal(after.rail, before.rail, "allowance.rail must NOT change without --switch-rail");
+    const after = JSON.parse(readFileSync(WALLET_FILE, "utf8"));
+    assert.equal(after.rail, before.rail, "wallet.rail must NOT change without --switch-rail");
   });
 });
 
@@ -5494,12 +5487,12 @@ describe("CLI canonical error envelope (GH-215, GH-174)", () => {
 describe("CLI status local-state inspection (cli-output-shape)", () => {
   // Per cli-output-shape spec: absence of local state is an informational
   // read, not an error. status exits 0 with `{ wallet: null, hint: "..." }`;
-  // allowance status exits 0 with `{ wallet: null, hint: "..." }`. The
-  // previous GH-191 contract (exit 1 + `status: "no_allowance"`) was retired
+  // wallets current exits 0 with `configured: false`. The
+  // previous GH-191 contract (exit 1 + `status: "no_wallet"`) was retired
   // in v3.0 as part of the CLI envelope normalization.
-  it("status with no allowance emits typed null wallet and exits 0", async () => {
-    const { ALLOWANCE_FILE } = await import("./cli/lib/config.mjs");
-    try { rmSync(ALLOWANCE_FILE, { force: true }); } catch {}
+  it("status with no local wallet emits typed null wallet and exits 0", async () => {
+    const { WALLET_FILE } = await import("./cli/lib/config.mjs");
+    try { rmSync(WALLET_FILE, { force: true }); } catch {}
     const { run } = await import("./cli/lib/status.mjs");
     let threw = null;
     captureStart();
@@ -5508,7 +5501,7 @@ describe("CLI status local-state inspection (cli-output-shape)", () => {
     } catch (e) { threw = e; } finally {
       captureStop();
     }
-    assert.equal(threw, null, `status with no allowance must exit 0, got: ${threw?.message}`);
+    assert.equal(threw, null, `status with no local wallet must exit 0, got: ${threw?.message}`);
     const stdout = capturedStdout();
     const line = stdout.split("\n").find(s => s.trim().startsWith("{"));
     assert.ok(line, `should emit payload on stdout, got: ${stdout}`);
@@ -5518,19 +5511,19 @@ describe("CLI status local-state inspection (cli-output-shape)", () => {
     assert.ok(parsed.hint && /run402 init/.test(parsed.hint), `hint must guide to next step, got: ${parsed.hint}`);
   });
 
-  it("allowance status with no wallet emits typed null wallet and exits 0", async () => {
-    const { ALLOWANCE_FILE } = await import("./cli/lib/config.mjs");
-    try { rmSync(ALLOWANCE_FILE, { force: true }); } catch {}
-    const { run } = await import("./cli/lib/allowance.mjs");
+  it("wallets current with no local wallet reports configured: false and exits 0", async () => {
+    const { WALLET_FILE } = await import("./cli/lib/config.mjs");
+    try { rmSync(WALLET_FILE, { force: true }); } catch {}
+    const { run } = await import("./cli/lib/wallets.mjs");
     let threw = null;
     captureStart();
     try {
-      await run("status", []);
+      await run("current", []);
     } catch (e) { threw = e; } finally {
       captureStop();
-      // Restore the allowance for any following test that expects it set.
-      const { saveAllowance } = await import("./cli/lib/config.mjs");
-      saveAllowance({
+      // Restore the wallet for any following test that expects it set.
+      const { saveWallet } = await import("./cli/lib/config.mjs");
+      saveWallet({
         address: "0x1234567890123456789012345678901234567890",
         privateKey: "0x" + "11".repeat(32),
         created: "2026-01-01T00:00:00.000Z",
@@ -5538,20 +5531,18 @@ describe("CLI status local-state inspection (cli-output-shape)", () => {
         rail: "x402",
       });
     }
-    assert.equal(threw, null, `allowance status with no wallet must exit 0, got: ${threw?.message}`);
-    const stdout = capturedStdout();
-    const parsed = JSON.parse(stdout.split("\n").find(s => s.trim().startsWith("{")) || "{}");
-    assert.equal(parsed.status, undefined, "must not emit a top-level status field");
-    assert.equal(parsed.wallet, null, "wallet must be typed null when absent");
-    assert.ok(parsed.hint && /run402 allowance create/.test(parsed.hint), `hint must guide to next step, got: ${parsed.hint}`);
+    assert.equal(threw, null, `wallets current with no local wallet must exit 0, got: ${threw?.message}`);
+    const parsed = JSON.parse(capturedStdout());
+    assert.equal(parsed.configured, false, "configured must be false when no local wallet exists");
+    assert.equal(parsed.next_actions?.[0]?.command, "run402 init", `next action must guide to init, got: ${JSON.stringify(parsed.next_actions)}`);
   });
 });
 
-describe("CLI malformed allowance.json (GH-194)", () => {
+describe("CLI malformed wallet.json (GH-194)", () => {
   // The bug: valid JSON with the wrong shape (e.g. `{}` or a too-short
   // `privateKey`) used to crash the CLI with raw Node stack traces and source
-  // path leaks. The fix validates shape in core's `readAllowance()` and
-  // converts the throw into a structured `BAD_ALLOWANCE_FILE` envelope at the
+  // path leaks. The fix validates shape in core's `readWallet()` and
+  // converts the throw into a structured `BAD_WALLET_FILE` envelope at the
   // CLI wrapper.
   function parseStderrJson() {
     const stderr = capturedStderr();
@@ -5560,9 +5551,9 @@ describe("CLI malformed allowance.json (GH-194)", () => {
     return JSON.parse(line);
   }
 
-  function restoreValidAllowance() {
-    return import("./cli/lib/config.mjs").then(({ saveAllowance }) =>
-      saveAllowance({
+  function restoreValidWallet() {
+    return import("./cli/lib/config.mjs").then(({ saveWallet }) =>
+      saveWallet({
         address: "0x1234567890123456789012345678901234567890",
         privateKey: "0x" + "11".repeat(32),
         created: "2026-01-01T00:00:00.000Z",
@@ -5572,10 +5563,10 @@ describe("CLI malformed allowance.json (GH-194)", () => {
     );
   }
 
-  it("status with empty-object allowance.json emits BAD_ALLOWANCE_FILE (no stack trace)", async () => {
-    const { ALLOWANCE_FILE } = await import("./cli/lib/config.mjs");
+  it("status with empty-object wallet.json emits BAD_WALLET_FILE (no stack trace)", async () => {
+    const { WALLET_FILE } = await import("./cli/lib/config.mjs");
     const fs = await import("node:fs");
-    fs.writeFileSync(ALLOWANCE_FILE, "{}");
+    fs.writeFileSync(WALLET_FILE, "{}");
     const { run } = await import("./cli/lib/status.mjs");
     let threw = null;
     captureStart();
@@ -5583,10 +5574,10 @@ describe("CLI malformed allowance.json (GH-194)", () => {
       await run([]);
     } catch (e) { threw = e; } finally {
       captureStop();
-      await restoreValidAllowance();
+      await restoreValidWallet();
     }
     assert.equal(threw?.message, "process.exit(1)",
-      `status with malformed allowance must exit 1, got: ${threw?.message || "no exit"}`);
+      `status with malformed wallet must exit 1, got: ${threw?.message || "no exit"}`);
     const out = captured();
     // Must NOT leak Node internals or source paths.
     assert.ok(!/TypeError/.test(out), `must not leak TypeError stack, got: ${out}`);
@@ -5596,18 +5587,18 @@ describe("CLI malformed allowance.json (GH-194)", () => {
     // Must surface a structured error envelope.
     const parsed = parseStderrJson();
     assert.equal(parsed.status, "error");
-    assert.equal(parsed.code, "BAD_ALLOWANCE_FILE",
-      `code should be BAD_ALLOWANCE_FILE; got: ${JSON.stringify(parsed)}`);
+    assert.equal(parsed.code, "BAD_WALLET_FILE",
+      `code should be BAD_WALLET_FILE; got: ${JSON.stringify(parsed)}`);
     assert.ok(/address/i.test(parsed.message),
       `message should mention the missing address; got: ${parsed.message}`);
     assert.ok(/run402 init/.test(parsed.hint || parsed.message),
       `output should suggest 'run402 init' as the recovery; got: ${JSON.stringify(parsed)}`);
   });
 
-  it("status with too-short privateKey emits BAD_ALLOWANCE_FILE (no noble stack trace)", async () => {
-    const { ALLOWANCE_FILE } = await import("./cli/lib/config.mjs");
+  it("status with too-short privateKey emits BAD_WALLET_FILE (no noble stack trace)", async () => {
+    const { WALLET_FILE } = await import("./cli/lib/config.mjs");
     const fs = await import("node:fs");
-    fs.writeFileSync(ALLOWANCE_FILE, JSON.stringify({
+    fs.writeFileSync(WALLET_FILE, JSON.stringify({
       address: "0xa1234567890abcdef1234567890abcdef1234567",
       privateKey: "0xdeadbeef",
       weirdfield: "value",
@@ -5619,7 +5610,7 @@ describe("CLI malformed allowance.json (GH-194)", () => {
       await run([]);
     } catch (e) { threw = e; } finally {
       captureStop();
-      await restoreValidAllowance();
+      await restoreValidWallet();
     }
     assert.equal(threw?.message, "process.exit(1)");
     const out = captured();
@@ -5629,15 +5620,15 @@ describe("CLI malformed allowance.json (GH-194)", () => {
     assert.ok(!/@noble/.test(out), `must not leak the @noble import path, got: ${out}`);
     const parsed = parseStderrJson();
     assert.equal(parsed.status, "error");
-    assert.equal(parsed.code, "BAD_ALLOWANCE_FILE");
+    assert.equal(parsed.code, "BAD_WALLET_FILE");
     assert.ok(/privateKey/i.test(parsed.message),
       `message should mention privateKey; got: ${parsed.message}`);
   });
 
-  it("status with unparseable allowance.json still surfaces as typed null wallet (existing UX preserved)", async () => {
-    const { ALLOWANCE_FILE } = await import("./cli/lib/config.mjs");
+  it("status with unparseable wallet.json still surfaces as typed null wallet (existing UX preserved)", async () => {
+    const { WALLET_FILE } = await import("./cli/lib/config.mjs");
     const fs = await import("node:fs");
-    fs.writeFileSync(ALLOWANCE_FILE, "not json");
+    fs.writeFileSync(WALLET_FILE, "not json");
     const { run } = await import("./cli/lib/status.mjs");
     let threw = null;
     captureStart();
@@ -5645,16 +5636,16 @@ describe("CLI malformed allowance.json (GH-194)", () => {
       await run([]);
     } catch (e) { threw = e; } finally {
       captureStop();
-      await restoreValidAllowance();
+      await restoreValidWallet();
     }
-    assert.equal(threw, null, `status with unparseable allowance must exit 0, got: ${threw?.message}`);
+    assert.equal(threw, null, `status with unparseable wallet must exit 0, got: ${threw?.message}`);
     const stdout = capturedStdout();
     const line = stdout.split("\n").find(s => s.trim().startsWith("{"));
     assert.ok(line, `should emit payload on stdout, got: ${stdout}`);
     const parsed = JSON.parse(line);
     assert.equal(parsed.status, undefined, "must not emit a top-level status field");
     assert.equal(parsed.wallet, null,
-      `unparseable JSON should surface as typed null wallet (no BAD_ALLOWANCE_FILE error envelope); got: ${JSON.stringify(parsed)}`);
+      `unparseable JSON should surface as typed null wallet (no BAD_WALLET_FILE error envelope); got: ${JSON.stringify(parsed)}`);
   });
 });
 
@@ -5919,14 +5910,14 @@ describe("CLI subdomains list --project", () => {
 // `bytes_sent` so callers can confirm the payload size that landed.
 
 describe("CLI message send size cap (GH-175)", () => {
-  // The cap check must run BEFORE the allowance check so that oversize
-  // payloads surface MESSAGE_TOO_LONG regardless of allowance state. We
-  // still seed an allowance here so the happy-path 8192-byte / "hi" tests
-  // can reach the SDK call (otherwise the missing-allowance early exit fires
+  // The cap check must run BEFORE the wallet check so that oversize
+  // payloads surface MESSAGE_TOO_LONG regardless of wallet state. We
+  // still seed a wallet here so the happy-path 8192-byte / "hi" tests
+  // can reach the SDK call (otherwise the missing-wallet early exit fires
   // first).
   before(async () => {
-    const { saveAllowance } = await import("./cli/lib/config.mjs");
-    saveAllowance({
+    const { saveWallet } = await import("./cli/lib/config.mjs");
+    saveWallet({
       address: "0x1234567890123456789012345678901234567890",
       privateKey: "0x" + "11".repeat(32),
       created: "2026-01-01T00:00:00.000Z",

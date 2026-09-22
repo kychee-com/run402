@@ -3,7 +3,7 @@
  *
  * Wires the isomorphic SDK kernel with:
  *   - default API base from `RUN402_API_BASE` (via core/config)
- *   - {@link NodeCredentialsProvider} backed by the local keystore + allowance
+ *   - {@link NodeCredentialsProvider} backed by the local keystore + wallet
  *   - an x402-wrapped fetch built lazily on first request
  *   - {@link NodeSites}: the `sites` namespace enriched with `deployDir(dir)`
  *
@@ -65,9 +65,9 @@ export interface NodeRun402Options {
   keystorePath?: string;
   /** Override the non-secret profile state path. Defaults to state.json. */
   profileStatePath?: string;
-  /** Override the allowance file path. Defaults to the standard location. */
-  allowancePath?: string;
-  /** Override the credentials provider. Defaults to the local Node keystore + allowance provider. */
+  /** Override the wallet file path. Defaults to the standard location. */
+  walletPath?: string;
+  /** Override the credentials provider. Defaults to the local Node keystore + wallet provider. */
   credentials?: CredentialsProvider;
   /**
    * A delegate bearer minted by a project owner (`run402 delegates create`).
@@ -79,7 +79,7 @@ export interface NodeRun402Options {
   /**
    * Explicit async x402 signer (for example KMS/HSM backed). The provider
    * exposes only a public address plus signing operations, never a raw key.
-   * Mutually exclusive with `allowancePath`. Auth still comes from
+   * Mutually exclusive with `walletPath`. Auth still comes from
    * `credentials`, so the authenticated principal and payer may differ.
    */
   paymentSigner?: EvmPaymentSignerProvider;
@@ -127,26 +127,26 @@ export type NodeRun402 = Omit<Run402, "sites" | "assets" | "archives"> & {
  * Construct a Run402 client wired with Node defaults.
  *
  * Behavior matches today's `run402-mcp` / `run402` CLI: reads keystore and
- * allowance from disk, signs SIWX headers, and retries 402 responses via
- * `@x402/fetch` when the allowance wallet has USDC balance.
+ * wallet from disk, signs SIWX headers, and retries 402 responses via
+ * `@x402/fetch` when the wallet has USDC balance.
  *
  * The returned instance's `sites` namespace is a {@link NodeSites}, which
  * exposes the `deployDir({ dir })` helper.
  */
 export function run402(opts: NodeRun402Options = {}): NodeRun402 {
-  if (opts.paymentSigner && opts.allowancePath) {
+  if (opts.paymentSigner && opts.walletPath) {
     throw new LocalError(
-      "Configure exactly one explicit payment source: paymentSigner or allowancePath",
+      "Configure exactly one explicit payment source: paymentSigner or walletPath",
       "constructing client",
       {
         code: "PAYMENT_SOURCE_CONFLICT",
-        details: { fields: ["paymentSigner", "allowancePath"] },
+        details: { fields: ["paymentSigner", "walletPath"] },
       },
     );
   }
   const apiBase = opts.apiBase ?? getApiBase();
   const credentials = opts.credentials ?? new NodeCredentialsProvider({
-    allowancePath: opts.allowancePath,
+    walletPath: opts.walletPath,
     keystorePath: opts.keystorePath,
     profileStatePath: opts.profileStatePath,
     surface: opts.surface,
@@ -156,7 +156,7 @@ export function run402(opts: NodeRun402Options = {}): NodeRun402 {
   let lazyPaidFetch: LazyPaidFetch | undefined;
   if (!opts.fetch && !opts.disablePaidFetch) {
     lazyPaidFetch = createLazyPaidFetch({
-      allowancePath: opts.allowancePath,
+      walletPath: opts.walletPath,
       credentials: opts.credentials ? credentials : undefined,
       paymentSigner: opts.paymentSigner,
       apiBase,

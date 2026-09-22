@@ -3371,23 +3371,23 @@ export class Gitvault {
   }
 
   /**
-   * Create this machine's wallet (the allowance file) when the credentials
+   * Create this machine's wallet (the wallet file) when the credentials
    * provider supports one and none exists yet. A keypair on disk — no
    * faucet, no tier, no payment. Pure no-op for a provider without the
-   * optional allowance methods, or when an allowance already exists.
+   * optional wallet methods, or when a wallet already exists.
    */
   async #ensureLocalWallet(onLine?: (line: string) => void): Promise<void> {
     const creds = this.#client.credentials;
-    if (!creds.readAllowance || !creds.createAllowance || !creds.saveAllowance) return;
-    if (await creds.readAllowance()) return;
-    const created = await creds.createAllowance();
-    await creds.saveAllowance(created);
+    if (!creds.readWallet || !creds.createWallet || !creds.saveWallet) return;
+    if (await creds.readWallet()) return;
+    const created = await creds.createWallet();
+    await creds.saveWallet(created);
     onLine?.(`wallet created for this machine: ${created.address} (a keypair on disk — no payment)`);
   }
 
   /**
    * Resume a Handoff Key: parse → ensure this machine has a wallet (the
-   * claim is bare SIWX, so on a fresh machine the allowance file is created
+   * claim is bare SIWX, so on a fresh machine the wallet file is created
    * here — a keypair on disk, no faucet, no tier, no payment, ever; design
    * D5) → redeem → open the
    * sealed envelope → write the repo file to the keystore BEFORE touching
@@ -3430,12 +3430,12 @@ export class Gitvault {
     // accepts ONLY a SIWX wallet signature (a control-plane session,
     // delegate, or service key is refused HANDOFF_REDEEM_REQUIRES_WALLET —
     // the keystore key the redemption publishes is what makes the recipient a
-    // real key-holder). Nothing upstream creates the allowance for an
+    // real key-holder). Nothing upstream creates the wallet for an
     // unpaid request, so `resume` does it here, exactly as `repos resume
-    // --help` promises: a keypair written to the allowance file, no
+    // --help` promises: a keypair written to the wallet file, no
     // faucet, no tier, no payment. Without it a bare machine answers
     // AUTH_REQUIRED. A provider without
-    // allowance support (an isomorphic one) is left alone — it
+    // wallet support (an isomorphic one) is left alone — it
     // authenticates however it authenticates.
     await this.#ensureLocalWallet(options.onLine);
 
@@ -3703,7 +3703,7 @@ export class Gitvault {
    * Join an Invite Key: parse (refusing a `kgh1_` handoff key by name,
    * pointing at `resume` — design D9) → ensure this machine has a wallet
    * (design D5, mirroring {@link Gitvault.resume}'s own bare-wallet
-   * backstop; the CALLER folds the fuller cold-start chain — allowance,
+   * backstop; the CALLER folds the fuller cold-start chain — wallet,
    * faucet, one x402 prototype payment — before invoking this, never
    * blocking the redemption itself) → redeem → open the sealed envelope → write
    * the repo file to the keystore BEFORE touching disk → clone at the base

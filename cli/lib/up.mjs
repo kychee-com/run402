@@ -7,7 +7,7 @@ import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 import { assertKnownFlags, flagValue, normalizeArgv, positionalArgs } from "./argparse.mjs";
 import { createUpdateCheckScheduler, emitUpdateNotice } from "./update-check.mjs";
-import { allowanceAuthHeaders, isCoreApiTarget, updateProject } from "./config.mjs";
+import { walletAuthHeaders, isCoreApiTarget, updateProject } from "./config.mjs";
 import { loadLiveControlPlaneSession } from "../core-dist/control-plane-session.js";
 
 const HELP = `run402 up — Provision/link/deploy the current app
@@ -27,7 +27,7 @@ Options:
   --dir <path>        Workspace directory to inspect (default: current dir).
   --tier <tier>       Bootstrap tier if no active Cloud tier exists
                       (prototype, hobby, team; default prototype).
-  -y, --yes           Approve recursive prerequisites/local writes (allowance,
+  -y, --yes           Approve recursive prerequisites/local writes (wallet,
                       tier, project creation, workspace link) for non-interactive runs.
   --check             Validate the manifest/config locally and print the
                       preflight, including the site inventory by content type
@@ -773,12 +773,12 @@ async function readLocalGitState(workDir) {
  * inside `up`'s mental model" entry point to the same outcome.
  */
 async function runRepoOnly({ sdk, workDir, createdRepository, nested = false, opts, tier, idempotencyKey }) {
-  // `sdk.up()`'s action graph auto-approves prerequisites (allowance, tier)
+  // `sdk.up()`'s action graph auto-approves prerequisites (wallet, tier)
   // for a cold start; calling projects.provision directly bypasses that, so
   // this mirrors the SAME gate `run402 projects provision` itself uses —
-  // fail with the actionable NO_ALLOWANCE guidance rather than an opaque
+  // fail with the actionable NO_WALLET guidance rather than an opaque
   // auth error from the gateway.
-  if (!isCoreApiTarget() && !loadLiveControlPlaneSession()) allowanceAuthHeaders("/projects/v1");
+  if (!isCoreApiTarget() && !loadLiveControlPlaneSession()) walletAuthHeaders("/projects/v1");
   const name = flagValue(opts, "--name") ?? undefined;
   const provisioned = await sdk.projects.provision({ tier, name, idempotencyKey });
   createdRepository = await gitInitIfNeeded(workDir);

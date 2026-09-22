@@ -43,7 +43,7 @@ import {
 } from "#sdk/node";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
-import { API, allowanceAuthHeaders, getActiveProjectId, resolveProjectId, isCoreApiTarget, updateProject } from "./config.mjs";
+import { API, walletAuthHeaders, getActiveProjectId, resolveProjectId, isCoreApiTarget, updateProject } from "./config.mjs";
 import { delegateTokenFromEnv } from "#sdk/node";
 import { flagValue, normalizeArgv } from "./argparse.mjs";
 import { loadLiveControlPlaneSession } from "../core-dist/control-plane-session.js";
@@ -490,7 +490,7 @@ async function rehearseCmd(rawArgs) {
   // supports rehearsing with one (the route rejects only CI sessions).
   // Rehearsal is the SAFE path; never make it the harder one.
   if (!isCoreApiTarget() && !loadLiveControlPlaneSession() && !delegateTokenFromEnv()) {
-    allowanceAuthHeaders(`/apply/v1/plans/${givenPlanId ?? "_"}/rehearse`);
+    walletAuthHeaders(`/apply/v1/plans/${givenPlanId ?? "_"}/rehearse`);
   }
   const sdk = getSdk();
   const emit = makeStderrEventWriter(false);
@@ -721,11 +721,11 @@ async function promoteCmd(args) {
   emitDeployUpdateNotice("promote", args, { quiet: opts.quiet });
   const projectId = opts.project ?? resolveProjectId(null);
 
-  // Preserve the aggressive early-exit when no allowance is configured
+  // Preserve the aggressive early-exit when no local wallet is configured
   // — same as apply.
   // A delegate holds `deploy` and the gateway accepts it on this route; refusing
   // locally would tell a wallet-less holder to run `run402 init` (see 4.11.2).
-  if (!delegateTokenFromEnv()) allowanceAuthHeaders("/apply/v1/releases");
+  if (!delegateTokenFromEnv()) walletAuthHeaders("/apply/v1/releases");
 
   try {
     // Call the engine directly (matches the pattern used by apply / resume
@@ -1304,16 +1304,16 @@ async function deployCmd(args) {
   } else if (delegateToken) {
     // A delegate is a complete, self-contained deploy credential: the owner
     // minted it with their wallet and handed it over, so this process needs no
-    // allowance of its own. Skipping the guard is the point — an agent that
+    // wallet of its own. Skipping the guard is the point — an agent that
     // lost its local state (or never had a wallet) can still deploy. Paid fetch
     // is disabled for the same reason it is under CI: a delegate authorizes
     // deploys, not spending.
     sdkOpts = { delegateToken, disablePaidFetch: true };
   } else if (!isCoreApiTarget() && !loadLiveControlPlaneSession()) {
-    // Aggressive early exit when no allowance is configured — unless a
+    // Aggressive early exit when no local wallet is configured — unless a
     // wallet-less human is deploying via their operator (control-plane) session
     // or the active target is a self-hosted Core Gateway.
-    allowanceAuthHeaders("/apply/v1/plans");
+    walletAuthHeaders("/apply/v1/plans");
   }
 
   try {
@@ -1768,7 +1768,7 @@ async function resumeCmd(args) {
 
   // A delegate holds `deploy` and the gateway accepts it on this route; refusing
   // locally would tell a wallet-less holder to run `run402 init` (see 4.11.2).
-  if (!delegateTokenFromEnv()) allowanceAuthHeaders("/apply/v1/operations");
+  if (!delegateTokenFromEnv()) walletAuthHeaders("/apply/v1/operations");
 
   try {
     const result = await getSdk({ disablePaidFetch: true })._applyEngine.resume(opts.operationId, {
@@ -1796,7 +1796,7 @@ async function statusCmd(args) {
   const project = resolveProjectId(parsed.flags["--project"] ?? null);
   // A delegate holds `deploy` and the gateway accepts it on this route; refusing
   // locally would tell a wallet-less holder to run `run402 init` (see 4.11.2).
-  if (!delegateTokenFromEnv()) allowanceAuthHeaders("/apply/v1/operations");
+  if (!delegateTokenFromEnv()) walletAuthHeaders("/apply/v1/operations");
 
   try {
     const result = await getSdk()._applyEngine.status(operationId, { project });
@@ -1829,7 +1829,7 @@ async function listCmd(args) {
   // ever widened, widen the ROUTE first, then this guard.
   //
   // The refusal is correct; the REMEDY must still be honest. Falling through
-  // to NO_ALLOWANCE would tell a delegate holder to run `run402 init`, which
+  // to NO_WALLET would tell a delegate holder to run `run402 init`, which
   // is wrong for a credential that is wallet-less by design — the same
   // misleading-remedy shape removed from the payment path in 4.11.2.
   if (delegateTokenFromEnv()) {
@@ -1843,7 +1843,7 @@ async function listCmd(args) {
       ],
     });
   }
-  allowanceAuthHeaders("/apply/v1/operations");
+  walletAuthHeaders("/apply/v1/operations");
 
   try {
     const sdkOpts = { project };
@@ -1872,7 +1872,7 @@ async function eventsCmd(args) {
   const project = resolveProjectId(opts.project);
   // A delegate holds `deploy` and the gateway accepts it on this route; refusing
   // locally would tell a wallet-less holder to run `run402 init` (see 4.11.2).
-  if (!delegateTokenFromEnv()) allowanceAuthHeaders("/apply/v1/operations");
+  if (!delegateTokenFromEnv()) walletAuthHeaders("/apply/v1/operations");
 
   try {
     const result = await getSdk()._applyEngine.events(opts.operationId, { project });
@@ -1918,7 +1918,7 @@ async function verifyCmd(args) {
 
   // A delegate holds `deploy` and the gateway accepts it on this route; refusing
   // locally would tell a wallet-less holder to run `run402 init` (see 4.11.2).
-  if (!delegateTokenFromEnv()) allowanceAuthHeaders("/apply/v1/operations");
+  if (!delegateTokenFromEnv()) walletAuthHeaders("/apply/v1/operations");
 
   try {
     let result;

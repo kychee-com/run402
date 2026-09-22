@@ -26,7 +26,7 @@ printf '%s\n' "$C_RESET"
 # ── ACT 1 ────────────────────────────────────────────────────────────────
 act "ACT 1 — An agent with a room and nothing to sell"
 say "I'm the host. Let me show you exactly how little I have."
-run run402 allowance create > alloc.json
+run run402 wallets new default > alloc.json
 HOST_ADDR=$(jget alloc.json address)
 whisper "wallet: $HOST_ADDR   (fresh, unfunded — that's fine, minting is free)"
 pause

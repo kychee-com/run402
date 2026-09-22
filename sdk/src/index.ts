@@ -3,7 +3,7 @@
  *
  * This is the isomorphic entry point. Works in Node 22, Deno, Bun, and V8
  * isolates with no filesystem. For Node consumers that want zero-config
- * defaults (keystore + allowance + x402), use `@run402/sdk/node` instead.
+ * defaults (keystore + wallet + x402), use `@run402/sdk/node` instead.
  */
 
 import { buildClient, type Client, type ClientStats, type KernelConfig, type Run402ClientMetadata } from "./kernel.js";
@@ -18,7 +18,6 @@ import { Domains } from "./namespaces/domains.js";
 import { Sites } from "./namespaces/sites.js";
 import { Service } from "./namespaces/service.js";
 import { Tier } from "./namespaces/tier.js";
-import { Allowance } from "./namespaces/allowance.js";
 import { Ai } from "./namespaces/ai.js";
 import { Auth } from "./namespaces/auth.js";
 import { Billing } from "./namespaces/billing.js";
@@ -87,7 +86,6 @@ export class Run402 {
   readonly sites: Sites;
   readonly service: Service;
   readonly tier: Tier;
-  readonly allowance: Allowance;
   readonly ai: Ai;
   readonly image!: Ai;
   readonly auth: Auth;
@@ -173,7 +171,7 @@ export class Run402 {
   readonly errors: Errors;
   /** Public dual-proof associations between the active agent principal and external identities. */
   readonly identityLinks: IdentityLinks;
-  /** The calling agent's own facts: its Lightning wallet (the Lightning allowance). */
+  /** The calling agent's own facts: its Lightning wallet. */
   readonly agent: Agent;
   /** Buzz human adoption, community installation, and bounded agent enrollment workflows. */
   readonly buzz: Buzz;
@@ -247,7 +245,6 @@ export class Run402 {
     this.sites = new Sites(client);
     this.service = new Service(client);
     this.tier = new Tier(client);
-    this.allowance = new Allowance(client);
     this.ai = new Ai(client);
     Object.defineProperty(this, "image", {
       value: this.ai,
@@ -383,14 +380,14 @@ export class Run402 {
    * `activeProject` is the currently-selected project id (null if none).
    *
    * Degrades gracefully: providers that don't implement `getWalletIdentity`
-   * (sandbox/session) still get `address` from `readAllowance` when available.
+   * (sandbox/session) still get `address` from `readWallet` when available.
    */
   async whoami(): Promise<WhoAmI> {
     const creds = this.#client.credentials;
     const identity = creds.getWalletIdentity ? await creds.getWalletIdentity.call(creds) : null;
     let address = identity?.address ?? null;
-    if (address == null && creds.readAllowance) {
-      address = (await creds.readAllowance.call(creds))?.address ?? null;
+    if (address == null && creds.readWallet) {
+      address = (await creds.readWallet.call(creds))?.address ?? null;
     }
     const activeProject = creds.getActiveProject
       ? await creds.getActiveProject.call(creds)
@@ -422,7 +419,7 @@ export interface WhoAmI {
   local_label: string | null;
   /** Server-side display label, cached locally; null when unknown/offline. */
   server_label: string | null;
-  /** Wallet address, or null when no allowance is configured. */
+  /** Wallet address, or null when no local wallet is configured. */
   address: string | null;
   /** Active project id, or null when none is selected. */
   activeProject: string | null;
@@ -595,7 +592,6 @@ export type * from "./namespaces/admin.js";
 export type * from "./namespaces/transfers.js";
 export { Transfers } from "./namespaces/transfers.js";
 export type * from "./namespaces/ai.js";
-export type * from "./namespaces/allowance.js";
 export type * from "./namespaces/apps.js";
 export type * from "./namespaces/auth.js";
 export type * from "./namespaces/billing.js";

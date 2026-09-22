@@ -1,4 +1,4 @@
-import { allowanceAuthHeaders } from "./config.mjs";
+import { walletAuthHeaders } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 import { assertKnownFlags, flagValue, normalizeArgv, positionalArgs, validateWebhookUrl, failUnknownSubcommand } from "./argparse.mjs";
@@ -12,7 +12,7 @@ Usage:
   run402 agent passkey enroll
 
 Notes:
-  - Free with allowance auth
+  - Free with SIWX auth
   - Registers contact info so Run402 can reach your agent
   - Only name is required; email and webhook are optional
   - New or changed emails start reply verification
@@ -39,7 +39,7 @@ Options:
                       agent
 
 Notes:
-  - Free with allowance auth (run an 'allowance create' first)
+  - Free with SIWX auth (run 'run402 init' first)
   - Registers contact info so Run402 can reach your agent
   - New or changed emails start a reply challenge and return
     assurance_level without exposing the challenge secret
@@ -93,12 +93,12 @@ async function contact(args) {
   if (!name) {
     fail({ code: "BAD_USAGE", message: "Missing --name <name>" });
   }
-  // validate webhook scheme locally BEFORE the allowance check so
-  // bad URLs fail fast even without an allowance configured. No-op when
+  // validate webhook scheme locally BEFORE the wallet check so
+  // bad URLs fail fast even without a wallet configured. No-op when
   // --webhook is omitted (it's optional).
   validateWebhookUrl(webhook, "--webhook");
-  // Preserve the aggressive early exit when no allowance is configured.
-  allowanceAuthHeaders("/agent/v1/contact");
+  // Preserve the aggressive early exit when no local wallet is configured.
+  walletAuthHeaders("/agent/v1/contact");
 
   try {
     const data = await getSdk().admin.setAgentContact({
@@ -119,7 +119,7 @@ async function status(args = []) {
   if (extra.length > 0) {
     fail({ code: "BAD_USAGE", message: `Unexpected argument for agent status: ${extra[0]}` });
   }
-  allowanceAuthHeaders("/agent/v1/contact/status");
+  walletAuthHeaders("/agent/v1/contact/status");
 
   try {
     const sdk = getSdk();
@@ -150,7 +150,7 @@ async function verifyEmail(args = []) {
   if (extra.length > 0) {
     fail({ code: "BAD_USAGE", message: `Unexpected argument for agent verify-email: ${extra[0]}` });
   }
-  allowanceAuthHeaders("/agent/v1/contact/verify-email");
+  walletAuthHeaders("/agent/v1/contact/verify-email");
 
   try {
     const data = await getSdk().admin.verifyAgentContactEmail();
@@ -171,7 +171,7 @@ async function passkey(args) {
   if (action !== "enroll") {
     fail({ code: "BAD_USAGE", message: "Usage: run402 agent passkey enroll" });
   }
-  allowanceAuthHeaders("/agent/v1/contact/passkey/enroll");
+  walletAuthHeaders("/agent/v1/contact/passkey/enroll");
 
   try {
     const data = await getSdk().admin.startOperatorPasskeyEnrollment();

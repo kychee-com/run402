@@ -276,15 +276,6 @@ describe("unknown flags", () => {
     assert.equal(calls.length, 0, "invalid argv must not hit the network");
   });
 
-  it("allowance export rejects unknown flags before doing any work (GH-572)", async () => {
-    const { run } = await import("./cli/lib/allowance.mjs");
-    const err = await expectExit1(() => run("export", ["--bogusflag"]));
-
-    assert.equal(err.code, "UNKNOWN_FLAG");
-    assert.equal(err.details.flag, "--bogusflag");
-    assert.equal(calls.length, 0, "invalid argv must not hit the network");
-  });
-
   it("functions logs rejects unknown flags before fetching logs (GH-190)", async () => {
     const { run } = await import("./cli/lib/functions.mjs");
     const err = await expectExit1(() =>
@@ -2151,9 +2142,9 @@ describe("CLI JSON-only output contract (v3.x cleanup)", () => {
 
   it("init emits JSON on stdout and human banner on stderr (no --json flag)", async () => {
     const { run } = await import("./cli/lib/init.mjs");
-    // Seed allowance so init takes the same-rail idempotent path (no faucet).
-    const { saveAllowance } = await import("./cli/core-dist/allowance.js");
-    saveAllowance({ address: "0x0000000000000000000000000000000000000001", privateKey: "0x" + "00".repeat(32), rail: "x402", funded: true, created: new Date().toISOString() });
+    // Seed wallet so init takes the same-rail idempotent path (no faucet).
+    const { saveWallet } = await import("./cli/core-dist/wallet.js");
+    saveWallet({ address: "0x0000000000000000000000000000000000000001", privateKey: "0x" + "00".repeat(32), rail: "x402", funded: true, created: new Date().toISOString() });
     const prevFetch = globalThis.fetch;
     globalThis.fetch = (input, init) => {
       const info = requestInfo(input, init);
@@ -2235,9 +2226,9 @@ describe("CLI JSON-only output contract (v3.x cleanup)", () => {
     assert.ok(Array.isArray(parsed.checks), "doctor stdout should have checks array");
   });
 
-  it("doctor --verbose output redacts allowance privateKey (GH-571)", async () => {
-    const { saveAllowance } = await import("./cli/core-dist/allowance.js");
-    saveAllowance({
+  it("doctor --verbose output redacts wallet privateKey (GH-571)", async () => {
+    const { saveWallet } = await import("./cli/core-dist/wallet.js");
+    saveWallet({
       address: "0x0000000000000000000000000000000000000001",
       privateKey: "0x" + "11".repeat(32),
       rail: "x402",
@@ -2258,15 +2249,15 @@ describe("CLI JSON-only output contract (v3.x cleanup)", () => {
     const out = stdout.join("\n").trim();
     assert.doesNotMatch(out, /privateKey/);
     const parsed = JSON.parse(out);
-    const allowance = parsed.checks.find((c) => c.name === "allowance");
-    assert.equal(allowance?.status, "ok");
-    assert.equal(allowance.value.details.address, "0x0000000000000000000000000000000000000001");
-    assert.equal(allowance.value.details.privateKey, undefined);
+    const localWallet = parsed.checks.find((c) => c.name === "wallet");
+    assert.equal(localWallet?.status, "ok");
+    assert.equal(localWallet.value.details.address, "0x0000000000000000000000000000000000000001");
+    assert.equal(localWallet.value.details.privateKey, undefined);
   });
 
   it("doctor reports frozen or inactive tier as non-ok (GH-570)", async () => {
-    const { saveAllowance } = await import("./cli/core-dist/allowance.js");
-    saveAllowance({
+    const { saveWallet } = await import("./cli/core-dist/wallet.js");
+    saveWallet({
       address: "0x0000000000000000000000000000000000000001",
       privateKey: "0x" + "11".repeat(32),
       rail: "x402",
@@ -2486,9 +2477,9 @@ describe("deploy manifest source precedence", () => {
 });
 
 describe("deploy verify edge coherence", () => {
-  async function saveTestAllowance() {
-    const { saveAllowance } = await import("./cli/core-dist/allowance.js");
-    saveAllowance({
+  async function saveTestWallet() {
+    const { saveWallet } = await import("./cli/core-dist/wallet.js");
+    saveWallet({
       address: "0x0000000000000000000000000000000000000001",
       privateKey: "0x" + "11".repeat(32),
       rail: "x402",
@@ -2532,7 +2523,7 @@ describe("deploy verify edge coherence", () => {
   }
 
   it("prints a coherent report and poll progress for --wait", async () => {
-    await saveTestAllowance();
+    await saveTestWallet();
     const { run } = await import("./cli/lib/deploy.mjs");
     const prevFetch = globalThis.fetch;
     globalThis.fetch = async (input, init) => {
@@ -2566,7 +2557,7 @@ describe("deploy verify edge coherence", () => {
   });
 
   it("sets exitCode 2 for a valid non-coherent report", async () => {
-    await saveTestAllowance();
+    await saveTestWallet();
     const { run } = await import("./cli/lib/deploy.mjs");
     const prevFetch = globalThis.fetch;
     globalThis.fetch = async (input, init) => {
@@ -2660,8 +2651,8 @@ describe("transfer accept argv (the one completion)", () => {
 
 describe("transfer owned-org init argv plumbing (GH-469)", () => {
   it("transfer init maps --to-org to the SDK/wire to_org_id body", async () => {
-    const { saveAllowance } = await import("./cli/core-dist/allowance.js");
-    saveAllowance({
+    const { saveWallet } = await import("./cli/core-dist/wallet.js");
+    saveWallet({
       address: "0x0000000000000000000000000000000000000001",
       privateKey: "0x" + "11".repeat(32),
       rail: "x402",

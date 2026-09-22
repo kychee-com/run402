@@ -1,6 +1,6 @@
 /**
  * `service` namespace — public `GET /status` and `GET /health` endpoints.
- * No auth, no allowance, no project scope. Safe to call from anywhere.
+ * No auth, no local wallet, no project scope. Safe to call from anywhere.
  */
 
 import type { Client } from "../kernel.js";

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
-import { requireAllowanceAuth } from "../allowance-auth.js";
+import { requireWalletAuth } from "../wallet-auth.js";
 
 export const createNotificationRuleSchema = {
   telegram_binding_id: z
@@ -37,7 +37,7 @@ export async function handleCreateNotificationRule(args: {
   event_types?: string[];
   classes?: string[];
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const auth = requireAllowanceAuth("/agent/v1/notifications/rules");
+  const auth = requireWalletAuth("/agent/v1/notifications/rules");
   if ("error" in auth) return auth.error;
 
   try {

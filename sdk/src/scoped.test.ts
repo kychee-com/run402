@@ -523,7 +523,6 @@ describe("ScopedRun402 drift protection", () => {
   const unscopedNamespaces = new Set([
     "service",
     "tier",
-    "allowance",
     "auth", // auth IS scoped — but listed below
     "billing",
     "admin",

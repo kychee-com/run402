@@ -495,17 +495,17 @@ export function walletUnavailableError(details: Record<string, unknown> = {}): P
     nextActions: [
       {
         type: "fund_wallet",
-        why: "Fund the configured Run402 allowance wallet with USDC on a challenge network, then retry.",
+        why: "Fund the configured Run402 wallet with USDC on a challenge network, then retry.",
       },
       {
         type: "run_command",
-        command: "run402 allowance fund",
+        command: "run402 wallets fund",
         why: "Open the canonical wallet funding flow.",
       },
       {
         type: "run_command",
         command: "run402 init",
-        why: "Create an allowance and use the testnet faucet when no wallet is configured.",
+        why: "Create a wallet and use the testnet faucet when no wallet is configured.",
       },
     ],
   });

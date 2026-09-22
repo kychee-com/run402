@@ -69,7 +69,7 @@ mock.module("./cli/lib/sdk.mjs", {
       // voucher step rather than re-testing setup.
       billing: { checkBalance: async () => null },
       tier: { status: async () => null },
-      allowance: { faucet: async () => ({}) },
+      wallets: { faucet: async () => ({}) },
     }),
   },
 });

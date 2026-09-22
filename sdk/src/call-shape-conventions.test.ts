@@ -27,7 +27,7 @@ function sdkCapturing(
     },
     credentials: {
       async getAuth() {
-        return { "X-Allowance": "sig" };
+        return { "X-Wallet": "sig" };
       },
       async getProject() {
         return project;

@@ -104,17 +104,17 @@ beforeEach(() => {
 });
 
 /**
- * `provision` requires a local agent allowance to exist before it will run
+ * `provision` requires a local agent wallet to exist before it will run
  * at all. Written directly (mirroring what `run402 init` does locally) —
- * going through `allowance create` would call the MOCKED SDK's
- * `allowance.create`, which this file has no reason to fake.
+ * going through the SDK would call the MOCKED SDK's
+ * `wallets.create`, which this file has no reason to fake.
  */
-async function createLocalAllowance() {
-  const { saveAllowance } = await import("./cli/lib/config.mjs");
+async function createLocalWallet() {
+  const { saveWallet } = await import("./cli/lib/config.mjs");
   const { generatePrivateKey, privateKeyToAccount } = await import("viem/accounts");
   const privateKey = generatePrivateKey();
   const account = privateKeyToAccount(privateKey);
-  saveAllowance({ address: account.address, privateKey, created: new Date().toISOString(), funded: false, rail: "x402" });
+  saveWallet({ address: account.address, privateKey, created: new Date().toISOString(), funded: false, rail: "x402" });
 }
 
 describe("projects provision — never touches git (first-deploy-agent-dx)", () => {
@@ -126,7 +126,7 @@ describe("projects provision — never touches git (first-deploy-agent-dx)", () 
     git(repoDir, ["remote", "add", "origin", "https://github.com/kychee-com/example.git"]);
     process.env.RUN402_CONFIG_DIR = join(scratch, "repo-cfg");
     process.chdir(repoDir);
-    await createLocalAllowance();
+    await createLocalWallet();
   });
 
   it("provisions and stops: no scaffoldRemote call, no gitvault keys, remotes byte-identical", async () => {
@@ -149,7 +149,7 @@ describe("projects provision — outside any repository", () => {
     mkdirSync(dir, { recursive: true });
     process.env.RUN402_CONFIG_DIR = join(scratch, "plain-cfg");
     process.chdir(dir);
-    await createLocalAllowance();
+    await createLocalWallet();
   });
 
   it("never git-inits the directory", async () => {

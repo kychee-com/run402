@@ -699,7 +699,7 @@ export class Admin {
     });
   }
 
-  /** Read the current agent contact assurance state for the allowance wallet. */
+  /** Read the current agent contact assurance state for the wallet. */
   async getAgentContactStatus(): Promise<AgentContactResult> {
     return this.client.request<AgentContactResult>("/agent/v1/contact/status", {
       method: "GET",
@@ -820,7 +820,7 @@ export class Admin {
    *
    * This is the same admin-only surface used by the Run402 Finance tab. It is
    * gated by platform-admin auth; project service keys are not sufficient.
-   * Use the Node SDK with an admin allowance wallet, pass `cookie` for browser
+   * Use the Node SDK with an admin wallet, pass `cookie` for browser
    * session auth, or provide a credential provider whose `getAuth()` returns
    * suitable admin headers.
    */

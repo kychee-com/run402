@@ -6,7 +6,7 @@ export const adminSetLeasePerpetualSchema = {
   org_id: z
     .string()
     .describe(
-      "The organization ID to toggle. Format: UUID. Platform-admin only — uses the configured allowance wallet for admin auth; project owners with a non-admin SIWX wallet will receive 403 admin_required.",
+      "The organization ID to toggle. Format: UUID. Platform-admin only — uses the configured wallet for admin auth; project owners with a non-admin SIWX wallet will receive 403 admin_required.",
     ),
   lease_perpetual: z
     .boolean()

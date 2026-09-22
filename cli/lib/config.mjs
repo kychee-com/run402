@@ -12,22 +12,22 @@ import {
   getLegacyProjectsPath,
   getProfileStatePath,
   getProjectCredentialsPath,
-  getAllowancePath,
+  getWalletPath,
   configureApiBase,
   isCoreApiTarget,
   readApiTargetConfig,
 } from "../core-dist/config.js";
-import { readAllowance as coreReadAllowance, saveAllowance as coreSaveAllowance } from "../core-dist/allowance.js";
+import { readWallet as coreReadWallet, saveWallet as coreSaveWallet } from "../core-dist/wallet.js";
 import { loadKeyStore, getProject, saveProject, updateProject, removeProject, saveKeyStore, getActiveProjectId, setActiveProjectId } from "../core-dist/keystore.js";
-import { getAllowanceAuthHeaders as coreGetAllowanceAuthHeaders } from "../core-dist/allowance-auth.js";
+import { getWalletAuthHeaders as coreGetWalletAuthHeaders } from "../core-dist/wallet-auth.js";
 import { fail } from "./sdk-errors.mjs";
 import { initializeWalletAction, selectProjectAction } from "./next-actions.mjs";
 
 // Wallet-dependent paths are exposed as getters (preferred — they always
 // reflect the active profile, even if some future code path imports this module
-// before wallet resolution). Production code (init/doctor/allowance) uses these.
+// before wallet resolution). Production code (init/doctor/wallet) uses these.
 export function configDir() { return getConfigDir(); }
-export function allowanceFile() { return getAllowancePath(); }
+export function walletFile() { return getWalletPath(); }
 export function projectCredentialsFile() { return getProjectCredentialsPath(); }
 export function profileStateFile() { return getProfileStatePath(); }
 export function legacyProjectsFile() { return getLegacyProjectsPath(); }
@@ -45,7 +45,7 @@ export function activeProfile() { return getActiveProfile(); }
 // module, and tests set RUN402_CONFIG_DIR before importing. New code should
 // prefer the getters above.
 export const CONFIG_DIR = getConfigDir();
-export const ALLOWANCE_FILE = getAllowancePath();
+export const WALLET_FILE = getWalletPath();
 export const PROJECTS_FILE = getProjectCredentialsPath();
 export const PROJECT_CREDENTIALS_FILE = getProjectCredentialsPath();
 export const PROFILE_STATE_FILE = getProfileStatePath();
@@ -54,40 +54,40 @@ export const PROFILE_STATE_FILE = getProfileStatePath();
 export const API = getApiBase();
 
 /**
- * Wraps core's `readAllowance()` and converts the malformed-shape throw
+ * Wraps core's `readWallet()` and converts the malformed-shape throw
  * into the canonical CLI failure envelope. Without this guard, every
- * CLI subcommand that touches the allowance leaks a Node stack trace and
- * source paths the moment a user has a malformed `allowance.json`.
+ * CLI subcommand that touches the wallet leaks a Node stack trace and
+ * source paths the moment a user has a malformed `wallet.json`.
  *
  * The unparseable-JSON case still returns `null` (matching the historical
- * "no_allowance" UX); only valid-JSON-but-wrong-shape becomes a structured
- * error with `code: BAD_ALLOWANCE_FILE`.
+ * "no_wallet" UX); only valid-JSON-but-wrong-shape becomes a structured
+ * error with `code: BAD_WALLET_FILE`.
  */
-export function readAllowance() {
+export function readWallet() {
   try {
-    return coreReadAllowance();
+    return coreReadWallet();
   } catch (err) {
     fail({
-      code: "BAD_ALLOWANCE_FILE",
-      message: err?.message ?? "allowance.json is malformed",
-      hint: "Back up ~/.config/run402/allowance.json and run 'run402 init' to recreate it.",
-      details: { path: allowanceFile() },
+      code: "BAD_WALLET_FILE",
+      message: err?.message ?? "wallet.json is malformed",
+      hint: "Back up ~/.config/run402/wallet.json and run 'run402 init' to recreate it.",
+      details: { path: walletFile() },
       next_actions: [initializeWalletAction()],
     });
   }
 }
 
-export function saveAllowance(data) {
-  coreSaveAllowance(data);
+export function saveWallet(data) {
+  coreSaveWallet(data);
 }
 
-export function allowanceAuthHeaders(path) {
-  const headers = coreGetAllowanceAuthHeaders(path);
+export function walletAuthHeaders(path) {
+  const headers = coreGetWalletAuthHeaders(path);
   if (!headers) {
     fail({
-      code: "NO_ALLOWANCE",
-      message: "No agent allowance found.",
-      hint: "Run: run402 allowance create",
+      code: "NO_WALLET",
+      message: "No local wallet found.",
+      hint: "Run: run402 init",
       next_actions: [initializeWalletAction()],
     });
   }

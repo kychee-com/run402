@@ -466,7 +466,7 @@ describe("projects.list", () => {
     assert.equal(calls.length, 0);
   });
 
-  it("propagates Unauthorized from the gateway (e.g. no allowance configured)", async () => {
+  it("propagates Unauthorized from the gateway (e.g. no local wallet configured)", async () => {
     const { fetch } = mockFetch(() => jsonResponse({ message: "auth required" }, 401));
     const sdk = makeSdk(makeCreds(), fetch);
     await assert.rejects(

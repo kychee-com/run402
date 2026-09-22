@@ -22,7 +22,7 @@ import { getConfigBaseDir } from "./config.js";
  * `project.deploy` approval for project X coexist.
  *
  * Stored at the BASE config dir (principal-scoped), mode 0600 — as sensitive as
- * the allowance key. The token dies with its control-plane session; the
+ * the wallet key. The token dies with its control-plane session; the
  * `control_plane_session_hash` binding lets the client drop a stale approval
  * locally rather than replay it into a `WRITE_AUTH_BINDING_MISMATCH`.
  */

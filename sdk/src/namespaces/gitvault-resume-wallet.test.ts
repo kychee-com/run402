@@ -3,14 +3,14 @@
  * (kygit-handoff design D5).
  *
  * The claim route accepts ONLY a SIWX wallet signature, and nothing upstream
- * creates the allowance file for an unpaid request, so a bare machine would
+ * creates the wallet file for an unpaid request, so a bare machine would
  * answer `AUTH_REQUIRED` without ever touching disk. `resume` creates the
  * keypair itself when the provider supports one and none exists: no faucet,
  * no tier, no payment.
  *
  * These tests drive `resume()` up to its first network call with a mocked
  * fetch (the claim is refused so nothing downstream runs) and assert the
- * allowance calls that happened BEFORE it — same harness as
+ * wallet calls that happened BEFORE it — same harness as
  * gitvault-resume-errors.test.ts.
  *
  * Run: node --test --import tsx sdk/src/namespaces/gitvault-resume-wallet.test.ts
@@ -21,7 +21,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { Run402 } from "../index.js";
-import type { AllowanceData, CredentialsProvider } from "../credentials.js";
+import type { WalletData, CredentialsProvider } from "../credentials.js";
 
 const FABRICATED_KEY = "kgh1_" + "A".repeat(64);
 const CLAIM_REFUSAL = { code: "HANDOFF_KEY_ALREADY_REDEEMED", message: "already claimed" };
@@ -35,9 +35,9 @@ function mockFetch(): { fetch: typeof globalThis.fetch; order: string[] } {
   return { fetch: fetchImpl, order };
 }
 
-const CREATED: AllowanceData = { address: "0x" + "ab".repeat(20), privateKey: "0x" + "cd".repeat(32), created: "2026-09-02T00:00:00.000Z", funded: false };
+const CREATED: WalletData = { address: "0x" + "ab".repeat(20), privateKey: "0x" + "cd".repeat(32), created: "2026-09-02T00:00:00.000Z", funded: false };
 
-function providerWithAllowance(order: string[], existing: AllowanceData | null): CredentialsProvider {
+function providerWithWallet(order: string[], existing: WalletData | null): CredentialsProvider {
   return {
     async getAuth() {
       return { "SIGN-IN-WITH-X": "test-siwx" };
@@ -45,25 +45,25 @@ function providerWithAllowance(order: string[], existing: AllowanceData | null):
     async getProject() {
       return null;
     },
-    async readAllowance() {
-      order.push("readAllowance");
+    async readWallet() {
+      order.push("readWallet");
       return existing;
     },
-    async createAllowance() {
-      order.push("createAllowance");
+    async createWallet() {
+      order.push("createWallet");
       return CREATED;
     },
-    async saveAllowance(data) {
-      order.push(`saveAllowance ${data.address}`);
+    async saveWallet(data) {
+      order.push(`saveWallet ${data.address}`);
     },
   };
 }
 
 describe("r.gitvault.resume — wallet bootstrap before the claim (design D5)", () => {
-  it("a fresh machine (no allowance) gets a keypair created and saved BEFORE the claim POST — no other call in between", async () => {
+  it("a fresh machine (no local wallet) gets a keypair created and saved BEFORE the claim POST — no other call in between", async () => {
     const { fetch, order } = mockFetch();
     const lines: string[] = [];
-    const r = new Run402({ apiBase: "https://api.example.test", credentials: providerWithAllowance(order, null), fetch });
+    const r = new Run402({ apiBase: "https://api.example.test", credentials: providerWithWallet(order, null), fetch });
 
     // An unscoped keystore_root resolves to the process-wide default
     // (getConfigDir()/gitvault), which every OTHER test in this suite that
@@ -76,9 +76,9 @@ describe("r.gitvault.resume — wallet bootstrap before the claim (design D5)", 
       (err: unknown) => (err as { code?: string }).code === CLAIM_REFUSAL.code,
     );
 
-    assert.equal(order[0], "readAllowance");
-    assert.equal(order[1], "createAllowance");
-    assert.equal(order[2], `saveAllowance ${CREATED.address}`);
+    assert.equal(order[0], "readWallet");
+    assert.equal(order[1], "createWallet");
+    assert.equal(order[2], `saveWallet ${CREATED.address}`);
     assert.match(order[3]!, /^fetch \/gitvault\/v1\/handoffs\/.+\/redeem$/);
     assert.equal(order.length, 4, "exactly one network call, after the wallet exists");
     // The address is announced (it is public; the private key never is).
@@ -86,21 +86,21 @@ describe("r.gitvault.resume — wallet bootstrap before the claim (design D5)", 
     assert.equal(lines.some((l) => l.includes(CREATED.privateKey)), false, "the private key is never announced");
   });
 
-  it("an existing allowance is left alone — no create, no save", async () => {
+  it("an existing wallet is left alone — no create, no save", async () => {
     const { fetch, order } = mockFetch();
-    const r = new Run402({ apiBase: "https://api.example.test", credentials: providerWithAllowance(order, CREATED), fetch });
+    const r = new Run402({ apiBase: "https://api.example.test", credentials: providerWithWallet(order, CREATED), fetch });
 
     await assert.rejects(
       r.gitvault.resume({ key: FABRICATED_KEY, keystore_root: join(tmpdir(), "gitvault-resume-wallet-existing-ks") }),
       (err: unknown) => (err as { code?: string }).code === CLAIM_REFUSAL.code,
     );
 
-    assert.equal(order[0], "readAllowance");
+    assert.equal(order[0], "readWallet");
     assert.match(order[1]!, /^fetch \/gitvault\/v1\/handoffs\/.+\/redeem$/);
     assert.equal(order.length, 2);
   });
 
-  it("a provider without allowance support (isomorphic) goes straight to the claim", async () => {
+  it("a provider without wallet support (isomorphic) goes straight to the claim", async () => {
     const { fetch, order } = mockFetch();
     const creds: CredentialsProvider = {
       async getAuth() {
@@ -113,7 +113,7 @@ describe("r.gitvault.resume — wallet bootstrap before the claim (design D5)", 
     const r = new Run402({ apiBase: "https://api.example.test", credentials: creds, fetch });
 
     await assert.rejects(
-      r.gitvault.resume({ key: FABRICATED_KEY, keystore_root: join(tmpdir(), "gitvault-resume-wallet-no-allowance-support-ks") }),
+      r.gitvault.resume({ key: FABRICATED_KEY, keystore_root: join(tmpdir(), "gitvault-resume-wallet-no-wallet-support-ks") }),
       (err: unknown) => (err as { code?: string }).code === CLAIM_REFUSAL.code,
     );
 

@@ -37,7 +37,7 @@
  * comes from cheaply, offline.
  */
 import { getApiBase } from "../../core-dist/config.js";
-import { getAllowanceAuthHeaders } from "../../core-dist/allowance-auth.js";
+import { getWalletAuthHeaders } from "../../core-dist/wallet-auth.js";
 import { sdkFetch } from "./http-dispatcher.js";
 import { GitvaultKeystore } from "./gitvault-keystore.js";
 
@@ -59,11 +59,11 @@ export const prewarmDeps: {
   // warmed socket must land in the exact pool the verb's first request
   // draws from — warming the built-in dispatcher would warm the wrong one.
   fetch: (...args) => sdkFetch(...args),
-  // One throwaway header build against the local allowance: reads the file
+  // One throwaway header build against the local wallet: reads the file
   // and runs the first EIP-191 sign, so the curve library's precomputation
   // happens now instead of inside the verb's first authenticated request.
-  // Returns null harmlessly when no allowance is configured.
-  warmSigner: () => getAllowanceAuthHeaders("/health"),
+  // Returns null harmlessly when no local wallet is configured.
+  warmSigner: () => getWalletAuthHeaders("/health"),
   // The verb's first kernel request initializes the paid-fetch buyer, whose
   // dominant cost is the dynamic viem/@x402 (or mpp) stack import (~360 ms
   // measured). Every verb pays it exactly once regardless, so loading it
@@ -72,8 +72,8 @@ export const prewarmDeps: {
   // motivated this: ~360 ms stack + ~200 ms dial + ~120 ms request).
   warmPaidStack: () => {
     void (async () => {
-      const [{ loadX402Stack, loadMppStack }, { readAllowance }] = await Promise.all([import("./_paid-stack.js"), import("../../core-dist/allowance.js")]);
-      const rail = (readAllowance() as { rail?: string } | null)?.rail;
+      const [{ loadX402Stack, loadMppStack }, { readWallet }] = await Promise.all([import("./_paid-stack.js"), import("../../core-dist/wallet.js")]);
+      const rail = (readWallet() as { rail?: string } | null)?.rail;
       await (rail === "mpp" ? loadMppStack() : loadX402Stack());
     })().catch(() => {});
   },
@@ -127,7 +127,7 @@ export function prewarmGitvaultConnection(apiBase?: string): void {
     try {
       prewarmDeps.warmSigner();
     } catch {
-      /* no allowance / unreadable file — the verb's own auth path reports it */
+      /* no local wallet / unreadable file — the verb's own auth path reports it */
     }
     try {
       prewarmDeps.warmPaidStack();

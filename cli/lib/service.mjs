@@ -9,8 +9,8 @@ Usage:
   run402 service health    Liveness check (per-dependency status + version)
 
 Notes:
-  - Both endpoints are unauthenticated and free. No allowance required.
-  - This is the Run402 SERVICE status. For your ACCOUNT status (allowance,
+  - Both endpoints are unauthenticated and free. No local wallet required.
+  - This is the Run402 SERVICE status. For your ACCOUNT status (wallet,
     balance, tier, projects), use 'run402 status'.
 `;
 
@@ -21,9 +21,9 @@ Usage:
   run402 service status
 
 Notes:
-  - Unauthenticated and free; no allowance required
+  - Unauthenticated and free; no local wallet required
   - Returns uptime, supported capabilities, operator, and deployment info
-  - For organization state (allowance, balance, tier, projects), use
+  - For organization state (wallet, allowance, tier, projects), use
     'run402 status' instead
 
 Examples:
@@ -35,7 +35,7 @@ Usage:
   run402 service health
 
 Notes:
-  - Unauthenticated and free; no allowance required
+  - Unauthenticated and free; no local wallet required
   - Returns per-dependency status and the deployed version
 
 Examples:

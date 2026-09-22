@@ -3,7 +3,7 @@
  *
  * A "wallet" is a whole config directory. The reserved `default` wallet lives
  * at the base config dir (zero migration for existing installs); every named
- * wallet lives under `{base}/profiles/<name>/` with its own `allowance.json`,
+ * wallet lives under `{base}/profiles/<name>/` with its own `wallet.json`,
  * `projects.json`, and this module's non-secret `meta.json`.
  *
  * Two levels of active state, mirroring the wallet → project model:
@@ -32,6 +32,8 @@ import {
   getProfilesDir,
   DEFAULT_PROFILE,
   isValidProfileName,
+  moveWalletFiles,
+  WALLET_FILE_NAME,
 } from "./config.js";
 import { describeRejectedValue } from "./redact.js";
 
@@ -152,18 +154,20 @@ export function writeMeta(name: string, meta: ProfileMeta): void {
 
 // --- enumeration + lifecycle ---
 
-/** True when a wallet's `allowance.json` exists on disk. */
+/** True when a wallet's `wallet.json` exists on disk. */
 export function profileExists(name: string): boolean {
-  return existsSync(join(profileDir(name), "allowance.json"));
+  moveWalletFiles();
+  return existsSync(join(profileDir(name), WALLET_FILE_NAME));
 }
 
 /**
- * All wallet names on disk: `default` (only if a root allowance.json exists)
+ * All wallet names on disk: `default` (only if a root wallet.json exists)
  * plus every valid directory under `profiles/`.
  */
 export function listProfileNames(): string[] {
+  moveWalletFiles();
   const names: string[] = [];
-  if (existsSync(join(getConfigBaseDir(), "allowance.json"))) {
+  if (existsSync(join(getConfigBaseDir(), WALLET_FILE_NAME))) {
     names.push(DEFAULT_PROFILE);
   }
   try {
@@ -221,7 +225,7 @@ export function renameProfile(oldName: string, newName: string): void {
       /* best-effort */
     }
     const base = getConfigBaseDir();
-    for (const f of ["allowance.json", "projects.json", "meta.json"]) {
+    for (const f of [WALLET_FILE_NAME, "projects.json", "meta.json"]) {
       const src = join(base, f);
       if (existsSync(src)) renameSync(src, join(dest, f));
     }

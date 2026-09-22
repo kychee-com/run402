@@ -3,19 +3,19 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { toChecksumAddress, formatSIWEMessage, buildSIWxAuthHeaders, getAllowanceAuthHeaders } from "./allowance-auth.js";
-import { saveAllowance } from "./allowance.js";
+import { toChecksumAddress, formatSIWEMessage, buildSIWxAuthHeaders, getWalletAuthHeaders } from "./wallet-auth.js";
+import { saveWallet } from "./wallet.js";
 
 // Known test private key and derived address (do NOT use in production)
 const TEST_PRIVATE_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
 const TEST_ADDRESS = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
 
 let tempDir: string;
-let allowancePath: string;
+let walletPath: string;
 
 beforeEach(() => {
   tempDir = mkdtempSync(join(tmpdir(), "run402-siwx-test-"));
-  allowancePath = join(tempDir, "allowance.json");
+  walletPath = join(tempDir, "wallet.json");
   process.env.RUN402_CONFIG_DIR = tempDir;
   process.env.RUN402_API_BASE = "https://api.run402.com";
 });
@@ -109,7 +109,7 @@ describe("formatSIWEMessage", () => {
 describe("buildSIWxAuthHeaders", () => {
   it("signs a custom SIWX payload with Resources", () => {
     const headers = buildSIWxAuthHeaders({
-      allowance: { address: TEST_ADDRESS, privateKey: TEST_PRIVATE_KEY },
+      wallet: { address: TEST_ADDRESS, privateKey: TEST_PRIVATE_KEY },
       domain: "api.run402.com",
       uri: "https://api.run402.com/ci/v1/bindings",
       statement: "Authorize CI",
@@ -129,16 +129,16 @@ describe("buildSIWxAuthHeaders", () => {
   });
 });
 
-describe("getAllowanceAuthHeaders", () => {
-  it("returns null when no allowance exists", () => {
-    const result = getAllowanceAuthHeaders("/projects/v1", allowancePath);
+describe("getWalletAuthHeaders", () => {
+  it("returns null when no local wallet exists", () => {
+    const result = getWalletAuthHeaders("/projects/v1", walletPath);
     assert.equal(result, null);
   });
 
   it("returns SIGN-IN-WITH-X header with valid base64 JSON", () => {
-    saveAllowance({ address: TEST_ADDRESS, privateKey: TEST_PRIVATE_KEY }, allowancePath);
+    saveWallet({ address: TEST_ADDRESS, privateKey: TEST_PRIVATE_KEY }, walletPath);
 
-    const result = getAllowanceAuthHeaders("/projects/v1", allowancePath);
+    const result = getWalletAuthHeaders("/projects/v1", walletPath);
     assert.ok(result);
     assert.ok(result["SIGN-IN-WITH-X"]);
 
@@ -158,18 +158,18 @@ describe("getAllowanceAuthHeaders", () => {
   });
 
   it("generates alphanumeric hex nonce (no hyphens)", () => {
-    saveAllowance({ address: TEST_ADDRESS, privateKey: TEST_PRIVATE_KEY }, allowancePath);
+    saveWallet({ address: TEST_ADDRESS, privateKey: TEST_PRIVATE_KEY }, walletPath);
 
-    const result = getAllowanceAuthHeaders("/projects/v1", allowancePath);
+    const result = getWalletAuthHeaders("/projects/v1", walletPath);
     assert.ok(result);
     const decoded = JSON.parse(Buffer.from(result["SIGN-IN-WITH-X"], "base64").toString());
     assert.match(decoded.nonce, /^[0-9a-f]{32}$/);
   });
 
   it("uses checksummed address in payload", () => {
-    saveAllowance({ address: TEST_ADDRESS.toLowerCase(), privateKey: TEST_PRIVATE_KEY }, allowancePath);
+    saveWallet({ address: TEST_ADDRESS.toLowerCase(), privateKey: TEST_PRIVATE_KEY }, walletPath);
 
-    const result = getAllowanceAuthHeaders("/projects/v1", allowancePath);
+    const result = getWalletAuthHeaders("/projects/v1", walletPath);
     assert.ok(result);
     const decoded = JSON.parse(Buffer.from(result["SIGN-IN-WITH-X"], "base64").toString());
     assert.equal(decoded.address, TEST_ADDRESS);

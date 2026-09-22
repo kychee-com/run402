@@ -26,7 +26,7 @@ import { basename, join } from "node:path";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 import { withAutoApprove } from "./operator.mjs";
-import { allowanceAuthHeaders, isCoreApiTarget, readAllowance, resolveProjectId } from "./config.mjs";
+import { walletAuthHeaders, isCoreApiTarget, readWallet, resolveProjectId } from "./config.mjs";
 import { loadLiveControlPlaneSession } from "../core-dist/control-plane-session.js";
 import { resolveOrgId, resolveOwningOrgId } from "./org-context.mjs";
 import { resolveGitvaultTarget } from "./gitvault-target.mjs";
@@ -132,7 +132,7 @@ Subcommands:
            no payload copy at all); \`run402 repos mirror <destination>\`
            still works unchanged as your second customer-held location.
            On a machine with no wallet, or a wallet with no active tier, this folds the cold-start
-           chain (allowance -> faucet -> one x402 prototype payment,
+           chain (wallet -> faucet -> one x402 prototype payment,
            announced) before retrying once; \`--no-init\` opts out.
   view     Side-effect-free: what this machine and the control plane each
            believe about the repo — allocation, policy, whether this keystore
@@ -162,7 +162,7 @@ Subcommands:
            <handoff_id>\` read/revoke instead of minting.
   resume   Resume a Handoff Key on ANY machine: parses the key; on a wallet
            with no active tier first folds the same cold-start chain
-           \`create\` does (allowance → faucet → one x402 prototype payment,
+           \`create\` does (wallet → faucet → one x402 prototype payment,
            each step announced) so the resumed agent arrives as a paid-up
            run402 wallet of its own — \`--no-init\` opts out, and because the
            redemption itself needs no tier a chain failure is reported (never
@@ -189,7 +189,7 @@ Subcommands:
            \`INVITE_MINT_REQUIRES_WRITER\` — have a live writer run
            \`run402 repos access sync\` (any push does it too), then retry.
   join     Redeem an Invite Key on ANY machine: the SAME cold-start fold
-           \`resume\` runs (allowance → faucet → one x402 prototype payment,
+           \`resume\` runs (wallet → faucet → one x402 prototype payment,
            announced — \`--no-init\` opts out; a chain failure never blocks
            the redemption), clones the vault at the base HEAD into \`--to <dir>\`
            (default: the vault's name), restores the stash-shaped
@@ -955,13 +955,13 @@ async function createProvision(name, dir, a) {
   // with the old project id.
   const idempotencyKey = flagValue(a, "--idempotency-key") ?? `repos-create:${orgId ?? "org-of-one"}:${name}`;
 
-  // A genuinely bare machine has no allowance file at all, and the NO_ALLOWANCE
+  // A genuinely bare machine has no local wallet file at all, and the NO_WALLET
   // precheck below would refuse before the provision call could ever answer
   // NO_ACTIVE_TIER, so the cold-start fold would never reach the one case it
   // exists for. Fold first when there is no wallet; `--no-init` keeps the
   // bare refusal.
-  if (!isCoreApiTarget() && !loadLiveControlPlaneSession() && !readAllowance() && !a.includes("--no-init")) {
-    console.error("no wallet on this machine — folding the cold-start chain (allowance -> faucet -> prototype tier)");
+  if (!isCoreApiTarget() && !loadLiveControlPlaneSession() && !readWallet() && !a.includes("--no-init")) {
+    console.error("no wallet on this machine — folding the cold-start chain (wallet -> faucet -> prototype tier)");
     try {
       const { foldColdStartChain } = await import("./cold-start.mjs");
       await foldColdStartChain((line) => console.error(`  ${line}`));
@@ -970,7 +970,7 @@ async function createProvision(name, dir, a) {
       return;
     }
   }
-  if (!isCoreApiTarget() && !loadLiveControlPlaneSession()) allowanceAuthHeaders("/projects/v1");
+  if (!isCoreApiTarget() && !loadLiveControlPlaneSession()) walletAuthHeaders("/projects/v1");
 
   const provisionOnce = () =>
     withAutoApprove(() => sdk.projects.provision({ tier, name, ...(orgId ? { orgId } : {}), idempotencyKey }));
@@ -980,12 +980,12 @@ async function createProvision(name, dir, a) {
     provisioned = await provisionOnce();
   } catch (err) {
     // kygit-handoff design D5: `repos create` on a fresh wallet folds the
-    // cold-start chain ONCE — allowance → faucet → one x402 prototype
+    // cold-start chain ONCE — wallet → faucet → one x402 prototype
     // payment, announced — then retries exactly once. `--no-init` opts
     // out (the caller wants the bare NO_ACTIVE_TIER refusal).
     const code = err?.body?.code ?? err?.code;
     if (code === "NO_ACTIVE_TIER" && !a.includes("--no-init")) {
-      console.error("no active tier — folding the cold-start chain (allowance -> faucet -> prototype tier)");
+      console.error("no active tier — folding the cold-start chain (wallet -> faucet -> prototype tier)");
       try {
         const { foldColdStartChain } = await import("./cold-start.mjs");
         await foldColdStartChain((line) => console.error(`  ${line}`));
@@ -1837,13 +1837,13 @@ async function handoff(args) {
 
 /**
  * Whether this wallet needs the cold-start chain before a resume: no
- * allowance file yet (a fresh machine — the viral case), or an allowance
+ * wallet file yet (a fresh machine — the viral case), or a wallet
  * whose org holds no active tier. An unreachable tier status reads as
  * "no" — the redemption needs no tier, and a resume must never wait on a status
  * read.
  */
 async function resumeNeedsColdStart(sdk) {
-  if (!readAllowance()) return true;
+  if (!readWallet()) return true;
   try {
     const status = await sdk.tier.status();
     return status?.active === false;
@@ -1860,7 +1860,7 @@ async function resumeNeedsColdStart(sdk) {
  */
 async function foldColdStartForResume(sdk) {
   if (!(await resumeNeedsColdStart(sdk))) return { performed: false, skipped: "tier_active" };
-  console.error("no active tier — folding the cold-start chain (allowance -> faucet -> prototype tier) before the redemption");
+  console.error("no active tier — folding the cold-start chain (wallet -> faucet -> prototype tier) before the redemption");
   try {
     const { foldColdStartChain } = await import("./cold-start.mjs");
     const chain = await foldColdStartChain((line) => console.error(`  ${line}`));
@@ -1939,7 +1939,7 @@ async function resume(args) {
   }
   // A resumed agent is a NEW run402 wallet, and the loop is the
   // point — so on a wallet with no active tier `resume` folds the same
-  // cold-start chain `create` does (allowance → faucet → one x402
+  // cold-start chain `create` does (wallet → faucet → one x402
   // prototype payment, announced) BEFORE the redemption. The redemption itself needs
   // no tier, so the chain is never allowed to block a resume: a faucet
   // throttle or payment failure is reported on stderr, carried in the
@@ -2111,7 +2111,7 @@ async function joinInvite(args) {
     if (!key) fail({ code: "BAD_USAGE", message: "Missing the Invite Key on stdin.", hint: "Pipe the kgi1_… key, or pass it as a positional argument." });
   }
   // kygit-invite design D5: a joined agent is a NEW run402 wallet, so `join`
-  // folds the SAME cold-start chain `resume` does (allowance → faucet → one
+  // folds the SAME cold-start chain `resume` does (wallet → faucet → one
   // x402 prototype payment, announced) BEFORE the redemption; the redemption itself
   // needs no tier, so the chain never blocks the redemption. `--no-init` opts
   // out entirely.

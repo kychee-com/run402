@@ -29,9 +29,9 @@ Output (without --output):
   { "aspect": "square", "content_type": "image/png", "image": "<base64>" }
 
 Notes:
-  - Requires a funded allowance (run402 allowance create && run402 allowance fund)
+  - Requires a funded wallet (run402 init && run402 wallets fund)
   - Payments are processed automatically via x402 micropayments (USDC on the
-    network your allowance targets — Base Sepolia on the prototype tier, Base
+    network your wallet targets — Base Sepolia on the prototype tier, Base
     mainnet on paid tiers) or over Lightning from a rail: lightning wallet
   - Use --output to save directly to a file instead of printing base64
 `;
@@ -56,7 +56,7 @@ Options:
                       run402 org use, or the active project's owning org)
 
 Notes:
-  - Requires a funded allowance (run402 allowance create && run402 allowance fund)
+  - Requires a funded wallet (run402 init && run402 wallets fund)
   - Payments are processed automatically via x402 micropayments, or over
     Lightning from a rail: lightning wallet
   - Use --output to save directly to a file instead of printing base64

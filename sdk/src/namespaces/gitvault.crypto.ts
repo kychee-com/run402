@@ -671,7 +671,7 @@ export function frameAad(repoId: string, objectKind: GitvaultEncryptedObjectKind
  * implementation can be neither statically imported (the core must load
  * outside Node) nor lazily awaited (the signatures are sync). So the core owns
  * a slot and the Node entry fills it, exactly as that entry already layers on
- * the keystore and allowance: capability is INJECTED at the entry point, never
+ * the keystore and wallet: capability is INJECTED at the entry point, never
  * sniffed in the core.
  *
  * The contract is narrow on purpose (D3): the FRAME primitives only. Envelope

@@ -1,4 +1,4 @@
-import { allowanceAuthHeaders } from "./config.mjs";
+import { walletAuthHeaders } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 import { assertKnownFlags, normalizeArgv, failUnknownSubcommand, flagValue, positionalArgs } from "./argparse.mjs";
@@ -13,7 +13,7 @@ Notes:
     answer from a human, raise an escalation instead:
     run402 escalations raise "<what you need>" --severity high
   - Requires an active tier (run402 tier set <tier>)
-  - Requires an allowance (run402 allowance create)
+  - Requires a wallet (run402 init)
   - Messages are capped at 8 KB (8192 bytes UTF-8) to keep the developer
     inbox useful and prevent payload-dump misuse. Trim or summarize long
     content (e.g. stack traces) before sending.
@@ -67,7 +67,7 @@ Flags:
 
 Notes:
   - Requires an active tier (run402 tier set <tier>)
-  - Requires an allowance (run402 allowance create)
+  - Requires a wallet (run402 init)
   - Messages are capped at 8 KB (8192 bytes UTF-8) to keep the developer
     inbox useful and prevent payload-dump misuse.
   - Finishing a deploy: when a commit/promote response carries a
@@ -90,8 +90,8 @@ async function send(args) {
   if (!text) {
     fail({ code: "BAD_USAGE", message: "Missing message text." });
   }
-  // Cap check runs BEFORE the allowance check so oversized payloads surface
-  // a structured size error instead of being masked by a missing-allowance
+  // Cap check runs BEFORE the wallet check so oversized payloads surface
+  // a structured size error instead of being masked by a missing-wallet
   // exit.
   const bytes = Buffer.byteLength(text, "utf-8");
   if (bytes > MESSAGE_MAX_BYTES) {
@@ -111,8 +111,8 @@ async function send(args) {
       details: { flag: "--handle", length: handle.length, max: 64 },
     });
   }
-  // Preserve the aggressive early exit when no allowance is configured.
-  allowanceAuthHeaders("/feedback/v1");
+  // Preserve the aggressive early exit when no local wallet is configured.
+  walletAuthHeaders("/feedback/v1");
 
   const opts = {};
   if (projectId) opts.project_id = projectId;

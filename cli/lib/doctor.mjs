@@ -2,7 +2,7 @@ import { resolveApplicationScope, loadApplicationScanInput, scanDeploymentSource
 /**
  * run402 doctor — Health and config diagnostics.
  *
- * Reports the state of the local Run402 setup: config dir, allowance,
+ * Reports the state of the local Run402 setup: config dir, wallet,
  * tier, project selection, API reachability. Agent-friendly: with
  * `--json`, emits a structured report the agent can branch on without
  * parsing English output.
@@ -14,7 +14,7 @@ import { resolveApplicationScope, loadApplicationScanInput, scanDeploymentSource
 
 import { existsSync, statSync } from "node:fs";
 import { GITVAULT_BYO_NO_PAYLOAD_COPY_STATEMENT } from "#sdk";
-import { configDir, readAllowance, loadKeyStore } from "./config.mjs";
+import { configDir, readWallet, loadKeyStore } from "./config.mjs";
 import { resolveGitvaultTarget } from "./gitvault-target.mjs";
 import { getSdk } from "./sdk.mjs";
 import {
@@ -47,7 +47,7 @@ const DOCTOR_VALUE_FLAGS = ["--scan-dir", "--dir", "--manifest", "--buzz-agent",
 const DOCTOR_CHECK_NAMES = [
   "config_dir",
   "cli_update",
-  "allowance",
+  "wallet",
   "projects",
   "api_reachable",
   "tier",
@@ -87,7 +87,7 @@ Output:
       checks:   [{ name, status, severity, value?, hint?, message? }] }
   \`ok\` answers ONE question — can this agent ship from here — and is true
   exactly when \`blocking[]\` is empty. Every check carries a \`severity\`:
-    blocking  would stop a deploy: config_dir / allowance missing or error,
+    blocking  would stop a deploy: config_dir / wallet missing or error,
               api_reachable error, tier inactive / frozen / past_due /
               dormant / missing / error, error-severity source_scan findings
     advisory  a warning that never stops a deploy: operator_health,
@@ -148,7 +148,7 @@ Telemetry:
 Checks performed:
   - Config directory exists and is writable
   - Installed run402 CLI version and update guidance
-  - Allowance is configured and on a valid rail (x402 / mpp)
+  - Wallet is configured and on a valid rail (x402 / mpp)
   - Keystore has at least one wallet
   - API_BASE is reachable (network check via /health)
   - Active tier resolves and is not 'past_due' / 'frozen' / 'dormant'. A wallet
@@ -177,7 +177,7 @@ Checks performed:
 Buzz mode checks (in order):
   session_shell, node_runtime, run402_cli, buzz_cli, buzz_agent_target,
   run402_api, run402_console, buzz_relay, wallet_profile.
-  Buzz mode is read-only and skips the ordinary allowance, tier, project,
+  Buzz mode is read-only and skips the ordinary wallet, tier, project,
   operator, runtime-staleness, and source-tree checks.
 
 Exit codes:
@@ -264,9 +264,9 @@ export function buildDoctorReport(rawChecks) {
   return { ok: blocking.length === 0, blocking, warnings, checks };
 }
 
-function redactAllowanceForDiagnostics(allowance) {
-  if (!allowance || typeof allowance !== "object") return allowance;
-  const safe = { ...allowance };
+function redactWalletForDiagnostics(localWallet) {
+  if (!localWallet || typeof localWallet !== "object") return localWallet;
+  const safe = { ...localWallet };
   delete safe.privateKey;
   if (typeof safe.funded === "boolean") safe.faucet_used = safe.funded;
   delete safe.funded;
@@ -390,39 +390,39 @@ export async function run(sub, args = []) {
     });
   }
 
-  // 2. Allowance.
-  let allowanceConfigured = false;
-  if (wanted("allowance")) try {
-    const allowance = readAllowance();
-    if (allowance) {
-      allowanceConfigured = true;
+  // 2. Wallet.
+  let walletConfigured = false;
+  if (wanted("wallet")) try {
+    const localWallet = readWallet();
+    if (localWallet) {
+      walletConfigured = true;
       checks.push({
-        name: "allowance",
+        name: "wallet",
         status: "ok",
         value: {
-          rail: allowance.rail,
+          rail: localWallet.rail,
           // Don't surface amounts or addresses unless --verbose; agents
           // checking for config presence don't need wallet details. Never
           // include keystore secrets in diagnostics, even in verbose mode.
-          ...(verbose && { details: redactAllowanceForDiagnostics(allowance) }),
+          ...(verbose && { details: redactWalletForDiagnostics(localWallet) }),
         },
       });
     } else {
       checks.push({
-        name: "allowance",
+        name: "wallet",
         status: "missing",
-        hint: "Run 'run402 init' to create an allowance.",
+        hint: "Run 'run402 init' to create a wallet.",
       });
     }
   } catch (err) {
     checks.push({
-      name: "allowance",
+      name: "wallet",
       status: "error",
       message: err instanceof Error ? err.message : String(err),
     });
   }
 
-  // 3. Project keystore. The wallet itself lives in allowance.json (verified
+  // 3. Project keystore. The wallet itself lives in wallet.json (verified
   // by check 2 above); this checks the per-project keys (anon_key /
   // service_key) that `run402 projects provision` writes. An empty store is
   // normal for fresh installs that haven't provisioned a project yet, so
@@ -435,10 +435,10 @@ export async function run(sub, args = []) {
       status: "ok",
       value: { project_count: projectCount },
       // State-aware parenthetical: only claim the wallet is set up when the
-      // allowance check above actually passed; pre-init installs are pointed
+      // wallet check above actually passed; pre-init installs are pointed
       // at `run402 init` first.
       ...(projectCount === 0 && {
-        hint: allowanceConfigured
+        hint: walletConfigured
           ? "No projects yet — run 'run402 projects provision' to create one (wallet is already set up)."
           : "No projects yet — run 'run402 init' to set up the wallet first, then 'run402 projects provision'.",
       }),

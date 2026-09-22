@@ -238,7 +238,7 @@ describe("enforceWalletExists — fail closed", () => {
   });
   it("no-op for an existing wallet", () => {
     ensureProfileDir("client-a");
-    writeFileSync(join(tmp, "profiles", "client-a", "allowance.json"), "{}");
+    writeFileSync(join(tmp, "profiles", "client-a", "wallet.json"), "{}");
     assert.doesNotThrow(() => enforceWalletExists({ name: "client-a", source: "binding" }, "deploy"));
   });
   it("fails closed for a missing wallet on a normal command", () => {

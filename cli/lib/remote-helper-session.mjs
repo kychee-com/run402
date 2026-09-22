@@ -146,7 +146,7 @@ const { getSdk } = await sdkModP;
 const { resolveWalletCore, enforceWalletExistsCore, WalletSelectionError } = await walletModP;
 const { gitvaultRemoteAddressForm, gitvaultSlugReleasedInfo, parseGitvaultRemoteUrl, gitvaultDegradedReadNote } = await isoModP;
 const { GITVAULT_R402_REF_NAMESPACE, hardenedGit, resolveGitInvocationRepo, readPinnedGitvaultRepo, pinGitvaultRepo, readGitvaultRestoreMarker, readGitvaultAutoGcThreshold, predialGitvaultObjectStore } = await nodeModP;
-const { allowanceFile, projectCredentialsFile, profileStateFile } = await configModP;
+const { walletFile, projectCredentialsFile, profileStateFile } = await configModP;
 
 /**
  * Per-session SDK construction cache (gitvault-first-op-premium task 2.2).
@@ -167,10 +167,10 @@ const { allowanceFile, projectCredentialsFile, profileStateFile } = await config
  * doc comment calls out as reasons a fresh instance mattered for tests that
  * mutate them between calls in one process) and INVALIDATED on the mtime of
  * the three files whose bytes actually determine signer/credential material
- * (allowance, project-credentials keystore, profile state) — a wallet
+ * (wallet, project-credentials keystore, profile state) — a wallet
  * rotation, `run402 init`, or any other on-disk change is picked up on the
  * very next call, no daemon restart required. A file that does not exist
- * yet (fresh wallet, no allowance) signs into the key as `null`, so its
+ * yet (fresh wallet, no local wallet) signs into the key as `null`, so its
  * LATER appearance also busts the cache. The in-process fallback host calls
  * this at most once per process anyway, so it degrades to exactly today's
  * behavior there — this only changes anything for the daemon.
@@ -189,7 +189,7 @@ function sdkCacheKey() {
   const wallet = process.env.RUN402_WALLET ?? "";
   const configDir = process.env.RUN402_CONFIG_DIR ?? "";
   const apiBase = process.env.RUN402_API_BASE ?? "";
-  const files = [mtimeOf(allowanceFile()), mtimeOf(projectCredentialsFile()), mtimeOf(profileStateFile())];
+  const files = [mtimeOf(walletFile()), mtimeOf(projectCredentialsFile()), mtimeOf(profileStateFile())];
   return `${wallet} ${configDir} ${apiBase} ${files.join(",")}`;
 }
 
@@ -214,7 +214,7 @@ const note = (line) => process.stderr.write(`git-remote-run402: ${line}\n`);
  * selection at all — a `.run402.json` binding, and even the global
  * `wallets use` default, would silently never reach it; only the
  * `RUN402_WALLET` env layer would work, so a bound checkout's `git push
- * run402 main` would use the WRONG wallet's (usually empty) allowance.
+ * run402 main` would use the WRONG (usually empty) wallet.
  *
  * Shares `resolveWalletCore`/`enforceWalletExistsCore` with the CLI
  * (`cli/lib/wallet-context.mjs`) — ONE implementation, minus the CLI's
@@ -253,19 +253,19 @@ function walletSourceLabel(resolved) {
 }
 
 /**
- * The allowance-missing/malformed family (`core/src/allowance.ts`'s own
+ * The wallet-missing/malformed family (`core/src/wallet.ts`'s own
  * throws) all end with "Back up the file and run 'run402 init' to recreate
  * it." — a remedy that assumes the resolved wallet is the one you meant.
  * That is only true when NOTHING selected a wallet (the bare default); when
  * an env var or a binding DID name one, the remedy is actively harmful —
- * `run402 init` recreates the DEFAULT wallet's allowance, a DIFFERENT
- * wallet than the one that was actually resolved and whose allowance is
+ * `run402 init` recreates the DEFAULT wallet's key file, a DIFFERENT
+ * wallet than the one that was actually resolved and whose key file is
  * actually missing/broken. Replace
  * it with the resolved wallet's name and how selection works, so the fix is
  * "correct the selection" rather than "recreate the wrong wallet".
  */
-function enrichAllowanceError(message) {
-  if (!resolvedWallet || !/allowance\.json/.test(message)) return message;
+function enrichWalletError(message) {
+  if (!resolvedWallet || !/wallet\.json/.test(message)) return message;
   const source = walletSourceLabel(resolvedWallet);
   const stripped = message.replace(/\s*Back up the file and run 'run402 init' to recreate it\.?/, "").trim();
   if (!source) {
@@ -276,13 +276,13 @@ function enrichAllowanceError(message) {
   return (
     `${stripped} Resolved wallet '${resolvedWallet.name}' via ${source} ` +
     "(order: RUN402_WALLET env > .run402.json binding > 'wallets use' default > default). " +
-    `Wrong wallet? Fix selection instead. Right wallet, just no allowance yet? 'run402 wallets new ${resolvedWallet.name}'.`
+    `Wrong wallet? Fix selection instead. Right wallet, just not created yet? 'run402 wallets new ${resolvedWallet.name}'.`
   );
 }
 
 function describeError(err) {
   const code = err?.code ?? err?.body?.code ?? null;
-  const message = enrichAllowanceError(err?.message ?? err?.body?.message ?? String(err));
+  const message = enrichWalletError(err?.message ?? err?.body?.message ?? String(err));
   // SLUG_RELEASED is never auto-followed — but the successor slug (design D6)
   // is exactly the fact a human/agent reading stderr needs to act on it.
   const released = gitvaultSlugReleasedInfo(err);

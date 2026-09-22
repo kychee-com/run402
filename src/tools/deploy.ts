@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { getSdk } from "../sdk.js";
 import { formatCanonicalErrorContext, mapSdkError, projectNotFound } from "../errors.js";
-import { requireAllowanceAuth } from "../allowance-auth.js";
+import { requireWalletAuth } from "../wallet-auth.js";
 import { updateProject } from "../keystore.js";
 import {
   PaymentRequired,
@@ -465,7 +465,7 @@ export async function handleDeploy(
 ): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   if (!args.project_id) return projectNotFound("(none — project_id is required)");
 
-  const auth = requireAllowanceAuth("/apply/v1/plans");
+  const auth = requireWalletAuth("/apply/v1/plans");
   if ("error" in auth) return auth.error;
 
   const events: DeployEvent[] = [];

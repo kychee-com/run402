@@ -52,7 +52,7 @@ async function runCli(argv, env) {
 describe("RUN402_API_BASE env-var validation", () => {
   it("invalid scheme (javascript:) produces clear error mentioning the env var", async () => {
     const r = await runCli(
-      ["allowance", "status"],
+      ["wallets", "current"],
       { RUN402_API_BASE: "javascript:alert(1)" },
     );
     assert.equal(r.code, 1, `expected exit 1, got ${r.code}\nstderr:\n${r.stderr}`);
@@ -67,7 +67,7 @@ describe("RUN402_API_BASE env-var validation", () => {
 
   it("invalid scheme (file:) produces clear error mentioning the env var", async () => {
     const r = await runCli(
-      ["allowance", "status"],
+      ["wallets", "current"],
       { RUN402_API_BASE: "file:///etc/passwd" },
     );
     assert.equal(r.code, 1, `expected exit 1, got ${r.code}\nstderr:\n${r.stderr}`);
@@ -77,7 +77,7 @@ describe("RUN402_API_BASE env-var validation", () => {
 
   it("no scheme (api.run402.com) produces clear error mentioning the env var", async () => {
     const r = await runCli(
-      ["allowance", "status"],
+      ["wallets", "current"],
       { RUN402_API_BASE: "api.run402.com" },
     );
     assert.equal(r.code, 1);
@@ -91,7 +91,7 @@ describe("RUN402_API_BASE env-var validation", () => {
     // the warning is on stderr — we also force the command to be one that
     // exits without making a network call (--help).
     const r = await runCli(
-      ["allowance", "--help"],
+      ["wallets", "--help"],
       { RUN402_API_BASE: "" },
     );
     assert.equal(r.code, 0, `--help should exit 0; got ${r.code}\nstderr:\n${r.stderr}`);

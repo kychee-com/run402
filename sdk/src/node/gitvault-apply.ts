@@ -68,7 +68,7 @@ export interface ApplyDeployLaneOptions {
   /** The apply engine (`r._applyEngine`). */
   engine: Deploy;
   spec: ReleaseSpec;
-  /** Everything a normal `apply()` takes: events, idempotency key, warning allowances. */
+  /** Everything a normal `apply()` takes: events, idempotency key, warning wallets. */
   apply?: Omit<ApplyOptions, "gitvault">;
 }
 

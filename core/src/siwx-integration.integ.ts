@@ -23,16 +23,16 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomBytes, createECDH } from "node:crypto";
 import { keccak_256 } from "@noble/hashes/sha3.js";
-import { saveAllowance } from "./allowance.js";
-import { getAllowanceAuthHeaders } from "./allowance-auth.js";
+import { saveWallet } from "./wallet.js";
+import { getWalletAuthHeaders } from "./wallet-auth.js";
 
 const API = "https://api.run402.com";
 
 let tempDir: string;
-let allowancePath: string;
+let walletPath: string;
 
 /**
- * Generate a fresh random EVM keypair (same logic as allowance-create).
+ * Generate a fresh random EVM keypair (same logic as wallet-create).
  */
 function generateKeypair() {
   const privateKeyBytes = randomBytes(32);
@@ -49,7 +49,7 @@ function generateKeypair() {
 
 beforeEach(() => {
   tempDir = mkdtempSync(join(tmpdir(), "run402-siwx-integ-"));
-  allowancePath = join(tempDir, "allowance.json");
+  walletPath = join(tempDir, "wallet.json");
   process.env.RUN402_CONFIG_DIR = tempDir;
   process.env.RUN402_API_BASE = API;
 });
@@ -62,13 +62,13 @@ afterEach(() => {
 
 describe("SIWX auth integration (live API)", () => {
   it("GET /tiers/v1/status accepts SIWX header and returns 200", async () => {
-    // 1. Generate a fresh keypair and save it as the allowance
+    // 1. Generate a fresh keypair and save it as the wallet
     const { address, privateKey } = generateKeypair();
-    saveAllowance({ address, privateKey, created: new Date().toISOString(), funded: false }, allowancePath);
+    saveWallet({ address, privateKey, created: new Date().toISOString(), funded: false }, walletPath);
 
     // 2. Generate the SIWX auth header (the code under test)
-    const headers = getAllowanceAuthHeaders("/tiers/v1/status", allowancePath);
-    assert.ok(headers, "getAllowanceAuthHeaders should return headers");
+    const headers = getWalletAuthHeaders("/tiers/v1/status", walletPath);
+    assert.ok(headers, "getWalletAuthHeaders should return headers");
     assert.ok(headers["SIGN-IN-WITH-X"], "should have SIGN-IN-WITH-X header");
 
     // 3. Verify payload structure before sending
@@ -105,9 +105,9 @@ describe("SIWX auth integration (live API)", () => {
 
   it("server rejects a tampered signature", async () => {
     const { address, privateKey } = generateKeypair();
-    saveAllowance({ address, privateKey, created: new Date().toISOString(), funded: false }, allowancePath);
+    saveWallet({ address, privateKey, created: new Date().toISOString(), funded: false }, walletPath);
 
-    const headers = getAllowanceAuthHeaders("/tiers/v1/status", allowancePath);
+    const headers = getWalletAuthHeaders("/tiers/v1/status", walletPath);
     assert.ok(headers);
 
     // Tamper with the signature (flip last hex char)
@@ -125,9 +125,9 @@ describe("SIWX auth integration (live API)", () => {
 
   it("server rejects missing required fields", async () => {
     const { address, privateKey } = generateKeypair();
-    saveAllowance({ address, privateKey, created: new Date().toISOString(), funded: false }, allowancePath);
+    saveWallet({ address, privateKey, created: new Date().toISOString(), funded: false }, walletPath);
 
-    const headers = getAllowanceAuthHeaders("/tiers/v1/status", allowancePath);
+    const headers = getWalletAuthHeaders("/tiers/v1/status", walletPath);
     assert.ok(headers);
 
     // Remove statement from payload
@@ -144,9 +144,9 @@ describe("SIWX auth integration (live API)", () => {
 
   it("server rejects numeric chainId (must be CAIP-2)", async () => {
     const { address, privateKey } = generateKeypair();
-    saveAllowance({ address, privateKey, created: new Date().toISOString(), funded: false }, allowancePath);
+    saveWallet({ address, privateKey, created: new Date().toISOString(), funded: false }, walletPath);
 
-    const headers = getAllowanceAuthHeaders("/tiers/v1/status", allowancePath);
+    const headers = getWalletAuthHeaders("/tiers/v1/status", walletPath);
     assert.ok(headers);
 
     // Replace CAIP-2 chainId with numeric

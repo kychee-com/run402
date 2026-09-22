@@ -14,10 +14,10 @@
  * successor, and the report must stop firing because the pipeline carries
  * those events — never because the check was removed.
  *
- * HTTP paths unchanged (`/agent/v1/notifications/rules*`); the allowance auth
+ * HTTP paths unchanged (`/agent/v1/notifications/rules*`); the SIWX auth
  * headers are PATH-scoped and must keep naming the real route.
  */
-import { allowanceAuthHeaders } from "./config.mjs";
+import { walletAuthHeaders } from "./config.mjs";
 import { operatorProofs } from "./operator-proofs.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
@@ -96,7 +96,7 @@ async function rulesAdd(args) {
   if (typeRaw !== null) input.eventTypes = splitCsv(typeRaw);
   if (classRaw !== null) input.classes = splitCsv(classRaw);
 
-  allowanceAuthHeaders("/agent/v1/notifications/rules");
+  walletAuthHeaders("/agent/v1/notifications/rules");
   try {
     console.log(JSON.stringify(await getSdk().admin.rules.create(input, operatorProofs("/agent/v1/notifications/rules")), null, 2));
   } catch (err) {
@@ -105,7 +105,7 @@ async function rulesAdd(args) {
 }
 
 async function rulesList() {
-  allowanceAuthHeaders("/agent/v1/notifications/rules");
+  walletAuthHeaders("/agent/v1/notifications/rules");
   try {
     console.log(JSON.stringify(await getSdk().admin.rules.list(), null, 2));
   } catch (err) {
@@ -122,7 +122,7 @@ async function rulesRm(args) {
     command: "run402 notifications rules rm <rule_id>",
     missing: "Missing <rule_id>.",
   });
-  allowanceAuthHeaders("/agent/v1/notifications/rules");
+  walletAuthHeaders("/agent/v1/notifications/rules");
   try {
     console.log(JSON.stringify(await getSdk().admin.rules.delete(ruleId, operatorProofs("/agent/v1/notifications/rules")), null, 2));
   } catch (err) {

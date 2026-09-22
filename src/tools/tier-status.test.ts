@@ -4,15 +4,15 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-let allowanceAuthReturn: any = {
+let walletAuthReturn: any = {
   headers: {
     "SIGN-IN-WITH-X": "dGVzdA==",
   },
 };
 
-mock.module("../allowance-auth.js", {
+mock.module("../wallet-auth.js", {
   namedExports: {
-    requireAllowanceAuth: (_path: string) => allowanceAuthReturn,
+    requireWalletAuth: (_path: string) => walletAuthReturn,
   },
 });
 
@@ -27,7 +27,7 @@ beforeEach(() => {
   process.env.RUN402_CONFIG_DIR = tempDir;
   process.env.RUN402_API_BASE = "https://test-api.run402.com";
   _resetSdk();
-  allowanceAuthReturn = {
+  walletAuthReturn = {
     headers: {
       "SIGN-IN-WITH-X": "dGVzdA==",
     },
@@ -118,16 +118,16 @@ describe("tier_status tool", () => {
     assert.equal(result.isError, true);
   });
 
-  it("returns allowance auth error when no allowance configured", async () => {
-    allowanceAuthReturn = {
+  it("returns SIWX auth error when no local wallet configured", async () => {
+    walletAuthReturn = {
       error: {
-        content: [{ type: "text", text: "Error: No agent allowance configured." }],
+        content: [{ type: "text", text: "Error: No local wallet configured." }],
         isError: true,
       },
     };
 
     const result = await handleTierStatus({} as Record<string, never>);
     assert.equal(result.isError, true);
-    assert.ok(result.content[0]!.text.includes("No agent allowance configured"));
+    assert.ok(result.content[0]!.text.includes("No local wallet configured"));
   });
 });

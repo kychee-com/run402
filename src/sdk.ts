@@ -35,7 +35,7 @@ function sdkCacheKey(): string {
   return JSON.stringify({
     apiBase: getApiBase(),
     configDir: process.env.RUN402_CONFIG_DIR ?? null,
-    allowancePath: process.env.RUN402_ALLOWANCE_PATH ?? null,
+    walletPath: process.env.RUN402_WALLET_PATH ?? null,
     wallet: process.env.RUN402_WALLET ?? null,
     profile: process.env.RUN402_PROFILE ?? null,
   });

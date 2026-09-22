@@ -48,8 +48,8 @@ describe("findLocalProfilesHoldingGitvaultRepo", () => {
     assert.deepEqual(findLocalProfilesHoldingGitvaultRepo(REPO_A), ["platform-deploy"]);
   });
 
-  it("finds the default profile holding the key — requires default/allowance.json to exist, matching listProfileNames' own convention", () => {
-    writeFileSync(join(tmp, "allowance.json"), "{}");
+  it("finds the default profile holding the key — requires default/wallet.json to exist, matching listProfileNames' own convention", () => {
+    writeFileSync(join(tmp, "wallet.json"), "{}");
     const dir = join(profileDir("default"), "gitvault", "repos");
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, `${REPO_A}.json`), "{}");

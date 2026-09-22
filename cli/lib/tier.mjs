@@ -29,7 +29,7 @@ The server auto-detects the action from the current tier state and reports
 it as action: start | renew | upgrade:
   - No tier or expired  → start
   - Same tier, active   → renew (extends from expiry)
-  - Higher tier         → upgrade (prorated refund to allowance)
+  - Higher tier         → upgrade (prorated refund to the allowance)
   - Lower tier, active  → rejected (wait for expiry)
 
 Examples:
@@ -86,7 +86,7 @@ Notes:
   it as action: start | renew | upgrade:
     - No tier or expired -> start
     - Same tier, active  -> renew (extends from expiry)
-    - Higher tier        -> upgrade (prorated refund to allowance)
+    - Higher tier        -> upgrade (prorated refund to the allowance)
     - Lower tier, active -> rejected (wait for expiry)
   Pays via x402 micropayments.
 

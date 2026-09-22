@@ -1,4 +1,4 @@
-import { allowanceAuthHeaders, saveProject } from "./config.mjs";
+import { walletAuthHeaders, saveProject } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 import { assertAllowedValue, assertKnownFlags, flagValue, normalizeArgv, positionalArgs, resolveProjectSelector, failUnknownSubcommand } from "./argparse.mjs";
@@ -185,8 +185,8 @@ async function fork(versionId, name, args) {
     fail({ code: "BAD_USAGE", message: `Unexpected argument for apps fork: ${positionals[expected]}` });
   }
   const opts = { subdomain: flagValue(parsedArgs, "--subdomain") ?? undefined };
-  // Preserve the aggressive early exit when no allowance is configured.
-  allowanceAuthHeaders("/fork/v1");
+  // Preserve the aggressive early exit when no local wallet is configured.
+  walletAuthHeaders("/fork/v1");
 
   try {
     const data = await getSdk().apps.fork({

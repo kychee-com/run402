@@ -1,6 +1,6 @@
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { existsSync, renameSync, mkdirSync, chmodSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, renameSync, mkdirSync, chmodSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { describeRejectedValue } from "./redact.js";
 
@@ -144,7 +144,7 @@ export function getProfilesDir(): string {
  * The effective config directory for the *active* wallet. The `default` wallet
  * resolves to the base dir (zero migration for existing single-wallet
  * installs); any named wallet resolves to `{base}/profiles/<name>`. Because
- * keystore, allowance, and meta paths all derive from this, switching the
+ * keystore, wallet, and meta paths all derive from this, switching the
  * profile env var moves the whole wallet bundle atomically — and the SDK/MCP
  * inherit profile selection for free.
  */
@@ -270,24 +270,57 @@ export function isCoreApiTarget(): boolean {
   return false;
 }
 
-export function getAllowancePath(): string {
-  if (process.env.RUN402_ALLOWANCE_PATH) return process.env.RUN402_ALLOWANCE_PATH;
-  const dir = getConfigDir();
-  const newPath = join(dir, "allowance.json");
-  const oldPath = join(dir, "wallet.json");
-  // Auto-migrate from wallet.json → allowance.json. renameSync preserves the
-  // source file's mode, so a legacy world-readable wallet.json (mode 0644)
-  // would otherwise carry that mode forward and leave the private key
-  // world-readable on a shared machine. Tighten to 0600 after the rename.
-  if (!existsSync(newPath) && existsSync(oldPath)) {
-    mkdirSync(dir, { recursive: true });
-    renameSync(oldPath, newPath);
+/**
+ * The file that holds a wallet's key, in the base config dir (the `default`
+ * wallet) and in each `profiles/<name>/` directory.
+ */
+export const WALLET_FILE_NAME = "wallet.json";
+
+/** The name the wallet key file had before it was `wallet.json`. */
+const PREVIOUS_WALLET_FILE_NAME = "allowance.json";
+
+const walletFilesMovedFor = new Set<string>();
+
+/**
+ * One-time local move of the wallet key file to its current name: in the base
+ * config dir and every `profiles/<name>/` directory, `allowance.json` is
+ * renamed to `wallet.json` (an atomic same-directory rename) when
+ * `wallet.json` is absent, then tightened to 0600. A directory that already
+ * holds `wallet.json` is left untouched. Runs once per base dir per process;
+ * nothing reads the previous name afterwards.
+ */
+export function moveWalletFiles(): void {
+  const base = getConfigBaseDir();
+  if (walletFilesMovedFor.has(base)) return;
+  walletFilesMovedFor.add(base);
+  const dirs = [base];
+  try {
+    for (const entry of readdirSync(join(base, "profiles"), { withFileTypes: true })) {
+      if (entry.isDirectory()) dirs.push(join(base, "profiles", entry.name));
+    }
+  } catch {
+    // No profiles directory yet.
+  }
+  for (const dir of dirs) {
+    const from = join(dir, PREVIOUS_WALLET_FILE_NAME);
+    const to = join(dir, WALLET_FILE_NAME);
+    if (existsSync(to) || !existsSync(from)) continue;
     try {
-      chmodSync(newPath, 0o600);
+      renameSync(from, to);
+    } catch {
+      continue;
+    }
+    try {
+      chmodSync(to, 0o600);
     } catch {
       // Best-effort (e.g. Windows / exotic filesystems). Read-time self-heal
-      // in readAllowance() is the backstop.
+      // in readWallet() is the backstop.
     }
   }
-  return newPath;
+}
+
+export function getWalletPath(): string {
+  if (process.env.RUN402_WALLET_PATH) return process.env.RUN402_WALLET_PATH;
+  moveWalletFiles();
+  return join(getConfigDir(), WALLET_FILE_NAME);
 }

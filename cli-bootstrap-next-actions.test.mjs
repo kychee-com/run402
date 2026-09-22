@@ -5,7 +5,7 @@
  * An agent that knows only one verb must be walked, failure by failure, to a
  * deployed result via typed `next_actions[]`. These tests pin the bootstrap
  * chokepoint failures (config.mjs) and the tier hop so the chain never breaks
- * silently. Isolated to a fresh empty config dir — no allowance, no keystore —
+ * silently. Isolated to a fresh empty config dir — no local wallet, no keystore —
  * which IS the cold-machine state.
  */
 
@@ -98,10 +98,10 @@ describe("cold-start bootstrap next_actions (config.mjs chokepoint)", () => {
     assert.equal(env.next_actions[0].command, "run402 credentials project-keys status --project prj_does_not_exist");
   });
 
-  it("allowanceAuthHeaders with no allowance names initialize_wallet", async () => {
-    const { allowanceAuthHeaders } = await import("./cli/lib/config.mjs");
-    const env = expectFailEnvelope(() => allowanceAuthHeaders("/projects/v1"));
-    assert.equal(env.code, "NO_ALLOWANCE");
+  it("walletAuthHeaders with no local wallet names initialize_wallet", async () => {
+    const { walletAuthHeaders } = await import("./cli/lib/config.mjs");
+    const env = expectFailEnvelope(() => walletAuthHeaders("/projects/v1"));
+    assert.equal(env.code, "NO_WALLET");
     assert.equal(env.next_actions[0].type, "initialize_wallet");
     assert.equal(env.next_actions[0].command, "run402 init");
   });
@@ -128,10 +128,10 @@ describe("cold-start bootstrap next_actions (chain hops)", () => {
     assert.match(env.next_actions[0].command, /^run402 tier set /);
   });
 
-  it("provision with no allowance names initialize_wallet", async () => {
+  it("provision with no local wallet names initialize_wallet", async () => {
     const { run } = await import("./cli/lib/projects.mjs");
     const env = await expectFailEnvelopeAsync(() => run("provision", []));
-    assert.equal(env.code, "NO_ALLOWANCE");
+    assert.equal(env.code, "NO_WALLET");
     assert.equal(env.next_actions[0].type, "initialize_wallet");
     assert.equal(env.next_actions[0].command, "run402 init");
   });

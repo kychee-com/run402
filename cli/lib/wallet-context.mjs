@@ -25,7 +25,7 @@ import { join } from "node:path";
 import { fail } from "./sdk-errors.mjs";
 import { isValidProfileName } from "../core-dist/config.js";
 import { getDefaultWallet, profileExists, readMeta, profileDir } from "../core-dist/profiles.js";
-import { readAllowance } from "../core-dist/allowance.js";
+import { readWallet } from "../core-dist/wallet.js";
 import { describeRejectedValue } from "../core-dist/redact.js";
 // The binding file is a CHECKOUT-LEVEL CONTRACT read by more than one surface,
 // so its reader lives in core — `run402-mcp` ships core/dist but not cli/, and
@@ -301,12 +301,12 @@ function shortAddr(a) {
   return typeof a === "string" && a.length >= 12 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a;
 }
 
-/** Best-effort address for display: meta.json (no key) first, allowance second. */
+/** Best-effort address for display: meta.json (no key) first, wallet second. */
 function walletAddress(name) {
   const meta = readMeta(name);
   if (meta?.address) return meta.address;
   try {
-    return readAllowance(join(profileDir(name), "allowance.json"))?.address ?? null;
+    return readWallet(join(profileDir(name), "wallet.json"))?.address ?? null;
   } catch {
     return null;
   }

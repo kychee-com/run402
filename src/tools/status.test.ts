@@ -25,8 +25,8 @@ afterEach(() => {
   delete process.env.RUN402_API_BASE;
 });
 
-function writeAllowance(data: Record<string, unknown>) {
-  writeFileSync(join(tempDir, "allowance.json"), JSON.stringify(data), { mode: 0o600 });
+function writeWallet(data: Record<string, unknown>) {
+  writeFileSync(join(tempDir, "wallet.json"), JSON.stringify(data), { mode: 0o600 });
 }
 
 function writeKeystore(data: Record<string, unknown>) {
@@ -55,7 +55,7 @@ function mockApis(opts: {
 
 describe("status tool", () => {
   it("returns full organization snapshot", async () => {
-    writeAllowance({ address: TEST_ADDR, privateKey: TEST_PK, created: "2026-01-01T00:00:00Z", funded: true, rail: "x402" });
+    writeWallet({ address: TEST_ADDR, privateKey: TEST_PK, created: "2026-01-01T00:00:00Z", funded: true, rail: "x402" });
     writeKeystore({ active_project_id: "proj-1", projects: { "proj-1": { anon_key: "ak1", service_key: "sk1" } } });
     mockApis({
       tier: { tier: "prototype", status: "active", lease_expires_at: "2026-04-01T00:00:00Z" },
@@ -73,14 +73,14 @@ describe("status tool", () => {
     assert.equal(result.isError, undefined);
   });
 
-  it("returns error when no allowance", async () => {
+  it("returns error when no local wallet", async () => {
     const result = await handleStatus({} as Record<string, never>);
     assert.equal(result.isError, true);
-    assert.ok(result.content[0]!.text.includes("No agent allowance"));
+    assert.ok(result.content[0]!.text.includes("No local wallet"));
   });
 
   it("handles API failures gracefully", async () => {
-    writeAllowance({ address: TEST_ADDR, privateKey: TEST_PK, created: "2026-01-01T00:00:00Z", funded: true, rail: "x402" });
+    writeWallet({ address: TEST_ADDR, privateKey: TEST_PK, created: "2026-01-01T00:00:00Z", funded: true, rail: "x402" });
     // All APIs return 500
     globalThis.fetch = (async () => new Response("error", { status: 500 })) as typeof fetch;
 

@@ -51,12 +51,8 @@ const MATRIX = {
   init: { shared: ["mpp"], specific: [] },
   pay: { shared: [], specific: [] },
   status: { shared: [], specific: [] },
-  allowance: {
-    shared: ["status", "create", "fund", "balance", "export"],
-    specific: ["checkout", "history"],
-  },
   wallets: {
-    shared: ["list", "current", "new", "use", "rename", "bind", "unbind", "import", "rm"],
+    shared: ["list", "current", "new", "use", "rename", "bind", "unbind", "import", "rm", "fund", "balance"],
     specific: [],
   },
   credentials: { shared: [], specific: ["project-keys"] },

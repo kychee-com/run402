@@ -1,16 +1,16 @@
 import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
 
-export const allowanceCreateSchema = {};
+export const walletCreateSchema = {};
 
-export async function handleAllowanceCreate(
+export async function handleWalletCreate(
   _args: Record<string, never>,
 ): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   try {
-    const result = await getSdk().allowance.create();
+    const result = await getSdk().wallets.create();
 
     const lines = [
-      `## Agent Allowance Created`,
+      `## Agent Wallet Created`,
       ``,
       `| Field | Value |`,
       `|-------|-------|`,
@@ -22,19 +22,19 @@ export async function handleAllowanceCreate(
 
     return { content: [{ type: "text", text: lines.join("\n") }] };
   } catch (err) {
-    // "Allowance already exists" is a user-facing condition, not a system error.
+    // "Wallet already exists" is a user-facing condition, not a system error.
     const msg = (err as Error)?.message ?? "";
     if (/already exists/i.test(msg)) {
       return {
         content: [
           {
             type: "text",
-            text: msg + "\n\nUse `allowance_status` to check details.",
+            text: msg + "\n\nUse `wallet_status` to check details.",
           },
         ],
         isError: true,
       };
     }
-    return mapSdkError(err, "creating allowance");
+    return mapSdkError(err, "creating wallet");
   }
 }

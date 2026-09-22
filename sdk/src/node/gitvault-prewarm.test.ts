@@ -63,7 +63,7 @@ describe("prewarmGitvaultConnection", () => {
 
   it("a throwing signer warmup is swallowed entirely", async () => {
     prewarmDeps.warmSigner = () => {
-      throw new Error("no allowance");
+      throw new Error("no local wallet");
     };
     prewarmGitvaultConnection("https://api.example.test");
     await flush();

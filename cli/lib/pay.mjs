@@ -30,7 +30,7 @@ Examples:
   run402 pay https://seller.example/translate --method POST \
     --body '{"text":"hello"}' --max-usd 0.05 --idempotency-key translation:1
 
-The command uses the same allowance wallet and bounded x402 buyer as the SDK.
+The command uses the same wallet and bounded x402 buyer as the SDK.
 An unpriced URL is passed through with payment: null.
 On trusted Run402 PAYMENT_INTENT_PENDING, wait for Retry-After and repeat this
 identical command with the same payer and --idempotency-key. Never change the key.

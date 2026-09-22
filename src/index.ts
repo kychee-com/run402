@@ -210,11 +210,11 @@ import {
   handleDeployRehearse,
 } from "./tools/deploy-rehearse.js";
 
-// New tools — allowance, faucet, image
-import { allowanceStatusSchema, handleAllowanceStatus } from "./tools/allowance-status.js";
+// New tools — wallet, faucet, image
+import { walletStatusSchema, handleWalletStatus } from "./tools/wallet-status.js";
 import { lightningWalletSchema, handleLightningWallet } from "./tools/lightning-wallet.js";
-import { allowanceCreateSchema, handleAllowanceCreate } from "./tools/allowance-create.js";
-import { allowanceExportSchema, handleAllowanceExport } from "./tools/allowance-export.js";
+import { walletCreateSchema, handleWalletCreate } from "./tools/wallet-create.js";
+import { walletExportSchema, handleWalletExport } from "./tools/wallet-export.js";
 import { requestFaucetSchema, handleRequestFaucet } from "./tools/request-faucet.js";
 import { redeemVoucherSchema, handleRedeemVoucher } from "./tools/redeem-voucher.js";
 import { generateImageSchema, handleGenerateImage } from "./tools/generate-image.js";
@@ -992,7 +992,7 @@ server.tool(
 
 server.tool(
   "pay_url",
-  "Call an arbitrary HTTP(S) URL and automatically satisfy a supported x402 exact-payment challenge. Defaults to a $0.10 ceiling, uses the configured allowance wallet, forwards Idempotency-Key, and returns the HTTP response plus a structured payment receipt.",
+  "Call an arbitrary HTTP(S) URL and automatically satisfy a supported x402 exact-payment challenge. Defaults to a $0.10 ceiling, uses the configured wallet, forwards Idempotency-Key, and returns the HTTP response plus a structured payment receipt.",
   payUrlSchema,
   {
     readOnlyHint: false,
@@ -1005,7 +1005,7 @@ server.tool(
 
 server.tool(
   "tier_status",
-  "Check the organization's current tier — tier name, status, lease expiry, usage, and function authoring caps when returned (max timeout, memory, scheduled functions, min cron interval). Requires allowance auth.",
+  "Check the organization's current tier — tier name, status, lease expiry, usage, and function authoring caps when returned (max timeout, memory, scheduled functions, min cron interval). Requires SIWX auth.",
   tierStatusSchema,
   async (args) => handleTierStatus(args),
 );
@@ -1035,7 +1035,7 @@ server.tool(
 
 server.tool(
   "admin_set_lease_perpetual",
-  "Toggle an organization's `lease_perpetual` escape hatch (v1.57+). When `lease_perpetual: true`, the organization never advances past `active` regardless of lease expiry; every project in the organization inherits the pinned state. Enabling on a grace-state organization (past_due / frozen / dormant) reactivates inline and returns `reactivated: true`. Platform-admin only — uses the configured allowance wallet for admin auth. Replaces the v1.56 `pin_project` (gateway endpoint /projects/v1/admin/:id/pin was removed in v1.57). Calls POST /orgs/v1/admin/:org_id/lease-perpetual.",
+  "Toggle an organization's `lease_perpetual` escape hatch (v1.57+). When `lease_perpetual: true`, the organization never advances past `active` regardless of lease expiry; every project in the organization inherits the pinned state. Enabling on a grace-state organization (past_due / frozen / dormant) reactivates inline and returns `reactivated: true`. Platform-admin only — uses the configured wallet for admin auth. Replaces the v1.56 `pin_project` (gateway endpoint /projects/v1/admin/:id/pin was removed in v1.57). Calls POST /orgs/v1/admin/:org_id/lease-perpetual.",
   adminSetLeasePerpetualSchema,
   async (args) => handleAdminSetLeasePerpetual(args),
 );
@@ -1116,7 +1116,7 @@ server.tool(
 
 server.tool(
   "check_balance",
-  "Check the organization balance for the agent's allowance wallet — available and held funds. The wallet is resolved to its organization over SIWX (signed automatically); reading a wallet that is not linked to yours requires an admin key.",
+  "Check the organization allowance for the agent's wallet — the allowance and held funds. The wallet is resolved to its organization over SIWX (signed automatically); reading a wallet that is not linked to yours requires an admin key.",
   checkBalanceSchema,
   async (args) => handleCheckBalance(args),
 );
@@ -1135,34 +1135,34 @@ server.tool(
   async (args) => handleListTenantPayments(args),
 );
 
-// ─── Allowance & faucet tools ─────────────────────────────────────────────
+// ─── Wallet & faucet tools ─────────────────────────────────────────────
 
 server.tool(
-  "allowance_status",
-  "Check local agent allowance status — address, network, and funding status.",
-  allowanceStatusSchema,
-  async (args) => handleAllowanceStatus(args),
+  "wallet_status",
+  "Check local agent wallet status — address, network, and funding status.",
+  walletStatusSchema,
+  async (args) => handleWalletStatus(args),
 );
 
 server.tool(
   "lightning_wallet",
-  "The agent's Lightning wallet (the Lightning allowance): mint one budgeted sub-wallet on Run402's Hub and store its pairing locally (Lightning becomes the default rail), read it, or revoke it. Custody is Run402's Hub.",
+  "The agent's Lightning wallet: mint one budgeted sub-wallet on Run402's Hub and store its pairing locally (Lightning becomes the default rail), read it, or revoke it. Custody is Run402's Hub.",
   lightningWalletSchema,
   async (args) => handleLightningWallet(args),
 );
 
 server.tool(
-  "allowance_create",
-  "Create a new local agent allowance (Base Sepolia testnet). Generates a private key and derives the Ethereum address. Saved to ~/.config/run402/allowance.json.",
-  allowanceCreateSchema,
-  async (args) => handleAllowanceCreate(args),
+  "wallet_create",
+  "Create a new local agent wallet (Base Sepolia testnet). Generates a private key and derives the Ethereum address. Saved to ~/.config/run402/wallet.json.",
+  walletCreateSchema,
+  async (args) => handleWalletCreate(args),
 );
 
 server.tool(
-  "allowance_export",
-  "Export the local agent allowance address. Safe to share publicly. This is also the MAINNET on-ramp: to pay with real USDC on Base mainnet, send USDC to this address — `request_faucet` only funds Base Sepolia testnet, which cannot settle a real payment.",
-  allowanceExportSchema,
-  async (args) => handleAllowanceExport(args),
+  "wallet_export",
+  "Export the local agent wallet address. Safe to share publicly. This is also the MAINNET on-ramp: to pay with real USDC on Base mainnet, send USDC to this address — `request_faucet` only funds Base Sepolia testnet, which cannot settle a real payment.",
+  walletExportSchema,
+  async (args) => handleWalletExport(args),
 );
 
 server.tool(
@@ -1343,7 +1343,7 @@ server.tool(
 
 server.tool(
   "set_agent_contact",
-  "Register agent contact info (name, email, webhook). New or changed emails start operator email reply verification. Free with allowance auth.",
+  "Register agent contact info (name, email, webhook). New or changed emails start operator email reply verification. Free with SIWX auth.",
   setAgentContactSchema,
   async (args) => handleSetAgentContact(args),
 );
@@ -1585,7 +1585,7 @@ server.tool(
 
 server.tool(
   "billing_history",
-  "View billing ledger history for the agent's allowance wallet. The wallet is resolved to its organization over SIWX (signed automatically); a wallet not linked to yours requires an admin key.",
+  "View billing ledger history for the agent's wallet. The wallet is resolved to its organization over SIWX (signed automatically); a wallet not linked to yours requires an admin key.",
   billingHistorySchema,
   async (args) => handleBillingHistory(args),
 );
@@ -1617,7 +1617,7 @@ server.tool(
 
 server.tool(
   "init",
-  "Set up agent allowance, request faucet funding, and check tier status — single-call bootstrap. Idempotent, safe to re-run.",
+  "Set up agent wallet, request faucet funding, and check tier status — single-call bootstrap. Idempotent, safe to re-run.",
   initSchema,
   async (args) => handleInit(args),
 );

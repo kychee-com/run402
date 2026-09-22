@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
-import { requireAllowanceAuth } from "../allowance-auth.js";
+import { requireWalletAuth } from "../wallet-auth.js";
 
 export const setNotificationPreferencesSchema = {
   digest_cadence: z
@@ -49,7 +49,7 @@ export async function handleSetNotificationPreferences(args: {
   locale?: string;
   timezone?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const auth = requireAllowanceAuth("/agent/v1/notifications/preferences");
+  const auth = requireWalletAuth("/agent/v1/notifications/preferences");
   if ("error" in auth) return auth.error;
 
   try {

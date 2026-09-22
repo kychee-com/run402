@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
-import { requireAllowanceAuth } from "../allowance-auth.js";
+import { requireWalletAuth } from "../wallet-auth.js";
 
 export const testNotificationSchema = {
   source: z
@@ -22,7 +22,7 @@ export async function handleTestNotification(args: {
   source?: "app" | "platform";
   event_type?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const auth = requireAllowanceAuth("/agent/v1/notifications/test");
+  const auth = requireWalletAuth("/agent/v1/notifications/test");
   if ("error" in auth) return auth.error;
 
   try {

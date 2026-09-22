@@ -215,7 +215,7 @@ function makeRunner(overrides = {}) {
     }
     if (commandArgs.join(" ") === "org whoami") {
       if (selectedWallet !== state.targetProfile) return ok(whoami(state, false, AMBIENT_WALLET, "human"));
-      if (!state.initialized) return fail("NO_ALLOWANCE", "Initialize", [{ type: "initialize_wallet" }]);
+      if (!state.initialized) return fail("NO_WALLET", "Initialize", [{ type: "initialize_wallet" }]);
       whoamiCalls += 1;
       return ok(whoami(state, whoamiCalls > 1));
     }

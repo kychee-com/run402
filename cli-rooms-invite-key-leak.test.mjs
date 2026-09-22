@@ -95,7 +95,7 @@ mock.module("./cli/lib/cold-start.mjs", {
     ensureFundedWallet: async (announce) => {
       calls.push({ method: "ensureFundedWallet" });
       announce?.("mock: wallet already funded");
-      return (impl.ensureFundedWallet ?? (async () => ({ allowance_created: false, faucet_requested: false, address: "0x0000000000000000000000000000000000000abc" })))();
+      return (impl.ensureFundedWallet ?? (async () => ({ wallet_created: false, faucet_requested: false, address: "0x0000000000000000000000000000000000000abc" })))();
     },
   },
 });

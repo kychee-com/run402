@@ -111,9 +111,9 @@ function captureStop() {
   console.error = originalError;
 }
 
-function writeAllowance() {
+function writeWallet() {
   mkdirSync(configDir, { recursive: true });
-  writeFileSync(join(configDir, "allowance.json"), JSON.stringify({
+  writeFileSync(join(configDir, "wallet.json"), JSON.stringify({
     address: TEST_ADDRESS,
     privateKey: TEST_PRIVATE_KEY,
   }));
@@ -124,7 +124,7 @@ before(async () => {
   execFileSync("git", ["init", "-b", "main"], { cwd: repoDir, stdio: "ignore" });
   execFileSync("git", ["remote", "add", "origin", "git@github.com:tal/myapp.git"], { cwd: repoDir });
   process.chdir(repoDir);
-  writeAllowance();
+  writeWallet();
   globalThis.fetch = mockFetch;
   process.exit = (code) => { throw new Error(`process.exit(${code})`); };
   ({ run } = await import("./cli/lib/ci.mjs"));
@@ -146,7 +146,7 @@ beforeEach(() => {
   calls = [];
   captureStop();
   rmSync(join(repoDir, ".github"), { recursive: true, force: true });
-  writeAllowance();
+  writeWallet();
 });
 
 describe("run402 ci", () => {

@@ -1,4 +1,4 @@
-import { allowanceAuthHeaders, resolveProjectId } from "./config.mjs";
+import { walletAuthHeaders, resolveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 import {
@@ -192,7 +192,7 @@ async function init(args) {
   }
 
   // All recipient shapes initiate on the unified transfer endpoint — sign that path.
-  allowanceAuthHeaders(`/projects/v1/${projectId}/transfers`);
+  walletAuthHeaders(`/projects/v1/${projectId}/transfers`);
 
   try {
     let res;
@@ -233,7 +233,7 @@ async function preview(args) {
   }
   const transferId = positionals[0];
   // Preview is kind-agnostic — one route serves wallet, email, and future org transfers.
-  allowanceAuthHeaders(`/agent/v1/transfers/${transferId}`);
+  walletAuthHeaders(`/agent/v1/transfers/${transferId}`);
 
   try {
     const data = await getSdk().admin.transfers.preview(transferId);
@@ -268,7 +268,7 @@ async function list(args) {
 
   // Incoming/outgoing are kind-agnostic — each returns the union of pending
   // wallet/email/future-org rows, tagged with recipient_kind.
-  allowanceAuthHeaders(`/agent/v1/transfers/${direction}`);
+  walletAuthHeaders(`/agent/v1/transfers/${direction}`);
 
   try {
     const result =
@@ -305,7 +305,7 @@ async function accept(args) {
   // Email-addressed rows only: accept the sender's retained-developer-membership
   // offer (see the preview's `retain_member` block). Absent = full severance.
   const acceptRetain = parsedArgs.includes("--accept-retained-member");
-  allowanceAuthHeaders(`/agent/v1/transfers/${transferId}/accept`);
+  walletAuthHeaders(`/agent/v1/transfers/${transferId}/accept`);
 
   try {
     const data = await getSdk().admin.transfers.accept(transferId, {
@@ -329,7 +329,7 @@ async function cancel(args) {
   const transferId = positionals[0];
   const reason = flagValue(parsedArgs, "--reason");
   // Cancel is kind-agnostic — one route serves wallet and email transfers.
-  allowanceAuthHeaders(`/agent/v1/transfers/${transferId}/cancel`);
+  walletAuthHeaders(`/agent/v1/transfers/${transferId}/cancel`);
 
   try {
     const data = await getSdk().admin.transfers.cancel(transferId, { reason: reason ?? undefined });

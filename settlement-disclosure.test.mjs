@@ -79,13 +79,13 @@ describe("#639 the tool discloses, and flags test money", () => {
   it("keys the testnet warning on the OBSERVED network, not on config", () => {
     assert.match(source, /TESTNET_LABELS\[payment\.network\]/);
     // Target config READS, not the word "allowance" — the message text names
-    // `allowance_export` as guidance, which is prose, not a data source. The
+    // `wallet_export` as guidance, which is prose, not a data source. The
     // first version of this assertion failed on exactly that, which is the
     // reminder that a gate matching too broadly reports its own imprecision as
     // a defect.
     assert.doesNotMatch(
       source,
-      /readAllowance\(|getConfigDir\(|process\.env\.RUN402_|\.rail\b/,
+      /readWallet\(|getConfigDir\(|process\.env\.RUN402_|\.rail\b/,
       "the warning must derive from the settlement receipt, never from local wallet config",
     );
   });

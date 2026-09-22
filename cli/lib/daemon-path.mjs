@@ -4,7 +4,7 @@
  * builtins (pinned by the import-graph gate test), so it must stay tiny.
  *
  * The socket lives INSIDE the client configuration directory — the same
- * 0700 trust boundary that already holds the allowance private key and the
+ * 0700 trust boundary that already holds the wallet private key and the
  * gitvault keystore — and its path is keyed by CLI version, so a CLI
  * upgrade resolves a NEW path: the new client never reaches the old daemon,
  * which idles out on its own. Windows uses a named pipe whose name carries

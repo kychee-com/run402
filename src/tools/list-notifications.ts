@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
-import { requireAllowanceAuth } from "../allowance-auth.js";
+import { requireWalletAuth } from "../wallet-auth.js";
 
 export const listNotificationsSchema = {
   type: z.string().optional().describe("Filter by event_type (e.g. project_past_due)"),
@@ -16,7 +16,7 @@ export async function handleListNotifications(args: {
   limit?: number;
   after?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const auth = requireAllowanceAuth("/agent/v1/notifications");
+  const auth = requireWalletAuth("/agent/v1/notifications");
   if ("error" in auth) return auth.error;
 
   try {

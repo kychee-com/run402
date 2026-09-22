@@ -2,7 +2,7 @@
  * Tests for the Node paid-fetch lazy wrapper. Full x402 retry against a
  * funded wallet on real chains is out of scope here (belongs in integration
  * tests, not unit). What we verify:
- *   - setupPaidFetch returns null when no allowance file exists
+ *   - setupPaidFetch returns null when no local wallet file exists
  *   - RPC reads retry and fail over without becoming a zero balance
  *   - RPC-unavailable and confirmed-insufficient states stay distinct
  *   - createLazyPaidFetch recovers from transient initialization/preflight
@@ -10,7 +10,7 @@
  *   - payment source precedence is deterministic and never inherits an
  *     ambient wallet after a custom source is selected
  *   - opaque async signers expose only the public payer + sign operation
- *   - lazy initialization recovers when an allowance appears later
+ *   - lazy initialization recovers when a wallet appears later
  *   - createLazyPaidFetch transparently falls back to globalThis.fetch
  *     when setupPaidFetch returns null
  *   - each x402 failure boundary produces a canonical retry-safe or ambiguous
@@ -23,8 +23,8 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync }
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { saveAllowance } from "../../../core/src/allowance.js";
-import type { AllowanceData, CredentialsProvider } from "../credentials.js";
+import { saveWallet } from "../../../core/src/wallet.js";
+import type { WalletData, CredentialsProvider } from "../credentials.js";
 import { LocalError, PaymentAttemptError } from "../errors.js";
 import type { X402Stack } from "./_paid-stack.js";
 import { run402 } from "./index.js";
@@ -91,21 +91,21 @@ afterEach(() => {
 });
 
 describe("setupPaidFetch", () => {
-  it("returns null when no allowance file exists", async () => {
+  it("returns null when no local wallet file exists", async () => {
     const f = await setupPaidFetch();
     assert.equal(f, null);
   });
 
-  it("uses an explicit allowancePath instead of the ambient wallet", async () => {
-    saveAllowance(allowance(ADDRESS_A, PRIVATE_KEY_A), join(tempDir, "allowance.json"));
+  it("uses an explicit walletPath instead of the ambient wallet", async () => {
+    saveWallet(localWallet(ADDRESS_A, PRIVATE_KEY_A), join(tempDir, "wallet.json"));
     const explicitPath = join(tempDir, "payer-b.json");
-    saveAllowance(allowance(ADDRESS_B, PRIVATE_KEY_B), explicitPath);
+    saveWallet(localWallet(ADDRESS_B, PRIVATE_KEY_B), explicitPath);
     mockFetch();
 
-    const f = await setupPaidFetch({ allowancePath: explicitPath });
+    const f = await setupPaidFetch({ walletPath: explicitPath });
     assert.ok(f);
     assert.deepEqual(f.payer, {
-      source: "allowance_path",
+      source: "wallet_path",
       rail: "x402",
       payers: [
         { address: ADDRESS_B, network: "eip155:8453" },
@@ -119,13 +119,13 @@ describe("setupPaidFetch", () => {
   });
 
   it("uses a supplied credentials provider as the implicit payment source", async () => {
-    saveAllowance(allowance(ADDRESS_A, PRIVATE_KEY_A), join(tempDir, "allowance.json"));
+    saveWallet(localWallet(ADDRESS_A, PRIVATE_KEY_A), join(tempDir, "wallet.json"));
     mockFetch();
 
     const f = await setupPaidFetch({
       credentials: {
-        async readAllowance() {
-          return allowance(ADDRESS_B, PRIVATE_KEY_B);
+        async readWallet() {
+          return localWallet(ADDRESS_B, PRIVATE_KEY_B);
         },
       },
     });
@@ -137,7 +137,7 @@ describe("setupPaidFetch", () => {
   });
 
   it("fails closed instead of falling back to the ambient wallet", async () => {
-    saveAllowance(allowance(ADDRESS_A, PRIVATE_KEY_A), join(tempDir, "allowance.json"));
+    saveWallet(localWallet(ADDRESS_A, PRIVATE_KEY_A), join(tempDir, "wallet.json"));
 
     const f = await setupPaidFetch({ credentials: {} });
 
@@ -154,7 +154,7 @@ describe("setupPaidFetch", () => {
     };
 
     await assert.rejects(
-      setupPaidFetch({ allowancePath: join(tempDir, "allowance.json"), paymentSigner }),
+      setupPaidFetch({ walletPath: join(tempDir, "wallet.json"), paymentSigner }),
       (err: unknown) => err instanceof LocalError && err.code === "PAYMENT_SOURCE_CONFLICT",
     );
   });
@@ -426,7 +426,7 @@ describe("x402 balance preflight", () => {
 });
 
 describe("createLazyPaidFetch", () => {
-  it("falls back to globalThis.fetch when no allowance is configured", async () => {
+  it("falls back to globalThis.fetch when no local wallet is configured", async () => {
     const calls: string[] = [];
     globalThis.fetch = (async (url: string | URL | Request) => {
       calls.push(String(url));
@@ -480,7 +480,7 @@ describe("createLazyPaidFetch", () => {
   });
 
   it("retries initialization after a payment provider recovers", async () => {
-    let current: AllowanceData | null = null;
+    let current: WalletData | null = null;
     const headers: Headers[] = [];
     globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
       headers.push(new Headers(init?.headers));
@@ -488,7 +488,7 @@ describe("createLazyPaidFetch", () => {
     }) as typeof globalThis.fetch;
     const fetchFn = createLazyPaidFetch({
       credentials: {
-        async readAllowance() {
+        async readWallet() {
           return current;
         },
       },
@@ -496,7 +496,7 @@ describe("createLazyPaidFetch", () => {
 
     await fetchFn("https://example.test/first");
     assert.equal(await fetchFn.getPayer(), null);
-    current = allowance(ADDRESS_B, PRIVATE_KEY_B);
+    current = localWallet(ADDRESS_B, PRIVATE_KEY_B);
     assert.deepEqual(await fetchFn.getPayer(), {
       source: "credentials",
       rail: "x402",
@@ -577,7 +577,7 @@ describe("createLazyPaidFetch", () => {
   });
 
   it("first payment sees funding received after an unpaid request initialized the wrapper", async () => {
-    saveAllowance(allowance(ADDRESS_A, PRIVATE_KEY_A));
+    saveWallet(localWallet(ADDRESS_A, PRIVATE_KEY_A));
     let funded = false;
     balanceReader = async () => funded ? 250_000n : 0n;
     simulatePaymentChallenge = true;
@@ -599,30 +599,30 @@ describe("createLazyPaidFetch", () => {
 describe("run402 payment wiring", () => {
   it("keeps custom auth credentials separate from an explicit payer path", async () => {
     const explicitPath = join(tempDir, "payer-b.json");
-    saveAllowance(allowance(ADDRESS_B, PRIVATE_KEY_B), explicitPath);
-    let providerAllowanceReads = 0;
+    saveWallet(localWallet(ADDRESS_B, PRIVATE_KEY_B), explicitPath);
+    let providerWalletReads = 0;
     const credentials = authCredentials({
-      async readAllowance() {
-        providerAllowanceReads += 1;
-        return allowance(ADDRESS_A, PRIVATE_KEY_A);
+      async readWallet() {
+        providerWalletReads += 1;
+        return localWallet(ADDRESS_A, PRIVATE_KEY_A);
       },
     });
 
-    const r = run402({ credentials, allowancePath: explicitPath });
+    const r = run402({ credentials, walletPath: explicitPath });
 
     assert.deepEqual(await r.paymentPayer(), {
-      source: "allowance_path",
+      source: "wallet_path",
       rail: "x402",
       payers: [
         { address: ADDRESS_B, network: "eip155:8453" },
         { address: ADDRESS_B, network: "eip155:84532" },
       ],
     });
-    assert.equal(providerAllowanceReads, 0);
+    assert.equal(providerWalletReads, 0);
   });
 
   it("does not let auth-only custom credentials inherit the ambient payer", async () => {
-    saveAllowance(allowance(ADDRESS_A, PRIVATE_KEY_A), join(tempDir, "allowance.json"));
+    saveWallet(localWallet(ADDRESS_A, PRIVATE_KEY_A), join(tempDir, "wallet.json"));
 
     const r = run402({ credentials: authCredentials() });
 
@@ -631,7 +631,7 @@ describe("run402 payment wiring", () => {
   });
 });
 
-function allowance(address: string, privateKey: string): AllowanceData {
+function localWallet(address: string, privateKey: string): WalletData {
   return { address, privateKey, rail: "x402" };
 }
 

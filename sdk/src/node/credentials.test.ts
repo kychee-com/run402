@@ -1,6 +1,6 @@
 /**
  * NodeCredentialsProvider tests — uses a temp config dir so the host user's
- * real keystore/allowance is not touched.
+ * real keystore/wallet is not touched.
  */
 
 import { describe, it, before, after, beforeEach, afterEach } from "node:test";
@@ -68,17 +68,17 @@ describe("NodeCredentialsProvider.getProject", () => {
 });
 
 describe("NodeCredentialsProvider.getAuth", () => {
-  it("returns null when no allowance is configured", async () => {
+  it("returns null when no local wallet is configured", async () => {
     const provider = new NodeCredentialsProvider();
     assert.equal(await provider.getAuth("/projects/v1"), null);
   });
 
-  it("produces SIWX headers when an allowance is present", async () => {
+  it("produces SIWX headers when a wallet is present", async () => {
     // Use a well-known test key. Deterministic address:
     const privateKey = "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d";
     const address = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
     writeFileSync(
-      join(tempDir, "allowance.json"),
+      join(tempDir, "wallet.json"),
       JSON.stringify({ address, privateKey, rail: "x402" }),
     );
     const provider = new NodeCredentialsProvider();
@@ -175,9 +175,9 @@ describe("NodeCredentialsProvider.getAuth — surface resolution (no ambient app
     assert.equal(h?.["X-Run402-Write-Auth"], undefined, "wrong target ⇒ no approval");
   });
 
-  it("cli surface prefers the wallet when an allowance is present (no cp fallback)", async () => {
+  it("cli surface prefers the wallet when a wallet is present (no cp fallback)", async () => {
     const privateKey = "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d";
-    writeFileSync(join(tempDir, "allowance.json"), JSON.stringify({ address: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8", privateKey, rail: "x402" }));
+    writeFileSync(join(tempDir, "wallet.json"), JSON.stringify({ address: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8", privateKey, rail: "x402" }));
     writeCp();
     writeApprovalCache();
     const p = new NodeCredentialsProvider({ surface: "cli" });

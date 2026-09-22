@@ -107,6 +107,8 @@ export const COMMAND_MANIFEST = [
   { path: ["wallets", "unbind"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
   { path: ["wallets", "import"], positionals: [p("name")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["gate-import-wallet", "--key", "__FIXTURE_FILE__"] },
   { path: ["wallets", "rm"], positionals: [p("name")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["no-such-wallet", "--yes"] },
+  { path: ["wallets", "fund"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [], skipBehavioral: "polls on-chain funding with sleeps" },
+  { path: ["wallets", "balance"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
   { path: ["wallets", "lightning"], positionals: [p("action", { required: false })], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["status"] },
 
   // ── credentials (gateway project credentials) ────────────────────────────
@@ -124,14 +126,6 @@ export const COMMAND_MANIFEST = [
   { path: ["credentials", "project-keys", "export"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["--reveal"] },
   { path: ["credentials", "project-keys", "remove"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [] },
 
-  // ── allowance ────────────────────────────────────────────────────────────
-  { path: ["allowance", "status"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
-  { path: ["allowance", "create"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [], skipBehavioral: "creates a real local wallet key outside the gate's scratch profile" },
-  { path: ["allowance", "fund"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [], skipBehavioral: "polls on-chain funding with sleeps" },
-  { path: ["allowance", "balance"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
-  { path: ["allowance", "export"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
-  { path: ["allowance", "checkout"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["--amount", "5000000"] },
-  { path: ["allowance", "history"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
 
   // ── tier ─────────────────────────────────────────────────────────────────
   { path: ["tier", "status"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },

@@ -117,7 +117,7 @@ function runOffline(argv) {
   try {
     const profileDir = join(tempDir, "profiles", "agent-a");
     mkdirSync(profileDir, { recursive: true });
-    writeFileSync(join(profileDir, "allowance.json"), "{", { mode: 0o600 });
+    writeFileSync(join(profileDir, "wallet.json"), "{", { mode: 0o600 });
     const result = spawnSync(process.execPath, [CLI_PATH, ...argv], {
       env: {
         ...process.env,

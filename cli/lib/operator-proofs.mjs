@@ -10,12 +10,12 @@
  * enroll a second passkey. With no live cached session this returns
  * `undefined` and the verb behaves exactly as before (wallet auth alone).
  */
-import { allowanceAuthHeaders } from "./config.mjs";
+import { walletAuthHeaders } from "./config.mjs";
 import { loadLiveControlPlaneSession } from "../core-dist/control-plane-session.js";
 
 /** `{ siwx, token }` for `path`, or `undefined` when no live operator session is cached. */
 export function operatorProofs(path) {
-  const siwx = allowanceAuthHeaders(path)["SIGN-IN-WITH-X"];
+  const siwx = walletAuthHeaders(path)["SIGN-IN-WITH-X"];
   const live = loadLiveControlPlaneSession();
   if (!live || !live.control_plane_session_token) return undefined;
   return { siwx, token: live.control_plane_session_token };

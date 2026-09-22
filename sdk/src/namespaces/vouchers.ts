@@ -24,7 +24,7 @@ import { assertNonEmptyString } from "../validation.js";
 
 /**
  * A follow-up the gateway suggests after a redemption — most often buying the
- * tier the new balance now covers.
+ * tier the new allowance now covers.
  */
 export interface VoucherNextAction {
   type: string;

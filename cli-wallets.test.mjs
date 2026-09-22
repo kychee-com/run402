@@ -71,11 +71,11 @@ describe("wallets — lifecycle", () => {
   });
 
   it("rename default migrates the root wallet into profiles/", () => {
-    assert.equal(run(["allowance", "create"]).status, 0); // creates the default wallet locally
-    assert.ok(existsSync(join(configDir, "allowance.json")));
+    assert.equal(run(["wallets", "new", "default"]).status, 0); // creates the default wallet locally
+    assert.ok(existsSync(join(configDir, "wallet.json")));
     assert.equal(run(["wallets", "rename", "default", "kychon"]).status, 0);
-    assert.ok(!existsSync(join(configDir, "allowance.json")), "root allowance.json migrated away");
-    assert.ok(existsSync(join(configDir, "profiles", "kychon", "allowance.json")));
+    assert.ok(!existsSync(join(configDir, "wallet.json")), "root wallet.json migrated away");
+    assert.ok(existsSync(join(configDir, "profiles", "kychon", "wallet.json")));
     assert.deepEqual(jsonOut(run(["wallets", "list"])).map((w) => w.local_label), ["kychon"]);
   });
 });
@@ -227,7 +227,7 @@ describe("wallets — conflict + fail-closed", () => {
 
   it("env vs binding mismatch is a hard error on a normal command", () => {
     writeFileSync(join(workDir, ".run402.json"), JSON.stringify({ wallet: "client-a" }));
-    const r = run(["allowance", "export"], { env: { RUN402_WALLET: "kychon" } });
+    const r = run(["org", "current"], { env: { RUN402_WALLET: "kychon" } });
     assert.notEqual(r.status, 0);
     const env = errEnvelope(r);
     assert.equal(env.code, "WALLET_SELECTION_CONFLICT");
@@ -237,12 +237,12 @@ describe("wallets — conflict + fail-closed", () => {
 
   it("--wallet resolves the conflict", () => {
     writeFileSync(join(workDir, ".run402.json"), JSON.stringify({ wallet: "client-a" }));
-    const r = run(["--wallet", "kychon", "allowance", "export"], { env: { RUN402_WALLET: "client-a" } });
+    const r = run(["--wallet", "kychon", "org", "current"], { env: { RUN402_WALLET: "client-a" } });
     assert.equal(r.status, 0, r.stderr);
   });
 
   it("selecting an unknown wallet fails closed on a normal command", () => {
-    const r = run(["--wallet", "ghost", "allowance", "export"]);
+    const r = run(["--wallet", "ghost", "org", "current"]);
     assert.notEqual(r.status, 0);
     assert.equal(errEnvelope(r).code, "WALLET_NOT_FOUND");
   });
@@ -258,21 +258,21 @@ describe("wallets — conflict + fail-closed", () => {
 describe("wallets — provenance", () => {
   it("does not emit a provenance line for a non-default selection by default", () => {
     run(["wallets", "new", "kychon"]);
-    const r = run(["--wallet", "kychon", "allowance", "export"]);
+    const r = run(["--wallet", "kychon", "org", "current"]);
     assert.equal(r.status, 0, r.stderr);
     assert.ok(!/↪ wallet:/.test(r.stderr), `expected no provenance line, got: ${r.stderr}`);
   });
 
   it("can emit a provenance line when explicitly requested", () => {
     run(["wallets", "new", "kychon"]);
-    const r = run(["--wallet", "kychon", "allowance", "export"], { env: { RUN402_WALLET_PROVENANCE: "1" } });
+    const r = run(["--wallet", "kychon", "org", "current"], { env: { RUN402_WALLET_PROVENANCE: "1" } });
     assert.equal(r.status, 0, r.stderr);
     assert.match(r.stderr, /wallet: kychon/);
   });
 
   it("stays silent for the default wallet", () => {
-    run(["allowance", "create"]); // default wallet
-    const r = run(["allowance", "export"]);
+    run(["wallets", "new", "default"]); // default wallet
+    const r = run(["org", "current"]);
     assert.equal(r.status, 0, r.stderr);
     assert.ok(!/↪ wallet:/.test(r.stderr), `expected no provenance line, got: ${r.stderr}`);
   });

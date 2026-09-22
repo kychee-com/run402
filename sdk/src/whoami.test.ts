@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { Run402 } from "./index.js";
-import type { CredentialsProvider, WalletIdentity, AllowanceData } from "./credentials.js";
+import type { CredentialsProvider, WalletIdentity, WalletData } from "./credentials.js";
 
 function makeSdk(creds: Partial<CredentialsProvider>): Run402 {
   const base: CredentialsProvider = {
@@ -28,9 +28,9 @@ describe("Run402.whoami", () => {
     });
   });
 
-  it("falls back to readAllowance for address when getWalletIdentity is absent", async () => {
+  it("falls back to readWallet for address when getWalletIdentity is absent", async () => {
     const r = makeSdk({
-      async readAllowance(): Promise<AllowanceData> {
+      async readWallet(): Promise<WalletData> {
         return { address: "0xdef", privateKey: "0x" + "1".repeat(64) };
       },
     });

@@ -1,6 +1,6 @@
 /**
  * `tier` namespace — set (start / renew / upgrade) the organization's tier
- * lease against `/tiers/v1*`. Requires allowance SIWX auth; `set` flows through x402
+ * lease against `/tiers/v1*`. Requires wallet SIWX auth; `set` flows through x402
  * for the actual payment.
  */
 
@@ -210,7 +210,7 @@ export class Tier {
   /**
    * Set the organization's tier: start, renew, or upgrade the lease. The
    * gateway auto-detects the action from the current tier state. Payment flows through the injected fetch (x402 in
-   * Node with an allowance). Throws {@link PaymentRequired} when the
+   * Node with a wallet). Throws {@link PaymentRequired} when the
    * wrapper cannot fund the call.
    */
   async set(tier: TierName, opts: TierSetOptions = {}): Promise<TierSetResult> {

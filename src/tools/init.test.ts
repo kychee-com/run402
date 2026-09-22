@@ -22,12 +22,12 @@ afterEach(() => {
   delete process.env.RUN402_API_BASE;
 });
 
-function readAllowanceFile() {
-  return JSON.parse(readFileSync(join(tempDir, "allowance.json"), "utf-8"));
+function readWalletFile() {
+  return JSON.parse(readFileSync(join(tempDir, "wallet.json"), "utf-8"));
 }
 
-function writeAllowanceFile(data: Record<string, unknown>) {
-  writeFileSync(join(tempDir, "allowance.json"), JSON.stringify(data), { mode: 0o600 });
+function writeWalletFile(data: Record<string, unknown>) {
+  writeFileSync(join(tempDir, "wallet.json"), JSON.stringify(data), { mode: 0o600 });
 }
 
 function writeKeystoreFile(data: Record<string, unknown>) {
@@ -62,7 +62,7 @@ function mockFetch(opts: {
 }
 
 describe("init tool", () => {
-  it("creates allowance when none exists", async () => {
+  it("creates wallet when none exists", async () => {
     mockFetch({});
 
     const result = await handleInit({});
@@ -70,15 +70,15 @@ describe("init tool", () => {
     const text = result.content[0]!.text;
     assert.ok(text.includes("(created)"));
 
-    const allowance = readAllowanceFile();
-    assert.ok(allowance.address.startsWith("0x"));
-    assert.ok(allowance.privateKey.startsWith("0x"));
-    assert.equal(allowance.funded, true); // faucet succeeded
-    assert.equal(allowance.rail, "x402");
+    const localWallet = readWalletFile();
+    assert.ok(localWallet.address.startsWith("0x"));
+    assert.ok(localWallet.privateKey.startsWith("0x"));
+    assert.equal(localWallet.funded, true); // faucet succeeded
+    assert.equal(localWallet.rail, "x402");
   });
 
-  it("reuses existing allowance", async () => {
-    writeAllowanceFile({
+  it("reuses existing wallet", async () => {
+    writeWalletFile({
       address: "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
       privateKey: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
       created: "2026-01-01T00:00:00.000Z",
@@ -92,13 +92,13 @@ describe("init tool", () => {
     assert.ok(!text.includes("(created)"));
     assert.ok(text.includes("0xf39f...2266"));
 
-    // Allowance unchanged
-    const allowance = readAllowanceFile();
-    assert.equal(allowance.privateKey, "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80");
+    // Wallet unchanged
+    const localWallet = readWalletFile();
+    assert.equal(localWallet.privateKey, "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80");
   });
 
   it("requests x402 faucet when unfunded", async () => {
-    writeAllowanceFile({
+    writeWalletFile({
       address: "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
       privateKey: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
       created: "2026-01-01T00:00:00.000Z",
@@ -111,9 +111,9 @@ describe("init tool", () => {
     const text = result.content[0]!.text;
     assert.ok(text.includes("funded"));
 
-    const allowance = readAllowanceFile();
-    assert.equal(allowance.funded, true);
-    assert.ok(allowance.lastFaucet);
+    const localWallet = readWalletFile();
+    assert.equal(localWallet.funded, true);
+    assert.ok(localWallet.lastFaucet);
   });
 
   it("requests mpp faucet when rail is mpp", async () => {
@@ -141,13 +141,13 @@ describe("init tool", () => {
     assert.ok(text.includes("mpp"));
     assert.ok(text.includes("funded"));
 
-    const allowance = readAllowanceFile();
-    assert.equal(allowance.rail, "mpp");
-    assert.equal(allowance.funded, true);
+    const localWallet = readWalletFile();
+    assert.equal(localWallet.rail, "mpp");
+    assert.equal(localWallet.funded, true);
   });
 
   it("skips faucet when already funded", async () => {
-    writeAllowanceFile({
+    writeWalletFile({
       address: "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
       privateKey: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
       created: "2026-01-01T00:00:00.000Z",
@@ -184,7 +184,7 @@ describe("init tool", () => {
   });
 
   it("includes tier status in summary", async () => {
-    writeAllowanceFile({
+    writeWalletFile({
       address: "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
       privateKey: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
       created: "2026-01-01T00:00:00.000Z",
@@ -204,7 +204,7 @@ describe("init tool", () => {
   });
 
   it("includes project count in summary", async () => {
-    writeAllowanceFile({
+    writeWalletFile({
       address: "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
       privateKey: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
       created: "2026-01-01T00:00:00.000Z",
@@ -224,8 +224,8 @@ describe("init tool", () => {
     assert.ok(text.includes("2 active"));
   });
 
-  it("rail switching updates allowance.json", async () => {
-    writeAllowanceFile({
+  it("rail switching updates wallet.json", async () => {
+    writeWalletFile({
       address: "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
       privateKey: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
       created: "2026-01-01T00:00:00.000Z",
@@ -235,8 +235,8 @@ describe("init tool", () => {
     mockFetch({});
 
     await handleInit({ rail: "mpp" });
-    const allowance = readAllowanceFile();
-    assert.equal(allowance.rail, "mpp");
+    const localWallet = readWalletFile();
+    assert.equal(localWallet.rail, "mpp");
   });
 
   it("idempotent — second call does not duplicate state", async () => {
@@ -246,16 +246,16 @@ describe("init tool", () => {
     const text1 = result1.content[0]!.text;
     assert.ok(text1.includes("(created)"));
 
-    const allowance1 = readAllowanceFile();
+    const wallet1 = readWalletFile();
 
-    // Second call — allowance already exists and funded
+    // Second call — wallet already exists and funded
     const result2 = await handleInit({});
     const text2 = result2.content[0]!.text;
     assert.ok(!text2.includes("(created)"));
 
-    const allowance2 = readAllowanceFile();
-    assert.equal(allowance1.address, allowance2.address);
-    assert.equal(allowance1.privateKey, allowance2.privateKey);
+    const wallet2 = readWalletFile();
+    assert.equal(wallet1.address, wallet2.address);
+    assert.equal(wallet1.privateKey, wallet2.privateKey);
   });
 });
 

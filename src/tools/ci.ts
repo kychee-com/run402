@@ -42,7 +42,7 @@ export const ciCreateBindingSchema = {
   signed_delegation: z
     .string()
     .describe(
-      "Base64 SIGN-IN-WITH-X delegation signed locally by the allowance wallet. This MCP tool does not sign; it only sends the signed delegation to the SDK.",
+      "Base64 SIGN-IN-WITH-X delegation signed locally by the wallet. This MCP tool does not sign; it only sends the signed delegation to the SDK.",
     ),
 };
 

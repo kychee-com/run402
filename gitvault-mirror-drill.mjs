@@ -200,8 +200,8 @@ async function main() {
   }
   const WALLET_ARGS = ["--wallet", WALLET_NAME];
 
-  // ── 2. Bootstrap: allowance + faucet-if-zero + report current tier ──
-  step("2. run402 init (allowance + faucet-if-zero)");
+  // ── 2. Bootstrap: wallet + faucet-if-zero + report current tier ──
+  step("2. run402 init (wallet + faucet-if-zero)");
   const initResult = runCli(["init", ...WALLET_ARGS], { label: "init" });
   console.log(`  wallet: ${JSON.stringify(initResult.json?.wallet)}`);
   console.log(`  balances: ${JSON.stringify(initResult.json?.balances)}`);

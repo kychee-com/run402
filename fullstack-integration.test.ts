@@ -391,7 +391,7 @@ before(async () => {
   const { privateKeyToAccount } = await import("viem/accounts");
   const account = privateKeyToAccount(buyerKey as `0x${string}`);
   writeFileSync(
-    join(tempDir, "allowance.json"),
+    join(tempDir, "wallet.json"),
     JSON.stringify({
       address: account.address,
       privateKey: buyerKey,

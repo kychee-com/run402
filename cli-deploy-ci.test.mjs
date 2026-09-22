@@ -2,7 +2,7 @@
  * Focused tests for `run402 deploy` under GitHub Actions OIDC.
  *
  * These run through the real CLI module so we prove the command does not need
- * a local allowance file when CI credentials are available.
+ * a local wallet file when CI credentials are available.
  */
 
 import { after, before, beforeEach, describe, it } from "node:test";
@@ -161,7 +161,7 @@ beforeEach(() => {
 });
 
 describe("deploy GitHub Actions OIDC", () => {
-  it("uses OIDC credentials, sends no local keys, and does not require allowance", async () => {
+  it("uses OIDC credentials, sends no local keys, and does not require wallet", async () => {
     process.env.GITHUB_ACTIONS = "true";
     process.env.ACTIONS_ID_TOKEN_REQUEST_URL = OIDC_URL;
     process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN = "github-request-token";
@@ -197,7 +197,7 @@ describe("deploy GitHub Actions OIDC", () => {
     assert.equal(parsedStdout.release_id, "rel_ci_test");
   });
 
-  it("keeps local deploy allowance preflight outside GitHub Actions", async () => {
+  it("keeps local deploy wallet preflight outside GitHub Actions", async () => {
     captureStart();
     let threw = null;
     try {
@@ -217,7 +217,7 @@ describe("deploy GitHub Actions OIDC", () => {
 
     assert.equal(threw?.message, "process.exit(1)");
     const parsedStderr = JSON.parse(stderr.join("\n"));
-    assert.equal(parsedStderr.code, "NO_ALLOWANCE");
+    assert.equal(parsedStderr.code, "NO_WALLET");
     assert.equal(calls.some((c) => c.url === `${API}/ci/v1/token-exchange`), false);
     assert.equal(calls.some((c) => c.url === `${API}/apply/v1/plans`), false);
   });

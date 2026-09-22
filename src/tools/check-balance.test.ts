@@ -13,8 +13,8 @@ const WALLET_LOWER = "0xabcdef0123456789abcdef0123456789abcdef01";
 let tempDir: string;
 
 beforeEach(() => {
-  // Isolate from the developer's real ~/.config/run402/allowance.json so
-  // the Node SDK's createLazyPaidFetch() resolves to the no-allowance
+  // Isolate from the developer's real ~/.config/run402/wallet.json so
+  // the Node SDK's createLazyPaidFetch() resolves to the no-wallet
   // fallback path. Without this, `setupPaidFetch()` builds an x402-wrapped
   // fetch around the FIRST mocked globalThis.fetch and caches it on the
   // SDK singleton — subsequent tests' mocks never get called.

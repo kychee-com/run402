@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { getSdk } from "../sdk.js";
 import { formatCanonicalErrorContext, mapSdkError } from "../errors.js";
-import { requireAllowanceAuth } from "../allowance-auth.js";
+import { requireWalletAuth } from "../wallet-auth.js";
 import { Run402DeployError } from "../../sdk/dist/index.js";
 import type { EdgeCoherenceReport } from "../../sdk/dist/index.js";
 
@@ -35,7 +35,7 @@ export async function handleDeployVerifyEdge(args: {
   wait?: boolean;
   timeout_seconds?: number;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const auth = requireAllowanceAuth("/apply/v1/operations");
+  const auth = requireWalletAuth("/apply/v1/operations");
   if ("error" in auth) return auth.error;
 
   try {

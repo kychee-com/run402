@@ -173,13 +173,13 @@ async function mockFetch(input, init) {
 
 function capture() { stdout = []; console.log = (...a) => stdout.push(a.join(" ")); console.error = () => {}; }
 function uncapture() { console.log = originalLog; console.error = originalError; }
-function writeAllowance() {
+function writeWallet() {
   mkdirSync(configDir, { recursive: true });
-  writeFileSync(join(configDir, "allowance.json"), JSON.stringify({ address: TEST_ADDRESS, privateKey: TEST_PRIVATE_KEY }));
+  writeFileSync(join(configDir, "wallet.json"), JSON.stringify({ address: TEST_ADDRESS, privateKey: TEST_PRIVATE_KEY }));
 }
 
 before(async () => {
-  writeAllowance();
+  writeWallet();
   globalThis.fetch = mockFetch;
   process.exit = (code) => { throw new Error(`process.exit(${code})`); };
   ({ run: runOrg } = await import("./cli/lib/org.mjs"));

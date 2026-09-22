@@ -7,7 +7,7 @@ import type { OperationActorSnapshot } from "../../sdk/dist/index.js";
 /**
  * MCP release observability tools. These wrap read-only apikey-gated SDK
  * calls; unlike deploy/resume/list/events, they do not preflight wallet
- * allowance auth.
+ * SIWX auth.
  */
 
 export const deployReleasesGetSchema = {

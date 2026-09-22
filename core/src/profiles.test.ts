@@ -91,30 +91,30 @@ describe("profiles — meta.json", () => {
 });
 
 describe("profiles — listing + lifecycle", () => {
-  it("lists default only when a root allowance.json exists", () => {
+  it("lists default only when a root wallet.json exists", () => {
     assert.deepEqual(listProfileNames(), []);
-    writeFileSync(join(tmp, "allowance.json"), "{}");
+    writeFileSync(join(tmp, "wallet.json"), "{}");
     assert.deepEqual(listProfileNames(), ["default"]);
   });
 
   it("lists named wallets from the profiles directory", () => {
-    writeFileSync(join(tmp, "allowance.json"), "{}");
+    writeFileSync(join(tmp, "wallet.json"), "{}");
     ensureProfileDir("client-a");
     ensureProfileDir("client-b");
     const names = listProfileNames().sort();
     assert.deepEqual(names, ["client-a", "client-b", "default"]);
   });
 
-  it("profileExists checks for allowance.json", () => {
+  it("profileExists checks for wallet.json", () => {
     assert.ok(!profileExists("client-a"));
     ensureProfileDir("client-a");
-    writeFileSync(join(tmp, "profiles", "client-a", "allowance.json"), "{}");
+    writeFileSync(join(tmp, "profiles", "client-a", "wallet.json"), "{}");
     assert.ok(profileExists("client-a"));
   });
 
   it("removeProfile deletes a named wallet but refuses default", () => {
     ensureProfileDir("client-a");
-    writeFileSync(join(tmp, "profiles", "client-a", "allowance.json"), "{}");
+    writeFileSync(join(tmp, "profiles", "client-a", "wallet.json"), "{}");
     removeProfile("client-a");
     assert.ok(!existsSync(join(tmp, "profiles", "client-a")));
     assert.throws(() => removeProfile("default"), /Refusing to remove/);
@@ -124,18 +124,18 @@ describe("profiles — listing + lifecycle", () => {
 describe("profiles — rename", () => {
   it("moves a named wallet's directory", () => {
     ensureProfileDir("client-a");
-    writeFileSync(join(tmp, "profiles", "client-a", "allowance.json"), '{"k":1}');
+    writeFileSync(join(tmp, "profiles", "client-a", "wallet.json"), '{"k":1}');
     renameProfile("client-a", "acme");
     assert.ok(!existsSync(join(tmp, "profiles", "client-a")));
-    assert.ok(existsSync(join(tmp, "profiles", "acme", "allowance.json")));
+    assert.ok(existsSync(join(tmp, "profiles", "acme", "wallet.json")));
   });
 
   it("migrates the default (root) wallet into profiles/<name>/", () => {
-    writeFileSync(join(tmp, "allowance.json"), '{"key":"x"}');
+    writeFileSync(join(tmp, "wallet.json"), '{"key":"x"}');
     writeFileSync(join(tmp, "projects.json"), '{"projects":{}}');
     renameProfile("default", "kychon");
-    assert.ok(!existsSync(join(tmp, "allowance.json")), "root allowance.json moved");
-    assert.ok(existsSync(join(tmp, "profiles", "kychon", "allowance.json")));
+    assert.ok(!existsSync(join(tmp, "wallet.json")), "root wallet.json moved");
+    assert.ok(existsSync(join(tmp, "profiles", "kychon", "wallet.json")));
     assert.ok(existsSync(join(tmp, "profiles", "kychon", "projects.json")));
   });
 

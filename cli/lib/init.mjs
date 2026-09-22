@@ -1,4 +1,4 @@
-import { readAllowance, saveAllowance, loadKeyStore, configDir, configureApiBase, getActiveProjectId } from "./config.mjs";
+import { readWallet, saveWallet, loadKeyStore, configDir, configureApiBase, getActiveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { fail } from "./sdk-errors.mjs";
 import { upDeployAction, deployAction } from "./next-actions.mjs";
@@ -13,7 +13,7 @@ const USDC_SEPOLIA = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
 const PATH_USD = "0x20c0000000000000000000000000000000000000";
 const TEMPO_RPC = "https://rpc.moderato.tempo.xyz/";
 
-const HELP = `run402 init — Set up allowance, funding, and check tier status
+const HELP = `run402 init — Set up wallet, funding, and check tier status
 
 Usage:
   run402 init                Set up with x402 (Base Sepolia) — default
@@ -21,13 +21,13 @@ Usage:
                              Configure a Run402 Core/API target for the active
                              profile without setting up Cloud payment.
   run402 init mpp            Set up with MPP (Tempo Moderato)
-  run402 init lightning      Set up the Lightning allowance: a budgeted wallet
+  run402 init lightning      Set up the Lightning wallet: a budgeted wallet
                              minted on Run402's Hub (custody: Run402), plus the
-                             Base allowance as the x402 fallback. Lightning
+                             Base wallet as the x402 fallback. Lightning
                              becomes the default rail for paid calls.
   run402 init <rail> --switch-rail
                              Switch the persisted payment rail to <rail>.
-                             Required when an allowance already exists on
+                             Required when a wallet already exists on
                              the other rail; protects scripted re-runs from
                              silently flipping billing networks.
 
@@ -41,7 +41,7 @@ Options:
                   for a self-hosted Run402 Core Gateway, e.g.
                   http://my-core:4020.
   --switch-rail   Confirm switching the persisted payment rail. Re-running
-                  init with the SAME rail as the existing allowance is always
+                  init with the SAME rail as the existing wallet is always
                   idempotent and does not need this flag.
   --name <name>   Set this principal's display name (1-64 chars) — what promotion
                   credit, \`run402 up\`'s room presence, and audit surfaces show
@@ -60,7 +60,7 @@ Options:
 Output:
   Stdout is a JSON summary { config_dir, wallet, rail, network, balances,
   tier, projects_saved, active_project_id, next_step }. Progress lines
-  (Config / Allowance / Balance / Tier / Next) go to stderr so a human
+  (Config / Wallet / Balance / Tier / Next) go to stderr so a human
   re-running interactively sees what's happening while a script piping stdout
   to jq stays clean. The summary also carries { gitvault } (the scaffolded
   remote), or { gitvault: null, gitvault_skipped } naming why no remote was
@@ -74,7 +74,7 @@ Output:
 
 Steps (idempotent when re-run with the same rail; pass --switch-rail to change rails):
   1. Creates config directory (~/.config/run402)
-  2. Creates agent allowance if none exists
+  2. Creates agent wallet if none exists
   3. Checks on-chain balance; requests faucet if zero
   4. Shows current tier and lease status
   5. Lists local project count
@@ -246,7 +246,7 @@ export async function run(args = []) {
   // scaffolder's help, not the rail-setup help. The rest of init's
   // payment-rail setup is intentionally orthogonal — agents typically
   // run `run402 init astro <dir>` to scaffold AND `run402 init` once
-  // to set up allowance / tier.
+  // to set up wallet / tier.
   if (args[0] === "astro") {
     const { runInitAstro } = await import("./init-astro.mjs");
     await runInitAstro(args.slice(1));
@@ -350,12 +350,12 @@ export async function run(args = []) {
   const requestedRail = isLightning ? "lightning" : isMpp ? "mpp" : "x402";
   const switchRailConfirmed = args.includes("--switch-rail");
 
-  const existingAllowance = readAllowance();
-  if (existingAllowance?.rail && existingAllowance.rail !== requestedRail && !switchRailConfirmed) {
+  const existingWallet = readWallet();
+  if (existingWallet?.rail && existingWallet.rail !== requestedRail && !switchRailConfirmed) {
     fail({
       code: "RAIL_SWITCH_REQUIRES_CONFIRM",
-      message: `Already on rail '${existingAllowance.rail}'. Pass --switch-rail to switch to '${requestedRail}'.`,
-      details: { current_rail: existingAllowance.rail, requested_rail: requestedRail },
+      message: `Already on rail '${existingWallet.rail}'. Pass --switch-rail to switch to '${requestedRail}'.`,
+      details: { current_rail: existingWallet.rail, requested_rail: requestedRail },
     });
   }
 
@@ -387,28 +387,28 @@ export async function run(args = []) {
   mkdirSync(CONFIG_DIR, { recursive: true });
   line("Config", CONFIG_DIR);
 
-  // 2. Allowance
-  let allowance = existingAllowance;
-  const previousRail = allowance?.rail;
-  if (!allowance) {
+  // 2. Wallet
+  let localWallet = existingWallet;
+  const previousRail = localWallet?.rail;
+  if (!localWallet) {
     const { generatePrivateKey, privateKeyToAccount } = await import("viem/accounts");
     const privateKey = generatePrivateKey();
     const account = privateKeyToAccount(privateKey);
-    allowance = { address: account.address, privateKey, created: new Date().toISOString(), funded: false, rail: requestedRail };
-    saveAllowance(allowance);
-    line("Allowance", `${short(allowance.address)} (created)`);
+    localWallet = { address: account.address, privateKey, created: new Date().toISOString(), funded: false, rail: requestedRail };
+    saveWallet(localWallet);
+    line("Wallet", `${short(localWallet.address)} (created)`);
   } else {
     // Update rail if switching (a wallet leaving Lightning keeps its pairing on disk until revoked).
-    if (allowance.rail !== requestedRail) {
-      allowance = { ...allowance, rail: requestedRail };
-      saveAllowance(allowance);
+    if (localWallet.rail !== requestedRail) {
+      localWallet = { ...localWallet, rail: requestedRail };
+      saveWallet(localWallet);
     }
-    line("Allowance", short(allowance.address));
+    line("Wallet", short(localWallet.address));
   }
 
   const walletName = getActiveProfile();
   const walletMeta = readMeta(walletName);
-  summary.wallet = { local_label: walletName, server_label: walletMeta?.label ?? null, address: allowance.address };
+  summary.wallet = { local_label: walletName, server_label: walletMeta?.label ?? null, address: localWallet.address };
   summary.network = isLightning ? "bitcoin-mainnet" : isMpp ? "tempo-moderato" : "base-sepolia";
   summary.rail = requestedRail;
 
@@ -432,7 +432,7 @@ export async function run(args = []) {
     const client = createPublicClient({ chain: tempoModerato, transport: http() });
 
     try {
-      const raw = await client.readContract({ address: PATH_USD, abi: USDC_ABI, functionName: "balanceOf", args: [allowance.address] });
+      const raw = await client.readContract({ address: PATH_USD, abi: USDC_ABI, functionName: "balanceOf", args: [localWallet.address] });
       balance = Number(raw);
     } catch {}
 
@@ -442,7 +442,7 @@ export async function run(args = []) {
         const res = await fetch(TEMPO_RPC, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ jsonrpc: "2.0", method: "tempo_fundAddress", params: [allowance.address], id: 1 }),
+          body: JSON.stringify({ jsonrpc: "2.0", method: "tempo_fundAddress", params: [localWallet.address], id: 1 }),
         });
         const data = await res.json();
         if (data.result) {
@@ -452,12 +452,12 @@ export async function run(args = []) {
           for (let i = 0; i < 30; i++) {
             await new Promise(r => setTimeout(r, 1000));
             try {
-              const raw = await client.readContract({ address: PATH_USD, abi: USDC_ABI, functionName: "balanceOf", args: [allowance.address] });
+              const raw = await client.readContract({ address: PATH_USD, abi: USDC_ABI, functionName: "balanceOf", args: [localWallet.address] });
               balance = Number(raw);
               if (balance > 0) break;
             } catch {}
           }
-          saveAllowance({ ...allowance, funded: true, lastFaucet: new Date().toISOString() });
+          saveWallet({ ...localWallet, funded: true, lastFaucet: new Date().toISOString() });
           if (balance > 0) {
             line("Balance", `${(balance / 1e6).toFixed(2)} pathUSD (funded)`);
           } else {
@@ -482,24 +482,24 @@ export async function run(args = []) {
     const client = createPublicClient({ chain: baseSepolia, transport: http() });
 
     try {
-      const raw = await client.readContract({ address: USDC_SEPOLIA, abi: USDC_ABI, functionName: "balanceOf", args: [allowance.address] });
+      const raw = await client.readContract({ address: USDC_SEPOLIA, abi: USDC_ABI, functionName: "balanceOf", args: [localWallet.address] });
       balance = Number(raw);
     } catch {}
 
     if (balance === 0) {
       line("Balance", "0 USDC — requesting faucet...");
       try {
-        await getSdk().allowance.faucet(allowance.address);
+        await getSdk().wallets.faucet(localWallet.address);
         // Poll for up to 30s
         for (let i = 0; i < 30; i++) {
           await new Promise(r => setTimeout(r, 1000));
           try {
-            const raw = await client.readContract({ address: USDC_SEPOLIA, abi: USDC_ABI, functionName: "balanceOf", args: [allowance.address] });
+            const raw = await client.readContract({ address: USDC_SEPOLIA, abi: USDC_ABI, functionName: "balanceOf", args: [localWallet.address] });
             balance = Number(raw);
             if (balance > 0) break;
           } catch {}
         }
-        saveAllowance({ ...allowance, funded: true, lastFaucet: new Date().toISOString() });
+        saveWallet({ ...localWallet, funded: true, lastFaucet: new Date().toISOString() });
         if (balance > 0) {
           line("Balance", `${(balance / 1e6).toFixed(2)} USDC (funded)`);
         } else {
@@ -564,10 +564,10 @@ export async function run(args = []) {
     }
   }
 
-  // Balances mirror `run402 status`: the on-chain figure above plus the
-  // Run402-held prepaid credit (rail-independent). Prepaid credit is fetched
-  // best-effort so a billing read failure never blocks setup.
-  const billing = await getSdk().billing.checkBalance(allowance.address).catch(() => null);
+  // Balances mirror `run402 status`: the on-chain wallet figure above plus the
+  // organization's Run402-held allowance (rail-independent). The allowance is
+  // fetched best-effort so a billing read failure never blocks setup.
+  const billing = await getSdk().billing.checkBalance(localWallet.address).catch(() => null);
   const hasBilling = billing && billing.exists !== false;
   summary.balances = {
     on_chain_usd_micros: balance,
@@ -582,7 +582,7 @@ export async function run(args = []) {
     line("Note", `Switched from ${previousRail} — ${prev} balance still available if you switch back`);
   }
 
-  // 3b. The Lightning allowance (mpp-lightning-over-nwc): a budgeted wallet
+  // 3b. The Lightning wallet (mpp-lightning-over-nwc): a budgeted wallet
   // on Run402's Hub, minted by the platform, its pairing kept beside the
   // Base key. Never printed. A Hub that is not configured leaves the rail
   // on Lightning with x402 as the live fallback, and says so.
@@ -591,14 +591,14 @@ export async function run(args = []) {
     try {
       const { ensureLightningWallet, describeLightning, readLightningBalance } = await import("./lightning-wallet.mjs");
       const result = await ensureLightningWallet();
-      allowance = result.allowance;
+      localWallet = result.localWallet;
       const settled = result.outcome === "stored" || result.outcome === "present";
-      const balance = settled ? await readLightningBalance(allowance) : null;
-      summary.lightning = { ...(describeLightning(allowance, result.wallet, balance) ?? {}), outcome: result.outcome };
+      const balance = settled ? await readLightningBalance(localWallet) : null;
+      summary.lightning = { ...(describeLightning(localWallet, result.wallet, balance) ?? {}), outcome: result.outcome };
       if (result.outcome === "stored") {
         line("Lightning", `wallet minted on Run402's Hub (${result.wallet.budget_sats} sats budget, ${result.wallet.starter_sats} starter)`);
       } else if (result.outcome === "present") {
-        line("Lightning", `wallet ${allowance.lightning.wallet_id}${balance ? ` — ${balance.balance_sats} sats` : ""}`);
+        line("Lightning", `wallet ${localWallet.lightning.wallet_id}${balance ? ` — ${balance.balance_sats} sats` : ""}`);
       } else if (result.outcome === "minting") {
         line("Lightning", "the platform is still minting the wallet — rerun `run402 init lightning` in a few seconds");
       } else if (result.outcome === "unavailable") {
@@ -759,7 +759,7 @@ export async function run(args = []) {
     const quotedWallet = `'${walletName.replaceAll("'", "'\\''")}'`;
     summary.next_actions = summary.funding.next_actions.map(action => ({ ...action,
       ...(["retry", "check_balance"].includes(action.type) ? {
-        command: `run402 --wallet ${quotedWallet} allowance ${action.type === "retry" ? "fund" : "balance"}`,
+        command: `run402 --wallet ${quotedWallet} wallets ${action.type === "retry" ? "fund" : "balance"}`,
       } : {}),
     }));
   }

@@ -133,7 +133,7 @@ export class Ai {
   /**
    * Generate an image from a text prompt. Costs $0.03 via x402, MPP on
    * Tempo, or MPP Lightning. No project scope — payment flows through the
-   * allowance-based fetch. See {@link GenerateImageOptions.orgId} for how a
+   * wallet-based fetch. See {@link GenerateImageOptions.orgId} for how a
    * multi-org principal's paying organization is chosen on Lightning.
    */
   async generateImage(opts: GenerateImageOptions): Promise<GenerateImageResult> {

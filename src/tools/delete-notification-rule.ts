@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
-import { requireAllowanceAuth } from "../allowance-auth.js";
+import { requireWalletAuth } from "../wallet-auth.js";
 
 export const deleteNotificationRuleSchema = {
   rule_id: z.string().describe("The routing rule id to delete."),
@@ -10,7 +10,7 @@ export const deleteNotificationRuleSchema = {
 export async function handleDeleteNotificationRule(args: {
   rule_id: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const auth = requireAllowanceAuth("/agent/v1/notifications/rules");
+  const auth = requireWalletAuth("/agent/v1/notifications/rules");
   if ("error" in auth) return auth.error;
 
   try {

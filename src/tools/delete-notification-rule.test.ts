@@ -7,9 +7,9 @@ let nextDeleteImpl: (ruleId: string) => Promise<unknown> = async (ruleId) => ({
   rule_id: ruleId,
 });
 
-mock.module("../allowance-auth.js", {
+mock.module("../wallet-auth.js", {
   namedExports: {
-    requireAllowanceAuth: () => ({ headers: { "SIGN-IN-WITH-X": "dGVzdA==" } }),
+    requireWalletAuth: () => ({ headers: { "SIGN-IN-WITH-X": "dGVzdA==" } }),
   },
 });
 

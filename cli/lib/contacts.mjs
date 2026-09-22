@@ -18,10 +18,10 @@
  * `--kind` flag nobody could answer without looking it up.
  *
  * HTTP paths are unchanged (`/agent/v1/notifications/channels*`,
- * `/orgs/v1/:org_id/escalation-contacts*`); the allowance auth headers below
+ * `/orgs/v1/:org_id/escalation-contacts*`); the SIWX auth headers below
  * are PATH-scoped and must keep naming the real routes.
  */
-import { allowanceAuthHeaders } from "./config.mjs";
+import { walletAuthHeaders } from "./config.mjs";
 import { operatorProofs } from "./operator-proofs.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
@@ -69,7 +69,7 @@ async function preferences(args) {
   const parsedArgs = normalizeArgv(args);
   assertKnownFlags(parsedArgs, ["--help", "-h"]);
   const positionals = positionalArgs(parsedArgs);
-  allowanceAuthHeaders("/agent/v1/notifications/preferences");
+  walletAuthHeaders("/agent/v1/notifications/preferences");
 
   if (positionals.length === 0) {
     // GET preferences
@@ -215,7 +215,7 @@ async function channelsConnect(args) {
 }
 
 async function channelsList() {
-  allowanceAuthHeaders("/agent/v1/notifications/channels");
+  walletAuthHeaders("/agent/v1/notifications/channels");
   try {
     console.log(JSON.stringify(await getSdk().admin.channels.list(), null, 2));
   } catch (err) {
@@ -232,7 +232,7 @@ async function channelsRevoke(args) {
     command: "run402 notifications channels revoke <binding_id>",
     missing: "Missing <binding_id>.",
   });
-  allowanceAuthHeaders("/agent/v1/notifications/channels/telegram");
+  walletAuthHeaders("/agent/v1/notifications/channels/telegram");
   try {
     console.log(JSON.stringify(await getSdk().admin.channels.revokeTelegram(bindingId, operatorProofs("/agent/v1/notifications/channels/telegram")), null, 2));
   } catch (err) {
@@ -280,7 +280,7 @@ async function test(args) {
   const source = flagValue(parsedArgs, "--source");
   if (source !== null) assertAllowedValue(source, ["app", "platform"], "--source");
   const eventType = flagValue(parsedArgs, "--type");
-  allowanceAuthHeaders("/agent/v1/notifications/test");
+  walletAuthHeaders("/agent/v1/notifications/test");
   const opts = {};
   if (source) opts.source = source;
   if (eventType) opts.eventType = eventType;
@@ -319,7 +319,7 @@ async function listContacts(args) {
   }
 
   try {
-    allowanceAuthHeaders("/agent/v1/notifications/channels");
+    walletAuthHeaders("/agent/v1/notifications/channels");
     const res = await sdk.admin.channels.list();
     for (const ch of res.telegram ?? []) {
       rows.push({ kind: "telegram", id: ch.binding_id ?? ch.id, ...ch });
@@ -354,7 +354,7 @@ async function removeContact(args) {
         return;
       }
     }
-    allowanceAuthHeaders("/agent/v1/notifications/channels");
+    walletAuthHeaders("/agent/v1/notifications/channels");
     const chans = await sdk.admin.channels.list();
     const chan = (chans.telegram ?? []).find((c) => (c.binding_id ?? c.id) === id);
     if (chan) {

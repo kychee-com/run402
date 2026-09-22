@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { mkdirSync } from "node:fs";
 import { getConfigDir } from "../config.js";
-import { readAllowance, saveAllowance } from "../allowance.js";
+import { readWallet, saveWallet } from "../wallet.js";
 import { loadKeyStore } from "../keystore.js";
 import { getSdk } from "../sdk.js";
 import { isToolAvailable } from "../tool-profiles.js";
@@ -13,7 +13,7 @@ export const initSchema = {
   rail: z
     .enum(["x402", "mpp", "lightning"])
     .optional()
-    .describe("Payment rail: x402 (Base Sepolia, default), mpp (Tempo Moderato), or lightning (a budgeted wallet minted on Run402's Hub, with the Base allowance as the x402 fallback)"),
+    .describe("Payment rail: x402 (Base Sepolia, default), mpp (Tempo Moderato), or lightning (a budgeted wallet minted on Run402's Hub, with the Base wallet as the x402 fallback)"),
 };
 
 type McpResult = { content: Array<{ type: "text"; text: string }>; isError?: boolean };
@@ -30,50 +30,50 @@ export async function handleInit(args: { rail?: "x402" | "mpp" | "lightning" }):
   const configDir = getConfigDir();
   mkdirSync(configDir, { recursive: true });
 
-  // 2. Allowance — create or reuse (via SDK when possible)
-  // readAllowance throws on a malformed-shape file; surface a friendly
+  // 2. Wallet — create or reuse (via SDK when possible)
+  // readWallet throws on a malformed-shape file; surface a friendly
   // error rather than crashing the tool.
-  let allowance;
+  let localWallet;
   try {
-    allowance = readAllowance();
+    localWallet = readWallet();
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return {
-      content: [{ type: "text", text: `Allowance file is malformed: ${msg}` }],
+      content: [{ type: "text", text: `Wallet file is malformed: ${msg}` }],
       isError: true,
     };
   }
-  let allowanceCreated = false;
+  let walletCreated = false;
 
-  if (!allowance) {
+  if (!localWallet) {
     try {
-      await getSdk().allowance.create();
+      await getSdk().wallets.create();
     } catch {
-      // `allowance already exists` would only fire if another process created one between the check and the call — ignore
+      // `wallet already exists` would only fire if another process created one between the check and the call — ignore
     }
     try {
-      allowance = readAllowance();
+      localWallet = readWallet();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       return {
-        content: [{ type: "text", text: `Allowance file is malformed: ${msg}` }],
+        content: [{ type: "text", text: `Wallet file is malformed: ${msg}` }],
         isError: true,
       };
     }
-    // Stamp the rail on the newly-created allowance.
-    if (allowance) {
-      allowance = { ...allowance, rail };
-      saveAllowance(allowance);
+    // Stamp the rail on the newly-created wallet.
+    if (localWallet) {
+      localWallet = { ...localWallet, rail };
+      saveWallet(localWallet);
     }
-    allowanceCreated = true;
-  } else if (allowance.rail !== rail) {
-    allowance = { ...allowance, rail };
-    saveAllowance(allowance);
+    walletCreated = true;
+  } else if (localWallet.rail !== rail) {
+    localWallet = { ...localWallet, rail };
+    saveWallet(localWallet);
   }
 
-  if (!allowance) {
+  if (!localWallet) {
     return {
-      content: [{ type: "text", text: "Error: Failed to create or read the agent allowance." }],
+      content: [{ type: "text", text: "Error: Failed to create or read the agent wallet." }],
       isError: true,
     };
   }
@@ -82,7 +82,7 @@ export async function handleInit(args: { rail?: "x402" | "mpp" | "lightning" }):
   let faucetStatus = "skipped (already funded)";
   let fundingError: unknown;
 
-  if (!allowance.funded) {
+  if (!localWallet.funded) {
     if (rail === "mpp") {
       // Tempo Moderato faucet via JSON-RPC — not in the SDK surface (x402-only).
       try {
@@ -92,14 +92,14 @@ export async function handleInit(args: { rail?: "x402" | "mpp" | "lightning" }):
           body: JSON.stringify({
             jsonrpc: "2.0",
             method: "tempo_fundAddress",
-            params: [allowance.address],
+            params: [localWallet.address],
             id: 1,
           }),
         });
         const data = (await res.json()) as { result?: unknown; error?: { message?: string } };
         if (data.result) {
-          allowance = { ...allowance, funded: true, lastFaucet: new Date().toISOString() };
-          saveAllowance(allowance);
+          localWallet = { ...localWallet, funded: true, lastFaucet: new Date().toISOString() };
+          saveWallet(localWallet);
           faucetStatus = "funded (Tempo pathUSD)";
         } else {
           fundingError = data.error ?? new Error("Faucet failed");
@@ -112,10 +112,10 @@ export async function handleInit(args: { rail?: "x402" | "mpp" | "lightning" }):
     } else {
       // x402 faucet via SDK (updates `funded` / `lastFaucet` via the provider).
       try {
-        const body = await getSdk().allowance.faucet(allowance.address);
+        const body = await getSdk().wallets.faucet(localWallet.address);
         faucetStatus = body.amount ? `funded (${body.amount} ${body.token || "USDC"})` : "funded";
-        // Re-read allowance to pick up the funded/lastFaucet fields the SDK wrote.
-        allowance = readAllowance() ?? allowance;
+        // Re-read wallet to pick up the funded/lastFaucet fields the SDK wrote.
+        localWallet = readWallet() ?? localWallet;
       } catch (err) {
         fundingError = err;
         const msg = (err as Error)?.message ?? String(err);
@@ -124,7 +124,7 @@ export async function handleInit(args: { rail?: "x402" | "mpp" | "lightning" }):
     }
   }
 
-  // 3b. The Lightning allowance: a budgeted wallet minted on Run402's Hub;
+  // 3b. The Lightning wallet: a budgeted wallet minted on Run402's Hub;
   // the pairing is stored locally by the wallet tool and never rendered here.
   let lightningStatus: string | null = null;
   if (rail === "lightning") {
@@ -161,7 +161,7 @@ export async function handleInit(args: { rail?: "x402" | "mpp" | "lightning" }):
     `| Field | Value |`,
     `|-------|-------|`,
     `| config | \`${configDir}\` |`,
-    `| address | \`${short(allowance.address)}\`${allowanceCreated ? " (created)" : ""} |`,
+    `| address | \`${short(localWallet.address)}\`${walletCreated ? " (created)" : ""} |`,
     `| network | ${rail === "mpp" ? "Tempo Moderato (testnet)" : rail === "lightning" ? "Bitcoin mainnet (Lightning) + Base Sepolia fallback" : "Base Sepolia (testnet)"} |`,
     `| rail | ${rail} |`,
     `| faucet | ${faucetStatus} |`,
@@ -194,7 +194,7 @@ export async function handleInit(args: { rail?: "x402" | "mpp" | "lightning" }):
         // nothing else, which is exactly what the buyer profile is for.
         : `**Ready to buy.** Use \`generate_image\` ($0.03 per image) — no tier needed.\n` +
           `Note: the faucet funds Base Sepolia (testnet). To pay on Base MAINNET with real USDC, ` +
-          `send USDC to your address from \`allowance_export\` first.`,
+          `send USDC to your address from \`wallet_export\` first.`,
     );
   } else {
     lines.push(

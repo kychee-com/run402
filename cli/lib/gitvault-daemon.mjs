@@ -4,7 +4,7 @@
  * Holds the WARM things — the loaded session module (whose top-level await
  * pulls the whole SDK graph), the owned dispatcher's live h2 connection,
  * signer precomputation, the paid stack — and re-reads the SMALL things
- * (keystore, pins, wallet binding, allowance, env-derived config) fresh per
+ * (keystore, pins, wallet binding, wallet, env-derived config) fresh per
  * forwarded session, so no cache-invalidation class exists (D2).
  *
  * SINGLE-SESSION BY DESIGN (D6 as applied): a session is {cwd, env}

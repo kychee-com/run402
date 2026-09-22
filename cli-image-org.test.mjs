@@ -118,7 +118,7 @@ let keystore;
 before(async () => {
   mkdirSync(configDir, { recursive: true });
   mkdirSync(bareDir, { recursive: true });
-  writeFileSync(join(configDir, "allowance.json"), JSON.stringify({ address: TEST_ADDRESS, privateKey: TEST_PRIVATE_KEY }));
+  writeFileSync(join(configDir, "wallet.json"), JSON.stringify({ address: TEST_ADDRESS, privateKey: TEST_PRIVATE_KEY }));
   globalThis.fetch = mockFetch;
   process.exit = (code) => { throw new Error(`process.exit(${code})`); };
   process.chdir(bareDir);

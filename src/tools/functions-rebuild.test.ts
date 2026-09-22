@@ -13,7 +13,7 @@ beforeEach(() => {
   // functions rebuild is wallet-authed (project ownership) and makes NO
   // keystore lookup — unlike the service-key function tools, so no
   // projects.json is written here. The temp config dir just keeps the test
-  // off any real local allowance/keystore.
+  // off any real local wallet/keystore.
   tempDir = mkdtempSync(join(tmpdir(), "run402-fn-rebuild-test-"));
   process.env.RUN402_CONFIG_DIR = tempDir;
   process.env.RUN402_API_BASE = "https://test-api.run402.com";

@@ -7,7 +7,7 @@ function sdkWithFetch(fetchImpl) {
     apiBase: "https://api.example.com",
     fetch: fetchImpl,
     credentials: {
-      async getAuth() { return { "X-Allowance": "sig" }; },
+      async getAuth() { return { "X-Wallet": "sig" }; },
       async getProject() { return null; },
     },
   });
@@ -36,7 +36,7 @@ describe("wallets.setLabel", () => {
   it("returns { ok: true } on success and signs the request", async () => {
     let seen = null;
     const r = sdkWithFetch(async (url, init) => {
-      seen = { url: String(url), method: init?.method, body: init?.body, auth: init?.headers?.["X-Allowance"] ?? (init?.headers && new Headers(init.headers).get("X-Allowance")) };
+      seen = { url: String(url), method: init?.method, body: init?.body, auth: init?.headers?.["X-Wallet"] ?? (init?.headers && new Headers(init.headers).get("X-Wallet")) };
       return jsonResponse(200, { ok: true });
     });
     const res = await r.wallet("0xabc").setLabel("kychon");

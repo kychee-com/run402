@@ -4,9 +4,9 @@ import assert from "node:assert/strict";
 let calls: unknown[] = [];
 let nextListImpl: () => Promise<unknown> = async () => ({ rules: [] });
 
-mock.module("../allowance-auth.js", {
+mock.module("../wallet-auth.js", {
   namedExports: {
-    requireAllowanceAuth: () => ({ headers: { "SIGN-IN-WITH-X": "dGVzdA==" } }),
+    requireWalletAuth: () => ({ headers: { "SIGN-IN-WITH-X": "dGVzdA==" } }),
   },
 });
 

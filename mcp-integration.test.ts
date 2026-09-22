@@ -2,7 +2,7 @@
  * mcp-integration.test.ts — MCP tool handler integration test against LIVE production.
  *
  * NO MOCKS. Every tool handler call hits https://api.run402.com for real.
- * Uses a pre-funded allowance wallet. Tests that MCP tools routed through
+ * Uses a pre-funded wallet. Tests that MCP tools routed through
  * `@run402/sdk/node` can auto-pay x402 and succeed — the same flow the CLI uses.
  *
  * Covers:
@@ -69,11 +69,11 @@ before(async () => {
   process.env.RUN402_CONFIG_DIR = tempDir;
   process.env.RUN402_API_BASE = API;
 
-  // Seed the allowance file with the pre-funded wallet
+  // Seed the wallet file with the pre-funded wallet
   const { privateKeyToAccount } = await import("viem/accounts");
   const account = privateKeyToAccount(buyerKey as `0x${string}`);
   writeFileSync(
-    join(tempDir, "allowance.json"),
+    join(tempDir, "wallet.json"),
     JSON.stringify({
       address: account.address,
       privateKey: buyerKey,
@@ -84,7 +84,7 @@ before(async () => {
     { mode: 0o600 },
   );
 
-  // Reset the SDK singleton so it reconstructs with the fresh allowance
+  // Reset the SDK singleton so it reconstructs with the fresh wallet
   // (paid-fetch lives inside each Run402 instance now, not at module scope).
   const { _resetSdk } = await import("./src/sdk.js");
   _resetSdk();

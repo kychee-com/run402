@@ -30,7 +30,7 @@ Subcommands:
                                          lease-perpetual above.
 
 Notes:
-  - All admin subcommands require platform-admin auth — the configured allowance
+  - All admin subcommands require platform-admin auth — the configured wallet
     wallet must be a platform admin, or an admin OAuth session cookie must be
     available. Regular project owners cannot run these.
   - Output is JSON.

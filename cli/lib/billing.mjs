@@ -14,7 +14,7 @@ Subcommands:
   checkout <identifier> --product <p>      Create an org checkout
   topup <identifier> --sats <n> [--wait] [--qr <file.png>]   Top up the allowance over Lightning (a bolt11 invoice; --qr also writes a scannable PNG)
   auto-recharge [<org_id>] <on|off> [--threshold <n>]
-  balance <identifier>                     Balance by organization id (UUID), wallet (0x...), or email
+  balance <identifier>                     The allowance, by organization id (UUID), wallet (0x...), or email
   history <identifier> [--limit <n>]       Ledger history by organization id (UUID), wallet, or email
 
 Examples:
@@ -79,7 +79,7 @@ Options:
 
 Auth:
   Requires SIWX from a wallet linked to the organization (signed automatically from
-  the local allowance), or an admin key. Email lookups require an admin key.
+  the local wallet), or an admin key. Email lookups require an admin key.
 
 Examples:
   run402 billing history user@example.com
@@ -97,7 +97,7 @@ Arguments:
 
 Auth:
   Requires SIWX from a wallet linked to the organization (signed automatically from
-  the local allowance), or an admin key. Email lookups require an admin key.
+  the local wallet), or an admin key. Email lookups require an admin key.
 
 Examples:
   run402 billing balance user@example.com

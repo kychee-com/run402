@@ -275,18 +275,18 @@ describe("run402 doctor --only <check> — scoped checks (kychee-com/run402#566)
     assert.match(allFetchUrls[0], /\/gitvault\/v1\/vaults/);
   });
 
-  it("--only is repeatable — --only config_dir --only allowance runs exactly those two, in registry order", async () => {
+  it("--only is repeatable — --only config_dir --only wallet runs exactly those two, in registry order", async () => {
     captureStart();
     try {
-      await run("--only", ["config_dir", "--only", "allowance"]);
+      await run("--only", ["config_dir", "--only", "wallet"]);
     } catch {
       // tolerated
     } finally {
       captureStop();
     }
     const report = JSON.parse(stdout.join("\n"));
-    assert.deepEqual(report.checks.map((c) => c.name), ["config_dir", "allowance"]);
-    assert.equal(allFetchUrls.length, 0, "neither config_dir nor allowance touches the network");
+    assert.deepEqual(report.checks.map((c) => c.name), ["config_dir", "wallet"]);
+    assert.equal(allFetchUrls.length, 0, "neither config_dir nor wallet touches the network");
   });
 
   it("an unknown check name is BAD_USAGE, listing the valid registry", async () => {
@@ -657,12 +657,12 @@ describe("doctor selected application source scope", () => {
   });
 });
 
-it("verbose allowance reports faucet history without a funded or private-key field", async () => {
-  const { saveAllowance } = await import("./cli/lib/config.mjs");
-  saveAllowance({ address: "0x" + "11".repeat(20), privateKey: "0x" + "22".repeat(32), rail: "x402", funded: false, created: "2026-09-16T00:00:00Z" });
+it("verbose wallet reports faucet history without a funded or private-key field", async () => {
+  const { saveWallet } = await import("./cli/lib/config.mjs");
+  saveWallet({ address: "0x" + "11".repeat(20), privateKey: "0x" + "22".repeat(32), rail: "x402", funded: false, created: "2026-09-16T00:00:00Z" });
   captureStart();
-  try { await run("--verbose", ["--only", "allowance"]); } catch (err) { assert.match(err.message, /process.exit/); } finally { captureStop(); }
-  const details = JSON.parse(stdout.join("\n")).checks.find(c => c.name === "allowance").value.details;
+  try { await run("--verbose", ["--only", "wallet"]); } catch (err) { assert.match(err.message, /process.exit/); } finally { captureStop(); }
+  const details = JSON.parse(stdout.join("\n")).checks.find(c => c.name === "wallet").value.details;
   assert.equal(details.faucet_used, false);
   assert.equal(details.funded, undefined);
   assert.equal(details.privateKey, undefined);

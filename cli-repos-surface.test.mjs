@@ -384,9 +384,9 @@ mock.module("./cli/lib/cold-start.mjs", {
     foldColdStartChain: async (announce) => {
       coldStartCalls.push({ announce });
       return (coldStartImpl ?? (async (a) => {
-        a?.("allowance created: 0xabc");
+        a?.("wallet created: 0xabc");
         a?.("setting the prototype tier (one x402 testnet payment; the free tier, no lease)");
-        return { allowance_created: true, faucet_requested: false, tier: { status: "active" } };
+        return { wallet_created: true, faucet_requested: false, tier: { status: "active" } };
       }))(announce);
     },
   },
@@ -447,12 +447,12 @@ async function expectFailure(sub, args = []) {
   return JSON.parse(stderr[stderr.length - 1]);
 }
 
-async function createLocalAllowance() {
-  const { saveAllowance } = await import("./cli/lib/config.mjs");
+async function createLocalWallet() {
+  const { saveWallet } = await import("./cli/lib/config.mjs");
   const { generatePrivateKey, privateKeyToAccount } = await import("viem/accounts");
   const privateKey = generatePrivateKey();
   const account = privateKeyToAccount(privateKey);
-  saveAllowance({ address: account.address, privateKey, created: new Date().toISOString(), funded: false, rail: "x402" });
+  saveWallet({ address: account.address, privateKey, created: new Date().toISOString(), funded: false, rail: "x402" });
 }
 
 let scratch;
@@ -483,7 +483,7 @@ describe("run402 repos create — provision + allocate + scaffold, zero deploy c
     git(repoDir, ["init", "-q", "-b", "main", "."]);
     process.env.RUN402_CONFIG_DIR = join(scratch, "create-cfg");
     process.chdir(repoDir);
-    await createLocalAllowance();
+    await createLocalWallet();
   });
 
   it("provisions, allocates via gitvault.init, and scaffolds the remote", async () => {
@@ -658,7 +658,7 @@ describe("run402 repos create — cold-start folding on NO_ACTIVE_TIER (kygit-ha
     assert.equal(payload.repo_id, REPO);
     assert.ok(stderr.some((l) => l.includes("folding the cold-start chain")));
     // The chain's own announced steps land on stderr too (via the announce callback).
-    assert.ok(stderr.some((l) => l.includes("allowance created")));
+    assert.ok(stderr.some((l) => l.includes("wallet created")));
   });
 
   it("--no-init skips the fold and lets the bare NO_ACTIVE_TIER refusal through", async () => {
@@ -1771,21 +1771,21 @@ describe("run402 repos resume — redeem a Handoff Key and restore the stash-sha
 
 describe("run402 repos resume — a resumed agent is a NEW run402 wallet: the cold-start chain runs BEFORE the redemption (amends design D5, 2026-09-02)", () => {
   let cfgIndex = 0;
-  /** A config dir with NO allowance file — the fresh-machine case. */
+  /** A config dir with NO wallet file — the fresh-machine case. */
   function freshConfigDir() {
     const dir = join(scratch, `resume-fresh-cfg-${cfgIndex++}`);
     mkdirSync(dir, { recursive: true });
     process.env.RUN402_CONFIG_DIR = dir;
   }
-  /** A config dir WITH a local allowance (the same helper the create suite uses). */
+  /** A config dir WITH a local wallet (the same helper the create suite uses). */
   async function fundedConfigDir() {
     const dir = join(scratch, `resume-funded-cfg-${cfgIndex++}`);
     mkdirSync(dir, { recursive: true });
     process.env.RUN402_CONFIG_DIR = dir;
-    await createLocalAllowance();
+    await createLocalWallet();
   }
 
-  it("no allowance file: folds allowance -> faucet -> prototype BEFORE gitvault.resume, announcing each step, and reports cold_start in --json", async () => {
+  it("no local wallet file: folds wallet -> faucet -> prototype BEFORE gitvault.resume, announcing each step, and reports cold_start in --json", async () => {
     freshConfigDir();
     const payload = await ok("resume", [HANDOFF_KEY, "--json"]);
     assert.equal(coldStartCalls.length, 1, "the chain folds exactly once");
@@ -1795,12 +1795,12 @@ describe("run402 repos resume — a resumed agent is a NEW run402 wallet: the co
     const chainLine = stderr.findIndex((l) => l.includes("setting the prototype tier"));
     assert.ok(foldLine >= 0 && chainLine > foldLine, "the fold is announced, then each chain step");
     assert.equal(payload.cold_start.performed, true);
-    assert.equal(payload.cold_start.allowance_created, true);
+    assert.equal(payload.cold_start.wallet_created, true);
     assert.equal(payload.cold_start.tier.status, "active");
     assert.equal(payload.restored.dir, "/tmp/notes", "the resume result is otherwise unchanged");
   });
 
-  it("an allowance whose org already holds an active tier is left alone (one tier.status read, no chain)", async () => {
+  it("a wallet whose org already holds an active tier is left alone (one tier.status read, no chain)", async () => {
     await fundedConfigDir();
     const payload = await ok("resume", [HANDOFF_KEY, "--json"]);
     assert.equal(coldStartCalls.length, 0);
@@ -1808,7 +1808,7 @@ describe("run402 repos resume — a resumed agent is a NEW run402 wallet: the co
     assert.deepEqual(payload.cold_start, { performed: false, skipped: "tier_active" });
   });
 
-  it("an allowance with NO active tier folds the chain too — the loop is about the tier, not the file", async () => {
+  it("a wallet with NO active tier folds the chain too — the loop is about the tier, not the file", async () => {
     await fundedConfigDir();
     impl.tierStatus = async () => ({ active: false, tier: null });
     const payload = await ok("resume", [HANDOFF_KEY, "--json"]);
@@ -1828,7 +1828,7 @@ describe("run402 repos resume — a resumed agent is a NEW run402 wallet: the co
   it("a chain failure (faucet throttle, payment refusal) is reported and NEVER blocks the redemption — renew_tier rides next_actions", async () => {
     freshConfigDir();
     coldStartImpl = async (announce) => {
-      announce("allowance created: 0xabc");
+      announce("wallet created: 0xabc");
       const e = new Error("faucet throttled — retry after 86400s");
       e.body = { code: "RATE_LIMITED", message: "faucet throttled — retry after 86400s" };
       throw e;
@@ -1854,7 +1854,7 @@ describe("run402 repos resume — a resumed agent is a NEW run402 wallet: the co
 
 // ─── create on a genuinely bare machine (design D5, found 2026-09-02) ────────
 
-describe("run402 repos create — a machine with NO allowance folds the cold-start chain BEFORE the NO_ALLOWANCE precheck (design D5)", () => {
+describe("run402 repos create — a machine with NO wallet folds the cold-start chain BEFORE the NO_WALLET precheck (design D5)", () => {
   let bareDir;
   before(() => {
     bareDir = join(scratch, "create-bare-repo");
@@ -1866,11 +1866,11 @@ describe("run402 repos create — a machine with NO allowance folds the cold-sta
     process.env.RUN402_CONFIG_DIR = join(scratch, "create-bare-cfg");
     mkdirSync(process.env.RUN402_CONFIG_DIR, { recursive: true });
     process.chdir(bareDir);
-    // The real chain writes the allowance file as its first step; the mock does the same.
+    // The real chain writes the wallet file as its first step; the mock does the same.
     coldStartImpl = async (announce) => {
-      await createLocalAllowance();
-      announce("allowance created: 0xabc");
-      return { allowance_created: true, faucet_requested: true, tier: { status: "active" } };
+      await createLocalWallet();
+      announce("wallet created: 0xabc");
+      return { wallet_created: true, faucet_requested: true, tier: { status: "active" } };
     };
     const payload = await ok("create", ["bare-notes", "--org", ORG]);
     assert.equal(coldStartCalls.length, 1, "the chain folds once, before provisioning");
@@ -1879,13 +1879,13 @@ describe("run402 repos create — a machine with NO allowance folds the cold-sta
     assert.ok(payload.project_id ?? payload.project, "create still succeeds");
   });
 
-  it("--no-init on a bare machine keeps the bare NO_ALLOWANCE refusal", async () => {
+  it("--no-init on a bare machine keeps the bare NO_WALLET refusal", async () => {
     process.env.RUN402_CONFIG_DIR = join(scratch, "create-bare-cfg-2");
     mkdirSync(process.env.RUN402_CONFIG_DIR, { recursive: true });
     process.chdir(bareDir);
     const err = await expectFailure("create", ["bare-notes", "--org", ORG, "--no-init"]);
     assert.equal(coldStartCalls.length, 0);
-    assert.equal(err.code, "NO_ALLOWANCE");
+    assert.equal(err.code, "NO_WALLET");
   });
 });
 
@@ -2166,21 +2166,21 @@ describe("run402 repos join — redeem an Invite Key and restore the stash-shape
 
 describe("run402 repos join — a joined agent is a NEW run402 wallet: the cold-start chain runs BEFORE the redemption (design D5)", () => {
   let cfgIndex = 0;
-  /** A config dir with NO allowance file — the fresh-machine case. */
+  /** A config dir with NO wallet file — the fresh-machine case. */
   function freshConfigDir() {
     const dir = join(scratch, `join-fresh-cfg-${cfgIndex++}`);
     mkdirSync(dir, { recursive: true });
     process.env.RUN402_CONFIG_DIR = dir;
   }
-  /** A config dir WITH a local allowance (the same helper the create suite uses). */
+  /** A config dir WITH a local wallet (the same helper the create suite uses). */
   async function fundedConfigDir() {
     const dir = join(scratch, `join-funded-cfg-${cfgIndex++}`);
     mkdirSync(dir, { recursive: true });
     process.env.RUN402_CONFIG_DIR = dir;
-    await createLocalAllowance();
+    await createLocalWallet();
   }
 
-  it("no allowance file: folds allowance -> faucet -> prototype BEFORE gitvault.join, announcing each step, and reports cold_start in --json", async () => {
+  it("no local wallet file: folds wallet -> faucet -> prototype BEFORE gitvault.join, announcing each step, and reports cold_start in --json", async () => {
     freshConfigDir();
     const payload = await ok("join", [INVITE_KEY, "--json"]);
     assert.equal(coldStartCalls.length, 1, "the chain folds exactly once");
@@ -2189,12 +2189,12 @@ describe("run402 repos join — a joined agent is a NEW run402 wallet: the cold-
     const chainLine = stderr.findIndex((l) => l.includes("setting the prototype tier"));
     assert.ok(foldLine >= 0 && chainLine > foldLine, "the fold is announced, then each chain step");
     assert.equal(payload.cold_start.performed, true);
-    assert.equal(payload.cold_start.allowance_created, true);
+    assert.equal(payload.cold_start.wallet_created, true);
     assert.equal(payload.cold_start.tier.status, "active");
     assert.equal(payload.restored.dir, "/tmp/notes", "the join result is otherwise unchanged");
   });
 
-  it("an allowance whose org already holds an active tier is left alone (one tier.status read, no chain)", async () => {
+  it("a wallet whose org already holds an active tier is left alone (one tier.status read, no chain)", async () => {
     await fundedConfigDir();
     const payload = await ok("join", [INVITE_KEY, "--json"]);
     assert.equal(coldStartCalls.length, 0);
@@ -2214,7 +2214,7 @@ describe("run402 repos join — a joined agent is a NEW run402 wallet: the cold-
   it("a chain failure (faucet throttle, payment refusal) is reported and NEVER blocks the redemption — renew_tier rides next_actions", async () => {
     freshConfigDir();
     coldStartImpl = async (announce) => {
-      announce("allowance created: 0xabc");
+      announce("wallet created: 0xabc");
       const e = new Error("faucet throttled — retry after 86400s");
       e.body = { code: "RATE_LIMITED", message: "faucet throttled — retry after 86400s" };
       throw e;

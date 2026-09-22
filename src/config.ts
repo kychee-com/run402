@@ -5,7 +5,7 @@ export {
   getProjectCredentialsPath,
   getProfileStatePath,
   getLegacyProjectsPath,
-  getAllowancePath,
+  getWalletPath,
   getActiveProfile,
 } from "../core/dist/config.js";
 export { readMeta } from "../core/dist/profiles.js";

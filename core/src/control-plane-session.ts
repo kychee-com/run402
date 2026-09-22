@@ -22,7 +22,7 @@ import { getConfigBaseDir } from "./config.js";
  * passkey-fresh **operator approval** (`X-Run402-Write-Auth`, minted by
  * `run402 operator approve`; see {@link WriteAuthApproval}). Cached at the BASE
  * config dir (email/principal-scoped, shared across local named wallets), mode
- * 0600 — the token is as sensitive as the allowance key.
+ * 0600 — the token is as sensitive as the wallet key.
  *
  * Stored shape vs the gateway payload: the gateway returns a relative
  * `expires_in` (seconds); we persist the absolute `expires_at` (epoch ms) so a

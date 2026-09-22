@@ -383,7 +383,7 @@ export class NodeActions implements Run402Actions {
       );
     }
     if (run.autoPrerequisites) {
-      await this.#ensureAllowance(run);
+      await this.#ensureWallet(run);
     }
     const idempotencyKey = input.idempotencyKey ?? run.rootIdempotencyKey;
     const step = run.addStep({
@@ -421,7 +421,7 @@ export class NodeActions implements Run402Actions {
     // exactly this purpose and NOTHING read it, so every `run402 up <git-url>`
     // left its full checkout in the OS temp dir — silently, on success and on
     // failure alike. An agent looping deploys (CI, retries) grows /tmp without
-    // bound, and on a fixed-allowance container that eventually fails writes
+    // bound, and on a fixed-wallet container that eventually fails writes
     // with no hint at the cause.
     // Local-directory sources set no cleanupDir and are never touched here.
     try {
@@ -519,7 +519,7 @@ export class NodeActions implements Run402Actions {
     } else {
       run.skipStep({
         action: Run402Action.TierSet,
-        description: "Skip Cloud allowance and tier prerequisites for Run402 Core",
+        description: "Skip Cloud wallet and tier prerequisites for Run402 Core",
         mutation: false,
         auto: true,
         details: { target: this.#targetKind() },
@@ -2130,12 +2130,12 @@ export class NodeActions implements Run402Actions {
     };
   }
 
-  async #ensureAllowance(run: ActionRun, opts: { fund: boolean } = { fund: false }): Promise<boolean> {
-    const status = await this.sdk.allowance.status();
+  async #ensureWallet(run: ActionRun, opts: { fund: boolean } = { fund: false }): Promise<boolean> {
+    const status = await this.sdk.wallets.status();
     if (status.configured) {
       run.skipStep({
-        action: "allowance.create",
-        description: "Local allowance already exists",
+        action: "wallets.create",
+        description: "Local wallet already exists",
         mutation: false,
         auto: true,
         details: { address: status.address, path: status.path ?? null },
@@ -2144,8 +2144,8 @@ export class NodeActions implements Run402Actions {
       const balance = await prototypeBalance(status.address);
       if (balance > 0n) {
         run.skipStep({
-          action: "allowance.faucet",
-          description: "Allowance already has Base Sepolia USDC",
+          action: "wallets.faucet",
+          description: "Wallet already has Base Sepolia USDC",
           mutation: false,
           auto: true,
           details: { address: status.address, balance_usd_micros: balance.toString() },
@@ -2154,18 +2154,18 @@ export class NodeActions implements Run402Actions {
       }
     } else {
       const createStep = run.addStep({
-        action: "allowance.create",
-        description: "Create local allowance",
+        action: "wallets.create",
+        description: "Create local wallet",
         mutation: true,
         auto: true,
       });
-      await run.approve(createStep, ["allowance.create"], "Create a local allowance wallet.");
+      await run.approve(createStep, ["wallets.create"], "Create a local wallet.");
       if (run.dryRun) {
         run.setState(createStep, "planned");
         return false;
       }
       run.setState(createStep, "running");
-      const created = await this.sdk.allowance.create();
+      const created = await this.sdk.wallets.create();
       run.setState(createStep, "succeeded", {
         address: created.address,
         path: created.path ?? null,
@@ -2174,20 +2174,20 @@ export class NodeActions implements Run402Actions {
     }
 
     const faucetStep = run.addStep({
-      action: "allowance.faucet",
-      description: "Request testnet faucet funds for allowance",
+      action: "wallets.faucet",
+      description: "Request testnet faucet funds for wallet",
       mutation: true,
       auto: true,
-      details: { idempotency_key: run.childKey("allowance.faucet") },
+      details: { idempotency_key: run.childKey("wallets.faucet") },
     });
-    await run.approve(faucetStep, ["allowance.faucet"], "Request testnet USDC for the local allowance.");
+    await run.approve(faucetStep, ["wallets.faucet"], "Request testnet USDC for the local wallet.");
     if (run.dryRun) {
       run.setState(faucetStep, "planned");
       return false;
     }
     run.setState(faucetStep, "running");
-    const faucet = await this.sdk.allowance.faucet({
-      idempotencyKey: run.childKey("allowance.faucet"),
+    const faucet = await this.sdk.wallets.faucet({
+      idempotencyKey: run.childKey("wallets.faucet"),
     });
     run.setState(faucetStep, "succeeded", {
       transaction_hash: faucet.transactionHash,
@@ -2198,15 +2198,15 @@ export class NodeActions implements Run402Actions {
   }
 
   async #ensureCloudTier(run: ActionRun, desiredTier: TierName): Promise<void> {
-    await this.#ensureAllowance(run, { fund: false });
+    await this.#ensureWallet(run, { fund: false });
     if (run.dryRun) {
       const faucetStep = run.addStep({
-        action: "allowance.faucet",
+        action: "wallets.faucet",
         description: "Request testnet faucet funds if tier payment is needed",
         mutation: true,
         auto: true,
       });
-      await run.approve(faucetStep, ["allowance.faucet"], "Request testnet USDC if tier bootstrap needs payment.");
+      await run.approve(faucetStep, ["wallets.faucet"], "Request testnet USDC if tier bootstrap needs payment.");
       run.setState(faucetStep, "planned");
       const step = run.addStep({
         action: Run402Action.TierSet,
@@ -2253,7 +2253,7 @@ export class NodeActions implements Run402Actions {
     }
 
     const idempotencyKey = run.childKey("tier.set");
-    const justFunded = await this.#ensureAllowance(run, { fund: true });
+    const justFunded = await this.#ensureWallet(run, { fund: true });
     const step = run.addStep({
       action: Run402Action.TierSet,
       description: `Ensure active ${desiredTier} tier`,

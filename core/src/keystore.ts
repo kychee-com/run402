@@ -8,7 +8,7 @@ import {
   recordMigration,
   setActiveProjectId as setProfileActiveProjectId,
 } from "./profile-state.js";
-import { readAllowance } from "./allowance.js";
+import { readWallet } from "./wallet.js";
 
 export interface StoredProject {
   anon_key: string;
@@ -140,7 +140,7 @@ function migrateLegacyProjectsJson(targetPath: string): void {
     // Scoped the same way every other write in this module now is (see
     // `currentPrincipal`'s doc comment) — an unscoped write here is exactly
     // what poisons the "unknown"-principal bucket for good on a machine that
-    // migrates before its wallet allowance exists yet.
+    // migrates before its wallet exists yet.
     setProfileActiveProjectId(legacy.active_project_id, undefined, { principal: currentPrincipal() });
   }
   recordMigration("projects_json_import", {
@@ -235,7 +235,7 @@ export function removeProject(
 
 /**
  * The active-project scope's `principal`, derived from the CURRENT wallet's
- * allowance — matching exactly what `NodeCredentialsProvider.setActiveProject`
+ * wallet — matching exactly what `NodeCredentialsProvider.setActiveProject`
  * (sdk/src/node/credentials.ts) writes after `projects.provision` /
  * `projects.use`. Without this, every reader here used the profile-state
  * module's own default (empty) scope, which resolves to a FIXED
@@ -246,7 +246,7 @@ export function removeProject(
  * `profile-state.ts#getActiveProjectId` happens to agree), but once the
  * "unknown" bucket is EVER populated by any principal-less write — the
  * one-time legacy `projects.json` migration below, or any provision/`use`
- * call made before this machine had a wallet allowance — it never gets
+ * call made before this machine had a wallet — it never gets
  * updated again (real wallet operations write to the principal-keyed
  * bucket, not "unknown") and PERMANENTLY shadows every later wallet-scoped
  * activation for every caller that reads through this module: `resolveProjectId`
@@ -258,13 +258,13 @@ export function removeProject(
  * stale "unknown"-bucket entry first and never falls through to the
  * freshly-updated flat value.
  *
- * Best-effort: an unreadable/malformed allowance degrades to `null` (the
+ * Best-effort: an unreadable/malformed wallet degrades to `null` (the
  * "unknown" bucket callers tolerate), never a
- * throw — this is a read-scoping concern, not an allowance-validity one.
+ * throw — this is a read-scoping concern, not a wallet-validity one.
  */
 function currentPrincipal(): string | null {
   try {
-    return readAllowance()?.address ?? null;
+    return readWallet()?.address ?? null;
   } catch {
     return null;
   }

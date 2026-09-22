@@ -5,7 +5,7 @@ import { z } from "zod";
 import { LocalError } from "../../sdk/dist/index.js";
 import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
-import { requireAllowanceAuth } from "../allowance-auth.js";
+import { requireWalletAuth } from "../wallet-auth.js";
 import { updateProject } from "../keystore.js";
 
 export const deploySiteSchema = {
@@ -30,7 +30,7 @@ export async function handleDeploySite(args: {
   project: string;
   files: Array<{ file: string; data: string; encoding?: string }>;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const auth = requireAllowanceAuth("/apply/v1/plans");
+  const auth = requireWalletAuth("/apply/v1/plans");
   if ("error" in auth) return auth.error;
 
   // The SDK's inline-bytes overload is removed in v1.32 — every deploy goes

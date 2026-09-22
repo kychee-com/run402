@@ -129,9 +129,9 @@ function parseStdoutJson() {
 before(async () => {
   globalThis.fetch = mockFetch;
   process.exit = (code) => { throw new Error(`process.exit(${code})`); };
-  const { run } = await import("./cli/lib/allowance.mjs");
+  const { run } = await import("./cli/lib/wallets.mjs");
   captureStart();
-  await run("create", []);
+  await run("new", ["default"]);
   captureStop();
 });
 

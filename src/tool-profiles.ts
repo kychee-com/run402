@@ -9,7 +9,7 @@
  *
  * Cold-walking the buyer profile:
  *
- *   allowance_status  ->  "Use `allowance_create` ..."   NOT in the buyer profile
+ *   wallet_status  ->  "Use `wallet_create` ..."   NOT in the buyer profile
  *   init              ->  "Next: Use `tier_set` ..."     NOT in the buyer profile
  *
  * and `tier_set` is not merely absent, it is irrelevant — a tier is for hosting
@@ -26,9 +26,9 @@ export const TOOL_PROFILES: Record<string, readonly string[]> = {
   buyer: [
     "generate_image",
     "init",
-    "allowance_status",
+    "wallet_status",
     "lightning_wallet",
-    "allowance_export",
+    "wallet_export",
     "check_balance",
     "request_faucet",
     // Redeeming a promo code is funding, the same shape as the faucet: it is
@@ -69,15 +69,15 @@ export function isToolAvailable(name: string): boolean {
 }
 
 /**
- * "You have no allowance yet" — phrased for whoever is actually asking.
+ * "You have no local wallet yet" — phrased for whoever is actually asking.
  *
  * Five call sites needed this sentence and four of them hard-coded
- * `allowance_create`, which the buyer profile does not register. One helper
+ * `wallet_create`, which the buyer profile does not register. One helper
  * rather than five ternaries, so the next call site inherits the fix instead of
  * repeating the bug.
  */
-export function noAllowanceHint(): string {
-  return isToolAvailable("allowance_create")
-    ? "No agent allowance found. Use `allowance_create` to create one."
-    : "No agent allowance found. Use `init` to create and fund one in a single call.";
+export function noWalletHint(): string {
+  return isToolAvailable("wallet_create")
+    ? "No local wallet found. Use `wallet_create` to create one."
+    : "No local wallet found. Use `init` to create and fund one in a single call.";
 }

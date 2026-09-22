@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
-import { requireAllowanceAuth } from "../allowance-auth.js";
+import { requireWalletAuth } from "../wallet-auth.js";
 
 export const forkAppSchema = {
   version_id: z.string().describe("The app version ID to fork (from browse_apps)"),
@@ -17,7 +17,7 @@ export async function handleForkApp(args: {
   name: string;
   subdomain?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const auth = requireAllowanceAuth("/fork/v1");
+  const auth = requireWalletAuth("/fork/v1");
   if ("error" in auth) return auth.error;
 
   try {

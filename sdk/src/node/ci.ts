@@ -1,7 +1,7 @@
 /** Node-only CI/OIDC helpers. */
 
-import { readAllowance } from "../../core-dist/allowance.js";
-import { buildSIWxAuthHeaders } from "../../core-dist/allowance-auth.js";
+import { readWallet } from "../../core-dist/wallet.js";
+import { buildSIWxAuthHeaders } from "../../core-dist/wallet-auth.js";
 import { getApiBase } from "../../core-dist/config.js";
 import { LocalError } from "../errors.js";
 import {
@@ -16,7 +16,7 @@ import {
 
 export interface SignCiDelegationOptions {
   apiBase?: string;
-  allowancePath?: string;
+  walletPath?: string;
   chainId?: string;
   issuedAt?: string;
   expirationTime?: string;
@@ -27,10 +27,10 @@ export function signCiDelegation(
   values: CiDelegationValues,
   opts: SignCiDelegationOptions = {},
 ): string {
-  const allowance = readAllowance(opts.allowancePath);
-  if (!allowance || !allowance.address || !allowance.privateKey) {
+  const localWallet = readWallet(opts.walletPath);
+  if (!localWallet || !localWallet.address || !localWallet.privateKey) {
     throw new LocalError(
-      "No local allowance configured. Run `run402 init` or `run402 allowance create` before linking CI.",
+      "No local wallet configured. Run `run402 init` or `run402 init` before linking CI.",
       "signing CI delegation",
     );
   }
@@ -40,7 +40,7 @@ export function signCiDelegation(
   const bindingUrl = new URL("/ci/v1/bindings", apiBase);
   const now = new Date();
   const headers = buildSIWxAuthHeaders({
-    allowance,
+    wallet: localWallet,
     domain: bindingUrl.hostname,
     uri: bindingUrl.toString(),
     statement: buildCiDelegationStatement(canonical),

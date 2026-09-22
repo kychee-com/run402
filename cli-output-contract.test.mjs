@@ -34,7 +34,6 @@ const GROUPED_COMMANDS = [
   "admin",
   "agent",
   "ai",
-  "allowance",
   "apps",
   "archives",
   "assets",
@@ -250,9 +249,9 @@ describe("CLI output contract drift protection", () => {
     try {
       const profileDir = join(tempDir, "profiles", "agent-a");
       mkdirSync(profileDir, { recursive: true });
-      // Exists for fail-closed wallet selection, but reads as "no allowance"
+      // Exists for fail-closed wallet selection, but reads as "no local wallet"
       // so status stays offline/hermetic.
-      writeFileSync(join(profileDir, "allowance.json"), "{", { mode: 0o600 });
+      writeFileSync(join(profileDir, "wallet.json"), "{", { mode: 0o600 });
 
       const result = spawnSync(process.execPath, [CLI_PATH, "status"], {
         env: {
@@ -274,17 +273,17 @@ describe("CLI output contract drift protection", () => {
     }
   });
 
-  it("run402 allowance export is JSON by default", () => {
-    const tempDir = mkdtempSync(join(tmpdir(), "run402-allowance-export-json-"));
+  it("run402 wallets current is JSON by default", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "run402-wallet-export-json-"));
     const address = "0x1111111111111111111111111111111111111111";
     try {
-      writeFileSync(join(tempDir, "allowance.json"), JSON.stringify({
+      writeFileSync(join(tempDir, "wallet.json"), JSON.stringify({
         address,
         privateKey: `0x${"2".repeat(64)}`,
         created: "2026-07-02T00:00:00.000Z",
       }), { mode: 0o600 });
 
-      const result = spawnSync(process.execPath, [CLI_PATH, "allowance", "export"], {
+      const result = spawnSync(process.execPath, [CLI_PATH, "wallets", "current"], {
         env: {
           ...process.env,
           RUN402_CONFIG_DIR: tempDir,
@@ -293,10 +292,12 @@ describe("CLI output contract drift protection", () => {
         timeout: 10_000,
       });
 
-      assert.equal(result.status, 0, `run402 allowance export failed:\nstdout: ${result.stdout}\nstderr: ${result.stderr}`);
+      assert.equal(result.status, 0, `run402 wallets current failed:\nstdout: ${result.stdout}\nstderr: ${result.stderr}`);
       assert.equal(result.stderr, "");
       const parsed = JSON.parse(result.stdout);
-      assert.deepEqual(parsed, { address });
+      assert.equal(parsed.address, address);
+      assert.equal(parsed.configured, true);
+      assert.equal(parsed.local_label, "default");
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
@@ -620,8 +621,8 @@ describe("CLI dual-case output gate (canonical snake_case stdout)", () => {
     const { saveProject, setActiveProjectId } = await import("./cli/core-dist/keystore.js");
     saveProject("prj_test123", { anon_key: "anon_test_key", service_key: "svc_test_key" });
     setActiveProjectId("prj_test123");
-    const { saveAllowance } = await import("./cli/lib/config.mjs");
-    saveAllowance({
+    const { saveWallet } = await import("./cli/lib/config.mjs");
+    saveWallet({
       address: "0x0000000000000000000000000000000000000001",
       privateKey: "0x" + "11".repeat(32),
       rail: "x402",

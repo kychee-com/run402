@@ -11,7 +11,7 @@
  *      helper (asserted via details.closest / details.known_subcommands on
  *      the envelope).
  *   D. Doctor pre-init: the projects-check hint is state-aware (no "already
- *      set up" claim when the allowance is missing) and check failure
+ *      set up" claim when the wallet is missing) and check failure
  *      messages are composed context-first (no mid-sentence ". while ").
  *
  * Harness pattern follows cli-conventions-gate.test.mjs: in-process module
@@ -297,8 +297,8 @@ describe("doctor pre-init hints and check-failure composition", () => {
     installDoctorFetchMock();
     try {
       const report = await runDoctor();
-      const allowance = report.checks.find((check) => check.name === "allowance");
-      assert.equal(allowance.status, "missing");
+      const localWallet = report.checks.find((check) => check.name === "wallet");
+      assert.equal(localWallet.status, "missing");
       const projects = report.checks.find((check) => check.name === "projects");
       assert.ok(projects, "projects check present");
       if (projects.hint) {
@@ -314,7 +314,7 @@ describe("doctor pre-init hints and check-failure composition", () => {
   });
 
   it("tier / operator_health / runtime_staleness failures are composed context-first (no '. while ')", async () => {
-    // Seeded allowance so the SIWX-signed request actually reaches the
+    // Seeded wallet so the SIWX-signed request actually reaches the
     // mocked gateway and comes back 401 with the period-terminated message
     // that used to produce "…challenge. while checking tier status".
     const seededDir = join(tempDir, "seeded");
@@ -323,8 +323,8 @@ describe("doctor pre-init hints and check-failure composition", () => {
     process.env.RUN402_CONFIG_DIR = seededDir;
     installDoctorFetchMock();
     try {
-      const { saveAllowance } = await import("./cli/lib/config.mjs");
-      saveAllowance({
+      const { saveWallet } = await import("./cli/lib/config.mjs");
+      saveWallet({
         address: "0x0000000000000000000000000000000000000001",
         privateKey: "0x" + "11".repeat(32),
         rail: "x402",

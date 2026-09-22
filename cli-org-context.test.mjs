@@ -68,7 +68,7 @@ async function expectFailure(fn) {
 
 before(async () => {
   mkdirSync(configDir, { recursive: true });
-  writeFileSync(join(configDir, "allowance.json"), JSON.stringify({ address: TEST_ADDRESS, privateKey: TEST_PRIVATE_KEY }));
+  writeFileSync(join(configDir, "wallet.json"), JSON.stringify({ address: TEST_ADDRESS, privateKey: TEST_PRIVATE_KEY }));
   mkdirSync(deepDir, { recursive: true });
   mkdirSync(bareDir, { recursive: true });
   writeFileSync(join(bindingDir, ".run402.json"), JSON.stringify({ org: BOUND, room: "my-repo", wallet: "bound-wallet" }));

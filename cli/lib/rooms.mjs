@@ -67,7 +67,7 @@ Room Invite (mint a key from the room you stand in, join through one):
     instead — this door is talk-only.
   - The key is printed to stdout EXACTLY ONCE (\`--json\` still keeps it out of
     stderr). It is not recoverable if lost — mint a new one.
-  - \`rooms join <kri1_…>\` folds a funded-wallet chain (allowance → faucet if
+  - \`rooms join <kri1_…>\` folds a funded-wallet chain (wallet → faucet if
     empty → briefly wait for settlement) and pays a $0.01 testnet charge via
     x402 to redeem it — the payment IS the join, so a joiner with no funds
     fails closed rather than joining unpaid. No tier is purchased, no project
@@ -417,7 +417,7 @@ function printInviteResultKeyOnly(result) {
 /**
  * `run402 rooms join <kri1_…>` (add-room-invite design D9/D10) — parse the
  * key CLIENT-SIDE first (a wrong-kind vault key refuses by name before ANY
- * network call, including the faucet), fold `ensureFundedWallet` (allowance
+ * network call, including the faucet), fold `ensureFundedWallet` (wallet
  * → faucet-if-empty → brief settlement poll, announced on stderr), redeem
  * through the SDK's paid fetch, then leave arrival state exactly where
  * `run402 messages wait` reads it: the host org as this wallet's current

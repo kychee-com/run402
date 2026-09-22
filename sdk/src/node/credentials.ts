@@ -1,7 +1,7 @@
 /**
- * Node credential provider — wraps the local project-key cache + allowance-auth.
+ * Node credential provider — wraps the local project-key cache + SIWX auth.
  * Reads `credentials/project-keys.v1.json` (or an explicit `keystorePath`),
- * signs SIWX headers from the allowance private key, and serves project
+ * signs SIWX headers from the wallet private key, and serves project
  * anon/service keys from disk only for operations classified as credential-
  * required.
  */
@@ -20,10 +20,10 @@ import {
   getActiveProjectId,
   setActiveProjectId,
 } from "../../core-dist/profile-state.js";
-import { getAllowanceAuthHeaders } from "../../core-dist/allowance-auth.js";
-import { readAllowance as coreReadAllowance, saveAllowance as coreSaveAllowance } from "../../core-dist/allowance.js";
+import { getWalletAuthHeaders } from "../../core-dist/wallet-auth.js";
+import { readWallet as coreReadWallet, saveWallet as coreSaveWallet } from "../../core-dist/wallet.js";
 import {
-  getAllowancePath as coreGetAllowancePath,
+  getWalletPath as coreGetWalletPath,
   getActiveProfile,
   getApiBase,
   getProfileStatePath as coreGetProfileStatePath,
@@ -32,7 +32,7 @@ import {
 import { readMeta } from "../../core-dist/profiles.js";
 import { loadLiveControlPlaneSession } from "../../core-dist/control-plane-session.js";
 import { loadLiveApproval, hashControlPlaneSession } from "../../core-dist/write-auth-session.js";
-import type { AllowanceData, AuthRequestMeta, CredentialsProvider, ProjectKeys, WalletIdentity } from "../credentials.js";
+import type { WalletData, AuthRequestMeta, CredentialsProvider, ProjectKeys, WalletIdentity } from "../credentials.js";
 import { DELEGATE_CREDENTIALS, delegateTokenFromEnv } from "../delegate-credentials.js";
 import { LocalError } from "../errors.js";
 
@@ -42,7 +42,7 @@ export type CredentialSurface = "cli" | "mcp" | "sdk";
 export type AuthMode = "auto" | "wallet" | "operator" | "delegate" | "none";
 
 export interface NodeCredentialsOptions {
-  allowancePath?: string;
+  walletPath?: string;
   /** Local project-key credential cache path. Defaults to credentials/project-keys.v1.json. */
   keystorePath?: string;
   /** Non-secret profile state path for active project pointers. Defaults to state.json. */
@@ -88,10 +88,10 @@ export class NodeCredentialsProvider implements CredentialsProvider {
    * Deterministic credential resolution — selects exactly one credential class
    * and never silently falls back to another after a failure.
    *
-   * - `wallet` (default; the MCP/agent path): only the SIWX allowance. NEVER
+   * - `wallet` (default; the MCP/agent path): only the SIWX wallet. NEVER
    *   reads the control-plane session or operator-approval caches, so a human's
    *   ambient authority cannot leak into an agent tool call.
-   * - `auto` (CLI): SIWX allowance if present; otherwise the live control-plane
+   * - `auto` (CLI): SIWX wallet if present; otherwise the live control-plane
    *   session, plus an `X-Run402-Write-Auth` approval ONLY when the request's
    *   `(capability, target)` exactly matches a cached, origin/session-bound
    *   approval. A gated write with no match is sent cp-bearer-only and fails
@@ -111,7 +111,7 @@ export class NodeCredentialsProvider implements CredentialsProvider {
     if (delegate) return { Authorization: `Bearer ${delegate}` };
     if (mode === "delegate") return null;
 
-    const wallet = getAllowanceAuthHeaders(path, this.options.allowancePath);
+    const wallet = getWalletAuthHeaders(path, this.options.walletPath);
     if (mode === "wallet") return wallet ? { ...wallet } : null;
     if (mode === "auto" && wallet) return { ...wallet };
 
@@ -190,13 +190,13 @@ export class NodeCredentialsProvider implements CredentialsProvider {
       ?? null;
   }
 
-  async readAllowance(): Promise<AllowanceData | null> {
-    return coreReadAllowance(this.options.allowancePath) ?? null;
+  async readWallet(): Promise<WalletData | null> {
+    return coreReadWallet(this.options.walletPath) ?? null;
   }
 
   async signPersonalMessage(message: string): Promise<{ address: string; signature: string }> {
-    const allowance = coreReadAllowance(this.options.allowancePath);
-    if (!allowance) {
+    const localWallet = coreReadWallet(this.options.walletPath);
+    if (!localWallet) {
       throw new LocalError(
         "No active wallet is available for EIP-191 signing",
         "signing EIP-191 identity-link proof",
@@ -204,16 +204,16 @@ export class NodeCredentialsProvider implements CredentialsProvider {
       );
     }
     const { privateKeyToAccount } = await import("viem/accounts");
-    const account = privateKeyToAccount(allowance.privateKey as `0x${string}`);
+    const account = privateKeyToAccount(localWallet.privateKey as `0x${string}`);
     const signature = await account.signMessage({ message });
     return { address: account.address, signature };
   }
 
-  async saveAllowance(data: AllowanceData): Promise<void> {
-    coreSaveAllowance(data, this.options.allowancePath);
+  async saveWallet(data: WalletData): Promise<void> {
+    coreSaveWallet(data, this.options.walletPath);
   }
 
-  async createAllowance(): Promise<AllowanceData> {
+  async createWallet(): Promise<WalletData> {
     const privateKeyBytes = randomBytes(32);
     const privateKey = `0x${privateKeyBytes.toString("hex")}`;
 
@@ -234,8 +234,8 @@ export class NodeCredentialsProvider implements CredentialsProvider {
     };
   }
 
-  getAllowancePath(): string {
-    return this.options.allowancePath ?? coreGetAllowancePath();
+  getWalletPath(): string {
+    return this.options.walletPath ?? coreGetWalletPath();
   }
 
   getProjectCredentialCacheInfo() {
@@ -253,11 +253,11 @@ export class NodeCredentialsProvider implements CredentialsProvider {
   }
 
   private activeScope() {
-    const allowance = coreReadAllowance(this.options.allowancePath);
+    const localWallet = coreReadWallet(this.options.walletPath);
     return {
       api_base: getApiBase(),
       profile: getActiveProfile(),
-      principal: allowance?.address ?? null,
+      principal: localWallet?.address ?? null,
     };
   }
 
@@ -266,7 +266,7 @@ export class NodeCredentialsProvider implements CredentialsProvider {
     const meta = readMeta(name);
     let address = meta?.address ?? null;
     if (!address) {
-      address = coreReadAllowance(this.options.allowancePath)?.address ?? null;
+      address = coreReadWallet(this.options.walletPath)?.address ?? null;
     }
     return { name, address, label: meta?.label ?? null };
   }

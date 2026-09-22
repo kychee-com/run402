@@ -95,21 +95,21 @@ async function resolvePayerWallet() {
   }
 
   const provider = new NodeCredentialsProvider();
-  const allowance = await provider.readAllowance();
-  if (!allowance?.privateKey) {
+  const localWallet = await provider.readWallet();
+  if (!localWallet?.privateKey) {
     fail(
-      "Missing BUYER_PRIVATE_KEY and the active run402 wallet has no local allowance key.\n" +
+      "Missing BUYER_PRIVATE_KEY and the active run402 wallet has no local wallet key.\n" +
         "Run `run402 wallets use <name>` and `run402 init`, or set BUYER_PRIVATE_KEY=0x...",
     );
   }
-  if (!allowance.privateKey.startsWith("0x")) {
+  if (!localWallet.privateKey.startsWith("0x")) {
     fail("Active run402 wallet private key is malformed; expected a 0x-prefixed key.");
   }
 
   return {
     source: `run402 wallets current (${current.source || "unknown"})`,
     name: profile,
-    privateKey: allowance.privateKey,
+    privateKey: localWallet.privateKey,
   };
 }
 

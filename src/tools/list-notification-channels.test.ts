@@ -8,9 +8,9 @@ let nextListImpl: () => Promise<unknown> = async () => ({
   telegram: [],
 });
 
-mock.module("../allowance-auth.js", {
+mock.module("../wallet-auth.js", {
   namedExports: {
-    requireAllowanceAuth: () => ({ headers: { "SIGN-IN-WITH-X": "dGVzdA==" } }),
+    requireWalletAuth: () => ({ headers: { "SIGN-IN-WITH-X": "dGVzdA==" } }),
   },
 });
 

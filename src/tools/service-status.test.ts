@@ -66,7 +66,7 @@ describe("service_status tool", () => {
     assert.ok(text.includes("connection refused"));
   });
 
-  it("works with no allowance file (fresh install)", async () => {
+  it("works with no local wallet file (fresh install)", async () => {
     globalThis.fetch = (async () => jsonResponse({
       status: "ok",
       uptime_seconds: 100,

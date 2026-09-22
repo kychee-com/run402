@@ -1,5 +1,5 @@
 /**
- * Node-only x402-wrapped fetch. Reads the allowance file, checks on-chain
+ * Node-only x402-wrapped fetch. Reads the wallet file, checks on-chain
  * USDC balances through independent RPC providers, and returns a fetch wrapper
  * that auto-signs 402 responses only when the requested chain has confirmed
  * funds.
@@ -16,12 +16,12 @@
  * CLI edge.
  */
 
-import { readAllowance } from "../../core-dist/allowance.js";
+import { readWallet } from "../../core-dist/wallet.js";
 import { getApiBase } from "../../core-dist/config.js";
 import { isTerminalRoomInviteRefusal } from "../namespaces/rooms.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
-import type { AllowanceData, CredentialsProvider } from "../credentials.js";
+import type { WalletData, CredentialsProvider } from "../credentials.js";
 import {
   LocalError,
   PaymentAttemptError,
@@ -294,7 +294,7 @@ export class X402BalanceError extends Run402Error {
           : [
               {
                 type: "fund_wallet",
-                why: "Fund the configured allowance wallet on an accepted network, then retry.",
+                why: "Fund the configured wallet on an accepted network, then retry.",
               },
             ]),
       },
@@ -341,9 +341,9 @@ export interface EvmPaymentSignerProvider {
 
 export type PaymentPayerSource =
   | "payment_signer"
-  | "allowance_path"
+  | "wallet_path"
   | "credentials"
-  | "default_allowance";
+  | "default_wallet";
 
 /** Safe, key-free provenance for the payer selected by paid fetch. */
 export interface PaymentPayerProvenance {
@@ -370,11 +370,11 @@ export type LazyPaidFetch = FetchFn & {
 };
 
 export interface PaidFetchOptions {
-  /** Explicit local allowance file. When set, no other allowance is consulted. */
-  allowancePath?: string;
-  /** Auth provider whose optional allowance capability may also fund payments. */
-  credentials?: Pick<CredentialsProvider, "readAllowance">;
-  /** Explicit opaque x402 signer. Mutually exclusive with allowancePath. */
+  /** Explicit local wallet file. When set, no other wallet is consulted. */
+  walletPath?: string;
+  /** Auth provider whose optional wallet capability may also fund payments. */
+  credentials?: Pick<CredentialsProvider, "readWallet">;
+  /** Explicit opaque x402 signer. Mutually exclusive with walletPath. */
   paymentSigner?: EvmPaymentSignerProvider;
   /**
    * The run402 API origin this fetch is wired to (defaults to
@@ -630,7 +630,7 @@ export function filterAffordableRequirements(
     );
     throw new X402BalanceError(
       "X402_INSUFFICIENT_FUNDS",
-      "The configured allowance wallet has insufficient confirmed USDC for the accepted x402 payment requirements.",
+      "The configured wallet has insufficient confirmed USDC for the accepted x402 payment requirements.",
       {
         balances: balanceDetails,
         requirements: recognized.map((requirement) => ({
@@ -723,39 +723,39 @@ export async function setupPaidFetch(options: PaidFetchOptions = {}): Promise<Co
 
   // Malformed or missing selected local state degrades to an unwrapped 402,
   // but it never falls back to a different wallet source.
-  const resolvedAllowance = options.paymentSigner ? null : await resolveAllowance(options);
-  const allowance = resolvedAllowance?.allowance ?? null;
-  if (!allowance && !options.paymentSigner) return null;
+  const resolvedWallet = options.paymentSigner ? null : await resolveWallet(options);
+  const localWallet = resolvedWallet?.localWallet ?? null;
+  if (!localWallet && !options.paymentSigner) return null;
 
-  const rail = options.railOverride ?? allowance?.rail;
+  const rail = options.railOverride ?? localWallet?.rail;
   try {
-    if (rail === "lightning" && allowance?.lightning?.nwc) {
-      // The Lightning allowance: pay the seller's Lightning challenge from the
+    if (rail === "lightning" && localWallet?.lightning?.nwc) {
+      // The Lightning wallet: pay the seller's Lightning challenge from the
       // agent's budgeted wallet on Run402's Hub; fall back to the x402 buyer
-      // built from the same allowance when no Lightning challenge is offered.
-      const lightning = allowance.lightning;
+      // built from the same wallet when no Lightning challenge is offered.
+      const lightning = localWallet.lightning;
       const fetchFn = createLightningFetch({
         pairingUri: lightning.nwc,
         baseFetch: sdkFetch,
         fallback: async () => setupPaidFetch({ ...options, railOverride: "x402" }),
       });
       return withPayer(fetchFn, {
-        source: resolvedAllowance!.source,
+        source: resolvedWallet!.source,
         rail: "lightning",
         payers: [{ address: lightning.lightning_address ?? lightning.wallet_id }],
       });
     }
-    if (rail === "mpp" && allowance) {
+    if (rail === "mpp" && localWallet) {
       const stack = await stackLoaders.mpp();
-      const account = stack.privateKeyToAccount(allowance.privateKey as `0x${string}`);
+      const account = stack.privateKeyToAccount(localWallet.privateKey as `0x${string}`);
       const mppx = stack.Mppx.create({
         polyfill: false,
         methods: [stack.tempo({ account })],
       });
       return withPayer(mppx.fetch, {
-        source: resolvedAllowance!.source,
+        source: resolvedWallet!.source,
         rail: "mpp",
-        payers: [{ address: allowance.address }],
+        payers: [{ address: localWallet.address }],
       });
     }
 
@@ -771,7 +771,7 @@ export async function setupPaidFetch(options: PaidFetchOptions = {}): Promise<Co
           options.paymentSigner.getSigner({ network: "eip155:8453", publicClient: mainnetClients[0] }),
           options.paymentSigner.getSigner({ network: "eip155:84532", publicClient: sepoliaClients[0] }),
         ])
-      : localAllowanceSigners(stack, allowance!, mainnetClients[0], sepoliaClients[0]);
+      : localWalletSigners(stack, localWallet!, mainnetClients[0], sepoliaClients[0]);
 
     if (!mainnetSigner && !sepoliaSigner) return null;
 
@@ -882,7 +882,7 @@ export async function setupPaidFetch(options: PaidFetchOptions = {}): Promise<Co
     return withPayer(
       trackedFetch,
       {
-        source: options.paymentSigner ? "payment_signer" : resolvedAllowance!.source,
+        source: options.paymentSigner ? "payment_signer" : resolvedWallet!.source,
         rail: "x402",
         payers: [
           ...(mainnetSigner ? [{ address: mainnetSigner.address, network: "eip155:8453" as const }] : []),
@@ -1043,43 +1043,43 @@ export function createLazyPaidFetch(options: PaidFetchOptions = {}): LazyPaidFet
 }
 
 function validatePaymentSource(options: PaidFetchOptions): void {
-  if (options.paymentSigner && options.allowancePath) {
+  if (options.paymentSigner && options.walletPath) {
     throw new LocalError(
-      "Configure exactly one explicit payment source: paymentSigner or allowancePath",
+      "Configure exactly one explicit payment source: paymentSigner or walletPath",
       "configuring paid fetch",
       {
         code: "PAYMENT_SOURCE_CONFLICT",
-        details: { fields: ["paymentSigner", "allowancePath"] },
+        details: { fields: ["paymentSigner", "walletPath"] },
       },
     );
   }
 }
 
-async function resolveAllowance(options: PaidFetchOptions): Promise<{
-  allowance: AllowanceData;
+async function resolveWallet(options: PaidFetchOptions): Promise<{
+  localWallet: WalletData;
   source: Exclude<PaymentPayerSource, "payment_signer">;
 } | null> {
   try {
     // An explicit payment path is authoritative even when auth uses a custom
     // credentials provider. Do not fall back if it is absent or malformed.
-    if (options.allowancePath !== undefined) {
-      const allowance = readAllowance(options.allowancePath);
-      return allowance ? { allowance, source: "allowance_path" } : null;
+    if (options.walletPath !== undefined) {
+      const localWallet = readWallet(options.walletPath);
+      return localWallet ? { localWallet, source: "wallet_path" } : null;
     }
 
     // Once a credentials provider is supplied it is the only implicit payment
-    // source. Providers without allowance capability fail closed; they never
+    // source. Providers without wallet capability fail closed; they never
     // inherit the process-global wallet.
     if (options.credentials !== undefined) {
-      if (typeof options.credentials.readAllowance !== "function") return null;
-      const allowance = await options.credentials.readAllowance();
-      return allowance ? { allowance, source: "credentials" } : null;
+      if (typeof options.credentials.readWallet !== "function") return null;
+      const localWallet = await options.credentials.readWallet();
+      return localWallet ? { localWallet, source: "credentials" } : null;
     }
 
     // Direct setupPaidFetch()/createLazyPaidFetch() calls retain the Node
     // default for backwards compatibility.
-    const allowance = readAllowance();
-    return allowance ? { allowance, source: "default_allowance" } : null;
+    const localWallet = readWallet();
+    return localWallet ? { localWallet, source: "default_wallet" } : null;
   } catch {
     return null;
   }
@@ -1094,13 +1094,13 @@ function withPayer(
   return Object.assign(fetchFn, { payer, refreshBalances, ...(pay ? { pay } : {}) });
 }
 
-function localAllowanceSigners(
+function localWalletSigners(
   stack: X402Stack,
-  allowance: AllowanceData,
+  localWallet: WalletData,
   mainnetClient: PaymentPublicClient,
   sepoliaClient: PaymentPublicClient,
 ): [EvmPaymentSigner, EvmPaymentSigner] {
-  const account = stack.privateKeyToAccount(allowance.privateKey as `0x${string}`);
+  const account = stack.privateKeyToAccount(localWallet.privateKey as `0x${string}`);
   return [
     stack.toClientEvmSigner(account, mainnetClient) as EvmPaymentSigner,
     stack.toClientEvmSigner(account, sepoliaClient) as EvmPaymentSigner,

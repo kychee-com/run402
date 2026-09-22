@@ -265,7 +265,7 @@ function addCodeGuidance(
       return true;
     case "CI_ROUTE_SCOPE_DENIED":
       lines.push(
-        `\nNext step: Re-link the GitHub Actions binding with covering \`--route-scope\` patterns, or run the route-changing deploy locally with allowance-backed authority.`,
+        `\nNext step: Re-link the GitHub Actions binding with covering \`--route-scope\` patterns, or run the route-changing deploy locally with wallet-backed authority.`,
       );
       return true;
     case "PROJECT_HAS_PENDING_TRANSFER":

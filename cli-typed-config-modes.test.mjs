@@ -116,9 +116,9 @@ function scrubCiEnv() {
   };
 }
 
-async function seedDeployAllowance() {
-  const { saveAllowance } = await import("./cli/lib/config.mjs");
-  saveAllowance({
+async function seedDeployWallet() {
+  const { saveWallet } = await import("./cli/lib/config.mjs");
+  saveWallet({
     address: "0x0000000000000000000000000000000000000001",
     privateKey: "0x" + "11".repeat(32),
     rail: "x402",
@@ -227,7 +227,7 @@ beforeEach(() => {
 
 describe("typed release config CLI modes", () => {
   it("smoke-tests deploy check, print-spec, plan, mismatch, and successful require-plan", async () => {
-    await seedDeployAllowance();
+    await seedDeployWallet();
     const root = mkdtempSync(join(tmpdir(), "run402-cli-typed-smoke-"));
     try {
       const manifestPath = writeTypedDeployConfig(root, "v1");
@@ -328,7 +328,7 @@ describe("typed release config CLI modes", () => {
   });
 
   it("up --plan preserves the up surface in reviewed-plan next actions", async () => {
-    await seedDeployAllowance();
+    await seedDeployWallet();
     const root = mkdtempSync(join(tmpdir(), "run402-cli-up-plan-"));
     try {
       const manifestPath = writeTypedDeployConfig(root, "up-plan");

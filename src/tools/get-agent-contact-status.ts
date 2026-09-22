@@ -1,6 +1,6 @@
 import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
-import { requireAllowanceAuth } from "../allowance-auth.js";
+import { requireWalletAuth } from "../wallet-auth.js";
 import { formatAgentContact } from "./set-agent-contact.js";
 
 export const getAgentContactStatusSchema = {};
@@ -8,7 +8,7 @@ export const getAgentContactStatusSchema = {};
 export async function handleGetAgentContactStatus(
   _args: Record<string, never>,
 ): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const auth = requireAllowanceAuth("/agent/v1/contact/status");
+  const auth = requireWalletAuth("/agent/v1/contact/status");
   if ("error" in auth) return auth.error;
 
   try {

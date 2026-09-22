@@ -7,7 +7,7 @@
  * tools that do not exist for them. Cold-walking the buyer profile on
  * 2026-07-30 (kychee-com/run402-private#635) found two:
  *
- *   allowance_status  ->  "Use `allowance_create` to create one."
+ *   wallet_status  ->  "Use `wallet_create` to create one."
  *   init              ->  "**Next:** Use `tier_set` to set a tier."
  *
  * Neither tool is registered under `buyer`. `tier_set` is worse than absent —
@@ -134,7 +134,7 @@ const PROFILES = toolProfiles();
  * switched-off gate protects nothing. If a profile is ever added whose tools DO
  * hit control-plane errors, add `errors.ts` here and do that modelling then.
  */
-const SHARED_IN_SCOPE = new Set(["allowance-auth.ts"]);
+const SHARED_IN_SCOPE = new Set(["wallet-auth.ts"]);
 
 /**
  * Can a caller restricted to `profileTools` ever see text from this file?
@@ -176,7 +176,7 @@ describe("profile guidance never names a withheld tool", () => {
         if (!reachableUnderProfile(file, profileTools)) continue;
         for (const stmt of guidanceStatements(readFileSync(file, "utf8"))) {
           // A statement that consults the profile IS the fix, not a violation.
-          if (/isToolAvailable|noAllowanceHint/.test(stmt.text)) continue;
+          if (/isToolAvailable|noWalletHint/.test(stmt.text)) continue;
           // Backticks may be ESCAPED (\`tool\`) because most guidance lives in
           // template literals, where an inner backtick has to be.
           for (const m of stmt.text.matchAll(/\\?`([a-z0-9_]+)\\?`/g)) {

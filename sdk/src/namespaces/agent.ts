@@ -6,7 +6,7 @@ import type {
 } from "./agent.types.js";
 
 /**
- * The calling agent's Lightning wallet (the Lightning allowance):
+ * The calling agent's Lightning wallet:
  * `POST/GET/DELETE /agent/v1/lightning-wallet`. Run402 mints one budgeted,
  * isolated sub-wallet per principal on its own Hub; the pairing secret is
  * returned exactly once. `mint()` waits for the platform-side broker by
@@ -67,7 +67,7 @@ export class AgentLightningWallets {
 }
 
 export class Agent {
-  /** The Lightning allowance: a platform-minted, budgeted wallet on Run402's Hub. */
+  /** The Lightning wallet: a platform-minted, budgeted wallet on Run402's Hub. */
   readonly lightningWallet: AgentLightningWallets;
 
   constructor(client: Client) {

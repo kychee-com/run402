@@ -17,9 +17,9 @@ let nextCreateImpl: (input: unknown) => Promise<unknown> = async (input) => ({
   next_actions: [],
 });
 
-mock.module("../allowance-auth.js", {
+mock.module("../wallet-auth.js", {
   namedExports: {
-    requireAllowanceAuth: () => ({ headers: { "SIGN-IN-WITH-X": "dGVzdA==" } }),
+    requireWalletAuth: () => ({ headers: { "SIGN-IN-WITH-X": "dGVzdA==" } }),
   },
 });
 
