@@ -25,7 +25,7 @@ npx -y run402@latest <command>
 ## 30-second start
 
 ```bash
-run402 up --name my-app -y                 # bootstrap allowance/tier/project/link, then deploy
+run402 up --name my-app -y                 # bootstrap wallet/tier/project/link, then deploy
 run402 subdomains add my-app             # → https://my-app.run402.com
 ```
 
@@ -55,7 +55,7 @@ run402 up --nested -y                         # app root inside another repo: it
 
 For app manifests with `verify.http[]`, `up` runs HTTP checks after deploy. Fresh Run402 edge sentinel misses (`x-run402-edge` or sentinel JSON bodies) become `propagation_pending` with diagnostics instead of hard failure while the host binding is still converging. Use `--propagation-budget-s <seconds>` to tune the default 120 second wait, `--no-propagation-wait` to return immediately, and `run402 up verify` to rerun the same checks without upload, deploy, project creation, or resource mutation.
 
-For typed `run402.deploy.ts` configs, pass `--manifest` explicitly because TypeScript/JavaScript configs execute local code. Use `--check` for local-only import/normalize/file validation, `--print-spec` to inspect the normalized `ReleaseSpec`, `--plan` for a gateway-reviewed non-deploying plan, and `--require-plan <plan_id>` to apply only that reviewed intent. Warning flags are not used with `--require-plan`; the reviewed plan binds the exact warning/destructive set. Run402 Core skips Cloud allowance/tier prerequisites and fails closed when no Core project is selected.
+For typed `run402.deploy.ts` configs, pass `--manifest` explicitly because TypeScript/JavaScript configs execute local code. Use `--check` for local-only import/normalize/file validation, `--print-spec` to inspect the normalized `ReleaseSpec`, `--plan` for a gateway-reviewed non-deploying plan, and `--require-plan <plan_id>` to apply only that reviewed intent. Warning flags are not used with `--require-plan`; the reviewed plan binds the exact warning/destructive set. Run402 Core skips Cloud wallet/tier prerequisites and fails closed when no Core project is selected.
 
 Every mode (and `run402 deploy`) verifies the files the manifest references before any gateway call: migration `sql_path`/`sql_file`, function `source`/`files`, site `{ path }` entries and `dir()` targets, `assets.put` sources. A missing one is `MANIFEST_FILE_MISSING` (`details.missing[]` = `{ field_path, path, kind }`, one `create_file` next action per file). With no manifest in the working directory, `UP_MANIFEST_REQUIRED` looks one directory down (`details.nearby_manifests[]`, a leading `run_in_directory` next action such as `run402 up --check --dir <dir>`); `--manifest <path>` to a missing file is a typed `MANIFEST_NOT_FOUND` with a `create_manifest` next action. An app root that lies inside another repository is never scaffolded into it: the skip carries a `create_nested_repo` next action, and `--nested` gives the app its own nested repository (`git init -b main`, the `run402` remote, the first push) plus exactly one line in the enclosing repository's local `.git/info/exclude`, nothing else touched. `up` also sets this principal's display name when it has none: `RUN402_AGENT_NAME` (overrides an existing name), else the detected client (`claude-code`, `codex`, `cursor`, `grok`, or `RUN402_CLIENT=<name>` for one with no marker), and `result.identity` reports `detected` plus `detection: { applied, reason }` either way.
 
@@ -78,19 +78,19 @@ run402 repos delete --project prj_xyz --force # refuses without --force while th
 
 A hosted git remote, encrypted before it leaves the machine — no deploy, no manifest, no app. `origin` is claimed additively — an existing `origin` is never touched, the run402 remote falls back to `run402` instead. A directory inside another repository is never scaffolded into that repository: the skip carries a `create_nested_repo` next action, `--nested` makes it its own nested repository (one line appended to the enclosing repository's local `.git/info/exclude`, nothing else touched), and `create` prints a `git push` next action only for a remote it actually added. Every mutating `repos` verb (`create`, `rename`, `delete`, `snapshot`, `policy`, `mirror`, `gc`, `handoff`, `resume`, `invite`, `join`) is CLI/OpenClaw-only by design — no MCP tool exists or will exist for them (one-shot recovery receipts, immutable generations, irreversible delete, single-use bearer keys). Three READ-ONLY tools do exist — `repos_view`, `repos_list_heads`, `repos_fsck` — teaching only `repos` spellings. See `run402 repos --help` for the full tiered surface (common: `create`/`view`/`list`; occasional: `snapshot`/`mirror`/`recover`/`handoff`/`resume`/`invite`/`join`; lifecycle: `rename`/`delete`; maintenance: `fsck`/`gc`/`access`/`policy`), and the CLI reference's `repos` section for the terminal-loss statement and the progressive backup warning.
 
-**Handoff / resume.** `run402 repos handoff [--note-file <path>]` captures the actual working tree (staged/unstaged/untracked, like `git stash push -u`) into the vault and mints a single-use bearer key (`kgh1_…`, printed to stdout exactly once); `run402 repos resume <kgh1_…>` claims it on another machine, clones fresh, and reapplies the exact dirty state with `git stash apply --index`. No shared keystore, no shared allowance — the key is the whole handoff. On a wallet with no active tier, `resume` first folds the same cold-start chain `create` does (allowance → faucet → one x402 prototype payment); `--no-init` opts out, and the claim itself never waits on it. Sensitive untracked files (`.env`, `*.pem`, SSH/AWS/GPG dirs, …) are excluded from capture by default (`--include-sensitive <glob>` re-admits one). See the reference `run402.com/llms-cli.txt` for the full note-schema and flag reference.
+**Handoff / resume.** `run402 repos handoff [--note-file <path>]` captures the actual working tree (staged/unstaged/untracked, like `git stash push -u`) into the vault and mints a single-use bearer key (`kgh1_…`, printed to stdout exactly once); `run402 repos resume <kgh1_…>` claims it on another machine, clones fresh, and reapplies the exact dirty state with `git stash apply --index`. No shared keystore, no shared wallet — the key is the whole handoff. On a wallet with no active tier, `resume` first folds the same cold-start chain `create` does (wallet → faucet → one x402 prototype payment); `--no-init` opts out, and the claim itself never waits on it. Sensitive untracked files (`.env`, `*.pem`, SSH/AWS/GPG dirs, …) are excluded from capture by default (`--include-sensitive <glob>` re-admits one). See the reference `run402.com/llms-cli.txt` for the full note-schema and flag reference.
 
 **Invite / join.** The second claim kind beside handoff/resume: a Handoff passes the work on and the sender stops; an Invite grows the team while the sender keeps working. `run402 repos invite [--room <key>] [--note-file <path>]` captures the checkpoint exactly like `handoff` — the inviter's own worktree, index, branch, refs, and access are all untouched — registers the inviter's presence in a coordination room (the project's default room, or `--room <key>` for a named org room), mints a single-use bearer key (`kgi1_…`, printed to stdout exactly once), and posts ONE room message naming the checkpoint (never the key). `run402 repos join <kgi1_…>` folds the SAME cold-start chain `resume` does before the claim, clones fresh, restores the exact dirty state, pins the invite's room locally, registers its own presence, posts ONE arrival message, and reports the inviter (name, labels, liveness), the room's other live presences, and the last few messages. `run402 messages wait` is the room's blocking read from there — the agent's ear, never an error on silence. Neither `invite` nor `join` has an MCP tool, same reasoning as `handoff`/`resume`.
 
 **Named addressing.** `run402 org slug <slug>` (owner-only, small one-time fee) sets an org's globally-unique, address-form slug, after which `run402::<slug>/<name>` addresses any repo under it — `git push` to a name that doesn't exist yet push-to-creates it. `run402 repos rename <name> [--project <id>]` claims the per-org-unique `<name>` half explicitly (no fee); `repos create` claims one automatically, best-effort, when the org already has a slug. Also CLI/SDK-only — no MCP tool.
 
-### Allowance
+### Wallet
 
 ```bash
-run402 allowance create    # generate the local allowance
-run402 allowance fund      # request testnet USDC from the faucet
-run402 allowance balance   # mainnet + testnet + billing balance
-run402 allowance export    # print {"address":"0x..."} for funding
+run402 wallets new default # generate the local wallet without funding it
+run402 wallets fund        # request testnet USDC from the faucet
+run402 wallets balance     # mainnet + testnet USDC, plus the organization's allowance
+run402 wallets current     # the active wallet's address (for funding), rail, and file path
 ```
 
 ### Promo codes
@@ -100,9 +100,9 @@ run402 redeem R402-K8F3-Q2W9          # any time, before or after `run402 init`
 run402 init --voucher R402-K8F3-Q2W9  # same redemption, folded into setup
 ```
 
-A promo code credits the organization with prepaid credit that settles tiers and
+A promo code adds to the organization's allowance, which settles tiers and
 priced calls with no on-chain payment. Case-insensitive, hyphens optional.
-Retrying is safe — a repeat returns the original result and never credits twice.
+Retrying is safe — a repeat returns the original result and never adds twice.
 A bad code never blocks `init`; it warns and records `voucher_error` in the JSON
 summary.
 
@@ -181,7 +181,7 @@ For database-bearing changes, rehearsal happens before commit without a flag: `r
 
 ### GitHub Actions OIDC deploys
 
-Link once from a local shell that has your Run402 allowance, then commit the generated workflow and manifest:
+Link once from a local shell that has your Run402 wallet, then commit the generated workflow and manifest:
 
 ```bash
 run402 ci link github --project prj_... --manifest run402.deploy.json
@@ -206,7 +206,7 @@ jobs:
         run: npx --yes run402@3.7.5 deploy --manifest 'run402.deploy.json' --project 'prj_...'
 ```
 
-CI deploys can ship `site`, `functions`, `database`, and absent/current `base` changes. Route declarations are allowed only when the binding was linked with covering `--route-scope` patterns (`/admin` exact, `/api/*` final wildcard); no scopes means no CI route authority. Keep secrets, domains, subdomains, checks, non-current base changes, and out-of-scope routes in a local `run402 deploy` where the full allowance-backed authority is present.
+CI deploys can ship `site`, `functions`, `database`, and absent/current `base` changes. Route declarations are allowed only when the binding was linked with covering `--route-scope` patterns (`/admin` exact, `/api/*` final wildcard); no scopes means no CI route authority. Keep secrets, domains, subdomains, checks, non-current base changes, and out-of-scope routes in a local `run402 deploy` where the full wallet-backed authority is present.
 
 ### Storage (paste-and-go CDN assets)
 
@@ -330,11 +330,11 @@ run402 doctor --refresh          # live npm check for a newer run402
 Local state lives at:
 
 - `~/.config/run402/projects.json` (`0600`) — project credentials (`anon_key`, `service_key`, `tier`, `lease_expires_at`)
-- `~/.config/run402/allowance.json` (`0600`) — wallet for x402 signing
+- `~/.config/run402/wallet.json` (`0600`) — wallet for x402 signing
 - `~/.config/run402/config.json` (`0600`) — global default wallet pointer (`active_wallet`)
-- `~/.config/run402/profiles/<name>/` (`0700`) — named wallets, each with its own `allowance.json` + `projects.json` + non-secret `meta.json`
+- `~/.config/run402/profiles/<name>/` (`0700`) — named wallets, each with its own `wallet.json` + `projects.json` + non-secret `meta.json`
 
-Override the base directory with `RUN402_CONFIG_DIR` or the allowance file with `RUN402_ALLOWANCE_PATH`. Override the API base with `RUN402_API_BASE`.
+Override the base directory with `RUN402_CONFIG_DIR` or the wallet file with `RUN402_WALLET_PATH`. Override the API base with `RUN402_API_BASE`.
 
 ### Named wallets (profiles)
 

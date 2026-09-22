@@ -171,16 +171,6 @@
       "topic": "/errors/gateway/#ALLOCATION_SUPERSEDED"
     },
     {
-      "code": "ALLOWANCE_EXISTS",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "cli/lib/allowance.mjs"
-        }
-      ],
-      "topic": "/errors/client/#ALLOWANCE_EXISTS"
-    },
-    {
       "code": "AMBIGUOUS_EXTERNAL_SELECTION",
       "owners": [
         {
@@ -513,16 +503,6 @@
       "topic": "/errors/gateway/#AUTHORIZATION_UNSUPPORTED"
     },
     {
-      "code": "BAD_ALLOWANCE_FILE",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "cli/lib/config.mjs"
-        }
-      ],
-      "topic": "/errors/client/#BAD_ALLOWANCE_FILE"
-    },
-    {
       "code": "BAD_ENV",
       "owners": [
         {
@@ -757,10 +737,6 @@
         },
         {
           "owner": "public",
-          "source": "cli/lib/allowance.mjs"
-        },
-        {
-          "owner": "public",
           "source": "cli/lib/apps.mjs"
         },
         {
@@ -965,6 +941,16 @@
         }
       ],
       "topic": "/errors/client/#BAD_USAGE"
+    },
+    {
+      "code": "BAD_WALLET_FILE",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "cli/lib/config.mjs"
+        }
+      ],
+      "topic": "/errors/client/#BAD_WALLET_FILE"
     },
     {
       "code": "BAD_WALLET_NAME",
@@ -1931,7 +1917,7 @@
       "owners": [
         {
           "owner": "public",
-          "source": "cli/lib/allowance.mjs"
+          "source": "cli/lib/wallets.mjs"
         }
       ],
       "topic": "/errors/client/#FAUCET_FAILED"
@@ -4167,28 +4153,6 @@
       "topic": "/errors/gateway/#NO_ACTIVE_RELEASE"
     },
     {
-      "code": "NO_ALLOWANCE",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "cli/lib/allowance.mjs"
-        },
-        {
-          "owner": "public",
-          "source": "cli/lib/ci.mjs"
-        },
-        {
-          "owner": "public",
-          "source": "cli/lib/config.mjs"
-        },
-        {
-          "owner": "public",
-          "source": "cli/lib/wallets.mjs"
-        }
-      ],
-      "topic": "/errors/client/#NO_ALLOWANCE"
-    },
-    {
       "code": "NO_ORGS",
       "owners": [
         {
@@ -4217,6 +4181,24 @@
         }
       ],
       "topic": "/errors/client/#NO_PROJECT"
+    },
+    {
+      "code": "NO_WALLET",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "cli/lib/ci.mjs"
+        },
+        {
+          "owner": "public",
+          "source": "cli/lib/config.mjs"
+        },
+        {
+          "owner": "public",
+          "source": "cli/lib/wallets.mjs"
+        }
+      ],
+      "topic": "/errors/client/#NO_WALLET"
     },
     {
       "code": "NOSTR_IDENTITY_ALREADY_LINKED",

@@ -19,7 +19,7 @@ The `Run402` class exposes focused namespaces. Click into the SDK source for ful
 r.pay.fetch(url, init?, { maxUsdMicros?, idempotencyKey?, requireReceipt? }): Promise<PayFetchResult>
 ```
 
-Node automatically supplies the configured allowance/signer. Isomorphic hosts
+Node automatically supplies the configured wallet/signer. Isomorphic hosts
 may inject `payExecutor` in `Run402Options`; without one, unpriced URLs pass
 through and a 402 fails locally with `PAYMENT_WALLET_UNFUNDED`.
 
@@ -262,7 +262,7 @@ Node-only CI exports from `@run402/sdk/node`:
 
 ```
 signCiDelegation(values, opts?: {
-  apiBase?, allowancePath?, chainId?, issuedAt?, expirationTime?, nonce?
+  apiBase?, walletPath?, chainId?, issuedAt?, expirationTime?, nonce?
 }): string
 
 createCiSessionCredentials({
@@ -957,7 +957,7 @@ gitvaultLossWarningMessage(trip): string                                // names
 
 There is no companion "resolved" check — V0-A cannot detect a second principal (another keystore, or later a human envelope) demonstrably able to open the vault, so nothing here ever un-trips a standing warning.
 
-**D8 (kygit-handoff) — handoff/resume, and the `kygit::` scheme.** `handoff`/`resume` are a session PASS, not a snapshot restore: no shared keystore, no shared allowance, no server-side principal configured ahead of time. The Handoff Key, `kgh1_<base64url(handoff_id[16] ‖ master_secret[32])>` (69 chars), is assembled and parsed by isomorphic helpers exported from `sdk/src/node/gitvault-handoff.ts` — `assembleHandoffKey`/`parseHandoffKey`, `deriveHandoffSecrets` (HKDF-SHA256, salt = `handoff_id` bytes, deriving `auth_secret` — the gateway only ever receives its SHA-256 hash — and `wrap_key`), `sealHandoffEnvelope`/`openHandoffEnvelope` (a small XChaCha20-Poly1305 frame carrying the vault's live epoch key directly to the recipient — deliberately NOT an `r402s/v0` vault object: no JCS, no 7-field frameAad, its own `KGH1` frame format), and `scanHandoffNoteForSecrets`/`assertHandoffNoteHasNoSecret` (a Handoff Note is refused if it contains something that looks like a credential). `captureHandoffSnapshot` (`sdk/src/node/gitvault-snapshot.ts`) builds the synthetic 3-parent stash-shaped commit; `GITVAULT_HANDOFF_SENSITIVE_DENYLIST` is the 22-glob sensitive-path list applied to untracked files. `cloneGitvaultRemote`/`applyHandoffCheckpoint` (`sdk/src/node/gitvault-restore.ts`) do `resume`'s clone-and-restore half — `cloneGitvaultRemote` deliberately does NOT go through `hardenedGit` (whose `-c protocol.allow=never` would block it), because here the clone target IS the trusted vault remote, not an arbitrary caller-supplied URL.
+**D8 (kygit-handoff) — handoff/resume, and the `kygit::` scheme.** `handoff`/`resume` are a session PASS, not a snapshot restore: no shared keystore, no shared wallet, no server-side principal configured ahead of time. The Handoff Key, `kgh1_<base64url(handoff_id[16] ‖ master_secret[32])>` (69 chars), is assembled and parsed by isomorphic helpers exported from `sdk/src/node/gitvault-handoff.ts` — `assembleHandoffKey`/`parseHandoffKey`, `deriveHandoffSecrets` (HKDF-SHA256, salt = `handoff_id` bytes, deriving `auth_secret` — the gateway only ever receives its SHA-256 hash — and `wrap_key`), `sealHandoffEnvelope`/`openHandoffEnvelope` (a small XChaCha20-Poly1305 frame carrying the vault's live epoch key directly to the recipient — deliberately NOT an `r402s/v0` vault object: no JCS, no 7-field frameAad, its own `KGH1` frame format), and `scanHandoffNoteForSecrets`/`assertHandoffNoteHasNoSecret` (a Handoff Note is refused if it contains something that looks like a credential). `captureHandoffSnapshot` (`sdk/src/node/gitvault-snapshot.ts`) builds the synthetic 3-parent stash-shaped commit; `GITVAULT_HANDOFF_SENSITIVE_DENYLIST` is the 22-glob sensitive-path list applied to untracked files. `cloneGitvaultRemote`/`applyHandoffCheckpoint` (`sdk/src/node/gitvault-restore.ts`) do `resume`'s clone-and-restore half — `cloneGitvaultRemote` deliberately does NOT go through `hardenedGit` (whose `-c protocol.allow=never` would block it), because here the clone target IS the trusted vault remote, not an arbitrary caller-supplied URL.
 
 `gitvaultRemoteUrl(orgId, projectId)`/`gitvaultRemoteUrlForRepo(orgSlug, repoName)` render `kygit::` instead of `run402::` whenever `gitvaultRemoteScheme()` reads `process.env.RUN402_REMOTE_SCHEME === "kygit"` — a pure client-side rendering choice; `parseGitvaultRemoteUrl` accepts either prefix into the identical scheme-less `{ org_id, project_id }` address, so every gateway-facing call, resolve, and pin is unaffected by which door a request came through.
 
@@ -1225,10 +1225,11 @@ Both are optional because older gateways do not return them at the top level.
 
 `set` settles from the organization's allowance first (a redeemed promo code or a
 top-up), ahead of the payment paywall: no 402 is issued, no authorization is signed, and
-the wallet needs no USDC. `TierSetResult.paid_with` reads `"credit"` then, with
-`credit_used_usd_micros` and `credit_remaining_usd_micros`. Only a balance that falls short
-goes to x402 / MPP, and the resulting `X402_INSUFFICIENT_FUNDS` carries `details.credit`
-(available, price, shortfall) with `redeem_voucher` / `top_up` next actions.
+the wallet needs no USDC. `TierSetResult.paid_with` reads `"allowance"` then, with
+`allowance_used_usd_micros` and `allowance_remaining_usd_micros`. Only an allowance that falls
+short goes to x402 / MPP, and the resulting `X402_INSUFFICIENT_FUNDS` carries
+`details.allowance` (`allowance_usd_micros`, `price_usd_micros`, `shortfall_usd_micros`) with
+`redeem_voucher` / `top_up` next actions.
 
 `set` auto-detects start / renew / upgrade / downgrade based on current state.
 For tier pricing, call `r.projects.getQuote()` (the SDK does not expose a separate
@@ -1299,7 +1300,7 @@ status(projectId, callId): Promise<ContractCallResult>
 delete(projectId, signerId): Promise<DeleteSignerResult>
 ```
 
-Private keys never leave AWS KMS. **$0.04/day rental + $0.000005/call.** Signer creation requires $1.20 allowance. Non-custodial. The SDK exports typed metadata and call-result envelopes (`SignerSummary`, `ContractCallResult`, `ContractReadResult`, etc.); contract ABI results and receipts remain `unknown` inside those envelopes and should be narrowed at the call site.
+Private keys never leave AWS KMS. **$0.04/day rental + $0.000005/call.** Signer creation requires $1.20 of allowance. Non-custodial. The SDK exports typed metadata and call-result envelopes (`SignerSummary`, `ContractCallResult`, `ContractReadResult`, etc.); contract ABI results and receipts remain `unknown` inside those envelopes and should be narrowed at the call site.
 
 ### `r.ai`
 
@@ -1350,16 +1351,16 @@ nothing settled, so existing envelope shapes are unchanged.
 `r.image` is an alias of `r.ai`, so CLI readers can translate
 `run402 image generate ...` to `r.image.generateImage(...)`.
 
-### `r.allowance`
+### `r.wallets`
 
 ```
-status(): Promise<AllowanceStatusResult>
-create(): Promise<AllowanceCreateResult>
+status(): Promise<WalletStatusResult>
+create(): Promise<WalletCreateResult>
 export(): Promise<string> // address only, never the private key
 faucet(address?: string): Promise<FaucetResult>
 ```
 
-`faucet` defaults to the local allowance's address when no argument is passed.
+`faucet` defaults to the local wallet's address when no argument is passed.
 The Node entry's credentials provider also writes a `lastFaucet` marker after
 success — surfaced via `status().faucet_used`.
 
@@ -1370,7 +1371,7 @@ redeem(code: string): Promise<RedeemVoucherResult>
 ```
 
 Redeems a promo code (e.g. `R402-K8F3-Q2W9`) into the authenticated wallet's
-organization as allowance. That credit settles tier purchases and priced
+organization's allowance. The allowance settles tier purchases and priced
 calls through the allowance rail — no on-chain payment.
 
 - **Order-independent.** Works as the very first authenticated call a new wallet
@@ -1517,7 +1518,7 @@ r.admin.project(projectId).finance(opts?): Promise<AdminProjectFinanceResult>
 
 `getProjectFinance` reads the internal Finance-tab JSON for a project. It is
 staff gated; a project `service_key` is not enough. In Node staff
-scripts, use an admin allowance wallet or pass
+scripts, use an admin wallet or pass
 `cookie: process.env.RUN402_ADMIN_COOKIE` for browser-session auth.
 
 **Staff-only project + organization actions.** The lifecycle state machine lives on `internal.organizations`; there are no per-project `pin` / `unpin` endpoints.

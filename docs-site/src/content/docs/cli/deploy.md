@@ -340,7 +340,7 @@ Migration registry: key = `(id, checksum)`. There are two authoring kinds. Versi
 ---
 ### GitHub Actions OIDC Deploys
 
-Use this when the same repo should deploy itself from GitHub Actions without storing Run402 service keys, allowance files, or API keys in GitHub secrets. KISS rule: link once locally, then CI runs the same `run402 deploy` command agents already know.
+Use this when the same repo should deploy itself from GitHub Actions without storing Run402 service keys, wallet files, or API keys in GitHub secrets. KISS rule: link once locally, then CI runs the same `run402 deploy` command agents already know.
 
 Local setup:
 
@@ -434,7 +434,7 @@ run402 ci revoke <binding_id>
 
 Intentional omissions in v1: no raw `--subject`, no wildcard flag, no `--allow-event`, no PR deploy flags, and no `--no-repository-id`. Use `--branch` or `--environment`; create a follow-up design before broadening trust.
 
-CI deploy restrictions: when `run402 deploy` runs inside GitHub Actions with OIDC env vars present, it uses the GitHub subject token, exchanges it for a Run402 CI session, and skips the local allowance preflight. CI manifests may include only `project_id`, `database`, `functions`, `site`, absent/current `base`, and route declarations covered by the binding's `route_scopes`. Without `--route-scope`, CI cannot ship `routes`. CI cannot ship `secrets`, `subdomains`, `checks`, unknown future top-level fields, non-current base, or oversized manifests that require `manifest_ref`.
+CI deploy restrictions: when `run402 deploy` runs inside GitHub Actions with OIDC env vars present, it uses the GitHub subject token, exchanges it for a Run402 CI session, and skips the local wallet preflight. CI manifests may include only `project_id`, `database`, `functions`, `site`, absent/current `base`, and route declarations covered by the binding's `route_scopes`. Without `--route-scope`, CI cannot ship `routes`. CI cannot ship `secrets`, `subdomains`, `checks`, unknown future top-level fields, non-current base, or oversized manifests that require `manifest_ref`.
 
 Common CI error codes:
 - `invalid_token`: check `permissions: id-token: write` and the workflow's OIDC environment

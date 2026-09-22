@@ -69,10 +69,6 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="ALLOCATION_SUPERSEDED"></a>
 [`ALLOCATION_SUPERSEDED`](/errors/gateway/#ALLOCATION_SUPERSEDED)
 
-<a id="allowance_exists"></a>
-<a id="ALLOWANCE_EXISTS"></a>
-[`ALLOWANCE_EXISTS`](/errors/client/#ALLOWANCE_EXISTS)
-
 <a id="ambiguous_external_selection"></a>
 <a id="AMBIGUOUS_EXTERNAL_SELECTION"></a>
 [`AMBIGUOUS_EXTERNAL_SELECTION`](/errors/gateway/#AMBIGUOUS_EXTERNAL_SELECTION)
@@ -200,10 +196,6 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="AUTHORIZATION_UNSUPPORTED"></a>
 [`AUTHORIZATION_UNSUPPORTED`](/errors/gateway/#AUTHORIZATION_UNSUPPORTED)
 
-<a id="bad_allowance_file"></a>
-<a id="BAD_ALLOWANCE_FILE"></a>
-[`BAD_ALLOWANCE_FILE`](/errors/client/#BAD_ALLOWANCE_FILE)
-
 <a id="bad_env"></a>
 <a id="BAD_ENV"></a>
 [`BAD_ENV`](/errors/client/#BAD_ENV)
@@ -251,6 +243,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="bad_usage"></a>
 <a id="BAD_USAGE"></a>
 [`BAD_USAGE`](/errors/client/#BAD_USAGE)
+
+<a id="bad_wallet_file"></a>
+<a id="BAD_WALLET_FILE"></a>
+[`BAD_WALLET_FILE`](/errors/client/#BAD_WALLET_FILE)
 
 <a id="bad_wallet_name"></a>
 <a id="BAD_WALLET_NAME"></a>
@@ -1461,10 +1457,6 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="NO_ACTIVE_RELEASE"></a>
 [`NO_ACTIVE_RELEASE`](/errors/gateway/#NO_ACTIVE_RELEASE)
 
-<a id="no_allowance"></a>
-<a id="NO_ALLOWANCE"></a>
-[`NO_ALLOWANCE`](/errors/client/#NO_ALLOWANCE)
-
 <a id="no_orgs"></a>
 <a id="NO_ORGS"></a>
 [`NO_ORGS`](/errors/client/#NO_ORGS)
@@ -1476,6 +1468,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="no_project"></a>
 <a id="NO_PROJECT"></a>
 [`NO_PROJECT`](/errors/client/#NO_PROJECT)
+
+<a id="no_wallet"></a>
+<a id="NO_WALLET"></a>
+[`NO_WALLET`](/errors/client/#NO_WALLET)
 
 <a id="nostr_identity_already_linked"></a>
 <a id="NOSTR_IDENTITY_ALREADY_LINKED"></a>

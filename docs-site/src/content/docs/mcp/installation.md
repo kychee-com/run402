@@ -16,7 +16,7 @@ The full surface is **198 tools (~43,200 tokens)** loaded into your context befo
 RUN402_MCP_PROFILE=buyer npx -y run402-mcp     # 7 tools, ~740 tokens
 ```
 
-Registers `generate_image` · `init` · `check_balance` · `allowance_status` · `lightning_wallet` · `allowance_export` · `request_faucet` · `redeem_voucher` — enough to bootstrap a wallet, fund it (Base Sepolia faucet, a promo code, or a mainnet address from `allowance_export`), confirm the money landed, and buy.
+Registers `generate_image` · `init` · `check_balance` · `wallet_status` · `lightning_wallet` · `wallet_export` · `request_faucet` · `redeem_voucher` — enough to bootstrap a wallet, fund it (Base Sepolia faucet, a promo code, or a mainnet address from `wallet_export`), confirm the money landed, and buy.
 
 Use the profile when the task is a purchase. Leave it unset when you may provision, deploy, or manage a project — the other 191 tools are how you do that.
 

@@ -69,9 +69,6 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="ALLOCATION_SUPERSEDED"></a>
 [`ALLOCATION_SUPERSEDED`](/errors/gateway/#ALLOCATION_SUPERSEDED)
 
-<a id="ALLOWANCE_EXISTS"></a>
-[`ALLOWANCE_EXISTS`](/errors/client/#ALLOWANCE_EXISTS)
-
 <a id="AMBIGUOUS_EXTERNAL_SELECTION"></a>
 [`AMBIGUOUS_EXTERNAL_SELECTION`](/errors/gateway/#AMBIGUOUS_EXTERNAL_SELECTION)
 
@@ -168,9 +165,6 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="AUTHORIZATION_UNSUPPORTED"></a>
 [`AUTHORIZATION_UNSUPPORTED`](/errors/gateway/#AUTHORIZATION_UNSUPPORTED)
 
-<a id="BAD_ALLOWANCE_FILE"></a>
-[`BAD_ALLOWANCE_FILE`](/errors/client/#BAD_ALLOWANCE_FILE)
-
 <a id="BAD_ENV"></a>
 [`BAD_ENV`](/errors/client/#BAD_ENV)
 
@@ -206,6 +200,9 @@ The catalog records owning source locations and pinned external contributions. A
 
 <a id="BAD_USAGE"></a>
 [`BAD_USAGE`](/errors/client/#BAD_USAGE)
+
+<a id="BAD_WALLET_FILE"></a>
+[`BAD_WALLET_FILE`](/errors/client/#BAD_WALLET_FILE)
 
 <a id="BAD_WALLET_NAME"></a>
 [`BAD_WALLET_NAME`](/errors/client/#BAD_WALLET_NAME)
@@ -1119,9 +1116,6 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="NO_ACTIVE_RELEASE"></a>
 [`NO_ACTIVE_RELEASE`](/errors/gateway/#NO_ACTIVE_RELEASE)
 
-<a id="NO_ALLOWANCE"></a>
-[`NO_ALLOWANCE`](/errors/client/#NO_ALLOWANCE)
-
 <a id="NO_ORGS"></a>
 [`NO_ORGS`](/errors/client/#NO_ORGS)
 
@@ -1130,6 +1124,9 @@ The catalog records owning source locations and pinned external contributions. A
 
 <a id="NO_PROJECT"></a>
 [`NO_PROJECT`](/errors/client/#NO_PROJECT)
+
+<a id="NO_WALLET"></a>
+[`NO_WALLET`](/errors/client/#NO_WALLET)
 
 <a id="NOSTR_IDENTITY_ALREADY_LINKED"></a>
 [`NOSTR_IDENTITY_ALREADY_LINKED`](/errors/gateway/#NOSTR_IDENTITY_ALREADY_LINKED)

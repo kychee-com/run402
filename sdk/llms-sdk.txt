@@ -83,7 +83,7 @@ Entry points:
 
 | Import | Use when | Bundles |
 |---|---|---|
-| `@run402/sdk/node` | Running in Node 22 with local profile state, project-key cache, and allowance | Auto-loads the configured API base, active project state, local project-key cache, and signs x402 payments from the selected allowance or opaque signer. Includes `r.actions.run(...)`, `r.up(...)`, `r.sites.deployDir(dir)`, `fileSetFromDir(dir)`, `loadDeployManifest(path)`, `normalizeDeployManifest(input)`, and `resolveRun402TargetProfile()`. |
+| `@run402/sdk/node` | Running in Node 22 with local profile state, project-key cache, and wallet | Auto-loads the configured API base, active project state, local project-key cache, and signs x402 payments from the selected wallet or opaque signer. Includes `r.actions.run(...)`, `r.up(...)`, `r.sites.deployDir(dir)`, `fileSetFromDir(dir)`, `loadDeployManifest(path)`, `normalizeDeployManifest(input)`, and `resolveRun402TargetProfile()`. |
 | `@run402/sdk/config` | Authoring typed deploy configs that normalize to `ReleaseSpec` | Browser-safe helper descriptors and types: `defineConfig`, `dir`, `file`, `sqlFile`, `nodeFunction`, `Run402ExecutionMode`. No filesystem, env, credential, or network side effects. |
 | `@run402/sdk/node/config` | Loading explicit executable deploy configs in Node | Re-exports config helpers plus `loadDeployManifest`, `loadExecutableDeployConfig`, and `normalizeDeployManifest`. |
 | `@run402/sdk` | Isomorphic — Node, Deno, Bun, V8 isolates. No filesystem. | Bring your own `CredentialsProvider`. |
@@ -133,9 +133,9 @@ await r.identityLinks.revoke(proof.identity_link_id);
 
 Current `whoami`, project, deploy-operation/release, and transfer response types include linked-identity and immutable action-time actor snapshots. Render unknown future principal/authenticator/authority kinds as data. A snapshot is historical attribution, not a live authorization decision.
 
-## The Lightning allowance (`r.agent.lightningWallet`)
+## The Lightning wallet (`r.agent.lightningWallet`)
 
-`await r.agent.lightningWallet.mint()` asks Run402 for the calling agent's Lightning wallet — one budgeted, isolated sub-wallet on Run402's own Hub (`custody: "run402_hub"`: the sats sit on the platform Hub, the agent holds a budgeted connection) — and, by default, polls until the platform-side broker activates it (`timeoutMs`, `intervalMs`; `wait: false` returns the `minting` record). Minting is idempotent per principal. The response that first observes the wallet active carries `pairing` (the NWC pairing URI) exactly once; the Node CLI stores it in the profile's `allowance.json` beside the Base key and sets `rail: "lightning"`, after which the Node paid fetch selects Run402's Lightning safety profile on every request, pays the one fixed BOLT11 challenge a 402 carries from the wallet over NWC (checking the remaining budget first), presents the preimage as the MPP credential on a byte-identical retry, and falls back to the x402 buyer when the seller offers no Lightning challenge. Once the invoice is paid, the gateway's "still fulfilling" answers on that retry (`PAYMENT_RECOVERY_PENDING`, `PAYMENT_INTENT_PENDING`, `PAYMENT_STATE_UNAVAILABLE`, `PAYMENT_EVIDENCE_UNAVAILABLE`, each with `Retry-After`) are honoured by repeating the identical paid request a bounded number of times: the same intent, the same credential, never a second payment; a terminal answer such as `PAYMENT_CREDITED` is returned as-is. `get()` reads the wallet (`has_pairing` only; the pairing is never returned twice), `waitForActive()` polls, `revoke()` deletes the sub-wallet on the Hub and returns its balance to the platform. `/sdk/node` exports `NwcWallet` (`getBalanceSats`, `getBudgetSats`, `payInvoice`, `lookupInvoice`), `createLightningFetch`, and `LightningPaymentError` (`LIGHTNING_BUDGET_EXHAUSTED`, `LIGHTNING_DEBIT_ABOVE_CAP`, `LIGHTNING_PAYMENT_OUTCOME_UNKNOWN`, `LIGHTNING_PREIMAGE_MISMATCH`). Errors never carry the pairing, an invoice, or a preimage.
+`await r.agent.lightningWallet.mint()` asks Run402 for the calling agent's Lightning wallet — one budgeted, isolated sub-wallet on Run402's own Hub (`custody: "run402_hub"`: the sats sit on the platform Hub, the agent holds a budgeted connection) — and, by default, polls until the platform-side broker activates it (`timeoutMs`, `intervalMs`; `wait: false` returns the `minting` record). Minting is idempotent per principal. The response that first observes the wallet active carries `pairing` (the NWC pairing URI) exactly once; the Node CLI stores it in the profile's `wallet.json` beside the Base key and sets `rail: "lightning"`, after which the Node paid fetch selects Run402's Lightning safety profile on every request, pays the one fixed BOLT11 challenge a 402 carries from the wallet over NWC (checking the remaining budget first), presents the preimage as the MPP credential on a byte-identical retry, and falls back to the x402 buyer when the seller offers no Lightning challenge. Once the invoice is paid, the gateway's "still fulfilling" answers on that retry (`PAYMENT_RECOVERY_PENDING`, `PAYMENT_INTENT_PENDING`, `PAYMENT_STATE_UNAVAILABLE`, `PAYMENT_EVIDENCE_UNAVAILABLE`, each with `Retry-After`) are honoured by repeating the identical paid request a bounded number of times: the same intent, the same credential, never a second payment; a terminal answer such as `PAYMENT_CREDITED` is returned as-is. `get()` reads the wallet (`has_pairing` only; the pairing is never returned twice), `waitForActive()` polls, `revoke()` deletes the sub-wallet on the Hub and returns its balance to the platform. `/sdk/node` exports `NwcWallet` (`getBalanceSats`, `getBudgetSats`, `payInvoice`, `lookupInvoice`), `createLightningFetch`, and `LightningPaymentError` (`LIGHTNING_BUDGET_EXHAUSTED`, `LIGHTNING_DEBIT_ABOVE_CAP`, `LIGHTNING_PAYMENT_OUTCOME_UNKNOWN`, `LIGHTNING_PREIMAGE_MISMATCH`). Errors never carry the pairing, an invoice, or a preimage.
 
 ## Buzz community control plane (`r.buzz`)
 
@@ -162,14 +162,14 @@ provider controls API authentication; the x402 payer is resolved exactly once
 in this order:
 
 1. `paymentSigner` — an explicit async EVM signer provider (KMS/HSM friendly).
-2. `allowancePath` — an explicit local allowance file.
-3. `credentials.readAllowance()` — when a supplied provider implements it.
-4. The Node default provider's active-profile allowance — only when the caller
+2. `walletPath` — an explicit local wallet file.
+3. `credentials.readWallet()` — when a supplied provider implements it.
+4. The Node default provider's active-profile wallet — only when the caller
    did not supply a custom credentials provider.
 
 Once a source is selected, the SDK never falls back to the ambient/global
-wallet. `paymentSigner` and `allowancePath` together throw
-`PAYMENT_SOURCE_CONFLICT`. Passing both `credentials` and `allowancePath` is
+wallet. `paymentSigner` and `walletPath` together throw
+`PAYMENT_SOURCE_CONFLICT`. Passing both `credentials` and `walletPath` is
 valid: auth uses `credentials`, while payment intentionally uses that file.
 `fetch` still takes precedence over built-in paid fetch, and
 `disablePaidFetch: true` disables automatic payment entirely.
@@ -207,7 +207,7 @@ const payer = await r.paymentPayer();
 
 The provider may return `null` for an unsupported Base network. Paid-fetch
 initialization is lazy and retries after missing/recoverable local state, so a
-long-lived client can start paying after its selected allowance/provider
+long-lived client can start paying after its selected wallet/provider
 becomes available without being reconstructed. `r.paymentPayer()` initializes
 the selected source if necessary and returns only its source, rail, public
 address(es), and network(s); it never returns a key, signed authorization, or
@@ -385,7 +385,7 @@ const r = new Run402({
 });
 ```
 
-The `CredentialsProvider` interface has two required methods (`getAuth`, `getProject`) plus optional ones for hosts that want full sticky-default behavior (`saveProject`, `updateProject`, `removeProject`, `setActiveProject`, `getActiveProject`, `getActiveOrg`, `readAllowance`, `saveAllowance`, `createAllowance`, `getAllowancePath`). `getActiveOrg` is read only to disambiguate a Lightning `ORGANIZATION_SELECTION_REQUIRED` answer (see `r.ai.generateImage`); the Node provider answers it from the profile's `run402 org use` selection.
+The `CredentialsProvider` interface has two required methods (`getAuth`, `getProject`) plus optional ones for hosts that want full sticky-default behavior (`saveProject`, `updateProject`, `removeProject`, `setActiveProject`, `getActiveProject`, `getActiveOrg`, `readWallet`, `saveWallet`, `createWallet`, `getWalletPath`). `getActiveOrg` is read only to disambiguate a Lightning `ORGANIZATION_SELECTION_REQUIRED` answer (see `r.ai.generateImage`); the Node provider answers it from the profile's `run402 org use` selection.
 
 ## Mental model
 
@@ -395,7 +395,7 @@ The SDK is the canonical kernel. A single typed `Run402` class with one namespac
 - Throws a typed subclass of `Run402Error` on failure
 - Never calls `process.exit`
 
-The MCP server's tools and the CLI's subcommands are argv-/schema-parsing wrappers around these methods. They share the configured API target, active project state, allowance, and local project-key cache so target selection and credentials carry across surfaces without treating cached keys as project inventory.
+The MCP server's tools and the CLI's subcommands are argv-/schema-parsing wrappers around these methods. They share the configured API target, active project state, wallet, and local project-key cache so target selection and credentials carry across surfaces without treating cached keys as project inventory.
 
 ### Action runner (`@run402/sdk/node`)
 
@@ -444,15 +444,15 @@ Local check returns `result.preflight` with nullable target/provenance, `gateway
 
 `Run402Action.Up` behavior:
 - Discover `run402.deploy.json`, then `app.json` under `dir` / cwd; explicit `manifest` wins.
-- Validate the deploy manifest and referenced local files before allowance, tier, project, link, upload, or deploy mutations.
+- Validate the deploy manifest and referenced local files before wallet, tier, project, link, upload, or deploy mutations.
 - Resolve project as explicit `projectId`, then `.run402/project.json`, then manifest `project_id`, then approved project creation from `name`; global active state never selects a deploy target.
 - For app manifests with `verify.http[]`, fetch verification URLs after apply and write per-check details to `result.app_result.verification.http[]`. Fresh edge sentinel misses (`x-run402-edge` or JSON codes such as `SUBDOMAIN_NOT_CONFIGURED`) and non-settled deploy-resolve diagnostics become `propagation_pending` instead of permanent failures while the binding is fresh.
 - Set `propagationBudgetSeconds` to control the wait for edge convergence (default 120). Set `propagationWait: false` to return `status: "propagation_pending"` immediately with `verify.status`, `propagation_wait_ms`, warnings, `next_action`, and diagnostic `edge_propagation` / `resolve` payloads.
 - Set `verifyOnly: true` to rerun app HTTP verification without upload, deploy, resource mutation, or project creation. This is the SDK equivalent of `run402 up verify`. Its action envelope reports `mode: "verify"`, `read_only: true`, and `dry_run: false`: real HTTP probes run, but no release is applied. Each executed HTTP check includes `observed_release` with nullable `release_id` and `generation`, response `url`, `observed_at`, `source: "response_headers"`, and `unavailable_reason`. These are observations from that response, not proof that all routes agree or that a release stayed unchanged throughout the run. Missing or malformed headers remain unknown and do not fail an otherwise successful HTTP check.
 - `name` is only project creation/link metadata. It is not a manifest field and never renames an existing project.
 - Write `.run402/project.json` atomically when `up` needs to remember an explicit/created project. Schema: `{ schema_version: "run402.workspace-project.v1", project_id, name?, target?, created_at, updated_at? }`.
-- On Run402 Cloud, recursively ensure allowance and tier (default bootstrap tier `prototype`) only when missing; existing active tiers are not downgraded or renewed just because `up` ran.
-- On Run402 Core, skip Cloud allowance/tier prerequisites and fail closed if no Core project is selected.
+- On Run402 Cloud, recursively ensure the local wallet and tier (default bootstrap tier `prototype`) only when missing; existing active tiers are not downgraded or renewed just because `up` ran.
+- On Run402 Core, skip Cloud wallet/tier prerequisites and fail closed if no Core project is selected.
 - Grant key the final deploy to `r.project(id).apply(spec, opts)`.
 
 Action options:
@@ -460,7 +460,7 @@ Action options:
 - `mode: "printSpec"` returns the normalized `ReleaseSpec` in `result.spec`; CLI prints only that JSON.
 - `mode: "plan"` creates a gateway-reviewed non-deploying plan. It returns `result.plan.plan_id`, `plan_fingerprint`, `plan_expires_at`, warnings, diff, and same-surface `next_actions[]`.
 - `mode: { kind: "applyReviewed", planId, planFingerprint? }` applies only when the reviewed plan still matches. The SDK verifies before upload and commit.
-- `approval: "never" | "yes" | { mode: "interactive"; approve(request) }` gates recursive prerequisites and local link writes. SDK default is `"never"`; CLI maps `-y/--yes` to `"yes"` and TTY prompts to interactive approval. If allowance/tier/project/link are already configured, `r.up()` can run the requested deploy without approval.
+- `approval: "never" | "yes" | { mode: "interactive"; approve(request) }` gates recursive prerequisites and local link writes. SDK default is `"never"`; CLI maps `-y/--yes` to `"yes"` and TTY prompts to interactive approval. If wallet/tier/project/link are already configured, `r.up()` can run the requested deploy without approval.
 - `autoPrerequisites` defaults to `true` for `up` and `false` for direct actions.
 - `idempotencyKey` supplies a root key; recursive gateway mutations derive child keys from it.
 
@@ -509,7 +509,7 @@ Executable trust policy:
 - If a repo only contains `run402.deploy.ts`, `up` fails with `EXECUTABLE_CONFIG_REQUIRES_EXPLICIT_MANIFEST` and a next action to rerun with `--manifest run402.deploy.ts --check`.
 - `--check` / `mode: "check"` and `--print-spec` / `mode: "printSpec"` are local-only; use `--plan` / `mode: "plan"` for gateway policy, quota, cost, secret existence, missing-content, and base-release details.
 
-The runner never executes arbitrary gateway-authored `next_actions[].command`; it uses its own fixed action graph (`allowance`, `tier`, `projects.provision`, workspace link, deploy).
+The runner never executes arbitrary gateway-authored `next_actions[].command`; it uses its own fixed action graph (`wallets`, `tier`, `projects.provision`, workspace link, deploy).
 
 ### Casing in returned shapes
 
@@ -1223,7 +1223,7 @@ The `Run402` class exposes focused namespaces. Click into the SDK source for ful
 r.pay.fetch(url, init?, { maxUsdMicros?, idempotencyKey?, requireReceipt? }): Promise<PayFetchResult>
 ```
 
-Node automatically supplies the configured allowance/signer. Isomorphic hosts
+Node automatically supplies the configured wallet/signer. Isomorphic hosts
 may inject `payExecutor` in `Run402Options`; without one, unpriced URLs pass
 through and a 402 fails locally with `PAYMENT_WALLET_UNFUNDED`.
 
@@ -1466,7 +1466,7 @@ Node-only CI exports from `@run402/sdk/node`:
 
 ```
 signCiDelegation(values, opts?: {
-  apiBase?, allowancePath?, chainId?, issuedAt?, expirationTime?, nonce?
+  apiBase?, walletPath?, chainId?, issuedAt?, expirationTime?, nonce?
 }): string
 
 createCiSessionCredentials({
@@ -2161,7 +2161,7 @@ gitvaultLossWarningMessage(trip): string                                // names
 
 There is no companion "resolved" check — V0-A cannot detect a second principal (another keystore, or later a human envelope) demonstrably able to open the vault, so nothing here ever un-trips a standing warning.
 
-**D8 (kygit-handoff) — handoff/resume, and the `kygit::` scheme.** `handoff`/`resume` are a session PASS, not a snapshot restore: no shared keystore, no shared allowance, no server-side principal configured ahead of time. The Handoff Key, `kgh1_<base64url(handoff_id[16] ‖ master_secret[32])>` (69 chars), is assembled and parsed by isomorphic helpers exported from `sdk/src/node/gitvault-handoff.ts` — `assembleHandoffKey`/`parseHandoffKey`, `deriveHandoffSecrets` (HKDF-SHA256, salt = `handoff_id` bytes, deriving `auth_secret` — the gateway only ever receives its SHA-256 hash — and `wrap_key`), `sealHandoffEnvelope`/`openHandoffEnvelope` (a small XChaCha20-Poly1305 frame carrying the vault's live epoch key directly to the recipient — deliberately NOT an `r402s/v0` vault object: no JCS, no 7-field frameAad, its own `KGH1` frame format), and `scanHandoffNoteForSecrets`/`assertHandoffNoteHasNoSecret` (a Handoff Note is refused if it contains something that looks like a credential). `captureHandoffSnapshot` (`sdk/src/node/gitvault-snapshot.ts`) builds the synthetic 3-parent stash-shaped commit; `GITVAULT_HANDOFF_SENSITIVE_DENYLIST` is the 22-glob sensitive-path list applied to untracked files. `cloneGitvaultRemote`/`applyHandoffCheckpoint` (`sdk/src/node/gitvault-restore.ts`) do `resume`'s clone-and-restore half — `cloneGitvaultRemote` deliberately does NOT go through `hardenedGit` (whose `-c protocol.allow=never` would block it), because here the clone target IS the trusted vault remote, not an arbitrary caller-supplied URL.
+**D8 (kygit-handoff) — handoff/resume, and the `kygit::` scheme.** `handoff`/`resume` are a session PASS, not a snapshot restore: no shared keystore, no shared wallet, no server-side principal configured ahead of time. The Handoff Key, `kgh1_<base64url(handoff_id[16] ‖ master_secret[32])>` (69 chars), is assembled and parsed by isomorphic helpers exported from `sdk/src/node/gitvault-handoff.ts` — `assembleHandoffKey`/`parseHandoffKey`, `deriveHandoffSecrets` (HKDF-SHA256, salt = `handoff_id` bytes, deriving `auth_secret` — the gateway only ever receives its SHA-256 hash — and `wrap_key`), `sealHandoffEnvelope`/`openHandoffEnvelope` (a small XChaCha20-Poly1305 frame carrying the vault's live epoch key directly to the recipient — deliberately NOT an `r402s/v0` vault object: no JCS, no 7-field frameAad, its own `KGH1` frame format), and `scanHandoffNoteForSecrets`/`assertHandoffNoteHasNoSecret` (a Handoff Note is refused if it contains something that looks like a credential). `captureHandoffSnapshot` (`sdk/src/node/gitvault-snapshot.ts`) builds the synthetic 3-parent stash-shaped commit; `GITVAULT_HANDOFF_SENSITIVE_DENYLIST` is the 22-glob sensitive-path list applied to untracked files. `cloneGitvaultRemote`/`applyHandoffCheckpoint` (`sdk/src/node/gitvault-restore.ts`) do `resume`'s clone-and-restore half — `cloneGitvaultRemote` deliberately does NOT go through `hardenedGit` (whose `-c protocol.allow=never` would block it), because here the clone target IS the trusted vault remote, not an arbitrary caller-supplied URL.
 
 `gitvaultRemoteUrl(orgId, projectId)`/`gitvaultRemoteUrlForRepo(orgSlug, repoName)` render `kygit::` instead of `run402::` whenever `gitvaultRemoteScheme()` reads `process.env.RUN402_REMOTE_SCHEME === "kygit"` — a pure client-side rendering choice; `parseGitvaultRemoteUrl` accepts either prefix into the identical scheme-less `{ org_id, project_id }` address, so every gateway-facing call, resolve, and pin is unaffected by which door a request came through.
 
@@ -2429,10 +2429,11 @@ Both are optional because older gateways do not return them at the top level.
 
 `set` settles from the organization's allowance first (a redeemed promo code or a
 top-up), ahead of the payment paywall: no 402 is issued, no authorization is signed, and
-the wallet needs no USDC. `TierSetResult.paid_with` reads `"credit"` then, with
-`credit_used_usd_micros` and `credit_remaining_usd_micros`. Only a balance that falls short
-goes to x402 / MPP, and the resulting `X402_INSUFFICIENT_FUNDS` carries `details.credit`
-(available, price, shortfall) with `redeem_voucher` / `top_up` next actions.
+the wallet needs no USDC. `TierSetResult.paid_with` reads `"allowance"` then, with
+`allowance_used_usd_micros` and `allowance_remaining_usd_micros`. Only an allowance that falls
+short goes to x402 / MPP, and the resulting `X402_INSUFFICIENT_FUNDS` carries
+`details.allowance` (`allowance_usd_micros`, `price_usd_micros`, `shortfall_usd_micros`) with
+`redeem_voucher` / `top_up` next actions.
 
 `set` auto-detects start / renew / upgrade / downgrade based on current state.
 For tier pricing, call `r.projects.getQuote()` (the SDK does not expose a separate
@@ -2503,7 +2504,7 @@ status(projectId, callId): Promise<ContractCallResult>
 delete(projectId, signerId): Promise<DeleteSignerResult>
 ```
 
-Private keys never leave AWS KMS. **$0.04/day rental + $0.000005/call.** Signer creation requires $1.20 allowance. Non-custodial. The SDK exports typed metadata and call-result envelopes (`SignerSummary`, `ContractCallResult`, `ContractReadResult`, etc.); contract ABI results and receipts remain `unknown` inside those envelopes and should be narrowed at the call site.
+Private keys never leave AWS KMS. **$0.04/day rental + $0.000005/call.** Signer creation requires $1.20 of allowance. Non-custodial. The SDK exports typed metadata and call-result envelopes (`SignerSummary`, `ContractCallResult`, `ContractReadResult`, etc.); contract ABI results and receipts remain `unknown` inside those envelopes and should be narrowed at the call site.
 
 ### `r.ai`
 
@@ -2554,16 +2555,16 @@ nothing settled, so existing envelope shapes are unchanged.
 `r.image` is an alias of `r.ai`, so CLI readers can translate
 `run402 image generate ...` to `r.image.generateImage(...)`.
 
-### `r.allowance`
+### `r.wallets`
 
 ```
-status(): Promise<AllowanceStatusResult>
-create(): Promise<AllowanceCreateResult>
+status(): Promise<WalletStatusResult>
+create(): Promise<WalletCreateResult>
 export(): Promise<string> // address only, never the private key
 faucet(address?: string): Promise<FaucetResult>
 ```
 
-`faucet` defaults to the local allowance's address when no argument is passed.
+`faucet` defaults to the local wallet's address when no argument is passed.
 The Node entry's credentials provider also writes a `lastFaucet` marker after
 success — surfaced via `status().faucet_used`.
 
@@ -2574,7 +2575,7 @@ redeem(code: string): Promise<RedeemVoucherResult>
 ```
 
 Redeems a promo code (e.g. `R402-K8F3-Q2W9`) into the authenticated wallet's
-organization as allowance. That credit settles tier purchases and priced
+organization's allowance. The allowance settles tier purchases and priced
 calls through the allowance rail — no on-chain payment.
 
 - **Order-independent.** Works as the very first authenticated call a new wallet
@@ -2721,7 +2722,7 @@ r.admin.project(projectId).finance(opts?): Promise<AdminProjectFinanceResult>
 
 `getProjectFinance` reads the internal Finance-tab JSON for a project. It is
 staff gated; a project `service_key` is not enough. In Node staff
-scripts, use an admin allowance wallet or pass
+scripts, use an admin wallet or pass
 `cookie: process.env.RUN402_ADMIN_COOKIE` for browser-session auth.
 
 **Staff-only project + organization actions.** The lifecycle state machine lives on `internal.organizations`; there are no per-project `pin` / `unpin` endpoints.
@@ -2905,7 +2906,7 @@ OpenClaw skill packaging follows the CLI release train. `@run402/functions` and 
 - Use the manifest for access control, never raw `GRANT/REVOKE`.
 - `user_owns_rows` is the default for user-scoped data. Reach for `public_read_write_UNRESTRICTED` only on intentionally-public tables.
 - Use immutable `cdnUrl` from `r.assets.put`. It's correct from the moment of upload — no `waitFresh` needed.
-- Don't bake unconditional `r.allowance.faucet()` into deploy scripts — the faucet rate-limits and breaks already-funded flows.
+- Don't bake unconditional `r.wallets.faucet()` into deploy scripts — the faucet rate-limits and breaks already-funded flows.
 - Per-project rate limit is 100 req/sec. On 429, back off using `retry_after`.
 - `r.service.status()` works without auth. Use it before evaluating Run402, or to distinguish platform issues from your own bugs.
 

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Allowance and wallet, one meaning each (decision 3, 2026-09-22).** The allowance is the organization's Run402-held prepaid balance; the wallet is the local key. Wire mirror: `OrganizationDetail.allowance_usd_micros` (was `available_usd_micros`), `run402 status` / `init` `balances.allowance_usd_micros` (was `prepaid_credit_usd_micros`), `TierSetResult.paid_with: "allowance" | "x402" | "mpp"` with `allowance_used_usd_micros` (`credit_used_usd_micros` and `credit_remaining_usd_micros` are gone), and `X402_INSUFFICIENT_FUNDS` folds the 402's `allowance` block as `details.allowance`. The local key file is `wallet.json` (a one-time local rename moves each profile's `allowance.json`), `RUN402_WALLET_PATH` replaces `RUN402_ALLOWANCE_PATH`, the SDK's `r.allowance` is `r.wallets` (`status`, `create`, `export`, `faucet`), `CredentialsProvider` methods are `readWallet` / `saveWallet` / `createWallet` / `getWalletPath`, `createLazyPaidFetch({ walletPath })`, MCP tools are `wallet_status` / `wallet_create` / `wallet_export`, and the `run402 allowance` family is folded into `run402 wallets` (`current`, `new default`, `fund`, `balance`; checkout and history are `run402 billing`). Error codes `NO_WALLET` / `BAD_WALLET_FILE`; doctor check `wallet`.
+
 - Accept valid Bearer-token API calls in source scanning; retain refusal of unsupported auth helpers. Clarify anonymous table exposure versus authenticated RLS and automatic durable-run capacity waiting.
 
 All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions are kept in lockstep across the three packages in this repo. `@run402/functions` lives in the public `run402-core` repo and publishes on its own cadence.

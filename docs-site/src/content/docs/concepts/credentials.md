@@ -7,7 +7,7 @@ Control-plane principals are people, agents or CI participants operating infrast
 
 | Credential | Holder and scope | Browser-safe? | Lifetime and recovery |
 | --- | --- | --- | --- |
-| Local allowance/wallet signing material | Agent or person's profile; signs permitted control-plane/payment requests | No | Protect profile files; inspect effective authority and payer before using a different profile |
+| Local wallet signing material | Agent or person's profile; signs permitted control-plane/payment requests | No | Protect profile files; inspect effective authority and payer before using a different profile |
 | Human sign-in session | Human person; membership and action policy still apply | Only in its intended login flow | Expires; sensitive operations may require same-client step-up |
 | Named project credential | A project client; limited to its declared kind/scope | Only an explicitly public anon credential | Expiring and individually revocable; secret returned once |
 | Legacy anon key | Public application identification; RLS still decides access | Yes | Legacy non-expiring token; migrate/rotate with the supported credential workflow |

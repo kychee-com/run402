@@ -46,7 +46,7 @@ WALLET_STATS_URL="https://<your-project-host>/wallet-stats" node scripts/call-pa
 ```
 
 By default the script uses the active `run402 wallets use` wallet and reads its
-local allowance key. Set `BUYER_PRIVATE_KEY=0x...` only when you want an
+wallet key. Set `BUYER_PRIVATE_KEY=0x...` only when you want an
 explicit CI/test payer wallet instead of the default Run402 wallet.
 
 Optional:

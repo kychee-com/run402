@@ -53,7 +53,7 @@ OpenClaw skill packaging follows the CLI release train. `@run402/functions` and 
 - Use the manifest for access control, never raw `GRANT/REVOKE`.
 - `user_owns_rows` is the default for user-scoped data. Reach for `public_read_write_UNRESTRICTED` only on intentionally-public tables.
 - Use immutable `cdnUrl` from `r.assets.put`. It's correct from the moment of upload — no `waitFresh` needed.
-- Don't bake unconditional `r.allowance.faucet()` into deploy scripts — the faucet rate-limits and breaks already-funded flows.
+- Don't bake unconditional `r.wallets.faucet()` into deploy scripts — the faucet rate-limits and breaks already-funded flows.
 - Per-project rate limit is 100 req/sec. On 429, back off using `retry_after`.
 - `r.service.status()` works without auth. Use it before evaluating Run402, or to distinguish platform issues from your own bugs.
 

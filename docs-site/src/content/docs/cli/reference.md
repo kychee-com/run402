@@ -22,14 +22,14 @@ Run402 is agent-first because agents are first-class participants, not because p
 
 Agent-critical events:
 - Shared full-stack workflow: `run402 up` coordinates planning, staging, migrations, activation and verification. Failures can leave resumable or partial work; promoting an earlier release does not undo migrations. Inspect returned operation state and next actions. `deploy` is the advanced apply primitive.
-- No platform token: local allowance (`~/.config/run402/allowance.json`) signs requests. Per-project `anon_key` / `service_key` are runtime data-plane keys (PostgREST/Storage/Functions), permanent, and embeddable/server-side respectively.
-- Agent-paid usage: x402 USDC on Base, MPP pathUSD on Tempo, or sats over Bitcoin Lightning (MPP) from the agent's platform-minted wallet, signed by allowance. Humans may fund through card-funded allowance; CLI behavior is unchanged. `run402 allowance <create|status|fund|balance|export>` — `status` reports `wallet.rail` and, on a Lightning profile, a `lightning` block (wallet id, status, custody `run402_hub`, address, budget, starter, `balance_sats`, `budget_remaining_sats`; never the pairing).
+- No platform token: the local wallet (`~/.config/run402/wallet.json`) signs requests. Per-project `anon_key` / `service_key` are runtime data-plane keys (PostgREST/Storage/Functions), permanent, and embeddable/server-side respectively.
+- Agent-paid usage: x402 USDC on Base, MPP pathUSD on Tempo, or sats over Bitcoin Lightning (MPP) from the agent's platform-minted wallet, signed by the local wallet. The organization's allowance (card, Lightning, or voucher funded) settles first when it covers the price; CLI behavior is unchanged. `run402 wallets <current|fund|balance>` — `current` reports the active wallet's address, `rail`, file path, and faucet use; `balance` reads on-chain funds plus the organization's `allowance_usd_micros`; `run402 wallets lightning status` reports a Lightning profile's `lightning` block (wallet id, status, custody `run402_hub`, address, budget, starter, `balance_sats`, `budget_remaining_sats`; never the pairing).
 
 Install + deploy — the only first-deploy path (the front door at <https://run402.com/llms.txt> is the same three lines with a full manifest):
 
 ```bash
 npm install -g run402@latest
-run402 up --name "my-app" -y                 # allowance, tier, project, your name, rehearsal when warranted, deploy
+run402 up --name "my-app" -y                 # wallet, tier, project, your name, rehearsal when warranted, deploy
 run402 redeem <code>                         # only if you were given a promo code — see Promo codes below
 ```
 
@@ -43,7 +43,7 @@ App build scripts should read the same target/profile store through `resolveRun4
 
 ## Core events
 
-- Allowance: `~/.config/run402/allowance.json` (0600); active project state: profile `state.json`; local project-key cache: profile `credentials/project-keys.v1.json` (0600). Legacy `projects.json` is migration input only.
+- Wallet: `~/.config/run402/wallet.json` (0600); active project state: profile `state.json`; local project-key cache: profile `credentials/project-keys.v1.json` (0600). Legacy `projects.json` is migration input only.
 - Project keys are cached automatically after provision or fork for operations that truly need anon/service keys. They are not project inventory.
 - `<id>` in commands = `project_id` from `run402 projects list`
 - Output: JSON stdout on success; JSON stderr on failure; exit 0 success, non-zero error. See Output Contract.
@@ -51,7 +51,7 @@ App build scripts should read the same target/profile store through `resolveRun4
 - `run402 up` is the only compound CLI command. It emits natural JSON with `steps[]` (no top-level success `status`). Use `--check` for local-only validation, `--plan` for gateway-reviewed intent, and `--require-plan` for exact reviewed apply.
 - GitHub Actions deploys use OIDC: link once with `run402 ci link github`; generated workflow calls `run402 deploy` with `permissions: id-token: write`.
 - Projects, sites, subdomains, forks, functions, secrets, asset storage: free with active tier. Only image generation ($0.03) is per-call
-- Env overrides: `RUN402_API_BASE` (overrides stored target; default `https://api.run402.com`), `RUN402_CONFIG_DIR` (base credential dir, default `~/.config/run402`), `RUN402_WALLET` (active named wallet/profile, default `default`; alias `RUN402_PROFILE`), `RUN402_ALLOWANCE_PATH` (custom allowance file path, default `{config_dir}/allowance.json`), `RUN402_AGENT_NAME` (the name this agent runtime declares for itself; `run402 up` sets it as an agent principal's display name, overriding an existing agent name; human/unknown principals are preserved — reported as `identity.source: "explicit"`; promotion credit and room presence use it; equivalent to `run402 org whoami --set-name <name>`), `RUN402_CLIENT` (declares the coding-agent client when `up` has no environment marker for it, e.g. `RUN402_CLIENT=grok`; checked before every marker; it names an unnamed agent principal but never overrides an existing name — use `RUN402_AGENT_NAME` for that), `RUN402_PROGRAM` / `RUN402_MODEL` (room-presence `program` / `model` labels; `program` is otherwise inferred as `claude-code`, `codex`, `cursor`, or `grok`), `RUN402_TRACE` (any non-empty value: one stderr trace line per SDK request — see Observability below), `RUN402_GITVAULT_TRACE` (debug-only, `1`: one stderr line per vault transport operation — see Observability below). `run402 init --api-base=<url>` persists the active target in `{config_dir}/target.json` or `{config_dir}/profiles/<name>/target.json`.
+- Env overrides: `RUN402_API_BASE` (overrides stored target; default `https://api.run402.com`), `RUN402_CONFIG_DIR` (base credential dir, default `~/.config/run402`), `RUN402_WALLET` (active named wallet/profile, default `default`; alias `RUN402_PROFILE`), `RUN402_WALLET_PATH` (custom wallet file path, default `{config_dir}/wallet.json`), `RUN402_AGENT_NAME` (the name this agent runtime declares for itself; `run402 up` sets it as an agent principal's display name, overriding an existing agent name; human/unknown principals are preserved — reported as `identity.source: "explicit"`; promotion credit and room presence use it; equivalent to `run402 org whoami --set-name <name>`), `RUN402_CLIENT` (declares the coding-agent client when `up` has no environment marker for it, e.g. `RUN402_CLIENT=grok`; checked before every marker; it names an unnamed agent principal but never overrides an existing name — use `RUN402_AGENT_NAME` for that), `RUN402_PROGRAM` / `RUN402_MODEL` (room-presence `program` / `model` labels; `program` is otherwise inferred as `claude-code`, `codex`, `cursor`, or `grok`), `RUN402_TRACE` (any non-empty value: one stderr trace line per SDK request — see Observability below), `RUN402_GITVAULT_TRACE` (debug-only, `1`: one stderr line per vault transport operation — see Observability below). `run402 init --api-base=<url>` persists the active target in `{config_dir}/target.json` or `{config_dir}/profiles/<name>/target.json`.
 - Wallets: `run402 wallets` manages named profiles. Select via `--wallet <name>` (`--profile`), `RUN402_WALLET`, or nearest `.run402.json` binding (commit-safe name only). Precedence: flag > env > `.run402.json`/`.run402.local.json` > `wallets use` default > `default`. Env/binding conflict hard-fails unless flag passed. `default` stays at config root; named wallets live under `{base}/profiles/<name>/`. Non-default active wallet is echoed on stderr and shown in `status` / `wallets current`.
 
 ## Output Contract
@@ -60,8 +60,8 @@ Uniform contract:
 - Success: stdout emits the natural payload, never wrapped; no top-level `status`.
 - Reads/lists: resource directly, e.g. `projects get` -> `{ project_id, public_id, name, ... }`, `projects list` -> `{ projects: [...], scope?, has_more?, next_cursor? }`, `credentials project-keys status` -> local-cache provenance.
 - Mutations without natural payload: affected ids + boolean action field, e.g. `{ key, project_id, set: true }`, `{ name, project_id, deleted: true }`, `{ domain, project_id, released: true }`; never `{}`.
-- Local-state reads (`status`, `allowance status`): nullable typed fields, e.g. `{ wallet: null, hint: "Run: run402 init" }`; absence exits 0.
-- Raw/text stdout is opt-in only (`functions invoke --raw`, file-output commands, help/version/dev human surfaces). Machine-readable command defaults emit parseable JSON; for example, `allowance export` emits `{ "address": "0x..." }`.
+- Local-state reads (`status`, `wallets current`): nullable typed fields, e.g. `{ wallet: null, hint: "Run: run402 init" }` or `configured: false`; absence exits 0.
+- Raw/text stdout is opt-in only (`functions invoke --raw`, file-output commands, help/version/dev human surfaces). Machine-readable command defaults emit parseable JSON; for example, `wallets current` emits `{ "local_label": "default", "address": "0x...", ... }`.
 - Failure: stderr JSON envelope with top-level `status: "error"` + non-zero exit. That sentinel appears on stderr only.
 - Validation commands may exit 0 with payload issues, e.g. `validate-expose` prints `has_errors: true`; branch on payload fields.
 - Payload-internal `status` fields are not envelopes, e.g. `doctor.checks[].status`.
@@ -102,17 +102,17 @@ Conflicting selectors fail before wallet, tier, identity, link or Git mutations.
 
 Approval and recursion:
 - Non-interactive recursive mutations require `-y/--yes`; without it the command fails before mutating and returns a structured approval-required error.
-- If allowance/tier/project/workspace link are already configured, plain `run402 up` runs the requested deploy without `-y`.
+- If wallet/tier/project/workspace link are already configured, plain `run402 up` runs the requested deploy without `-y`.
 - In a TTY, the CLI prompts for SDK-planned mutations. In SDK code, pass `{ approval: "yes" }`, `{ approval: "never" }`, or an interactive approval callback.
-- `--check` returns local validation `steps[]` without allowance creation, faucet request, tier payment, project creation, workspace-link write, upload, gateway plan, or deploy commit. It is not a file-exists check: it normalizes the manifest and verifies every referenced file (see above), so a missing `sql_path`, function source, or site file fails here with `MANIFEST_FILE_MISSING` instead of at upload. For a `run402.json` app manifest that declares no `build.commands`, the release slice's references are verified before any build; a declared build may produce those files, so the check is deferred until after the build runs (the step says `file_references: "deferred_to_post_build"`).
+- `--check` returns local validation `steps[]` without wallet creation, faucet request, tier payment, project creation, workspace-link write, upload, gateway plan, or deploy commit. It is not a file-exists check: it normalizes the manifest and verifies every referenced file (see above), so a missing `sql_path`, function source, or site file fails here with `MANIFEST_FILE_MISSING` instead of at upload. For a `run402.json` app manifest that declares no `build.commands`, the release slice's references are verified before any build; a declared build may produce those files, so the check is deferred until after the build runs (the step says `file_references: "deferred_to_post_build"`).
 - `--print-spec` performs the same local validation and prints advanced SDK-native `ReleaseSpec` JSON. Use `--print-manifest` for reloadable snake_case authoring JSON, relative to the original manifest directory. Unsupported dynamic/secret values fail explicitly. `result.preflight` carries nullable target selection, local evidence and `gateway_validated: false`; see the deploy slice for deferred checks.
 - `--plan` calls the gateway reviewed-plan mode without upload or commit; it does not provision projects or write workspace links. The response includes a require-able `plan_id`, `plan_fingerprint`, expiration, warnings, diff, and `next_actions[]`.
 - `--require-plan <plan_id>` applies only if the reviewed plan still matches; optional `--plan-fingerprint <fingerprint>` tightens the check.
-- Run402 Cloud `up` can create/fund an allowance, ensure a prototype tier by default, create a project from `--name`, write the workspace link, make sure this principal has a display name, join the project room under it, then apply the manifest.
+- Run402 Cloud `up` can create/fund a local wallet, ensure a prototype tier by default, create a project from `--name`, write the workspace link, make sure this principal has a display name, join the project room under it, then apply the manifest.
 - Identity: `result.identity.principal` records authenticated principal ID/type/name; `result.identity.client` records detected client and declared agent name separately. Human and unknown principals are preserved even with `RUN402_AGENT_NAME`. For agent principals only, that explicit name wins; otherwise a detected client names an unnamed principal. Detection never overwrites an existing name. `detection.reason: principal_identity_preserved` explains human/unknown cases. Failed identity lookup reports unavailable and does not rename. Promotion credit uses the principal name, never room presence or client detection. An intentional principal rename uses `run402 org whoami --set-name <name>`; `up --name` is project metadata.
 - Rehearsal: `result.deploy.rehearsal` is `{ status: "passed", report, … }` when the plan was rehearsed on a contained branch first, or `{ status: "skipped", reason: "no_live_release" | "no_migrations" | "migrations_unchanged" | "disabled" | "reviewed_plan" | "unsupported" }` (`migrations_unchanged`: every migration in the manifest is already applied with an identical checksum, so a page-only redeploy that still carries `schema`/`seed` ships in seconds instead of spending a branch). A failed rehearsal exits non-zero with `REHEARSAL_FAILED` and the report; nothing is committed. `--no-rehearse` skips it.
 - Git: on a local directory `up` scaffolds git on the APP ROOT only (the manifest's directory): `git init` when it is not a repository, a `run402` remote (`origin` is never claimed), and a first vault push. A repository `up` just created is all-untracked by definition, so that first push captures it as a synthetic commit (`first_push.captured_dirty: true` with the `modified_captured` / `untracked_captured` disclosure); an existing repository keeps the clean-tree rule and a `SNAPSHOT_DIRTY_TREE` refusal is reported under `first_push_error`, never overridden. An app root that lies inside ANOTHER repository (a monorepo workspace — how most agent workspaces look) is left untouched by default: `result.repo` is `{ status: "skipped", reason: "inside_other_repository", toplevel, next_actions: [{ type: "create_nested_repo", command: "run402 up --nested" }] }`, and `--human` prints the same line. `--nested` gives that app its own nested repository with the encrypted remote: `git init -b main` there, the `run402` remote and first push from there, and exactly one line (`/<relative path>/`) appended to the enclosing repository's local `.git/info/exclude` — nothing else in the enclosing repository is touched (no `.gitignore`, index, or submodule), it never shows the app as untracked noise, and the flag is a no-op when the app root is already its own repository. A nested scaffold reports `result.repo.gitvault.nested: true`, `enclosing_toplevel`, and `excluded_in_enclosing`. `projects provision` never touches git.
-- Run402 Core `up` skips Cloud allowance/tier prerequisites and fails closed if no Core project is selected by `--project`, workspace link, or manifest.
+- Run402 Core `up` skips Cloud wallet/tier prerequisites and fails closed if no Core project is selected by `--project`, workspace link, or manifest.
 - The SDK derives child idempotency keys for recursive gateway mutations from the root action key; pass `--idempotency-key` when you need a stable external key.
 - Deploy warnings use the same review surface as `deploy`: prefer repeatable `--allow-warning <code>` and reserve broad `--allow-warnings` for reviewed exceptional cases.
 - App manifests AND deploy manifests can define `verify.http[]`. After apply, `up` fetches those URLs and records per-check status in `result.app_result.verification.http[]` (app manifests) or `result.verification.http[]` + a `result.verify` rollup (deploy manifests; a hard verify failure exits 1). Fresh managed-subdomain or custom-domain misses that carry Run402 edge sentinels (`x-run402-edge` or JSON codes such as `SUBDOMAIN_NOT_CONFIGURED`) are treated as propagation, not as permanent verify failure, while the deploy binding is fresh or `deploy resolve` reports `edge_propagation.status !== "settled"`.
@@ -149,7 +149,7 @@ Every host that serves a project's site — managed subdomain, branch's host, cu
 CLI errors: JSON stderr with outer `"status": "error"`. Run402 JSON bodies may merge into the envelope. Branch on `code`, not `message`/legacy `error`.
 
 Canonical fields:
-- `code`: stable machine-readable reason, e.g. `PROJECT_FROZEN`, `PAYMENT_REQUIRED`, `MIGRATION_FAILED`, `MIGRATE_GATE_ACTIVE`. Client-side validation failures (missing flag, malformed JSON) default to `BAD_USAGE`; specific client-side cases use richer codes e.g. `UNKNOWN_FLAG`, `BAD_FLAG`, `PROJECT_CREDENTIAL_NOT_FOUND` (with `details.source: "local_cache"`), `NO_DEPLOYMENT`, `NO_ALLOWANCE`, `BAD_JSON_FLAG`, `CONFIRMATION_REQUIRED`.
+- `code`: stable machine-readable reason, e.g. `PROJECT_FROZEN`, `PAYMENT_REQUIRED`, `MIGRATION_FAILED`, `MIGRATE_GATE_ACTIVE`. Client-side validation failures (missing flag, malformed JSON) default to `BAD_USAGE`; specific client-side cases use richer codes e.g. `UNKNOWN_FLAG`, `BAD_FLAG`, `PROJECT_CREDENTIAL_NOT_FOUND` (with `details.source: "local_cache"`), `NO_DEPLOYMENT`, `NO_WALLET`, `BAD_JSON_FLAG`, `CONFIRMATION_REQUIRED`.
 - `retryable`: the same request may succeed later
 - `safe_to_retry`: repeating the same request should not duplicate or corrupt a mutation
 - `mutation_state`: one of `none`, `not_started`, `committed`, `rolled_back`, `partial`, `unknown`
@@ -158,7 +158,7 @@ Canonical fields:
 - `details`: structured route-specific context
 - `next_actions`: advisory typed suggestions e.g. `authenticate`, `submit_payment`, `renew_tier`, `check_usage`, `retry`, `resume_deploy`, `edit_request`, `edit_migration`, `create_project`, `initialize_wallet`, `deploy`, `deploy_site_first`, or `poll`. CLI-resolvable entries carry a literal `command`, e.g. `{ "type": "create_project", "command": "run402 projects provision" }`. Do not execute route-like suggestions without validating method/path/auth/safety.
 - `correlated_platform_incident`: present ONLY while an OPEN platform incident correlates with this error's `code` — `{ id: "inc_…", subsystem, status: "ongoing" | "resolved" }`, with a `poll` entry appended to `next_actions`. It is a CORRELATION, not an exoneration: the platform states it was degraded when your call failed and lets you judge (an app can still cause its own throttling). Poll the events feed (`run402 events`) and check `platform_status` before debugging your own code; when the incident resolves, the matching `platform_incident` feed event carries your project's real failed-invocation count. Absent when no open incident correlates — never a false confession.
-- Cold-start chain: a fresh agent that knows only `run402 deploy` is walked to a deployed result by following `next_actions` — no allowance -> `run402 init`, no tier -> `run402 tier set prototype`, no project -> `run402 projects provision` — each step idempotent, then retry the deploy. You do not need to memorize the sequence; follow what each failure hands back.
+- Cold-start chain: a fresh agent that knows only `run402 deploy` is walked to a deployed result by following `next_actions` — no local wallet -> `run402 init`, no tier -> `run402 tier set prototype`, no project -> `run402 projects provision` — each step idempotent, then retry the deploy. You do not need to memorize the sequence; follow what each failure hands back.
 - Prefer `run402 up` when starting from a local repo: it plans and runs that same cold-start chain through the SDK instead of executing advisory `next_actions[].command` strings.
 
 Retry policy:
@@ -166,7 +166,7 @@ Retry policy:
 - `safe_to_retry: true` alone means duplicate-safe, not likely-to-succeed. Lifecycle-gated writes, auth token exchanges, and passkey verifies need the indicated action first.
 - `run402 deploy` already handles safe `BASE_RELEASE_CONFLICT` release races for omitted/current-base deploy specs: it re-plans, emits `deploy.retry` events on stderr, and stops after its bounded SDK retry budget. Exhausted deploy retries include `attempts`, `max_retries`, and `last_retry_code` in the error envelope. Do not hand-roll this specific retry loop around the CLI unless you intentionally disabled SDK retries upstream.
 - For mutating 5xx with `safe_to_retry: false`, or `mutation_state` in `committed|partial|unknown`, inspect/poll/reconcile before retry. For deploys prefer `deploy events`/`deploy resume` over duplicate apply.
-- Lifecycle/payment: `PROJECT_FROZEN`/`PROJECT_DORMANT`/`PROJECT_PAST_DUE` -> `projects usage <id>` or `tier set <tier>`; `PAYMENT_REQUIRED`/`INSUFFICIENT_FUNDS` -> submit payment/fund allowance.
+- Lifecycle/payment: `PROJECT_FROZEN`/`PROJECT_DORMANT`/`PROJECT_PAST_DUE` -> `projects usage <id>` or `tier set <tier>`; `PAYMENT_REQUIRED`/`INSUFFICIENT_FUNDS` -> top up the allowance, redeem a voucher, or fund the wallet.
 - `NOT_AUTHORIZED` (HTTP 403) is an org-owned-control-plane authorization denial, distinct from auth or payment: the wallet *authenticated*, but its resolved principal lacks the org role or per-project grant the action needs. `details` carries `required_role` / `required_capability` / `reason`. Not retryable without obtaining a covering org membership/role or grant; high-stakes ops (delete, transfer-of-ownership, membership change) require an active `owner` membership. The gateway returns 403 even when the project does not exist (so existence isn't leaked) — re-check the `<id>` too. The CLI envelope adds an actionable `hint`.
 - `STEP_UP_REQUIRED` (HTTP 403) is a freshness/provenance demand for a high-stakes control-plane op: the session is valid but not fresh enough, or was minted by a read/device-flow path that can't satisfy a passkey step-up. `details` carries `required_amr` / `max_age_seconds` / `challenge_url` / `reason`, plus `next_actions[]`. The SDK raises a typed `StepUpRequiredError` (`isStepUpRequired()` guard). Resolve with `run402 operator login --step-up` on the same client, then retry. Distinct from `NOT_AUTHORIZED` (a role/grant gap, not a freshness gap).
 - `WRITE_AUTH_REQUIRED` / `WRITE_AUTH_BINDING_MISMATCH` / `WRITE_AUTH_SESSION_INVALID` (HTTP 403) — a wallet-less human's sign-in session needs a passkey **write approval** scoped to this `(action, target)` (the SIWX wallet path never hits this). The SDK raises a typed `OperatorApprovalRequiredError` (`isOperatorApprovalRequired()` guard) carrying `capability`, `target`, and a fully-resolved `approveCommand` / `nextActions[]` (e.g. `run402 operator approve --action project.deploy --project prj_x`). `BINDING_MISMATCH` = a cached approval targeted the wrong org/project; `SESSION_INVALID` = it's stale. Resolve by running the surfaced `operator approve` command (or let an interactive `provision`/`deploy` auto-approve).
@@ -194,18 +194,18 @@ Examples:
 npm install -g run402
 ```
 
-## Step 2: Set Up Allowance and Funding
+## Step 2: Set Up the Wallet and Funding
 
 ```bash
-run402 init               # creates allowance if absent; checks balance; faucets testnet USDC if zero; shows tier/projects
-run402 allowance create    # Generate a new allowance
-run402 allowance fund      # Get free testnet USDC (Base Sepolia)
-run402 allowance balance   # Check USDC balance (mainnet + testnet + billing)
+run402 init               # creates the wallet if absent; checks balance; faucets testnet USDC if zero; shows tier/projects
+run402 wallets current     # The active wallet: address, rail, file path, faucet use
+run402 wallets fund        # Get free testnet USDC (Base Sepolia)
+run402 wallets balance     # On-chain USDC (mainnet + testnet) plus the organization's allowance
 ```
 
-Allowance lives at `~/.config/run402/allowance.json` (0600). CLI signs x402 / MPP payments automatically; never handle private keys/payment libs manually.
+The wallet lives at `~/.config/run402/wallet.json` (0600). CLI signs x402 / MPP payments automatically; never handle private keys/payment libs manually.
 
-For a self-hosted Run402 Core Gateway, skip Cloud allowance setup and configure the target instead:
+For a self-hosted Run402 Core Gateway, skip Cloud wallet setup and configure the target instead:
 
 ```bash
 run402 init --api-base=http://my-core:4020
@@ -216,9 +216,9 @@ After that, the same `run402 projects provision` and `run402 deploy` commands ta
 ### Promo codes (vouchers)
 
 If you were given a **promo code** — a string like `R402-K8F3-Q2W9`, sometimes
-called a voucher or a gift/starter code — redeem it. It credits your
-organization with run402 allowance, and that credit pays for the next step
-(a tier) with no on-chain payment.
+called a voucher or a gift/starter code — redeem it. It adds to your
+organization's allowance, and the allowance pays for the next step (a tier)
+with no on-chain payment.
 
 ```bash
 run402 redeem R402-K8F3-Q2W9        # any time: before or after `run402 init`
@@ -230,7 +230,7 @@ run402 init --voucher R402-K8F3-Q2W9  # same redemption, folded into setup
 - **Codes are forgiving.** Case-insensitive, hyphens optional — `R402-K8F3-Q2W9`
   and `r402k8f3q2w9` are the same code. Send it verbatim; the server normalizes.
 - **Retrying is safe.** A repeat by the same organization returns the original
-  result with `already_redeemed: true` and never credits twice.
+  result with `already_redeemed: true` and never adds the amount twice.
 - **A bad code never blocks setup.** `init --voucher` warns, records
   `voucher_error` in its JSON summary, and finishes normally.
 - Failures: `404 VOUCHER_NOT_FOUND` (unknown or malformed), `410
@@ -248,12 +248,13 @@ run402 tier set hobby        # $5 for 30 days (real money)
 run402 tier set team         # $20 for 30 days (real money)
 ```
 
-Allowance pays first. A promo code (`run402 redeem <code>`) or a top-up sits on the
-organization's balance, and `tier set` settles from it ahead of the payment paywall: no 402,
-no signed authorization, no USDC in the wallet, receipt `paid_with: "credit"` with
-`credit_remaining_usd_micros`. Only a balance that falls short goes to x402 / MPP, and that
-`X402_INSUFFICIENT_FUNDS` error carries `details.credit` (available, price, shortfall) with
-`redeem_voucher` / `top_up` next actions.
+The allowance pays first. A promo code (`run402 redeem <code>`) or a top-up adds to the
+organization's allowance, and `tier set` settles from it ahead of the payment paywall: no 402,
+no signed authorization, no USDC in the wallet, receipt `paid_with: "allowance"` with
+`allowance_used_usd_micros` and `allowance_remaining_usd_micros`. Only an allowance that falls
+short goes to x402 / MPP, and that `X402_INSUFFICIENT_FUNDS` error carries `details.allowance`
+(`allowance_usd_micros`, `price_usd_micros`, `shortfall_usd_micros`) with `redeem_voucher` /
+`top_up` next actions.
 
 Tier is organization-scoped. A start/renew/upgrade applies to every project in the org; `api_calls` / `storage_bytes` quota is org-pooled across linked wallets (`billing link-wallet`). Quota errors include `details.scope: "organization" | "project"` (`project` = orphan fallback after org purge before cascade). `tier set` refetches status and returns `status_after` with refreshed pool usage.
 
@@ -262,7 +263,7 @@ Retry-safety: `tier set` and `projects provision` accept `--idempotency-key <key
 Server action detection (reported as `action: start | renew | upgrade`):
 - No tier or expired -> start
 - Same tier, active -> renew (extends from current expiry)
-- Higher tier -> upgrade (prorated refund to billing allowance)
+- Higher tier -> upgrade (prorated refund to the allowance)
 - Lower tier, active -> downgrade (prorated refund if usage fits)
 
 ```bash

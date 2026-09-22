@@ -19,7 +19,7 @@ Run402 treats you as a first-class participant acting through your own principal
 
 ## Mental model
 
-`run402-mcp` is a thin shim over [`@run402/sdk`](https://docs.run402.com/llms-sdk.txt). Each MCP tool is a schema-parsing wrapper around an SDK method. The configured API target, active project state, allowance, and local project-key cache are shared with the CLI; provisioning a project from any surface makes its `anon_key` and `service_key` available to credential-required operations without treating cached keys as project inventory.
+`run402-mcp` is a thin shim over [`@run402/sdk`](https://docs.run402.com/llms-sdk.txt). Each MCP tool is a schema-parsing wrapper around an SDK method. The configured API target, active project state, wallet, and local project-key cache are shared with the CLI; provisioning a project from any surface makes its `anon_key` and `service_key` available to credential-required operations without treating cached keys as project inventory.
 
 Public Buzz/Nostr identity links are deliberately **not** an MCP mutation tool. Agent creation uses the CLI/SDK EOA ceremony; human creation/revocation uses the normal browser/passkey/Buzz flow at <https://console.run402.com/identity-links/connect>. MCP never asks for a raw signed event, Nostr private key, passkey, session credential, or resource id. Existing reads render every returned active/revoked link with its `identity_link_id`, subject, proof protocol, and lifecycle, explicitly as public attribution rather than organization authority. Project/deploy/transfer reads preserve immutable actor provenance. Unknown future principal/authenticator/authority/proof kinds remain data.
 

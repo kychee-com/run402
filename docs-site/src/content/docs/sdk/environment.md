@@ -24,7 +24,7 @@ const r = new Run402({
 });
 ```
 
-The `CredentialsProvider` interface has two required methods (`getAuth`, `getProject`) plus optional ones for hosts that want full sticky-default behavior (`saveProject`, `updateProject`, `removeProject`, `setActiveProject`, `getActiveProject`, `getActiveOrg`, `readAllowance`, `saveAllowance`, `createAllowance`, `getAllowancePath`). `getActiveOrg` is read only to disambiguate a Lightning `ORGANIZATION_SELECTION_REQUIRED` answer (see `r.ai.generateImage`); the Node provider answers it from the profile's `run402 org use` selection.
+The `CredentialsProvider` interface has two required methods (`getAuth`, `getProject`) plus optional ones for hosts that want full sticky-default behavior (`saveProject`, `updateProject`, `removeProject`, `setActiveProject`, `getActiveProject`, `getActiveOrg`, `readWallet`, `saveWallet`, `createWallet`, `getWalletPath`). `getActiveOrg` is read only to disambiguate a Lightning `ORGANIZATION_SELECTION_REQUIRED` answer (see `r.ai.generateImage`); the Node provider answers it from the profile's `run402 org use` selection.
 
 ## Mental model
 
@@ -34,7 +34,7 @@ The SDK is the canonical kernel. A single typed `Run402` class with one namespac
 - Throws a typed subclass of `Run402Error` on failure
 - Never calls `process.exit`
 
-The MCP server's tools and the CLI's subcommands are argv-/schema-parsing wrappers around these methods. They share the configured API target, active project state, allowance, and local project-key cache so target selection and credentials carry across surfaces without treating cached keys as project inventory.
+The MCP server's tools and the CLI's subcommands are argv-/schema-parsing wrappers around these methods. They share the configured API target, active project state, wallet, and local project-key cache so target selection and credentials carry across surfaces without treating cached keys as project inventory.
 
 ### Action runner (`@run402/sdk/node`)
 
@@ -83,15 +83,15 @@ Local check returns `result.preflight` with nullable target/provenance, `gateway
 
 `Run402Action.Up` behavior:
 - Discover `run402.deploy.json`, then `app.json` under `dir` / cwd; explicit `manifest` wins.
-- Validate the deploy manifest and referenced local files before allowance, tier, project, link, upload, or deploy mutations.
+- Validate the deploy manifest and referenced local files before wallet, tier, project, link, upload, or deploy mutations.
 - Resolve project as explicit `projectId`, then `.run402/project.json`, then manifest `project_id`, then approved project creation from `name`; global active state never selects a deploy target.
 - For app manifests with `verify.http[]`, fetch verification URLs after apply and write per-check details to `result.app_result.verification.http[]`. Fresh edge sentinel misses (`x-run402-edge` or JSON codes such as `SUBDOMAIN_NOT_CONFIGURED`) and non-settled deploy-resolve diagnostics become `propagation_pending` instead of permanent failures while the binding is fresh.
 - Set `propagationBudgetSeconds` to control the wait for edge convergence (default 120). Set `propagationWait: false` to return `status: "propagation_pending"` immediately with `verify.status`, `propagation_wait_ms`, warnings, `next_action`, and diagnostic `edge_propagation` / `resolve` payloads.
 - Set `verifyOnly: true` to rerun app HTTP verification without upload, deploy, resource mutation, or project creation. This is the SDK equivalent of `run402 up verify`. Its action envelope reports `mode: "verify"`, `read_only: true`, and `dry_run: false`: real HTTP probes run, but no release is applied. Each executed HTTP check includes `observed_release` with nullable `release_id` and `generation`, response `url`, `observed_at`, `source: "response_headers"`, and `unavailable_reason`. These are observations from that response, not proof that all routes agree or that a release stayed unchanged throughout the run. Missing or malformed headers remain unknown and do not fail an otherwise successful HTTP check.
 - `name` is only project creation/link metadata. It is not a manifest field and never renames an existing project.
 - Write `.run402/project.json` atomically when `up` needs to remember an explicit/created project. Schema: `{ schema_version: "run402.workspace-project.v1", project_id, name?, target?, created_at, updated_at? }`.
-- On Run402 Cloud, recursively ensure allowance and tier (default bootstrap tier `prototype`) only when missing; existing active tiers are not downgraded or renewed just because `up` ran.
-- On Run402 Core, skip Cloud allowance/tier prerequisites and fail closed if no Core project is selected.
+- On Run402 Cloud, recursively ensure the local wallet and tier (default bootstrap tier `prototype`) only when missing; existing active tiers are not downgraded or renewed just because `up` ran.
+- On Run402 Core, skip Cloud wallet/tier prerequisites and fail closed if no Core project is selected.
 - Grant key the final deploy to `r.project(id).apply(spec, opts)`.
 
 Action options:
@@ -99,7 +99,7 @@ Action options:
 - `mode: "printSpec"` returns the normalized `ReleaseSpec` in `result.spec`; CLI prints only that JSON.
 - `mode: "plan"` creates a gateway-reviewed non-deploying plan. It returns `result.plan.plan_id`, `plan_fingerprint`, `plan_expires_at`, warnings, diff, and same-surface `next_actions[]`.
 - `mode: { kind: "applyReviewed", planId, planFingerprint? }` applies only when the reviewed plan still matches. The SDK verifies before upload and commit.
-- `approval: "never" | "yes" | { mode: "interactive"; approve(request) }` gates recursive prerequisites and local link writes. SDK default is `"never"`; CLI maps `-y/--yes` to `"yes"` and TTY prompts to interactive approval. If allowance/tier/project/link are already configured, `r.up()` can run the requested deploy without approval.
+- `approval: "never" | "yes" | { mode: "interactive"; approve(request) }` gates recursive prerequisites and local link writes. SDK default is `"never"`; CLI maps `-y/--yes` to `"yes"` and TTY prompts to interactive approval. If wallet/tier/project/link are already configured, `r.up()` can run the requested deploy without approval.
 - `autoPrerequisites` defaults to `true` for `up` and `false` for direct actions.
 - `idempotencyKey` supplies a root key; recursive gateway mutations derive child keys from it.
 
@@ -148,7 +148,7 @@ Executable trust policy:
 - If a repo only contains `run402.deploy.ts`, `up` fails with `EXECUTABLE_CONFIG_REQUIRES_EXPLICIT_MANIFEST` and a next action to rerun with `--manifest run402.deploy.ts --check`.
 - `--check` / `mode: "check"` and `--print-spec` / `mode: "printSpec"` are local-only; use `--plan` / `mode: "plan"` for gateway policy, quota, cost, secret existence, missing-content, and base-release details.
 
-The runner never executes arbitrary gateway-authored `next_actions[].command`; it uses its own fixed action graph (`allowance`, `tier`, `projects.provision`, workspace link, deploy).
+The runner never executes arbitrary gateway-authored `next_actions[].command`; it uses its own fixed action graph (`wallets`, `tier`, `projects.provision`, workspace link, deploy).
 
 ### Casing in returned shapes
 

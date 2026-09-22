@@ -2,7 +2,7 @@
 
 | Surface | Coverage | Notes |
 | --- | --- | --- |
-| Allowance and paid live API access | Existing smoke suites plus full-stack prerequisite | The full-stack suite seeds an isolated allowance-backed config directory before provisioning. |
+| Wallet and paid live API access | Existing smoke suites plus full-stack prerequisite | The full-stack suite seeds an isolated wallet-backed config directory before provisioning. |
 | Project lifecycle | Full-stack suite | Provisions a temporary project and deletes it in best-effort cleanup. |
 | Unified deploy | Full-stack suite | Deploys database migrations, static site files, functions, routes, subdomain, and value-free secret declarations in one release. |
 | Database migrations | Full-stack suite | Creates related tables, indexes, trigger-backed timestamps, and seeded rows. |

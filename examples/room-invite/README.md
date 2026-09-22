@@ -20,7 +20,7 @@ typewriter pacing; `--no-tmux` prints the two commands to run in two terminals.
 |---|---|---|
 | 1 | Creates a wallet, shows its org-of-one, joins a room that does not need creating | Proves the config dir and working dir are empty; waits for a key |
 | 2 | `rooms invite` — mints a `kri1_…` key with a note. Spends nothing | `curl`s the redeem route with no payment and reads the raw **402**: one cent, testnet, one network |
-| 3 | `messages wait` blocks on the gateway's held read until the knock | `rooms join <key>` — allowance, faucet, x402 payment, arrival. Reads the on-chain balance: $0.25 in, $0.01 out |
+| 3 | `messages wait` blocks on the gateway's held read until the knock | `rooms join <key>` — wallet, faucet, x402 payment, arrival. Reads the on-chain balance: $0.25 in, $0.01 out |
 | 4 | Sees the arrival message, replies with the GitHub URL, lists members: the guest is a **viewer** | Sends "where's the code?" flag-free, waits for the reply |
 | 5 | | Re-runs the join: `deduplicated`, balance unchanged. A third fresh wallet presents the spent key: refused, not charged |
 

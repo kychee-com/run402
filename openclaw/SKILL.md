@@ -53,7 +53,7 @@ run402 projects provision --name my-app    # → anon_key, service_key, project_
 run402 deploy --manifest app.json --project <project_id>
 ```
 
-For Core, `init --api-base` stores the target in the active profile and does not create a Cloud allowance, request faucet funds, or require a Cloud tier. The CLI, Node SDK, and MCP all read the same configured target by default. Unsupported Cloud-only manifest slices fail as Core capability errors; they are not silently deployed to Run402 Cloud.
+For Core, `init --api-base` stores the target in the active profile and does not create a Cloud wallet, request faucet funds, or require a Cloud tier. The CLI, Node SDK, and MCP all read the same configured target by default. Unsupported Cloud-only manifest slices fail as Core capability errors; they are not silently deployed to Run402 Cloud.
 
 ## How to think about it
 
@@ -129,7 +129,7 @@ Fields to use:
 - `trace_id`: include when reporting an issue
 - `request_id`: routed/function failure handle; use `run402 functions logs <id> <name> --request-id <req_...>` for diagnostics. Distinct from gateway `trace_id`.
 - `details`: structured route-specific context
-- `next_actions`: advisory actions e.g. `authenticate`, `submit_payment`, `renew_tier`, `check_usage`, `retry`, `resume_deploy`, `edit_request`, `edit_migration`, `create_project`, `initialize_wallet`, `deploy`; never treat them as blindly executable. CLI-resolvable entries carry a literal `command`. Cold start: from `run402 deploy`, follow the chain it hands back — no allowance -> `run402 init`, no tier -> `run402 tier set prototype`, no project -> `run402 projects provision` — then retry. `tier set` and `projects provision` accept `--idempotency-key` so retries never double-charge
+- `next_actions`: advisory actions e.g. `authenticate`, `submit_payment`, `renew_tier`, `check_usage`, `retry`, `resume_deploy`, `edit_request`, `edit_migration`, `create_project`, `initialize_wallet`, `deploy`; never treat them as blindly executable. CLI-resolvable entries carry a literal `command`. Cold start: from `run402 deploy`, follow the chain it hands back — no local wallet -> `run402 init`, no tier -> `run402 tier set prototype`, no project -> `run402 projects provision` — then retry. `tier set` and `projects provision` accept `--idempotency-key` so retries never double-charge
 
 Retry policy:
 - Retry directly only when `retryable: true` and `safe_to_retry: true`; reuse the same idempotency key for mutating operations.
@@ -1121,7 +1121,7 @@ run402 rooms leave                                      # done: release your pre
 
 `run402 messages wait [--addressed-to me] [--timeout <s>]` is the blocking alternative to polling `messages list` in a loop — it uses the gateway's held read when available and degrades to bounded polling against an older gateway, same output shape either way (default timeout 120s, max 600s — a coding harness's own shell-call ceiling). Silence is a normal, exit-0 answer: `settled: false`, an unchanged cursor, and `live_presences[]` naming who is still around — never an error. Arrive, look, claim, work, hand off. Your presence is this SESSION, not your wallet or model (~1h silence expiry; names unique per room forever — `--name` is honored when free, suffixed `Opus` → `Opus-2` when taken, and the output says so). Messages are room-visible (`--to`/`--cc` route attention, not access control; markdown ≤32 KiB; an `--idempotency-key` replay returns the ORIGINAL with `deduplicated: true`, never a double-post). Claims are ADVISORY: `claims create` ALWAYS succeeds and prints the complete `conflicts[]` — nothing is ever blocked by a claim, deploys included (`repo:<glob>` gets glob-overlap detection; `function:<name>`/`table:<name>`/`deploy`/free-form match exactly); claims auto-expire (`--ttl` default 3600, max 86400 seconds) so a dead session can't wedge the room, ≤32 active per presence. In the default room every send also lands as a compact `agent_message_sent` event (class `coordination`) in `run402 events` next to `deploy_activated` — a Telegram routing rule can forward it to a human — and deploy-path responses carry a `coordination` block whenever other presences are live (the anti-stomp rider: check it before you overwrite shared state). Cursors follow the events-feed contract: opaque `mcr_…`, stale → `reset: true` + `earliest_cursor` (never an error), newest ~2s hidden by the visibility watermark. Named org rooms for multi-repo products: `--org <org_id> --room <key>` (or `RUN402_ROOM=<org_id>/<key>`); org members (any role) reach all the org's rooms, a grant key (`RUN402_DELEGATE_TOKEN`) reaches its own project's default room plus named org rooms, a project service key is read-only.
 
-**Bringing a stranger's agent into the room — `run402 rooms invite` / `run402 rooms join <key>`.** No vault, no project, no human: `run402 rooms invite [--note "…"]` mints a single-use bearer key (`kri1_…`, printed to stdout ALONE) from the room you stand in, registering your own presence first and posting ONE room message naming the invite (never the key). On another machine, `run402 rooms join kri1_…` folds a funded-wallet chain (allowance → faucet if empty → a brief settlement wait) and pays a one-cent testnet x402 fee — the payment IS the claim, so a joiner with no funds fails closed — arriving as a permanent **`viewer`**: the narrowest membership that can message, never widened from this door (no `--role`). A same-payer replay never pays twice. Arrival sets the host org as this wallet's current org and leaves `run402 messages wait` flag-free — the binding lands in `.run402.json` outside a git checkout, or local git config inside one. A room presence never confers vault access; bring a member into the CODE with `run402 repos invite` above. Neither verb has an MCP tool.
+**Bringing a stranger's agent into the room — `run402 rooms invite` / `run402 rooms join <key>`.** No vault, no project, no human: `run402 rooms invite [--note "…"]` mints a single-use bearer key (`kri1_…`, printed to stdout ALONE) from the room you stand in, registering your own presence first and posting ONE room message naming the invite (never the key). On another machine, `run402 rooms join kri1_…` folds a funded-wallet chain (wallet → faucet if empty → a brief settlement wait) and pays a one-cent testnet x402 fee — the payment IS the claim, so a joiner with no funds fails closed — arriving as a permanent **`viewer`**: the narrowest membership that can message, never widened from this door (no `--role`). A same-payer replay never pays twice. Arrival sets the host org as this wallet's current org and leaves `run402 messages wait` flag-free — the binding lands in `.run402.json` outside a git checkout, or local git config inside one. A room presence never confers vault access; bring a member into the CODE with `run402 repos invite` above. Neither verb has an MCP tool.
 
 ```bash
 run402 rooms invite --note "picking up #42"      # mints the key, prints it ALONE
@@ -1182,7 +1182,7 @@ run402 repos gc                               # git gc's own two halves — chec
 run402 repos access                           # READ-ONLY: recipients, coverage, local TOFU pins
 ```
 
-Cloning needs a Run402 principal on this machine — a wallet with an allowance and a keystore holding an envelope for this vault — this is encrypted git, not a shareable link.
+Cloning needs a Run402 principal on this machine — a wallet and a keystore holding an envelope for this vault — this is encrypted git, not a shareable link.
 
 `--project <id>` picks the repo's project; `--repo <repo_id>` addresses it directly and needs no project lookup — that is the cold-restart path for an agent with no local state. Stdout is JSON; every human line (progress, the terminal-loss statement, advisories) goes to stderr, so `run402 repos view | jq` stays clean. For a person at the terminal, `run402 repos view --human` renders a five/six-line summary on stdout instead — address, HEAD/ref count, generations in decimal, storage, whether this machine can decrypt, and any standing warnings — an explicit opt-in, so plain `view` stays JSON.
 
@@ -1206,7 +1206,7 @@ run402 repos recover s3://acme-vault-mirror --out ./restored --repo src_1a2b3c
 
 No argument reads the configured destination + a keyless freshness check. `mirror <destination> [--profile <name> | --ambient]` writes only the destination and a credential *name* to a config file beside the keystore — never in `run402.config.json`, never a raw secret. `--off` removes the config only — never touches the mirror's own bytes. `--backfill` (idempotent) copies whatever the mirror is missing. `run402 repos fsck --mirror` is a KEYLESS integrity probe — proves the mirror's VALIDITY, never its FRESHNESS. `run402 repos recover <source> --out <dir>` needs no server at all: it reads the mirror, verifies the chain, and decrypts with the local keystore alone; a mirror without the keystore recovers nothing, so the V0 terminal-loss statement above still applies unchanged.
 
-**`run402 repos handoff` / `run402 repos resume`** hand a working tree to another agent — dirty state included, no shared keystore or allowance. `handoff` captures the actual working tree (staged, unstaged, AND untracked — the same shape real `git stash push -u` produces) and mints a single-use bearer key, `kgh1_…`, printed to stdout ALONE (nothing else this family prints — logs, `--json`, errors — ever carries it). The key confers real authority — by default the sender's own org role — until claimed or its TTL (default 1h, `--ttl <seconds>`) expires. `resume kgh1_…` claims it (a same-principal retry dedups safely), clones a fresh checkout on the OTHER machine, and reapplies the exact dirty state with `git stash apply --index`. A short JSON note rides alongside (`--note-file <path>`, or piped stdin); `resume` renders it as Markdown. Sensitive untracked files (`.env`, `*.pem`, `id_rsa*`, SSH/AWS/GPG directories, 22 patterns total) are excluded from capture by default; `--include-sensitive <glob>` re-admits one.
+**`run402 repos handoff` / `run402 repos resume`** hand a working tree to another agent — dirty state included, no shared keystore or wallet. `handoff` captures the actual working tree (staged, unstaged, AND untracked — the same shape real `git stash push -u` produces) and mints a single-use bearer key, `kgh1_…`, printed to stdout ALONE (nothing else this family prints — logs, `--json`, errors — ever carries it). The key confers real authority — by default the sender's own org role — until claimed or its TTL (default 1h, `--ttl <seconds>`) expires. `resume kgh1_…` claims it (a same-principal retry dedups safely), clones a fresh checkout on the OTHER machine, and reapplies the exact dirty state with `git stash apply --index`. A short JSON note rides alongside (`--note-file <path>`, or piped stdin); `resume` renders it as Markdown. Sensitive untracked files (`.env`, `*.pem`, `id_rsa*`, SSH/AWS/GPG directories, 22 patterns total) are excluded from capture by default; `--include-sensitive <glob>` re-admits one.
 
 ```bash
 run402 repos handoff --note-file handoff.json    # captures the tree, mints the key, prints it ALONE
@@ -1362,11 +1362,11 @@ Three payment rails, one 402 handshake:
 
 Switch rails via `run402 init mpp` or `run402 init lightning` instead of `run402 init`.
 
-The CLI handles all signing automatically — never ask the human for a private key or set up payment libraries by hand. When a paid call returns 402, the CLI parses the requirements and signs from the local allowance. If funds are short, you get a structured error and a `renew_url`.
+The CLI handles all signing automatically — never ask the human for a private key or set up payment libraries by hand. When a paid call returns 402, the CLI parses the requirements and signs from the local wallet. If funds are short, you get a structured error and a `renew_url`.
 
 For real-money tiers, two paths to fund:
 
-- Path A — fund the agent allowance: human sends USDC on Base mainnet to the `address` field from `run402 allowance export`. Agent pays Run402 autonomously via x402 from then on. Or in sats: `run402 billing topup <org_id> --sats <n> --qr invoice.png` mints a Lightning invoice the human pays from any wallet.
+- Path A — fund the agent wallet: human sends USDC on Base mainnet to the `address` field from `run402 wallets current`. Agent pays Run402 autonomously via x402 from then on. Or in sats: `run402 billing topup <org_id> --sats <n> --qr invoice.png` mints a Lightning invoice the human pays from any wallet.
 - Path B — card-funded allowance: create or pick the organization, then `run402 billing checkout <org_id> --product tier --tier hobby` returns a checkout URL the human pays once.
 
 Suggest $10 to your human for two Hobby projects, or $20 for one Team plus renewal buffer.
@@ -1382,23 +1382,22 @@ Suggest $10 to your human for two Hobby projects, or $20 for one Team plus renew
 - Per-project rate limit is 100 req/sec. On 429, back off using `retry_after`.
 - `run402 service status` works without auth. Use it before evaluating Run402 with a user, or to distinguish platform issues from your own bugs.
 
-## Agent Allowance Setup
+## Agent Wallet Setup
 
-The CLI manages a local agent allowance — a wallet key dedicated to paying Run402, stored at `~/.config/run402/allowance.json` (mode `0600`). You never touch the private key directly.
+The CLI manages a local agent wallet — a wallet key dedicated to paying Run402, stored at `~/.config/run402/wallet.json` (mode `0600`). You never touch the private key directly.
 
 ```bash
-run402 allowance create               # generate a fresh allowance
-run402 allowance status               # address, network, funding state
-run402 allowance fund                 # request testnet USDC from the faucet
-run402 allowance balance              # USDC on mainnet + testnet + billing balance
-run402 allowance history              # ledger
-run402 allowance export               # print {"address":"0x..."} (NOT the private key)
-run402 allowance checkout --amount 5000000   # Stripe top-up to billing balance ($5)
+run402 wallets new default            # generate a fresh wallet without funding it
+run402 wallets current                # address, rail, file path, faucet use (NOT the private key)
+run402 wallets fund                   # request testnet USDC from the faucet
+run402 wallets balance                # USDC on mainnet + testnet, plus the organization's allowance
+run402 billing history <org_id>       # allowance ledger
+run402 billing checkout <org_id> --product balance-topup --amount 5000000   # Stripe top-up to the allowance ($5)
 ```
 
-Most agents only need `run402 init` once — it composes `create` + `fund` + `tier status` + `projects list`.
+Most agents only need `run402 init` once — it creates and funds the wallet, then reads `tier status` + `projects list`.
 
-Other allowance options:
+Other wallet options:
 
 - Coinbase AgentKit — MPC wallet on Base with built-in x402.
 - AgentPayy — auto-bootstraps an MPC wallet on Base via Coinbase CDP.
@@ -1420,9 +1419,9 @@ run402 operator logout           # revoke server-side + clear the local cache
 
 | You see | Likely cause / fix |
 |---|---|
-| `402 payment_required` on `tier set` | Allowance is empty. `run402 allowance fund` (testnet) or fund with real USDC. |
+| `402 payment_required` on `tier set` | The allowance falls short and the wallet is empty. `run402 redeem <code>`, a top-up, `run402 wallets fund` (testnet), or real USDC. |
 | `403` with `lifecycle_state: frozen` | Project past lease + 14 days. `run402 tier set <tier>` reactivates instantly. |
-| `403 admin_required` | Subcommand is staff only (e.g., `run402 admin lease-perpetual`, `run402 admin archive`, `run402 admin reactivate`). Use a staff allowance wallet; project owners can't toggle these. |
+| `403 admin_required` | Subcommand is staff only (e.g., `run402 admin lease-perpetual`, `run402 admin archive`, `run402 admin reactivate`). Use a staff wallet; project owners can't toggle these. |
 | Empty `[]` from `/rest/v1/items` for anon | Table not in manifest with `expose: true`. Run `run402 projects apply-expose`. |
 | `403 forbidden_function` calling an RPC | Function's not in the manifest's `rpcs[]`. Add `{ name, signature, grant_to: ["authenticated"] }`. |
 | `409 reserved` on subdomain add | Original owner's grace period — subdomain held until +118 days from lease expiry. |
@@ -1439,7 +1438,7 @@ Top-level command groups:
 
 ```
 run402 init | status | message | service
-run402 allowance   | tier      | projects | sites      | subdomains
+run402 wallets     | tier      | projects | sites      | subdomains
 run402 domains     | functions | secrets  | jobs       | assets     | cdn
 run402 email       | auth       | apps      | image
 run402 deploy      | ai        | contracts | billing   | agent

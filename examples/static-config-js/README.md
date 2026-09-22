@@ -19,7 +19,7 @@ run402 up --name <name> -y
 ```
 
 `run402 up --name <name> -y` claims the `<name>` host automatically, so the
-manifest carries no `subdomains` block; `up` also creates the allowance, funds it
+manifest carries no `subdomains` block; `up` also creates the wallet, funds it
 from the testnet faucet, sets the free prototype tier, and creates the
 project on a cold machine. The result's `urls.site` is `https://<name>.run402.com`;
 open it and the seeded note renders. A branch host or a transferred project

@@ -6,7 +6,7 @@ description: Inspect effective authority, payment state and project limits befor
 ```bash
 run402 status
 run402 tier status
-run402 allowance balance
+run402 wallets balance
 ```
 
 Read the effective organization tier and resource limits, not just a historical lease timestamp. A project inherits the owning organization's lifecycle and entitlement; some limits are pooled and others apply per resource. Use the [current limits reference](/cli/platform/) rather than assuming a tutorial's numbers apply to your tier.

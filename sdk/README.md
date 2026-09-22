@@ -14,7 +14,7 @@ Deployment summaries share the SDK workflow view. CLI writes redacted detail und
 
 | Import | Use when |
 |---|---|
-| `@run402/sdk/node` | Running in Node 22 with the local profile state, project-key credential cache, and allowance. Auto-loads the configured API base, profile `credentials/project-keys.v1.json`, and signs x402 payments from the selected allowance or opaque signer. Includes `r.actions.run(...)`, `r.up(...)`, `r.sites.deployDir(dir)`, `fileSetFromDir(dir)`, `loadDeployManifest(path)`, `normalizeDeployManifest(input)`, and `resolveRun402TargetProfile()`. |
+| `@run402/sdk/node` | Running in Node 22 with the local profile state, project-key credential cache, and wallet. Auto-loads the configured API base, profile `credentials/project-keys.v1.json`, and signs x402 payments from the selected wallet or opaque signer. Includes `r.actions.run(...)`, `r.up(...)`, `r.sites.deployDir(dir)`, `fileSetFromDir(dir)`, `loadDeployManifest(path)`, `normalizeDeployManifest(input)`, and `resolveRun402TargetProfile()`. |
 | `@run402/sdk` | Isomorphic — works in Node, Deno, Bun, V8 isolates. No filesystem access. Bring your own `CredentialsProvider` (a session-token shim, a remote vault, anything that resolves project keys + auth headers). |
 
 The Node entry sends bounded client-version metadata on gateway requests using the unprefixed `Run402-Client` header, for example `surface="sdk", version="3.7.14", sdk="3.7.14"`. The CLI passes `surface: "cli"`, so gateway compatibility hints can distinguish CLI-created SDK traffic from direct SDK callers. Metadata never includes local paths, package manager details, wallet/org/project ids, secrets, or install confidence. The isomorphic entry does not send this header by default; pass `clientMetadata` explicitly only in runtimes where custom headers are expected.
@@ -78,14 +78,14 @@ provider controls API authentication; the x402 payer is resolved exactly once
 in this order:
 
 1. `paymentSigner` — an explicit async EVM signer provider (KMS/HSM friendly).
-2. `allowancePath` — an explicit local allowance file.
-3. `credentials.readAllowance()` — when a supplied provider implements it.
-4. The Node default provider's active-profile allowance — only when the caller
+2. `walletPath` — an explicit local wallet file.
+3. `credentials.readWallet()` — when a supplied provider implements it.
+4. The Node default provider's active-profile wallet — only when the caller
    did not supply a custom credentials provider.
 
 Once a source is selected, the SDK never falls back to the ambient/global
-wallet. `paymentSigner` and `allowancePath` together throw
-`PAYMENT_SOURCE_CONFLICT`. Passing both `credentials` and `allowancePath` is
+wallet. `paymentSigner` and `walletPath` together throw
+`PAYMENT_SOURCE_CONFLICT`. Passing both `credentials` and `walletPath` is
 valid: auth uses `credentials`, while payment intentionally uses that file.
 `fetch` still takes precedence over built-in paid fetch, and
 `disablePaidFetch: true` disables automatic payment entirely.
@@ -123,7 +123,7 @@ const payer = await r.paymentPayer();
 
 The provider may return `null` for an unsupported Base network. Paid-fetch
 initialization is lazy and retries after missing/recoverable local state, so a
-long-lived client can start paying after its selected allowance/provider
+long-lived client can start paying after its selected wallet/provider
 becomes available without being reconstructed. `r.paymentPayer()` initializes
 the selected source if necessary and returns only its source, rail, public
 address(es), and network(s); it never returns a key, signed authorization, or
@@ -211,7 +211,7 @@ await r.actions.run({
 });
 ```
 
-Action identifiers are exported constants plus a string-literal union, so inputs narrow by `type`. `up` validates `run402.deploy.json` / `app.json` before any mutation, resolves the project as explicit `projectId` → `.run402/project.json` → manifest `project_id` → approved creation from `name`; global active state never selects a deployment target, then delegates to `r.project(id).apply(...)`. `name` is only project creation/link metadata; it is not a manifest field and never renames an existing project. If allowance/tier/project/link are already configured, `r.up()` can run the requested deploy with the default approval policy; pass `{ approval: "yes" }` only when you want recursive prerequisites/local writes to proceed unattended.
+Action identifiers are exported constants plus a string-literal union, so inputs narrow by `type`. `up` validates `run402.deploy.json` / `app.json` before any mutation, resolves the project as explicit `projectId` → `.run402/project.json` → manifest `project_id` → approved creation from `name`; global active state never selects a deployment target, then delegates to `r.project(id).apply(...)`. `name` is only project creation/link metadata; it is not a manifest field and never renames an existing project. If wallet/tier/project/link are already configured, `r.up()` can run the requested deploy with the default approval policy; pass `{ approval: "yes" }` only when you want recursive prerequisites/local writes to proceed unattended.
 
 Before any gateway call, in every mode, `up` verifies every local file the manifest references (migration `sql_path`/`sql_file`, function `source`/`files`, site `{ path }` entries and `dir()` targets, `assets.put[].source`) and throws `MANIFEST_FILE_MISSING` (`details.missing[]` of `{ field_path, path, kind }`, one `create_file` next action per file); `manifest` pointing at a missing path is `MANIFEST_NOT_FOUND`, and with no manifest in the directory `UP_MANIFEST_REQUIRED` lists `details.nearby_manifests[]` one level down with a read-only `run_in_directory` action for a single candidate, or one unranked `select_application` action for multiple apps. The same check is exported standalone from `@run402/sdk/node`: `collectLocalFileReferences(spec)`, `findMissingLocalFileReferences(spec)`, `assertLocalFileReferencesExist(spec, { manifestPath? })`, plus the `manifestFileMissingError` / `manifestNotFoundError` builders.
 
@@ -303,14 +303,14 @@ const r = new Run402({
 });
 ```
 
-The `CredentialsProvider` interface has two required methods (`getAuth`, `getProject`) plus optional ones (`saveProject`, `removeProject`, `setActiveProject`, `readAllowance`, `saveAllowance`, …) for hosts that want full sticky-default behavior.
+The `CredentialsProvider` interface has two required methods (`getAuth`, `getProject`) plus optional ones (`saveProject`, `removeProject`, `setActiveProject`, `readWallet`, `saveWallet`, …) for hosts that want full sticky-default behavior.
 
 ## Namespaces
 
 | Namespace | Highlights |
 |---|---|
 | `actions` | Node entry only (`@run402/sdk/node`). Generic recursive action runner: `actions.run({ type: Run402Action.Up | ProjectsProvision | TierSet, ... })`; `r.up(input, opts)` is the convenience for repo-level manifest deploys. Recursive mutations are approval-gated; `mode: "check" | "printSpec" | "printManifest" | "plan" | { kind: "applyReviewed" }` distinguishes local validation, gateway review, and exact reviewed apply. Child gateway mutations derive idempotency keys from the root action. |
-| `pay` | `fetch(url, init?, { maxUsdMicros?, idempotencyKey?, requireReceipt? })` — bounded arbitrary-URL x402 buyer; Node uses the selected allowance/signer and returns the response plus settlement and independently verified merchant evidence. |
+| `pay` | `fetch(url, init?, { maxUsdMicros?, idempotencyKey?, requireReceipt? })` — bounded arbitrary-URL x402 buyer; Node uses the selected wallet/signer and returns the response plus settlement and independently verified merchant evidence. |
 | `projects` | `provision`, `delete`, `list`, `get`, `use`, `active`, `sql`, `rest`, `validateExpose`, `applyExpose`, `getExpose`, `getUsage`, `getSchema`, `info`, `keys`, `pin`, `getQuote`. `list`/`get`/`use` are server-authoritative; local key reads are moving to `credentials.projectKeys`. |
 | `snapshots` | Internal project restore points: `create`, `list`, `get`, `restorePlan`, `restore`, `delete`. Restore is a two-step plan/confirm handshake. |
 | `branches` | Contained project data branches: `create`, `list`, `renew`, `delete`. Branches default to expiring, noindex, sandboxed-email copies. |
@@ -330,15 +330,15 @@ The `CredentialsProvider` interface has two required methods (`getAuth`, `getPro
 | `apps` | `browse`, `getApp`, `fork`, `publish`, `listVersions`, `updateVersion`, `deleteVersion` |
 | `tier` | `set`, `status` (tier pricing lives on `r.projects.getQuote()`) |
 | `billing` | `createEmailOrganization`, `linkWallet`, `createCheckout`, `setAutoRecharge`, `checkBalance`, `getOrganization`, `lookupOrganization`, `getHistory`, `balance`, `history` |
-| `vouchers` | `redeem` (promo code → prepaid credit; safe to retry) |
+| `vouchers` | `redeem` (promo code → the organization's allowance; safe to retry) |
 | `contracts` | `provisionSigner`, `getSigner`, `listSigners`, `setRecovery`, `setLowBalanceAlert`, `call`, `read`, `callStatus`, `drain`, `deleteSigner` |
 | `ai` | `translate`, `moderate`, `usage`, `generateImage` |
-| `allowance` | `status`, `create`, `export`, `faucet` |
 | `service` | `status`, `health` (no auth, no setup — works on a fresh install) |
 | `admin` | Operator/admin endpoints: messages/contact, per-project finance (`getProjectFinance`) |
 | `operator` | **The human / email principal** — distinct from the agent's per-wallet SIWX identity (and from platform-`admin`). Read session: `deviceStart`, `devicePoll`, `overview({ token })`, `revoke({ token })` — browser-delegated device-authorization (RFC 8628, the `aws sso login` model); `overview` returns the email-union across every wallet that verified the email. Write session (v1.78): `buildCliAuthorizeUrl`/`exchangeCliToken` (loopback-PKCE CLI login) + the hosted `operator.session.*` surface (email magic-link / passkey / OAuth login, `whoami`/`refresh`/`revoke`, step-up, authenticators, recovery) — carry a minted session SDK-wide with `controlPlaneSessionCredentials({ token })`. Drives `run402 operator login[/--loopback]/overview/whoami/logout`. No MCP tool by design — MCP authenticates as the agent, not the human. |
 | `identityLinks` | Public human/agent external identity attribution with a discriminated proof protocol. Agent `nostr.begin`/`complete` uses EOA + kind 1; human creation/revocation is browser-canonical. `list`, `getProof`, and `revoke` preserve multiple active and revoked records. Never accepts a Nostr secret and never grants authority. |
 | `buzz` | Capability-detecting Buzz control plane. `offerAdoption` plus `humanAdoptionOffers` creates/reads/cancels durable HTTPS handoffs and creates human-bound attempts; direct `humanAdoptions` is advanced compatibility. `install/enroll` and typed community/enrollment methods preserve separate principals, bounded named-project grants, drift, and scoped revocation. `notifications` routes project events into a Buzz channel (`createRoute`/`list`/`get`/`update`/`pause`/`resume`/`rotate`/`revoke`/`test`/`deliveries`/`testAndWait` — configure → authorize → test → live; the signing secret never leaves the gateway). Buzz signing stays outside the SDK. |
+| `wallets` | The local wallet: `status`, `create`, `export`, `faucet`; plus `getLabel(address)` |
 | `wallet(address)` | `getLabel()`, `setLabel(label)` — the signed server-side wallet label (gateway `/wallets/v1/:address/label`) surfaced in the operator console; pushed on `wallets use` unless `RUN402_WALLET_LABEL_SYNC=0`. Use the `r.wallet(address)` handle; `r.wallets.getLabel(address)` remains a bare read |
 | `orgs` | **Org-owned control plane** (first-class orgs). `create`, `list`, `whoami` (the gateway-resolved control-plane identity) on the collection; the scoped `r.org(id)` sub-client (org analog of `r.project(id)`) adds `get`, `rename`, `setPayoutWallet`, `members.*` (`list`/`add`/`setRole`/`revoke`), `invites.*` (`list`/`create`/`revoke`), `audit`. Org create/read/rename summaries include `tier`, `lease_started_at`, and `lease_expires_at`. |
 | `grants` | `create`, `revoke` — per-project capability grants (e.g. `"deploy"`, `"functions:write"`) for agent/CI principals; owner-gated, also reachable project-scoped as `r.project(id).grants` |
@@ -823,7 +823,7 @@ const minted = await r.gitvault.handoff({
 });
 console.log(minted.handoff_key); // kgh1_… — print it ALONE, this is the only copy
 
-// on another machine, with no shared keystore or allowance:
+// on another machine, with no shared keystore or wallet:
 const resumed = await r.gitvault.resume({ key: "kgh1_…" });
 console.log(resumed.restored.dir); // the fresh checkout, dirty state reapplied
 ```
@@ -837,7 +837,7 @@ const minted = await r.gitvault.invite({
 });
 console.log(minted.invite_key); // kgi1_… — print it ALONE, this is the only copy
 
-// on another machine, with no shared keystore or allowance:
+// on another machine, with no shared keystore or wallet:
 const joined = await r.gitvault.join({ key: "kgi1_…" });
 console.log(joined.restored.dir); // the fresh checkout, dirty state reapplied
 console.log(joined.inviter?.name); // who invited you, and whether they're still live

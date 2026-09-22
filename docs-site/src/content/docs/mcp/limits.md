@@ -72,7 +72,7 @@ Three payment rails, one 402 handshake:
 The MCP server handles all signing automatically. When a paid tool returns 402, the response includes payment details as informational text — guide the user through funding, then retry the same tool call.
 
 For real-money tiers, two paths to fund:
-- Path A — fund the agent allowance: human sends USDC on Base mainnet to the address from `allowance_export`. Agent pays autonomously via x402 from then on. Or in sats: `create_lightning_topup` returns a Lightning invoice the human pays from any wallet.
+- Path A — fund the agent wallet: human sends USDC on Base mainnet to the address from `wallet_export`. Agent pays autonomously via x402 from then on. Or in sats: `create_lightning_topup` returns a Lightning invoice the human pays from any wallet.
 - Path B — card-funded allowance: create or pick the organization, then `create_checkout` with `product: "tier"` returns a Stripe URL the human pays once.
 
 Suggest $10 to your human for two Hobby projects, or $20 for one Team plus renewal buffer.
@@ -81,9 +81,9 @@ Suggest $10 to your human for two Hobby projects, or $20 for one Team plus renew
 
 | You see | Likely cause / fix |
 |---|---|
-| `402 payment_required` on `tier_set` | Allowance is empty. Call `request_faucet` (testnet) or fund with real USDC. If the user gave you a promo code, `redeem_voucher` credits the balance instead. |
+| `402 payment_required` on `tier_set` | The organization's allowance falls short and the wallet is empty. Call `request_faucet` (testnet) or fund with real USDC. If the user gave you a promo code, `redeem_voucher` adds it to the allowance instead. |
 | `403` with `lifecycle_state: frozen` | Project past lease + 14 days. `tier_set` reactivates instantly. |
-| `403 admin_required` | Tool is staff only (e.g., `admin_set_lease_perpetual`, `admin_archive_project`, `admin_reactivate_project`). Use a staff allowance wallet; project owners can't toggle these on their own. |
+| `403 admin_required` | Tool is staff only (e.g., `admin_set_lease_perpetual`, `admin_archive_project`, `admin_reactivate_project`). Use a staff wallet; project owners can't toggle these on their own. |
 | `403 NOT_AUTHORIZED` on a control-plane action | Org-owned control plane: the wallet authenticated, but its principal lacks the org role/grant for this action — not a payment or lease issue. `details` carries `required_role` / `required_capability` / `reason`. Obtain a covering org membership/role or per-project grant; high-stakes ops (delete, transfer, membership change) need an active `owner` membership. Returned as 403 even when the project doesn't exist (existence isn't leaked), so also re-check the `project_id`. |
 | `409 LAST_OWNER` on `remove_org_member` / `set_org_member_role` | An org must keep at least one active `owner`. The change would remove or demote the last one. Promote another member to `owner` first (`set_org_member_role`), then retry. |
 | `409 PROJECT_HAS_PENDING_TRANSFER` on an owner-side mutation | A pending project transfer is freezing the control plane. `details.transfer_id` carries the id; `next_actions[]` has the cancel route. Run `cancel_project_transfer` to unblock, or `preview_project_transfer` to view what's pending. The freeze auto-clears 72h after init. |

@@ -54,7 +54,7 @@ run402 feedback send "My human said: 'The todo app was great!' Deploy was smooth
 | Storage | Free with tier | -- |
 | Messages | Free with tier | -- |
 
-Prototype uses free testnet USDC on Base Sepolia. Hobby/Team require real money: card-funded allowance or real USDC on Base; CLI handles payment automatically.
+Prototype uses free testnet USDC on Base Sepolia. Hobby/Team require real money: the organization's card-funded allowance or real USDC on Base; CLI handles payment automatically.
 
 ## Self-hosted Run402 Core target
 
@@ -65,7 +65,7 @@ run402 projects provision --name "my-app"    # returns anon_key, service_key, pr
 run402 deploy --manifest app.json --project <core-project-id>
 ```
 
-`init --api-base` stores the API base in the active profile (`target.json`) so the CLI, Node SDK, and MCP use the same target by default. Against Core, `projects provision` and `deploy` do not require Cloud tier, allowance, or x402 setup. Unsupported Cloud-only manifest slices fail as Core capability errors; they are not silently deployed to Run402 Cloud.
+`init --api-base` stores the API base in the active profile (`target.json`) so the CLI, Node SDK, and MCP use the same target by default. Against Core, `projects provision` and `deploy` do not require Cloud tier, wallet, or x402 setup. Unsupported Cloud-only manifest slices fail as Core capability errors; they are not silently deployed to Run402 Cloud.
 
 
 ## Portable Project Archives (Cloud -> Core)

@@ -7,7 +7,7 @@ One run402 `agent` principal can expose two public representations:
 - an active `siwx_eoa` authenticator used to authenticate run402 requests; and
 - a proof-backed Nostr identity used by the managed Buzz agent.
 
-The Nostr identity link is attribution, not authentication. run402 authorization remains organization membership, project grant, grant key, or CI authority. Projects remain organization-owned. Allowances remain a separate spending control.
+The Nostr identity link is attribution, not authentication. run402 authorization remains organization membership, project grant, grant key, or CI authority. Projects remain organization-owned. The organization's allowance remains a separate spending control.
 
 The statement proven at link time is deliberately narrow: the controller of one exact active run402 EOA also controlled one exact Nostr public key during one server challenge. It does not assert that the keys share a scalar or that the Buzz owner attested to run402 authority.
 

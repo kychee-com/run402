@@ -233,7 +233,7 @@ Auth is control-plane auth: current wallet, sign-in session, or grant key. Domai
 Forking clones schema, site, and functions into a new project. If the app includes a `bootstrap` function, it runs automatically with the provided variables — use it for first-admin setup, demo data seeding, or app configuration. Response includes `bootstrap_result` (the function's return value) or `bootstrap_error` if it failed. Use `run402 apps inspect` to see what `bootstrap_variables` an app expects.
 
 ### image
-$0.03 per image, via x402, MPP on Tempo, or MPP Lightning (whichever rail the allowance targets).
+$0.03 per image, via x402, MPP on Tempo, or MPP Lightning (whichever rail the wallet targets).
 
 - `run402 image generate "<prompt>" [--aspect <square|landscape|portrait>] [--output <file>] [--org <org_id>]`
 

@@ -31,9 +31,9 @@ await r.identityLinks.revoke(proof.identity_link_id);
 
 Current `whoami`, project, deploy-operation/release, and transfer response types include linked-identity and immutable action-time actor snapshots. Render unknown future principal/authenticator/authority kinds as data. A snapshot is historical attribution, not a live authorization decision.
 
-## The Lightning allowance (`r.agent.lightningWallet`)
+## The Lightning wallet (`r.agent.lightningWallet`)
 
-`await r.agent.lightningWallet.mint()` asks Run402 for the calling agent's Lightning wallet — one budgeted, isolated sub-wallet on Run402's own Hub (`custody: "run402_hub"`: the sats sit on the platform Hub, the agent holds a budgeted connection) — and, by default, polls until the platform-side broker activates it (`timeoutMs`, `intervalMs`; `wait: false` returns the `minting` record). Minting is idempotent per principal. The response that first observes the wallet active carries `pairing` (the NWC pairing URI) exactly once; the Node CLI stores it in the profile's `allowance.json` beside the Base key and sets `rail: "lightning"`, after which the Node paid fetch selects Run402's Lightning safety profile on every request, pays the one fixed BOLT11 challenge a 402 carries from the wallet over NWC (checking the remaining budget first), presents the preimage as the MPP credential on a byte-identical retry, and falls back to the x402 buyer when the seller offers no Lightning challenge. Once the invoice is paid, the gateway's "still fulfilling" answers on that retry (`PAYMENT_RECOVERY_PENDING`, `PAYMENT_INTENT_PENDING`, `PAYMENT_STATE_UNAVAILABLE`, `PAYMENT_EVIDENCE_UNAVAILABLE`, each with `Retry-After`) are honoured by repeating the identical paid request a bounded number of times: the same intent, the same credential, never a second payment; a terminal answer such as `PAYMENT_CREDITED` is returned as-is. `get()` reads the wallet (`has_pairing` only; the pairing is never returned twice), `waitForActive()` polls, `revoke()` deletes the sub-wallet on the Hub and returns its balance to the platform. `/sdk/node` exports `NwcWallet` (`getBalanceSats`, `getBudgetSats`, `payInvoice`, `lookupInvoice`), `createLightningFetch`, and `LightningPaymentError` (`LIGHTNING_BUDGET_EXHAUSTED`, `LIGHTNING_DEBIT_ABOVE_CAP`, `LIGHTNING_PAYMENT_OUTCOME_UNKNOWN`, `LIGHTNING_PREIMAGE_MISMATCH`). Errors never carry the pairing, an invoice, or a preimage.
+`await r.agent.lightningWallet.mint()` asks Run402 for the calling agent's Lightning wallet — one budgeted, isolated sub-wallet on Run402's own Hub (`custody: "run402_hub"`: the sats sit on the platform Hub, the agent holds a budgeted connection) — and, by default, polls until the platform-side broker activates it (`timeoutMs`, `intervalMs`; `wait: false` returns the `minting` record). Minting is idempotent per principal. The response that first observes the wallet active carries `pairing` (the NWC pairing URI) exactly once; the Node CLI stores it in the profile's `wallet.json` beside the Base key and sets `rail: "lightning"`, after which the Node paid fetch selects Run402's Lightning safety profile on every request, pays the one fixed BOLT11 challenge a 402 carries from the wallet over NWC (checking the remaining budget first), presents the preimage as the MPP credential on a byte-identical retry, and falls back to the x402 buyer when the seller offers no Lightning challenge. Once the invoice is paid, the gateway's "still fulfilling" answers on that retry (`PAYMENT_RECOVERY_PENDING`, `PAYMENT_INTENT_PENDING`, `PAYMENT_STATE_UNAVAILABLE`, `PAYMENT_EVIDENCE_UNAVAILABLE`, each with `Retry-After`) are honoured by repeating the identical paid request a bounded number of times: the same intent, the same credential, never a second payment; a terminal answer such as `PAYMENT_CREDITED` is returned as-is. `get()` reads the wallet (`has_pairing` only; the pairing is never returned twice), `waitForActive()` polls, `revoke()` deletes the sub-wallet on the Hub and returns its balance to the platform. `/sdk/node` exports `NwcWallet` (`getBalanceSats`, `getBudgetSats`, `payInvoice`, `lookupInvoice`), `createLightningFetch`, and `LightningPaymentError` (`LIGHTNING_BUDGET_EXHAUSTED`, `LIGHTNING_DEBIT_ABOVE_CAP`, `LIGHTNING_PAYMENT_OUTCOME_UNKNOWN`, `LIGHTNING_PREIMAGE_MISMATCH`). Errors never carry the pairing, an invoice, or a preimage.
 
 ## Buzz community control plane (`r.buzz`)
 
@@ -60,14 +60,14 @@ provider controls API authentication; the x402 payer is resolved exactly once
 in this order:
 
 1. `paymentSigner` — an explicit async EVM signer provider (KMS/HSM friendly).
-2. `allowancePath` — an explicit local allowance file.
-3. `credentials.readAllowance()` — when a supplied provider implements it.
-4. The Node default provider's active-profile allowance — only when the caller
+2. `walletPath` — an explicit local wallet file.
+3. `credentials.readWallet()` — when a supplied provider implements it.
+4. The Node default provider's active-profile wallet — only when the caller
    did not supply a custom credentials provider.
 
 Once a source is selected, the SDK never falls back to the ambient/global
-wallet. `paymentSigner` and `allowancePath` together throw
-`PAYMENT_SOURCE_CONFLICT`. Passing both `credentials` and `allowancePath` is
+wallet. `paymentSigner` and `walletPath` together throw
+`PAYMENT_SOURCE_CONFLICT`. Passing both `credentials` and `walletPath` is
 valid: auth uses `credentials`, while payment intentionally uses that file.
 `fetch` still takes precedence over built-in paid fetch, and
 `disablePaidFetch: true` disables automatic payment entirely.
@@ -105,7 +105,7 @@ const payer = await r.paymentPayer();
 
 The provider may return `null` for an unsupported Base network. Paid-fetch
 initialization is lazy and retries after missing/recoverable local state, so a
-long-lived client can start paying after its selected allowance/provider
+long-lived client can start paying after its selected wallet/provider
 becomes available without being reconstructed. `r.paymentPayer()` initializes
 the selected source if necessary and returns only its source, rail, public
 address(es), and network(s); it never returns a key, signed authorization, or

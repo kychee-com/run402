@@ -5,12 +5,6 @@ description: Owned codes and recovery guidance.
 
 [Error contracts and compatibility index](/errors/). Follow the actual response's message, field details and next actions. Never infer retry safety from the code name alone.
 
-<h2 id="ALLOWANCE_EXISTS">ALLOWANCE_EXISTS</h2>
-
-Owner: `public:cli/lib/allowance.mjs`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
 <h2 id="AMBIGUOUS_ORG">AMBIGUOUS_ORG</h2>
 
 Owner: `public:cli/lib/org-context.mjs`, `public:cli/lib/org.mjs`.
@@ -113,12 +107,6 @@ Owner: `public:sdk/src/namespaces/deploy.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
-<h2 id="BAD_ALLOWANCE_FILE">BAD_ALLOWANCE_FILE</h2>
-
-Owner: `public:cli/lib/config.mjs`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
 <h2 id="BAD_ENV">BAD_ENV</h2>
 
 Owner: `public:cli/lib/credentials.mjs`.
@@ -187,7 +175,13 @@ The client could not complete this operation. Inspect its typed error kind, mess
 
 <h2 id="BAD_USAGE">BAD_USAGE</h2>
 
-Owner: `public:sdk/src/namespaces/credentials.ts`, `public:cli/lib/admin.mjs`, `public:cli/lib/agent.mjs`, `public:cli/lib/ai.mjs`, `public:cli/lib/allowance.mjs`, `public:cli/lib/apps.mjs`, `public:cli/lib/archives.mjs`, `public:cli/lib/argparse.mjs`, `public:cli/lib/assets.mjs`, `public:cli/lib/auth.mjs`, `public:cli/lib/billing.mjs`, `public:cli/lib/branches.mjs`, `public:cli/lib/buzz.mjs`, `public:cli/lib/cache.mjs`, `public:cli/lib/cdn.mjs`, `public:cli/lib/ci.mjs`, `public:cli/lib/cloud.mjs`, `public:cli/lib/contacts.mjs`, `public:cli/lib/contracts.mjs`, `public:cli/lib/core.mjs`, `public:cli/lib/credentials.mjs`, `public:cli/lib/deliveries.mjs`, `public:cli/lib/deploy-v2.mjs`, `public:cli/lib/dev.mjs`, `public:cli/lib/doctor.mjs`, `public:cli/lib/domains.mjs`, `public:cli/lib/email.mjs`, `public:cli/lib/errors.mjs`, `public:cli/lib/events.mjs`, `public:cli/lib/feedback.mjs`, `public:cli/lib/functions.mjs`, `public:cli/lib/image.mjs`, `public:cli/lib/init-astro.mjs`, `public:cli/lib/init.mjs`, `public:cli/lib/jobs.mjs`, `public:cli/lib/live.mjs`, `public:cli/lib/logs.mjs`, `public:cli/lib/org-context.mjs`, `public:cli/lib/org.mjs`, `public:cli/lib/pay.mjs`, `public:cli/lib/projects.mjs`, `public:cli/lib/redeem.mjs`, `public:cli/lib/repos.mjs`, `public:cli/lib/rooms-context.mjs`, `public:cli/lib/rooms.mjs`, `public:cli/lib/secrets.mjs`, `public:cli/lib/sites.mjs`, `public:cli/lib/snapshots.mjs`, `public:cli/lib/status.mjs`, `public:cli/lib/subdomains.mjs`, `public:cli/lib/subscriptions.mjs`, `public:cli/lib/tier.mjs`, `public:cli/lib/transfer.mjs`, `public:cli/lib/up.mjs`, `public:cli/lib/wallets.mjs`, `public:cli/lib/webhooks.mjs`.
+Owner: `public:sdk/src/namespaces/credentials.ts`, `public:cli/lib/admin.mjs`, `public:cli/lib/agent.mjs`, `public:cli/lib/ai.mjs`, `public:cli/lib/apps.mjs`, `public:cli/lib/archives.mjs`, `public:cli/lib/argparse.mjs`, `public:cli/lib/assets.mjs`, `public:cli/lib/auth.mjs`, `public:cli/lib/billing.mjs`, `public:cli/lib/branches.mjs`, `public:cli/lib/buzz.mjs`, `public:cli/lib/cache.mjs`, `public:cli/lib/cdn.mjs`, `public:cli/lib/ci.mjs`, `public:cli/lib/cloud.mjs`, `public:cli/lib/contacts.mjs`, `public:cli/lib/contracts.mjs`, `public:cli/lib/core.mjs`, `public:cli/lib/credentials.mjs`, `public:cli/lib/deliveries.mjs`, `public:cli/lib/deploy-v2.mjs`, `public:cli/lib/dev.mjs`, `public:cli/lib/doctor.mjs`, `public:cli/lib/domains.mjs`, `public:cli/lib/email.mjs`, `public:cli/lib/errors.mjs`, `public:cli/lib/events.mjs`, `public:cli/lib/feedback.mjs`, `public:cli/lib/functions.mjs`, `public:cli/lib/image.mjs`, `public:cli/lib/init-astro.mjs`, `public:cli/lib/init.mjs`, `public:cli/lib/jobs.mjs`, `public:cli/lib/live.mjs`, `public:cli/lib/logs.mjs`, `public:cli/lib/org-context.mjs`, `public:cli/lib/org.mjs`, `public:cli/lib/pay.mjs`, `public:cli/lib/projects.mjs`, `public:cli/lib/redeem.mjs`, `public:cli/lib/repos.mjs`, `public:cli/lib/rooms-context.mjs`, `public:cli/lib/rooms.mjs`, `public:cli/lib/secrets.mjs`, `public:cli/lib/sites.mjs`, `public:cli/lib/snapshots.mjs`, `public:cli/lib/status.mjs`, `public:cli/lib/subdomains.mjs`, `public:cli/lib/subscriptions.mjs`, `public:cli/lib/tier.mjs`, `public:cli/lib/transfer.mjs`, `public:cli/lib/up.mjs`, `public:cli/lib/wallets.mjs`, `public:cli/lib/webhooks.mjs`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="BAD_WALLET_FILE">BAD_WALLET_FILE</h2>
+
+Owner: `public:cli/lib/config.mjs`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
@@ -325,7 +319,7 @@ The client could not complete this operation. Inspect its typed error kind, mess
 
 <h2 id="FAUCET_FAILED">FAUCET_FAILED</h2>
 
-Owner: `public:cli/lib/allowance.mjs`.
+Owner: `public:cli/lib/wallets.mjs`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
@@ -791,12 +785,6 @@ Owner: `public:sdk/src/namespaces/deploy.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
-<h2 id="NO_ALLOWANCE">NO_ALLOWANCE</h2>
-
-Owner: `public:cli/lib/allowance.mjs`, `public:cli/lib/ci.mjs`, `public:cli/lib/config.mjs`, `public:cli/lib/wallets.mjs`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
 <h2 id="NO_ORGS">NO_ORGS</h2>
 
 Owner: `public:cli/lib/org.mjs`.
@@ -812,6 +800,12 @@ The client could not complete this operation. Inspect its typed error kind, mess
 <h2 id="NO_PROJECT">NO_PROJECT</h2>
 
 Owner: `public:cli/lib/transfer.mjs`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="NO_WALLET">NO_WALLET</h2>
+
+Owner: `public:cli/lib/ci.mjs`, `public:cli/lib/config.mjs`, `public:cli/lib/wallets.mjs`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 

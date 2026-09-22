@@ -15,7 +15,7 @@ cp -r openclaw ~/.openclaw/skills/run402
 cd ~/.openclaw/skills/run402/scripts && npm install
 ```
 
-The skill's frontmatter declares `install: run402` so OpenClaw also installs the [`run402`](https://www.npmjs.com/package/run402) CLI globally — every script in `scripts/` re-exports from `cli/lib/`, so the CLI is the runtime. Allowance, active-project state, and the local project-key credential cache live under `~/.config/run402/` and are shared across the CLI / MCP server / OpenClaw skill.
+The skill's frontmatter declares `install: run402` so OpenClaw also installs the [`run402`](https://www.npmjs.com/package/run402) CLI globally — every script in `scripts/` re-exports from `cli/lib/`, so the CLI is the runtime. The wallet, active-project state, and the local project-key credential cache live under `~/.config/run402/` and are shared across the CLI / MCP server / OpenClaw skill.
 
 ## How it works
 
@@ -63,7 +63,7 @@ Every script prints **JSON to stdout**, **JSON errors to stderr**, and exits **0
 | **Install** | Copy directory + `npm install` (frontmatter installs `run402` globally) | `npx run402-mcp` |
 | **Skill body** | [`openclaw/SKILL.md`](./SKILL.md) — `run402 <verb>` examples | [root `SKILL.md`](../SKILL.md) — MCP tool names |
 | **Credentials** | `~/.config/run402/` (shared) | `~/.config/run402/` (shared) |
-| **Payment** | x402 or MPP (Tempo, Bitcoin Lightning) via the CLI's allowance | x402 or MPP (Tempo, Bitcoin Lightning) via the CLI's allowance |
+| **Payment** | x402 or MPP (Tempo, Bitcoin Lightning) via the CLI's wallet | x402 or MPP (Tempo, Bitcoin Lightning) via the CLI's wallet |
 
 ## Full reference
 

@@ -549,7 +549,7 @@ The gateway rejected or could not complete the request. Its response carries the
 
 Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
 
-The faucet broadcast a transfer but could not confirm its receipt within the bounded wait. Inspect the returned transaction_hash or run `run402 allowance balance`. Do not request another drip while the outcome is unknown.
+The faucet broadcast a transfer but could not confirm its receipt within the bounded wait. Inspect the returned transaction_hash or run `run402 wallets balance`. Do not request another drip while the outcome is unknown.
 
 <h2 id="FAUCET_TRANSFER_REVERTED">FAUCET_TRANSFER_REVERTED</h2>
 

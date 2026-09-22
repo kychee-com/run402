@@ -179,7 +179,7 @@ Tier is per organization, not per project. `tier_set` applies immediately to eve
 
 ### KMS signers (on-chain signing)
 
-For agents that sign Ethereum transactions. Private keys never leave AWS KMS. $0.04/day rental + $0.000005/call. Signer creation requires $1.20 allowance (30 days prepaid). Non-custodial.
+For agents that sign Ethereum transactions. Private keys never leave AWS KMS. $0.04/day rental + $0.000005/call. Signer creation requires $1.20 of allowance (30 days prepaid). Non-custodial.
 
 - `provision_signer` — params: `project_id`, `chain` (`base-mainnet` / `base-sepolia`), `recovery_address?`.
 - `get_signer` / `list_signers` — metadata + live native balance + USD value.
@@ -192,15 +192,15 @@ For agents that sign Ethereum transactions. Private keys never leave AWS KMS. $0
 - `drain_signer` — drain native balance. Works on suspended signers — the safety valve. Requires `X-Confirm-Drain` header equivalent.
 - `delete_signer` — schedule KMS key deletion (7-day window). Refused if balance ≥ dust.
 
-### Allowance & organization
+### Wallet & organization
 
-- `init` — one-shot setup: allowance + faucet + tier check + project list.
+- `init` — one-shot setup: wallet + faucet + tier check + project list.
 - `status` — full organization snapshot.
-- `allowance_status` / `allowance_create` / `allowance_export` — local allowance management.
-- `lightning_wallet` — the Lightning allowance: `mint` (default) asks Run402 for the agent's budgeted sub-wallet on its Hub and stores the one-time pairing locally, making Lightning the default rail (x402 stays the fallback); `get` reads it; `revoke` deletes it on the Hub and returns the rail to x402. `init` accepts `rail: "lightning"` and does the mint in the same call. Custody is Run402's Hub; the pairing never appears in tool output.
+- `wallet_status` / `wallet_create` / `wallet_export` — local wallet management.
+- `lightning_wallet` — the Lightning wallet: `mint` (default) asks Run402 for the agent's budgeted sub-wallet on its Hub and stores the one-time pairing locally, making Lightning the default rail (x402 stays the fallback); `get` reads it; `revoke` deletes it on the Hub and returns the rail to x402. `init` accepts `rail: "lightning"` and does the mint in the same call. Custody is Run402's Hub; the pairing never appears in tool output.
 - `request_faucet` — Base Sepolia testnet USDC.
-- `redeem_voucher` — redeem a promo code (e.g. `R402-K8F3-Q2W9`) for run402 allowance. Use it whenever the person hands you a code. Funding, like the faucet, but off-chain: it credits the organization's prepaid balance, which then settles a tier with no on-chain payment. Works before or after setup; a repeat of the same code returns the original result instead of crediting twice.
-- `check_balance` — USDC for an allowance address.
+- `redeem_voucher` — redeem a promo code (e.g. `R402-K8F3-Q2W9`) into the organization's allowance. Use it whenever the person hands you a code. Funding, like the faucet, but off-chain: it adds to the organization's allowance, which then settles a tier with no on-chain payment. Works before or after setup; a repeat of the same code returns the original result instead of adding the amount twice.
+- `check_balance` — the organization's allowance for a wallet address.
 - `list_projects` — the named, domain-aware project inventory (project-findability, `GET /projects/v1`). Each row carries `name`, `site_url`, `custom_domains`, the owning org `organization_id`, `created_by`, and v1.57 lifecycle fields (`status`/`effective_status`, `organization_lifecycle_state`, `lease_perpetual`, `deleted_at`, `archived_at`). Membership-scoped by default (org-owned control plane, v1.77+): a wallet *authenticates* but does not *own* — lists projects owned by orgs the wallet's resolved principal is an active member of, ∪ projects with an active per-project grant. Args: `org_id` filters to one org (authorize-before-reveal — non-member/guessed id → 403, non-UUID → 400), `all: true` reads the cross-wallet inventory across every wallet controlling your owner email, and `limit`/`cursor` paginate.
 - `rename_project` — rename a project (project-findability, `PATCH /projects/v1/:id`) to fix an auto-generated name. Org `admin`+ (or a `project:write` grant) on the owning org; authorize-before-reveal (unauthorized/guessed id → 403, never a not-found oracle). Uses the wallet's SIWX auth, not a service key, so it works even if the project isn't in the local key store.
 - `admin_set_lease_perpetual` — staff escape hatch. Toggles `lease_perpetual` on a organization; when `true`, the organization never advances past `active`. staff only.

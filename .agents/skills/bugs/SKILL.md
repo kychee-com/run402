@@ -52,7 +52,7 @@ For each bug:
 1. Read the issue title, body, and any reproduction steps or stack traces
 2. Trace through the source code. Relevant roots in this monorepo:
    - `src/` - MCP server entry + tool handlers
-   - `core/src/` - shared logic (config, client, keystore, allowance, allowance-auth)
+   - `core/src/` - shared logic (config, client, keystore, wallet, SIWX auth)
    - `cli/lib/` - CLI command modules (`*.mjs`)
    - `openclaw/scripts/` - OpenClaw skill shims (`*.mjs`, usually re-export from `cli/lib/`)
 3. Check git log to see if the relevant code has already been changed
