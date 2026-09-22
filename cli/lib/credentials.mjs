@@ -454,7 +454,7 @@ async function issue(args) {
   try {
     const res = await getSdk().credentials.issue(projectId, { kind, name, expiresAt: expiresAt || undefined });
     if (importToCache && res?.secret) {
-      // The cold-restart re-key path (gitvault-deploy-lane 6.5a): the minted
+      // The cold-restart re-key path (vault-deploy-lane 6.5a): the minted
       // secret goes straight into the local cache the deploy and data-plane
       // commands read, so a fresh machine re-keys in one command per kind
       // instead of the four-command issue-then-project-keys-import dance.

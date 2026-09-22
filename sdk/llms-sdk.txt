@@ -1527,8 +1527,8 @@ session.stepUpOptions({ token?, opClass? }) / stepUpVerify({ token?, response, o
   // satisfy a StepUpRequiredError (amr passkey), then retry the gated write
 session.issueRecoveryCodes({ token? })                           // one-time codes (shown once)
 session.listAuthenticators({ token? }) / revokeAuthenticator({ token?, id })
-session.sourceAccessWrappers({ token? }): Promise<SourceAccessWrappersResult>            // gitvault-recovery-custody: my source-access key + wrapper set (kinds, states, custody scheme; ciphertext included — always only my own)
-session.sourceAccessRecoveryBundle({ token? }): Promise<SourceAccessRecoveryBundleResult> // export the r402s-member-recovery-bundle/v1 (key identity + ACTIVE wrapper ciphertexts) — with the source recovery code it recovers vaults offline (r.gitvault.recover member_bundle); the gateway stamps the export as posture evidence
+session.sourceAccessWrappers({ token? }): Promise<SourceAccessWrappersResult>            // vault-recovery-custody: my source-access key + wrapper set (kinds, states, custody scheme; ciphertext included — always only my own)
+session.sourceAccessRecoveryBundle({ token? }): Promise<SourceAccessRecoveryBundleResult> // export the r402s-member-recovery-bundle/v1 (key identity + ACTIVE wrapper ciphertexts) — with the source recovery code it recovers vaults offline (r.repos.recover member_bundle); the gateway stamps the export as posture evidence
 ```
 
 **Write approval.** A person without a wallet provisions, deploys, and writes secrets with a passkey-signed approval scoped to one `(action, target)`, carried as `X-Run402-Write-Approval: Bearer <write_approval_token>` beside the session bearer. It lasts 30 minutes idle (4 hours at most), dies with its sign-in session, and never satisfies step-up. The Node CLI (`run402 approve`) runs the loopback + PKCE around these seams:
@@ -1989,7 +1989,7 @@ forProject(projectId): Promise<ScopedRoom> // resolves the project's org via its
 
 Auth: org members (any role) reach all the org's rooms; a grant key (`RUN402_DELEGATE_TOKEN`) reaches its own project's default room plus the org's named rooms; a project service key is read-only in its room. Named org rooms (`orgId` + a chosen `roomKey`) serve multi-repo products; `scoped(orgId, roomKey)` pre-binds them (including `invite`), `forProject(projectId)` pre-binds a project's default room.
 
-**Room Invite — a copy-paste door into an org and a room, no vault required (add-room-invite).** `invite` mints a `kri1_…` bearer key from the room the caller stands in; `join` spends one. The redeemed membership is always `viewer` — the narrowest thing that can message — and this door can never widen it: there is no `role` option, and a viewer is never auto-admitted as a vault writer (bring a member into the SOURCE with `r.gitvault.invite`/`.join` instead). The redemption is the x402 payment itself (`room_seat`, $0.01, testnet only): `join`'s request carries no `SIGN-IN-WITH-X` header and no bearer credential — the SDK's paid fetch answers the route's 402 challenge, and the VERIFIED payer becomes the redeemer. A same-payer replay never pays twice (`deduplicated: true`, no second charge). Both methods are Node-only (the key format is HKDF-SHA-256 cryptography, dynamically imported from `@run402/sdk/node`) and CLI/SDK-only — no MCP tool exists for either, the same law as `r.gitvault.invite`/`.join`: `invite` mints a bearer secret, `join` spends one and mutates org membership.
+**Room Invite — a copy-paste door into an org and a room, no vault required (add-room-invite).** `invite` mints a `kri1_…` bearer key from the room the caller stands in; `join` spends one. The redeemed membership is always `viewer` — the narrowest thing that can message — and this door can never widen it: there is no `role` option, and a viewer is never auto-admitted as a vault writer (bring a member into the SOURCE with `r.repos.invite`/`.join` instead). The redemption is the x402 payment itself (`room_seat`, $0.01, testnet only): `join`'s request carries no `SIGN-IN-WITH-X` header and no bearer credential — the SDK's paid fetch answers the route's 402 challenge, and the VERIFIED payer becomes the redeemer. A same-payer replay never pays twice (`deduplicated: true`, no second charge). Both methods are Node-only (the key format is HKDF-SHA-256 cryptography, dynamically imported from `@run402/sdk/node`) and CLI/SDK-only — no MCP tool exists for either, the same law as `r.repos.invite`/`.join`: `invite` mints a bearer secret, `join` spends one and mutates org membership.
 
 ```
 const minted = await r.rooms.invite(orgId, roomKey, { note: "picking up #42" });
@@ -2067,62 +2067,62 @@ testAndWait(routeId, { pollMs?, timeoutMs?, onPoll? })
 
 Only three reviewed event types are routable (`deploy_activated`, `error_fingerprints_observed`, `platform_incident`); the classes `security` / `billing_critical` / `destructive_lifecycle` / `verification` / `recovery` may never be routed. Filters: omitted/`null` = everything registered; an explicit `[]` is a 422, never a wildcard. Routes deliver NEW events only (`start_after_event_id` floor); delivery is at-least-once with byte-identical republish, backing off 1m/5m/30m/2h/12h to 8 attempts or 48h, then `dead_letter` — visible in `deliveries()`. Ten consecutive hard failures auto-pause the route (`pause_reason: "delivery_failures"`) and fire the mandatory `buzz_route_auto_paused` owner notification. No response ever contains the signing secret — `notification_pubkey` + `signing_generation` are the only credential material on the wire. Every mutation carries an `Idempotency-Key` (auto-generated when omitted) and requires fresh `buzz.event_route` step-up server-side (a SIWX wallet is inherently fresh).
 
-### `r.gitvault`
+### `r.repos`
 
-The host-blind encrypted Git remote (`r402s/v0`). All protocol behaviour — crypto core, keystore, creation journal, snapshot + capture, publication state machines, ref transactions, verification budget, token exchange, repair — is implemented ONCE here. `run402 repos …`, `git-remote-run402`, and the MCP tools (`repos_view`/`repos_list_heads`/`repos_fsck`) are adapters over this namespace: argument parsing, TTY output, exit codes, and local file I/O only. Anything the CLI can do is reachable programmatically with identical semantics. This is the SDK's own name for the family — `r.gitvault` is UNCHANGED by repo-surface-consolidation (design D1: `gitvault` is what the thing IS, infrastructure language; `repos` is what the CLI user HAS, and is the noun that changed).
+The host-blind encrypted Git remote (`r402s/v0`). All protocol behaviour — crypto core, keystore, creation journal, snapshot + capture, publication state machines, ref transactions, verification budget, token exchange, repair — is implemented ONCE here. `run402 repos …`, `git-remote-run402`, and the MCP tools (`repos_view`/`repos_list_heads`/`repos_fsck`) are adapters over this namespace: argument parsing, TTY output, exit codes, and local file I/O only. Anything the CLI can do is reachable programmatically with identical semantics. KyGit is the brand, a vault is the resource, and a repo is what you have: the SDK namespace (`r.repos`), the CLI noun (`run402 repos`), and the MCP tools (`repos_*`) share one name, while protocol-level types and crypto are `Vault*`.
 
 **What Run402 claims about it.** These are the entire approved claims vocabulary:
 
-1. **Run402 cannot decrypt your gitvault or repository history. Deployment artifacts remain a disclosed plaintext custody boundary.** Cryptographic, against Run402 itself: source payload and repository-history content are ciphertext-only; the substrate retains only enumerated plaintext metadata and holds zero vault keys.
+1. **Run402 cannot decrypt your vault or repository history. Deployment artifacts remain a disclosed plaintext custody boundary.** Cryptographic, against Run402 itself: source payload and repository-history content are ciphertext-only; the substrate retains only enumerated plaintext metadata and holds zero vault keys.
 2. **Activation requires vault admission by default; an explicit, audited override can bypass it.** An operational platform invariant, not a cryptographic one.
 3. **Retention is an operational promise of the platform, not a cryptographic guarantee against it** (the host controls timestamps and bytes).
 
-**Isomorphic / Node split.** Vault reads need nothing but the HTTP client and run anywhere. The verbs that touch a git working tree or the on-disk keystore are Node-only and are reached through DYNAMIC imports, so importing `@run402/sdk` in a browser or worker never pulls `node:fs` into the graph. Calling a Node-only verb outside Node throws a `LocalError` with code `GITVAULT_NODE_ONLY` rather than a module-resolution crash.
+**Isomorphic / Node split.** Vault reads need nothing but the HTTP client and run anywhere. The verbs that touch a git working tree or the on-disk keystore are Node-only and are reached through DYNAMIC imports, so importing `@run402/sdk` in a browser or worker never pulls `node:fs` into the graph. Calling a Node-only verb outside Node throws a `LocalError` with code `VAULT_NODE_ONLY` rather than a module-resolution crash.
 
 Read side (isomorphic — `@run402/sdk` or `@run402/sdk/node`):
 
 ```
-get(repoId): Promise<GitvaultVaultRecord>                          // the vault record: policy, allocation generation, storage + maintenance state
-forProject(projectId): Promise<GitvaultVaultRecord>                 // cold-restart lookup — resolve repo_id with no local state
-forRepo({ org_slug, repo_name }): Promise<GitvaultVaultRecord>      // D6: resolve a slug-form address (GET /gitvault/v1/vaults?repo=<org-slug>/<name>)
-resolveAddress(address): Promise<GitvaultVaultRecord>               // D6: dispatch a parsed remote address on its form (id -> forProject, slug -> forRepo); pure read, no pin, no create
-heads(repoId, { after_generation, limit, cursor? }): Promise<GitvaultHeadsListingPage>
+get(repoId): Promise<VaultRecord>                          // the vault record: policy, allocation generation, storage + maintenance state
+forProject(projectId): Promise<VaultRecord>                 // cold-restart lookup — resolve repo_id with no local state
+forRepo({ org_slug, repo_name }): Promise<VaultRecord>      // D6: resolve a slug-form address (GET /vaults/v1?repo=<org-slug>/<name>)
+resolveAddress(address): Promise<VaultRecord>               // D6: dispatch a parsed remote address on its form (id -> forProject, slug -> forRepo); pure read, no pin, no create
+heads(repoId, { after_generation, limit, cursor? }): Promise<VaultHeadsListingPage>
 allHeads(repoId, { after_generation, limit? }): Promise<{ heads, pages, total }>
-setPolicy(repoId, { gitvault_policy, reason? }): Promise<{ gitvault_policy, gitvault_policy_version, changed, warnings }>
+setPolicy(repoId, { vault_policy, reason? }): Promise<{ vault_policy, vault_policy_version, changed, warnings }>
 completeOverride(repoId, { operation_id, capture_receipt }): Promise<{ operation_id, advisory_cleared, generation, head_sha256 }>
-acquireMaintenanceLease(request): Promise<GitvaultMaintenanceLease>
-listByOrg(orgId): Promise<GitvaultOrgVaultsListing>                 // repo-surface-consolidation task 2.4: every vault the org owns, one round trip — `repos list`'s bulk read, FROZEN response shape
-access(opts?): Promise<GitvaultAccessResult>                        // READ-ONLY recipients + coverage + per-recipient envelope_state (converged/pending/pending_removal, from the gateway's desired-recipient-state substrate) + stale_access (removed members not yet revoked) + (Node-only, best-effort) this machine's local TOFU pins; never wraps a key. envelope_state_available is `true` against a gateway that ships desired[]; history_scope_available is `false` — gitvault v0 pins one fixed epoch, so there is no per-epoch scope to report. Honest `gap` string always explains exactly what's missing.
+acquireMaintenanceLease(request): Promise<VaultMaintenanceLease>
+listByOrg(orgId): Promise<VaultOrgVaultsListing>                 // repo-surface-consolidation task 2.4: every vault the org owns, one round trip — `repos list`'s bulk read, FROZEN response shape
+access(opts?): Promise<VaultAccessResult>                        // READ-ONLY recipients + coverage + per-recipient envelope_state (converged/pending/pending_removal, from the gateway's desired-recipient-state substrate) + stale_access (removed members not yet revoked) + (Node-only, best-effort) this machine's local TOFU pins; never wraps a key. envelope_state_available is `true` against a gateway that ships desired[]; history_scope_available is `false` — vault v0 pins one fixed epoch, so there is no per-epoch scope to report. Honest `gap` string always explains exactly what's missing.
 ```
 
 Write side (Node only — `@run402/sdk/node`; every one of these takes `{ repo_dir?, repo_id?, project_id? }`):
 
 ```
-init({ repo_dir, project_id, ... }): Promise<GitvaultInitResult>        // allocate + genesis; prints the one-shot recovery receipt
-openOrCreate({ project_id, org_id?, repo_dir?, ... }): Promise<GitvaultOpenOrCreateResult>  // D2: open, or allocate-then-open when org_id is supplied and the project has no vault yet — byte-identical to open() without org_id
-resolveOrCreateAddress({ address, repo_dir?, allow_create?, onVaultCreated?, ... }): Promise<GitvaultOpenOrCreateResult & { resolution }>  // D6: resolve a parsed remote address to an open handle, pinning repo_id in local git state on the first successful SLUG-form resolution (task 4.5); allow_create push-to-creates on a slug-form miss (task 4.4). SLUG_RELEASED never auto-follows.
-push({ org_id?, address?, onVaultCreated?, snapshot?: { message?, ... }, checkpoint?, ... }): Promise<GitvaultPublishResult & { snapshot, gitvault_commit, gitvault_commit_line }>  // composes openOrCreate internally when org_id is passed (D2 lazy allocation); composes resolveOrCreateAddress when address is passed instead (D6)
-handoff({ project_id?, repo_id?, note, role?, ttlSeconds?, includeSensitive?, onCommitLine? }): Promise<GitvaultHandoffMintResult>  // kygit-handoff: captures the working tree into a stash-shaped checkpoint, pushes it as a retention root, mints a single-use bearer kgh1_… key — the ONLY copy is `.handoff_key`
-resume({ key, to?, onLine? }): Promise<GitvaultHandoffResumeResult>     // kygit-handoff: claims the key (same-principal replay dedups safely), clones fresh, restores with `git stash apply --index`
-listHandoffs(target): Promise<GitvaultHandoffListResult>               // outstanding handoffs on a vault
+init({ repo_dir, project_id, ... }): Promise<VaultInitResult>        // allocate + genesis; prints the one-shot recovery receipt
+openOrCreate({ project_id, org_id?, repo_dir?, ... }): Promise<VaultOpenOrCreateResult>  // D2: open, or allocate-then-open when org_id is supplied and the project has no vault yet — byte-identical to open() without org_id
+resolveOrCreateAddress({ address, repo_dir?, allow_create?, onVaultCreated?, ... }): Promise<VaultOpenOrCreateResult & { resolution }>  // D6: resolve a parsed remote address to an open handle, pinning repo_id in local git state on the first successful SLUG-form resolution (task 4.5); allow_create push-to-creates on a slug-form miss (task 4.4). SLUG_RELEASED never auto-follows.
+capture({ org_id?, address?, onVaultCreated?, snapshot?: { message?, ... }, checkpoint?, ... }): Promise<VaultPublishResult & { snapshot, vault_commit, vault_commit_line }>  // composes openOrCreate internally when org_id is passed (D2 lazy allocation); composes resolveOrCreateAddress when address is passed instead (D6)
+handoff({ project_id?, repo_id?, note, role?, ttlSeconds?, includeSensitive?, onCommitLine? }): Promise<VaultHandoffMintResult>  // kygit-handoff: captures the working tree into a stash-shaped checkpoint, pushes it as a retention root, mints a single-use bearer kgh1_… key — the ONLY copy is `.handoff_key`
+resume({ key, to?, onLine? }): Promise<VaultHandoffResumeResult>     // kygit-handoff: claims the key (same-principal replay dedups safely), clones fresh, restores with `git stash apply --index`
+listHandoffs(target): Promise<VaultHandoffListResult>               // outstanding handoffs on a vault
 revokeHandoff(handoffId, target): Promise<{ handoff_id, state }>       // kill one before it's claimed
-invite({ project_id?, repo_id?, note, roomKey?, role?, ttlSeconds?, includeSensitive?, onCommitLine?, program?, model?, sessionKey?, task? }): Promise<GitvaultInviteMintResult>  // kygit-invite: same capture as handoff() PLUS registers the inviter's own presence in the invite's room before minting and posts ONE room fact after — mints a single-use bearer kgi1_… key, the ONLY copy is `.invite_key`
-join({ key, to?, onLine?, program?, model?, sessionKey?, recentMessagesLimit? }): Promise<GitvaultInviteJoinResult>  // kygit-invite: claims the key (same-principal replay dedups safely), clones fresh, restores with `git stash apply --index`, pins the invite's OWN room, registers this session's presence, posts ONE arrival fact, returns inviter/live_presences/cursor/recent_messages
-listInvites(target): Promise<GitvaultInviteListResult>                 // outstanding invites on a vault
+invite({ project_id?, repo_id?, note, roomKey?, role?, ttlSeconds?, includeSensitive?, onCommitLine?, program?, model?, sessionKey?, task? }): Promise<VaultInviteMintResult>  // kygit-invite: same capture as handoff() PLUS registers the inviter's own presence in the invite's room before minting and posts ONE room fact after — mints a single-use bearer kgi1_… key, the ONLY copy is `.invite_key`
+join({ key, to?, onLine?, program?, model?, sessionKey?, recentMessagesLimit? }): Promise<VaultInviteJoinResult>  // kygit-invite: claims the key (same-principal replay dedups safely), clones fresh, restores with `git stash apply --index`, pins the invite's OWN room, registers this session's presence, posts ONE arrival fact, returns inviter/live_presences/cursor/recent_messages
+listInvites(target): Promise<VaultInviteListResult>                 // outstanding invites on a vault
 revokeInvite(inviteId, target): Promise<{ invite_id, state }>          // kill one before it's claimed
-status(opts?): Promise<GitvaultStatus>                                  // pass { refs: true } to also materialize the ref map + HEAD target; `pinned` reports the D6 id-pin (repo_id + resolved_from + room) when repo_dir names one; `messaging_cache_excluded` (kygit-invite) reports whether `.git/info/exclude` already carries `.run402/`. `repos view` never passes `refs: true` (design D3) — it stays side-effect-free by construction
-compact(opts?): Promise<GitvaultCompactResult>
-prune(opts?): Promise<GitvaultPruneResult>                              // plan; pass { submit } with both verifier receipts to submit
-verify(opts?: { persist? }): Promise<GitvaultVerifiedState>             // persist defaults true; false walks + verifies the same way but writes neither local pin
-fsck(opts?: { write?, mirror? }): Promise<GitvaultFsckResult>           // repo-surface-consolidation D2/D3: `repos fsck`'s primitive — verify + materialize + explicit pin_before/pin_after/local_state_changed; write:false is the `--no-write` audit mode (computes the real answer, persists nothing); mirror:true also runs mirrorVerify and folds its report in
-deploy(opts): Promise<GitvaultDeployResult>                             // the push-gated deploy (raw; takes an injected lane — see applyWithGitvault below)
+status(opts?): Promise<VaultStatus>                                  // pass { refs: true } to also materialize the ref map + HEAD target; `pinned` reports the D6 id-pin (repo_id + resolved_from + room) when repo_dir names one; `messaging_cache_excluded` (kygit-invite) reports whether `.git/info/exclude` already carries `.run402/`. `repos view` never passes `refs: true` (design D3) — it stays side-effect-free by construction
+compact(opts?): Promise<VaultCompactResult>
+prune(opts?): Promise<VaultPruneResult>                              // plan; pass { submit } with both verifier receipts to submit
+verify(opts?: { persist? }): Promise<VaultVerifiedState>             // persist defaults true; false walks + verifies the same way but writes neither local pin
+fsck(opts?: { write?, mirror? }): Promise<VaultFsckResult>           // repo-surface-consolidation D2/D3: `repos fsck`'s primitive — verify + materialize + explicit pin_before/pin_after/local_state_changed; write:false is the `--no-write` audit mode (computes the real answer, persists nothing); mirror:true also runs mirrorVerify and folds its report in
+deploy(opts): Promise<VaultDeployResult>                             // the push-gated deploy (raw; takes an injected lane — see applyWithVault below)
 restore({ target_dir, ... }): Promise<{ refs, generation }>             // the clone-back path git-remote-run402 fetch drives; index-packs objects and leaves ref creation to the caller
-scaffoldRemote({ repo_dir, org_id, project_id, remote_name?, remote_url? }): Promise<GitvaultScaffoldRemoteResult>  // { name, url, created_repository, already_present, existing_url, reason } — D1: claims `origin` when free, falls back to `run402` when taken, never touches an existing remote either way
-open(opts?): Promise<GitvaultHandle>                                    // the raw protocol object, for ref transactions or repair
-drainOverrides(opts?): Promise<GitvaultOverrideDrainReport>
-recover({ source, out_dir, repo_id?, credential?, region?, endpoint?, recovery_receipt?, member_bundle?, source_recovery_code?, rp_id? }): Promise<GitvaultRecoverResult>
+scaffoldRemote({ repo_dir, org_id, project_id, remote_name?, remote_url? }): Promise<VaultScaffoldRemoteResult>  // { name, url, created_repository, already_present, existing_url, reason } — D1: claims `origin` when free, falls back to `run402` when taken, never touches an existing remote either way
+open(opts?): Promise<VaultHandle>                                    // the raw protocol object, for ref transactions or repair
+drainOverrides(opts?): Promise<VaultOverrideDrainReport>
+recover({ source, out_dir, repo_id?, credential?, region?, endpoint?, recovery_receipt?, member_bundle?, source_recovery_code?, rp_id? }): Promise<VaultRecoverResult>
   // `r402s-recover`: rebuild a BARE git repository from a mirrored prefix, NO SERVER INVOLVED. Default decrypt identity is the keystore;
-  // gitvault-recovery-custody adds the human-member path — member_bundle (the exported r402s-member-recovery-bundle/v1; omitted, the
+  // vault-recovery-custody adds the human-member path — member_bundle (the exported r402s-member-recovery-bundle/v1; omitted, the
   // mirror's own member-recovery-bundles/ sidecars are tried) + source_recovery_code. A raw WebAuthn PRF output is NOT a supported input;
   // a code with no exported bundle refuses RECOVERY_BUNDLE_MISSING. recovery_receipt stays the trust anchor for every holder kind (pass
   // it explicitly when no keystore holds one; without any pin the result is labeled unauthenticated_salvage). A bundle-decrypted result
@@ -2130,10 +2130,10 @@ recover({ source, out_dir, repo_id?, credential?, region?, endpoint?, recovery_r
   // sidecars as UNVERIFIED availability hints in member_recovery_bundles[].
 ```
 
-**Multi-writer vaults (gitvault-multi-writer rev 47, protocol §4.15-§4.18).** A vault's writer set is CHAIN STATE, not a fixed genesis-creator key — `writer_set_pin` (in `GitvaultVaultRecord.writer_set` / the keystore's own local pin) is the freshly chain-verified set every read/push/rotation re-derives. Two doors admit a NEW writer: `add_writer_key{"writer"}` (an ALREADY-active writer admits an eligible org member — no grant/acceptance, the carrying head's own signer IS the authorization) and `add_writer_key{"handoff"}` (bearer-completable via `handoff()`/`resume()`, D4 of that change's own design — a grant minted at handoff time, a two-signature acceptance at claim time, self-signed by the NEW key). A key is NEVER re-addable once removed (`burnedWriterKeyIds`, protocol §4.15).
+**Multi-writer vaults (vault-multi-writer rev 47, protocol §4.15-§4.18).** A vault's writer set is CHAIN STATE, not a fixed genesis-creator key — `writer_set_pin` (in `VaultRecord.writer_set` / the keystore's own local pin) is the freshly chain-verified set every read/push/rotation re-derives. Two doors admit a NEW writer: `add_writer_key{"writer"}` (an ALREADY-active writer admits an eligible org member — no grant/acceptance, the carrying head's own signer IS the authorization) and `add_writer_key{"handoff"}` (bearer-completable via `handoff()`/`resume()`, D4 of that change's own design — a grant minted at handoff time, a two-signature acceptance at claim time, self-signed by the NEW key). A key is NEVER re-addable once removed (`burnedWriterKeyIds`, protocol §4.15).
 
 ```
-reconcile(opts?): Promise<GitvaultReconcileWriterAdmissionsResult>
+reconcile(opts?): Promise<VaultReconcileWriterAdmissionsResult>
   // Admits every eligible pending_writers[] candidate (active org membership at role
   // developer+, a published possession-verified signing key, not yet a writer) via a
   // fresh add_writer_key{"writer"} head per candidate. THIS session's own key must
@@ -2145,41 +2145,41 @@ reconcile(opts?): Promise<GitvaultReconcileWriterAdmissionsResult>
   // `writer_reconcile` field, never a throw.
 ```
 
-The push pre-check (every head-signing path — `push`, `deploy`, `rotateEpoch`, `repair`, `publishPinManifestUpdate`, and the `git-remote-run402` remote helper, which inherits it through `push()`) refuses LOCALLY, before any crypto/upload work, when this session's own key is not an active writer: `GITVAULT_WRITER_NOT_ADMITTED` (never was, or is no longer, admitted) or the more specific `GITVAULT_WRITER_REMOVED` (a CAS-loser retry that discovers removal by whatever won the race) — both carry a `request_writer_sync` next action ("any current writer's next vault operation admits pending writers automatically").
+The push pre-check (every head-signing path — `push`, `deploy`, `rotateEpoch`, `repair`, `publishPinManifestUpdate`, and the `git-remote-run402` remote helper, which inherits it through `push()`) refuses LOCALLY, before any crypto/upload work, when this session's own key is not an active writer: `VAULT_WRITER_NOT_ADMITTED` (never was, or is no longer, admitted) or the more specific `VAULT_WRITER_REMOVED` (a CAS-loser retry that discovers removal by whatever won the race) — both carry a `request_writer_sync` next action ("any current writer's next vault operation admits pending writers automatically").
 
-A membership removal is completed by the SURVIVORS, with no declaration and no owner step-up: `vault.rotateEpochForMemberRemoval()` (`r.gitvault.rotateEpochForMemberRemoval({ repo_id })`) reads the org's two D194 counters off the envelope-recipients read (`recipient_state_version` / `recipient_revocation_version` — the removal itself advanced them) and rotates under `reason:"member_removed"`, which needs `gitvault.writer` only; the rotation includes every surviving writer on its current directory key (pin or no pin) alongside confirmed pins. `push()` runs it automatically when the gate names an outstanding removal (`revocation_outstanding` / `writer_removal_outstanding` with no migration or exposure cause) — rotate, re-materialize, retry once — so a surviving writer's plain push simply lands; a gateway that does not carry the counters on that read refuses `GITVAULT_ROTATION_COUNTERS_UNAVAILABLE` and names the owner's `revoke-key` path instead.
+A membership removal is completed by the SURVIVORS, with no declaration and no owner step-up: `vault.rotateEpochForMemberRemoval()` (`r.repos.rotateEpochForMemberRemoval({ repo_id })`) reads the org's two D194 counters off the envelope-recipients read (`recipient_state_version` / `recipient_revocation_version` — the removal itself advanced them) and rotates under `reason:"member_removed"`, which needs `gitvault.writer` only; the rotation includes every surviving writer on its current directory key (pin or no pin) alongside confirmed pins. `push()` runs it automatically when the gate names an outstanding removal (`revocation_outstanding` / `writer_removal_outstanding` with no migration or exposure cause) — rotate, re-materialize, retry once — so a surviving writer's plain push simply lands; a gateway that does not carry the counters on that read refuses `VAULT_ROTATION_COUNTERS_UNAVAILABLE` and names the owner's `revoke-key` path instead.
 
 Writer removal rides `rotateEpoch` (never a standalone transition — a rekey and a removal are one atomic head, so a removed writer can never decrypt the epoch it was cut from): whenever `getVaultRecord`'s `ineligible_members[]` (a chain-recognized writer the gateway has flagged for removal — membership revoked, role dropped below developer, key revoked) is non-empty, `rotateEpoch` folds a `writer_set_update` into the SAME rotation head automatically, regardless of `reason` — closing the analogous `EPOCH_ROTATION_REQUIRED` deadlock `pending_confirmations` already closes on the recipient side. `reason: "writer_key_revoked"` is the new owner+step-up reason for a rotation whose PURPOSE is clearing an outstanding writer block. Removing the vault's LAST writer is refused (`EPOCH_ROTATION_WOULD_LEAVE_VAULT_UNCOVERED`) unless the caller passes `force_empty_writer_set: true` — the explicit acknowledgment for the declared read-only terminal (the vault keeps serving reads; nothing can push until a new writer is admitted through a recovery path). The result's `writers_removed[]` reports what a rotation removed (always present, empty when nothing needed removing).
 
-**D6 — named addressing (repo-first-onramp task 4).** `parseGitvaultRemoteUrl` already splits `run402::<a>/<b>`; `gitvaultRemoteAddressForm(address): "id" | "slug"` discriminates the two forms — id-form requires the org half to be a UUID AND the name half to be `prj_`-prefixed (real orgs/projects always satisfy both at once), anything else is slug-form. `gitvaultRemoteUrlForRepo(orgSlug, repoName)` builds the slug-form address string. `gitvaultSlugReleasedInfo(err): { successor_slug, released_at, cooldown_until } | null` extracts a `SLUG_RELEASED` refusal's typed detail — never auto-follow it. All four are pure, isomorphic exports of `gitvault.ts`.
+**D6 — named addressing (repo-first-onramp task 4).** `parseVaultRemoteUrl` already splits `run402::<a>/<b>`; `vaultRemoteAddressForm(address): "id" | "slug"` discriminates the two forms — id-form requires the org half to be a UUID AND the name half to be `prj_`-prefixed (real orgs/projects always satisfy both at once), anything else is slug-form. `vaultRemoteUrlForRepo(orgSlug, repoName)` builds the slug-form address string. `vaultSlugReleasedInfo(err): { successor_slug, released_at, cooldown_until } | null` extracts a `SLUG_RELEASED` refusal's typed detail — never auto-follow it. All four are pure, isomorphic exports of `repos.ts`.
 
 **D7 — the progressive terminal-loss warning, as pure functions.** `status()` folds these into `warnings[]` automatically (a `terminal_loss_risk` entry once tripped), but they are exported for any caller building its own surface:
 
 ```
-GITVAULT_LOSS_WARNING_THRESHOLDS: { generations: 10, source_bytes: 10 * 1024 * 1024, days_since_genesis: 14 }  // shipped defaults, tunable in this one place
-gitvaultLossWarningTrip(record, now?): { generations, source_bytes, days_since_genesis }  // which composite metric(s) crossed their threshold
-gitvaultLossWarningTripped(trip): boolean                               // any of the three
-gitvaultLossWarningMessage(trip): string                                // names what tripped; states the second-principal resolution honestly
+VAULT_LOSS_WARNING_THRESHOLDS: { generations: 10, source_bytes: 10 * 1024 * 1024, days_since_genesis: 14 }  // shipped defaults, tunable in this one place
+vaultLossWarningTrip(record, now?): { generations, source_bytes, days_since_genesis }  // which composite metric(s) crossed their threshold
+vaultLossWarningTripped(trip): boolean                               // any of the three
+vaultLossWarningMessage(trip): string                                // names what tripped; states the second-principal resolution honestly
 ```
 
 There is no companion "resolved" check — V0-A cannot detect a second principal (another keystore, or later a human envelope) demonstrably able to open the vault, so nothing here ever un-trips a standing warning.
 
-**D8 (kygit-handoff) — handoff/resume, and the `kygit::` scheme.** `handoff`/`resume` are a session PASS, not a snapshot restore: no shared keystore, no shared wallet, no server-side principal configured ahead of time. The Handoff Key, `kgh1_<base64url(handoff_id[16] ‖ master_secret[32])>` (69 chars), is assembled and parsed by isomorphic helpers exported from `sdk/src/node/gitvault-handoff.ts` — `assembleHandoffKey`/`parseHandoffKey`, `deriveHandoffSecrets` (HKDF-SHA256, salt = `handoff_id` bytes, deriving `auth_secret` — the gateway only ever receives its SHA-256 hash — and `wrap_key`), `sealHandoffEnvelope`/`openHandoffEnvelope` (a small XChaCha20-Poly1305 frame carrying the vault's live epoch key directly to the recipient — deliberately NOT an `r402s/v0` vault object: no JCS, no 7-field frameAad, its own `KGH1` frame format), and `scanHandoffNoteForSecrets`/`assertHandoffNoteHasNoSecret` (a Handoff Note is refused if it contains something that looks like a credential). `captureHandoffSnapshot` (`sdk/src/node/gitvault-snapshot.ts`) builds the synthetic 3-parent stash-shaped commit; `GITVAULT_HANDOFF_SENSITIVE_DENYLIST` is the 22-glob sensitive-path list applied to untracked files. `cloneGitvaultRemote`/`applyHandoffCheckpoint` (`sdk/src/node/gitvault-restore.ts`) do `resume`'s clone-and-restore half — `cloneGitvaultRemote` deliberately does NOT go through `hardenedGit` (whose `-c protocol.allow=never` would block it), because here the clone target IS the trusted vault remote, not an arbitrary caller-supplied URL.
+**D8 (kygit-handoff) — handoff/resume.** `handoff`/`resume` are a session PASS, not a snapshot restore: no shared keystore, no shared wallet, no server-side principal configured ahead of time. The Handoff Key, `kgh1_<base64url(handoff_id[16] ‖ master_secret[32])>` (69 chars), is assembled and parsed by isomorphic helpers exported from `sdk/src/node/vault-handoff.ts` — `assembleHandoffKey`/`parseHandoffKey`, `deriveHandoffSecrets` (HKDF-SHA256, salt = `handoff_id` bytes, deriving `auth_secret` — the gateway only ever receives its SHA-256 hash — and `wrap_key`), `sealHandoffEnvelope`/`openHandoffEnvelope` (a small XChaCha20-Poly1305 frame carrying the vault's live epoch key directly to the recipient — deliberately NOT an `r402s/v0` vault object: no JCS, no 7-field frameAad, its own `KGH1` frame format), and `scanHandoffNoteForSecrets`/`assertHandoffNoteHasNoSecret` (a Handoff Note is refused if it contains something that looks like a credential). `captureHandoffSnapshot` (`sdk/src/node/vault-snapshot.ts`) builds the synthetic 3-parent stash-shaped commit; `VAULT_HANDOFF_SENSITIVE_DENYLIST` is the 22-glob sensitive-path list applied to untracked files. `cloneVaultRemote`/`applyHandoffCheckpoint` (`sdk/src/node/vault-restore.ts`) do `resume`'s clone-and-restore half — `cloneVaultRemote` deliberately does NOT go through `hardenedGit` (whose `-c protocol.allow=never` would block it), because here the clone target IS the trusted vault remote, not an arbitrary caller-supplied URL.
 
-`gitvaultRemoteUrl(orgId, projectId)`/`gitvaultRemoteUrlForRepo(orgSlug, repoName)` render `kygit::` instead of `run402::` whenever `gitvaultRemoteScheme()` reads `process.env.RUN402_REMOTE_SCHEME === "kygit"` — a pure client-side rendering choice; `parseGitvaultRemoteUrl` accepts either prefix into the identical scheme-less `{ org_id, project_id }` address, so every gateway-facing call, resolve, and pin is unaffected by which door a request came through.
+`vaultRemoteUrl(orgId, projectId)`/`vaultRemoteUrlForRepo(orgSlug, repoName)` render `run402::`, the one remote scheme; `parseVaultRemoteUrl` accepts `run402::` only and throws `REMOTE_SCHEME_UNSUPPORTED` (naming the scheme) for any other `<scheme>::` address.
 
-**D9 (kygit-invite) — invite/join, a second redeem kind beside handoff.** `sdk/src/node/gitvault-handoff.ts` is kind-parameterized (`RedeemKind = "handoff" | "invite"`) without renaming a single shipped export: `HANDOFF_KEY_PREFIXES` gains `kgi1_`/`invite`/`join` as its second row; `parseRedeemKey(raw, expectedKind)` is the one parser, with `parseHandoffKey`/`parseInviteKey` as kind-bound aliases; `assembleInviteKey`/`deriveInviteSecrets`/`sealInviteEnvelope`/`openInviteEnvelope`/`scanInviteNoteForSecrets`/`assertInviteNoteHasNoSecret` are the invite-kind siblings of every handoff export, sharing the SAME HKDF/AEAD primitives with kind-embedded domain separation (`kygit/invite/auth/v1`, `kygit/invite/wrap/v1`, `kygit/invite/auth-hash/v1` — an invite secret never verifies as a handoff hash, or the reverse) and a THIRD envelope frame, `KGI1` (payload `kygit-invite-envelope-v1`, `note_schema: "kygit.invite-note.v1"`), distinct from both `r402s/v0`'s object frame and the handoff bridge's own `KGH1`. A recognized prefix of the WRONG kind refuses BY NAME pointing at its own verb (`HANDOFF_KEY_WRONG_KIND` from `join()` handed a `kgh1_…` key; `INVITE_KEY_WRONG_KIND` from `resume()` handed a `kgi1_…` key) — synchronously, before any network call. `Gitvault.invite()` registers the inviter's OWN presence (`new Rooms(this.#client)`, constructed inline since `rooms` is not otherwise exposed on `Gitvault`) BEFORE minting so the row can carry `inviter_presence_id`, and posts the room message AFTER a successful mint — a presence or message-post failure is reported (`inviter_presence`/`room_message` on the result) and never voids the mint. `Gitvault.join()` mirrors `resume()`'s exact shape (bare-wallet backstop via `#ensureLocalWallet`; the caller folds the fuller cold-start chain before calling), additionally pinning the invite's OWN room (`pinGitvaultRepo`'s `ids.room_key`) and appending `.run402/` to `.git/info/exclude` via `excludeMessagingCacheFromGit` (`sdk/src/node/gitvault-restore.ts`, NEVER `.gitignore` — `resume()` gained the identical call, since restore is kind-agnostic). `errors.ts`'s `NextActionType` gains `join_invite` (door-aware via `gitvaultRemoteScheme()` — `kygit join …` vs `run402 repos join …`), `revoke_invite`, `wait_room`, `send_room_message`.
+**D9 (kygit-invite) — invite/join, a second redeem kind beside handoff.** `sdk/src/node/vault-handoff.ts` is kind-parameterized (`RedeemKind = "handoff" | "invite"`) without renaming a single shipped export: `HANDOFF_KEY_PREFIXES` gains `kgi1_`/`invite`/`join` as its second row; `parseRedeemKey(raw, expectedKind)` is the one parser, with `parseHandoffKey`/`parseInviteKey` as kind-bound aliases; `assembleInviteKey`/`deriveInviteSecrets`/`sealInviteEnvelope`/`openInviteEnvelope`/`scanInviteNoteForSecrets`/`assertInviteNoteHasNoSecret` are the invite-kind siblings of every handoff export, sharing the SAME HKDF/AEAD primitives with kind-embedded domain separation (`kygit/invite/auth/v1`, `kygit/invite/wrap/v1`, `kygit/invite/auth-hash/v1` — an invite secret never verifies as a handoff hash, or the reverse) and a THIRD envelope frame, `KGI1` (payload `kygit-invite-envelope-v1`, `note_schema: "kygit.invite-note.v1"`), distinct from both `r402s/v0`'s object frame and the handoff bridge's own `KGH1`. A recognized prefix of the WRONG kind refuses BY NAME pointing at its own verb (`HANDOFF_KEY_WRONG_KIND` from `join()` handed a `kgh1_…` key; `INVITE_KEY_WRONG_KIND` from `resume()` handed a `kgi1_…` key) — synchronously, before any network call. `Repos.invite()` registers the inviter's OWN presence (`new Rooms(this.#client)`, constructed inline since `rooms` is not otherwise exposed on `Repos`) BEFORE minting so the row can carry `inviter_presence_id`, and posts the room message AFTER a successful mint — a presence or message-post failure is reported (`inviter_presence`/`room_message` on the result) and never voids the mint. `Repos.join()` mirrors `resume()`'s exact shape (bare-wallet backstop via `#ensureLocalWallet`; the caller folds the fuller cold-start chain before calling), additionally pinning the invite's OWN room (`pinVaultRepo`'s `ids.room_key`) and appending `.run402/` to `.git/info/exclude` via `excludeMessagingCacheFromGit` (`sdk/src/node/vault-restore.ts`, NEVER `.gitignore` — `resume()` gained the identical call, since restore is kind-agnostic). `errors.ts`'s `NextActionType` gains `join_invite` (`run402 repos join …`), `revoke_invite`, `wait_room`, `send_room_message`.
 
 **The wait verb — `rooms.waitForMessages` (kygit-invite design D6/D7).** `Rooms.waitForMessages(orgId, roomKey, opts)` calls `listMessages` with `wait=<1..25>` (gateway-clamped) and decides its next poll interval BY EVIDENCE on every read: a page carrying `waited_ms` proves the gateway held the request, so the next call is a zero-sleep held re-read; a page with NO `waited_ms` proves an older gateway that ignored the parameter, so the client falls back to bounded polling (`pollMs`, default 5000, floored at 1000 — the same anti-hammering floor the shared `waitFor` helper applies) until `timeoutMs` (default 120000) is exhausted. Silence is an answer, never a throw: on timeout the LAST OBSERVED (empty) page returns with `settled: false` and the unchanged cursor. `live_presences` comes from the held page's own rider when present, else one best-effort `listPresences` fallback read. `ScopedRoom.waitForMessages` grant keys with `(orgId, roomKey)` pre-bound.
 
 ```ts
-const minted = await r.gitvault.invite({
+const minted = await r.repos.invite({
   project_id: projectId,
   note: { schema: "kygit.invite-note.v1", created_at: new Date().toISOString(), from: { agent: "claude" }, summary: "bringing in a second agent to pair on the parser" },
 });
 console.log(minted.invite_key); // kgi1_… — print it ALONE, this is the only copy
 
-const joined = await r.gitvault.join({ key: "kgi1_…" });
+const joined = await r.repos.join({ key: "kgi1_…" });
 console.log(joined.inviter?.name, joined.restored.dir);
 
 const heard = await r.rooms.waitForMessages(joined.membership.organization_id, joined.room.room_key, { presenceId: "prs_…" });
@@ -2191,17 +2191,17 @@ import { run402 } from "@run402/sdk/node";
 const r = run402();
 
 // Read side — runs anywhere, including a browser or a worker.
-const vault = await r.gitvault.forProject("prj_123");   // cold restart: no local state needed
-const page  = await r.gitvault.heads(vault.repo_id, { after_generation: "0000000000000001", limit: "100" });
+const vault = await r.repos.forProject("prj_123");   // cold restart: no local state needed
+const page  = await r.repos.heads(vault.repo_id, { after_generation: "0000000000000001", limit: "100" });
 
 // Write side — Node only (keystore + git working tree).
-const pushed = await r.gitvault.push({ project_id: "prj_123", snapshot: { message: "wip: refactor the parser" } });
-const state  = await r.gitvault.verify({ project_id: "prj_123" });
+const pushed = await r.repos.capture({ project_id: "prj_123", snapshot: { message: "wip: refactor the parser" } });
+const state  = await r.repos.verify({ project_id: "prj_123" });
 
-// A REAL preview of what push() would publish (kychee-com/run402#565) — the same local
+// A REAL preview of what capture() would publish (kychee-com/run402#565) — the same local
 // pipeline (capture, pack building, encryption sizing), stopping before either network
-// mutation. `run402 repos snapshot --dry-run` is a thin adapter over this.
-const plan = await r.gitvault.planPush({ project_id: "prj_123" });
+// mutation. `run402 repos capture --dry-run` is a thin adapter over this.
+const plan = await r.repos.planCapture({ project_id: "prj_123" });
 if (plan.allocation_needed) {
   // No vault yet — a real push/snapshot would allocate one first; sizing is unknowable until then.
 } else {
@@ -2212,54 +2212,54 @@ if (plan.allocation_needed) {
 
 `heads` paging (D186): `after_generation` is the REQUIRED verification anchor — a semantic input, never a paging knob — and must stay CONSTANT across a page sequence. `limit` is required. `cursor` is omitted on the first request and is then the prior page's `next_cursor` echoed UNCHANGED. `allHeads` is the convenience wrapper that walks the sequence for you.
 
-#### Deploying a vaulted project — `applyWithGitvault`
+#### Deploying a vaulted project — `applyWithVault`
 
-`r.gitvault.deploy(...)` is the raw push-gated machine and takes an injected lane. `applyWithGitvault` (`@run402/sdk/node`) is the supplied one: it reads the project's `gitvault_policy`, and only a `required` project captures at all.
+`r.repos.deploy(...)` is the raw push-gated machine and takes an injected lane. `applyWithVault` (`@run402/sdk/node`) is the supplied one: it reads the project's `vault_policy`, and only a `required` project captures at all.
 
 ```ts
-import { applyWithGitvault, run402 } from "@run402/sdk/node";
+import { applyWithVault, run402 } from "@run402/sdk/node";
 import type { ReleaseSpec } from "@run402/sdk";
 const r = run402();
 const spec: ReleaseSpec = { project_id: "prj_123", site: { replace: { "index.html": "<h1>hi</h1>" } } };
 
-const { mode, deploy, gitvault } = await applyWithGitvault({
+const { mode, deploy, vault } = await applyWithVault({
   sdk: r,
   spec,                                     // the same ReleaseSpec `r.project(id).apply` takes
   apply: { idempotencyKey: "deploy-42" },   // the same options, passed through untouched
   repo_dir: process.cwd(),
-  onCommitLine: (line) => process.stderr.write(`${line}\n`),   // `gitvault_commit <oid>`
+  onCommitLine: (line) => process.stderr.write(`${line}\n`),   // `vault_commit <oid>`
 });
 
-if (gitvault?.outcome === "DEPLOYED_AND_VAULTED") {
+if (vault?.outcome === "DEPLOYED_AND_VAULTED") {
   console.log(mode.kind, deploy?.operation_id);   // `deploy` is the usual DeployResult
 }
 ```
 
-`mode` says what happened about the vault: `{ kind: "vaulted" }`, `{ kind: "grandfathered" }`, `{ kind: "ungated" }`, or `{ kind: "none" }`. For anything but `vaulted` this is `apply()` and nothing else — no capture, no token, no added refusal, and the only added cost is the single policy read that determined the project is not `required`. `gitvault` is `null` on those paths and carries the five-outcome envelope on the vaulted one.
+`mode` says what happened about the vault: `{ kind: "vaulted" }`, `{ kind: "grandfathered" }`, `{ kind: "ungated" }`, or `{ kind: "none" }`. For anything but `vaulted` this is `apply()` and nothing else — no capture, no token, no added refusal, and the only added cost is the single policy read that determined the project is not `required`. `vault` is `null` on those paths and carries the five-outcome envelope on the vaulted one.
 
-**`ungated` is the ordinary shape for a project whose vault was just allocated (design D3).** Allocation does not set `gitvault_policy` — allocation and activation-gating are separate acts, and the policy stays unset until an owner chooses. On this path the plain deploy runs untouched, but `deploy.next_actions` gains a `gitvault_policy_required` entry (`{ type, command: "run402 repos policy required", why }`) and `deploy.warnings` gains a `GITVAULT_POLICY_UNSET` entry — both attached on EVERY such deploy, not just a synthesized "first" one, since the client holds no cross-machine state to distinguish first-from-Nth. Neither ever blocks or prompts. `gitvaultPolicyRequiredNextAction(repoId)` and `gitvaultUngatedWarning(repoId)` (`@run402/sdk/node`) are the exported builders, for a caller composing its own lane.
+**`ungated` is the ordinary shape for a project whose vault was just allocated (design D3).** Allocation does not set `vault_policy` — allocation and activation-gating are separate acts, and the policy stays unset until an owner chooses. On this path the plain deploy runs untouched, but `deploy.next_actions` gains a `vault_policy_required` entry (`{ type, command: "run402 repos policy required", why }`) and `deploy.warnings` gains a `VAULT_POLICY_UNSET` entry — both attached on EVERY such deploy, not just a synthesized "first" one, since the client holds no cross-machine state to distinguish first-from-Nth. Neither ever blocks or prompts. `vaultPolicyRequiredNextAction(repoId)` and `vaultUngatedWarning(repoId)` (`@run402/sdk/node`) are the exported builders, for a caller composing its own lane.
 
 **A vaulted apply never auto-retries.** Each attempt plans a new operation, and an activation token is minted for exactly one; retrying under a fresh capture would paper over a refusal (revoked, expired, bound elsewhere) that is the platform telling you something true. `maxRetries` is forced to 0 on this path.
 
 **A noop deploy settles its token too (protocol rev 45).** Re-deploying byte-identical content on a `required` project still captures, pushes, and mints — the vault records the new source generation — and the commit terminalizes as a noop. The gateway consumes the presented token at that terminal, under the same locks and refusal taxonomy as a real activation, so the platform-side record matches the `DEPLOYED_AND_VAULTED` the lane reports and no token is ever left unresolved. A token a repair revoked, or a DR epoch change invalidated, refuses the noop commit with the gate's usual typed errors.
 
-**Snapshot correspondence, and its exact scope.** The client digests the captured file set at capture and re-derives it after artifacts are collected, before the plan commits. A difference refuses the deploy with **`SNAPSHOT_MOVED_DURING_DEPLOY`** — a `LocalError` whose `details` name the `modified` / `added` / `removed` paths plus the `gitvault_commit`, `capture_id`, and both digests. It is **client-local**: it is detected before anything is committed, never crosses the wire, and therefore is not in the protocol's error registry. The client refuses and stops; it does not re-capture and continue, because a second capture would publish a snapshot whose relationship to the already-collected artifacts is exactly the thing in doubt.
+**Snapshot correspondence, and its exact scope.** The client digests the captured file set at capture and re-derives it after artifacts are collected, before the plan commits. A difference refuses the deploy with **`SNAPSHOT_MOVED_DURING_DEPLOY`** — a `LocalError` whose `details` name the `modified` / `added` / `removed` paths plus the `vault_commit`, `capture_id`, and both digests. It is **client-local**: it is detected before anything is committed, never crosses the wire, and therefore is not in the protocol's error registry. The client refuses and stops; it does not re-capture and continue, because a second capture would publish a snapshot whose relationship to the already-collected artifacts is exactly the thing in doubt.
 
 The captured set is tracked plus untracked-but-not-ignored — so a build that rewrites gitignored output between capture and commit proceeds, by design. **What the vault records is the source a release corresponds to; the artifacts are not proven to be derived from it.** The guarantee is that the captured source did not change while the artifacts were produced, not that the artifacts are a reproducible function of that source.
 
 `captureSnapshot()` carries the same set on every snapshot: `snapshot.captured` (`{path, mode, oid}[]`) and `snapshot.captured_digest`. `deriveCapturedSet({ top_level, global_excludes_path })`, `capturedSetDigest(files)`, and `diffCapturedSets(before, after)` are exported for callers building their own lane.
 
-**A `required` project needs the vault keystore on the deploying machine** — the capture is encrypted client-side and the platform holds no key that could produce it. Without it the deploy refuses with the protocol's own `KEYSTORE_MISSING` / `GITVAULT_REPO_STATE_MISSING`, with next actions leading on restoring the keystore and on `setPolicy(repoId, { gitvault_policy: "grandfathered", reason })` (owner + step-up, audited, doctor-persistent advisory).
+**A `required` project needs the vault keystore on the deploying machine** — the capture is encrypted client-side and the platform holds no key that could produce it. Without it the deploy refuses with the protocol's own `KEYSTORE_MISSING` / `VAULT_REPO_STATE_MISSING`, with next actions leading on restoring the keystore and on `setPolicy(repoId, { vault_policy: "grandfathered", reason })` (owner + step-up, audited, doctor-persistent advisory).
 
 **Nothing here is memoised.** Two of these responses are secret-bearing — the maintenance lease's `holder_token` (returned exactly once) and anything derived from the keystore — and a secret-bearing response is never cached, never persisted into an agent-surface result store, and never logged.
 
-`gitvaultRemoteUrl(orgId, projectId)` and `parseGitvaultRemoteUrl(url)` are exported helpers for the `run402::<org_id>/<project_id>` remote URL form that `git-remote-run402` serves — see D8 above for the `kygit::` door.
+`vaultRemoteUrl(orgId, projectId)` and `parseVaultRemoteUrl(url)` are exported helpers for the `run402::<org_id>/<project_id>` remote URL form that `git-remote-run402` serves.
 
 **`status()` never mutates and never mints.** It READS the keystore rather than calling `ensureIdentity()`, so observing a vault cannot create the key material it is reporting on. Its `keystore.root` / `keystore.paths` name the directory to back up (see terminal loss below), `remote` reports the local `run402` git remote and whether it points at THIS vault, and `refs` / `head_target` are `null` unless `{ refs: true }` was passed — reading the ref map means materializing the chain, which is a verification and advances the local materialized pin.
 
 **`resolveGitInvocationRepo(env?, cwd?)`** (Node) resolves — and proves — the repository git invoked a remote helper for, from `GIT_DIR` rather than `process.cwd()`, and throws `GIT_INVOCATION_REPO_UNRESOLVED` rather than guessing. Any consumer that writes git objects on git's behalf should route through it: during `git clone`, cwd is the directory clone was run FROM, which is routinely an unrelated repository.
 
-**Terminal loss (protocol §0).** In V0-A, **whole-machine or whole-keystore loss is terminal for vault history until human envelopes ship**. `status()` carries the statement verbatim in `terminal_loss_statement` / `terminal_loss_detail`. The vault protects source history from host-side loss while a principal keystore survives. Back up the keystore directory `status()` reports as `keystore.root` — `~/.config/run402/gitvault` for the default wallet, `~/.config/run402/profiles/<wallet>/gitvault` for a named one. The recovery receipt is an integrity anchor, not a decryption key. The prominence of this reminder is progressive (design D7): quiet at genesis, escalating to a standing `terminal_loss_risk` entry in `status().warnings` once the composite trigger crosses — see the pure `gitvaultLossWarning*` helpers above.
+**Terminal loss (protocol §0).** In V0-A, **whole-machine or whole-keystore loss is terminal for vault history until human envelopes ship**. `status()` carries the statement verbatim in `terminal_loss_statement` / `terminal_loss_detail`. The vault protects source history from host-side loss while a principal keystore survives. Back up the keystore directory `status()` reports as `keystore.root` — `~/.config/run402/vault` for the default wallet, `~/.config/run402/profiles/<wallet>/vault` for a named one. The recovery receipt is an integrity anchor, not a decryption key. The prominence of this reminder is progressive (design D7): quiet at genesis, escalating to a standing `terminal_loss_risk` entry in `status().warnings` once the composite trigger crosses — see the pure `vaultLossWarning*` helpers above.
 
 `r402s-verify` is the deliberate exception to "all protocol logic lives in the SDK": an independent second lineage that must NOT share implementation code with this namespace, because differential verification is its entire purpose.
 
@@ -2415,9 +2415,9 @@ status(): Promise<TierStatusResult>
 
 Tier is per **organization**, not per project. `set` applies to every project on the
 organization; `status.pool_usage` (`projects`, `total_api_calls`, `total_storage_bytes`,
-`gitvault_source_bytes`, `api_calls_limit`, `storage_bytes_limit`, `source_bytes_limit`, each
+`vault_source_bytes`, `api_calls_limit`, `storage_bytes_limit`, `source_bytes_limit`, each
 byte count beside its human string under the same name with `_bytes` removed:
-`total_storage`, `gitvault_source`, `storage_limit`, `source_limit`) sums across every non-terminal project on the
+`total_storage`, `vault_source`, `storage_limit`, `source_limit`) sums across every non-terminal project on the
 organization — including every wallet linked to it via `billing.linkWallet` — not
 just the requesting wallet. Use the returned `pool_usage` as the authoritative quota-
 enforcement view; per-project `r.projects.getUsage(id)` reports the same organization-level

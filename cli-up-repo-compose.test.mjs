@@ -52,20 +52,20 @@ mock.module("./cli/lib/sdk.mjs", {
           return (impl.projectsList ?? (async () => ({ projects: [{ id: PROJECT, org_id: ORG }] })))();
         },
       },
-      gitvault: {
+      repos: {
         scaffoldRemote: async (input) => {
-          calls.push({ method: "gitvault.scaffoldRemote", input });
+          calls.push({ method: "repos.scaffoldRemote", input });
           return (impl.scaffoldRemote ?? (async () => ({
             status: "scaffolded", name: "run402", url: `run402::${input.org_id}/${input.project_id}`,
             created_repository: false, already_present: false, existing_url: null,
             reason: "no existing 'run402' remote — added",
           })))(input);
         },
-        push: async (input) => {
-          calls.push({ method: "gitvault.push", input });
-          return (impl.push ?? (async () => ({
+        capture: async (input) => {
+          calls.push({ method: "repos.capture", input });
+          return (impl.capture ?? (async () => ({
             generation: "0000000000000000", form: "wal", head_sha256: "abc",
-            snapshot: { oid: "x".repeat(40), kind: "synthetic" }, gitvault_commit: "x".repeat(40), gitvault_commit_line: "gitvault_commit " + "x".repeat(40),
+            snapshot: { oid: "x".repeat(40), kind: "synthetic" }, vault_commit: "x".repeat(40), vault_commit_line: "vault_commit " + "x".repeat(40),
           })))(input);
         },
       },
@@ -135,25 +135,25 @@ describe("run402 up — default apply composes the repo as a best-effort additio
     // HEAD naming a ref that does not exist yet.
     assert.equal(git(dir, ["symbolic-ref", "HEAD"]), "refs/heads/main");
     assert.ok(calls.find((c) => c.method === "up"), "the existing deploy flow still ran unchanged");
-    assert.ok(calls.find((c) => c.method === "gitvault.scaffoldRemote"), "the remote was scaffolded after deploy");
-    assert.ok(calls.find((c) => c.method === "gitvault.push"), "the first push ran after deploy");
+    assert.ok(calls.find((c) => c.method === "repos.scaffoldRemote"), "the remote was scaffolded after deploy");
+    assert.ok(calls.find((c) => c.method === "repos.capture"), "the first push ran after deploy");
     assert.equal(payload.result.repo.status, "scaffolded");
-    assert.equal(payload.result.repo.gitvault.name, "run402");
+    assert.equal(payload.result.repo.vault.name, "run402");
     assert.ok(payload.result.repo.first_push, "first_push is attached to the result");
     // A repository up just created is all-untracked by definition: the first
     // push captures it as a synthetic commit instead of refusing SNAPSHOT_DIRTY_TREE.
-    const pushCall = calls.find((c) => c.method === "gitvault.push");
+    const pushCall = calls.find((c) => c.method === "repos.capture");
     assert.equal(pushCall.input.snapshot?.allowDirty, true);
     assert.equal(payload.result.repo.first_push.captured_dirty, true);
     assert.equal(payload.result.repo.first_push.snapshot.kind, "synthetic");
     assert.equal(payload.result.repo.first_push.snapshot.backup_status, "succeeded");
     assert.equal(payload.result.repo.local_git.unborn, true);
     assert.equal(payload.result.repo.local_git.head, null);
-    // gitvault.scaffoldRemote is mocked (returns canned data, touches no real
+    // repos.scaffoldRemote is mocked (returns canned data, touches no real
     // git config); what is under test is that the CLI called it with the
     // right target and reported its answer, not the SDK's own git plumbing
-    // (that is sdk/src/namespaces/gitvault-scaffold-remote.test.ts's job).
-    const scaffoldCall = calls.find((c) => c.method === "gitvault.scaffoldRemote");
+    // (that is sdk/src/namespaces/repos-scaffold-remote.test.ts's job).
+    const scaffoldCall = calls.find((c) => c.method === "repos.scaffoldRemote");
     assert.equal(scaffoldCall.input.org_id, ORG);
     assert.equal(scaffoldCall.input.project_id, PROJECT);
   });
@@ -164,14 +164,14 @@ describe("run402 up — default apply composes the repo as a best-effort additio
     // SNAPSHOT_DIRTY_TREE on the very first push.
     assert.equal(git(dir, ["rev-parse", "--is-inside-work-tree"]), "true");
     const payload = await runJson(["-y", "--json"]);
-    const pushCall = calls.find((c) => c.method === "gitvault.push");
+    const pushCall = calls.find((c) => c.method === "repos.capture");
     assert.equal(pushCall.input.snapshot?.allowDirty, true, "an unborn repository is captured as its synthetic first commit");
     assert.equal(payload.result.repo.first_push.captured_dirty, true);
     assert.equal(payload.result.repo.local_git.unborn, true);
   });
 
   it("a first-push failure is reported with the error's next_actions in JSON and as one --human line, never failing the deploy", async () => {
-    impl.push = async () => {
+    impl.capture = async () => {
       const err = new Error("the work tree is dirty — refusing to capture by default");
       err.code = "SNAPSHOT_DIRTY_TREE";
       err.details = { unborn: true, untracked: ["index.html"] };
@@ -205,9 +205,9 @@ describe("run402 up — default apply composes the repo as a best-effort additio
     git(dir, ["add", "-A"]);
     git(dir, ["-c", "user.name=up-test", "-c", "user.email=up-test@example.com", "commit", "-q", "--allow-empty", "-m", "init"]);
     const payload = await runJson(["-y", "--json"]);
-    const scaffoldCall = calls.find((c) => c.method === "gitvault.scaffoldRemote");
+    const scaffoldCall = calls.find((c) => c.method === "repos.scaffoldRemote");
     assert.ok(scaffoldCall);
-    const pushCall = calls.find((c) => c.method === "gitvault.push");
+    const pushCall = calls.find((c) => c.method === "repos.capture");
     assert.equal(pushCall.input.snapshot, undefined, "a repository with commits is never captured dirty behind the agent's back");
     assert.equal(payload.result.repo.local_git.unborn, false);
     assert.equal(payload.result.repo.next_actions, undefined);
@@ -218,8 +218,8 @@ describe("run402 up — default apply composes the repo as a best-effort additio
     const payload = await runJson(["-y", "--json"]);
     assert.equal(payload.result.project_id, PROJECT, "the deploy result is unaffected");
     assert.equal(payload.result.repo.status, "error");
-    assert.equal(payload.result.repo.gitvault, null);
-    assert.match(payload.result.repo.gitvault_error.message, /network unreachable/);
+    assert.equal(payload.result.repo.vault, null);
+    assert.match(payload.result.repo.vault_error.message, /network unreachable/);
   });
 
   it("an app root inside ANOTHER repository is reported skipped and never pushed from (first-deploy-agent-dx)", async () => {
@@ -234,10 +234,10 @@ describe("run402 up — default apply composes the repo as a best-effort additio
     assert.equal(payload.result.repo.status, "skipped");
     assert.equal(payload.result.repo.reason, "inside_other_repository");
     assert.equal(payload.result.repo.toplevel, "/somewhere/monorepo");
-    assert.equal(payload.result.repo.gitvault, null);
+    assert.equal(payload.result.repo.vault, null);
     assert.equal(payload.result.repo.first_push, null);
-    assert.equal(calls.find((c) => c.method === "gitvault.push"), undefined, "no push from a repository we did not set up");
-    const scaffoldCall = calls.find((c) => c.method === "gitvault.scaffoldRemote");
+    assert.equal(calls.find((c) => c.method === "repos.capture"), undefined, "no push from a repository we did not set up");
+    const scaffoldCall = calls.find((c) => c.method === "repos.scaffoldRemote");
     assert.equal(scaffoldCall.input.nested, undefined, "without --nested the SDK is not asked to nest");
   });
 
@@ -267,16 +267,16 @@ describe("run402 up — default apply composes the repo as a best-effort additio
     });
     const payload = await runJson(["-y", "--json", "--nested"]);
     assert.equal(payload.result.project_id, PROJECT);
-    const scaffoldCall = calls.find((c) => c.method === "gitvault.scaffoldRemote");
+    const scaffoldCall = calls.find((c) => c.method === "repos.scaffoldRemote");
     assert.equal(scaffoldCall.input.nested, true);
     assert.equal(payload.result.repo.status, "scaffolded");
-    assert.equal(payload.result.repo.gitvault.nested, true);
-    assert.equal(payload.result.repo.gitvault.enclosing_toplevel, "/somewhere/monorepo");
-    assert.equal(payload.result.repo.gitvault.excluded_in_enclosing, true);
+    assert.equal(payload.result.repo.vault.nested, true);
+    assert.equal(payload.result.repo.vault.enclosing_toplevel, "/somewhere/monorepo");
+    assert.equal(payload.result.repo.vault.excluded_in_enclosing, true);
     assert.equal(payload.result.repo.next_actions, undefined);
     // A nested repository the scaffold just created is all-untracked, exactly
     // like one up's own git init made: the first push captures it dirty.
-    const pushCall = calls.find((c) => c.method === "gitvault.push");
+    const pushCall = calls.find((c) => c.method === "repos.capture");
     assert.ok(pushCall, "the first push runs from the nested repository");
     assert.equal(pushCall.input.snapshot?.allowDirty, true);
     assert.ok(payload.result.repo.first_push);
@@ -320,8 +320,8 @@ describe("run402 up — a remote git-URL source never touches local git state", 
 
   it("skips git init and the repo compose entirely for a repo URL source", async () => {
     await runJson(["https://github.com/kychee-com/example", "-y", "--json"]);
-    assert.equal(calls.find((c) => c.method === "gitvault.scaffoldRemote"), undefined);
-    assert.equal(calls.find((c) => c.method === "gitvault.push"), undefined);
+    assert.equal(calls.find((c) => c.method === "repos.scaffoldRemote"), undefined);
+    assert.equal(calls.find((c) => c.method === "repos.capture"), undefined);
     assert.throws(() => git(dir, ["rev-parse", "--is-inside-work-tree"]), "cwd must not have been git-init'd");
   });
 });
@@ -350,8 +350,8 @@ describe("run402 up --repo-only — vault-only, zero deploy ceremony", () => {
     assert.equal(payload.result.project_id, PROJECT);
     assert.equal(calls.find((c) => c.method === "up"), undefined, "--repo-only must never invoke the deploy action");
     assert.ok(calls.find((c) => c.method === "projects.provision"));
-    assert.ok(calls.find((c) => c.method === "gitvault.scaffoldRemote"));
-    assert.ok(calls.find((c) => c.method === "gitvault.push"));
+    assert.ok(calls.find((c) => c.method === "repos.scaffoldRemote"));
+    assert.ok(calls.find((c) => c.method === "repos.capture"));
     assert.equal(git(dir, ["rev-parse", "--is-inside-work-tree"]), "true", "git init ran for --repo-only too");
   });
 

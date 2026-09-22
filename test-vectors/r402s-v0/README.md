@@ -1,13 +1,13 @@
 # `r402s/v0` conformance vectors (vendored)
 
-The frozen task-1.2 vector set for the gitvault wire protocol `r402s/v0`, at
+The frozen task-1.2 vector set for the vault wire protocol `r402s/v0`, at
 **protocol rev 41**. Vendored here so the public repo's CI actually replays
 them: a suite that resolves vectors from a path outside the repo finds nothing
 on a CI runner and **silently skips them while reporting green**.
 
 **Snapshot policy:** this set is a frozen checkpoint, not a live tail — the
 private canonical set advances ahead of it between checkpoints (see the
-vendored docs README at [`docs/gitvault/`](../../docs/gitvault/README.md)
+vendored docs README at [`docs/kygit/`](../../docs/kygit/README.md)
 for the full policy). It is re-cut wholesale — docs + schemas + vectors
 together — only when a new `CONTINUITY.json` checkpoint is produced by the
 cross-implementation generator/verifier run; vectors are never hand-authored,
@@ -28,12 +28,12 @@ so nothing here is ever edited in place.
 `CONTINUITY.json`'s `current` block records the exact SHA-256 of `vectors.json`
 and `hpke-interop/golden.json` at rev 41. Every SDK suite that loads vectors
 asserts those digests before running a single case
-(`sdk/src/node/gitvault-vectors.test-helper.ts`). A vendored copy that drifts
+(`sdk/src/node/vault-vectors.test-helper.ts`). A vendored copy that drifts
 from the source of truth therefore fails loudly rather than replaying stale
 expectations — which is the whole failure mode this directory exists to close.
 
 **Do not hand-edit these files.** They are generated in the private repo
-(`docs/strategy/products/gitvault/vectors/`, by `gen_vectors.py`). To update:
+(`docs/strategy/products/kygit/vectors/`, by `gen_vectors.py`). To update:
 regenerate there, copy `vectors.json`, `CONTINUITY.json`, `hpke-interop/*`,
 and the `schemas/*` files already vendored here (from the private repo's
 sibling `../schemas/`) across in one commit, and let the digest assertions
@@ -41,10 +41,10 @@ confirm the copy.
 
 ## Overriding the location
 
-`GITVAULT_VECTORS_DIR` points the suites at another directory (e.g. the private
+`VAULT_VECTORS_DIR` points the suites at another directory (e.g. the private
 repo's live set while iterating on the generator). The digest assertions still
 run — an override is a *location* override, never an integrity override.
 
-`GITVAULT_VECTORS_OPTOUT=1` is the only way to skip the vector suites, and it
+`VAULT_VECTORS_OPTOUT=1` is the only way to skip the vector suites, and it
 must be set deliberately. An unresolvable directory is a **failure**, never a
 skip.

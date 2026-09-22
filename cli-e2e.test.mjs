@@ -19,7 +19,7 @@ const API = "https://test-api.run402.com";
 process.env.RUN402_CONFIG_DIR = tempDir;
 process.env.RUN402_API_BASE = API;
 
-// Some commands act on the CURRENT DIRECTORY (`run402 init` adds the gitvault
+// Some commands act on the CURRENT DIRECTORY (`run402 init` adds the vault
 // git remote when it is run inside a repository). Run the whole suite from a
 // scratch directory so the developer's own checkout is never mutated — the same
 // isolation cli-conventions-gate.test.mjs applies, for the same reason.

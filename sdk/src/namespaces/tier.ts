@@ -107,12 +107,12 @@ export interface TierStatusResult {
   pool_usage: {
     projects: number;
     total_api_calls: number;
-    /** Project bytes PLUS `gitvault_source_bytes` — what the storage limit applies to. */
+    /** Project bytes PLUS `vault_source_bytes` — what the storage limit applies to. */
     total_storage_bytes: number;
     total_storage: string;
     /** The vault half of `total_storage_bytes`, compared against `source_bytes_limit`. */
-    gitvault_source_bytes: number;
-    gitvault_source: string;
+    vault_source_bytes: number;
+    vault_source: string;
     api_calls_limit: number;
     storage_bytes_limit: number;
     storage_limit: string;

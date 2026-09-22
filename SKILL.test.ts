@@ -89,16 +89,10 @@ describe("SKILL.md (root, CLI-first)", () => {
       { pattern: /"secrets"\s*:\s*\{\s*"set"\s*:/, reason: "deploy specs must not carry secret values; use secrets.require" },
       { pattern: /\breplace_all\b/, reason: "secrets.replace_all is not representable in value-free deploy specs" },
       { pattern: /\bpin_project\b/, reason: "pin_project was removed in v1.57; use admin_set_lease_perpetual" },
-      // repo-first-onramp D5 (task 2.5): same regression the OpenClaw skill
-      // guards against — the root skill's body also shows raw `run402
-      // gitvault …` shell commands (mutating verbs are CLI-only, so even
-      // the MCP-facing skill has to teach them as shell commands).
-      { pattern: /\brun402 gitvault push --/, reason: "`gitvault push` was renamed to `gitvault snapshot` (design D5); `push` is a one-release deprecation alias, not the taught spelling" },
-      // repo-surface-consolidation D7: `gitvault` retired from the CLI —
-      // every old spelling is banned as a TAUGHT usage example (the
-      // retirement notice itself, e.g. "run402 gitvault <verb> is RETIRED",
-      // is fine; these patterns require a real verb, not the placeholder).
-      { pattern: /\brun402 gitvault (init|status|snapshot|policy|compact|prune|verify|mirror|recover|reconcile)\b/, reason: "`run402 gitvault <verb>` is RETIRED (repo-surface-consolidation D7) — teach `run402 repos <verb>` instead" },
+      // decision 9: `repos capture` is the capture verb ("snapshot" means a
+      // project snapshot only), and `run402::` is the one remote scheme.
+      { pattern: /\brun402 repos snapshot\b/, reason: "`repos snapshot` is now `repos capture`; a snapshot is a project snapshot only" },
+      { pattern: /\bkygit::/, reason: "`run402::` is the one remote scheme; the kygit:: spelling is gone" },
     ];
     for (const { pattern, reason } of banned) {
       it(`does not contain: ${pattern.source}`, () => {
@@ -189,7 +183,7 @@ describe("openclaw/SKILL.md (CLI-based)", () => {
       "run402 repos view",
       "run402 repos rename",
       "run402 repos delete",
-      "run402 repos snapshot",
+      "run402 repos capture",
       "run402 repos fsck",
       "run402 repos gc",
       "run402 repos access",
@@ -217,16 +211,10 @@ describe("openclaw/SKILL.md (CLI-based)", () => {
       { pattern: /"secrets"\s*:\s*\{\s*"set"\s*:/, reason: "deploy specs must not carry secret values; use secrets.require" },
       { pattern: /\breplace_all\b/, reason: "secrets.replace_all is not representable in value-free deploy specs" },
       { pattern: /\brun402 projects pin\b/, reason: "`run402 projects pin` was removed in v1.57; use `run402 admin lease-perpetual`" },
-      // repo-first-onramp D5 (task 2.5): the capture lane's canonical
-      // spelling is `snapshot`. `push` survives as a bare mention in the
-      // deprecation-notice sentence itself (never with a flag, since that
-      // would be teaching it as the way to invoke it) — this pattern only
-      // catches the OLD usage-example shape reappearing.
-      { pattern: /\brun402 gitvault push --/, reason: "`gitvault push` was renamed to `gitvault snapshot` (design D5); `push` is a one-release deprecation alias, not the taught spelling" },
-      // repo-surface-consolidation D7: `gitvault` retired from the CLI —
-      // the OpenClaw skill (CLI-verb-only by construction) must never teach
-      // an old spelling as a usage example again.
-      { pattern: /\brun402 gitvault (init|status|snapshot|policy|compact|prune|verify|mirror|recover|reconcile)\b/, reason: "`run402 gitvault <verb>` is RETIRED (repo-surface-consolidation D7) — teach `run402 repos <verb>` instead" },
+      // decision 9: `repos capture` is the capture verb ("snapshot" means a
+      // project snapshot only), and `run402::` is the one remote scheme.
+      { pattern: /\brun402 repos snapshot\b/, reason: "`repos snapshot` is now `repos capture`; a snapshot is a project snapshot only" },
+      { pattern: /\bkygit::/, reason: "`run402::` is the one remote scheme; the kygit:: spelling is gone" },
     ];
     for (const { pattern, reason } of banned) {
       it(`does not contain: ${pattern.source}`, () => {

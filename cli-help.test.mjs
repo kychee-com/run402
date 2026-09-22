@@ -163,7 +163,7 @@ const MATRIX = {
   // per-subcommand help text — same shape the old `repos` porcelain had,
   // which is why this family was never in MATRIX before repo-surface-
   // consolidation either).
-  repos: { shared: ["create", "list", "view", "rename", "delete", "snapshot", "policy", "mirror", "fsck", "gc", "access", "recover"], specific: [] },
+  repos: { shared: ["create", "list", "view", "rename", "delete", "capture", "policy", "mirror", "fsck", "gc", "access", "recover"], specific: [] },
   errors: { shared: ["list", "get"], specific: [] },
   // doctor and logs are flag-based commands (no subcommands): --help must
   // short-circuit at the top of run() before any check runs or getSdk() call.

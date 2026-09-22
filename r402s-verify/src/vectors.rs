@@ -245,8 +245,8 @@ pub fn locate_vectors() -> Option<PathBuf> {
         // replay is a CI gate, not an opportunistic extra — a verifier whose
         // agreement with the frozen vectors is never executed proves nothing)
         here.join("../test-vectors/r402s-v0/vectors.json"),
-        here.join("../../run402-private/docs/strategy/products/gitvault/vectors/vectors.json"),
-        here.join("../../../run402-private/docs/strategy/products/gitvault/vectors/vectors.json"),
+        here.join("../../run402-private/docs/strategy/products/kygit/vectors/vectors.json"),
+        here.join("../../../run402-private/docs/strategy/products/kygit/vectors/vectors.json"),
     ];
     candidates.into_iter().find(|p| p.is_file())
 }

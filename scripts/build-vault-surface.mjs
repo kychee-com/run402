@@ -1,0 +1,78 @@
+#!/usr/bin/env node
+/**
+ * build-vault-surface.mjs — generates `cli/vault-surface.json` from
+ * the single source `sync.test.ts` already enforces for the CLI surface
+ * (openspec/changes/kygit-page-truth-gate, design D1).
+ *
+ * The surface file is what run402-private's page-truth gate reads after
+ * resolving the PUBLISHED `run402` package: the live `repos` family verbs,
+ * an empty `retired_spellings` list (a removed verb is deleted, never
+ * tombstoned, so there is nothing to name), and the capability ledger
+ * beside `command-manifest.mjs`. Shipped inside the `run402` package
+ * (`cli/package.json`'s `files`) so any consumer resolves it by installing
+ * the CLI — no new endpoint, no new registry.
+ *
+ * Usage:
+ *   node scripts/build-vault-surface.mjs          # regenerate the file
+ *   node scripts/build-vault-surface.mjs --check   # CI: fail if stale
+ */
+import { readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { COMMAND_MANIFEST } from "../cli/lib/command-manifest.mjs";
+import { VAULT_CAPABILITIES } from "../cli/lib/vault-capabilities.mjs";
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+const CLI_PACKAGE_JSON = join(ROOT, "cli", "package.json");
+export const OUT_PATH = join(ROOT, "cli", "vault-surface.json");
+
+/**
+ * Pure builder: derives the surface object + its canonical serialized bytes
+ * from `command-manifest.mjs` + `vault-capabilities.mjs` + the CLI
+ * package version. No filesystem writes.
+ */
+export function buildVaultSurface() {
+  const pkg = JSON.parse(readFileSync(CLI_PACKAGE_JSON, "utf-8"));
+
+  // Every `repos <verb...>` entry in the command manifest — `repos` is
+  // KyGit's live CLI surface (repo-surface-consolidation). Read
+  // mechanically off COMMAND_MANIFEST, never hand-listed.
+  const verbs = COMMAND_MANIFEST.filter((entry) => entry.path[0] === "repos").map((entry) =>
+    entry.path.join(" "),
+  );
+
+  const surface = {
+    surface_version: pkg.version,
+    verbs,
+    retired_spellings: [],
+    capabilities: { ...VAULT_CAPABILITIES },
+  };
+
+  const bytes = JSON.stringify(surface, null, 2) + "\n";
+  return { surface, bytes };
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const check = process.argv.includes("--check");
+  const { bytes } = buildVaultSurface();
+  let current = "";
+  try {
+    current = readFileSync(OUT_PATH, "utf-8");
+  } catch {
+    /* missing → treated as stale */
+  }
+  if (check) {
+    if (current !== bytes) {
+      console.error(
+        "cli/vault-surface.json is stale — run: node scripts/build-vault-surface.mjs",
+      );
+      process.exit(1);
+    }
+    console.log("cli/vault-surface.json is up to date");
+  } else if (current !== bytes) {
+    writeFileSync(OUT_PATH, bytes);
+    console.log("regenerated cli/vault-surface.json");
+  } else {
+    console.log("unchanged   cli/vault-surface.json");
+  }
+}

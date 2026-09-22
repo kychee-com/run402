@@ -64,7 +64,7 @@ export interface StoredResultView<T> {
 /** One window of a previously stored result. */
 export interface ExpandedResult {
   ref: string;
-  /** What produced it, e.g. `gitvault_heads`. Lets the caller render it sensibly. */
+  /** What produced it, e.g. `vault_heads`. Lets the caller render it sensibly. */
   kind: string;
   offset: number;
   shown: number;
@@ -86,7 +86,7 @@ let now: () => number = () => Date.now();
 /**
  * Persist the full result and return a bounded view of it.
  *
- * @param kind   What produced this, e.g. `gitvault_heads`. Echoed by `expand_result`.
+ * @param kind   What produced this, e.g. `vault_heads`. Echoed by `expand_result`.
  * @param items  The COMPLETE list. Never pre-truncate before calling this.
  * @param opts.shown   Window size. Defaults to {@link RESULT_STORE_DEFAULT_SHOWN}.
  * @param opts.secret  `true` ⇒ store NOTHING and return `ref: null`. See the module header.

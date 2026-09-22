@@ -97,15 +97,15 @@ function orgFromRoomEnv(env) {
  * `r402.orgId` from `cwd`'s LOCAL git config (kygit-handoff design D10) —
  * best-effort, gracefully degrading like `findBindingKey`: no repository,
  * no pin, or a shape-invalid value all answer `null` rather than throwing,
- * so a bare directory or a checkout with no gitvault remote costs nothing.
+ * so a bare directory or a checkout with no vault remote costs nothing.
  * Checks a real vault checkout's pin first (gated on `r402.repoId`), then
  * falls back to the bare org/room pin a room-only `rooms join <key>` writes
  * in a directory with no vault at all (add-room-invite design D10).
  */
-async function readGitvaultPinnedOrgId(cwd) {
+async function readVaultPinnedOrgId(cwd) {
   try {
-    const { readPinnedGitvaultRepo, readPinnedRoomBinding } = await import("#sdk/node");
-    const pinned = await readPinnedGitvaultRepo(cwd);
+    const { readPinnedVaultRepo, readPinnedRoomBinding } = await import("#sdk/node");
+    const pinned = await readPinnedVaultRepo(cwd);
     const orgId = trimmed(pinned?.org_id);
     if (orgId && ORG_ID_RE.test(orgId)) return orgId;
     const bare = await readPinnedRoomBinding(cwd);
@@ -254,14 +254,14 @@ export async function resolveOrg(input = {}, opts = {}) {
   }
   if (bindingOrg) return { orgId: bindingOrg, source: "binding", sourceDetail: bindingHit.file };
 
-  // --- Class 3.5: gitvault local pin (kygit-handoff design D10) ------------
+  // --- Class 3.5: vault local pin (kygit-handoff design D10) ------------
   // `r402.orgId` in this checkout's LOCAL git config — written by every
-  // gitvault pin site (`repos create`, `resume`, address resolution), a
+  // vault pin site (`repos create`, `resume`, address resolution), a
   // rung below env/binding and above profile state: a checkout that IS a
   // resumed/pinned vault should resolve its own org with zero configuration,
   // but an explicit env var or a committed `.run402.json` binding still wins.
-  const pinnedOrg = await readGitvaultPinnedOrgId(cwd);
-  if (pinnedOrg) return { orgId: pinnedOrg, source: "gitvault_pin", sourceDetail: "r402.orgId (local git config)" };
+  const pinnedOrg = await readVaultPinnedOrgId(cwd);
+  if (pinnedOrg) return { orgId: pinnedOrg, source: "vault_pin", sourceDetail: "r402.orgId (local git config)" };
 
   // --- Class 4: profile state ----------------------------------------------
   const selected = trimmed(coreGetActiveOrgId());
@@ -434,7 +434,7 @@ export function orgProvenance(resolved) {
  * owns THIS project id", which is what a project-scoped scaffold needs and
  * where an `--org` override would be a mis-binding, not a convenience.
  *
- * WHY IT CACHES (task 5.12c): the gitvault scaffold is the one part of
+ * WHY IT CACHES (task 5.12c): the vault scaffold is the one part of
  * `run402 init` the client-surface spec says adds no network dependency to the
  * cold-start path, and resolving the org through `projects.list()` quietly made
  * that untrue. `org_id` is a non-secret routing identifier the control plane

@@ -1629,8 +1629,8 @@ export interface PlanResponse {
   planner_semantics_version?: string | null;
   base_identity?: string | null;
   next_actions?: unknown[];
-  /** gitvault (protocol §6.5). Present only when the plan declared a capture. */
-  gitvault?: {
+  /** vault (protocol §6.5). Present only when the plan declared a capture. */
+  vault?: {
     /** The canonical `apply_plan_canonical/v1` digest the activation token binds. */
     apply_plan_sha256?: string | null;
   } | null;
@@ -2536,23 +2536,23 @@ export interface PlanRequest {
     plan_id: string;
     plan_fingerprint?: string;
   };
-  /** gitvault (protocol §6.5): declares the capture this plan is bound to. */
-  gitvault?: GitvaultPlanDeclaration;
+  /** vault (protocol §6.5): declares the capture this plan is bound to. */
+  vault?: VaultPlanDeclaration;
 }
 
 /**
- * The capture declaration a gitvault-capable client sends at plan time. The
+ * The capture declaration a vault-capable client sends at plan time. The
  * gateway answers with the canonical `apply_plan_sha256` the activation token
  * is minted against; without this block the plan carries no capture and a
- * `gitvault_policy: required` project refuses its commit.
+ * `vault_policy: required` project refuses its commit.
  */
-export interface GitvaultPlanDeclaration {
+export interface VaultPlanDeclaration {
   capture_id: string;
   snapshot_oid_hmac: string;
 }
 
-/** The gitvault block on a commit: an activation token, or an audited override. */
-export type GitvaultCommitDeclaration =
+/** The vault block on a commit: an activation token, or an audited override. */
+export type VaultCommitDeclaration =
   | { activation_token_id: string }
   | { allow_unvaulted: true; override_reason: string };
 
@@ -2747,8 +2747,8 @@ export interface DeployResult {
    * event, `watch_errors`, and `hand_to_member` — the offer to hand your
    * human the site and console links and relay Run402's free promotion),
    * plus the one shape the deploy itself synthesizes:
-   * `gitvault_policy_required`, offered on every deploy of a vaulted project
-   * whose `gitvault_policy` was never set (repo-first-onramp D3). Absent when
+   * `vault_policy_required`, offered on every deploy of a vaulted project
+   * whose `vault_policy` was never set (repo-first-onramp D3). Absent when
    * there is nothing to offer. A commit that went asynchronous and was polled to
    * `ready` carries the same gateway riders from the ready snapshot.
    */
@@ -2887,12 +2887,12 @@ export interface ApplyOptions {
    *  Cloud keeps CAS content plans and operation polling; Core uses the
    *  self-hosted gateway's direct content staging and immediate commit result. */
   target?: "cloud" | "core";
-  /** gitvault §6.5 — supplied by `applyWithGitvault`, never by hand. */
-  gitvault?: GitvaultApplyHooks;
+  /** vault §6.5 — supplied by `applyWithVault`, never by hand. */
+  vault?: VaultApplyHooks;
 }
 
 /**
- * The gitvault handshake `applyWithGitvault` (`@run402/sdk/node`) injects into
+ * The vault handshake `applyWithVault` (`@run402/sdk/node`) injects into
  * `apply()`. The declaration rides the plan; `authorize` is called once the
  * plan exists and its content is uploaded, and returns the block the commit
  * presents. Throwing from `authorize` aborts the apply with NOTHING committed
@@ -2901,13 +2901,13 @@ export interface ApplyOptions {
  * An apply carrying these hooks does not auto-retry: a retry would re-plan
  * under a NEW operation, and an activation token is minted for exactly one.
  */
-export interface GitvaultApplyHooks {
-  declaration: GitvaultPlanDeclaration;
+export interface VaultApplyHooks {
+  declaration: VaultPlanDeclaration;
   authorize(planned: {
     plan_id: string;
     operation_id: string;
     apply_plan_sha256: string | null;
-  }): Promise<GitvaultCommitDeclaration>;
+  }): Promise<VaultCommitDeclaration>;
 }
 
 export interface StartOptions {

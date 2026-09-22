@@ -2,7 +2,7 @@
  * `r.rooms.waitForMessages` — the agent's ear (kygit-invite design D6/D7).
  *
  * Exercises the three load-bearing behaviors against a fake gateway (mocked
- * fetch, the same pattern `gitvault-resume-errors.test.ts` and `rooms.test.ts`
+ * fetch, the same pattern `repos-resume-errors.test.ts` and `rooms.test.ts`
  * use):
  *  - SETTLES the instant a page carries a message, whether the gateway held
  *    the read or not.

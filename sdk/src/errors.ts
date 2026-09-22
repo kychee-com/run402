@@ -731,14 +731,14 @@ export class TransferFreezeError extends Run402Error {
  * name was not claimed). `push_repo`, `verify_refs`, `submit_gc`,
  * `use_moved_command`, and `access_repair_pending` are repo-surface-
  * consolidation's own additions — see `cli/lib/repos.mjs` for where each is
- * emitted. `configure_mirror` (gitvault-mirror-default) rides `repos create`'s
+ * emitted. `configure_mirror` (vault-mirror-default) rides `repos create`'s
  * result beside the recovery receipt — the customer-owned mirror taught at
- * vault birth. `sync_writers` / `request_writer_sync` (gitvault-multi-writer
+ * vault birth. `sync_writers` / `request_writer_sync` (vault-multi-writer
  * rev 47, D10) are the writer dimension's own pair — `sync_writers` rides
  * `POST /orgs/v1/:org_id/members`'s own gateway response (the caller's next
  * `orgs members add`/`repos access sync` admits a just-added member as a
  * writer on every vault it can reach); `request_writer_sync` is CLIENT-
- * constructed (`GitvaultVault#assertCallerIsWriter`, task 5.8) when a local
+ * constructed (`Vault#assertCallerIsWriter`, task 5.8) when a local
  * push pre-check refuses because this session's own key is not (or is no
  * longer) an admitted writer.
  * Tolerates unknown future gateway types via the `(string & {})` fallback.
@@ -766,7 +766,7 @@ export type NextActionType =
   // The remedy needs Run402 staff.
   | "contact_staff"
   | "contact_support"
-  | "gitvault_policy_required"
+  | "vault_policy_required"
   | "set_org_slug"
   | "set_repo_name"
   | "push_repo"
@@ -800,7 +800,7 @@ export type NextActionType =
   | "create_file"
   | "check_manifest"
   | "run_in_directory"
-  // A gitvault capture refused on an UNBORN repository (no commits yet, so
+  // A vault capture refused on an UNBORN repository (no commits yet, so
   // every file is untracked): commit first, or capture the tree as-is.
   | "commit_changes"
   // `run402 up` verify.http path checks found no public origin: bind a

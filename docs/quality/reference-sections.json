@@ -86,7 +86,7 @@
         "`r.rooms`",
         "`r.escalations`",
         "`r.buzz.notifications`",
-        "`r.gitvault`",
+        "`r.repos`",
         "`r.errors`",
         "`r.email`",
         "`r.auth`",

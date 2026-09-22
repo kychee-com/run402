@@ -18,7 +18,7 @@ export interface StoredProject {
   last_deployment_id?: string;
   /**
    * The owning organization, cached so a returning machine can build addresses
-   * that need it — the `run402::<org_id>/<project_id>` gitvault remote is the
+   * that need it — the `run402::<org_id>/<project_id>` vault remote is the
    * first — WITHOUT a control-plane round trip.
    *
    * NOT a secret and NOT an authorization input: it is a routing identifier the
@@ -251,7 +251,7 @@ export function removeProject(
  * bucket, not "unknown") and PERMANENTLY shadows every later wallet-scoped
  * activation for every caller that reads through this module: `resolveProjectId`
  * / `resolveProject` (cli/lib/config.mjs), `projects current`, and every
- * gitvault-verb target resolution. The failure it causes: `repos create`
+ * vault-verb target resolution. The failure it causes: `repos create`
  * calls `projects.provision`, whose `creds.setActiveProject` correctly
  * persists the new project under the real wallet's scoped bucket AND the
  * flat fallback, yet every CLI read of "the active project" resolves the

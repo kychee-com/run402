@@ -51,7 +51,7 @@ Options:
                   nothing; RUN402_AGENT_NAME=<name> sets or overrides it. Change
                   it any time with \`run402 whoami --set-name <name>\`.
   --git-remote    Also 'git init' the current directory when it is not a
-                  repository yet, so the gitvault remote can be added there.
+                  repository yet, so the vault remote can be added there.
                   Opt-in on purpose: init is often run outside a project
                   directory and must never create a repository somewhere you
                   did not ask it to. Inside an EXISTING repository the remote
@@ -62,11 +62,11 @@ Output:
   tier, projects_saved, active_project_id, next_step }. Progress lines
   (Config / Wallet / Balance / Tier / Next) go to stderr so a human
   re-running interactively sees what's happening while a script piping stdout
-  to jq stays clean. The summary also carries { gitvault } (the scaffolded
-  remote), or { gitvault: null, gitvault_skipped } naming why no remote was
-  added, or { gitvault: null, gitvault_error } when it could not be added.
+  to jq stays clean. The summary also carries { vault } (the scaffolded
+  remote), or { vault: null, vault_skipped } naming why no remote was
+  added, or { vault: null, vault_error } when it could not be added.
   \`projects_saved\` counts projects with LOCAL keys; \`active_project_id\` is the
-  project the gitvault scaffold acted on.
+  project the vault scaffold acted on.
 
   init scaffolds the git remote only. It does NOT allocate the vault — that is
   \`run402 repos create --project <project_id>\`, which mints key material and a
@@ -215,13 +215,13 @@ function errorMessage(err) {
 }
 
 /**
- * Which project the gitvault scaffold acts on — and why it may act on none.
+ * Which project the vault scaffold acts on — and why it may act on none.
  *
  * The CLI-wide resolution order (`RUN402_PROJECT_ID`, then the active
  * project), not `getActiveProjectId()` alone. Reading only the active project
  * meant an agent that had exported `RUN402_PROJECT_ID` — the normal way to
  * address a project without mutating machine state — got a silent no-op: no
- * remote, no allocation, and no `gitvault` key in the summary at all, with
+ * remote, no allocation, and no `vault` key in the summary at all, with
  * nothing anywhere saying `run402 projects use` was a prerequisite
  * (dogfood #1, finding A). A command that exits 0 having done nothing is worse
  * than an error, so the no-project case names itself.
@@ -375,7 +375,7 @@ export async function run(args = []) {
     ...(voucherCode ? { voucher: null } : {}),
     tier: null,
     projects_saved: 0,
-    /** The project init acted on — the input to the gitvault scaffold decision. */
+    /** The project init acted on — the input to the vault scaffold decision. */
     active_project_id: null,
     next_actions: [],
     next_step: null,
@@ -637,17 +637,17 @@ export async function run(args = []) {
   // local keys, so it is legitimately not counted here; `active_project_id`
   // below is the field that says which project init actually acted on, and
   // reading `projects_saved: 0` as "init did nothing" is what made the
-  // gitvault skip look silent (dogfood #1, finding A).
+  // vault skip look silent (dogfood #1, finding A).
   summary.projects_saved = Object.keys(store.projects).length;
   line("Projects", `${summary.projects_saved} saved`);
 
-  // 5b. gitvault git remote (gitvault-client-surface, task 5.7).
+  // 5b. vault git remote (vault-client-surface, task 5.7).
   //
   // Purely LOCAL git. No vault is allocated and no key material is written
   // here — the spec is explicit that neither exists until first capture, so the
   // cold-start path gains no prompt and no new failure mode. Allocation happens
-  // on the first `git push origin <branch>` or `run402 gitvault snapshot` (D2,
-  // repo-first-onramp) — NOT on deploy: `applyWithGitvault` only ever reads an
+  // on the first `git push origin <branch>` or `run402 repos capture` (D2,
+  // repo-first-onramp) — NOT on deploy: `applyWithVault` only ever reads an
   // EXISTING vault's policy (D3) and never allocates one that does not exist,
   // so a project with no vault deploys exactly as it always did.
   //
@@ -664,11 +664,11 @@ export async function run(args = []) {
   const { projectId: activeProjectId, skipped: noProjectSkip } = resolveScaffoldProject();
   summary.active_project_id = activeProjectId;
   if (noProjectSkip) {
-    summary.gitvault = null;
-    summary.gitvault_skipped = noProjectSkip;
-    line("Gitvault", "skipped — no project selected (run402 projects use <project_id>)");
+    summary.vault = null;
+    summary.vault_skipped = noProjectSkip;
+    line("Vault", "skipped — no project selected (run402 projects use <project_id>)");
   } else {
-    summary.gitvault = null;
+    summary.vault = null;
     try {
       // Dynamic import: the scaffold is the only thing here that needs the
       // Node SDK's hardened git runner, and a top-level import would drag it
@@ -681,43 +681,43 @@ export async function run(args = []) {
         insideRepo = false;
       }
       if (!insideRepo && !scaffoldGitRemote) {
-        summary.gitvault_skipped = "not a git repository — re-run with --git-remote to create one and add the remote";
-        line("Gitvault", "skipped — not a git repository (--git-remote creates one)");
+        summary.vault_skipped = "not a git repository — re-run with --git-remote to create one and add the remote";
+        line("Vault", "skipped — not a git repository (--git-remote creates one)");
       } else {
         const orgId = await resolveOwningOrgId(activeProjectId);
         if (!orgId) {
-          summary.gitvault_skipped = `could not resolve the owning org for ${activeProjectId} — the run402 remote was not added`;
-          line("Gitvault", "skipped — owning org unresolved");
+          summary.vault_skipped = `could not resolve the owning org for ${activeProjectId} — the run402 remote was not added`;
+          line("Vault", "skipped — owning org unresolved");
         } else {
-          const remote = await getSdk().gitvault.scaffoldRemote({
+          const remote = await getSdk().repos.scaffoldRemote({
             repo_dir: process.cwd(),
             org_id: orgId,
             project_id: activeProjectId,
           });
           // `allocated: false` is stated, not left to be inferred: this was
           // local git only, and no vault exists for the project yet.
-          summary.gitvault = { ...remote, allocated: false };
+          summary.vault = { ...remote, allocated: false };
           if (remote.already_present && remote.existing_url !== remote.url) {
             // Left exactly as it was. Name the URL that is actually in place
             // rather than implying the remote now points at this project.
-            line("Gitvault", `remote '${remote.name}' already points at ${remote.existing_url} — left unchanged (${remote.reason})`);
+            line("Vault", `remote '${remote.name}' already points at ${remote.existing_url} — left unchanged (${remote.reason})`);
           } else if (remote.already_present) {
-            line("Gitvault", `remote '${remote.name}' already set (${remote.url})`);
+            line("Vault", `remote '${remote.name}' already set (${remote.url})`);
           } else {
             // D1: `origin` when it was free, `run402` when it was already
             // taken by something else — `remote.reason` says which happened.
-            line("Gitvault", `${remote.created_repository ? "initialized a repository and added" : "added"} remote '${remote.name}' -> ${remote.url} (${remote.reason})`);
+            line("Vault", `${remote.created_repository ? "initialized a repository and added" : "added"} remote '${remote.name}' -> ${remote.url} (${remote.reason})`);
           }
         }
       }
     } catch (err) {
       const reason = errorMessage(err);
-      summary.gitvault = null;
-      summary.gitvault_error = {
-        code: err?.body?.code ?? err?.code ?? "GITVAULT_SCAFFOLD_FAILED",
+      summary.vault = null;
+      summary.vault_error = {
+        code: err?.body?.code ?? err?.code ?? "VAULT_SCAFFOLD_FAILED",
         message: reason,
       };
-      line("Gitvault", `remote not added: ${reason}`);
+      line("Vault", `remote not added: ${reason}`);
     }
   }
 

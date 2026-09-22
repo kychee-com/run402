@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 import { Run402, isLocalError } from "../index.js";
 import type { CredentialsProvider } from "../credentials.js";
-import { fromBase64url } from "./gitvault.crypto.js";
+import { fromBase64url } from "./vault.crypto.js";
 import { computeRoomInviteAuthHash, deriveRoomInviteAuthSecret, uuidToBytes } from "../node/bearer-redeem-key.js";
 
 interface FetchCall {
@@ -214,7 +214,7 @@ describe("rooms.join (key form)", () => {
     const { parseRoomInviteKey, deriveRoomInviteAuthSecret } = await import("../node/bearer-redeem-key.js");
     const parsed = parseRoomInviteKey(key);
     const expectedSecret = deriveRoomInviteAuthSecret(parsed.invite_id_bytes, parsed.master_secret);
-    const { toBase64url } = await import("./gitvault.crypto.js");
+    const { toBase64url } = await import("./vault.crypto.js");
 
     const { fetch, calls } = mockFetch((call) => {
       const body = parsedBody(call) as { auth_secret: string };
@@ -232,8 +232,8 @@ describe("rooms.join (key form)", () => {
     assert.equal(calls.length, 1);
   });
 
-  it("refuses a kgi1_ (gitvault invite) key by name, naming `run402 repos join`, before any network call", async () => {
-    const { assembleInviteKey } = await import("../node/gitvault-handoff.js");
+  it("refuses a kgi1_ (vault invite) key by name, naming `run402 repos join`, before any network call", async () => {
+    const { assembleInviteKey } = await import("../node/vault-handoff.js");
     const { key } = assembleInviteKey("33333333-3333-4333-8333-333333333333");
     const { fetch, calls } = mockFetch(() => jsonResponse({}));
     await assert.rejects(
@@ -246,8 +246,8 @@ describe("rooms.join (key form)", () => {
     assert.equal(calls.length, 0, "the gateway must never be contacted for a wrong-kind key");
   });
 
-  it("refuses a kgh1_ (gitvault handoff) key by name, naming `run402 repos resume`, before any network call", async () => {
-    const { assembleHandoffKey } = await import("../node/gitvault-handoff.js");
+  it("refuses a kgh1_ (vault handoff) key by name, naming `run402 repos resume`, before any network call", async () => {
+    const { assembleHandoffKey } = await import("../node/vault-handoff.js");
     const { key } = assembleHandoffKey("44444444-4444-4444-8444-444444444444");
     const { fetch, calls } = mockFetch(() => jsonResponse({}));
     await assert.rejects(

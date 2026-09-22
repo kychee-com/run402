@@ -57,7 +57,7 @@ describe("naming-law conventions gate (task 5.1) — mechanically, from COMMAND_
   // the external review rejected) reusing `restore` for it — see D2 rule 4
   // and D10's recorded resolution, checked explicitly below.
   //
-  // `recovery-bundle` (gitvault-recovery-custody, 2026-08-29): exports the
+  // `recovery-bundle` (vault-recovery-custody, 2026-08-29): exports the
   // member recovery bundle `recover --bundle` consumes. The reviewed naming
   // deliberation, recorded: bare `bundle` was REJECTED — `git bundle` is a
   // real git verb packing repo OBJECTS for offline transfer, and ours would
@@ -77,12 +77,12 @@ describe("naming-law conventions gate (task 5.1) — mechanically, from COMMAND_
   // capture/restore machinery as handoff/resume by kind — a coordination
   // room invite plus the verb that claims one. Same reasoning: neither
   // collides with a `gh repo` verb or a real git porcelain command name.
-  const NO_ANALOG_VERBS = new Set(["snapshot", "policy", "mirror", "access", "recover", "recovery-bundle", "handoff", "resume", "invite", "join"]);
+  const NO_ANALOG_VERBS = new Set(["capture", "policy", "mirror", "access", "recover", "recovery-bundle", "handoff", "resume", "invite", "join"]);
 
-  it("the repos verb set is exactly the seventeen the design specifies (create/list/view/rename/delete/snapshot/policy/mirror/fsck/gc/access/recover/recovery-bundle/handoff/resume/invite/join)", () => {
+  it("the repos verb set is exactly the seventeen the design specifies (create/list/view/rename/delete/capture/policy/mirror/fsck/gc/access/recover/recovery-bundle/handoff/resume/invite/join)", () => {
     assert.deepEqual(
       REPOS_VERBS,
-      ["access", "create", "delete", "fsck", "gc", "handoff", "invite", "join", "list", "mirror", "policy", "recover", "recovery-bundle", "rename", "resume", "snapshot", "view"],
+      ["access", "capture", "create", "delete", "fsck", "gc", "handoff", "invite", "join", "list", "mirror", "policy", "recover", "recovery-bundle", "rename", "resume", "view"],
     );
   });
 
@@ -109,7 +109,7 @@ describe("naming-law conventions gate (task 5.1) — mechanically, from COMMAND_
   });
 
   it("`repos` never defines `status` or `restore` — the two collisions the review explicitly rejected", () => {
-    assert.equal(REPOS_VERBS.includes("status"), false, "`gitvault status` retired precisely because `git status` means working-tree state, not vault state — `repos view` replaced it; reintroducing `status` repeats the exact mistake this change fixes");
+    assert.equal(REPOS_VERBS.includes("status"), false, "`vault status` retired precisely because `git status` means working-tree state, not vault state — `repos view` replaced it; reintroducing `status` repeats the exact mistake this change fixes");
     assert.equal(REPOS_VERBS.includes("restore"), false, "the external review rejected `restore` for the recovery verb because `git restore` already means something else (D2 rule 4) — `repos recover` is the kept name (design D10)");
   });
 

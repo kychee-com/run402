@@ -158,7 +158,7 @@ describe("arrival outside a git repository", () => {
   });
 
   it("no .run402.json is left behind on a wrong-kind-key refusal (arrival never runs)", async () => {
-    const { assembleInviteKey } = await import("./sdk/dist/node/gitvault-handoff.js");
+    const { assembleInviteKey } = await import("./sdk/dist/node/vault-handoff.js");
     const { key } = assembleInviteKey("bbbbbbbb-2222-4222-8222-222222222222");
     process.exit = (code) => { throw new Error(`process.exit(${code})`); };
     captureStart();

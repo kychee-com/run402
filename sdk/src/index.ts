@@ -49,7 +49,7 @@ import { Pay, type PayExecutor } from "./namespaces/pay.js";
 import { IdentityLinks } from "./namespaces/identity-links.js";
 import { Buzz } from "./namespaces/buzz.js";
 import { Agent } from "./namespaces/agent.js";
-import { Gitvault } from "./namespaces/gitvault.js";
+import { Repos } from "./namespaces/repos.js";
 import type { ContentSource, FileSet } from "./namespaces/deploy.types.js";
 import { ScopedRun402 } from "./scoped.js";
 import { LocalError } from "./errors.js";
@@ -188,19 +188,19 @@ export class Run402 {
   /** Buzz human adoption, community installation, and bounded agent enrollment workflows. */
   readonly buzz: Buzz;
   /**
-   * gitvault — the host-blind encrypted Git remote (`r402s/v0`). Vault reads
+   * vault — the host-blind encrypted Git remote (`r402s/v0`). Vault reads
    * (record, heads listing, policy) run anywhere; the verbs that touch a git
    * tree or the on-disk keystore (`init`, `push`, `compact`, `verify`,
    * `deploy`, `restore`) are Node-only and load `@run402/sdk/node` lazily.
    *
    * This namespace is where ALL vault protocol logic lives: the CLI's
-   * `run402 gitvault …`, `git-remote-run402`, and the MCP tools are adapters
+   * `run402 repos …`, `git-remote-run402`, and the MCP tools are adapters
    * over it and add no behaviour of their own.
    *
    * Durability is keystore-qualified: the vault protects source history from
    * host-side loss while a principal keystore survives.
    */
-  readonly gitvault: Gitvault;
+  readonly repos: Repos;
   readonly idempotency = {
     fromParts,
   };
@@ -292,7 +292,7 @@ export class Run402 {
     this.identityLinks = new IdentityLinks(client);
     this.agent = new Agent(client);
     this.buzz = new Buzz(client);
-    this.gitvault = new Gitvault(client);
+    this.repos = new Repos(client);
   }
 
   /**
@@ -689,30 +689,30 @@ export type * from "./namespaces/subdomains.js";
 export type * from "./namespaces/tier.js";
 export { ScopedWallet } from "./namespaces/wallets.js";
 export type * from "./namespaces/wallets.js";
-// gitvault (r402s/v0) — the crypto core is SDK code with a public API (task 5.0
+// vault (r402s/v0) — the crypto core is SDK code with a public API (task 5.0
 // layering: the CLI/MCP are thin shims over these). Isomorphic: WebCrypto +
 // noble + @hpke/core, no I/O. The keystore + creation journal live under
 // `@run402/sdk/node`.
-export * from "./namespaces/gitvault.crypto.js";
-export type * from "./namespaces/gitvault.crypto.js";
-export type * from "./namespaces/gitvault.types.js";
+export * from "./namespaces/vault.crypto.js";
+export type * from "./namespaces/vault.crypto.js";
+export type * from "./namespaces/vault.types.js";
 export {
-  Gitvault,
-  gitvaultRemoteUrl,
-  gitvaultRemoteUrlForRepo,
-  parseGitvaultRemoteUrl,
-  gitvaultRemoteAddressForm,
-  gitvaultSlugReleasedInfo,
-  GITVAULT_LOSS_WARNING_THRESHOLDS,
-  gitvaultLossWarningTrip,
-  gitvaultLossWarningTripped,
-  gitvaultLossWarningMessage,
-  gitvaultUnmirroredFinding,
-  gitvaultDegradedReadNote,
+  Repos,
+  vaultRemoteUrl,
+  vaultRemoteUrlForRepo,
+  parseVaultRemoteUrl,
+  vaultRemoteAddressForm,
+  vaultSlugReleasedInfo,
+  VAULT_LOSS_WARNING_THRESHOLDS,
+  vaultLossWarningTrip,
+  vaultLossWarningTripped,
+  vaultLossWarningMessage,
+  vaultUnmirroredFinding,
+  vaultDegradedReadNote,
   handoffVaultFromWire,
   handoffMembershipFromWire,
-} from "./namespaces/gitvault.js";
-export type * from "./namespaces/gitvault.js";
+} from "./namespaces/repos.js";
+export type * from "./namespaces/repos.js";
 
 export { normalizeEdgeEvidence, mergeEdgeVerification } from "./namespaces/edge-evidence.js";
 

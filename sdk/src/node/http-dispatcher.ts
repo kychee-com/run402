@@ -1,5 +1,5 @@
 /**
- * The client-owned HTTP dispatcher (gitvault-owned-dispatcher).
+ * The client-owned HTTP dispatcher (vault-owned-dispatcher).
  *
  * Node's built-in fetch pool has the one behavior no prewarm can beat: a
  * request issued while a socket is still CONNECTING dials a second socket
@@ -99,8 +99,8 @@ function apiConnector(store: TicketStore): buildConnector.connector {
     };
     try {
       apiDialCount += 1;
-      if (process.env.RUN402_GITVAULT_TRACE === "1") {
-        process.stderr.write(`gitvault-trace: dispatcher-dial #${apiDialCount} ${options.servername ?? options.hostname}\n`);
+      if (process.env.RUN402_VAULT_TRACE === "1") {
+        process.stderr.write(`vault-trace: dispatcher-dial #${apiDialCount} ${options.servername ?? options.hostname}\n`);
       }
       const socket = tlsConnect({
         host: options.host ?? options.hostname,
@@ -123,13 +123,13 @@ function apiConnector(store: TicketStore): buildConnector.connector {
 export { TicketStore as _TicketStoreForTests };
 
 /**
- * Dial-vs-reused attribution (gitvault-first-op-premium task 1.1). Every
+ * Dial-vs-reused attribution (vault-first-op-premium task 1.1). Every
  * real TCP dial to the API origin increments this — `apiConnector` is the
  * ONLY place undici opens a fresh socket for that origin, so a count that
  * climbs faster than "once per process" proves a connection is dying and
  * being re-dialed rather than genuinely reused across daemon sessions.
  * Cheap (an integer increment) and always counted; the stderr line is
- * gated on `RUN402_GITVAULT_TRACE=1` like every other transport trace.
+ * gated on `RUN402_VAULT_TRACE=1` like every other transport trace.
  */
 let apiDialCount = 0;
 /** Test/diagnostic-only: the number of real dials to the API origin this process has made. */

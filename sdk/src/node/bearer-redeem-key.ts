@@ -4,19 +4,19 @@
  * (add-room-invite design D2/D3, mirroring the gateway's own
  * `services/bearer-redeem-key.ts`).
  *
- * Through kygit-invite this lived inline in `gitvault-handoff.ts`: the key
+ * Through kygit-invite this lived inline in `vault-handoff.ts`: the key
  * registry (`HANDOFF_KEY_PREFIXES`), `uuidToBytes`, the generic
  * assemble/parse helpers, and the HKDF derivations for `auth_secret` /
  * `wrap_key`. add-room-invite adds a THIRD kind — `room` (`kri1_…`) — whose
  * redemption confers org membership rather than vault access and carries no
  * `wrap_key`/envelope/admission-seed at all (design D3). Rather than teach
  * the vault-shaped module a room-shaped kind, the pure key-format
- * primitives move HERE (a move, not a copy — `gitvault-handoff.ts`
+ * primitives move HERE (a move, not a copy — `vault-handoff.ts`
  * re-exports every symbol it previously exported, under its existing name,
  * so nothing importing it changes) and gain the room row alongside them.
  * Everything that is genuinely vault-specific — the sealed envelope, the
  * writer-admission grant/acceptance, the Handoff/Invite Note — stays in
- * `gitvault-handoff.ts`, which imports the pieces it needs from here.
+ * `vault-handoff.ts`, which imports the pieces it needs from here.
  *
  * `HANDOFF_KEY_PREFIXES` is a REGISTRY: `kgh1_` (handoff, `resume`), `kgi1_`
  * (invite, `repos join`), `kri1_` (room, `rooms join`). `parseRedeemKey`
@@ -28,7 +28,7 @@ import { hkdf } from "@noble/hashes/hkdf.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { concatBytes, utf8ToBytes } from "@noble/hashes/utils.js";
 import { LocalError } from "../errors.js";
-import { fromBase64url, randomBytes, toBase64url, bytesToHex } from "../namespaces/gitvault.crypto.js";
+import { fromBase64url, randomBytes, toBase64url, bytesToHex } from "../namespaces/vault.crypto.js";
 
 function fail(code: string, message: string, context: string, details?: unknown): never {
   throw new LocalError(message, context, { code, details });
@@ -50,7 +50,7 @@ export interface HandoffKeyPrefixEntry {
    * The sealed-envelope `envelope_kind` tag this kind's mint seals TODAY —
    * the v2 shape for both vault kinds (`v: 2`, `writer_admission_grant_sha256`,
    * `epoch_keys`), since writer admission rides the envelope for every vault
-   * redeem kind (gitvault-multi-writer D4). Absent for `room` — a room invite
+   * redeem kind (vault-multi-writer D4). Absent for `room` — a room invite
    * has no envelope, no wrap key, no admission seed (add-room-invite D3).
    */
   envelopeKind?: string;
@@ -261,7 +261,7 @@ function deriveClaimSecrets(kind: "handoff" | "invite", idBytes: Uint8Array, mas
   // ran the digest through `sha256Hex` (which hashes its input again), so the
   // stored value was sha256(sha256(label ‖ secret)) and NO key minted by any
   // published client could ever verify. The cross-side vector in
-  // gitvault-handoff.test.ts now recomputes the gateway's hash independently.
+  // vault-handoff.test.ts now recomputes the gateway's hash independently.
   return { auth_secret: authSecret, wrap_key: wrapKey, auth_hash_hex: bytesToHex(authHash) };
 }
 

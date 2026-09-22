@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * `git-remote-run402` — the THIN CLIENT (gitvault-persistent-helper).
+ * `git-remote-run402` — the THIN CLIENT (vault-persistent-helper).
  *
  * git spawns a fresh helper process per remote operation, so everything warm
  * dies per command — Node boot, the SDK graph, the signer, the paid stack,
@@ -10,7 +10,7 @@
  * when that is impossible does it load the full session module and run
  * in-process — which is byte-identical to the pre-daemon behavior.
  *
- * INVARIANTS (spec: gitvault-client-surface, "A resident helper engine…"):
+ * INVARIANTS (spec: vault-client-surface, "A resident helper engine…"):
  *   - The daemon is never load-bearing: any failure to use it — absent,
  *     busy, stale, mismatched, dying mid-handshake — falls back silently to
  *     the in-process path. The handshake completes BEFORE this client
@@ -35,7 +35,7 @@ import net from "node:net";
 import { spawn } from "node:child_process";
 import { daemonSocketPath, daemonRunnerPath, DAEMON_PROTOCOL_VERSION, cliVersion, forwardableEnv } from "./lib/daemon-path.mjs";
 
-// gitvault-startup-amortization (D2): on-disk V8 compile cache for every
+// vault-startup-amortization (D2): on-disk V8 compile cache for every
 // module loaded from here on. Feature-guarded (Node 22.8+) and try/caught
 // (a read-only install dir degrades silently).
 try {
@@ -201,11 +201,11 @@ if (invokedDirectly) {
     process.exitCode = code;
   } else {
     // Fallback: today's in-process path, byte-identical. Fire the prewarm
-    // BEFORE the heavy graph evaluates (gitvault-startup-amortization D1),
+    // BEFORE the heavy graph evaluates (vault-startup-amortization D1),
     // and leave a daemon behind for next time.
     if (daemonEnabled) spawnDaemon();
-    const { prewarmGitvaultConnection } = await import("./sdk/dist/node/gitvault-prewarm.js");
-    prewarmGitvaultConnection();
+    const { prewarmVaultConnection } = await import("./sdk/dist/node/vault-prewarm.js");
+    prewarmVaultConnection();
     const { runHelperSession } = await import("./lib/remote-helper-session.mjs");
     process.exitCode = await runHelperSession(argv);
   }

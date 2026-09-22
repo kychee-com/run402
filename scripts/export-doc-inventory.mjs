@@ -12,7 +12,7 @@ for (const [repo, base] of [['private', priv], ['core', core]]) {
   for (const path of files) {
     const historical = /CHANGELOG|changelog|updates\.txt|humans\/run402-2-0\.html/.test(path);
     const legal = /terms|privacy|europe|legal\.html/.test(path);
-    const protocol = /llms-full|openapi|schemas|how-it-works|gitvault/.test(path);
+    const protocol = /llms-full|openapi|schemas|how-it-works|vault/.test(path);
     const application = /\/(apps|billing|operator|escalations)\//.test(path);
     const sha256 = crypto.createHash('sha256').update(fs.readFileSync(`${base}/${path}`)).digest('hex');
     data.push({repository: repo, path, revision, sourceState: 'working-tree snapshot; revision is baseline', sha256,
@@ -20,7 +20,7 @@ for (const [repo, base] of [['private', priv], ['core', core]]) {
       purpose: historical ? 'history' : legal ? 'legal' : protocol ? 'protocol' : application ? 'application' : 'reference',
       interface: historical || legal || application ? 'native' : protocol ? 'http' : repo === 'core' ? 'runtime' : 'cli',
       exception: historical ? 'Dated history preserved; current guidance links and new entries reviewed.' : legal ? 'Legal/security obligations preserved; product instructions reviewed separately.' : application ? 'Browser UI and its native application code; not a shell tutorial.' : repo === 'core' ? 'Native runtime/provider contract and self-hosting references; normal operations prefer CLI.' : protocol ? 'Native protocol/schema contract; general onboarding is CLI-first.' : 'Native browser application code retained; general operations prefer CLI.',
-      checks: repo === 'private' ? ['hosted-docs', 'gitvault-page-truth'] : ['core-applicability'],
+      checks: repo === 'private' ? ['hosted-docs', 'kygit-page-truth'] : ['core-applicability'],
       evidence: {editorial: reviewStatus(repo, path, sha256), local: 'See coordinated implementation evidence for named check results.', publication: publicationStatus(repo, path, sha256)}});
   }
 }

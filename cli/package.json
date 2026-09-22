@@ -21,7 +21,7 @@
     "fixtures/",
     "core-dist/",
     "sdk/",
-    "gitvault-surface.json"
+    "vault-surface.json"
   ],
   "dependencies": {
     "@hpke/chacha20poly1305": "^1.8.0",

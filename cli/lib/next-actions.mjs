@@ -81,7 +81,7 @@ export function upDeployAction() {
 }
 
 /**
- * `repos create` (and `gitvault init`) on an org with no slug set: the
+ * `repos create` (and `vault init`) on an org with no slug set: the
  * response's `address: null` had no pointer to WHY, or to the named-addressing
  * feature at all. Owner-only. Wording deliberately
  * omits a price: the first slug per org is free, and renames/re-claims cost

@@ -13,9 +13,9 @@ import { resolveApplicationScope, loadApplicationScanInput, scanDeploymentSource
  */
 
 import { existsSync, statSync } from "node:fs";
-import { GITVAULT_BYO_NO_PAYLOAD_COPY_STATEMENT } from "#sdk";
+import { VAULT_BYO_NO_PAYLOAD_COPY_STATEMENT } from "#sdk";
 import { configDir, readWallet, loadKeyStore } from "./config.mjs";
-import { resolveGitvaultTarget } from "./gitvault-target.mjs";
+import { resolveVaultTarget } from "./vault-target.mjs";
 import { getSdk } from "./sdk.mjs";
 import {
   resolveScanRoot,
@@ -54,7 +54,7 @@ const DOCTOR_CHECK_NAMES = [
   "account_health",
   "runtime_staleness",
   "recovery_posture",
-  "gitvault",
+  "vault",
   "source_scan",
 ];
 
@@ -91,7 +91,7 @@ Output:
               api_reachable error, tier inactive / frozen / past_due /
               dormant / missing / error, error-severity source_scan findings
     advisory  a warning that never stops a deploy: account_health,
-              recovery_posture, gitvault, runtime_staleness, cli_update gaps
+              recovery_posture, vault, runtime_staleness, cli_update gaps
     info      ok / skipped / unknown
   Agents: branch on \`ok\`; read \`warnings[]\` (one entry per gap) for the
   non-blocking gaps and \`blocking[]\` for what to fix when \`ok\` is false.
@@ -117,16 +117,16 @@ Options:
   --dir D        Select the application directory for deployment diagnostics.
   --manifest P   Explicitly select a manifest (executable configs are trusted code).
   --scan-dir D   Advanced arbitrary scan; does not claim deployment readiness
-  --project <project_id> Target THIS project's gitvault check instead of the repo-standing
+  --project <project_id> Target THIS project's vault check instead of the repo-standing
                  default (the 4.38.0 pin / run402 remote / RUN402_PROJECT_ID / active
-                 project, in that order — see \`gitvault-target.mjs\`). Scoped to the
-                 gitvault check only; every other check is wallet/machine-wide, not
+                 project, in that order — see \`vault-target.mjs\`). Scoped to the
+                 vault check only; every other check is wallet/machine-wide, not
                  per-project, and is unaffected by this flag. Composes with --only.
   --only <check> Run ONLY the named check (repeatable — pass it more than once
                  to run several). Every other check, INCLUDING the monorepo
                  source-tree scan, is suppressed rather than merely hidden: a
                  skipped check's network/filesystem work never runs at all, so
-                 \`doctor --only gitvault\` costs one gitvault read, not a
+                 \`doctor --only vault\` costs one vault read, not a
                  config/tier/account/scan sweep. An unknown check name is
                  BAD_USAGE listing the valid names below. Not used with --buzz
                  (buzz mode is its own separate, always-complete check set).
@@ -164,7 +164,7 @@ Checks performed:
     the org's disaster backstops if the agent machine dies. Evidence
     levels: "configured" is what the platform verified, never proof an
     off-platform passkey or saved code still exists.
-  - gitvault: the active project's vault — activation policy, whether THIS
+  - vault: the active project's vault — activation policy, whether THIS
     machine can produce the capture a 'required' policy demands, open
     unvaulted-override journals, and where the keystore lives (back it up:
     whole-keystore loss is terminal for vault history)
@@ -310,7 +310,7 @@ export async function run(sub, args = []) {
   const skipScan = all.includes("--no-scan");
   const scanDirArgIdx = all.indexOf("--scan-dir");
   const scanDirOverride = scanDirArgIdx >= 0 ? all[scanDirArgIdx + 1] : null;
-  // Scoped to the gitvault check (see HELP): every other check is
+  // Scoped to the vault check (see HELP): every other check is
   // wallet/machine-wide, not per-project.
   const projectOverride = flagValue(all, "--project");
 
@@ -650,7 +650,7 @@ export async function run(sub, args = []) {
       }
     }
 
-    // 6c. Org recovery posture (gitvault-recovery-custody). One entry per
+    // 6c. Org recovery posture (vault-recovery-custody). One entry per
     // vault-owning org the caller can see; rides the same account-status
     // read. Evidence levels, not guarantees: "configured" names what the
     // platform VERIFIED — it can never observe whether an off-platform
@@ -661,11 +661,11 @@ export async function run(sub, args = []) {
     if (wanted("recovery_posture")) {
       const posture = status.recovery_posture;
       if (!Array.isArray(posture)) {
-        // Gateway older than gitvault-recovery-custody doesn't surface it.
+        // Gateway older than vault-recovery-custody doesn't surface it.
         checks.push({
           name: "recovery_posture",
           status: "skipped",
-          ...(verbose && { hint: "account status has no 'recovery_posture' block; requires a gitvault-recovery-custody gateway." }),
+          ...(verbose && { hint: "account status has no 'recovery_posture' block; requires a vault-recovery-custody gateway." }),
         });
       } else if (posture.length === 0) {
         // No vault-owning org in the caller's view — nothing to lose, nothing to advise.
@@ -718,15 +718,15 @@ export async function run(sub, args = []) {
     });
   }
 
-  // 6c. gitvault (add-gitvault). Doctor was completely silent about the vault
-  // even when `gitvault_policy: required` was the single thing that would break
+  // 6c. vault (add-vault). Doctor was completely silent about the vault
+  // even when `vault_policy: required` was the single thing that would break
   // the project's next deploy (dogfood #1, finding D1) — and doctor is where a
   // user looks when something is wrong. It also prints WHERE the keystore is:
   // "whole-keystore loss is terminal" was stated three times across this
   // surface while the directory to back up was stated nowhere (finding D2).
   //
   // Read-only and best-effort in every branch: no project, no vault, or a
-  // gateway that does not know gitvault are all ordinary and report `skipped`
+  // gateway that does not know vault are all ordinary and report `skipped`
   // or `ok`, never a doctor failure. A vault-only project that has never
   // deployed is a first-class shape (protocol D183), so its mere absence of a
   // deploy raises nothing.
@@ -734,12 +734,12 @@ export async function run(sub, args = []) {
   // TARGETING: when cwd is a repository
   // with its own pinned repo id or run402/origin remote, doctor checks THAT
   // vault, not the profile's active project — the same pin > remote >
-  // RUN402_PROJECT_ID env > active-project order every other gitvault verb
-  // follows (`gitvault-target.mjs`). An explicit `--project <project_id>` outranks
-  // all of that (the resolver's own top tier), same as every other gitvault
+  // RUN402_PROJECT_ID env > active-project order every other vault verb
+  // follows (`vault-target.mjs`). An explicit `--project <project_id>` outranks
+  // all of that (the resolver's own top tier), same as every other vault
   // verb's `--project`.
-  if (wanted("gitvault")) {
-    // gitvault-persistent-helper: a bounded LOCAL probe of the resident
+  if (wanted("vault")) {
+    // vault-persistent-helper: a bounded LOCAL probe of the resident
     // helper engine — {running:false} is a fine answer, never a finding
     // (the daemon is an accelerator, not a dependency).
     const daemonInfo = await (async () => {
@@ -783,18 +783,18 @@ export async function run(sub, args = []) {
         return { running: false };
       }
     })();
-    const target = await resolveGitvaultTarget({ repoDir: process.cwd(), explicitProjectId: projectOverride ?? undefined });
+    const target = await resolveVaultTarget({ repoDir: process.cwd(), explicitProjectId: projectOverride ?? undefined });
     const projectId = target.project_id ?? null;
     const repoId = target.repo_id ?? null;
     if (!projectId && !repoId) {
       checks.push({
-        name: "gitvault",
+        name: "vault",
         status: "skipped",
         ...(verbose && { hint: "no active project — run 'run402 projects use <project_id>' to check its vault." }),
       });
     } else {
       try {
-        const gv = await getSdk().gitvault.status({
+        const gv = await getSdk().repos.status({
           ...(repoId ? { repo_id: repoId } : { project_id: projectId }),
           repo_dir: process.cwd(),
         });
@@ -802,11 +802,11 @@ export async function run(sub, args = []) {
           project_id: gv.project_id ?? projectId,
           repo_id: gv.repo_id,
           vault: gv.vault === null ? null : "allocated",
-          // gitvault-byo-primary-bucket task 3.5 — absent-or-"managed" is
+          // vault-byo-primary-bucket task 3.5 — absent-or-"managed" is
           // byte-identical to before this fold for every non-BYO vault.
           storage_profile: gv.vault?.storage_profile ?? null,
           byo_destination: gv.vault?.byo_destination ?? null,
-          gitvault_policy: gv.gitvault_policy,
+          vault_policy: gv.vault_policy,
           keystore_root: gv.keystore.root,
           can_sign: gv.keystore.can_sign,
           holds_repo_key: gv.keystore.holds_repo_key,
@@ -819,7 +819,7 @@ export async function run(sub, args = []) {
           // to the durability sentence instead of the terminal-loss claim.
           covering_recipients: gv.covering_recipients ?? null,
           daemon: daemonInfo,
-          // gitvault-multi-writer (rev 47) task 6.2 — this machine's own
+          // vault-multi-writer (rev 47) task 6.2 — this machine's own
           // standing on the vault's chain-verified writer set. `null` only
           // when there is no vault at all (nothing to be a writer OF).
           // `read_only_vault` takes priority over the caller's own standing
@@ -839,22 +839,22 @@ export async function run(sub, args = []) {
         if (value.writer === "read_only_vault") {
           gaps.push("this vault has lost its last writer (D228 read-only terminal) — it still serves reads, but no push can be admitted until a new writer is admitted through a recovery path");
         } else if (value.writer === "pending") {
-          gaps.push("this machine's key is an eligible writer candidate but not yet admitted — run 'run402 repos access sync' if you already hold writer standing on this vault, or ask a current writer to run any gitvault operation");
+          gaps.push("this machine's key is an eligible writer candidate but not yet admitted — run 'run402 repos access sync' if you already hold writer standing on this vault, or ask a current writer to run any vault operation");
         } else if (value.writer === "not_admitted") {
-          gaps.push("this machine's key is not an active writer on this vault — a push from here is refused GITVAULT_WRITER_NOT_ADMITTED; ask a current writer to admit you (org membership at role developer+ and a published signing key make you eligible)");
+          gaps.push("this machine's key is not an active writer on this vault — a push from here is refused VAULT_WRITER_NOT_ADMITTED; ask a current writer to admit you (org membership at role developer+ and a published signing key make you eligible)");
         }
         // The one that actually breaks the next deploy: the project demands a
         // vaulted capture and THIS machine cannot produce one.
-        if (gv.gitvault_policy === "required" && !gv.keystore.holds_repo_key) {
+        if (gv.vault_policy === "required" && !gv.keystore.holds_repo_key) {
           gaps.push(
-            "gitvault_policy is 'required' but this machine holds no key for the vault — a deploy from here is refused with GITVAULT_CLIENT_UPGRADE_REQUIRED. " +
+            "vault_policy is 'required' but this machine holds no key for the vault — a deploy from here is refused with VAULT_CLIENT_UPGRADE_REQUIRED. " +
             "Run 'run402 repos create --project <project_id>' (idempotent; resolves to the existing repo), or 'run402 repos policy grandfathered --reason <why>' to un-gate the project.",
           );
-        } else if (gv.gitvault_policy === "required" && !gv.keystore.can_sign) {
-          gaps.push("gitvault_policy is 'required' and this keystore is read-only (no signing key) — it can verify but cannot publish the capture a deploy needs");
+        } else if (gv.vault_policy === "required" && !gv.keystore.can_sign) {
+          gaps.push("vault_policy is 'required' and this keystore is read-only (no signing key) — it can verify but cannot publish the capture a deploy needs");
         }
         if (gv.pending_overrides > 0) {
-          gaps.push(`${gv.pending_overrides} unvaulted-override journal(s) are still open — run 'run402 repos snapshot' to drain them`);
+          gaps.push(`${gv.pending_overrides} unvaulted-override journal(s) are still open — run 'run402 repos capture' to drain them`);
         }
         // `matches` is a TRI-STATE: `false` alone is
         // a real mismatch. `null` (a slug-form remote not yet resolved on
@@ -867,7 +867,7 @@ export async function run(sub, args = []) {
         // doctor-persistent `grandfathered` advisory it owns.
         for (const w of gv.warnings ?? []) gaps.push(`${w.kind}: ${w.message}`);
 
-        // gitvault-mirror-and-recover task 4.3 + gitvault-mirror-default:
+        // vault-mirror-and-recover task 4.3 + vault-mirror-default:
         // mirror currency, reported ALONGSIDE (never in place of) the
         // deploy-related gaps above, and never blocking `run402 deploy`'s
         // own gate — the vault lane's outcome is unaffected regardless of
@@ -876,14 +876,14 @@ export async function run(sub, args = []) {
         // unreachable or vault unread). Only STALE is actionable enough to
         // become a warning gap; a vault with no successful mirror copy yet
         // carries the SDK-computed `vault_unmirrored` finding — named and
-        // standing (gitvault-mirror-default supersedes the old anonymous
+        // standing (vault-mirror-default supersedes the old anonymous
         // `advisory` string), echoed verbatim, and deliberately NOT pushed
         // into `gaps`: informational, never blocking, computed client-side
         // only, cleared by the first successful mirror write or sync.
         if (gv.vault !== null && value.repo_id) {
           try {
-            const mirrorStatus = await getSdk().gitvault.mirrorStatus({ repo_id: value.repo_id, is_byo: value.storage_profile === "byo" });
-            value.gitvault_mirror = {
+            const mirrorStatus = await getSdk().repos.mirrorStatus({ repo_id: value.repo_id, is_byo: value.storage_profile === "byo" });
+            value.vault_mirror = {
               configured: mirrorStatus.configured,
               destination: mirrorStatus.destination,
               mirrored_generation: mirrorStatus.mirrored_generation,
@@ -903,12 +903,12 @@ export async function run(sub, args = []) {
           }
         }
 
-        // gitvault-byo-primary-bucket task 3.5 — unconditional, independent
+        // vault-byo-primary-bucket task 3.5 — unconditional, independent
         // of mirror status (D7); imported from the canonical constants, never
         // paraphrased.
-        const byoDisclosure = value.storage_profile === "byo" ? ` Storage: byo (${value.byo_destination ?? "(unknown)"}) — ${GITVAULT_BYO_NO_PAYLOAD_COPY_STATEMENT}` : "";
+        const byoDisclosure = value.storage_profile === "byo" ? ` Storage: byo (${value.byo_destination ?? "(unknown)"}) — ${VAULT_BYO_NO_PAYLOAD_COPY_STATEMENT}` : "";
         checks.push({
-          name: "gitvault",
+          name: "vault",
           status: gaps.length > 0 ? "warning" : "ok",
           value: gaps.length > 0 ? { ...value, gaps } : value,
           hint: (gv.vault === null
@@ -918,12 +918,12 @@ export async function run(sub, args = []) {
               : `Back up ${gv.keystore.root} — whole-machine or whole-keystore loss is terminal for vault history.`) + byoDisclosure,
         });
       } catch (err) {
-        // A gateway without gitvault, an unreachable API, or a project this
+        // A gateway without vault, an unreachable API, or a project this
         // wallet cannot see. None of those is a local health problem.
         checks.push({
-          name: "gitvault",
+          name: "vault",
           status: "skipped",
-          message: describeCheckFailure("gitvault status check", err),
+          message: describeCheckFailure("vault status check", err),
         });
       }
     }
@@ -935,7 +935,7 @@ export async function run(sub, args = []) {
   // `error` block deploy (`run402 deploy` wraps doctor and respects exit
   // code). Skipped via --no-scan when the user wants config-only checks, and
   // by any --only that omits it — on a monorepo this check's findings can
-  // otherwise bury the gitvault diagnosis under thousands of hits.
+  // otherwise bury the vault diagnosis under thousands of hits.
   if (!skipScan && wanted("source_scan")) {
     try {
       const scope = await resolveApplicationScope({ dir: flagValue(all, "--dir") ?? undefined, manifest: flagValue(all, "--manifest") ?? undefined });

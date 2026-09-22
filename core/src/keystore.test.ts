@@ -148,7 +148,7 @@ describe("core keystore", () => {
     // (sdk/src/node/credentials.ts) uses — the CURRENT wallet's key
     // address — or a pre-existing principal-LESS ("unknown"-bucket) write
     // permanently shadows every later wallet-scoped one for every reader in
-    // this module (resolveProjectId, `projects current`, gitvault target
+    // this module (resolveProjectId, `projects current`, vault target
     // resolution, ...). Default (no explicit `path`) so `getWalletPath()`
     // resolves from the same `RUN402_CONFIG_DIR` these tests already set.
 

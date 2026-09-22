@@ -28,7 +28,7 @@
 import { existsSync, fstatSync, readFileSync } from "node:fs";
 import { resolve, dirname, extname, isAbsolute } from "node:path";
 import {
-  applyWithGitvault,
+  applyWithVault,
   assertLocalFileReferencesExist,
   buildDeployResolveSummary,
   githubActionsCredentials,
@@ -139,7 +139,7 @@ Options:
   --final-only            Alias for --quiet; final success/error envelope is still preserved
   --allow-warning <code>  Continue past this reviewed warning code (repeatable)
   --allow-warnings        Continue past plan warnings that require confirmation
-  --allow-dirty           gitvault-required projects only: capture a dirty
+  --allow-dirty           vault-required projects only: capture a dirty
                           work tree as-is instead of refusing
                           SNAPSHOT_DIRTY_TREE. The result discloses exactly
                           what was swept in, printed to stderr too — even
@@ -1328,14 +1328,14 @@ async function deployCmd(args) {
     const requiredPlan = opts.mode && opts.mode.kind === "applyReviewed"
       ? { planId: opts.mode.planId, ...(opts.mode.planFingerprint ? { planFingerprint: opts.mode.planFingerprint } : {}) }
       : undefined;
-    // A thin shim over the SDK lane (add-gitvault 5.0). `applyWithGitvault`
-    // takes the project's `gitvault_policy` into account: a project that is
+    // A thin shim over the SDK lane (add-vault 5.0). `applyWithVault`
+    // takes the project's `vault_policy` into account: a project that is
     // not `required` runs the same `apply()` this line always ran, with the
     // same options object; a `required` one captures, publishes, mints an
     // activation token, and commits with it.
     const sdk = getSdk(sdkOpts);
     const outcome = await withAutoApprove(() =>
-      applyWithGitvault({
+      applyWithVault({
         sdk,
         spec: releaseSpec,
         apply: {
@@ -1348,7 +1348,7 @@ async function deployCmd(args) {
         },
         target: isCoreApiTarget() ? "core" : "cloud",
         ...(opts.allowDirty ? { allowDirty: true } : {}),
-        // The `gitvault_commit` line is printed ALWAYS, and to stderr, so
+        // The `vault_commit` line is printed ALWAYS, and to stderr, so
         // `run402 deploy | jq` stays clean (the pipe contract).
         onCommitLine: (line) => { if (!opts.quiet) process.stderr.write(`${line}\n`); },
       }),
@@ -1357,29 +1357,29 @@ async function deployCmd(args) {
     // pass it as an optimization (the gateway defaults to the live release
     // without it). Best-effort: a keystore hiccup never fails the deploy.
     rememberLastDeployment(releaseSpec.project_id, outcome.deploy?.urls?.deployment_id);
-    if (!outcome.gitvault) {
+    if (!outcome.vault) {
       console.log(JSON.stringify({ ...outcome.deploy, stats: sdkStats(sdk) }, null, 2));
       printVerboseStats(opts.verbose, sdk);
       return;
     }
-    const vaulted = outcome.gitvault;
+    const vaulted = outcome.vault;
     // Both `DEPLOYED_*` outcomes activated a release; the override one just
     // did it without a vaulted capture and carries a draining advisory.
     const activated = vaulted.outcome === "DEPLOYED_AND_VAULTED" || vaulted.outcome === "DEPLOYED_UNVAULTED_OVERRIDE";
     console.log(JSON.stringify({
       ok: activated,
       outcome: vaulted.outcome,
-      gitvault_commit: vaulted.gitvault_commit,
+      vault_commit: vaulted.vault_commit,
       capture_id: vaulted.capture_id,
       operation_id: vaulted.operation_id,
       ...("generation" in vaulted ? { generation: vaulted.generation } : {}),
       ...("push_error" in vaulted ? { push_error: vaulted.push_error } : {}),
       ...("deploy_error" in vaulted ? { deploy_error: vaulted.deploy_error } : {}),
-      // Design D5/D6 (gitvault-human-envelopes task 4.1 + gitvault-mirror):
+      // Design D5/D6 (vault-human-envelopes task 4.1 + vault-mirror):
       // present only when this deploy landed a new generation — the SDK
       // omits both fields entirely on the other three outcomes rather than
       // faking a `skipped_*` value for something that never had a chance to
-      // run. See `Gitvault.deploy`'s doc comment (sdk/src/namespaces/gitvault.ts).
+      // run. See `Repos.deploy`'s doc comment (sdk/src/namespaces/repos.ts).
       ...("mirror_push" in vaulted ? { mirror_push: vaulted.mirror_push } : {}),
       ...("reconcile_recipients" in vaulted ? { reconcile_recipients: vaulted.reconcile_recipients } : {}),
       next_actions: vaulted.next_actions,
@@ -1388,11 +1388,11 @@ async function deployCmd(args) {
     }, null, 2));
     // Design D6: the mirror result is reported BESIDE the vault outcome
     // above, on its own stderr line — a mirror failure never blocks the
-    // deploy (mirrors `run402 gitvault snapshot`'s reporting).
+    // deploy (mirrors `run402 repos capture`'s reporting).
     if (vaulted.mirror_push?.outcome === "pushed") {
       console.error(`mirror: pushed generation ${vaulted.generation} (${vaulted.mirror_push.summary?.objects_copied ?? 0} object(s) copied)`);
     } else if (vaulted.mirror_push?.outcome === "failed") {
-      console.error(`mirror: dual-push FAILED (deploy is unaffected) — ${vaulted.mirror_push.error ?? "see mirror_push.summary.errors"}`);
+      console.error(`mirror: mirroring this capture FAILED (deploy is unaffected) — ${vaulted.mirror_push.error ?? "see mirror_push.summary.errors"}`);
     }
     // Dirty-tree disclosure (Tal's decision, "help people not make
     // mistakes"): even an explicit --allow-dirty override never captures
@@ -1502,12 +1502,12 @@ const CI_DEPLOY_ERROR_GUIDANCE = {
 };
 
 /**
- * The gateway's envelope for gitvault deploy errors — `upgrade_client` first,
+ * The gateway's envelope for vault deploy errors — `upgrade_client` first,
  * then `grandfather_policy` — is relayed untouched: `deployCmd` deploys
- * through `applyWithGitvault`, which declares `{capture_id,
+ * through `applyWithVault`, which declares `{capture_id,
  * snapshot_oid_hmac}` at plan time and presents an activation token at
- * commit, satisfying `gitvault_policy: required`, so no client-side rewrite
- * of the envelope is needed. `cli-deploy-gitvault-lane.test.mjs` is the gate
+ * commit, satisfying `vault_policy: required`, so no client-side rewrite
+ * of the envelope is needed. `cli-deploy-vault-lane.test.mjs` is the gate
  * for this behavior.
  */
 function reportDeployApplyError(err, useGithubActionsOidc) {

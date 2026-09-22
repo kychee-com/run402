@@ -1,4 +1,4 @@
-//! `r402s-verify` — the INDEPENDENT-lineage verifier for the gitvault
+//! `r402s-verify` — the INDEPENDENT-lineage verifier for the vault
 //! `r402s/v0` protocol (task 5.9). It never imports the SDK; its HPKE is the
 //! task-1.0 second implementation (rozbb/rust-hpke 0.14, D182).
 //!

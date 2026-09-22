@@ -1,7 +1,7 @@
 # r402s-verify
 
-The **independent-lineage verifier** for the gitvault `r402s/v0` protocol
-(openspec `add-gitvault`, task 5.9). It exists so that nothing the SDK/CLI
+The **independent-lineage verifier** for the vault `r402s/v0` protocol
+(openspec `add-vault`, task 5.9). It exists so that nothing the SDK/CLI
 says about a vault has to be taken on the SDK/CLI's word:
 
 - **Never imports the SDK.** Rust, RustCrypto primitives, a hand-written
@@ -69,7 +69,7 @@ its build machine before upload. Building from source works too:
 cargo build --release            # binary at target/release/r402s-verify
 
 # Replay the task-1.2 vector set and print a per-class tally.
-r402s-verify vectors /path/to/gitvault/vectors/vectors.json
+r402s-verify vectors /path/to/vault/vectors/vectors.json
 #   (schemas default to <vectors>/../schemas; override with --schemas or R402S_SCHEMAS)
 
 # Verify a vault's head chain from a bucket export (head/<gen>, admissions/<gen>, _registry/<v>.json).
@@ -122,7 +122,7 @@ re-implemented; the RNG is the only thing supplied (`IkmRng`, vector replay only
 The frozen set lives at `test-vectors/r402s-v0/` in this repository —
 `vectors.json`, `hpke-interop/golden.json`, the `schemas/`, and the
 `CONTINUITY.json` that pins their digests. It is generated in the private repo
-(`docs/strategy/products/gitvault/{vectors,schemas}/`) and copied across; never
+(`docs/strategy/products/kygit/{vectors,schemas}/`) and copied across; never
 hand-edit it.
 
 `cargo test` resolves the set from `R402S_VECTORS=/path/to/vectors.json`, else

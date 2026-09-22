@@ -511,12 +511,12 @@ export class Session {
     );
   }
 
-  // ── source-access custody (gitvault-recovery-custody; bearer) ──
+  // ── source-access custody (vault-recovery-custody; bearer) ──
 
   /**
    * My own source-access key + wrapper set, ciphertext included
    * (`GET /agent/v1/source-access/wrappers`) — the states/scheme read behind
-   * `run402 source-access status`. Principal-scoped structurally: only the
+   * `run402 repos access`. Principal-scoped structurally: only the
    * caller's own wrappers ever come back. Enrollment/activation/revocation
    * are console ceremonies (WebAuthn); this SDK surface is read-only.
    */
@@ -573,7 +573,7 @@ export interface SourceAccessWrappersResult {
   wrappers: SourceAccessWrapper[];
 }
 
-/** `r402s-member-recovery-bundle/v1` exactly as the gateway returns it (see the node-side `GitvaultMemberRecoveryBundle` for the recover-input twin). */
+/** `r402s-member-recovery-bundle/v1` exactly as the gateway returns it (see the node-side `VaultMemberRecoveryBundle` for the recover-input twin). */
 export interface SourceAccessRecoveryBundleResult {
   format: "r402s-member-recovery-bundle/v1";
   exported_at: string;

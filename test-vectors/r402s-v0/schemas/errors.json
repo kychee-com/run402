@@ -43,7 +43,7 @@
    "next_action": "remove or split the oversize object; consider external storage"
   },
   {
-   "code": "GITVAULT_CLIENT_UPGRADE_REQUIRED",
+   "code": "VAULT_CLIENT_UPGRADE_REQUIRED",
    "retryable": false,
    "next_action": "upgrade the run402 CLI"
   },
@@ -115,7 +115,7 @@
   {
    "code": "KEYSTORE_MISSING",
    "retryable": false,
-   "next_action": "restore ~/.config/run402/gitvault from backup or accept vault loss"
+   "next_action": "restore ~/.config/run402/vault from backup or accept vault loss"
   },
   {
    "code": "QUOTA_EXCEEDED",
@@ -133,7 +133,7 @@
    "next_action": "restart the heads listing from after_generation without a cursor and echo each page's next_cursor unchanged"
   },
   {
-   "code": "GITVAULT_ACCESS_DENIED",
+   "code": "VAULT_ACCESS_DENIED",
    "retryable": false,
    "next_action": "authenticate with a principal holding the required capability"
   },

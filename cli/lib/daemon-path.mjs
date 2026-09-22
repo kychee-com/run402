@@ -1,11 +1,11 @@
 /**
- * Daemon identity + transport addressing (gitvault-persistent-helper D4/D5)
+ * Daemon identity + transport addressing (vault-persistent-helper D4/D5)
  * — the ONE module the thin client's fast path may import beside node
  * builtins (pinned by the import-graph gate test), so it must stay tiny.
  *
  * The socket lives INSIDE the client configuration directory — the same
  * 0700 trust boundary that already holds the wallet private key and the
- * gitvault keystore — and its path is keyed by CLI version, so a CLI
+ * vault keystore — and its path is keyed by CLI version, so a CLI
  * upgrade resolves a NEW path: the new client never reaches the old daemon,
  * which idles out on its own. Windows uses a named pipe whose name carries
  * a hash of the config dir (pipes have no filesystem home) plus the same
@@ -79,7 +79,7 @@ export function daemonSocketPath() {
 }
 
 export function daemonRunnerPath() {
-  return join(dirname(fileURLToPath(import.meta.url)), "gitvault-daemon-run.mjs");
+  return join(dirname(fileURLToPath(import.meta.url)), "vault-daemon-run.mjs");
 }
 
 /**

@@ -31,7 +31,7 @@
 
 import type { Client } from "../kernel.js";
 import { LocalError } from "../errors.js";
-import { toBase64url } from "./gitvault.crypto.js";
+import { toBase64url } from "./vault.crypto.js";
 import type {
   AckRoomMessageOptions,
   CreatedRoomClaim,
@@ -63,7 +63,7 @@ import type {
 /**
  * The room-invite key format (`kri1_…`) is pure crypto (HKDF/SHA-256) that
  * lives Node-only, per design D2's "a move, not a copy" — mirrors
- * `gitvault.ts`'s own `nodeOnly()` seam for its Node-only submodules, so
+ * `repos.ts`'s own `nodeOnly()` seam for its Node-only submodules, so
  * every OTHER `Rooms`/`ScopedRoom` method stays isomorphic and only
  * `invite`/`join` (the two verbs that touch a bearer key) ever pay this
  * dynamic-import cost.
@@ -601,7 +601,7 @@ export class Rooms {
       context: "minting a room invite",
     });
     if (result.invite_id !== inviteId) {
-      // Mirrors gitvault's own `INVITE_ID_MISMATCH` fail-fast (design D3):
+      // Mirrors vault's own `INVITE_ID_MISMATCH` fail-fast (design D3):
       // the printed key is assembled from the id THIS call generated, so a
       // gateway that echoed a different one would hand out a key that does
       // not match the stored row.

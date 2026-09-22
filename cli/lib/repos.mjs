@@ -6,8 +6,7 @@
  * ARCHITECTURAL LAW: every piece of protocol behavior — crypto core,
  * keystore, creation journal, snapshot + capture, publication state
  * machines, ref transactions, verification budget, repair — lives ONCE in
- * `@run402/sdk` under `r.gitvault` (the SDK keeps that name; it is
- * infrastructure language). This module is a THIN ADAPTER: argument
+ * `@run402/sdk` under `r.repos`. This module is a THIN ADAPTER: argument
  * parsing, TTY output, exit codes, local file I/O. It adds zero protocol
  * behavior of its own.
  *
@@ -23,16 +22,16 @@ import { withAutoApprove } from "./sign-in.mjs";
 import { walletAuthHeaders, isCoreApiTarget, readWallet, resolveProjectId } from "./config.mjs";
 import { loadLiveControlPlaneSession } from "../core-dist/control-plane-session.js";
 import { resolveOrgId, resolveOwningOrgId } from "./org-context.mjs";
-import { resolveGitvaultTarget } from "./gitvault-target.mjs";
+import { resolveVaultTarget } from "./vault-target.mjs";
 import { nextAction, setOrgSlugAction, setRepoNameAction } from "./next-actions.mjs";
 import { resolveHarnessLabels, resolveSessionKey, resolveTaskLabel, persistSessionKey } from "./harness-context.mjs";
 import { updateRoomState } from "./rooms-context.mjs";
 import {
-  GITVAULT_BYO_HEADLINE_STATEMENT,
-  GITVAULT_BYO_NO_PAYLOAD_COPY_STATEMENT,
-  GITVAULT_BYO_UNMIRRORED_REMEDY_STATEMENT,
-  GITVAULT_MIRROR_SETUP_HINT,
-  gitvaultRemoteUrlForRepo,
+  VAULT_BYO_HEADLINE_STATEMENT,
+  VAULT_BYO_NO_PAYLOAD_COPY_STATEMENT,
+  VAULT_BYO_UNMIRRORED_REMEDY_STATEMENT,
+  VAULT_MIRROR_SETUP_HINT,
+  vaultRemoteUrlForRepo,
 } from "#sdk";
 import { sdkStats, printVerboseStats, isVerbose } from "./stats.mjs";
 import {
@@ -49,12 +48,12 @@ import {
 
 /**
  * Where the keystore lives — printed after `repos create` allocates and
- * after `repos snapshot` publishes.
+ * after `repos capture` publishes.
  */
 async function printKeystoreLocation() {
   try {
-    const { getGitvaultKeystoreRoot } = await import("#sdk/node");
-    console.error(`keystore: ${getGitvaultKeystoreRoot()} — back this up; whole-keystore loss is terminal for repo history`);
+    const { getVaultKeystoreRoot } = await import("#sdk/node");
+    console.error(`keystore: ${getVaultKeystoreRoot()} — back this up; whole-keystore loss is terminal for repo history`);
   } catch {
     // Never let a diagnostic line fail a command that already succeeded.
   }
@@ -91,7 +90,7 @@ Invite (bring a second agent into the SAME work, dirty tree included):
   run402 repos join    <kgi1_…|--key-stdin> [--to <dir>] [--no-init] [--json]
 
 Occasional:
-  run402 repos snapshot [--project <project_id>] [--repo <repo_id>] [--message <text>] [--checkpoint] [--dry-run] [--allow-dirty] [--manifest-out <path>]
+  run402 repos capture [--project <project_id>] [--repo <repo_id>] [--message <text>] [--checkpoint] [--dry-run] [--allow-dirty] [--manifest-out <path>]
   run402 repos mirror   [<destination>] [--off] [--backfill] [--profile <name> | --ambient] [--region <r>] [--endpoint <url>] [--project <project_id>] [--repo <repo_id>]
   run402 repos recover  <source> --out <dir> [--repo <repo_id>] [--profile <name> | --ambient] [--region <r>] [--endpoint <url>]
                         [--bundle <file>] [--code <SRC1-…>] [--receipt <file>] [--rp-id <host>] [--human]
@@ -104,7 +103,7 @@ Lifecycle:
 Maintenance:
   run402 repos fsck   [--project <project_id>] [--repo <repo_id>] [--mirror] [--budget <n>] [--no-write] [--human]
   run402 repos gc     [--project <project_id>] [--repo <repo_id>] [--force-headroom] [--submit --intent-core <path> --verifier-receipt <path> [--wait]]
-  run402 repos daemon <status|stop>   The resident helper engine (gitvault-persistent-helper) — inspect or retire it; nothing requires either
+  run402 repos daemon <status|stop>   The resident helper engine (vault-persistent-helper) — inspect or retire it; nothing requires either
   run402 repos access [--project <project_id>] [--repo <repo_id>] [--human]
   run402 repos access repair [--project <project_id>] [--repo <repo_id>] --recipient-state-version <n> --recipient-revocation-version <n>
   run402 repos access revoke-key <principal_id> [--project <project_id>] [--repo <repo_id>]
@@ -155,7 +154,7 @@ Subcommands:
            omitted. \`--human\` renders a compact roster (address,
            generation, bytes, policy) instead of JSON.
   handoff  Capture a stash-shaped checkpoint (dirty work included, by
-           default — unlike \`snapshot\`) and mint a single-use Handoff Key
+           default — unlike \`capture\`) and mint a single-use Handoff Key
            (\`kgh1_…\`), printed ONCE to stdout; the blast-radius warning
            ("anyone holding this key becomes a <role> of this org until
            first use or <expires_at>") and every other line go to stderr.
@@ -220,8 +219,8 @@ Subcommands:
            confirmation below it (the repo holds admitted generations); it
            NEVER overrides the non-repo-infra refusal. Success enumerates
            deleted_resources.
-  snapshot Capture the working tree and publish it. Not gated on a deploy —
-           a vault-only repo snapshots for months without one. Against a
+  capture  Capture the working tree and publish it. Not gated on a deploy —
+           a vault-only repo captures for months without one. Against a
            project with no vault yet, this ALLOCATES one inline before
            publishing. Push-to-creates through a slug-form remote
            (run402::<org-slug>/<name>) the same way \`git push\` does.
@@ -232,7 +231,7 @@ Subcommands:
            capture it as-is; the result then discloses exactly what was
            swept in (modified_captured / untracked_captured), printed to
            stderr too. \`--dry-run\` surfaces the same refusal.
-           Both \`--dry-run\` and a real snapshot print a SUMMARY by default —
+           Both \`--dry-run\` and a real capture print a SUMMARY by default —
            file counts (files_total/files_changed/files_new), total/delta
            bytes, and up to 200 changed/new paths (changed_more names any
            overflow) — never the full captured-file inventory, which can run
@@ -247,7 +246,7 @@ Subcommands:
            freshness check against the live vault. \`<destination>\`:
            configure (idempotent upsert). \`--off\`: remove the config only —
            never touches the mirror's own bytes. \`--backfill\`: copy every
-           object the mirror is missing (every publish already dual-pushes
+           object the mirror is missing (every capture is already mirrored
            automatically; backfill exists for a pre-existing vault or a
            mirror that fell behind). Exactly one of these per call. Mirror
            state also renders inside \`repos view\`; mirror INTEGRITY inside
@@ -304,7 +303,7 @@ Subcommands:
            the customer's own bucket against run402's signed chain —
            automatic, no flag needed. No local BYO credentials on this
            machine reports an explicit NOT CHECKED line, never a failure;
-           a confirmed absence FAILS fsck with GITVAULT_BYO_OBJECT_MISSING
+           a confirmed absence FAILS fsck with VAULT_BYO_OBJECT_MISSING
            naming exactly what's missing. Runs under \`--no-write\` too (a
            pure HEAD-check read). See the result's \`byo_presence\` block
            (also on \`--human\`); absent entirely for a managed vault.
@@ -336,9 +335,9 @@ Subcommands:
            actually rotates. history_scope (which epochs each recipient can
            read) is not reported by this read — see the \`gap\` field. An
            enrolled teammate's key envelope is wrapped AUTOMATICALLY — no
-           manual step — by the next \`git push\` or \`repos snapshot\` any
+           manual step — by the next \`git push\` or \`repos capture\` any
            key-holding client runs (best-effort, non-blocking; the retired
-           \`gitvault reconcile\` verb did this by hand and is REMOVED).
+           \`vault reconcile\` verb did this by hand and is REMOVED).
            \`--human\` renders a compact roster instead of JSON (the read
            form only — repair/revoke-key/declare-exposure stay JSON-only).
   access repair
@@ -374,7 +373,7 @@ Subcommands:
   policy auto-gc [<generations>|off]
            A LOCAL, per-checkout setting (git config, like git's own
            \`gc.auto\` — no network call, no --project/--repo/--reason): the
-           post-push compaction cadence (gitvault-checkpoint-cadence).
+           post-push compaction cadence (vault-checkpoint-cadence).
            Default 32 — after a push, once this many generations have
            accumulated since the vault's last checkpoint, \`gc\`'s
            compact+prune-plan cycle runs automatically (one stderr advisory
@@ -420,19 +419,19 @@ Options:
   --force           delete: proceed even though the repo holds generations
                     that would be permanently and irrecoverably lost. Never
                     overrides the non-repo-infrastructure refusal.
-  --message <text>  snapshot: commit message for the synthetic commit a dirty
+  --message <text>  capture: commit message for the synthetic commit a dirty
                     tree produces (a clean tree pushes HEAD itself, unused)
-  --checkpoint      snapshot: force the checkpoint-bearing form regardless of delta size
-  --dry-run         snapshot: a REAL preview — runs the actual local pipeline
+  --checkpoint      capture: force the checkpoint-bearing form regardless of delta size
+  --dry-run         capture: a REAL preview — runs the actual local pipeline
                     and reports what would publish. Publishes nothing. A
                     dirty tree still refuses SNAPSHOT_DIRTY_TREE here (a
                     preview that hid the refusal would lie).
-  --allow-dirty     snapshot: capture a dirty tree as-is instead of refusing.
+  --allow-dirty     capture: capture a dirty tree as-is instead of refusing.
                     The result discloses exactly what was swept in
                     (modified_captured / untracked_captured) — even this
                     override never captures silently.
   --manifest-out <path>
-                    snapshot: write the complete captured-file inventory
+                    capture: write the complete captured-file inventory
                     (the full JSON the SDK returned, untouched) to a private
                     0600 file instead of stdout's default summary. The
                     printed result's manifest_path names it. Composes with
@@ -492,7 +491,7 @@ Options:
   -v, --verbose     Print one stderr summary line of this call's request
                     stats (round trips, wire time, bytes). Coexists with
                     --human. The JSON result always carries a \`stats\` block
-                    regardless of this flag. On \`snapshot\`/\`snapshot
+                    regardless of this flag. On \`capture\`/\`capture
                     --dry-run\`, ALSO inlines the full captured-file
                     inventory in stdout's JSON (composes with the stats
                     line — both happen, not one or the other).
@@ -511,9 +510,9 @@ Examples:
   run402 repos view --human
   run402 repos list --org org_1a2b3c --human
   run402 repos rename my-notes --project prj_1a2b3c
-  run402 repos snapshot --dry-run
-  run402 repos snapshot --dry-run --manifest-out /tmp/snapshot-plan.json
-  run402 repos snapshot --allow-dirty
+  run402 repos capture --dry-run
+  run402 repos capture --dry-run --manifest-out /tmp/capture-plan.json
+  run402 repos capture --allow-dirty
   run402 repos mirror s3://acme-vault-mirror --profile acme
   run402 repos mirror --backfill
   run402 repos fsck --mirror --human
@@ -536,7 +535,7 @@ async function vaultTarget(a) {
   const repoId = flagValue(a, "--repo");
   const project = flagValue(a, "--project");
   const repoDir = process.cwd();
-  const resolved = await resolveGitvaultTarget({
+  const resolved = await resolveVaultTarget({
     repoDir,
     explicitProjectId: project ?? undefined,
     explicitRepoId: repoId ?? undefined,
@@ -598,8 +597,8 @@ async function spillIfLarge(repoId, verb, payload) {
   const json = JSON.stringify(payload, null, 2);
   if (Buffer.byteLength(json, "utf8") <= LARGE_OUTPUT_THRESHOLD_BYTES) return;
   try {
-    const { getGitvaultKeystoreRoot } = await import("#sdk/node");
-    const dir = join(getGitvaultKeystoreRoot(), "reports");
+    const { getVaultKeystoreRoot } = await import("#sdk/node");
+    const dir = join(getVaultKeystoreRoot(), "reports");
     mkdirSync(dir, { recursive: true, mode: 0o700 });
     const path = join(dir, `${verb}-${repoId ?? "unknown"}-${Date.now()}.json`);
     writeFileSync(path, json, { mode: 0o600 });
@@ -676,11 +675,11 @@ async function formatRepoHuman(s, mirror) {
   const objectCount = storage?.objects ? Object.values(storage.objects).reduce((sum, n) => sum + Number(n), 0) : null;
   lines.push(storage ? `Storage: ${storage.source_bytes} byte(s)${objectCount != null ? ` across ${objectCount} object(s)` : ""}` : "Storage: unknown");
 
-  // gitvault-byo-primary-bucket task 3.5 — unconditional, independent of
+  // vault-byo-primary-bucket task 3.5 — unconditional, independent of
   // mirror status (D7).
   if (s.vault.storage_profile === "byo") {
-    lines.push(`Storage profile: byo (${s.vault.byo_destination ?? "(unknown)"}) — ${GITVAULT_BYO_HEADLINE_STATEMENT}`);
-    lines.push(GITVAULT_BYO_NO_PAYLOAD_COPY_STATEMENT);
+    lines.push(`Storage profile: byo (${s.vault.byo_destination ?? "(unknown)"}) — ${VAULT_BYO_HEADLINE_STATEMENT}`);
+    lines.push(VAULT_BYO_NO_PAYLOAD_COPY_STATEMENT);
   }
 
   const decryptPart = !s.keystore.holds_repo_key
@@ -688,9 +687,9 @@ async function formatRepoHuman(s, mirror) {
     : s.keystore.can_sign
       ? "can decrypt and publish"
       : "can decrypt (read-only — no signing key)";
-  lines.push(`This machine: ${decryptPart}. Policy: ${s.gitvault_policy ?? "(none)"}`);
+  lines.push(`This machine: ${decryptPart}. Policy: ${s.vault_policy ?? "(none)"}`);
 
-  // gitvault-multi-writer (rev 47) task 6.1 — the writer roster, one line
+  // vault-multi-writer (rev 47) task 6.1 — the writer roster, one line
   // per writer: `writer_set` is the chain-verified set exactly as `verify`/
   // `fsck` would derive it (never re-verified here — this is `view`'s own
   // side-effect-free read of the vault RECORD's already-verified pointer).
@@ -713,7 +712,7 @@ async function formatRepoHuman(s, mirror) {
     }
   }
 
-  // gitvault-mirror-default: the SDK-computed vault_unmirrored finding is
+  // vault-mirror-default: the SDK-computed vault_unmirrored finding is
   // echoed verbatim (never rephrased here) — informational, never blocking.
   if (mirror?.finding) {
     lines.push(`Mirror (${mirror.finding.kind}): ${mirror.finding.message} — ${mirror.finding.setup_command}`);
@@ -755,7 +754,7 @@ function slugifyRepoName(name) {
     .replace(/-+$/g, "");
 }
 
-/** The basename of an existing `run402`/`origin` remote's URL, or `null` when there is no repository or no such remote. Any remote — a GitHub URL parses fine too, not only a gitvault address. */
+/** The basename of an existing `run402`/`origin` remote's URL, or `null` when there is no repository or no such remote. Any remote — a GitHub URL parses fine too, not only a vault address. */
 async function remoteBasenameCandidate(dir) {
   try {
     const { hardenedGit } = await import("#sdk/node");
@@ -827,7 +826,7 @@ async function inferRepoName(dir) {
 
 const CREATE_VALUE_FLAGS = ["--org", "--dir", "--tier", "--idempotency-key", "--project", "--byo", "--profile", "--region", "--endpoint"];
 
-/** gitvault-byo-primary-bucket task 3.5 — `--byo <destination>` + the SAME credential/region/endpoint flags `repos mirror` already uses. `undefined` when `--byo` was not passed (byte-identical to today). */
+/** vault-byo-primary-bucket task 3.5 — `--byo <destination>` + the SAME credential/region/endpoint flags `repos mirror` already uses. `undefined` when `--byo` was not passed (byte-identical to today). */
 function resolveByoOption(a) {
   const destinationUrl = flagValue(a, "--byo");
   if (destinationUrl == null) return undefined;
@@ -853,7 +852,7 @@ async function printCreateResult({ sdk, projectId, vault, adopted, name, verbose
       const candidate = slugifyRepoName(name);
       if (candidate) {
         const named = await sdk.projects.setRepoName(projectId, candidate);
-        address = gitvaultRemoteUrlForRepo(orgSlug, named.repo_name);
+        address = vaultRemoteUrlForRepo(orgSlug, named.repo_name);
       }
     }
   } catch (err) {
@@ -870,14 +869,14 @@ async function printCreateResult({ sdk, projectId, vault, adopted, name, verbose
     : null;
   const remoteSkippedActions = vault.remote?.status === "skipped" ? (vault.remote.next_actions ?? []) : [];
   const nameAction = address ? null : orgSlug ? setRepoNameAction(projectId) : setOrgSlugAction();
-  // gitvault-byo-primary-bucket task 3.5: a BYO vault's "add a copy" remedy
+  // vault-byo-primary-bucket task 3.5: a BYO vault's "add a copy" remedy
   // names a SECOND customer-held location (D7) — the plain mirror hint
   // frames the mirror as the FIRST custody-held copy, which is false once
   // the vault's own primary bucket already is one.
   const isByo = vault.storage_profile === "byo";
   const mirrorAction = isByo
-    ? nextAction("configure_mirror", { command: "run402 repos mirror <destination>", why: GITVAULT_BYO_UNMIRRORED_REMEDY_STATEMENT })
-    : nextAction("configure_mirror", { command: "run402 repos mirror <destination>", why: GITVAULT_MIRROR_SETUP_HINT });
+    ? nextAction("configure_mirror", { command: "run402 repos mirror <destination>", why: VAULT_BYO_UNMIRRORED_REMEDY_STATEMENT })
+    : nextAction("configure_mirror", { command: "run402 repos mirror <destination>", why: VAULT_MIRROR_SETUP_HINT });
   const nextActions = [pushAction, ...remoteSkippedActions, mirrorAction, nameAction].filter(Boolean);
 
   // Secret-bearing (recovery_receipt): built fresh every call, printed once,
@@ -914,11 +913,11 @@ async function printCreateResult({ sdk, projectId, vault, adopted, name, verbose
   if (pushAction) console.error(`next: ${pushAction.command}`);
   for (const action of remoteSkippedActions) if (action?.command) console.error(`next: ${action.command}`);
   if (isByo) {
-    console.error(`storage: byo (${vault.byo_destination}) — ${GITVAULT_BYO_HEADLINE_STATEMENT}`);
-    console.error(GITVAULT_BYO_NO_PAYLOAD_COPY_STATEMENT);
-    console.error(GITVAULT_BYO_UNMIRRORED_REMEDY_STATEMENT);
+    console.error(`storage: byo (${vault.byo_destination}) — ${VAULT_BYO_HEADLINE_STATEMENT}`);
+    console.error(VAULT_BYO_NO_PAYLOAD_COPY_STATEMENT);
+    console.error(VAULT_BYO_UNMIRRORED_REMEDY_STATEMENT);
   } else {
-    console.error(GITVAULT_MIRROR_SETUP_HINT);
+    console.error(VAULT_MIRROR_SETUP_HINT);
   }
   console.error("");
   console.error(vault.terminal_loss_statement);
@@ -933,7 +932,7 @@ async function createAdopt(projectId, dir, a) {
   const orgId = flagValue(a, "--org") ?? await resolveOwningOrgId(projectId);
   if (!orgId) {
     fail({
-      code: "GITVAULT_ORG_UNRESOLVED",
+      code: "VAULT_ORG_UNRESOLVED",
       message: `Could not resolve the organization that owns ${projectId}.`,
       hint: "Pass --org <org_id>, or check that this wallet can see the project (`run402 projects list`).",
       details: { project_id: projectId },
@@ -941,7 +940,7 @@ async function createAdopt(projectId, dir, a) {
   }
   try {
     const byo = resolveByoOption(a);
-    const vault = await sdk.gitvault.init({ org_id: orgId, project_id: projectId, repo_dir: dir, ...(a.includes("--nested") ? { nested: true } : {}), ...(byo ? { byo } : {}) });
+    const vault = await sdk.repos.init({ org_id: orgId, project_id: projectId, repo_dir: dir, ...(a.includes("--nested") ? { nested: true } : {}), ...(byo ? { byo } : {}) });
     await printCreateResult({ sdk, projectId, vault, adopted: true, name: null, verboseArgv: a });
   } catch (err) {
     reportSdkError(err);
@@ -1014,7 +1013,7 @@ async function createProvision(name, dir, a) {
   const effectiveOrgId = orgId ?? (await resolveOwningOrgId(provisioned.project_id));
   if (!effectiveOrgId) {
     fail({
-      code: "GITVAULT_ORG_UNRESOLVED",
+      code: "VAULT_ORG_UNRESOLVED",
       message: `Provisioned project ${provisioned.project_id}, but could not resolve its owning organization to allocate the repo.`,
       hint: `Pass --org <org_id> next time, or finish by hand: run402 repos create --project ${provisioned.project_id} --org <org_id>`,
       details: { project_id: provisioned.project_id },
@@ -1024,7 +1023,7 @@ async function createProvision(name, dir, a) {
 
   try {
     const byo = resolveByoOption(a);
-    const vault = await sdk.gitvault.init({ org_id: effectiveOrgId, project_id: provisioned.project_id, repo_dir: dir, ...(a.includes("--nested") ? { nested: true } : {}), ...(byo ? { byo } : {}) });
+    const vault = await sdk.repos.init({ org_id: effectiveOrgId, project_id: provisioned.project_id, repo_dir: dir, ...(a.includes("--nested") ? { nested: true } : {}), ...(byo ? { byo } : {}) });
     await printCreateResult({ sdk, projectId: provisioned.project_id, vault, adopted: false, name, verboseArgv: a });
   } catch (err) {
     reportSdkError(err);
@@ -1068,14 +1067,14 @@ async function create(args) {
 
 /** The FROZEN bulk-read shape (task 2.4) — one round trip. */
 async function listViaBulkRead(sdk, orgId) {
-  const result = await sdk.gitvault.listByOrg(orgId);
+  const result = await sdk.repos.listByOrg(orgId);
   return Array.isArray(result.vaults) ? result.vaults : [];
 }
 
 /**
  * DEPRECATED fallback, kept only until every deployed gateway answers
- * `GET /gitvault/v1/vaults?org_id=`: the old client-side N+1 (list the
- * org's projects, then read each one's gitvault status). Delete this
+ * `GET /vaults/v1?org_id=`: the old client-side N+1 (list the
+ * org's projects, then read each one's vault status). Delete this
  * function once the bulk route has shipped long enough that no gateway
  * still 404s it.
  */
@@ -1086,7 +1085,7 @@ async function listViaFallback(sdk, orgId) {
   for (const p of projects) {
     let status;
     try {
-      status = await sdk.gitvault.status({ project_id: p.id });
+      status = await sdk.repos.status({ project_id: p.id });
     } catch {
       continue;
     }
@@ -1097,7 +1096,7 @@ async function listViaFallback(sdk, orgId) {
       project_name: p.name ?? null,
       repo_name: null,
       org_slug: null,
-      gitvault_policy: status.vault.gitvault_policy,
+      vault_policy: status.vault.vault_policy,
       newest_generation: status.vault.newest_generation ?? null,
       source_bytes: String(status.vault.storage?.source_bytes ?? "0"),
       genesis_admitted_at: status.vault.genesis_admitted_at,
@@ -1113,8 +1112,8 @@ async function formatRepoListHuman(orgSlug, repos) {
   const { generationToBigInt } = await import("#sdk/node");
   const decimal = (g) => (g ? generationToBigInt(g).toString() : "none");
   const lines = repos.map((r) => {
-    const address = orgSlug && r.repo_name ? gitvaultRemoteUrlForRepo(orgSlug, r.repo_name) : (r.repo_name ?? r.project_id);
-    return `${address}  gen=${decimal(r.newest_generation)}  ${r.source_bytes} byte(s)  policy=${r.gitvault_policy ?? "(none)"}  (${r.repo_id})`;
+    const address = orgSlug && r.repo_name ? vaultRemoteUrlForRepo(orgSlug, r.repo_name) : (r.repo_name ?? r.project_id);
+    return `${address}  gen=${decimal(r.newest_generation)}  ${r.source_bytes} byte(s)  policy=${r.vault_policy ?? "(none)"}  (${r.repo_id})`;
   });
   return lines.join("\n");
 }
@@ -1184,12 +1183,12 @@ async function view(args) {
   try {
     // Design D3: `view` NEVER passes `refs: true` — it is side-effect-free
     // by construction, not by convention. Materialization belongs to `fsck`.
-    const s = await sdk.gitvault.status({ ...target, ...(a.includes("--no-reconcile") ? { reconcile: "deferred" } : {}) });
+    const s = await sdk.repos.status({ ...target, ...(a.includes("--no-reconcile") ? { reconcile: "deferred" } : {}) });
     const isByo = s.vault?.storage_profile === "byo";
     let mirror = null;
     if (s.repo_id) {
       try {
-        mirror = await sdk.gitvault.mirrorStatus({ ...target, repo_id: s.repo_id, is_byo: isByo });
+        mirror = await sdk.repos.mirrorStatus({ ...target, repo_id: s.repo_id, is_byo: isByo });
       } catch {
         // best-effort — a mirror read failure never fails `view`
       }
@@ -1225,19 +1224,19 @@ async function view(args) {
     if (s.messaging_cache_excluded !== null && s.messaging_cache_excluded !== undefined) {
       console.error(`messaging cache excluded from git: ${s.messaging_cache_excluded}`);
     }
-    // gitvault-byo-primary-bucket task 3.5: the no-payload-copy disclosure —
+    // vault-byo-primary-bucket task 3.5: the no-payload-copy disclosure —
     // unconditional and independent of mirror status (D7), never folded
     // into the mirror finding below (that's a SEPARATE fact: "is there a
     // second copy", not "is there any platform-held copy at all").
     if (isByo) {
-      console.error(`storage: byo (${s.vault?.byo_destination ?? "(unknown)"}) — ${GITVAULT_BYO_HEADLINE_STATEMENT}`);
-      console.error(GITVAULT_BYO_NO_PAYLOAD_COPY_STATEMENT);
+      console.error(`storage: byo (${s.vault?.byo_destination ?? "(unknown)"}) — ${VAULT_BYO_HEADLINE_STATEMENT}`);
+      console.error(VAULT_BYO_NO_PAYLOAD_COPY_STATEMENT);
     }
     if (mirror?.configured) {
       const currency = mirror.is_current === true ? "current" : mirror.is_current === false ? `STALE — ${mirror.closing_command}` : "unknown (mirror unreachable or vault unread)";
       console.error(`mirror ${mirror.destination}: mirrored generation ${mirror.mirrored_generation ?? "(none)"}, vault newest ${mirror.newest_generation ?? "(none)"} — ${currency}`);
     }
-    // gitvault-mirror-default: echoed verbatim from the SDK, exactly like the
+    // vault-mirror-default: echoed verbatim from the SDK, exactly like the
     // vault warnings below — informational, never blocking, and it clears on
     // the first successful mirror write or sync.
     if (mirror?.finding) console.error(`finding (${mirror.finding.kind}): ${mirror.finding.message} — ${mirror.finding.setup_command}`);
@@ -1267,7 +1266,7 @@ async function rename(args) {
   let projectId;
   if (repoFlag != null) {
     try {
-      projectId = (await sdk.gitvault.get(repoFlag)).project_id;
+      projectId = (await sdk.repos.get(repoFlag)).project_id;
     } catch (err) {
       reportSdkError(err);
       return;
@@ -1281,7 +1280,7 @@ async function rename(args) {
     try {
       const owningOrg = await resolveOwningOrgId(projectId);
       const orgSlug = owningOrg ? (await sdk.org(owningOrg).get()).slug : null;
-      if (orgSlug) address = gitvaultRemoteUrlForRepo(orgSlug, result.repo_name);
+      if (orgSlug) address = vaultRemoteUrlForRepo(orgSlug, result.repo_name);
     } catch {
       // The name is already set — a failed address-preview lookup is never fatal.
     }
@@ -1362,7 +1361,7 @@ async function del(args) {
       fail({ code: "BAD_USAGE", message: "pass --repo or --project, not both." });
     }
     try {
-      projectId = (await sdk.gitvault.get(repoFlag)).project_id;
+      projectId = (await sdk.repos.get(repoFlag)).project_id;
     } catch (err) {
       reportSdkError(err);
       return;
@@ -1376,7 +1375,7 @@ async function del(args) {
 
   let status;
   try {
-    status = await sdk.gitvault.status({ project_id: projectId });
+    status = await sdk.repos.status({ project_id: projectId });
   } catch (err) {
     reportSdkError(err);
     return;
@@ -1430,21 +1429,21 @@ async function del(args) {
   }
 }
 
-// ─── snapshot ───────────────────────────────────────────────────────────────
+// ─── capture ────────────────────────────────────────────────────────────────
 
-const SNAPSHOT_VALUE_FLAGS = [...COMMON_VALUE_FLAGS, "--message", "--manifest-out"];
+const CAPTURE_VALUE_FLAGS = [...COMMON_VALUE_FLAGS, "--message", "--manifest-out"];
 
 /**
  * When neither `--repo` nor `--project` was given explicitly, look at the
  * local `run402`/`origin` remote and, if it is a SLUG-form address
- * (`run402::<org-slug>/<name>`), return the parsed address so `snapshot`
+ * (`run402::<org-slug>/<name>`), return the parsed address so `capture`
  * can push-to-create through it — the same address-form resolution
  * `git push` drives via the remote helper.
  */
 async function detectSlugFormRemote(a, repoDir) {
   if (flagValue(a, "--repo") != null || flagValue(a, "--project") != null) return null;
   const { hardenedGit } = await import("#sdk/node");
-  const { parseGitvaultRemoteUrl, gitvaultRemoteAddressForm } = await import("#sdk");
+  const { parseVaultRemoteUrl, vaultRemoteAddressForm } = await import("#sdk");
   for (const name of ["run402", "origin"]) {
     let url;
     try {
@@ -1455,11 +1454,11 @@ async function detectSlugFormRemote(a, repoDir) {
     if (!url) continue;
     let address;
     try {
-      address = parseGitvaultRemoteUrl(url);
+      address = parseVaultRemoteUrl(url);
     } catch {
       continue; // another scheme's remote — not a vault address
     }
-    if (address && gitvaultRemoteAddressForm(address) === "slug") return address;
+    if (address && vaultRemoteAddressForm(address) === "slug") return address;
   }
   return null;
 }
@@ -1505,7 +1504,7 @@ const SNAPSHOT_CHANGED_PATHS_CAP = 200;
  *     captured_digest, top_level, global_excludes_path — stay). `verbose`
  *     restores them (composes with the summary fields, does not replace
  *     them) — the `-v`/`--verbose` flag already means "print a stats
- *     line"; on `snapshot --dry-run`/`snapshot` it ALSO inlines the full
+ *     line"; on `capture --dry-run`/`capture` it ALSO inlines the full
  *     inventory.
  *   - `manifest_path` is `null` unless `--manifest-out <path>` wrote the
  *     COMPLETE, untouched payload to that file — see `writeManifestOut`.
@@ -1537,17 +1536,17 @@ function writeManifestOut(path, payload) {
   } catch (e) {
     fail({
       code: "MANIFEST_OUT_WRITE_FAILED",
-      message: `could not write the full snapshot inventory to ${path}: ${e instanceof Error ? e.message : String(e)}`,
+      message: `could not write the full captured-file inventory to ${path}: ${e instanceof Error ? e.message : String(e)}`,
       hint: "Check that the path is writable and its parent directory exists.",
       details: { path },
     });
   }
 }
 
-async function snapshot(args) {
+async function capture(args) {
   const a = normalizeArgv(args);
-  assertKnownFlags(a, [...SNAPSHOT_VALUE_FLAGS, "--checkpoint", "--dry-run", "--allow-dirty", "-v", "--verbose", "--help", "-h"], SNAPSHOT_VALUE_FLAGS);
-  requirePositionalCount(a, SNAPSHOT_VALUE_FLAGS, { min: 0, max: 0, command: "run402 repos snapshot", missing: "" });
+  assertKnownFlags(a, [...CAPTURE_VALUE_FLAGS, "--checkpoint", "--dry-run", "--allow-dirty", "-v", "--verbose", "--help", "-h"], CAPTURE_VALUE_FLAGS);
+  requirePositionalCount(a, CAPTURE_VALUE_FLAGS, { min: 0, max: 0, command: "run402 repos capture", missing: "" });
   const sdk = getSdk();
   const dryRun = a.includes("--dry-run");
   const message = flagValue(a, "--message");
@@ -1565,9 +1564,9 @@ async function snapshot(args) {
       console.error("");
       console.error(`repo allocated (genesis ${created.genesis_sha256}) — one-shot recovery receipt, keep many copies:`);
       console.error(JSON.stringify(created.recovery_receipt));
-      // gitvault-mirror-default: lazy allocation is a birth too — the mirror
+      // vault-mirror-default: lazy allocation is a birth too — the mirror
       // one-liner rides beside the recovery receipt here as well.
-      console.error(GITVAULT_MIRROR_SETUP_HINT);
+      console.error(VAULT_MIRROR_SETUP_HINT);
       await printKeystoreLocation();
       console.error("");
     },
@@ -1581,11 +1580,11 @@ async function snapshot(args) {
   const verbose = isVerbose(a);
   try {
     if (dryRun) {
-      const plan = await sdk.gitvault.planPush(opts);
+      const plan = await sdk.repos.planCapture(opts);
       if (manifestOutPath != null) writeManifestOut(manifestOutPath, plan);
       printJson(sdk, summarizeSnapshotPayload(plan, { verbose, manifestPath: manifestOutPath }));
       if (plan.allocation_needed) {
-        console.error("dry-run: no repo allocated for this project yet — a real snapshot would allocate one first; object/byte sizing is not knowable until then");
+        console.error("dry-run: no repo allocated for this project yet — a real capture would allocate one first; object/byte sizing is not knowable until then");
       } else {
         console.error(
           `dry-run: would publish generation ${plan.would_admit_generation} (${plan.would_admit_generation_decimal}, ${plan.form}) — ` +
@@ -1596,7 +1595,7 @@ async function snapshot(args) {
       printVerboseStats(a, sdk);
       return;
     }
-    const result = await sdk.gitvault.push(opts);
+    const result = await sdk.repos.capture(opts);
     if (manifestOutPath != null) writeManifestOut(manifestOutPath, result);
     // Snapshot-only vault (no branch head published): a plain `git clone`
     // of this vault prints "cloned an empty repository" with no hint the
@@ -1604,7 +1603,7 @@ async function snapshot(args) {
     const resultRefNames = Object.keys(result.refs ?? {});
     const snapshotOnly = resultRefNames.length > 0 && !resultRefNames.some((r) => r.startsWith("refs/heads/"));
     const payload = summarizeSnapshotPayload(result, { verbose, manifestPath: manifestOutPath });
-    // gitvault-clone-scaling (P3): advisory only — the SDK computed the
+    // vault-clone-scaling (P3): advisory only — the SDK computed the
     // staleness from locally-learned coverage; this entry never gates.
     if (result.checkpoint_staleness?.advised) {
       payload.next_actions = [
@@ -1621,19 +1620,19 @@ async function snapshot(args) {
       payload.next_actions = [
         ...(payload.next_actions ?? []),
         {
-          type: "restore_snapshot_ref",
+          type: "restore_capture_ref",
           command: `git fetch <remote> '+${snapRef}:${snapRef}' && git checkout -b restored ${snapRef}`,
-          why: `This vault has no branch heads — a plain \`git clone\` will report an empty repository. The snapshot history lives on ${snapRef}; \`git push\` a branch to make plain clones work.`,
+          why: `This vault has no branch heads — a plain \`git clone\` will report an empty repository. The captured history lives on ${snapRef}; \`git push\` a branch to make plain clones work.`,
         },
       ];
     }
     printJson(sdk, payload);
     console.error(`published generation ${result.generation} (${result.form})`);
-    if (snapshotOnly) console.error(`note: no branch heads in this vault — a plain clone looks empty; snapshot history is on ${resultRefNames.sort()[0]} (see next_actions)`);
+    if (snapshotOnly) console.error(`note: no branch heads in this vault — a plain clone looks empty; captured history is on ${resultRefNames.sort()[0]} (see next_actions)`);
     if (result.mirror_push?.outcome === "pushed") {
       console.error(`mirror: pushed generation ${result.generation} (${result.mirror_push.summary?.objects_copied ?? 0} object(s) copied)`);
     } else if (result.mirror_push?.outcome === "failed") {
-      console.error(`mirror: dual-push FAILED (deploy is unaffected) — ${result.mirror_push.error ?? "see mirror_push.summary.errors"}`);
+      console.error(`mirror: mirroring this capture FAILED (deploy is unaffected) — ${result.mirror_push.error ?? "see mirror_push.summary.errors"}`);
     }
     printDirtyDisclosure(result.snapshot);
     printVerboseStats(a, sdk);
@@ -1772,7 +1771,7 @@ async function handoff(args) {
   if (a.includes("--list")) {
     const target = await vaultTarget(a);
     try {
-      const result = await sdk.gitvault.listHandoffs(target);
+      const result = await sdk.repos.listHandoffs(target);
       printJson(sdk, result);
       printVerboseStats(a, sdk);
     } catch (err) {
@@ -1784,7 +1783,7 @@ async function handoff(args) {
   if (revokeId != null) {
     const target = await vaultTarget(a);
     try {
-      const result = await sdk.gitvault.revokeHandoff(revokeId, target);
+      const result = await sdk.repos.revokeHandoff(revokeId, target);
       printJson(sdk, result);
       printVerboseStats(a, sdk);
     } catch (err) {
@@ -1809,18 +1808,18 @@ async function handoff(args) {
     onCommitLine: (line) => console.error(line),
   };
   try {
-    const result = await sdk.gitvault.handoff(opts);
+    const result = await sdk.repos.handoff(opts);
     for (const w of result.warnings ?? []) {
       console.error(w.message ?? `${w.code}`);
     }
     console.error(`handoff minted: role ${result.minted_role}, expires ${result.expires_at}`);
-    // gitvault-multi-writer (rev 47) task 6.4 — a handoff is now also a
+    // vault-multi-writer (rev 47) task 6.4 — a handoff is now also a
     // WRITER admission, not just a checkout pass: the recipient signs its
     // own future pushes with a NEW key this vault's chain recognizes as a
     // writer the moment `resume` redeems it (design D4 — a grant minted here,
     // a two-signature acceptance the recipient's own resume completes).
     console.error(`the recipient becomes a WRITER on this vault the moment they resume — their own key signs future pushes, not yours.`);
-    console.error(`recipient runs: kygit resume <key printed below>`);
+    console.error(`recipient runs: run402 repos resume <key printed below>`);
     if (asJson) {
       printJson(sdk, result);
     } else {
@@ -1948,7 +1947,7 @@ async function resume(args) {
   // `--no-init` opts out entirely.
   const coldStart = a.includes("--no-init") ? { performed: false, skipped: "no_init" } : await foldColdStartForResume(sdk);
   try {
-    const result = await sdk.gitvault.resume({ key, ...(to != null ? { to } : {}), onLine: (line) => console.error(line) });
+    const result = await sdk.repos.resume({ key, ...(to != null ? { to } : {}), onLine: (line) => console.error(line) });
     if (coldStart.next_action) result.next_actions = [...(result.next_actions ?? []), coldStart.next_action];
     // The restored checkout's first git command needs the remote helper on
     // PATH; an npx-run resume/join has it only in the npx cache. Name it.
@@ -1966,7 +1965,7 @@ async function resume(args) {
       }
       console.error("");
       console.error(`resumed into ${result.restored.dir} (branch ${result.restored.branch})`);
-      // gitvault-multi-writer (rev 47) task 6.4 — this checkout's own writer
+      // vault-multi-writer (rev 47) task 6.4 — this checkout's own writer
       // activation (design D5): the outcome is "active" either way, whether
       // this call submitted a fresh activation head or a prior attempt's
       // already landed (crash-resumable, task 5.6's own idempotent-skip).
@@ -2007,7 +2006,7 @@ async function invite(args) {
   if (a.includes("--list")) {
     const target = await vaultTarget(a);
     try {
-      const result = await sdk.gitvault.listInvites(target);
+      const result = await sdk.repos.listInvites(target);
       printJson(sdk, result);
       printVerboseStats(a, sdk);
     } catch (err) {
@@ -2019,7 +2018,7 @@ async function invite(args) {
   if (revokeId != null) {
     const target = await vaultTarget(a);
     try {
-      const result = await sdk.gitvault.revokeInvite(revokeId, target);
+      const result = await sdk.repos.revokeInvite(revokeId, target);
       printJson(sdk, result);
       printVerboseStats(a, sdk);
     } catch (err) {
@@ -2060,12 +2059,12 @@ async function invite(args) {
     onCommitLine: (line) => console.error(line),
   };
   try {
-    const result = await sdk.gitvault.invite(opts);
+    const result = await sdk.repos.invite(opts);
     for (const w of result.warnings ?? []) {
       console.error(w.message ?? `${w.code}`);
     }
     console.error(`invite minted: role ${result.minted_role}, expires ${result.expires_at}, room ${result.room?.room_key ?? "(unknown)"}`);
-    console.error(`recipient runs: kygit join <key printed below>`);
+    console.error(`recipient runs: run402 repos join <key printed below>`);
     if (result.inviter_presence && result.inviter_presence.registered === false) {
       console.error(`note: your own presence was not registered (${result.inviter_presence.error}) — the invite still mints and can be redeemed`);
     }
@@ -2120,7 +2119,7 @@ async function joinInvite(args) {
   const { key: sessionKey, source: sessionKeySource } = resolveSessionKey();
   const { task } = await resolveTaskLabel({});
   try {
-    const result = await sdk.gitvault.join({
+    const result = await sdk.repos.join({
       key,
       ...(to != null ? { to } : {}),
       ...(program ? { program } : {}),
@@ -2167,7 +2166,7 @@ async function joinInvite(args) {
       console.error("");
       console.error(`joined into ${result.restored.dir} (branch ${result.restored.branch})`);
       if (result.deduplicated) console.error("note: this key was already redeemed by this same principal — the ORIGINAL envelope was reused (safe replay)");
-      // gitvault-multi-writer (rev 47) / kygit-invite design D5 — this
+      // vault-multi-writer (rev 47) / kygit-invite design D5 — this
       // checkout's own writer activation, printed in the SAME `writer: …`
       // shape `resume` uses. `pending` is D9's not-stranded path: the key is
       // a pending writer, and the `request_writer_sync` next action below
@@ -2211,7 +2210,7 @@ async function joinInvite(args) {
 // ─── policy ─────────────────────────────────────────────────────────────────
 
 /**
- * gitvault-checkpoint-cadence design D1: `auto-gc` is a LOCAL, per-checkout
+ * vault-checkpoint-cadence design D1: `auto-gc` is a LOCAL, per-checkout
  * knob — the same local-git-config mechanism as the restore marker, and the
  * same shape as git's own `gc.auto` — deliberately NOT a gateway call like
  * `required`/`grandfathered` above (there is no server-side policy row for
@@ -2221,7 +2220,7 @@ async function joinInvite(args) {
  * `off` is sugar for `0` (disables auto-gc entirely).
  */
 async function policyAutoGc(rawValue, a) {
-  const { hardenedGit, readGitvaultAutoGcThreshold, writeGitvaultAutoGcThreshold, GITVAULT_AUTO_GC_GENERATIONS_DEFAULT } = await import("#sdk/node");
+  const { hardenedGit, readVaultAutoGcThreshold, writeVaultAutoGcThreshold, VAULT_AUTO_GC_GENERATIONS_DEFAULT } = await import("#sdk/node");
   const dir = process.cwd();
   try {
     await hardenedGit(dir, ["rev-parse", "--git-dir"]);
@@ -2234,12 +2233,12 @@ async function policyAutoGc(rawValue, a) {
   }
   const sdk = getSdk();
   if (rawValue === undefined) {
-    const current = await readGitvaultAutoGcThreshold(dir);
-    printJson(sdk, { auto_gc_generations: current, default: GITVAULT_AUTO_GC_GENERATIONS_DEFAULT });
+    const current = await readVaultAutoGcThreshold(dir);
+    printJson(sdk, { auto_gc_generations: current, default: VAULT_AUTO_GC_GENERATIONS_DEFAULT });
     console.error(
       current === 0
         ? "auto-gc is disabled for this checkout"
-        : `auto-gc runs after a push once ${current} generation(s) have accumulated since the last checkpoint (default ${GITVAULT_AUTO_GC_GENERATIONS_DEFAULT})`,
+        : `auto-gc runs after a push once ${current} generation(s) have accumulated since the last checkpoint (default ${VAULT_AUTO_GC_GENERATIONS_DEFAULT})`,
     );
     printVerboseStats(a, sdk);
     return;
@@ -2257,7 +2256,7 @@ async function policyAutoGc(rawValue, a) {
       details: { value: rawValue },
     });
   }
-  await writeGitvaultAutoGcThreshold(dir, generations);
+  await writeVaultAutoGcThreshold(dir, generations);
   printJson(sdk, { auto_gc_generations: generations });
   console.error(
     generations === 0
@@ -2303,13 +2302,13 @@ async function policy(args) {
   const target = await vaultTarget(a);
   try {
     const sdk = getSdk();
-    const repoId = target.repo_id ?? (await sdk.gitvault.forProject(target.project_id)).repo_id;
-    const result = await sdk.gitvault.setPolicy(repoId, { gitvault_policy: requested, ...(reason != null ? { reason } : {}) });
+    const repoId = target.repo_id ?? (await sdk.repos.forProject(target.project_id)).repo_id;
+    const result = await sdk.repos.setPolicy(repoId, { vault_policy: requested, ...(reason != null ? { reason } : {}) });
     printJson(sdk, { repo_id: repoId, ...result });
     console.error(
       result.changed
-        ? `gitvault_policy is now ${result.gitvault_policy} (version ${result.gitvault_policy_version})`
-        : `gitvault_policy was already ${result.gitvault_policy} — nothing changed`,
+        ? `vault_policy is now ${result.vault_policy} (version ${result.vault_policy_version})`
+        : `vault_policy was already ${result.vault_policy} — nothing changed`,
     );
     for (const w of result.warnings ?? []) console.error(`warning (${w.kind}): ${w.message}`);
     printVerboseStats(a, sdk);
@@ -2325,7 +2324,7 @@ const MIRROR_VALUE_FLAGS = [...COMMON_VALUE_FLAGS, "--profile", "--region", "--e
 async function mirrorRead(target, a) {
   const sdk = getSdk();
   try {
-    const result = await sdk.gitvault.mirrorStatus(target);
+    const result = await sdk.repos.mirrorStatus(target);
     printJson(sdk, result);
     if (!result.configured) {
       console.error(`no mirror configured for ${result.repo_id}. Configure one: run402 repos mirror <destination>`);
@@ -2346,7 +2345,7 @@ async function mirrorSet(target, destination, a) {
   const region = flagValue(a, "--region");
   const endpoint = flagValue(a, "--endpoint");
   try {
-    const result = await sdk.gitvault.mirrorSet({
+    const result = await sdk.repos.mirrorSet({
       ...target,
       destination_url: destination,
       ...(credential ? { credential } : {}),
@@ -2355,7 +2354,7 @@ async function mirrorSet(target, destination, a) {
     });
     printJson(sdk, result);
     console.error(`mirror configured for ${result.repo_id} -> ${formatMirrorDestination(result.destination)}`);
-    console.error("run `run402 repos mirror --backfill` to catch it up now, then every publish dual-pushes automatically.");
+    console.error("run `run402 repos mirror --backfill` to catch it up now, then every later capture is mirrored automatically.");
     printVerboseStats(a, sdk);
   } catch (err) {
     reportSdkError(err);
@@ -2365,7 +2364,7 @@ async function mirrorSet(target, destination, a) {
 async function mirrorOff(target, a) {
   const sdk = getSdk();
   try {
-    const result = await sdk.gitvault.mirrorRemove(target);
+    const result = await sdk.repos.mirrorRemove(target);
     printJson(sdk, result);
     console.error(
       result.removed
@@ -2381,7 +2380,7 @@ async function mirrorOff(target, a) {
 async function mirrorBackfill(target, a) {
   const sdk = getSdk();
   try {
-    const result = await sdk.gitvault.mirrorSync(target);
+    const result = await sdk.repos.mirrorSync(target);
     printJson(sdk, result);
     await spillIfLarge(result.repo_id, "mirror-backfill", result);
     console.error(
@@ -2439,12 +2438,12 @@ function formatOpenProofLine(openProof) {
 }
 
 /**
- * gitvault-byo-primary-bucket task 3.3: one line reporting `fsck`'s BYO
+ * vault-byo-primary-bucket task 3.3: one line reporting `fsck`'s BYO
  * presence check — always present for a BYO vault (never blank), absent for
  * a managed one (`result.byo_presence` is `undefined` there, so this
  * returns `null` and no line prints — zero output change for managed
  * vaults). A MISSING-object verdict never reaches here: it throws
- * `GITVAULT_BYO_OBJECT_MISSING` before `fsck` returns a result at all, so
+ * `VAULT_BYO_OBJECT_MISSING` before `fsck` returns a result at all, so
  * this line only ever reports the two non-failure outcomes — checked-clean
  * or explicitly not-checked. Shared by `--human` and the default JSON-mode
  * stderr summary, same convention as `formatOpenProofLine` above.
@@ -2514,7 +2513,7 @@ async function fsck(args) {
   const write = !a.includes("--no-write");
   const mirrorRequested = a.includes("--mirror");
   try {
-    const result = await sdk.gitvault.fsck({ ...target, write, mirror: mirrorRequested });
+    const result = await sdk.repos.fsck({ ...target, write, mirror: mirrorRequested });
     if (human) {
       console.log(formatFsckHuman(result, mirrorRequested));
       if (mirrorRequested && result.mirror) printMirrorHonesty(result.mirror);
@@ -2552,11 +2551,11 @@ async function fsck(args) {
     // status as a mirror probe's failure would be).
     const openProofLine = formatOpenProofLine(result.open_proof);
     if (openProofLine) console.error(openProofLine);
-    // gitvault-byo-primary-bucket task 3.3: absent (formats to `null`) for a
+    // vault-byo-primary-bucket task 3.3: absent (formats to `null`) for a
     // managed vault — `result.byo_presence` is `undefined` there, so this
     // line never prints and JSON-mode output for a managed vault is
     // unchanged. A missing-object verdict never reaches this line at all —
-    // it throws `GITVAULT_BYO_OBJECT_MISSING` before `fsck` returns, caught
+    // it throws `VAULT_BYO_OBJECT_MISSING` before `fsck` returns, caught
     // by this function's own `reportSdkError(err)` below.
     const byoPresenceLine = formatByoPresenceLine(result.byo_presence);
     if (byoPresenceLine) console.error(byoPresenceLine);
@@ -2565,7 +2564,7 @@ async function fsck(args) {
       if (result.mirror.data_loss_detected) {
         console.error(`DATA LOSS DETECTED: ${result.mirror.absences.filter((x) => x.adjudication === "unexplained_absence").length} object(s) are unexplained absences.`);
       }
-      // gitvault-recovery-custody: member recovery-bundle sidecars, reported
+      // vault-recovery-custody: member recovery-bundle sidecars, reported
       // as UNVERIFIED availability hints — nothing about them is chain-
       // authenticated; they only say bundle + source recovery code can
       // recover this mirror with no server.
@@ -2593,7 +2592,7 @@ const GC_VALUE_FLAGS = [...COMMON_VALUE_FLAGS, "--intent-core", "--verifier-rece
 /**
  * One line of headroom disclosure. Printed whether or not things fit: a
  * person deciding when to compact wants the numbers in the passing case too
- * (gitvault-compaction-headroom-preflight D4).
+ * (vault-compaction-headroom-preflight D4).
  */
 function printHeadroomNote(headroom) {
   if (!headroom) return;
@@ -2629,11 +2628,11 @@ async function gc(args) {
     fail({ code: "BAD_USAGE", message: "--intent-core / --verifier-receipt only apply with --submit.", hint: "Add --submit, or drop the flags to plan." });
   }
   const target = await vaultTarget(a);
-  // gitvault-client-round-trips design D3 (task 4.2): re-apply the local
+  // vault-client-round-trips design D3 (task 4.2): re-apply the local
   // object cache's eviction window as a periodic backstop. Best-effort —
   // a sweep failure must never block the actual gc plan/submit.
   try {
-    await sdk.gitvault.sweepObjectCache(target);
+    await sdk.repos.sweepObjectCache(target);
   } catch {
     // never let cache housekeeping fail a real gc operation
   }
@@ -2642,11 +2641,11 @@ async function gc(args) {
     if (submitting) {
       const opts = { ...target, submit: { core: readJsonFile("--intent-core", corePath), verifier_receipt: readJsonFile("--verifier-receipt", receiptPath) } };
       if (a.includes("--wait")) opts.submit.wait = {};
-      const prune = await sdk.gitvault.prune(opts);
+      const prune = await sdk.repos.prune(opts);
       // No compaction runs on this half, so the figures come from the
       // standalone read — disclosed anyway, because "how close is this org to
       // its pooled cap" is exactly as worth knowing while reclaiming storage.
-      const headroom = await sdk.gitvault.compactHeadroom(target).catch(() => null);
+      const headroom = await sdk.repos.compactHeadroom(target).catch(() => null);
       const out = { phase: "submitted", prune, headroom };
       printJson(sdk, out);
       if (prune.confirmation?.outcome) {
@@ -2664,8 +2663,8 @@ async function gc(args) {
       return;
     }
 
-    const checkpoint = await sdk.gitvault.compact({ ...target, ...(a.includes("--force-headroom") ? { ignoreHeadroom: true } : {}) });
-    const prune = await sdk.gitvault.prune(target);
+    const checkpoint = await sdk.repos.compact({ ...target, ...(a.includes("--force-headroom") ? { ignoreHeadroom: true } : {}) });
+    const prune = await sdk.repos.prune(target);
     const nextActions = [];
     if (!prune.blocked_reason && prune.object_candidates.length > 0) {
       // Additive fields beyond the CLI's usual {type, command, why}: the
@@ -2757,8 +2756,8 @@ async function accessRead(args) {
   const sdk = getSdk();
   const target = await vaultTarget(a);
   try {
-    const result = await sdk.gitvault.access({ ...target, ...(a.includes("--no-reconcile") ? { reconcile: "deferred" } : {}) });
-    // gitvault-recovery-custody — the "you" block: YOUR OWN wrapper custody
+    const result = await sdk.repos.access({ ...target, ...(a.includes("--no-reconcile") ? { reconcile: "deferred" } : {}) });
+    // vault-recovery-custody — the "you" block: YOUR OWN wrapper custody
     // (kind/state per wrapper, custody scheme), rendered inside the family's
     // custody roster read. Principal-scoped, so it needs your control-plane
     // (human) session; without one it is honestly absent-with-reason rather
@@ -2822,9 +2821,9 @@ const ROTATION_VALUE_FLAGS = [...COMMON_VALUE_FLAGS, "--recipient-state-version"
  * `--recipient-state-version`/`--recipient-revocation-version` are the D194
  * frozen watermarks this attempt must be fenced against. They are NOT
  * discovered automatically here: the live gateway exposes NO general read
- * route for `internal.gitvault_recipient_state_counters` outside the
+ * route for `internal.vault_recipient_state_counters` outside the
  * `key-revocation` declare route's own response (see
- * `GitvaultVault.rotateEpoch`'s doc comment, `sdk/src/node/gitvault-
+ * `Vault.rotateEpoch`'s doc comment, `sdk/src/node/vault-
  * publication.ts`, for the confirmed source-level finding). Until that
  * route ships, this verb needs the pair supplied explicitly — refusing
  * cleanly and naming exactly this when they are omitted, rather than
@@ -2859,7 +2858,7 @@ async function accessRepair(args) {
   const sdk = getSdk();
   const target = await vaultTarget(a);
   try {
-    const result = await sdk.gitvault.rotateEpoch({
+    const result = await sdk.repos.rotateEpoch({
       ...target,
       reason: "elective_rekey",
       recipient_state_version: recipientStateVersion,
@@ -2894,7 +2893,7 @@ async function accessRevokeKey(args) {
   const sdk = getSdk();
   const target = await vaultTarget(a);
   try {
-    const result = await sdk.gitvault.rotateEpochForKeyRevocation(principalId, {
+    const result = await sdk.repos.rotateEpochForKeyRevocation(principalId, {
       ...target,
       ...(flagValue(a, "--idempotency-key") != null ? { client_idempotency_key: flagValue(a, "--idempotency-key") } : {}),
     });
@@ -2926,21 +2925,21 @@ async function accessRevokeKey(args) {
  * separately — that call is itself an ORDINARY admission and is itself
  * refused `EPOCH_ROTATION_REQUIRED` for as long as this declaration stays
  * outstanding. Pass the receipt
- * to `r.gitvault.rotateEpoch({..., pending_confirmations: [{principal_id,
+ * to `r.repos.rotateEpoch({..., pending_confirmations: [{principal_id,
  * ek_fingerprint, receipt}]})` instead — it rides the SAME head as the
  * rotation this declaration requires, publishing durably without needing a
- * second, separately-gated admission. See `GitvaultVault.rotateEpoch`'s
+ * second, separately-gated admission. See `Vault.rotateEpoch`'s
  * doc comment for what this does NOT do: the folded principal is still
  * excluded from THIS rotation's own envelope set (D196) and becomes
  * eligible starting at the NEXT rotation.
  */
 /**
  * `repos access repin --principal <principal_id> --fingerprint <ek_…>` — a KEY-HOLDER
- * explicitly accepts a recipient's CHANGED key (gitvault-agent-envelopes D3).
+ * explicitly accepts a recipient's CHANGED key (vault-agent-envelopes D3).
  * The session-start reconcile refuses `pinned_key_mismatch` and never
  * bypasses it, not even after an owner's revoke — acceptance names the new
  * fingerprint (the out-of-band verification point) and moves the local pin.
- * Adapter only: `sdk.gitvault.acceptRecipientKeyChange`.
+ * Adapter only: `sdk.repos.acceptRecipientKeyChange`.
  */
 async function accessRepin(args) {
   const a = normalizeArgv(args);
@@ -2954,8 +2953,8 @@ async function accessRepin(args) {
   const sdk = getSdk();
   const target = await vaultTarget(a);
   try {
-    const result = await sdk.gitvault.acceptRecipientKeyChange({ ...target, principal_id: principalId, new_fingerprint: fingerprint });
-    console.log(JSON.stringify({ ...result, next_actions: [{ type: "retry", command: "run402 repos view", why: "the next ordinary gitvault operation on this machine wraps the vault to the accepted key" }] }, null, 2));
+    const result = await sdk.repos.acceptRecipientKeyChange({ ...target, principal_id: principalId, new_fingerprint: fingerprint });
+    console.log(JSON.stringify({ ...result, next_actions: [{ type: "retry", command: "run402 repos view", why: "the next ordinary vault operation on this machine wraps the vault to the accepted key" }] }, null, 2));
   } catch (err) {
     reportSdkError(err);
   }
@@ -2968,12 +2967,12 @@ async function accessDeclareExposure(args) {
   const target = await vaultTarget(a);
   try {
     const sdk = getSdk();
-    const repoId = target.repo_id ?? (await sdk.gitvault.forProject(target.project_id)).repo_id;
-    const result = await sdk.gitvault.declareEpochSecretExposed(repoId);
+    const repoId = target.repo_id ?? (await sdk.repos.forProject(target.project_id)).repo_id;
+    const result = await sdk.repos.declareEpochSecretExposed(repoId);
     printJson(sdk, result);
     console.error(`declared epoch_secret_exposed for ${repoId} (epoch_secret_exposure_version now ${result.epoch_secret_exposure_version}).`);
     console.error("THIS DECLARATION DOES NOT ROTATE THE VAULT BY ITSELF — the next ordinary push now refuses EPOCH_ROTATION_REQUIRED until a rotate_epoch with reason:\"epoch_secret_exposed\" commits.");
-    console.error("submit that rotation via r.gitvault.rotateEpoch({repo_id, reason: \"epoch_secret_exposed\", recipient_state_version, recipient_revocation_version}) once you have the two counter values (no CLI shortcut exists for this reason yet — see `run402 repos access repair --help`).");
+    console.error("submit that rotation via r.repos.rotateEpoch({repo_id, reason: \"epoch_secret_exposed\", recipient_state_version, recipient_revocation_version}) once you have the two counter values (no CLI shortcut exists for this reason yet — see `run402 repos access repair --help`).");
     console.error("if a /confirm or /repin receipt is already pending for a directory principal, do NOT publish it separately (publishPinManifestUpdate is itself gated the same way) — pass it as rotateEpoch's pending_confirmations instead so it rides the SAME head as this rotation.");
     printVerboseStats(a, sdk);
   } catch (err) {
@@ -2981,8 +2980,8 @@ async function accessDeclareExposure(args) {
   }
 }
 
-// gitvault-multi-writer (rev 47) task 6.4 — an on-demand tail on the
-// existing `access` family: `r.gitvault.reconcile()` admits every eligible
+// vault-multi-writer (rev 47) task 6.4 — an on-demand tail on the
+// existing `access` family: `r.repos.reconcile()` admits every eligible
 // `pending_writers[]` candidate right now, rather than waiting for this
 // machine's next push/deploy to do it as a side effect. Same shape as
 // `accessRepin` above — one SDK call, echo the result, a next_action
@@ -2998,7 +2997,7 @@ async function accessSync(args) {
   const sdk = getSdk();
   const target = await vaultTarget(a);
   try {
-    const result = await sdk.gitvault.reconcile(target);
+    const result = await sdk.repos.reconcile(target);
     if (!human) console.log(JSON.stringify(result, null, 2));
     if (!result.eligible) {
       console.error("this machine's key is not an active writer on this vault — nothing to sync. Ask a current writer to admit you (org membership at role developer+ and a published signing key make you eligible).");
@@ -3102,7 +3101,7 @@ async function recover(args) {
   const repoId = flagValue(a, "--repo");
   const region = flagValue(a, "--region");
   const endpoint = flagValue(a, "--endpoint");
-  // gitvault-recovery-custody — the human-member path: --bundle (the exported
+  // vault-recovery-custody — the human-member path: --bundle (the exported
   // r402s-member-recovery-bundle/v1; omit to use the mirror's own
   // member-recovery-bundles/ sidecar) + the source recovery code. --receipt
   // supplies the recovery-receipt pin when no keystore holds one (a member
@@ -3115,7 +3114,7 @@ async function recover(args) {
   const recoveryReceipt = receiptPath != null ? readJsonFile("--receipt", receiptPath) : undefined;
   if (memberBundle !== undefined && code == null) code = await promptSourceRecoveryCode();
   try {
-    const result = await sdk.gitvault.recover({
+    const result = await sdk.repos.recover({
       source, out_dir: outDir,
       ...(repoId != null ? { repo_id: repoId } : {}),
       ...(credential ? { credential } : {}),
@@ -3161,7 +3160,7 @@ async function recover(args) {
   }
 }
 
-// ─── recovery-bundle (gitvault-recovery-custody — the export half of `recover`) ─
+// ─── recovery-bundle (vault-recovery-custody — the export half of `recover`) ─
 
 /**
  * `run402 repos recovery-bundle` — export YOUR member recovery bundle
@@ -3218,7 +3217,7 @@ async function recoveryBundle(args) {
 
 /**
  * `run402 repos daemon <status|stop>` — the resident helper engine
- * (gitvault-persistent-helper D4). Purely local: a bounded socket probe,
+ * (vault-persistent-helper D4). Purely local: a bounded socket probe,
  * never the network. `status` reports `{running:false}` when no daemon
  * answers (not an error — the daemon is an accelerator, never a
  * dependency); `stop` is idempotent the same way.
@@ -3293,9 +3292,9 @@ export async function run(sub, args) {
     console.log(HELP);
     process.exit(0);
   }
-  // gitvault-connection-amortization (bench P5): overlap the API dial with
+  // vault-connection-amortization (bench P5): overlap the API dial with
   // the verb's local work — fire-and-forget, silent on every failure.
-  void import("#sdk/node").then((m) => m.prewarmGitvaultConnection()).catch(() => {});
+  void import("#sdk/node").then((m) => m.prewarmVaultConnection()).catch(() => {});
   switch (sub) {
     case "create": {
       await create(argv);
@@ -3317,8 +3316,8 @@ export async function run(sub, args) {
       await del(argv);
       break;
     }
-    case "snapshot": {
-      await snapshot(argv);
+    case "capture": {
+      await capture(argv);
       break;
     }
     case "handoff": {

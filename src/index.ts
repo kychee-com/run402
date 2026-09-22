@@ -363,15 +363,15 @@ import { deleteSignerSchema, handleDeleteSigner } from "./tools/delete-signer.js
 import { serviceStatusSchema, handleServiceStatus } from "./tools/service-status.js";
 import { serviceHealthSchema, handleServiceHealth } from "./tools/service-health.js";
 
-// New tools — gitvault (READ-ONLY; the mutating verbs stay CLI-only, see src/tools/gitvault.ts)
+// New tools — vault (READ-ONLY; the mutating verbs stay CLI-only, see src/tools/repos.ts)
 import {
-  getGitvaultStatusSchema,
-  handleGetGitvaultStatus,
-  handleListGitvaultHeads,
-  handleVerifyGitvault,
-  listGitvaultHeadsSchema,
-  verifyGitvaultSchema,
-} from "./tools/gitvault.js";
+  getVaultStatusSchema,
+  handleGetVaultStatus,
+  handleListVaultHeads,
+  handleVerifyVault,
+  listVaultHeadsSchema,
+  verifyVaultSchema,
+} from "./tools/repos.js";
 
 // The lossy surface's expand affordance — pairs with every tool that stores a ref.
 import { expandResultSchema, handleExpandResult } from "./tools/expand-result.js";
@@ -2020,27 +2020,27 @@ server.tool(
 // One noun across every agent surface: these three tools teach only `repos`
 // CLI spellings. Only the READ verbs are exposed here. create / delete /
 // rename / snapshot / policy / mirror / gc / access stay CLI-only — see the
-// header of src/tools/gitvault.ts for why each mutating one is excluded.
+// header of src/tools/repos.ts for why each mutating one is excluded.
 
 server.tool(
   "repos_view",
-  "What this machine and the control plane each believe about a repo: the vault record, the activation policy, the local keystore (present? can it sign? does it hold the repo key?), the highest authenticated and materialized pins, pending unvaulted-override journals, and any warnings. This is also the cold-restart entry point — pass project_id with no local state and it resolves the repo for you. Run402 cannot decrypt your gitvault or repository history. Deployment artifacts remain a disclosed plaintext custody boundary. Activation requires vault admission by default; an explicit, audited override can bypass it. The output states verbatim, because it is a reviewed product commitment and not a summary you may paraphrase: whole-machine or whole-keystore loss is terminal for vault history until human envelopes ship. Read-only: it signs nothing, publishes nothing, and moves no pin — materializing refs and advancing the pin belongs to `run402 repos fsck`.",
-  getGitvaultStatusSchema,
-  async (args) => handleGetGitvaultStatus(args),
+  "What this machine and the control plane each believe about a repo: the vault record, the activation policy, the local keystore (present? can it sign? does it hold the repo key?), the highest authenticated and materialized pins, pending unvaulted-override journals, and any warnings. This is also the cold-restart entry point — pass project_id with no local state and it resolves the repo for you. Run402 cannot decrypt your vault or repository history. Deployment artifacts remain a disclosed plaintext custody boundary. Activation requires vault admission by default; an explicit, audited override can bypass it. The output states verbatim, because it is a reviewed product commitment and not a summary you may paraphrase: whole-machine or whole-keystore loss is terminal for vault history until human envelopes ship. Read-only: it signs nothing, publishes nothing, and moves no pin — materializing refs and advancing the pin belongs to `run402 repos fsck`.",
+  getVaultStatusSchema,
+  async (args) => handleGetVaultStatus(args),
 );
 
 server.tool(
   "repos_list_heads",
   "One page of a repo's heads listing — the admitted generations above a fixed anchor, each with its stored-bytes hash. after_generation is the VERIFICATION ANCHOR, not a paging knob: it fixes the generation the listing is verified above and MUST stay identical across every page of one sequence; changing it starts a different listing. limit is required (1..1000). cursor is omitted on the first call and is thereafter the prior page's next_cursor echoed UNCHANGED — it is opaque, so store and echo it, never parse or construct one; a malformed or stale cursor is INVALID_CURSOR and you recover by restarting from after_generation with no cursor. The full page is kept behind a ref and only a window is printed, with shown and total both reported — call expand_result with that ref for the rest. Listing is not verifying: use repos_fsck (or `run402 repos fsck`) to check the chain links.",
-  listGitvaultHeadsSchema,
-  async (args) => handleListGitvaultHeads(args),
+  listVaultHeadsSchema,
+  async (args) => handleListVaultHeads(args),
 );
 
 server.tool(
   "repos_fsck",
   "Verify the repo's head chain from your local authenticated pin up to the newest listed generation, then advance that pin to what was proved. The pin only ever moves forward: verification is monotonic and non-destructive — it rewrites no history and can never lower the pin. It fails CLOSED, and the refusal is the answer: GENERATION_REGRESSION when the vault offers a generation at or below your pin (a rollback), CHAIN_BROKEN on a gap, a missing head, or a link that does not chain, UPGRADE_REQUIRED on a transition this client cannot validate (read-only past it, never skipped), and VERIFICATION_BUDGET_EXCEEDED when the per-call head budget runs out — that last one is a pause, not a failure, because the verified prefix persists and calling again resumes. What verification proves is the chain; what it cannot prove is how long bytes are kept: Retention is an operational promise of the platform, not a cryptographic guarantee against it (the host controls timestamps and bytes). The CLI's `run402 repos fsck` also materializes the ref map and supports `--no-write`/`--mirror`; this tool is the chain-walk half only.",
-  verifyGitvaultSchema,
-  async (args) => handleVerifyGitvault(args),
+  verifyVaultSchema,
+  async (args) => handleVerifyVault(args),
 );
 
 server.tool(

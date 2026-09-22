@@ -293,7 +293,7 @@ export const COMMAND_MANIFEST = [
   // name, with `--repo`/`--project` addressing.
   { path: ["repos", "rename"], positionals: [p("new_name")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["my-notes"], runStyle: "sub", skipBehavioral: "claims a per-org-unique repo name against a live project" },
   { path: ["repos", "delete"], positionals: [], projectScoped: true, legacyPositionalProject: true, minimalArgs: [], runStyle: "sub", skipBehavioral: "irreversibly deletes a project after reading its live non-repo-resource state and vault generation count" },
-  { path: ["repos", "snapshot"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "captures the cwd git working tree and publishes a signed head" },
+  { path: ["repos", "capture"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "captures the cwd git working tree and publishes a signed head" },
   // kygit-handoff: `handoff` captures a stash-shaped checkpoint and mints a
   // single-use bearer key through a live gateway call; `resume` claims one
   // (a real membership mutation) and writes into a fresh working tree.
@@ -314,7 +314,7 @@ export const COMMAND_MANIFEST = [
   { path: ["repos", "access", "repair"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["--recipient-state-version", "0", "--recipient-revocation-version", "0"], runStyle: "sub", skipBehavioral: "owner+step-up-gated epoch rotation (D193-D203, rev 42) — samples a fresh epoch key and re-seals a live vault's recipients" },
   { path: ["repos", "access", "revoke-key"], positionals: [p("principal_id")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["prin_00000000000000000000000000000000"], runStyle: "sub", skipBehavioral: "owner+step-up-gated: declares a recipient's key revoked (org-scoped watermark) and drives a real epoch rotation off it" },
   { path: ["repos", "access", "declare-exposure"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "owner+step-up-gated: declares this vault's epoch secret exposed, forcing every subsequent ordinary push to refuse until a rotation lands" },
-  { path: ["repos", "access", "sync"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "gitvault-multi-writer (rev 47): on-demand writer-admission reconcile — resolves pending candidates' signing keys via the live org encryption-key directory and publishes a real add_writer_key head per candidate" },
+  { path: ["repos", "access", "sync"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "vault-multi-writer (rev 47): on-demand writer-admission reconcile — resolves pending candidates' signing keys via the live org encryption-key directory and publishes a real add_writer_key head per candidate" },
   { path: ["repos", "recover"], positionals: [p("source")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["s3://example-mirror-bucket", "--out", "__SCRATCH_DIR__/recover-out"], runStyle: "sub", skipBehavioral: "materializes a git repository from a mirror source, offline, with no server call" },
   // Principal-scoped (one bundle covers every vault you can read), so no
   // --project — deliberately unlike its eleven vault-scoped siblings.
@@ -471,7 +471,7 @@ export const COMMAND_MANIFEST = [
   { path: ["service", "health"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
   { path: ["cache", "inspect"], positionals: [p("url")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["https://example.com/"] },
   { path: ["cache", "invalidate"], positionals: [p("url", { required: false })], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["--all", "--host", "example.com"] },
-  // projectScoped: --project targets the gitvault
+  // projectScoped: --project targets the vault
   // check only (see doctor.mjs's own HELP) — every other check stays
   // wallet/machine-wide, but the gate's contract is "accepts --project
   // without rejecting it," which this satisfies.

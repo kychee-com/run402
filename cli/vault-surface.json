@@ -1,0 +1,40 @@
+{
+  "surface_version": "4.95.0",
+  "verbs": [
+    "repos create",
+    "repos list",
+    "repos view",
+    "repos rename",
+    "repos delete",
+    "repos capture",
+    "repos handoff",
+    "repos resume",
+    "repos invite",
+    "repos join",
+    "repos policy",
+    "repos mirror",
+    "repos fsck",
+    "repos gc",
+    "repos access",
+    "repos access repair",
+    "repos access revoke-key",
+    "repos access declare-exposure",
+    "repos access sync",
+    "repos recover",
+    "repos recovery-bundle"
+  ],
+  "retired_spellings": [],
+  "capabilities": {
+    "revocation_live": true,
+    "human_envelope_add_live": true,
+    "mirror_live": true,
+    "byo_live": true,
+    "recover_live": true,
+    "allocation": "create_immediate",
+    "capture_dirty_default": "refuse",
+    "handoff_live": true,
+    "handoff_dirty_default": "capture",
+    "invite_live": true,
+    "join_live": true
+  }
+}

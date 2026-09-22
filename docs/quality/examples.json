@@ -473,15 +473,15 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/ops.md",
-    "line": 154,
+    "line": 151,
     "language": "bash",
     "kind": "commands",
-    "sha256": "604d7ca345b7c44f7d93ee22336582266a8fd09f3b061c573137c17c9fbe1be3",
+    "sha256": "bf0c36e96f9f417430147dbd21f41f80c3eeadb48a23f15ce89eccb01f36d0b0",
     "validation": "cli-help-output-sync"
   },
   {
     "file": "docs-site/src/content/docs//cli/orgs.md",
-    "line": 172,
+    "line": 153,
     "language": "bash",
     "kind": "commands",
     "sha256": "fdf27bb0938a56edd5d76a2fe59b721405d62974241dee71cc087d95713dc5db",
@@ -489,7 +489,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/orgs.md",
-    "line": 182,
+    "line": 163,
     "language": "bash",
     "kind": "commands",
     "sha256": "051241e43bb6641a67066fb637eeaf529c86b77d929b41efdbacb431f69e8989",
@@ -644,7 +644,7 @@
     "line": 23,
     "language": "",
     "kind": "output-or-pseudocode",
-    "sha256": "e63a6a74e01ef6f2127f057a3e83308910a234c4932f5c39a4bb91948ebeabd6",
+    "sha256": "c369f78270d9d382de3069f5c868eda2e3ddbf7899432ee659be32b31cee9cf1",
     "validation": "cli-help-output-sync"
   },
   {
@@ -652,7 +652,7 @@
     "line": 61,
     "language": "bash",
     "kind": "commands",
-    "sha256": "2e38f968b2876e8634e0fc99f3effb75e9a62e3a5b5e2e1b6bbfa7a1a453abd4",
+    "sha256": "1ffdec2d826e2c0c2046a4e6fd2c47b74d12f06e514bf9e2153138abf27d2113",
     "validation": "cli-help-output-sync"
   },
   {
@@ -1316,7 +1316,7 @@
     "line": 309,
     "language": "",
     "kind": "output-or-pseudocode",
-    "sha256": "a8153a4a29aa26683bde628aeae45f0bac326c84c4797e7f88543baa27ca1568",
+    "sha256": "e8bb959dcd7196702e720d6a05a7dc785a2a5da8bc02dc9bdd93b3117351b002",
     "validation": "sdk-snippets"
   },
   {
@@ -1484,7 +1484,7 @@
     "line": 879,
     "language": "",
     "kind": "output-or-pseudocode",
-    "sha256": "0fef770c5188f915d217213377547767696f34c156342ada239c607e62a0cb8d",
+    "sha256": "cac93a376125ec2efbdedc28d73597ad82c939a6aa67d8fcf1dec41568825807",
     "validation": "sdk-snippets"
   },
   {
@@ -1492,7 +1492,7 @@
     "line": 895,
     "language": "",
     "kind": "output-or-pseudocode",
-    "sha256": "050e6df62839da627ebf747afbb11fa0b925bb29b0fe0031078c9c761970bb00",
+    "sha256": "7404b9b9c52ccf1f03f4da4d95d40163bda5fa760e5451c3d0f9fab06ec1510c",
     "validation": "sdk-snippets"
   },
   {
@@ -1500,7 +1500,7 @@
     "line": 930,
     "language": "",
     "kind": "output-or-pseudocode",
-    "sha256": "80ef9947993223d969b70ccb954ec401bb6768d6ed29da40cb5388b15d55c786",
+    "sha256": "0d8e9cde1cc3c0988b06c3565da22cf15c49d175cf0971d70eca4f6798204386",
     "validation": "sdk-snippets"
   },
   {
@@ -1508,7 +1508,7 @@
     "line": 953,
     "language": "",
     "kind": "output-or-pseudocode",
-    "sha256": "36db71809137078f490bda8bdebef2df5cee210e21dddae68e92c2526c269438",
+    "sha256": "5283d3a932ae7e91191701d514a1301150fc6b6195a485a151de1937fa7c7794",
     "validation": "sdk-snippets"
   },
   {
@@ -1516,7 +1516,7 @@
     "line": 970,
     "language": "ts",
     "kind": "application-or-sdk",
-    "sha256": "527eb6ee7959db277450a4c66bbdada2d170ab7e4446498b2b34db71d96e3e6a",
+    "sha256": "622d943a6afd8f4d313b763dd9cdc5e15f6feeece3c3273ae1d5c2526425107d",
     "validation": "sdk-snippets"
   },
   {
@@ -1524,7 +1524,7 @@
     "line": 984,
     "language": "ts",
     "kind": "application-or-sdk",
-    "sha256": "7b28f4993e62dcdaf12f88a62888f184fd20c828585ec7099aeeecdd3fdba2d1",
+    "sha256": "40b15cc238bb06f7ad7c53f6b0308a05afa977b65f39ba953e664246105655e1",
     "validation": "sdk-snippets"
   },
   {
@@ -1532,7 +1532,7 @@
     "line": 1014,
     "language": "ts",
     "kind": "application-or-sdk",
-    "sha256": "dba30334bedafd874e3d8d066671a0dbe77c5c5241f1eaf528dd8761ec02cd37",
+    "sha256": "c84ce8ca2ed45c4e4a56ead69bf2ef908278a5cd52477ee364bb5143b97b09c1",
     "validation": "sdk-snippets"
   },
   {

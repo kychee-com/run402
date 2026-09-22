@@ -355,19 +355,19 @@ The client could not complete this operation. Inspect its typed error kind, mess
 
 <h2 id="GIT_COMMAND_FAILED">GIT_COMMAND_FAILED</h2>
 
-Owner: `public:sdk/src/node/gitvault-snapshot.ts`.
+Owner: `public:sdk/src/node/vault-snapshot.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
 <h2 id="GIT_CWD_MISSING">GIT_CWD_MISSING</h2>
 
-Owner: `public:sdk/src/node/gitvault-snapshot.ts`.
+Owner: `public:sdk/src/node/vault-snapshot.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
 <h2 id="GIT_UNAVAILABLE">GIT_UNAVAILABLE</h2>
 
-Owner: `public:sdk/src/node/gitvault-snapshot.ts`.
+Owner: `public:sdk/src/node/vault-snapshot.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
@@ -383,237 +383,33 @@ Owner: `public:cli/lib/ci.mjs`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
-<h2 id="GITVAULT_ACTIVATION_TOKEN_MISSING">GITVAULT_ACTIVATION_TOKEN_MISSING</h2>
-
-Owner: `public:sdk/src/node/gitvault-apply.ts`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
-<h2 id="GITVAULT_BAD_GENESIS">GITVAULT_BAD_GENESIS</h2>
-
-Owner: `public:sdk/src/node/gitvault-writer-state.ts`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
-<h2 id="GITVAULT_BAD_ID">GITVAULT_BAD_ID</h2>
-
-Owner: `public:sdk/src/node/gitvault-deploy.ts`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
-<h2 id="GITVAULT_BYO_OBJECT_MISSING">GITVAULT_BYO_OBJECT_MISSING</h2>
-
-Owner: `public:sdk/src/namespaces/gitvault.ts`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
-<h2 id="GITVAULT_CAPTURE_RECEIPT_MISSING">GITVAULT_CAPTURE_RECEIPT_MISSING</h2>
-
-Owner: `public:sdk/src/node/gitvault-deploy.ts`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
-<h2 id="GITVAULT_COMPACT_INSUFFICIENT_HEADROOM">GITVAULT_COMPACT_INSUFFICIENT_HEADROOM</h2>
-
-Owner: `public:sdk/src/namespaces/gitvault.ts`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
-<h2 id="GITVAULT_COMPACTION_IN_PROGRESS">GITVAULT_COMPACTION_IN_PROGRESS</h2>
-
-Owner: `public:sdk/src/namespaces/gitvault.ts`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
-<h2 id="GITVAULT_CONFIG_INCLUDE_REFUSED">GITVAULT_CONFIG_INCLUDE_REFUSED</h2>
-
-Owner: `public:sdk/src/node/gitvault-snapshot.ts`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
-<h2 id="GITVAULT_CONFIG_UNREADABLE">GITVAULT_CONFIG_UNREADABLE</h2>
-
-Owner: `public:sdk/src/node/gitvault-snapshot.ts`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
-<h2 id="GITVAULT_DEPLOY_ABANDONED">GITVAULT_DEPLOY_ABANDONED</h2>
-
-Owner: `public:sdk/src/node/gitvault-apply.ts`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
-<h2 id="GITVAULT_EPOCH_NOT_OPENABLE">GITVAULT_EPOCH_NOT_OPENABLE</h2>
-
-Owner: `public:sdk/src/node/gitvault-publication.ts`, `public:sdk/src/node/gitvault-recover.ts`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
-<h2 id="GITVAULT_EXCLUDES_PATH_UNSUPPORTED">GITVAULT_EXCLUDES_PATH_UNSUPPORTED</h2>
-
-Owner: `public:sdk/src/node/gitvault-snapshot.ts`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
-<h2 id="GITVAULT_EXCLUDES_UNREADABLE">GITVAULT_EXCLUDES_UNREADABLE</h2>
-
-Owner: `public:sdk/src/node/gitvault-snapshot.ts`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
-<h2 id="GITVAULT_IDENTITY_PROFILE_MISMATCH">GITVAULT_IDENTITY_PROFILE_MISMATCH</h2>
-
-Owner: `public:sdk/src/namespaces/gitvault.ts`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
-<h2 id="GITVAULT_KEY_ROTATION_REQUIRED">GITVAULT_KEY_ROTATION_REQUIRED</h2>
-
-Owner: `public:sdk/src/namespaces/gitvault.ts`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
-<h2 id="GITVAULT_LANE_OUT_OF_ORDER">GITVAULT_LANE_OUT_OF_ORDER</h2>
-
-Owner: `public:sdk/src/node/gitvault-apply.ts`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
-<h2 id="GITVAULT_MIRROR_AMBIGUOUS">GITVAULT_MIRROR_AMBIGUOUS</h2>
-
-Owner: `public:sdk/src/namespaces/gitvault.ts`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
-<h2 id="GITVAULT_MIRROR_EMPTY">GITVAULT_MIRROR_EMPTY</h2>
-
-Owner: `public:sdk/src/namespaces/gitvault.ts`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
-<h2 id="GITVAULT_MIRROR_NOT_CONFIGURED">GITVAULT_MIRROR_NOT_CONFIGURED</h2>
-
-Owner: `public:sdk/src/namespaces/gitvault.ts`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
-<h2 id="GITVAULT_NODE_ONLY">GITVAULT_NODE_ONLY</h2>
-
-Owner: `public:sdk/src/namespaces/gitvault.ts`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
-<h2 id="GITVAULT_OBJECT_READ_FAILED">GITVAULT_OBJECT_READ_FAILED</h2>
-
-Owner: `public:sdk/src/node/gitvault-publication.ts`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
-<h2 id="GITVAULT_ORG_UNRESOLVED">GITVAULT_ORG_UNRESOLVED</h2>
-
-Owner: `public:cli/lib/repos.mjs`, `public:cli/lib/up.mjs`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
-<h2 id="GITVAULT_OVERRIDE_COMPLETION_MISMATCH">GITVAULT_OVERRIDE_COMPLETION_MISMATCH</h2>
-
-Owner: `public:sdk/src/node/gitvault-deploy.ts`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
-<h2 id="GITVAULT_OVERRIDE_COMPLETION_REFUSED">GITVAULT_OVERRIDE_COMPLETION_REFUSED</h2>
-
-Owner: `public:sdk/src/node/gitvault-deploy.ts`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
-<h2 id="GITVAULT_PIN_MANIFEST_READ_UNSUPPORTED">GITVAULT_PIN_MANIFEST_READ_UNSUPPORTED</h2>
-
-Owner: `public:sdk/src/node/gitvault-publication.ts`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
-<h2 id="GITVAULT_PLAN_DIGEST_MISSING">GITVAULT_PLAN_DIGEST_MISSING</h2>
-
-Owner: `public:sdk/src/node/gitvault-apply.ts`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
-<h2 id="GITVAULT_POLICY_UNSET">GITVAULT_POLICY_UNSET</h2>
-
-Owner: `public:sdk/src/node/gitvault-apply.ts`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
-<h2 id="GITVAULT_PROOF_OF_OPEN_PRINCIPAL_UNRESOLVED">GITVAULT_PROOF_OF_OPEN_PRINCIPAL_UNRESOLVED</h2>
-
-Owner: `public:sdk/src/namespaces/gitvault.ts`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
-<h2 id="GITVAULT_RECEIPT_ID_REUSED_DIFFERENT">GITVAULT_RECEIPT_ID_REUSED_DIFFERENT</h2>
-
-Owner: `public:sdk/src/namespaces/gitvault.ts`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
-<h2 id="GITVAULT_REPO_STATE_MISSING">GITVAULT_REPO_STATE_MISSING</h2>
-
-Owner: `public:sdk/src/namespaces/gitvault.ts`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
-<h2 id="GITVAULT_SIGNATURE_INVALID">GITVAULT_SIGNATURE_INVALID</h2>
-
-Owner: `public:sdk/src/namespaces/gitvault.ts`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
-<h2 id="GITVAULT_TOKEN_BINDING_MISMATCH">GITVAULT_TOKEN_BINDING_MISMATCH</h2>
-
-Owner: `public:sdk/src/node/gitvault-deploy.ts`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
-<h2 id="GITVAULT_UNSUPPORTED_TARGET">GITVAULT_UNSUPPORTED_TARGET</h2>
-
-Owner: `public:sdk/src/namespaces/deploy.ts`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
-<h2 id="GITVAULT_VAULT_UNRESOLVED">GITVAULT_VAULT_UNRESOLVED</h2>
-
-Owner: `public:sdk/src/namespaces/gitvault.ts`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
 <h2 id="HANDOFF_CLONE_FAILED">HANDOFF_CLONE_FAILED</h2>
 
-Owner: `public:sdk/src/node/gitvault-restore.ts`.
+Owner: `public:sdk/src/node/vault-restore.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
 <h2 id="HANDOFF_ENVELOPE_INVALID">HANDOFF_ENVELOPE_INVALID</h2>
 
-Owner: `public:sdk/src/namespaces/gitvault.ts`.
+Owner: `public:sdk/src/namespaces/repos.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
 <h2 id="HANDOFF_ID_MISMATCH">HANDOFF_ID_MISMATCH</h2>
 
-Owner: `public:sdk/src/namespaces/gitvault.ts`.
+Owner: `public:sdk/src/namespaces/repos.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
 <h2 id="HANDOFF_KEY_REVOKED">HANDOFF_KEY_REVOKED</h2>
 
-Owner: `public:sdk/src/node/gitvault-writer-state.ts`.
+Owner: `public:sdk/src/node/vault-writer-state.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
 <h2 id="HANDOFF_MINT_GRANT_MISMATCH">HANDOFF_MINT_GRANT_MISMATCH</h2>
 
-Owner: `public:sdk/src/namespaces/gitvault.ts`.
+Owner: `public:sdk/src/namespaces/repos.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
@@ -691,25 +487,25 @@ The client could not complete this operation. Inspect its typed error kind, mess
 
 <h2 id="INVITE_ENVELOPE_INVALID">INVITE_ENVELOPE_INVALID</h2>
 
-Owner: `public:sdk/src/namespaces/gitvault.ts`.
+Owner: `public:sdk/src/namespaces/repos.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
 <h2 id="INVITE_ID_MISMATCH">INVITE_ID_MISMATCH</h2>
 
-Owner: `public:sdk/src/namespaces/gitvault.ts`.
+Owner: `public:sdk/src/namespaces/repos.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
 <h2 id="INVITE_MINT_GRANT_MISMATCH">INVITE_MINT_GRANT_MISMATCH</h2>
 
-Owner: `public:sdk/src/namespaces/gitvault.ts`.
+Owner: `public:sdk/src/namespaces/repos.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
 <h2 id="INVITE_REDEEM_WRITER_KEY_MISMATCH">INVITE_REDEEM_WRITER_KEY_MISMATCH</h2>
 
-Owner: `public:sdk/src/namespaces/gitvault.ts`.
+Owner: `public:sdk/src/namespaces/repos.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
@@ -991,7 +787,7 @@ The client could not complete this operation. Inspect its typed error kind, mess
 
 <h2 id="REMOTE_SCHEME_UNSUPPORTED">REMOTE_SCHEME_UNSUPPORTED</h2>
 
-Owner: `public:sdk/src/namespaces/gitvault.ts`.
+Owner: `public:sdk/src/namespaces/repos.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
@@ -1141,7 +937,7 @@ The client could not complete this operation. Inspect its typed error kind, mess
 
 <h2 id="UNKNOWN">UNKNOWN</h2>
 
-Owner: `public:sdk/src/namespaces/gitvault.ts`, `public:sdk/src/node/gitvault-deploy.ts`.
+Owner: `public:sdk/src/namespaces/repos.ts`, `public:sdk/src/node/vault-deploy.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
@@ -1202,6 +998,216 @@ The client could not complete this operation. Inspect its typed error kind, mess
 <h2 id="VALIDATION_ERROR">VALIDATION_ERROR</h2>
 
 Owner: `public:sdk/src/namespaces/transfers.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="VAULT_ACTIVATION_TOKEN_MISSING">VAULT_ACTIVATION_TOKEN_MISSING</h2>
+
+Owner: `public:sdk/src/node/vault-apply.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="VAULT_BAD_GENESIS">VAULT_BAD_GENESIS</h2>
+
+Owner: `public:sdk/src/node/vault-writer-state.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="VAULT_BAD_ID">VAULT_BAD_ID</h2>
+
+Owner: `public:sdk/src/node/vault-deploy.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="VAULT_BYO_OBJECT_MISSING">VAULT_BYO_OBJECT_MISSING</h2>
+
+Owner: `public:sdk/src/namespaces/repos.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="VAULT_CAPTURE_RECEIPT_MISSING">VAULT_CAPTURE_RECEIPT_MISSING</h2>
+
+Owner: `public:sdk/src/node/vault-deploy.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="VAULT_COMPACT_INSUFFICIENT_HEADROOM">VAULT_COMPACT_INSUFFICIENT_HEADROOM</h2>
+
+Owner: `public:sdk/src/namespaces/repos.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="VAULT_COMPACTION_IN_PROGRESS">VAULT_COMPACTION_IN_PROGRESS</h2>
+
+Owner: `public:sdk/src/namespaces/repos.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="VAULT_CONFIG_INCLUDE_REFUSED">VAULT_CONFIG_INCLUDE_REFUSED</h2>
+
+Owner: `public:sdk/src/node/vault-snapshot.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="VAULT_CONFIG_UNREADABLE">VAULT_CONFIG_UNREADABLE</h2>
+
+Owner: `public:sdk/src/node/vault-snapshot.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="VAULT_DEPLOY_ABANDONED">VAULT_DEPLOY_ABANDONED</h2>
+
+Owner: `public:sdk/src/node/vault-apply.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="VAULT_EPOCH_NOT_OPENABLE">VAULT_EPOCH_NOT_OPENABLE</h2>
+
+Owner: `public:sdk/src/node/vault-publication.ts`, `public:sdk/src/node/vault-recover.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="VAULT_EXCLUDES_PATH_UNSUPPORTED">VAULT_EXCLUDES_PATH_UNSUPPORTED</h2>
+
+Owner: `public:sdk/src/node/vault-snapshot.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="VAULT_EXCLUDES_UNREADABLE">VAULT_EXCLUDES_UNREADABLE</h2>
+
+Owner: `public:sdk/src/node/vault-snapshot.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="VAULT_IDENTITY_PROFILE_MISMATCH">VAULT_IDENTITY_PROFILE_MISMATCH</h2>
+
+Owner: `public:sdk/src/namespaces/repos.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="VAULT_KEY_ROTATION_REQUIRED">VAULT_KEY_ROTATION_REQUIRED</h2>
+
+Owner: `public:sdk/src/namespaces/repos.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="VAULT_KEYSTORE_MOVE_FAILED">VAULT_KEYSTORE_MOVE_FAILED</h2>
+
+Owner: `public:sdk/src/node/vault-keystore.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="VAULT_LANE_OUT_OF_ORDER">VAULT_LANE_OUT_OF_ORDER</h2>
+
+Owner: `public:sdk/src/node/vault-apply.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="VAULT_MIRROR_AMBIGUOUS">VAULT_MIRROR_AMBIGUOUS</h2>
+
+Owner: `public:sdk/src/namespaces/repos.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="VAULT_MIRROR_EMPTY">VAULT_MIRROR_EMPTY</h2>
+
+Owner: `public:sdk/src/namespaces/repos.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="VAULT_MIRROR_NOT_CONFIGURED">VAULT_MIRROR_NOT_CONFIGURED</h2>
+
+Owner: `public:sdk/src/namespaces/repos.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="VAULT_NODE_ONLY">VAULT_NODE_ONLY</h2>
+
+Owner: `public:sdk/src/namespaces/repos.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="VAULT_OBJECT_READ_FAILED">VAULT_OBJECT_READ_FAILED</h2>
+
+Owner: `public:sdk/src/node/vault-publication.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="VAULT_ORG_UNRESOLVED">VAULT_ORG_UNRESOLVED</h2>
+
+Owner: `public:cli/lib/repos.mjs`, `public:cli/lib/up.mjs`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="VAULT_OVERRIDE_COMPLETION_MISMATCH">VAULT_OVERRIDE_COMPLETION_MISMATCH</h2>
+
+Owner: `public:sdk/src/node/vault-deploy.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="VAULT_OVERRIDE_COMPLETION_REFUSED">VAULT_OVERRIDE_COMPLETION_REFUSED</h2>
+
+Owner: `public:sdk/src/node/vault-deploy.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="VAULT_PIN_MANIFEST_READ_UNSUPPORTED">VAULT_PIN_MANIFEST_READ_UNSUPPORTED</h2>
+
+Owner: `public:sdk/src/node/vault-publication.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="VAULT_PLAN_DIGEST_MISSING">VAULT_PLAN_DIGEST_MISSING</h2>
+
+Owner: `public:sdk/src/node/vault-apply.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="VAULT_POLICY_UNSET">VAULT_POLICY_UNSET</h2>
+
+Owner: `public:sdk/src/node/vault-apply.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="VAULT_PROOF_OF_OPEN_PRINCIPAL_UNRESOLVED">VAULT_PROOF_OF_OPEN_PRINCIPAL_UNRESOLVED</h2>
+
+Owner: `public:sdk/src/namespaces/repos.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="VAULT_RECEIPT_ID_REUSED_DIFFERENT">VAULT_RECEIPT_ID_REUSED_DIFFERENT</h2>
+
+Owner: `public:sdk/src/namespaces/repos.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="VAULT_REPO_STATE_MISSING">VAULT_REPO_STATE_MISSING</h2>
+
+Owner: `public:sdk/src/namespaces/repos.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="VAULT_SIGNATURE_INVALID">VAULT_SIGNATURE_INVALID</h2>
+
+Owner: `public:sdk/src/namespaces/repos.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="VAULT_TOKEN_BINDING_MISMATCH">VAULT_TOKEN_BINDING_MISMATCH</h2>
+
+Owner: `public:sdk/src/node/vault-deploy.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="VAULT_UNRESOLVED">VAULT_UNRESOLVED</h2>
+
+Owner: `public:sdk/src/namespaces/repos.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="VAULT_UNSUPPORTED_TARGET">VAULT_UNSUPPORTED_TARGET</h2>
+
+Owner: `public:sdk/src/namespaces/deploy.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 

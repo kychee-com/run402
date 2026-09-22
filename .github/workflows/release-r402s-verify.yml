@@ -80,6 +80,6 @@ jobs:
           gh release create "$TAG" \
             --repo "${GITHUB_REPOSITORY}" \
             --title "$TAG" \
-            --notes "Prebuilt r402s-verify binaries — the independent-lineage gitvault verifier. Verify the checksum, then: chmod +x and run. Built --locked from the tagged source; every binary passed the vendored-vector replay before upload." \
+            --notes "Prebuilt r402s-verify binaries — the independent-lineage vault verifier. Verify the checksum, then: chmod +x and run. Built --locked from the tagged source; every binary passed the vendored-vector replay before upload." \
             r402s-verify-* || \
           gh release upload "$TAG" --repo "${GITHUB_REPOSITORY}" --clobber r402s-verify-*

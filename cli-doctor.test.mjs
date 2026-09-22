@@ -7,8 +7,8 @@
  * is BAD_USAGE" convention every other command follows (`argparse.mjs`'s
  * `assertKnownFlags`). This file locks two things: (1) a truly unknown flag
  * is now rejected, never silently ignored, and (2) `--project <project_id>` actually
- * TARGETS the gitvault check, outranking the repo-standing/active-project
- * default `gitvault-target.mjs` otherwise resolves.
+ * TARGETS the vault check, outranking the repo-standing/active-project
+ * default `vault-target.mjs` otherwise resolves.
  */
 
 import { describe, it, before, after, beforeEach } from "node:test";
@@ -19,8 +19,8 @@ import { join } from "node:path";
 
 const API = "https://test-api.run402.com";
 const tempDir = mkdtempSync(join(tmpdir(), "run402-doctor-"));
-// A scratch, NON-git cwd: doctor's gitvault check first asks
-// `gitvault-target.mjs` whether cwd is a repository with its own pinned/
+// A scratch, NON-git cwd: doctor's vault check first asks
+// `vault-target.mjs` whether cwd is a repository with its own pinned/
 // remote-addressed vault (kychee-com/run402#559d) — running from inside
 // THIS checkout would pick up its own `run402`/`origin` remotes and hit the
 // network with an address-resolution read this test never intends to
@@ -40,8 +40,8 @@ const originalError = console.error;
 const originalExit = process.exit;
 let stdout = [];
 let stderr = [];
-/** Every `/gitvault/v1/vaults?project_id=...` read the gitvault check made. */
-let gitvaultProjectReads = [];
+/** Every `/vaults/v1?project_id=...` read the vault check made. */
+let vaultProjectReads = [];
 /** Every URL any check fetched this run, in order — used to prove --only skips the WORK of an unselected check, not just its output. */
 let allFetchUrls = [];
 
@@ -52,10 +52,10 @@ function json(data, status = 200) {
 async function mockFetch(input) {
   const url = typeof input === "string" ? input : String(input?.url ?? input);
   allFetchUrls.push(url);
-  if (url.includes("/gitvault/v1/vaults")) {
+  if (url.includes("/vaults/v1")) {
     const projectId = new URL(url).searchParams.get("project_id");
-    gitvaultProjectReads.push(projectId);
-    // No vault for either project — the gitvault check reports its ordinary
+    vaultProjectReads.push(projectId);
+    // No vault for either project — the vault check reports its ordinary
     // "vault: null" shape either way; this test only cares WHICH project_id
     // was read, not the vault contents.
     return json({}, 404);
@@ -68,7 +68,7 @@ async function mockFetch(input) {
 function captureStart() {
   stdout = [];
   stderr = [];
-  gitvaultProjectReads = [];
+  vaultProjectReads = [];
   allFetchUrls = [];
   console.log = (...args) => stdout.push(args.map(String).join(" "));
   console.error = (...args) => stderr.push(args.map(String).join(" "));
@@ -176,8 +176,8 @@ describe("run402 doctor — unknown flags are BAD_USAGE, never silently ignored"
   });
 });
 
-describe("run402 doctor --project <project_id> — targets the gitvault check (kychee-com/run402#566)", () => {
-  it("without --project, the gitvault check reads the ACTIVE project (unchanged default)", async () => {
+describe("run402 doctor --project <project_id> — targets the vault check (kychee-com/run402#566)", () => {
+  it("without --project, the vault check reads the ACTIVE project (unchanged default)", async () => {
     captureStart();
     try {
       await run("--no-scan", []);
@@ -186,10 +186,10 @@ describe("run402 doctor --project <project_id> — targets the gitvault check (k
     } finally {
       captureStop();
     }
-    assert.deepEqual(gitvaultProjectReads, [ACTIVE_PROJECT]);
+    assert.deepEqual(vaultProjectReads, [ACTIVE_PROJECT]);
   });
 
-  it("--project <project_id> outranks the active project for the gitvault check", async () => {
+  it("--project <project_id> outranks the active project for the vault check", async () => {
     captureStart();
     try {
       await run("--project", [EXPLICIT_PROJECT, "--no-scan"]);
@@ -198,10 +198,10 @@ describe("run402 doctor --project <project_id> — targets the gitvault check (k
     } finally {
       captureStop();
     }
-    assert.deepEqual(gitvaultProjectReads, [EXPLICIT_PROJECT]);
+    assert.deepEqual(vaultProjectReads, [EXPLICIT_PROJECT]);
   });
 
-  it("the JSON report's gitvault check echoes the explicit project, not the active one", async () => {
+  it("the JSON report's vault check echoes the explicit project, not the active one", async () => {
     captureStart();
     try {
       await run("--project", [EXPLICIT_PROJECT, "--no-scan"]);
@@ -212,20 +212,20 @@ describe("run402 doctor --project <project_id> — targets the gitvault check (k
     }
     const reportLine = stdout.join("\n");
     const report = JSON.parse(reportLine);
-    const gitvaultCheck = report.checks.find((c) => c.name === "gitvault");
-    assert.ok(gitvaultCheck, "expected a gitvault check in the report");
+    const vaultCheck = report.checks.find((c) => c.name === "vault");
+    assert.ok(vaultCheck, "expected a vault check in the report");
     // A 404 read reports as `skipped` (see doctor.mjs's catch branch) — the
     // targeting proof is which project_id was READ (asserted above), not
     // this check's status, but assert the report still shapes as expected.
-    assert.ok(["skipped", "ok", "warning"].includes(gitvaultCheck.status));
+    assert.ok(["skipped", "ok", "warning"].includes(vaultCheck.status));
   });
 });
 
 // ─── --only <check> (kychee-com/run402#566, the remaining half) ──────────────
 //
-// Codex's exact ask was `--only gitvault`: it should run JUST the gitvault
+// Codex's exact ask was `--only vault`: it should run JUST the vault
 // check and suppress everything else — INCLUDING the source-tree scan that
-// buried the gitvault diagnosis under ~1,800 monorepo findings. Pinned here:
+// buried the vault diagnosis under ~1,800 monorepo findings. Pinned here:
 // (1) the report contains exactly the named check(s), nothing else; (2) the
 // UNSELECTED checks' network work never runs at all (not merely hidden from
 // the report — a skipped check costs nothing); (3) an unknown name is
@@ -233,23 +233,23 @@ describe("run402 doctor --project <project_id> — targets the gitvault check (k
 // (5) --only is rejected together with --buzz.
 
 describe("run402 doctor --only <check> — scoped checks (kychee-com/run402#566)", () => {
-  it("--only gitvault runs ONLY the gitvault check — report has exactly one check, named gitvault", async () => {
+  it("--only vault runs ONLY the vault check — report has exactly one check, named vault", async () => {
     captureStart();
     try {
-      await run("--only", ["gitvault"]);
+      await run("--only", ["vault"]);
     } catch {
       // process.exit(N) throws — tolerated
     } finally {
       captureStop();
     }
     const report = JSON.parse(stdout.join("\n"));
-    assert.deepEqual(report.checks.map((c) => c.name), ["gitvault"]);
+    assert.deepEqual(report.checks.map((c) => c.name), ["vault"]);
   });
 
-  it("--only gitvault suppresses the source-tree scan WITHOUT needing --no-scan", async () => {
+  it("--only vault suppresses the source-tree scan WITHOUT needing --no-scan", async () => {
     captureStart();
     try {
-      await run("--only", ["gitvault"]);
+      await run("--only", ["vault"]);
     } catch {
       // tolerated
     } finally {
@@ -259,20 +259,20 @@ describe("run402 doctor --only <check> — scoped checks (kychee-com/run402#566)
     assert.equal(report.checks.some((c) => c.name === "source_scan"), false);
   });
 
-  it("--only gitvault does the WORK of only the gitvault check — no tier/api/account fetch happened", async () => {
+  it("--only vault does the WORK of only the vault check — no tier/api/account fetch happened", async () => {
     captureStart();
     try {
-      await run("--only", ["gitvault"]);
+      await run("--only", ["vault"]);
     } catch {
       // tolerated
     } finally {
       captureStop();
     }
-    // Exactly one network read: the gitvault vault lookup. Every other
+    // Exactly one network read: the vault lookup. Every other
     // check's own fetch (service/status, tier/status, me/status) must
     // never have been attempted — --only skips the WORK, not just the output.
     assert.equal(allFetchUrls.length, 1, `expected exactly one fetch; saw: ${JSON.stringify(allFetchUrls)}`);
-    assert.match(allFetchUrls[0], /\/gitvault\/v1\/vaults/);
+    assert.match(allFetchUrls[0], /\/vaults\/v1/);
   });
 
   it("--only is repeatable — --only config_dir --only wallet runs exactly those two, in registry order", async () => {
@@ -304,29 +304,29 @@ describe("run402 doctor --only <check> — scoped checks (kychee-com/run402#566)
     assert.ok(err, `expected a structured error envelope on stderr, got: ${stderr.join("\n")}`);
     assert.equal(err.code, "BAD_USAGE");
     assert.match(err.message, /not_a_real_check/);
-    assert.ok(Array.isArray(err.details?.known_checks) && err.details.known_checks.includes("gitvault"));
-    assert.match(err.hint ?? "", /gitvault/);
+    assert.ok(Array.isArray(err.details?.known_checks) && err.details.known_checks.includes("vault"));
+    assert.match(err.hint ?? "", /vault/);
   });
 
-  it("--only composes with --project: the gitvault check still targets the explicit project", async () => {
+  it("--only composes with --project: the vault check still targets the explicit project", async () => {
     captureStart();
     try {
-      await run("--only", ["gitvault", "--project", EXPLICIT_PROJECT]);
+      await run("--only", ["vault", "--project", EXPLICIT_PROJECT]);
     } catch {
       // tolerated
     } finally {
       captureStop();
     }
-    assert.deepEqual(gitvaultProjectReads, [EXPLICIT_PROJECT]);
+    assert.deepEqual(vaultProjectReads, [EXPLICIT_PROJECT]);
     const report = JSON.parse(stdout.join("\n"));
-    assert.deepEqual(report.checks.map((c) => c.name), ["gitvault"]);
+    assert.deepEqual(report.checks.map((c) => c.name), ["vault"]);
   });
 
   it("--only is not used with --buzz — rejected as BAD_USAGE before buzz mode runs", async () => {
     captureStart();
     let threw = null;
     try {
-      await run("--only", ["gitvault", "--buzz"]);
+      await run("--only", ["vault", "--buzz"]);
     } catch (err) {
       threw = err;
     } finally {
@@ -350,12 +350,12 @@ describe("run402 doctor --only <check> — scoped checks (kychee-com/run402#566)
     }
     const help = stdout.join("\n");
     assert.match(help, /--only <check>/);
-    assert.match(help, /gitvault/);
+    assert.match(help, /vault/);
     assert.match(help, /source_scan/);
   });
 });
 
-describe("run402 doctor — recovery_posture (gitvault-recovery-custody)", () => {
+describe("run402 doctor — recovery_posture (vault-recovery-custody)", () => {
   /** Temporarily answer me/status with a specific recovery_posture payload (or none). */
   function withAccountStatus(body, fn) {
     const prior = globalThis.fetch;
@@ -565,7 +565,7 @@ describe("run402 doctor — ok is 'can this agent ship'; warnings[] carries the 
   });
 
   it("every check carries severity ∈ {blocking, advisory, info}, on a full run, --only, and --refresh alike", async () => {
-    for (const args of [["--no-scan"], ["--only", "gitvault"], ["--refresh", "--no-scan"]]) {
+    for (const args of [["--no-scan"], ["--only", "vault"], ["--refresh", "--no-scan"]]) {
       const { report } = await runDoctor(args);
       assert.ok(report.checks.length > 0);
       for (const c of report.checks) {

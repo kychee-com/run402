@@ -618,7 +618,7 @@ const SURFACE: Capability[] = [
   // inviter stands in; joining through one is `join_room`'s own row above
   // (the claim route rides its endpoint parenthetically, and `rooms.join`
   // is in SDK_ONLY_METHODS — one CLI verb, no second SURFACE row, no
-  // duplicate `cli` string). `mcp: null` here for the same law as gitvault's
+  // duplicate `cli` string). `mcp: null` here for the same law as vault's
   // `repos_invite`/`repos_join`: a bearer secret is minted, no MCP tool.
   { id: "rooms_invite",                 endpoint: "POST /orgs/v1/:org_id/rooms/:room_key/invites", mcp: null, cli: "rooms:invite", openclaw: "rooms:invite" },
 
@@ -676,7 +676,7 @@ const SURFACE: Capability[] = [
   { id: "set_org_payout_wallet", endpoint: "PATCH /orgs/v1/:org_id/payout-wallet",         mcp: "set_org_payout_wallet", cli: "orgs:payout-wallet", openclaw: "orgs:payout-wallet" },
   // repo-first-onramp task 4 (design D6): the slug CLAIM spends money and is
   // a permanent handle — CLI/SDK only, no MCP tool (documentation.md's
-  // gitvault row's "mutating verbs are CLI-only" law extends to this sibling
+  // vault row's "mutating verbs are CLI-only" law extends to this sibling
   // org-owned naming surface for the same reasons: a paid, side-effecting,
   // hard-to-undo mutation belongs to a command the caller typed).
   { id: "org_slug",            endpoint: "POST /orgs/v1/:org_id/slug",                    mcp: null,                    cli: "orgs:slug",          openclaw: "orgs:slug" },
@@ -686,7 +686,7 @@ const SURFACE: Capability[] = [
   { id: "add_org_member",      endpoint: "POST /orgs/v1/:org_id/members",                     mcp: "add_org_member",        cli: "orgs:members:add",    openclaw: "orgs:members:add" },
   { id: "set_org_member_role", endpoint: "PATCH /orgs/v1/:org_id/members/:principal_id",      mcp: "set_org_member_role",   cli: "orgs:members:role",   openclaw: "orgs:members:role" },
   { id: "remove_org_member",   endpoint: "DELETE /orgs/v1/:org_id/members/:principal_id",     mcp: "remove_org_member",     cli: "orgs:members:rm",     openclaw: "orgs:members:rm" },
-  // gitvault-agent-envelopes D3: the owner's independent-credential rotation path — no MCP tool by design (owner + step-up mutation, CLI-only like every other gitvault mutating verb).
+  // vault-agent-envelopes D3: the owner's independent-credential rotation path — no MCP tool by design (owner + step-up mutation, CLI-only like every other vault mutating verb).
   { id: "revoke_org_member_encryption_key", endpoint: "DELETE /orgs/v1/:org_id/members/:principal_id/encryption-key", mcp: null, cli: "orgs:members:revoke-key", openclaw: "orgs:members:revoke-key" },
   { id: "org_audit",           endpoint: "GET /orgs/v1/:org_id/audit",                        mcp: null,                    cli: "orgs:audit",         openclaw: "orgs:audit" },
   // Current-org selection (add-cli-current-org): LOCAL state, like wallets:use
@@ -771,8 +771,8 @@ const SURFACE: Capability[] = [
   { id: "delete_signer",             endpoint: "DELETE /contracts/v1/signers/:id",                 mcp: "delete_signer",             cli: "contracts:delete",           openclaw: "contracts:delete" },
 
   // ── repos (r402s/v0) — the host-blind encrypted git repo family ─────────
-  // repo-surface-consolidation: the 19-command `gitvault`/`repos` sprawl
-  // collapsed to ONE noun, 12 verbs. `gitvault` itself retired from the CLI
+  // repo-surface-consolidation: the 19-command `vault`/`repos` sprawl
+  // collapsed to ONE noun, 12 verbs. `vault` itself retired from the CLI
   // (design D7) — every old spelling now answers COMMAND_MOVED/
   // COMMAND_REMOVED, tracked in RESERVED_SUBCOMMANDS, not here (a redirect
   // dispatches nothing, so it needs no capability row).
@@ -793,16 +793,16 @@ const SURFACE: Capability[] = [
   // writes local config or moves real bytes into a customer-owned bucket;
   // `delete`/`rename` are irreversible or identity-changing. Each wants a
   // human at a terminal, not an agent transcript.
-  { id: "repos_create", endpoint: "POST /projects/v1 (+ gitvault genesis admission)", mcp: null, cli: "repos:create", openclaw: "repos:create" },
+  { id: "repos_create", endpoint: "POST /projects/v1 (+ vault genesis admission)", mcp: null, cli: "repos:create", openclaw: "repos:create" },
   // Bulk vaults-by-org read (task 2.4) with a graceful per-project fallback
   // when the gateway hasn't shipped the route yet (`err.status === 404` in
-  // `cli/lib/repos.mjs`'s `list()`) — see `Gitvault.listByOrg`'s doc comment
+  // `cli/lib/repos.mjs`'s `list()`) — see `Repos.listByOrg`'s doc comment
   // for the FROZEN response shape this codes against.
-  { id: "repos_list",   endpoint: "GET /gitvault/v1/vaults?org_id=<uuid> (404-graceful fallback: GET /projects/v1 + per-project GET /gitvault/v1/vaults/:vault_id)", mcp: null, cli: "repos:list", openclaw: "repos:list" },
+  { id: "repos_list",   endpoint: "GET /vaults/v1?org_id=<uuid> (404-graceful fallback: GET /projects/v1 + per-project GET /vaults/v1/:vault_id)", mcp: null, cli: "repos:list", openclaw: "repos:list" },
   // Design D3: side-effect-free by construction — never passes `refs: true`,
   // so it never materializes or advances a local pin. That belongs to `fsck`.
-  { id: "repos_view",   endpoint: "GET /gitvault/v1/vaults/:vault_id", mcp: "repos_view", cli: "repos:view", openclaw: "repos:view" },
-  { id: "repos_list_heads", endpoint: "GET /gitvault/v1/vaults/:vault_id/heads", mcp: "repos_list_heads", cli: null, openclaw: null },
+  { id: "repos_view",   endpoint: "GET /vaults/v1/:vault_id", mcp: "repos_view", cli: "repos:view", openclaw: "repos:view" },
+  { id: "repos_list_heads", endpoint: "GET /vaults/v1/:vault_id/heads", mcp: "repos_list_heads", cli: null, openclaw: null },
   // Absorbs the old `repos name` (repo-first-onramp D6) — same claim/rename
   // endpoint, `--repo`/`--project` addressing (`gh repo rename`, design D2).
   { id: "repos_rename", endpoint: "POST /projects/v1/:id/repo-name", mcp: null, cli: "repos:rename", openclaw: "repos:rename" },
@@ -810,47 +810,47 @@ const SURFACE: Capability[] = [
   // materialized database/functions/secrets/subdomains/mailbox — reads each
   // via the SAME service-key credential `projects.delete` itself requires.
   { id: "repos_delete", endpoint: "DELETE /projects/v1/:id (+ reads: GET /projects/v1/:id, /admin/:id/schema, /admin/:id/functions, secrets, subdomains)", mcp: null, cli: "repos:delete", openclaw: "repos:delete" },
-  { id: "repos_snapshot", endpoint: "POST /gitvault/v1/vaults/:vault_id/upload-sessions (+ admission)", mcp: null, cli: "repos:snapshot", openclaw: "repos:snapshot" },
+  { id: "repos_capture", endpoint: "POST /vaults/v1/:vault_id/upload-sessions (+ admission)", mcp: null, cli: "repos:capture", openclaw: "repos:capture" },
   // kygit-handoff design D7/D10: a bearer secret is minted (`handoff`) and
   // membership + a working tree are mutated (`resume`) — the same law that
   // keeps `repos create/delete` off MCP. `mcp: null` is pinned by the
   // client-surface spec's own "No MCP tool exists for handoff or resume"
   // requirement.
-  { id: "repos_handoff", endpoint: "POST /gitvault/v1/vaults/:vault_id/handoffs", mcp: null, cli: "repos:handoff", openclaw: "repos:handoff" },
-  { id: "repos_resume", endpoint: "POST /gitvault/v1/handoffs/:handoff_id/redeem", mcp: null, cli: "repos:resume", openclaw: "repos:resume" },
+  { id: "repos_handoff", endpoint: "POST /vaults/v1/:vault_id/handoffs", mcp: null, cli: "repos:handoff", openclaw: "repos:handoff" },
+  { id: "repos_resume", endpoint: "POST /vaults/v1/handoffs/:handoff_id/redeem", mcp: null, cli: "repos:resume", openclaw: "repos:resume" },
   // kygit-invite design D1/D9: the second claim kind, same law as
   // handoff/resume above — a bearer secret is minted (`invite`) and
   // membership + a working tree are mutated (`join`), so `mcp: null` is
   // pinned by the client-surface spec's own "No MCP tool exists for invite
   // or join" requirement.
-  { id: "repos_invite", endpoint: "POST /gitvault/v1/vaults/:vault_id/invites", mcp: null, cli: "repos:invite", openclaw: "repos:invite" },
-  { id: "repos_join", endpoint: "POST /gitvault/v1/invites/:invite_id/redeem", mcp: null, cli: "repos:join", openclaw: "repos:join" },
-  // The gateway's own GITVAULT_CLIENT_UPGRADE_REQUIRED envelope names
+  { id: "repos_invite", endpoint: "POST /vaults/v1/:vault_id/invites", mcp: null, cli: "repos:invite", openclaw: "repos:invite" },
+  { id: "repos_join", endpoint: "POST /vaults/v1/invites/:invite_id/redeem", mcp: null, cli: "repos:join", openclaw: "repos:join" },
+  // The gateway's own VAULT_CLIENT_UPGRADE_REQUIRED envelope names
   // `run402 repos policy grandfathered --reason <why>` as a next_action, so
   // the verb has to exist: without it a user can allocate themselves into a
   // blocked-deploy state and the platform's documented way out is a command
   // that returns UNKNOWN_SUBCOMMAND. Owner + step-up keeps it off MCP.
-  { id: "repos_policy", endpoint: "PATCH /gitvault/v1/vaults/:vault_id/policy", mcp: null, cli: "repos:policy", openclaw: "repos:policy" },
+  { id: "repos_policy", endpoint: "PATCH /vaults/v1/:vault_id/policy", mcp: null, cli: "repos:policy", openclaw: "repos:policy" },
   // Design D4: ONE flag-driven verb replaces the old five-verb `mirror
   // set/remove/status/sync/verify` subtree — no-arg reads, `<destination>`
   // upserts, `--off` removes config only, `--backfill` catches up. `mirror
   // status`/`verify` were read-only and could have gotten MCP tools later,
   // but the whole verb ships CLI-only, same as its predecessor.
-  { id: "repos_mirror", endpoint: "GET /gitvault/v1/vaults/:vault_id/objects", mcp: null, cli: "repos:mirror", openclaw: "repos:mirror" },
+  { id: "repos_mirror", endpoint: "GET /vaults/v1/:vault_id/objects", mcp: null, cli: "repos:mirror", openclaw: "repos:mirror" },
   // Design D2/D3: absorbs `verify` (chain walk + pin advance) AND
   // `status --refs`'s materialization (`--refs` itself is removed — that
   // side effect belongs here, not in `view`). `--mirror` absorbs
   // `mirror verify`'s keyless probe. `--no-write` is a genuine audit mode
-  // (`Gitvault.fsck({write:false})` computes the same real answer without
+  // (`Repos.fsck({write:false})` computes the same real answer without
   // persisting either local pin).
-  { id: "repos_fsck",   endpoint: "GET /gitvault/v1/vaults/:vault_id/heads[/:generation]", mcp: "repos_fsck", cli: "repos:fsck", openclaw: "repos:fsck" },
+  { id: "repos_fsck",   endpoint: "GET /vaults/v1/:vault_id/heads[/:generation]", mcp: "repos_fsck", cli: "repos:fsck", openclaw: "repos:fsck" },
   // Design D2: `git gc`'s own two halves — checkpoint publication (compact)
   // and prune planning — in one verb, explicitly NOT described as "exactly
   // git gc" (the deletion ceremony is stricter). Plans by default; submits
   // only with both two-phase-protocol receipts (§7.3) — there is still no
   // purge verb.
-  { id: "repos_gc",     endpoint: "POST /gitvault/v1/vaults/:vault_id/maintenance-leases + POST .../prune-intents", mcp: null, cli: "repos:gc", openclaw: "repos:gc" },
-  // gitvault-persistent-helper: the resident engine's inspect/retire verb —
+  { id: "repos_gc",     endpoint: "POST /vaults/v1/:vault_id/maintenance-leases + POST .../prune-intents", mcp: null, cli: "repos:gc", openclaw: "repos:gc" },
+  // vault-persistent-helper: the resident engine's inspect/retire verb —
   // a bounded LOCAL socket probe, no gateway endpoint, no MCP surface (the
   // daemon accelerates the git remote helper; MCP tools never spawn it).
   { id: "repos_daemon", endpoint: "(local)", mcp: null, cli: "repos:daemon", openclaw: "repos:daemon" },
@@ -865,13 +865,13 @@ const SURFACE: Capability[] = [
   // share this SAME `repos:access` CLI dispatch, like `errors.watch`
   // shares `errors list` — see SDK_ONLY_METHODS below for their
   // SDK methods.
-  { id: "repos_access", endpoint: "GET /orgs/v1/:org_id/encryption-keys + GET /gitvault/v1/vaults/:vault_id/envelope-recipients (+ GET /agent/v1/source-access/wrappers for the caller's own member_custody block, control-plane session only)", mcp: null, cli: "repos:access", openclaw: "repos:access" },
+  { id: "repos_access", endpoint: "GET /orgs/v1/:org_id/encryption-keys + GET /vaults/v1/:vault_id/envelope-recipients (+ GET /agent/v1/source-access/wrappers for the caller's own member_custody block, control-plane session only)", mcp: null, cli: "repos:access", openclaw: "repos:access" },
   // `r402s-recover`: offline, NO server call at all (design D4), the same
   // "(local)" shape as `expand_result` below. Name UNCHANGED per D10 —
   // `restore` collides with `git restore`'s different meaning (D2 rule 4).
   { id: "repos_recover", endpoint: "(local)", mcp: null, cli: "repos:recover", openclaw: "repos:recover" },
 
-  // ── recovery-bundle (gitvault-recovery-custody) — member key custody, read side ──
+  // ── recovery-bundle (vault-recovery-custody) — member key custody, read side ──
   // Enrollment/activation/revocation are BROWSER ceremonies (WebAuthn at
   // console.run402.com/account) so they have no CLI/MCP spelling at all;
   // what the CLI carries is the export that makes the source recovery code
@@ -928,46 +928,46 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
 
   // repos (host-blind git repos) — all protocol logic is SDK-side; CLI/MCP
   // are adapters (task 5.0). `repos` is porcelain over projects.provision +
-  // gitvault.init + projects.delete + gitvault.status for the compound
+  // repos.init + projects.delete + repos.status for the compound
   // verbs — no single SDK method of its own, the same compound-flow shape
   // `up`/`init` already established.
-  // `create` composes projects.provision + gitvault.init; gitvault.init is
-  // the defining allocation call (the same mapping `gitvault_init` used
+  // `create` composes projects.provision + repos.init; repos.init is
+  // the defining allocation call (the same mapping `vault_init` used
   // before the rename), so it is the primary reference here rather than a
   // compound-flow null.
-  repos_create: "gitvault.init",
-  repos_list_heads: "gitvault.heads",
+  repos_create: "repos.init",
+  repos_list_heads: "repos.heads",
   // Bulk vaults-by-org read is the PRIMARY method now (task 2.4); the
-  // per-project fallback loop composes gitvault.status internally and needs
+  // per-project fallback loop composes repos.status internally and needs
   // no mapping of its own, the same way every other N+1 fallback in this
   // file does not get one.
-  repos_list: "gitvault.listByOrg",
-  repos_view: "gitvault.status",
+  repos_list: "repos.listByOrg",
+  repos_view: "repos.status",
   repos_rename: "projects.setRepoName",
   repos_delete: null,
-  repos_snapshot: "gitvault.push",
+  repos_capture: "repos.capture",
   // kygit-handoff design D7: protocol logic lives once in the SDK's
-  // `Gitvault.handoff`/`Gitvault.resume` — the CLI's `repos handoff`/
+  // `Repos.handoff`/`Repos.resume` — the CLI's `repos handoff`/
   // `repos resume` are thin adapters over them.
-  repos_handoff: "gitvault.handoff",
-  repos_resume: "gitvault.resume",
+  repos_handoff: "repos.handoff",
+  repos_resume: "repos.resume",
   // kygit-invite design D9: the same law, the second claim kind — protocol
-  // logic lives once in the SDK's `Gitvault.invite`/`Gitvault.join`.
-  repos_invite: "gitvault.invite",
-  repos_join: "gitvault.join",
-  repos_policy: "gitvault.setPolicy",
+  // logic lives once in the SDK's `Repos.invite`/`Repos.join`.
+  repos_invite: "repos.invite",
+  repos_join: "repos.join",
+  repos_policy: "repos.setPolicy",
   // `mirror` is a compound CLI verb (no-arg read / <dest> upsert / --off /
   // --backfill) that dispatches to four distinct SDK methods internally —
   // same compound-flow shape as `up`/`init` above; see SDK_ONLY_METHODS for
   // the individual mappings.
   repos_mirror: null,
-  repos_fsck: "gitvault.fsck",
+  repos_fsck: "repos.fsck",
   // `gc` composes checkpoint publication (compact) and prune planning/submit
   // — same compound-flow shape as `mirror` above; see SDK_ONLY_METHODS.
   repos_gc: null,
-  repos_daemon: null, // local socket probe only (gitvault-persistent-helper) — no SDK capability
-  repos_access: "gitvault.access",
-  repos_recover: "gitvault.recover",
+  repos_daemon: null, // local socket probe only (vault-persistent-helper) — no SDK capability
+  repos_access: "repos.access",
+  repos_recover: "repos.recover",
   repos_recovery_bundle: "session.sourceAccessRecoveryBundle",
   // The result store is MCP-local plumbing, not a gateway capability.
   expand_result: null,
@@ -1585,25 +1585,25 @@ describe("SDK surface alignment", () => {
       // `adopt_org` capability maps to the submit step, and the Node
       // convenience `adoptOrg` composes challenge + sign + submit.
       "orgs.adopt.challenge",
-      // gitvault-recovery-custody: the wrapper-states read has no verb of
+      // vault-recovery-custody: the wrapper-states read has no verb of
       // its own — `repos access` composes it into its member_custody block
-      // (the capability row maps to gitvault.access, the primary read).
+      // (the capability row maps to repos.access, the primary read).
       "session.sourceAccessWrappers",
-      // gitvault-compaction-headroom-preflight: the same arithmetic
-      // `gitvault.compact` preflights on, with none of its policy. It has no
+      // vault-compaction-headroom-preflight: the same arithmetic
+      // `repos.compact` preflights on, with none of its policy. It has no
       // verb of its own — `repos gc` composes it into its `headroom` block on
       // the --submit half, where no compaction runs (the capability row maps
-      // to gitvault.compact, which carries the block itself on the planning
+      // to repos.compact, which carries the block itself on the planning
       // half).
-      "gitvault.compactHeadroom",
-      // gitvault-checkpoint-cadence design D3: `compact()` opens/closes the
+      "repos.compactHeadroom",
+      // vault-checkpoint-cadence design D3: `compact()` opens/closes the
       // compaction headroom grant internally (before staging the checkpoint,
       // closed once it publishes) — these standalone entry points exist for
       // tests and a future staff/diagnostic surface, not as a verb of
       // their own; there is no CLI/MCP surface that opens or closes a grant
       // without also compacting.
-      "gitvault.openCompactionGrant",
-      "gitvault.closeCompactionGrant",
+      "repos.openCompactionGrant",
+      "repos.closeCompactionGrant",
       // Deprecated alias of admin.sendFeedback, kept so code written against
       // the old name keeps COMPILING. It posts to the new /feedback/v1 path,
       // so it is not a second capability - it is the same one, spelled the
@@ -1660,15 +1660,15 @@ describe("SDK surface alignment", () => {
       // a pin-manifest publish cites — owner+step-up ceremonies with no
       // standalone CLI/MCP surface today (a future `repos access confirm`/
       // `repin` CLI verb is the natural home; out of this change's scope).
-      "gitvault.confirmRecipient",
-      "gitvault.repinRecipient",
+      "repos.confirmRecipient",
+      "repos.repinRecipient",
       // The PUBLICATION half of the ceremonies above (gitvault.writer-
       // sufficient — the owner-gated half already happened at /confirm or
       // /repin). Composable primitive; no dedicated verb yet.
-      "gitvault.publishPinManifestUpdate",
+      "repos.publishPinManifestUpdate",
       // D202's explicit, audited "the writer signing key is gone" fact.
       // Owner+step-up declaration with no dedicated CLI verb yet.
-      "gitvault.declareWriterAuthorityUnavailable",
+      "repos.declareWriterAuthorityUnavailable",
       // D210 (rev 44): the recipient proof-of-open submission wire call.
       // `repos fsck` (JSON + `--human`) is the actual consumer-facing
       // surface — it calls this automatically in write mode and surfaces
@@ -1680,7 +1680,7 @@ describe("SDK surface alignment", () => {
       // accept a delegate bearer); no dedicated CLI verb/MCP tool of its
       // own, same "composable primitive" pattern as confirmRecipient/
       // repinRecipient/publishPinManifestUpdate above.
-      "gitvault.submitProofOfOpen",
+      "repos.submitProofOfOpen",
       // rotateEpoch/rotateEpochForKeyRevocation/declareEpochSecretExposed/
       // declareRecipientKeyRevoked/acceptRecipientKeyChange share the ONE
       // `repos:access` CLI dispatch (`access repair`/`revoke-key`/
@@ -1689,24 +1689,24 @@ describe("SDK surface alignment", () => {
       // above. declareRecipientKeyRevoked is additionally an internal step
       // `rotateEpochForKeyRevocation` composes (declare, then rotate off
       // the declaration's own returned counters). acceptRecipientKeyChange
-      // (gitvault-agent-envelopes, `access repin`) moves the TOFU pin and
+      // (vault-agent-envelopes, `access repin`) moves the TOFU pin and
       // records the D197 confirmation receipt when a key-holder explicitly
       // accepts a recipient's changed key.
-      "gitvault.rotateEpoch",
-      "gitvault.rotateEpochForKeyRevocation",
-      // rotateEpochForMemberRemoval (gitvault-multi-writer D6): the
+      "repos.rotateEpoch",
+      "repos.rotateEpochForKeyRevocation",
+      // rotateEpochForMemberRemoval (vault-multi-writer D6): the
       // writer-capable reason:"member_removed" rotation `org member rm`
       // drives inline on every vault the caller can, and `push()` runs
       // automatically on an outstanding removal — no dedicated CLI verb/MCP
       // tool of its own.
-      "gitvault.rotateEpochForMemberRemoval",
-      "gitvault.declareEpochSecretExposed",
-      "gitvault.declareRecipientKeyRevoked",
-      "gitvault.acceptRecipientKeyChange",
-      // gitvault-client-round-trips design D3 (task 4.2): the local
+      "repos.rotateEpochForMemberRemoval",
+      "repos.declareEpochSecretExposed",
+      "repos.declareRecipientKeyRevoked",
+      "repos.acceptRecipientKeyChange",
+      // vault-client-round-trips design D3 (task 4.2): the local
       // object-cache eviction sweep `repos gc` calls as a best-effort side
       // effect — purely local housekeeping, no dedicated CLI verb/MCP tool.
-      "gitvault.sweepObjectCache",
+      "repos.sweepObjectCache",
       // ─── Project events feed — org-wide union ──────────────────────────
       // Shares the `events list` CLI command (--org) and the list_project_events
       // MCP tool (org_id param); no dedicated verb/tool of its own.
@@ -1756,128 +1756,128 @@ describe("SDK surface alignment", () => {
       "domains.add",
       "domains.status",
       "domains.remove",
-      // ─── repos (r402s/v0, `r.gitvault` — the SDK keeps this name, design D1) ──
+      // ─── repos (r402s/v0, `r.repos` — the SDK keeps this name, design D1) ──
       // `get`/`forProject` are addressing sugar the verbs use internally
       // (`forProject` is the cold-restart lookup); `allHeads` is the paging
       // convenience behind the old standalone `verify`, superseded
       // operationally by `fsck`; `open` returns the raw protocol object for
       // consumers driving ref transactions or repair directly.
-      "gitvault.get",
-      "gitvault.forProject",
-      "gitvault.allHeads",
-      "gitvault.open",
+      "repos.get",
+      "repos.forProject",
+      "repos.allHeads",
+      "repos.open",
       // `scaffoldRemote` is reached through `run402 init` (the scaffold
-      // capability); `gitvault.init` has its own `run402 repos create` verb.
-      "gitvault.scaffoldRemote",
+      // capability); `repos.init` has its own `run402 repos create` verb.
+      "repos.scaffoldRemote",
       // D2 (repo-first-onramp task 2.2): `openOrCreate` is the lazy-allocation
-      // primitive `gitvault.push` and `git-remote-run402`'s push path compose
-      // internally on `GITVAULT_VAULT_UNRESOLVED` — it has no verb of its own,
+      // primitive `repos.capture` and `git-remote-run402`'s push path compose
+      // internally on `VAULT_UNRESOLVED` — it has no verb of its own,
       // the same way `open` and `init` already cover the explicit paths.
-      "gitvault.openOrCreate",
+      "repos.openOrCreate",
       // `deploy` is the push-gated deploy — it belongs to the deploy surface
       // (`run402 deploy`), not to the repo verb group.
-      "gitvault.deploy",
+      "repos.deploy",
       // `drainOverrides` runs automatically on any later CLI invocation; it is
       // not a verb a caller reaches for.
-      "gitvault.drainOverrides",
+      "repos.drainOverrides",
       // `restore` is the clone-back path, driven by `git-remote-run402`'s
       // fetch command rather than by a `run402 repos` subcommand.
-      "gitvault.restore",
-      // gitvault-byo-primary-bucket (design D4, task 3.4 — degraded read
+      "repos.restore",
+      // vault-byo-primary-bucket (design D4, task 3.4 — degraded read
       // mode, mirror half): `withDegradedRead` is the network-class-failure
       // fallback wrapper `git-remote-run402`'s `list`/`fetch` commands
       // compose around their own live materialize/restore calls — recovery
       // machinery, not a verb of its own, same family as `recoverStalePin`
       // below.
-      "gitvault.withDegradedRead",
+      "repos.withDegradedRead",
       // Same family, same composer: `degradedOpenFallback` is the open-time
       // half of the degraded read (the gateway was needed before any wrapped
       // read), and `postPublishCopies` is the capture-time mirror dual-push +
       // BYO chain copy `push()`/`deploy()` make, exposed so a plain `git push`
       // through the remote helper makes them too — recovery/copy machinery,
       // never verbs of their own.
-      "gitvault.degradedOpenFallback",
-      "gitvault.postPublishCopies",
+      "repos.degradedOpenFallback",
+      "repos.postPublishCopies",
       // Owner + step-up writes with no MCP tool by design; the CLI reaches
       // them through the repo group's flags rather than dedicated verbs.
       // (`setPolicy` has its own `run402 repos policy` verb — see SURFACE.)
-      "gitvault.completeOverride",
-      "gitvault.acquireMaintenanceLease",
+      "repos.completeOverride",
+      "repos.acquireMaintenanceLease",
       // D6 named addressing (repo-first-onramp task 4): `forRepo` is
       // address-form resolution sugar the verbs use internally, the same
       // shape as `forProject` above; `resolveAddress` (pure read) and
       // `resolveOrCreateAddress` (open + push-to-create + id-pinning) are the
-      // orchestration `git-remote-run402` and `repos snapshot`'s `push`
+      // orchestration `git-remote-run402` and `repos capture`'s `push`
       // compose internally — no verb of their own, the same way `open` and
       // `openOrCreate` already cover the id-form paths.
-      "gitvault.forRepo",
-      "gitvault.resolveAddress",
-      "gitvault.resolveOrCreateAddress",
-      // gitvault-force-spelling-and-pin-fold: `recoverStalePin` is the
+      "repos.forRepo",
+      "repos.resolveAddress",
+      "repos.resolveOrCreateAddress",
+      // vault-force-spelling-and-pin-fold: `recoverStalePin` is the
       // stale-pin heal `git-remote-run402`'s list path and `push`'s address
       // branch compose internally when an offline-pinned vault turns out to
       // be gone — recovery machinery, not a verb, same family as
       // `resolveOrCreateAddress` above.
-      "gitvault.recoverStalePin",
+      "repos.recoverStalePin",
       // kychee-com/run402#565: `planPush` is the real dry-run preview behind
-      // `run402 repos snapshot --dry-run` (`repos_snapshot`'s OWN verb, a
+      // `run402 repos capture --dry-run` (`repos_capture`'s OWN verb, a
       // flag-selected mode, not a second verb) and `git-remote-run402`'s
       // `option dry-run true` — no SURFACE row of its own, the same way
       // `deploy --no-rehearse` is a mode of `deploy` rather than a second
       // capability.
-      "gitvault.planPush",
+      "repos.planCapture",
       // kygit-handoff design D10: `repos handoff --list`/`--revoke` are
       // operational sub-flags of the ONE `repos_handoff` verb (SDK_BY_CAPABILITY
-      // maps it to `gitvault.handoff`, the mint call) — same "flag-selected
+      // maps it to `repos.handoff`, the mint call) — same "flag-selected
       // mode, not a second verb" shape as `planPush` immediately above.
-      "gitvault.listHandoffs",
-      "gitvault.revokeHandoff",
+      "repos.listHandoffs",
+      "repos.revokeHandoff",
       // kygit-invite design D9: `repos invite --list`/`--revoke` are the
       // SAME operational sub-flags of the ONE `repos_invite` verb
-      // (SDK_BY_CAPABILITY maps it to `gitvault.invite`, the mint call) —
+      // (SDK_BY_CAPABILITY maps it to `repos.invite`, the mint call) —
       // identical shape to `listHandoffs`/`revokeHandoff` immediately above.
-      "gitvault.listInvites",
-      "gitvault.revokeInvite",
+      "repos.listInvites",
+      "repos.revokeInvite",
       // repo-surface-consolidation D2: `git gc`'s own two halves, composed by
       // the CLI's `repos gc` (`repos_gc` maps to null in SDK_BY_CAPABILITY
       // above, same "compound-flow" shape as `up`/`init`/`repos_mirror`).
-      "gitvault.compact",
-      "gitvault.prune",
+      "repos.compact",
+      "repos.prune",
       // D4: the four methods behind the compound `run402 repos mirror`
       // (no-arg / <dest> / --off / --backfill) verb (`repos_mirror` maps to
       // null in SDK_BY_CAPABILITY above) — each has its OWN CLI action, just
       // not its own top-level SURFACE row. `mirrorVerify` is additionally
-      // composed by `Gitvault.fsck({mirror: true})` (`repos_fsck`'s own
+      // composed by `Repos.fsck({mirror: true})` (`repos_fsck`'s own
       // `--mirror` flag) — still no dedicated SURFACE row of its own.
-      "gitvault.mirrorSet",
-      "gitvault.mirrorRemove",
-      "gitvault.mirrorStatus",
-      "gitvault.mirrorSync",
-      "gitvault.mirrorVerify",
+      "repos.mirrorSet",
+      "repos.mirrorRemove",
+      "repos.mirrorStatus",
+      "repos.mirrorSync",
+      "repos.mirrorVerify",
       // repo-surface-consolidation D5/D7: `verify` and
       // `reconcileEnvelopeRecipients` are still public SDK API (external
       // programmatic consumers may call either directly), but neither has a
       // dedicated CLI/MCP capability anymore. `verify`'s CLI/MCP surface is
-      // superseded operationally by `fsck` (`Gitvault.fsck`, which walks the
+      // superseded operationally by `fsck` (`Repos.fsck`, which walks the
       // chain a different way to get the explicit pin_before/pin_after
       // fields D2 clause 5 requires). `reconcileEnvelopeRecipients`'s
-      // explicit standalone CLI verb (`gitvault reconcile`) is REMOVED
+      // explicit standalone CLI verb (`vault reconcile`) is REMOVED
       // outright (no successor — the workaround it performed is gone, not
       // renamed); the method itself is unchanged and still runs internally,
       // best-effort, from `push`/`deploy`'s own hooks.
-      "gitvault.verify",
-      "gitvault.reconcileEnvelopeRecipients",
-      // gitvault-multi-writer (rev 47) task 5.7 — the writer-admission twin
+      "repos.verify",
+      "repos.reconcileEnvelopeRecipients",
+      // vault-multi-writer (rev 47) task 5.7 — the writer-admission twin
       // of `reconcileEnvelopeRecipients` above, but UNLIKE that permanently
       // CLI-less sibling this one is TEMPORARILY uncovered: its CLI/MCP
-      // surface is task 6.x (openspec/changes/gitvault-multi-writer tasks.md
+      // surface is task 6.x (openspec/changes/vault-multi-writer tasks.md
       // §6 — `org members add`'s writer+envelope reconcile and `repos access
       // sync`'s new tail are both planned to compose it, likely without a
-      // standalone verb of its own, mirroring how `gitvault.compactHeadroom`
+      // standalone verb of its own, mirroring how `repos.compactHeadroom`
       // above composes into `repos gc` rather than getting its own spelling)
-      // — reachable via `r.gitvault.reconcile()` in the meantime. Remove
+      // — reachable via `r.repos.reconcile()` in the meantime. Remove
       // this entry once §6 lands and references it from SDK_BY_CAPABILITY.
-      "gitvault.reconcile",
+      "repos.reconcile",
       // ─── function-runtime-rebuild (v1.69) — project-wide variant ──────────
       // `functions.rebuild` (single) is the canonical capability; `rebuildAll`
       // shares the `run402 functions rebuild --all` CLI verb (and the
@@ -1992,13 +1992,13 @@ describe("SDK surface alignment", () => {
   });
 });
 
-// ─── CLI/MCP SDK-boundary guard (add-gitvault task 5.0) ──────────────────────
+// ─── CLI/MCP SDK-boundary guard (add-vault task 5.0) ──────────────────────
 //
 // "The SDK owns ALL the smarts; the CLI is a thin shim." The client-surface
 // spec makes that architectural law: every piece of vault protocol behaviour —
 // crypto core, keystore, creation journal, snapshot + capture, publication
 // state machines, ref transactions, verification budget, token exchange,
-// repair — is implemented ONCE in `@run402/sdk`, and `run402 gitvault …`,
+// repair — is implemented ONCE in `@run402/sdk`, and `run402 repos …`,
 // `git-remote-run402`, and the MCP tools are adapters: argument parsing, TTY
 // output, exit codes, and local file I/O only.
 //
@@ -2016,26 +2016,26 @@ describe("SDK surface alignment", () => {
 
 /** Files that must contain no protocol implementation of their own. */
 const SHIM_SOURCES = [
-  "cli/lib/gitvault-scaffold.mjs",
-  "cli/lib/gitvault-target.mjs",
-  // Pure data ledger (openspec/changes/gitvault-page-truth-gate design D1) —
+  "cli/lib/vault-scaffold.mjs",
+  "cli/lib/vault-target.mjs",
+  // Pure data ledger (openspec/changes/kygit-page-truth-gate design D1) —
   // no imports, no gateway calls, nothing for FORBIDDEN_SHIM_IMPORTS/CALLS
   // to catch. Listed here only to satisfy SHIM_DISCOVERY_DIRS' name-based
   // sweep; it is not a request/response shim.
-  "cli/lib/gitvault-capabilities.mjs",
+  "cli/lib/vault-capabilities.mjs",
   "cli/git-remote-run402.mjs",
-  // gitvault-persistent-helper: the resident engine + its process entry.
+  // vault-persistent-helper: the resident engine + its process entry.
   // Shims by the gate's definition (protocol-adjacent, must never grow
   // their own crypto/HTTP/git behavior) — the daemon FORWARDS sessions
   // into the SDK-backed session module, it implements nothing.
   "cli/lib/remote-helper-session.mjs",
-  "cli/lib/gitvault-daemon.mjs",
-  "cli/lib/gitvault-daemon-run.mjs",
-  "src/tools/gitvault.ts",
+  "cli/lib/vault-daemon.mjs",
+  "cli/lib/vault-daemon-run.mjs",
+  "src/tools/repos.ts",
 ];
 
 /**
- * Anything under these directories whose name mentions gitvault is a shim by
+ * Anything under these directories whose name mentions vault is a shim by
  * construction and must be listed above. This is the half that survives a
  * rename: an explicit list catches a deletion, discovery catches an addition.
  */
@@ -2153,13 +2153,13 @@ describe("CLI/MCP SDK-boundary guard", () => {
     );
   });
 
-  it("no gitvault shim escapes the gate by being added under a new name", () => {
+  it("no vault shim escapes the gate by being added under a new name", () => {
     const found: string[] = [];
     for (const dir of SHIM_DISCOVERY_DIRS) {
       const abs = join(__dirname, dir);
       if (!existsSync(abs)) continue;
       for (const name of readdirSync(abs)) {
-        if (!/gitvault/i.test(name)) continue;
+        if (!/vault/i.test(name)) continue;
         if (name.endsWith(".test.ts") || name.endsWith(".test.mjs")) continue;
         found.push(`${dir}/${name}`);
       }
@@ -2168,7 +2168,7 @@ describe("CLI/MCP SDK-boundary guard", () => {
     assert.deepEqual(
       untracked,
       [],
-      `New gitvault shim source(s) are not in SHIM_SOURCES, so the boundary gate is not scanning them. ` +
+      `New vault shim source(s) are not in SHIM_SOURCES, so the boundary gate is not scanning them. ` +
         `Add them: ${untracked.join(", ")}`,
     );
   });
@@ -2189,9 +2189,9 @@ describe("CLI/MCP SDK-boundary guard", () => {
     assert.deepEqual(
       violations,
       [],
-      "A gitvault shim reached past the SDK. The SDK owns all protocol logic; the shim does argument " +
+      "A vault shim reached past the SDK. The SDK owns all protocol logic; the shim does argument " +
         "parsing, TTY output, exit codes, and local file I/O only. Move the behaviour into " +
-        `sdk/src/namespaces/gitvault.ts (or sdk/src/node/gitvault-*.ts) and call it:\n  ${violations.join("\n  ")}`,
+        `sdk/src/namespaces/repos.ts (or sdk/src/node/vault-*.ts) and call it:\n  ${violations.join("\n  ")}`,
     );
   });
 

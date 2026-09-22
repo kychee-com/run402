@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.85"
 license = "MIT"
-description = "Independent-lineage verifier for the gitvault r402s/v0 protocol (task 5.9): strict I-JSON + JCS, Ed25519 strict (zip215:false), rust-hpke r402s-1 envelopes, XChaCha20-Poly1305 frames, chain/head/admission verification, differential git validation, verifier receipts."
+description = "Independent-lineage verifier for the vault r402s/v0 protocol (task 5.9): strict I-JSON + JCS, Ed25519 strict (zip215:false), rust-hpke r402s-1 envelopes, XChaCha20-Poly1305 frames, chain/head/admission verification, differential git validation, verifier receipts."
 publish = false
 
 [lib]

@@ -324,7 +324,7 @@
    "objects": [
     "service_key_registry"
    ],
-   "rule": "across versions: service_key_id, public_key, not_before are immutable per id; no id reuse; not_before < not_after; status transitions only forward (active->retired, active->revoked_compromised, retired->revoked_compromised); revoked_compromised is terminal and its revocation instant may never be extended; discovery = GET /gitvault/v1/service-key-registry (highest) + /:version (immutable), byte-identical to source/_registry/ objects; not_after is monotonic non-increasing per id and immutable once status is revoked_compromised",
+   "rule": "across versions: service_key_id, public_key, not_before are immutable per id; no id reuse; not_before < not_after; status transitions only forward (active->retired, active->revoked_compromised, retired->revoked_compromised); revoked_compromised is terminal and its revocation instant may never be extended; discovery = GET /vaults/v1/service-key-registry (highest) + /:version (immutable), byte-identical to source/_registry/ objects; not_after is monotonic non-increasing per id and immutable once status is revoked_compromised",
    "validator_coverage": "deferred"
   },
   {

@@ -32,9 +32,9 @@ afterEach(() => {
 
 describe("expand_result", () => {
   it("returns a window and names the exact next call", async () => {
-    const view = storeResult("gitvault_heads", Array.from({ length: 137 }, (_, i) => ({ i })));
+    const view = storeResult("vault_heads", Array.from({ length: 137 }, (_, i) => ({ i })));
     const out = textOf(await handleExpandResult({ ref: view.ref!, offset: 20, limit: 50 }));
-    assert.match(out, new RegExp(`${view.ref} \\(gitvault_heads\\) — items 20\\.\\.69 of 137\\.`));
+    assert.match(out, new RegExp(`${view.ref} \\(vault_heads\\) — items 20\\.\\.69 of 137\\.`));
     assert.match(out, new RegExp(`67 more: expand_result with ref ${view.ref} and offset 70\\.`));
     assert.match(out, /"i": 20/);
     assert.match(out, /"i": 69/);

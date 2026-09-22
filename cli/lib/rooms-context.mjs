@@ -39,16 +39,16 @@ export const PRESENCE_ENV = "RUN402_PRESENCE_ID";
 /**
  * `r402.room` from `cwd`'s LOCAL git config (kygit-handoff design D10) —
  * best-effort, `null` on any absence or failure. Checks a real vault
- * checkout's pin first (`readPinnedGitvaultRepo`, gated on `r402.repoId`
+ * checkout's pin first (`readPinnedVaultRepo`, gated on `r402.repoId`
  * being present), then falls back to the bare room/org pin `rooms join
  * <key>` writes in a directory with NO vault at all (add-room-invite design
- * D10) — `readPinnedGitvaultRepo` would otherwise see that pin as absent,
+ * D10) — `readPinnedVaultRepo` would otherwise see that pin as absent,
  * since it never sets `r402.repoId`.
  */
-async function readGitvaultPinnedRoom(cwd) {
+async function readVaultPinnedRoom(cwd) {
   try {
-    const { readPinnedGitvaultRepo, readPinnedRoomBinding } = await import("#sdk/node");
-    const pinned = await readPinnedGitvaultRepo(cwd);
+    const { readPinnedVaultRepo, readPinnedRoomBinding } = await import("#sdk/node");
+    const pinned = await readPinnedVaultRepo(cwd);
     const room = typeof pinned?.room === "string" ? pinned.room.trim() : "";
     if (room.length > 0) return room;
     const bare = await readPinnedRoomBinding(cwd);
@@ -102,11 +102,11 @@ export async function resolveRoom({ org, room, project } = {}) {
   //    (`--room` alone works whenever the org resolves, and fails with
   //    ORG_REQUIRED — naming every way to supply one — when it does not.)
   //    kygit-handoff design D10: `r402.room` in this checkout's LOCAL git
-  //    config — written by `resume` and every other gitvault pin site — is
+  //    config — written by `resume` and every other vault pin site — is
   //    the LAST room-key source before falling to the project default,
   //    below the binding file's own `room` key.
   const bindingRoom = findBindingKey(process.cwd(), "room");
-  const roomKey = room ?? bindingRoom?.value ?? (await readGitvaultPinnedRoom(process.cwd()));
+  const roomKey = room ?? bindingRoom?.value ?? (await readVaultPinnedRoom(process.cwd()));
   if (roomKey) {
     const resolved = await resolveOrg({ org, project }, { cmd: "rooms" });
     return {

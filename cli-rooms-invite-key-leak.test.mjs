@@ -102,7 +102,7 @@ mock.module("./cli/lib/cold-start.mjs", {
 
 const { run } = await import("./cli/lib/rooms.mjs");
 const { assembleRoomInviteKey } = await import("./sdk/dist/node/bearer-redeem-key.js");
-const { assembleInviteKey, assembleHandoffKey } = await import("./sdk/dist/node/gitvault-handoff.js");
+const { assembleInviteKey, assembleHandoffKey } = await import("./sdk/dist/node/vault-handoff.js");
 
 function captureStart() {
   stdout = [];
@@ -196,7 +196,7 @@ describe("run402 rooms invite (no --json) — the key alone on stdout", () => {
 });
 
 describe("run402 rooms join <key> — every error path leaks nothing", () => {
-  it("a kgi1_ (gitvault invite) key refuses by name, contacts nothing, and leaks nothing", async () => {
+  it("a kgi1_ (vault invite) key refuses by name, contacts nothing, and leaks nothing", async () => {
     const { key } = assembleInviteKey("33333333-3333-4333-8333-333333333333");
     await invokeExpectingExit("join", [key]);
     assert.equal(calls.find((c) => c.method === "ensureFundedWallet"), undefined, "ensureFundedWallet must never run for a wrong-kind key");
@@ -206,7 +206,7 @@ describe("run402 rooms join <key> — every error path leaks nothing", () => {
     assert.ok(stderr.some((l) => l.includes("ROOM_INVITE_KEY_WRONG_KIND")));
   });
 
-  it("a kgh1_ (gitvault handoff) key refuses by name, contacts nothing, and leaks nothing", async () => {
+  it("a kgh1_ (vault handoff) key refuses by name, contacts nothing, and leaks nothing", async () => {
     const { key } = assembleHandoffKey("44444444-4444-4444-8444-444444444444");
     await invokeExpectingExit("join", [key]);
     assert.equal(calls.find((c) => c.method === "ensureFundedWallet"), undefined);

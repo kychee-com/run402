@@ -11,7 +11,7 @@ use std::process::ExitCode;
 #[command(
     name = "r402s-verify",
     version,
-    about = "Independent-lineage verifier for the gitvault r402s/v0 protocol"
+    about = "Independent-lineage verifier for the vault r402s/v0 protocol"
 )]
 struct Cli {
     /// Directory holding the protocol's JSON-Schema set (`common.json`, `head.json`, …).

@@ -691,178 +691,6 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="GITHUB_REPOSITORY_ID_REQUIRED"></a>
 [`GITHUB_REPOSITORY_ID_REQUIRED`](/errors/client/#GITHUB_REPOSITORY_ID_REQUIRED)
 
-<a id="gitvault_access_denied"></a>
-<a id="GITVAULT_ACCESS_DENIED"></a>
-[`GITVAULT_ACCESS_DENIED`](/errors/gateway/#GITVAULT_ACCESS_DENIED)
-
-<a id="gitvault_activation_token_missing"></a>
-<a id="GITVAULT_ACTIVATION_TOKEN_MISSING"></a>
-[`GITVAULT_ACTIVATION_TOKEN_MISSING`](/errors/client/#GITVAULT_ACTIVATION_TOKEN_MISSING)
-
-<a id="gitvault_bad_genesis"></a>
-<a id="GITVAULT_BAD_GENESIS"></a>
-[`GITVAULT_BAD_GENESIS`](/errors/client/#GITVAULT_BAD_GENESIS)
-
-<a id="gitvault_bad_id"></a>
-<a id="GITVAULT_BAD_ID"></a>
-[`GITVAULT_BAD_ID`](/errors/client/#GITVAULT_BAD_ID)
-
-<a id="gitvault_byo_object_missing"></a>
-<a id="GITVAULT_BYO_OBJECT_MISSING"></a>
-[`GITVAULT_BYO_OBJECT_MISSING`](/errors/client/#GITVAULT_BYO_OBJECT_MISSING)
-
-<a id="gitvault_byo_payload_not_held"></a>
-<a id="GITVAULT_BYO_PAYLOAD_NOT_HELD"></a>
-[`GITVAULT_BYO_PAYLOAD_NOT_HELD`](/errors/gateway/#GITVAULT_BYO_PAYLOAD_NOT_HELD)
-
-<a id="gitvault_byo_prune_not_supported"></a>
-<a id="GITVAULT_BYO_PRUNE_NOT_SUPPORTED"></a>
-[`GITVAULT_BYO_PRUNE_NOT_SUPPORTED`](/errors/gateway/#GITVAULT_BYO_PRUNE_NOT_SUPPORTED)
-
-<a id="gitvault_byo_single_writer"></a>
-<a id="GITVAULT_BYO_SINGLE_WRITER"></a>
-[`GITVAULT_BYO_SINGLE_WRITER`](/errors/gateway/#GITVAULT_BYO_SINGLE_WRITER)
-
-<a id="gitvault_capture_receipt_missing"></a>
-<a id="GITVAULT_CAPTURE_RECEIPT_MISSING"></a>
-[`GITVAULT_CAPTURE_RECEIPT_MISSING`](/errors/client/#GITVAULT_CAPTURE_RECEIPT_MISSING)
-
-<a id="gitvault_client_upgrade_required"></a>
-<a id="GITVAULT_CLIENT_UPGRADE_REQUIRED"></a>
-[`GITVAULT_CLIENT_UPGRADE_REQUIRED`](/errors/gateway/#GITVAULT_CLIENT_UPGRADE_REQUIRED)
-
-<a id="gitvault_compact_insufficient_headroom"></a>
-<a id="GITVAULT_COMPACT_INSUFFICIENT_HEADROOM"></a>
-[`GITVAULT_COMPACT_INSUFFICIENT_HEADROOM`](/errors/client/#GITVAULT_COMPACT_INSUFFICIENT_HEADROOM)
-
-<a id="gitvault_compaction_in_progress"></a>
-<a id="GITVAULT_COMPACTION_IN_PROGRESS"></a>
-[`GITVAULT_COMPACTION_IN_PROGRESS`](/errors/client/#GITVAULT_COMPACTION_IN_PROGRESS)
-
-<a id="gitvault_config_include_refused"></a>
-<a id="GITVAULT_CONFIG_INCLUDE_REFUSED"></a>
-[`GITVAULT_CONFIG_INCLUDE_REFUSED`](/errors/client/#GITVAULT_CONFIG_INCLUDE_REFUSED)
-
-<a id="gitvault_config_unreadable"></a>
-<a id="GITVAULT_CONFIG_UNREADABLE"></a>
-[`GITVAULT_CONFIG_UNREADABLE`](/errors/client/#GITVAULT_CONFIG_UNREADABLE)
-
-<a id="gitvault_deploy_abandoned"></a>
-<a id="GITVAULT_DEPLOY_ABANDONED"></a>
-[`GITVAULT_DEPLOY_ABANDONED`](/errors/client/#GITVAULT_DEPLOY_ABANDONED)
-
-<a id="gitvault_envelope_recipient_not_eligible"></a>
-<a id="GITVAULT_ENVELOPE_RECIPIENT_NOT_ELIGIBLE"></a>
-[`GITVAULT_ENVELOPE_RECIPIENT_NOT_ELIGIBLE`](/errors/gateway/#GITVAULT_ENVELOPE_RECIPIENT_NOT_ELIGIBLE)
-
-<a id="gitvault_epoch_not_openable"></a>
-<a id="GITVAULT_EPOCH_NOT_OPENABLE"></a>
-[`GITVAULT_EPOCH_NOT_OPENABLE`](/errors/client/#GITVAULT_EPOCH_NOT_OPENABLE)
-
-<a id="gitvault_excludes_path_unsupported"></a>
-<a id="GITVAULT_EXCLUDES_PATH_UNSUPPORTED"></a>
-[`GITVAULT_EXCLUDES_PATH_UNSUPPORTED`](/errors/client/#GITVAULT_EXCLUDES_PATH_UNSUPPORTED)
-
-<a id="gitvault_excludes_unreadable"></a>
-<a id="GITVAULT_EXCLUDES_UNREADABLE"></a>
-[`GITVAULT_EXCLUDES_UNREADABLE`](/errors/client/#GITVAULT_EXCLUDES_UNREADABLE)
-
-<a id="gitvault_identity_profile_mismatch"></a>
-<a id="GITVAULT_IDENTITY_PROFILE_MISMATCH"></a>
-[`GITVAULT_IDENTITY_PROFILE_MISMATCH`](/errors/client/#GITVAULT_IDENTITY_PROFILE_MISMATCH)
-
-<a id="gitvault_key_rotation_required"></a>
-<a id="GITVAULT_KEY_ROTATION_REQUIRED"></a>
-[`GITVAULT_KEY_ROTATION_REQUIRED`](/errors/client/#GITVAULT_KEY_ROTATION_REQUIRED)
-
-<a id="gitvault_lane_out_of_order"></a>
-<a id="GITVAULT_LANE_OUT_OF_ORDER"></a>
-[`GITVAULT_LANE_OUT_OF_ORDER`](/errors/client/#GITVAULT_LANE_OUT_OF_ORDER)
-
-<a id="gitvault_mirror_ambiguous"></a>
-<a id="GITVAULT_MIRROR_AMBIGUOUS"></a>
-[`GITVAULT_MIRROR_AMBIGUOUS`](/errors/client/#GITVAULT_MIRROR_AMBIGUOUS)
-
-<a id="gitvault_mirror_empty"></a>
-<a id="GITVAULT_MIRROR_EMPTY"></a>
-[`GITVAULT_MIRROR_EMPTY`](/errors/client/#GITVAULT_MIRROR_EMPTY)
-
-<a id="gitvault_mirror_not_configured"></a>
-<a id="GITVAULT_MIRROR_NOT_CONFIGURED"></a>
-[`GITVAULT_MIRROR_NOT_CONFIGURED`](/errors/client/#GITVAULT_MIRROR_NOT_CONFIGURED)
-
-<a id="gitvault_node_only"></a>
-<a id="GITVAULT_NODE_ONLY"></a>
-[`GITVAULT_NODE_ONLY`](/errors/client/#GITVAULT_NODE_ONLY)
-
-<a id="gitvault_object_read_failed"></a>
-<a id="GITVAULT_OBJECT_READ_FAILED"></a>
-[`GITVAULT_OBJECT_READ_FAILED`](/errors/client/#GITVAULT_OBJECT_READ_FAILED)
-
-<a id="gitvault_org_unresolved"></a>
-<a id="GITVAULT_ORG_UNRESOLVED"></a>
-[`GITVAULT_ORG_UNRESOLVED`](/errors/client/#GITVAULT_ORG_UNRESOLVED)
-
-<a id="gitvault_override_completion_mismatch"></a>
-<a id="GITVAULT_OVERRIDE_COMPLETION_MISMATCH"></a>
-[`GITVAULT_OVERRIDE_COMPLETION_MISMATCH`](/errors/client/#GITVAULT_OVERRIDE_COMPLETION_MISMATCH)
-
-<a id="gitvault_override_completion_refused"></a>
-<a id="GITVAULT_OVERRIDE_COMPLETION_REFUSED"></a>
-[`GITVAULT_OVERRIDE_COMPLETION_REFUSED`](/errors/client/#GITVAULT_OVERRIDE_COMPLETION_REFUSED)
-
-<a id="gitvault_pin_manifest_read_unsupported"></a>
-<a id="GITVAULT_PIN_MANIFEST_READ_UNSUPPORTED"></a>
-[`GITVAULT_PIN_MANIFEST_READ_UNSUPPORTED`](/errors/client/#GITVAULT_PIN_MANIFEST_READ_UNSUPPORTED)
-
-<a id="gitvault_plan_digest_missing"></a>
-<a id="GITVAULT_PLAN_DIGEST_MISSING"></a>
-[`GITVAULT_PLAN_DIGEST_MISSING`](/errors/client/#GITVAULT_PLAN_DIGEST_MISSING)
-
-<a id="gitvault_policy_unset"></a>
-<a id="GITVAULT_POLICY_UNSET"></a>
-[`GITVAULT_POLICY_UNSET`](/errors/client/#GITVAULT_POLICY_UNSET)
-
-<a id="gitvault_proof_of_open_principal_unresolved"></a>
-<a id="GITVAULT_PROOF_OF_OPEN_PRINCIPAL_UNRESOLVED"></a>
-[`GITVAULT_PROOF_OF_OPEN_PRINCIPAL_UNRESOLVED`](/errors/client/#GITVAULT_PROOF_OF_OPEN_PRINCIPAL_UNRESOLVED)
-
-<a id="gitvault_receipt_id_reused_different"></a>
-<a id="GITVAULT_RECEIPT_ID_REUSED_DIFFERENT"></a>
-[`GITVAULT_RECEIPT_ID_REUSED_DIFFERENT`](/errors/client/#GITVAULT_RECEIPT_ID_REUSED_DIFFERENT)
-
-<a id="gitvault_repo_state_missing"></a>
-<a id="GITVAULT_REPO_STATE_MISSING"></a>
-[`GITVAULT_REPO_STATE_MISSING`](/errors/client/#GITVAULT_REPO_STATE_MISSING)
-
-<a id="gitvault_signature_invalid"></a>
-<a id="GITVAULT_SIGNATURE_INVALID"></a>
-[`GITVAULT_SIGNATURE_INVALID`](/errors/client/#GITVAULT_SIGNATURE_INVALID)
-
-<a id="gitvault_signer_not_configured"></a>
-<a id="GITVAULT_SIGNER_NOT_CONFIGURED"></a>
-[`GITVAULT_SIGNER_NOT_CONFIGURED`](/errors/gateway/#GITVAULT_SIGNER_NOT_CONFIGURED)
-
-<a id="gitvault_storage_not_configured"></a>
-<a id="GITVAULT_STORAGE_NOT_CONFIGURED"></a>
-[`GITVAULT_STORAGE_NOT_CONFIGURED`](/errors/gateway/#GITVAULT_STORAGE_NOT_CONFIGURED)
-
-<a id="gitvault_token_binding_mismatch"></a>
-<a id="GITVAULT_TOKEN_BINDING_MISMATCH"></a>
-[`GITVAULT_TOKEN_BINDING_MISMATCH`](/errors/client/#GITVAULT_TOKEN_BINDING_MISMATCH)
-
-<a id="gitvault_unsupported_target"></a>
-<a id="GITVAULT_UNSUPPORTED_TARGET"></a>
-[`GITVAULT_UNSUPPORTED_TARGET`](/errors/client/#GITVAULT_UNSUPPORTED_TARGET)
-
-<a id="gitvault_vault_unresolved"></a>
-<a id="GITVAULT_VAULT_UNRESOLVED"></a>
-[`GITVAULT_VAULT_UNRESOLVED`](/errors/client/#GITVAULT_VAULT_UNRESOLVED)
-
-<a id="gitvault_writer_not_admitted"></a>
-<a id="GITVAULT_WRITER_NOT_ADMITTED"></a>
-[`GITVAULT_WRITER_NOT_ADMITTED`](/errors/gateway/#GITVAULT_WRITER_NOT_ADMITTED)
-
 <a id="grant_not_found"></a>
 <a id="GRANT_NOT_FOUND"></a>
 [`GRANT_NOT_FOUND`](/errors/gateway/#GRANT_NOT_FOUND)
@@ -2640,13 +2468,189 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="VALIDATION_FAILED"></a>
 [`VALIDATION_FAILED`](/errors/gateway/#VALIDATION_FAILED)
 
+<a id="vault_access_denied"></a>
+<a id="VAULT_ACCESS_DENIED"></a>
+[`VAULT_ACCESS_DENIED`](/errors/gateway/#VAULT_ACCESS_DENIED)
+
+<a id="vault_activation_token_missing"></a>
+<a id="VAULT_ACTIVATION_TOKEN_MISSING"></a>
+[`VAULT_ACTIVATION_TOKEN_MISSING`](/errors/client/#VAULT_ACTIVATION_TOKEN_MISSING)
+
+<a id="vault_bad_genesis"></a>
+<a id="VAULT_BAD_GENESIS"></a>
+[`VAULT_BAD_GENESIS`](/errors/client/#VAULT_BAD_GENESIS)
+
+<a id="vault_bad_id"></a>
+<a id="VAULT_BAD_ID"></a>
+[`VAULT_BAD_ID`](/errors/client/#VAULT_BAD_ID)
+
+<a id="vault_byo_object_missing"></a>
+<a id="VAULT_BYO_OBJECT_MISSING"></a>
+[`VAULT_BYO_OBJECT_MISSING`](/errors/client/#VAULT_BYO_OBJECT_MISSING)
+
+<a id="vault_byo_payload_not_held"></a>
+<a id="VAULT_BYO_PAYLOAD_NOT_HELD"></a>
+[`VAULT_BYO_PAYLOAD_NOT_HELD`](/errors/gateway/#VAULT_BYO_PAYLOAD_NOT_HELD)
+
+<a id="vault_byo_prune_not_supported"></a>
+<a id="VAULT_BYO_PRUNE_NOT_SUPPORTED"></a>
+[`VAULT_BYO_PRUNE_NOT_SUPPORTED`](/errors/gateway/#VAULT_BYO_PRUNE_NOT_SUPPORTED)
+
+<a id="vault_byo_single_writer"></a>
+<a id="VAULT_BYO_SINGLE_WRITER"></a>
+[`VAULT_BYO_SINGLE_WRITER`](/errors/gateway/#VAULT_BYO_SINGLE_WRITER)
+
+<a id="vault_capture_receipt_missing"></a>
+<a id="VAULT_CAPTURE_RECEIPT_MISSING"></a>
+[`VAULT_CAPTURE_RECEIPT_MISSING`](/errors/client/#VAULT_CAPTURE_RECEIPT_MISSING)
+
+<a id="vault_client_upgrade_required"></a>
+<a id="VAULT_CLIENT_UPGRADE_REQUIRED"></a>
+[`VAULT_CLIENT_UPGRADE_REQUIRED`](/errors/gateway/#VAULT_CLIENT_UPGRADE_REQUIRED)
+
+<a id="vault_compact_insufficient_headroom"></a>
+<a id="VAULT_COMPACT_INSUFFICIENT_HEADROOM"></a>
+[`VAULT_COMPACT_INSUFFICIENT_HEADROOM`](/errors/client/#VAULT_COMPACT_INSUFFICIENT_HEADROOM)
+
+<a id="vault_compaction_in_progress"></a>
+<a id="VAULT_COMPACTION_IN_PROGRESS"></a>
+[`VAULT_COMPACTION_IN_PROGRESS`](/errors/client/#VAULT_COMPACTION_IN_PROGRESS)
+
+<a id="vault_config_include_refused"></a>
+<a id="VAULT_CONFIG_INCLUDE_REFUSED"></a>
+[`VAULT_CONFIG_INCLUDE_REFUSED`](/errors/client/#VAULT_CONFIG_INCLUDE_REFUSED)
+
+<a id="vault_config_unreadable"></a>
+<a id="VAULT_CONFIG_UNREADABLE"></a>
+[`VAULT_CONFIG_UNREADABLE`](/errors/client/#VAULT_CONFIG_UNREADABLE)
+
 <a id="vault_creation_conflict"></a>
 <a id="VAULT_CREATION_CONFLICT"></a>
 [`VAULT_CREATION_CONFLICT`](/errors/gateway/#VAULT_CREATION_CONFLICT)
 
+<a id="vault_deploy_abandoned"></a>
+<a id="VAULT_DEPLOY_ABANDONED"></a>
+[`VAULT_DEPLOY_ABANDONED`](/errors/client/#VAULT_DEPLOY_ABANDONED)
+
+<a id="vault_envelope_recipient_not_eligible"></a>
+<a id="VAULT_ENVELOPE_RECIPIENT_NOT_ELIGIBLE"></a>
+[`VAULT_ENVELOPE_RECIPIENT_NOT_ELIGIBLE`](/errors/gateway/#VAULT_ENVELOPE_RECIPIENT_NOT_ELIGIBLE)
+
+<a id="vault_epoch_not_openable"></a>
+<a id="VAULT_EPOCH_NOT_OPENABLE"></a>
+[`VAULT_EPOCH_NOT_OPENABLE`](/errors/client/#VAULT_EPOCH_NOT_OPENABLE)
+
+<a id="vault_excludes_path_unsupported"></a>
+<a id="VAULT_EXCLUDES_PATH_UNSUPPORTED"></a>
+[`VAULT_EXCLUDES_PATH_UNSUPPORTED`](/errors/client/#VAULT_EXCLUDES_PATH_UNSUPPORTED)
+
+<a id="vault_excludes_unreadable"></a>
+<a id="VAULT_EXCLUDES_UNREADABLE"></a>
+[`VAULT_EXCLUDES_UNREADABLE`](/errors/client/#VAULT_EXCLUDES_UNREADABLE)
+
+<a id="vault_identity_profile_mismatch"></a>
+<a id="VAULT_IDENTITY_PROFILE_MISMATCH"></a>
+[`VAULT_IDENTITY_PROFILE_MISMATCH`](/errors/client/#VAULT_IDENTITY_PROFILE_MISMATCH)
+
+<a id="vault_key_rotation_required"></a>
+<a id="VAULT_KEY_ROTATION_REQUIRED"></a>
+[`VAULT_KEY_ROTATION_REQUIRED`](/errors/client/#VAULT_KEY_ROTATION_REQUIRED)
+
+<a id="vault_keystore_move_failed"></a>
+<a id="VAULT_KEYSTORE_MOVE_FAILED"></a>
+[`VAULT_KEYSTORE_MOVE_FAILED`](/errors/client/#VAULT_KEYSTORE_MOVE_FAILED)
+
+<a id="vault_lane_out_of_order"></a>
+<a id="VAULT_LANE_OUT_OF_ORDER"></a>
+[`VAULT_LANE_OUT_OF_ORDER`](/errors/client/#VAULT_LANE_OUT_OF_ORDER)
+
+<a id="vault_mirror_ambiguous"></a>
+<a id="VAULT_MIRROR_AMBIGUOUS"></a>
+[`VAULT_MIRROR_AMBIGUOUS`](/errors/client/#VAULT_MIRROR_AMBIGUOUS)
+
+<a id="vault_mirror_empty"></a>
+<a id="VAULT_MIRROR_EMPTY"></a>
+[`VAULT_MIRROR_EMPTY`](/errors/client/#VAULT_MIRROR_EMPTY)
+
+<a id="vault_mirror_not_configured"></a>
+<a id="VAULT_MIRROR_NOT_CONFIGURED"></a>
+[`VAULT_MIRROR_NOT_CONFIGURED`](/errors/client/#VAULT_MIRROR_NOT_CONFIGURED)
+
+<a id="vault_node_only"></a>
+<a id="VAULT_NODE_ONLY"></a>
+[`VAULT_NODE_ONLY`](/errors/client/#VAULT_NODE_ONLY)
+
+<a id="vault_object_read_failed"></a>
+<a id="VAULT_OBJECT_READ_FAILED"></a>
+[`VAULT_OBJECT_READ_FAILED`](/errors/client/#VAULT_OBJECT_READ_FAILED)
+
+<a id="vault_org_unresolved"></a>
+<a id="VAULT_ORG_UNRESOLVED"></a>
+[`VAULT_ORG_UNRESOLVED`](/errors/client/#VAULT_ORG_UNRESOLVED)
+
+<a id="vault_override_completion_mismatch"></a>
+<a id="VAULT_OVERRIDE_COMPLETION_MISMATCH"></a>
+[`VAULT_OVERRIDE_COMPLETION_MISMATCH`](/errors/client/#VAULT_OVERRIDE_COMPLETION_MISMATCH)
+
+<a id="vault_override_completion_refused"></a>
+<a id="VAULT_OVERRIDE_COMPLETION_REFUSED"></a>
+[`VAULT_OVERRIDE_COMPLETION_REFUSED`](/errors/client/#VAULT_OVERRIDE_COMPLETION_REFUSED)
+
+<a id="vault_pin_manifest_read_unsupported"></a>
+<a id="VAULT_PIN_MANIFEST_READ_UNSUPPORTED"></a>
+[`VAULT_PIN_MANIFEST_READ_UNSUPPORTED`](/errors/client/#VAULT_PIN_MANIFEST_READ_UNSUPPORTED)
+
+<a id="vault_plan_digest_missing"></a>
+<a id="VAULT_PLAN_DIGEST_MISSING"></a>
+[`VAULT_PLAN_DIGEST_MISSING`](/errors/client/#VAULT_PLAN_DIGEST_MISSING)
+
+<a id="vault_policy_unset"></a>
+<a id="VAULT_POLICY_UNSET"></a>
+[`VAULT_POLICY_UNSET`](/errors/client/#VAULT_POLICY_UNSET)
+
+<a id="vault_proof_of_open_principal_unresolved"></a>
+<a id="VAULT_PROOF_OF_OPEN_PRINCIPAL_UNRESOLVED"></a>
+[`VAULT_PROOF_OF_OPEN_PRINCIPAL_UNRESOLVED`](/errors/client/#VAULT_PROOF_OF_OPEN_PRINCIPAL_UNRESOLVED)
+
+<a id="vault_receipt_id_reused_different"></a>
+<a id="VAULT_RECEIPT_ID_REUSED_DIFFERENT"></a>
+[`VAULT_RECEIPT_ID_REUSED_DIFFERENT`](/errors/client/#VAULT_RECEIPT_ID_REUSED_DIFFERENT)
+
+<a id="vault_repo_state_missing"></a>
+<a id="VAULT_REPO_STATE_MISSING"></a>
+[`VAULT_REPO_STATE_MISSING`](/errors/client/#VAULT_REPO_STATE_MISSING)
+
+<a id="vault_signature_invalid"></a>
+<a id="VAULT_SIGNATURE_INVALID"></a>
+[`VAULT_SIGNATURE_INVALID`](/errors/client/#VAULT_SIGNATURE_INVALID)
+
+<a id="vault_signer_not_configured"></a>
+<a id="VAULT_SIGNER_NOT_CONFIGURED"></a>
+[`VAULT_SIGNER_NOT_CONFIGURED`](/errors/gateway/#VAULT_SIGNER_NOT_CONFIGURED)
+
+<a id="vault_storage_not_configured"></a>
+<a id="VAULT_STORAGE_NOT_CONFIGURED"></a>
+[`VAULT_STORAGE_NOT_CONFIGURED`](/errors/gateway/#VAULT_STORAGE_NOT_CONFIGURED)
+
+<a id="vault_token_binding_mismatch"></a>
+<a id="VAULT_TOKEN_BINDING_MISMATCH"></a>
+[`VAULT_TOKEN_BINDING_MISMATCH`](/errors/client/#VAULT_TOKEN_BINDING_MISMATCH)
+
 <a id="vault_unrecoverable"></a>
 <a id="VAULT_UNRECOVERABLE"></a>
 [`VAULT_UNRECOVERABLE`](/errors/gateway/#VAULT_UNRECOVERABLE)
+
+<a id="vault_unresolved"></a>
+<a id="VAULT_UNRESOLVED"></a>
+[`VAULT_UNRESOLVED`](/errors/client/#VAULT_UNRESOLVED)
+
+<a id="vault_unsupported_target"></a>
+<a id="VAULT_UNSUPPORTED_TARGET"></a>
+[`VAULT_UNSUPPORTED_TARGET`](/errors/client/#VAULT_UNSUPPORTED_TARGET)
+
+<a id="vault_writer_not_admitted"></a>
+<a id="VAULT_WRITER_NOT_ADMITTED"></a>
+[`VAULT_WRITER_NOT_ADMITTED`](/errors/gateway/#VAULT_WRITER_NOT_ADMITTED)
 
 <a id="verdict_unavailable"></a>
 <a id="VERDICT_UNAVAILABLE"></a>

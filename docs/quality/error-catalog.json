@@ -503,7 +503,7 @@
       "owners": [
         {
           "owner": "public",
-          "source": "sdk/src/node/gitvault-deploy.ts"
+          "source": "sdk/src/node/vault-deploy.ts"
         },
         {
           "owner": "gateway",
@@ -1297,7 +1297,7 @@
       "owners": [
         {
           "owner": "public",
-          "source": "sdk/src/namespaces/gitvault.ts"
+          "source": "sdk/src/namespaces/repos.ts"
         },
         {
           "owner": "gateway",
@@ -1825,7 +1825,7 @@
       "owners": [
         {
           "owner": "public",
-          "source": "sdk/src/namespaces/gitvault.ts"
+          "source": "sdk/src/namespaces/repos.ts"
         },
         {
           "owner": "gateway",
@@ -1849,7 +1849,7 @@
       "owners": [
         {
           "owner": "public",
-          "source": "sdk/src/node/gitvault-writer-state.ts"
+          "source": "sdk/src/node/vault-writer-state.ts"
         },
         {
           "owner": "gateway",
@@ -2091,7 +2091,7 @@
       "owners": [
         {
           "owner": "public",
-          "source": "sdk/src/node/gitvault-snapshot.ts"
+          "source": "sdk/src/node/vault-snapshot.ts"
         }
       ],
       "topic": "/errors/client/#GIT_COMMAND_FAILED"
@@ -2101,7 +2101,7 @@
       "owners": [
         {
           "owner": "public",
-          "source": "sdk/src/node/gitvault-snapshot.ts"
+          "source": "sdk/src/node/vault-snapshot.ts"
         }
       ],
       "topic": "/errors/client/#GIT_CWD_MISSING"
@@ -2131,7 +2131,7 @@
       "owners": [
         {
           "owner": "public",
-          "source": "sdk/src/node/gitvault-snapshot.ts"
+          "source": "sdk/src/node/vault-snapshot.ts"
         }
       ],
       "topic": "/errors/client/#GIT_UNAVAILABLE"
@@ -2157,460 +2157,6 @@
       "topic": "/errors/client/#GITHUB_REPOSITORY_ID_REQUIRED"
     },
     {
-      "code": "GITVAULT_ACCESS_DENIED",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "sdk/src/namespaces/gitvault.ts"
-        },
-        {
-          "owner": "gateway",
-          "source": "packages/gateway/src/utils/error-envelope.ts"
-        }
-      ],
-      "topic": "/errors/gateway/#GITVAULT_ACCESS_DENIED"
-    },
-    {
-      "code": "GITVAULT_ACTIVATION_TOKEN_MISSING",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "sdk/src/node/gitvault-apply.ts"
-        }
-      ],
-      "topic": "/errors/client/#GITVAULT_ACTIVATION_TOKEN_MISSING"
-    },
-    {
-      "code": "GITVAULT_BAD_GENESIS",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "sdk/src/node/gitvault-writer-state.ts"
-        }
-      ],
-      "topic": "/errors/client/#GITVAULT_BAD_GENESIS"
-    },
-    {
-      "code": "GITVAULT_BAD_ID",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "sdk/src/node/gitvault-deploy.ts"
-        }
-      ],
-      "topic": "/errors/client/#GITVAULT_BAD_ID"
-    },
-    {
-      "code": "GITVAULT_BYO_OBJECT_MISSING",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "sdk/src/namespaces/gitvault.ts"
-        }
-      ],
-      "topic": "/errors/client/#GITVAULT_BYO_OBJECT_MISSING"
-    },
-    {
-      "code": "GITVAULT_BYO_PAYLOAD_NOT_HELD",
-      "owners": [
-        {
-          "owner": "gateway",
-          "source": "packages/gateway/src/utils/error-envelope.ts"
-        }
-      ],
-      "topic": "/errors/gateway/#GITVAULT_BYO_PAYLOAD_NOT_HELD"
-    },
-    {
-      "code": "GITVAULT_BYO_PRUNE_NOT_SUPPORTED",
-      "owners": [
-        {
-          "owner": "gateway",
-          "source": "packages/gateway/src/utils/error-envelope.ts"
-        }
-      ],
-      "topic": "/errors/gateway/#GITVAULT_BYO_PRUNE_NOT_SUPPORTED"
-    },
-    {
-      "code": "GITVAULT_BYO_SINGLE_WRITER",
-      "owners": [
-        {
-          "owner": "gateway",
-          "source": "packages/gateway/src/utils/error-envelope.ts"
-        }
-      ],
-      "topic": "/errors/gateway/#GITVAULT_BYO_SINGLE_WRITER"
-    },
-    {
-      "code": "GITVAULT_CAPTURE_RECEIPT_MISSING",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "sdk/src/node/gitvault-deploy.ts"
-        }
-      ],
-      "topic": "/errors/client/#GITVAULT_CAPTURE_RECEIPT_MISSING"
-    },
-    {
-      "code": "GITVAULT_CLIENT_UPGRADE_REQUIRED",
-      "owners": [
-        {
-          "owner": "gateway",
-          "source": "packages/gateway/src/utils/error-envelope.ts"
-        }
-      ],
-      "topic": "/errors/gateway/#GITVAULT_CLIENT_UPGRADE_REQUIRED"
-    },
-    {
-      "code": "GITVAULT_COMPACT_INSUFFICIENT_HEADROOM",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "sdk/src/namespaces/gitvault.ts"
-        }
-      ],
-      "topic": "/errors/client/#GITVAULT_COMPACT_INSUFFICIENT_HEADROOM"
-    },
-    {
-      "code": "GITVAULT_COMPACTION_IN_PROGRESS",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "sdk/src/namespaces/gitvault.ts"
-        }
-      ],
-      "topic": "/errors/client/#GITVAULT_COMPACTION_IN_PROGRESS"
-    },
-    {
-      "code": "GITVAULT_CONFIG_INCLUDE_REFUSED",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "sdk/src/node/gitvault-snapshot.ts"
-        }
-      ],
-      "topic": "/errors/client/#GITVAULT_CONFIG_INCLUDE_REFUSED"
-    },
-    {
-      "code": "GITVAULT_CONFIG_UNREADABLE",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "sdk/src/node/gitvault-snapshot.ts"
-        }
-      ],
-      "topic": "/errors/client/#GITVAULT_CONFIG_UNREADABLE"
-    },
-    {
-      "code": "GITVAULT_DEPLOY_ABANDONED",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "sdk/src/node/gitvault-apply.ts"
-        }
-      ],
-      "topic": "/errors/client/#GITVAULT_DEPLOY_ABANDONED"
-    },
-    {
-      "code": "GITVAULT_ENVELOPE_RECIPIENT_NOT_ELIGIBLE",
-      "owners": [
-        {
-          "owner": "gateway",
-          "source": "packages/gateway/src/utils/error-envelope.ts"
-        }
-      ],
-      "topic": "/errors/gateway/#GITVAULT_ENVELOPE_RECIPIENT_NOT_ELIGIBLE"
-    },
-    {
-      "code": "GITVAULT_EPOCH_NOT_OPENABLE",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "sdk/src/node/gitvault-publication.ts"
-        },
-        {
-          "owner": "public",
-          "source": "sdk/src/node/gitvault-recover.ts"
-        }
-      ],
-      "topic": "/errors/client/#GITVAULT_EPOCH_NOT_OPENABLE"
-    },
-    {
-      "code": "GITVAULT_EXCLUDES_PATH_UNSUPPORTED",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "sdk/src/node/gitvault-snapshot.ts"
-        }
-      ],
-      "topic": "/errors/client/#GITVAULT_EXCLUDES_PATH_UNSUPPORTED"
-    },
-    {
-      "code": "GITVAULT_EXCLUDES_UNREADABLE",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "sdk/src/node/gitvault-snapshot.ts"
-        }
-      ],
-      "topic": "/errors/client/#GITVAULT_EXCLUDES_UNREADABLE"
-    },
-    {
-      "code": "GITVAULT_IDENTITY_PROFILE_MISMATCH",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "sdk/src/namespaces/gitvault.ts"
-        }
-      ],
-      "topic": "/errors/client/#GITVAULT_IDENTITY_PROFILE_MISMATCH"
-    },
-    {
-      "code": "GITVAULT_KEY_ROTATION_REQUIRED",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "sdk/src/namespaces/gitvault.ts"
-        }
-      ],
-      "topic": "/errors/client/#GITVAULT_KEY_ROTATION_REQUIRED"
-    },
-    {
-      "code": "GITVAULT_LANE_OUT_OF_ORDER",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "sdk/src/node/gitvault-apply.ts"
-        }
-      ],
-      "topic": "/errors/client/#GITVAULT_LANE_OUT_OF_ORDER"
-    },
-    {
-      "code": "GITVAULT_MIRROR_AMBIGUOUS",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "sdk/src/namespaces/gitvault.ts"
-        }
-      ],
-      "topic": "/errors/client/#GITVAULT_MIRROR_AMBIGUOUS"
-    },
-    {
-      "code": "GITVAULT_MIRROR_EMPTY",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "sdk/src/namespaces/gitvault.ts"
-        }
-      ],
-      "topic": "/errors/client/#GITVAULT_MIRROR_EMPTY"
-    },
-    {
-      "code": "GITVAULT_MIRROR_NOT_CONFIGURED",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "sdk/src/namespaces/gitvault.ts"
-        }
-      ],
-      "topic": "/errors/client/#GITVAULT_MIRROR_NOT_CONFIGURED"
-    },
-    {
-      "code": "GITVAULT_NODE_ONLY",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "sdk/src/namespaces/gitvault.ts"
-        }
-      ],
-      "topic": "/errors/client/#GITVAULT_NODE_ONLY"
-    },
-    {
-      "code": "GITVAULT_OBJECT_READ_FAILED",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "sdk/src/node/gitvault-publication.ts"
-        }
-      ],
-      "topic": "/errors/client/#GITVAULT_OBJECT_READ_FAILED"
-    },
-    {
-      "code": "GITVAULT_ORG_UNRESOLVED",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "cli/lib/repos.mjs"
-        },
-        {
-          "owner": "public",
-          "source": "cli/lib/up.mjs"
-        }
-      ],
-      "topic": "/errors/client/#GITVAULT_ORG_UNRESOLVED"
-    },
-    {
-      "code": "GITVAULT_OVERRIDE_COMPLETION_MISMATCH",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "sdk/src/node/gitvault-deploy.ts"
-        }
-      ],
-      "topic": "/errors/client/#GITVAULT_OVERRIDE_COMPLETION_MISMATCH"
-    },
-    {
-      "code": "GITVAULT_OVERRIDE_COMPLETION_REFUSED",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "sdk/src/node/gitvault-deploy.ts"
-        }
-      ],
-      "topic": "/errors/client/#GITVAULT_OVERRIDE_COMPLETION_REFUSED"
-    },
-    {
-      "code": "GITVAULT_PIN_MANIFEST_READ_UNSUPPORTED",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "sdk/src/node/gitvault-publication.ts"
-        }
-      ],
-      "topic": "/errors/client/#GITVAULT_PIN_MANIFEST_READ_UNSUPPORTED"
-    },
-    {
-      "code": "GITVAULT_PLAN_DIGEST_MISSING",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "sdk/src/node/gitvault-apply.ts"
-        }
-      ],
-      "topic": "/errors/client/#GITVAULT_PLAN_DIGEST_MISSING"
-    },
-    {
-      "code": "GITVAULT_POLICY_UNSET",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "sdk/src/node/gitvault-apply.ts"
-        }
-      ],
-      "topic": "/errors/client/#GITVAULT_POLICY_UNSET"
-    },
-    {
-      "code": "GITVAULT_PROOF_OF_OPEN_PRINCIPAL_UNRESOLVED",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "sdk/src/namespaces/gitvault.ts"
-        }
-      ],
-      "topic": "/errors/client/#GITVAULT_PROOF_OF_OPEN_PRINCIPAL_UNRESOLVED"
-    },
-    {
-      "code": "GITVAULT_RECEIPT_ID_REUSED_DIFFERENT",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "sdk/src/namespaces/gitvault.ts"
-        }
-      ],
-      "topic": "/errors/client/#GITVAULT_RECEIPT_ID_REUSED_DIFFERENT"
-    },
-    {
-      "code": "GITVAULT_REPO_STATE_MISSING",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "sdk/src/namespaces/gitvault.ts"
-        }
-      ],
-      "topic": "/errors/client/#GITVAULT_REPO_STATE_MISSING"
-    },
-    {
-      "code": "GITVAULT_SIGNATURE_INVALID",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "sdk/src/namespaces/gitvault.ts"
-        }
-      ],
-      "topic": "/errors/client/#GITVAULT_SIGNATURE_INVALID"
-    },
-    {
-      "code": "GITVAULT_SIGNER_NOT_CONFIGURED",
-      "owners": [
-        {
-          "owner": "gateway",
-          "source": "packages/gateway/src/utils/error-envelope.ts"
-        }
-      ],
-      "topic": "/errors/gateway/#GITVAULT_SIGNER_NOT_CONFIGURED"
-    },
-    {
-      "code": "GITVAULT_STORAGE_NOT_CONFIGURED",
-      "owners": [
-        {
-          "owner": "gateway",
-          "source": "packages/gateway/src/utils/error-envelope.ts"
-        }
-      ],
-      "topic": "/errors/gateway/#GITVAULT_STORAGE_NOT_CONFIGURED"
-    },
-    {
-      "code": "GITVAULT_TOKEN_BINDING_MISMATCH",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "sdk/src/node/gitvault-deploy.ts"
-        }
-      ],
-      "topic": "/errors/client/#GITVAULT_TOKEN_BINDING_MISMATCH"
-    },
-    {
-      "code": "GITVAULT_UNSUPPORTED_TARGET",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "sdk/src/namespaces/deploy.ts"
-        }
-      ],
-      "topic": "/errors/client/#GITVAULT_UNSUPPORTED_TARGET"
-    },
-    {
-      "code": "GITVAULT_VAULT_UNRESOLVED",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "sdk/src/namespaces/gitvault.ts"
-        }
-      ],
-      "topic": "/errors/client/#GITVAULT_VAULT_UNRESOLVED"
-    },
-    {
-      "code": "GITVAULT_WRITER_NOT_ADMITTED",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "sdk/src/namespaces/gitvault.ts"
-        },
-        {
-          "owner": "public",
-          "source": "sdk/src/node/gitvault-writer-state.ts"
-        },
-        {
-          "owner": "public",
-          "source": "cli/lib/orgs.mjs"
-        },
-        {
-          "owner": "gateway",
-          "source": "packages/gateway/src/utils/error-envelope.ts"
-        }
-      ],
-      "topic": "/errors/gateway/#GITVAULT_WRITER_NOT_ADMITTED"
-    },
-    {
       "code": "GRANT_NOT_FOUND",
       "owners": [
         {
@@ -2625,7 +2171,7 @@
       "owners": [
         {
           "owner": "public",
-          "source": "sdk/src/node/gitvault-restore.ts"
+          "source": "sdk/src/node/vault-restore.ts"
         }
       ],
       "topic": "/errors/client/#HANDOFF_CLONE_FAILED"
@@ -2635,7 +2181,7 @@
       "owners": [
         {
           "owner": "public",
-          "source": "sdk/src/namespaces/gitvault.ts"
+          "source": "sdk/src/namespaces/repos.ts"
         }
       ],
       "topic": "/errors/client/#HANDOFF_ENVELOPE_INVALID"
@@ -2645,7 +2191,7 @@
       "owners": [
         {
           "owner": "public",
-          "source": "sdk/src/namespaces/gitvault.ts"
+          "source": "sdk/src/namespaces/repos.ts"
         }
       ],
       "topic": "/errors/client/#HANDOFF_ID_MISMATCH"
@@ -2655,7 +2201,7 @@
       "owners": [
         {
           "owner": "public",
-          "source": "sdk/src/node/gitvault-writer-state.ts"
+          "source": "sdk/src/node/vault-writer-state.ts"
         }
       ],
       "topic": "/errors/client/#HANDOFF_KEY_REVOKED"
@@ -2665,7 +2211,7 @@
       "owners": [
         {
           "owner": "public",
-          "source": "sdk/src/namespaces/gitvault.ts"
+          "source": "sdk/src/namespaces/repos.ts"
         }
       ],
       "topic": "/errors/client/#HANDOFF_MINT_GRANT_MISMATCH"
@@ -2685,7 +2231,7 @@
       "owners": [
         {
           "owner": "public",
-          "source": "sdk/src/namespaces/gitvault.ts"
+          "source": "sdk/src/namespaces/repos.ts"
         },
         {
           "owner": "gateway",
@@ -3631,7 +3177,7 @@
       "owners": [
         {
           "owner": "public",
-          "source": "sdk/src/namespaces/gitvault.ts"
+          "source": "sdk/src/namespaces/repos.ts"
         }
       ],
       "topic": "/errors/client/#INVITE_ENVELOPE_INVALID"
@@ -3641,7 +3187,7 @@
       "owners": [
         {
           "owner": "public",
-          "source": "sdk/src/namespaces/gitvault.ts"
+          "source": "sdk/src/namespaces/repos.ts"
         }
       ],
       "topic": "/errors/client/#INVITE_ID_MISMATCH"
@@ -3651,7 +3197,7 @@
       "owners": [
         {
           "owner": "public",
-          "source": "sdk/src/namespaces/gitvault.ts"
+          "source": "sdk/src/namespaces/repos.ts"
         }
       ],
       "topic": "/errors/client/#INVITE_MINT_GRANT_MISMATCH"
@@ -3671,7 +3217,7 @@
       "owners": [
         {
           "owner": "public",
-          "source": "sdk/src/namespaces/gitvault.ts"
+          "source": "sdk/src/namespaces/repos.ts"
         }
       ],
       "topic": "/errors/client/#INVITE_REDEEM_WRITER_KEY_MISMATCH"
@@ -3731,7 +3277,7 @@
       "owners": [
         {
           "owner": "public",
-          "source": "sdk/src/namespaces/gitvault.ts"
+          "source": "sdk/src/namespaces/repos.ts"
         },
         {
           "owner": "gateway",
@@ -4903,7 +4449,7 @@
       "owners": [
         {
           "owner": "public",
-          "source": "sdk/src/namespaces/gitvault.ts"
+          "source": "sdk/src/namespaces/repos.ts"
         },
         {
           "owner": "gateway",
@@ -6351,7 +5897,7 @@
       "owners": [
         {
           "owner": "public",
-          "source": "sdk/src/node/gitvault-writer-state.ts"
+          "source": "sdk/src/node/vault-writer-state.ts"
         },
         {
           "owner": "gateway",
@@ -6455,7 +6001,7 @@
       "owners": [
         {
           "owner": "public",
-          "source": "sdk/src/namespaces/gitvault.ts"
+          "source": "sdk/src/namespaces/repos.ts"
         }
       ],
       "topic": "/errors/client/#REMOTE_SCHEME_UNSUPPORTED"
@@ -7215,11 +6761,11 @@
       "owners": [
         {
           "owner": "public",
-          "source": "sdk/src/namespaces/gitvault.ts"
+          "source": "sdk/src/namespaces/repos.ts"
         },
         {
           "owner": "public",
-          "source": "sdk/src/node/gitvault-deploy.ts"
+          "source": "sdk/src/node/vault-deploy.ts"
         }
       ],
       "topic": "/errors/client/#UNKNOWN"
@@ -7389,11 +6935,11 @@
       "owners": [
         {
           "owner": "public",
-          "source": "sdk/src/namespaces/gitvault.ts"
+          "source": "sdk/src/namespaces/repos.ts"
         },
         {
           "owner": "public",
-          "source": "sdk/src/node/gitvault-writer-state.ts"
+          "source": "sdk/src/node/vault-writer-state.ts"
         },
         {
           "owner": "gateway",
@@ -7403,11 +6949,155 @@
       "topic": "/errors/gateway/#VALIDATION_FAILED"
     },
     {
+      "code": "VAULT_ACCESS_DENIED",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/namespaces/repos.ts"
+        },
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#VAULT_ACCESS_DENIED"
+    },
+    {
+      "code": "VAULT_ACTIVATION_TOKEN_MISSING",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/node/vault-apply.ts"
+        }
+      ],
+      "topic": "/errors/client/#VAULT_ACTIVATION_TOKEN_MISSING"
+    },
+    {
+      "code": "VAULT_BAD_GENESIS",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/node/vault-writer-state.ts"
+        }
+      ],
+      "topic": "/errors/client/#VAULT_BAD_GENESIS"
+    },
+    {
+      "code": "VAULT_BAD_ID",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/node/vault-deploy.ts"
+        }
+      ],
+      "topic": "/errors/client/#VAULT_BAD_ID"
+    },
+    {
+      "code": "VAULT_BYO_OBJECT_MISSING",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/namespaces/repos.ts"
+        }
+      ],
+      "topic": "/errors/client/#VAULT_BYO_OBJECT_MISSING"
+    },
+    {
+      "code": "VAULT_BYO_PAYLOAD_NOT_HELD",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#VAULT_BYO_PAYLOAD_NOT_HELD"
+    },
+    {
+      "code": "VAULT_BYO_PRUNE_NOT_SUPPORTED",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#VAULT_BYO_PRUNE_NOT_SUPPORTED"
+    },
+    {
+      "code": "VAULT_BYO_SINGLE_WRITER",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#VAULT_BYO_SINGLE_WRITER"
+    },
+    {
+      "code": "VAULT_CAPTURE_RECEIPT_MISSING",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/node/vault-deploy.ts"
+        }
+      ],
+      "topic": "/errors/client/#VAULT_CAPTURE_RECEIPT_MISSING"
+    },
+    {
+      "code": "VAULT_CLIENT_UPGRADE_REQUIRED",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#VAULT_CLIENT_UPGRADE_REQUIRED"
+    },
+    {
+      "code": "VAULT_COMPACT_INSUFFICIENT_HEADROOM",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/namespaces/repos.ts"
+        }
+      ],
+      "topic": "/errors/client/#VAULT_COMPACT_INSUFFICIENT_HEADROOM"
+    },
+    {
+      "code": "VAULT_COMPACTION_IN_PROGRESS",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/namespaces/repos.ts"
+        }
+      ],
+      "topic": "/errors/client/#VAULT_COMPACTION_IN_PROGRESS"
+    },
+    {
+      "code": "VAULT_CONFIG_INCLUDE_REFUSED",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/node/vault-snapshot.ts"
+        }
+      ],
+      "topic": "/errors/client/#VAULT_CONFIG_INCLUDE_REFUSED"
+    },
+    {
+      "code": "VAULT_CONFIG_UNREADABLE",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/node/vault-snapshot.ts"
+        }
+      ],
+      "topic": "/errors/client/#VAULT_CONFIG_UNREADABLE"
+    },
+    {
       "code": "VAULT_CREATION_CONFLICT",
       "owners": [
         {
           "owner": "public",
-          "source": "sdk/src/node/gitvault-creation-journal.ts"
+          "source": "sdk/src/node/vault-creation-journal.ts"
         },
         {
           "owner": "gateway",
@@ -7417,15 +7107,293 @@
       "topic": "/errors/gateway/#VAULT_CREATION_CONFLICT"
     },
     {
+      "code": "VAULT_DEPLOY_ABANDONED",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/node/vault-apply.ts"
+        }
+      ],
+      "topic": "/errors/client/#VAULT_DEPLOY_ABANDONED"
+    },
+    {
+      "code": "VAULT_ENVELOPE_RECIPIENT_NOT_ELIGIBLE",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#VAULT_ENVELOPE_RECIPIENT_NOT_ELIGIBLE"
+    },
+    {
+      "code": "VAULT_EPOCH_NOT_OPENABLE",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/node/vault-publication.ts"
+        },
+        {
+          "owner": "public",
+          "source": "sdk/src/node/vault-recover.ts"
+        }
+      ],
+      "topic": "/errors/client/#VAULT_EPOCH_NOT_OPENABLE"
+    },
+    {
+      "code": "VAULT_EXCLUDES_PATH_UNSUPPORTED",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/node/vault-snapshot.ts"
+        }
+      ],
+      "topic": "/errors/client/#VAULT_EXCLUDES_PATH_UNSUPPORTED"
+    },
+    {
+      "code": "VAULT_EXCLUDES_UNREADABLE",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/node/vault-snapshot.ts"
+        }
+      ],
+      "topic": "/errors/client/#VAULT_EXCLUDES_UNREADABLE"
+    },
+    {
+      "code": "VAULT_IDENTITY_PROFILE_MISMATCH",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/namespaces/repos.ts"
+        }
+      ],
+      "topic": "/errors/client/#VAULT_IDENTITY_PROFILE_MISMATCH"
+    },
+    {
+      "code": "VAULT_KEY_ROTATION_REQUIRED",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/namespaces/repos.ts"
+        }
+      ],
+      "topic": "/errors/client/#VAULT_KEY_ROTATION_REQUIRED"
+    },
+    {
+      "code": "VAULT_KEYSTORE_MOVE_FAILED",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/node/vault-keystore.ts"
+        }
+      ],
+      "topic": "/errors/client/#VAULT_KEYSTORE_MOVE_FAILED"
+    },
+    {
+      "code": "VAULT_LANE_OUT_OF_ORDER",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/node/vault-apply.ts"
+        }
+      ],
+      "topic": "/errors/client/#VAULT_LANE_OUT_OF_ORDER"
+    },
+    {
+      "code": "VAULT_MIRROR_AMBIGUOUS",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/namespaces/repos.ts"
+        }
+      ],
+      "topic": "/errors/client/#VAULT_MIRROR_AMBIGUOUS"
+    },
+    {
+      "code": "VAULT_MIRROR_EMPTY",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/namespaces/repos.ts"
+        }
+      ],
+      "topic": "/errors/client/#VAULT_MIRROR_EMPTY"
+    },
+    {
+      "code": "VAULT_MIRROR_NOT_CONFIGURED",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/namespaces/repos.ts"
+        }
+      ],
+      "topic": "/errors/client/#VAULT_MIRROR_NOT_CONFIGURED"
+    },
+    {
+      "code": "VAULT_NODE_ONLY",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/namespaces/repos.ts"
+        }
+      ],
+      "topic": "/errors/client/#VAULT_NODE_ONLY"
+    },
+    {
+      "code": "VAULT_OBJECT_READ_FAILED",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/node/vault-publication.ts"
+        }
+      ],
+      "topic": "/errors/client/#VAULT_OBJECT_READ_FAILED"
+    },
+    {
+      "code": "VAULT_ORG_UNRESOLVED",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "cli/lib/repos.mjs"
+        },
+        {
+          "owner": "public",
+          "source": "cli/lib/up.mjs"
+        }
+      ],
+      "topic": "/errors/client/#VAULT_ORG_UNRESOLVED"
+    },
+    {
+      "code": "VAULT_OVERRIDE_COMPLETION_MISMATCH",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/node/vault-deploy.ts"
+        }
+      ],
+      "topic": "/errors/client/#VAULT_OVERRIDE_COMPLETION_MISMATCH"
+    },
+    {
+      "code": "VAULT_OVERRIDE_COMPLETION_REFUSED",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/node/vault-deploy.ts"
+        }
+      ],
+      "topic": "/errors/client/#VAULT_OVERRIDE_COMPLETION_REFUSED"
+    },
+    {
+      "code": "VAULT_PIN_MANIFEST_READ_UNSUPPORTED",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/node/vault-publication.ts"
+        }
+      ],
+      "topic": "/errors/client/#VAULT_PIN_MANIFEST_READ_UNSUPPORTED"
+    },
+    {
+      "code": "VAULT_PLAN_DIGEST_MISSING",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/node/vault-apply.ts"
+        }
+      ],
+      "topic": "/errors/client/#VAULT_PLAN_DIGEST_MISSING"
+    },
+    {
+      "code": "VAULT_POLICY_UNSET",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/node/vault-apply.ts"
+        }
+      ],
+      "topic": "/errors/client/#VAULT_POLICY_UNSET"
+    },
+    {
+      "code": "VAULT_PROOF_OF_OPEN_PRINCIPAL_UNRESOLVED",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/namespaces/repos.ts"
+        }
+      ],
+      "topic": "/errors/client/#VAULT_PROOF_OF_OPEN_PRINCIPAL_UNRESOLVED"
+    },
+    {
+      "code": "VAULT_RECEIPT_ID_REUSED_DIFFERENT",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/namespaces/repos.ts"
+        }
+      ],
+      "topic": "/errors/client/#VAULT_RECEIPT_ID_REUSED_DIFFERENT"
+    },
+    {
+      "code": "VAULT_REPO_STATE_MISSING",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/namespaces/repos.ts"
+        }
+      ],
+      "topic": "/errors/client/#VAULT_REPO_STATE_MISSING"
+    },
+    {
+      "code": "VAULT_SIGNATURE_INVALID",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/namespaces/repos.ts"
+        }
+      ],
+      "topic": "/errors/client/#VAULT_SIGNATURE_INVALID"
+    },
+    {
+      "code": "VAULT_SIGNER_NOT_CONFIGURED",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#VAULT_SIGNER_NOT_CONFIGURED"
+    },
+    {
+      "code": "VAULT_STORAGE_NOT_CONFIGURED",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#VAULT_STORAGE_NOT_CONFIGURED"
+    },
+    {
+      "code": "VAULT_TOKEN_BINDING_MISMATCH",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/node/vault-deploy.ts"
+        }
+      ],
+      "topic": "/errors/client/#VAULT_TOKEN_BINDING_MISMATCH"
+    },
+    {
       "code": "VAULT_UNRECOVERABLE",
       "owners": [
         {
           "owner": "public",
-          "source": "sdk/src/namespaces/gitvault.ts"
+          "source": "sdk/src/namespaces/repos.ts"
         },
         {
           "owner": "public",
-          "source": "sdk/src/node/gitvault-keystore.ts"
+          "source": "sdk/src/node/vault-keystore.ts"
         },
         {
           "owner": "gateway",
@@ -7433,6 +7401,48 @@
         }
       ],
       "topic": "/errors/gateway/#VAULT_UNRECOVERABLE"
+    },
+    {
+      "code": "VAULT_UNRESOLVED",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/namespaces/repos.ts"
+        }
+      ],
+      "topic": "/errors/client/#VAULT_UNRESOLVED"
+    },
+    {
+      "code": "VAULT_UNSUPPORTED_TARGET",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/namespaces/deploy.ts"
+        }
+      ],
+      "topic": "/errors/client/#VAULT_UNSUPPORTED_TARGET"
+    },
+    {
+      "code": "VAULT_WRITER_NOT_ADMITTED",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/namespaces/repos.ts"
+        },
+        {
+          "owner": "public",
+          "source": "sdk/src/node/vault-writer-state.ts"
+        },
+        {
+          "owner": "public",
+          "source": "cli/lib/orgs.mjs"
+        },
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#VAULT_WRITER_NOT_ADMITTED"
     },
     {
       "code": "VERDICT_UNAVAILABLE",

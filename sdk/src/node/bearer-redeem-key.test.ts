@@ -17,7 +17,7 @@ import {
   randomRedeemId,
   uuidToBytes,
 } from "./bearer-redeem-key.js";
-import { randomBytes } from "../namespaces/gitvault.crypto.js";
+import { randomBytes } from "../namespaces/vault.crypto.js";
 
 const HANDOFF_ID = "3fa85f64-5717-4562-b3fc-2c963f66afa6";
 const INVITE_ID = "4fa85f64-5717-4562-b3fc-2c963f66afa7";

@@ -1,5 +1,5 @@
 /**
- * gitvault-owned-dispatcher task 3.1 — the parts a unit can pin: the ticket
+ * vault-owned-dispatcher task 3.1 — the parts a unit can pin: the ticket
  * store's file discipline (0600, atomic, symlink-refusing, silent on every
  * failure) and `sdkFetch`'s test-override deference (design D4). The
  * queue-on-connecting and TLS-resumption behaviors are live properties,
@@ -73,8 +73,8 @@ describe("sdkFetch — test-override deference (design D4)", () => {
 });
 
 /**
- * gitvault-first-op-premium task 1.1 — H1 attribution note. A live probe
- * (recorded in openspec/changes/gitvault-first-op-premium/tasks.md — three
+ * vault-first-op-premium task 1.1 — H1 attribution note. A live probe
+ * (recorded in openspec/changes/vault-first-op-premium/tasks.md — three
  * consecutive daemon-forwarded sessions against the real gateway, dial count
  * read via `_apiDialCount()`) found the owned dispatcher's API-origin
  * connection was ALREADY reused correctly: exactly one dial total, zero

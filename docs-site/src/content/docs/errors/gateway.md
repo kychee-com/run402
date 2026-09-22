@@ -175,7 +175,7 @@ The gateway rejected or could not complete the request. Its response carries the
 
 <h2 id="AUTHORIZATION_EPOCH_STALE">AUTHORIZATION_EPOCH_STALE</h2>
 
-Owner: `public:sdk/src/node/gitvault-deploy.ts`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
+Owner: `public:sdk/src/node/vault-deploy.ts`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
 
 The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
 
@@ -331,7 +331,7 @@ The gateway rejected or could not complete the request. Its response carries the
 
 <h2 id="CHAIN_BROKEN">CHAIN_BROKEN</h2>
 
-Owner: `public:sdk/src/namespaces/gitvault.ts`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
+Owner: `public:sdk/src/namespaces/repos.ts`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
 
 The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
 
@@ -523,7 +523,7 @@ The gateway rejected or could not complete the request. Its response carries the
 
 <h2 id="EPOCH_ROTATION_REQUIRED">EPOCH_ROTATION_REQUIRED</h2>
 
-Owner: `public:sdk/src/namespaces/gitvault.ts`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
+Owner: `public:sdk/src/namespaces/repos.ts`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
 
 The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
 
@@ -535,7 +535,7 @@ The gateway rejected or could not complete the request. Its response carries the
 
 <h2 id="EPOCH_ROTATION_WOULD_LEAVE_VAULT_UNCOVERED">EPOCH_ROTATION_WOULD_LEAVE_VAULT_UNCOVERED</h2>
 
-Owner: `public:sdk/src/node/gitvault-writer-state.ts`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
+Owner: `public:sdk/src/node/vault-writer-state.ts`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
 
 The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
 
@@ -629,60 +629,6 @@ Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
 
 The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
 
-<h2 id="GITVAULT_ACCESS_DENIED">GITVAULT_ACCESS_DENIED</h2>
-
-Owner: `public:sdk/src/namespaces/gitvault.ts`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
-
-The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
-
-<h2 id="GITVAULT_BYO_PAYLOAD_NOT_HELD">GITVAULT_BYO_PAYLOAD_NOT_HELD</h2>
-
-Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
-
-The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
-
-<h2 id="GITVAULT_BYO_PRUNE_NOT_SUPPORTED">GITVAULT_BYO_PRUNE_NOT_SUPPORTED</h2>
-
-Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
-
-The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
-
-<h2 id="GITVAULT_BYO_SINGLE_WRITER">GITVAULT_BYO_SINGLE_WRITER</h2>
-
-Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
-
-The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
-
-<h2 id="GITVAULT_CLIENT_UPGRADE_REQUIRED">GITVAULT_CLIENT_UPGRADE_REQUIRED</h2>
-
-Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
-
-The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
-
-<h2 id="GITVAULT_ENVELOPE_RECIPIENT_NOT_ELIGIBLE">GITVAULT_ENVELOPE_RECIPIENT_NOT_ELIGIBLE</h2>
-
-Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
-
-The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
-
-<h2 id="GITVAULT_SIGNER_NOT_CONFIGURED">GITVAULT_SIGNER_NOT_CONFIGURED</h2>
-
-Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
-
-The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
-
-<h2 id="GITVAULT_STORAGE_NOT_CONFIGURED">GITVAULT_STORAGE_NOT_CONFIGURED</h2>
-
-Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
-
-The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
-
-<h2 id="GITVAULT_WRITER_NOT_ADMITTED">GITVAULT_WRITER_NOT_ADMITTED</h2>
-
-Owner: `public:sdk/src/namespaces/gitvault.ts`, `public:sdk/src/node/gitvault-writer-state.ts`, `public:cli/lib/orgs.mjs`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
-
-The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
-
 <h2 id="GRANT_NOT_FOUND">GRANT_NOT_FOUND</h2>
 
 Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
@@ -697,7 +643,7 @@ The gateway rejected or could not complete the request. Its response carries the
 
 <h2 id="HANDOFF_REDEEM_WRITER_KEY_MISMATCH">HANDOFF_REDEEM_WRITER_KEY_MISMATCH</h2>
 
-Owner: `public:sdk/src/namespaces/gitvault.ts`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
+Owner: `public:sdk/src/namespaces/repos.ts`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
 
 The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
 
@@ -1207,7 +1153,7 @@ The gateway rejected or could not complete the request. Its response carries the
 
 <h2 id="KEY_NOT_PENDING">KEY_NOT_PENDING</h2>
 
-Owner: `public:sdk/src/namespaces/gitvault.ts`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
+Owner: `public:sdk/src/namespaces/repos.ts`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
 
 The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
 
@@ -1657,7 +1603,7 @@ The gateway rejected or could not complete the request. Its response carries the
 
 <h2 id="PIN_CHANGE_UNCONFIRMED">PIN_CHANGE_UNCONFIRMED</h2>
 
-Owner: `public:sdk/src/namespaces/gitvault.ts`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
+Owner: `public:sdk/src/namespaces/repos.ts`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
 
 The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
 
@@ -1831,7 +1777,7 @@ The gateway rejected or could not complete the request. Its response carries the
 
 <h2 id="RECIPIENT_SET_MISMATCH">RECIPIENT_SET_MISMATCH</h2>
 
-Owner: `public:sdk/src/node/gitvault-writer-state.ts`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
+Owner: `public:sdk/src/node/vault-writer-state.ts`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
 
 The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
 
@@ -2161,19 +2107,73 @@ The gateway rejected or could not complete the request. Its response carries the
 
 <h2 id="VALIDATION_FAILED">VALIDATION_FAILED</h2>
 
-Owner: `public:sdk/src/namespaces/gitvault.ts`, `public:sdk/src/node/gitvault-writer-state.ts`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
+Owner: `public:sdk/src/namespaces/repos.ts`, `public:sdk/src/node/vault-writer-state.ts`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
+
+<h2 id="VAULT_ACCESS_DENIED">VAULT_ACCESS_DENIED</h2>
+
+Owner: `public:sdk/src/namespaces/repos.ts`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
+
+<h2 id="VAULT_BYO_PAYLOAD_NOT_HELD">VAULT_BYO_PAYLOAD_NOT_HELD</h2>
+
+Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
+
+<h2 id="VAULT_BYO_PRUNE_NOT_SUPPORTED">VAULT_BYO_PRUNE_NOT_SUPPORTED</h2>
+
+Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
+
+<h2 id="VAULT_BYO_SINGLE_WRITER">VAULT_BYO_SINGLE_WRITER</h2>
+
+Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
+
+<h2 id="VAULT_CLIENT_UPGRADE_REQUIRED">VAULT_CLIENT_UPGRADE_REQUIRED</h2>
+
+Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
 
 The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
 
 <h2 id="VAULT_CREATION_CONFLICT">VAULT_CREATION_CONFLICT</h2>
 
-Owner: `public:sdk/src/node/gitvault-creation-journal.ts`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
+Owner: `public:sdk/src/node/vault-creation-journal.ts`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
+
+<h2 id="VAULT_ENVELOPE_RECIPIENT_NOT_ELIGIBLE">VAULT_ENVELOPE_RECIPIENT_NOT_ELIGIBLE</h2>
+
+Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
+
+<h2 id="VAULT_SIGNER_NOT_CONFIGURED">VAULT_SIGNER_NOT_CONFIGURED</h2>
+
+Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
+
+<h2 id="VAULT_STORAGE_NOT_CONFIGURED">VAULT_STORAGE_NOT_CONFIGURED</h2>
+
+Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
 
 The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
 
 <h2 id="VAULT_UNRECOVERABLE">VAULT_UNRECOVERABLE</h2>
 
-Owner: `public:sdk/src/namespaces/gitvault.ts`, `public:sdk/src/node/gitvault-keystore.ts`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
+Owner: `public:sdk/src/namespaces/repos.ts`, `public:sdk/src/node/vault-keystore.ts`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
+
+<h2 id="VAULT_WRITER_NOT_ADMITTED">VAULT_WRITER_NOT_ADMITTED</h2>
+
+Owner: `public:sdk/src/namespaces/repos.ts`, `public:sdk/src/node/vault-writer-state.ts`, `public:cli/lib/orgs.mjs`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
 
 The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
 

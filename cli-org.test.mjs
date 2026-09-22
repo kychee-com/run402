@@ -46,17 +46,17 @@ function safeJson(text) {
   try { return JSON.parse(text); } catch { return text; }
 }
 
-// gitvault-multi-writer task 6.3 — the writer gate's two reads. A test sets
+// vault-multi-writer task 6.3 — the writer gate's two reads. A test sets
 // globalThis.__orgVaults to make the org carry vaults; the record read then
 // answers with a writer_set that does NOT contain this (identity-less) keystore.
 async function mockFetch(input, init) {
   {
     const u = String(input?.url ?? input);
     const m = String(init?.method ?? "GET").toUpperCase();
-    if (m === "GET" && u.includes("/gitvault/v1/vaults?org_id=")) {
+    if (m === "GET" && u.includes("/vaults/v1?org_id=")) {
       return Promise.resolve(json({ vaults: globalThis.__orgVaults ?? [], has_more: false, next_cursor: null }));
     }
-    if (m === "GET" && /\/gitvault\/v1\/vaults\/src_[0-9a-f]+$/.test(u)) {
+    if (m === "GET" && /\/vaults\/v1\/src_[0-9a-f]+$/.test(u)) {
       return Promise.resolve(json({
         repo_id: u.slice(u.lastIndexOf("/") + 1), org_id: "11111111-1111-4111-8111-111111111111", project_id: "prj_v1",
         writer_set: { version: "0000000000000000", sha256: "0".repeat(64), writers: [{ writer_key_id: "vk_" + "a".repeat(32), signing_pubkey: "A".repeat(43) }] },
@@ -253,8 +253,8 @@ describe("run402 orgs", () => {
     assert.deepEqual(lastCall().body, { wallet: TEST_ADDRESS, role: "admin" });
   });
 
-  it("member add REFUSES a writer-eligible add when this session's key is not a writer on one of the org's vaults (gitvault-multi-writer 6.3, decided: refuse)", async () => {
-    globalThis.__orgVaults = [{ repo_id: "src_" + "b".repeat(32), project_id: "prj_v1", project_name: null, repo_name: "notes", org_slug: null, gitvault_policy: "required", newest_generation: "5", source_bytes: "0", genesis_admitted_at: null, created_at: "2026-09-03T00:00:00.000Z" }];
+  it("member add REFUSES a writer-eligible add when this session's key is not a writer on one of the org's vaults (vault-multi-writer 6.3, decided: refuse)", async () => {
+    globalThis.__orgVaults = [{ repo_id: "src_" + "b".repeat(32), project_id: "prj_v1", project_name: null, repo_name: "notes", org_slug: null, vault_policy: "required", newest_generation: "5", source_bytes: "0", genesis_admitted_at: null, created_at: "2026-09-03T00:00:00.000Z" }];
     globalThis.__memberPosts = 0;
     const errs = [];
     try {
@@ -263,7 +263,7 @@ describe("run402 orgs", () => {
       await assert.rejects(runOrg("members", ["add", "11111111-1111-4111-8111-111111111111", TEST_ADDRESS]), (e) => /process\.exit\(1\)/.test(e.message));
       uncapture();
       const out = errs.join("\n");
-      assert.match(out, /GITVAULT_WRITER_NOT_ADMITTED/);
+      assert.match(out, /VAULT_WRITER_NOT_ADMITTED/);
       assert.match(out, /request_writer_sync/);
       assert.match(out, /src_b{32}/);
       // The refusal is BEFORE the add: no POST /members ever happened.
@@ -275,7 +275,7 @@ describe("run402 orgs", () => {
   });
 
   it("member add of a viewer never reaches the writer gate (nothing to admit)", async () => {
-    globalThis.__orgVaults = [{ repo_id: "src_" + "b".repeat(32), project_id: "prj_v1", project_name: null, repo_name: "notes", org_slug: null, gitvault_policy: "required", newest_generation: "5", source_bytes: "0", genesis_admitted_at: null, created_at: "2026-09-03T00:00:00.000Z" }];
+    globalThis.__orgVaults = [{ repo_id: "src_" + "b".repeat(32), project_id: "prj_v1", project_name: null, repo_name: "notes", org_slug: null, vault_policy: "required", newest_generation: "5", source_bytes: "0", genesis_admitted_at: null, created_at: "2026-09-03T00:00:00.000Z" }];
     try {
       capture(); await runOrg("members", ["add", "11111111-1111-4111-8111-111111111111", TEST_ADDRESS, "--role", "viewer"]); uncapture();
       const parsed = JSON.parse(stdout.join("\n"));

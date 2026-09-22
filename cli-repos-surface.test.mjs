@@ -44,7 +44,7 @@ function vaultStatus(overrides = {}) {
     refs: null,
     head_target: null,
     pins: { highest_authenticated: null, highest_materialized: null },
-    gitvault_policy: null,
+    vault_policy: null,
     pending_overrides: 0,
     terminal_loss_statement: "TERMINAL LOSS STATEMENT",
     terminal_loss_detail: "TERMINAL LOSS DETAIL",
@@ -59,9 +59,9 @@ function vaultRecord(overrides = {}) {
     repo_id: REPO,
     project_id: PROJECT,
     org_id: ORG,
-    gitvault_policy: null,
-    gitvault_policy_version: "1",
-    gitvault_policy_changed_at: null,
+    vault_policy: null,
+    vault_policy_version: "1",
+    vault_policy_changed_at: null,
     allocation_generation: "0",
     allocation_sha256: null,
     newest_generation: null,
@@ -144,10 +144,10 @@ mock.module("./cli/lib/sdk.mjs", {
           return (impl.orgGet ?? (async () => ({ org_id: id, display_name: null, slug: null, tier: "prototype", lease_started_at: null, lease_expires_at: null })))(id);
         },
       }),
-      gitvault: {
+      repos: {
         init: async (input) => {
-          calls.push({ method: "gitvault.init", input });
-          return (impl.gitvaultInit ?? (async () => ({
+          calls.push({ method: "repos.init", input });
+          return (impl.vaultInit ?? (async () => ({
             repo_id: REPO,
             project_id: input.project_id,
             recovery_receipt: { format: "r402s/v0", object_kind: "recovery_receipt" },
@@ -158,23 +158,23 @@ mock.module("./cli/lib/sdk.mjs", {
           })))(input);
         },
         status: async (input) => {
-          calls.push({ method: "gitvault.status", input });
-          return (impl.gitvaultStatus ?? (async () => vaultStatus()))(input);
+          calls.push({ method: "repos.status", input });
+          return (impl.vaultStatus ?? (async () => vaultStatus()))(input);
         },
         get: async (repoId) => {
-          calls.push({ method: "gitvault.get", repoId });
-          return (impl.gitvaultGet ?? (async () => vaultRecord()))(repoId);
+          calls.push({ method: "repos.get", repoId });
+          return (impl.vaultGet ?? (async () => vaultRecord()))(repoId);
         },
         forProject: async (projectId) => {
-          calls.push({ method: "gitvault.forProject", projectId });
-          return (impl.gitvaultForProject ?? (async () => vaultRecord({ project_id: projectId })))(projectId);
+          calls.push({ method: "repos.forProject", projectId });
+          return (impl.vaultForProject ?? (async () => vaultRecord({ project_id: projectId })))(projectId);
         },
         listByOrg: async (orgId) => {
-          calls.push({ method: "gitvault.listByOrg", orgId });
-          return (impl.gitvaultListByOrg ?? (async () => { throw notFound("bulk route not shipped"); }))(orgId);
+          calls.push({ method: "repos.listByOrg", orgId });
+          return (impl.vaultListByOrg ?? (async () => { throw notFound("bulk route not shipped"); }))(orgId);
         },
         mirrorStatus: async (target) => {
-          calls.push({ method: "gitvault.mirrorStatus", target });
+          calls.push({ method: "repos.mirrorStatus", target });
           return (impl.mirrorStatus ?? (async () => ({
             repo_id: REPO, configured: false, destination: null, credential_kind: null,
             mirrored_generation: null, newest_generation: null, is_current: null, closing_command: null,
@@ -182,27 +182,27 @@ mock.module("./cli/lib/sdk.mjs", {
           })))(target);
         },
         mirrorSet: async (input) => {
-          calls.push({ method: "gitvault.mirrorSet", input });
+          calls.push({ method: "repos.mirrorSet", input });
           return (impl.mirrorSet ?? (async () => ({ repo_id: REPO, configured: true, destination: { kind: "s3", bucket: "acme", prefix: REPO }, credential_kind: "profile" })))(input);
         },
         mirrorRemove: async (target) => {
-          calls.push({ method: "gitvault.mirrorRemove", target });
+          calls.push({ method: "repos.mirrorRemove", target });
           return (impl.mirrorRemove ?? (async () => ({ repo_id: REPO, removed: true })))(target);
         },
         mirrorSync: async (target) => {
-          calls.push({ method: "gitvault.mirrorSync", target });
+          calls.push({ method: "repos.mirrorSync", target });
           return (impl.mirrorSync ?? (async () => ({ repo_id: REPO, objects_copied: 0, objects_already_present: 0, objects_skipped_foreign_recipient: 0, objects_failed: 0, bytes_copied: "0", errors: [] })))(target);
         },
         setPolicy: async (repoId, input) => {
-          calls.push({ method: "gitvault.setPolicy", repoId, input });
-          return (impl.setPolicy ?? (async () => ({ gitvault_policy: input.gitvault_policy, gitvault_policy_version: "2", changed: true, warnings: [] })))(repoId, input);
+          calls.push({ method: "repos.setPolicy", repoId, input });
+          return (impl.setPolicy ?? (async () => ({ vault_policy: input.vault_policy, vault_policy_version: "2", changed: true, warnings: [] })))(repoId, input);
         },
-        push: async (input) => {
-          calls.push({ method: "gitvault.push", input });
-          return (impl.push ?? (async () => ({ generation: "0000000000000001", form: "wal" })))(input);
+        capture: async (input) => {
+          calls.push({ method: "repos.capture", input });
+          return (impl.capture ?? (async () => ({ generation: "0000000000000001", form: "wal" })))(input);
         },
         handoff: async (input) => {
-          calls.push({ method: "gitvault.handoff", input });
+          calls.push({ method: "repos.handoff", input });
           return (impl.handoff ?? (async () => ({
             handoff_key: "kgh1_" + "A".repeat(64),
             handoff_id: "3fa85f64-5717-4562-b3fc-2c963f66afa6",
@@ -214,19 +214,19 @@ mock.module("./cli/lib/sdk.mjs", {
             capture: { modified_captured: 1, untracked_captured: 1, sensitive_excluded: [".env"], ignored_not_transferred_count: 0 },
             snapshot: { oid: "b".repeat(40) },
             warnings: [{ code: "HANDOFF_KEY_CONFERS_ROLE", message: "Whoever claims this key first becomes an owner of this org and a writer of this vault, permanently. The key works once and expires at 2026-09-02T11:00:00.000Z." }],
-            next_actions: [{ type: "resume_handoff", command: "kygit resume kgh1_…" }, { type: "revoke_handoff" }],
+            next_actions: [{ type: "resume_handoff", command: "run402 repos resume kgh1_…" }, { type: "revoke_handoff" }],
           })))(input);
         },
         listHandoffs: async (target) => {
-          calls.push({ method: "gitvault.listHandoffs", target });
+          calls.push({ method: "repos.listHandoffs", target });
           return (impl.listHandoffs ?? (async () => ({ handoffs: [] })))(target);
         },
         revokeHandoff: async (handoffId, target) => {
-          calls.push({ method: "gitvault.revokeHandoff", handoffId, target });
+          calls.push({ method: "repos.revokeHandoff", handoffId, target });
           return (impl.revokeHandoff ?? (async () => ({ handoff_id: handoffId, state: "revoked" })))(handoffId, target);
         },
         resume: async (input) => {
-          calls.push({ method: "gitvault.resume", input });
+          calls.push({ method: "repos.resume", input });
           return (impl.resume ?? (async () => ({
             handoff_id: "3fa85f64-5717-4562-b3fc-2c963f66afa6",
             kind: "handoff",
@@ -243,7 +243,7 @@ mock.module("./cli/lib/sdk.mjs", {
           })))(input);
         },
         invite: async (input) => {
-          calls.push({ method: "gitvault.invite", input });
+          calls.push({ method: "repos.invite", input });
           return (impl.invite ?? (async () => ({
             invite_key: "kgi1_" + "A".repeat(64),
             invite_id: "3fa85f64-5717-4562-b3fc-2c963f66afa6",
@@ -258,19 +258,19 @@ mock.module("./cli/lib/sdk.mjs", {
             inviter_presence: { registered: true, presence_id: "prs_inviter", name: "Opus" },
             room_message: { posted: true, message_id: "msg_1" },
             warnings: [{ code: "INVITE_KEY_CONFERS_ROLE", message: "Anyone holding this key becomes a developer of this org until first use or 2026-09-02T11:00:00.000Z." }],
-            next_actions: [{ type: "join_invite", command: "kygit join kgi1_…" }, { type: "wait_room", command: "run402 messages wait" }],
+            next_actions: [{ type: "join_invite", command: "run402 repos join kgi1_…" }, { type: "wait_room", command: "run402 messages wait" }],
           })))(input);
         },
         listInvites: async (target) => {
-          calls.push({ method: "gitvault.listInvites", target });
+          calls.push({ method: "repos.listInvites", target });
           return (impl.listInvites ?? (async () => ({ invites: [] })))(target);
         },
         revokeInvite: async (inviteId, target) => {
-          calls.push({ method: "gitvault.revokeInvite", inviteId, target });
+          calls.push({ method: "repos.revokeInvite", inviteId, target });
           return (impl.revokeInvite ?? (async () => ({ invite_id: inviteId, state: "revoked" })))(inviteId, target);
         },
         join: async (input) => {
-          calls.push({ method: "gitvault.join", input });
+          calls.push({ method: "repos.join", input });
           return (impl.join ?? (async () => ({
             invite_id: "3fa85f64-5717-4562-b3fc-2c963f66afa6",
             kind: "invite",
@@ -290,12 +290,12 @@ mock.module("./cli/lib/sdk.mjs", {
             next_actions: [{ type: "push_repo", command: "git push origin main" }, { type: "wait_room", command: "run402 messages wait" }],
           })))(input);
         },
-        planPush: async (input) => {
-          calls.push({ method: "gitvault.planPush", input });
-          return (impl.planPush ?? (async () => ({ allocation_needed: false, would_admit_generation: "0000000000000001", would_admit_generation_decimal: "1", form: "wal", object_count: 1, encrypted_bytes: "10", raw_bytes: "8" })))(input);
+        planCapture: async (input) => {
+          calls.push({ method: "repos.planCapture", input });
+          return (impl.planCapture ?? (async () => ({ allocation_needed: false, would_admit_generation: "0000000000000001", would_admit_generation_decimal: "1", form: "wal", object_count: 1, encrypted_bytes: "10", raw_bytes: "8" })))(input);
         },
         fsck: async (input) => {
-          calls.push({ method: "gitvault.fsck", input });
+          calls.push({ method: "repos.fsck", input });
           return (impl.fsck ?? (async () => ({
             repo_id: REPO, write: input.write ?? true, verified_from_generation: null, verified_to_generation: "0000000000000001",
             local_state_changed: input.write ?? true, pin_before: { highest_authenticated: null, highest_materialized: null },
@@ -304,18 +304,18 @@ mock.module("./cli/lib/sdk.mjs", {
           })))(input);
         },
         compact: async (target) => {
-          calls.push({ method: "gitvault.compact", target });
+          calls.push({ method: "repos.compact", target });
           return (impl.compact ?? (async () => ({
             generation: "0000000000000001", head_sha256: "aa", form: "checkpoint", maintenance_lease_id: null, cutoff_bound: true, covered_refs: 1, covered_roots: 0,
             headroom: { pool_used_bytes: 100, pool_limit_bytes: 1000, vault_source_bytes: 50, projected_transient_bytes: 150, ok: true, overridden: false },
           })))(target);
         },
         compactHeadroom: async (target) => {
-          calls.push({ method: "gitvault.compactHeadroom", target });
+          calls.push({ method: "repos.compactHeadroom", target });
           return (impl.compactHeadroom ?? (async () => ({ pool_used_bytes: 100, pool_limit_bytes: 1000, vault_source_bytes: 50, projected_transient_bytes: 150, ok: true, overridden: false })))(target);
         },
         prune: async (opts) => {
-          calls.push({ method: "gitvault.prune", opts });
+          calls.push({ method: "repos.prune", opts });
           return (impl.prune ?? (async () => ({
             candidates: [], eligible_count: 0, retained_count: 0, object_candidates: [], deferred_object_count: 0,
             blocked_reason: "nothing eligible yet", intent_core: null, intent_core_sha256: null, attestation: null,
@@ -323,14 +323,14 @@ mock.module("./cli/lib/sdk.mjs", {
           })))(opts);
         },
         access: async (target) => {
-          calls.push({ method: "gitvault.access", target });
+          calls.push({ method: "repos.access", target });
           return (impl.access ?? (async () => ({
             repo_id: REPO, org_id: ORG, recipients: [], unmatched_covered_fingerprints: [], stale_access: [],
             envelope_state_available: false, history_scope_available: false, gap: "GAP STATEMENT",
           })))(target);
         },
         rotateEpoch: async (input) => {
-          calls.push({ method: "gitvault.rotateEpoch", input });
+          calls.push({ method: "repos.rotateEpoch", input });
           return (impl.rotateEpoch ?? (async () => ({
             outcome: "admitted", generation: "0000000000000002", head_sha256: "aa".repeat(32), new_epoch: "0000000000000002",
             rotation_id: "bb".repeat(32), reason: input.reason, included: [{ principal_id: "prn_1", ek_fingerprint: "ek_" + "aa".repeat(16) }],
@@ -339,7 +339,7 @@ mock.module("./cli/lib/sdk.mjs", {
           })))(input);
         },
         rotateEpochForKeyRevocation: async (principalId, input) => {
-          calls.push({ method: "gitvault.rotateEpochForKeyRevocation", principalId, input });
+          calls.push({ method: "repos.rotateEpochForKeyRevocation", principalId, input });
           return (impl.rotateEpochForKeyRevocation ?? (async () => ({
             outcome: "admitted", generation: "0000000000000002", head_sha256: "aa".repeat(32), new_epoch: "0000000000000002",
             rotation_id: "bb".repeat(32), reason: "recipient_key_revoked", included: [],
@@ -348,16 +348,16 @@ mock.module("./cli/lib/sdk.mjs", {
           })))(principalId, input);
         },
         declareEpochSecretExposed: async (repoId) => {
-          calls.push({ method: "gitvault.declareEpochSecretExposed", repoId });
+          calls.push({ method: "repos.declareEpochSecretExposed", repoId });
           return (impl.declareEpochSecretExposed ?? (async () => ({ epoch_secret_exposure_version: "1" })))(repoId);
         },
-        // gitvault-multi-writer (rev 47) task 6.4 — `repos access sync`.
+        // vault-multi-writer (rev 47) task 6.4 — `repos access sync`.
         reconcile: async (target) => {
-          calls.push({ method: "gitvault.reconcile", target });
+          calls.push({ method: "repos.reconcile", target });
           return (impl.reconcile ?? (async () => ({ repo_id: REPO, org_id: ORG, eligible: true, admitted: [], already_covered: [], skipped: [] })))(target);
         },
         recover: async (input) => {
-          calls.push({ method: "gitvault.recover", input });
+          calls.push({ method: "repos.recover", input });
           return (impl.recover ?? (async () => ({
             repo_id: REPO, recovered_generation: "0000000000000001", chain_break: null, absences: [], data_loss_detected: false,
             validity_not_freshness: "VALIDITY NOT FRESHNESS", keystore_still_required: "KEYSTORE STILL REQUIRED",
@@ -486,12 +486,12 @@ describe("run402 repos create — provision + allocate + scaffold, zero deploy c
     await createLocalWallet();
   });
 
-  it("provisions, allocates via gitvault.init, and scaffolds the remote", async () => {
+  it("provisions, allocates via repos.init, and scaffolds the remote", async () => {
     const payload = await ok("create", ["my-notes", "--org", ORG]);
     const provisionCall = calls.find((c) => c.method === "projects.provision");
     assert.ok(provisionCall);
     assert.equal(provisionCall.input.name, "my-notes");
-    const initCall = calls.find((c) => c.method === "gitvault.init");
+    const initCall = calls.find((c) => c.method === "repos.init");
     assert.ok(initCall);
     assert.equal(initCall.input.project_id, PROJECT);
     assert.equal(payload.repo_id, REPO);
@@ -505,8 +505,8 @@ describe("run402 repos create — provision + allocate + scaffold, zero deploy c
     assert.equal(pushAction.command, "git push -u origin HEAD");
   });
 
-  it("--nested forwards nested: true to gitvault.init (a monorepo app root becomes its own repository)", async () => {
-    impl.gitvaultInit = async (input) => ({
+  it("--nested forwards nested: true to repos.init (a monorepo app root becomes its own repository)", async () => {
+    impl.vaultInit = async (input) => ({
       repo_id: REPO,
       project_id: input.project_id,
       recovery_receipt: { format: "r402s/v0", object_kind: "recovery_receipt" },
@@ -516,7 +516,7 @@ describe("run402 repos create — provision + allocate + scaffold, zero deploy c
       terminal_loss_statement: "TERMINAL LOSS STATEMENT",
     });
     const payload = await ok("create", ["nested-notes", "--org", ORG, "--nested"]);
-    const initCall = calls.find((c) => c.method === "gitvault.init");
+    const initCall = calls.find((c) => c.method === "repos.init");
     assert.ok(initCall);
     assert.equal(initCall.input.nested, true);
     assert.equal(payload.remote.nested, true);
@@ -527,14 +527,14 @@ describe("run402 repos create — provision + allocate + scaffold, zero deploy c
     assert.equal(payload.next_actions.find((a) => a.type === "create_nested_repo"), undefined);
   });
 
-  it("without --nested, gitvault.init is not asked to nest", async () => {
+  it("without --nested, repos.init is not asked to nest", async () => {
     await ok("create", ["plain-notes", "--org", ORG]);
-    const initCall = calls.find((c) => c.method === "gitvault.init");
+    const initCall = calls.find((c) => c.method === "repos.init");
     assert.equal(initCall.input.nested, undefined);
   });
 
   it("a skipped remote (app root inside another repository) yields no push_repo action, only create_nested_repo", async () => {
-    impl.gitvaultInit = async (input) => ({
+    impl.vaultInit = async (input) => ({
       repo_id: REPO,
       project_id: input.project_id,
       recovery_receipt: { format: "r402s/v0", object_kind: "recovery_receipt" },
@@ -589,17 +589,17 @@ describe("run402 repos create — provision + allocate + scaffold, zero deploy c
       const provisionCall = calls.find((c) => c.method === "projects.provision");
       assert.equal(provisionCall.input.name, "demo-app", "the enclosing origin's basename is not this app's name");
       assert.equal(payload.project_id, PROJECT);
-      const initCall = calls.find((c) => c.method === "gitvault.init");
+      const initCall = calls.find((c) => c.method === "repos.init");
       assert.equal(initCall.input.nested, true);
     } finally {
       process.chdir(prevCwd);
     }
   });
 
-  it("--project adopts an existing project instead of provisioning (absorbs the old `gitvault init`)", async () => {
+  it("--project adopts an existing project instead of provisioning (absorbs the old `vault init`)", async () => {
     const payload = await ok("create", ["--project", PROJECT, "--org", ORG]);
     assert.equal(calls.find((c) => c.method === "projects.provision"), undefined, "must not provision a new project");
-    const initCall = calls.find((c) => c.method === "gitvault.init");
+    const initCall = calls.find((c) => c.method === "repos.init");
     assert.ok(initCall);
     assert.equal(initCall.input.project_id, PROJECT);
     assert.equal(payload.repo_id, REPO);
@@ -713,8 +713,8 @@ describe("run402 repos create — cold-start folding on NO_ACTIVE_TIER (kygit-ha
 
 describe("run402 repos list — bulk read with graceful fallback", () => {
   it("uses the bulk vaults-by-org read when the gateway has it", async () => {
-    impl.gitvaultListByOrg = async (orgId) => ({
-      vaults: [{ repo_id: REPO, project_id: PROJECT, project_name: "fresh", repo_name: "fresh", org_slug: "acme", gitvault_policy: null, newest_generation: null, source_bytes: "0", genesis_admitted_at: null, created_at: "2026-01-01T00:00:00.000Z" }],
+    impl.vaultListByOrg = async (orgId) => ({
+      vaults: [{ repo_id: REPO, project_id: PROJECT, project_name: "fresh", repo_name: "fresh", org_slug: "acme", vault_policy: null, newest_generation: null, source_bytes: "0", genesis_admitted_at: null, created_at: "2026-01-01T00:00:00.000Z" }],
     });
     const payload = await ok("list", ["--org", ORG]);
     assert.equal(calls.find((c) => c.method === "projects.list"), undefined, "the fallback N+1 must not run when the bulk read succeeds");
@@ -724,36 +724,36 @@ describe("run402 repos list — bulk read with graceful fallback", () => {
 
   it("falls back to the per-project walk when the bulk route 404s, and says so", async () => {
     impl.projectsList = async () => ({ projects: [{ id: "prj_a", name: "a", org_id: ORG }, { id: "prj_b", name: "b", org_id: ORG }] });
-    impl.gitvaultStatus = async (input) =>
+    impl.vaultStatus = async (input) =>
       input.project_id === "prj_a"
         ? vaultStatus({ repo_id: "src_a", vault: vaultRecord({ repo_id: "src_a", project_id: "prj_a" }) })
         : vaultStatus({ vault: null });
     const payload = await ok("list", ["--org", ORG]);
-    assert.ok(calls.find((c) => c.method === "gitvault.listByOrg"));
+    assert.ok(calls.find((c) => c.method === "repos.listByOrg"));
     assert.ok(calls.find((c) => c.method === "projects.list"), "fallback must have run");
     assert.equal(payload.repos.length, 1);
     assert.equal(payload.repos[0].project_id, "prj_a");
   });
 
   it("does not fail the whole listing when one bulk row's org has no slug lookup issue", async () => {
-    impl.gitvaultListByOrg = async () => ({ vaults: [] });
+    impl.vaultListByOrg = async () => ({ vaults: [] });
     const payload = await ok("list", ["--org", ORG]);
     assert.deepEqual(payload.repos, []);
   });
 
   it("every JSON result carries a stats block, always on (Observability)", async () => {
-    impl.gitvaultListByOrg = async () => ({ vaults: [] });
+    impl.vaultListByOrg = async () => ({ vaults: [] });
     const payload = await ok("list", ["--org", ORG]);
     assert.deepEqual(payload.stats, { round_trips: 0, wire_ms: 0, bytes_up: 0, bytes_down: 0 });
   });
 
-  // gitvault-multi-writer (rev 47): `writer_set.writers[].admitted_generation`
+  // vault-multi-writer (rev 47): `writer_set.writers[].admitted_generation`
   // is a DECIMAL string on the wire (it is part of the JCS-hashed writer set),
   // unlike the hex16 generations everywhere else — the first live `view
   // --human` on a rev-47 vault died CHAIN_BROKEN "malformed generation: 0"
   // because the roster line hex-parsed it.
   it("view --human renders the writer roster's decimal admitted generations without hex-parsing them", async () => {
-    impl.gitvaultStatus = async () =>
+    impl.vaultStatus = async () =>
       vaultStatus({
         vault: vaultRecord({
           newest_generation: "000000000000000a",
@@ -776,8 +776,8 @@ describe("run402 repos list — bulk read with graceful fallback", () => {
   });
 
   it("--human renders a compact roster instead of JSON, and is rejected with --json", async () => {
-    impl.gitvaultListByOrg = async () => ({
-      vaults: [{ repo_id: REPO, project_id: PROJECT, project_name: "fresh", repo_name: "fresh", org_slug: "acme", gitvault_policy: "required", newest_generation: null, source_bytes: "0", genesis_admitted_at: null, created_at: "2026-01-01T00:00:00.000Z" }],
+    impl.vaultListByOrg = async () => ({
+      vaults: [{ repo_id: REPO, project_id: PROJECT, project_name: "fresh", repo_name: "fresh", org_slug: "acme", vault_policy: "required", newest_generation: null, source_bytes: "0", genesis_admitted_at: null, created_at: "2026-01-01T00:00:00.000Z" }],
     });
     const text = await human("list", ["--org", ORG, "--human"]);
     assert.throws(() => JSON.parse(text), "human output must not itself be valid JSON");
@@ -790,15 +790,15 @@ describe("run402 repos list — bulk read with graceful fallback", () => {
 });
 
 describe("run402 repos view — side-effect-free (design D3)", () => {
-  it("never passes refs:true to gitvault.status", async () => {
+  it("never passes refs:true to repos.status", async () => {
     await ok("view", ["--project", PROJECT]);
-    const statusCall = calls.find((c) => c.method === "gitvault.status");
+    const statusCall = calls.find((c) => c.method === "repos.status");
     assert.ok(statusCall);
     assert.equal(statusCall.input.refs, undefined);
   });
 
   it("reports refs as {known:false, reason:'not_materialized'} with a verify_refs next_action", async () => {
-    impl.gitvaultStatus = async () => vaultStatus({ vault: vaultRecord() });
+    impl.vaultStatus = async () => vaultStatus({ vault: vaultRecord() });
     const payload = await ok("view", ["--project", PROJECT]);
     assert.deepEqual(payload.refs, { known: false, reason: "not_materialized" });
     const verifyRefs = payload.next_actions.find((a) => a.type === "verify_refs");
@@ -807,13 +807,13 @@ describe("run402 repos view — side-effect-free (design D3)", () => {
   });
 
   it("no verify_refs next_action when there is no vault to fsck", async () => {
-    impl.gitvaultStatus = async () => vaultStatus({ vault: null });
+    impl.vaultStatus = async () => vaultStatus({ vault: null });
     const payload = await ok("view", ["--project", PROJECT]);
     assert.equal(payload.next_actions.find((a) => a.type === "verify_refs"), undefined);
   });
 
   it("folds in the mirror summary when one is configured", async () => {
-    impl.gitvaultStatus = async () => vaultStatus({ vault: vaultRecord() });
+    impl.vaultStatus = async () => vaultStatus({ vault: vaultRecord() });
     impl.mirrorStatus = async () => ({ repo_id: REPO, configured: true, destination: "s3://acme/prefix", credential_kind: "profile", mirrored_generation: "0000000000000001", newest_generation: "0000000000000001", is_current: true, closing_command: null, validity_not_freshness: "V", keystore_still_required: "K" });
     const payload = await ok("view", ["--project", PROJECT]);
     assert.equal(payload.mirror.configured, true);
@@ -825,9 +825,9 @@ describe("run402 repos view — side-effect-free (design D3)", () => {
     assert.equal(envelope.code, "BAD_USAGE");
   });
 
-  // gitvault-multi-writer (rev 47) task 6.1 — the --human writer roster.
+  // vault-multi-writer (rev 47) task 6.1 — the --human writer roster.
   it("--human renders a writer roster line per writer, a pending-writers hint, and the read-only-terminal warning when set", async () => {
-    impl.gitvaultStatus = async () => vaultStatus({
+    impl.vaultStatus = async () => vaultStatus({
       vault: vaultRecord({
         writer_set: {
           version: "0000000000000002", sha256: "a".repeat(64),
@@ -849,7 +849,7 @@ describe("run402 repos view — side-effect-free (design D3)", () => {
   });
 
   it("--human surfaces the read-only-terminal warning when the vault has lost its last writer (D228)", async () => {
-    impl.gitvaultStatus = async () => vaultStatus({
+    impl.vaultStatus = async () => vaultStatus({
       vault: vaultRecord({ writer_set: { version: "0000000000000003", sha256: "a".repeat(64), writers: [] }, read_only_terminal: true }),
     });
     const text = await human("view", ["--project", PROJECT, "--human"]);
@@ -858,20 +858,20 @@ describe("run402 repos view — side-effect-free (design D3)", () => {
   });
 
   it("--human omits the writer roster entirely for a pre-rev-47 gateway (writer_set absent from the record)", async () => {
-    impl.gitvaultStatus = async () => vaultStatus({ vault: vaultRecord() }); // no writer_set override — absent, not empty
+    impl.vaultStatus = async () => vaultStatus({ vault: vaultRecord() }); // no writer_set override — absent, not empty
     const text = await human("view", ["--project", PROJECT, "--human"]);
     assert.doesNotMatch(text, /Writers \(/);
   });
 
   it("prints the terminal-loss statement verbatim when the SDK reports a single (or unknown) covering principal", async () => {
-    impl.gitvaultStatus = async () => vaultStatus({ vault: vaultRecord() });
+    impl.vaultStatus = async () => vaultStatus({ vault: vaultRecord() });
     await ok("view", ["--project", PROJECT]);
     assert.ok(stderr.some((line) => line === "TERMINAL LOSS STATEMENT"));
     assert.ok(stderr.some((line) => line === "TERMINAL LOSS DETAIL"));
   });
 
   it("prints the durability sentence instead — never the terminal-loss claim — once the SDK reports >= 2 covering recipients (dogfood item 2)", async () => {
-    impl.gitvaultStatus = async () => vaultStatus({
+    impl.vaultStatus = async () => vaultStatus({
       vault: vaultRecord(),
       terminal_loss_statement: null,
       terminal_loss_detail: null,
@@ -894,10 +894,10 @@ describe("run402 repos rename — absorbs the old `repos name`", () => {
     assert.equal(payload.address, "run402::acme/my-notes");
   });
 
-  it("addresses by --repo, resolving project_id via gitvault.get first", async () => {
-    impl.gitvaultGet = async (repoId) => vaultRecord({ repo_id: repoId, project_id: PROJECT });
+  it("addresses by --repo, resolving project_id via repos.get first", async () => {
+    impl.vaultGet = async (repoId) => vaultRecord({ repo_id: repoId, project_id: PROJECT });
     const payload = await ok("rename", ["my-notes", "--repo", REPO]);
-    assert.ok(calls.find((c) => c.method === "gitvault.get" && c.repoId === REPO));
+    assert.ok(calls.find((c) => c.method === "repos.get" && c.repoId === REPO));
     const setNameCall = calls.find((c) => c.method === "projects.setRepoName");
     assert.equal(setNameCall.id, PROJECT);
     assert.equal(payload.repo_name, "my-notes");
@@ -932,87 +932,87 @@ describe("run402 repos delete — design D9 guard + vault-history confirmation",
   });
 
   it("refuses without --force when the repo holds admitted generations", async () => {
-    impl.gitvaultStatus = async () => vaultStatus({ vault: vaultRecord({ admitted_generations: "12" }) });
+    impl.vaultStatus = async () => vaultStatus({ vault: vaultRecord({ admitted_generations: "12" }) });
     const envelope = await expectFailure("delete", ["--project", PROJECT]);
     assert.equal(envelope.code, "CONFIRMATION_REQUIRED");
     assert.equal(calls.find((c) => c.method === "projects.delete"), undefined);
   });
 
   it("--force proceeds when the repo is repo-only, enumerating deleted_resources", async () => {
-    impl.gitvaultStatus = async () => vaultStatus({ vault: vaultRecord({ admitted_generations: "12" }) });
+    impl.vaultStatus = async () => vaultStatus({ vault: vaultRecord({ admitted_generations: "12" }) });
     const payload = await ok("delete", ["--project", PROJECT, "--force"]);
     assert.equal(payload.deleted, true);
     assert.deepEqual(payload.deleted_resources, ["project", "vault_history"]);
   });
 
-  it("addresses by --repo, resolving project_id via gitvault.get first", async () => {
-    impl.gitvaultGet = async (repoId) => vaultRecord({ repo_id: repoId, project_id: PROJECT });
+  it("addresses by --repo, resolving project_id via repos.get first", async () => {
+    impl.vaultGet = async (repoId) => vaultRecord({ repo_id: repoId, project_id: PROJECT });
     const payload = await ok("delete", ["--repo", REPO]);
     assert.equal(payload.deleted, true);
     assert.ok(calls.find((c) => c.method === "projects.delete" && c.id === PROJECT));
   });
 });
 
-describe("run402 repos snapshot — thin passthrough to gitvault.push", () => {
-  it("publishes via gitvault.push", async () => {
-    const payload = await ok("snapshot", ["--project", PROJECT]);
-    assert.ok(calls.find((c) => c.method === "gitvault.push"));
+describe("run402 repos capture — thin passthrough to repos.capture", () => {
+  it("publishes via repos.capture", async () => {
+    const payload = await ok("capture", ["--project", PROJECT]);
+    assert.ok(calls.find((c) => c.method === "repos.capture"));
     assert.equal(payload.generation, "0000000000000001");
   });
 
-  it("a snapshot-only publish (no branch heads) carries the restore_snapshot_ref next_action (blind-acceptance finding)", async () => {
-    impl.push = async () => ({
+  it("a capture-only publish (no branch heads) carries the restore_capture_ref next_action (blind-acceptance finding)", async () => {
+    impl.capture = async () => ({
       generation: "0000000000000001", form: "wal", refs: { "refs/run402/deploys/latest": "c".repeat(40) },
       head_target: { kind: "detached", oid: "c".repeat(40) }, objects: [], object_count: 1,
-      encrypted_bytes: "10", raw_bytes: "8", gitvault_commit: "c".repeat(40), gitvault_commit_line: "line",
+      encrypted_bytes: "10", raw_bytes: "8", vault_commit: "c".repeat(40), vault_commit_line: "line",
       snapshot: { kind: "head", oid: "c".repeat(40), captured_digest: "d" },
       mirror_push: { outcome: "skipped" }, reconcile_recipients: { outcome: "noop" },
     });
-    const payload = await ok("snapshot", ["--project", PROJECT]);
-    const na = (payload.next_actions ?? []).find((n) => n.type === "restore_snapshot_ref");
-    assert.ok(na, "restore_snapshot_ref next_action present");
+    const payload = await ok("capture", ["--project", PROJECT]);
+    const na = (payload.next_actions ?? []).find((n) => n.type === "restore_capture_ref");
+    assert.ok(na, "restore_capture_ref next_action present");
     assert.match(na.command, /refs\/run402\/deploys\/latest/);
     assert.ok(stderr.some((l) => l.includes("plain clone looks empty")));
   });
 
   it("--dry-run previews via planPush and publishes nothing", async () => {
-    const payload = await ok("snapshot", ["--project", PROJECT, "--dry-run"]);
-    assert.ok(calls.find((c) => c.method === "gitvault.planPush"));
-    assert.equal(calls.find((c) => c.method === "gitvault.push"), undefined);
+    const payload = await ok("capture", ["--project", PROJECT, "--dry-run"]);
+    assert.ok(calls.find((c) => c.method === "repos.planCapture"));
+    assert.equal(calls.find((c) => c.method === "repos.capture"), undefined);
     assert.equal(payload.allocation_needed, false);
   });
 
-  it("--allow-dirty threads opts.snapshot.allowDirty through to gitvault.push, and discloses what was captured", async () => {
-    impl.push = async (input) => ({
+  it("--allow-dirty threads opts.snapshot.allowDirty through to repos.capture, and discloses what was captured", async () => {
+    impl.capture = async (input) => ({
       generation: "0000000000000001", form: "wal",
       snapshot: { modified_captured: ["app.js"], untracked_captured: ["scratch.txt"] },
     });
-    await ok("snapshot", ["--project", PROJECT, "--allow-dirty"]);
-    const pushCall = calls.find((c) => c.method === "gitvault.push");
+    await ok("capture", ["--project", PROJECT, "--allow-dirty"]);
+    const pushCall = calls.find((c) => c.method === "repos.capture");
     assert.equal(pushCall.input.snapshot.allowDirty, true);
     assert.ok(stderr.some((line) => line === "captured (modified): app.js"));
     assert.ok(stderr.some((line) => line === "captured (untracked): scratch.txt"));
   });
 
   it("--message and --allow-dirty combine into a single opts.snapshot object", async () => {
-    await ok("snapshot", ["--project", PROJECT, "--message", "wip", "--allow-dirty"]);
-    const pushCall = calls.find((c) => c.method === "gitvault.push");
+    await ok("capture", ["--project", PROJECT, "--message", "wip", "--allow-dirty"]);
+    const pushCall = calls.find((c) => c.method === "repos.capture");
     assert.deepEqual(pushCall.input.snapshot, { message: "wip", allowDirty: true });
   });
 
   it("-v prints a stats summary line to stderr", async () => {
-    await ok("snapshot", ["--project", PROJECT, "-v"]);
+    await ok("capture", ["--project", PROJECT, "-v"]);
     assert.ok(stderr.some((line) => line.startsWith("stats: round_trips=")));
   });
 });
 
-describe("run402 repos snapshot --dry-run — flood fix (dogfood item 1)", () => {
+describe("run402 repos capture --dry-run — flood fix (dogfood item 1)", () => {
   function bigCaptured(n) {
     return Array.from({ length: n }, (_, i) => ({ path: `file${i}.txt`, mode: "100644", oid: "a".repeat(40) }));
   }
 
   it("default output summarizes instead of inlining the full captured-file inventory", async () => {
-    impl.planPush = async () => ({
+    impl.planCapture = async () => ({
       allocation_needed: false, would_admit_generation: "0000000000000002", would_admit_generation_decimal: "2",
       form: "wal", object_count: 1, encrypted_bytes: "1284", raw_bytes: "1180",
       snapshot: {
@@ -1021,7 +1021,7 @@ describe("run402 repos snapshot --dry-run — flood fix (dogfood item 1)", () =>
         modified_captured: [], untracked_captured: [], paths: [], top_level: "/repo", global_excludes_path: null,
       },
     });
-    const payload = await ok("snapshot", ["--project", PROJECT, "--dry-run"]);
+    const payload = await ok("capture", ["--project", PROJECT, "--dry-run"]);
     assert.equal(payload.files_total, 3042);
     assert.equal(payload.files_changed, 0);
     assert.equal(payload.files_new, 0);
@@ -1045,7 +1045,7 @@ describe("run402 repos snapshot --dry-run — flood fix (dogfood item 1)", () =>
 
   it("changed_paths caps at 200 with an explicit changed_more overflow, never silent truncation", async () => {
     const untracked = Array.from({ length: 250 }, (_, i) => `new${String(i).padStart(4, "0")}.txt`);
-    impl.planPush = async () => ({
+    impl.planCapture = async () => ({
       allocation_needed: false, would_admit_generation: "0000000000000002", would_admit_generation_decimal: "2",
       form: "wal", object_count: 1, encrypted_bytes: "1284", raw_bytes: "1180",
       snapshot: {
@@ -1054,7 +1054,7 @@ describe("run402 repos snapshot --dry-run — flood fix (dogfood item 1)", () =>
         modified_captured: [], untracked_captured: untracked, paths: [], top_level: "/repo", global_excludes_path: null,
       },
     });
-    const payload = await ok("snapshot", ["--project", PROJECT, "--dry-run"]);
+    const payload = await ok("capture", ["--project", PROJECT, "--dry-run"]);
     assert.equal(payload.files_new, 250);
     assert.equal(payload.changed_paths.length, 200);
     assert.equal(payload.changed_more, 50);
@@ -1063,7 +1063,7 @@ describe("run402 repos snapshot --dry-run — flood fix (dogfood item 1)", () =>
   it("--manifest-out writes the complete untouched inventory to a file and names it in manifest_path", async () => {
     const dir = mkdtempSync(join(tmpdir(), "run402-manifest-out-"));
     const outPath = join(dir, "plan.json");
-    impl.planPush = async () => ({
+    impl.planCapture = async () => ({
       allocation_needed: false, would_admit_generation: "0000000000000002", would_admit_generation_decimal: "2",
       form: "wal", object_count: 1, encrypted_bytes: "1284", raw_bytes: "1180",
       snapshot: {
@@ -1072,7 +1072,7 @@ describe("run402 repos snapshot --dry-run — flood fix (dogfood item 1)", () =>
         modified_captured: [], untracked_captured: [], paths: [], top_level: "/repo", global_excludes_path: null,
       },
     });
-    const payload = await ok("snapshot", ["--project", PROJECT, "--dry-run", "--manifest-out", outPath]);
+    const payload = await ok("capture", ["--project", PROJECT, "--dry-run", "--manifest-out", outPath]);
     assert.equal(payload.manifest_path, outPath);
     assert.equal(payload.snapshot.captured, undefined); // stdout still summarized
     const written = JSON.parse(readFileSync(outPath, "utf-8"));
@@ -1081,7 +1081,7 @@ describe("run402 repos snapshot --dry-run — flood fix (dogfood item 1)", () =>
   });
 
   it("-v/--verbose inlines the full inventory in the JSON in addition to the stats line", async () => {
-    impl.planPush = async () => ({
+    impl.planCapture = async () => ({
       allocation_needed: false, would_admit_generation: "0000000000000002", would_admit_generation_decimal: "2",
       form: "wal", object_count: 1, encrypted_bytes: "1284", raw_bytes: "1180",
       snapshot: {
@@ -1090,14 +1090,14 @@ describe("run402 repos snapshot --dry-run — flood fix (dogfood item 1)", () =>
         modified_captured: [], untracked_captured: [], paths: [], top_level: "/repo", global_excludes_path: null,
       },
     });
-    const payload = await ok("snapshot", ["--project", PROJECT, "--dry-run", "-v"]);
+    const payload = await ok("capture", ["--project", PROJECT, "--dry-run", "-v"]);
     assert.equal(payload.snapshot.captured.length, 10); // fully inlined under -v
     assert.equal(payload.files_total, 10); // summary fields compose, they don't disappear
     assert.ok(stderr.some((line) => line.startsWith("stats: round_trips=")));
   });
 
   it("a real (non-dry-run) snapshot gets the same summarize-by-default treatment", async () => {
-    impl.push = async () => ({
+    impl.capture = async () => ({
       generation: "0000000000000001", form: "wal",
       snapshot: {
         kind: "head", oid: "deadbeef", tree_oid: "treeoid", head: { kind: "symref", ref: "refs/heads/main" },
@@ -1105,7 +1105,7 @@ describe("run402 repos snapshot --dry-run — flood fix (dogfood item 1)", () =>
         modified_captured: [], untracked_captured: [], paths: [], top_level: "/repo", global_excludes_path: null,
       },
     });
-    const payload = await ok("snapshot", ["--project", PROJECT]);
+    const payload = await ok("capture", ["--project", PROJECT]);
     assert.equal(payload.files_total, 3042);
     assert.equal(payload.snapshot.captured, undefined);
   });
@@ -1119,32 +1119,32 @@ describe("run402 repos policy", () => {
 
   it("required needs no reason and calls setPolicy", async () => {
     const payload = await ok("policy", ["required", "--project", PROJECT]);
-    assert.ok(calls.find((c) => c.method === "gitvault.setPolicy"));
-    assert.equal(payload.gitvault_policy, "required");
+    assert.ok(calls.find((c) => c.method === "repos.setPolicy"));
+    assert.equal(payload.vault_policy, "required");
   });
 });
 
 describe("run402 repos mirror — one flag-driven verb (design D4)", () => {
   it("no-arg reads (mirrorStatus)", async () => {
     await ok("mirror", ["--project", PROJECT]);
-    assert.ok(calls.find((c) => c.method === "gitvault.mirrorStatus"));
+    assert.ok(calls.find((c) => c.method === "repos.mirrorStatus"));
   });
 
   it("<destination> upserts (mirrorSet)", async () => {
     await ok("mirror", ["s3://acme-bucket", "--profile", "acme", "--project", PROJECT]);
-    const setCall = calls.find((c) => c.method === "gitvault.mirrorSet");
+    const setCall = calls.find((c) => c.method === "repos.mirrorSet");
     assert.ok(setCall);
     assert.equal(setCall.input.destination_url, "s3://acme-bucket");
   });
 
   it("--off removes config only (mirrorRemove)", async () => {
     await ok("mirror", ["--off", "--project", PROJECT]);
-    assert.ok(calls.find((c) => c.method === "gitvault.mirrorRemove"));
+    assert.ok(calls.find((c) => c.method === "repos.mirrorRemove"));
   });
 
   it("--backfill syncs (mirrorSync)", async () => {
     await ok("mirror", ["--backfill", "--project", PROJECT]);
-    assert.ok(calls.find((c) => c.method === "gitvault.mirrorSync"));
+    assert.ok(calls.find((c) => c.method === "repos.mirrorSync"));
   });
 
   it("rejects combining <destination> with --off", async () => {
@@ -1161,7 +1161,7 @@ describe("run402 repos mirror — one flag-driven verb (design D4)", () => {
 describe("run402 repos fsck — absorbs verify + mirror verify (design D2/D3)", () => {
   it("writes by default and reports local_state_changed", async () => {
     const payload = await ok("fsck", ["--project", PROJECT]);
-    const fsckCall = calls.find((c) => c.method === "gitvault.fsck");
+    const fsckCall = calls.find((c) => c.method === "repos.fsck");
     assert.equal(fsckCall.input.write, true);
     assert.equal(payload.local_state_changed, true);
   });
@@ -1173,20 +1173,20 @@ describe("run402 repos fsck — absorbs verify + mirror verify (design D2/D3)", 
       pin_after: { highest_authenticated: null, highest_materialized: null }, refs: {}, head_target: null, mirror: null,
     });
     const payload = await ok("fsck", ["--project", PROJECT, "--no-write"]);
-    const fsckCall = calls.find((c) => c.method === "gitvault.fsck");
+    const fsckCall = calls.find((c) => c.method === "repos.fsck");
     assert.equal(fsckCall.input.write, false);
     assert.equal(payload.local_state_changed, false);
   });
 
   it("--mirror requests the keyless mirror probe too", async () => {
     await ok("fsck", ["--project", PROJECT, "--mirror"]);
-    const fsckCall = calls.find((c) => c.method === "gitvault.fsck");
+    const fsckCall = calls.find((c) => c.method === "repos.fsck");
     assert.equal(fsckCall.input.mirror, true);
   });
 
   it("--budget threads through as verification_budget", async () => {
     await ok("fsck", ["--project", PROJECT, "--budget", "50"]);
-    const fsckCall = calls.find((c) => c.method === "gitvault.fsck");
+    const fsckCall = calls.find((c) => c.method === "repos.fsck");
     assert.equal(fsckCall.input.verification_budget, 50);
   });
 
@@ -1200,7 +1200,7 @@ describe("run402 repos fsck — absorbs verify + mirror verify (design D2/D3)", 
   });
 });
 
-describe("run402 repos fsck — BYO presence check (gitvault-byo-primary-bucket task 3.3)", () => {
+describe("run402 repos fsck — BYO presence check (vault-byo-primary-bucket task 3.3)", () => {
   const BYO_DESTINATION = `s3://acme-bucket/prefix/source/${REPO}`;
 
   it("a MANAGED vault: no byo_presence key in JSON output, and no BYO line in --human — byte-identical to before this task (the default fixture never sets byo_presence)", async () => {
@@ -1242,7 +1242,7 @@ describe("run402 repos fsck — BYO presence check (gitvault-byo-primary-bucket 
     assert.match(text, /BYO storage: NOT CHECKED — no local BYO destination credentials/);
   });
 
-  it("a BYO vault with a missing object: fsck FAILS (nonzero exit) with the structured GITVAULT_BYO_OBJECT_MISSING finding naming exactly what's absent", async () => {
+  it("a BYO vault with a missing object: fsck FAILS (nonzero exit) with the structured VAULT_BYO_OBJECT_MISSING finding naming exactly what's absent", async () => {
     const missing = [{ key: `source/${REPO}/wal/wal_00000001.pack.enc`, object_kind: "wal_pack" }];
     impl.fsck = async () => {
       throw Object.assign(new Error(`the BYO destination for ${REPO} (${BYO_DESTINATION}) is missing 1 object(s) run402's own signed chain says should exist`), {
@@ -1250,17 +1250,17 @@ describe("run402 repos fsck — BYO presence check (gitvault-byo-primary-bucket 
         name: "LocalError",
         kind: "local_error",
         status: null,
-        code: "GITVAULT_BYO_OBJECT_MISSING",
+        code: "VAULT_BYO_OBJECT_MISSING",
         details: { repo_id: REPO, destination: BYO_DESTINATION, checked_count: 40, missing_count: 1, missing, missing_truncated: false },
         body: {
-          code: "GITVAULT_BYO_OBJECT_MISSING",
+          code: "VAULT_BYO_OBJECT_MISSING",
           details: { repo_id: REPO, destination: BYO_DESTINATION, checked_count: 40, missing_count: 1, missing, missing_truncated: false },
         },
         nextActions: [{ action: "restore the listed object(s) to the destination bucket from your own backup, or run `run402 repos mirror <destination>` to add a second customer-held copy" }],
       });
     };
     const envelope = await expectFailure("fsck", ["--project", PROJECT]);
-    assert.equal(envelope.code, "GITVAULT_BYO_OBJECT_MISSING");
+    assert.equal(envelope.code, "VAULT_BYO_OBJECT_MISSING");
     assert.equal(envelope.details.repo_id, REPO);
     assert.equal(envelope.details.destination, BYO_DESTINATION);
     assert.equal(envelope.details.missing_count, 1);
@@ -1272,8 +1272,8 @@ describe("run402 repos fsck — BYO presence check (gitvault-byo-primary-bucket 
 describe("run402 repos gc — absorbs compact + prune, never described as exactly git gc (design D2)", () => {
   it("plans by default: compact then prune, no submit", async () => {
     const payload = await ok("gc", ["--project", PROJECT]);
-    assert.ok(calls.find((c) => c.method === "gitvault.compact"));
-    const pruneCall = calls.find((c) => c.method === "gitvault.prune");
+    assert.ok(calls.find((c) => c.method === "repos.compact"));
+    const pruneCall = calls.find((c) => c.method === "repos.prune");
     assert.ok(pruneCall);
     assert.equal(pruneCall.opts.submit, undefined);
     assert.equal(payload.phase, "planned");
@@ -1311,21 +1311,21 @@ describe("run402 repos gc — absorbs compact + prune, never described as exactl
       submitted: true, intent: { id: "int_1" }, confirmation: null, note: "submitted",
     });
     const payload = await ok("gc", ["--project", PROJECT, "--submit", "--intent-core", corePath, "--verifier-receipt", receiptPath]);
-    assert.equal(calls.find((c) => c.method === "gitvault.compact"), undefined, "must not compact during --submit");
-    const pruneCall = calls.find((c) => c.method === "gitvault.prune");
+    assert.equal(calls.find((c) => c.method === "repos.compact"), undefined, "must not compact during --submit");
+    const pruneCall = calls.find((c) => c.method === "repos.prune");
     assert.ok(pruneCall.opts.submit.core);
     assert.ok(pruneCall.opts.submit.verifier_receipt);
     assert.equal(payload.phase, "submitted");
   });
 
-  it("surfaces the gateway's own refusal verbatim through the CLI wrapper — not the opaque GITVAULT_PRUNE_SUBMIT_FAILED fallback (kychee-com/run402#578 fix 1)", async () => {
+  it("surfaces the gateway's own refusal verbatim through the CLI wrapper — not the opaque VAULT_PRUNE_SUBMIT_FAILED fallback (kychee-com/run402#578 fix 1)", async () => {
     const { writeFileSync } = await import("node:fs");
     const corePath = join(scratch, "core-refusal.json");
     const receiptPath = join(scratch, "receipt-refusal.json");
     writeFileSync(corePath, JSON.stringify({ nonce: "n" }));
     writeFileSync(receiptPath, JSON.stringify({ verifier: "r402s-verify" }));
     // Shaped exactly like a real LocalError thrown by the fixed
-    // `submitPruneIntent` (sdk/src/node/gitvault-publication.ts): `code` +
+    // `submitPruneIntent` (sdk/src/node/vault-publication.ts): `code` +
     // `message` are the gateway's own (here, the 90-day retention floor),
     // `details` carries the gateway's `ineligible` list verbatim plus this
     // wrapper's own `http_status`/`trace_id` context. `status` stays `null`
@@ -1345,7 +1345,7 @@ describe("run402 repos gc — absorbs compact + prune, never described as exactl
     };
     const envelope = await expectFailure("gc", ["--project", PROJECT, "--submit", "--intent-core", corePath, "--verifier-receipt", receiptPath]);
     assert.equal(envelope.code, "UPGRADE_REQUIRED");
-    assert.notEqual(envelope.code, "GITVAULT_PRUNE_SUBMIT_FAILED");
+    assert.notEqual(envelope.code, "VAULT_PRUNE_SUBMIT_FAILED");
     assert.match(envelope.message, /retention-eligible/);
     assert.ok(envelope.details);
     assert.deepEqual(envelope.details.ineligible, [{ object_id: objectId, lifecycle_state: "active" }]);
@@ -1353,7 +1353,7 @@ describe("run402 repos gc — absorbs compact + prune, never described as exactl
   });
 });
 
-describe("run402 repos gc — transient-storage headroom disclosure (gitvault-compaction-headroom-preflight)", () => {
+describe("run402 repos gc — transient-storage headroom disclosure (vault-compaction-headroom-preflight)", () => {
   it("carries the headroom block on the planning half, even when everything fits", async () => {
     const payload = await ok("gc", ["--project", PROJECT]);
     assert.deepEqual(payload.headroom, {
@@ -1363,10 +1363,10 @@ describe("run402 repos gc — transient-storage headroom disclosure (gitvault-co
 
   it("--force-headroom reaches the SDK as ignoreHeadroom, and is absent without the flag", async () => {
     await ok("gc", ["--project", PROJECT, "--force-headroom"]);
-    assert.equal(calls.find((c) => c.method === "gitvault.compact").target.ignoreHeadroom, true);
+    assert.equal(calls.find((c) => c.method === "repos.compact").target.ignoreHeadroom, true);
     calls.length = 0;
     await ok("gc", ["--project", PROJECT]);
-    assert.equal(calls.find((c) => c.method === "gitvault.compact").target.ignoreHeadroom, undefined);
+    assert.equal(calls.find((c) => c.method === "repos.compact").target.ignoreHeadroom, undefined);
   });
 
   it("discloses headroom on the --submit half too, where no compaction runs", async () => {
@@ -1381,8 +1381,8 @@ describe("run402 repos gc — transient-storage headroom disclosure (gitvault-co
       submitted: true, intent: { id: "int_1" }, confirmation: null, note: "submitted",
     });
     const payload = await ok("gc", ["--project", PROJECT, "--submit", "--intent-core", corePath, "--verifier-receipt", receiptPath]);
-    assert.equal(calls.find((c) => c.method === "gitvault.compact"), undefined, "still must not compact during --submit");
-    assert.ok(calls.find((c) => c.method === "gitvault.compactHeadroom"), "submit reads headroom standalone");
+    assert.equal(calls.find((c) => c.method === "repos.compact"), undefined, "still must not compact during --submit");
+    assert.ok(calls.find((c) => c.method === "repos.compactHeadroom"), "submit reads headroom standalone");
     assert.equal(payload.headroom.pool_limit_bytes, 1000);
   });
 
@@ -1407,7 +1407,7 @@ describe("run402 repos access — read-only; repair/revoke-key/declare-exposure 
     const payload = await ok("access", ["--project", PROJECT]);
     assert.equal(payload.recipients.length, 1);
     assert.equal(payload.envelope_state_available, false);
-    assert.equal(calls.find((c) => c.method === "gitvault.reconcileEnvelopeRecipients"), undefined, "access must never wrap a key");
+    assert.equal(calls.find((c) => c.method === "repos.reconcileEnvelopeRecipients"), undefined, "access must never wrap a key");
   });
 
   it("--human renders a compact roster instead of JSON, and is rejected with --json", async () => {
@@ -1458,19 +1458,19 @@ describe("run402 repos access — read-only; repair/revoke-key/declare-exposure 
     assert.ok(envelope.next_actions.some((a) => a.command === "run402 repos access revoke-key <principal_id>"));
   });
 
-  it("access repair drives gitvault.rotateEpoch with reason:elective_rekey when the two counter flags are supplied", async () => {
+  it("access repair drives repos.rotateEpoch with reason:elective_rekey when the two counter flags are supplied", async () => {
     const payload = await ok("access", ["repair", "--project", PROJECT, "--recipient-state-version", "3", "--recipient-revocation-version", "1"]);
     assert.equal(payload.outcome, "admitted");
-    const call = calls.find((c) => c.method === "gitvault.rotateEpoch");
+    const call = calls.find((c) => c.method === "repos.rotateEpoch");
     assert.equal(call.input.reason, "elective_rekey");
     assert.equal(call.input.recipient_state_version, "3");
     assert.equal(call.input.recipient_revocation_version, "1");
   });
 
-  it("access revoke-key <principal_id> drives gitvault.rotateEpochForKeyRevocation — no flags needed", async () => {
+  it("access revoke-key <principal_id> drives repos.rotateEpochForKeyRevocation — no flags needed", async () => {
     const payload = await ok("access", ["revoke-key", "prn_compromised", "--project", PROJECT]);
     assert.equal(payload.outcome, "admitted");
-    const call = calls.find((c) => c.method === "gitvault.rotateEpochForKeyRevocation");
+    const call = calls.find((c) => c.method === "repos.rotateEpochForKeyRevocation");
     assert.equal(call.principalId, "prn_compromised");
   });
 
@@ -1479,22 +1479,22 @@ describe("run402 repos access — read-only; repair/revoke-key/declare-exposure 
     assert.equal(envelope.code, "BAD_USAGE");
   });
 
-  it("access declare-exposure drives gitvault.declareEpochSecretExposed and names the follow-up rotation is not automatic", async () => {
+  it("access declare-exposure drives repos.declareEpochSecretExposed and names the follow-up rotation is not automatic", async () => {
     const payload = await ok("access", ["declare-exposure", "--project", PROJECT]);
     assert.equal(payload.epoch_secret_exposure_version, "1");
     assert.ok(stderr.some((line) => line.includes("DOES NOT ROTATE")));
-    const call = calls.find((c) => c.method === "gitvault.declareEpochSecretExposed");
+    const call = calls.find((c) => c.method === "repos.declareEpochSecretExposed");
     assert.equal(call.repoId, REPO);
   });
 
-  // gitvault-multi-writer (rev 47) task 6.4 — `repos access sync`.
+  // vault-multi-writer (rev 47) task 6.4 — `repos access sync`.
   describe("access sync — the on-demand writer reconcile", () => {
-    it("drives gitvault.reconcile with the resolved target and admits a pending candidate", async () => {
+    it("drives repos.reconcile with the resolved target and admits a pending candidate", async () => {
       impl.reconcile = async () => ({ repo_id: REPO, org_id: ORG, eligible: true, admitted: [{ writer_key_id: "vk_bob", principal_id: "prin_bob", generation: "0000000000000003" }], already_covered: [], skipped: [] });
       const payload = await ok("access", ["sync", "--project", PROJECT]);
       assert.deepEqual(payload.admitted.map((a) => a.writer_key_id), ["vk_bob"]);
       assert.ok(stderr.some((l) => l.includes("admitted vk_bob (prin_bob) at generation 0000000000000003")));
-      const call = calls.find((c) => c.method === "gitvault.reconcile");
+      const call = calls.find((c) => c.method === "repos.reconcile");
       assert.equal(call.target.project_id, PROJECT);
     });
 
@@ -1523,9 +1523,9 @@ describe("run402 repos recover — kept, D10 confirms the name", () => {
     assert.equal(envelope.code, "BAD_USAGE");
   });
 
-  it("passes source + out_dir through to gitvault.recover", async () => {
+  it("passes source + out_dir through to repos.recover", async () => {
     const payload = await ok("recover", ["s3://acme-bucket", "--out", join(scratch, "restored")]);
-    const recoverCall = calls.find((c) => c.method === "gitvault.recover");
+    const recoverCall = calls.find((c) => c.method === "repos.recover");
     assert.equal(recoverCall.input.source, "s3://acme-bucket");
     assert.equal(payload.repo_id, REPO);
   });
@@ -1550,15 +1550,15 @@ describe("run402 repos recover — kept, D10 confirms the name", () => {
   });
 });
 
-describe("run402 repos snapshot — compact_advised next_action (gitvault-clone-scaling P3)", () => {
+describe("run402 repos capture — compact_advised next_action (vault-clone-scaling P3)", () => {
   it("an advised staleness on the publish result surfaces as a compact_advised next_action naming repos gc", async () => {
-    impl.push = async () => ({
+    impl.capture = async () => ({
       generation: "000000000000001b", form: "wal", refs: { "refs/heads/main": "c".repeat(40) },
       checkpoint_staleness: { generations_since_checkpoint: 27, advised: true },
       snapshot: { kind: "head", oid: "c".repeat(40), captured_digest: "d" },
       mirror_push: { outcome: "skipped" }, reconcile_recipients: { outcome: "noop" },
     });
-    const payload = await ok("snapshot", ["--project", PROJECT]);
+    const payload = await ok("capture", ["--project", PROJECT]);
     const na = (payload.next_actions ?? []).find((n) => n.type === "compact_advised");
     assert.ok(na, "compact_advised next_action present");
     assert.equal(na.command, "run402 repos gc");
@@ -1566,13 +1566,13 @@ describe("run402 repos snapshot — compact_advised next_action (gitvault-clone-
   });
 
   it("under-threshold (or unknown) staleness adds nothing — the advisory never fires quietly wrong", async () => {
-    impl.push = async () => ({
+    impl.capture = async () => ({
       generation: "0000000000000002", form: "wal", refs: { "refs/heads/main": "c".repeat(40) },
       checkpoint_staleness: { generations_since_checkpoint: 2, advised: false },
       snapshot: { kind: "head", oid: "c".repeat(40), captured_digest: "d" },
       mirror_push: { outcome: "skipped" }, reconcile_recipients: { outcome: "noop" },
     });
-    const payload = await ok("snapshot", ["--project", PROJECT]);
+    const payload = await ok("capture", ["--project", PROJECT]);
     assert.equal((payload.next_actions ?? []).find((n) => n.type === "compact_advised"), undefined);
   });
 });
@@ -1593,11 +1593,11 @@ function writeNoteFile(note) {
 const HANDOFF_KEY = "kgh1_" + "A".repeat(64);
 
 describe("run402 repos handoff — mint a single-use Handoff Key (design D3/D10)", () => {
-  it("mints via gitvault.handoff, passing the resolved target + note + a commit-line callback", async () => {
+  it("mints via repos.handoff, passing the resolved target + note + a commit-line callback", async () => {
     const notePath = writeNoteFile({ summary: "made progress on the thing" });
     const payload = await ok("handoff", ["--project", PROJECT, "--note-file", notePath, "--json"]);
-    const call = calls.find((c) => c.method === "gitvault.handoff");
-    assert.ok(call, "gitvault.handoff must be called");
+    const call = calls.find((c) => c.method === "repos.handoff");
+    assert.ok(call, "repos.handoff must be called");
     assert.equal(call.input.project_id, PROJECT);
     assert.equal(call.input.note.summary, "made progress on the thing");
     assert.equal(call.input.note.schema, "kygit.handoff-note.v1");
@@ -1610,7 +1610,7 @@ describe("run402 repos handoff — mint a single-use Handoff Key (design D3/D10)
     const text = await human("handoff", ["--project", PROJECT, "--note-file", notePath]);
     assert.equal(text.trim(), HANDOFF_KEY, "bare stdout must be exactly the key, so `KEY=$(run402 repos handoff ...)` works");
     assert.ok(stderr.some((l) => l.includes("handoff minted: role owner")));
-    assert.ok(stderr.some((l) => l.includes("recipient runs: kygit resume")));
+    assert.ok(stderr.some((l) => l.includes("recipient runs: run402 repos resume")));
     // The key itself must never be echoed on stderr — only stdout carries it.
     assert.equal(stderr.some((l) => l.includes(HANDOFF_KEY)), false, "the Handoff Key must never appear on stderr");
   });
@@ -1621,24 +1621,24 @@ describe("run402 repos handoff — mint a single-use Handoff Key (design D3/D10)
     assert.ok(stderr.some((l) => l === "Whoever claims this key first becomes an owner of this org and a writer of this vault, permanently. The key works once and expires at 2026-09-02T11:00:00.000Z."));
   });
 
-  // gitvault-multi-writer (rev 47) task 6.4.
+  // vault-multi-writer (rev 47) task 6.4.
   it("prints the writer-admission sentence to stderr — a handoff mints a NEW writer, not just a checkout pass", async () => {
     const notePath = writeNoteFile({ summary: "wip" });
     await human("handoff", ["--project", PROJECT, "--note-file", notePath]);
     assert.ok(stderr.some((l) => l.includes("becomes a WRITER on this vault")));
   });
 
-  it("--role threads through to gitvault.handoff", async () => {
+  it("--role threads through to repos.handoff", async () => {
     const notePath = writeNoteFile({ summary: "wip" });
     await ok("handoff", ["--project", PROJECT, "--note-file", notePath, "--role", "admin", "--json"]);
-    const call = calls.find((c) => c.method === "gitvault.handoff");
+    const call = calls.find((c) => c.method === "repos.handoff");
     assert.equal(call.input.role, "admin");
   });
 
-  it("--ttl threads through to gitvault.handoff as ttlSeconds", async () => {
+  it("--ttl threads through to repos.handoff as ttlSeconds", async () => {
     const notePath = writeNoteFile({ summary: "wip" });
     await ok("handoff", ["--project", PROJECT, "--note-file", notePath, "--ttl", "600", "--json"]);
-    const call = calls.find((c) => c.method === "gitvault.handoff");
+    const call = calls.find((c) => c.method === "repos.handoff");
     assert.equal(call.input.ttlSeconds, 600);
   });
 
@@ -1646,32 +1646,32 @@ describe("run402 repos handoff — mint a single-use Handoff Key (design D3/D10)
     const notePath = writeNoteFile({ summary: "wip" });
     const envelope = await expectFailure("handoff", ["--project", PROJECT, "--note-file", notePath, "--ttl", "10"]);
     assert.equal(envelope.code, "BAD_FLAG");
-    assert.equal(calls.find((c) => c.method === "gitvault.handoff"), undefined);
+    assert.equal(calls.find((c) => c.method === "repos.handoff"), undefined);
   });
 
   it("repeated --include-sensitive collects into includeSensitive[]", async () => {
     const notePath = writeNoteFile({ summary: "wip" });
     await ok("handoff", ["--project", PROJECT, "--note-file", notePath, "--include-sensitive", ".env", "--include-sensitive", "secrets.yml", "--json"]);
-    const call = calls.find((c) => c.method === "gitvault.handoff");
+    const call = calls.find((c) => c.method === "repos.handoff");
     assert.deepEqual(call.input.includeSensitive, [".env", "secrets.yml"]);
   });
 
-  it("--list calls gitvault.listHandoffs with the resolved target and never mints", async () => {
+  it("--list calls repos.listHandoffs with the resolved target and never mints", async () => {
     const payload = await ok("handoff", ["--project", PROJECT, "--list"]);
-    const listCall = calls.find((c) => c.method === "gitvault.listHandoffs");
+    const listCall = calls.find((c) => c.method === "repos.listHandoffs");
     assert.ok(listCall);
     assert.equal(listCall.target.project_id, PROJECT);
-    assert.equal(calls.find((c) => c.method === "gitvault.handoff"), undefined);
+    assert.equal(calls.find((c) => c.method === "repos.handoff"), undefined);
     assert.deepEqual(payload.handoffs, []);
   });
 
-  it("--revoke <handoff_id> calls gitvault.revokeHandoff with the resolved target and never mints", async () => {
+  it("--revoke <handoff_id> calls repos.revokeHandoff with the resolved target and never mints", async () => {
     const payload = await ok("handoff", ["--project", PROJECT, "--revoke", "hnd_abc123"]);
-    const revokeCall = calls.find((c) => c.method === "gitvault.revokeHandoff");
+    const revokeCall = calls.find((c) => c.method === "repos.revokeHandoff");
     assert.ok(revokeCall);
     assert.equal(revokeCall.handoffId, "hnd_abc123");
     assert.equal(revokeCall.target.project_id, PROJECT);
-    assert.equal(calls.find((c) => c.method === "gitvault.handoff"), undefined);
+    assert.equal(calls.find((c) => c.method === "repos.handoff"), undefined);
     assert.equal(payload.state, "revoked");
   });
 
@@ -1680,7 +1680,7 @@ describe("run402 repos handoff — mint a single-use Handoff Key (design D3/D10)
     writeFileSync(notePath, "not json{{{");
     const envelope = await expectFailure("handoff", ["--project", PROJECT, "--note-file", notePath]);
     assert.equal(envelope.code, "BAD_USAGE");
-    assert.equal(calls.find((c) => c.method === "gitvault.handoff"), undefined);
+    assert.equal(calls.find((c) => c.method === "repos.handoff"), undefined);
   });
 
   it("rejects a Handoff Note missing `summary`", async () => {
@@ -1702,20 +1702,20 @@ describe("run402 repos handoff — mint a single-use Handoff Key (design D3/D10)
 });
 
 describe("run402 repos resume — redeem a Handoff Key and restore the stash-shaped checkpoint (design D1/D2)", () => {
-  it("resumes via gitvault.resume, passing the key positional and a line callback", async () => {
+  it("resumes via repos.resume, passing the key positional and a line callback", async () => {
     const payload = await ok("resume", [HANDOFF_KEY, "--json"]);
-    const call = calls.find((c) => c.method === "gitvault.resume");
-    assert.ok(call, "gitvault.resume must be called");
+    const call = calls.find((c) => c.method === "repos.resume");
+    assert.ok(call, "repos.resume must be called");
     assert.equal(call.input.key, HANDOFF_KEY);
     assert.equal(typeof call.input.onLine, "function");
     assert.equal(payload.restored.dir, "/tmp/notes");
     assert.equal(payload.membership.role, "owner");
   });
 
-  it("--to threads through to gitvault.resume as `to`", async () => {
+  it("--to threads through to repos.resume as `to`", async () => {
     const outDir = join(scratch, "resume-target");
     await ok("resume", [HANDOFF_KEY, "--to", outDir, "--json"]);
-    const call = calls.find((c) => c.method === "gitvault.resume");
+    const call = calls.find((c) => c.method === "repos.resume");
     assert.equal(call.input.to, outDir);
   });
 
@@ -1728,7 +1728,7 @@ describe("run402 repos resume — redeem a Handoff Key and restore the stash-sha
     assert.ok(stderr.some((l) => l === "next: git push origin main"));
   });
 
-  // gitvault-multi-writer (rev 47) task 6.4.
+  // vault-multi-writer (rev 47) task 6.4.
   it("prints this checkout's own writer activation to stderr: `writer: active (generation N)`", async () => {
     await human("resume", [HANDOFF_KEY]);
     assert.ok(stderr.some((l) => l === "writer: active (generation 0000000000000002)"));
@@ -1758,7 +1758,7 @@ describe("run402 repos resume — redeem a Handoff Key and restore the stash-sha
   it("rejects when neither a positional key nor --key-stdin is given", async () => {
     const envelope = await expectFailure("resume", []);
     assert.equal(envelope.code, "BAD_USAGE");
-    assert.equal(calls.find((c) => c.method === "gitvault.resume"), undefined);
+    assert.equal(calls.find((c) => c.method === "repos.resume"), undefined);
   });
 
   it("-v prints a stats summary line to stderr", async () => {
@@ -1785,11 +1785,11 @@ describe("run402 repos resume — a resumed agent is a NEW run402 wallet: the co
     await createLocalWallet();
   }
 
-  it("no local wallet file: folds wallet -> faucet -> prototype BEFORE gitvault.resume, announcing each step, and reports cold_start in --json", async () => {
+  it("no local wallet file: folds wallet -> faucet -> prototype BEFORE repos.resume, announcing each step, and reports cold_start in --json", async () => {
     freshConfigDir();
     const payload = await ok("resume", [HANDOFF_KEY, "--json"]);
     assert.equal(coldStartCalls.length, 1, "the chain folds exactly once");
-    assert.ok(calls.find((c) => c.method === "gitvault.resume"), "the redemption still runs");
+    assert.ok(calls.find((c) => c.method === "repos.resume"), "the redemption still runs");
     // Ordering: the fold's announce lines land on stderr BEFORE resume's own "resuming" line.
     const foldLine = stderr.findIndex((l) => l.includes("folding the cold-start chain"));
     const chainLine = stderr.findIndex((l) => l.includes("setting the prototype tier"));
@@ -1821,7 +1821,7 @@ describe("run402 repos resume — a resumed agent is a NEW run402 wallet: the co
     const payload = await ok("resume", [HANDOFF_KEY, "--no-init", "--json"]);
     assert.equal(coldStartCalls.length, 0);
     assert.equal(calls.some((c) => c.method === "tier.status"), false);
-    assert.ok(calls.find((c) => c.method === "gitvault.resume"));
+    assert.ok(calls.find((c) => c.method === "repos.resume"));
     assert.deepEqual(payload.cold_start, { performed: false, skipped: "no_init" });
   });
 
@@ -1835,7 +1835,7 @@ describe("run402 repos resume — a resumed agent is a NEW run402 wallet: the co
     };
     const payload = await ok("resume", [HANDOFF_KEY, "--json"]);
     assert.equal(coldStartCalls.length, 1);
-    assert.ok(calls.find((c) => c.method === "gitvault.resume"), "the redemption runs after the chain fails");
+    assert.ok(calls.find((c) => c.method === "repos.resume"), "the redemption runs after the chain fails");
     assert.equal(payload.cold_start.performed, false);
     assert.equal(payload.cold_start.error.code, "RATE_LIMITED");
     assert.ok(payload.next_actions.some((n) => n.type === "renew_tier" && n.command === "run402 tier set prototype"));
@@ -1894,11 +1894,11 @@ describe("run402 repos create — a machine with NO wallet folds the cold-start 
 const INVITE_KEY = "kgi1_" + "A".repeat(64);
 
 describe("run402 repos invite — mint a single-use Invite Key (kygit-invite design D4)", () => {
-  it("mints via gitvault.invite, passing the resolved target + note + a commit-line callback", async () => {
+  it("mints via repos.invite, passing the resolved target + note + a commit-line callback", async () => {
     const notePath = writeNoteFile({ summary: "made progress on the thing" });
     const payload = await ok("invite", ["--project", PROJECT, "--note-file", notePath, "--json"]);
-    const call = calls.find((c) => c.method === "gitvault.invite");
-    assert.ok(call, "gitvault.invite must be called");
+    const call = calls.find((c) => c.method === "repos.invite");
+    assert.ok(call, "repos.invite must be called");
     assert.equal(call.input.project_id, PROJECT);
     assert.equal(call.input.note.summary, "made progress on the thing");
     assert.equal(call.input.note.schema, "kygit.invite-note.v1");
@@ -1911,7 +1911,7 @@ describe("run402 repos invite — mint a single-use Invite Key (kygit-invite des
     const text = await human("invite", ["--project", PROJECT, "--note-file", notePath]);
     assert.equal(text.trim(), INVITE_KEY, "bare stdout must be exactly the key, so `KEY=$(run402 repos invite ...)` works");
     assert.ok(stderr.some((l) => l.includes("invite minted: role developer")));
-    assert.ok(stderr.some((l) => l.includes("recipient runs: kygit join")));
+    assert.ok(stderr.some((l) => l.includes("recipient runs: run402 repos join")));
     // The key itself must never be echoed on stderr — only stdout carries it.
     assert.equal(stderr.some((l) => l.includes(INVITE_KEY)), false, "the Invite Key must never appear on stderr");
   });
@@ -1922,24 +1922,24 @@ describe("run402 repos invite — mint a single-use Invite Key (kygit-invite des
     assert.ok(stderr.some((l) => l === "Anyone holding this key becomes a developer of this org until first use or 2026-09-02T11:00:00.000Z."));
   });
 
-  it("--room threads through to gitvault.invite as roomKey", async () => {
+  it("--room threads through to repos.invite as roomKey", async () => {
     const notePath = writeNoteFile({ summary: "wip" });
     await ok("invite", ["--project", PROJECT, "--note-file", notePath, "--room", "org-room", "--json"]);
-    const call = calls.find((c) => c.method === "gitvault.invite");
+    const call = calls.find((c) => c.method === "repos.invite");
     assert.equal(call.input.roomKey, "org-room");
   });
 
-  it("--role threads through to gitvault.invite", async () => {
+  it("--role threads through to repos.invite", async () => {
     const notePath = writeNoteFile({ summary: "wip" });
     await ok("invite", ["--project", PROJECT, "--note-file", notePath, "--role", "admin", "--json"]);
-    const call = calls.find((c) => c.method === "gitvault.invite");
+    const call = calls.find((c) => c.method === "repos.invite");
     assert.equal(call.input.role, "admin");
   });
 
-  it("--ttl threads through to gitvault.invite as ttlSeconds", async () => {
+  it("--ttl threads through to repos.invite as ttlSeconds", async () => {
     const notePath = writeNoteFile({ summary: "wip" });
     await ok("invite", ["--project", PROJECT, "--note-file", notePath, "--ttl", "600", "--json"]);
-    const call = calls.find((c) => c.method === "gitvault.invite");
+    const call = calls.find((c) => c.method === "repos.invite");
     assert.equal(call.input.ttlSeconds, 600);
   });
 
@@ -1947,17 +1947,17 @@ describe("run402 repos invite — mint a single-use Invite Key (kygit-invite des
     const notePath = writeNoteFile({ summary: "wip" });
     const envelope = await expectFailure("invite", ["--project", PROJECT, "--note-file", notePath, "--ttl", "10"]);
     assert.equal(envelope.code, "BAD_FLAG");
-    assert.equal(calls.find((c) => c.method === "gitvault.invite"), undefined);
+    assert.equal(calls.find((c) => c.method === "repos.invite"), undefined);
   });
 
   it("repeated --include-sensitive collects into includeSensitive[]", async () => {
     const notePath = writeNoteFile({ summary: "wip" });
     await ok("invite", ["--project", PROJECT, "--note-file", notePath, "--include-sensitive", ".env", "--include-sensitive", "secrets.yml", "--json"]);
-    const call = calls.find((c) => c.method === "gitvault.invite");
+    const call = calls.find((c) => c.method === "repos.invite");
     assert.deepEqual(call.input.includeSensitive, [".env", "secrets.yml"]);
   });
 
-  it("threads harness-derived program/model and a resolvable sessionKey through to gitvault.invite", async () => {
+  it("threads harness-derived program/model and a resolvable sessionKey through to repos.invite", async () => {
     const notePath = writeNoteFile({ summary: "wip" });
     const previous = { CLAUDE_CODE_SESSION_ID: process.env.CLAUDE_CODE_SESSION_ID };
     process.env.CLAUDE_CODE_SESSION_ID = "sess-abc";
@@ -1967,27 +1967,27 @@ describe("run402 repos invite — mint a single-use Invite Key (kygit-invite des
       if (previous.CLAUDE_CODE_SESSION_ID === undefined) delete process.env.CLAUDE_CODE_SESSION_ID;
       else process.env.CLAUDE_CODE_SESSION_ID = previous.CLAUDE_CODE_SESSION_ID;
     }
-    const call = calls.find((c) => c.method === "gitvault.invite");
+    const call = calls.find((c) => c.method === "repos.invite");
     assert.equal(call.input.program, "claude-code");
     assert.equal(call.input.sessionKey, "sess-abc");
   });
 
-  it("--list calls gitvault.listInvites with the resolved target and never mints", async () => {
+  it("--list calls repos.listInvites with the resolved target and never mints", async () => {
     const payload = await ok("invite", ["--project", PROJECT, "--list"]);
-    const listCall = calls.find((c) => c.method === "gitvault.listInvites");
+    const listCall = calls.find((c) => c.method === "repos.listInvites");
     assert.ok(listCall);
     assert.equal(listCall.target.project_id, PROJECT);
-    assert.equal(calls.find((c) => c.method === "gitvault.invite"), undefined);
+    assert.equal(calls.find((c) => c.method === "repos.invite"), undefined);
     assert.deepEqual(payload.invites, []);
   });
 
-  it("--revoke <invite_id> calls gitvault.revokeInvite with the resolved target and never mints", async () => {
+  it("--revoke <invite_id> calls repos.revokeInvite with the resolved target and never mints", async () => {
     const payload = await ok("invite", ["--project", PROJECT, "--revoke", "inv_abc123"]);
-    const revokeCall = calls.find((c) => c.method === "gitvault.revokeInvite");
+    const revokeCall = calls.find((c) => c.method === "repos.revokeInvite");
     assert.ok(revokeCall);
     assert.equal(revokeCall.inviteId, "inv_abc123");
     assert.equal(revokeCall.target.project_id, PROJECT);
-    assert.equal(calls.find((c) => c.method === "gitvault.invite"), undefined);
+    assert.equal(calls.find((c) => c.method === "repos.invite"), undefined);
     assert.equal(payload.state, "revoked");
   });
 
@@ -2014,7 +2014,7 @@ describe("run402 repos invite — mint a single-use Invite Key (kygit-invite des
     writeFileSync(notePath, "not json{{{");
     const envelope = await expectFailure("invite", ["--project", PROJECT, "--note-file", notePath]);
     assert.equal(envelope.code, "BAD_USAGE");
-    assert.equal(calls.find((c) => c.method === "gitvault.invite"), undefined);
+    assert.equal(calls.find((c) => c.method === "repos.invite"), undefined);
   });
 
   it("rejects an Invite Note missing `summary`", async () => {
@@ -2031,10 +2031,10 @@ describe("run402 repos invite — mint a single-use Invite Key (kygit-invite des
 });
 
 describe("run402 repos join — redeem an Invite Key and restore the stash-shaped checkpoint (kygit-invite design D5)", () => {
-  it("joins via gitvault.join, passing the key positional and a line callback", async () => {
+  it("joins via repos.join, passing the key positional and a line callback", async () => {
     const payload = await ok("join", [INVITE_KEY, "--json"]);
-    const call = calls.find((c) => c.method === "gitvault.join");
-    assert.ok(call, "gitvault.join must be called");
+    const call = calls.find((c) => c.method === "repos.join");
+    assert.ok(call, "repos.join must be called");
     assert.equal(call.input.key, INVITE_KEY);
     assert.equal(typeof call.input.onLine, "function");
     assert.equal(payload.restored.dir, "/tmp/notes");
@@ -2042,10 +2042,10 @@ describe("run402 repos join — redeem an Invite Key and restore the stash-shape
     assert.equal(payload.room.room_key, PROJECT);
   });
 
-  it("--to threads through to gitvault.join as `to`", async () => {
+  it("--to threads through to repos.join as `to`", async () => {
     const outDir = join(scratch, "join-target");
     await ok("join", [INVITE_KEY, "--to", outDir, "--json"]);
-    const call = calls.find((c) => c.method === "gitvault.join");
+    const call = calls.find((c) => c.method === "repos.join");
     assert.equal(call.input.to, outDir);
   });
 
@@ -2078,7 +2078,7 @@ describe("run402 repos join — redeem an Invite Key and restore the stash-shape
         else process.env[k] = v;
       }
     }
-    const call = calls.find((c) => c.method === "gitvault.join");
+    const call = calls.find((c) => c.method === "repos.join");
     const state = JSON.parse(readFileSync(join(dir, ".run402", "messaging.json"), "utf8"));
     const roomState = state.rooms[`${ORG}/${PROJECT}`];
     assert.equal(roomState.presence_id, "prs_me");
@@ -2139,10 +2139,10 @@ describe("run402 repos join — redeem an Invite Key and restore the stash-shape
   it("rejects when neither a positional key nor --key-stdin is given", async () => {
     const envelope = await expectFailure("join", []);
     assert.equal(envelope.code, "BAD_USAGE");
-    assert.equal(calls.find((c) => c.method === "gitvault.join"), undefined);
+    assert.equal(calls.find((c) => c.method === "repos.join"), undefined);
   });
 
-  it("threads harness-derived program/model and a resolvable sessionKey through to gitvault.join", async () => {
+  it("threads harness-derived program/model and a resolvable sessionKey through to repos.join", async () => {
     const previous = { CLAUDE_CODE_SESSION_ID: process.env.CLAUDE_CODE_SESSION_ID };
     process.env.CLAUDE_CODE_SESSION_ID = "sess-def";
     try {
@@ -2151,7 +2151,7 @@ describe("run402 repos join — redeem an Invite Key and restore the stash-shape
       if (previous.CLAUDE_CODE_SESSION_ID === undefined) delete process.env.CLAUDE_CODE_SESSION_ID;
       else process.env.CLAUDE_CODE_SESSION_ID = previous.CLAUDE_CODE_SESSION_ID;
     }
-    const call = calls.find((c) => c.method === "gitvault.join");
+    const call = calls.find((c) => c.method === "repos.join");
     assert.equal(call.input.program, "claude-code");
     assert.equal(call.input.sessionKey, "sess-def");
   });
@@ -2180,11 +2180,11 @@ describe("run402 repos join — a joined agent is a NEW run402 wallet: the cold-
     await createLocalWallet();
   }
 
-  it("no local wallet file: folds wallet -> faucet -> prototype BEFORE gitvault.join, announcing each step, and reports cold_start in --json", async () => {
+  it("no local wallet file: folds wallet -> faucet -> prototype BEFORE repos.join, announcing each step, and reports cold_start in --json", async () => {
     freshConfigDir();
     const payload = await ok("join", [INVITE_KEY, "--json"]);
     assert.equal(coldStartCalls.length, 1, "the chain folds exactly once");
-    assert.ok(calls.find((c) => c.method === "gitvault.join"), "the redemption still runs");
+    assert.ok(calls.find((c) => c.method === "repos.join"), "the redemption still runs");
     const foldLine = stderr.findIndex((l) => l.includes("folding the cold-start chain"));
     const chainLine = stderr.findIndex((l) => l.includes("setting the prototype tier"));
     assert.ok(foldLine >= 0 && chainLine > foldLine, "the fold is announced, then each chain step");
@@ -2207,7 +2207,7 @@ describe("run402 repos join — a joined agent is a NEW run402 wallet: the cold-
     const payload = await ok("join", [INVITE_KEY, "--no-init", "--json"]);
     assert.equal(coldStartCalls.length, 0);
     assert.equal(calls.some((c) => c.method === "tier.status"), false);
-    assert.ok(calls.find((c) => c.method === "gitvault.join"));
+    assert.ok(calls.find((c) => c.method === "repos.join"));
     assert.deepEqual(payload.cold_start, { performed: false, skipped: "no_init" });
   });
 
@@ -2221,7 +2221,7 @@ describe("run402 repos join — a joined agent is a NEW run402 wallet: the cold-
     };
     const payload = await ok("join", [INVITE_KEY, "--json"]);
     assert.equal(coldStartCalls.length, 1);
-    assert.ok(calls.find((c) => c.method === "gitvault.join"), "the redemption runs after the chain fails");
+    assert.ok(calls.find((c) => c.method === "repos.join"), "the redemption runs after the chain fails");
     assert.equal(payload.cold_start.performed, false);
     assert.equal(payload.cold_start.error.code, "RATE_LIMITED");
     assert.ok(payload.next_actions.some((n) => n.type === "renew_tier" && n.command === "run402 tier set prototype"));
@@ -2232,7 +2232,7 @@ describe("run402 repos join — a joined agent is a NEW run402 wallet: the cold-
 
 describe("run402 repos view — reports the room pin and messaging_cache_excluded (kygit-invite design D9)", () => {
   it("echoes messaging_cache_excluded and the pinned room on stderr and in JSON", async () => {
-    impl.gitvaultStatus = async () => vaultStatus({
+    impl.vaultStatus = async () => vaultStatus({
       vault: vaultRecord(),
       pinned: { repo_id: REPO, resolved_from: null, room: "org-room" },
       messaging_cache_excluded: true,
@@ -2243,7 +2243,7 @@ describe("run402 repos view — reports the room pin and messaging_cache_exclude
   });
 
   it("--human view shows a repo whose vault is allocated without throwing on the new fields", async () => {
-    impl.gitvaultStatus = async () => vaultStatus({
+    impl.vaultStatus = async () => vaultStatus({
       vault: vaultRecord(),
       pinned: { repo_id: REPO, resolved_from: null, room: PROJECT },
       messaging_cache_excluded: false,

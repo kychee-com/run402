@@ -44,7 +44,7 @@ Usage:
   run402 orgs members add  [<org_id>] <wallet_address> [--role <role>]
   run402 orgs members role [<org_id>] --principal <principal_id> --role <role>
   run402 orgs members rm   [<org_id>] --principal <principal_id>
-  run402 orgs members revoke-key [<org_id>] --principal <principal_id> [--reason <why>]   (owner + step-up; revokes the member's gitvault encryption key — its next gitvault operation enrolls afresh)
+  run402 orgs members revoke-key [<org_id>] --principal <principal_id> [--reason <why>]   (owner + step-up; revokes the member's vault encryption key — its next vault operation enrolls afresh)
   run402 orgs invite list   [<org_id>]
   run402 orgs invite create [<org_id>] --email <email> [--role <role>] [--ttl-hours N]
   run402 orgs invite rm     [<org_id>] --principal <principal_id>
@@ -53,7 +53,7 @@ Usage:
 omit it and the org comes from --org, then RUN402_ORG, then the .run402.json
 binding, then 'run402 orgs use'. Inside a bound checkout two agents add each
 other with nothing to look up: run402 orgs members add <wallet_address> --role developer.
-A developer-or-above add REFUSES (GITVAULT_WRITER_NOT_ADMITTED) unless this session's key is an admitted writer on every vault of the org, so the new member can push at once; a current writer admits your key with run402 repos access sync.
+A developer-or-above add REFUSES (VAULT_WRITER_NOT_ADMITTED) unless this session's key is an admitted writer on every vault of the org, so the new member can push at once; a current writer admits your key with run402 repos access sync.
 The second attribute may also be passed positionally (run402 orgs members add <wallet_address>).
 
 Subcommands:
@@ -186,7 +186,7 @@ Usage:
   run402 orgs members add  [<org_id>] <wallet_address> [--role <role>]
   run402 orgs members role [<org_id>] --principal <principal_id> --role <role>
   run402 orgs members rm   [<org_id>] --principal <principal_id>
-  run402 orgs members revoke-key [<org_id>] --principal <principal_id> [--reason <why>]   (owner + step-up; revokes the member's gitvault encryption key — its next gitvault operation enrolls afresh)
+  run402 orgs members revoke-key [<org_id>] --principal <principal_id> [--reason <why>]   (owner + step-up; revokes the member's vault encryption key — its next vault operation enrolls afresh)
 
 Roles: ${ROLE_LIST} (add defaults to developer). Mutations require an active owner.
 Demoting/removing the org's only active owner fails with 409 LAST_OWNER.
@@ -202,7 +202,7 @@ Usage:
 omit it and the org comes from --org, then RUN402_ORG, then the .run402.json
 binding, then 'run402 orgs use'. Inside a bound checkout two agents add each
 other with nothing to look up: run402 orgs members add <wallet_address> --role developer.
-A developer-or-above add REFUSES (GITVAULT_WRITER_NOT_ADMITTED) unless this session's key is an admitted writer on every vault of the org, so the new member can push at once; a current writer admits your key with run402 repos access sync.
+A developer-or-above add REFUSES (VAULT_WRITER_NOT_ADMITTED) unless this session's key is an admitted writer on every vault of the org, so the new member can push at once; a current writer admits your key with run402 repos access sync.
 The second attribute may also be passed positionally (run402 orgs members add <wallet_address>).
 
 An invite is claimed at the recipient's first login. Mutations require an active owner
@@ -223,7 +223,7 @@ Requires an admin+ membership on the org. Newest-first. Page forward with --afte
 
 
 /**
- * gitvault-multi-writer (rev 47) task 6.3 / design D3 — decided 2026-09-03
+ * vault-multi-writer (rev 47) task 6.3 / design D3 — decided 2026-09-03
  * (Tal): `orgs members add` REFUSES a writer-eligible add (developer or
  * above) when this session's own key is not an admitted writer on EVERY
  * vault of the org, because a developer who cannot push is not the member
@@ -237,11 +237,11 @@ Requires an admin+ membership on the org. Newest-first. Page forward with --afte
  * Every read failure REFUSES too (an unverifiable gate is not a passed one).
  */
 async function assertCallerCanAdmitWritersEverywhere(sdk, orgId, effectiveRole) {
-  const listing = await sdk.gitvault.listByOrg(orgId);
+  const listing = await sdk.repos.listByOrg(orgId);
   const vaults = listing?.vaults ?? [];
   const blocked = [];
   for (const v of vaults) {
-    const st = await sdk.gitvault.status({ repo_id: v.repo_id, reconcile: "forbidden" });
+    const st = await sdk.repos.status({ repo_id: v.repo_id, reconcile: "forbidden" });
     const vault = st?.vault ?? null;
     if (!vault || vault.read_only_terminal) continue;
     const me = st?.keystore?.identity_fingerprint ?? null;
@@ -250,7 +250,7 @@ async function assertCallerCanAdmitWritersEverywhere(sdk, orgId, effectiveRole) 
   }
   if (blocked.length > 0) {
     fail({
-      code: "GITVAULT_WRITER_NOT_ADMITTED",
+      code: "VAULT_WRITER_NOT_ADMITTED",
       message: `refusing to add a ${effectiveRole}: this session's key is not an admitted writer on ${blocked.length} of this org's ${vaults.length} vault(s), so the new member could not push there`,
       details: { role: effectiveRole, vaults: blocked, checked: vaults.length },
       next_actions: [
@@ -266,7 +266,7 @@ async function assertCallerCanAdmitWritersEverywhere(sdk, orgId, effectiveRole) 
 }
 
 /**
- * `orgs members rm`'s inline epoch rotation (gitvault-multi-writer D6, the
+ * `orgs members rm`'s inline epoch rotation (vault-multi-writer D6, the
  * kygit-handoff member-removal decision): for every vault of the org where
  * this session's key is an admitted writer, drive
  * `rotateEpochForKeyRevocation(principalId)` — the one self-contained
@@ -275,7 +275,7 @@ async function assertCallerCanAdmitWritersEverywhere(sdk, orgId, effectiveRole) 
  * no vault (nothing to rotate, nothing to report).
  */
 async function rotateOrgVaultsAfterRemoval(sdk, orgId, principalId) {
-  const listing = await sdk.gitvault.listByOrg(orgId);
+  const listing = await sdk.repos.listByOrg(orgId);
   const vaults = listing?.vaults ?? [];
   if (vaults.length === 0) return null;
   const rotated = [];
@@ -284,7 +284,7 @@ async function rotateOrgVaultsAfterRemoval(sdk, orgId, principalId) {
   for (const v of vaults) {
     let st;
     try {
-      st = await sdk.gitvault.status({ repo_id: v.repo_id, reconcile: "forbidden" });
+      st = await sdk.repos.status({ repo_id: v.repo_id, reconcile: "forbidden" });
     } catch (err) {
       errors.push({ repo_id: v.repo_id, code: err?.code ?? null, error: err?.message ?? String(err) });
       continue;
@@ -300,7 +300,7 @@ async function rotateOrgVaultsAfterRemoval(sdk, orgId, principalId) {
     try {
       // reason:"member_removed" — writer-capable (no owner step-up); the
       // removal itself advanced the counters this rotation is fenced on.
-      const r = await sdk.gitvault.rotateEpochForMemberRemoval({ repo_id: v.repo_id });
+      const r = await sdk.repos.rotateEpochForMemberRemoval({ repo_id: v.repo_id });
       rotated.push({ repo_id: v.repo_id, new_epoch: r.new_epoch, generation: r.generation, included: r.included.length, writers_removed: r.writers_removed?.length ?? 0, self_check: r.self_check });
     } catch (err) {
       errors.push({ repo_id: v.repo_id, code: err?.code ?? null, error: err?.message ?? String(err) });
@@ -717,7 +717,7 @@ async function runMember(args) {
         await assertCallerCanAdmitWritersEverywhere(sdk, org, effectiveRole);
       }
       const res = await sdk.org(org).members.add({ wallet, role: role || undefined });
-      // gitvault-multi-writer (rev 47) task 6.3 — the gateway names which of
+      // vault-multi-writer (rev 47) task 6.3 — the gateway names which of
       // this org's vaults now have a pending writer candidate (D3: there is
       // no server-side writer admission — the client holds the keys) via a
       // `sync_writers` next_action carrying `vault_ids[]`. Run the ACTUAL
@@ -737,7 +737,7 @@ async function runMember(args) {
         const errors = [];
         for (const vaultId of syncTarget.vault_ids) {
           try {
-            const r = await sdk.gitvault.reconcile({ repo_id: vaultId });
+            const r = await sdk.repos.reconcile({ repo_id: vaultId });
             if (!r.eligible) notEligible.push(vaultId);
             else if (r.admitted.length > 0) admitted.push({ repo_id: vaultId, admitted: r.admitted });
           } catch (err) {
@@ -748,7 +748,7 @@ async function runMember(args) {
       }
       console.log(JSON.stringify(writerSync ? { ...res, writer_sync: writerSync } : res, null, 2));
       if (writerSync?.not_eligible.length > 0) {
-        console.error(`writer sync: this session is not (yet) a writer on ${writerSync.not_eligible.length} vault(s) — the new member is a pending writer candidate there until a CURRENT writer's next gitvault operation admits them.`);
+        console.error(`writer sync: this session is not (yet) a writer on ${writerSync.not_eligible.length} vault(s) — the new member is a pending writer candidate there until a CURRENT writer's next vault operation admits them.`);
       }
       if (writerSync?.errors.length > 0) {
         for (const e of writerSync.errors) console.error(`writer sync: ${e.repo_id} — ${e.error}`);
@@ -760,10 +760,10 @@ async function runMember(args) {
   }
 
   if (memberAction === "revoke-key") {
-    // gitvault-agent-envelopes D3: owner + step-up revokes a member's current
-    // gitvault encryption key — the ONLY rotation path for a member that shares
+    // vault-agent-envelopes D3: owner + step-up revokes a member's current
+    // vault encryption key — the ONLY rotation path for a member that shares
     // an org with another custodian (a lost/rebuilt keystore fails
-    // GITVAULT_KEY_ROTATION_REQUIRED and points here). Adapter only.
+    // VAULT_KEY_ROTATION_REQUIRED and points here). Adapter only.
     const a = normalizeArgv(rest);
     assertKnownFlags(a, ["--org", "--principal", "--reason", "--help", "-h"], ["--org", "--principal", "--reason"]);
     const principalFlag = flagValue(a, "--principal");
@@ -818,7 +818,7 @@ async function runMember(args) {
     try {
       const sdk = getSdk();
       const res = await sdk.org(org).members.revoke(principalId);
-      // gitvault-multi-writer D6 — a removal rides `rotate_epoch`: the gateway
+      // vault-multi-writer D6 — a removal rides `rotate_epoch`: the gateway
       // has just blocked the principal's writer keys and flipped its desired
       // row to pending_removal, so every ordinary push on every vault of this
       // org now refuses EPOCH_ROTATION_REQUIRED until a surviving writer

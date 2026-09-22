@@ -237,7 +237,7 @@ describe("resolveTaskLabel — explicit task, opt-out, and the harness-title sou
   });
 
   it("the opt-out env var short-circuits to no task even when a title is resolvable", async () => {
-    writeClaudeSessionFile(homedirRoot, "host-1", { title: "Decide fate of orphaned GitVault vaults" });
+    writeClaudeSessionFile(homedirRoot, "host-1", { title: "Decide fate of orphaned KyGit vaults" });
     const out = await resolveTaskLabel({
       env: { CLAUDE_CODE_HOST_SESSION_ID: "host-1", [TASK_FROM_TITLE_OPT_OUT_ENV]: "1" },
       homedirImpl: () => homedirRoot,
@@ -246,12 +246,12 @@ describe("resolveTaskLabel — explicit task, opt-out, and the harness-title sou
   });
 
   it("sources the task from Claude Code's own thread title when no explicit task was given", async () => {
-    writeClaudeSessionFile(homedirRoot, "host-1", { title: "Decide fate of orphaned GitVault vaults" });
+    writeClaudeSessionFile(homedirRoot, "host-1", { title: "Decide fate of orphaned KyGit vaults" });
     const out = await resolveTaskLabel({
       env: { CLAUDE_CODE_HOST_SESSION_ID: "host-1" },
       homedirImpl: () => homedirRoot,
     });
-    assert.deepEqual(out, { task: "Decide fate of orphaned GitVault vaults", source: "claude_code_thread_title" });
+    assert.deepEqual(out, { task: "Decide fate of orphaned KyGit vaults", source: "claude_code_thread_title" });
   });
 
   it("no CLAUDE_CODE_HOST_SESSION_ID at all yields no task (never guesses a session)", async () => {

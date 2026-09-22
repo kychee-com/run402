@@ -106,11 +106,11 @@ export class OrgMembers {
   }
 
   /**
-   * gitvault-agent-envelopes D3 — an OWNER revokes a member's current gitvault
+   * vault-agent-envelopes D3 — an OWNER revokes a member's current vault
    * encryption key (`DELETE /orgs/v1/:org_id/members/:principal_id/encryption-key`,
    * owner + step-up). The independent-credential rotation path: a member whose
    * keystore was lost or rebuilt cannot self-rotate (the asking credential is
-   * the one a thief would hold); after this, the member's next gitvault
+   * the one a thief would hold); after this, the member's next vault
    * operation enrolls its current keystore key afresh and a key-holder's next
    * operation wraps each vault to it. Audited, org-feed row + mandatory
    * security notification (`gitvault_encryption_key_revoked`).

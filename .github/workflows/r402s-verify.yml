@@ -1,6 +1,6 @@
 name: r402s-verify
 
-# The independent-lineage gitvault verifier (Rust). Lives outside the npm
+# The independent-lineage vault verifier (Rust). Lives outside the npm
 # workspaces and outside publish.yml; see r402s-verify/README.md for release.
 #
 # It watches test-vectors/** as well as its own tree: the replay exists to

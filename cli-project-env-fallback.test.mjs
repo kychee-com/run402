@@ -6,7 +6,7 @@
  * Bug: `cli/lib/cdn.mjs` and `cli/lib/assets.mjs` historically read ONLY
  * `RUN402_PROJECT` — a different, undocumented name from the canonical
  * `RUN402_PROJECT_ID` every other project-scoped command reads (`config.mjs`
- * `resolveProject`/`resolveProjectId`, `org-context.mjs`, `gitvault-target.mjs`,
+ * `resolveProject`/`resolveProjectId`, `org-context.mjs`, `vault-target.mjs`,
  * `logs.mjs`, `dev.mjs`, `deploy-v2.mjs`, …). A user who exported the
  * canonical `RUN402_PROJECT_ID` and ran `run402 assets ls` or
  * `run402 cdn wait-fresh` got a silent no-op: the export did nothing, and

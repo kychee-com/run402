@@ -1,0 +1,185 @@
+/**
+ * vault-connection-amortization (bench P5) — boot-time prewarm for the
+ * vault verb paths.
+ *
+ * The 4.53.0 benchmark retest showed a fresh `git push`/`git fetch` process
+ * pays a ~650–700 ms premium on whichever transport op runs FIRST (DNS +
+ * TCP + TLS to the API origin, plus the signer's first-use curve-table
+ * build) — invariant to which op that is, so removing round trips just
+ * moves it. This module moves the setup OFF the verb's critical path by
+ * starting it concurrently with the local work every invocation already
+ * does (git's capabilities/option/list stdin exchange, keystore reads,
+ * offline pin resolution).
+ *
+ * Guarantees (spec-pinned in vault-client-surface, "Verb startup
+ * amortizes connection setup off the critical path"):
+ *   - fire-and-forget: `void` return, never awaited on any verb path;
+ *   - every failure is swallowed — an unreachable gateway surfaces exactly
+ *     once, from the verb's own first operation, exactly as without this;
+ *   - never holds the process open (abort timer unref'd via
+ *     AbortSignal.timeout; response body cancelled immediately);
+ *   - ZERO footprint on the counted transport budgets, `sdk.stats()`, and
+ *     `RUN402_TRACE` — deliberately NOT routed through the request kernel.
+ *     The kernel stays the one caller of the SDK's transport fetch for
+ *     REQUEST traffic; this is connection plumbing on the OWNED dispatcher
+ *     (vault-owned-dispatcher), so the warmed socket lands in the exact
+ *     per-origin pool — the API origin's single multiplexed Client — that
+ *     the verb's first request draws from. That non-kernel fetch is
+ *     sanctioned here and nowhere else.
+ *
+ * vault-object-host-predial adds one sibling, `predialVaultObjectStore`
+ * (below): the object-store host(s) a repo's transport has previously
+ * observed, dialed on the SAME owned dispatcher under the SAME guarantees.
+ * It is a separate function (not folded into the two above) because it
+ * needs a `repoId` neither `kickVaultConnection` nor
+ * `prewarmVaultConnection` has — see their call sites in
+ * `remote-helper-session.mjs` and `vault-daemon.mjs` for where that id
+ * comes from cheaply, offline.
+ */
+import { getApiBase } from "../../core-dist/config.js";
+import { getWalletAuthHeaders } from "../../core-dist/wallet-auth.js";
+import { sdkFetch } from "./http-dispatcher.js";
+import { VaultKeystore } from "./vault-keystore.js";
+
+/** Injectable for tests. */
+export const prewarmDeps: {
+  fetch: typeof globalThis.fetch;
+  warmSigner: () => unknown;
+  warmPaidStack: () => unknown;
+  /**
+   * vault-object-host-predial (task 2.1): this repo's locally-learned
+   * object-store origins, or `[]` for "nothing known" (a first-ever
+   * session, or any read failure — never thrown). Injectable so the dial
+   * loop below is testable without a real keystore on disk; the real
+   * implementation is a plain, synchronous `VaultKeystore.readRepo`.
+   */
+  readObjectStoreOrigins: (repoId: string, keystoreRoot?: string) => string[];
+} = {
+  // The OWNED dispatcher, deliberately (vault-owned-dispatcher D5): the
+  // warmed socket must land in the exact pool the verb's first request
+  // draws from — warming the built-in dispatcher would warm the wrong one.
+  fetch: (...args) => sdkFetch(...args),
+  // One throwaway header build against the local wallet: reads the file
+  // and runs the first EIP-191 sign, so the curve library's precomputation
+  // happens now instead of inside the verb's first authenticated request.
+  // Returns null harmlessly when no local wallet is configured.
+  warmSigner: () => getWalletAuthHeaders("/health"),
+  // The verb's first kernel request initializes the paid-fetch buyer, whose
+  // dominant cost is the dynamic viem/@x402 (or mpp) stack import (~360 ms
+  // measured). Every verb pays it exactly once regardless, so loading it
+  // during the prewarm wastes nothing and overlaps it with git's local
+  // plumbing (vault-owned-dispatcher — the first-op decomposition that
+  // motivated this: ~360 ms stack + ~200 ms dial + ~120 ms request).
+  warmPaidStack: () => {
+    void (async () => {
+      const [{ loadX402Stack, loadMppStack }, { readWallet }] = await Promise.all([import("./_paid-stack.js"), import("../../core-dist/wallet.js")]);
+      const rail = (readWallet() as { rail?: string } | null)?.rail;
+      await (rail === "mpp" ? loadMppStack() : loadX402Stack());
+    })().catch(() => {});
+  },
+  readObjectStoreOrigins: (repoId, keystoreRoot) => {
+    try {
+      const keystore = new VaultKeystore(keystoreRoot !== undefined ? { rootDir: keystoreRoot } : {});
+      return keystore.readRepo(repoId)?.object_store_origins ?? [];
+    } catch {
+      return [];
+    }
+  },
+};
+
+/**
+ * The connection-dial half alone (vault-first-op-premium task 2.1 —
+ * "pre-connect on session accept"). A RESIDENT daemon already ran the full
+ * prewarm (dial + signer + paid-stack) exactly once at boot; re-running
+ * `warmPaidStack` on every forwarded session was measured to cost an EXTRA
+ * ~150-300ms per session (two live Base RPC probes, `sepolia.base.org` +
+ * `mainnet.base.org`, that a vault session never actually needs) for no
+ * benefit — the paid-fetch buyer stack only needs loading once per process.
+ * This is the narrow half a session-accept hook should call: kick the owned
+ * dispatcher's connection (so a dead/never-dialed socket redials NOW,
+ * overlapping git's own helper handshake) and nothing else. Same contract as
+ * the full prewarm: fire-and-forget, every failure swallowed, no side effects.
+ */
+export function kickVaultConnection(apiBase?: string): void {
+  try {
+    const base = apiBase ?? getApiBase();
+    void prewarmDeps
+      .fetch(new URL("/health", base), { signal: AbortSignal.timeout(5000) })
+      .then((r) => void r.body?.cancel().catch(() => {}))
+      .catch(() => {});
+  } catch {
+    /* a malformed base or missing fetch must never reach a verb */
+  }
+}
+
+/**
+ * Start the connection + signer prewarm. Returns immediately; nothing to
+ * await, nothing thrown, ever. Call this ONCE per process (verb startup, or
+ * daemon boot) — see `kickVaultConnection` for the narrower, repeatable
+ * connection-only half a resident daemon should use per forwarded session.
+ */
+export function prewarmVaultConnection(apiBase?: string): void {
+  kickVaultConnection(apiBase);
+  // Deferred so a remote helper's `capabilities` reply is never delayed by
+  // the synchronous sign — the warmup only has to land before the verb's
+  // first authenticated request, which is several stdin exchanges away.
+  setImmediate(() => {
+    try {
+      prewarmDeps.warmSigner();
+    } catch {
+      /* no local wallet / unreadable file — the verb's own auth path reports it */
+    }
+    try {
+      prewarmDeps.warmPaidStack();
+    } catch {
+      /* stack load failure surfaces from the verb's own first request */
+    }
+  });
+}
+
+/**
+ * vault-object-host-predial (design D2/D4, task 2.1): fire-and-forget,
+ * dial-only connection establishment to a repo's PERSISTED object-store
+ * origin(s) — the presigned/edge host(s) an earlier session in this
+ * checkout already fetched objects from (recorded via
+ * `VaultKeystore.recordObjectStoreOrigins`). Every guarantee of the
+ * prewarm above applies verbatim: never awaited, every failure (a
+ * malformed origin, a keystore read failure, a dial that never completes)
+ * is swallowed silently, the abort timer is unref'd via
+ * `AbortSignal.timeout`, and the response body is cancelled immediately —
+ * nothing here can hold the process open or touch a counted transport
+ * budget. Rides the SAME owned dispatcher as `kickVaultConnection`
+ * (vault-owned-dispatcher D5), so a warmed socket lands in the exact
+ * per-origin pool the verb's real object GET draws from.
+ *
+ * A repo with nothing persisted (first-ever session, or a keystore read
+ * failure) predials nothing — there is deliberately no fallback guess and
+ * no network read to learn where to predial (design D4/D6). Dialing an
+ * origin that no longer serves this vault's objects (a bucket migration)
+ * costs one harmless background round trip; the next observed fetch
+ * overwrites the persisted hint.
+ */
+export function predialVaultObjectStore(repoId: string, keystoreRoot?: string): void {
+  try {
+    const origins = prewarmDeps.readObjectStoreOrigins(repoId, keystoreRoot);
+    for (const origin of origins) {
+      try {
+        // `new URL(origin)` both validates (throws SYNCHRONOUSLY on a
+        // corrupted persisted string, caught right here — mirrors
+        // `kickVaultConnection`'s own `new URL("/health", base)` guard)
+        // and gives `fetch` a well-formed target; a bare origin normalizes
+        // to `<origin>/`, which is exactly what the real object-store host
+        // sees regardless — the dial is the point, not the path.
+        const target = new URL(origin);
+        void prewarmDeps
+          .fetch(target, { signal: AbortSignal.timeout(5000) })
+          .then((r) => void r.body?.cancel().catch(() => {}))
+          .catch(() => {});
+      } catch {
+        /* a malformed persisted origin must never reach a verb */
+      }
+    }
+  } catch {
+    /* the whole predial is best-effort — nothing here can affect a verb */
+  }
+}

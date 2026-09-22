@@ -30,18 +30,18 @@ import {
   getApiTargetKind,
 } from "../../core-dist/config.js";
 import { Run402, type PayExecutor, type Run402Options } from "../index.js";
-import { installNodeGitvaultAeadBackend, installNodeGitvaultHashBackend } from "./gitvault-native-crypto.js";
+import { installNodeVaultAeadBackend, installNodeVaultHashBackend } from "./vault-native-crypto.js";
 import { sdkFetch } from "./http-dispatcher.js";
 
-// gitvault-native-bulk-crypto (design D1): the bulk frame AEAD is sync and
+// vault-native-bulk-crypto (design D1): the bulk frame AEAD is sync and
 // isomorphic, so Node's faster OpenSSL implementation of the SAME construction
 // can only be INSTALLED at the entry point, never sniffed from the core. A
 // build whose OpenSSL lacks the cipher keeps the `@noble/ciphers` default —
 // correct, just slower — so this is deliberately not asserted.
-installNodeGitvaultAeadBackend();
-// gitvault-native-hash: same doctrine, second slot — the protocol SHA-256
+installNodeVaultAeadBackend();
+// vault-native-hash: same doctrine, second slot — the protocol SHA-256
 // moves to `node:crypto` after a live probe; any failure keeps `@noble`.
-installNodeGitvaultHashBackend();
+installNodeVaultHashBackend();
 import type { CredentialsProvider } from "../credentials.js";
 import { LocalError } from "../errors.js";
 import type { Client, Run402ClientMetadata } from "../kernel.js";
@@ -168,7 +168,7 @@ export function run402(opts: NodeRun402Options = {}): NodeRun402 {
     fetch:
       opts.fetch ??
       (opts.disablePaidFetch
-        ? // The owned dispatcher (gitvault-owned-dispatcher): single
+        ? // The owned dispatcher (vault-owned-dispatcher): single
           // multiplexed API connection + persisted TLS resumption; defers to
           // an overridden globalThis.fetch so test seams keep working.
           sdkFetch
@@ -323,57 +323,57 @@ export type {
   Run402TargetProfileSources,
   Run402TargetRequirement,
 } from "./target-profile.js";
-// gitvault (r402s/v0) — Node-only: the principal keystore (§5.1) and the
+// vault (r402s/v0) — Node-only: the principal keystore (§5.1) and the
 // six-stage creation journal (§5.2). The isomorphic crypto core is re-exported
 // at the bottom of this file so Node consumers need a single import.
 export {
-  GitvaultKeystore,
-  getGitvaultKeystoreRoot,
+  VaultKeystore,
+  getVaultKeystoreRoot,
   readFileNoFollow,
   writeFileAtomic0600,
-} from "./gitvault-keystore.js";
+} from "./vault-keystore.js";
 export type {
-  GitvaultAuditEntry,
-  GitvaultAuditEvent,
-  GitvaultHeadPin,
-  GitvaultIdentityFile,
-  GitvaultKeystoreOptions,
-  GitvaultKeystoreState,
-  GitvaultLockOptions,
-  GitvaultPermissionFinding,
-  GitvaultRepoFile,
-} from "./gitvault-keystore.js";
+  VaultAuditEntry,
+  VaultAuditEvent,
+  VaultHeadPin,
+  VaultIdentityFile,
+  VaultKeystoreOptions,
+  VaultKeystoreState,
+  VaultLockOptions,
+  VaultPermissionFinding,
+  VaultRepoFile,
+} from "./vault-keystore.js";
 export {
-  GITVAULT_CREATION_STAGES,
-  GitvaultCreation,
-  createGitvault,
-  findResumableGitvaultJournal,
+  VAULT_CREATION_STAGES,
+  VaultCreation,
+  createVault,
+  findResumableVaultJournal,
   findResumablePushToCreateJournal,
-  gitvaultDoctorRecoveryText,
-  gitvaultJournalPath,
-  listIncompleteGitvaultJournals,
-  readGitvaultJournal,
-} from "./gitvault-creation-journal.js";
+  vaultDoctorRecoveryText,
+  vaultJournalPath,
+  listIncompleteVaultJournals,
+  readVaultJournal,
+} from "./vault-creation-journal.js";
 export type {
-  GitvaultAdmitGenesisRequest,
-  GitvaultAdmitGenesisResult,
-  GitvaultAllocateRequest,
-  GitvaultCreationJournal,
-  GitvaultCreationOptions,
-  GitvaultCreationResult,
-  GitvaultCreationStage,
-  GitvaultCreationTransport,
-  GitvaultDoctorRecoveryText,
-  GitvaultJournaledObject,
-  GitvaultObjectReceipt,
-  GitvaultPushToCreateAddress,
-  GitvaultPutObjectRequest,
-} from "./gitvault-creation-journal.js";
+  VaultAdmitGenesisRequest,
+  VaultAdmitGenesisResult,
+  VaultAllocateRequest,
+  VaultCreationJournal,
+  VaultCreationOptions,
+  VaultCreationResult,
+  VaultCreationStage,
+  VaultCreationTransport,
+  VaultDoctorRecoveryText,
+  VaultJournaledObject,
+  VaultObjectReceipt,
+  VaultPushToCreateAddress,
+  VaultPutObjectRequest,
+} from "./vault-creation-journal.js";
 export {
-  GITVAULT_DEPLOY_REF,
-  GITVAULT_HANDOFF_SENSITIVE_DENYLIST,
-  GITVAULT_MAX_GIT_OBJECT_BYTES,
-  GITVAULT_MIN_GIT_VERSION,
+  VAULT_DEPLOY_REF,
+  VAULT_HANDOFF_SENSITIVE_DENYLIST,
+  VAULT_MAX_GIT_OBJECT_BYTES,
+  VAULT_MIN_GIT_VERSION,
   HARDENED_GIT_ARGV_PREFIX,
   captureHandoffSnapshot,
   captureSnapshot,
@@ -384,7 +384,7 @@ export {
   diffCapturedSets,
   discoverGlobalExcludes,
   findOversizeObjects,
-  gitvaultCommitLine,
+  vaultCommitLine,
   globMatchesGitPath,
   hardenedGit,
   hardenedGitEnv,
@@ -398,45 +398,45 @@ export {
   probeGitVersion,
   resolveGitInvocationRepo,
   snapshotCommitment,
-} from "./gitvault-snapshot.js";
+} from "./vault-snapshot.js";
 export type {
   GitConfigDiscoveryEnv,
   GitInvocationRepo,
-  GitvaultCapturedFile,
-  GitvaultCapturedSetDrift,
-  GitvaultHandoffCaptureOptions,
-  GitvaultHandoffCaptureStats,
-  GitvaultHandoffSnapshot,
-  GitvaultRepositoryInspection,
-  GitvaultRepositoryRefusalCode,
-  GitvaultSnapshot,
-  GitvaultSnapshotOptions,
-  GitvaultSnapshotRefusalPath,
+  VaultCapturedFile,
+  VaultCapturedSetDrift,
+  VaultHandoffCaptureOptions,
+  VaultHandoffCaptureStats,
+  VaultHandoffSnapshot,
+  VaultRepositoryInspection,
+  VaultRepositoryRefusalCode,
+  VaultSnapshot,
+  VaultSnapshotOptions,
+  VaultSnapshotRefusalPath,
   GlobalExcludesDiscovery,
   GlobalExcludesRefusal,
   HardenedGitOptions,
   HardenedGitResult,
   ParsedGitConfigEntry,
-} from "./gitvault-snapshot.js";
+} from "./vault-snapshot.js";
 export {
-  GITVAULT_INLINE_UPLOAD_MAX_OBJECT_BYTES,
-  GITVAULT_INLINE_UPLOAD_MAX_REQUEST_BYTES,
-  GITVAULT_MAX_CANONICAL_REFS,
-  GITVAULT_MAX_CHECKPOINT_PACKS,
-  GITVAULT_MAX_CHECKPOINT_TOTAL_STORED_BYTES,
-  GITVAULT_MAX_HEADS_PER_LISTING_PAGE,
-  GITVAULT_MAX_REF_STATE_OBJECT_BYTES,
-  GITVAULT_MAX_REF_UPDATES_PER_TRANSACTION,
-  GITVAULT_MAX_REPAIR_ADDED_ROOTS,
-  GITVAULT_MAX_RETENTION_ROOT_ENTRIES,
-  GITVAULT_MAX_WAL_RECEIPTS_PER_HEAD,
-  GITVAULT_MULTI_OBJECT_PACK_TARGET_BYTES,
-  GITVAULT_PUSH_CONFLICT_RETRIES,
-  GITVAULT_R402_REF_NAMESPACE,
-  GITVAULT_RETAIN_REF_PREFIX,
-  GITVAULT_RETENTION_MIN_DAYS,
-  GITVAULT_VERIFICATION_BUDGET_HEADS,
-  GitvaultVault,
+  VAULT_INLINE_UPLOAD_MAX_OBJECT_BYTES,
+  VAULT_INLINE_UPLOAD_MAX_REQUEST_BYTES,
+  VAULT_MAX_CANONICAL_REFS,
+  VAULT_MAX_CHECKPOINT_PACKS,
+  VAULT_MAX_CHECKPOINT_TOTAL_STORED_BYTES,
+  VAULT_MAX_HEADS_PER_LISTING_PAGE,
+  VAULT_MAX_REF_STATE_OBJECT_BYTES,
+  VAULT_MAX_REF_UPDATES_PER_TRANSACTION,
+  VAULT_MAX_REPAIR_ADDED_ROOTS,
+  VAULT_MAX_RETENTION_ROOT_ENTRIES,
+  VAULT_MAX_WAL_RECEIPTS_PER_HEAD,
+  VAULT_MULTI_OBJECT_PACK_TARGET_BYTES,
+  VAULT_PUSH_CONFLICT_RETRIES,
+  VAULT_R402_REF_NAMESPACE,
+  VAULT_RETAIN_REF_PREFIX,
+  VAULT_RETENTION_MIN_DAYS,
+  VAULT_VERIFICATION_BUDGET_HEADS,
+  Vault,
   assertNoTransition,
   assertRefMapCardinality,
   bigIntToGeneration,
@@ -446,68 +446,68 @@ export {
   checkGenerationRegression,
   checkOpenBinding,
   compareRoots,
-  createGitvaultHttpTransport,
+  createVaultHttpTransport,
   deployRefTransaction,
   effectiveAdmittedAt,
   evaluateRefTransaction,
   evolveRetentionRoots,
   generationToBigInt,
-  gitvaultInlineUploadEligible,
-  gitvaultPaths,
-  gitvaultRetainedRefName,
+  vaultInlineUploadEligible,
+  vaultPaths,
+  vaultRetainedRefName,
   isRootEligibleForRemoval,
   nextGeneration,
   nextListingRequest,
-  gitvaultLedgerId,
-  gitvaultManifestEntry,
-  gitvaultWireRefForPath,
+  vaultLedgerId,
+  vaultManifestEntry,
+  vaultWireRefForPath,
   openBindingDigest,
   reconcileRetainedTipRefs,
   validateHeadsListingRequest,
   verifyHeadsListingPage,
-  readGitvaultRestoreMarker,
-  GITVAULT_AUTO_GC_GENERATIONS_DEFAULT,
-  readGitvaultAutoGcThreshold,
-  writeGitvaultAutoGcThreshold,
-} from "./gitvault-publication.js";
+  readVaultRestoreMarker,
+  VAULT_AUTO_GC_GENERATIONS_DEFAULT,
+  readVaultAutoGcThreshold,
+  writeVaultAutoGcThreshold,
+} from "./vault-publication.js";
 export type {
-  GitvaultAdmitHeadRequest,
-  GitvaultAdmitHeadResult,
-  GitvaultBuiltCheckpoint,
-  GitvaultChainLinkInput,
-  GitvaultCutoffOptions,
-  GitvaultDroppedTip,
-  GitvaultEvaluateRefTransactionOptions,
-  GitvaultEvolveRootsOptions,
-  GitvaultHttpTransportOptions,
-  GitvaultListingProgress,
-  GitvaultMaintenanceLease,
-  GitvaultMaintenanceLeaseRequest,
-  GitvaultObjectReadRequest,
-  GitvaultResourceBinding,
-  GitvaultVaultRecord,
-  GitvaultVaultState,
-  GitvaultWireRef,
-  GitvaultMaterializedState,
-  GitvaultOpenBindingRecord,
-  GitvaultPublishResult,
-  GitvaultPushOptions,
-  GitvaultPushPlan,
-  GitvaultRefMap,
-  GitvaultRefTransactionEvaluation,
-  GitvaultRefUpdateFailure,
-  GitvaultRestoreMarker,
-  GitvaultRetainedRefsReconcileResult,
-  GitvaultRetentionCutoffIssued,
-  GitvaultTransport,
-  GitvaultUploadObject,
-  GitvaultUploadReceipt,
-  GitvaultVaultOptions,
-  GitvaultVerifiedState,
-  GitvaultCompactionGrant,
-} from "./gitvault-publication.js";
+  VaultAdmitHeadRequest,
+  VaultAdmitHeadResult,
+  VaultBuiltCheckpoint,
+  VaultChainLinkInput,
+  VaultCutoffOptions,
+  VaultDroppedTip,
+  VaultEvaluateRefTransactionOptions,
+  VaultEvolveRootsOptions,
+  VaultHttpTransportOptions,
+  VaultListingProgress,
+  VaultMaintenanceLease,
+  VaultMaintenanceLeaseRequest,
+  VaultObjectReadRequest,
+  VaultResourceBinding,
+  VaultRecord,
+  VaultState,
+  VaultWireRef,
+  VaultMaterializedState,
+  VaultOpenBindingRecord,
+  VaultPublishResult,
+  VaultPushOptions,
+  VaultPushPlan,
+  VaultRefMap,
+  VaultRefTransactionEvaluation,
+  VaultRefUpdateFailure,
+  VaultRestoreMarker,
+  VaultRetainedRefsReconcileResult,
+  VaultRetentionCutoffIssued,
+  VaultTransport,
+  VaultUploadObject,
+  VaultUploadReceipt,
+  VaultOptions,
+  VaultVerifiedState,
+  VaultCompactionGrant,
+} from "./vault-publication.js";
 export {
-  GITVAULT_DEPLOY_OUTCOMES,
+  VAULT_DEPLOY_OUTCOMES,
   SNAPSHOT_MOVED_DURING_DEPLOY,
   checkActivationTokenBinding,
   checkAuthorizationEpoch,
@@ -517,27 +517,27 @@ export {
   overrideJournalDir,
   overrideJournalPath,
   readOverrideJournal,
-  runGitvaultDeploy,
+  runVaultDeploy,
   writeOverrideJournal,
-} from "./gitvault-deploy.js";
+} from "./vault-deploy.js";
 export type {
-  GitvaultCaptureReceiptMatch,
-  GitvaultDeployError,
-  GitvaultDeployLane,
-  GitvaultDeployLaneCommitInput,
-  GitvaultDeployLanePlan,
-  GitvaultDeployLanePlanInput,
-  GitvaultDeployNextAction,
-  GitvaultDeployOptions,
-  GitvaultDeployOutcome,
-  GitvaultDeployResult,
-  GitvaultOverrideDrainReport,
-  GitvaultOverrideJournal,
-  GitvaultSnapshotMovedDetails,
-} from "./gitvault-deploy.js";
+  VaultCaptureReceiptMatch,
+  VaultDeployError,
+  VaultDeployLane,
+  VaultDeployLaneCommitInput,
+  VaultDeployLanePlan,
+  VaultDeployLanePlanInput,
+  VaultDeployNextAction,
+  VaultDeployOptions,
+  VaultDeployOutcome,
+  VaultDeployResult,
+  VaultOverrideDrainReport,
+  VaultOverrideJournal,
+  VaultSnapshotMovedDetails,
+} from "./vault-deploy.js";
 // kygit-handoff (design D3) — the Handoff Key: assemble/parse, HKDF
 // derivations, the sealed envelope, the note schema + client-side secret
-// scan. `Gitvault.handoff`/`.resume` delegate to this. kygit-invite (design
+// scan. `Repos.handoff`/`.resume` delegate to this. kygit-invite (design
 // D3) widens the SAME module to a second row, `kgi1_` — the Invite Key —
 // sharing the one parser/HKDF/envelope/scan machinery by kind.
 export {
@@ -565,11 +565,11 @@ export {
   sealHandoffEnvelopeV2,
   sealInviteEnvelope,
   uuidToBytes,
-} from "./gitvault-handoff.js";
+} from "./vault-handoff.js";
 // add-room-invite (design D3) — the Room Invite Key: `kri1_`, its own
 // registry row, and its own (single-secret, envelope-free) HKDF derivation.
 // Lives directly in `bearer-redeem-key.ts` rather than riding the vault-
-// shaped `gitvault-handoff.js` re-export above, since a room invite is not a
+// shaped `vault-handoff.js` re-export above, since a room invite is not a
 // vault kind. `r.rooms.invite`/`.join` delegate to this module internally.
 export {
   assembleRoomInviteKey,
@@ -593,11 +593,11 @@ export type {
   KygitHandoffNote,
   KygitHandoffNoteCapture,
   KygitInviteNote,
-} from "./gitvault-handoff.js";
-// gitvault-multi-writer (rev 47, task 5.4/5.10) — the writer-admission grant
+} from "./vault-handoff.js";
+// vault-multi-writer (rev 47, task 5.4/5.10) — the writer-admission grant
 // chain: mint an admission seed from a handoff's own master_secret (never
 // auth_secret/wrap_key), the grantor-signed grant, and the two-signature
-// acceptance a redeemer builds. `Gitvault.handoff`/`.resume` delegate to
+// acceptance a redeemer builds. `Repos.handoff`/`.resume` delegate to
 // these; exported here so an external programmatic consumer can build or
 // verify the SAME objects without reaching into the node-only module path.
 export {
@@ -609,25 +609,25 @@ export {
   deriveWriterAdmissionSeed,
   verifyWriterAcceptance,
   verifyWriterAdmissionGrant,
-} from "./gitvault-handoff.js";
+} from "./vault-handoff.js";
 export type {
   BuildWriterAcceptanceInput,
   BuildWriterAdmissionGrantInput,
-  GitvaultWriterMintedRole,
+  VaultWriterMintedRole,
   HandoffWriterAcceptStatement,
   WriterAcceptance,
   WriterAdmissionGrant,
-} from "./gitvault-handoff.js";
-// gitvault-multi-writer (rev 47, task 5.1/5.10) — the writer set as CHAIN
+} from "./vault-handoff.js";
+// vault-multi-writer (rev 47, task 5.1/5.10) — the writer set as CHAIN
 // STATE (protocol §4.15), the pure cryptographic half of `add_writer_key` /
 // `rotate_epoch{writer_set_update}` admission (§4.16-§4.18). Deliberately
 // isomorphic (no Node-only APIs) despite living under `node/` — a
 // recovering client, the browser viewer, and `r402s-verify` all replay
 // writer state from nothing but genesis + admitted chain objects using
-// these SAME functions; `GitvaultVault`'s own writer-door/handoff-door
+// these SAME functions; `Vault`'s own writer-door/handoff-door
 // admission and reconcile methods delegate to this module already.
 // `WriterChainState` is this module's own name for what the task list
-// calls `GitvaultWriterState` — exported under its established name rather
+// calls `VaultWriterState` — exported under its established name rather
 // than introduced as a redundant alias.
 export {
   MAX_VAULT_WRITERS,
@@ -646,7 +646,7 @@ export {
   validateWriterSetUpdate,
   writerKeyIdOf,
   writerSetSha256,
-} from "./gitvault-writer-state.js";
+} from "./vault-writer-state.js";
 export type {
   AddWriterKeyPayload,
   AdmittedWriterTransition,
@@ -655,43 +655,43 @@ export type {
   WriterSetUpdatePayload,
   WriterStateRefusalCode,
   WriterStateVerdict,
-} from "./gitvault-writer-state.js";
+} from "./vault-writer-state.js";
 // kygit-handoff (design D1) — restore: `git clone` at the base then
-// `git stash apply --index <oid>`. `Gitvault.resume`/`.join` delegate to
+// `git stash apply --index <oid>`. `Repos.resume`/`.join` delegate to
 // this. kygit-invite (design D3/D5) adds the `.git/info/exclude` write both
 // verbs share.
-export { applyHandoffCheckpoint, cloneGitvaultRemote, excludeMessagingCacheFromGit, isMessagingCacheExcludedFromGit, readGitCommitMessage, resolveResumeTargetDir } from "./gitvault-restore.js";
-export type { GitvaultHandoffRestoreOptions, GitvaultHandoffRestoreResult } from "./gitvault-restore.js";
-// gitvault D2 (repo-first-onramp task 2.2) — lazy allocation on first push;
-// the orchestration `Gitvault.openOrCreate` delegates to.
-export { openOrCreateGitvault } from "./gitvault-open-or-create.js";
-export type { OpenOrCreateGitvaultOptions, OpenOrCreateGitvaultResult } from "./gitvault-open-or-create.js";
-// gitvault D6 — push-to-create (repo-first-onramp task 4.4/4.5), the
-// orchestration `Gitvault.resolveOrCreateAddress` delegates to.
-export { pushToCreateGitvault } from "./gitvault-push-to-create.js";
-export type { PushToCreateGitvaultOptions, PushToCreateGitvaultResult } from "./gitvault-push-to-create.js";
-// gitvault D6 — named-address resolution + id-pinning (repo-first-onramp
+export { applyHandoffCheckpoint, cloneVaultRemote, excludeMessagingCacheFromGit, isMessagingCacheExcludedFromGit, readGitCommitMessage, resolveResumeTargetDir } from "./vault-restore.js";
+export type { VaultHandoffRestoreOptions, VaultHandoffRestoreResult } from "./vault-restore.js";
+// vault D2 (repo-first-onramp task 2.2) — lazy allocation on first push;
+// the orchestration `Repos.openOrCreate` delegates to.
+export { openOrCreateVault } from "./vault-open-or-create.js";
+export type { OpenOrCreateVaultOptions, OpenOrCreateVaultResult } from "./vault-open-or-create.js";
+// vault D6 — push-to-create (repo-first-onramp task 4.4/4.5), the
+// orchestration `Repos.resolveOrCreateAddress` delegates to.
+export { pushToCreateVault } from "./vault-push-to-create.js";
+export type { PushToCreateVaultOptions, PushToCreateVaultResult } from "./vault-push-to-create.js";
+// vault D6 — named-address resolution + id-pinning (repo-first-onramp
 // task 4.5): local git-config pin read/write, and the resolve-or-create
-// orchestrator `Gitvault.resolveOrCreateAddress` delegates to.
-export { readPinnedGitvaultRepo, pinGitvaultRepo, resolveGitvaultAddress, pinRoomBinding, readPinnedRoomBinding } from "./gitvault-address.js";
-export type { GitvaultPinnedRepo, GitvaultAddressResolution, ResolveGitvaultAddressOptions } from "./gitvault-address.js";
-export { prewarmGitvaultConnection, predialGitvaultObjectStore } from "./gitvault-prewarm.js";
-// gitvault cross-profile repo-key scan — shared by
+// orchestrator `Repos.resolveOrCreateAddress` delegates to.
+export { readPinnedVaultRepo, pinVaultRepo, resolveVaultAddress, pinRoomBinding, readPinnedRoomBinding } from "./vault-address.js";
+export type { VaultPinnedRepo, VaultAddressResolution, ResolveVaultAddressOptions } from "./vault-address.js";
+export { prewarmVaultConnection, predialVaultObjectStore } from "./vault-prewarm.js";
+// vault cross-profile repo-key scan — shared by
 // every keystore-miss enrichment point; see the module doc for why this is
 // a directory/filename read, never key material.
-export { findLocalProfilesHoldingGitvaultRepo, crossProfileGitvaultHint } from "./gitvault-profile-scan.js";
+export { findLocalProfilesHoldingVaultRepo, crossProfileVaultHint } from "./vault-profile-scan.js";
 // The deploy lane the interface above was always missing (change
-// `gitvault-deploy-lane`): apply-v1 plan + commit driven through `Deploy`,
+// `vault-deploy-lane`): apply-v1 plan + commit driven through `Deploy`,
 // and the entry point that engages it only for a `required` project.
-export { applyWithGitvault, createApplyDeployLane } from "./gitvault-apply.js";
+export { applyWithVault, createApplyDeployLane } from "./vault-apply.js";
 export type {
   ApplyDeployLane,
   ApplyDeployLaneOptions,
-  ApplyWithGitvaultOptions,
-  ApplyWithGitvaultResult,
-  GitvaultApplyMode,
-} from "./gitvault-apply.js";
-export * from "../namespaces/gitvault.crypto.js";
+  ApplyWithVaultOptions,
+  ApplyWithVaultResult,
+  VaultApplyMode,
+} from "./vault-apply.js";
+export * from "../namespaces/vault.crypto.js";
 export { signCiDelegation } from "./ci.js";
 export type { SignCiDelegationOptions } from "./ci.js";
 export { signOrgAdopt, adoptOrg } from "./org-adopt.js";

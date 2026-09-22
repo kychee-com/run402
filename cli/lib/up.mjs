@@ -84,12 +84,12 @@ Options:
 Repo composition (D4): against a local directory (not a git URL source), up
 composes git init (only when the app root is not already a repository) +
 provision + a run402 remote scaffold (origin is never claimed) + a first
-gitvault push — one command, the fly-launch shape. The app root is the
+vault push — one command, the fly-launch shape. The app root is the
 manifest's directory; an app root that lies INSIDE another repository is
 left untouched (result.repo.status "skipped", reason
 "inside_other_repository", toplevel named) and result.repo.next_actions
 carries create_nested_repo — re-run with --nested to give the app its own
-encrypted remote (result.repo.gitvault.nested true, enclosing_toplevel,
+encrypted remote (result.repo.vault.nested true, enclosing_toplevel,
 excluded_in_enclosing). The scaffold and first push are best-effort: a git
 or vault hiccup never turns an otherwise-successful deploy into a failure,
 and is reported under result.repo (default apply) or result (--repo-only)
@@ -395,7 +395,7 @@ export async function run(args = []) {
             createdRepository = await gitInitIfNeeded(workDir);
             result.result.repo = await composeRepoPushStep({ sdk, workDir, projectId, createdRepository, nested });
           } catch (err) {
-            result.result.repo = { status: "failed", first_push: null, first_push_error: { code: err?.code ?? "GITVAULT_SETUP_FAILED", message: err?.message ?? String(err) }, ...repoNextActionsOf(err) };
+            result.result.repo = { status: "failed", first_push: null, first_push_error: { code: err?.code ?? "VAULT_SETUP_FAILED", message: err?.message ?? String(err) }, ...repoNextActionsOf(err) };
           }
         }
       }
@@ -658,13 +658,13 @@ function looksLikeGitRemoteUrl(source) {
  *
  * `-b main`, not whatever `init.defaultBranch` (or the pre-2.28 hardcoded
  * `master`) happens to be — the docs teach `git push origin main`, and the
- * gitvault remote helper's own dangling-HEAD hazard note (a first push of
+ * vault remote helper's own dangling-HEAD hazard note (a first push of
  * any OTHER branch leaves HEAD naming a ref that does not exist yet) is
  * exactly what a mismatched default branch here would walk `up` straight
  * into. `-b` needs git 2.28+ (2020); an older git falls back to the same
  * result by a different route — `symbolic-ref` on a still-empty repository
  * has no existing ref to disturb, so it is exactly as safe as `-b main`
- * would have been. Mirrors `Gitvault.scaffoldRemote`'s identical fallback.
+ * would have been. Mirrors `Repos.scaffoldRemote`'s identical fallback.
  */
 async function gitInitIfNeeded(dir) {
   const { hardenedGit } = await import("#sdk/node");
@@ -685,20 +685,20 @@ async function gitInitIfNeeded(dir) {
 /**
  * Remote scaffold + first push, against an already-known project. Best-effort
  * in every branch — the same non-fatal discipline `projects provision`'s own
- * fold-in follows (`gitvault-scaffold.mjs`): a git or vault hiccup here must
+ * fold-in follows (`vault-scaffold.mjs`): a git or vault hiccup here must
  * never turn an otherwise-successful `up` into a failure.
  */
 async function composeRepoPushStep({ sdk, workDir, projectId, createdRepository, nested = false }) {
   const { resolveOwningOrgId } = await import("./org-context.mjs");
-  const { scaffoldGitvaultRemote } = await import("./gitvault-scaffold.mjs");
+  const { scaffoldVaultRemote } = await import("./vault-scaffold.mjs");
   const orgId = await resolveOwningOrgId(projectId);
   // `--nested`: an app root INSIDE another repository (a monorepo workspace)
   // becomes its own repository with the encrypted remote — the enclosing
   // checkout only gains one local `.git/info/exclude` line. Without it the
   // scaffold is skipped there and the result's `next_actions` name
   // `run402 up --nested` (the caller's own spelling of the way out).
-  const scaffold = await scaffoldGitvaultRemote({ repoDir: workDir, projectId, orgId: orgId ?? undefined, createRepoIfMissing: false, nested, nestedCommand: "run402 up --nested" });
-  if (createdRepository && scaffold.gitvault) scaffold.gitvault.created_repository = true;
+  const scaffold = await scaffoldVaultRemote({ repoDir: workDir, projectId, orgId: orgId ?? undefined, createRepoIfMissing: false, nested, nestedCommand: "run402 up --nested" });
+  if (createdRepository && scaffold.vault) scaffold.vault.created_repository = true;
   const out = { ...scaffold, first_push: null, first_push_error: null };
   if (scaffold.status !== "scaffolded") {
     // Nothing was scaffolded (the app root is inside another repository, or
@@ -707,7 +707,7 @@ async function composeRepoPushStep({ sdk, workDir, projectId, createdRepository,
     return out;
   }
   if (!orgId) {
-    out.first_push_error = { code: "GITVAULT_ORG_UNRESOLVED", message: `could not resolve the owning org for ${projectId} — the first push was skipped` };
+    out.first_push_error = { code: "VAULT_ORG_UNRESOLVED", message: `could not resolve the owning org for ${projectId} — the first push was skipped` };
     return out;
   }
   // Read BEFORE the push decision: an unborn HEAD is what decides the lane.
@@ -717,7 +717,7 @@ async function composeRepoPushStep({ sdk, workDir, projectId, createdRepository,
   // a repository the agent `git init`ed itself and never committed to (an
   // UNBORN HEAD): there is no clean tree to keep, only untracked files, and
   // the strict lane would refuse SNAPSHOT_DIRTY_TREE on every first push.
-  const freshRepository = createdRepository || scaffold.gitvault?.created_repository === true || out.local_git.unborn === true;
+  const freshRepository = createdRepository || scaffold.vault?.created_repository === true || out.local_git.unborn === true;
   try {
     let vaultCreated = null;
     // A fresh repository has, by definition, nothing committed yet — every
@@ -726,7 +726,7 @@ async function composeRepoPushStep({ sdk, workDir, projectId, createdRepository,
     // first commit the dirty-tree lane produces (disclosed under
     // first_push.snapshot); a repository WITH commits keeps the clean-tree
     // rule and its refusal is reported, never overridden.
-    const pushed = await sdk.gitvault.push({
+    const pushed = await sdk.repos.capture({
       project_id: projectId,
       org_id: orgId,
       repo_dir: workDir,
@@ -736,14 +736,14 @@ async function composeRepoPushStep({ sdk, workDir, projectId, createdRepository,
     out.first_push = {
       generation: pushed.generation,
       form: pushed.form,
-      gitvault_commit: pushed.gitvault_commit,
+      vault_commit: pushed.vault_commit,
       vault_created: vaultCreated,
       snapshot: pushed.snapshot ? { id: pushed.snapshot.oid, kind: pushed.snapshot.kind, backup_status: "succeeded" } : null,
       note: "Vault backup does not create a local branch commit or stage files. Local HEAD and dirty state are independent.",
       ...(freshRepository ? { captured_dirty: true, modified_captured: pushed.snapshot?.modified_captured ?? null, untracked_captured: pushed.snapshot?.untracked_captured ?? null } : {}),
     };
   } catch (err) {
-    out.first_push_error = { code: err?.body?.code ?? err?.code ?? "GITVAULT_PUSH_FAILED", message: err?.message ?? String(err) };
+    out.first_push_error = { code: err?.body?.code ?? err?.code ?? "VAULT_PUSH_FAILED", message: err?.message ?? String(err) };
     Object.assign(out, repoNextActionsOf(err));
   }
   return out;

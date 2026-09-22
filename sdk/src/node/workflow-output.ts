@@ -67,9 +67,9 @@ function deployment(value: unknown): unknown {
 }
 function repository(value: unknown): unknown {
   if (!object(value)) return value;
-  const summary = pick(value, [...OUTCOME, "first_push_error", "gitvault_error", "local_git", "toplevel", "gitvault", "first_push"]);
-  if (object(value.gitvault)) summary.gitvault = pick(value.gitvault, [...OUTCOME, "name", "url", "allocated", "created_repository", "already_present", "nested", "enclosing_toplevel", "excluded_in_enclosing"]);
-  if (object(value.first_push)) summary.first_push = pick(value.first_push, ["generation", "form", "gitvault_commit", "snapshot", "captured_dirty"]);
+  const summary = pick(value, [...OUTCOME, "first_push_error", "vault_error", "local_git", "toplevel", "vault", "first_push"]);
+  if (object(value.vault)) summary.vault = pick(value.vault, [...OUTCOME, "name", "url", "allocated", "created_repository", "already_present", "nested", "enclosing_toplevel", "excluded_in_enclosing"]);
+  if (object(value.first_push)) summary.first_push = pick(value.first_push, ["generation", "form", "vault_commit", "snapshot", "captured_dirty"]);
   return summary;
 }
 

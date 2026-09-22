@@ -1,8 +1,8 @@
 /**
  * `cold-start.mjs` — the minimal x402/Base-Sepolia cold-start chain
  * (kygit-handoff design D5): wallet → faucet → one x402 prototype
- * payment. `repos create` (and so `kygit create`) folds this in when it is
- * refused `NO_ACTIVE_TIER`, so `kygit create` on a genuinely fresh machine
+ * payment. `repos create` folds this in when it is
+ * refused `NO_ACTIVE_TIER`, so `run402 repos create` on a genuinely fresh machine
  * ends with a vault, no human signup, no cloud dashboard.
  *
  * This is the SAME shape `run402 init` already walks (create the wallet →

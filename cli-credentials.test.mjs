@@ -189,7 +189,7 @@ describe("credentials project-keys", () => {
 });
 
 
-describe("credentials issue --import (the cold-restart re-key path, gitvault-deploy-lane 6.5a)", () => {
+describe("credentials issue --import (the cold-restart re-key path, vault-deploy-lane 6.5a)", () => {
   // A throwaway key for the offline SIWX signer — never a real wallet.
   const TEST_PRIVATE_KEY = "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d";
 
