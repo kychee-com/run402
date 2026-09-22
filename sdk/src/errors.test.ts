@@ -21,6 +21,7 @@ import {
   ProjectNotFound,
   Run402DeployError,
   Run402Error,
+  SecretRequiresCliError,
   StepUpRequiredError,
   Unauthorized,
   getQuotaScope,
@@ -39,9 +40,11 @@ import {
   isProjectNotFound,
   isRetryableRun402Error,
   isRun402Error,
+  isSecretRequiresCli,
   isStepUpRequired,
   isUnauthorized,
 } from "./errors.js";
+import { buildClient } from "./kernel.js";
 
 // ─── kind literals ───────────────────────────────────────────────────────────
 
@@ -717,5 +720,56 @@ describe("Run402DeployError keeps its own code/retryable (no default fallback)",
       context: "uploading",
     });
     assert.equal(e.retryable, true);
+  });
+});
+
+describe("SECRET_REQUIRES_CLI (code-mode MCP, task 1.2)", () => {
+  const command = "run402 grants create 0xabc --capability deploy --key --project prj_1";
+
+  it("is a local error with the stable code, no HTTP status, and exactly one run_cli_command action", () => {
+    const e = new SecretRequiresCliError(command);
+    assert.equal(e.kind, "local_error");
+    assert.equal(e.code, "SECRET_REQUIRES_CLI");
+    assert.equal(e.status, null);
+    assert.equal(e.retryable, false);
+    assert.equal(e.command, command);
+    assert.deepEqual(e.details, { command });
+    assert.equal(e.nextActions?.length, 1);
+    assert.equal(e.nextActions?.[0]?.type, "run_cli_command");
+    assert.equal(e.nextActions?.[0]?.command, command);
+    assert.equal(typeof e.nextActions?.[0]?.why, "string");
+    assert.ok(e.message.includes(command), "the message names the command");
+  });
+
+  it("carries a caller-supplied why verbatim", () => {
+    const e = new SecretRequiresCliError(command, "Grant keys print once.");
+    assert.equal(e.nextActions?.[0]?.why, "Grant keys print once.");
+  });
+
+  it("isSecretRequiresCli matches only the refusal", () => {
+    assert.equal(isSecretRequiresCli(new SecretRequiresCliError(command)), true);
+    assert.equal(isLocalError(new SecretRequiresCliError(command)), true);
+    assert.equal(isSecretRequiresCli(new LocalError("x", "y", { code: "OTHER" })), false);
+    assert.equal(isSecretRequiresCli(new Error("x")), false);
+  });
+
+  it("serializes the command and the action through toJSON", () => {
+    const json = JSON.parse(JSON.stringify(new SecretRequiresCliError(command)));
+    assert.equal(json.code, "SECRET_REQUIRES_CLI");
+    assert.equal(json.command, command);
+    assert.equal(json.nextActions[0].type, "run_cli_command");
+  });
+
+  it("client.assertSecretReturn throws only when returnSecrets is false", () => {
+    const creds = { async getAuth() { return null; }, async getProject() { return null; } };
+    const base = { apiBase: "https://api.test", fetch: globalThis.fetch, credentials: creds };
+    const refusing = buildClient({ ...base, capabilities: { returnSecrets: false } });
+    assert.throws(
+      () => refusing.assertSecretReturn({ command }),
+      (err: unknown) => isSecretRequiresCli(err) && (err as SecretRequiresCliError).command === command,
+    );
+    const permissive = buildClient(base);
+    assert.doesNotThrow(() => permissive.assertSecretReturn({ command }));
+    assert.equal(permissive.capabilities.returnSecrets, true);
   });
 });

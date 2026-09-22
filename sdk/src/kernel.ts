@@ -17,6 +17,7 @@ import {
   NotAuthorizedError,
   WriteApprovalRequiredError,
   PaymentRequired,
+  SecretRequiresCliError,
   StepUpRequiredError,
   TransferFreezeError,
   Unauthorized,
@@ -271,6 +272,14 @@ export interface Client {
   stats(): ClientStats;
   /** What this client may hand back to its caller. See {@link ClientCapabilities}. */
   readonly capabilities: Readonly<ClientCapabilities>;
+  /**
+   * Refuse, before any request, an operation whose result or input is a
+   * one-time secret when this client may not return secrets
+   * (`capabilities.returnSecrets === false`, the `sandbox` surface). Throws
+   * {@link SecretRequiresCliError} naming `command`, the exact CLI command
+   * line for the same operation; a no-op on every other surface.
+   */
+  assertSecretReturn(opts: { command: string; why?: string }): void;
 }
 
 export async function request<T>(
@@ -505,6 +514,9 @@ export function buildClient(kernel: KernelConfig): Client {
   return {
     apiBase: kernel.apiBase,
     capabilities,
+    assertSecretReturn: ({ command, why }) => {
+      if (!capabilities.returnSecrets) throw new SecretRequiresCliError(command, why);
+    },
     request: <T>(path: string, opts: RequestOptions) => request<T>(kernelWithStats, path, opts),
     requestWithResponse: <T>(path: string, opts: RequestOptions) =>
       requestWithResponse<T>(kernelWithStats, path, opts),

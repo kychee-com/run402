@@ -557,6 +557,40 @@ export class ProjectCredentialNotFound extends LocalError {
   }
 }
 
+/**
+ * `SECRET_REQUIRES_CLI` — a method that would return or consume a one-time
+ * secret (a grant key, a Handoff or Invite Key, project credentials, a
+ * private key, a Lightning pairing) was called on a client whose
+ * `capabilities.returnSecrets` is false: the `sandbox` surface an MCP `run`
+ * snippet executes on. Thrown before any request is made, so nothing secret
+ * ever reaches the snippet or the MCP result cache. Carries exactly one
+ * `run_cli_command` next action naming the CLI command that performs the
+ * same operation, where the secret prints once to a person's terminal.
+ */
+export class SecretRequiresCliError extends LocalError {
+  /** The exact CLI command line for the same operation. */
+  readonly command: string;
+
+  constructor(command: string, why?: string) {
+    const reason = why ?? "This operation prints a one-time secret, which only the CLI hands to a person.";
+    super(
+      `This operation returns or consumes a one-time secret and is refused on this client. Run it from the CLI: ${command}`,
+      "checking secret-return capability",
+      {
+        code: "SECRET_REQUIRES_CLI",
+        details: { command },
+        next_actions: [{ type: "run_cli_command", command, why: reason }],
+      },
+    );
+    this.name = "SecretRequiresCliError";
+    this.command = command;
+  }
+
+  override toJSON(): Record<string, unknown> {
+    return { ...super.toJSON(), command: this.command };
+  }
+}
+
 export const PROJECT_CREDENTIAL_ERROR_CODES = [
   "PROJECT_CREDENTIAL_NOT_FOUND",
   "PROJECT_CREDENTIAL_INVALID",
@@ -806,7 +840,11 @@ export type NextActionType =
   // `run402 up` verify.http path checks found no public origin: bind a
   // subdomain (`run402 subdomains add <name>` binds the live release, or
   // declare `subdomains.set` in the manifest) and rerun `up verify`.
-  | "add_subdomain";
+  | "add_subdomain"
+  // `SECRET_REQUIRES_CLI`: the operation hands out a one-time secret, so it
+  // runs from the CLI; `command` is the exact command line. The CLI itself
+  // never emits this type.
+  | "run_cli_command";
 
 /**
  * A single advisory "what to do next" entry. Mirrors the gateway's
@@ -1073,6 +1111,11 @@ export function isLocalError(e: unknown): e is LocalError {
 }
 
 /** True if `e` is a {@link Run402DeployError}. */
+/** True for the local refusal a `sandbox` client throws instead of returning a one-time secret. */
+export function isSecretRequiresCli(e: unknown): e is SecretRequiresCliError {
+  return isLocalError(e) && e.code === "SECRET_REQUIRES_CLI";
+}
+
 export function isDeployError(e: unknown): e is Run402DeployError {
   return isRun402Error(e) && e.kind === "deploy_error";
 }
