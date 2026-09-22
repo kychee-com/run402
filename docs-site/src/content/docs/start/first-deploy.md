@@ -1,6 +1,6 @@
 ---
 title: Your first deploy
-description: Complete application files and one CLI command for your first Run402 deployment.
+description: Complete application files and one CLI command for your first Run402 deploy.
 order: 0
 ---
 
@@ -90,7 +90,7 @@ The result is JSON. The following is a shortened example, not the complete respo
 }
 ```
 
-A ready release is not proof that every application behavior works. Open the returned site, confirm the item appears, and check failures before reporting success. Use the [deployment and verification reference](https://docs.run402.com/llms-cli-deploy.txt) for automated checks. For later authorized changes, run `run402 up` in the linked app directory.
+A ready release is not proof that every application behavior works. Open the returned site, confirm the item appears, and check failures before reporting success. Use the [deploy and verification reference](https://docs.run402.com/llms-cli-deploy.txt) for automated checks. For later authorized changes, run `run402 up` in the linked app directory.
 
 ## If you were given a promo code
 

@@ -3,7 +3,7 @@ title: Authentication and row security
 description: Separate application users, project exposure and infrastructure authority.
 ---
 
-An app's users are tenant actors. An agent deploying it is a control-plane principal. Keep their sessions and permissions separate. Exposure determines whether a table is reachable; RLS determines which rows an actor can access.
+An app's users are end-users. An agent deploying it is a control-plane principal. Keep their sessions and permissions separate. Exposure determines whether a table is reachable; RLS determines which rows an actor can access.
 
 For Astro, use the hosted auth components and `auth.*` helpers from the [Astro guide](/build/astro/). For non-Astro applications, use the documented hosted routes/session flow or bearer-token flow in the [frontend reference](/cli/frontend/). Match the chosen lane's cookie, CSRF, freshness and redirect behavior; do not mix credential shapes.
 

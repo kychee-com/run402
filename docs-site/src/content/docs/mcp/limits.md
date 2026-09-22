@@ -8,7 +8,7 @@ order: 50
 
 | | Prototype | Hobby | Team |
 |---|---|---|---|
-| Lease | 7 days | 30 days | 30 days |
+| Lease | none (free tier) | 30 days | 30 days |
 | Storage | 250 MB | 1 GB | 10 GB |
 | API calls | 500K | 5M | 50M |
 | Functions | 5 | 25 | 100 |
@@ -37,9 +37,9 @@ The lifecycle state machine lives on `internal.organizations`. The grace clock t
 
 - `effective_status` — derived for serving / UX (`active` / `past_due` / `frozen` / `dormant` / `archived` / `deleted`). When a single project is moderate-archived or user-deleted, this differs from the organization lifecycle.
 - `organization_lifecycle_state` — the raw per-organization state; identical across all projects on the same organization.
-- `lease_perpetual` — operator escape hatch on the owning organization. When `true`, the organization never advances past `active`. Toggle via `admin_set_lease_perpetual`. Replaces the v1.56 per-project `pinned` flag.
+- `lease_perpetual` — staff escape hatch on the owning organization. When `true`, the organization never advances past `active`. Toggle via `admin_set_lease_perpetual`. Replaces the v1.56 per-project `pinned` flag.
 
-Operator moderation actions are independent of lifecycle and scoped to a single project: `admin_archive_project` and `admin_reactivate_project`.
+Staff moderation actions are independent of lifecycle and scoped to a single project: `admin_archive_project` and `admin_reactivate_project`.
 
 ## Idempotent migrations
 
@@ -73,7 +73,7 @@ The MCP server handles all signing automatically. When a paid tool returns 402, 
 
 For real-money tiers, two paths to fund:
 - Path A — fund the agent allowance: human sends USDC on Base mainnet to the address from `allowance_export`. Agent pays autonomously via x402 from then on. Or in sats: `create_lightning_topup` returns a Lightning invoice the human pays from any wallet.
-- Path B — Stripe credits: create or pick the organization, then `create_checkout` with `product: "tier"` returns a Stripe URL the human pays once.
+- Path B — card-funded allowance: create or pick the organization, then `create_checkout` with `product: "tier"` returns a Stripe URL the human pays once.
 
 Suggest $10 to your human for two Hobby projects, or $20 for one Team plus renewal buffer.
 
@@ -83,7 +83,7 @@ Suggest $10 to your human for two Hobby projects, or $20 for one Team plus renew
 |---|---|
 | `402 payment_required` on `set_tier` | Allowance is empty. Call `request_faucet` (testnet) or fund with real USDC. If the user gave you a promo code, `redeem_voucher` credits the balance instead. |
 | `403` with `lifecycle_state: frozen` | Project past lease + 14 days. `set_tier` reactivates instantly. |
-| `403 admin_required` | Tool is platform-admin only (e.g., `admin_set_lease_perpetual`, `admin_archive_project`, `admin_reactivate_project`). Use a platform admin allowance wallet; project owners can't toggle these on their own. |
+| `403 admin_required` | Tool is staff only (e.g., `admin_set_lease_perpetual`, `admin_archive_project`, `admin_reactivate_project`). Use a staff allowance wallet; project owners can't toggle these on their own. |
 | `403 NOT_AUTHORIZED` on a control-plane action | Org-owned control plane: the wallet authenticated, but its principal lacks the org role/grant for this action — not a payment or lease issue. `details` carries `required_role` / `required_capability` / `reason`. Obtain a covering org membership/role or per-project grant; high-stakes ops (delete, transfer, membership change) need an active `owner` membership. Returned as 403 even when the project doesn't exist (existence isn't leaked), so also re-check the `project_id`. |
 | `409 LAST_OWNER` on `remove_org_member` / `set_org_member_role` | An org must keep at least one active `owner`. The change would remove or demote the last one. Promote another member to `owner` first (`set_org_member_role`), then retry. |
 | `409 PROJECT_HAS_PENDING_TRANSFER` on an owner-side mutation | A pending project transfer is freezing the control plane. `details.transfer_id` carries the id; `next_actions[]` has the cancel route. Run `cancel_project_transfer` to unblock, or `preview_project_transfer` to view what's pending. The freeze auto-clears 72h after init. |

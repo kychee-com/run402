@@ -246,7 +246,7 @@ Route matching and routed HTTP contract:
 - Exact routes beat prefix routes, longest prefix wins among prefixes, and method-compatible dynamic routes beat static assets.
 - A method-specific `POST /login` route can coexist with static `GET /login` HTML. Unsafe method mismatch returns `405`, not SPA HTML.
 - Matched dynamic routes fail closed: function/platform errors are returned and Run402 does not continue to static lookup.
-- Routed browser ingress uses Node 22 Fetch Request -> Response. The handler receives `req.method` and full public `req.url` on managed subdomains, deployment hosts, and verified custom domains. The raw `run402.routed_http.v1` envelope is internal; do not write browser route handlers against it. Direct `/functions/v1/:name` remains API-key protected.
+- Routed browser ingress uses Node 22 Fetch Request -> Response. The handler receives `req.method` and full public `req.url` on managed subdomains, hosts, and verified custom domains. The raw `run402.routed_http.v1` envelope is internal; do not write browser route handlers against it. Direct `/functions/v1/:name` remains API-key protected.
 - Request/response bodies are capped at 6 MiB. Run402 adds no wildcard CORS, does not store routed dynamic responses in a shared cache, and adds `Cache-Control: private, no-store` plus `x-run402-cache: dynamic-bypass` when the function sets no cache header.
 - The function owns application auth, CSRF for cookie-authenticated unsafe methods, CORS/`OPTIONS`, cookies, redirects, and not trusting spoofable forwarding headers.
 
@@ -326,7 +326,7 @@ Runtime route failure codes to branch on: `ROUTE_MANIFEST_LOAD_FAILED` (manifest
 
 #### Node deploy convenience
 
-- `r.sites.deployDir(...)` — Node-only thin wrapper that uses `fileSetFromDir(dir)`, delegates to `apply`, and emits unified `DeployEvent` shapes.
+- `r.sites.deployDir(...)` — Node-only thin wrapper that uses `fileSetFromDir(dir)`, grant keys to `apply`, and emits unified `DeployEvent` shapes.
 
 ### GitHub Actions OIDC — CI credentials + the same deploy primitive
 

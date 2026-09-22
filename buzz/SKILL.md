@@ -7,7 +7,7 @@ description: Complete Run402 onboarding for a managed Buzz agent with a dedicate
 
 Keep the Buzz/Nostr key and Run402 wallet key separate. Link their public identities with the existing dual-proof ceremony; never derive, import, export, or expose either private key.
 
-Buzz and Run402 treat people and agents as first-class participants. Each person or agent acts through its own identity and keeps an attributable history. Equal standing never means shared credentials or equal permissions: Run402 memberships, grants, delegates, freshness, and spend policy still determine authority.
+Buzz and Run402 treat people and agents as first-class participants. Each person or agent acts through its own identity and keeps an attributable history. Equal standing never means shared credentials or equal permissions: Run402 memberships, grants, grant keys, freshness, and spend policy still determine authority.
 
 Keep the authority domains explicit. Buzz is authoritative for signed collaboration evidence. Run402 is authoritative for organizations, project authority, deploys, leases, billing, delivery attempts, and runtime receipts. Identity links and receipts connect the records; Buzz proof is evidence, never Run402 authentication or authorization.
 
@@ -35,7 +35,7 @@ Treat the user's explicit setup request after that disclosure as authorization t
 - Do not overwrite or relink a human root, treasury, recovery, production-owner, or unrelated profile. Stop unless explicitly scoped `run402 org whoami` resolves a dedicated `agent` principal using `siwx_eoa`.
 - Accept only a standalone seven-field kind-1 event with `tags: []` or the fixture-frozen empty-condition NIP-OA `auth` tag. Never rewrite a signed event.
 
-Read [references/identity-and-security.md](references/identity-and-security.md) when reasoning about custody, proof permanence, compromise, revocation, or production adoption. Read [references/community-control-plane.md](references/community-control-plane.md) whenever human adoption, community installation, another Buzz agent, enrollment, drift, or fallback is present. Read [references/receipts.md](references/receipts.md) before reporting readiness, deployment, or failure.
+Read [references/identity-and-security.md](references/identity-and-security.md) when reasoning about custody, proof permanence, compromise, revocation, or production adoption. Read [references/community-control-plane.md](references/community-control-plane.md) whenever human adoption, community installation, another Buzz agent, enrollment, drift, or fallback is present. Read [references/receipts.md](references/receipts.md) before reporting readiness, deploy, or failure.
 Read [references/conversations.md](references/conversations.md) when rendering the initial demo-first conversation or an explicit early-adoption request; preserve its sequence and authority disclosures while replacing the example application with a contextual one.
 
 ## Set up Run402
@@ -71,7 +71,7 @@ Read [references/conversations.md](references/conversations.md) when rendering t
    - emits one structured ready or blocked result.
 
 5. Branch on `status`, not prose. On `blocked`, report the exact `stage`, stable `code`, `mutation_state`, and the single `next_action`. `RUN402_WALLET_NOT_FOUND` means confirm the label, create it with the separately reported `wallets new` command, and rerun setup. Do not invent a secret-export workaround or claim readiness.
-6. On `ready`, retain the complete readiness receipt from [references/receipts.md](references/receipts.md), including the explicit profile-selection evidence and `Deployment: none`, then continue immediately to the contextual demo offer below. Do not exit onboarding at the receipt and do not ask a separate setup question. Do not follow any CLI `next_actions` that create, fund, subscribe, provision, or deploy before the human approves the demo.
+6. On `ready`, retain the complete readiness receipt from [references/receipts.md](references/receipts.md), including the explicit profile-selection evidence and `Deployment: none`, then continue immediately to the contextual demo offer below. Do not exit onboarding at the receipt and do not ask a separate setup question. Do not follow any CLI `next_actions` that create, fund, start a lease, provision, or deploy before the human approves the demo.
 
 Running setup again must be a no-op when the compatible CLI, dedicated profile, and intended verified link already exist.
 
@@ -85,11 +85,11 @@ When `next_action.type` is `offer_community_enrollment`, explain the Run402-veri
 
 Preserve gateway-authored `next_actions` fields exactly when reporting recovery, including an exact `field` when present. Branch on the stable error code and action type; never collapse identity drift, authorization failure, stale descriptor, invalid proof, idempotency conflict, relay incompatibility, or rate limiting into a generic edit-and-retry instruction. Retry an unchanged request only when `safe_to_retry: true`: a rate limit uses the exact `Retry-After`, while a transient relay read can repeat its relay check. An unsafe URL, missing NIP-43 evidence, malformed NIP-11 document, invalid proof, policy/scope denial, or identity drift requires the named repair first. A pending community resource remains pending even though its nested `descriptor_state: "proposed"` payload describes the active state awaiting approval. Buzz itself remains unchanged: use the returned ordinary kind-1 content and existing publisher only; never invent a custom Buzz protocol or release dependency.
 
-If there is no verified default, more than one eligible installation, or the user declines, preserve the ordinary contextual app offer below. Do not silently select a community. An absent, denied, expired, stale, or revoked enrollment does not block the independent founder-agent org-of-one path once the user separately approves project creation or deployment.
+If there is no verified default, more than one eligible installation, or the user declines, preserve the ordinary contextual app offer below. Do not silently select a community. An absent, denied, expired, stale, or revoked enrollment does not block the independent founder-agent org-of-one path once the user separately approves project creation or deploy.
 
 ### notification_routing
 
-Notification routing is an OPTIONAL delivery state on top of an active community installation — report it beneath community installation, never as an identity or authority relationship, and never infer it from (or into) the four independent lifecycle states above. When the user asks for project events in a Buzz channel, run `run402 --wallet <profile> buzz notifications configure --org <org_id> --installation <buzzci_id> --name <route_name> --channel <nip29-channel-id> --project <project_id>` (add `--include-org-events` when the channel should also see the organization's receipts, such as the `platform_payment_received` fact after a Lightning top-up — the route you create for a project you just deployed for your human should include it, so a "top up N sats" in that channel shows its receipt there); preserve the response's `authorization` block verbatim. A `pending_buzz_authorization` route needs a Buzz community owner or admin to add the printed `notification_pubkey` as a relay member — the approving human's own Buzz key lives in Buzz Desktop → Settings → Profile → Identity; nothing here handles a private key. Then `run402 --wallet <profile> buzz notifications test <buzzper_id> --wait` verifies the membership landed (activating the route) and proves one signed delivery; a timed-out still-queued test is cadence (the publisher tick runs ~every 60s), not failure. From then on matching events flow live; inspect with `run402 buzz notifications status <buzzper_id>` and `run402 buzz notifications deliveries <buzzper_id>`. A route delivers only NEW events, grants nothing, is never a deadman channel (mandatory operator notifications keep their human paths), and revoking the installation blocks its routes without touching adoption, membership, or enrollment.
+Notification routing is an OPTIONAL delivery state on top of an active community installation — report it beneath community installation, never as an identity or authority relationship, and never infer it from (or into) the four independent lifecycle states above. When the user asks for project events in a Buzz channel, run `run402 --wallet <profile> buzz notifications configure --org <org_id> --installation <buzzci_id> --name <route_name> --channel <nip29-channel-id> --project <project_id>` (add `--include-org-events` when the channel should also see the organization's receipts, such as the `platform_payment_received` event after a Lightning top-up — the route you create for a project you just deployed for your human should include it, so a "top up N sats" in that channel shows its receipt there); preserve the response's `authorization` block verbatim. A `pending_buzz_authorization` route needs a Buzz community owner or admin to add the printed `notification_pubkey` as a relay member — the approving human's own Buzz key lives in Buzz Desktop → Settings → Profile → Identity; nothing here handles a private key. Then `run402 --wallet <profile> buzz notifications test <buzzper_id> --wait` verifies the membership landed (activating the route) and proves one signed delivery; a timed-out still-queued test is cadence (the publisher tick runs ~every 60s), not failure. From then on matching events flow live; inspect with `run402 buzz notifications status <buzzper_id>` and `run402 buzz notifications deliveries <buzzper_id>`. A route delivers only NEW events, grants nothing, is never a deadman channel (mandatory owner notifications keep their human paths), and revoking the installation blocks its routes without touching adoption, membership, or enrollment.
 
 ### lightning_topup
 
@@ -102,7 +102,7 @@ If the command reports `LIGHTNING_TOPUP_NOT_CONFIGURED`, say so and offer the St
 
 ### lightning_pay
 
-When a human asks the agent itself to pay Run402 in sats ("generate that image and pay in bitcoin", "buy the tier over lightning", "can you pay in sats?"), the agent uses its OWN Lightning wallet, not the organization's cash balance. One-time setup, then ordinary paid calls:
+When a human asks the agent itself to pay Run402 in sats ("generate that image and pay in bitcoin", "buy the tier over lightning", "can you pay in sats?"), the agent uses its OWN Lightning wallet, not the organization's allowance. One-time setup, then ordinary paid calls:
 
 1. Once per profile: `run402 --wallet <profile> init lightning`. The platform mints a budgeted wallet on Run402's Hub with a few starter sats and stores its pairing locally; the summary's `lightning.outcome` says `stored` (ready), `minting` (rerun in a few seconds), or `unavailable` (no Hub on this gateway — the same calls pay over x402 instead; say so). Tell the human, in one line, that the sats sit on Run402's Hub and the agent holds a budgeted connection (`custody: run402_hub`); never print the pairing, an invoice, or a preimage.
 2. Then the paid call as usual — `run402 --wallet <profile> image generate "<prompt>"` or `run402 --wallet <profile> tier set prototype`. The CLI answers the Lightning challenge from the agent's wallet and retries with the preimage; the reply carries a `payment` block (intent id, payment hash) and the organization's route posts the receipt in the channel when it carries `--include-org-events`. Report what was bought and the sats it cost; `run402 wallets lightning status` shows the remaining balance and budget when asked.
@@ -161,7 +161,7 @@ After affirmative approval:
 6. Validate locally and use the applicable plan/rehearsal path before apply.
 7. Deploy through the existing global Run402 CLI with `--wallet <profile>` on every profile-sensitive command; do not rely on ambient selection.
 8. Treat deploy success as intermediate. Independently request the live endpoint and exercise the application's critical flow.
-9. Post the structured deployment or failure receipt from [references/receipts.md](references/receipts.md). Report only behavior actually verified.
+9. Post the structured deploy or failure receipt from [references/receipts.md](references/receipts.md). Report only behavior actually verified.
 
 10. After successful live verification, create or reuse one durable adoption offer when the founder-agent organization is eligible:
 
@@ -172,9 +172,9 @@ After affirmative approval:
       --deployment-context-file <verified-deployment-context.json>
     ```
 
-    The deployment context contains the verified project, release, live URL, source revision, and verification timestamp from the receipt. Offer creation is inert: it creates no challenge, human principal, membership, transfer, shared credential, or authority change.
+    The deploy context contains the verified project, release, live URL, source revision, and verification timestamp from the receipt. Offer creation is inert: it creates no challenge, human principal, membership, transfer, shared credential, or authority change.
 
-11. Lead with the verified result and the normal HTTPS handoff, using this shape:
+11. Lead with the verified result and the normal HTTPS next step, using this shape:
 
     ```text
     Done—I built it, deployed it, and verified it at <verified URL>.
@@ -182,14 +182,14 @@ After affirmative approval:
     Become an owner: <handoff_url>
     ```
 
-    Do not expose a `buzz://` URL, verification code, raw resource id, event JSON, terminal command, or testnet price in chat. The hosted handoff owns login, passkey enrollment/step-up, the short Buzz signing attempt, and completion.
+    Do not expose a `buzz://` URL, verification code, raw resource id, event JSON, terminal command, or testnet price in chat. The hosted flow owns login, passkey enrollment/step-up, the short Buzz signing attempt, and completion.
 
 12. Poll authoritative state with `run402 --wallet <profile> buzz adopt offer show <offer-id>`. Opening the link never implies success. Report completion only when the offer and linked adoption are `completed` and the response contains the terminal consent receipt, public human identity link, and ordinary owner membership. Say that the membership is the only organization-authority source, the founder agent remains an owner, and link/membership revocation are independent. For `available`, `cancelled`, or `ineligible`, preserve the exact state and gateway-authored recovery action.
 
-Do not require a second deployment or ownership transfer for a quick test. If the user later adopts the application for production, preview the ordinary organization transfer and retain only explicitly scoped agent authority.
+Do not require a second deploy or ownership transfer for a quick test. If the user later adopts the application for production, preview the ordinary organization transfer and retain only explicitly scoped agent authority.
 
 ## Honor explicit early adoption
 
-Demo-first is the canonical bootstrap conversation, not a barrier to direct human intent. If the verified Buzz owner explicitly asks to become an owner before a demo, create or reuse the same durable offer without `deployment_context`, post its normal HTTPS handoff, and poll it exactly as above. Do not deploy an application as an unrequested prerequisite.
+Demo-first is the canonical bootstrap conversation, not a barrier to direct human intent. If the verified Buzz owner explicitly asks to become an owner before a demo, create or reuse the same durable offer without `deployment_context`, post its normal HTTPS next step, and poll it exactly as above. Do not deploy an application as an unrequested prerequisite.
 
 Keep `run402 buzz adopt direct ...`, raw event completion, and clipboard/manual handling as advanced compatibility or recovery paths only. Never present them when the offer-capable status reports `capabilities.human_adoption_offers: true`.

@@ -1,13 +1,13 @@
 ---
 title: Getting started
-description: The CLI path from application files to a verified deployment.
+description: The CLI path from application files to a verified deploy.
 ---
 
-**Use the CLI by default.** Follow [Your first deploy](/start/first-deploy/) for a complete manifest, HTML page, installation and deployment command. You do not need to choose an interface before starting.
+**Use the CLI by default.** Follow [Your first deploy](/start/first-deploy/) for a complete manifest, HTML page, installation and deploy command. You do not need to choose an interface before starting.
 
-Run commands in the intended app directory. `--name` explicitly requests a new project; an existing project can be selected with `--project`. A globally active project is not deployment intent. `-y` approves required setup for the requested deployment, not unrelated work.
+Run commands in the intended app directory. `--name` explicitly requests a new project; an existing project can be selected with `--project`. A globally active project is not deploy intent. `-y` approves required setup for the requested deploy, not unrelated work.
 
-The guide returns a site URL and console URL. Check the actual outcome and application behavior before reporting success. [Deployment guidance](/operate/deploy/) explains local validation, remote planning and verification.
+The guide returns a site URL and console URL. Check the actual outcome and application behavior before reporting success. [Deploy guidance](/operate/deploy/) explains local validation, remote planning and verification.
 
 If you are supervising an agent, a useful prompt is: “Build this app with Run402, use the CLI, show me the intended project and required spending, then verify the result and give me the site and console links.” The agent follows the same visible CLI workflow.
 

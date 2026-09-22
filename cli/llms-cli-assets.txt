@@ -130,7 +130,7 @@ Typed errors a caller can branch on (`catch (e) { if (e.code === "...") }`):
 
 Mutable URL loop only: `run402 cdn wait-fresh <mutable-url> --sha <new-sha>` blocks until CDN serves new SHA. Do not use on immutable URLs.
 
-Resume removed in v2.1.0. CLI delegates to `sdk.assets.put` via unified apply (`apply/v1/plans -> content/v1/plans -> S3 PUT -> commit`). `--concurrency` / `--no-resume` accepted but ignored; resume semantics live at apply-plan level (24h TTL).
+Resume removed in v2.1.0. CLI grant keys to `sdk.assets.put` via unified apply (`apply/v1/plans -> content/v1/plans -> S3 PUT -> commit`). `--concurrency` / `--no-resume` accepted but ignored; resume semantics live at apply-plan level (24h TTL).
 
 Private blobs (`--private`): no CDN URL returned; read via authenticated gateway path `GET /storage/v1/blob/<key>` with apikey, or via `run402 assets sign` for time-boxed external sharing.
 
@@ -169,15 +169,15 @@ await (await client.project(projectId)).apply({
 - `run402 sites deploy --manifest <file> [--project <id>]`
 - `run402 sites deploy-dir <path> [--project <id>] [--quiet] [--dry-run] [--confirm-prune]`
 
-`--project` defaults to the active project. Manifest: `{"files":[{"file":"index.html","data":"..."},{"file":"style.css","data":"..."}]}`. Must include `index.html`. Free with active tier. If the project already has a subdomain, redeploying auto-reassigns it to the new deployment (response includes `subdomain_urls`).
+`--project` defaults to the active project. Manifest: `{"files":[{"file":"index.html","data":"..."},{"file":"style.css","data":"..."}]}`. Must include `index.html`. Free with active tier. If the project already has a subdomain, redeploying auto-reassigns it to the new release (response includes `subdomain_urls`).
 
-To inspect deploy status, use `run402 deploy events <operation_id>` or `run402 deploy list --project <id>` instead of polling a deployment artifact.
+To inspect deploy status, use `run402 deploy events <operation_id>` or `run402 deploy list --project <id>` instead of polling a deploy artifact.
 
 CAS-backed transport: Both `sites deploy` and `sites deploy-dir` hash each file locally and only PUT bytes the gateway doesn't already have. Re-deploying an unchanged tree returns immediately with `bytes_uploaded: 0`.
 
 Dry-run: `run402 sites deploy-dir ./dist --project prj_... --dry-run` calls the gateway's `POST /apply/v1/plans?dry_run=true`, prints `{status:"ok", dry_run:true, plan_id:null, operation_id:null, manifest_digest, diff, warnings, expected_events, missing_content_count}`, and exits without uploading bytes or committing a release. Use it to preview the server-authoritative plan/diff envelope.
 
-Progress events: `sites deploy` and `sites deploy-dir` stream unified `DeployEvent` JSON lines to stderr by default; the final result payload (release/deployment metadata, no `status` wrapper) still goes to stdout. Pipe streams separately: `run402 sites deploy-dir ./dist --project p > result.json 2> events.log`. Pass `--quiet` to suppress events (stdout still gets the result payload).
+Progress events: `sites deploy` and `sites deploy-dir` stream unified `DeployEvent` JSON lines to stderr by default; the final result payload (release/deploy metadata, no `status` wrapper) still goes to stdout. Pipe streams separately: `run402 sites deploy-dir ./dist --project p > result.json 2> events.log`. Pass `--quiet` to suppress events (stdout still gets the result payload).
 
 ### subdomains
 - `run402 subdomains claim <name> [--release <id> | --deployment <id>] [--project <id>]`
@@ -186,7 +186,7 @@ Progress events: `sites deploy` and `sites deploy-dir` stream unified `DeployEve
 
 All options default to the active project. With neither `--release` nor `--deployment`, `claim` binds the project's live (active) release — no prior `deploy apply` bookkeeping needed; a project with no live site answers 404. `--release rel_…` pins a release; `--deployment` takes a legacy `dpl_…` id (`rel_…`/`op_…` accepted). Names: 3-63 chars, lowercase alphanumeric + hyphens. Creates `<name>.run402.com`. Declaring `"subdomains": { "set": ["<name>"] }` in the deploy manifest does the same at deploy time.
 
-Subdomain auto-reassignment: You only need to `claim` a subdomain once. Every subsequent `run402 sites deploy` or `run402 deploy` to the same project automatically updates the subdomain to point to the new deployment. The response includes `subdomain_urls` showing which subdomains were reassigned. No need to re-claim after each deploy.
+Subdomain auto-reassignment: You only need to `claim` a subdomain once. Every subsequent `run402 sites deploy` or `run402 deploy` to the same project automatically updates the subdomain to point to the new release. The response includes `subdomain_urls` showing which subdomains were reassigned. No need to re-claim after each deploy.
 
 ### domains
 - `run402 domains connect <domain> --project <id> [--web] [--authority manual-dns|hosted-zone] [--email-send] [--email-receive] [--mailbox-addresses primary|alias|managed|none] [--addresses <csv>]`
@@ -202,7 +202,7 @@ Subdomain auto-reassignment: You only need to `claim` a subdomain once. Every su
 
 ProjectDomain is the project-scoped lifecycle surface for web custom domains, custom email sending, inbound receive routing, mailbox address activation, and drift checks.
 
-Auth is control-plane auth: current wallet, operator session, or delegate. Domain commands do not require a local project-key cache entry.
+Auth is control-plane auth: current wallet, sign-in session, or grant key. Domain commands do not require a local project-key cache entry.
 
 **`--authority` on connect (web domains):** `hosted-zone` puts the domain's DNS zone on Run402 — the domain owner makes ONE nameserver change at their registrar and Run402 applies every record, verifies ownership, and issues TLS automatically. This is the only workable path for a ROOT domain (`example.com`) at most registrars, since a root CNAME is illegal without flattening/ALIAS support. `manual-dns` (the default) returns the records to add yourself. Pre-existing MX/TXT are imported into a hosted zone before the nameserver change is recommended, so mail keeps working. The connect response carries `hosted_zone.ns_assigned` (the pair to hand the owner) and the CLI prints that instruction to stderr; stdout stays pure JSON.
 
@@ -247,7 +247,7 @@ Built-in AI helpers. Translation requires the AI Translation add-on on the proje
 ### email
 Max 5 mailboxes/project. Inspect defaults and footer policy with `email mailboxes`; set `default_outbound_mailbox_id` / `auth_sender_mailbox_id` via `email defaults`; set per-mailbox outbound footer policy with `email update --footer-policy run402_transparency|none`. Omit `--mailbox` to use outbound default; branch on `DEFAULT_MAILBOX_REQUIRED` / `DEFAULT_MAILBOX_INVALID` + `next_actions`. `footer_policy=none` requires hobby/team; prototype projects are locked to `run402_transparency` and return `FOOTER_POLICY_TIER_REQUIRED`. Send modes: template or raw HTML; one recipient/send. Rate limits: prototype 10/day, hobby 50/day, team 500/day. Unique recipients/lease: prototype 25 / 200 / 1000.
 
-Run402 Core uses the same CLI after `run402 init --api-base=http://my-core:4020`. The Core operator must configure the gateway outbound provider first; `email mailboxes` surfaces `provider_readiness`, `can_send`, `send_blocked_reason`, and `next_actions` when setup is missing. Core's first slice supports raw outbound mail with attachments; managed templates, inbound reply handling, sender-domain automation, and delivery operations may remain Cloud-only until the Core gateway adds them.
+Run402 Core uses the same CLI after `run402 init --api-base=http://my-core:4020`. The Core host must configure the gateway outbound provider first; `email mailboxes` surfaces `provider_readiness`, `can_send`, `send_blocked_reason`, and `next_actions` when setup is missing. Core's first slice supports raw outbound mail with attachments; managed templates, inbound reply handling, sender-domain automation, and delivery operations may remain Cloud-only until the Core gateway adds them.
 
 Templates: `project_invite` (project_name, invite_url), `magic_link` (project_name, link_url, expires_in), `notification` (project_name, message max 500 chars).
 

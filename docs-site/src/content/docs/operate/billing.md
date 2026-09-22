@@ -9,7 +9,7 @@ run402 tier status
 run402 allowance balance
 ```
 
-Read the effective organization tier and resource limits, not just a historical subscription timestamp. A project inherits the owning organization's lifecycle and entitlement; some limits are pooled and others apply per resource. Use the [current limits reference](/cli/platform/) rather than assuming a tutorial's numbers apply to your tier.
+Read the effective organization tier and resource limits, not just a historical lease timestamp. A project inherits the owning organization's lifecycle and entitlement; some limits are pooled and others apply per resource. Use the [current limits reference](/cli/platform/) rather than assuming a tutorial's numbers apply to your tier.
 
 Check the payer and payment rail before a paid operation. Testnet settlement is not real money; an unknown balance is not a zero balance. Respect configured spending authority and preserve idempotency during retries. See [allowances](/concepts/allowances/) and the [payment commands](/cli/ops/).
 

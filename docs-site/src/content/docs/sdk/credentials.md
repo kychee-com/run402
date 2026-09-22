@@ -37,7 +37,7 @@ await r.credentials.revoke(projectId, cred.credential_id, { reason: "leaked in a
 
 Zero-downtime rotation is `issue` a second live credential → deploy it → `revoke` the first. `rotate()` collapses that into one transaction (same name, records `replacement_of`) and is the right call when the old secret is already compromised.
 
-`issue`/`rotate`/`revoke` require owner membership on the project's owning org PLUS a fresh step-up, and a delegate can NEVER satisfy them — a scoped agent credential must not be able to escalate itself into a permanent root.
+`issue`/`rotate`/`revoke` require owner membership on the project's owning org PLUS a fresh step-up, and a grant key can NEVER satisfy them — a scoped agent credential must not be able to escalate itself into a permanent root.
 
 ```ts
 // The one exception, and the cold-restart recovery path: an agent that lost

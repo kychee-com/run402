@@ -3,7 +3,7 @@ title: Deploy, inspect and verify
 description: Local checks, remote plans, activation and application evidence.
 ---
 
-Operate from the app directory. Use the app-local link or explicit project; a global active project is never enough to choose a deployment target.
+Operate from the app directory. Use the app-local link or explicit project; a global active project is never enough to choose a deploy target.
 
 ```bash
 run402 up --check

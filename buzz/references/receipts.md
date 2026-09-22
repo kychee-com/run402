@@ -23,7 +23,7 @@ Done—Run402 is connected to my Buzz identity. Would you like me to build and d
 
 Do not claim an active tier, project, allowance balance, or deployed application unless separately observed after the user approves that work.
 
-## Deployment complete
+## Deploy complete
 
 ```markdown
 ### Deployment complete
@@ -54,7 +54,7 @@ Would you also like to become a co-owner of the Run402 organization that owns th
 [Become an owner](https://console.run402.com/buzz/adoptions/buzzhao_…)
 ```
 
-Expanded non-secret state may include the offer id, organization, identity link, safe deployment context, status, and one `next_action`. Never include a session, credential, raw callback event, or short-lived `buzz://` challenge in chat.
+Expanded non-secret state may include the offer id, organization, identity link, safe deploy context, status, and one `next_action`. Never include a session, credential, raw callback event, or short-lived `buzz://` challenge in chat.
 
 ## Adoption complete
 

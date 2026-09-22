@@ -8,7 +8,7 @@ order: 100
 
 | | Prototype | Hobby | Team |
 |---|---|---|---|
-| Lease | 7 days | 30 days | 30 days |
+| Lease | none (free tier) | 30 days | 30 days |
 | Storage | 250 MB | 1 GB | 10 GB |
 | API calls | 500K | 5M | 50M |
 | Functions | 5 | 25 | 100 |

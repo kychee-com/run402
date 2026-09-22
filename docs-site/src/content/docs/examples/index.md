@@ -18,6 +18,6 @@ The Astro fixture pins a tested dependency set and includes a manifest, migratio
 
 ## Adopt Run402 in an existing project
 
-Keep the current app's ownership, credentials and production destination explicit. Add a manifest and local app link, check referenced files, inspect the plan and deploy to a separate test project first. Move schema/data deliberately; a deployment manifest is not a database export/import tool.
+Keep the current app's ownership, credentials and production destination explicit. Add a manifest and local app link, check referenced files, inspect the plan and deploy to a separate test project first. Move schema/data deliberately; a deploy manifest is not a database export/import tool.
 
-Use the [SDK scripting guide](/sdk/scripting/) for typed migration orchestration, [CLI deployment guide](/operate/deploy/) for release operations, and the native [HTTP reference](/reference/http/) when integrating another language. Reuse the same conceptual workflow instead of introducing a second provisioning recipe.
+Use the [SDK scripting guide](/sdk/scripting/) for typed migration orchestration, [CLI deploy guide](/operate/deploy/) for release operations, and the native [HTTP reference](/reference/http/) when integrating another language. Reuse the same conceptual workflow instead of introducing a second provisioning recipe.

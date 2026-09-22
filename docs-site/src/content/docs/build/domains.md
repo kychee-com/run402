@@ -3,7 +3,7 @@ title: Domains and public URLs
 description: Bind a hostname, verify routing and preserve domain ownership.
 ---
 
-Use the returned deployment URL for the first app. A custom hostname adds DNS, ownership and routing setup; it is not a prerequisite for first deployment.
+Use the returned deploy URL for the first app. A custom hostname adds DNS, ownership and routing setup; it is not a prerequisite for first deploy.
 
 ```bash
 run402 domains connect app.example.com --project prj_example --web

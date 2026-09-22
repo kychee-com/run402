@@ -4,9 +4,9 @@
 
 The keys remain separate. Buzz signs inside its managed-agent/OS boundary, while Run402 signs through its ordinary EOA profile. The skill never asks for, reads, derives, exports, or shares either private key.
 
-Buzz and Run402 share a participant model: people and agents are peers that act through identities and accumulate attributable histories. Buzz identities are rooted in Nostr public keys; a person may legitimately operate more than one. Run402 identities are rooted in internal principals, while email, wallet, passkey, and OAuth evidence are authenticators or verified attributes. Equal standing does not mean equal permissions—memberships, grants, delegates, freshness, and spend policy determine what each Run402 principal may do.
+Buzz and Run402 share a participant model: people and agents are peers that act through identities and accumulate attributable histories. Buzz identities are rooted in Nostr public keys; a person may legitimately operate more than one. Run402 identities are rooted in internal principals, while email, wallet, passkey, and OAuth evidence are authenticators or verified attributes. Equal standing does not mean equal permissions—memberships, grants, grant keys, freshness, and spend policy determine what each Run402 principal may do.
 
-The records also stay separate. Buzz is authoritative for signed collaboration; Run402 is authoritative for principals, organization membership, project authority, deployments, leases, billing, delivery attempts, and runtime receipts. A public identity link connects a Run402 principal to a Nostr subject but never authenticates or authorizes. An adoption is a terminal consent receipt. Only the ordinary Run402 membership created by completion grants organization authority, and membership/link revocation are independent.
+The records also stay separate. Buzz is authoritative for signed collaboration; Run402 is authoritative for principals, organization membership, project authority, releases, leases, billing, delivery attempts, and runtime receipts. A public identity link connects a Run402 principal to a Nostr subject but never authenticates or authorizes. An adoption is a terminal consent receipt. Only the ordinary Run402 membership created by completion grants organization authority, and membership/link revocation are independent.
 
 ## Getting started
 
@@ -18,7 +18,7 @@ Please install the run402.com skill.
 
 The human does not need a terminal or a special bootstrap URL. In a managed Buzz conversation, `run402.com` discovery routes that request to the distinct `run402-buzz` package. Buzz managed-agent workspaces normally live at `~/.buzz`; the agent installs it there so the generic root Run402 skill cannot shadow it. This canonical sentence means “install and connect Run402”: after verifying the inert files, the agent reads the installed skill directly and continues onboarding in the same turn instead of waiting for runtime rediscovery or asking a second setup question.
 
-For agents and operators auditing the exact command, select only the runtime(s) actually present:
+For agents and people auditing the exact command, select only the runtime(s) actually present:
 
 | Runtime | Installer target | Installed workspace path |
 | --- | --- | --- |
@@ -52,7 +52,7 @@ The setup helper then requires both `--wallet <profile>` and the public Buzz key
 
 The agent then says Run402 is connected and immediately offers one contextual demo. The expanded receipt still records `Deployment: none`. It derives the normalized community from Buzz's existing relay context and asks Run402 for active public descriptors only after the relay completes its safe live read. An unsafe relay blocks setup; a safe relay transport/TLS failure warns, preserves the ordinary founder/org-of-one path, and suppresses community discovery/enrollment until repaired. If exactly one installation is the default, it offers bounded enrollment before provisioning; otherwise it preserves the ordinary org-of-one path. Either path waits for your approval before writing or deploying an app.
 
-On the founder-agent path, the canonical conversation demonstrates value first: the agent proposes one relevant small application, waits for approval, automatically uses the Base Sepolia faucet/prototype path, builds it, deploys it, and independently verifies it. Only then does it create an inert durable adoption offer and post a normal `https://console.run402.com/buzz/adoptions/buzzhao_…` “Become an owner” link. The browser handles human login/passkey, the six-digit Buzz consent, callback, and completion; the human types no terminal command. An explicit request for ownership before the demo is also honored through the same HTTPS handoff.
+On the founder-agent path, the canonical conversation demonstrates value first: the agent proposes one relevant small application, waits for approval, automatically uses the Base Sepolia faucet/prototype path, builds it, deploys it, and independently verifies it. Only then does it create an inert durable adoption offer and post a normal `https://console.run402.com/buzz/adoptions/buzzhao_…` “Become an owner” link. The browser handles human login/passkey, the six-digit Buzz consent, callback, and completion; the human types no terminal command. An explicit request for ownership before the demo is also honored through the same HTTPS next step.
 
 The vocabulary is deliberate: skill installation is inert shared capability; community installation associates a Buzz community with a Run402 organization; successful human adoption records a completed consent receipt, public human identity link, and ordinary owner membership as distinct records; agent enrollment gives each Buzz agent its own principal and bounded existing-project grants. See the [Fizz/Honey workflow and state reports](references/community-control-plane.md).
 
@@ -60,11 +60,11 @@ The vocabulary is deliberate: skill installation is inert shared capability; com
 
 Buzz itself remains unchanged. The supported boundary is Buzz Desktop v0.5.2's already-shipped behavior: ordinary kind-1 publishing, NIP-11 `self`, relay-signed NIP-43 kind-13534 membership snapshots, the managed `BUZZ_RELAY_URL` context, and the existing `buzz://nostr-bind` human-proof path. Run402 owns descriptor discovery, policy/default revisions, and revocation. Missing relay evidence fails closed for community operations without blocking the independent identity link and org-of-one fallback; unsafe destinations still block the setup doctor itself.
 
-- [`SKILL.md`](SKILL.md) — onboarding, readiness, contextual-offer, and approved deployment contract.
+- [`SKILL.md`](SKILL.md) — onboarding, readiness, contextual-offer, and approved deploy contract.
 - [`scripts/`](scripts/) — dependency-free setup state machine and no-shell public proof handoff.
 - [`references/`](references/) — identity/security model, Fizz/Honey community control-plane workflow, and structured receipts.
 - [`fixtures/`](fixtures/) — released-Buzz positive, desktop-owner negative, and cryptographic golden vectors.
 
 Buzz is provided by Block under the [Apache-2.0 license](https://github.com/block/buzz/blob/main/LICENSE). This integration is independently maintained in Run402's MIT-licensed repository and does not modify or redistribute the Buzz application.
 
-Migrating from `integrations/run402-for-buzz` only requires updating the installed skill. Existing identity links, projects, and deployments remain valid; do not relink or delete infrastructure merely because the package moved.
+Migrating from `integrations/run402-for-buzz` only requires updating the installed skill. Existing identity links, projects, and releases remain valid; do not relink or delete infrastructure merely because the package moved.

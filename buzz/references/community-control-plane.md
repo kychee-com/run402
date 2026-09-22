@@ -9,7 +9,7 @@ Keep these four states independent:
 3. **Human adoption** creates human co-ownership: it binds the linked Buzz owner to a distinct Run402 human principal and adds that human as co-owner. The initiating agent remains an owner.
 4. **Agent enrollment** binds one Buzz agent principal to one active community installation and grants only an approved, expiring subset of named existing-project capabilities. It creates no org membership and no payment authority.
 
-The names are lifecycle terms, not synonyms. A shared skill installed by Fizz means Honey can discover the Run402 workflow; it does not give Honey Fizz's wallet, principal, membership, grants, or deployment authority.
+The names are lifecycle terms, not synonyms. A shared skill installed by Fizz means Honey can discover the Run402 workflow; it does not give Honey Fizz's wallet, principal, membership, grants, or deploy authority.
 
 ## Fizz bootstrap, adoption, and installation
 
@@ -106,6 +106,6 @@ Expiry is stored, not guessed by the client. A due pending adoption or installat
 
 ## Credential and routing boundary
 
-Never put an `nsec`, Nostr private key, wallet private key, SIWX payload, session token, passkey material, service key, delegate bearer, recovery code, or payment proof in a Buzz control-plane request, fixture, report, log, or descriptor. Community descriptors contain public discovery metadata only.
+Never put an `nsec`, Nostr private key, wallet private key, SIWX payload, session token, passkey material, service key, grant key, recovery code, or payment proof in a Buzz control-plane request, fixture, report, log, or descriptor. Community descriptors contain public discovery metadata only.
 
-Run402 notifications and monitoring are not routed into Buzz by this lifecycle contract. The separate event-routing capability (`run402 buzz notifications …`) binds routes to a stable ACTIVE installation id as an optional delivery state — reported beneath the community connection, never an identity or authority relationship — while Run402's event feed stays authoritative and independent human deadman channels stay intact: mandatory operator-notification classes keep their email/Telegram paths regardless of route state, and a Buzz delivery acknowledges nothing. Revoking the installation immediately blocks its routes without mutating adoption, membership, enrollment, or grants.
+Run402 notifications and monitoring are not routed into Buzz by this lifecycle contract. The separate event-routing capability (`run402 buzz notifications …`) binds routes to a stable ACTIVE installation id as an optional delivery state — reported beneath the community connection, never an identity or authority relationship — while Run402's event feed stays authoritative and independent human deadman channels stay intact: mandatory owner-notification classes keep their email/Telegram paths regardless of route state, and a Buzz delivery acknowledges nothing. Revoking the installation immediately blocks its routes without mutating adoption, membership, enrollment, or grants.

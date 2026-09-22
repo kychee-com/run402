@@ -2,7 +2,7 @@
 
 > Slice `deploy` of the Run402 CLI reference. Index (start here): https://docs.run402.com/llms-cli.txt · Whole reference: https://docs.run402.com/llms-cli-full.txt
 
-Use `run402 up` for normal deployments. The commands below expose advanced planning, apply, inspection and recovery primitives. They share the same release model; none promises to reverse committed database migrations.
+Use `run402 up` for normal releases. The commands below expose advanced planning, apply, inspection and recovery primitives. They share the same release model; none promises to reverse committed database migrations.
 
 ## Deploying Apps
 
@@ -121,7 +121,7 @@ Complete static site + function + route manifest:
 
 Static public paths: release asset paths and browser paths differ (`events.html` asset -> `/events` public URL). `mode: "explicit"` exposes only `public_paths.replace`; `/events.html` is not public unless declared. `mode: "implicit"` restores filename-derived reachability and can widen access; review warnings. Known `cache_class`: `"html"`, `"immutable_versioned"`, `"revalidating_asset"`; preserve unknown future strings. Public-path-only specs are deploy content: `{ "site": { "public_paths": { "mode": "explicit", "replace": {} } } }` removes direct public static URLs without changing assets.
 
-Embedding (framing) opt-in: every tenant host denies framing (`frame-ancestors 'none'` + `X-Frame-Options: DENY`) unless the release declares `site.embedding.frame_ancestors`, a non-empty list of platform catalog **keys** (never raw origins). Catalog: `localhost` -> `http://localhost:*` and `http://127.0.0.1:*`. With it, every response of the host (site files, public paths, SPA fallback, routed functions, `/_run402/*`, on every edge) sends `Content-Security-Policy: frame-ancestors <expanded origins>` and no `X-Frame-Options`. Omitted on a later apply = carried forward from the base release (a one-file `site.patch` never re-denies); `null` = back to deny; unknown key, duplicate, empty array, or extra member -> `INVALID_SPEC` on `site.embedding.frame_ancestors` naming the valid keys. Embedding-only specs are deploy content: `{ "site": { "embedding": { "frame_ancestors": ["localhost"] } } }`. Readback: `release active` -> `embedding` (keys or `null`), `deploy resolve` -> `embedding`, and the host's `/_run402/config.json` -> `embedding: { frame_ancestors: [<origins>] } | null` with `Access-Control-Allow-Origin: *`. Inside a third-party frame the app's cookies are third-party (a session cookie without `SameSite=None; Secure` is not sent) and hosted-auth pages stay unframable.
+Embedding (framing) opt-in: every your host denies framing (`frame-ancestors 'none'` + `X-Frame-Options: DENY`) unless the release declares `site.embedding.frame_ancestors`, a non-empty list of platform catalog **keys** (never raw origins). Catalog: `localhost` -> `http://localhost:*` and `http://127.0.0.1:*`. With it, every response of the host (site files, public paths, SPA fallback, routed functions, `/_run402/*`, on every edge) sends `Content-Security-Policy: frame-ancestors <expanded origins>` and no `X-Frame-Options`. Omitted on a later apply = carried forward from the base release (a one-file `site.patch` never re-denies); `null` = back to deny; unknown key, duplicate, empty array, or extra member -> `INVALID_SPEC` on `site.embedding.frame_ancestors` naming the valid keys. Embedding-only specs are deploy content: `{ "site": { "embedding": { "frame_ancestors": ["localhost"] } } }`. Readback: `release active` -> `embedding` (keys or `null`), `deploy resolve` -> `embedding`, and the host's `/_run402/config.json` -> `embedding: { frame_ancestors: [<origins>] } | null` with `Access-Control-Allow-Origin: *`. Inside a third-party frame the app's cookies are third-party (a session cookie without `SameSite=None; Secure` is not sent) and hosted-auth pages stay unframable.
 
 Route semantics:
 - Omit `routes` or pass `null` to carry forward; `{ "replace": [] }` clears; `{ "replace": [...] }` atomically replaces.
@@ -129,7 +129,7 @@ Route semantics:
 - Exact patterns look like `/admin`; prefix wildcard patterns use final `/*`, like `/admin/*`. `/admin/*` does not match `/admin`, `/admin/`, `/admin.css`, or `/administrator`, so deploy both `/admin` and `/admin/*` for a dynamic section root.
 - Query ignored for matching but preserved in full public `req.url`. Exact beats prefix; longest prefix wins; method-compatible dynamic routes beat static assets.
 - `POST /login` can coexist with static `GET /login`; unsafe method mismatch returns 405, not SPA HTML. Matched dynamic failures fail closed; no static fallback.
-- Routed ingress uses the Node 22 Fetch Request -> Response contract; `req.url` is full public URL across managed subdomains/deployment hosts/custom domains. Derive OAuth origins from `new URL(req.url).origin`. `run402.routed_http.v1` envelope is internal. Direct `/functions/v1/:name` remains API-key protected. Function owns app auth, CSRF, CORS/`OPTIONS`, cookies, redirects, and forwarding-header hygiene.
+- Routed ingress uses the Node 22 Fetch Request -> Response contract; `req.url` is full public URL across managed subdomains/hosts/custom domains. Derive OAuth origins from `new URL(req.url).origin`. `run402.routed_http.v1` envelope is internal. Direct `/functions/v1/:name` remains API-key protected. Function owns app auth, CSRF, CORS/`OPTIONS`, cookies, redirects, and forwarding-header hygiene.
 - Anti-patterns: routing every static file, broad method lists by default, wildcard static route targets, leading-slash static files, directory shorthand, one-static-route-target-per-page route-table exhaustion, wildcard function routes shadowing direct public static paths, and confusing omitted/null `routes` with `routes: { "replace": [] }`.
 
 Apply it:
@@ -444,7 +444,7 @@ Common CI error codes:
 ---
 ### Unified Deploy Details
 
-Use `run402 deploy apply --manifest app.json` for full-stack releases; see the Unified Apply example above. Use `project_id`, `--project`, `RUN402_PROJECT_ID`, or an app-local `.run402/project.json` link. Global active state is never a deployment selector; conflicting selectors fail before mutations. Omitted top-level sections carry forward. Strict adapter: only top-level `$schema` ignored; typo/no-op fields fail before planning.
+Use `run402 deploy apply --manifest app.json` for full-stack releases; see the Unified Apply example above. Use `project_id`, `--project`, `RUN402_PROJECT_ID`, or an app-local `.run402/project.json` link. Global active state is never a deploy selector; conflicting selectors fail before mutations. Omitted top-level sections carry forward. Strict adapter: only top-level `$schema` ignored; typo/no-op fields fail before planning.
 
 Function specs add auth gates:
 - `require_auth: true`: valid project user JWT required; 401 on anonymous; no DB lookup; independent from `require_role`.
@@ -499,7 +499,7 @@ const role = await auth.role({ from: { table: "staff", idColumn: "user_id", role
 if (role !== "operator") return Astro.redirect("/admin/login", 303);
 ```
 
-`run402 auth scaffold-roles --roles operator` emits conventional `app_roles(user_id uuid, role text)` migration, matching `requireRole` snippet, and service-role `INSERT` for FIRST role (table starts empty; first grant bypasses RLS). Gate keys on tenant user id (`internal.users.id` / JWT `sub`), not wallet. Applies to routed and direct (`POST /functions/v1/:name` with API key + user JWT); direct still requires API key before gate.
+`run402 auth scaffold-roles --roles operator` emits conventional `app_roles(user_id uuid, role text)` migration, matching `requireRole` snippet, and service-role `INSERT` for FIRST role (table starts empty; first grant bypasses RLS). Gate keys on end-user id (`internal.users.id` / JWT `sub`), not wallet. Applies to routed and direct (`POST /functions/v1/:name` with API key + user JWT); direct still requires API key before gate.
 
 Binary files (images, fonts, PDFs): Set `"encoding": "base64"` and provide base64-encoded data. MIME types are auto-detected from the file extension (`.png` → `image/png`, `.woff2` → `font/woff2`, etc.). Text files use `"encoding": "utf-8"` (the default — can be omitted).
 
@@ -528,7 +528,7 @@ Additive batch: locally computed `sha256`; gateway dedupes CAS; only new shas up
 
 Declarative sync: `prune: true` deletes keys under explicit `prefix` absent from new `put`; no implicit project-root prune. First apply without `confirm` returns `asset_sync` (`base_revision`, `delete_set_digest`, `expected_delete_count`, `sample_keys`); re-run with `confirm`. Activation rechecks and fails `ASSET_SYNC_DRIFT` if inventory mutates between commit/activation. No `run402 assets sync`; use manifest + `deploy apply` or SDK helpers (`uploadDir`, `syncDir`, `prepareDir`, `putMany`).
 
-Verify block (authoring-only): deploy manifests accept a top-level `verify` with post-apply HTTP checks — the same `verify.http[]` shape app manifests use. It is stripped before the wire `ReleaseSpec` (like `$schema`); `run402 up` runs the checks after a successful apply (propagation-tolerant, results in `result.verification.http[]` + a `result.verify` rollup) and `run402 up verify` reruns them on demand. Verification-only output reports `mode: "verify"`, `read_only: true`, and `dry_run: false` because it performs real probes without applying a deployment. Each check: `id` (unique, required), `path` (resolved against the project public origin) or `url`, `expect: { status }` (snake alias `expected_status`), optional `retries`. Each executed HTTP check includes `observed_release` with nullable `release_id` and `generation`, response `url`, `observed_at`, `source: "response_headers"`, and `unavailable_reason`. These are observations from that response, not proof that all routes agree or that a release stayed unchanged throughout the run. Missing or malformed headers remain unknown and do not fail an otherwise successful HTTP check.
+Verify block (authoring-only): deploy manifests accept a top-level `verify` with post-apply HTTP checks — the same `verify.http[]` shape app manifests use. It is stripped before the wire `ReleaseSpec` (like `$schema`); `run402 up` runs the checks after a successful apply (propagation-tolerant, results in `result.verification.http[]` + a `result.verify` rollup) and `run402 up verify` reruns them on demand. Verification-only output reports `mode: "verify"`, `read_only: true`, and `dry_run: false` because it performs real probes without applying a release. Each check: `id` (unique, required), `path` (resolved against the project public origin) or `url`, `expect: { status }` (snake alias `expected_status`), optional `retries`. Each executed HTTP check includes `observed_release` with nullable `release_id` and `generation`, response `url`, `observed_at`, `source: "response_headers"`, and `unavailable_reason`. These are observations from that response, not proof that all routes agree or that a release stayed unchanged throughout the run. Missing or malformed headers remain unknown and do not fail an otherwise successful HTTP check.
 
 ```json
 "verify": {
@@ -635,7 +635,7 @@ Function HTTP 400/429 responses can carry `x-cache: Error from cloudfront`. Judg
 
 Source-resolution steps report `source_available: true` after resolving an existing directory. `git_state` distinguishes `has_commit`, `unborn`, `not_repository`, and `unavailable`. A null `commit` does not mean the source is missing; an unborn repository has local files but no local commit. Resolution does not create a commit.
 
-## Deployment output
+## Deploy output
 
 `run402 up` returns JSON with the destination, release, verification and backup outcomes, warnings and next actions. Repetitive progress is opt-in with `--json-stream`. Applied runs can include a local `result_ref` pointing to redacted detail in `.run402/diagnostics/`; read the returned file to inspect that same execution. Diagnostics are private, bounded and excluded from source snapshots. Check, plan-only and read-only output does not create diagnostic files. MCP uses its existing `expand_result` handle instead of a local path. SDK scripts retain the full typed result.
 

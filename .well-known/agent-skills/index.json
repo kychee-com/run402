@@ -4,16 +4,16 @@
     {
       "name": "run402",
       "type": "skill-md",
-      "description": "Build, deploy and operate full-stack applications with the Run402 CLI. Postgres, auth, storage, functions and hosting with a free prototype tier and an explicit spending allowance. Use for web apps, database-backed sites, APIs and deployment.",
-      "url": "https://run402.com/skills/run402/95b2d7f9241b1f4eb9f5ca82db4c499d3d98a3278aea2d256b7abff3ace1f4a9/SKILL.md",
-      "digest": "sha256:95b2d7f9241b1f4eb9f5ca82db4c499d3d98a3278aea2d256b7abff3ace1f4a9"
+      "description": "Build, deploy and operate full-stack applications with the Run402 CLI. Postgres, auth, storage, functions and hosting with a free prototype tier and an explicit spending allowance. Use for web apps, database-backed sites, APIs and deploy.",
+      "url": "https://run402.com/skills/run402/4c25a7bd874b95a03888dab6a8a73a5d94904a6bb6497ee7feccf241e0b9531b/SKILL.md",
+      "digest": "sha256:4c25a7bd874b95a03888dab6a8a73a5d94904a6bb6497ee7feccf241e0b9531b"
     },
     {
       "name": "run402-buzz",
       "type": "archive",
       "description": "Complete Run402 onboarding for a managed Buzz agent with a dedicated wallet/public identity link, report independent human-adoption and community-installation state, offer bounded per-agent enrollment before provisioning, and stop only at a real approval or repair boundary. Use when a managed Buzz user says \"install the run402.com skill\" or otherwise asks to install, initialize, set up, or connect Run402; asks to adopt a human, install a community, or enroll another agent; or later asks the linked agent to build, deploy, update, verify, or operate through Run402.",
-      "url": "https://run402.com/skills/run402-buzz/a87c3f3dc608d8f7b5c696d2845477c0b8196669afe488d8081bfbd29da5b186/run402-buzz.tgz",
-      "digest": "sha256:a87c3f3dc608d8f7b5c696d2845477c0b8196669afe488d8081bfbd29da5b186"
+      "url": "https://run402.com/skills/run402-buzz/d78f2267b34712aa504ad4d2b5e7dba6a462cc344b1ccb54153209e073883b5f/run402-buzz.tgz",
+      "digest": "sha256:d78f2267b34712aa504ad4d2b5e7dba6a462cc344b1ccb54153209e073883b5f"
     }
   ]
 }

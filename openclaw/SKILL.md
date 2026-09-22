@@ -1,6 +1,6 @@
 ---
 name: run402
-description: Build, deploy and operate full-stack applications with the Run402 CLI. Postgres, auth, storage, functions and hosting with a free prototype tier and an explicit spending allowance. Use for web apps, database-backed sites, APIs and deployment.
+description: Build, deploy and operate full-stack applications with the Run402 CLI. Postgres, auth, storage, functions and hosting with a free prototype tier and an explicit spending allowance. Use for web apps, database-backed sites, APIs and deploy.
 metadata:
   openclaw:
     emoji: "🐘"
@@ -19,13 +19,13 @@ metadata:
 
 Run402 gives an agent a real Postgres database with REST API and user auth, content-addressed CDN storage, static site hosting, Node 22 serverless functions, email, image generation, and KMS-backed on-chain signing. One command provisions; payment happens automatically with x402 USDC on Base. Prototype tier is free on testnet — no real money or human signup for the routine cold-start path.
 
-Run402 is agent-first because agents are first-class participants, not because people disappear. Act through your own Run402 principal and authenticator; do not borrow a human login, shared cloud account, or another agent's credential. Identity records who acted. Memberships, roles, grants, delegates, freshness, and spend policy determine what you may do. A founder agent may legitimately own its org-of-one; an agent entering somebody else's organization uses bounded authority.
+Run402 is agent-first because agents are first-class participants, not because people disappear. Act through your own Run402 principal and authenticator; do not borrow a human login, shared cloud account, or another agent's credential. Identity records who acted. Memberships, roles, grants, grant keys (the CLI still says `delegates`; renamed next), freshness, and spend policy determine what you may do. A founder agent may legitimately own its org-of-one; an agent entering somebody else's organization uses bounded authority.
 
 **Use the CLI by default.** General operating examples below use CLI commands; application code and manifests keep their native syntax. The typed, opinionated SDK owns shared orchestration, authentication, payments, validation and safe retries; CLI and MCP are thin adapters over it and the underlying HTTP API. Use the SDK for programmatic TypeScript/JavaScript workflows; shell scripts and CI can keep using CLI. The CLI prints JSON to stdout, JSON errors to stderr, and exits 0 on success and nonzero on failure or non-coherent verification (inspect the command’s documented status) — designed for shells, scripts, and agent loops.
 
 ## 30-second start
 
-Install `npm install -g run402@latest`, then create the complete manifest and app files from https://run402.com/llms.txt in the intended application directory. `--name` explicitly requests a new project; `-y` approves required setup within that deployment intent.
+Install `npm install -g run402@latest`, then create the complete manifest and app files from https://run402.com/llms.txt in the intended application directory. `--name` explicitly requests a new project; `-y` approves required setup within that deploy intent.
 
 ```bash
 run402 up --name my-app -y                 # bootstrap/link/deploy run402.json, run402.deploy.json, or app.json
@@ -35,7 +35,7 @@ run402 up --verify                         # deploy, then wait for gateway/edge 
 
 That's a real Postgres database + a deployed static site, paid for autonomously with testnet USDC.
 
-`run402 up` is the CLI path for local repos with a deploy manifest. It classifies app-shaped `run402.json` through the app-install graph and release-shaped `run402.json` through the same ReleaseSpec normalizer as `deploy apply`; malformed app manifests return `APP_SPEC_INVALID` instead of an internal JavaScript exception. It validates the manifest first, then recursively performs only missing prerequisites through the SDK action runner. Project resolution is `--project`, `.run402/project.json`, manifest `project_id`, approved creation from `--name`; global active state never selects a deployment target. `--check` returns nullable target intent, local evidence and explicit deferred gateway checks in `result.preflight`; it never claims gateway validation. `--print-manifest` exports reloadable snake_case JSON relative to the original manifest directory; `--print-spec` is advanced SDK inspection. Unsupported dynamic/secret/build constructs fail with field paths. `--plan` obtains a deployment plan; review it before approving deployment. If an app manifest defines `verify.http[]`, `up` reports fresh edge sentinel misses as `propagation_pending` while the host binding converges; tune with `--propagation-budget-s`, use `--no-propagation-wait` to return immediately, and run `run402 up verify` to rerun checks without upload, deploy, project creation, or resource mutation. Add `--verify` to a real deploy when you need `edge_coherence` evidence in the final JSON; a valid non-coherent report exits 2.
+`run402 up` is the CLI path for local repos with a deploy manifest. It classifies app-shaped `run402.json` through the app-install graph and release-shaped `run402.json` through the same ReleaseSpec normalizer as `deploy apply`; malformed app manifests return `APP_SPEC_INVALID` instead of an internal JavaScript exception. It validates the manifest first, then recursively performs only missing prerequisites through the SDK action runner. Project resolution is `--project`, `.run402/project.json`, manifest `project_id`, approved creation from `--name`; global active state never selects a deploy target. `--check` returns nullable target intent, local evidence and explicit deferred gateway checks in `result.preflight`; it never claims gateway validation. `--print-manifest` exports reloadable snake_case JSON relative to the original manifest directory; `--print-spec` is advanced SDK inspection. Unsupported dynamic/secret/build constructs fail with field paths. `--plan` obtains a deploy plan; review it before approving deploy. If an app manifest defines `verify.http[]`, `up` reports fresh edge sentinel misses as `propagation_pending` while the host binding converges; tune with `--propagation-budget-s`, use `--no-propagation-wait` to return immediately, and run `run402 up verify` to rerun checks without upload, deploy, project creation, or resource mutation. Add `--verify` to a real deploy when you need `edge_coherence` evidence in the final JSON; a valid non-coherent report exits 2.
 
 ## MCP-only hosts and SDK scripting
 
@@ -99,7 +99,7 @@ Selection precedence for every command: `--wallet <name>` flag > `RUN402_WALLET`
 
 `run402 identity link nostr begin|complete` is the agent EOA-plus-kind-1 ceremony. Human accounts instead use <https://console.run402.com/identity-links/connect> for a normal browser, fresh-passkey, and Buzz approval flow; never ask a human to paste an event or handle a passkey/session/private key/id. Both yield the same public `idlnk_…` shape with a discriminated proof protocol. One principal may hold multiple subjects; a subject has only one active principal. Links are attribution only, never authentication or organization authority, and link/membership revocation are independent. Existing reads preserve all returned link ids, protocols, and lifecycle states.
 
-`run402 buzz status` reports independent skill, adoption-offer/adoption, community-installation, and enrollment states. Use `run402 buzz adopt offer` for the durable HTTPS ownership handoff, and poll `offer show`; opening a link is never completion. A completed poll must show the terminal receipt, public human link, and ordinary owner membership separately. Only membership grants org authority; link/membership revocation are independent and the receipt remains completed. `buzz adopt direct` is advanced compatibility. MCP remains read-only for signing/passkey-sensitive work and returns exact HTTPS/CLI handoffs.
+`run402 buzz status` reports independent skill, adoption-offer/adoption, community-installation, and enrollment states. Use `run402 buzz adopt offer` for the durable HTTPS ownership transfer, and poll `offer show`; opening a link is never completion. A completed poll must show the terminal receipt, public human link, and ordinary owner membership separately. Only membership grants org authority; link/membership revocation are independent and the receipt remains completed. `buzz adopt direct` is advanced compatibility. MCP remains read-only for signing/passkey-sensitive work and returns exact HTTPS/CLI next steps.
 
 ## Project credentials
 
@@ -203,7 +203,7 @@ run402 deploy verify --operation OPERATION_ID --wait
 
 Take `OPERATION_ID` from the promote result. A successful promote means the origin pointer is active, while mutable public URLs can still be converging. Inspect `edge.state`; `edge.verify_url` is the direct operation-scoped HTTP verification endpoint.
 
-Inventories expose site paths, `static_public_paths` when returned, functions, secret keys only, subdomains, materialized routes, applied migrations, `release_generation`, `static_manifest_sha256`, nullable `static_manifest_metadata`, and warnings when returned. `site.paths` is the release static asset inventory; `static_public_paths[]` is the browser reachability inventory with `public_path`, `asset_path`, `reachability_authority`, `direct`, cache class, and content type. `static_manifest_metadata: null` means unavailable, not zero. Release diffs use `migrations.applied_between_releases`, route `added` / `removed` / `changed` buckets, and `static_assets` counters for unchanged/changed/added/removed files, CAS byte reuse, eliminated deployment-copy bytes, and immutable/CAS warning counts.
+Inventories expose site paths, `static_public_paths` when returned, functions, secret keys only, subdomains, materialized routes, applied migrations, `release_generation`, `static_manifest_sha256`, nullable `static_manifest_metadata`, and warnings when returned. `site.paths` is the release static asset inventory; `static_public_paths[]` is the browser reachability inventory with `public_path`, `asset_path`, `reachability_authority`, `direct`, cache class, and content type. `static_manifest_metadata: null` means unavailable, not zero. Release diffs use `migrations.applied_between_releases`, route `added` / `removed` / `changed` buckets, and `static_assets` counters for unchanged/changed/added/removed files, CAS byte reuse, eliminated deploy-copy bytes, and immutable/CAS warning counts.
 
 #### Same-origin web routes
 
@@ -246,11 +246,11 @@ Use `run402 deploy apply` for `site.public_paths` clean static browser URLs and 
 
 Omit `routes` or pass `routes: null` to carry forward base routes. Use `routes: { "replace": [] }` to clear the route table. Do not use path-keyed maps. Function targets use `{ "type": "function", "name": "<materialized function name>" }`. Prefer `site.public_paths` for ordinary clean static URLs e.g. `/events -> events.html`. Static route targets use exact patterns only, methods `["GET"]` or `["GET","HEAD"]`, and `{ "pattern": "/events", "methods": ["GET", "HEAD"], "target": { "type": "static", "file": "events.html" } }` for route-only aliases; `file` is a release static asset path, not a public path, URL, CAS hash, rewrite, or redirect. Direct `/functions/v1/:name` remains API-key protected; browser-routed paths are public same-origin ingress, so the function owns application auth, CSRF for cookie-authenticated unsafe methods, CORS/`OPTIONS`, cookies, redirects, and spoofed forwarding-header hygiene.
 
-Function routes may declare fixed tenant x402 pricing: `{ "pattern": "/api/credits", "methods": ["POST"], "target": { "type": "function", "name": "credits" }, "pricing": { "mode": "always", "amount_usd_micros": 250000, "pay_to": "org_default_payout" } }`. `250000` is $0.25 per matching action. Portable ReleaseSpec also accepts `receipt: "on_fulfillment"` inside pricing; compatible hosts require `payment.fulfilled(response)` from `@run402/functions` after completed delivery. Run402-hosted evidence stays gated until the interoperable delegated-signer carrier exists and never silently downgrades receipt intent. Omit `networks` for production mainnet only; include `"testnet"` explicitly for testnet payments. Static aliases cannot be priced, direct function invocation is not monetized, and service/admin keys do not bypass a priced browser route. Before deploying priced routes, ensure the org has a payout wallet with `run402 org payout-wallet <org_id> <wallet_address>`. For conditional credits, use one fixed-price `/api/credits` route and keep the app envelope unpriced behind app-local auth. In the handler, import `getRoutedPaymentContext` from `@run402/functions`, call `getRoutedPaymentContext(req)`, and key idempotency by `payment.paymentId`; audit with `run402 projects tenant-payments <project_id>`.
+Function routes may declare fixed app x402 pricing: `{ "pattern": "/api/credits", "methods": ["POST"], "target": { "type": "function", "name": "credits" }, "pricing": { "mode": "always", "amount_usd_micros": 250000, "pay_to": "org_default_payout" } }`. `250000` is $0.25 per matching action. Portable ReleaseSpec also accepts `receipt: "on_fulfillment"` inside pricing; compatible hosts require `payment.fulfilled(response)` from `@run402/functions` after completed delivery. Run402-hosted evidence stays gated until the interoperable delegated-signer carrier exists and never silently downgrades receipt intent. Omit `networks` for production mainnet only; include `"testnet"` explicitly for testnet payments. Static aliases cannot be priced, direct function invocation is not monetized, and service/admin keys do not bypass a priced browser route. Before deploying priced routes, ensure the org has a payout wallet with `run402 org payout-wallet <org_id> <wallet_address>`. For conditional credits, use one fixed-price `/api/credits` route and keep the app envelope unpriced behind app-local auth. In the handler, import `getRoutedPaymentContext` from `@run402/functions`, call `getRoutedPaymentContext(req)`, and key idempotency by `payment.paymentId`; audit with `run402 projects tenant-payments <project_id>`.
 
 Matching is exact or final `/*` prefix only. `/admin/*` does not match `/admin`; use both `/admin` and `/admin/*` for a dynamic area root. Query strings are ignored for matching and preserved in the handler's full public `req.url`. Exact beats prefix, longest prefix wins, and method-compatible dynamic routes beat static assets. A `POST /login` route can coexist with static `GET /login` HTML. Unsafe method mismatch returns `405`; matched dynamic route failures fail closed.
 
-Routed functions use the Node 22 Fetch Request -> Response contract: `export default async function handler(req) { ... }`. `req.method` is the browser method, and `req.url` is the full public URL on managed subdomains, deployment hosts, and verified custom domains. Derive OAuth callbacks from it, for example `new URL("/admin/oauth/google/callback", new URL(req.url).origin)`. Append multiple cookies with `headers.append("Set-Cookie", value)`; redirects, cookies, and query strings are preserved. The raw `run402.routed_http.v1` envelope is internal; do not write route handlers against it.
+Routed functions use the Node 22 Fetch Request -> Response contract: `export default async function handler(req) { ... }`. `req.method` is the browser method, and `req.url` is the full public URL on managed subdomains, hosts, and verified custom domains. Derive OAuth callbacks from it, for example `new URL("/admin/oauth/google/callback", new URL(req.url).origin)`. Append multiple cookies with `headers.append("Set-Cookie", value)`; redirects, cookies, and query strings are preserved. The raw `run402.routed_http.v1` envelope is internal; do not write route handlers against it.
 
 Use `run402 deploy diagnose --project prj_123 https://example.com/events --method GET` before mutating deploy state when the question is "what would this public URL serve?" For lower-level parity use `run402 deploy resolve --project prj_123 --url https://example.com/events?utm=x#hero --method GET` or `run402 deploy resolve --project prj_123 --host example.com --path /events --method GET`; never combine `--url` with `--host`/`--path`. Output is JSON with `status`, `would_serve`, `diagnostic_status`, `match`, normalized `request`, warnings, full `resolution`, `edge_propagation`, and structured `next_steps`. URL query strings/fragments are disclosed in `request.ignored`. When returned, `asset_path`, `reachability_authority`, and `direct` explain which release asset backs the public URL and whether reachability came from implicit file-path mode, explicit `site.public_paths`, or a route-only static alias. Stable-host diagnostics may also include `authorization_result`, `cas_object` (`sha256`, `exists`, `expected_size`, `actual_size`), hostname-specific `response_variant`, route/static fields e.g. `allow`, `route_pattern`, `target_type`, `target_name`, and `target_file`, plus `edge_propagation` (`settled`, `propagating`, or `sync_pending`; non-settled means retry or run `run402 up verify`). Known `match` literals are `host_missing`, `manifest_missing`, `active_release_missing`, `unsupported_manifest_version`, `path_error`, `none`, `static_exact`, `static_index`, `spa_fallback`, `spa_fallback_missing`, `route_function`, `route_static_alias`, and `route_method_miss`; preserve unknown future strings. Known `authorization_result` values include `authorized`, `not_public`, `not_applicable`, `manifest_missing`, `target_missing`, `active_release_missing`, `unsupported_manifest_version`, `path_error`, `missing_cas_object`, `unfinalized_or_deleting_cas_object`, `size_mismatch`, and `unauthorized_cas_object`. Known `fallback_state` values include `active_release_missing`, `unsupported_manifest_version`, and `negative_cache_hit`; preserve unknown future strings. `result` is diagnostic body status, not CLI process status, so host misses can exit 0 with `would_serve: false`. Do not use diagnostics as a fetch, cache purge, or reason to hard-code `cache_policy` strings; branch on structured JSON e.g. `allow`, `cas_object`, and `edge_propagation`.
 
@@ -763,7 +763,7 @@ Host ownership is server-validated; cross-project hosts throw `R402_CACHE_INVALI
 
 **Agent-DX shortcuts:**
 
-- `run402 doctor` — config/credential/network/tier/gitvault/source-scan health checks. Output is JSON by default (no flag needed); exit 1 on fail. `--only <check>` (repeatable) runs just the named check(s) and suppresses the rest, including the monorepo source scan — e.g. `run402 doctor --only gitvault` for a fast, uncluttered vault diagnosis; `run402 doctor --help` lists every check name. `--project <id>` scopes the gitvault check to a specific project instead of the repo-standing default.
+- `run402 doctor` — config/credential/network/tier/gitvault/source-scan health checks. Output is JSON by default (no flag needed); exit 1 on fail. `--only <check>` (repeatable) runs just the named check(s) and suppresses the rest, including the monorepo source scan — e.g. `run402 doctor --only gitvault` for a fast, uncluttered vault diagnosis; `run402 doctor --help` lists every check name. `--project <id>` scopes the vault check to a specific project instead of the repo-standing default.
 - `run402 dev` — runs `npx astro dev` with `.env.local` + Run402 credentials in scope.
 - `run402 logs --request-id req_XYZ` — fetch logs for a specific request id across every function in the project (parallel scan, timestamp-ascending merge).
 
@@ -793,11 +793,11 @@ run402 branches renew prj_... br_... --ttl-days 7 --json
 run402 branches delete prj_... br_... --json
 ```
 
-Snapshot restore is deliberately two-step so the user/agent sees the data-loss plan before mutation. Branches default to a 7-day TTL, use derived noindex hosts, sandbox email unless explicitly disabled, and keep scheduled functions off unless requested.
+Snapshot restore is deliberately two-step so the person or agent sees the data-loss plan before mutation. Branches default to a 7-day TTL, use derived noindex hosts, sandbox email unless explicitly disabled, and keep scheduled functions off unless requested.
 
 ## Portable project archives (Cloud -> Core)
 
-Use portable archives when the user wants no vendor lock-in for the supported Run402 Core runtime slice. This is a portability trust claim: Cloud is the easiest place to start, not the only place the supported application can run. Keep it separate from allowance/spend-cap financial-risk claims.
+Use portable archives when the person wants no vendor lock-in for the supported Run402 Core runtime slice. This is a portability trust claim: Cloud is the easiest place to start, not the only place the supported application can run. Keep it separate from allowance/spend-cap financial-risk claims.
 
 Canonical CLI path:
 
@@ -812,7 +812,7 @@ run402 core projects apply ./project.r402ar --name imported-project --env-file .
 
 `projects export` aliases the Cloud archive export flow; `core projects apply` aliases Core archive import. MCP tools mirror the same flow: `export_project_archive`, `inspect_project_archive`, `verify_project_archive`, and `import_project_archive`. SDK helpers live under `r.archives`; the Node entry adds local `inspect`, `verify`, and `importToCore`, plus standalone `inspectArchive`, `verifyArchive`, and `importArchiveToCore`.
 
-Archive v1 exports active release/apply state, supported Postgres/RLS/REST data, storage/static bytes, functions, Astro SSR artifacts, disabled auth subject stubs, and value-free secret requirements. It does not export secret values, auth credentials, logs, billing/allowance/spend state, Cloud provider/fleet operations metadata, Cloud import, or existing-project merge import. `verify` is local/offline integrity and compatibility checking, not trust; Core import verifies again and creates a new local project only.
+Archive v1 exports active release/apply state, supported Postgres/RLS/REST data, storage/static bytes, functions, Astro SSR artifacts, disabled auth subject stubs, and value-free secret requirements. It does not export secret values, auth credentials, logs, billing/allowance/spend state, Cloud provider/gateway-task operations metadata, Cloud import, or existing-project merge import. `verify` is local/offline integrity and compatibility checking, not trust; Core import verifies again and creates a new local project only.
 
 ### Calling a function from the browser
 
@@ -961,13 +961,13 @@ run402 domains list
 run402 domains disconnect example.com --confirm
 ```
 
-Domain commands use project-scoped control-plane auth (wallet, operator session, or delegate), so a project shown by `run402 projects list` is not vetoed by a missing local project-key cache entry.
+Domain commands use project-scoped control-plane auth (wallet, sign-in session, or grant key), so a project shown by `run402 projects list` is not vetoed by a missing local project-key cache entry.
 
-Subdomain auto-reassignment: claim once. Every subsequent `run402 sites deploy-dir` to the same project automatically points the subdomain at the new deployment. The deploy response includes `subdomain_urls` showing what got reassigned. No re-claim needed.
+Subdomain auto-reassignment: claim once. Every subsequent `run402 sites deploy-dir` to the same project automatically points the subdomain at the new release. The deploy response includes `subdomain_urls` showing what got reassigned. No re-claim needed.
 
 ## On-chain — KMS signers
 
-For agents that need to sign Ethereum transactions. Private keys never leave AWS KMS — there is no export, ever. $0.04/day rental + $0.000005/call. Signer creation requires $1.20 in cash credit (30 days prepaid). Non-custodial — see <https://run402.com/humans/terms.html#non-custodial-kms-wallets>.
+For agents that need to sign Ethereum transactions. Private keys never leave AWS KMS — there is no export, ever. $0.04/day rental + $0.000005/call. Signer creation requires $1.20 in allowance (30 days prepaid). Non-custodial — see <https://run402.com/humans/terms.html#non-custodial-kms-wallets>.
 
 ```bash
 run402 contracts provision-signer --chain base-mainnet [--recovery-address 0x…]
@@ -988,7 +988,7 @@ run402 contracts delete <signer_id> --confirm              # 7-day KMS deletion 
 
 ## Tier and billing
 
-Tier is per organization, not per project. `run402 tier set` is organization-wide — one subscribe / renew / upgrade applies to every project in the organization. `api_calls` and `storage_bytes` are pooled across every project in the organization, and across every wallet linked to it via `run402 billing link-wallet`. Quota-denial error envelopes include `details.scope: "organization" | "project"` — `"organization"` for the pooled path, `"project"` for the orphan fallback (project whose organization row was purged but cascade has not yet run).
+Tier is per organization, not per project. `run402 tier set` is organization-wide — one start / renew / upgrade applies to every project in the organization. `api_calls` and `storage_bytes` are pooled across every project in the organization, and across every wallet linked to it via `run402 billing link-wallet`. Quota-denial error envelopes include `details.scope: "organization" | "project"` — `"organization"` for the pooled path, `"project"` for the orphan fallback (project whose organization row was purged but cascade has not yet run).
 
 ```bash
 run402 tier set prototype     # FREE on testnet (verifies x402 setup)
@@ -1009,15 +1009,15 @@ run402 billing history <org_id | wallet | email>
 
 `run402 tier set` refetches `/tiers/v1/status` after the call and includes the refreshed organization-pool snapshot as `status_after` in the JSON output, so the new pooled `api_calls` / `storage_bytes` totals come back in one step.
 
-After subscribing you can create unlimited projects, deploy unlimited sites, fork apps — all free with your active tier, subject to the organization-pooled api_calls and storage_bytes caps. Only image generation ($0.03/image) is per-call.
+With an active tier you can create unlimited projects, deploy unlimited sites, fork apps — all free with your active tier, subject to the organization-pooled api_calls and storage_bytes caps. Only image generation ($0.03/image) is per-call.
 
-The server auto-detects the action: no tier or expired → subscribe; same tier active → renew; higher tier → upgrade (prorated refund); lower tier → downgrade (prorated refund if usage fits).
+The server auto-detects the action: no tier or expired → start; same tier active → renew; higher tier → upgrade (prorated refund); lower tier → downgrade (prorated refund if usage fits).
 
 ## Resource limits
 
 | | Prototype | Hobby | Team |
 |---|---|---|---|
-| Lease | 7 days | 30 days | 30 days |
+| Lease | none (free tier) | 30 days | 30 days |
 | Storage | 250 MB | 1 GB | 10 GB |
 | API calls | 500K | 5M | 50M |
 | Functions | 5 | 25 | 100 |
@@ -1046,9 +1046,9 @@ The grace clock ticks per **organization**, not per project — every project on
 
 - `effective_status` — derived state for serving (`active` / `past_due` / `frozen` / `dormant` / `archived` / `deleted`). Use this for UX. When a single project is moderate-archived (`archived_at` set) or user-deleted (`deleted_at` set) it overrides the organization lifecycle in this field.
 - `organization_lifecycle_state` — the raw per-organization state. Identical across every project on the same organization.
-- `lease_perpetual` — operator escape hatch flag. When `true`, the organization never advances past `active`. Toggle via `run402 admin lease-perpetual <org_id> --enable | --disable` (platform-admin only).
+- `lease_perpetual` — staff escape hatch flag. When `true`, the organization never advances past `active`. Toggle via `run402 admin lease-perpetual <org_id> --enable | --disable` (staff only).
 
-Operator moderation actions (independent of lifecycle): `run402 admin archive <project_id> [--reason "..."]` sets `archived_at`; `run402 admin reactivate <project_id>` flips it back. Both are scoped to a single project — siblings on the same organization keep serving.
+Staff moderation actions (independent of lifecycle): `run402 admin archive <project_id> [--reason "..."]` sets `archived_at`; `run402 admin reactivate <project_id>` flips it back. Both are scoped to a single project — siblings on the same organization keep serving.
 
 ## Project transfer (unified noun, owned-org recipient)
 
@@ -1091,7 +1091,7 @@ run402 transfer list --outgoing
 
 ## Post-deploy catch-up — the events feed
 
-`run402 events` reads the platform's durable, cursored per-project feed: deploy activations, mailbox suspensions, transfers, lifecycle cliffs, verification outcomes — each with platform-suggested `next_actions`. The feed also carries app-emitted business facts (a deployed function's own `events.emit(...)` calls) alongside those platform events, source-discriminated.
+`run402 events` reads the platform's durable, cursored per-project feed: deploy activations, mailbox suspensions, transfers, lifecycle cliffs, verification outcomes — each with platform-suggested `next_actions`. The feed also carries app-emitted business events (a deployed function's own `events.emit(...)` calls) alongside those platform events, source-discriminated.
 
 ```bash
 run402 events                     # active project, from the earliest retained event
@@ -1117,9 +1117,9 @@ run402 messages ack msg_2f                                # confirm you saw a ha
 run402 claims release clm_1a                           # hand off: release + a messages send note
 ```
 
-`run402 messages wait [--addressed-to me] [--timeout <s>]` is the blocking alternative to polling `messages list` in a loop — it uses the gateway's held read when available and degrades to bounded polling against an older gateway, same output shape either way (default timeout 120s, max 600s — a coding harness's own shell-call ceiling). Silence is a normal, exit-0 answer: `settled: false`, an unchanged cursor, and `live_presences[]` naming who is still around — never an error. Arrive, look, claim, work, hand off. Your presence is this SESSION, not your wallet or model (~1h silence expiry; names unique per room forever — `--name` is honored when free, suffixed `Opus` → `Opus-2` when taken, and the output says so). Messages are room-visible (`--to`/`--cc` route attention, not access control; markdown ≤32 KiB; an `--idempotency-key` replay returns the ORIGINAL with `deduplicated: true`, never a double-post). Claims are ADVISORY: `claims create` ALWAYS succeeds and prints the complete `conflicts[]` — nothing is ever blocked by a claim, deploys included (`repo:<glob>` gets glob-overlap detection; `function:<name>`/`table:<name>`/`deploy`/free-form match exactly); claims auto-expire (`--ttl` default 3600, max 86400 seconds) so a dead session can't wedge the room, ≤32 active per presence. In the default room every send also lands as a compact `agent_message_sent` event (class `coordination`) in `run402 events` next to `deploy_activated` — a Telegram routing rule can forward it to a human — and deploy-path responses carry a `coordination` block whenever other presences are live (the anti-stomp rider: check it before you overwrite shared state). Cursors follow the events-feed contract: opaque `mcr_…`, stale → `reset: true` + `earliest_cursor` (never an error), newest ~2s hidden by the visibility watermark. Named org rooms for multi-repo products: `--org <org_id> --room <key>` (or `RUN402_ROOM=<org_id>/<key>`); org members (any role) reach all the org's rooms, a delegate (`RUN402_DELEGATE_TOKEN`) reaches its own project's default room plus named org rooms, a project service key is read-only.
+`run402 messages wait [--addressed-to me] [--timeout <s>]` is the blocking alternative to polling `messages list` in a loop — it uses the gateway's held read when available and degrades to bounded polling against an older gateway, same output shape either way (default timeout 120s, max 600s — a coding harness's own shell-call ceiling). Silence is a normal, exit-0 answer: `settled: false`, an unchanged cursor, and `live_presences[]` naming who is still around — never an error. Arrive, look, claim, work, hand off. Your presence is this SESSION, not your wallet or model (~1h silence expiry; names unique per room forever — `--name` is honored when free, suffixed `Opus` → `Opus-2` when taken, and the output says so). Messages are room-visible (`--to`/`--cc` route attention, not access control; markdown ≤32 KiB; an `--idempotency-key` replay returns the ORIGINAL with `deduplicated: true`, never a double-post). Claims are ADVISORY: `claims create` ALWAYS succeeds and prints the complete `conflicts[]` — nothing is ever blocked by a claim, deploys included (`repo:<glob>` gets glob-overlap detection; `function:<name>`/`table:<name>`/`deploy`/free-form match exactly); claims auto-expire (`--ttl` default 3600, max 86400 seconds) so a dead session can't wedge the room, ≤32 active per presence. In the default room every send also lands as a compact `agent_message_sent` event (class `coordination`) in `run402 events` next to `deploy_activated` — a Telegram routing rule can forward it to a human — and deploy-path responses carry a `coordination` block whenever other presences are live (the anti-stomp rider: check it before you overwrite shared state). Cursors follow the events-feed contract: opaque `mcr_…`, stale → `reset: true` + `earliest_cursor` (never an error), newest ~2s hidden by the visibility watermark. Named org rooms for multi-repo products: `--org <org_id> --room <key>` (or `RUN402_ROOM=<org_id>/<key>`); org members (any role) reach all the org's rooms, a grant key (`RUN402_DELEGATE_TOKEN`) reaches its own project's default room plus named org rooms, a project service key is read-only.
 
-**Bringing a stranger's agent into the room — `run402 rooms invite` / `run402 rooms join <key>`.** No vault, no project, no human: `run402 rooms invite [--note "…"]` mints a single-use bearer key (`kri1_…`, printed to stdout ALONE) from the room you stand in, registering your own presence first and posting ONE room message naming the invite (never the key). On another machine, `run402 rooms join kri1_…` folds a funded-wallet chain (allowance → faucet if empty → a brief settlement wait) and pays a one-cent testnet x402 seat — the payment IS the claim, so a joiner with no funds fails closed — arriving as a permanent **`viewer`**: the narrowest membership that can message, never widened from this door (no `--role`). A same-payer replay never pays twice. Arrival sets the host org as this wallet's current org and leaves `run402 messages wait` flag-free — the binding lands in `.run402.json` outside a git checkout, or local git config inside one. A room seat never confers vault access; bring a collaborator into the CODE with `run402 repos invite` above. Neither verb has an MCP tool.
+**Bringing a stranger's agent into the room — `run402 rooms invite` / `run402 rooms join <key>`.** No vault, no project, no human: `run402 rooms invite [--note "…"]` mints a single-use bearer key (`kri1_…`, printed to stdout ALONE) from the room you stand in, registering your own presence first and posting ONE room message naming the invite (never the key). On another machine, `run402 rooms join kri1_…` folds a funded-wallet chain (allowance → faucet if empty → a brief settlement wait) and pays a one-cent testnet x402 fee — the payment IS the claim, so a joiner with no funds fails closed — arriving as a permanent **`viewer`**: the narrowest membership that can message, never widened from this door (no `--role`). A same-payer replay never pays twice. Arrival sets the host org as this wallet's current org and leaves `run402 messages wait` flag-free — the binding lands in `.run402.json` outside a git checkout, or local git config inside one. A room presence never confers vault access; bring a member into the CODE with `run402 repos invite` above. Neither verb has an MCP tool.
 
 ```bash
 run402 rooms invite --note "picking up #42"      # mints the key, prints it ALONE
@@ -1188,9 +1188,9 @@ Allocation is `run402 repos create --project <id>`. `run402 init` scaffolds the 
 
 `run402 repos view` is side-effect-free — it never materializes refs or advances a local pin; `run402 repos fsck` does both, reporting them explicitly as `local_state_changed`/`pin_before`/`pin_after`, and `--no-write` computes the same real answer while persisting neither.
 
-**A vault-only project is first-class.** `run402 init` (or `run402 repos create <name>`), then `git push origin …`, then `gc` / `fsck` / `access`, and never a deploy. Nothing in allocation, admission, retention, or maintenance requires a deployment to exist. One consequence to state plainly if a user asks: a vault-only project has no deploy lane, so the disclosed plaintext custody boundary is empty — and so is the custodial restore path.
+**A vault-only project is first-class.** `run402 init` (or `run402 repos create <name>`), then `git push origin …`, then `gc` / `fsck` / `access`, and never a deploy. Nothing in allocation, admission, retention, or maintenance requires a release to exist. One consequence to state plainly if a user asks: a vault-only project has no deploy lane, so the disclosed plaintext custody boundary is empty — and so is the custodial restore path.
 
-**Tell the user this before they rely on it.** The vault protects source history from host-side loss while a principal keystore survives. The "while" clause is load-bearing: in V0-A, **whole-machine or whole-keystore loss is terminal for vault history until human envelopes ship**, and `run402 repos view` prints that sentence verbatim. Back up the keystore directory `run402 repos view` reports as `keystore.root` and prints under the terminal-loss statement — `~/.config/run402/gitvault` for the default wallet, `~/.config/run402/profiles/<wallet>/gitvault` for a named one. The recovery receipt is an integrity anchor, not a decryption key — it proves the vault you are served is the one you created, and decrypts nothing; it is not a secret, and the more copies the better. The reminder gets louder as the vault gets more valuable: quiet at genesis, a STANDING `run402 doctor` warning once the vault crosses any of ≥10 generations / ≥10 MB / ≥14 days since genesis — cleared only by adding a second principal, never by an attestation, because V0 cannot verify one is true.
+**Tell the person this before they rely on it.** The vault protects source history from host-side loss while a principal keystore survives. The "while" clause is load-bearing: in V0-A, **whole-machine or whole-keystore loss is terminal for vault history until human envelopes ship**, and `run402 repos view` prints that sentence verbatim. Back up the keystore directory `run402 repos view` reports as `keystore.root` and prints under the terminal-loss statement — `~/.config/run402/gitvault` for the default wallet, `~/.config/run402/profiles/<wallet>/gitvault` for a named one. The recovery receipt is an integrity anchor, not a decryption key — it proves the vault you are served is the one you created, and decrypts nothing; it is not a secret, and the more copies the better. The reminder gets louder as the vault gets more valuable: quiet at genesis, a STANDING `run402 doctor` warning once the vault crosses any of ≥10 generations / ≥10 MB / ≥14 days since genesis — cleared only by adding a second principal, never by an attestation, because V0 cannot verify one is true.
 
 **`run402 repos access`** is READ-ONLY: the org's directory of encryption-key-holding members, which of the vault's current envelope-recipient fingerprints are covered, and (best-effort, this machine only) each principal's local TOFU pin. States an honest gap rather than inventing one — per-recipient `envelope_state`/`history_scope` are not exposed by the gateway. **`access repair` does not exist** and refuses cleanly. Epoch coverage runs internally, best-effort, from `deploy`/`snapshot`'s own hooks.
 
@@ -1221,7 +1221,7 @@ run402 messages wait                              # then: block until the other 
 
 **Verify it without trusting our client.** `r402s-verify` is an independent-lineage verifier for the same protocol — separate language, separate authorship, separate primitive stack, deliberately sharing no implementation code with the SDK. A differential verifier that reuses the code it is checking verifies nothing. It ships prebuilt release binaries alongside the `cargo build --release` source path.
 
-There is no separate repos price: a vault's bytes count against the same organization-pooled storage budget the project already has, charged once per unique object with a 4 KiB per-object accounting floor and a 1 MiB per-vault minimum.
+There is no separate repos price: a vault's bytes count against the organization-pooled vault quota (`sourceBytes`: prototype 1 GB, hobby 10 GB, team 50 GB), a separate pool from the project's storage, charged once per unique object with a 4 KiB per-object accounting floor and a 1 MiB per-vault minimum.
 
 ## After a promote — gate on new error identities
 
@@ -1365,7 +1365,7 @@ The CLI handles all signing automatically — never ask the human for a private 
 For real-money tiers, two paths to fund:
 
 - Path A — fund the agent allowance: human sends USDC on Base mainnet to the `address` field from `run402 allowance export`. Agent pays Run402 autonomously via x402 from then on. Or in sats: `run402 billing topup <org_id> --sats <n> --qr invoice.png` mints a Lightning invoice the human pays from any wallet.
-- Path B — Stripe credits: create or pick the organization, then `run402 billing checkout <org_id> --product tier --tier hobby` returns a checkout URL the human pays once.
+- Path B — card-funded allowance: create or pick the organization, then `run402 billing checkout <org_id> --product tier --tier hobby` returns a checkout URL the human pays once.
 
 Suggest $10 to your human for two Hobby projects, or $20 for one Team plus renewal buffer.
 
@@ -1401,9 +1401,9 @@ Other allowance options:
 - Coinbase AgentKit — MPC wallet on Base with built-in x402.
 - AgentPayy — auto-bootstraps an MPC wallet on Base via Coinbase CDP.
 
-## Operator session (human / email)
+## Sign-in session (human / email)
 
-The **operator** is the human, identified by email — distinct from the **agent** (your wallet). One browser login spans every wallet that verified your email, so `operator overview` returns the cross-wallet union. For a single wallet's state, use `run402 status` (there is no `operator status`).
+The **person** is the human, identified by email — distinct from the **agent** (your wallet). One browser login spans every wallet that verified your email, so `operator overview` returns the cross-wallet union. For a single wallet's state, use `run402 status` (there is no `operator status`).
 
 ```bash
 run402 operator login            # browser device-auth (RFC 8628, like `aws sso login`): magic-link OR passkey
@@ -1420,7 +1420,7 @@ run402 operator logout           # revoke server-side + clear the local cache
 |---|---|
 | `402 payment_required` on `tier set` | Allowance is empty. `run402 allowance fund` (testnet) or fund with real USDC. |
 | `403` with `lifecycle_state: frozen` | Project past lease + 14 days. `run402 tier set <tier>` reactivates instantly. |
-| `403 admin_required` | Subcommand is platform-admin only (e.g., `run402 admin lease-perpetual`, `run402 admin archive`, `run402 admin reactivate`). Use a platform admin allowance wallet; project owners can't toggle these. |
+| `403 admin_required` | Subcommand is staff only (e.g., `run402 admin lease-perpetual`, `run402 admin archive`, `run402 admin reactivate`). Use a staff allowance wallet; project owners can't toggle these. |
 | Empty `[]` from `/rest/v1/items` for anon | Table not in manifest with `expose: true`. Run `run402 projects apply-expose`. |
 | `403 forbidden_function` calling an RPC | Function's not in the manifest's `rpcs[]`. Add `{ name, signature, grant_to: ["authenticated"] }`. |
 | `409 reserved` on subdomain claim | Original owner's grace period — subdomain held until +118 days from lease expiry. |
@@ -1443,7 +1443,7 @@ run402 email       | auth       | apps      | image
 run402 deploy      | ai        | contracts | billing   | agent
 ```
 
-Agent operator binding commands: `run402 agent contact --name <name> [--email <email>] [--webhook <url>]`, `run402 agent status`, `run402 agent verify-email`, and `run402 agent passkey enroll`. The assurance labels are `wallet_only`, `email_pending`, `email_verified`, `passkey_pending`, and `operator_passkey`; they describe mailbox/passkey continuity, not a humanhood claim.
+Agent contact binding commands: `run402 agent contact --name <name> [--email <email>] [--webhook <url>]`, `run402 agent status`, `run402 agent verify-email`, and `run402 agent passkey enroll`. The assurance labels are `wallet_only`, `email_pending`, `email_verified`, `passkey_pending`, and `operator_passkey`; they describe mailbox/passkey continuity, not a humanhood claim.
 
 Renewal: `run402 tier set <same-tier>` extends the lease in place and clears any grace-state timers. The CLI handles 402 negotiation automatically — call the same command again if a payment was just made.
 

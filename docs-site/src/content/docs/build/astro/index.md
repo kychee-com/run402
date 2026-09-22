@@ -1,6 +1,6 @@
 ---
 title: Astro applications
-description: SSR, hosted authentication, data, images and deployment on Run402.
+description: SSR, hosted authentication, data, images and deploy on Run402.
 ---
 
 The `@run402/astro` preset connects Astro's build and SSR runtime to Run402. Use the CLI for setup/deploy/diagnostics and native Astro code inside the application.

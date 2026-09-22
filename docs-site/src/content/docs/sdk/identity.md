@@ -6,7 +6,7 @@ order: 20
 
 ## Public Buzz/Nostr identity links (`r.identityLinks`)
 
-`identityLinks` represents public Nostr attribution for human and agent principals through one common shape discriminated by `proof_protocol`. One principal may have multiple active subjects, while an active subject is linked to only one principal. It never accepts a Nostr secret and never affects authentication, authorization, organization ownership, grants, delegates, payment, or transfers.
+`identityLinks` represents public Nostr attribution for human and agent principals through one common shape discriminated by `proof_protocol`. One principal may have multiple active subjects, while an active subject is linked to only one principal. It never accepts a Nostr secret and never affects authentication, authorization, organization ownership, grants, grant keys, payment, or transfers.
 
 ```ts
 import { readFile } from "node:fs/promises";
@@ -39,7 +39,7 @@ Current `whoami`, project, deploy-operation/release, and transfer response types
 
 `await r.buzz.status()` capability-detects `run402.buzz-control-plane.v1` plus `capabilities.human_adoption_offers` and returns independent skill/offer/adoption/community/enrollment state without manufacturing state on an older gateway. The canonical ownership alias is `r.buzz.offerAdoption`; typed `humanAdoptionOffers.create/get/cancel/createAttempt` separates durable inert offers from short human/session-bound attempts. A completed poll exposes the terminal consent receipt, public human identity link, and ordinary owner membership as distinct typed effects. The membership is the only organization-authority source; identity-link and membership revocation are independent and neither rewrites the completed receipt. `r.buzz.adopt` and `humanAdoptions` remain direct advanced compatibility. Other goal aliases are `r.buzz.install` and `r.buzz.enroll`.
 
-The SDK generates mutation idempotency keys when omitted and rejects nested secret-shaped fields before network access. It never signs a Buzz event. Human adoption requires a directly authenticated human completion; community activation accepts an ordinary Buzz kind-1 owner/admin approval and lets Run402 verify released NIP-11/NIP-43 relay evidence. Run402 owns descriptor discovery, policy/default revisions, and revocation, so Buzz itself remains unchanged. Agent enrollment can create only finite grants on named existing projects. It never creates agent org membership, future-project, owner, delegate, or payment authority. Installation revocation leaves existing grants unchanged; enrollment revocation affects only its linked grants; drift is advisory. Buzz failures preserve the gateway's stable code, exact repair `field`, complete `nextActions`, and `safeToRetry`; there is no client-synthesized generic edit fallback, and an unchanged call is retried only when the gateway marks it safe.
+The SDK generates mutation idempotency keys when omitted and rejects nested secret-shaped fields before network access. It never signs a Buzz event. Human adoption requires a directly authenticated human completion; community activation accepts an ordinary Buzz kind-1 owner/admin approval and lets Run402 verify released NIP-11/NIP-43 relay evidence. Run402 owns descriptor discovery, policy/default revisions, and revocation, so Buzz itself remains unchanged. Agent enrollment can create only finite grants on named existing projects. It never creates agent org membership, future-project, owner, grant key, or payment authority. Installation revocation leaves existing grants unchanged; enrollment revocation affects only its linked grants; drift is advisory. Buzz failures preserve the gateway's stable code, exact repair `field`, complete `nextActions`, and `safeToRetry`; there is no client-synthesized generic edit fallback, and an unchanged call is retried only when the gateway marks it safe.
 
 Before creating an x402 payment payload, the Node entry confirms USDC with
 bounded retry/backoff and independent RPC failover on Base and Base Sepolia.
@@ -147,7 +147,7 @@ validity, settlement, payer, transaction, and signer relationship. Branch on
 `PaymentBuyerError.code`: `PAYMENT_EXCEEDS_MAX`, `PAYMENT_WALLET_UNFUNDED`,
 `PAYMENT_NETWORK_UNSUPPORTED`, exact Run402 pending/drain/destination/fence/
 lifetime/key-reuse codes, or `PAYMENT_SETTLEMENT_FAILED`. The error preserves
-`fundsMoved`, `paymentId`, intent/delivery facts, and canonical `nextActions`.
+`fundsMoved`, `paymentId`, intent/delivery events, and canonical `nextActions`.
 Successful results preserve `paymentId`, `deduplicated`, `fundsMoved`,
 `delivery`, `settledAt`, and `intentState` when supplied.
 
@@ -163,7 +163,7 @@ For an ambiguous transport failure, retry the identical request on the same SDK
 instance with the same idempotency key. This buyer keeps the signed proof only
 in memory and re-presents that exact proof; it never mints a second authorization.
 An upstream used-proof response becomes `outcome: "already_settled"` and
-`replay: true`. Across a fresh process, a Run402 managed/deployment host can
+`replay: true`. Across a fresh process, a Run402 managed/host can
 recover a caller-keyed intent by repeating the same request with the same payer
 and key. Trusted pending requires status 409, the exact code and reserved
 header, the same payment-bearing origin, redirects disabled, HTTPS, and an

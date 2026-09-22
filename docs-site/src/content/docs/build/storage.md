@@ -11,7 +11,7 @@ run402 assets put ./hero.png --project prj_example
 
 The result is an AssetRef: retain the full returned reference, including variants and immutable identities, when storing it in application data. Do not reconstruct an immutable or variant URL from a logical key. Public and private visibility are explicit; an immutable object URL is not permission to reveal private content.
 
-For a declared site, `site.public_paths` and route aliases determine reachable filenames. Diagnose a URL against the release and host rather than assuming the backing filename is public. See [deployment diagnostics](/operate/diagnostics/).
+For a declared site, `site.public_paths` and route aliases determine reachable filenames. Diagnose a URL against the release and host rather than assuming the backing filename is public. See [deploy diagnostics](/operate/diagnostics/).
 
 Directory sync/prune changes more than an additive upload. Read the plan, scope the prefix and review deletion confirmation. If remote state drifts, obtain a new plan rather than reusing stale confirmation. Runtime file uploads use the native helpers described in the [function reference](/cli/functions/); they are application code, not CLI operating steps.
 

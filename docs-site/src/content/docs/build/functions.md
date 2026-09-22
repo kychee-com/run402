@@ -3,7 +3,7 @@ title: Functions and routes
 description: Deploy request handlers, inspect runs and keep runtime authority explicit.
 ---
 
-A Node 22 function exports a default request handler that returns a `Response`. Put its source and config in the release manifest so it activates with the app's routes and database changes. `@run402/functions` provides in-function helpers and editor types; Cloud bundles the platform's installed helper package at deployment.
+A Node 22 function exports a default request handler that returns a `Response`. Put its source and config in the release manifest so it activates with the app's routes and database changes. `@run402/functions` provides in-function helpers and editor types; Cloud bundles the platform's installed helper package at deploy.
 
 ```ts
 export default async function handler(req: Request): Promise<Response> {
@@ -26,4 +26,4 @@ Schedules and event triggers can create durable function runs. Inspect `fnrun_` 
 
 ## Read the result and recover
 
-Invocation prints the function response; logs are a separate operation. An authorization failure requires correcting the caller or declared gate, not removing authentication. A runtime failure requires the returned request ID and application logs. If deployment fails, inspect its stage before invoking: uploading code alone is not evidence of activation. Use `run402 functions invoke --help` for request-body file options and keep secrets out of arguments.
+Invocation prints the function response; logs are a separate operation. An authorization failure requires correcting the caller or declared gate, not removing authentication. A runtime failure requires the returned request ID and application logs. If deploy fails, inspect its stage before invoking: uploading code alone is not evidence of activation. Use `run402 functions invoke --help` for request-body file options and keep secrets out of arguments.

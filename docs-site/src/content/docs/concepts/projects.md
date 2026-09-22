@@ -3,7 +3,7 @@ title: Projects, organizations and ownership
 description: Explicit destinations and attributable human, agent and CI actions.
 ---
 
-An organization owns projects. People and agents act as distinct principals with attributable actions; membership, roles, grants, delegates and spending policy determine authority. An agent may own the organization it founded. A person joining as co-owner is an explicit authority change.
+An organization owns projects. People and agents act as distinct principals with attributable actions; membership, roles, grants, grant keys and spending policy determine authority. An agent may own the organization it founded. A person joining as co-owner is an explicit authority change.
 
 ```bash
 run402 org whoami
@@ -11,7 +11,7 @@ run402 projects list
 run402 projects get prj_example
 ```
 
-Use returned identifiers rather than guessing ownership from a display name or signing address. A deployment targets an explicit project, app-local link or manifest destination, or approved new-project creation through `--name`. Global active-project state is not enough to select a deploy destination. Conflicting selectors need correction before mutation.
+Use returned identifiers rather than guessing ownership from a display name or signing address. A deploy targets an explicit project, app-local link or manifest destination, or approved new-project creation through `--name`. Global active-project state is not enough to select a deploy destination. Conflicting selectors need correction before mutation.
 
 ## Lifecycle and transfers
 

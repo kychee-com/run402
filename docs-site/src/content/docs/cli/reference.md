@@ -10,7 +10,7 @@ summary: "First-deploy contract: up, output/error JSON, rehearsal, funding, tier
 > SDK: `npm install @run402/sdk` (typed TS client; same namespaces; Node/Deno/Bun/V8 isolates)
 > Docs URL: https://docs.run402.com/llms-cli.txt
 > HTTP API reference: https://run402.com/llms-full.txt
-> Operator: Kychee, Inc.
+> Operated by: Kychee, Inc.
 > Terms: https://run402.com/humans/terms.html
 > Contact: `run402 feedback send "your message"` (requires active tier)
 
@@ -18,12 +18,12 @@ summary: "First-deploy contract: up, output/error JSON, rehearsal, funding, tier
 
 Run402 = Postgres + REST + Auth + Storage + static & Astro-SSR site hosting + same-origin routes + Node 22 functions + email + image generation behind one CLI.
 
-Run402 is agent-first because agents are first-class participants, not because people disappear. Use your own principal and authenticator rather than a borrowed human account. Identity records who invoked the command; organization roles, grants, delegates, freshness, and spend policy determine what that principal may do. A founder agent may remain owner of its org-of-one.
+Run402 is agent-first because agents are first-class participants, not because people disappear. Use your own principal and authenticator rather than a borrowed human account. Identity records who invoked the command; organization roles, grants, grant keys, freshness, and spend policy determine what that principal may do. A founder agent may remain owner of its org-of-one.
 
-Agent-critical facts:
+Agent-critical events:
 - Shared full-stack workflow: `run402 up` coordinates planning, staging, migrations, activation and verification. Failures can leave resumable or partial work; promoting an earlier release does not undo migrations. Inspect returned operation state and next actions. `deploy apply` is the advanced apply primitive.
 - No platform token: local allowance (`~/.config/run402/allowance.json`) signs requests. Per-project `anon_key` / `service_key` are runtime data-plane keys (PostgREST/Storage/Functions), permanent, and embeddable/server-side respectively.
-- Agent-paid usage: x402 USDC on Base, MPP pathUSD on Tempo, or sats over Bitcoin Lightning (MPP) from the agent's platform-minted wallet, signed by allowance. Humans may fund through Stripe credits; CLI behavior is unchanged. `run402 allowance <create|status|fund|balance|export>` — `status` reports `wallet.rail` and, on a Lightning profile, a `lightning` block (wallet id, status, custody `run402_hub`, address, budget, starter, `balance_sats`, `budget_remaining_sats`; never the pairing).
+- Agent-paid usage: x402 USDC on Base, MPP pathUSD on Tempo, or sats over Bitcoin Lightning (MPP) from the agent's platform-minted wallet, signed by allowance. Humans may fund through card-funded allowance; CLI behavior is unchanged. `run402 allowance <create|status|fund|balance|export>` — `status` reports `wallet.rail` and, on a Lightning profile, a `lightning` block (wallet id, status, custody `run402_hub`, address, budget, starter, `balance_sats`, `budget_remaining_sats`; never the pairing).
 
 Install + deploy — the only first-deploy path (the front door at <https://run402.com/llms.txt> is the same three lines with a full manifest):
 
@@ -41,7 +41,7 @@ CLI update awareness is advisory and fail-open. Normal commands never wait for n
 
 App build scripts should read the same target/profile store through `resolveRun402TargetProfile()` from `@run402/sdk/node`, not by parsing `target.json` or local project-key cache files themselves.
 
-## Core facts
+## Core events
 
 - Allowance: `~/.config/run402/allowance.json` (0600); active project state: profile `state.json`; local project-key cache: profile `credentials/project-keys.v1.json` (0600). Legacy `projects.json` is migration input only.
 - Project keys are cached automatically after provision or fork for operations that truly need anon/service keys. They are not project inventory.
@@ -50,8 +50,8 @@ App build scripts should read the same target/profile store through `resolveRun4
 - CLI handles x402 / MPP signing; do not request private keys or payment libraries.
 - `run402 up` is the only compound CLI command. It emits natural JSON with `steps[]` (no top-level success `status`). Use `--check` for local-only validation, `--plan` for gateway-reviewed intent, and `--require-plan` for exact reviewed apply.
 - GitHub Actions deploys use OIDC: link once with `run402 ci link github`; generated workflow calls `run402 deploy apply` with `permissions: id-token: write`.
-- Projects, sites, subdomains, forks, functions, secrets, blob storage: free with active tier. Only image generation ($0.03) is per-call
-- Env overrides: `RUN402_API_BASE` (overrides stored target; default `https://api.run402.com`), `RUN402_CONFIG_DIR` (base credential dir, default `~/.config/run402`), `RUN402_WALLET` (active named wallet/profile, default `default`; alias `RUN402_PROFILE`), `RUN402_ALLOWANCE_PATH` (custom allowance file path, default `{config_dir}/allowance.json`), `RUN402_AGENT_NAME` (the name this agent runtime declares for itself; `run402 up` sets it as an agent principal's display name, overriding an existing agent name; human/unknown principals are preserved — reported as `identity.source: "explicit"`; promotion credit and room presence use it; equivalent to `run402 org whoami --set-name <name>`), `RUN402_CLIENT` (declares the coding-agent client when `up` has no environment marker for it, e.g. `RUN402_CLIENT=grok`; checked before every marker; it names an unnamed agent principal but never overrides an existing name — use `RUN402_AGENT_NAME` for that), `RUN402_PROGRAM` / `RUN402_MODEL` (room-presence `program` / `model` labels; `program` is otherwise inferred as `claude-code`, `codex`, `cursor`, or `grok`), `RUN402_TRACE` (any non-empty value: one stderr trace line per SDK request — see Observability below), `RUN402_GITVAULT_TRACE` (debug-only, `1`: one stderr line per gitvault transport operation — see Observability below). `run402 init --api-base=<url>` persists the active target in `{config_dir}/target.json` or `{config_dir}/profiles/<name>/target.json`.
+- Projects, sites, subdomains, forks, functions, secrets, asset storage: free with active tier. Only image generation ($0.03) is per-call
+- Env overrides: `RUN402_API_BASE` (overrides stored target; default `https://api.run402.com`), `RUN402_CONFIG_DIR` (base credential dir, default `~/.config/run402`), `RUN402_WALLET` (active named wallet/profile, default `default`; alias `RUN402_PROFILE`), `RUN402_ALLOWANCE_PATH` (custom allowance file path, default `{config_dir}/allowance.json`), `RUN402_AGENT_NAME` (the name this agent runtime declares for itself; `run402 up` sets it as an agent principal's display name, overriding an existing agent name; human/unknown principals are preserved — reported as `identity.source: "explicit"`; promotion credit and room presence use it; equivalent to `run402 org whoami --set-name <name>`), `RUN402_CLIENT` (declares the coding-agent client when `up` has no environment marker for it, e.g. `RUN402_CLIENT=grok`; checked before every marker; it names an unnamed agent principal but never overrides an existing name — use `RUN402_AGENT_NAME` for that), `RUN402_PROGRAM` / `RUN402_MODEL` (room-presence `program` / `model` labels; `program` is otherwise inferred as `claude-code`, `codex`, `cursor`, or `grok`), `RUN402_TRACE` (any non-empty value: one stderr trace line per SDK request — see Observability below), `RUN402_GITVAULT_TRACE` (debug-only, `1`: one stderr line per vault transport operation — see Observability below). `run402 init --api-base=<url>` persists the active target in `{config_dir}/target.json` or `{config_dir}/profiles/<name>/target.json`.
 - Wallets: `run402 wallets` manages named profiles. Select via `--wallet <name>` (`--profile`), `RUN402_WALLET`, or nearest `.run402.json` binding (commit-safe name only). Precedence: flag > env > `.run402.json`/`.run402.local.json` > `wallets use` default > `default`. Env/binding conflict hard-fails unless flag passed. `default` stays at config root; named wallets live under `{base}/profiles/<name>/`. Non-default active wallet is echoed on stderr and shown in `status` / `wallets current`.
 
 ## Output Contract
@@ -80,7 +80,7 @@ The SDK's request kernel (`sdk/src/kernel.ts` — the one place that touches `fe
 
 MCP tool output is markdown, not the `stats` envelope field — this is a CLI/SDK-edge feature by design.
 
-**`RUN402_GITVAULT_TRACE`** — debug-only, gitvault-specific, and out of scope of the two kernel diagnostics above: set it to `1` and every `git push`/`git fetch`/`run402 repos <verb>` call against a vault writes one stderr line per gitvault transport OPERATION (`gitvault-trace: <op-kind> [path=… | paths=N | objects=N | gen=… | repo=…] [bytes=N] <ms>ms`), plus a session summary at process exit (op count, time spent in the gitvault transport, wall-clock). This is the one place presigned-object PUT/GET traffic is visible at all — `RUN402_TRACE` and `sdk.stats()` above are scoped to the request kernel's own `apiBase`-relative calls, so they never see the direct-to-bucket presigned reads/writes gitvault's carrier, WAL, and checkpoint objects ride. A traced GET for one of the five edge-eligible kinds (`wal_pack`, `ref_state`, `retention_roots`, `checkpoint_manifest`, `checkpoint_pack`) may in fact be answered by the platform's CDN edge rather than the bucket directly when the gateway offers one for that read (gitvault-read-edge-cache, design D5) — automatic, verified byte-for-byte identically either way, and falling back silently to the direct presigned URL on any edge failure; the trace line reports the same op regardless of which one actually served it. Not a canonical surface, not what any round-trip budget is measured against — it is a debugging aid for understanding WHERE a slow `git push`/`fetch` spent its round trips.
+**`RUN402_GITVAULT_TRACE`** — debug-only, vault-specific, and out of scope of the two kernel diagnostics above: set it to `1` and every `git push`/`git fetch`/`run402 repos <verb>` call against a vault writes one stderr line per vault transport OPERATION (`gitvault-trace: <op-kind> [path=… | paths=N | objects=N | gen=… | repo=…] [bytes=N] <ms>ms`), plus a session summary at process exit (op count, time spent in the vault transport, wall-clock). This is the one place presigned-object PUT/GET traffic is visible at all — `RUN402_TRACE` and `sdk.stats()` above are scoped to the request kernel's own `apiBase`-relative calls, so they never see the direct-to-bucket presigned reads/writes the vault's carrier, WAL, and checkpoint objects ride. A traced GET for one of the five edge-eligible kinds (`wal_pack`, `ref_state`, `retention_roots`, `checkpoint_manifest`, `checkpoint_pack`) may in event be answered by the platform's CDN edge rather than the bucket directly when the gateway offers one for that read (gitvault-read-edge-cache, design D5) — automatic, verified byte-for-byte identically either way, and falling back silently to the direct presigned URL on any edge failure; the trace line reports the same op regardless of which one actually served it. Not a canonical surface, not what any round-trip budget is measured against — it is a debugging aid for understanding WHERE a slow `git push`/`fetch` spent its round trips.
 
 ## `run402 up` (SDK action runner)
 
@@ -132,7 +132,7 @@ Primitives, for when you want the pieces: `run402 deploy rehearse <plan_id>` reh
 
 ## Runtime config on every host (`/_run402/config.js`)
 
-Every host that serves a project's site — managed subdomain, branch host, custom domain — answers `GET /_run402/config.js` with `window.RUN402 = { project_id, api_base, anon_key };` and `GET /_run402/config.json` with the same object, for the project that host resolves to at request time. A branch host answers for the branch; a transferred project answers with its rotated anon key; the HTML never changes. `Cache-Control: public, max-age=60`. The service key is never served.
+Every host that serves a project's site — managed subdomain, branch's host, custom domain — answers `GET /_run402/config.js` with `window.RUN402 = { project_id, api_base, anon_key };` and `GET /_run402/config.json` with the same object, for the project that host resolves to at request time. A branch's host answers for the branch; a transferred project answers with its rotated anon key; the HTML never changes. `Cache-Control: public, max-age=60`. The service key is never served.
 
 ```html
 <script src="/_run402/config.js"></script>
@@ -169,7 +169,7 @@ Retry policy:
 - Lifecycle/payment: `PROJECT_FROZEN`/`PROJECT_DORMANT`/`PROJECT_PAST_DUE` -> `projects usage <id>` or `tier set <tier>`; `PAYMENT_REQUIRED`/`INSUFFICIENT_FUNDS` -> submit payment/fund allowance.
 - `NOT_AUTHORIZED` (HTTP 403) is an org-owned-control-plane authorization denial, distinct from auth or payment: the wallet *authenticated*, but its resolved principal lacks the org role or per-project grant the action needs. `details` carries `required_role` / `required_capability` / `reason`. Not retryable without obtaining a covering org membership/role or grant; high-stakes ops (delete, transfer-of-ownership, membership change) require an active `owner` membership. The gateway returns 403 even when the project does not exist (so existence isn't leaked) — re-check the `<id>` too. The CLI envelope adds an actionable `hint`.
 - `STEP_UP_REQUIRED` (HTTP 403) is a freshness/provenance demand for a high-stakes control-plane op: the session is valid but not fresh enough, or was minted by a read/device-flow path that can't satisfy a passkey step-up. `details` carries `required_amr` / `max_age_seconds` / `challenge_url` / `reason`, plus `next_actions[]`. The SDK raises a typed `StepUpRequiredError` (`isStepUpRequired()` guard). Resolve with `run402 operator login --step-up` on the same client, then retry. Distinct from `NOT_AUTHORIZED` (a role/grant gap, not a freshness gap).
-- `WRITE_AUTH_REQUIRED` / `WRITE_AUTH_BINDING_MISMATCH` / `WRITE_AUTH_SESSION_INVALID` (HTTP 403) — a wallet-less human's control-plane session needs a passkey **operator approval** scoped to this `(action, target)` (the SIWX wallet path never hits this). The SDK raises a typed `OperatorApprovalRequiredError` (`isOperatorApprovalRequired()` guard) carrying `capability`, `target`, and a fully-resolved `approveCommand` / `nextActions[]` (e.g. `run402 operator approve --action project.deploy --project prj_x`). `BINDING_MISMATCH` = a cached approval targeted the wrong org/project; `SESSION_INVALID` = it's stale. Resolve by running the surfaced `operator approve` command (or let an interactive `provision`/`deploy` auto-approve).
+- `WRITE_AUTH_REQUIRED` / `WRITE_AUTH_BINDING_MISMATCH` / `WRITE_AUTH_SESSION_INVALID` (HTTP 403) — a wallet-less human's sign-in session needs a passkey **write approval** scoped to this `(action, target)` (the SIWX wallet path never hits this). The SDK raises a typed `OperatorApprovalRequiredError` (`isOperatorApprovalRequired()` guard) carrying `capability`, `target`, and a fully-resolved `approveCommand` / `nextActions[]` (e.g. `run402 operator approve --action project.deploy --project prj_x`). `BINDING_MISMATCH` = a cached approval targeted the wrong org/project; `SESSION_INVALID` = it's stale. Resolve by running the surfaced `operator approve` command (or let an interactive `provision`/`deploy` auto-approve).
 - Client-side `BAD_JSON_FLAG` errors include `details.flag` (the offending flag, e.g. `--abi`) and `details.value_preview` (truncated value) so callers know which flag value to fix.
 - CLI commands reject unknown flags and missing flag values locally with `UNKNOWN_FLAG` or `BAD_FLAG` before network work. Numeric and wei-like flags are strict decimal integers: malformed, fractional, negative, and scientific-notation values fail locally instead of being forwarded to the API.
 - Commands with fixed positional shapes also reject extra positional arguments locally. This includes deploy resume/list/events/release subcommands, functions list/delete, and blob get/rm/sign/diagnose.
@@ -217,7 +217,7 @@ After that, the same `run402 projects provision` and `run402 deploy apply` comma
 
 If you were given a **promo code** — a string like `R402-K8F3-Q2W9`, sometimes
 called a voucher or a gift/starter code — redeem it. It credits your
-organization with run402 prepaid credit, and that credit pays for the next step
+organization with run402 allowance, and that credit pays for the next step
 (a tier) with no on-chain payment.
 
 ```bash
@@ -240,15 +240,15 @@ run402 init --voucher R402-K8F3-Q2W9  # same redemption, folded into setup
 
 Minting codes is not an agent operation — it needs an issuer key no tenant holds.
 
-## Step 3: Subscribe to a Tier
+## Step 3: Set a Tier
 
 ```bash
-run402 tier set prototype    # FREE on testnet — faucet USDC verifies your x402 setup ($0 real money); perpetual, paid once
+run402 tier set prototype    # FREE on testnet — faucet USDC verifies your x402 setup ($0 real money); free tier, no lease
 run402 tier set hobby        # $5 for 30 days (real money)
 run402 tier set team         # $20 for 30 days (real money)
 ```
 
-Prepaid credit pays first. A promo code (`run402 redeem <code>`) or a top-up sits on the
+Allowance pays first. A promo code (`run402 redeem <code>`) or a top-up sits on the
 organization's balance, and `tier set` settles from it ahead of the payment paywall: no 402,
 no signed authorization, no USDC in the wallet, receipt `paid_with: "credit"` with
 `credit_remaining_usd_micros`. Only a balance that falls short goes to x402 / MPP, and that

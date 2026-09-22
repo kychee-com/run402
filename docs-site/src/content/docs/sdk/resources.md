@@ -34,7 +34,7 @@ Run402Action.TierSet === "tier.set"
 Run402Action.Up === "up"
 ```
 
-Direct `projects.provision` and `tier.set` actions call the same SDK primitives as their namespaces. `up` is the recursive app deploy action described above; it returns `steps[]` and delegates final release work to `r.project(id).apply`.
+Direct `projects.provision` and `tier.set` actions call the same SDK primitives as their namespaces. `up` is the recursive app deploy action described above; it returns `steps[]` and grant keys final release work to `r.project(id).apply`.
 
 ### `r.projects`
 
@@ -67,11 +67,11 @@ demoteUser(id, email): Promise<void>
 **Tier and lifecycle are per-organization, not per project.** The state machine lives on `internal.organizations`. Read it from `r.tier.status()`:
 
 - `organization_lifecycle_state: "active" | "past_due" | "frozen" | "dormant" | "purged" | null` — the organization's lifecycle state; `null` only for orphan wallets with no organization row.
-- `lease_perpetual: boolean | null` — operator escape hatch flag. When `true`, the organization never advances past `active` regardless of lease expiry.
+- `lease_perpetual: boolean | null` — staff escape hatch flag. When `true`, the organization never advances past `active` regardless of lease expiry.
 - `tier: "prototype" | "hobby" | "team" | null` — the organization's active tier.
-- `advisories?: [{ type, summary, next_actions[] }]` — org-level advisories (recovery-event-reachability); present only when at least one applies. `type: "operator_unreachable"` means the owning organization resolves to zero verified notification recipients — mandatory recovery/security notifications (e.g. a mailbox suspension) currently reach nobody. The remedy rides `next_actions[]`: register and verify an operator contact via `POST /agent/v1/contact` (`r.admin.setAgentContact`). Reachability is also machine-checkable on `r.admin.getOperatorStatus().operator_reachability` (`{ reachable, verified_recipient_count, sources[], skipped_last_90d }`).
+- `advisories?: [{ type, summary, next_actions[] }]` — org-level advisories (recovery-event-reachability); present only when at least one applies. `type: "operator_unreachable"` means the owning organization resolves to zero verified notification recipients — mandatory recovery/security notifications (e.g. a mailbox suspension) currently reach nobody. The remedy rides `next_actions[]`: register and verify a person contact via `POST /agent/v1/contact` (`r.admin.setAgentContact`). Reachability is also machine-checkable on `r.admin.getOperatorStatus().operator_reachability` (`{ reachable, verified_recipient_count, sources[], skipped_last_90d }`).
 
-`r.projects.list(opts?)` reads the named, domain-aware inventory (`GET /projects/v1`, project-findability). Each `ProjectSummary` carries `id`, `name`, `tier`, `site_url` (first claimed run402.com subdomain → else first custom domain → else null), `custom_domains[]`, `status` / `effective_status`, `organization_lifecycle_state`, `lease_perpetual`, `organization_id` (the owning org), `created_by` (provisioning principal), and `created_at`. The response is `{ projects, has_more?, next_cursor?, scope? }`. Membership-scoped by default — org-owned control plane: a wallet *authenticates* (SIWX signed from the provider; mandatory server-side) but does not *own* — this lists projects owned by orgs the wallet's resolved principal is an active member of, ∪ projects with an active per-project grant. Options: `{ org }` filters to one org (`?org_id`; authorize-before-reveal — non-member/guessed id → 403, non-UUID → 400), `{ limit, cursor }` paginate (`?limit` default 50 max 200, `?after`), and `{ all: true }` reads the operator email-union inventory (`GET /agent/v1/operator/projects`) across every wallet controlling the operator's verified email — pass `{ all: true, token }` (operator-session token) for the cross-wallet union, else `all` falls back to the SIWX wallet's own slice and echoes `scope`. `all` + `org` together throws `LocalError` (mutually exclusive). `api_calls` / `storage_bytes` remain optional on `ProjectSummary` for back-compat but the named inventory does not populate them — read `r.projects.getUsage(id)` for live usage.
+`r.projects.list(opts?)` reads the named, domain-aware inventory (`GET /projects/v1`, project-findability). Each `ProjectSummary` carries `id`, `name`, `tier`, `site_url` (first claimed run402.com subdomain → else first custom domain → else null), `custom_domains[]`, `status` / `effective_status`, `organization_lifecycle_state`, `lease_perpetual`, `organization_id` (the owning org), `created_by` (provisioning principal), and `created_at`. The response is `{ projects, has_more?, next_cursor?, scope? }`. Membership-scoped by default — org-owned control plane: a wallet *authenticates* (SIWX signed from the provider; mandatory server-side) but does not *own* — this lists projects owned by orgs the wallet's resolved principal is an active member of, ∪ projects with an active per-project grant. Options: `{ org }` filters to one org (`?org_id`; authorize-before-reveal — non-member/guessed id → 403, non-UUID → 400), `{ limit, cursor }` paginate (`?limit` default 50 max 200, `?after`), and `{ all: true }` reads the owner email-union inventory (`GET /agent/v1/operator/projects`) across every wallet controlling the person's verified email — pass `{ all: true, token }` (sign-in-session token) for the cross-wallet union, else `all` falls back to the SIWX wallet's own slice and echoes `scope`. `all` + `org` together throws `LocalError` (mutually exclusive). `api_calls` / `storage_bytes` remain optional on `ProjectSummary` for back-compat but the named inventory does not populate them — read `r.projects.getUsage(id)` for live usage.
 
 `r.projects.get(id)` is the authoritative single-project read (`GET /projects/v1/:id`, gateway `project.read`) — a `ProjectDetail` superset of a list row: `project_id`, `public_id`, `name`, `org_id`, `tier`, `effective_status`, `organization_lifecycle_state`, `site_url` (`| null`), `custom_domains[]`, `last_deploy` (`{ release_id, activated_at } | null`), `mailbox[]` (active addresses), `usage` (`{ api_calls, storage_bytes, api_calls_limit, storage_bytes_limit }`), and `created_at`. Caller-authed (SIWX/control-plane, no project keys) and works without the project in the local project-key cache. It returns NO secrets — authorize-before-reveal means an unauthorized/guessed id throws `Unauthorized` (403, or `NotAuthorizedError` for an org-membership denial), never a not-found oracle. Use `r.credentials.projectKeys.status(...)` / `export(...)` for explicit local cache inspection or secret export. Scoped form: `(await r.project(id)).projects.get()`.
 
@@ -141,7 +141,7 @@ console.log(summary.headline, summary.site?.cas?.reused_bytes);
 For live event streaming during an in-flight apply, use `(await r.project(spec.project)).apply.start(spec)` and
 iterate `op.events()` (an `AsyncIterable<DeployEvent>`). The `r.project(id).apply.events(operationId)`
 method returns the events the gateway has recorded so far for an operation —
-useful for inspecting an apply after the fact, not for live streaming.
+useful for inspecting an apply after the event, not for live streaming.
 
 ### `r.snapshots`
 
@@ -280,9 +280,9 @@ CI error-code unions include binding errors (`invalid_route_scopes`, `nonce_repl
 
 ### `r.operator`
 
-The **human / email principal** — the *operator session* — distinct from the agent's per-wallet SIWX identity (and from the platform-`admin` "operator" endpoints, which are a different thing). A wallet signature can only ever return one wallet's slice; the operator session proves control of the *email* and returns the union across every wallet that verified it.
+The **human / email principal** — the *sign-in session* — distinct from the agent's per-wallet SIWX identity (and from the platform-`admin` "operator" endpoints, which are a different thing). A wallet signature can only ever return one wallet's slice; the sign-in session proves control of the *email* and returns the union across every wallet that verified it.
 
-Authentication is browser-delegated via an OAuth 2.0 device-authorization grant (RFC 8628, the `aws sso login` model): the SDK never performs WebAuthn — the browser does, via the existing magic-link or passkey web flow — and the SDK brokers the resulting operator-session token (a read-only `operator.read` bearer, ~30-min TTL, ~12h absolute cap, revocable).
+Authentication is browser-delegated via an OAuth 2.0 device-authorization grant (RFC 8628, the `aws sso login` model): the SDK never performs WebAuthn — the browser does, via the existing magic-link or passkey web flow — and the SDK brokers the resulting sign-in-session token (a read-only `operator.read` bearer, ~30-min TTL, ~12h absolute cap, revocable).
 
 ```
 operator.deviceStart({ clientName? }): Promise<DeviceAuthStart>
@@ -307,7 +307,7 @@ operator.revoke({ token }): Promise<void>
   // 204. Server-side revoke is instant (no positive-validity cache).
 ```
 
-**Control-plane session.** The human's write-capable session (the gateway's 5th principal, `control_plane_session`). Distinct from the read-only operator session above. It authorizes most control-plane ops, but it is **not** sufficient on its own for `provision` / `deploy` / secret-writes — those additionally require a passkey-fresh **operator approval** (see below). High-stakes control ops (invite, membership, handoff, delete) require a **fresh passkey** — a magic-link/OAuth session raises `StepUpRequiredError` until it runs a step-up ceremony.
+**Sign-in session.** The human's write-capable session (the gateway's 5th principal, `control_plane_session`): the same sign-in session as above, minted with loopback provenance rather than the read-only device flow. It authorizes most control-plane ops, but it is **not** sufficient on its own for `provision` / `deploy` / secret-writes — those additionally require a passkey-fresh **write approval** (see below). High-stakes control ops (invite, membership, transfer, delete) require a **fresh passkey** — a magic-link/OAuth session raises `StepUpRequiredError` until it runs a step-up ceremony.
 
 The CLI mints it headlessly via loopback-PKCE (RFC 8252, the `aws sso login` localhost-redirect model). The SDK exposes the two isomorphic seams:
 
@@ -321,7 +321,7 @@ operator.exchangeCliToken({ code, codeVerifier, redirectUri, state }): Promise<C
   // provenance:"loopback_pkce", principal_id, amr[] }.
 ```
 
-**Operator approval (write-auth).** A wallet-less human's control-plane session is read-capable on the high-stakes routes; `provision` / `deploy` / secret-writes also need a passkey-fresh approval scoped to one `(action, target)`, carried as an `X-Run402-Write-Auth` token. The isomorphic seams (`r.operator.approval`) mirror the login seams; the Node CLI (`run402 operator approve`) runs the loopback + PKCE around them:
+**Write approval (write-auth).** A wallet-less human's sign-in session is read-capable on the high-stakes routes; `provision` / `deploy` / secret-writes also need a passkey-fresh approval scoped to one `(action, target)`, carried as an `X-Run402-Write-Auth` token. The isomorphic seams (`r.operator.approval`) mirror the login seams; the Node CLI (`run402 operator approve`) runs the loopback + PKCE around them:
 
 ```
 operator.approval.requestChallenge({ action, orgId?, projectId?, cliRedirectUri, codeChallenge, state, token? }): Promise<ApprovalChallengeResult>
@@ -332,7 +332,7 @@ operator.approval.exchangeClaimCode({ code, codeVerifier, state }): Promise<Appr
   // ApprovalTokenResult { write_auth_token, token_type:"write_auth", header:"X-Run402-Write-Auth", session }.
 ```
 
-Credential resolution is **surface-aware and never ambient**: `run402({ surface })` — `cli` resolves `auto` (wallet, else the control-plane session + an approval *only* when a cached one exactly matches the request's `(capability, target)`); `mcp` / `sdk` stay wallet-only, so an agent tool call never spends the human's approval. A gated write with no matching approval throws `OperatorApprovalRequiredError` (`isOperatorApprovalRequired()` guard) carrying `capability`, `target`, and a resolved `approveCommand` (e.g. `run402 operator approve --action project.deploy --project prj_x`) — the agent relays that; an interactive CLI auto-runs it. (`WRITE_AUTH_BINDING_MISMATCH` / `WRITE_AUTH_SESSION_INVALID` map to the same typed error.)
+Credential resolution is **surface-aware and never ambient**: `run402({ surface })` — `cli` resolves `auto` (wallet, else the sign-in session + an approval *only* when a cached one exactly matches the request's `(capability, target)`); `mcp` / `sdk` stay wallet-only, so an agent tool call never spends the human's approval. A gated write with no matching approval throws `OperatorApprovalRequiredError` (`isOperatorApprovalRequired()` guard) carrying `capability`, `target`, and a resolved `approveCommand` (e.g. `run402 operator approve --action project.deploy --project prj_x`) — the agent relays that; an interactive CLI auto-runs it. (`WRITE_AUTH_BINDING_MISMATCH` / `WRITE_AUTH_SESSION_INVALID` map to the same typed error.)
 
 The **hosted/browser** session surface — the front door the console (and any browser app) drives — is `r.operator.session.*`. Public *mint* methods send no auth; *session-bound* methods take `{ token }` (the `control_plane_session` bearer) and fall back to the credential provider when omitted (mirrors `overview`). WebAuthn option/assertion payloads are opaque passthroughs — the browser runs the ceremony.
 
@@ -366,7 +366,7 @@ await r.orgs.whoami();   // resolves the principal + memberships
 
 **Invite → claim at first login.** An owner invites by email (`r.org(id).invites.create`); the invitee's pending memberships are claimed *automatically* when they log in via that verified email (email / OAuth / loopback) and surface as active rows in `session.whoami().memberships` (and in `run402 operator login --loopback` output). Owner/admin invites only claim once the invitee has enrolled a passkey; lower roles claim on any login. There is no invitee-side "list my invites" call — the claim is the surfacing.
 
-The session caches are Node-only and live in `core`: the read session at `{base}/operator-session.json` and the write-capable control-plane session at `{base}/control-plane-session.json` (both mode 0600, base config dir — email-scoped, shared across local named wallets). The CLI (`run402 operator login[/--loopback]/logout/overview/whoami`) brokers them; read `whoami` is a pure local-cache read. No MCP tool by design — MCP authenticates as the agent, not the human; the hosted login is browser-interactive and console-side.
+The session caches are Node-only and live in `core`: the read session at `{base}/operator-session.json` and the write-capable sign-in session at `{base}/control-plane-session.json` (both mode 0600, base config dir — email-scoped, shared across local named wallets). The CLI (`run402 operator login[/--loopback]/logout/overview/whoami`) brokers them; read `whoami` is a pure local-cache read. No MCP tool by design — MCP authenticates as the agent, not the human; the hosted login is browser-interactive and console-side.
 
 ### `r.sites`
 
@@ -580,7 +580,7 @@ Durable function runs are service-key authed function requests that survive proc
 
 `FunctionLogEntry` includes `timestamp` and `message`, plus optional `event_id`, `log_stream_name`, `ingestion_time`, and `request_id` metadata when the gateway can provide it. Use `requestId` to follow a routed browser failure exposed as `X-Run402-Request-Id` / JSON `request_id`, or to filter by durable run/attempt ids (`fnrun_...`, `fnatt_...`); SDK calls reject invalid `since` timestamps, invalid request ids, and `tail` values outside 1..1000 locally instead of forwarding them.
 
-`rebuild` / `rebuildAll` (capability `function-runtime-rebuild`) refresh a deployed function onto the platform's CURRENT entry wrapper + bundled runtime WITHOUT changing source: they re-bundle from the stored source with dependencies pinned to the recorded exact versions, so the source `code_hash` is unchanged and no new release is created — only the platform wrapper/runtime changes. This is how a gateway-side wrapper fix (e.g. an SSR `auth.*` fix) reaches an already-deployed function; a plain redeploy with unchanged source does not pick it up. Strictly opt-in. Both are **wallet-authed** (project ownership; no service key) and allowed during billing grace (`past_due` / `frozen` / `dormant`). Functions deployed before dependency locking are refused with `CANNOT_REBUILD_UNLOCKED_DEPS` (single: HTTP 409 `ApiError`; `rebuildAll`: a `{ rebuilt: false, code: "CANNOT_REBUILD_UNLOCKED_DEPS", error }` entry that never aborts the batch) — redeploy those from source. Runtime compatibility is surfaced per function as recorded `runtime_version?`, gateway `runtime_current_version?`, guaranteed `runtime_minimum_version?`, and `runtime_stale?`; the current `3.7.0` minimum includes `getRoutedPaymentContext()` for priced routes. Operator status also carries `{ stale_function_count, stale_functions: [{ project_id, name }] }`. The scoped client exposes `r.project(id).functions.rebuild(name)` / `.rebuildAll()`.
+`rebuild` / `rebuildAll` (capability `function-runtime-rebuild`) refresh a deployed function onto the platform's CURRENT entry wrapper + bundled runtime WITHOUT changing source: they re-bundle from the stored source with dependencies pinned to the recorded exact versions, so the source `code_hash` is unchanged and no new release is created — only the platform wrapper/runtime changes. This is how a gateway-side wrapper fix (e.g. an SSR `auth.*` fix) reaches an already-deployed function; a plain redeploy with unchanged source does not pick it up. Strictly opt-in. Both are **wallet-authed** (project ownership; no service key) and allowed during billing grace (`past_due` / `frozen` / `dormant`). Functions deployed before dependency locking are refused with `CANNOT_REBUILD_UNLOCKED_DEPS` (single: HTTP 409 `ApiError`; `rebuildAll`: a `{ rebuilt: false, code: "CANNOT_REBUILD_UNLOCKED_DEPS", error }` entry that never aborts the batch) — redeploy those from source. Runtime compatibility is surfaced per function as recorded `runtime_version?`, gateway `runtime_current_version?`, guaranteed `runtime_minimum_version?`, and `runtime_stale?`; the current `3.7.0` minimum includes `getRoutedPaymentContext()` for priced routes. The status read also carries `{ stale_function_count, stale_functions: [{ project_id, name }] }`. The scoped client exposes `r.project(id).functions.rebuild(name)` / `.rebuildAll()`.
 
 `deps` accepts npm specs: bare names → latest at deploy time, pinned (`lodash@4.17.21`) and ranges (`date-fns@^3.0.0`) honored verbatim. Max 30 entries / 200 chars each; empty or whitespace-only entries are rejected. **Native binary modules are rejected.** Don't list `@run402/functions` (auto-bundled).
 
@@ -628,7 +628,7 @@ Most agents do not call `claim` directly — declare subdomains in
 `r.project(id).apply({ subdomains: { set: ["my-app"] } })` and the deploy primitive
 claims them as part of the release.
 
-Subdomain auto-reassignment: claim once. Every subsequent deploy to the same project automatically points the subdomain at the new deployment.
+Subdomain auto-reassignment: claim once. Every subsequent deploy to the same project automatically points the subdomain at the new release.
 
 ### `r.domains`
 
@@ -670,7 +670,7 @@ Every response carries `next_actions[]` (ordered; `[0]` is the recommended step)
 
 The cursored events feed — "what happened since I last looked". Also project-scoped as `r.project(id).events.list(opts)`.
 
-An **organization** owns each fact and `project_id` says what it is *about*. So `listForOrg` is a **superset** of the project feeds rather than a union of them — it also carries organization-level facts, which belong to no project and arrive with `project_id: null` — and a fact **outlives** the project it describes: deleting a project no longer erases its history, so `project_id` may name a project that is gone.
+An **organization** owns each event and `project_id` says what it is *about*. So `listForOrg` is a **superset** of the project feeds rather than a union of them — it also carries organization-level events, which belong to no project and arrive with `project_id: null` — and an event **outlives** the project it describes: deleting a project no longer erases its history, so `project_id` may name a project that is gone.
 
 ```
 list(projectId, { cursor?, limit?, source?, eventType? }): Promise<ProjectEventFeedPage>
@@ -681,15 +681,15 @@ listForOrg(orgId, { cursor?, limit?, source?, eventType? }): Promise<ProjectEven
 //   project_id: string | null   ← null for an organization-level fact
 ```
 
-**An id is not a cursor.** Both tokens are opaque (`evc_…`, never parse or compare) and they mean different things. An event's `id` names a **fact**: the same event carries the same `id` from `list` and from `listForOrg`, which is how you dedup across both. The page `cursor` names a **position**, and a position only means something inside the row set it came from — so it is bound to that projection (which feed, plus any `source` / `eventType` filters). Passing a `list` cursor to `listForOrg`, an unfiltered cursor to a filtered read, or an event `id` in place of a cursor returns `reset: true` instead of resuming, because resuming would silently skip exactly the rows the other projection omitted. Key any cursor you persist by the read shape it came from.
+**An id is not a cursor.** Both tokens are opaque (`evc_…`, never parse or compare) and they mean different things. An event's `id` names a **event**: the same event carries the same `id` from `list` and from `listForOrg`, which is how you dedup across both. The page `cursor` names a **position**, and a position only means something inside the row set it came from — so it is bound to that projection (which feed, plus any `source` / `eventType` filters). Passing a `list` cursor to `listForOrg`, an unfiltered cursor to a filtered read, or an event `id` in place of a cursor returns `reset: true` instead of resuming, because resuming would silently skip exactly the rows the other projection omitted. Key any cursor you persist by the read shape it came from.
 
 Store the page's `cursor` and pass it back as `{ cursor }`. An unusable cursor never throws; the page returns `reset: true` + `earliest_cursor` to restart from. Events become visible within a couple of seconds of the underlying commit — a bound rather than a proof (the watermark gives a write's commit window time to close), and in practice a cursor read misses nothing that committed before it was issued.
 
-`list` accepts the project's own service_key, a wallet/control-plane principal with `project.read`, or a scoped delegate; `listForOrg` is principal-only (active org membership). Never lifecycle-gated — a frozen project's feed stays readable. Retention is **age and class only**: 90d, 365d for mandatory classes. Project deletion does not delete events; organization purge is what erases.
+`list` accepts the project's own service_key, a wallet/control-plane principal with `project.read`, or a scoped grant key; `listForOrg` is principal-only (active org membership). Never lifecycle-gated — a frozen project's feed stays readable. Retention is **age and class only**: 90d, 365d for mandatory classes. Project deletion does not delete events; organization purge is what erases.
 
-**App events vs platform events.** The feed also carries app-emitted business facts (a deployed function's own `events.emit(...)` calls, `@run402/functions`) alongside the platform events above; every row is `source`-discriminated (`"app"` vs `"platform"` — every non-app source, e.g. the platform's internal `gateway` / `email-lambda` producers, collapses under `"platform"`). `source?: "app" | "platform"` restricts to one lane; `eventType?: string | string[]` restricts to one or more event types (an array serializes as the comma-joined wire param `event_type=a,b`; a plain string is passed through as-is). Both filters compose with `cursor`/`limit` unchanged and are additive — omit either to keep reading the unfiltered feed. Consumers should key on the pair `(source, event_type)` together: app-chosen `event_type` names are free-form per app, so only the pair disambiguates them from the platform's own vocabulary.
+**App events vs platform events.** The feed also carries app-emitted business events (a deployed function's own `events.emit(...)` calls, `@run402/functions`) alongside the platform events above; every row is `source`-discriminated (`"app"` vs `"platform"` — every non-app source, e.g. the platform's internal `gateway` / `email-lambda` producers, collapses under `"platform"`). `source?: "app" | "platform"` restricts to one lane; `eventType?: string | string[]` restricts to one or more event types (an array serializes as the comma-joined wire param `event_type=a,b`; a plain string is passed through as-is). Both filters compose with `cursor`/`limit` unchanged and are additive — omit either to keep reading the unfiltered feed. Consumers should key on the pair `(source, event_type)` together: app-chosen `event_type` names are free-form per app, so only the pair disambiguates them from the platform's own vocabulary.
 
-**Platform incidents — my bug or yours?** When a platform incident (a debounced CloudWatch-alarm window or a human-declared incident) is attributed to your project, its feed gains one `platform_incident` event (class `platform_incident`, mandatory retention 365d) with a compact-fact payload `{ incident_id, subsystem, severity, scope, status, started_at, resolved_at, summary, impact: { count } }` — `impact.count` is the real number of your invocations the platform, not your code, caused to fail (may be `null` for a manually-declared impact). Its `next_actions[]` carry a `poll` on this feed plus a `check_usage` drill-down into `r.errors` so you can confirm those failures were platform-excluded from your fingerprints. The page also carries two additive fields during an OPEN incident: `platform_incidents[]` — a sidecar overlay of open GLOBAL (unattributed) incidents, each with a stable `id` for dedup, never interleaved into `events[]` so the cursor stays monotonic — and `platform_status: "degraded"` (omitted when clear), the same health rider surfaced on `r.admin.getOperatorStatus()` and `r.tiers.status()`. Both are absent when nothing applies; existing consumers ignore them.
+**Platform incidents — my bug or yours?** When a platform incident (a debounced CloudWatch-alarm window or a human-declared incident) is attributed to your project, its feed gains one `platform_incident` event (class `platform_incident`, mandatory retention 365d) with a compact-event payload `{ incident_id, subsystem, severity, scope, status, started_at, resolved_at, summary, impact: { count } }` — `impact.count` is the real number of your invocations the platform, not your code, caused to fail (may be `null` for a manually-declared impact). Its `next_actions[]` carry a `poll` on this feed plus a `check_usage` drill-down into `r.errors` so you can confirm those failures were platform-excluded from your fingerprints. The page also carries two additive fields during an OPEN incident: `platform_incidents[]` — a sidecar overlay of open GLOBAL (unattributed) incidents, each with a stable `id` for dedup, never interleaved into `events[]` so the cursor stays monotonic — and `platform_status: "degraded"` (omitted when clear), the same health rider surfaced on `r.admin.getOperatorStatus()` and `r.tiers.status()`. Both are absent when nothing applies; existing consumers ignore them.
 
 ### Live changes (`r.live`, `r.project(id).live`)
 
@@ -770,7 +770,7 @@ forProject(projectId): Promise<ScopedRoom> // resolves the project's org via its
                                            // the default room's key IS the project id
 ```
 
-**Leave when you finish.** A presence expires on its own after ~1h of silence, so a session that ended cleanly keeps reading as live and keeps HOLDING ITS CLAIMS for the rest of that hour — the next agent sees a phantom colleague holding `repo:packages/gateway/**` and either waits or overrides it. `leave` is the fix. It is scoped to your PRINCIPAL, and note the asymmetry against the line below: a presence IS a session, but delete authority is the principal — so a credential may release a seat held by one of its OWN other sessions. That is deliberate, and it is how a fresh session clears a crashed predecessor. Another principal's presence is never touched. Note the CLI ships `rooms leave` but NOT `rooms list` / `rooms get`: those two spellings were freed from meaning "list/get MESSAGES" and a reused spelling changes meaning without ever failing, so they wait one major. The SDK has all three today.
+**Leave when you finish.** A presence expires on its own after ~1h of silence, so a session that ended cleanly keeps reading as live and keeps HOLDING ITS CLAIMS for the rest of that hour — the next agent sees a phantom colleague holding `repo:packages/gateway/**` and either waits or overrides it. `leave` is the fix. It is scoped to your PRINCIPAL, and note the asymmetry against the line below: a presence IS a session, but delete authority is the principal — so a credential may release a presence held by one of its OWN other sessions. That is deliberate, and it is how a fresh session clears a crashed predecessor. Another principal's presence is never touched. Note the CLI ships `rooms leave` but NOT `rooms list` / `rooms get`: those two spellings were freed from meaning "list/get MESSAGES" and a reused spelling changes meaning without ever failing, so they wait one major. The SDK has all three today.
 
 **Presence is a session, not a credential.** Two sessions of the same agent are two presences. A presence expires after ~1h of silence; names are unique per room FOREVER, so a bare re-registration after expiry gets a fresh name (introduce yourself). `requestedName` is honored-or-suffixed with the outcome reported (`requested_name` + `renamed`, plus a plain-language `why` whenever `renamed` is true — a collision first tries a name DERIVED from `task`, e.g. `Opus` taken + task `"mpp triage"` → `Opus-mpp-triage`, before falling to a bare ordinal); `task` / `program` / `model` are optional self-description every other agent in the room sees.
 
@@ -780,9 +780,9 @@ forProject(projectId): Promise<ScopedRoom> // resolves the project's org via its
 
 **Claims are advisory — nothing is ever blocked by one.** `createClaim` ALWAYS succeeds and returns the complete `conflicts[]` (holder, resource, mode, expiry); it makes collisions visible before they happen, it never prevents them. Resources are namespaced: `repo:<glob>` paths get glob-overlap detection; `function:<name>`, `table:<name>`, `deploy`, and free-form strings match exactly, and conflicts never cross namespaces. `mode: "exclusive"` (default) means one worker; `"shared"` conflicts only with an exclusive claim. Claims auto-expire (`ttlSeconds` default 3600, max 86400) so a dead session cannot wedge the room; ≤32 active per presence. Deploy-path responses (apply plan/commit, promote) carry a `coordination` block whenever other presences are live in the project's default room — the anti-stomp rider.
 
-Auth: org members (any role) reach all the org's rooms; a delegate (`RUN402_DELEGATE_TOKEN`) reaches its own project's default room plus the org's named rooms; a project service key is read-only in its room. Named org rooms (`orgId` + a chosen `roomKey`) serve multi-repo products; `scoped(orgId, roomKey)` pre-binds them (including `invite`), `forProject(projectId)` pre-binds a project's default room.
+Auth: org members (any role) reach all the org's rooms; a grant key (`RUN402_DELEGATE_TOKEN`) reaches its own project's default room plus the org's named rooms; a project service key is read-only in its room. Named org rooms (`orgId` + a chosen `roomKey`) serve multi-repo products; `scoped(orgId, roomKey)` pre-binds them (including `invite`), `forProject(projectId)` pre-binds a project's default room.
 
-**Room Invite — a copy-paste door into an org and a room, no vault required (add-room-invite).** `invite` mints a `kri1_…` bearer key from the room the caller stands in; `join` spends one. The claimed membership is always `viewer` — the narrowest thing that can message — and this door can never widen it: there is no `role` option, and a viewer is never auto-admitted as a vault writer (bring a collaborator into the SOURCE with `r.gitvault.invite`/`.join` instead). The claim is the x402 payment itself (`room_seat`, $0.01, testnet only): `join`'s request carries no `SIGN-IN-WITH-X` header and no bearer credential — the SDK's paid fetch answers the route's 402 challenge, and the VERIFIED payer becomes the claimant. A same-payer replay never pays twice (`deduplicated: true`, no second charge). Both methods are Node-only (the key format is HKDF-SHA-256 cryptography, dynamically imported from `@run402/sdk/node`) and CLI/SDK-only — no MCP tool exists for either, the same law as `r.gitvault.invite`/`.join`: `invite` mints a bearer secret, `join` spends one and mutates org membership.
+**Room Invite — a copy-paste door into an org and a room, no vault required (add-room-invite).** `invite` mints a `kri1_…` bearer key from the room the caller stands in; `join` spends one. The claimed membership is always `viewer` — the narrowest thing that can message — and this door can never widen it: there is no `role` option, and a viewer is never auto-admitted as a vault writer (bring a member into the SOURCE with `r.gitvault.invite`/`.join` instead). The claim is the x402 payment itself (`room_seat`, $0.01, testnet only): `join`'s request carries no `SIGN-IN-WITH-X` header and no bearer credential — the SDK's paid fetch answers the route's 402 challenge, and the VERIFIED payer becomes the claimant. A same-payer replay never pays twice (`deduplicated: true`, no second charge). Both methods are Node-only (the key format is HKDF-SHA-256 cryptography, dynamically imported from `@run402/sdk/node`) and CLI/SDK-only — no MCP tool exists for either, the same law as `r.gitvault.invite`/`.join`: `invite` mints a bearer secret, `join` spends one and mutates org membership.
 
 ```
 const minted = await r.rooms.invite(orgId, roomKey, { note: "picking up #42" });
@@ -822,11 +822,11 @@ addContact(orgId, { email, displayName?, level? }) // OWNER + passkey step-up
 removeContact(orgId, contactId)                    // OWNER + passkey step-up
 ```
 
-Contacts are attention policy, never authorization — a contact row grants nothing. `level` is an ordering: level 1 is paged first, level 2 only if level 1 lets the deadline lapse, and unstaffed levels are skipped. An address with no verified operator email is accepted with a `warnings[]` reachability note rather than rejected, because the human you most want at the top of a chain may hold no platform credential at all.
+Contacts are attention policy, never authorization — a contact row grants nothing. `level` is an ordering: level 1 is paged first, level 2 only if level 1 lets the deadline lapse, and unstaffed levels are skipped. An address with no verified owner email is accepted with a `warnings[]` reachability note rather than rejected, because the human you most want at the top of a chain may hold no platform credential at all.
 
 ### `r.buzz.notifications`
 
-Project-event routing into a Buzz community channel. A route is an owner-declared destination: one ACTIVE community installation, an explicit 1–50 project scope, reviewed event filters, one NIP-29 channel. The workflow is **configure → authorize → test → live**: create the route, a Buzz community owner or admin adds the returned `notification_pubkey` as a relay member (the one non-secret handoff), then a test delivery proves the membership landed and activates the route. Buzz is NEVER a deadman channel — mandatory notification classes keep their human paths regardless of route state, and a Buzz delivery acknowledges nothing.
+Project-event routing into a Buzz community channel. A route is an owner-declared destination: one ACTIVE community installation, an explicit 1–50 project scope, reviewed event filters, one NIP-29 channel. The workflow is **configure → authorize → test → live**: create the route, a Buzz community owner or admin adds the returned `notification_pubkey` as a relay member (the one non-secret step), then a test delivery proves the membership landed and activates the route. Buzz is NEVER a deadman channel — mandatory notification classes keep their human paths regardless of route state, and a Buzz delivery acknowledges nothing.
 
 ```
 createRoute(orgId, { installationId, routeName, buzzChannelId, projectIds,
@@ -858,7 +858,7 @@ testAndWait(routeId, { pollMs?, timeoutMs?, onPoll? })
   // cadence, not failure (the shared waitFor contract).
 ```
 
-Only three reviewed event types are routable (`deploy_activated`, `error_fingerprints_observed`, `platform_incident`); the classes `security` / `billing_critical` / `destructive_lifecycle` / `verification` / `recovery` may never be routed. Filters: omitted/`null` = everything registered; an explicit `[]` is a 422, never a wildcard. Routes deliver NEW events only (`start_after_event_id` floor); delivery is at-least-once with byte-identical republish, backing off 1m/5m/30m/2h/12h to 8 attempts or 48h, then `dead_letter` — visible in `deliveries()`. Ten consecutive hard failures auto-pause the route (`pause_reason: "delivery_failures"`) and fire the mandatory `buzz_route_auto_paused` operator notification. No response ever contains the signing secret — `notification_pubkey` + `signing_generation` are the only credential material on the wire. Every mutation carries an `Idempotency-Key` (auto-generated when omitted) and requires fresh `buzz.event_route` step-up server-side (a SIWX wallet is inherently fresh).
+Only three reviewed event types are routable (`deploy_activated`, `error_fingerprints_observed`, `platform_incident`); the classes `security` / `billing_critical` / `destructive_lifecycle` / `verification` / `recovery` may never be routed. Filters: omitted/`null` = everything registered; an explicit `[]` is a 422, never a wildcard. Routes deliver NEW events only (`start_after_event_id` floor); delivery is at-least-once with byte-identical republish, backing off 1m/5m/30m/2h/12h to 8 attempts or 48h, then `dead_letter` — visible in `deliveries()`. Ten consecutive hard failures auto-pause the route (`pause_reason: "delivery_failures"`) and fire the mandatory `buzz_route_auto_paused` owner notification. No response ever contains the signing secret — `notification_pubkey` + `signing_generation` are the only credential material on the wire. Every mutation carries an `Idempotency-Key` (auto-generated when omitted) and requires fresh `buzz.event_route` step-up server-side (a SIWX wallet is inherently fresh).
 
 ### `r.gitvault`
 
@@ -934,11 +934,11 @@ reconcile(opts?): Promise<GitvaultReconcileWriterAdmissionsResult>
   // { eligible: false, admitted: [], already_covered: [], skipped: [] } distinguishes
   // "I have no authority here" from "there was nothing pending" (both otherwise all-empty).
   // ALSO wired onto session-start/read (open()'s own reconcile, unless reconcile:"forbidden"),
-  // push, snapshot, and deploy — best-effort there, reported on the result's own
+  // push, capture, and deploy — best-effort there, reported on the result's own
   // `writer_reconcile` field, never a throw.
 ```
 
-The push pre-check (every head-signing path — `push`, `deploy`, `rotateEpoch`, `repair`, `publishPinManifestUpdate`, and the `git-remote-run402` remote helper, which inherits it through `push()`) refuses LOCALLY, before any crypto/upload work, when this session's own key is not an active writer: `GITVAULT_WRITER_NOT_ADMITTED` (never was, or is no longer, admitted) or the more specific `GITVAULT_WRITER_REMOVED` (a CAS-loser retry that discovers removal by whatever won the race) — both carry a `request_writer_sync` next action ("any current writer's next gitvault operation admits pending writers automatically").
+The push pre-check (every head-signing path — `push`, `deploy`, `rotateEpoch`, `repair`, `publishPinManifestUpdate`, and the `git-remote-run402` remote helper, which inherits it through `push()`) refuses LOCALLY, before any crypto/upload work, when this session's own key is not an active writer: `GITVAULT_WRITER_NOT_ADMITTED` (never was, or is no longer, admitted) or the more specific `GITVAULT_WRITER_REMOVED` (a CAS-loser retry that discovers removal by whatever won the race) — both carry a `request_writer_sync` next action ("any current writer's next vault operation admits pending writers automatically").
 
 A membership removal is completed by the SURVIVORS, with no declaration and no owner step-up: `vault.rotateEpochForMemberRemoval()` (`r.gitvault.rotateEpochForMemberRemoval({ repo_id })`) reads the org's two D194 counters off the envelope-recipients read (`recipient_state_version` / `recipient_revocation_version` — the removal itself advanced them) and rotates under `reason:"member_removed"`, which needs `gitvault.writer` only; the rotation includes every surviving writer on its current directory key (pin or no pin) alongside confirmed pins. `push()` runs it automatically when the gate names an outstanding removal (`revocation_outstanding` / `writer_removal_outstanding` with no migration or exposure cause) — rotate, re-materialize, retry once — so a surviving writer's plain push simply lands; a gateway that does not carry the counters on that read refuses `GITVAULT_ROTATION_COUNTERS_UNAVAILABLE` and names the owner's `revoke-key` path instead.
 
@@ -961,9 +961,9 @@ There is no companion "resolved" check — V0-A cannot detect a second principal
 
 `gitvaultRemoteUrl(orgId, projectId)`/`gitvaultRemoteUrlForRepo(orgSlug, repoName)` render `kygit::` instead of `run402::` whenever `gitvaultRemoteScheme()` reads `process.env.RUN402_REMOTE_SCHEME === "kygit"` — a pure client-side rendering choice; `parseGitvaultRemoteUrl` accepts either prefix into the identical scheme-less `{ org_id, project_id }` address, so every gateway-facing call, resolve, and pin is unaffected by which door a request came through.
 
-**D9 (kygit-invite) — invite/join, a second claim kind beside handoff.** `sdk/src/node/gitvault-handoff.ts` is kind-parameterized (`ClaimKind = "handoff" | "invite"`) without renaming a single shipped export: `HANDOFF_KEY_PREFIXES` gains `kgi1_`/`invite`/`join` as its second row; `parseClaimKey(raw, expectedKind)` is the one parser, with `parseHandoffKey`/`parseInviteKey` as kind-bound aliases; `assembleInviteKey`/`deriveInviteSecrets`/`sealInviteEnvelope`/`openInviteEnvelope`/`scanInviteNoteForSecrets`/`assertInviteNoteHasNoSecret` are the invite-kind siblings of every handoff export, sharing the SAME HKDF/AEAD primitives with kind-embedded domain separation (`kygit/invite/auth/v1`, `kygit/invite/wrap/v1`, `kygit/invite/auth-hash/v1` — an invite secret never verifies as a handoff hash, or the reverse) and a THIRD envelope frame, `KGI1` (payload `kygit-invite-envelope-v1`, `note_schema: "kygit.invite-note.v1"`), distinct from both `r402s/v0`'s object frame and the handoff bridge's own `KGH1`. A recognized prefix of the WRONG kind refuses BY NAME pointing at its own verb (`HANDOFF_KEY_WRONG_KIND` from `join()` handed a `kgh1_…` key; `INVITE_KEY_WRONG_KIND` from `resume()` handed a `kgi1_…` key) — synchronously, before any network call. `Gitvault.invite()` registers the inviter's OWN presence (`new Rooms(this.#client)`, constructed inline since `rooms` is not otherwise exposed on `Gitvault`) BEFORE minting so the row can carry `inviter_presence_id`, and posts the room fact AFTER a successful mint — a presence or fact-post failure is reported (`inviter_presence`/`room_fact` on the result) and never voids the mint. `Gitvault.join()` mirrors `resume()`'s exact shape (bare-wallet backstop via `#ensureLocalWallet`; the caller folds the fuller cold-start chain before calling), additionally pinning the invite's OWN room (`pinGitvaultRepo`'s `ids.room_key`) and appending `.run402/` to `.git/info/exclude` via `excludeMessagingCacheFromGit` (`sdk/src/node/gitvault-restore.ts`, NEVER `.gitignore` — `resume()` gained the identical call, since restore is kind-agnostic). `errors.ts`'s `NextActionType` gains `join_invite` (door-aware via `gitvaultRemoteScheme()` — `kygit join …` vs `run402 repos join …`), `revoke_invite`, `wait_room`, `send_room_message`.
+**D9 (kygit-invite) — invite/join, a second claim kind beside handoff.** `sdk/src/node/gitvault-handoff.ts` is kind-parameterized (`ClaimKind = "handoff" | "invite"`) without renaming a single shipped export: `HANDOFF_KEY_PREFIXES` gains `kgi1_`/`invite`/`join` as its second row; `parseClaimKey(raw, expectedKind)` is the one parser, with `parseHandoffKey`/`parseInviteKey` as kind-bound aliases; `assembleInviteKey`/`deriveInviteSecrets`/`sealInviteEnvelope`/`openInviteEnvelope`/`scanInviteNoteForSecrets`/`assertInviteNoteHasNoSecret` are the invite-kind siblings of every handoff export, sharing the SAME HKDF/AEAD primitives with kind-embedded domain separation (`kygit/invite/auth/v1`, `kygit/invite/wrap/v1`, `kygit/invite/auth-hash/v1` — an invite secret never verifies as a handoff hash, or the reverse) and a THIRD envelope frame, `KGI1` (payload `kygit-invite-envelope-v1`, `note_schema: "kygit.invite-note.v1"`), distinct from both `r402s/v0`'s object frame and the handoff bridge's own `KGH1`. A recognized prefix of the WRONG kind refuses BY NAME pointing at its own verb (`HANDOFF_KEY_WRONG_KIND` from `join()` handed a `kgh1_…` key; `INVITE_KEY_WRONG_KIND` from `resume()` handed a `kgi1_…` key) — synchronously, before any network call. `Gitvault.invite()` registers the inviter's OWN presence (`new Rooms(this.#client)`, constructed inline since `rooms` is not otherwise exposed on `Gitvault`) BEFORE minting so the row can carry `inviter_presence_id`, and posts the room message AFTER a successful mint — a presence or message-post failure is reported (`inviter_presence`/`room_fact` on the result) and never voids the mint. `Gitvault.join()` mirrors `resume()`'s exact shape (bare-wallet backstop via `#ensureLocalWallet`; the caller folds the fuller cold-start chain before calling), additionally pinning the invite's OWN room (`pinGitvaultRepo`'s `ids.room_key`) and appending `.run402/` to `.git/info/exclude` via `excludeMessagingCacheFromGit` (`sdk/src/node/gitvault-restore.ts`, NEVER `.gitignore` — `resume()` gained the identical call, since restore is kind-agnostic). `errors.ts`'s `NextActionType` gains `join_invite` (door-aware via `gitvaultRemoteScheme()` — `kygit join …` vs `run402 repos join …`), `revoke_invite`, `wait_room`, `send_room_message`.
 
-**The wait verb — `rooms.waitForMessages` (kygit-invite design D6/D7).** `Rooms.waitForMessages(orgId, roomKey, opts)` calls `listMessages` with `wait=<1..25>` (gateway-clamped) and decides its next poll interval BY EVIDENCE on every read: a page carrying `waited_ms` proves the gateway held the request, so the next call is a zero-sleep held re-read; a page with NO `waited_ms` proves an older gateway that ignored the parameter, so the client falls back to bounded polling (`pollMs`, default 5000, floored at 1000 — the same anti-hammering floor the shared `waitFor` helper applies) until `timeoutMs` (default 120000) is exhausted. Silence is an answer, never a throw: on timeout the LAST OBSERVED (empty) page returns with `settled: false` and the unchanged cursor. `live_presences` comes from the held page's own rider when present, else one best-effort `listPresences` fallback read. `ScopedRoom.waitForMessages` delegates with `(orgId, roomKey)` pre-bound.
+**The wait verb — `rooms.waitForMessages` (kygit-invite design D6/D7).** `Rooms.waitForMessages(orgId, roomKey, opts)` calls `listMessages` with `wait=<1..25>` (gateway-clamped) and decides its next poll interval BY EVIDENCE on every read: a page carrying `waited_ms` proves the gateway held the request, so the next call is a zero-sleep held re-read; a page with NO `waited_ms` proves an older gateway that ignored the parameter, so the client falls back to bounded polling (`pollMs`, default 5000, floored at 1000 — the same anti-hammering floor the shared `waitFor` helper applies) until `timeoutMs` (default 120000) is exhausted. Silence is an answer, never a throw: on timeout the LAST OBSERVED (empty) page returns with `settled: false` and the unchanged cursor. `live_presences` comes from the held page's own rider when present, else one best-effort `listPresences` fallback read. `ScopedRoom.waitForMessages` grant keys with `(orgId, roomKey)` pre-bound.
 
 ```ts
 const minted = await r.gitvault.invite({
@@ -1217,18 +1217,18 @@ caps alongside that project's slice of the pool.
 `TierStatusResult` also surfaces two optional organization fields:
 
 - `organization_lifecycle_state?: "active" | "past_due" | "frozen" | "dormant" | "purged"` — mirror of the owning organization's lifecycle state. Identical to the per-project `organization_lifecycle_state` on every `list()` entry.
-- `lease_perpetual?: boolean` — operator escape hatch flag. When `true`, the organization never advances past `active`.
+- `lease_perpetual?: boolean` — staff escape hatch flag. When `true`, the organization never advances past `active`.
 
 Both are optional because older gateways do not return them at the top level.
 
-`set` settles from the organization's prepaid credit first (a redeemed promo code or a
+`set` settles from the organization's allowance first (a redeemed promo code or a
 top-up), ahead of the payment paywall: no 402 is issued, no authorization is signed, and
 the wallet needs no USDC. `TierSetResult.paid_with` reads `"credit"` then, with
 `credit_used_usd_micros` and `credit_remaining_usd_micros`. Only a balance that falls short
 goes to x402 / MPP, and the resulting `X402_INSUFFICIENT_FUNDS` carries `details.credit`
 (available, price, shortfall) with `redeem_voucher` / `top_up` next actions.
 
-`set` auto-detects subscribe / renew / upgrade / downgrade based on current state.
+`set` auto-detects start / renew / upgrade / downgrade based on current state.
 For tier pricing, call `r.projects.getQuote()` (the SDK does not expose a separate
 `tier.quote()` method).
 
@@ -1259,14 +1259,14 @@ createEmail(email): Promise<EmailOrganization>
 autoRecharge(opts): Promise<void>
 ```
 
-Organizations are addressed by their canonical `organization_id` (UUID).
+Organizations are addressed by their canonical `org_id` (UUID).
 `getOrganization` / `checkBalance` / `history` accept an organization id, wallet, or email:
 an organization id reads `GET /orgs/v1/:org_id/billing` directly, while a
 wallet/email is resolved through the `GET /orgs/v1/lookup?wallet=|?email=`
 lookup (also exposed as `lookupOrganization`). The detail shape includes
-`organization_id`. Organization reads require SIWX from a
+`org_id`. Organization reads require SIWX from a
 wallet **linked to** the organization (or matching the looked-up `?wallet`), or an
-admin key — email lookups are admin-only; `history` resolves to the organization id
+admin key — email lookups are staff-only; `history` resolves to the organization id
 first, then reads `GET /orgs/v1/:org_id/billing/history`.
 
 `linkWallet` merges a wallet into an existing organization's pool. The response
@@ -1297,7 +1297,7 @@ status(projectId, callId): Promise<ContractCallResult>
 delete(projectId, signerId): Promise<DeleteSignerResult>
 ```
 
-Private keys never leave AWS KMS. **$0.04/day rental + $0.000005/call.** Signer creation requires $1.20 cash credit. Non-custodial. The SDK exports typed metadata and call-result envelopes (`SignerSummary`, `ContractCallResult`, `ContractReadResult`, etc.); contract ABI results and receipts remain `unknown` inside those envelopes and should be narrowed at the call site.
+Private keys never leave AWS KMS. **$0.04/day rental + $0.000005/call.** Signer creation requires $1.20 allowance. Non-custodial. The SDK exports typed metadata and call-result envelopes (`SignerSummary`, `ContractCallResult`, `ContractReadResult`, etc.); contract ABI results and receipts remain `unknown` inside those envelopes and should be narrowed at the call site.
 
 ### `r.ai`
 
@@ -1368,7 +1368,7 @@ redeem(code: string): Promise<RedeemVoucherResult>
 ```
 
 Redeems a promo code (e.g. `R402-K8F3-Q2W9`) into the authenticated wallet's
-organization as prepaid credit. That credit settles tier purchases and priced
+organization as allowance. That credit settles tier purchases and priced
 calls through the allowance rail — no on-chain payment.
 
 - **Order-independent.** Works as the very first authenticated call a new wallet
@@ -1404,7 +1404,7 @@ r.wallet(address).setLabel(label: string): Promise<{ ok: boolean }>
 ```
 
 The signed server-side wallet label (gateway `/wallets/v1/:address/label`) that
-surfaces the human-readable named-wallet name in the operator console. Use the
+surfaces the human-readable named-wallet name in the console. Use the
 `r.wallet(address)` scope handle so the address isn't a swappable positional. The
 label is pushed automatically on `run402 wallets use` unless
 `RUN402_WALLET_LABEL_SYNC=0`. (`r.wallets.getLabel(address)` remains valid as a
@@ -1489,7 +1489,7 @@ There is no tag-based invalidation and no client-side (browser) invalidation —
 
 ### `r.admin`
 
-Operator/admin endpoints. Most agents won't reach for these — they're for platform operators.
+Staff endpoints. Most agents won't reach for these — they're for platform staff.
 
 ```
 sendFeedback(message: string, opts?: FeedbackSendOptions): Promise<SendMessageResult>
@@ -1514,27 +1514,27 @@ r.admin.project(projectId).finance(opts?): Promise<AdminProjectFinanceResult>
 `AgentContactResult` includes `email_verification_status`, `passkey_binding_status`, `assurance_level`, proof timestamps, and cooldown fields. Assurance labels are `wallet_only`, `email_pending`, `email_verified`, `passkey_pending`, and `operator_passkey`; they describe mailbox/passkey continuity, not a humanhood or uniqueness claim. `startOperatorPasskeyEnrollment()` requires `email_verified` and emails the token to the verified contact email instead of returning it.
 
 `getProjectFinance` reads the internal Finance-tab JSON for a project. It is
-platform-admin gated; a project `service_key` is not enough. In Node operator
+staff gated; a project `service_key` is not enough. In Node staff
 scripts, use an admin allowance wallet or pass
 `cookie: process.env.RUN402_ADMIN_COOKIE` for browser-session auth.
 
-**Operator-only project + organization actions.** The lifecycle state machine lives on `internal.organizations`; there are no per-project `pin` / `unpin` endpoints.
+**Staff-only project + organization actions.** The lifecycle state machine lives on `internal.organizations`; there are no per-project `pin` / `unpin` endpoints.
 
 - `r.admin.org(orgId).pinLease()` / `.unpinLease()` — toggle the organization-level escape hatch. When `lease_perpetual` is `true`, the organization never advances past `active` regardless of lease expiry; every project on the organization is pinned. Pinning a grace-state organization (`past_due` / `frozen` / `dormant`) reactivates inline — the response carries `reactivated: true`.
-- `archiveProject(projectId, { reason? })` — operator moderation. Sets `projects.archived_at = NOW()` on a single project; sibling projects on the same organization keep serving. No-op when already archived (returns `note: "already archived"`).
+- `archiveProject(projectId, { reason? })` — staff moderation. Sets `projects.archived_at = NOW()` on a single project; sibling projects on the same organization keep serving. No-op when already archived (returns `note: "already archived"`).
 - `r.admin.project(projectId).reactivate()` — un-archive a project (flips `archived_at` back to NULL). It does NOT touch organization-level lifecycle. To reactivate a grace-state organization, either call `r.tier.set(tier)` (the tier flow runs the lifecycle advance inline) or `r.admin.org(org_id).pinLease()`.
 
-All three require platform-admin auth. Result envelopes:
+All three require staff auth. Result envelopes:
 
 ```
-SetLeasePerpetualResult: { status, organization_id, lease_perpetual, reactivated }
+SetLeasePerpetualResult: { status, org_id, lease_perpetual, reactivated }
 ArchiveProjectResult:    { status, project_id, archived_at?, reason?, note? }   // note: "already archived"
 ReactivateProjectResult: { status, project_id, reactivated?: true, note? }      // note: "not archived"
 ```
 
 ### `r.admin.channels` + `r.admin.rules` (Telegram notification channel + routing rules)
 
-Self-serve Telegram push on top of the operator-notifications substrate: connect a chat, then add filter rules so ONLY matching events page that chat. Two sub-namespaces on `r.admin`, same shape as `r.admin.transfers`.
+Self-serve Telegram push on top of the owner-notifications substrate: connect a chat, then add filter rules so ONLY matching events page that chat. Two sub-namespaces on `r.admin`, same shape as `r.admin.transfers`.
 
 ```
 r.admin.channels.connectTelegram(opts?: { label?: string }): Promise<ConnectTelegramResult>
@@ -1547,9 +1547,9 @@ r.admin.rules.update(ruleId: string, patch: UpdateRoutingRulePatch): Promise<Rou
 r.admin.rules.delete(ruleId: string): Promise<DeleteRoutingRuleResult>
 ```
 
-`connectTelegram` returns two single-use, 15-minute deep links — `connect_url` (private chat) and `connect_group_url` (group chat) — plus a `pending` binding id. A human taps ONE of the links and starts the bot; poll `r.admin.channels.list()` until the matching entry in `telegram[]` shows `status: "active"` (or `code_expires_at` passes and it's swept back to `"revoked"`). Until the platform's dedicated bot is provisioned on this deployment, `connectTelegram` throws with `code: "TELEGRAM_CHANNEL_NOT_CONFIGURED"` (HTTP 503, with a `next_actions` entry); a caller with no verified operator email yet gets `code: "OPERATOR_EMAIL_NOT_VERIFIED"` (HTTP 412) — bindings are addressed to the verified email, the recipient grain every rule/binding keys on. `connectTelegram` / `revokeTelegram` require `operator_passkey` assurance (same ladder as `rotateWebhookSecret`); `list()` is a plain SIWX read.
+`connectTelegram` returns two single-use, 15-minute deep links — `connect_url` (private chat) and `connect_group_url` (group chat) — plus a `pending` binding id. A human taps ONE of the links and starts the bot; poll `r.admin.channels.list()` until the matching entry in `telegram[]` shows `status: "active"` (or `code_expires_at` passes and it's swept back to `"revoked"`). Until the platform's dedicated bot is provisioned on this gateway, `connectTelegram` throws with `code: "TELEGRAM_CHANNEL_NOT_CONFIGURED"` (HTTP 503, with a `next_actions` entry); a caller with no verified owner email yet gets `code: "OPERATOR_EMAIL_NOT_VERIFIED"` (HTTP 412) — bindings are addressed to the verified email, the recipient grain every rule/binding keys on. `connectTelegram` / `revokeTelegram` require `operator_passkey` assurance (same ladder as `rotateWebhookSecret`); `list()` is a plain SIWX read.
 
-**Routing rules (design D4).** One rule always targets exactly one Telegram binding — "N destinations" is N rules. Every match dimension you set (`projectId`, `source`, `eventTypes`, `classes`) is ANDed; an OMITTED field is a wildcard (matches anything for that dimension); an explicit empty array (`eventTypes: []`) matches NOTHING (Postgres `TEXT[]` semantics — deliberately different from the "`[]` = unfiltered" convention some read-filter query params use elsewhere in this SDK). `source` is `"app"` (a deployed function's `events.emit(...)` calls) or `"platform"` (deploys, lifecycle, verification, ...); omit to match both. **No rules = no Telegram traffic** for that operator — the channel is opt-in per event, per rule, with no "send everything" default. Rules govern the Telegram channel ONLY in v1: the mandatory email floor (`security`/`recovery`/`billing_critical`/`destructive_lifecycle`/`verification` classes) is completely untouched and can never be silenced by a rule.
+**Routing rules (design D4).** One rule always targets exactly one Telegram binding — "N destinations" is N rules. Every match dimension you set (`projectId`, `source`, `eventTypes`, `classes`) is ANDed; an OMITTED field is a wildcard (matches anything for that dimension); an explicit empty array (`eventTypes: []`) matches NOTHING (Postgres `TEXT[]` semantics — deliberately different from the "`[]` = unfiltered" convention some read-filter query params use elsewhere in this SDK). `source` is `"app"` (a deployed function's `events.emit(...)` calls) or `"platform"` (deploys, lifecycle, verification, ...); omit to match both. **No rules = no Telegram traffic** for that person — the channel is opt-in per event, per rule, with no "send everything" default. Rules govern the Telegram channel ONLY in v1: the mandatory email floor (`security`/`recovery`/`billing_critical`/`destructive_lifecycle`/`verification` classes) is completely untouched and can never be silenced by a rule.
 
 `rules.update`'s `patch` uses PATCH semantics at the wire level: a field OMITTED from the object leaves the stored value unchanged; a field explicitly set to `null` CLEARS that dimension back to wildcard. There's no wire difference between "omitted" and "set to `undefined`" — both drop the key from the JSON body, so build the patch object by only assigning the keys you actually want to change.
 
@@ -1594,7 +1594,7 @@ listOutgoing(opts?: { limit?, offset? }): Promise<TransferSummary[]>   // pendin
 
 `billingPolicy` defaults to `"migrate"` on wallet transfers (the only Phase 1A policy — the project moves into the recipient's organization). The `kysignedRecordId` field is wallet-only and stored verbatim in Phase 1A; Phase 1B will verify it against the canonical terms hash. Owned-org `toOrgId` moves are same-actor only in the first gateway release: caller must be an active owner of both source and destination orgs. Initiate authority is owner-OR-admin.
 
-**Email recipient — retain-collaborator.** Pass `retainCollaborator: { role: "developer" }` on the email `initiate` to keep a `developer` membership in the recipient's org after the transfer (only `developer` is valid; the subject is always the initiating owner — gateway rejects with `INVALID_RETAIN_ROLE` / `RETAIN_SUBJECT_REQUIRED`). The recipient sees the offer as `ProjectTransferPreview.retain_collaborator` (a `RetainCollaboratorPreview` `{ principal_id, role, sender_label, scope, note, accept_field }`, or `null`) and accepts by passing `acceptRetainedCollaborator: true` to `claim`; the result then carries `retained_collaborator_principal_id` (or `null`). Omitting the accept (the default) is a full severance.
+**Email recipient — retain-member.** Pass `retainCollaborator: { role: "developer" }` on the email `initiate` to keep a `developer` membership in the recipient's org after the transfer (only `developer` is valid; the subject is always the initiating owner — gateway rejects with `INVALID_RETAIN_ROLE` / `RETAIN_SUBJECT_REQUIRED`). The recipient sees the offer as `ProjectTransferPreview.retain_collaborator` (a `RetainCollaboratorPreview` `{ principal_id, role, sender_label, scope, note, accept_field }`, or `null`) and accepts by passing `acceptRetainedCollaborator: true` to `claim`; the result then carries `retained_collaborator_principal_id` (or `null`). Omitting the accept (the default) is a full severance.
 
 While a transfer is `pending` (72h TTL), every owner-side mutation against the project throws `TransferFreezeError` (status 409, code `PROJECT_HAS_PENDING_TRANSFER`). The error carries `transferId`, `projectId`, `cancelPath`, and `previewPath` lifted from the gateway's `next_actions[]`, so agents can present an actionable resolution:
 
