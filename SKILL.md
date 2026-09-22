@@ -802,15 +802,13 @@ Use portable archives when the person wants no vendor lock-in for the supported 
 Canonical CLI path:
 
 ```bash
-run402 cloud archives create <project_id> --scope portable-runtime-v1 --auth stubs --consistency pause-writes --wait --output ./project.r402ar --json
+run402 archives create <project_id> --target cloud --scope portable-runtime-v1 --auth stubs --consistency pause-writes --wait --output ./project.r402ar --json
 run402 archives inspect ./project.r402ar --json
 run402 archives verify ./project.r402ar --json
-run402 core projects import ./project.r402ar --name imported-project --env-file ./required.env --json
-run402 projects export <project_id> --output ./project.r402ar --json
-run402 core projects apply ./project.r402ar --name imported-project --env-file ./required.env --json
+run402 archives import ./project.r402ar --target core --name imported-project --env-file ./required.env --json
 ```
 
-`projects export` aliases the Cloud archive export flow; `core projects apply` aliases Core archive import. MCP tools mirror the same flow: `export_project_archive`, `inspect_project_archive`, `verify_project_archive`, and `import_project_archive`. SDK helpers live under `r.archives`; the Node entry adds local `inspect`, `verify`, and `importToCore`, plus standalone `inspectArchive`, `verifyArchive`, and `importArchiveToCore`.
+`--target cloud` (the default for `create`, `status`, and `download`) exports from Run402 Cloud; `--target core` (the default for `import`) loads into a local Run402 Core. MCP tools mirror the same flow: `export_project_archive`, `inspect_project_archive`, `verify_project_archive`, and `import_project_archive`. SDK helpers live under `r.archives`; the Node entry adds local `inspect`, `verify`, and `importToCore`, plus standalone `inspectArchive`, `verifyArchive`, and `importArchiveToCore`.
 
 Archive v1 exports active release/apply state, supported Postgres/RLS/REST data, storage/static bytes, functions, Astro SSR artifacts, disabled auth subject stubs, and value-free secret requirements. It does not export secret values, auth credentials, logs, billing/allowance/spend state, Cloud provider/gateway-task operations metadata, Cloud import, or existing-project merge import. `verify` is local/offline integrity and compatibility checking, not trust; Core import verifies again and creates a new local project only.
 

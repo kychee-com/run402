@@ -93,7 +93,7 @@ export async function handleExportProjectArchive(args: {
       bytes_written: bytesWritten,
       sha256: archive.sha256,
       verify_command: outputPath ? `run402 archives verify ${JSON.stringify(outputPath)} --json` : null,
-      import_command: outputPath ? `run402 core projects import ${JSON.stringify(outputPath)} --name imported-project --env-file ./required.env --json` : null,
+      import_command: outputPath ? `run402 archives import ${JSON.stringify(outputPath)} --target core --name imported-project --env-file ./required.env --json` : null,
       next_action: archive.next_action,
       archive,
     };

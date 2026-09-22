@@ -34,7 +34,6 @@ Subcommands:
   delete [id] --confirm                   Immediately and irreversibly delete a project (cascade purge) and remove from local state. Requires --confirm.
   promote-user [id] <email>               Promote a user to project_admin role
   demote-user  [id] <email>               Demote a user from project_admin role
-  export [id] [archive options]           Export a portable Run402 Core archive
 
 Examples:
   run402 projects quote
@@ -59,7 +58,6 @@ Examples:
   run402 projects apply-expose prj_abc123 --file manifest.json
   run402 projects get-expose prj_abc123
   run402 projects delete prj_abc123 --confirm
-  run402 projects export prj_abc123 --wait --output ./project.r402ar --json
 
 Global options (any command):
   --wallet <name>   Use a named wallet (profile) for this command. Precedence:
@@ -886,10 +884,6 @@ const FLAGS_BY_SUB = {
     values: ["--project", "--file", "--migration-file", "--migration-sql"],
   },
   delete: { known: ["--project", "--confirm"], values: ["--project"] },
-  export: {
-    known: ["--project", "--scope", "--auth", "--consistency", "--idempotency-key", "--output", "--poll-interval", "--timeout", "--wait", "--json", "--json-stream"],
-    values: ["--project", "--scope", "--auth", "--consistency", "--idempotency-key", "--output", "--poll-interval", "--timeout"],
-  },
 };
 
 function validateFlags(sub, args) {
@@ -937,11 +931,6 @@ export async function run(sub, args) {
     case "validate-expose": await validateExpose(args); break;
     case "get-expose":   { const { projectId } = resolveProjectSelector(args, { rejectBareFirst: true }); await getExpose(projectId); break; }
     case "delete":    { const { projectId, rest } = resolveProjectSelector(args, { rejectBareFirst: true }); await deleteProject(projectId, rest); break; }
-    case "export": {
-      const { run } = await import("./cloud.mjs");
-      await run("archives", ["create", ...args]);
-      break;
-    }
     case "promote-user": { const { projectId, rest } = resolveProjectSelector(args); await promoteUser(projectId, rest[0]); break; }
     case "demote-user":  { const { projectId, rest } = resolveProjectSelector(args); await demoteUser(projectId, rest[0]); break; }
     default:

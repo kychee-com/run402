@@ -405,7 +405,7 @@ function closestFlag(flag, candidates) {
 /**
  * Known subcommands of a command family, derived from COMMAND_MANIFEST
  * (never hand-maintained). `family` may be multi-word for nested groups
- * (e.g. "cloud archives", "email webhooks").
+ * (e.g. "deploy releases", "email webhooks").
  */
 export function knownSubcommands(family) {
   const familyWords = String(family).split(" ").filter(Boolean);

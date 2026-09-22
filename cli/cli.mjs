@@ -94,8 +94,7 @@ PLATFORM — everything else, and the things still finding a home
   contracts   KMS signers ($0.04/day rental + $0.000005/sign)
   jobs        Submit and inspect platform-managed jobs
   transfer    Project transfer to a wallet, an email, or an owned org (init, preview, list, accept, cancel)
-  cloud       Cloud portability archive export (archives create/download/status)
-  archives    Inspect and verify portable project archives locally
+  archives    Portable project archives (create, status, download --target cloud; inspect, verify; import --target core)
   gitvault    RETIRED — moved to repos (repo-surface-consolidation); every spelling answers COMMAND_MOVED/COMMAND_REMOVED
   source-access RETIRED — moved into repos (recovery-bundle + access); every spelling answers COMMAND_MOVED
   buzz        Buzz human/community/agent control-plane workflows
@@ -105,7 +104,6 @@ PLATFORM — everything else, and the things still finding a home
   cdn         CloudFront CDN diagnostics (wait-fresh) for public asset URLs
   cache       Inspect and invalidate the SSR origin cache (inspect, invalidate)
   agent       Manage agent identity (contact info)
-  core        Local Run402 Core import helpers
   dev         Run Astro dev with Run402 env + credentials in scope
 
 Global options (any command):
@@ -122,8 +120,8 @@ Examples:
   run402 deploy --manifest app.json
   run402 snapshots list --project prj_...
   run402 branches create --project prj_... --ttl-days 7 --json
-  run402 cloud archives create --project prj_... --wait --output ./project.r402ar --json
-  run402 core projects import ./project.r402ar --name imported-project --env-file ./required.env --json
+  run402 archives create --project <project_id> --target cloud --wait --output ./project.r402ar --json
+  run402 archives import ./project.r402ar --target core --name imported-project --env-file ./required.env --json
   run402 jobs submit --file job.json
   run402 projects list
   run402 projects sql "SELECT * FROM users LIMIT 5" --project <project_id>
@@ -257,18 +255,8 @@ switch (cmd) {
     await run(sub, rest);
     break;
   }
-  case "cloud": {
-    const { run } = await import("./lib/cloud.mjs");
-    await run(sub, rest);
-    break;
-  }
   case "archives": {
     const { run } = await import("./lib/archives.mjs");
-    await run(sub, rest);
-    break;
-  }
-  case "core": {
-    const { run } = await import("./lib/core.mjs");
     await run(sub, rest);
     break;
   }

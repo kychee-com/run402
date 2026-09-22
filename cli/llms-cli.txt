@@ -286,6 +286,6 @@ This file is the index: everything above is the whole first-deploy contract. The
 | Auth, billing, sign-in, doctor, logs | https://docs.run402.com/llms-cli-ops.txt | auth, billing, contracts, notifications, sign-in, service, cache, doctor, dev, logs | ~38 KB |
 | R402_* runtime error codes | https://docs.run402.com/llms-cli-errors.txt | R402_* SSR runtime and cache error codes | ~6 KB |
 | REST API and user auth for frontends | https://docs.run402.com/llms-cli-frontend.txt | REST API (PostgREST) and user auth for generated frontend code | ~15 KB |
-| Ideas, pricing, Core, archives, Buzz | https://docs.run402.com/llms-cli-platform.txt | build ideas, pricing, self-hosted Core, portable archives, Buzz/Nostr | ~13 KB |
+| Ideas, pricing, Core, archives, Buzz | https://docs.run402.com/llms-cli-platform.txt | build ideas, pricing, self-hosted Core, portable archives, Buzz/Nostr | ~14 KB |
 
 The whole reference as one document (large; only when you can hold it): https://docs.run402.com/llms-cli-full.txt

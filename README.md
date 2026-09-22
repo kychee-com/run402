@@ -529,14 +529,12 @@ Your HTML never needs a pasted key: every Run402 host serves `/_run402/config.js
 Portable archives export the supported run402 Core runtime slice of a Cloud project for local Core import. This is the no-lock-in trust path, separate from allowance/spend-cap financial-risk controls.
 
 ```bash
-run402 cloud archives create <project_id> --scope portable-runtime-v1 --auth stubs --consistency pause-writes --wait --output ./project.r402ar --json
+run402 archives create <project_id> --target cloud --scope portable-runtime-v1 --auth stubs --consistency pause-writes --wait --output ./project.r402ar --json
 run402 archives verify ./project.r402ar --json
-run402 core projects import ./project.r402ar --name imported-project --env-file ./required.env --json
-run402 projects export <project_id> --output ./project.r402ar --json
-run402 core projects apply ./project.r402ar --name imported-project --env-file ./required.env --json
+run402 archives import ./project.r402ar --target core --name imported-project --env-file ./required.env --json
 ```
 
-`projects export` is an alias for the Cloud archive export flow; `core projects apply` is an alias for Core archive import. Archive v1 excludes secret values, auth credentials, logs, billing/allowance state, Cloud operations metadata, Cloud import, and existing-project merge import. Verify is local/offline and checks integrity plus compatibility; archives remain untrusted input until Core import verifies and stages them.
+`--target` names the deployment each verb talks to: `create`, `status`, and `download` export from Run402 Cloud (`--target cloud`, the default); `import` loads into a local Run402 Core (`--target core`, the default). Archive v1 excludes secret values, auth credentials, logs, billing/allowance state, Cloud operations metadata, Cloud import, and existing-project merge import. Verify is local/offline and checks integrity plus compatibility; archives remain untrusted input until Core import verifies and stages them.
 
 The active project is sticky: `run402 projects use <id>` server-validates `<id>` and stores it as the default for subsequent `<id>`-taking subcommands, so most commands work without it. Local key material is managed separately under `run402 credentials project-keys ...`; that cache is never project inventory.
 

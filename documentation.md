@@ -53,7 +53,7 @@ Run `node scripts/documentation-inventory.mjs` to reject newly discovered unclas
 | public | [cli/lib/ai.mjs](cli/lib/ai.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | source published: 23751749; no separate hosted acceptance required |
 | public | [cli/lib/approve.mjs](cli/lib/approve.mjs) | guide / cli | pending | pending |
 | public | [cli/lib/apps.mjs](cli/lib/apps.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
-| public | [cli/lib/archives.mjs](cli/lib/archives.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | source published: 23751749; no separate hosted acceptance required |
+| public | [cli/lib/archives.mjs](cli/lib/archives.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/assets.mjs](cli/lib/assets.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/auth.mjs](cli/lib/auth.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | source published: 23751749; no separate hosted acceptance required |
 | public | [cli/lib/billing.mjs](cli/lib/billing.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
@@ -64,11 +64,9 @@ Run `node scripts/documentation-inventory.mjs` to reject newly discovered unclas
 | public | [cli/lib/cdn.mjs](cli/lib/cdn.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | source published: 23751749; no separate hosted acceptance required |
 | public | [cli/lib/ci.mjs](cli/lib/ci.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/claims.mjs](cli/lib/claims.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
-| public | [cli/lib/cloud.mjs](cli/lib/cloud.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | source published: 23751749; no separate hosted acceptance required |
 | public | [cli/lib/command-manifest.mjs](cli/lib/command-manifest.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/contacts.mjs](cli/lib/contacts.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/contracts.mjs](cli/lib/contracts.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
-| public | [cli/lib/core.mjs](cli/lib/core.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | source published: 23751749; no separate hosted acceptance required |
 | public | [cli/lib/credentials.mjs](cli/lib/credentials.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/delegates.mjs](cli/lib/delegates.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/deliveries.mjs](cli/lib/deliveries.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |

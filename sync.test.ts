@@ -85,7 +85,7 @@ function readCommandSource(filePath: string): string | null {
 function parseCliCommands(): string[] {
   const cmds: string[] = [];
   const reserved = reservedSubcommands();
-  for (const mod of ["admin", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "feedback", "agent", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "orgs", "identity", "buzz", "grants", "delegates", "deliveries", "contacts", "subscriptions", "webhook-secret", "cloud", "archives", "core", "rooms", "messages", "claims", "escalations", "gitvault", "repos", "source-access"]) {
+  for (const mod of ["admin", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "feedback", "agent", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "orgs", "identity", "buzz", "grants", "delegates", "deliveries", "contacts", "subscriptions", "webhook-secret", "archives", "rooms", "messages", "claims", "escalations", "gitvault", "repos", "source-access"]) {
     for (const sub of parseSubcommands(join(__dirname, "cli/lib", `${mod}.mjs`))) {
       if (reserved.has(`${mod}:${sub}`)) continue;
       cmds.push(`${mod}:${sub}`);
@@ -94,10 +94,8 @@ function parseCliCommands(): string[] {
   for (const action of parseCredentialsRootActions("cli/lib/credentials.mjs")) cmds.push(`credentials:${action}`);
   for (const action of parseCredentialsProjectKeyActions("cli/lib/credentials.mjs")) cmds.push(`credentials:project-keys:${action}`);
   // `buzz notifications` dispatches out of buzz.mjs via `if (sub === "notifications")`
-  // into its own module, so its leaves surface here (the cloud:archives pattern).
+  // into its own module, so its leaves surface here.
   for (const action of parseSubcommands(join(__dirname, "cli/lib/buzz-notifications.mjs"))) cmds.push(`buzz:notifications:${action}`);
-  for (const action of parseCloudArchiveActions("cli/lib/cloud.mjs")) cmds.push(`cloud:archives:${action}`);
-  for (const action of parseCoreProjectActions("cli/lib/core.mjs")) cmds.push(`core:projects:${action}`);
   for (const action of parseDeployReleasesActions()) {
     cmds.push(`deploy:releases:${action}`);
   }
@@ -132,7 +130,7 @@ function parseCliCommands(): string[] {
 function parseOpenClawCommands(): string[] {
   const cmds: string[] = [];
   const reserved = reservedSubcommands();
-  for (const mod of ["admin", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "feedback", "agent", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "orgs", "identity", "buzz", "grants", "delegates", "deliveries", "contacts", "subscriptions", "webhook-secret", "cloud", "archives", "core", "rooms", "messages", "claims", "escalations", "gitvault", "repos", "source-access"]) {
+  for (const mod of ["admin", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "feedback", "agent", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "orgs", "identity", "buzz", "grants", "delegates", "deliveries", "contacts", "subscriptions", "webhook-secret", "archives", "rooms", "messages", "claims", "escalations", "gitvault", "repos", "source-access"]) {
     for (const sub of parseSubcommands(join(__dirname, "openclaw/scripts", `${mod}.mjs`))) {
       if (reserved.has(`${mod}:${sub}`)) continue;
       cmds.push(`${mod}:${sub}`);
@@ -143,8 +141,6 @@ function parseOpenClawCommands(): string[] {
   // openclaw/scripts/buzz.mjs re-exports cli/lib/buzz.mjs, so the notifications
   // group is the same module on both surfaces.
   for (const action of parseSubcommands(join(__dirname, "cli/lib/buzz-notifications.mjs"))) cmds.push(`buzz:notifications:${action}`);
-  for (const action of parseCloudArchiveActions("cli/lib/cloud.mjs")) cmds.push(`cloud:archives:${action}`);
-  for (const action of parseCoreProjectActions("cli/lib/core.mjs")) cmds.push(`core:projects:${action}`);
   for (const action of parseDeployReleasesActions()) {
     cmds.push(`deploy:releases:${action}`);
   }
@@ -231,28 +227,6 @@ function parseCredentialsProjectKeyActions(relativePath: string): string[] {
 /** The gateway-facing verbs: issue / list / status / rotate / revoke / token. */
 function parseCredentialsRootActions(relativePath: string): string[] {
   return caseLabels(credentialsSections(relativePath).root);
-}
-
-function parseCloudArchiveActions(relativePath: string): string[] {
-  const filePath = join(__dirname, relativePath);
-  if (!existsSync(filePath)) return [];
-  const src = readFileSync(filePath, "utf-8");
-  const actions: string[] = [];
-  const re = /action\s*===\s*"([\w-]+)"/g;
-  let m;
-  while ((m = re.exec(src))) actions.push(m[1]);
-  return [...new Set(actions)].sort();
-}
-
-function parseCoreProjectActions(relativePath: string): string[] {
-  const filePath = join(__dirname, relativePath);
-  if (!existsSync(filePath)) return [];
-  const src = readFileSync(filePath, "utf-8");
-  const actions: string[] = [];
-  const re = /action\s*===\s*"([\w-]+)"/g;
-  let m;
-  while ((m = re.exec(src))) actions.push(m[1]);
-  return [...new Set(actions)].sort();
 }
 
 /** Parse the nested `org member <action>` / `org invite <action>` leaf actions
@@ -387,12 +361,12 @@ const SURFACE: Capability[] = [
   { id: "provision",         endpoint: "POST /projects/v1",                      mcp: "provision_postgres_project",    cli: "projects:provision",  openclaw: "projects:provision" },
   { id: "tier_set",           endpoint: "POST /tiers/v1/:tier",                   mcp: "tier_set",                      cli: "tier:set",            openclaw: "tier:set" },
   { id: "delete",            endpoint: "DELETE /projects/v1/:id",                mcp: "delete_project",                cli: "projects:delete",     openclaw: "projects:delete" },
-  { id: "export_project_archive", endpoint: "POST /projects/v1/:project_id/archives", mcp: "export_project_archive", cli: "cloud:archives:create", openclaw: "cloud:archives:create" },
-  { id: "download_project_archive", endpoint: "GET /projects/v1/:project_id/archives/:archive_id/download", mcp: null, cli: "cloud:archives:download", openclaw: "cloud:archives:download" },
-  { id: "get_project_archive", endpoint: "GET /projects/v1/:project_id/archives/:archive_id", mcp: null, cli: "cloud:archives:status", openclaw: "cloud:archives:status" },
+  { id: "export_project_archive", endpoint: "POST /projects/v1/:project_id/archives", mcp: "export_project_archive", cli: "archives:create", openclaw: "archives:create" },
+  { id: "download_project_archive", endpoint: "GET /projects/v1/:project_id/archives/:archive_id/download", mcp: null, cli: "archives:download", openclaw: "archives:download" },
+  { id: "get_project_archive", endpoint: "GET /projects/v1/:project_id/archives/:archive_id", mcp: null, cli: "archives:status", openclaw: "archives:status" },
   { id: "inspect_project_archive", endpoint: "(local archive inspect)", mcp: "inspect_project_archive", cli: "archives:inspect", openclaw: "archives:inspect" },
   { id: "verify_project_archive", endpoint: "(local archive verify)", mcp: "verify_project_archive", cli: "archives:verify", openclaw: "archives:verify" },
-  { id: "import_project_archive", endpoint: "POST /archives/v1/import (Run402 Core)", mcp: "import_project_archive", cli: "core:projects:import", openclaw: "core:projects:import" },
+  { id: "import_project_archive", endpoint: "POST /archives/v1/import (Run402 Core)", mcp: "import_project_archive", cli: "archives:import", openclaw: "archives:import" },
   { id: "create_project_snapshot", endpoint: "POST /projects/v1/:project_id/snapshots", mcp: "create_project_snapshot", cli: "snapshots:create", openclaw: "snapshots:create" },
   { id: "list_project_snapshots", endpoint: "GET /projects/v1/:project_id/snapshots", mcp: "list_project_snapshots", cli: "snapshots:list", openclaw: "snapshots:list" },
   { id: "get_project_snapshot", endpoint: "GET /projects/v1/:project_id/snapshots/:snapshot_id", mcp: "get_project_snapshot", cli: "snapshots:get", openclaw: "snapshots:get" },
@@ -1455,7 +1429,7 @@ const EXPECTED_OPENCLAW_COMMANDS = SURFACE
 
 // CLI dispatch-through commands that are routing prefixes, not leaf commands.
 // The scanner finds them as case statements but they just delegate to sub-modules.
-const CLI_DISPATCH_COMMANDS = ["email:webhooks", "deploy:releases", "cloud:archives", "core:projects"];
+const CLI_DISPATCH_COMMANDS = ["email:webhooks", "deploy:releases"];
 
 // CLI aliases that route to the same handler as a primary command already in
 // SURFACE. Listed here so the "no untracked commands" check doesn't fail.
@@ -1463,8 +1437,6 @@ const CLI_DISPATCH_COMMANDS = ["email:webhooks", "deploy:releases", "cloud:archi
 const CLI_ALIAS_COMMANDS = [
   "email:status", // alias of email:info
   // Removed compatibility commands that intentionally fail with COMMAND_REMOVED.
-  "projects:export", // alias of cloud:archives:create
-  "core:projects:apply", // alias of core:projects:import
   "message:send", // RESERVED: renamed to feedback:send; `message` is kept free
                   // for addressed agent/human messaging, so the old spelling
                   // fails with COMMAND_REMOVED rather than aliasing.

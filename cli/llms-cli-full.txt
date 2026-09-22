@@ -2433,7 +2433,8 @@ Portable archives are the vendor-lock-in escape hatch: Cloud is the easiest plac
 Canonical agent path:
 
 ```bash
-run402 cloud archives create prj_... \
+run402 archives create <project_id> \
+  --target cloud \
   --scope portable-runtime-v1 \
   --auth stubs \
   --consistency pause-writes \
@@ -2445,13 +2446,16 @@ run402 archives inspect ./project.r402ar --json
 run402 archives verify ./project.r402ar --json
 
 # Create ./required.env from required_secrets or secrets/required.env.template.
-run402 core projects import ./project.r402ar \
+run402 archives import ./project.r402ar \
+  --target core \
   --name imported-project \
   --env-file ./required.env \
   --json
 ```
 
-`cloud archives create` creates an operation-backed Cloud export, waits when `--wait` or `--output` is present, downloads bytes when `--output` is set, and returns `archive_id`, `operation_id`, `archive_status`, `sha256`, `expires_at`, `portability_report`, `export_report`, `verify_command`, and `import_command`. Use `--idempotency-key <key>` for safe retries, `--poll-interval <ms>` and `--timeout <ms>` for waits, and `--json-stream` for NDJSON progress.
+`--target` names the deployment each verb talks to: `archives create`, `archives status <archive_id>`, and `archives download [<project_id>] <archive_id> --output <file>` export from Run402 Cloud (`--target cloud`, the default); `archives import` loads into a local Run402 Core (`--target core`, the default); `inspect` and `verify` are local and take no target.
+
+`archives create` creates an operation-backed Cloud export, waits when `--wait` or `--output` is present, downloads bytes when `--output` is set, and returns `archive_id`, `operation_id`, `archive_status`, `sha256`, `expires_at`, `portability_report`, `export_report`, `verify_command`, and `import_command`. Use `--idempotency-key <key>` for safe retries, `--poll-interval <ms>` and `--timeout <ms>` for waits, and `--json-stream` for NDJSON progress.
 
 Progress events are one JSON object per line:
 
@@ -2463,7 +2467,7 @@ Every event and diagnostic uses stable agent fields: `code`, `severity`, `resour
 
 `archives inspect` and `archives verify` are local and offline. They do not require Cloud credentials. `verify` checks descriptor/blob integrity, format compatibility, required capabilities, size/path safety, required secrets, auth stub counts, and portability diagnostics. Verification means integrity and compatibility, not trust; archives remain untrusted input.
 
-`core projects import` verifies before import, targets a new Core project only, and calls a local Core gateway (`RUN402_CORE_URL` or `--core-url`, default `http://127.0.0.1:4020`). It supports `--dry-run`, `--require-runnable`, `--env-file`, and repeated `--secret KEY=VALUE` overrides. Required secret names are reported by inspect/verify and in the archive's `secrets/required.env.template`; secret values are never exported.
+`archives import` verifies before import, targets a new Core project only, and calls a local Core gateway (`RUN402_CORE_URL` or `--core-url`, default `http://127.0.0.1:4020`). It supports `--dry-run`, `--require-runnable`, `--env-file`, and repeated `--secret KEY=VALUE` overrides. Required secret names are reported by inspect/verify and in the archive's `secrets/required.env.template`; secret values are never exported.
 
 Expected v1 exclusions: secret values, password hashes, sessions, refresh/access/OAuth tokens, MFA secrets, signed URLs, logs, billing/allowance/spend state, fleet/Aurora/global-routing/provider operations, managed backups, monitoring, abuse/compliance/support metadata, Cloud import, and existing-project merge import.
 

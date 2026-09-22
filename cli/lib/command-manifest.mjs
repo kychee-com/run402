@@ -151,7 +151,6 @@ export const COMMAND_MANIFEST = [
   { path: ["projects", "delete"], positionals: [], projectScoped: true, legacyPositionalProject: true, minimalArgs: [] },
   { path: ["projects", "promote-user"], positionals: [p("email")], projectScoped: true, legacyPositionalProject: true, minimalArgs: ["user@example.com"] },
   { path: ["projects", "demote-user"], positionals: [p("email")], projectScoped: true, legacyPositionalProject: true, minimalArgs: ["user@example.com"] },
-  { path: ["projects", "export"], positionals: [], projectScoped: true, legacyPositionalProject: true, minimalArgs: [] },
 
   // ── snapshots ────────────────────────────────────────────────────────────
   { path: ["snapshots", "create"], positionals: [], projectScoped: true, legacyPositionalProject: true, minimalArgs: [] },
@@ -171,13 +170,13 @@ export const COMMAND_MANIFEST = [
   { path: ["admin", "archive"], positionals: [], projectScoped: true, legacyPositionalProject: true, minimalArgs: ["--reason", "gate"] },
   { path: ["admin", "reactivate"], positionals: [], projectScoped: true, legacyPositionalProject: true, minimalArgs: [] },
 
-  // ── cloud / archives / core ──────────────────────────────────────────────
-  { path: ["cloud", "archives", "create"], positionals: [], projectScoped: true, legacyPositionalProject: true, minimalArgs: [] },
-  { path: ["cloud", "archives", "download"], positionals: [p("archive_id")], projectScoped: true, legacyPositionalProject: true, minimalArgs: ["arc_gate1", "--output", "__OUT_FILE__"] },
-  { path: ["cloud", "archives", "status"], positionals: [p("archive_id")], projectScoped: true, legacyPositionalProject: true, minimalArgs: ["arc_gate1"] },
+  // ── archives ─────────────────────────────────────────────────────────────
+  { path: ["archives", "create"], positionals: [], projectScoped: true, legacyPositionalProject: true, minimalArgs: [] },
+  { path: ["archives", "download"], positionals: [p("archive_id")], projectScoped: true, legacyPositionalProject: true, minimalArgs: ["arc_gate1", "--output", "__OUT_FILE__"] },
+  { path: ["archives", "status"], positionals: [p("archive_id")], projectScoped: true, legacyPositionalProject: true, minimalArgs: ["arc_gate1"] },
   { path: ["archives", "inspect"], positionals: [p("archive_path")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["__FIXTURE_FILE__"] },
   { path: ["archives", "verify"], positionals: [p("archive_path")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["__FIXTURE_FILE__"] },
-  { path: ["core", "projects", "import"], positionals: [p("archive_path")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["__FIXTURE_FILE__", "--name", "gate-import"] },
+  { path: ["archives", "import"], positionals: [p("archive_path")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["__FIXTURE_FILE__", "--name", "gate-import"] },
 
   // ── deploy (unified deploy v2) ───────────────────────────────────────────
   // Bare `run402 deploy` IS the deploy (a verb); the family's subcommands

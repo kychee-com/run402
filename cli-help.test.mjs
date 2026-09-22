@@ -76,9 +76,7 @@ const MATRIX = {
     shared: [],
     specific: ["lease-perpetual", "archive", "reactivate"],
   },
-  cloud: { shared: ["archives"], specific: [] },
-  archives: { shared: ["inspect", "verify"], specific: [] },
-  core: { shared: ["projects"], specific: [] },
+  archives: { shared: ["create", "status", "download", "inspect", "verify", "import"], specific: [] },
   // Bare `run402 deploy` is the deploy itself; `deploy --help` is checked in
   // a dedicated suite below (the v2 manifest + route shape).
   deploy: { shared: [], specific: ["rehearse", "promote", "resume", "status", "list", "events", "verify", "resolve", "releases"] },
@@ -206,17 +204,6 @@ const JOBS_ARTIFACTS = {
 // --help itself is covered via MATRIX.credentials.specific).
 const CREDENTIALS_PROJECT_KEYS = {
   shared: ["list", "status", "import", "export", "remove"],
-  specific: [],
-};
-
-// `run402 cloud archives <action>` and `run402 core projects <action>` are
-// nested groups whose --help (at any depth) falls back to the MODULE help.
-const CLOUD_ARCHIVES = {
-  shared: ["create", "download", "status"],
-  specific: [],
-};
-const CORE_PROJECTS = {
-  shared: ["import", "apply"],
   specific: [],
 };
 
@@ -527,26 +514,6 @@ describe("CLI --help contract", () => {
         assertHelp(await runCli(["credentials", "project-keys", action, "--help"]),
           `run402 credentials project-keys ${action} --help`,
           { expectHeadingStartsWith: "run402 credentials project-keys" });
-      });
-    }
-  });
-
-  describe("run402 cloud archives (nested)", () => {
-    for (const action of CLOUD_ARCHIVES.shared) {
-      it(`cloud archives ${action} --help prints usage (module-level help)`, async () => {
-        assertHelp(await runCli(["cloud", "archives", action, "--help"]),
-          `run402 cloud archives ${action} --help`,
-          { expectHeadingStartsWith: "run402 cloud" });
-      });
-    }
-  });
-
-  describe("run402 core projects (nested)", () => {
-    for (const action of CORE_PROJECTS.shared) {
-      it(`core projects ${action} --help prints usage (module-level help)`, async () => {
-        assertHelp(await runCli(["core", "projects", action, "--help"]),
-          `run402 core projects ${action} --help`,
-          { expectHeadingStartsWith: "run402 core" });
       });
     }
   });

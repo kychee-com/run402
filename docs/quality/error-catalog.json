@@ -561,6 +561,10 @@
         },
         {
           "owner": "public",
+          "source": "cli/lib/archives.mjs"
+        },
+        {
+          "owner": "public",
           "source": "cli/lib/argparse.mjs"
         },
         {
@@ -590,10 +594,6 @@
         {
           "owner": "public",
           "source": "cli/lib/contracts.mjs"
-        },
-        {
-          "owner": "public",
-          "source": "cli/lib/core.mjs"
         },
         {
           "owner": "public",
@@ -805,19 +805,11 @@
         },
         {
           "owner": "public",
-          "source": "cli/lib/cloud.mjs"
-        },
-        {
-          "owner": "public",
           "source": "cli/lib/contacts.mjs"
         },
         {
           "owner": "public",
           "source": "cli/lib/contracts.mjs"
-        },
-        {
-          "owner": "public",
-          "source": "cli/lib/core.mjs"
         },
         {
           "owner": "public",
