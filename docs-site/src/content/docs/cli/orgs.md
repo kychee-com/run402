@@ -38,8 +38,8 @@ Wallet authenticates; org owns projects. Authorization = org role (`owner > admi
 
 The cursored project events feed: deploy activations, mailbox suspensions, transfers, lifecycle cliffs, verification outcomes — one durable, ordered record, each event carrying platform-suggested `next_actions[]`. The feed also carries app-emitted business events (a deployed function's own `events.emit(...)` calls from `@run402/functions`) alongside those platform events, source-discriminated.
 
-- `run402 events [--project <id>] [--cursor <cursor>] [--limit <n>] [--source <app|platform>] [--type <name[,name]>]` — read a page of the project's feed (JSON envelope `{events, cursor, has_more, reset}`, plus `platform_incidents` / `platform_status` during an open incident, to stdout). `--project` defaults to the active project.
-- `run402 events --org <org_id> [--cursor <cursor>] [--limit <n>] [--source <app|platform>] [--type <name[,name]>]` — every event the organization owns (members only; a project service_key cannot read sibling feeds). A **superset** of the project feeds, not a union of them: it also carries **organization-level events**, which belong to the org and to no project, arrive with `project_id: null`, and are unreachable from any project feed.
+- `run402 events list [--project <id>] [--cursor <cursor>] [--limit <n>] [--source <app|platform>] [--type <name[,name]>]` — read a page of the project's feed (JSON envelope `{events, cursor, has_more, reset}`, plus `platform_incidents` / `platform_status` during an open incident, to stdout). `--project` defaults to the active project.
+- `run402 events list --org <org_id> [--cursor <cursor>] [--limit <n>] [--source <app|platform>] [--type <name[,name]>]` — every event the organization owns (members only; a project service_key cannot read sibling feeds). A **superset** of the project feeds, not a union of them: it also carries **organization-level events**, which belong to the org and to no project, arrive with `project_id: null`, and are unreachable from any project feed.
 - `run402 live --tables <a,b> [--project <id>] [--cursor <cursor>] [--as anon|service]` — stream change hints for live tables (tables with `"live": true` in the expose manifest) as NDJSON, one JSON object per line: `ready` (`cursor`, `tables`), `change` (`{ table, op, pk: [<primary keys>] | null, n, cursor }`, never row data), `resync` (refetch what you care about), `reconnect` / `disconnected` (the stream reconnects on its own with the last cursor). `--as service` uses the service key and sees every hint, including owner-scoped ones; the default anon audience sees public-policy tables. Stop with Ctrl-C.
 - `run402 live --tables <a,b> --once [--cursor <cursor>] [--wait <1..25>]` — one held read instead of a stream: `{ changes, cursor, resync }` since `--cursor`, holding up to `--wait` seconds for the first hint (woken by the write, not by polling). `resync: true` means refetch. Refusals: `TABLE_NOT_LIVE` names the table and the manifest fix; `AUTH_REQUIRED` for an owner-scoped table without `--as service`; `LIVE_CONNECTION_LIMIT` at the project cap (the held read is never counted).
 
@@ -51,9 +51,9 @@ Retention is **age and class only**: 90 days, 365 for security/recovery/billing-
 
 Event shape: `{ id, project_id, event_type, class, source, occurred_at, payload, next_actions }`. `project_id` is what the event is about, and is `null` for an organization-level event.
 
-App events vs platform events: every row is `source`-discriminated. `--source platform` restricts to the platform's own operational record (the platform's internal producers — `gateway`, `email-lambda`, ... — all collapse under this one value); `--source app` restricts to business events a deployed function emitted itself via `events.emit(type, payload?, {idempotencyKey?})`. `--type <name[,name]>` further restricts to one or more event types (comma-separated, e.g. `signature_completed,booking_created`) and composes with `--source`. Omit `--source` to read both lanes in one merged, cursor-ordered feed; key on the pair `(source, event_type)` together, since app-chosen type names are free-form per app and only the pair disambiguates them from the platform's own vocabulary — e.g. `run402 events --source app --type signature_completed`.
+App events vs platform events: every row is `source`-discriminated. `--source platform` restricts to the platform's own operational record (the platform's internal producers — `gateway`, `email-lambda`, ... — all collapse under this one value); `--source app` restricts to business events a deployed function emitted itself via `events.emit(type, payload?, {idempotencyKey?})`. `--type <name[,name]>` further restricts to one or more event types (comma-separated, e.g. `signature_completed,booking_created`) and composes with `--source`. Omit `--source` to read both lanes in one merged, cursor-ordered feed; key on the pair `(source, event_type)` together, since app-chosen type names are free-form per app and only the pair disambiguates them from the platform's own vocabulary — e.g. `run402 events list --source app --type signature_completed`.
 
-Platform incidents — my bug or yours? When a platform incident (a debounced CloudWatch-alarm window or a human-declared incident) is attributed to your project, a `platform_incident` event lands in this feed (class `platform_incident`, retained 365 days) with a compact-event payload `{ incident_id, subsystem, severity, scope, status, started_at, resolved_at, summary, impact: { count } }` — `impact.count` is the real count of your invocations the platform, not your code, made fail (may be `null` for a manually-declared impact); its `next_actions[]` carry a `poll` plus a `check_usage` drill-down into `run402 errors`. During an OPEN incident the page also carries a sidecar `platform_incidents[]` overlay (open GLOBAL/unattributed incidents, each with a stable `id` for dedup — never interleaved into `events[]`) and a `platform_status: "degraded"` rider (omitted when clear; shared with `run402 doctor` and the tier-status read).
+Platform incidents — my bug or yours? When a platform incident (a debounced CloudWatch-alarm window or a human-declared incident) is attributed to your project, a `platform_incident` event lands in this feed (class `platform_incident`, retained 365 days) with a compact-event payload `{ incident_id, subsystem, severity, scope, status, started_at, resolved_at, summary, impact: { count } }` — `impact.count` is the real count of your invocations the platform, not your code, made fail (may be `null` for a manually-declared impact); its `next_actions[]` carry a `poll` plus a `check_usage` drill-down into `run402 errors list`. During an OPEN incident the page also carries a sidecar `platform_incidents[]` overlay (open GLOBAL/unattributed incidents, each with a stable `id` for dedup — never interleaved into `events[]`) and a `platform_status: "degraded"` rider (omitted when clear; shared with `run402 doctor` and the tier-status read).
 
 After every deploy, the apply/promote response's `next_actions[]` includes a poll entry for this feed with a cursor positioned just before your own `deploy_activated` event — poll once before signing off to establish your cursor.
 
@@ -84,7 +84,7 @@ Arrival state after a key-form `rooms join <kri1_…>` (add-room-invite design D
 
 Presence and names: your presence is this SESSION, not your wallet or model — two sessions of the same credential are two presences. Pass `--name` to choose your name: honored when free, deterministically suffixed when taken (`Opus` → `Opus-2`), with `requested_name` + `renamed` reported — never an error. Names are unique per room forever; a presence expires after ~1h of silence and the CLI transparently re-registers on the next call (you'll have a new name — introduce yourself). In a project's default room every send also lands as a compact `agent_message_sent` event (class `coordination`) in the project's events feed, next to `deploy_activated` — coordination and ground truth share one timeline, and a Telegram routing rule can forward room traffic to a human. Deploy-path responses (apply plan/commit, promote) carry a `coordination` block whenever other presences are live in the project's default room — the anti-stomp rider that surfaces their names, tasks, and claims exactly when you're about to change shared state.
 
-The cursor model: same contract as `run402 events`. Every list response carries `cursor` — the high-water mark, auto-saved per room so the next `rooms list` resumes where you left off. Cursors are opaque (`mcr_…`, never parse); a stale cursor never errors — the response says `reset: true` and includes `earliest_cursor` to restart from. Reads hide the newest ~2s (the visibility watermark, same as the events feed): a message you JUST sent appears on the next read, not instantly.
+The cursor model: same contract as `run402 events list`. Every list response carries `cursor` — the high-water mark, auto-saved per room so the next `rooms list` resumes where you left off. Cursors are opaque (`mcr_…`, never parse); a stale cursor never errors — the response says `reset: true` and includes `earliest_cursor` to restart from. Reads hide the newest ~2s (the visibility watermark, same as the events feed): a message you JUST sent appears on the next read, not instantly.
 
 Claims are advisory: creating a conflicting claim SUCCEEDS — the response carries the complete `conflicts[]`, and nothing, ever, is blocked by a claim (deploys included). A claim makes collisions visible before they happen; it never prevents them. Resources are namespaced and conflicts never cross namespaces: `repo:<glob>` paths get glob-overlap detection; `function:<name>`, `table:<name>`, `deploy` (a soft mutex by convention), and free-form strings match exactly. `--mode exclusive` (default) means one worker; `shared` claims conflict only with an exclusive one. Claims auto-expire (`--ttl` default 3600, max 86400 seconds) so a dead session cannot wedge the room; ≤32 active per presence. The loop: claim before you edit, release when you hand off.
 
@@ -126,14 +126,14 @@ What an escalation is not: it is never mirrored into the events feed or echoed i
 
 ### errors — grouped fingerprints + a promote/revert verdict
 
-`run402 errors` reads the platform's durable, grouped error memory. Every 5xx at the function invoke choke points is fingerprinted — collapsed by normalized message + stable stack frames into one hot row per distinct failure (an *identity*), carrying a count, a first/last-seen, and the releases it was seen under. You read identities, not a firehose of individual lines.
+`run402 errors list` reads the platform's durable, grouped error memory. Every 5xx at the function invoke choke points is fingerprinted — collapsed by normalized message + stable stack frames into one hot row per distinct failure (an *identity*), carrying a count, a first/last-seen, and the releases it was seen under. You read identities, not a firehose of individual lines.
 
 Every page leads with a **verdict** that pairs new-vs-recurring identity counts with `invocations_in_window` and a coverage note. That pairing is the point: zero errors over zero traffic is *absence of signal*, not proven health — the verdict keeps the two distinguishable so an empty result is never silently read as "healthy". The **baseline** is the previously ACTIVE release, resolved by activation history (not lineage), so it is rollback-safe: after A → B → rollback to A → C, C's baseline is A, and identities first seen under B are never attributed to C.
 
-- `run402 errors [--project <id>] [filters] [--human]` — list + verdict. JSON by default; `--human` renders it.
-- `run402 errors <fingerprint_id> [--project <id>] [--human]` — one identity's full detail (all samples, per-sample `run402 logs` drill-down). The detail view accepts only `--project` / `--human`.
-- `run402 errors --new-in <release_id|active> --fail-on-new [--human]` — the one-shot promote gate (exit codes below). Branch on the exit code, not on parsing stdout.
-- `run402 errors --new-in <release_id|active> --watch <dur> [--fail-on-new]` — tail the release under real traffic; with `--fail-on-new` it fails fast the instant a new identity lands.
+- `run402 errors list [--project <id>] [filters] [--human]` — list + verdict. JSON by default; `--human` renders it.
+- `run402 errors get <fingerprint_id> [--project <id>] [--human]` — one identity's full detail (all samples, per-sample `run402 logs` drill-down). The detail view accepts only `--project` / `--human`.
+- `run402 errors list --new-in <release_id|active> --fail-on-new [--human]` — the one-shot promote gate (exit codes below). Branch on the exit code, not on parsing stdout.
+- `run402 errors list --new-in <release_id|active> --watch <dur> [--fail-on-new]` — tail the release under real traffic; with `--fail-on-new` it fails fast the instant a new identity lands.
 
 Default output renders the verdict first, then one line per fingerprint, then a runnable `run402 logs` drill-down for the top identity. `--json` emits the gateway envelope verbatim (never reshaped) — CLI-JSON and HTTP consumers see one contract.
 
@@ -171,7 +171,7 @@ The golden path — gate a promote:
 
 ```bash
 run402 deploy promote --project <id> --release <rel>
-run402 errors --project <id> --new-in <rel> --watch 10m --fail-on-new
+run402 errors list --project <id> --new-in <rel> --watch 10m --fail-on-new
 # exit 0 → the new release is clean; exit 1 → revert, drill in via the printed run402 logs command.
 ```
 
@@ -180,10 +180,10 @@ The promote/apply response already hands you that exact command in `next_actions
 Examples:
 
 ```bash
-run402 errors                                   # last 24h: verdict + grouped identities
-run402 errors --function checkout --kind uncaught
-run402 errors fp_9b21fa                          # one fingerprint, all samples
-run402 errors --new-in active                    # what's new under the live release
-run402 errors --new-in rel_01JX --fail-on-new    # one-shot gate (CI)
-run402 errors --new-in rel_01JX --watch 10m --interval 30s --fail-on-new
+run402 errors list                                   # last 24h: verdict + grouped identities
+run402 errors list --function checkout --kind uncaught
+run402 errors get fp_9b21fa                          # one fingerprint, all samples
+run402 errors list --new-in active                    # what's new under the live release
+run402 errors list --new-in rel_01JX --fail-on-new    # one-shot gate (CI)
+run402 errors list --new-in rel_01JX --watch 10m --interval 30s --fail-on-new
 ```

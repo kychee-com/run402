@@ -4,7 +4,7 @@
  * since I last looked": deploy activations, mailbox suspensions, transfers,
  * lifecycle cliffs, verification outcomes — each with platform-synthesized
  * next_actions drill-downs. The feed also carries app-emitted business
- * facts (a deployed function's own `events.emit(...)` calls) alongside the
+ * events (a deployed function's own `events.emit(...)` calls) alongside the
  * platform's own events — filter with --source/--type.
  *
  * JSON envelope to stdout (pipe contract); flags map 1:1 to the HTTP query.
@@ -15,7 +15,7 @@
 import { resolveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
-import { assertAllowedValue, assertKnownFlags, flagValue, normalizeArgv, positionalArgs } from "./argparse.mjs";
+import { assertAllowedValue, assertKnownFlags, flagValue, normalizeArgv, positionalArgs, failUnknownSubcommand } from "./argparse.mjs";
 
 /** Wire `source` vocabulary (mirrors the gateway's app/platform dichotomy). */
 export const SOURCES = ["app", "platform"];
@@ -23,15 +23,15 @@ export const SOURCES = ["app", "platform"];
 const HELP = `run402 events — what happened to your project since you last looked
 
 Usage:
-  run402 events [--project <project_id>] [--cursor <cursor>] [--limit <n>]
-                [--source <app|platform>] [--type <name[,name]>]
-  run402 events --org <org_id> [--cursor <cursor>] [--limit <n>]
-                [--source <app|platform>] [--type <name[,name]>]
+  run402 events list [--project <project_id>] [--cursor <cursor>] [--limit <n>]
+                     [--source <app|platform>] [--type <name[,name]>]
+  run402 events list --org <org_id> [--cursor <cursor>] [--limit <n>]
+                     [--source <app|platform>] [--type <name[,name]>]
 
 Options:
-  --project <id>    Project to read (defaults to the active project)
-  --org <id>        Read the org-wide feed instead — a SUPERSET of the project
-                    feeds: it also carries org-level facts (project_id null)
+  --project <project_id>  Project to read (defaults to the active project)
+  --org <org_id>    Read the org-wide feed instead — a SUPERSET of the project
+                    feeds: it also carries org-level events (project_id null)
   --cursor <cursor> Opaque cursor from a previous response. Returns events strictly
                     after it. Omit on first contact to start from the earliest
                     retained event.
@@ -45,7 +45,7 @@ App events vs platform events:
   operational record (deploy activations, mailbox suspensions, transfers,
   lifecycle cliffs, verification outcomes, ...) — the platform's internal
   producers (gateway, email-lambda, ...) all collapse under this one value.
-  "app" is business facts a deployed function emitted itself via
+  "app" is business events a deployed function emitted itself via
   \`events.emit(type, payload?, {idempotencyKey?})\` from @run402/functions —
   e.g. "signature_completed" or "booking_created". Consumers should key on
   the PAIR (source, event_type) together: app event_type names are free-form
@@ -58,7 +58,7 @@ The cursor model — an id is not a cursor:
     your repo, a memory note — wherever you keep state) and pass it back as
     --cursor next time. One call then returns everything you missed.
   - Two opaque tokens, and they are different things. An event's "id" names a
-    FACT: the same event has the same id in the project feed and the org feed,
+    EVENT: the same event has the same id in the project feed and the org feed,
     which is how you dedup across both. The page "cursor" names a POSITION,
     and a position only means something inside the row set it came from.
   - So a cursor is NOT portable. Replaying a --project cursor against --org,
@@ -84,9 +84,9 @@ When your cursor is unusable (reset semantics):
 Event shape:
   { "id", "project_id", "event_type", "class", "occurred_at", "payload",
     "next_actions" }
-  project_id is what the fact is ABOUT. It is null for an org-level fact —
+  project_id is what the event is ABOUT. It is null for an org-level event —
   one that belongs to the org and to no project, visible only via --org. It
-  may also name a project that no longer exists: a fact outlives the project
+  may also name a project that no longer exists: an event outlives the project
   it describes, so deleting a project no longer erases its history.
   event_type is flat snake_case: deploy_activated, mailbox_suspended,
   project_transfer_completed, organization_past_due, verification_failed,
@@ -107,30 +107,37 @@ own deploy_activated event — poll once after deploying to establish your
 cursor, then catch up next session in one call.
 
 Examples:
-  run402 events                                # active project, from the earliest retained event
-  run402 events --cursor evc_1a2b              # everything since last time
-  run402 events --project prj_abc --limit 200
-  run402 events --org 00000000-0000-0000-0000-aaaaaaaaaaaa --cursor evc_9z
-  run402 events --source app                   # just this project's own emitted business facts
-  run402 events --source app --type signature_completed,booking_created
-  run402 events --source platform              # just the platform's operational record
+  run402 events list                                # active project, from the earliest retained event
+  run402 events list --cursor evc_1a2b              # everything since last time
+  run402 events list --project prj_abc --limit 200
+  run402 events list --org 00000000-0000-0000-0000-aaaaaaaaaaaa --cursor evc_9z
+  run402 events list --source app                   # just this project's own emitted business events
+  run402 events list --source app --type signature_completed,booking_created
+  run402 events list --source platform              # just the platform's operational record
 `;
 
 export async function run(sub, args) {
-  // Flat command: no subcommands. `sub` is the first arg (may be a flag).
-  const argv = [sub, ...(Array.isArray(args) ? args : [])].filter((a) => a !== undefined && a !== null);
-  if (argv.includes("--help") || argv.includes("-h")) {
+  const rest = Array.isArray(args) ? args : [];
+  if (sub === undefined || sub === null || sub === "--help" || sub === "-h" || rest.includes("--help") || rest.includes("-h")) {
     console.log(HELP);
     process.exit(0);
   }
-  const a = normalizeArgv(argv);
+  switch (sub) {
+    case "list": return list(rest);
+    default:
+      failUnknownSubcommand("events", sub);
+  }
+}
+
+async function list(args) {
+  const a = normalizeArgv(args);
   const valueFlags = ["--project", "--org", "--cursor", "--limit", "--source", "--type"];
   assertKnownFlags(a, [...valueFlags, "--help", "-h"], valueFlags);
   const extra = positionalArgs(a, valueFlags);
   if (extra.length > 0) {
     fail({
       code: "BAD_USAGE",
-      message: `Unexpected argument for events: ${extra[0]}`,
+      message: `Unexpected argument for events list: ${extra[0]}`,
       hint: "Run `run402 events --help` for usage.",
     });
   }

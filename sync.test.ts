@@ -85,7 +85,7 @@ function readCommandSource(filePath: string): string | null {
 function parseCliCommands(): string[] {
   const cmds: string[] = [];
   const reserved = reservedSubcommands();
-  for (const mod of ["admin", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "feedback", "agent", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "orgs", "identity", "buzz", "grants", "delegates", "deliveries", "contacts", "subscriptions", "webhook-secret", "archives", "rooms", "messages", "claims", "escalations", "gitvault", "repos", "source-access"]) {
+  for (const mod of ["admin", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "feedback", "agent", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "orgs", "identity", "buzz", "grants", "delegates", "deliveries", "contacts", "subscriptions", "webhook-secret", "archives", "rooms", "messages", "claims", "escalations", "gitvault", "repos", "source-access", "events", "errors"]) {
     for (const sub of parseSubcommands(join(__dirname, "cli/lib", `${mod}.mjs`))) {
       if (reserved.has(`${mod}:${sub}`)) continue;
       cmds.push(`${mod}:${sub}`);
@@ -115,9 +115,7 @@ function parseCliCommands(): string[] {
   if (existsSync(join(__dirname, "cli/lib/up.mjs"))) cmds.push("up");
   if (existsSync(join(__dirname, "cli/lib/status.mjs"))) cmds.push("status");
   if (existsSync(join(__dirname, "cli/lib/doctor.mjs"))) cmds.push("doctor");
-  if (existsSync(join(__dirname, "cli/lib/events.mjs"))) cmds.push("events");
   if (existsSync(join(__dirname, "cli/lib/live.mjs"))) cmds.push("live");
-  if (existsSync(join(__dirname, "cli/lib/errors.mjs"))) cmds.push("errors");
   if (existsSync(join(__dirname, "cli/lib/dev.mjs"))) cmds.push("dev");
   if (existsSync(join(__dirname, "cli/lib/logs.mjs"))) cmds.push("logs");
   for (const verb of ["login", "logout", "whoami", "approve"]) {
@@ -130,7 +128,7 @@ function parseCliCommands(): string[] {
 function parseOpenClawCommands(): string[] {
   const cmds: string[] = [];
   const reserved = reservedSubcommands();
-  for (const mod of ["admin", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "feedback", "agent", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "orgs", "identity", "buzz", "grants", "delegates", "deliveries", "contacts", "subscriptions", "webhook-secret", "archives", "rooms", "messages", "claims", "escalations", "gitvault", "repos", "source-access"]) {
+  for (const mod of ["admin", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "feedback", "agent", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "orgs", "identity", "buzz", "grants", "delegates", "deliveries", "contacts", "subscriptions", "webhook-secret", "archives", "rooms", "messages", "claims", "escalations", "gitvault", "repos", "source-access", "events", "errors"]) {
     for (const sub of parseSubcommands(join(__dirname, "openclaw/scripts", `${mod}.mjs`))) {
       if (reserved.has(`${mod}:${sub}`)) continue;
       cmds.push(`${mod}:${sub}`);
@@ -158,9 +156,7 @@ function parseOpenClawCommands(): string[] {
   if (existsSync(join(__dirname, "openclaw/scripts/up.mjs"))) cmds.push("up");
   if (existsSync(join(__dirname, "openclaw/scripts/status.mjs"))) cmds.push("status");
   if (existsSync(join(__dirname, "openclaw/scripts/doctor.mjs"))) cmds.push("doctor");
-  if (existsSync(join(__dirname, "openclaw/scripts/events.mjs"))) cmds.push("events");
   if (existsSync(join(__dirname, "openclaw/scripts/live.mjs"))) cmds.push("live");
-  if (existsSync(join(__dirname, "openclaw/scripts/errors.mjs"))) cmds.push("errors");
   if (existsSync(join(__dirname, "openclaw/scripts/dev.mjs"))) cmds.push("dev");
   if (existsSync(join(__dirname, "openclaw/scripts/logs.mjs"))) cmds.push("logs");
   for (const verb of ["login", "logout", "whoami", "approve"]) {
@@ -564,7 +560,7 @@ const SURFACE: Capability[] = [
   // One CLI command + one MCP tool cover both scopes: the org-wide union
   // (GET /orgs/v1/:org_id/events) is the same surface addressed with
   // --org / org_id; the SDK's events.listForOrg is tracked in SDK_ONLY_METHODS.
-  { id: "list_project_events",          endpoint: "GET /projects/v1/:id/events",                   mcp: "list_project_events",          cli: "events",                        openclaw: "events" },
+  { id: "list_project_events",          endpoint: "GET /projects/v1/:id/events",                   mcp: "list_project_events",          cli: "events:list",                   openclaw: "events:list" },
   // tenant-live-changes: a long-lived stream has no MCP tool by design (see the
   // change design); the held read is the polling-friendly shape for MCP callers
   // via plain HTTP.
@@ -627,12 +623,12 @@ const SURFACE: Capability[] = [
   { id: "rooms_invite",                 endpoint: "POST /orgs/v1/:org_id/rooms/:room_key/invites", mcp: null, cli: "rooms:invite", openclaw: "rooms:invite" },
 
   // ── Release error rollup (release-error-rollup) ─────────────────────────
-  // One CLI command (`run402 errors`) + one MCP tool (`errors_list`) cover the
-  // whole surface: the list+verdict, the single-fingerprint detail (CLI
-  // positional / MCP `fingerprint_id` param), and the promote-gate watch (CLI
-  // `--watch`). The SDK's errors.get / errors.watch are tracked in
-  // SDK_ONLY_METHODS (no dedicated verb/tool of their own).
-  { id: "errors_list",                  endpoint: "GET /projects/v1/:id/errors",                   mcp: "errors_list",                  cli: "errors",                        openclaw: "errors" },
+  // `run402 errors list` (list + verdict, and the promote-gate `--watch`) and
+  // `run402 errors get <fingerprint_id>` (one identity's detail). One MCP tool
+  // (`errors_list`) covers both through its `fingerprint_id` param. The SDK's
+  // errors.watch is tracked in SDK_ONLY_METHODS (it rides `errors list --watch`).
+  { id: "errors_list",                  endpoint: "GET /projects/v1/:project_id/errors",           mcp: "errors_list",                  cli: "errors:list",                   openclaw: "errors:list" },
+  { id: "errors_get",                   endpoint: "GET /projects/v1/:project_id/errors/:fingerprint_id", mcp: null,                      cli: "errors:get",                    openclaw: "errors:get" },
 
   // ── Sign-in session and write approval (a person, not the agent) ─────────
   // One sign-in session graded by provenance (loopback | device). A browser
@@ -866,8 +862,8 @@ const SURFACE: Capability[] = [
   // Node-only) this machine's local TOFU pins — never wraps a key.
   // `access repair`/`revoke-key`/`declare-exposure` (D193-D203, rev 42 —
   // real epoch rotation, closing the gap this row's own `gap` field named)
-  // share this SAME `repos:access` CLI dispatch, like `errors.get`/
-  // `errors.watch` share `errors` — see SDK_ONLY_METHODS below for their
+  // share this SAME `repos:access` CLI dispatch, like `errors.watch`
+  // shares `errors list` — see SDK_ONLY_METHODS below for their
   // SDK methods.
   { id: "repos_access", endpoint: "GET /orgs/v1/:org_id/encryption-keys + GET /gitvault/v1/vaults/:vault_id/envelope-recipients (+ GET /agent/v1/source-access/wrappers for the caller's own member_custody block, control-plane session only)", mcp: null, cli: "repos:access", openclaw: "repos:access" },
   // `r402s-recover`: offline, NO server call at all (design D4), the same
@@ -1210,6 +1206,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   resolve_escalation: "escalations.resolve",
   manage_escalation_contacts: "escalations.listContacts",
   errors_list: "errors.list",
+  errors_get: "errors.get",
   get_notification: "admin.getNotification",
   get_notification_preferences: "admin.getNotificationPreferences",
   set_notification_preferences: "admin.setNotificationPreferences",
@@ -1688,7 +1685,7 @@ describe("SDK surface alignment", () => {
       // declareRecipientKeyRevoked/acceptRecipientKeyChange share the ONE
       // `repos:access` CLI dispatch (`access repair`/`revoke-key`/
       // `declare-exposure`/`repin` sub-verbs) — same "shares the parent
-      // command, no row of its own" pattern as `errors.get`/`errors.watch`
+      // command, no row of its own" pattern as `errors.watch`
       // above. declareRecipientKeyRevoked is additionally an internal step
       // `rotateEpochForKeyRevocation` composes (declare, then rotate off
       // the declaration's own returned counters). acceptRecipientKeyChange
@@ -1711,7 +1708,7 @@ describe("SDK surface alignment", () => {
       // effect — purely local housekeeping, no dedicated CLI verb/MCP tool.
       "gitvault.sweepObjectCache",
       // ─── Project events feed — org-wide union ──────────────────────────
-      // Shares the `events` CLI command (--org) and the list_project_events
+      // Shares the `events list` CLI command (--org) and the list_project_events
       // MCP tool (org_id param); no dedicated verb/tool of its own.
       "events.listForOrg",
       // Agent messaging: join_room folds presence-listing + claim-listing into
@@ -1722,12 +1719,9 @@ describe("SDK surface alignment", () => {
       "rooms.getPresence",
       "rooms.scoped",
       "rooms.forProject",
-      // ─── Release error rollup — detail + promote-gate watch ────────────
-      // `errors.list` is the SURFACE capability (errors_list). get + watch
-      // share the same `errors` CLI command (positional fingerprint id / the
-      // --watch tail) and the `errors_list` MCP tool (fingerprint_id param);
-      // neither has a dedicated verb/tool of its own.
-      "errors.get",
+      // ─── Release error rollup — promote-gate watch ─────────────────────
+      // `errors.list` / `errors.get` are SURFACE capabilities. watch rides
+      // `run402 errors list --watch`; it has no verb/tool of its own.
       "errors.watch",
       // ─── SSR origin cache (v1.52) — flag-variants of `run402 cache invalidate` ─
       // Single-URL form is the canonical CLI; prefix/all/many are SDK-side

@@ -345,7 +345,7 @@ describe("D. run402 errors emits JSON by default", () => {
   });
 
   it("no flags -> stdout parses as JSON carrying the gateway page", async () => {
-    const out = await runErrors(["--project", "prj_test123"]);
+    const out = await runErrors(["list", "--project", "prj_test123"]);
     assert.ok(out.trim().length > 0, "expected stdout; the mock page never reached the renderer");
     const parsed = JSON.parse(out);
     assert.equal(parsed.errors[0].fingerprint_id, "fp_9b21fa");
@@ -353,19 +353,19 @@ describe("D. run402 errors emits JSON by default", () => {
   });
 
   it("--json produces byte-identical stdout (true no-op)", async () => {
-    const without = await runErrors(["--project", "prj_test123"]);
-    const with_ = await runErrors(["--project", "prj_test123", "--json"]);
+    const without = await runErrors(["list", "--project", "prj_test123"]);
+    const with_ = await runErrors(["list", "--project", "prj_test123", "--json"]);
     assert.equal(with_, without);
   });
 
   it("--human renders prose instead of JSON", async () => {
-    const out = await runErrors(["--project", "prj_test123", "--human"]);
+    const out = await runErrors(["list", "--project", "prj_test123", "--human"]);
     assert.ok(out.trim().length > 0, "expected rendered output under --human");
     assert.throws(() => JSON.parse(out), "stdout under --human must not be JSON");
   });
 
   it("--human with --json is a usage error and emits nothing on stdout", async () => {
-    const out = await runErrors(["--project", "prj_test123", "--human", "--json"]);
+    const out = await runErrors(["list", "--project", "prj_test123", "--human", "--json"]);
     assert.equal(out.trim(), "");
   });
 });

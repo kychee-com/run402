@@ -74,9 +74,9 @@ Run `node scripts/documentation-inventory.mjs` to reject newly discovered unclas
 | public | [cli/lib/doctor.mjs](cli/lib/doctor.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/domains.mjs](cli/lib/domains.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/email.mjs](cli/lib/email.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | source published: 23751749; no separate hosted acceptance required |
-| public | [cli/lib/errors.mjs](cli/lib/errors.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | source published: 23751749; no separate hosted acceptance required |
+| public | [cli/lib/errors.mjs](cli/lib/errors.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/escalations.mjs](cli/lib/escalations.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
-| public | [cli/lib/events.mjs](cli/lib/events.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | source published: 23751749; no separate hosted acceptance required |
+| public | [cli/lib/events.mjs](cli/lib/events.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/feedback.mjs](cli/lib/feedback.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/functions.mjs](cli/lib/functions.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | source published: 23751749; no separate hosted acceptance required |
 | public | [cli/lib/gitvault.mjs](cli/lib/gitvault.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | source published: 23751749; no separate hosted acceptance required |
@@ -89,7 +89,7 @@ Run `node scripts/documentation-inventory.mjs` to reject newly discovered unclas
 | public | [cli/lib/live.mjs](cli/lib/live.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | source published: 23751749; no separate hosted acceptance required |
 | public | [cli/lib/login.mjs](cli/lib/login.mjs) | guide / cli | pending | pending |
 | public | [cli/lib/logout.mjs](cli/lib/logout.mjs) | guide / cli | pending | pending |
-| public | [cli/lib/logs.mjs](cli/lib/logs.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | source published: 23751749; no separate hosted acceptance required |
+| public | [cli/lib/logs.mjs](cli/lib/logs.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/messages.mjs](cli/lib/messages.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | source published: 23751749; no separate hosted acceptance required |
 | public | [cli/lib/notifications.mjs](cli/lib/notifications.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | source published: 23751749; no separate hosted acceptance required |
 | public | [cli/lib/orgs.mjs](cli/lib/orgs.mjs) | guide / cli | pending | pending |

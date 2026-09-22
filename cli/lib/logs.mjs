@@ -77,7 +77,7 @@ Tip: the request id appears in:
   - The 'x-run402-request-id' response header on every function response
   - The 'requestId' field of any R402_SSR_RUNTIME_ERROR envelope
   - The 'request_id' field in deploy / cache invalidate result envelopes
-  - The 'samples' of 'run402 errors' (each sample names a runnable logs command)
+  - The 'samples' of 'run402 errors list' (each sample names a runnable logs command)
 `;
 
 const VALUE_FLAGS = ["--request-id", "--function", "--project", "--tail", "--since"];

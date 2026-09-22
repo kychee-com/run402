@@ -6651,11 +6651,11 @@ describe("CLI errors verdict + promote gate", () => {
     };
   }
 
-  // Reconstruct the flat `run402 errors <argv>` dispatch: cli.mjs calls
-  // run(sub, rest) where the full post-"errors" argv is [sub, ...rest].
-  async function invokeErrors(argv) {
+  // Reconstruct the `run402 errors <sub> <argv>` dispatch: cli.mjs calls
+  // run(sub, rest).
+  async function invokeErrors(sub, argv) {
     const { run } = await import("./cli/lib/errors.mjs");
-    return run(argv[0], argv.slice(1));
+    return run(sub, argv);
   }
 
   it("--json list emits the wire envelope VERBATIM (CLI↔wire parity)", async () => {
@@ -6666,7 +6666,7 @@ describe("CLI errors verdict + promote gate", () => {
     let threw = null;
     captureStart();
     try {
-      await invokeErrors(["--project", TEST_PROJECT.project_id, "--json"]);
+      await invokeErrors("list", ["--project", TEST_PROJECT.project_id, "--json"]);
     } catch (e) { threw = e; } finally {
       captureStop();
       globalThis.fetch = prevFetch;
@@ -6688,7 +6688,7 @@ describe("CLI errors verdict + promote gate", () => {
     let threw = null;
     captureStart();
     try {
-      await invokeErrors(["--project", TEST_PROJECT.project_id, "--human"]);
+      await invokeErrors("list", ["--project", TEST_PROJECT.project_id, "--human"]);
     } catch (e) { threw = e; } finally {
       captureStop();
       globalThis.fetch = prevFetch;
@@ -6715,7 +6715,7 @@ describe("CLI errors verdict + promote gate", () => {
     let threw = null;
     captureStart();
     try {
-      await invokeErrors(["fp_paritytest01", "--project", TEST_PROJECT.project_id, "--json"]);
+      await invokeErrors("get", ["fp_paritytest01", "--project", TEST_PROJECT.project_id, "--json"]);
     } catch (e) { threw = e; } finally {
       captureStop();
       globalThis.fetch = prevFetch;
@@ -6737,7 +6737,7 @@ describe("CLI errors verdict + promote gate", () => {
     let threw = null;
     captureStart();
     try {
-      await invokeErrors(["--project", TEST_PROJECT.project_id, "--new-in", "rel_new1", "--fail-on-new"]);
+      await invokeErrors("list", ["--project", TEST_PROJECT.project_id, "--new-in", "rel_new1", "--fail-on-new"]);
     } catch (e) { threw = e; } finally {
       captureStop();
       globalThis.fetch = prevFetch;
@@ -6754,7 +6754,7 @@ describe("CLI errors verdict + promote gate", () => {
     let threw = null;
     captureStart();
     try {
-      await invokeErrors(["--project", TEST_PROJECT.project_id, "--new-in", "rel_new1", "--fail-on-new"]);
+      await invokeErrors("list", ["--project", TEST_PROJECT.project_id, "--new-in", "rel_new1", "--fail-on-new"]);
     } catch (e) { threw = e; } finally {
       captureStop();
       globalThis.fetch = prevFetch;
@@ -6781,7 +6781,7 @@ describe("CLI errors verdict + promote gate", () => {
     let threw = null;
     captureStart();
     try {
-      await invokeErrors(["--project", TEST_PROJECT.project_id, "--new-in", "rel_new1", "--fail-on-new"]);
+      await invokeErrors("list", ["--project", TEST_PROJECT.project_id, "--new-in", "rel_new1", "--fail-on-new"]);
     } catch (e) { threw = e; } finally {
       captureStop();
       globalThis.fetch = prevFetch;
@@ -6804,7 +6804,7 @@ describe("CLI errors verdict + promote gate", () => {
     let threw = null;
     captureStart();
     try {
-      await invokeErrors([
+      await invokeErrors("list", [
         "--project", TEST_PROJECT.project_id,
         "--since", "2026-07-01T00:00:00Z",
         "--until", "2026-07-02T00:00:00Z",

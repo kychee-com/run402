@@ -484,7 +484,7 @@
     "line": 172,
     "language": "bash",
     "kind": "commands",
-    "sha256": "051fb890742d0624b91bc3b8b587c68c2d9986db381b2faf5a41eaf6f04c81fd",
+    "sha256": "52081bd6d7f04052acb616470462bb9c67b815a9f112f07a1ff96f7f89a8ea9c",
     "validation": "cli-help-output-sync"
   },
   {
@@ -492,7 +492,7 @@
     "line": 182,
     "language": "bash",
     "kind": "commands",
-    "sha256": "404c93429c85e3d60307f2bfde9b75b26bda251336ca778f1a97440876a0b3b2",
+    "sha256": "051241e43bb6641a67066fb637eeaf529c86b77d929b41efdbacb431f69e8989",
     "validation": "cli-help-output-sync"
   },
   {

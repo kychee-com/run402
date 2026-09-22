@@ -46,6 +46,8 @@ const GROUPED_COMMANDS = [
   "credentials",
   "domains",
   "email",
+  "errors",
+  "events",
   "functions",
   "grants",
   "image",

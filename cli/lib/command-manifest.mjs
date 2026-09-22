@@ -243,8 +243,8 @@ export const COMMAND_MANIFEST = [
   { path: ["delegates", "revoke"], legacyPositionalProject: false, positionals: [p("delegate_id")], projectScoped: true, minimalArgs: ["dlg_gate1"] },
   { path: ["delegates", "rotate"], legacyPositionalProject: false, positionals: [p("delegate_id")], projectScoped: true, minimalArgs: ["dlg_gate1"] },
 
-  // ── events / errors (flat, merged runners) ───────────────────────────────
-  { path: ["events"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "merged" },
+  // ── events / live ────────────────────────────────────────────────────────
+  { path: ["events", "list"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
   { path: ["live"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["--tables", "cells", "--once"], runStyle: "merged" },
   { path: ["deliveries", "list"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
   { path: ["deliveries", "get"], positionals: [p("notification_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["n_1"], runStyle: "sub" },
@@ -325,7 +325,8 @@ export const COMMAND_MANIFEST = [
   // Principal-scoped (one bundle covers every vault you can read), so no
   // --project — deliberately unlike its eleven vault-scoped siblings.
   { path: ["repos", "recovery-bundle"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["--out", "-"], runStyle: "sub", skipBehavioral: "exports the caller's live member recovery bundle (stamps recovery-posture export evidence server-side)" },
-  { path: ["errors"], positionals: [p("fingerprint_id", { required: false })], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "merged" },
+  { path: ["errors", "list"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
+  { path: ["errors", "get"], positionals: [p("fingerprint_id")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["fp_gate1"], runStyle: "sub" },
 
   // ── jobs ─────────────────────────────────────────────────────────────────
   { path: ["jobs", "submit"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["--file", "__FIXTURE_FILE__"] },
@@ -483,7 +484,7 @@ export const COMMAND_MANIFEST = [
   { path: ["doctor"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["--no-scan"], runStyle: "merged" },
   { path: ["webhook-secret", "rotate"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
   // `run402 logs [<function>] --request-id <id>`: the optional positional is
-  // the function name (`run402 errors` samples print it that way); it is
+  // the function name (`run402 errors list` samples print it that way); it is
   // never a project id.
   { path: ["logs"], positionals: [p("function", { required: false })], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["--request-id", "req_gate123"], runStyle: "merged" },
 ];

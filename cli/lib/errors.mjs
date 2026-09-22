@@ -30,6 +30,7 @@ import {
   normalizeArgv,
   parseIntegerFlag,
   positionalArgs,
+  failUnknownSubcommand,
 } from "./argparse.mjs";
 
 /** Wire `kind` vocabulary (mirrors the gateway's KINDS set). */
@@ -43,10 +44,10 @@ export const DEFAULT_INTERVAL_MS = 15000;
 const HELP = `run402 errors — grouped error fingerprints + a promote/revert verdict
 
 Usage:
-  run402 errors [--project <id>] [filters] [--human]
-  run402 errors <fingerprint_id> [--project <id>] [--human]
-  run402 errors --new-in <release_id|active> --fail-on-new [--human]
-  run402 errors --new-in <release_id|active> --watch <dur> [--fail-on-new]
+  run402 errors list [--project <project_id>] [filters] [--human]
+  run402 errors get <fingerprint_id> [--project <project_id>] [--human]
+  run402 errors list --new-in <release_id|active> --fail-on-new [--human]
+  run402 errors list --new-in <release_id|active> --watch <dur> [--fail-on-new]
 
 What this is:
   A "fingerprint" is one error IDENTITY — errors with the same normalized
@@ -66,7 +67,7 @@ What this is:
   under that release; "active" resolves the project's live release.
 
 Filters (each maps 1:1 to a query param):
-  --project <id>        Project to read (defaults to the active project)
+  --project <project_id> Project to read (defaults to the active project)
   --since <iso>         Window start (ISO-8601). Default: 24h before --until
   --until <iso>         Window end (ISO-8601). Default: now
   --function <name>     Only this function's fingerprints
@@ -115,30 +116,38 @@ Auth:
   leaks existence). Read-only; never lifecycle-gated.
 
 The golden path — gate a promote:
-  run402 deploy promote --project <id> --release <rel>
-  run402 errors --project <id> --new-in <rel> --watch 10m --fail-on-new
+  run402 deploy promote <release_id> --project <project_id>
+  run402 errors list --project <project_id> --new-in <release_id> --watch 10m --fail-on-new
   # exit 0 -> the new release is clean; exit 1 -> revert, drill in via logs.
   # (a promote response already hands you this exact command in next_actions
   #  as the "watch_errors" action — copy it verbatim.)
 
 Examples:
-  run402 errors                                   # last 24h, verdict + groups
-  run402 errors --function checkout --kind uncaught
-  run402 errors --since 2026-07-11T00:00:00Z --limit 200
-  run402 errors fp_9b21fa                          # one fingerprint, all samples
-  run402 errors --new-in active                    # what's new under the live release
-  run402 errors --new-in rel_01JX --fail-on-new    # one-shot gate (CI)
-  run402 errors --new-in rel_01JX --watch 10m --interval 30s --fail-on-new
+  run402 errors list                              # last 24h, verdict + groups
+  run402 errors list --function checkout --kind uncaught
+  run402 errors list --since 2026-07-11T00:00:00Z --limit 200
+  run402 errors get fp_9b21fa                     # one fingerprint, all samples
+  run402 errors list --new-in active              # what's new under the live release
+  run402 errors list --new-in rel_01JX --fail-on-new    # one-shot gate (CI)
+  run402 errors list --new-in rel_01JX --watch 10m --interval 30s --fail-on-new
 `;
 
 export async function run(sub, args = []) {
-  const argv = [sub, ...(Array.isArray(args) ? args : [])].filter((x) => x !== undefined && x !== null);
-  if (argv.includes("--help") || argv.includes("-h")) {
+  const rest = Array.isArray(args) ? args : [];
+  if (sub === undefined || sub === null || sub === "--help" || sub === "-h" || rest.includes("--help") || rest.includes("-h")) {
     console.log(HELP);
     process.exit(0);
   }
+  switch (sub) {
+    case "list": return runErrors("list", rest);
+    case "get": return runErrors("get", rest);
+    default:
+      failUnknownSubcommand("errors", sub);
+  }
+}
 
-  const a = normalizeArgv(argv);
+async function runErrors(mode, args) {
+  const a = normalizeArgv(args);
   const valueFlags = [
     "--project", "--since", "--until", "--function", "--kind",
     "--fingerprint", "--new-in", "--limit", "--cursor", "--watch", "--interval",
@@ -147,14 +156,21 @@ export async function run(sub, args = []) {
   assertKnownFlags(a, [...valueFlags, ...boolFlags], valueFlags);
 
   const positionals = positionalArgs(a, valueFlags);
-  if (positionals.length > 1) {
+  if (mode === "list" && positionals.length > 0) {
     fail({
       code: "BAD_USAGE",
-      message: `Unexpected extra argument: ${positionals[1]}`,
-      hint: "Pass at most one <fingerprint_id> for the detail view. Run `run402 errors --help`.",
+      message: `Unexpected argument for errors list: ${positionals[0]}`,
+      hint: "Read one fingerprint with `run402 errors get <fingerprint_id>`. Run `run402 errors --help`.",
     });
   }
-  const fingerprintId = positionals[0] ?? null;
+  if (mode === "get" && positionals.length !== 1) {
+    fail({
+      code: "BAD_USAGE",
+      message: positionals.length === 0 ? "Missing <fingerprint_id>." : `Unexpected extra argument: ${positionals[1]}`,
+      hint: "Usage: run402 errors get <fingerprint_id> [--project <project_id>] [--human]",
+    });
+  }
+  const fingerprintId = mode === "get" ? positionals[0] : null;
   // Output contract (cli-output-shape): JSON is ALWAYS the default. `--json`
   // is a universally-accepted no-op; human rendering is the `--human`
   // opt-out, matching `run402 up`. Never gate stdout shape on `--json`.
@@ -183,8 +199,8 @@ export async function run(sub, args = []) {
     if (offending) {
       fail({
         code: "BAD_USAGE",
-        message: `${offending} is not valid with a <fingerprint_id> (detail view).`,
-        hint: "Detail view accepts only --project and --human. Drop the fingerprint id to list + get a verdict.",
+        message: `${offending} is not valid with errors get <fingerprint_id>.`,
+        hint: "errors get accepts only --project and --human. Use `run402 errors list` to list + get a verdict.",
       });
     }
     const projectId = resolveProjectId(project);

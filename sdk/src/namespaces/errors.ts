@@ -106,7 +106,7 @@ function sleepRacingSignal(ms: number, signal?: AbortSignal): Promise<void> {
  * cached locally (the historical path); otherwise the client's principal
  * credential — a SIWX wallet, session, or delegate — which the gateway
  * authorizes through `project.read`. That second path is how the agent a Buzz
- * page addresses runs `run402 errors --project …` on a project it never
+ * page addresses runs `run402 errors list --project …` on a project it never
  * deployed: an org member or teammate holds no project key and does not need
  * one.
  */

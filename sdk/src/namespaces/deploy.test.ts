@@ -272,7 +272,7 @@ describe("Deploy.apply (happy path)", () => {
       },
       next_actions: [
         { type: "poll", method: "GET", path: "/projects/v1/prj_test/events?cursor=evc_10" },
-        { type: "watch_errors", command: "run402 errors --project prj_test --new-in rel_riders --watch 10m --fail-on-new" },
+        { type: "watch_errors", command: "run402 errors list --project prj_test --new-in rel_riders --watch 10m --fail-on-new" },
         {
           type: "hand_to_member",
           method: "POST",
