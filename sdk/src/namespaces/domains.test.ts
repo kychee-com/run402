@@ -79,7 +79,7 @@ function principalCreds(): CredentialsProvider {
 }
 
 describe("ProjectDomain SDK", () => {
-  it("ensures desired state through the project-scoped control-plane route", async () => {
+  it("connects a domain through the project-scoped control-plane collection route", async () => {
     const desired = {
       email: {
         send: { enabled: true },
@@ -91,16 +91,16 @@ describe("ProjectDomain SDK", () => {
       },
     };
     const { fetch, calls } = mockFetch((call) => {
-      assert.equal(call.url, "https://api.example.test/projects/v1/prj_visible/domains/kysigned.com");
+      assert.equal(call.url, "https://api.example.test/projects/v1/prj_visible/domains");
       assert.equal(call.method, "POST");
       assert.equal(call.headers["SIGN-IN-WITH-X"], "test-siwx");
       assert.equal(call.headers.Authorization, undefined);
-      assert.deepEqual(JSON.parse(call.body as string), { desired });
+      assert.deepEqual(JSON.parse(call.body as string), { domain: "kysigned.com", desired });
       return jsonResponse(projectDomain({ desired }));
     });
 
     const sdk = makeSdk(principalCreds(), fetch);
-    const result = await sdk.domains.ensure("prj_visible", "kysigned.com", { desired });
+    const result = await sdk.domains.connect("prj_visible", { domain: "kysigned.com", desired });
     assert.equal(result.provenance.local_cache, "not_used");
     assert.equal(calls.length, 1);
   });

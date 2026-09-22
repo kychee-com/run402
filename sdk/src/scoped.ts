@@ -108,7 +108,7 @@ import type {
 } from "./namespaces/contracts.js";
 import type {
   ProjectDomain,
-  ProjectDomainEnsureOptions,
+  ProjectDomainConnectInput,
   ProjectDomainListResult,
   ProjectDomainTestReceiveResult,
   ProjectDomainWaitOptions,
@@ -795,8 +795,8 @@ function createScopedApplyHero(parent: Run402, projectId: string): ScopedApplyHe
 class ScopedDomains {
   constructor(private readonly parent: Run402, private readonly projectId: string) {}
 
-  ensure(domain: string, opts: ProjectDomainEnsureOptions): Promise<ProjectDomain> {
-    return this.parent.domains.ensure(this.projectId, domain, opts);
+  connect(input: ProjectDomainConnectInput): Promise<ProjectDomain> {
+    return this.parent.domains.connect(this.projectId, input);
   }
   get(domain: string): Promise<ProjectDomain> {
     return this.parent.domains.get(this.projectId, domain);

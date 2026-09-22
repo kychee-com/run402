@@ -468,7 +468,7 @@ const SURFACE: Capability[] = [
   { id: "list_subdomains",   endpoint: "GET /subdomains/v1",               mcp: "list_subdomains",   cli: "subdomains:list",    openclaw: "subdomains:list" },
 
   // ── Project domains ─────────────────────────────────────────────────────
-  { id: "domains_ensure",       endpoint: "PUT /projects/v1/:project_id/domains/:domain",       mcp: "domains_ensure",       cli: "domains:connect",      openclaw: "domains:connect" },
+  { id: "domains_connect",      endpoint: "POST /projects/v1/:project_id/domains",              mcp: "domains_connect",      cli: "domains:connect",      openclaw: "domains:connect" },
   { id: "domains_list",         endpoint: "GET /projects/v1/:project_id/domains",               mcp: "domains_list",         cli: "domains:list",         openclaw: "domains:list" },
   { id: "domains_get",          endpoint: "GET /projects/v1/:project_id/domains/:domain",       mcp: "domains_get",          cli: "domains:status",       openclaw: "domains:status" },
   { id: "domains_dns",          endpoint: "GET /projects/v1/:project_id/domains/:domain",       mcp: null,                   cli: "domains:dns",          openclaw: "domains:dns" },
@@ -1107,7 +1107,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   list_subdomains: "subdomains.list",
 
   // Project domains
-  domains_ensure: "domains.ensure",
+  domains_connect: "domains.connect",
   domains_list: "domains.list",
   domains_get: "domains.get",
   domains_dns: "domains.get",
@@ -2161,10 +2161,7 @@ describe("CLI/MCP SDK-boundary guard", () => {
   it("keeps server-capable custom-domain handlers from preflighting local project-key cache", () => {
     const serverCapableDomainHandlers = [
       "cli/lib/domains.mjs",
-      "src/tools/add-custom-domain.ts",
-      "src/tools/list-custom-domains.ts",
-      "src/tools/check-domain-status.ts",
-      "src/tools/remove-custom-domain.ts",
+      "src/tools/domains.ts",
     ];
     const forbiddenLookup = /\b(?:getProject|findProject|loadKeyStore|projectsFile|projectCredentialsFile)\s*\(/g;
     const violations: string[] = [];

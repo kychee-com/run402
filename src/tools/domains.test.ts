@@ -23,8 +23,8 @@ mock.module("../sdk.js", {
   namedExports: {
     getSdk: () => ({
       domains: {
-        ensure: async (...args: unknown[]) => {
-          calls.push({ method: "ensure", args });
+        connect: async (...args: unknown[]) => {
+          calls.push({ method: "connect", args });
           return domainAggregate;
         },
         check: async (...args: unknown[]) => {
@@ -57,8 +57,8 @@ mock.module("../sdk.js", {
 });
 
 const {
-  domainsEnsureSchema,
-  handleDomainsEnsure,
+  domainsConnectSchema,
+  handleDomainsConnect,
   handleDomainsCheck,
   handleDomainsTestReceive,
   handleDomainsDisconnect,
@@ -76,22 +76,22 @@ describe("project domain MCP tools", () => {
         receive: { enabled: true, strategy: "forwarding_mode" },
       },
     };
-    const parsed = z.object(domainsEnsureSchema).parse({
+    const parsed = z.object(domainsConnectSchema).parse({
       project_id: "prj_123",
       domain: "kysigned.com",
       desired,
     });
 
-    const result = await handleDomainsEnsure(parsed);
+    const result = await handleDomainsConnect(parsed);
 
     assert.equal(result.isError, undefined);
     assert.deepEqual(calls, [
       {
-        method: "ensure",
-        args: ["prj_123", "kysigned.com", { desired }],
+        method: "connect",
+        args: ["prj_123", { domain: "kysigned.com", desired }],
       },
     ]);
-    assert.match(result.content[0]!.text, /Project Domain Ensured/);
+    assert.match(result.content[0]!.text, /Project Domain Connected/);
     assert.match(result.content[0]!.text, /kysigned\.com/);
   });
 

@@ -57,7 +57,7 @@ describe("scope handles exist", () => {
 });
 
 describe("wallet handle", () => {
-  it("r.wallet(addr).setLabel(label) PUTs { label }", async () => {
+  it("r.wallet(addr).setLabel(label) POSTs { label }", async () => {
     const bodies: unknown[] = [];
     const r = sdkCapturing(bodies);
     await r.wallet("0xabc").setLabel("kychon");
@@ -78,16 +78,18 @@ describe("admin lease verb-split", () => {
 });
 
 describe("options-object call shapes send the expected wire body", () => {
-  it("domains.ensure", async () => {
+  it("domains.connect", async () => {
     const bodies: unknown[] = [];
     const r = sdkCapturing(bodies);
-    await r.domains.ensure("prj_1", "ex.com", {
+    await r.domains.connect("prj_1", {
+      domain: "ex.com",
       desired: {
         web: { enabled: true, target: "sub" },
         email: { send: { enabled: true } },
       },
     });
     assert.deepEqual(bodies[0], {
+      domain: "ex.com",
       desired: {
         web: { enabled: true, target: "sub" },
         email: { send: { enabled: true } },
@@ -133,12 +135,12 @@ describe("scoped wrappers use the canonical form", () => {
     assert.deepEqual(bodies[0], { key: "API_KEY", value: "v1" });
   });
 
-  it("r.project(id).domains.ensure(domain, { desired }) sends the desired state", async () => {
+  it("r.project(id).domains.connect({ domain, desired }) sends the domain and desired state", async () => {
     const bodies: unknown[] = [];
     const r = sdkCapturing(bodies);
     const p = await r.project("prj_1");
-    await p.domains.ensure("ex.com", { desired: { email: { receive: { enabled: true } } } });
-    assert.deepEqual(bodies[0], { desired: { email: { receive: { enabled: true } } } });
+    await p.domains.connect({ domain: "ex.com", desired: { email: { receive: { enabled: true } } } });
+    assert.deepEqual(bodies[0], { domain: "ex.com", desired: { email: { receive: { enabled: true } } } });
   });
 });
 

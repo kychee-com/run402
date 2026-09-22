@@ -307,7 +307,7 @@ async function connect(args) {
   }
   const projectId = resolveProjectId(flagValue(parsed, "--project"));
   try {
-    const result = await getSdk().domains.ensure(projectId, domain, { desired: desiredFromConnectFlags(domain, parsed) });
+    const result = await getSdk().domains.connect(projectId, { domain, desired: desiredFromConnectFlags(domain, parsed) });
     print(result);
     printHandoff(result);
   } catch (err) {

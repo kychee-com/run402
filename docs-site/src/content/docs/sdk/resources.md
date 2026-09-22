@@ -636,7 +636,7 @@ Subdomain auto-reassignment: add once. Every subsequent deploy to the same proje
 The ProjectDomain lifecycle — the ONE surface for custom domains (web + email).
 
 ```
-ensure(projectId, domain, { desired }): Promise<ProjectDomain>   // connect / update desired state
+connect(projectId, { domain, desired }): Promise<ProjectDomain>   // POST /projects/v1/:project_id/domains; connect or change desired state
 get(projectId, domain): Promise<ProjectDomain>
 list(projectId): Promise<{ domains: ProjectDomain[] }>
 check(projectId, domain): Promise<ProjectDomain>                 // refresh observations
@@ -652,7 +652,8 @@ disconnect(projectId, domain): Promise<{ status, domain }>
 
 ```ts
 // Root domain — Run402 hosts the DNS zone; the owner makes ONE nameserver change.
-const d = await r.domains.ensure(projectId, "example.com", {
+const d = await r.domains.connect(projectId, {
+  domain: "example.com",
   desired: { authority: "hosted_dns_zone", web: { enabled: true } },
 });
 // hosted_zone is present only for a hosted-zone domain, hence the ?.
@@ -660,7 +661,7 @@ const nameservers = d.hosted_zone?.ns_assigned ?? [];   // hand these two to the
 await r.domains.wait(projectId, "example.com", { until: "active" });
 
 // Subdomain / you keep your DNS host — add the records the response lists.
-await r.domains.ensure(projectId, "app.example.com", { desired: { web: { enabled: true } } });
+await r.domains.connect(projectId, { domain: "app.example.com", desired: { web: { enabled: true } } });
 ```
 
 `authority: "hosted_dns_zone"` is the only workable path for a ROOT domain at most registrars (a root CNAME is illegal without flattening/ALIAS support) and collapses setup to one registrar step: Run402 applies every in-zone record, verifies ownership, and issues TLS once delegation is observed. Existing MX/TXT are imported into the hosted zone before the nameserver change is recommended, so mail keeps working. `hosted_zone` reports `{ dns_hosting, status, ns_assigned, imported_records }`; disconnecting tears the zone down (DNS stops resolving until nameservers are re-pointed).

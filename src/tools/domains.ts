@@ -15,7 +15,7 @@ const desiredSchema = z
       'hosts; omit it (or use "manual_dns") to add the returned dns_records yourself.',
   );
 
-export const domainsEnsureSchema = {
+export const domainsConnectSchema = {
   project_id: z.string().describe("The project ID"),
   domain: z.string().describe("The DNS domain, e.g. kysigned.com"),
   desired: desiredSchema,
@@ -61,18 +61,19 @@ export const domainsDisconnectSchema = {
   domain: z.string().describe("The DNS domain, e.g. kysigned.com"),
 };
 
-export async function handleDomainsEnsure(args: {
+export async function handleDomainsConnect(args: {
   project_id: string;
   domain: string;
   desired: Record<string, unknown>;
 }): Promise<ToolResult> {
   try {
-    const result = await getSdk().domains.ensure(args.project_id, args.domain, {
+    const result = await getSdk().domains.connect(args.project_id, {
+      domain: args.domain,
       desired: args.desired,
     });
-    return jsonToolResult("Project Domain Ensured", result);
+    return jsonToolResult("Project Domain Connected", result);
   } catch (err) {
-    return mapSdkError(err, "ensuring project domain");
+    return mapSdkError(err, "connecting project domain");
   }
 }
 

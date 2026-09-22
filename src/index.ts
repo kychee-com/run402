@@ -273,7 +273,7 @@ import {
   domainsApplySchema,
   domainsCheckSchema,
   domainsDisconnectSchema,
-  domainsEnsureSchema,
+  domainsConnectSchema,
   domainsGetSchema,
   domainsListSchema,
   domainsRepairSchema,
@@ -282,7 +282,7 @@ import {
   handleDomainsApply,
   handleDomainsCheck,
   handleDomainsDisconnect,
-  handleDomainsEnsure,
+  handleDomainsConnect,
   handleDomainsGet,
   handleDomainsList,
   handleDomainsRepair,
@@ -1749,10 +1749,10 @@ server.tool(
 // --- Project domains ---
 
 server.tool(
-  "domains_ensure",
-  "Create or update a project-scoped ProjectDomain desired state for web, email sending, inbound receive, mailbox addresses, and activation. Returns the aggregate with checks, DNS records, and next actions.",
-  domainsEnsureSchema,
-  async (args) => handleDomainsEnsure(args),
+  "domains_connect",
+  "Connect a custom domain to a project, or change what a connected domain serves: web, email sending, inbound receive, mailbox addresses, and activation. Returns the ProjectDomain with checks, DNS records, and next actions.",
+  domainsConnectSchema,
+  async (args) => handleDomainsConnect(args),
 );
 
 server.tool(

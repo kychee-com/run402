@@ -149,7 +149,10 @@ export interface ProjectDomainListResult {
   domains: ProjectDomain[];
 }
 
-export interface ProjectDomainEnsureOptions {
+export interface ProjectDomainConnectInput {
+  /** The domain to connect, e.g. `example.com` or `app.example.com`. */
+  domain: string;
+  /** Desired web / email state for the domain. */
   desired: ProjectDomainDesired;
 }
 
@@ -189,12 +192,17 @@ function sleep(ms: number): Promise<void> {
 export class Domains {
   constructor(private readonly client: Client) {}
 
-  async ensure(projectId: string, domain: string, opts: ProjectDomainEnsureOptions): Promise<ProjectDomain> {
-    return this.client.request<ProjectDomain>(domainPath(projectId, domain), {
+  /**
+   * Connect a custom domain to a project, or change what an already-connected
+   * domain should serve: `POST /projects/v1/:project_id/domains { domain, desired }`.
+   * Returns the ProjectDomain state with `dns_records` and `next_actions`.
+   */
+  async connect(projectId: string, input: ProjectDomainConnectInput): Promise<ProjectDomain> {
+    return this.client.request<ProjectDomain>(`/projects/v1/${encodeURIComponent(projectId)}/domains`, {
       method: "POST",
-      body: { desired: opts.desired },
-      authMeta: authMeta("domains.ensure", projectId),
-      context: "ensuring project domain",
+      body: { domain: input.domain, desired: input.desired },
+      authMeta: authMeta("domains.connect", projectId),
+      context: "connecting project domain",
     });
   }
 

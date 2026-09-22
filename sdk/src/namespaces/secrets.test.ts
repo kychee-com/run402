@@ -139,20 +139,22 @@ describe("subdomains", () => {
 });
 
 describe("domains (ProjectDomain)", () => {
-  it("ensure PUTs desired state to the project-scoped domain path", async () => {
+  it("connect POSTs the domain and desired state to the project's domains collection", async () => {
     const { fetch, calls } = mockFetch(() =>
       json({ project_id: "prj_k", domain: "ex.com", status: "waiting", desired: {}, observed: {}, effective: {}, authority: { recommended_mode: "manual_dns", options: [] }, dns_records: [], checks: [], next_actions: [], next_action: null, alternate_actions: [], provenance: {} }),
     );
-    await sdk(fetch).domains.ensure("prj_k", "ex.com", {
+    await sdk(fetch).domains.connect("prj_k", {
+      domain: "ex.com",
       desired: {
         web: { enabled: true, target: "app" },
         email: { send: { enabled: true } },
       },
     });
-    assert.equal(calls[0]!.url, "https://api.test/projects/v1/prj_k/domains/ex.com");
+    assert.equal(calls[0]!.url, "https://api.test/projects/v1/prj_k/domains");
     assert.equal(calls[0]!.method, "POST");
     assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "t");
     assert.deepEqual(JSON.parse(calls[0]!.body as string), {
+      domain: "ex.com",
       desired: {
         web: { enabled: true, target: "app" },
         email: { send: { enabled: true } },

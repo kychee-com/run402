@@ -659,7 +659,7 @@ The full MCP surface: every tool is a thin shim over an SDK call.
 | `deploy_site_dir` | Deploy a static site from a local directory. Routes through the unified apply primitive (CAS-backed); only uploads bytes the gateway doesn't have. |
 | `add_subdomain` | Claim `<name>.run402.com` (idempotent; binds the live release unless `release_id` / `deployment_id` is given; reassigns to latest deploy on subsequent deploys). |
 | `list_subdomains` / `delete_subdomain` | Manage subdomains. |
-| `domains_ensure` / `domains_get` / `domains_list` / `domains_check` | Manage project-scoped web/email ProjectDomain desired state and health checks. |
+| `domains_connect` / `domains_get` / `domains_list` / `domains_check` | Manage project-scoped web/email ProjectDomain desired state and health checks. |
 | `domains_apply` / `domains_repair` / `domains_test_receive` / `domains_activate` / `domains_disconnect` | Apply safe provider actions, repair run402-owned routing, verify inbound receive, activate mailbox addresses, or disconnect a domain. |
 | `deploy` / `deploy_resume` / `deploy_rehearse` / `deploy_list` / `deploy_events` / `deploy_verify_edge` | Apply (rehearsal is automatic when a live release has migrations to protect), resume, ADVANCED-rehearse a persisted plan on a contained branch, list, inspect deploy operations, and verify gateway/edge coherence. |
 | `deploy_releases_get` / `deploy_releases_active` / `deploy_releases_diff` | Inspect release inventory and release-to-release diffs without starting a new deploy mutation. |
@@ -712,7 +712,7 @@ The full MCP surface: every tool is a thin shim over an SDK call.
 | `send_email` | Template (`project_invite`, `magic_link`, `notification`) or raw HTML. Single recipient. Omitting `mailbox` uses the configured outbound default; result echoes `mailbox_id` and `from_address` when returned. |
 | `list_emails` / `get_email` / `get_email_raw` | Read messages. `get_email_raw` returns RFC-822 bytes for DKIM / zk-email verification. |
 | `register_mailbox_webhook` / `list_mailbox_webhooks` / `get_mailbox_webhook` / `update_mailbox_webhook` / `delete_mailbox_webhook` | Email-event webhooks (delivery, bounced, complained, reply_received). |
-| `domains_ensure` / `domains_check` / `domains_repair` / `domains_test_receive` | Use ProjectDomain for custom email sending and inbound receive. |
+| `domains_connect` / `domains_check` / `domains_repair` / `domains_test_receive` | Use ProjectDomain for custom email sending and inbound receive. |
 
 ### AI helpers
 
