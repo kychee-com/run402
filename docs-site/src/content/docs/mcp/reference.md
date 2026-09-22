@@ -53,13 +53,13 @@ instance can also re-present its original in-memory proof.
 
 ## Quickstart
 
-Use the CLI by default when your host has a shell. This native reference is for MCP hosts. With the local server configured, prepare the complete manifest and referenced app files from [Your first deploy](https://docs.run402.com/start/first-deploy/), then call `app_up` with `name: "my-app"`, the manifest path, and explicit approval for the required setup. The tool calls the shared SDK `up` action. Its schema is authoritative for input names. Inspect deploy status and verification evidence before reporting success.
+Use the CLI by default when your host has a shell. This native reference is for MCP hosts. With the local server configured, prepare the complete manifest and referenced app files from [Your first deploy](https://docs.run402.com/start/first-deploy/), then call `up` with `name: "my-app"`, the manifest path, and explicit approval for the required setup. The tool calls the shared SDK `up` action. Its schema is authoritative for input names. Inspect deploy status and verification evidence before reporting success.
 
 `deploy`, `provision_postgres_project`, `run_sql`, `apply_expose` and `deploy_site_dir` are advanced primitives, not a second cold-start recipe. Some CLI mutations deliberately have no MCP tool.
 
-Call `app_up` with these schema-checked arguments after preparing the files:
+Call `up` with these schema-checked arguments after preparing the files:
 
-<!-- example: mcp-app-up -->
+<!-- example: mcp-up -->
 ```json
 { "name": "my-app", "manifest": "run402.json", "yes": true }
 ```

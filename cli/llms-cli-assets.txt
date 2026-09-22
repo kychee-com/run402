@@ -6,7 +6,7 @@
 
 Direct-to-S3 asset storage, 1 byte to 5 TiB. Flat key namespace per project.
 
-Bulk directories: use `deploy apply` with `assets` slice: additive `assets: { put: [...] }`; declarative sync `assets: { put: [...], sync: { prefix, prune: true, confirm? } }`. No `run402 assets sync`; apply is canonical so HTML + asset URLs stage atomically.
+Bulk directories: use `deploy` with `assets` slice: additive `assets: { put: [...] }`; declarative sync `assets: { put: [...], sync: { prefix, prune: true, confirm? } }`. No `run402 assets sync`; apply is canonical so HTML + asset URLs stage atomically.
 
 - `run402 assets put <file> [files...] [--project <id>] [--key <dest>] [--content-type <mime>] [--private] [--immutable] [--meta <k=v>] [--exif-policy keep|strip] [--concurrency N] [--no-resume] [--stream]` — without `--stream`, stdout is the final results array (JSON). With `--stream`, stdout is NDJSON per-file progress events. `--json` is a deprecated alias for `--stream` (writes a deprecation warning to stderr). Stdout carries the canonical snake_case wire shape only (see the `assets put` output example below); the SDK's camelCase `AssetRef` conveniences never appear on CLI stdout.
 - `run402 assets get <key> --output <file> [--project <id>]`
@@ -184,7 +184,7 @@ Progress events: `sites deploy` and `sites deploy-dir` stream unified `DeployEve
 - `run402 subdomains list [--project <id>]`
 - `run402 subdomains delete <name> --confirm [--project <id>]` — `--confirm` required (irreversible release).
 
-All options default to the active project. With neither `--release` nor `--deployment`, `claim` binds the project's live (active) release — no prior `deploy apply` bookkeeping needed; a project with no live site answers 404. `--release rel_…` pins a release; `--deployment` takes a legacy `dpl_…` id (`rel_…`/`op_…` accepted). Names: 3-63 chars, lowercase alphanumeric + hyphens. Creates `<name>.run402.com`. Declaring `"subdomains": { "set": ["<name>"] }` in the deploy manifest does the same at deploy time.
+All options default to the active project. With neither `--release` nor `--deployment`, `claim` binds the project's live (active) release — no prior `deploy` bookkeeping needed; a project with no live site answers 404. `--release rel_…` pins a release; `--deployment` takes a legacy `dpl_…` id (`rel_…`/`op_…` accepted). Names: 3-63 chars, lowercase alphanumeric + hyphens. Creates `<name>.run402.com`. Declaring `"subdomains": { "set": ["<name>"] }` in the deploy manifest does the same at deploy time.
 
 Subdomain auto-reassignment: You only need to `claim` a subdomain once. Every subsequent `run402 sites deploy` or `run402 deploy` to the same project automatically updates the subdomain to point to the new release. The response includes `subdomain_urls` showing which subdomains were reassigned. No need to re-claim after each deploy.
 

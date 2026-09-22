@@ -35,11 +35,11 @@ run402 up --verify                         # deploy, then wait for gateway/edge 
 
 That's a real Postgres database + a deployed static site, paid for autonomously with testnet USDC.
 
-`run402 up` is the CLI path for local repos with a deploy manifest. It classifies app-shaped `run402.json` through the app-install graph and release-shaped `run402.json` through the same ReleaseSpec normalizer as `deploy apply`; malformed app manifests return `APP_SPEC_INVALID` instead of an internal JavaScript exception. It validates the manifest first, then recursively performs only missing prerequisites through the SDK action runner. Project resolution is `--project`, `.run402/project.json`, manifest `project_id`, approved creation from `--name`; global active state never selects a deploy target. `--check` returns nullable target intent, local evidence and explicit deferred gateway checks in `result.preflight`; it never claims gateway validation. `--print-manifest` exports reloadable snake_case JSON relative to the original manifest directory; `--print-spec` is advanced SDK inspection. Unsupported dynamic/secret/build constructs fail with field paths. `--plan` obtains a deploy plan; review it before approving deploy. If an app manifest defines `verify.http[]`, `up` reports fresh edge sentinel misses as `propagation_pending` while the host binding converges; tune with `--propagation-budget-s`, use `--no-propagation-wait` to return immediately, and run `run402 up verify` to rerun checks without upload, deploy, project creation, or resource mutation. Add `--verify` to a real deploy when you need `edge_coherence` evidence in the final JSON; a valid non-coherent report exits 2.
+`run402 up` is the CLI path for local repos with a deploy manifest. It classifies app-shaped `run402.json` through the app-install graph and release-shaped `run402.json` through the same ReleaseSpec normalizer as `run402 deploy`; malformed app manifests return `APP_SPEC_INVALID` instead of an internal JavaScript exception. It validates the manifest first, then recursively performs only missing prerequisites through the SDK action runner. Project resolution is `--project`, `.run402/project.json`, manifest `project_id`, approved creation from `--name`; global active state never selects a deploy target. `--check` returns nullable target intent, local evidence and explicit deferred gateway checks in `result.preflight`; it never claims gateway validation. `--print-manifest` exports reloadable snake_case JSON relative to the original manifest directory; `--print-spec` is advanced SDK inspection. Unsupported dynamic/secret/build constructs fail with field paths. `--plan` obtains a deploy plan; review it before approving deploy. If an app manifest defines `verify.http[]`, `up` reports fresh edge sentinel misses as `propagation_pending` while the host binding converges; tune with `--propagation-budget-s`, use `--no-propagation-wait` to return immediately, and run `run402 up verify` to rerun checks without upload, deploy, project creation, or resource mutation. Add `--verify` to a real deploy when you need `edge_coherence` evidence in the final JSON; a valid non-coherent report exits 2.
 
 ## MCP-only hosts and SDK scripting
 
-If your host has no shell, use https://docs.run402.com/llms-mcp.txt for MCP setup and the `app_up` tool. Do not assume tools are installed or that every CLI operation has an MCP equivalent. For typed scripting use https://docs.run402.com/sdk/scripting/ and the native SDK reference. Direct HTTP is supported for intentional protocol-level integrations at https://run402.com/llms-full.txt.
+If your host has no shell, use https://docs.run402.com/llms-mcp.txt for MCP setup and the `up` tool. Do not assume tools are installed or that every CLI operation has an MCP equivalent. For typed scripting use https://docs.run402.com/sdk/scripting/ and the native SDK reference. Direct HTTP is supported for intentional protocol-level integrations at https://run402.com/llms-full.txt.
 
 To update this skill, rerun the installation flow at https://run402.com/install.txt for the same host; a new discovery index does not update an already installed copy.
 
@@ -50,7 +50,7 @@ Use the same commands against a self-hosted Run402 Core Gateway by configuring t
 ```bash
 run402 init --api-base=http://my-core:4020
 run402 projects provision --name my-app    # → anon_key, service_key, project_id
-run402 deploy apply --manifest app.json --project <project_id>
+run402 deploy --manifest app.json --project <project_id>
 ```
 
 For Core, `init --api-base` stores the target in the active profile and does not create a Cloud allowance, request faucet funds, or require a Cloud tier. The CLI, Node SDK, and MCP all read the same configured target by default. Unsupported Cloud-only manifest slices fail as Core capability errors; they are not silently deployed to Run402 Cloud.
@@ -76,7 +76,7 @@ For Core, `init --api-base` stores the target in the active profile and does not
 | Run code on the server | `run402 functions deploy` |
 | Send email | `run402 email send` |
 | Sign on-chain | `run402 contracts call` |
-| One-call full-stack deploy | `run402 deploy apply --manifest app.json` |
+| One-call full-stack deploy | `run402 deploy --manifest app.json` |
 
 The active project is sticky — `run402 projects use <id>` server-validates the project and makes it the default for every subsequent `<id>`-taking command. Most commands work without an explicit `<id>` once a project is active.
 
@@ -129,12 +129,12 @@ Fields to use:
 - `trace_id`: include when reporting an issue
 - `request_id`: routed/function failure handle; use `run402 functions logs <id> <name> --request-id <req_...>` for diagnostics. Distinct from gateway `trace_id`.
 - `details`: structured route-specific context
-- `next_actions`: advisory actions e.g. `authenticate`, `submit_payment`, `renew_tier`, `check_usage`, `retry`, `resume_deploy`, `edit_request`, `edit_migration`, `create_project`, `initialize_wallet`, `deploy`; never treat them as blindly executable. CLI-resolvable entries carry a literal `command`. Cold start: from `run402 deploy apply`, follow the chain it hands back — no allowance -> `run402 init`, no tier -> `run402 tier set prototype`, no project -> `run402 projects provision` — then retry. `tier set` and `projects provision` accept `--idempotency-key` so retries never double-charge
+- `next_actions`: advisory actions e.g. `authenticate`, `submit_payment`, `renew_tier`, `check_usage`, `retry`, `resume_deploy`, `edit_request`, `edit_migration`, `create_project`, `initialize_wallet`, `deploy`; never treat them as blindly executable. CLI-resolvable entries carry a literal `command`. Cold start: from `run402 deploy`, follow the chain it hands back — no allowance -> `run402 init`, no tier -> `run402 tier set prototype`, no project -> `run402 projects provision` — then retry. `tier set` and `projects provision` accept `--idempotency-key` so retries never double-charge
 
 Retry policy:
 - Retry directly only when `retryable: true` and `safe_to_retry: true`; reuse the same idempotency key for mutating operations.
 - `safe_to_retry: true` alone is not a retry signal; it means duplicate-safe, not likely-to-succeed. Lifecycle-gated writes, auth token exchanges, and passkey verifies need the indicated action before retrying.
-- `run402 deploy apply` already handles safe `BASE_RELEASE_CONFLICT` release races for omitted/current-base specs by re-planning through the SDK. A handled retry appears as a `deploy.retry` stderr event; exhausted retries include `attempts`, `max_retries`, and `last_retry_code`. Static activation/config failures reported from `activation_pending` throw promptly with gateway metadata. Do not hand-roll this specific deploy race loop.
+- `run402 deploy` already handles safe `BASE_RELEASE_CONFLICT` release races for omitted/current-base specs by re-planning through the SDK. A handled retry appears as a `deploy.retry` stderr event; exhausted retries include `attempts`, `max_retries`, and `last_retry_code`. Static activation/config failures reported from `activation_pending` throw promptly with gateway metadata. Do not hand-roll this specific deploy race loop.
 - For mutating 5xx errors with `safe_to_retry: false`, or `mutation_state: "committed"`, `"partial"`, or `"unknown"`, inspect/poll/reconcile state before retrying. For deploys, inspect events or resume the existing operation instead of starting a duplicate deploy.
 - Lifecycle/payment codes usually require an action: `PROJECT_FROZEN`/`PROJECT_DORMANT`/`PROJECT_PAST_DUE` -> check usage or renew tier; `PAYMENT_REQUIRED`/`INSUFFICIENT_FUNDS` -> submit/fund payment.
 
@@ -174,13 +174,13 @@ Skips `.git/`, `node_modules/`, `.DS_Store` automatically. Symlinks throw (no cy
 
 Pass `--quiet` to suppress events; the final result envelope still goes to stdout.
 
-### Advanced primitive: `deploy apply`
+### The deploy itself: `run402 deploy`
 
-For a database + migrations + manifest + secret dependencies + functions + site + subdomain, set secret values first, then deploy a value-free manifest:
+`run402 up` does any missing setup (wallet, tier, project, workspace link) and then deploys; `run402 deploy` only deploys. For a database + migrations + manifest + secret dependencies + functions + site + subdomain, set secret values first, then deploy a value-free manifest:
 
 ```bash
 run402 secrets set <project_id> OPENAI_API_KEY --file ./.secrets/openai-key
-run402 deploy apply --manifest app.json --final-only
+run402 deploy --manifest app.json --final-only
 ```
 
 Use `--final-only` (alias of `--quiet`) when an agent or CI job only wants the final stdout JSON envelope. Use repeatable `--allow-warning <code>` for reviewed warning codes; reserve broad `--allow-warnings` for reviewed exceptional cases.
@@ -188,10 +188,11 @@ Use `--final-only` (alias of `--quiet`) when an agent or CI job only wants the f
 After deploys, inspect release state without starting another mutation:
 
 ```bash
-run402 deploy release active --project prj_...
+run402 deploy releases active --project prj_...
+run402 deploy status op_... --project prj_...
 run402 deploy verify op_... --project prj_... --wait --timeout 120
-run402 deploy release get rel_... --project prj_...
-run402 deploy release diff --from empty --to active --project prj_...
+run402 deploy releases get rel_... --project prj_...
+run402 deploy releases diff --from empty --to active --project prj_...
 ```
 
 After pointer-swap recovery, compose promote with verification:
@@ -207,7 +208,7 @@ Inventories expose site paths, `static_public_paths` when returned, functions, s
 
 #### Same-origin web routes
 
-Use `run402 deploy apply` for `site.public_paths` clean static browser URLs and public browser routes to functions or exact method-aware static aliases. Release static asset paths and public browser paths are distinct: `events.html` can be a private release asset while `/events` is the public static URL.
+Use `run402 deploy` for `site.public_paths` clean static browser URLs and public browser routes to functions or exact method-aware static aliases. Release static asset paths and public browser paths are distinct: `events.html` can be a private release asset while `/events` is the public static URL.
 
 ```json
 {
@@ -252,13 +253,13 @@ Matching is exact or final `/*` prefix only. `/admin/*` does not match `/admin`;
 
 Routed functions use the Node 22 Fetch Request -> Response contract: `export default async function handler(req) { ... }`. `req.method` is the browser method, and `req.url` is the full public URL on managed subdomains, hosts, and verified custom domains. Derive OAuth callbacks from it, for example `new URL("/admin/oauth/google/callback", new URL(req.url).origin)`. Append multiple cookies with `headers.append("Set-Cookie", value)`; redirects, cookies, and query strings are preserved. The raw `run402.routed_http.v1` envelope is internal; do not write route handlers against it.
 
-Use `run402 deploy diagnose --project prj_123 https://example.com/events --method GET` before mutating deploy state when the question is "what would this public URL serve?" For lower-level parity use `run402 deploy resolve --project prj_123 --url https://example.com/events?utm=x#hero --method GET` or `run402 deploy resolve --project prj_123 --host example.com --path /events --method GET`; never combine `--url` with `--host`/`--path`. Output is JSON with `status`, `would_serve`, `diagnostic_status`, `match`, normalized `request`, warnings, full `resolution`, `edge_propagation`, and structured `next_steps`. URL query strings/fragments are disclosed in `request.ignored`. When returned, `asset_path`, `reachability_authority`, and `direct` explain which release asset backs the public URL and whether reachability came from implicit file-path mode, explicit `site.public_paths`, or a route-only static alias. Stable-host diagnostics may also include `authorization_result`, `cas_object` (`sha256`, `exists`, `expected_size`, `actual_size`), hostname-specific `response_variant`, route/static fields e.g. `allow`, `route_pattern`, `target_type`, `target_name`, and `target_file`, plus `edge_propagation` (`settled`, `propagating`, or `sync_pending`; non-settled means retry or run `run402 up verify`). Known `match` literals are `host_missing`, `manifest_missing`, `active_release_missing`, `unsupported_manifest_version`, `path_error`, `none`, `static_exact`, `static_index`, `spa_fallback`, `spa_fallback_missing`, `route_function`, `route_static_alias`, and `route_method_miss`; preserve unknown future strings. Known `authorization_result` values include `authorized`, `not_public`, `not_applicable`, `manifest_missing`, `target_missing`, `active_release_missing`, `unsupported_manifest_version`, `path_error`, `missing_cas_object`, `unfinalized_or_deleting_cas_object`, `size_mismatch`, and `unauthorized_cas_object`. Known `fallback_state` values include `active_release_missing`, `unsupported_manifest_version`, and `negative_cache_hit`; preserve unknown future strings. `result` is diagnostic body status, not CLI process status, so host misses can exit 0 with `would_serve: false`. Do not use diagnostics as a fetch, cache purge, or reason to hard-code `cache_policy` strings; branch on structured JSON e.g. `allow`, `cas_object`, and `edge_propagation`.
+Use `run402 deploy resolve https://example.com/events --project prj_123 --method GET` before mutating deploy state when the question is "what would this public URL serve?" The host/path form is `run402 deploy resolve --host example.com --path /events --project prj_123 --method GET`; never combine a URL with `--host`/`--path`. Output is JSON with `status`, `would_serve`, `diagnostic_status`, `match`, normalized `request`, warnings, full `resolution`, `edge_propagation`, and structured `next_steps`. URL query strings/fragments are disclosed in `request.ignored`. When returned, `asset_path`, `reachability_authority`, and `direct` explain which release asset backs the public URL and whether reachability came from implicit file-path mode, explicit `site.public_paths`, or a route-only static alias. Stable-host diagnostics may also include `authorization_result`, `cas_object` (`sha256`, `exists`, `expected_size`, `actual_size`), hostname-specific `response_variant`, route/static fields e.g. `allow`, `route_pattern`, `target_type`, `target_name`, and `target_file`, plus `edge_propagation` (`settled`, `propagating`, or `sync_pending`; non-settled means retry or run `run402 up verify`). Known `match` literals are `host_missing`, `manifest_missing`, `active_release_missing`, `unsupported_manifest_version`, `path_error`, `none`, `static_exact`, `static_index`, `spa_fallback`, `spa_fallback_missing`, `route_function`, `route_static_alias`, and `route_method_miss`; preserve unknown future strings. Known `authorization_result` values include `authorized`, `not_public`, `not_applicable`, `manifest_missing`, `target_missing`, `active_release_missing`, `unsupported_manifest_version`, `path_error`, `missing_cas_object`, `unfinalized_or_deleting_cas_object`, `size_mismatch`, and `unauthorized_cas_object`. Known `fallback_state` values include `active_release_missing`, `unsupported_manifest_version`, and `negative_cache_hit`; preserve unknown future strings. `result` is diagnostic body status, not CLI process status, so host misses can exit 0 with `would_serve: false`. Do not use diagnostics as a fetch, cache purge, or reason to hard-code `cache_policy` strings; branch on structured JSON e.g. `allow`, `cas_object`, and `edge_propagation`.
 
 Known route warning recovery: `PUBLIC_ROUTED_FUNCTION` is informational (`requires_confirmation: false` — it never blocks and needs no `--allow-warning`): review app auth, CSRF, CORS/`OPTIONS`, and cookies. Only warnings with `requires_confirmation: true` need `--allow-warning <code>`; broad `--allow-warnings` is last resort after every warning is reviewed. `ROUTE_SHADOWS_STATIC_PATH` and `WILDCARD_ROUTE_SHADOWS_STATIC_PATHS` mean inspect affected paths, active routes, `static_public_paths`, and resolve diagnostics before confirming. `STATIC_ALIAS_SHADOWS_STATIC_PATH`, `STATIC_ALIAS_RELATIVE_ASSET_RISK`, `STATIC_ALIAS_DUPLICATE_CANONICAL_URL`, `STATIC_ALIAS_EXTENSIONLESS_NON_HTML`, and `STATIC_ALIAS_TABLE_NEAR_LIMIT` are route-only static alias warnings; prefer `site.public_paths` for ordinary clean URLs, inspect the backing `asset_path`, fix relative assets/canonical URLs, and avoid table-exhausting page-by-page routes. `ROUTE_TARGET_CARRIED_FORWARD` means inspect carried-forward function targets. `METHOD_SPECIFIC_ROUTE_ALLOWS_GET_STATIC_FALLBACK` means confirm static fallback is intended. `WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS` means a wildcard API prefix only allows `GET`/`HEAD`; add mutation methods e.g. `POST`, omit methods for an API prefix, or set `acknowledge_readonly: true` on an intentionally read-only GET/HEAD final-wildcard function route. `ROUTE_TABLE_NEAR_LIMIT` means consolidate routes. `ROUTES_NOT_ENABLED` means deploy without `routes` or request enablement. Runtime route failure codes to branch on: `ROUTE_MANIFEST_LOAD_FAILED` (manifest/propagation), `ROUTED_INVOKE_WORKER_SECRET_MISSING` (custom-domain Worker secret), `ROUTED_INVOKE_AUTH_FAILED` (internal invoke signature), `ROUTED_ROUTE_STALE` (selected route failed release revalidation), `ROUTE_METHOD_NOT_ALLOWED` (method mismatch), `PAYOUT_WALLET_REQUIRED` / `PAYOUT_WALLET_AMBIGUOUS` / `PAYOUT_WALLET_UNRESOLVED` (priced-route payout setup), `PAYMENT_PROOF_MISMATCH` (stale or wrong x402 proof), and `ROUTED_RESPONSE_TOO_LARGE` (body over 6 MiB).
 
 #### Recipe: static home page + SPA shell
 
-A SPA site ships `index.html` as the shell serving every unmatched route (match `spa_fallback`), so by default `GET /` serves the shell too. To serve a real static home page at `/` — real bytes under curl and without JavaScript — while keeping the shell for app routes, ship `home.html` at the site root alongside `index.html`, add an exact root static route alias to the manifest, and run `run402 deploy apply --manifest app.json`:
+A SPA site ships `index.html` as the shell serving every unmatched route (match `spa_fallback`), so by default `GET /` serves the shell too. To serve a real static home page at `/` — real bytes under curl and without JavaScript — while keeping the shell for app routes, ship `home.html` at the site root alongside `index.html`, add an exact root static route alias to the manifest, and run `run402 deploy --manifest app.json`:
 
 ```json
 {
@@ -282,7 +283,7 @@ Expect two non-blocking plan lints: `STATIC_ALIAS_SHADOWS_STATIC_PATH` (warn —
 
 #### Routed functions: locale awareness
 
-Declare supported locales as a `spec.i18n` release slice and the gateway negotiates a locale per routed-function request, then surfaces it to user code through two request headers. Add `i18n` to the deploy manifest alongside `functions` and `routes` and run `run402 deploy apply --manifest run402.deploy.json`:
+Declare supported locales as a `spec.i18n` release slice and the gateway negotiates a locale per routed-function request, then surfaces it to user code through two request headers. Add `i18n` to the deploy manifest alongside `functions` and `routes` and run `run402 deploy --manifest run402.deploy.json`:
 
 ```json
 {
@@ -426,7 +427,7 @@ git commit -m "Add run402 deploy workflow"
 The generated workflow uses a pinned `run402@<current>` CLI via `npx`, includes `permissions: id-token: write` and `contents: read`, and runs:
 
 ```bash
-run402 deploy apply --manifest run402.deploy.json --project prj_...
+run402 deploy --manifest run402.deploy.json --project prj_...
 ```
 
 Useful follow-ups:
@@ -673,7 +674,7 @@ Two independent fields on `FunctionSpec`:
 - `requireAuth: true` — gateway rejects callers without a valid project user JWT with `401`. No DB lookup.
 - `requireRole: { table, idColumn, roleColumn, allowed[], cacheTtl? }` — gateway resolves the caller's role from the project-schema table (RLS-bypass — the gateway is the trusted intermediary, not the caller) and rejects callers whose role is not in `allowed` with `403`. Implies authentication.
 
-Declare in your deploy manifest and run `run402 deploy apply --manifest run402.deploy.json`:
+Declare in your deploy manifest and run `run402 deploy --manifest run402.deploy.json`:
 
 ```json
 {
@@ -727,7 +728,7 @@ Rules and footnotes:
 
 - One role table per release. All `requireRole` blocks in a single release must share the same `(table, idColumn, roleColumn)` triple. Different `allowed` sets are fine; different tables are rejected at plan time with `INVALID_SPEC`.
 - Unqualified identifiers. Schema-qualified names (e.g. `"public.members"`) are rejected. The project schema is resolved server-side.
-- Deploy-time validation. Missing table or column at activation fails with `DEPLOY_INVALID_ROLE_GATE` (422) *before* flipping the live release. `run402 deploy apply` surfaces the error envelope on stderr.
+- Deploy-time validation. Missing table or column at activation fails with `DEPLOY_INVALID_ROLE_GATE` (422) *before* flipping the live release. `run402 deploy` surfaces the error envelope on stderr.
 - Cache TTL. Default 60s, max 600s. A demoted user keeps the cached role until expiry — for instant revocation, set `cacheTtl: 0` (fresh lookup per request).
 - Gate applies to both routed (`/your/route`) and direct (`POST /functions/v1/:name` with API key) invocation. Direct invocation still requires the API key at the edge; the gate runs after API-key auth, against the user JWT.
 
@@ -771,14 +772,13 @@ Reference: [`astro/README.md`](../astro/README.md) (top section), [`cli/llms-cli
 
 ## Rehearsals, snapshots, and branches
 
-For database-bearing deploys, rehearse before commit:
+Rehearsal is automatic: a migration-bearing `run402 up` / `run402 deploy` against a project with a live release is rehearsed on a contained branch and committed only on a passing report (`--no-rehearse` skips it). To rehearse a persisted plan by hand without committing:
 
 ```bash
-run402 apply --manifest app.json --rehearse --json
+run402 deploy --manifest app.json --plan --json          # a reviewed plan_id, nothing committed
 run402 deploy rehearse <plan_id> --project prj_... --teardown on_pass --json
+run402 deploy --require-plan <plan_id>                   # commit only if the plan still matches
 ```
-
-`run402 apply --rehearse` is the canonical one-shot path: plan, upload missing CAS bytes, create a contained branch, apply the candidate plan there, run checks, and exit nonzero on a failed rehearsal. Add `--commit` only after the rehearsal report is acceptable.
 
 Manual restore points and branches are reference primitives:
 
@@ -1026,7 +1026,7 @@ The server auto-detects the action: no tier or expired → start; same tier acti
 | Secrets | 10 | 50 | 200 |
 | Scheduled fns | 1 / 15min | 3 / 5min | 10 / 1min |
 
-`run402 deploy apply` preflights literal unified-deploy timeout, memory, cron interval, and scheduled-count values before plan/upload when caps are known; failures are structured `BAD_FIELD` errors. `run402 tier status` shows live function caps and current scheduled usage when returned.
+`run402 deploy` preflights literal unified-deploy timeout, memory, cron interval, and scheduled-count values before plan/upload when caps are known; failures are structured `BAD_FIELD` errors. `run402 tier status` shows live function caps and current scheduled usage when returned.
 
 Project-level rate limit: 100 req/sec. Exceeding returns 429 with `retry_after`. Each project has its own Postgres schema; cross-schema access is blocked.
 
@@ -1184,7 +1184,7 @@ Cloning needs a Run402 principal on this machine — a wallet with an allowance 
 
 `--project <id>` picks the repo's project; `--repo <repo_id>` addresses it directly and needs no project lookup — that is the cold-restart path for an agent with no local state. Stdout is JSON; every human line (progress, the terminal-loss statement, advisories) goes to stderr, so `run402 repos view | jq` stays clean. For a person at the terminal, `run402 repos view --human` renders a five/six-line summary on stdout instead — address, HEAD/ref count, generations in decimal, storage, whether this machine can decrypt, and any standing warnings — an explicit opt-in, so plain `view` stays JSON.
 
-Allocation is `run402 repos create --project <id>`. `run402 init` scaffolds the git remote and nothing else — it needs a project selected (`run402 projects use <project_id>`, or `RUN402_PROJECT_ID`) and says so in its summary when none is. Allocation is separate because it is the step that mints key material on this machine and prints a one-shot recovery receipt; it is idempotent, so an existing vault comes back `deduplicated: true` — and `git push` / `run402 repos snapshot` allocate it the SAME way, lazily, on first use, printing the receipt to stderr. **Allocating does NOT gate the project's deploys.** `gitvault_policy` stays unset until you set it. A deploy against a vaulted, ungated project proceeds — never blocked, never an interactive prompt — and its result carries a typed `next_actions` entry offering `run402 repos policy required`, plus a standing `warnings[]` entry on every later ungated deploy until the policy is set either way. Once a project's policy IS `required`, `deploy apply` produces the vaulted capture automatically on machines holding the keystore; un-gate with `run402 repos policy grandfathered --reason "<why>"` (owner + step-up, audited, reversible). Capturing source is never gated on a deploy, either way. Before `snapshot` reports that anything landed, the client compares every finalization receipt against its local expected manifest and reads the admitted head back from storage — a 200 alone is never enough. `run402 repos snapshot --dry-run` previews it first — a REAL preview (the actual local pipeline: capture, pack building, encryption sizing), not an estimate — reporting the objects, encrypted bytes, refs, and generation a real snapshot would publish, without publishing anything or allocating a vault that does not exist yet. `fsck` fails CLOSED and the refusal is the answer: `GENERATION_REGRESSION` (rollback), `CHAIN_BROKEN` (gap), `UPGRADE_REQUIRED` (a transition this client cannot validate), `VERIFICATION_BUDGET_EXCEEDED` (a pause, not a failure — under normal writing mode the verified prefix persists, so run it again to resume; `--no-write` never persists, so a retry restarts from scratch).
+Allocation is `run402 repos create --project <id>`. `run402 init` scaffolds the git remote and nothing else — it needs a project selected (`run402 projects use <project_id>`, or `RUN402_PROJECT_ID`) and says so in its summary when none is. Allocation is separate because it is the step that mints key material on this machine and prints a one-shot recovery receipt; it is idempotent, so an existing vault comes back `deduplicated: true` — and `git push` / `run402 repos snapshot` allocate it the SAME way, lazily, on first use, printing the receipt to stderr. **Allocating does NOT gate the project's deploys.** `gitvault_policy` stays unset until you set it. A deploy against a vaulted, ungated project proceeds — never blocked, never an interactive prompt — and its result carries a typed `next_actions` entry offering `run402 repos policy required`, plus a standing `warnings[]` entry on every later ungated deploy until the policy is set either way. Once a project's policy IS `required`, `run402 deploy` produces the vaulted capture automatically on machines holding the keystore; un-gate with `run402 repos policy grandfathered --reason "<why>"` (owner + step-up, audited, reversible). Capturing source is never gated on a deploy, either way. Before `snapshot` reports that anything landed, the client compares every finalization receipt against its local expected manifest and reads the admitted head back from storage — a 200 alone is never enough. `run402 repos snapshot --dry-run` previews it first — a REAL preview (the actual local pipeline: capture, pack building, encryption sizing), not an estimate — reporting the objects, encrypted bytes, refs, and generation a real snapshot would publish, without publishing anything or allocating a vault that does not exist yet. `fsck` fails CLOSED and the refusal is the answer: `GENERATION_REGRESSION` (rollback), `CHAIN_BROKEN` (gap), `UPGRADE_REQUIRED` (a transition this client cannot validate), `VERIFICATION_BUDGET_EXCEEDED` (a pause, not a failure — under normal writing mode the verified prefix persists, so run it again to resume; `--no-write` never persists, so a retry restarts from scratch).
 
 `run402 repos view` is side-effect-free — it never materializes refs or advances a local pin; `run402 repos fsck` does both, reporting them explicitly as `local_state_changed`/`pin_before`/`pin_after`, and `--no-write` computes the same real answer while persisting neither.
 

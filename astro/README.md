@@ -427,7 +427,7 @@ run402 logs --request-id req_xyz123 --json          # debug a failed render
 
 ### Deploying with the SDK directly (and from CI)
 
-Most projects deploy with `run402 deploy` (above) or `run402 deploy apply --dir dist`. If you write your own deploy script with `@run402/sdk` — e.g. a CI job that assembles a custom `ReleaseSpec` — turn the build into a deploy slice with the one canonical helper. **Do not hand-roll `site` / `public_paths`.**
+Most projects deploy with `run402 deploy` (above) or `run402 deploy --dir dist`. If you write your own deploy script with `@run402/sdk` — e.g. a CI job that assembles a custom `ReleaseSpec` — turn the build into a deploy slice with the one canonical helper. **Do not hand-roll `site` / `public_paths`.**
 
 ```ts
 import { run402 } from "@run402/sdk/node";

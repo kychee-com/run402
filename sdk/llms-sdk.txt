@@ -509,7 +509,7 @@ Executable trust policy:
 - If a repo only contains `run402.deploy.ts`, `up` fails with `EXECUTABLE_CONFIG_REQUIRES_EXPLICIT_MANIFEST` and a next action to rerun with `--manifest run402.deploy.ts --check`.
 - `--check` / `mode: "check"` and `--print-spec` / `mode: "printSpec"` are local-only; use `--plan` / `mode: "plan"` for gateway policy, quota, cost, secret existence, missing-content, and base-release details.
 
-The runner never executes arbitrary gateway-authored `next_actions[].command`; it uses its own fixed action graph (`allowance`, `tier`, `projects.provision`, workspace link, deploy apply).
+The runner never executes arbitrary gateway-authored `next_actions[].command`; it uses its own fixed action graph (`allowance`, `tier`, `projects.provision`, workspace link, deploy).
 
 ### Casing in returned shapes
 

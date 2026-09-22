@@ -136,15 +136,15 @@ Route semantics:
 - Routed ingress uses the Node 22 Fetch Request -> Response contract; `req.url` is full public URL across managed subdomains/hosts/custom domains. Derive OAuth origins from `new URL(req.url).origin`. `run402.routed_http.v1` envelope is internal. Direct `/functions/v1/:name` remains API-key protected. Function owns app auth, CSRF, CORS/`OPTIONS`, cookies, redirects, and forwarding-header hygiene.
 - Anti-patterns: routing every static file, broad method lists by default, wildcard static route targets, leading-slash static files, directory shorthand, one-static-route-target-per-page route-table exhaustion, wildcard function routes shadowing direct public static paths, and confusing omitted/null `routes` with `routes: { "replace": [] }`.
 
-Apply it:
+Deploy it (`run402 up` does any missing setup first and then runs this same deploy; `run402 deploy` only deploys):
 
 ```bash
-run402 deploy apply --manifest app.json
+run402 deploy --manifest app.json
 ```
 
 Stdout final result includes `release_id`, `operation_id`, `urls`, etc. Stderr streams JSON-line progress events. `--quiet` / `--final-only` silence stderr while preserving stdout.
 
-Recipe — static home page + SPA shell: a SPA site ships `index.html` as the shell serving every unmatched route (match `spa_fallback`), so by default `GET /` serves the shell too. To serve a real static home page at `/` — real bytes under curl and without JavaScript — while keeping the shell for app routes, ship `home.html` at the site root alongside `index.html`, add an exact root static route alias, and `run402 deploy apply --manifest app.json`:
+Recipe — static home page + SPA shell: a SPA site ships `index.html` as the shell serving every unmatched route (match `spa_fallback`), so by default `GET /` serves the shell too. To serve a real static home page at `/` — real bytes under curl and without JavaScript — while keeping the shell for app routes, ship `home.html` at the site root alongside `index.html`, add an exact root static route alias, and `run402 deploy --manifest app.json`:
 
 ```json
 {
@@ -162,7 +162,7 @@ Recipe — static home page + SPA shell: a SPA site ships `index.html` as the sh
 
 Route matching runs before all static resolution — including the implicit `/` -> `index.html` root mapping — and SPA-fallback derivation is independent of the route table. So `GET /` serves `home.html` (match `route_static_alias`), unmatched app routes like `/dashboard` still serve the `index.html` shell (match `spa_fallback`), and named static pages keep serving unchanged (match `static_exact`). Root placement of `home.html` keeps its relative asset URLs resolving identically to the direct file and avoids the `STATIC_ALIAS_RELATIVE_ASSET_RISK` warning. Expect two non-blocking plan lints: `STATIC_ALIAS_SHADOWS_STATIC_PATH` (warn — the alias overrides what `/` would otherwise serve; for this recipe that is accurate and expected, and the commit proceeds) and `STATIC_ALIAS_DUPLICATE_CANONICAL_URL` (info — `/home.html` stays directly reachable in implicit public-path mode; add `<link rel="canonical" href="https://<your-site>/">` to `home.html` if duplicate-content SEO matters). Omitting `routes` on later deploys carries the alias forward (informational `ROUTE_TARGET_CARRIED_FORWARD`); a pipeline that sends `routes.replace` must include the alias every time because replace is total. Verify with `run402 deploy resolve --project prj_123 --url https://<your-site>/ --method GET` and confirm `match: "route_static_alias"` with `target_file: "home.html"`.
 
-Typed deploy configs are an authoring format for the same `deploy apply` and `up` verbs, not a separate command family. JSON data manifests (`run402.deploy.json`, `app.json`) may be auto-discovered. TypeScript/JavaScript configs are executable local code, so v1 requires explicit trust with `--manifest`:
+Typed deploy configs are an authoring format for the same `deploy` and `up` verbs, not a separate command family. JSON data manifests (`run402.deploy.json`, `app.json`) may be auto-discovered. TypeScript/JavaScript configs are executable local code, so v1 requires explicit trust with `--manifest`:
 
 ```bash
 run402 up --manifest run402.deploy.ts --check
@@ -172,7 +172,7 @@ run402 up --manifest run402.deploy.ts --require-plan plan_...
 ```
 
 Mode contract:
-- `--check`: local-only import/normalize/strict field validation plus local file checks. No gateway calls, uploads, tier/project creation, or `.run402/project.json` writes. Success is raw JSON with `mode: "check"` / `dry_run: true` on `up`, or `{ ok: true, mode: "check", project_id, manifest_path }` on `deploy apply`.
+- `--check`: local-only import/normalize/strict field validation plus local file checks. No gateway calls, uploads, tier/project creation, or `.run402/project.json` writes. Success is raw JSON with `mode: "check"` / `dry_run: true` on `up`, or `{ ok: true, mode: "check", project_id, manifest_path }` on `deploy`.
 - `--print-spec`: advanced SDK-native inspection JSON; this is not a reloadable authoring manifest.
 - `--print-manifest`: canonical snake_case authoring JSON, backed by `serializeDeployManifest`. Save it in the original manifest directory so relative paths keep their meaning. Reloading supported release inputs preserves selectors, file paths, content types and function configuration. Unsupported streams, dynamic directory references, environment-derived values, app/build resources or embedded secrets fail with `MANIFEST_EXPORT_UNSUPPORTED` and `details.field_paths`, with no partial output.
 
@@ -180,7 +180,7 @@ Local success includes `gateway_validated: false`, the app root, nullable target
 - `--plan`: gateway-reviewed plan, no upload or commit. Response includes `plan_id`, `plan_fingerprint`, `plan_expires_at`, `manifest_digest`, diff, warnings, and `next_actions[]`.
 - `--require-plan <plan_id>`: exact reviewed apply. The SDK recompiles locally, verifies the reviewed plan before upload, then commit verifies again before release mutation. Add `--plan-fingerprint <fingerprint>` when it was returned by `--plan`.
 
-`run402 up --plan` preserves the `up` surface in `next_actions[0].argv`, e.g. `["run402","up","--manifest","run402.deploy.ts","--require-plan","plan_..."]`. `run402 deploy apply --plan` returns a `deploy apply --require-plan` action. `--allow-warning` / `--allow-warnings` conflict with `--require-plan` because reviewed-plan approval already binds the exact warning/destructive sets. If `run402 up --check` sees only `run402.deploy.ts` and no JSON manifest, it fails with `EXECUTABLE_CONFIG_REQUIRES_EXPLICIT_MANIFEST` and a recovery action to rerun with `--manifest run402.deploy.ts --check`.
+`run402 up --plan` preserves the `up` surface in `next_actions[0].argv`, e.g. `["run402","up","--manifest","run402.deploy.ts","--require-plan","plan_..."]`. `run402 deploy --plan` returns a `deploy --require-plan` action. `--allow-warning` / `--allow-warnings` conflict with `--require-plan` because reviewed-plan approval already binds the exact warning/destructive sets. If `run402 up --check` sees only `run402.deploy.ts` and no JSON manifest, it fails with `EXECUTABLE_CONFIG_REQUIRES_EXPLICIT_MANIFEST` and a recovery action to rerun with `--manifest run402.deploy.ts --check`.
 
 Minimal typed config:
 
@@ -210,17 +210,17 @@ Patch semantics — only the listed file changes:
 Or via `--spec` for a one-line CLI invocation:
 
 ```bash
-run402 deploy apply --spec '{"project_id":"prj_...","site":{"patch":{"delete":["old.html"]}}}'
+run402 deploy --spec '{"project_id":"prj_...","site":{"patch":{"delete":["old.html"]}}}'
 ```
 
 Astro builds: `--dir <build-output>` reads `dist/run402/adapter.json` and merges build ReleaseSpec slices (site/functions/routes). Combine with `--manifest` for cross-cutting slices (database, secrets, subdomains, i18n):
 
 ```bash
 # Astro-only: --dir is the whole spec source (requires @run402/astro installed)
-run402 deploy apply --dir ./dist --project prj_...
+run402 deploy --dir ./dist --project prj_...
 
 # Astro + cross-cutting slices: --dir owns site/functions/routes, --manifest owns the rest
-run402 deploy apply --dir ./dist --manifest run402.config.json --project prj_...
+run402 deploy --dir ./dist --manifest run402.config.json --project prj_...
 ```
 
 CLI dynamically imports `@run402/astro/release-slice` from the consuming project. Requires `@run402/astro >=1.2.1` + `@run402/sdk >=2.18.0`; older SDKs reject `FunctionSpec.class: 'ssr'`, helper preflights `R402_ASTRO_SDK_VERSION_TOO_OLD` with upgrade command. Helper bundles SSR server with esbuild into single `source`, marks it with `class: "ssr"` and `capabilities: ["astro.ssr.v1"]`, roots site at `build.client` (`dist/run402/client/`, NOT `dist/`), omits `routes` so gateway's SSR catch-all works and base routes carry forward (also CI-safe without route scopes), defaults `site.public_paths: { mode: "implicit" }`, and colocates `_assets-manifest.json` inside `build.client`. Missing/incompatible manifest errors: `R402_ASTRO_ADAPTER_MANIFEST_MISSING` / `R402_ASTRO_ADAPTER_MANIFEST_VERSION_UNSUPPORTED` with `hint`+`docs`. SDK equivalent: `buildAstroReleaseSlice`. Do not hand-roll `site`/`public_paths`; shipping `run402/adapter.json` or `run402/server/**` as site content means source rooted at `dist/` instead of `dist/run402/client/`; SDK rejects `ASTRO_ADAPTER_TREE_IN_SITE`, gateway warns `SITE_NO_REACHABLE_HTML`.
@@ -233,7 +233,7 @@ run402 deploy resume <operation_id> [--project prj_...]
 
 Gateway reruns only failed phase forward; SQL is never replayed.
 
-Destructive apply recovery: `run402 deploy promote <release-id>` re-points live release at a prior ready row without re-running apply (no bytes/bundling/migration), just `internal.projects.live_release_id` pointer swap + ssr_cache flush.
+Destructive apply recovery: `run402 deploy promote <release_id>` re-points live release at a prior ready row without re-running apply (no bytes/bundling/migration), just `internal.projects.live_release_id` pointer swap + ssr_cache flush.
 
 ```bash
 # rel_old (good)  →  rel_new (bad, destructive)  →  promote back
@@ -254,21 +254,22 @@ Deploy history/observability:
 run402 deploy list --project prj_... --limit 10
 run402 deploy events <operation_id> --project prj_...
 run402 deploy verify <operation_id> --project prj_... --wait --timeout 120
-run402 deploy release active --project prj_... --site-limit 5000
-run402 deploy release get rel_... --project prj_...
-run402 deploy release diff --from empty --to active --project prj_... --limit 1000
-run402 deploy diagnose --project prj_123 https://example.com/events --method GET
-run402 deploy resolve --project prj_123 --url https://example.com/events?utm=x#hero --method GET
-run402 deploy resolve --project prj_123 --host example.com --path /events --method GET
+run402 deploy releases active --project prj_... --site-limit 5000
+run402 deploy releases get rel_... --project prj_...
+run402 deploy releases diff --from empty --to active --project prj_... --limit 1000
+run402 deploy status <operation_id> --project prj_...
+run402 deploy resolve https://example.com/events --project prj_123 --method GET
+run402 deploy resolve --url https://example.com/events?utm=x#hero --project prj_123 --method GET
+run402 deploy resolve --host example.com --path /events --project prj_123 --method GET
 ```
 
-`list` -> `{ operations, cursor }`; SDK/MCP accept non-null cursor. `events` returns same `DeployEvent` shapes as inline apply events. `verify` calls the edge-coherence report endpoint and returns `{ status: "coherent"|"not_coherent", coherent, report }`; with `--wait`, stderr emits per-poll path summaries and exit code 2 means the report was valid but still not coherent before timeout.
+`list` -> `{ operations, cursor }`; SDK/MCP accept non-null cursor. `status` -> one operation's snapshot (`status`, `release_id`, `urls`, `error`, `rehearsal_report`). `events` returns same `DeployEvent` shapes as inline apply events. `verify` calls the edge-coherence report endpoint and returns `{ status: "coherent"|"not_coherent", coherent, report }`; with `--wait`, stderr emits per-poll path summaries and exit code 2 means the report was valid but still not coherent before timeout.
 
-`release active|get` -> `{ release: ReleaseInventory }`: metadata, `state_kind` (`current_live|effective|desired_manifest`), `site.paths` (capped by `--site-limit`), `static_public_paths`, functions, secret keys only, subdomains, routes, migrations, `release_generation`, `static_manifest_sha256`, nullable `static_manifest_metadata`, `i18n` (`{ defaultLocale, locales, detect }` or `null`), `embedding` (`{ frame_ancestors: [<catalog keys>] }` or `null`; absent on an older gateway), warnings. `static_public_paths[]` has `public_path`, `asset_path`, `reachability_authority`, `direct`, cache class, content type. `static_manifest_metadata: null` = unavailable; when present has `file_count`, `total_bytes`, `cache_classes`, `cache_class_sources`, `spa_fallback`. Verify i18n with `jq '.release.i18n'`; absent field (older gateway) = unknown, not null.
+`releases active|get` -> `{ release: ReleaseInventory }`: metadata, `state_kind` (`current_live|effective|desired_manifest`), `site.paths` (capped by `--site-limit`), `static_public_paths`, functions, secret keys only, subdomains, routes, migrations, `release_generation`, `static_manifest_sha256`, nullable `static_manifest_metadata`, `i18n` (`{ defaultLocale, locales, detect }` or `null`), `embedding` (`{ frame_ancestors: [<catalog keys>] }` or `null`; absent on an older gateway), warnings. `static_public_paths[]` has `public_path`, `asset_path`, `reachability_authority`, `direct`, cache class, content type. `static_manifest_metadata: null` = unavailable; when present has `file_count`, `total_bytes`, `cache_classes`, `cache_class_sources`, `spa_fallback`. Verify i18n with `jq '.release.i18n'`; absent field (older gateway) = unknown, not null.
 
-`release diff` -> `{ diff: ReleaseToReleaseDiff }`; `--from empty|active|release_id`, `--to active|release_id`. Migrations: `migrations.applied_between_releases`; secrets/subdomains: `added`/`removed`; routes: `added`/`removed`/`changed`; `static_assets`: unchanged/changed/added/removed plus `newly_uploaded_cas_bytes`, `reused_cas_bytes`, `deployment_copy_bytes_eliminated`, `legacy_immutable_warnings`, `previous_immutable_failures`, `cas_authorization_failures`.
+`releases diff` -> `{ diff: ReleaseToReleaseDiff }`; `--from empty|active|release_id`, `--to active|release_id`. Migrations: `migrations.applied_between_releases`; secrets/subdomains: `added`/`removed`; routes: `added`/`removed`/`changed`; `static_assets`: unchanged/changed/added/removed plus `newly_uploaded_cas_bytes`, `reused_cas_bytes`, `deployment_copy_bytes_eliminated`, `legacy_immutable_warnings`, `previous_immutable_failures`, `cas_authorization_failures`.
 
-`deploy diagnose` URL-first; `deploy resolve` lower-level SDK/endpoint parity. Use either `--url` OR `--host` + optional `--path`. Both output `status`, `would_serve`, `diagnostic_status`, `match`, `summary`, normalized `request`, `warnings`, `resolution`, `edge_propagation`, `next_steps`. URL query/fragment ignored for lookup and reported under `request.ignored`. `asset_path`, `reachability_authority`, `direct` identify backing release asset and whether implicit, explicit `site.public_paths`, or route-only alias. Host/path misses exit 0 if resolver succeeded; branch on `would_serve: false`.
+`deploy resolve` takes a URL (positional or `--url`) OR `--host` + optional `--path`. It outputs `status`, `would_serve`, `diagnostic_status`, `match`, `summary`, normalized `request`, `warnings`, `resolution`, `edge_propagation`, `next_steps`. URL query/fragment ignored for lookup and reported under `request.ignored`. `asset_path`, `reachability_authority`, `direct` identify backing release asset and whether implicit, explicit `site.public_paths`, or route-only alias. Host/path misses exit 0 if resolver succeeded; branch on `would_serve: false`.
 
 Diagnostics may include `authorization_result`, `cas_object` (`sha256`, `exists`, `expected_size`, `actual_size`), `response_variant`, `allow`, `route_pattern`, `target_type`, `target_name`, `target_file`, and `edge_propagation` (`status`, `claimed_at`, `kvs_synced_at`, `expected_visible_by`, `hint`). Known `edge_propagation.status`: `settled`, `propagating`, `sync_pending`; non-settled statuses add warnings such as `edge_propagating` / `edge_sync_pending` and next steps to retry or run `run402 up verify`. Known `match`: `host_missing`, `manifest_missing`, `active_release_missing`, `unsupported_manifest_version`, `path_error`, `none`, `static_exact`, `static_index`, `spa_fallback`, `spa_fallback_missing`, `route_function`, `route_static_alias`, `route_method_miss`. Known `authorization_result`: `authorized`, `not_public`, `not_applicable`, `manifest_missing`, `target_missing`, `active_release_missing`, `unsupported_manifest_version`, `path_error`, `missing_cas_object`, `unfinalized_or_deleting_cas_object`, `size_mismatch`, `unauthorized_cas_object`. Known `fallback_state`: `active_release_missing`, `unsupported_manifest_version`, `negative_cache_hit`. Preserve unknown future strings. `result` = diagnostic body status, not HTTP transport. Resolve/diagnose is not fetch, purge, or cache-policy oracle.
 
@@ -277,7 +278,7 @@ Route warning guidance:
 | Code | Meaning | Recover |
 |---|---|---|
 | `PUBLIC_ROUTED_FUNCTION` | Function becomes public same-origin browser ingress. | Informational (`severity: "info"`, `requires_confirmation: false`): it never blocks a deploy and needs no `--allow-warning`. Review app auth, CSRF, CORS/`OPTIONS`, and cookies; direct `/functions/v1/:name` remains API-key protected. Only warnings with `requires_confirmation: true` need `--allow-warning <code>`. |
-| `ROUTE_TARGET_CARRIED_FORWARD` | Carried-forward route still targets a base-release function. | Inspect `run402 deploy release active` and deploy a replacement route table if needed. |
+| `ROUTE_TARGET_CARRIED_FORWARD` | Carried-forward route still targets a base-release function. | Inspect `run402 deploy releases active` and deploy a replacement route table if needed. |
 | `ROUTE_SHADOWS_STATIC_PATH` / `WILDCARD_ROUTE_SHADOWS_STATIC_PATHS` | Dynamic route shadows direct public static content. | Inspect warning details, active routes, `static_public_paths`, and resolve diagnostics; confirm only when intentional. |
 | `METHOD_SPECIFIC_ROUTE_ALLOWS_GET_STATIC_FALLBACK` | Unmatched methods can serve static content. | Confirm fallback is intended or add method coverage. |
 | `WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS` | Wildcard function route only allows `GET`/`HEAD`. | Add mutation methods e.g. `POST`, omit methods for an API prefix, or set `acknowledge_readonly: true` on an intentionally read-only GET/HEAD final-wildcard function route. `--allow-warning WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS` is a reviewed CLI escape hatch; broad `--allow-warnings` is last resort. |
@@ -339,7 +340,7 @@ Migration registry: key = `(id, checksum)`. There are two authoring kinds. Versi
 ---
 ### GitHub Actions OIDC Deploys
 
-Use this when the same repo should deploy itself from GitHub Actions without storing Run402 service keys, allowance files, or API keys in GitHub secrets. KISS rule: link once locally, then CI runs the same `run402 deploy apply` command agents already know.
+Use this when the same repo should deploy itself from GitHub Actions without storing Run402 service keys, allowance files, or API keys in GitHub secrets. KISS rule: link once locally, then CI runs the same `run402 deploy` command agents already know.
 
 Local setup:
 
@@ -395,7 +396,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Deploy to run402
-        run: npx --yes run402@3.7.5 deploy apply --manifest 'run402.deploy.json' --project 'prj_...' < /dev/null
+        run: npx --yes run402@3.7.5 deploy --manifest 'run402.deploy.json' --project 'prj_...' < /dev/null
 ```
 
 Output on success:
@@ -433,7 +434,7 @@ run402 ci revoke <binding_id>
 
 Intentional omissions in v1: no raw `--subject`, no wildcard flag, no `--allow-event`, no PR deploy flags, and no `--no-repository-id`. Use `--branch` or `--environment`; create a follow-up design before broadening trust.
 
-CI deploy restrictions: when `run402 deploy apply` runs inside GitHub Actions with OIDC env vars present, it uses the GitHub subject token, exchanges it for a Run402 CI session, and skips the local allowance preflight. CI manifests may include only `project_id`, `database`, `functions`, `site`, absent/current `base`, and route declarations covered by the binding's `route_scopes`. Without `--route-scope`, CI cannot ship `routes`. CI cannot ship `secrets`, `subdomains`, `checks`, unknown future top-level fields, non-current base, or oversized manifests that require `manifest_ref`.
+CI deploy restrictions: when `run402 deploy` runs inside GitHub Actions with OIDC env vars present, it uses the GitHub subject token, exchanges it for a Run402 CI session, and skips the local allowance preflight. CI manifests may include only `project_id`, `database`, `functions`, `site`, absent/current `base`, and route declarations covered by the binding's `route_scopes`. Without `--route-scope`, CI cannot ship `routes`. CI cannot ship `secrets`, `subdomains`, `checks`, unknown future top-level fields, non-current base, or oversized manifests that require `manifest_ref`.
 
 Common CI error codes:
 - `invalid_token`: check `permissions: id-token: write` and the workflow's OIDC environment
@@ -448,7 +449,7 @@ Common CI error codes:
 ---
 ### Unified Deploy Details
 
-Use `run402 deploy apply --manifest app.json` for full-stack releases; see the Unified Apply example above. Use `project_id`, `--project`, `RUN402_PROJECT_ID`, or an app-local `.run402/project.json` link. Global active state is never a deploy selector; conflicting selectors fail before mutations. Omitted top-level sections carry forward. Strict adapter: only top-level `$schema` ignored; typo/no-op fields fail before planning.
+Use `run402 deploy --manifest app.json` for full-stack releases; see the Unified Apply example above. Use `project_id`, `--project`, `RUN402_PROJECT_ID`, or an app-local `.run402/project.json` link. Global active state is never a deploy selector; conflicting selectors fail before mutations. Omitted top-level sections carry forward. Strict adapter: only top-level `$schema` ignored; typo/no-op fields fail before planning.
 
 Function specs add auth gates:
 - `require_auth: true`: valid project user JWT required; 401 on anonymous; no DB lookup; independent from `require_role`.
@@ -530,7 +531,7 @@ Additive batch: locally computed `sha256`; gateway dedupes CAS; only new shas up
 }
 ```
 
-Declarative sync: `prune: true` deletes keys under explicit `prefix` absent from new `put`; no implicit project-root prune. First apply without `confirm` returns `asset_sync` (`base_revision`, `delete_set_digest`, `expected_delete_count`, `sample_keys`); re-run with `confirm`. Activation rechecks and fails `ASSET_SYNC_DRIFT` if inventory mutates between commit/activation. No `run402 assets sync`; use manifest + `deploy apply` or SDK helpers (`uploadDir`, `syncDir`, `prepareDir`, `putMany`).
+Declarative sync: `prune: true` deletes keys under explicit `prefix` absent from new `put`; no implicit project-root prune. First apply without `confirm` returns `asset_sync` (`base_revision`, `delete_set_digest`, `expected_delete_count`, `sample_keys`); re-run with `confirm`. Activation rechecks and fails `ASSET_SYNC_DRIFT` if inventory mutates between commit/activation. No `run402 assets sync`; use manifest + `deploy` or SDK helpers (`uploadDir`, `syncDir`, `prepareDir`, `putMany`).
 
 Verify block (authoring-only): deploy manifests accept a top-level `verify` with post-apply HTTP checks — the same `verify.http[]` shape app manifests use. It is stripped before the wire `ReleaseSpec` (like `$schema`); `run402 up` runs the checks after a successful apply (propagation-tolerant, results in `result.verification.http[]` + a `result.verify` rollup) and `run402 up verify` reruns them on demand. Verification-only output reports `mode: "verify"`, `read_only: true`, and `dry_run: false` because it performs real probes without applying a release. Each check: `id` (unique, required), `path` (resolved against the project public origin) or `url`, `expect: { status }` (snake alias `expected_status`), optional `retries`. Each executed HTTP check includes `observed_release` with nullable `release_id` and `generation`, response `url`, `observed_at`, `source: "response_headers"`, and `unavailable_reason`. These are observations from that response, not proof that all routes agree or that a release stayed unchanged throughout the run. Missing or malformed headers remain unknown and do not fail an otherwise successful HTTP check.
 
@@ -596,7 +597,7 @@ Worked example covering all three slices (drop in as `manifest.json` or under `d
 Deploy:
 
 ```bash
-run402 deploy apply --manifest app.json
+run402 deploy --manifest app.json
 ```
 
 Deploy stages migrations, `database.expose`, functions/site/assets, subdomains and routes before activation. Inspect each stage and any resumable operation; activation is not a transaction that rolls back every prior effect. Set secret values first with `run402 secrets set`; deploy manifests only declare value-free `secrets.require` / `secrets.delete`.

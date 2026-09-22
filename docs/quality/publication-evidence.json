@@ -112,7 +112,7 @@
         "host": "mcp-only",
         "installedDigest": "95b2d7f9241b1f4eb9f5ca82db4c499d3d98a3278aea2d256b7abff3ace1f4a9",
         "update": "verified",
-        "nextAction": "MCP reference and app_up; no shell assumption"
+        "nextAction": "MCP reference and up; no shell assumption"
       }
     ],
     "buzz": "artifact closure + managed route/preflight/consent inspected; no onboarding mutation"

@@ -14,7 +14,7 @@ Then follow [Your first deploy](/start/first-deploy/). The installed skill teach
 
 ## Hosts without a shell
 
-Use the [MCP installation instructions](/mcp/reference/) and native `app_up` tool. Confirm which tools the host actually loaded. The local MCP server shares SDK workflows and local profile state with the CLI; the hosted discovery server has a narrower capability set. Do not infer that every CLI mutation has an MCP equivalent.
+Use the [MCP installation instructions](/mcp/reference/) and native `up` tool. Confirm which tools the host actually loaded. The local MCP server shares SDK workflows and local profile state with the CLI; the hosted discovery server has a narrower capability set. Do not infer that every CLI mutation has an MCP equivalent.
 
 ## Keep identities distinct
 

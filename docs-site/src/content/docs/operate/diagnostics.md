@@ -13,6 +13,6 @@ Replace example identifiers with actual returned IDs. Doctor reports `ok`, `bloc
 
 Request-ID lookup can fan out across functions. App logs are the normal view; use the documented origin filters when platform output is needed. Do not paste secrets from logs into public issues.
 
-For a wrong or stale URL, use `run402 deploy diagnose --help` and `run402 deploy resolve --help`, then the exact host/path and project. Inspect the active release, route match, public-path authorization and edge evidence. A hidden backing filename can be correct when an alias is the public path.
+For a wrong or stale URL, use `run402 deploy resolve --help`, then the exact URL (or host/path) and project. Inspect the active release, route match, public-path authorization and edge evidence. A hidden backing filename can be correct when an alias is the public path.
 
 See the [ops reference](/cli/ops/) and [error guide](/errors/). A current incident correlation is useful context, not proof that your app is blameless.

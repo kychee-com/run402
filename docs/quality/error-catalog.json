@@ -3972,6 +3972,10 @@
         {
           "owner": "public",
           "source": "sdk/src/node/deploy-manifest.ts"
+        },
+        {
+          "owner": "public",
+          "source": "cli/lib/deploy-v2.mjs"
         }
       ],
       "topic": "/errors/client/#MANIFEST_NOT_FOUND"

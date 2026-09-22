@@ -10,7 +10,7 @@ run402 up --check
 run402 up --plan --project prj_example
 run402 up --project prj_example --verify
 run402 up verify --project prj_example
-run402 deploy release active --project prj_example
+run402 deploy releases active --project prj_example
 ```
 
 `--check` validates local files/input and reports deferred remote checks. It neither proves the build succeeds nor grants remote policy approval. `--plan` lets you review intended changes; use the documented plan-bound apply workflow when an exact reviewed plan is required.
@@ -26,7 +26,7 @@ For recovery, retain operation/release IDs, inspect status and follow the docume
 Inspect the candidate release and its compatibility warnings before changing the active pointer:
 
 ```bash
-run402 deploy release get rel_previous --project prj_example
+run402 deploy releases get rel_previous --project prj_example
 run402 deploy promote rel_previous --project prj_example
 run402 up verify --project prj_example
 ```

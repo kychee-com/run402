@@ -11,7 +11,7 @@ A release describes desired application state: database migrations/exposure, fun
 run402 up --check
 run402 up --plan --project prj_example
 run402 up --project prj_example
-run402 deploy release active --project prj_example
+run402 deploy releases active --project prj_example
 ```
 
 A local check validates local inputs and reports deferred checks; it is not gateway validation. Planning determines remote policy, changes and warnings. Review any requested approvals. `--allow-warnings` approves broadly; prefer reviewing and allowing individual warning codes when appropriate.

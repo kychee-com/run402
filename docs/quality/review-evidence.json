@@ -617,15 +617,15 @@
     },
     "public:docs-site/src/content/docs/mcp/installation.md": {
       "sha256": "cf9f1a6683919bf87fb0a85850b512bf9d18d2318ac00164a10d117eb8e8eecb",
-      "review": "reviewed native MCP setup/reference: explicit host availability and app_up orchestration; schema/parity gates apply"
+      "review": "reviewed native MCP setup/reference: explicit host availability and up orchestration; schema/parity gates apply"
     },
     "public:docs-site/src/content/docs/mcp/lifecycle.md": {
       "sha256": "4b9d7a5293e36f9ee0cf868db05d354ca67ff39a651781f6def51d159360770d",
-      "review": "reviewed native MCP setup/reference: explicit host availability and app_up orchestration; schema/parity gates apply"
+      "review": "reviewed native MCP setup/reference: explicit host availability and up orchestration; schema/parity gates apply"
     },
     "public:docs-site/src/content/docs/mcp/limits.md": {
       "sha256": "f3c2871db79835c6fccc8ee537de9294e87165a6683f35542154b116211c5be4",
-      "review": "reviewed native MCP setup/reference: explicit host availability and app_up orchestration; schema/parity gates apply"
+      "review": "reviewed native MCP setup/reference: explicit host availability and up orchestration; schema/parity gates apply"
     },
     "public:docs-site/src/content/docs/mcp/patterns.md": {
       "sha256": "488b174992ad4245512b410becc2dc6caaa3547d5c457798a9ed49de8296a6dc",
@@ -633,11 +633,11 @@
     },
     "public:docs-site/src/content/docs/mcp/reference.md": {
       "sha256": "7d6afab204bcfe2875084e0a54b4f71d5b4911a406ee2c451ef04b9b1c20ef1f",
-      "review": "reviewed native MCP setup/reference: explicit host availability and app_up orchestration; schema/parity gates apply"
+      "review": "reviewed native MCP setup/reference: explicit host availability and up orchestration; schema/parity gates apply"
     },
     "public:docs-site/src/content/docs/mcp/tools.md": {
       "sha256": "c0f925ca3d67808ba210a8f621052a0f01890543bb846c32e4c240a661a55a06",
-      "review": "reviewed native MCP setup/reference: explicit host availability and app_up orchestration; schema/parity gates apply"
+      "review": "reviewed native MCP setup/reference: explicit host availability and up orchestration; schema/parity gates apply"
     },
     "public:docs-site/src/content/docs/operate/billing.md": {
       "sha256": "91ef8d37f4f23af4eef74e1f54edfaa468f24408d6effd21d37bdd8125cb9195",
