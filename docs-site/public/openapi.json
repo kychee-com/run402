@@ -8,7 +8,7 @@
       "name": "Run402",
       "url": "https://run402.com"
     },
-    "guidance": "Run402 is a pay-per-use backend for AI agents: Postgres databases, static hosting, serverless functions, and image generation. The shared payment engine supports x402 (USDC on Base), MPP on Tempo (pathUSD), and the exact Run402 MPP Lightning charge profile on Bitcoin mainnet (sats).\n\n## Quick start\n1. Install the CLI: npm install -g run402@latest\n2. Create an allowance: run402 init\n3. Subscribe to prototype tier (FREE, testnet USDC): run402 tier set prototype\n4. Provision a project: run402 projects provision --name \"my-app\"\n5. Deploy: run402 deploy --manifest app.json\n\n## Payment model\n- Tier subscriptions (prototype $0.10 testnet, hobby $5, team $20) unlock all platform features.\n- Image generation is $0.03 per call (x402, MPP on Tempo, or MPP Lightning micropayment).\n- Auth-only endpoints (projects, deploys, messages) require SIWX wallet identity but no payment.\n\n## Auth\n- x402 endpoints: include a payment header (handled automatically by the CLI or x402 client libraries).\n- Explicit MPP Lightning tier requests require the exact Run402 profile, ordered Accept-Payment preferences, one principal credential, a stable Idempotency-Key, and buyer-side USD/native/fee limits.\n- SIWX endpoints: sign a CAIP-122 message with your wallet.\n- REST API: use the project's anon_key or service_key as the apikey header.\n\n## Client metadata\n- Recent Node SDK/CLI clients may send Run402-Client: surface=\"cli\", version=\"3.7.14\", sdk=\"3.7.14\". It is advisory, bounded, never used for auth/billing/trust, and not browser-CORS-enabled yet.\n\n## Docs\n- Full CLI docs: https://run402.com/llms-cli.txt\n- API docs: https://run402.com/llms.txt"
+    "guidance": "Run402 is a pay-per-use backend for AI agents: Postgres databases, static hosting, serverless functions, and image generation. The shared payment engine supports x402 (USDC on Base), MPP on Tempo (pathUSD), and the exact Run402 MPP Lightning charge profile on Bitcoin mainnet (sats).\n\n## Quick start\n1. Install the CLI: npm install -g run402@latest\n2. Create an allowance: run402 init\n3. Set the prototype tier (FREE, testnet USDC): run402 tier set prototype\n4. Provision a project: run402 projects provision --name \"my-app\"\n5. Deploy: run402 deploy --manifest app.json\n\n## Payment model\n- Tiers (prototype $0.10 testnet, hobby $5, team $20; hobby and team are 30-day prepaid leases) unlock all platform features.\n- Image generation is $0.03 per call (x402, MPP on Tempo, or MPP Lightning micropayment).\n- Auth-only endpoints (projects, deploys, messages) require SIWX wallet identity but no payment.\n\n## Auth\n- x402 endpoints: include a payment header (handled automatically by the CLI or x402 client libraries).\n- Explicit MPP Lightning tier requests require the exact Run402 profile, ordered Accept-Payment preferences, one principal credential, a stable Idempotency-Key, and buyer-side USD/native/fee limits.\n- SIWX endpoints: sign a CAIP-122 message with your wallet.\n- REST API: use the project's anon_key or service_key as the apikey header.\n\n## Client metadata\n- Recent Node SDK/CLI clients may send Run402-Client: surface=\"cli\", version=\"3.7.14\", sdk=\"3.7.14\". It is advisory, bounded, never used for auth/billing/trust, and not browser-CORS-enabled yet.\n\n## Docs\n- Full CLI docs: https://run402.com/llms-cli.txt\n- API docs: https://run402.com/llms.txt"
   },
   "servers": [
     {
@@ -23,7 +23,7 @@
     },
     {
       "name": "Tiers",
-      "description": "Wallet-level tier subscription — subscribe, renew, upgrade, and check status"
+      "description": "Wallet-level tier lease — set (start, renew, upgrade) and check status"
     },
     {
       "name": "Projects",
@@ -111,7 +111,7 @@
     },
     {
       "name": "Vouchers",
-      "description": "Credit vouchers: single-use promo codes redeemable by an authenticated wallet for platform prepaid credit. Redeemed credit spends like any other prepaid balance (tiers, priced calls). Redemption works before or after `run402 init` and is never blocked by an organization grace state."
+      "description": "Allowance vouchers: single-use promo codes redeemable by an authenticated wallet for allowance. A redeemed voucher spends like any other allowance (tiers, priced calls). Redemption works before or after `run402 init` and is never blocked by an organization grace state."
     }
   ],
   "paths": {
@@ -3524,14 +3524,14 @@
         }
       }
     },
-    "/agent/v1/operator/claim-wallet-org/challenge": {
+    "/orgs/v1/adopt/challenge": {
       "post": {
         "tags": [
           "Org"
         ],
-        "summary": "Issue a wallet-org claim challenge (first-class-orgs)",
-        "operationId": "claimWalletOrgChallenge",
-        "description": "Issues a single-use nonce the wallet must sign to claim the org it owns into the caller's human identity. Reveals nothing about the wallet's orgs (control is proven only at claim time). Requires a control-plane session (auth only — no step-up; step-up is enforced on the claim itself).",
+        "summary": "Issue a wallet-org adopt challenge (first-class-orgs)",
+        "operationId": "adoptOrgChallenge",
+        "description": "Issues a single-use nonce the wallet must sign to adopt the org it owns into the caller's human identity. Reveals nothing about the wallet's orgs (control is proven only at adopt time). Requires a control-plane session (auth only — no step-up; step-up is enforced on the adopt itself).",
         "security": [
           {
             "walletAuth": []
@@ -3554,7 +3554,7 @@
                 "properties": {
                   "wallet": {
                     "type": "string",
-                    "description": "0x EVM address of the wallet whose org is being claimed."
+                    "description": "0x EVM address of the wallet whose org is being adopted."
                   }
                 }
               }
@@ -3598,13 +3598,13 @@
         }
       }
     },
-    "/agent/v1/operator/claim-wallet-org": {
+    "/orgs/v1/adopt": {
       "post": {
         "tags": [
           "Org"
         ],
-        "summary": "Claim a wallet-owned org (first-class-orgs, Phase 1.5)",
-        "operationId": "claimWalletOrg",
+        "summary": "Adopt a wallet-owned org (first-class-orgs, Phase 1.5)",
+        "operationId": "adoptOrg",
         "description": "Become the OWNER of an org currently owned by your wallet's agent principal — an ownership transfer on org memberships, not a credential link. DUAL PROOF: the control-plane session (request auth) + a fresh action-bound SIWX signature from the wallet sent as the SIGN-IN-WITH-X header (carrying the challenge nonce). The wallet authenticator stays on the agent; the agent is downgraded owner→developer. If the wallet's agent owns more than one org, returns { status: 'select_org', selectable_orgs } until org_id is chosen.",
         "security": [
           {
@@ -3626,12 +3626,12 @@
                   "org_id": {
                     "type": "string",
                     "format": "uuid",
-                    "description": "Required only when the wallet's agent owns more than one claimable org."
+                    "description": "Required only when the wallet's agent owns more than one adoptable org."
                   },
                   "display_name": {
                     "type": "string",
                     "nullable": true,
-                    "description": "Optional label to set on the claimed org."
+                    "description": "Optional label to set on the adopted org."
                   }
                 }
               }
@@ -3640,7 +3640,7 @@
         },
         "responses": {
           "200": {
-            "description": "Claimed, or a select_org prompt for a multi-org wallet",
+            "description": "Adopted, or a select_org prompt for a multi-org wallet",
             "content": {
               "application/json": {
                 "schema": {
@@ -3649,7 +3649,7 @@
                     "status": {
                       "type": "string",
                       "enum": [
-                        "claimed",
+                        "adopted",
                         "select_org"
                       ]
                     },
@@ -3689,7 +3689,7 @@
             }
           },
           "404": {
-            "description": "Nothing claimable for this wallet proof (CLAIM_NOTHING_TO_CLAIM — non-revealing)",
+            "description": "Nothing adoptable for this wallet proof (ADOPT_NOTHING_TO_ADOPT — non-revealing)",
             "content": {
               "application/json": {
                 "schema": {
@@ -3699,7 +3699,7 @@
             }
           },
           "409": {
-            "description": "Complex source, self-claim, or free-org cap exceeded",
+            "description": "Complex source, self-adopt, or free-org cap exceeded",
             "content": {
               "application/json": {
                 "schema": {
@@ -3805,7 +3805,7 @@
                         "string",
                         "null"
                       ],
-                      "description": "The org's claimable, address-form handle (repo-first-onramp D6). Distinct from display_name; null if unclaimed."
+                      "description": "The org's address-form handle (repo-first-onramp D6). Distinct from display_name; null if unset."
                     },
                     "tier": {
                       "type": [
@@ -3819,7 +3819,7 @@
                         "null"
                       ],
                       "format": "date-time",
-                      "description": "ISO-8601 timestamp when the current lease began. Null only for a pre-subscription placeholder org."
+                      "description": "ISO-8601 timestamp when the current lease began. Null only for a placeholder org that has not set a tier."
                     },
                     "lease_expires_at": {
                       "type": [
@@ -3827,7 +3827,7 @@
                         "null"
                       ],
                       "format": "date-time",
-                      "description": "ISO-8601 timestamp when the current lease expires. Null only for a pre-subscription placeholder org."
+                      "description": "ISO-8601 timestamp when the current lease expires. Null only for a placeholder org that has not set a tier."
                     }
                   }
                 }
@@ -3844,8 +3844,8 @@
               }
             }
           },
-          "429": {
-            "description": "FREE_ORG_OWNER_LIMIT_EXCEEDED",
+          "403": {
+            "description": "FREE_ORG_OWNER_LIMIT_EXCEEDED — the free-org ownership ceiling. A policy refusal with next_actions (set a paid tier on an existing org, or contact support); never a rate limit, so do not retry on a timer.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3905,7 +3905,7 @@
                         "string",
                         "null"
                       ],
-                      "description": "The org's claimable, address-form handle (repo-first-onramp D6). Distinct from display_name; null if unclaimed."
+                      "description": "The org's address-form handle (repo-first-onramp D6). Distinct from display_name; null if unset."
                     },
                     "tier": {
                       "type": [
@@ -3919,7 +3919,7 @@
                         "null"
                       ],
                       "format": "date-time",
-                      "description": "ISO-8601 timestamp when the current lease began. Null only for a pre-subscription placeholder org."
+                      "description": "ISO-8601 timestamp when the current lease began. Null only for a placeholder org that has not set a tier."
                     },
                     "lease_expires_at": {
                       "type": [
@@ -3927,7 +3927,7 @@
                         "null"
                       ],
                       "format": "date-time",
-                      "description": "ISO-8601 timestamp when the current lease expires. Null only for a pre-subscription placeholder org."
+                      "description": "ISO-8601 timestamp when the current lease expires. Null only for a placeholder org that has not set a tier."
                     },
                     "role": {
                       "type": "string",
@@ -4016,7 +4016,7 @@
                         "string",
                         "null"
                       ],
-                      "description": "The org's claimable, address-form handle (repo-first-onramp D6). Distinct from display_name; null if unclaimed."
+                      "description": "The org's address-form handle (repo-first-onramp D6). Distinct from display_name; null if unset."
                     },
                     "tier": {
                       "type": [
@@ -4030,7 +4030,7 @@
                         "null"
                       ],
                       "format": "date-time",
-                      "description": "ISO-8601 timestamp when the current lease began. Null only for a pre-subscription placeholder org."
+                      "description": "ISO-8601 timestamp when the current lease began. Null only for a placeholder org that has not set a tier."
                     },
                     "lease_expires_at": {
                       "type": [
@@ -4038,7 +4038,7 @@
                         "null"
                       ],
                       "format": "date-time",
-                      "description": "ISO-8601 timestamp when the current lease expires. Null only for a pre-subscription placeholder org."
+                      "description": "ISO-8601 timestamp when the current lease expires. Null only for a placeholder org that has not set a tier."
                     }
                   }
                 }
@@ -4063,9 +4063,9 @@
         "tags": [
           "Org"
         ],
-        "summary": "Claim or rename the org's slug (repo-first-onramp D6)",
-        "operationId": "claimOrgSlug",
-        "description": "Owner-only. Claims a globally-unique, address-form slug for the org (`run402::<org-slug>/<repo-name>`), distinct from display_name. A genesis claim (the org had no slug yet) is a 201; a rename (the org already had a slug — the old one releases into a ~90-day cooldown behind a typed SLUG_RELEASED refusal, never a redirect) is a 200. The org's FIRST-EVER slug claim is free — no billing wallet required; every later claim or rename debits a one-time payable claim fee from the org's allowance. `fee_usd_micros` in the response names the real price of THIS call (0 or the fee). Requires Idempotency-Key so a retried claim cannot double-bill. Refused for names on the static reserved list (SLUG_RESERVED) or the curated protected-brands list (SLUG_PROTECTED, claimable only via manual review), and for a slug already claimed or in cooldown (SLUG_TAKEN / SLUG_RELEASED, the latter naming the successor slug).",
+        "summary": "Set or rename the org's slug (repo-first-onramp D6)",
+        "operationId": "setOrgSlug",
+        "description": "Owner-only. Claims a globally-unique, address-form slug for the org (`run402::<org-slug>/<repo-name>`), distinct from display_name. A genesis set (the org had no slug yet) is a 201; a rename (the org already had a slug — the old one releases into a ~90-day cooldown behind a typed SLUG_RELEASED refusal, never a redirect) is a 200. The org's FIRST-EVER slug claim is free — no billing wallet required; every later set or rename debits a one-time payable set fee from the org's allowance. `fee_usd_micros` in the response names the real price of THIS call (0 or the fee). Requires Idempotency-Key so a retried claim cannot double-bill. Refused for names on the static reserved list (SLUG_RESERVED) or the curated protected-brands list (SLUG_PROTECTED, available only via manual review), and for a slug already claimed or in cooldown (SLUG_TAKEN / SLUG_RELEASED, the latter naming the successor slug).",
         "security": [
           {
             "walletAuth": []
@@ -4096,7 +4096,7 @@
               "minLength": 1,
               "maxLength": 256
             },
-            "description": "Required — a paid, side-effecting claim. An exact retry with the same key never double-bills."
+            "description": "Required — a paid, side-effecting set. An exact retry with the same key never double-bills."
           }
         ],
         "requestBody": {
@@ -4124,17 +4124,17 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OrgSlugClaimResult"
+                  "$ref": "#/components/schemas/OrgSlugSetResult"
                 }
               }
             }
           },
           "201": {
-            "description": "Genesis claim — the org had no slug yet",
+            "description": "Genesis set — the org had no slug yet",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OrgSlugClaimResult"
+                  "$ref": "#/components/schemas/OrgSlugSetResult"
                 }
               }
             }
@@ -4160,7 +4160,7 @@
             }
           },
           "409": {
-            "description": "Already claimed by another org (SLUG_TAKEN), or in cooldown naming the successor (SLUG_RELEASED)",
+            "description": "Already taken by another org (SLUG_TAKEN), or in cooldown naming the successor (SLUG_RELEASED)",
             "content": {
               "application/json": {
                 "schema": {
@@ -5185,7 +5185,7 @@
         ],
         "summary": "List tier pricing",
         "operationId": "listTiers",
-        "description": "Returns available tiers, pricing, and resource limits. No auth required. Useful for programmatic price discovery before subscribing.",
+        "description": "Returns available tiers, pricing, and resource limits. No auth required. Useful for programmatic price discovery before setting a tier.",
         "responses": {
           "200": {
             "description": "Tier pricing and auth info",
@@ -5232,9 +5232,9 @@
         "tags": [
           "Tiers"
         ],
-        "summary": "Subscribe, renew, or upgrade tier",
+        "summary": "Set a tier: start, renew, or upgrade its lease",
         "operationId": "setTier",
-        "description": "Unified tier endpoint. Auto-detects subscribe, renew, or upgrade; downgrading during an active lease is rejected. Existing x402 behavior remains compatible. The explicit MPP Lightning charge path requires Run402-Payment-Profile: run402-mpp-lightning-charge-draft00-safety-v1, Accept-Payment selecting lightning/charge, exactly one supported principal credential, and one stable Idempotency-Key. It returns one fresh fixed-amount Bitcoin-mainnet BOLT11 invoice per emitted challenge, retains quote metadata, and requires exact-request reconciliation after possible dispatch.",
+        "description": "Unified tier endpoint. The allowance settles first: send the ordinary SIGN-IN-WITH-X identity and, when the organization's allowance covers the price, the purchase settles from it with no 402, no payment header, and no wallet funds (response `paid_with: allowance`). An allowance that falls short gets a 402 whose `allowance` block names the allowance, price, and shortfall, with redeem-voucher and top-up next actions beside the x402/MPP challenge. Auto-detects start, renew, or upgrade (the `action` field; a start answers 201); downgrading during an active lease is rejected. Existing x402 behavior remains compatible. The explicit MPP Lightning charge path requires Run402-Payment-Profile: run402-mpp-lightning-charge-draft00-safety-v1, Accept-Payment selecting lightning/charge, exactly one supported principal credential, and one stable Idempotency-Key. It returns one fresh fixed-amount Bitcoin-mainnet BOLT11 invoice per emitted challenge, retains quote metadata, and requires exact-request reconciliation after possible dispatch.",
         "x-payment-info": {
           "protocols": [
             "x402",
@@ -5313,7 +5313,7 @@
                 "schema": {
                   "oneOf": [
                     {
-                      "$ref": "#/components/schemas/TierSubscription"
+                      "$ref": "#/components/schemas/TierLease"
                     },
                     {
                       "$ref": "#/components/schemas/MppLightningTierResult"
@@ -5327,13 +5327,13 @@
             }
           },
           "201": {
-            "description": "Tier subscribed (new subscription)",
+            "description": "Lease started (`action: start`)",
             "content": {
               "application/json": {
                 "schema": {
                   "oneOf": [
                     {
-                      "$ref": "#/components/schemas/TierSubscription"
+                      "$ref": "#/components/schemas/TierLease"
                     },
                     {
                       "$ref": "#/components/schemas/MppLightningTierResult"
@@ -5432,7 +5432,7 @@
                         "team",
                         null
                       ],
-                      "description": "Current tier, or null if the wallet has never subscribed."
+                      "description": "Current tier, or null if the wallet has never set one."
                     },
                     "lease_started_at": {
                       "type": "string",
@@ -5495,10 +5495,14 @@
                         "projects",
                         "total_api_calls",
                         "total_storage_bytes",
+                        "total_storage",
                         "gitvault_source_bytes",
+                        "gitvault_source",
                         "api_calls_limit",
                         "storage_bytes_limit",
+                        "storage_limit",
                         "source_bytes_limit",
+                        "source_limit",
                         "gitvault_egress_bytes_used",
                         "gitvault_egress_bytes_limit"
                       ],
@@ -5516,9 +5520,19 @@
                           "type": "integer",
                           "description": "App storage: sum of storage_bytes across the wallet's active projects PLUS gitvault_source_bytes, folded together for a single at-a-glance figure. The tier limit it is compared against is storage_bytes_limit; gitvault's OWN limit is the separate source_bytes_limit below (kygit-handoff D4 — two pooled terms, two limits)."
                         },
+                        "total_storage": {
+                          "type": "string",
+                          "example": "12.3 MB",
+                          "description": "total_storage_bytes as a human string, decimal units. Every human string on this surface sits beside its byte count under the same name with _bytes removed."
+                        },
                         "gitvault_source_bytes": {
                           "type": "integer",
                           "description": "The gitvault half of total_storage_bytes, broken out — and the figure compared against source_bytes_limit. Counts EVERY vault in the organization, including vaults whose project has been deleted: vault ciphertext is retained permanently (V0 has no purge verb), so its bytes stay pooled."
+                        },
+                        "gitvault_source": {
+                          "type": "string",
+                          "example": "0 B",
+                          "description": "gitvault_source_bytes as a human string, decimal units."
                         },
                         "api_calls_limit": {
                           "type": "integer",
@@ -5526,11 +5540,23 @@
                         },
                         "storage_bytes_limit": {
                           "type": "integer",
-                          "description": "Tier app-storage cap in bytes. 0 when no tier is set."
+                          "example": 250000000,
+                          "description": "Tier app-storage cap in bytes — a round decimal constant (prototype 250000000 / hobby 1000000000 / team 10000000000). 0 when no tier is set."
+                        },
+                        "storage_limit": {
+                          "type": "string",
+                          "example": "250 MB",
+                          "description": "storage_bytes_limit as a human string (\"250 MB\" / \"1 GB\" / \"10 GB\"), derived from the tier constant so the number and the label never disagree. \"0 B\" when no tier is set."
                         },
                         "source_bytes_limit": {
                           "type": "integer",
-                          "description": "kygit-handoff D4 — the org-pooled gitvault vault-bytes cap, a SEPARATE limit from storage_bytes_limit (prototype 1 GiB / hobby 10 GiB / team 50 GiB). A gitvault QUOTA_EXCEEDED refusal with details.resource:\"source_bytes\" is computed against gitvault_source_bytes vs this figure. 0 when no tier is set."
+                          "example": 1000000000,
+                          "description": "kygit-handoff D4 — the org-pooled gitvault vault-bytes cap, a SEPARATE limit from storage_bytes_limit (prototype 1000000000 / hobby 10000000000 / team 50000000000 — 1 GB / 10 GB / 50 GB). A gitvault QUOTA_EXCEEDED refusal with details.resource:\"source_bytes\" is computed against gitvault_source_bytes vs this figure. 0 when no tier is set."
+                        },
+                        "source_limit": {
+                          "type": "string",
+                          "example": "1 GB",
+                          "description": "source_bytes_limit as a human string (\"1 GB\" / \"10 GB\" / \"50 GB\"). \"0 B\" when no tier is set."
                         },
                         "gitvault_egress_bytes_used": {
                           "type": "integer",
@@ -5778,7 +5804,7 @@
         ],
         "summary": "Provision a new project",
         "operationId": "createProject",
-        "description": "Creates a new database project. Requires wallet auth (EIP-4361 signature). Free within your active tier. The wallet must have an active tier subscription.",
+        "description": "Creates a new database project. Requires wallet auth (EIP-4361 signature). Free within your active tier. The wallet must have an active tier.",
         "security": [
           {
             "walletAuth": []
@@ -5833,7 +5859,7 @@
         ],
         "summary": "Get tier pricing quote",
         "operationId": "quoteProjectPricing",
-        "description": "Returns tier pricing (price, lease_days, storage_mb, api_calls per tier). Free, no auth. Backwards-compatible alias for clients pinned to this path; the canonical pricing endpoint is GET /tiers/v1.",
+        "description": "Returns tier pricing (price, lease_days, storage_bytes with its storage label, api_calls per tier). Free, no auth. Backwards-compatible alias for clients pinned to this path; the canonical pricing endpoint is GET /tiers/v1.",
         "responses": {
           "200": {
             "description": "Tier pricing quote",
@@ -5856,8 +5882,15 @@
                             "nullable": true,
                             "description": "null for a perpetual tier (kygit-handoff D4 — prototype)."
                           },
-                          "storage_mb": {
-                            "type": "integer"
+                          "storage_bytes": {
+                            "type": "integer",
+                            "example": 250000000,
+                            "description": "Pooled app-storage quota in bytes, a round decimal constant."
+                          },
+                          "storage": {
+                            "type": "string",
+                            "example": "250 MB",
+                            "description": "storage_bytes as a human string, derived from the constant."
                           },
                           "api_calls": {
                             "type": "integer"
@@ -5866,7 +5899,8 @@
                         "required": [
                           "price",
                           "lease_days",
-                          "storage_mb",
+                          "storage_bytes",
+                          "storage",
                           "api_calls"
                         ]
                       }
@@ -5985,7 +6019,13 @@
                           "type": "integer"
                         },
                         "storage_bytes_limit": {
-                          "type": "integer"
+                          "type": "integer",
+                          "description": "Pooled app-storage cap in bytes (a round decimal tier constant)."
+                        },
+                        "storage_limit": {
+                          "type": "string",
+                          "example": "250 MB",
+                          "description": "storage_bytes_limit as a human string, derived from the tier constant."
                         }
                       }
                     },
@@ -6223,9 +6263,9 @@
         "tags": [
           "Projects"
         ],
-        "summary": "Claim or rename the project's address-form repo name (repo-first-onramp D6)",
-        "operationId": "claimRepoName",
-        "description": "Explicit claim/rename of the project's per-org-unique, address-form name (`run402::<org-slug>/<repo-name>`) — the address counterpart to the free-text display `name` on PATCH /projects/v1/{project_id}, which is left untouched. A project also acquires this name implicitly via push-to-create (POST /gitvault/v1/vaults with {org_slug, repo_name}); this route is the explicit alternative. No fee. Same authority tier as renaming the display name (project.rename).",
+        "summary": "Set or rename the project's address-form repo name (repo-first-onramp D6)",
+        "operationId": "setRepoName",
+        "description": "Explicit set/rename of the project's per-org-unique, address-form name (`run402::<org-slug>/<repo-name>`) — the address counterpart to the free-text display `name` on PATCH /projects/v1/{project_id}, which is left untouched. A project also acquires this name implicitly via push-to-create (POST /gitvault/v1/vaults with {org_slug, repo_name}); this route is the explicit alternative. No fee. Same authority tier as renaming the display name (project.rename).",
         "security": [
           {
             "controlPlaneSession": []
@@ -6265,7 +6305,7 @@
         },
         "responses": {
           "200": {
-            "description": "The project's repo name, claimed or renamed.",
+            "description": "The project's repo name, set or renamed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -6282,7 +6322,7 @@
                         "string",
                         "null"
                       ],
-                      "description": "The project's prior address-form name, or null if this is its first claim."
+                      "description": "The project's prior address-form name, or null if this is its first set."
                     }
                   }
                 }
@@ -6310,7 +6350,7 @@
             }
           },
           "409": {
-            "description": "Name already claimed by another project in this org (REPO_NAME_TAKEN).",
+            "description": "Name already held by another project in this org (REPO_NAME_TAKEN).",
             "content": {
               "application/json": {
                 "schema": {
@@ -6329,7 +6369,7 @@
         ],
         "summary": "Initiate a project transfer (to a wallet, email, or owned org)",
         "operationId": "initiateProjectTransfer",
-        "description": "Transfer a project to another owner. Address the recipient by EXACTLY ONE of to_wallet (a two-party SIWX handoff completed via /accept), to_email (an email handoff claimed via /claim), or to_org_id (same-actor move into another org the caller already owns, completed synchronously). Supplying multiple recipient fields, or none, returns 400 VALIDATION_FAILED. Email-addressed transfers may include retain_collaborator: { role: \"developer\" }; wallet/org-addressed transfers reject it. kysigned_record_id is wallet-only. Either pending party can cancel wallet/email transfers; otherwise they auto-expire at 72h. Single-pending-per-project (partial UNIQUE index) → 409 PENDING_TRANSFER_EXISTS. Auth: SIWX wallet, or a control-plane session (step-up gated). Org-addressed same-actor moves require active owner membership on both source and destination orgs; non-same-actor org transfers are reserved for a future interactive flow and currently return 403 FORBIDDEN.",
+        "description": "Transfer a project to another owner. Address the recipient by EXACTLY ONE of to_wallet (a two-party SIWX transfer completed via /accept), to_email (an email-addressed transfer, also accepted via /accept), or to_org_id (same-actor move into another org the caller already owns, completed synchronously). Supplying multiple recipient fields, or none, returns 400 VALIDATION_FAILED. Email-addressed transfers may include retain_member: { role: \"developer\" }; wallet/org-addressed transfers reject it. kysigned_record_id is wallet-only. Either pending party can cancel wallet/email transfers; otherwise they auto-expire at 72h. Single-pending-per-project (partial UNIQUE index) → 409 PENDING_TRANSFER_EXISTS. Auth: SIWX wallet, or a control-plane session (step-up gated). Org-addressed same-actor moves require active owner membership on both source and destination orgs; non-same-actor org transfers are reserved for a future interactive flow and currently return 403 FORBIDDEN.",
         "security": [
           {
             "walletAuth": []
@@ -6363,7 +6403,7 @@
                   "to_email": {
                     "type": "string",
                     "format": "email",
-                    "description": "Recipient email address. Mutually exclusive with to_wallet and to_org_id. The recipient claims via POST /agent/v1/transfers/{transfer_id}/claim, choosing an org they own or creating a new one."
+                    "description": "Recipient email address. Mutually exclusive with to_wallet and to_org_id. The recipient accepts via POST /agent/v1/transfers/{transfer_id}/accept with a sign-in session whose verified email matches, choosing an org they own or creating a new one."
                   },
                   "to_org_id": {
                     "type": "string",
@@ -6382,9 +6422,9 @@
                     "type": "string",
                     "description": "Optional human-readable note carried in notification emails to both parties."
                   },
-                  "retain_collaborator": {
+                  "retain_member": {
                     "type": "object",
-                    "description": "Email-addressed transfers only. Optional sender proposal to stay on as a developer of the recipient org after claim; materialized only when the recipient passes accept_retained_collaborator: true.",
+                    "description": "Email-addressed transfers only. Optional sender proposal to stay on as a developer of the recipient org after accept; materialized only when the recipient passes accept_retained_member: true.",
                     "properties": {
                       "role": {
                         "type": "string",
@@ -6421,11 +6461,11 @@
                     "project_id": {
                       "type": "string"
                     },
-                    "from_organization_id": {
+                    "from_org_id": {
                       "type": "string",
                       "format": "uuid"
                     },
-                    "to_organization_id": {
+                    "to_org_id": {
                       "type": "string",
                       "format": "uuid"
                     },
@@ -6770,15 +6810,21 @@
         "tags": [
           "Project Transfers"
         ],
-        "summary": "Accept a pending project transfer (recipient B signs)",
+        "summary": "Accept a pending project transfer (the recipient, whatever its address)",
         "operationId": "acceptProjectTransfer",
-        "description": "Atomic transaction: wallet flip + CI binding revoke + notification enqueue (one per recipient) + secrets-rotation advisory stamp + audit row, all in one COMMIT. Routes scope by transfer_id (NOT project_id) — stale-offer safe. Five distinct pre-condition codes: OPERATOR_EMAIL_NOT_VERIFIED (412), RECIPIENT_ORGANIZATION_NOT_ACTIVE (409), PROJECT_NOT_TRANSFERABLE (409), PROJECT_OWNER_CHANGED (409), TRANSFER_EXPIRED (410). Uses clock_timestamp() for the expiry check (NOT NOW() — would be stale under lock waits).",
+        "description": "The ONE completion route. The row's recipient kind picks the credential: a wallet-addressed transfer is accepted by the to_wallet's SIWX signature; an email-addressed transfer is accepted by a sign-in session (or SIWX principal) whose verified email matches, into an org it owns (org_id) or, with org_id omitted, a newly created wallet-less org. Both paths run the same atomic transaction: ownership flip + grant/CI revoke + notification enqueue (one per recipient) + secrets-rotation advisory stamp + audit row, all in one COMMIT, and both return the project's anon_key + service_key. Routes scope by transfer_id (NOT project_id) — stale-offer safe. If the preview carries retain_member, accept_retained_member: true keeps the sender on as a developer of the receiving org; default false severs access. Pre-condition codes: OPERATOR_EMAIL_NOT_VERIFIED (412), RECIPIENT_ORGANIZATION_NOT_ACTIVE (409), PROJECT_NOT_TRANSFERABLE (409), PROJECT_OWNER_CHANGED (409), TRANSFER_EXPIRED (410). Uses clock_timestamp() for the expiry check (NOT NOW() — would be stale under lock waits).",
         "security": [
           {
             "walletAuth": []
+          },
+          {
+            "controlPlaneSession": []
           }
         ],
         "parameters": [
+          {
+            "$ref": "#/components/parameters/SiwxHeader"
+          },
           {
             "name": "transfer_id",
             "in": "path",
@@ -6789,9 +6835,30 @@
             }
           }
         ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "org_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Email-addressed transfers only. An org the recipient owns to receive the project; omit to create a new wallet-less org."
+                  },
+                  "accept_retained_member": {
+                    "type": "boolean",
+                    "description": "Email-addressed transfers only. Opt-in. When the preview carries retain_member, true keeps the sender on as a developer of the receiving org; default false severs access."
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
-            "description": "Accept succeeded",
+            "description": "Accept succeeded (ownership flipped). A wallet-addressed row returns AcceptTransferResponse; an email-addressed row returns {status: 'accepted', project_id, to_org_id, created_new_org, retained_member_principal_id, credentials_revoked, credentials_issued}. Both carry anon_key + service_key.",
             "content": {
               "application/json": {
                 "schema": {
@@ -6800,8 +6867,18 @@
               }
             }
           },
+          "401": {
+            "description": "INVALID_AUTH — an email-addressed transfer needs an authenticated principal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
           "403": {
-            "description": "FORBIDDEN — signer is not the to_wallet",
+            "description": "FORBIDDEN — a wallet-addressed transfer needs the to_wallet's SIWX signature (signer is not the to_wallet, or no wallet was presented); NOT_ORG_OWNER — the recipient does not own org_id",
             "content": {
               "application/json": {
                 "schema": {
@@ -6821,7 +6898,7 @@
             }
           },
           "409": {
-            "description": "TRANSFER_ALREADY_PROCESSED / RECIPIENT_ORGANIZATION_NOT_ACTIVE / PROJECT_NOT_TRANSFERABLE / PROJECT_OWNER_CHANGED / PAYMENT_DESTINATION_DRAINING / PAYMENT_DESTINATION_CHANGED / WRONG_COMPLETION_FOR_TRANSFER_KIND. A draining response carries Retry-After and must be repeated with the same transfer id; it never advances the ownership epoch early.",
+            "description": "TRANSFER_ALREADY_PROCESSED / RECIPIENT_ORGANIZATION_NOT_ACTIVE / PROJECT_NOT_TRANSFERABLE / PROJECT_OWNER_CHANGED / PAYMENT_DESTINATION_DRAINING / PAYMENT_DESTINATION_CHANGED / WRONG_COMPLETION_FOR_TRANSFER_KIND (the row's kind needs the other credential; next_actions names it). A draining response carries Retry-After and must be repeated with the same transfer id; it never advances the ownership epoch early.",
             "content": {
               "application/json": {
                 "schema": {
@@ -6841,95 +6918,11 @@
             }
           },
           "412": {
-            "description": "OPERATOR_EMAIL_NOT_VERIFIED — B must verify their operator email first",
+            "description": "OPERATOR_EMAIL_NOT_VERIFIED — the recipient must verify the addressed email first",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/agent/v1/transfers/{transfer_id}/claim": {
-      "post": {
-        "tags": [
-          "Project Transfers"
-        ],
-        "summary": "Complete an email-addressed transfer (claim into an org)",
-        "operationId": "claimProjectTransfer",
-        "description": "The EMAIL completion ceremony. The addressed-email principal claims the transfer into an org they own (org_id) or omits it to create a new wallet-less org. Atomically repoints project ownership and re-homes authority — the same engine as the wallet /accept. If the preview carries retain_collaborator, accept_retained_collaborator: true keeps the sender on as a developer; default false severs access. Calling claim on a wallet-addressed row returns 409 WRONG_COMPLETION_FOR_TRANSFER_KIND pointing at /accept on the same transfer id.",
-        "security": [
-          {
-            "walletAuth": []
-          },
-          {
-            "controlPlaneSession": []
-          }
-        ],
-        "parameters": [
-          {
-            "$ref": "#/components/parameters/SiwxHeader"
-          },
-          {
-            "name": "transfer_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": false,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "org_id": {
-                    "type": "string",
-                    "format": "uuid",
-                    "description": "An org the claimer owns to receive the project; omit to create a new wallet-less org."
-                  },
-                  "accept_retained_collaborator": {
-                    "type": "boolean",
-                    "description": "Opt-in. When the preview carries retain_collaborator, true keeps the sender on as a developer of the receiving org; default false severs access."
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Claimed (ownership flipped; status: accepted)",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "WRONG_COMPLETION_FOR_TRANSFER_KIND (wallet-addressed row — use /accept) / TRANSFER_ALREADY_PROCESSED",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            }
-          },
-          "412": {
-            "description": "Addressed email not verified (OPERATOR_EMAIL_NOT_VERIFIED)",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
                 }
               }
             }
@@ -8630,7 +8623,7 @@
                 "properties": {
                   "redirect_url": {
                     "type": "string",
-                    "description": "Where to send the auth code after Google login. Must be http://localhost:* or a claimed subdomain (https://{name}.run402.com)."
+                    "description": "Where to send the auth code after Google login. Must be http://localhost:* or a added subdomain (https://{name}.run402.com)."
                   },
                   "mode": {
                     "type": "string",
@@ -9282,6 +9275,11 @@
                     },
                     "storage_limit_bytes": {
                       "type": "integer"
+                    },
+                    "storage_limit": {
+                      "type": "string",
+                      "example": "250 MB",
+                      "description": "storage_limit_bytes as a human string, derived from the tier constant."
                     },
                     "lease_expires_at": {
                       "type": "string",
@@ -13056,7 +13054,7 @@
         "tags": [
           "Subdomains"
         ],
-        "summary": "Claim or reassign a subdomain",
+        "summary": "Add or reassign a subdomain",
         "operationId": "createSubdomain",
         "description": "Maps a managed subdomain ({name}.run402.com) to a site deployment. The target is resolved server-side from whatever the caller holds: `deployment_id` (a legacy `dpl_` id, or a `rel_` / `op_` id from a unified-apply commit), `release_id`, or neither — then the project's live (active) release. 404 when the project has no site deployment yet. A first activation that carries site files and no `subdomains` slice claims a host automatically (derived from the project name); this route is for choosing a different name or claiming after the fact.",
         "security": [
@@ -14107,6 +14105,16 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "PROJECT_SCOPE_MISMATCH — a valid project_admin JWT issued for a different project (decided before any project lookup, so the answer never reveals whether the addressed project exists), or FORBIDDEN — a valid JWT of another class. Both carry next_actions; neither is a 401.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       },
@@ -14153,6 +14161,16 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "PROJECT_SCOPE_MISMATCH — a valid project_admin JWT issued for a different project (decided before any project lookup, so the answer never reveals whether the addressed project exists), or FORBIDDEN — a valid JWT of another class. Both carry next_actions; neither is a 401.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -14206,6 +14224,16 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "PROJECT_SCOPE_MISMATCH — a valid project_admin JWT issued for a different project (decided before any project lookup, so the answer never reveals whether the addressed project exists), or FORBIDDEN — a valid JWT of another class. Both carry next_actions; neither is a 401.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -14746,7 +14774,7 @@
           "Functions"
         ],
         "summary": "Create a durable function run",
-        "description": "Create an idempotent delayed/reliable request for a deployed function. When due, the function receives X-Run402-Trigger: function_run and a typed JSON envelope.",
+        "description": "Create an idempotent delayed/reliable request for a deployed function. When due, the function receives X-Run402-Trigger: function_run and a typed JSON envelope. Temporary concurrency occupancy waits automatically without consuming execution attempts; lifecycle and exhausted-quota gates remain blocked.",
         "operationId": "createFunctionRun",
         "security": [
           {
@@ -15240,13 +15268,13 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "available_usd_micros": {
+                    "allowance_usd_micros": {
                       "type": "integer",
                       "description": "Available balance in micro-USD (1 USD = 1,000,000)"
                     }
                   },
                   "required": [
-                    "available_usd_micros"
+                    "allowance_usd_micros"
                   ]
                 }
               }
@@ -15316,7 +15344,7 @@
                     "org_id": {
                       "type": "string"
                     },
-                    "available_usd_micros": {
+                    "allowance_usd_micros": {
                       "type": "integer"
                     },
                     "email_credits_remaining": {
@@ -15344,7 +15372,7 @@
                   },
                   "required": [
                     "org_id",
-                    "available_usd_micros",
+                    "allowance_usd_micros",
                     "email_credits_remaining",
                     "tier",
                     "lease_expires_at",
@@ -15509,7 +15537,7 @@
                     "org_id": {
                       "type": "string"
                     },
-                    "available_usd_micros": {
+                    "allowance_usd_micros": {
                       "type": "integer"
                     }
                   },
@@ -15718,7 +15746,7 @@
           "Contracts"
         ],
         "summary": "Provision a KMS-backed Ethereum wallet",
-        "description": "Provision a KMS-backed Ethereum wallet for signing smart-contract transactions on behalf of the project. Cost: $0.04/day rental ($1.20/month, billed daily as kms_wallet_rental). Requires $1.20 in cash credit at creation (30 days of rent). Private keys never leave AWS KMS. Supported chains: base-mainnet, base-sepolia. Non-custodial: see https://run402.com/humans/terms.html#non-custodial-kms-wallets.",
+        "description": "Provision a KMS-backed Ethereum wallet for signing smart-contract transactions on behalf of the project. Cost: $0.04/day rental ($1.20/month, billed daily as kms_wallet_rental). Requires $1.20 of allowance at creation (30 days of rent). Private keys never leave AWS KMS. Supported chains: base-mainnet, base-sepolia. Non-custodial: see https://run402.com/humans/terms.html#non-custodial-kms-wallets.",
         "operationId": "provisionSigner",
         "security": [
           {
@@ -15773,7 +15801,7 @@
             }
           },
           "403": {
-            "description": "Insufficient cash balance for 30-day prepay (top up via /orgs/v1/:org_id/checkouts)",
+            "description": "Insufficient allowance for 30-day prepay (top up via /orgs/v1/:org_id/checkouts)",
             "content": {
               "application/json": {
                 "schema": {
@@ -16103,7 +16131,7 @@
           "Contracts"
         ],
         "summary": "Drain native balance to a destination address (works on suspended wallets)",
-        "description": "Drain the wallet's entire native-token balance to a destination address. Works on suspended wallets — the safety valve, so a project that runs out of cash credit can still recover its on-chain funds. Project lifecycle must still allow control-plane writes. Header X-Confirm-Drain: <signer_id> required. Optional Idempotency-Key is request-fingerprinted; mismatched replays return 409 carrying the stored call's status/call_error/tx_hash, and a matched replay of a drain that failed before broadcast re-executes under the same call_id. Cost: chain gas at-cost + $0.000005 KMS sign fee.",
+        "description": "Drain the wallet's entire native-token balance to a destination address. Works on suspended wallets — the safety valve, so a project whose allowance runs out can still recover its on-chain funds. Project lifecycle must still allow control-plane writes. Header X-Confirm-Drain: <signer_id> required. Optional Idempotency-Key is request-fingerprinted; mismatched replays return 409 carrying the stored call's status/call_error/tx_hash, and a matched replay of a drain that failed before broadcast re-executes under the same call_id. Cost: chain gas at-cost + $0.000005 KMS sign fee.",
         "operationId": "drainSigner",
         "security": [
           {
@@ -17047,6 +17075,94 @@
       }
     },
     "/projects/v1/{project_id}/domains": {
+      "post": {
+        "tags": [
+          "Project domains"
+        ],
+        "summary": "Connect a custom domain",
+        "operationId": "connectProjectDomain",
+        "description": "Connects a custom domain to the project: creates or replaces its desired ProjectDomain state for web hosting, email sending, email receiving, and custom mailbox addresses. The domain rides in the body; the same call on a connected domain replaces its desired state. The response separates desired, observed, and effective state and returns checks, DNS records, authority options, and canonical next_actions.",
+        "security": [
+          {
+            "walletAuth": []
+          },
+          {
+            "controlPlaneSession": []
+          },
+          {
+            "delegateBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SiwxHeader"
+          },
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ProjectId"
+            },
+            "description": "Target project id. Authorization is checked server-side through wallet SIWX, control-plane session, or scoped delegate."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectDomainConnectRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Custom domain connected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectDomain"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid desired state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Not authorized for this project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Confirmation or conflict required, such as full MX takeover without observed-MX fingerprint confirmation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
       "get": {
         "tags": [
           "Project domains"
@@ -17115,104 +17231,6 @@
       }
     },
     "/projects/v1/{project_id}/domains/{domain}": {
-      "post": {
-        "tags": [
-          "Project domains"
-        ],
-        "summary": "Ensure project domain desired state",
-        "operationId": "ensureProjectDomain",
-        "description": "Creates or replaces the desired ProjectDomain state for web hosting, email sending, email receiving, and custom mailbox addresses. The response separates desired, observed, and effective state and returns checks, DNS records, authority options, and one canonical next_action.",
-        "security": [
-          {
-            "walletAuth": []
-          },
-          {
-            "controlPlaneSession": []
-          },
-          {
-            "delegateBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "$ref": "#/components/parameters/SiwxHeader"
-          },
-          {
-            "name": "project_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "$ref": "#/components/schemas/ProjectId"
-            },
-            "description": "Target project id. Authorization is checked server-side through wallet SIWX, control-plane session, or scoped delegate."
-          },
-          {
-            "name": "domain",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "example": "kysigned.com"
-            },
-            "description": "Lowercase DNS name to bind to the project."
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ProjectDomainEnsureRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "ProjectDomain ensured",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProjectDomain"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid desired state",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "403": {
-            "description": "Not authorized for this project",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Confirmation or conflict required, such as full MX takeover without observed-MX fingerprint confirmation",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      },
       "get": {
         "tags": [
           "Project domains"
@@ -17338,7 +17356,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ProjectDomainEnsureRequest"
+                "$ref": "#/components/schemas/ProjectDomainDesiredRequest"
               }
             }
           }
@@ -19394,7 +19412,7 @@
                   "summary": "Ordinary apply plan",
                   "value": {
                     "spec": {
-                      "project": "prj_...",
+                      "project_id": "prj_...",
                       "site": {
                         "patch": {
                           "put": {
@@ -19413,7 +19431,7 @@
                   "value": {
                     "mode": "reviewed_plan",
                     "spec": {
-                      "project": "prj_...",
+                      "project_id": "prj_...",
                       "site": {
                         "patch": {
                           "put": {
@@ -19431,7 +19449,7 @@
                   "summary": "Verify reviewed plan before upload",
                   "value": {
                     "spec": {
-                      "project": "prj_...",
+                      "project_id": "prj_...",
                       "site": {
                         "patch": {
                           "put": {
@@ -19704,12 +19722,10 @@
         "summary": "Get release inventory (activation-time snapshot)",
         "operationId": "deployV2ReleaseInventory",
         "description": "Returns the materialized state of a specific release at activation time. The response carries `state_kind: \"effective\"` for active/superseded releases (snapshot read) and `state_kind: \"desired_manifest\"` for failed/staged releases (manifest replay). Distinct from `/releases/active` which returns CURRENT LIVE state. Capability `agent-deploy-observability`.",
-        "security": [
-          {
-            "apikey": []
-          }
-        ],
+        "security": [{ "apikey": [] }, { "ciSessionAuth": [] }],
         "parameters": [
+          {"name":"static_continuity_plan_id","in":"query","required":false,"schema":{"type":"string"},"description":"Plan-bound continuation returned by STATIC_PATHS_REMAIN_REACHABLE."},
+          {"name":"static_continuity_cursor","in":"query","required":false,"schema":{"type":"string"},"description":"Plan-bound continuation returned by STATIC_PATHS_REMAIN_REACHABLE."},
           {
             "name": "release_id",
             "in": "path",
@@ -23913,7 +23929,7 @@
           "Billing"
         ],
         "summary": "Create a checkout for an organization: a Stripe session, or a Lightning invoice (rail: lightning)",
-        "description": "Create a Stripe Checkout session for an organization. The product field selects the checkout kind: balance_topup credits the org cash balance, tier subscribes/renews/upgrades a tier, and email_pack buys 10,000 email credits. Requires admin key or an org role of billing or higher. Optional success_url/cancel_url must use trusted Run402 or localhost origins.",
+        "description": "Create a Stripe Checkout session for an organization. The product field selects the checkout kind: balance_topup credits the org allowance, tier starts/renews/upgrades a tier lease, and email_pack buys 10,000 email credits. Requires admin key or an org role of billing or higher. Optional success_url/cancel_url must use trusted Run402 or localhost origins.",
         "operationId": "createOrganizationCheckout",
         "security": [
           {
@@ -26165,7 +26181,7 @@
         ],
         "summary": "Create or reuse an inert Buzz human-adoption offer",
         "operationId": "createBuzzHumanAdoptionOffer",
-        "description": "The eligible founder-agent SIWX owner creates one durable chat-safe HTTPS handoff. No challenge, human principal, membership, credential, or authority is created by this operation.",
+        "description": "The eligible founder-agent SIWX owner creates one durable chat-safe HTTPS offer page. No challenge, human principal, membership, credential, or authority is created by this operation.",
         "security": [
           {
             "walletAuth": []
@@ -27448,7 +27464,7 @@
         },
         "responses": {
           "201": {
-            "description": "Route plus its authorization block; pending_buzz_authorization carries the non-secret connect handoff for the community owner",
+            "description": "Route plus its authorization block; pending_buzz_authorization carries the non-secret connect step for the community owner",
             "content": {
               "application/json": {
                 "schema": {
@@ -28961,7 +28977,7 @@
               "type": "string",
               "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
             },
-            "description": "Room slug. A project id names that project's DEFAULT room (the repo's zero-config rendezvous via run402.config.json); any other slug names an org room. Rooms auto-vivify — there is no create call."
+            "description": "Room key: a label (`^[a-z0-9][a-z0-9._-]{0,63}$`). A project id (`prj_…`, verbatim, no prefix) is itself a valid label and names that project's DEFAULT room (the repo's zero-config rendezvous: the project id bound to the checkout); any other label names an org room. Rooms auto-vivify — there is no create call."
           }
         ],
         "requestBody": {
@@ -29077,7 +29093,7 @@
               "type": "string",
               "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
             },
-            "description": "Room slug. A project id names that project's DEFAULT room (the repo's zero-config rendezvous via run402.config.json); any other slug names an org room. Rooms auto-vivify — there is no create call."
+            "description": "Room key: a label (`^[a-z0-9][a-z0-9._-]{0,63}$`). A project id (`prj_…`, verbatim, no prefix) is itself a valid label and names that project's DEFAULT room (the repo's zero-config rendezvous: the project id bound to the checkout); any other label names an org room. Rooms auto-vivify — there is no create call."
           },
           {
             "name": "include_expired",
@@ -29192,7 +29208,7 @@
               "type": "string",
               "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
             },
-            "description": "Room slug. A project id names that project's DEFAULT room (the repo's zero-config rendezvous via run402.config.json); any other slug names an org room. Rooms auto-vivify — there is no create call."
+            "description": "Room key: a label (`^[a-z0-9][a-z0-9._-]{0,63}$`). A project id (`prj_…`, verbatim, no prefix) is itself a valid label and names that project's DEFAULT room (the repo's zero-config rendezvous: the project id bound to the checkout); any other label names an org room. Rooms auto-vivify — there is no create call."
           },
           {
             "name": "presence_id",
@@ -29262,7 +29278,7 @@
           "AgentMessaging"
         ],
         "summary": "Release your own presence (leave the room)",
-        "description": "Presence otherwise expires after ~1h of silence, so a cleanly-finished session keeps reading as live and keeps HOLDING ITS CLAIMS for the rest of that hour. The delete is scoped to the caller's PRINCIPAL: another principal's presence is simply not found (never an eviction). Note the asymmetry — presence identity is the SESSION, but delete authority is the principal, so a credential MAY release a seat held by one of its own other sessions. That is deliberate and useful: it is how a fresh session clears a crashed predecessor whose presence would otherwise hold claims for the rest of its TTL. Idempotent: an already-released presence, or one belonging to another principal, returns left=false truthfully rather than erroring, so a crashed session's retry is safe.",
+        "description": "Presence otherwise expires after ~1h of silence, so a cleanly-finished session keeps reading as live and keeps HOLDING ITS CLAIMS for the rest of that hour. The delete is scoped to the caller's PRINCIPAL: another principal's presence is simply not found (never an eviction). Note the asymmetry — presence identity is the SESSION, but delete authority is the principal, so a credential MAY release a presence held by one of its own other sessions. That is deliberate and useful: it is how a fresh session clears a crashed predecessor whose presence would otherwise hold claims for the rest of its TTL. Idempotent: an already-released presence, or one belonging to another principal, returns left=false truthfully rather than erroring, so a crashed session's retry is safe.",
         "operationId": "leaveRoom",
         "security": [
           {
@@ -29293,7 +29309,7 @@
               "type": "string",
               "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
             },
-            "description": "Room slug. A project id names that project's DEFAULT room (the repo's zero-config rendezvous via run402.config.json); any other slug names an org room. Rooms auto-vivify — there is no create call."
+            "description": "Room key: a label (`^[a-z0-9][a-z0-9._-]{0,63}$`). A project id (`prj_…`, verbatim, no prefix) is itself a valid label and names that project's DEFAULT room (the repo's zero-config rendezvous: the project id bound to the checkout); any other label names an org room. Rooms auto-vivify — there is no create call."
           },
           {
             "name": "presence_id",
@@ -29330,7 +29346,7 @@
             }
           },
           "400": {
-            "description": "Invalid presence_id (expects prs_<id>)",
+            "description": "Invalid presence_id (expects a prs_… id)",
             "content": {
               "application/json": {
                 "schema": {
@@ -29399,7 +29415,7 @@
               "type": "string",
               "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
             },
-            "description": "Room slug. A project id names that project's DEFAULT room (the repo's zero-config rendezvous via run402.config.json); any other slug names an org room. Rooms auto-vivify — there is no create call."
+            "description": "Room key: a label (`^[a-z0-9][a-z0-9._-]{0,63}$`). A project id (`prj_…`, verbatim, no prefix) is itself a valid label and names that project's DEFAULT room (the repo's zero-config rendezvous: the project id bound to the checkout); any other label names an org room. Rooms auto-vivify — there is no create call."
           }
         ],
         "requestBody": {
@@ -29559,7 +29575,7 @@
               "type": "string",
               "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
             },
-            "description": "Room slug. A project id names that project's DEFAULT room (the repo's zero-config rendezvous via run402.config.json); any other slug names an org room. Rooms auto-vivify — there is no create call."
+            "description": "Room key: a label (`^[a-z0-9][a-z0-9._-]{0,63}$`). A project id (`prj_…`, verbatim, no prefix) is itself a valid label and names that project's DEFAULT room (the repo's zero-config rendezvous: the project id bound to the checkout); any other label names an org room. Rooms auto-vivify — there is no create call."
           },
           {
             "name": "cursor",
@@ -29734,7 +29750,7 @@
               "type": "string",
               "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
             },
-            "description": "Room slug. A project id names that project's DEFAULT room (the repo's zero-config rendezvous via run402.config.json); any other slug names an org room. Rooms auto-vivify — there is no create call."
+            "description": "Room key: a label (`^[a-z0-9][a-z0-9._-]{0,63}$`). A project id (`prj_…`, verbatim, no prefix) is itself a valid label and names that project's DEFAULT room (the repo's zero-config rendezvous: the project id bound to the checkout); any other label names an org room. Rooms auto-vivify — there is no create call."
           },
           {
             "name": "message_id",
@@ -29836,7 +29852,7 @@
               "type": "string",
               "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
             },
-            "description": "Room slug. A project id names that project's DEFAULT room (the repo's zero-config rendezvous via run402.config.json); any other slug names an org room. Rooms auto-vivify — there is no create call."
+            "description": "Room key: a label (`^[a-z0-9][a-z0-9._-]{0,63}$`). A project id (`prj_…`, verbatim, no prefix) is itself a valid label and names that project's DEFAULT room (the repo's zero-config rendezvous: the project id bound to the checkout); any other label names an org room. Rooms auto-vivify — there is no create call."
           },
           {
             "name": "message_id",
@@ -29970,7 +29986,7 @@
               "type": "string",
               "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
             },
-            "description": "Room slug. A project id names that project's DEFAULT room (the repo's zero-config rendezvous via run402.config.json); any other slug names an org room. Rooms auto-vivify — there is no create call."
+            "description": "Room key: a label (`^[a-z0-9][a-z0-9._-]{0,63}$`). A project id (`prj_…`, verbatim, no prefix) is itself a valid label and names that project's DEFAULT room (the repo's zero-config rendezvous: the project id bound to the checkout); any other label names an org room. Rooms auto-vivify — there is no create call."
           }
         ],
         "requestBody": {
@@ -30094,7 +30110,7 @@
               "type": "string",
               "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
             },
-            "description": "Room slug. A project id names that project's DEFAULT room (the repo's zero-config rendezvous via run402.config.json); any other slug names an org room. Rooms auto-vivify — there is no create call."
+            "description": "Room key: a label (`^[a-z0-9][a-z0-9._-]{0,63}$`). A project id (`prj_…`, verbatim, no prefix) is itself a valid label and names that project's DEFAULT room (the repo's zero-config rendezvous: the project id bound to the checkout); any other label names an org room. Rooms auto-vivify — there is no create call."
           },
           {
             "name": "include_inactive",
@@ -30197,7 +30213,7 @@
               "type": "string",
               "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
             },
-            "description": "Room slug. A project id names that project's DEFAULT room (the repo's zero-config rendezvous via run402.config.json); any other slug names an org room. Rooms auto-vivify — there is no create call."
+            "description": "Room key: a label (`^[a-z0-9][a-z0-9._-]{0,63}$`). A project id (`prj_…`, verbatim, no prefix) is itself a valid label and names that project's DEFAULT room (the repo's zero-config rendezvous: the project id bound to the checkout); any other label names an org room. Rooms auto-vivify — there is no create call."
           },
           {
             "name": "claim_id",
@@ -30287,7 +30303,7 @@
         ],
         "summary": "Mint a room invite (developer+; never a delegate)",
         "operationId": "mintRoomInvite",
-        "description": "Mints a single-use bearer key (kri1_) that, once claimed, admits its claimant as a PERMANENT viewer of this org — the narrowest membership that can message, and a viewer can never become a vault writer (the code-collaboration door is POST /gitvault/v1/vaults/{vault_id}/invites, never a role bump from here). Requires developer role or above via a session, wallet, or admin credential; a delegate is refused (a room invite confers org membership, and a delegate is never a member). At most 20 open invites per org and 100 mints per org per UTC day. The gateway never receives auth_secret or the key's master_secret — only invite_id (client-generated) and auth_hash (client-computed).",
+        "description": "Mints a single-use bearer key (kri1_) that, once redeemed, admits its redeemer as a PERMANENT viewer of this org — the narrowest membership that can message, and a viewer can never become a vault writer (the code-collaboration door is POST /gitvault/v1/vaults/{vault_id}/invites, never a role bump from here). Requires developer role or above via a session, wallet, or admin credential; a delegate is refused (a room invite confers org membership, and a delegate is never a member). At most 20 open invites per org and 100 mints per org per UTC day. The gateway never receives auth_secret or the key's master_secret — only invite_id (client-generated) and auth_hash (client-computed).",
         "security": [
           {
             "walletAuth": []
@@ -30317,7 +30333,7 @@
               "type": "string",
               "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
             },
-            "description": "The room the invite is minted from — the room the claimant arrives already knowing."
+            "description": "The room the invite is minted from — the room the redeemer arrives already knowing."
           }
         ],
         "requestBody": {
@@ -30468,14 +30484,14 @@
         }
       }
     },
-    "/rooms/v1/invites/{invite_id}/claim": {
+    "/rooms/v1/invites/{invite_id}/redeem": {
       "post": {
         "tags": [
           "AgentMessaging"
         ],
-        "summary": "Claim a room invite (x402-paid; the verified payer becomes the claimant)",
+        "summary": "Redeem a room invite (x402-paid; the verified payer becomes the redeemer)",
         "operationId": "claimRoomInvite",
-        "description": "An x402 paywall resource priced as the room_seat SKU ($0.01) — the ONE resource in this API advertised on the TESTNET network ONLY (every other paid resource advertises both networks): the seat is an onboarding handshake, not revenue. The verified payer of the settled payment becomes the claimant; no SIGN-IN-WITH-X header is required or accepted. A control-plane session, delegate, or service key is refused 403 ROOM_INVITE_CLAIM_REQUIRES_WALLET before any 402 challenge is issued. A same-payer replay of an already-claimed invite is answered 200 with deduplicated:true before any payment is challenged — paying twice never charges twice. A refusal AFTER settlement (wrong secret, expired, revoked, or already claimed by a different principal) refunds the seat. On success the claimant becomes a permanent viewer of the inviting org, never a vault writer.",
+        "description": "An x402 paywall resource priced as the room_seat SKU ($0.01) — the ONE resource in this API advertised on the TESTNET network ONLY (every other paid resource advertises both networks): the seat is an onboarding handshake, not revenue. The verified payer of the settled payment becomes the redeemer; no SIGN-IN-WITH-X header is required or accepted. A control-plane session, delegate, or service key is refused 403 ROOM_INVITE_REDEEM_REQUIRES_WALLET before any 402 challenge is issued. A same-payer replay of an already-redeemed invite is answered 200 with deduplicated:true before any payment is challenged — paying twice never charges twice. A refusal AFTER settlement (wrong secret, expired, revoked, or already redeemed by a different principal) refunds the seat. On success the redeemer becomes a permanent viewer of the inviting org, never a vault writer.",
         "x-payment-info": {
           "protocols": [
             "x402"
@@ -30527,7 +30543,7 @@
         },
         "responses": {
           "200": {
-            "description": "Claimed — or a same-payer replay, deduplicated:true, of an already-claimed invite",
+            "description": "Claimed — or a same-payer replay, deduplicated:true, of an already-redeemed invite",
             "headers": {
               "Cache-Control": {
                 "schema": {
@@ -30598,7 +30614,7 @@
                     "presence": {
                       "type": "object",
                       "nullable": true,
-                      "description": "The CLAIMANT's own presence, registered by this claim ({presence_id, name}) — or null when it no longer resolves. A deduplicated:true replay carries the SAME value as the original claim, never a freshly re-registered one.",
+                      "description": "The CLAIMANT's own presence, registered by this redeem ({presence_id, name}) — or null when it no longer resolves. A deduplicated:true replay carries the SAME value as the original redeem, never a freshly re-registered one.",
                       "properties": {
                         "presence_id": {
                           "type": "string"
@@ -30662,7 +30678,7 @@
             "$ref": "#/components/responses/PaymentRequired"
           },
           "403": {
-            "description": "ROOM_INVITE_KEY_INVALID (wrong secret or unknown id — identical) or ROOM_INVITE_CLAIM_REQUIRES_WALLET (no settled x402 payment from a wallet)",
+            "description": "ROOM_INVITE_KEY_INVALID (wrong secret or unknown id — identical) or ROOM_INVITE_REDEEM_REQUIRES_WALLET (no settled x402 payment from a wallet)",
             "content": {
               "application/json": {
                 "schema": {
@@ -30672,7 +30688,7 @@
             }
           },
           "409": {
-            "description": "ROOM_INVITE_KEY_ALREADY_CLAIMED",
+            "description": "ROOM_INVITE_KEY_ALREADY_REDEEMED",
             "content": {
               "application/json": {
                 "schema": {
@@ -30699,7 +30715,7 @@
         "tags": [
           "Vouchers"
         ],
-        "summary": "Mint a credit voucher",
+        "summary": "Mint an allowance voucher",
         "operationId": "mintVoucher",
         "description": "Mints one single-use voucher under the issuer's caps (per-code maximum, outstanding unredeemed value, daily mint count). The raw code is returned exactly once. Replaying `idempotency_key` returns the original voucher's metadata with `already_minted: true` and no code.",
         "security": [
@@ -31062,9 +31078,9 @@
         "tags": [
           "Vouchers"
         ],
-        "summary": "Redeem a voucher for platform credit",
+        "summary": "Redeem a voucher for allowance",
         "operationId": "redeemVoucher",
-        "description": "Redeems a promo code into the authenticated wallet's organization as prepaid credit. The credit spends like any other prepaid balance — a tier purchase settles from it with no on-chain payment.\n\nOrder-independent: this works as an agent's very first authenticated call (the organization is provisioned on demand) or long after `run402 init`. Never blocked by an organization's grace state, because redeeming is how an owner funds a renewal.\n\nIdempotent for the redeeming organization: a repeat returns the original result with `already_redeemed: true` and never credits twice.\n\nCLI: `run402 redeem <code>`, or `run402 init --voucher <code>`.",
+        "description": "Redeems a promo code into the authenticated wallet's organization's allowance. It spends like any other allowance — a tier purchase settles from it with no on-chain payment.\n\nOrder-independent: this works as an agent's very first authenticated call (the organization is provisioned on demand) or long after `run402 init`. Never blocked by an organization's grace state, because redeeming is how an owner funds a renewal.\n\nIdempotent for the redeeming organization: a repeat returns the original result with `already_redeemed: true` and never credits twice.\n\nCLI: `run402 redeem <code>`, or `run402 init --voucher <code>`.",
         "security": [
           {
             "walletAuth": []
@@ -31113,7 +31129,7 @@
                     },
                     "balance_usd_micros": {
                       "type": "integer",
-                      "description": "The organization's available prepaid balance AFTER the credit."
+                      "description": "The organization's allowance AFTER the redemption."
                     },
                     "organization_id": {
                       "type": "string",
@@ -31128,7 +31144,8 @@
                       "description": "True when this exact organization already redeemed this code. The original result is returned unchanged and no second credit is made, so a timed-out client can retry safely."
                     },
                     "promo_lifetime_ceiling_usd_micros": {
-                      "type": "integer"
+                      "type": "integer",
+                      "description": "The lifetime promo-allowance ceiling that applied: what this organization may ever redeem from this voucher's issuer, in total. Codes from another issuer have their own ceiling."
                     },
                     "next_actions": {
                       "type": "array",
@@ -31142,7 +31159,7 @@
             }
           },
           "201": {
-            "description": "Credit applied",
+            "description": "Allowance added",
             "content": {
               "application/json": {
                 "schema": {
@@ -31158,7 +31175,7 @@
                     },
                     "balance_usd_micros": {
                       "type": "integer",
-                      "description": "The organization's available prepaid balance AFTER the credit."
+                      "description": "The organization's allowance AFTER the redemption."
                     },
                     "organization_id": {
                       "type": "string",
@@ -31173,7 +31190,8 @@
                       "description": "True when this exact organization already redeemed this code. The original result is returned unchanged and no second credit is made, so a timed-out client can retry safely."
                     },
                     "promo_lifetime_ceiling_usd_micros": {
-                      "type": "integer"
+                      "type": "integer",
+                      "description": "The lifetime promo-allowance ceiling that applied: what this organization may ever redeem from this voucher's issuer, in total. Codes from another issuer have their own ceiling."
                     },
                     "next_actions": {
                       "type": "array",
@@ -31197,7 +31215,7 @@
             }
           },
           "403": {
-            "description": "PROMO_LIMIT_REACHED — the organization is at its lifetime promo-credit ceiling",
+            "description": "PROMO_LIMIT_REACHED — the organization is at its lifetime promo-allowance ceiling for this voucher's issuer",
             "content": {
               "application/json": {
                 "schema": {
@@ -33040,7 +33058,7 @@
         ],
         "summary": "List a vault's handoffs",
         "operationId": "listGitvaultHandoffs",
-        "description": "kygit-handoff. Ids, kind, state, minted_role, minted_by, expires_at, claimed_by — NEVER the auth_hash or sealed_envelope. Auth: gitvault.writer (owner/developer session or wallet, or a deploy-scoped delegate).",
+        "description": "kygit-handoff. Ids, kind, state, minted_role, minted_by, expires_at, redeemed_by — NEVER the auth_hash or sealed_envelope. Auth: gitvault.writer (owner/developer session or wallet, or a deploy-scoped delegate).",
         "security": [
           {
             "controlPlaneSession": []
@@ -33095,7 +33113,7 @@
                             "type": "string",
                             "enum": [
                               "issued",
-                              "claimed",
+                              "adopted",
                               "expired",
                               "revoked"
                             ]
@@ -33111,7 +33129,7 @@
                             "type": "string",
                             "format": "date-time"
                           },
-                          "claimed_by": {
+                          "redeemed_by": {
                             "type": "string",
                             "format": "uuid",
                             "nullable": true
@@ -33198,7 +33216,7 @@
                       "type": "string",
                       "enum": [
                         "issued",
-                        "claimed",
+                        "adopted",
                         "expired",
                         "revoked"
                       ]
@@ -33231,14 +33249,14 @@
         }
       }
     },
-    "/gitvault/v1/handoffs/{handoff_id}/claim": {
+    "/gitvault/v1/handoffs/{handoff_id}/redeem": {
       "post": {
         "tags": [
           "gitvault"
         ],
-        "summary": "Claim a Handoff Key",
+        "summary": "Redeem a Handoff Key",
         "operationId": "claimGitvaultHandoff",
-        "description": "kygit-handoff (design D3). Verifies auth_secret against the stored auth_hash (constant-time compare) and, on success, atomically flips the recipient into an active org member at the handoff's stored role and returns the sealed envelope for the recipient's own client to decrypt (the gateway never sees the plaintext). ONE transaction, no durable lease — first writer wins. A SAME-principal replay before expiry returns 200 deduplicated:true with the ORIGINAL sealed envelope (safe: only the key holder can derive wrap_key). Auth: SIWX WALLET ONLY — a control-plane session, delegate, or service key is refused 403 HANDOFF_CLAIM_REQUIRES_WALLET, because the keystore key published on this call is what makes the recipient a real key-holder. Tier-free: principalAuth resolves-or-provisions the caller's own org-of-one with no active tier required. Never lifecycle-gated. Response carries Cache-Control: no-store — it is never cached by an intermediary. gitvault-multi-writer rev 47, REQUIRED (no observe mode): the claimant must ALSO submit writer_acceptance, its own double-signed acceptance of the mint-time writer_admission_grant — both signatures independently verified. On success the claimant's directory signing half is published possession-verified in the SAME transaction.",
+        "description": "kygit-handoff (design D3). Verifies auth_secret against the stored auth_hash (constant-time compare) and, on success, atomically flips the recipient into an active org member at the handoff's stored role and returns the sealed envelope for the recipient's own client to decrypt (the gateway never sees the plaintext). ONE transaction, no durable lease — first writer wins. A SAME-principal replay before expiry returns 200 deduplicated:true with the ORIGINAL sealed envelope (safe: only the key holder can derive wrap_key). Auth: SIWX WALLET ONLY — a control-plane session, delegate, or service key is refused 403 HANDOFF_REDEEM_REQUIRES_WALLET, because the keystore key published on this call is what makes the recipient a real key-holder. Tier-free: principalAuth resolves-or-provisions the caller's own org-of-one with no active tier required. Never lifecycle-gated. Response carries Cache-Control: no-store — it is never cached by an intermediary. gitvault-multi-writer rev 47, REQUIRED (no observe mode): the redeemer must ALSO submit writer_acceptance, its own double-signed acceptance of the mint-time writer_admission_grant — both signatures independently verified. On success the redeemer's directory signing half is published possession-verified in the SAME transaction.",
         "security": [
           {
             "walletAuth": []
@@ -33275,7 +33293,7 @@
                   },
                   "writer_acceptance": {
                     "type": "object",
-                    "description": "gitvault-multi-writer rev 47, REQUIRED (no observe mode). The claimant's own double-signed acceptance of the mint-time writer_admission_grant: {statement: {domain:\"r402s/v0/handoff-writer-accept/v1\", handoff_id, auth_hash, writer_key_id, signing_pubkey, encryption_pubkey, encryption_fingerprint}, acceptance_signature, possession_signature}. acceptance_signature verifies under the STORED grant's handoff_admission_pubkey; possession_signature verifies under the claimant's OWN signing_pubkey — both over the identical preimage, genuinely independent proofs. A claim under a DIFFERENT writer_key_id than an earlier successful claim by the same principal refuses 409 HANDOFF_CLAIM_WRITER_KEY_MISMATCH."
+                    "description": "gitvault-multi-writer rev 47, REQUIRED (no observe mode). The redeemer's own double-signed acceptance of the mint-time writer_admission_grant: {statement: {domain:\"r402s/v0/handoff-writer-accept/v1\", handoff_id, auth_hash, writer_key_id, signing_pubkey, encryption_pubkey, encryption_fingerprint}, acceptance_signature, possession_signature}. acceptance_signature verifies under the STORED grant's handoff_admission_pubkey; possession_signature verifies under the redeemer's OWN signing_pubkey — both over the identical preimage, genuinely independent proofs. A redeem under a DIFFERENT writer_key_id than an earlier successful redeem by the same principal refuses 409 HANDOFF_REDEEM_WRITER_KEY_MISMATCH."
                   }
                 }
               }
@@ -33284,7 +33302,7 @@
         },
         "responses": {
           "200": {
-            "description": "Claimed. On a same-principal replay before expiry, deduplicated is true and sealed_envelope is the ORIGINAL envelope (never a pretend re-claim).",
+            "description": "Claimed. On a same-principal replay before expiry, deduplicated is true and sealed_envelope is the ORIGINAL envelope (never a pretend re-redeem).",
             "headers": {
               "Cache-Control": {
                 "schema": {
@@ -33404,7 +33422,7 @@
                           ]
                         }
                       },
-                      "description": "gitvault-multi-writer rev 47. \"pending\" on a FRESH claim, always. On a REPLAYED claim (deduplicated:true) reflects the row's CURRENT state, which may already read \"active\" if the claimant's add_writer_key{\"handoff\"} push admitted the key on-chain in the meantime. The unconditional way to confirm admission: the added writer_key_id appears in writer_set.writers[] on GET /gitvault/v1/vaults/:vault_id."
+                      "description": "gitvault-multi-writer rev 47. \"pending\" on a FRESH redeem, always. On a REPLAYED redeem (deduplicated:true) reflects the row's CURRENT state, which may already read \"active\" if the redeemer's add_writer_key{\"handoff\"} push admitted the key on-chain in the meantime. The unconditional way to confirm admission: the added writer_key_id appears in writer_set.writers[] on GET /gitvault/v1/vaults/:vault_id."
                     },
                     "next_actions": {
                       "type": "array",
@@ -33419,7 +33437,7 @@
             }
           },
           "403": {
-            "description": "HANDOFF_KEY_INVALID (wrong auth_secret, or the id does not exist — identical envelope, so a guess and a wrong secret are indistinguishable) or HANDOFF_CLAIM_REQUIRES_WALLET (a bearer credential was presented instead of SIGN-IN-WITH-X).",
+            "description": "HANDOFF_KEY_INVALID (wrong auth_secret, or the id does not exist — identical envelope, so a guess and a wrong secret are indistinguishable) or HANDOFF_REDEEM_REQUIRES_WALLET (a bearer credential was presented instead of SIGN-IN-WITH-X).",
             "content": {
               "application/json": {
                 "schema": {
@@ -33429,7 +33447,7 @@
             }
           },
           "409": {
-            "description": "HANDOFF_KEY_ALREADY_CLAIMED — claimed by a DIFFERENT principal (details.claimed_at names when), or (gitvault-multi-writer rev 47) HANDOFF_CLAIM_WRITER_KEY_MISMATCH — a replay under a writer_key_id different from an earlier successful claim by the same principal.",
+            "description": "HANDOFF_KEY_ALREADY_REDEEMED — redeemed by a DIFFERENT principal (details.redeemed_at names when), or (gitvault-multi-writer rev 47) HANDOFF_REDEEM_WRITER_KEY_MISMATCH — a replay under a writer_key_id different from an earlier successful redeem by the same principal.",
             "content": {
               "application/json": {
                 "schema": {
@@ -33734,7 +33752,7 @@
         ],
         "summary": "List a vault's invites",
         "operationId": "listGitvaultInvites",
-        "description": "kygit-invite. Ids, kind, state, minted_role, minted_by, room_key, expires_at, claimed_by — NEVER the auth_hash or sealed_envelope. Auth: gitvault.writer (owner/developer session or wallet, or a deploy-scoped delegate).",
+        "description": "kygit-invite. Ids, kind, state, minted_role, minted_by, room_key, expires_at, redeemed_by — NEVER the auth_hash or sealed_envelope. Auth: gitvault.writer (owner/developer session or wallet, or a deploy-scoped delegate).",
         "security": [
           {
             "controlPlaneSession": []
@@ -33789,7 +33807,7 @@
                             "type": "string",
                             "enum": [
                               "issued",
-                              "claimed",
+                              "adopted",
                               "expired",
                               "revoked"
                             ]
@@ -33809,7 +33827,7 @@
                             "type": "string",
                             "format": "date-time"
                           },
-                          "claimed_by": {
+                          "redeemed_by": {
                             "type": "string",
                             "format": "uuid",
                             "nullable": true
@@ -33896,7 +33914,7 @@
                       "type": "string",
                       "enum": [
                         "issued",
-                        "claimed",
+                        "adopted",
                         "expired",
                         "revoked"
                       ]
@@ -33929,14 +33947,14 @@
         }
       }
     },
-    "/gitvault/v1/invites/{invite_id}/claim": {
+    "/gitvault/v1/invites/{invite_id}/redeem": {
       "post": {
         "tags": [
           "gitvault"
         ],
-        "summary": "Claim an Invite Key",
+        "summary": "Redeem an Invite Key",
         "operationId": "claimGitvaultInvite",
-        "description": "kygit-invite (design D1/D3/D9). Verifies auth_secret against the stored auth_hash (constant-time compare, kind-domain-separated — an invite secret never verifies a handoff hash) and, on success, atomically flips the recipient into an active org member at the invite's stored role, resolves the room fields (inviter, live_presences, catch-up cursor), and returns the sealed envelope for the recipient's own client to decrypt. ONE transaction, no durable lease — first writer wins, the SAME engine a handoff claim runs. A row of the WRONG KIND at this route (e.g. a real handoff id) is the identical 403 INVITE_KEY_INVALID — never disclosed. A SAME-principal replay before expiry returns 200 deduplicated:true with the ORIGINAL sealed envelope. Auth: SIWX WALLET ONLY — a control-plane session, delegate, or service key is refused 403 INVITE_CLAIM_REQUIRES_WALLET. Tier-free: principalAuth resolves-or-provisions the caller's own org-of-one with no active tier required (the joiner's own cold-start tier purchase, if any, is a separate client-side step this route never blocks on). Never lifecycle-gated. Response carries Cache-Control: no-store.",
+        "description": "kygit-invite (design D1/D3/D9). Verifies auth_secret against the stored auth_hash (constant-time compare, kind-domain-separated — an invite secret never verifies a handoff hash) and, on success, atomically flips the recipient into an active org member at the invite's stored role, resolves the room fields (inviter, live_presences, catch-up cursor), and returns the sealed envelope for the recipient's own client to decrypt. ONE transaction, no durable lease — first writer wins, the SAME engine a handoff redeem runs. A row of the WRONG KIND at this route (e.g. a real handoff id) is the identical 403 INVITE_KEY_INVALID — never disclosed. A SAME-principal replay before expiry returns 200 deduplicated:true with the ORIGINAL sealed envelope. Auth: SIWX WALLET ONLY — a control-plane session, delegate, or service key is refused 403 INVITE_REDEEM_REQUIRES_WALLET. Tier-free: principalAuth resolves-or-provisions the caller's own org-of-one with no active tier required (the joiner's own cold-start tier purchase, if any, is a separate client-side step this route never blocks on). Never lifecycle-gated. Response carries Cache-Control: no-store.",
         "security": [
           {
             "walletAuth": []
@@ -33969,11 +33987,11 @@
                 "properties": {
                   "auth_secret": {
                     "type": "string",
-                    "description": "Base64url — the HKDF-derived auth_secret half of the parsed kgi1_ key (64 lowercase hex characters are also accepted, the same compatibility form the handoff claim route accepts). Client-derived only; a malformed value simply never matches any stored hash (never a distinguishing error)."
+                    "description": "Base64url — the HKDF-derived auth_secret half of the parsed kgi1_ key (64 lowercase hex characters are also accepted, the same compatibility form the handoff redeem route accepts). Client-derived only; a malformed value simply never matches any stored hash (never a distinguishing error)."
                   },
                   "writer_acceptance": {
                     "type": "object",
-                    "description": "gitvault-multi-writer rev 47, REQUIRED (no observe mode). The claimant's own double-signed acceptance of the mint-time writer_admission_grant: {statement: {domain:\"r402s/v0/handoff-writer-accept/v1\", handoff_id, auth_hash, writer_key_id, signing_pubkey, encryption_pubkey, encryption_fingerprint}, acceptance_signature, possession_signature}. The signature domain and the `handoff_id` field name are the frozen protocol spelling (kygit-invite design D11); `handoff_id` carries THIS invite's id. acceptance_signature verifies under the STORED grant's handoff_admission_pubkey; possession_signature verifies under the claimant's OWN signing_pubkey — both over the identical preimage, genuinely independent proofs. A claim under a DIFFERENT writer_key_id than an earlier successful claim by the same principal refuses 409 INVITE_CLAIM_WRITER_KEY_MISMATCH."
+                    "description": "gitvault-multi-writer rev 47, REQUIRED (no observe mode). The redeemer's own double-signed acceptance of the mint-time writer_admission_grant: {statement: {domain:\"r402s/v0/handoff-writer-accept/v1\", handoff_id, auth_hash, writer_key_id, signing_pubkey, encryption_pubkey, encryption_fingerprint}, acceptance_signature, possession_signature}. The signature domain and the `handoff_id` field name are the frozen protocol spelling (kygit-invite design D11); `handoff_id` carries THIS invite's id. acceptance_signature verifies under the STORED grant's handoff_admission_pubkey; possession_signature verifies under the redeemer's OWN signing_pubkey — both over the identical preimage, genuinely independent proofs. A redeem under a DIFFERENT writer_key_id than an earlier successful redeem by the same principal refuses 409 INVITE_REDEEM_WRITER_KEY_MISMATCH."
                   }
                 }
               }
@@ -33982,7 +34000,7 @@
         },
         "responses": {
           "200": {
-            "description": "Claimed. On a same-principal replay before expiry, deduplicated is true and sealed_envelope is the ORIGINAL envelope (never a pretend re-claim).",
+            "description": "Claimed. On a same-principal replay before expiry, deduplicated is true and sealed_envelope is the ORIGINAL envelope (never a pretend re-redeem).",
             "headers": {
               "Cache-Control": {
                 "schema": {
@@ -34098,7 +34116,7 @@
                     "inviter": {
                       "type": "object",
                       "nullable": true,
-                      "description": "The minting presence resolved LIVE from the room — name, program, model, state, last activity. Null when the inviter never registered a presence, or resolution best-effort-fails (never blocks the claim).",
+                      "description": "The minting presence resolved LIVE from the room — name, program, model, state, last activity. Null when the inviter never registered a presence, or resolution best-effort-fails (never blocks the redeem).",
                       "properties": {
                         "presence_id": { "type": "string" },
                         "name": { "type": "string" },
@@ -34110,7 +34128,7 @@
                     },
                     "live_presences": {
                       "type": "array",
-                      "description": "The room's live presences at claim time.",
+                      "description": "The room's live presences at redeem time.",
                       "items": {
                         "type": "object",
                         "additionalProperties": true
@@ -34140,14 +34158,14 @@
                           ]
                         }
                       },
-                      "description": "gitvault-multi-writer rev 47. \"pending\" on a FRESH claim, always. On a REPLAYED claim (deduplicated:true) reflects the row's CURRENT state, which may already read \"active\" if the joiner's add_writer_key push admitted the key on-chain in the meantime. The unconditional way to confirm admission: the added writer_key_id appears in writer_set.writers[] on GET /gitvault/v1/vaults/:vault_id."
+                      "description": "gitvault-multi-writer rev 47. \"pending\" on a FRESH redeem, always. On a REPLAYED redeem (deduplicated:true) reflects the row's CURRENT state, which may already read \"active\" if the joiner's add_writer_key push admitted the key on-chain in the meantime. The unconditional way to confirm admission: the added writer_key_id appears in writer_set.writers[] on GET /gitvault/v1/vaults/:vault_id."
                     },
                     "next_actions": {
                       "type": "array",
                       "items": {
                         "$ref": "#/components/schemas/NextAction"
                       },
-                      "description": "Always carries push_repo and wait_room. Carries send_room_message only when inviter resolved. NEVER carries remove_member, under any condition (unlike a handoff claim, which may)."
+                      "description": "Always carries push_repo and wait_room. Carries send_room_message only when inviter resolved. NEVER carries remove_member, under any condition (unlike a handoff redeem, which may)."
                     }
                   }
                 }
@@ -34155,7 +34173,7 @@
             }
           },
           "403": {
-            "description": "INVITE_KEY_INVALID (wrong auth_secret, the id does not exist, OR a HANDOFF row's real id at this route — one identical envelope, never disclosed) or INVITE_CLAIM_REQUIRES_WALLET (a bearer credential was presented instead of SIGN-IN-WITH-X).",
+            "description": "INVITE_KEY_INVALID (wrong auth_secret, the id does not exist, OR a HANDOFF row's real id at this route — one identical envelope, never disclosed) or INVITE_REDEEM_REQUIRES_WALLET (a bearer credential was presented instead of SIGN-IN-WITH-X).",
             "content": {
               "application/json": {
                 "schema": {
@@ -34165,7 +34183,7 @@
             }
           },
           "409": {
-            "description": "INVITE_KEY_ALREADY_CLAIMED — claimed by a DIFFERENT principal. details.claimed_at names when.",
+            "description": "INVITE_KEY_ALREADY_REDEEMED — redeemed by a DIFFERENT principal. details.redeemed_at names when.",
             "content": {
               "application/json": {
                 "schema": {
@@ -39232,7 +39250,7 @@
               "type": "string",
               "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
             },
-            "description": "Room slug. A project id names that project's DEFAULT room (the repo's zero-config rendezvous via run402.config.json); any other slug names an org room. Rooms auto-vivify — there is no create call."
+            "description": "Room key: a label (`^[a-z0-9][a-z0-9._-]{0,63}$`). A project id (`prj_…`, verbatim, no prefix) is itself a valid label and names that project's DEFAULT room (the repo's zero-config rendezvous: the project id bound to the checkout); any other label names an org room. Rooms auto-vivify — there is no create call."
           }
         ],
         "responses": {
@@ -40167,7 +40185,7 @@
         "type": "apiKey",
         "in": "header",
         "name": "SIGN-IN-WITH-X",
-        "description": "SIWX (Sign-In-With-X, CAIP-122 / EIP-4361) wallet authentication. Send a single SIGN-IN-WITH-X header containing a base64-encoded JSON payload with a signed CAIP-122 message (domain binding, temporal validation, cryptographic signature). Supports both EVM (eip155:*) and Solana wallets. Most wallet-auth endpoints require an active tier subscription; endpoints that only require identity say so in their description. See https://docs.x402.org/extensions/sign-in-with-x."
+        "description": "SIWX (Sign-In-With-X, CAIP-122 / EIP-4361) wallet authentication. Send a single SIGN-IN-WITH-X header containing a base64-encoded JSON payload with a signed CAIP-122 message (domain binding, temporal validation, cryptographic signature). Supports both EVM (eip155:*) and Solana wallets. Most wallet-auth endpoints require an active tier; endpoints that only require identity say so in their description. See https://docs.x402.org/extensions/sign-in-with-x."
       },
       "ciSessionAuth": {
         "type": "http",
@@ -40282,7 +40300,57 @@
       }
     },
     "schemas": {
-      "OrgSlugClaimResult": {
+      "StaticContinuity": {
+        "type": "object",
+        "description": "Automatic one-hour origin availability for previously direct-public non-HTML paths absent from the active release. Cached copies may outlive the deadline. Plans omit the deadline until supersession.",
+        "required": [
+          "mode",
+          "origin_retention_seconds",
+          "scope",
+          "source_release_id",
+          "source_release_generation",
+          "retained_path_count"
+        ],
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "absent_public_paths"
+            ]
+          },
+          "origin_retention_seconds": {
+            "type": "integer",
+            "enum": [
+              3600
+            ]
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "previously_public_non_html"
+            ]
+          },
+          "source_release_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "source_release_generation": {
+            "type": "integer",
+            "nullable": true
+          },
+          "retained_path_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "origin_available_until": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Omitted for candidate supersessions; null for an active release."
+          }
+        }
+      },
+      "OrgSlugSetResult": {
         "type": "object",
         "properties": {
           "org_id": {
@@ -40297,15 +40365,15 @@
               "string",
               "null"
             ],
-            "description": "The org's prior slug, now released into a ~90-day cooldown, or null for a genesis claim / an idempotent no-op replay."
+            "description": "The org's prior slug, now released into a ~90-day cooldown, or null for a genesis set / an idempotent no-op replay."
           },
           "created": {
             "type": "boolean",
-            "description": "true for a genesis claim (the org had no prior slug); false for a rename or a no-op replay of the org's current slug."
+            "description": "true for a genesis set (the org had no prior slug); false for a rename or a no-op replay of the org's current slug."
           },
           "fee_usd_micros": {
             "type": "integer",
-            "description": "The fee actually charged for THIS call. 0 for the org's free first-ever slug claim (or a no-op idempotent replay); the slug claim fee otherwise (every later claim or rename)."
+            "description": "The fee actually charged for THIS call. 0 for the org's free first-ever slug claim (or a no-op idempotent replay); the slug set fee otherwise (every later set or rename)."
           }
         }
       },
@@ -40456,7 +40524,7 @@
                 "buzz_human_adoption_offer_id",
                 "org_id",
                 "status",
-                "handoff_url"
+                "offer_url"
               ],
               "properties": {
                 "buzz_human_adoption_offer_id": {
@@ -40475,7 +40543,7 @@
                     "ineligible"
                   ]
                 },
-                "handoff_url": {
+                "offer_url": {
                   "type": "string",
                   "format": "uri",
                   "nullable": true
@@ -41062,7 +41130,7 @@
       "BuzzHumanAdoptionDeploymentContext": {
         "type": "object",
         "additionalProperties": false,
-        "description": "Optional proof that the offer describes a real, currently-live deployment. All five fields are required together; no others are accepted. The gateway verifies project_id + release_id against the org's active release and live_url against its claimed subdomain, custom domain, or deployment host.",
+        "description": "Optional proof that the offer describes a real, currently-live deployment. All five fields are required together; no others are accepted. The gateway verifies project_id + release_id against the org's active release and live_url against its added subdomain, custom domain, or deployment host.",
         "required": [
           "project_id",
           "release_id",
@@ -41333,7 +41401,7 @@
           "identity_link_id",
           "expected_buzz_owner",
           "status",
-          "handoff_url",
+          "offer_url",
           "deployment_context",
           "current_buzz_human_adoption_id",
           "completed_buzz_human_adoption",
@@ -41397,7 +41465,7 @@
               "ineligible"
             ]
           },
-          "handoff_url": {
+          "offer_url": {
             "type": "string",
             "format": "uri",
             "nullable": true
@@ -43657,7 +43725,7 @@
               "email",
               "org"
             ],
-            "description": "Completion ceremony discriminator: wallet uses /accept; email uses /claim; org completes synchronously when the caller owns both organizations."
+            "description": "Recipient kind: wallet and email are both accepted via /accept (wallet by the to_wallet's SIWX signature, email by the addressed principal's sign-in session); org completes synchronously when the caller owns both organizations."
           },
           "from_wallet": {
             "type": "string",
@@ -43673,7 +43741,7 @@
             "nullable": true,
             "description": "Addressed email for email-kind transfers; null/omitted for wallet-kind transfers."
           },
-          "from_organization_id": {
+          "from_org_id": {
             "type": "string",
             "format": "uuid",
             "nullable": true,
@@ -43703,7 +43771,7 @@
           },
           "preview_path": {
             "type": "string",
-            "description": "API path to GET the full preview document, e.g. /agent/v1/transfers/<id>."
+            "description": "API path to GET the full preview document, e.g. /agent/v1/transfers/<transfer_id>."
           },
           "initiated_by": {
             "allOf": [
@@ -43930,12 +43998,12 @@
           "billing_implications": {
             "type": "object",
             "properties": {
-              "from_organization_id": {
+              "from_org_id": {
                 "type": "string",
                 "format": "uuid",
                 "nullable": true
               },
-              "target_organization_id": {
+              "target_org_id": {
                 "type": "string",
                 "format": "uuid",
                 "nullable": true
@@ -43955,7 +44023,7 @@
               }
             }
           },
-          "retain_collaborator": {
+          "retain_member": {
             "type": "object",
             "nullable": true,
             "description": "Present only when an email-addressed transfer includes a sender proposal to stay on as a developer of the receiving org.",
@@ -43986,7 +44054,7 @@
               "accept_field": {
                 "type": "string",
                 "enum": [
-                  "accept_retained_collaborator"
+                  "accept_retained_member"
                 ]
               }
             }
@@ -44087,7 +44155,7 @@
           "to_wallet": {
             "type": "string"
           },
-          "new_organization_id": {
+          "new_org_id": {
             "type": "string",
             "format": "uuid",
             "nullable": true
@@ -44177,9 +44245,9 @@
           "message": {
             "type": "string"
           },
-          "retain_collaborator": {
+          "retain_member": {
             "type": "object",
-            "description": "Email-addressed transfers only; optional proposal for the sender to remain a developer after claim.",
+            "description": "Email-addressed transfers only; optional proposal for the sender to remain a developer after accept.",
             "properties": {
               "role": {
                 "type": "string",
@@ -44394,14 +44462,25 @@
                 "example": "perpetual",
                 "description": "'perpetual' means the tier never expires and is never scheduler-advanced (kygit-handoff D4). Prototype is the only perpetual tier."
               },
-              "storage_mb": {
+              "storage_bytes": {
                 "type": "integer",
-                "example": 250
+                "example": 250000000,
+                "description": "Pooled app-storage quota in bytes — a round decimal constant (250 MB). The human label is `storage`."
+              },
+              "storage": {
+                "type": "string",
+                "example": "250 MB",
+                "description": "storage_bytes as a human string, derived from the constant so the number and the label never disagree."
               },
               "source_bytes": {
                 "type": "integer",
-                "example": 1073741824,
-                "description": "kygit-handoff D4 — the org-pooled gitvault vault-bytes quota, a SEPARATE limit from storage_mb. 1 GiB on prototype (free floor: 1 GB of encrypted vaults, unlimited repos)."
+                "example": 1000000000,
+                "description": "kygit-handoff D4 — the org-pooled gitvault vault-bytes quota, a SEPARATE limit from storage_bytes. 1 GB on prototype (free floor: 1 GB of encrypted vaults, unlimited repos). The human label is `source`."
+              },
+              "source": {
+                "type": "string",
+                "example": "1 GB",
+                "description": "source_bytes as a human string."
               },
               "api_calls": {
                 "type": "integer",
@@ -44435,14 +44514,22 @@
                 ],
                 "example": "leased"
               },
-              "storage_mb": {
+              "storage_bytes": {
                 "type": "integer",
-                "example": 1024
+                "example": 1000000000
+              },
+              "storage": {
+                "type": "string",
+                "example": "1 GB"
               },
               "source_bytes": {
                 "type": "integer",
-                "example": 10737418240,
-                "description": "kygit-handoff D4 — the org-pooled gitvault vault-bytes quota. 10 GiB on hobby."
+                "example": 10000000000,
+                "description": "kygit-handoff D4 — the org-pooled gitvault vault-bytes quota. 10 GB on hobby."
+              },
+              "source": {
+                "type": "string",
+                "example": "10 GB"
               },
               "api_calls": {
                 "type": "integer",
@@ -44476,14 +44563,22 @@
                 ],
                 "example": "leased"
               },
-              "storage_mb": {
+              "storage_bytes": {
                 "type": "integer",
-                "example": 10240
+                "example": 10000000000
+              },
+              "storage": {
+                "type": "string",
+                "example": "10 GB"
               },
               "source_bytes": {
                 "type": "integer",
-                "example": 53687091200,
-                "description": "kygit-handoff D4 — the org-pooled gitvault vault-bytes quota. 50 GiB on team."
+                "example": 50000000000,
+                "description": "kygit-handoff D4 — the org-pooled gitvault vault-bytes quota. 50 GB on team."
+              },
+              "source": {
+                "type": "string",
+                "example": "50 GB"
               },
               "api_calls": {
                 "type": "integer",
@@ -44500,7 +44595,7 @@
           }
         }
       },
-      "TierSubscription": {
+      "TierLease": {
         "type": "object",
         "properties": {
           "wallet": {
@@ -44510,17 +44605,17 @@
           "action": {
             "type": "string",
             "enum": [
-              "subscribe",
+              "start",
               "renew",
               "upgrade",
               "downgrade"
             ],
-            "description": "What happened: subscribe (new), renew (extend), upgrade (higher tier), or downgrade (lower tier, prorated refund)"
+            "description": "What happened: start (a new lease, HTTP 201), renew (extend), upgrade (higher tier), or downgrade (lower tier, prorated refund)"
           },
           "previous_tier": {
             "type": "string",
             "nullable": true,
-            "description": "Previous tier (null if first subscription)"
+            "description": "Previous tier (null on the first lease)"
           },
           "tier": {
             "type": "string",
@@ -44558,8 +44653,18 @@
             "format": "date-time",
             "description": "Lease expiry committed by the original payment outcome. Unlike the live lease view, this remains stable on replay."
           },
+          "paid_with": {
+            "type": "string",
+            "enum": ["allowance", "x402", "mpp"],
+            "description": "What settled the purchase. `allowance` means the organization's allowance paid and nothing moved on-chain: the allowance rail settles ahead of the paywall for a SIWX-identified caller whose allowance covers the price, so no 402 was issued and no wallet funds were needed."
+          },
+          "allowance_used_usd_micros": {
+            "type": "integer",
+            "description": "Allowance consumed by this purchase (0 unless paid_with is allowance)."
+          },
           "allowance_remaining_usd_micros": {
-            "type": "integer"
+            "type": "integer",
+            "description": "The organization's allowance after this purchase."
           }
         }
       },
@@ -45312,7 +45417,7 @@
             "type": "string",
             "nullable": true
           },
-          "related_organization_id": {
+          "related_org_id": {
             "type": "string",
             "format": "uuid",
             "nullable": true
@@ -46892,6 +46997,9 @@
             "type": "string",
             "nullable": true
           },
+          "static_continuity": { "$ref": "#/components/schemas/StaticContinuity" },
+          "current_host_release_id": { "type": "string", "nullable": true },
+          "current_host_release_generation": { "type": "integer", "nullable": true },
           "match": {
             "type": "string",
             "enum": [
@@ -46907,6 +47015,7 @@
               "static_exact",
               "static_index",
               "spa_fallback",
+              "retained_public_path",
               "spa_fallback_missing"
             ]
           },
@@ -47568,6 +47677,7 @@
           "static_assets"
         ],
         "properties": {
+        "static_continuity": { "$ref": "#/components/schemas/StaticContinuity" },
           "kind": {
             "type": "string",
             "enum": [
@@ -47923,7 +48033,7 @@
           "base_identity": {
             "type": "string",
             "nullable": true,
-            "description": "Concrete base identity bound into plan_fingerprint, e.g. empty or release:<id>."
+            "description": "Concrete base identity bound into plan_fingerprint, e.g. empty or release:<release_id>."
           },
           "next_actions": {
             "type": "array",
@@ -48069,6 +48179,7 @@
           "migrations_applied"
         ],
         "properties": {
+        "static_continuity": { "$ref": "#/components/schemas/StaticContinuity" },
           "kind": {
             "type": "string",
             "enum": [
@@ -48649,6 +48760,7 @@
           "subdomain_bindings"
         ],
         "properties": {
+        "static_continuity": { "$ref": "#/components/schemas/StaticContinuity" },
           "operation_id": {
             "type": "string"
           },
@@ -49045,6 +49157,7 @@
           "updated_at"
         ],
         "properties": {
+        "static_continuity": { "$ref": "#/components/schemas/StaticContinuity" },
           "project_id": {
             "$ref": "#/components/schemas/ProjectId"
           },
@@ -52114,6 +52227,7 @@
             "type": "string",
             "enum": [
               "migration",
+              "commit",
               "static",
               "function",
               "declared"
@@ -53141,7 +53255,25 @@
           }
         }
       },
-      "ProjectDomainEnsureRequest": {
+      "ProjectDomainConnectRequest": {
+        "type": "object",
+        "required": [
+          "domain",
+          "desired"
+        ],
+        "properties": {
+          "domain": {
+            "type": "string",
+            "example": "kysigned.com",
+            "description": "Lowercase DNS name to connect to the project."
+          },
+          "desired": {
+            "$ref": "#/components/schemas/ProjectDomainDesired"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProjectDomainDesiredRequest": {
         "type": "object",
         "required": [
           "desired"
@@ -55380,7 +55512,7 @@
         }
       },
       "PaymentRequired": {
-        "description": "Payment or SIWX authentication required. Existing routes return x402 discovery fields. An explicitly selected MPP Lightning tier request returns exactly one WWW-Authenticate: Payment challenge plus retained intent, attempt, quote, fixed invoice amount, and expiry metadata; the response is no-store.",
+        "description": "Payment or SIWX authentication required. Existing routes return x402 discovery fields. On a priced route, when the caller was identified and its allowance was checked first, the body also carries `allowance: { allowance_usd_micros, price_usd_micros, shortfall_usd_micros }` and `redeem_voucher` / `top_up` next actions: the shortfall, not the whole price, is what a voucher or top-up must cover. An explicitly selected MPP Lightning tier request returns exactly one WWW-Authenticate: Payment challenge plus retained intent, attempt, quote, fixed invoice amount, and expiry metadata; the response is no-store.",
         "content": {
           "application/json": {
             "schema": {
