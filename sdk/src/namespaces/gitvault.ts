@@ -323,7 +323,7 @@ export interface GitvaultScaffoldRemoteResult {
   excluded_in_enclosing?: boolean;
   /**
    * A `skipped` result names the way out: `create_nested_repo`, pointing at
-   * `run402 repos create --nested --project <id>` — a nested repository
+   * `run402 repos create --nested --project <project_id>` — a nested repository
    * keeps an encrypted remote for the app without touching the enclosing
    * repository. Absent on a `scaffolded` result.
    */
@@ -2586,9 +2586,9 @@ export class Gitvault {
     // `run402 init` scaffolds the git remote and deliberately allocates
     // nothing; pointing at it here sent users to a command that silently did
     // not do what this line promised (dogfood #1, finding A).
-    if (!record) nextActions.push({ action: "allocate the project's vault", command: "run402 repos create --project <id>" });
+    if (!record) nextActions.push({ action: "allocate the project's vault", command: "run402 repos create --project <project_id>" });
     else if (pending.length > 0) nextActions.push({ action: `complete ${pending.length} unvaulted-override journal(s)`, command: "run402 repos snapshot" });
-    else if (record && !holdsRepoKey) nextActions.push({ action: "this machine holds no key for the vault — allocate resolves to the existing vault and is idempotent", command: "run402 repos create --project <id>" });
+    else if (record && !holdsRepoKey) nextActions.push({ action: "this machine holds no key for the vault — allocate resolves to the existing vault and is idempotent", command: "run402 repos create --project <project_id>" });
 
     return {
       repo_id: repoId,

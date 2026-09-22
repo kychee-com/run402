@@ -13,7 +13,7 @@
  *   positionals            canonical positional ATTRIBUTES (post-conventions).
  *                          A variadic list of the SAME kind counts as one.
  *   projectScoped          command operates on a project and accepts
- *                          `--project <id>` (precedence: --project > legacy
+ *                          `--project <project_id>` (precedence: --project > legacy
  *                          leading prj_ positional > active project)
  *   orgScoped              command acts ON an organization and resolves it
  *                          through the ONE shared chain (cli-org-context):
@@ -483,7 +483,7 @@ export const COMMAND_MANIFEST = [
   // without rejecting it," which this satisfies.
   { path: ["doctor"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["--no-scan"], runStyle: "merged" },
   { path: ["webhook-secret", "rotate"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
-  // `run402 logs [<function>] --request-id <id>`: the optional positional is
+  // `run402 logs [<function>] --request-id <request_id>`: the optional positional is
   // the function name (`run402 errors list` samples print it that way); it is
   // never a project id.
   { path: ["logs"], positionals: [p("function", { required: false })], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["--request-id", "req_gate123"], runStyle: "merged" },
@@ -538,7 +538,7 @@ export const RESERVED_SUBCOMMANDS = {
   // `reconcile` answer COMMAND_REMOVED (no equivalent successor for either —
   // `push`'s one-release alias window is over, `reconcile` was a workaround
   // with no permanent replacement, only a read at `repos access`).
-  "gitvault:init": "moved to `repos create --project <id>`",
+  "gitvault:init": "moved to `repos create --project <project_id>`",
   "gitvault:status": "moved to `repos view`",
   "gitvault:snapshot": "moved to `repos snapshot`",
   "gitvault:policy": "moved to `repos policy`",

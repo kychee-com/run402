@@ -56,7 +56,7 @@
  * COMMAND SURFACE (2026-08: the `gitvault` verb family was consolidated into
  * `run402 repos`; the old spellings now answer COMMAND_MOVED/COMMAND_REMOVED
  * tombstones). This drill drives the successors:
- *   gitvault init --project <id>    →  repos create --project <id>   (adopt)
+ *   gitvault init --project <project_id>    →  repos create --project <project_id>   (adopt)
  *   gitvault snapshot               →  repos snapshot
  *   gitvault mirror set <dest>      →  repos mirror <dest>
  *   gitvault mirror sync            →  repos mirror --backfill
@@ -249,7 +249,7 @@ async function main() {
 
   // ── 5. repos create --project (ADOPT: allocate the vault, mint the receipt) ──
   //
-  // The successor to `gitvault init --project <id>`. There is no `--no-remote`
+  // The successor to `gitvault init --project <project_id>`. There is no `--no-remote`
   // any more — `repos create` always scaffolds the git remote (claiming
   // `origin` since this fresh drill repo has none). Harmless here: every
   // later command targets the vault explicitly via --project/--repo, which

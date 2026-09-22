@@ -75,7 +75,7 @@ function collectRepeatableFlag(args, flag) {
 const HELP = `run402 doctor — Health and config diagnostics
 
 Usage:
-  run402 doctor [--verbose] [--refresh] [--no-scan] [--scan-dir <D>] [--project <id>]
+  run402 doctor [--verbose] [--refresh] [--no-scan] [--scan-dir <D>] [--project <project_id>]
                 [--only <check> ...]
   run402 --wallet <profile> doctor --buzz --buzz-agent <npub-or-hex>
 
@@ -117,7 +117,7 @@ Options:
   --dir D        Select the application directory for deployment diagnostics.
   --manifest P   Explicitly select a manifest (executable configs are trusted code).
   --scan-dir D   Advanced arbitrary scan; does not claim deployment readiness
-  --project <id> Target THIS project's gitvault check instead of the repo-standing
+  --project <project_id> Target THIS project's gitvault check instead of the repo-standing
                  default (the 4.38.0 pin / run402 remote / RUN402_PROJECT_ID / active
                  project, in that order — see \`gitvault-target.mjs\`). Scoped to the
                  gitvault check only; every other check is wallet/machine-wide, not
@@ -735,7 +735,7 @@ export async function run(sub, args = []) {
   // with its own pinned repo id or run402/origin remote, doctor checks THAT
   // vault, not the profile's active project — the same pin > remote >
   // RUN402_PROJECT_ID env > active-project order every other gitvault verb
-  // follows (`gitvault-target.mjs`). An explicit `--project <id>` outranks
+  // follows (`gitvault-target.mjs`). An explicit `--project <project_id>` outranks
   // all of that (the resolver's own top tier), same as every other gitvault
   // verb's `--project`.
   if (wanted("gitvault")) {
@@ -848,7 +848,7 @@ export async function run(sub, args = []) {
         if (gv.gitvault_policy === "required" && !gv.keystore.holds_repo_key) {
           gaps.push(
             "gitvault_policy is 'required' but this machine holds no key for the vault — a deploy from here is refused with GITVAULT_CLIENT_UPGRADE_REQUIRED. " +
-            "Run 'run402 repos create --project <id>' (idempotent; resolves to the existing repo), or 'run402 repos policy grandfathered --reason <why>' to un-gate the project.",
+            "Run 'run402 repos create --project <project_id>' (idempotent; resolves to the existing repo), or 'run402 repos policy grandfathered --reason <why>' to un-gate the project.",
           );
         } else if (gv.gitvault_policy === "required" && !gv.keystore.can_sign) {
           gaps.push("gitvault_policy is 'required' and this keystore is read-only (no signing key) — it can verify but cannot publish the capture a deploy needs");
@@ -921,7 +921,7 @@ export async function run(sub, args = []) {
           status: gaps.length > 0 ? "warning" : "ok",
           value: gaps.length > 0 ? { ...value, gaps } : value,
           hint: (gv.vault === null
-            ? `No vault for this project (that is a normal shape). Allocate one with 'run402 repos create --project <id>'. Keystore: ${gv.keystore.root}`
+            ? `No vault for this project (that is a normal shape). Allocate one with 'run402 repos create --project <project_id>'. Keystore: ${gv.keystore.root}`
             : gv.durability_statement
               ? `Back up ${gv.keystore.root} anyway — ${gv.durability_statement} (covering_recipients: ${gv.covering_recipients})`
               : `Back up ${gv.keystore.root} — whole-machine or whole-keystore loss is terminal for vault history.`) + byoDisclosure,

@@ -30,7 +30,7 @@ one answers a structured COMMAND_MOVED/COMMAND_REMOVED error for exactly one
 release; after that the spelling is reserved and answers nothing at all.
 
 Moved:
-  gitvault init       -> repos create --project <id>   (or repos create <name> for a NEW project)
+  gitvault init       -> repos create --project <project_id>   (or repos create <name> for a NEW project)
   gitvault status     -> repos view
   gitvault snapshot   -> repos snapshot
   gitvault policy     -> repos policy
@@ -49,7 +49,7 @@ Run \`run402 repos --help\` for the current surface.
 
 /** Renamed verbs: `gitvault <key>` -> the exact `repos` command that means the same thing now. */
 const MOVED = {
-  init: { command: "run402 repos create --project <id>", why: "repos create absorbs allocation — pass --project to adopt an existing project, or a name to provision a new one." },
+  init: { command: "run402 repos create --project <project_id>", why: "repos create absorbs allocation — pass --project to adopt an existing project, or a name to provision a new one." },
   status: { command: "run402 repos view", why: "repos view is the side-effect-free repo inspection command; it never materializes refs the way status --refs used to." },
   snapshot: { command: "run402 repos snapshot", why: "same verb, new noun." },
   policy: { command: "run402 repos policy", why: "same verb, new noun." },

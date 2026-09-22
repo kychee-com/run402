@@ -801,7 +801,7 @@ describe("gitvault status — the terminal-loss statement is normative copy", ()
     // nothing, so naming it here would send every user with no vault to a
     // command that does not do what status promises.
     assert.ok(
-      status.next_actions.some((a) => a.command === "run402 repos create --project <id>"),
+      status.next_actions.some((a) => a.command === "run402 repos create --project <project_id>"),
       `expected the allocation verb, got ${JSON.stringify(status.next_actions)}`,
     );
     assert.equal(

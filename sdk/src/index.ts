@@ -341,7 +341,7 @@ export class Run402 {
     const active = await getter.call(this.#client.credentials);
     if (!active) {
       throw new LocalError(
-        "No active project set. Call `r.projects.use(id)` (or `run402 projects use <id>`) to set one, or pass an explicit id to `r.project(id)`.",
+        "No active project set. Call `r.projects.use(id)` (or `run402 projects use <project_id>`) to set one, or pass an explicit id to `r.project(id)`.",
         "scoping client to project",
       );
     }

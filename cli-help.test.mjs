@@ -380,12 +380,12 @@ describe("CLI --help contract", () => {
     const result = await runCli(["up", "--help"]);
     assertHelp(result, "run402 up --help");
     assert.match(result.stdout, /--name <name>/);
-    assert.match(result.stdout, /--project <id>/);
+    assert.match(result.stdout, /--project <project_id>/);
     assert.match(result.stdout, /--tier <tier>/);
     assert.match(result.stdout, /--check/);
     assert.match(result.stdout, /--print-spec/);
     assert.match(result.stdout, /--plan/);
-    assert.match(result.stdout, /--require-plan <id>/);
+    assert.match(result.stdout, /--require-plan <plan_id>/);
     assert.doesNotMatch(result.stdout, /--dry-run/);
     assert.match(result.stdout, /-y, --yes/);
     assert.match(result.stdout, /--allow-warning <code>/);
@@ -422,7 +422,7 @@ describe("CLI --help contract", () => {
       expectHeadingStartsWith: "run402 functions invoke",
     });
     assert.match(result.stdout, /invoke <name>/);
-    assert.match(result.stdout, /--project <id>/);
+    assert.match(result.stdout, /--project <project_id>/);
     assert.match(result.stdout, /--body-file <path>/);
     assert.match(result.stdout, /Windows cmd\.exe/);
   });

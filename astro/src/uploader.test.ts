@@ -275,7 +275,7 @@ describe("uploader", () => {
         assert.equal(err.code, "CI_BINDING_REVOKED");
         // Points at the right fix (re-link) and away from the red-herring one.
         assert.match(err.message, /run402 ci link github/);
-        assert.doesNotMatch(err.message, /set-asset-scopes <binding-id> 'astro/);
+        assert.doesNotMatch(err.message, /set-asset-scopes <binding_id> 'astro/);
         return true;
       },
     );

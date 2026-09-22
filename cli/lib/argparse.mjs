@@ -318,11 +318,11 @@ export function resolvePositionalProject(args, opts = {}) {
 }
 
 // Resolve the project id for a project-scoped command from BOTH accepted
-// forms — the canonical `--project <id>` flag and the legacy leading
+// forms — the canonical `--project <project_id>` flag and the legacy leading
 // positional `prj_...` — with active-project fallback (CLI-wide convention).
 //
 // Precedence:
-//   1. explicit `--project <id>` (canonical)
+//   1. explicit `--project <project_id>` (canonical)
 //   2. a leading positional starting with "prj_" (legacy compat, no warning)
 //   3. the active project (`resolveProjectId(null)`)
 //
@@ -338,7 +338,7 @@ export function resolvePositionalProject(args, opts = {}) {
 //   requireRestPositional: only treat a leading `prj_` positional as the
 //     project selector when at least one more bare positional follows (counted
 //     with opts.valueFlags). Needed by commands whose OWN attribute is itself a
-//     project id (e.g. `branches renew <branch-project-id>`).
+//     project id (e.g. `branches renew <branch_project_id>`).
 export function resolveProjectSelector(args, opts = {}) {
   const list = Array.isArray(args) ? [...args] : [];
   let flagProject = null;
@@ -361,7 +361,7 @@ export function resolveProjectSelector(args, opts = {}) {
         fail({
           code: "BAD_USAGE",
           message: `Conflicting project ids: --project ${flagProject} vs positional ${first}`,
-          hint: "Pass the project once — prefer --project <id>.",
+          hint: "Pass the project once — prefer --project <project_id>.",
           details: { project_flag: flagProject, positional: first },
         });
       }

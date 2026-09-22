@@ -15,14 +15,14 @@ import {
 const HELP = `run402 snapshots — Project database restore points
 
 Usage:
-  run402 snapshots create [--project <id>] [--json]
-  run402 snapshots list [--project <id>] [--kind <kind>] [--limit <n>] [--after <cursor>] [--json]
-  run402 snapshots get <snapshot-id> [--project <id>] [--json]
-  run402 snapshots restore <snapshot-id> [--project <id>] [--include-auth] [--confirm <token>] [--json]
-  run402 snapshots delete <snapshot-id> [--project <id>] [--json]
+  run402 snapshots create [--project <project_id>] [--json]
+  run402 snapshots list [--project <project_id>] [--kind <kind>] [--limit <n>] [--after <cursor>] [--json]
+  run402 snapshots get <snapshot_id> [--project <project_id>] [--json]
+  run402 snapshots restore <snapshot_id> [--project <project_id>] [--include-auth] [--confirm <token>] [--json]
+  run402 snapshots delete <snapshot_id> [--project <project_id>] [--json]
 
 Legacy (still supported): a leading prj_... positional selects the project,
-e.g. run402 snapshots restore prj_abc123 <snapshot-id>. --project defaults to
+e.g. run402 snapshots restore prj_abc123 <snapshot_id>. --project defaults to
 the active project.
 
 Restore is a two-step handshake. First call without --confirm to get a
@@ -82,7 +82,7 @@ async function list(args) {
 }
 
 async function get(args) {
-  const { projectId, snapshotId } = resolveProjectAndSnapshot(args, "run402 snapshots get [project-id] <snapshot-id>");
+  const { projectId, snapshotId } = resolveProjectAndSnapshot(args, "run402 snapshots get [project_id] <snapshot_id>");
   try {
     const snapshot = await getSdk().snapshots.get(projectId, snapshotId);
     console.log(JSON.stringify({ snapshot }, null, 2));
@@ -92,7 +92,7 @@ async function get(args) {
 }
 
 async function restore(args) {
-  const { projectId, snapshotId } = resolveProjectAndSnapshot(args, "run402 snapshots restore [project-id] <snapshot-id> [--confirm <token>]");
+  const { projectId, snapshotId } = resolveProjectAndSnapshot(args, "run402 snapshots restore [project_id] <snapshot_id> [--confirm <token>]");
   const includeAuth = args.includes("--include-auth");
   const confirm = flagValue(args, "--confirm");
   try {
@@ -115,7 +115,7 @@ async function restore(args) {
 }
 
 async function deleteSnapshot(args) {
-  const { projectId, snapshotId } = resolveProjectAndSnapshot(args, "run402 snapshots delete [project-id] <snapshot-id>");
+  const { projectId, snapshotId } = resolveProjectAndSnapshot(args, "run402 snapshots delete [project_id] <snapshot_id>");
   try {
     await getSdk().snapshots.delete(projectId, snapshotId);
     console.log(JSON.stringify({ ok: true, project_id: projectId, snapshot_id: snapshotId, deleted: true }, null, 2));
@@ -125,7 +125,7 @@ async function deleteSnapshot(args) {
 }
 
 function resolveProjectAndSnapshot(args, usage) {
-  // Canonical: `<snapshot-id> [--project <id>]`; legacy `<prj_id> <snapshot-id>`
+  // Canonical: `<snapshot_id> [--project <project_id>]`; legacy `<prj_id> <snapshot_id>`
   // still works (requireRestPositional keeps a lone snapshot id that happens to
   // start with prj_ from being eaten as the project selector).
   const { projectId, rest } = resolveProjectSelector(args, { valueFlags: FLAG_VALUES, requireRestPositional: true });

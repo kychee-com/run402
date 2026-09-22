@@ -48,13 +48,13 @@ const SUB_HELP = {
   submit: `run402 jobs submit — Submit a managed job request
 
 Usage:
-  run402 jobs submit --file <path> [--project <id>]
-  run402 jobs submit --stdin [--project <id>]
+  run402 jobs submit --file <path> [--project <project_id>]
+  run402 jobs submit --stdin [--project <project_id>]
 
 Options:
   --file <path>     Read the JSON submit request from a file
   --stdin           Read the JSON submit request from stdin
-  --project <id>    Project ID (defaults to the active project)
+  --project <project_id>    Project ID (defaults to the active project)
 
 Example request:
   {
@@ -72,36 +72,36 @@ Example request:
   get: `run402 jobs get — Get a managed job run
 
 Usage:
-  run402 jobs get <job_id> [--project <id>]
+  run402 jobs get <job_id> [--project <project_id>]
 
 Options:
-  --project <id>    Project ID (defaults to the active project)
+  --project <project_id>    Project ID (defaults to the active project)
 `,
   logs: `run402 jobs logs — Read managed job logs
 
 Usage:
-  run402 jobs logs <job_id> [--project <id>] [--tail <n>] [--since <iso>]
+  run402 jobs logs <job_id> [--project <project_id>] [--tail <n>] [--since <iso>]
 
 Options:
-  --project <id>    Project ID (defaults to the active project)
+  --project <project_id>    Project ID (defaults to the active project)
   --tail <n>        Maximum entries to return (gateway max: 1000)
   --since <iso>     Only include logs at or after this ISO-8601 timestamp
 `,
   cancel: `run402 jobs cancel — Cancel a managed job run
 
 Usage:
-  run402 jobs cancel <job_id> [--project <id>]
+  run402 jobs cancel <job_id> [--project <project_id>]
 
 Options:
-  --project <id>    Project ID (defaults to the active project)
+  --project <project_id>    Project ID (defaults to the active project)
 `,
   purge: `run402 jobs purge — Purge all managed job runs for a project
 
 Usage:
-  run402 jobs purge [--project <id>]
+  run402 jobs purge [--project <project_id>]
 
 Options:
-  --project <id>    Project ID (defaults to the active project)
+  --project <project_id>    Project ID (defaults to the active project)
 
 Deletes all project-scoped managed-job run records. Queued/running jobs are
 included in the purge; known active runner instances are terminated first.
@@ -110,7 +110,7 @@ Prints { deleted_jobs, cancelled_active_jobs, terminated_instances }.
   artifacts: `run402 jobs artifacts — Download outputs from a completed managed job
 
 Usage:
-  run402 jobs artifacts get <job_id> <file> --output <path> [--project <id>]
+  run402 jobs artifacts get <job_id> <file> --output <path> [--project <project_id>]
 
 Actions:
   get <job_id> <file>   Download the named artifact to a local file
@@ -121,14 +121,14 @@ recorded filenames on a given run.
   "artifacts get": `run402 jobs artifacts get — Download a completed job's artifact
 
 Usage:
-  run402 jobs artifacts get <job_id> --file <name> --output <path> [--project <id>]
+  run402 jobs artifacts get <job_id> --file <name> --output <path> [--project <project_id>]
 
 Legacy (still supported):
-  run402 jobs artifacts get <job_id> <file> --output <path> [--project <id>]
+  run402 jobs artifacts get <job_id> <file> --output <path> [--project <project_id>]
 
 Options:
   --output, -o <path>   Local destination path (required)
-  --project <id>        Project ID (defaults to the active project)
+  --project <project_id>        Project ID (defaults to the active project)
 
 The job must be completed and the filename must be in its recorded artifact
 set (see the 'artifacts' map from 'run402 jobs get <job_id>'); otherwise the

@@ -31,7 +31,7 @@ export function parseLogSinceFlag(since) {
   return new Date(ms).toISOString();
 }
 
-/** `--request-id <id>` must be a req_ / fnrun_ / fnatt_ correlation id. */
+/** `--request-id <request_id>` must be a req_ / fnrun_ / fnatt_ correlation id. */
 export function assertLogRequestIdFlag(requestId) {
   if (requestId !== undefined && !FUNCTION_LOG_REQUEST_ID_RE.test(requestId)) {
     fail({
@@ -77,29 +77,29 @@ Usage:
   run402 functions <subcommand> [args...]
 
 Subcommands:
-  deploy <name> --file <file> [--project <id>] [--timeout <s>] [--memory <mb>] [--deps <pkg,...>] [--schedule <cron>]
+  deploy <name> --file <file> [--project <project_id>] [--timeout <s>] [--memory <mb>] [--deps <pkg,...>] [--schedule <cron>]
                                        Deploy a function to a project
-  invoke <name> [--project <id>] [--method <M>] [--body <json> | --body-file <path>] [--idempotency-key <key>] [--wait] [--timeout-ms <ms>] [--poll-interval-ms <ms>] [--raw]
+  invoke <name> [--project <project_id>] [--method <M>] [--body <json> | --body-file <path>] [--idempotency-key <key>] [--wait] [--timeout-ms <ms>] [--poll-interval-ms <ms>] [--raw]
                                        Invoke a deployed function. Default
                                        wraps the SDK result as JSON on stdout.
                                        --raw prints the response body verbatim
                                        (string body → text + newline, JSON
                                        body → pretty-printed JSON).
-  logs   [<name>] [--project <id>] [--tail <n>] [--since <ts>] [--request-id <id>] [--app|--platform|--all] [--follow]
+  logs   [<name>] [--project <project_id>] [--tail <n>] [--since <ts>] [--request-id <request_id>] [--app|--platform|--all] [--follow]
                                        Get function logs (app output by default;
                                        omit <name> with --request-id to search
                                        every function)
   runs   <action> ...                  Create, inspect, cancel, redrive, and
                                        wait for durable function runs
-  update <name> [--project <id>] [--schedule <cron>] [--schedule-remove] [--timeout <s>] [--memory <mb>]
+  update <name> [--project <project_id>] [--schedule <cron>] [--schedule-remove] [--timeout <s>] [--memory <mb>]
                                        Update function schedule or config without re-deploying
-  rebuild [<name>] [--all] [--project <id>]
+  rebuild [<name>] [--all] [--project <project_id>]
                                        Refresh function(s) onto the current platform
                                        runtime (re-bundles from stored source; no
                                        source change). Pass <name> for one function
                                        or --all for every function in the project.
-  list   [--project <id>]              List all functions for a project
-  delete <name> [--project <id>]       Delete a function
+  list   [--project <project_id>]              List all functions for a project
+  delete <name> [--project <project_id>]       Delete a function
 
 Legacy (still supported): a leading prj_... positional selects the project,
 e.g. run402 functions deploy prj_abc123 stripe-webhook --file handler.ts
@@ -138,7 +138,7 @@ const SUB_HELP = {
   deploy: `run402 functions deploy — Deploy a function to a project
 
 Usage:
-  run402 functions deploy <name> --file <file> [--project <id>] [options]
+  run402 functions deploy <name> --file <file> [--project <project_id>] [options]
 
 Legacy (still supported):
   run402 functions deploy <project_id> <name> --file <file> [options]
@@ -147,7 +147,7 @@ Arguments:
   <name>              Function name (used in the invoke URL path)
 
 Options:
-  --project <id>      Target project ID (defaults to the active project)
+  --project <project_id>      Target project ID (defaults to the active project)
   --file <file>       Required: path to the function source file
   --timeout <s>       Runtime timeout in seconds
   --memory <mb>       Memory in MB
@@ -183,7 +183,7 @@ Examples:
   invoke: `run402 functions invoke — Invoke a deployed function
 
 Usage:
-  run402 functions invoke <name> [--project <id>] [options]
+  run402 functions invoke <name> [--project <project_id>] [options]
 
 Legacy (still supported):
   run402 functions invoke <project_id> <name> [options]
@@ -192,7 +192,7 @@ Arguments:
   <name>              Function name
 
 Options:
-  --project <id>      Target project ID (defaults to the active project)
+  --project <project_id>      Target project ID (defaults to the active project)
   --method <M>        HTTP method (default POST)
   --body <json>       Inline JSON request body (ignored for GET/HEAD). The CLI
                       validates it before sending; shell-corrupted JSON fails.
@@ -232,8 +232,8 @@ Examples:
   logs: `run402 functions logs — Fetch or tail function logs
 
 Usage:
-  run402 functions logs <name> [--project <id>] [options]
-  run402 functions logs --request-id <id> [--project <id>] [options]
+  run402 functions logs <name> [--project <project_id>] [options]
+  run402 functions logs --request-id <request_id> [--project <project_id>] [options]
 
 Legacy (still supported):
   run402 functions logs <project_id> <name> [options]
@@ -244,11 +244,11 @@ Arguments:
                       and each entry carries its "function".
 
 Options:
-  --project <id>      Target project ID (defaults to the active project)
+  --project <project_id>      Target project ID (defaults to the active project)
   --tail <n>          Number of most-recent entries (default 50, max 1000).
                       Bounds the read BEFORE the origin filter below.
   --since <ts>        ISO timestamp or epoch ms; only entries after this
-  --request-id <id>   Only entries correlated to this req_ (the
+  --request-id <request_id>   Only entries correlated to this req_ (the
                       x-run402-request-id response header), fnrun_, or fnatt_ id
   --app               Only the function's own output (default). Lambda runtime
                       lines (INIT_START, START/END/REPORT RequestId, billed
@@ -274,12 +274,12 @@ Examples:
   runs: `run402 functions runs — Manage durable function runs
 
 Usage:
-  run402 functions runs create <function_name> --event-type <type> --idempotency-key <key> [--project <id>] [options]
-  run402 functions runs list <function_name> [--project <id>] [options]
-  run402 functions runs get <run_id> [--project <id>]
-  run402 functions runs logs <run_id> [--project <id>] [--tail <n>] [--since <ts>]
-  run402 functions runs cancel <run_id> [--project <id>]
-  run402 functions runs redrive <run_id> [--project <id>] [options]
+  run402 functions runs create <function_name> --event-type <type> --idempotency-key <key> [--project <project_id>] [options]
+  run402 functions runs list <function_name> [--project <project_id>] [options]
+  run402 functions runs get <run_id> [--project <project_id>]
+  run402 functions runs logs <run_id> [--project <project_id>] [--tail <n>] [--since <ts>]
+  run402 functions runs cancel <run_id> [--project <project_id>]
+  run402 functions runs redrive <run_id> [--project <project_id>] [options]
 
 Legacy (still supported): a leading prj_... positional selects the project,
 e.g. run402 functions runs get <project_id> <run_id>
@@ -313,7 +313,7 @@ Examples:
   update: `run402 functions update — Update function config without re-deploying
 
 Usage:
-  run402 functions update <name> [--project <id>] [options]
+  run402 functions update <name> [--project <project_id>] [options]
 
 Legacy (still supported):
   run402 functions update <project_id> <name> [options]
@@ -322,7 +322,7 @@ Arguments:
   <name>              Function name
 
 Options:
-  --project <id>      Target project ID (defaults to the active project)
+  --project <project_id>      Target project ID (defaults to the active project)
   --schedule <cron>   New cron schedule (pass '' to clear)
   --schedule-remove   Explicitly remove the schedule
   --timeout <s>       Runtime timeout in seconds
@@ -339,8 +339,8 @@ Examples:
   rebuild: `run402 functions rebuild — Refresh function(s) onto the current platform runtime
 
 Usage:
-  run402 functions rebuild <name> [--project <id>]
-  run402 functions rebuild --all [--project <id>]
+  run402 functions rebuild <name> [--project <project_id>]
+  run402 functions rebuild --all [--project <project_id>]
 
 Legacy (still supported):
   run402 functions rebuild <project_id> <name>
@@ -350,7 +350,7 @@ Arguments:
   <name>              Function name to rebuild (omit when using --all)
 
 Options:
-  --project <id>      Target project ID (defaults to the active project)
+  --project <project_id>      Target project ID (defaults to the active project)
   --all               Rebuild every function in the project
 
 What it does:
@@ -382,13 +382,13 @@ Examples:
   list: `run402 functions list — List all functions for a project
 
 Usage:
-  run402 functions list [--project <id>]
+  run402 functions list [--project <project_id>]
 
 Legacy (still supported):
   run402 functions list <project_id>
 
 Options:
-  --project <id>      Target project ID (defaults to the active project)
+  --project <project_id>      Target project ID (defaults to the active project)
 
 Examples:
   run402 functions list --project prj_abc123
@@ -396,7 +396,7 @@ Examples:
   delete: `run402 functions delete — Delete a function from a project
 
 Usage:
-  run402 functions delete <name> [--project <id>]
+  run402 functions delete <name> [--project <project_id>]
 
 Legacy (still supported):
   run402 functions delete <project_id> <name>
@@ -405,7 +405,7 @@ Arguments:
   <name>              Function name to delete
 
 Options:
-  --project <id>      Target project ID (defaults to the active project)
+  --project <project_id>      Target project ID (defaults to the active project)
 
 Examples:
   run402 functions delete stripe-webhook --project prj_abc123
@@ -532,7 +532,7 @@ function validateInvokeJsonBody(value, source, projectId, name) {
 }
 
 async function logs(projectId, name, args) {
-  const usage = "run402 functions logs <name> [--project <id>] [--tail <n>] [--since <ts>] [--request-id <id>] [--app|--platform|--all] [--follow]  |  run402 functions logs --request-id <id> [--project <id>]";
+  const usage = "run402 functions logs <name> [--project <project_id>] [--tail <n>] [--since <ts>] [--request-id <request_id>] [--app|--platform|--all] [--follow]  |  run402 functions logs --request-id <request_id> [--project <project_id>]";
   assertRequiredProject(projectId, usage);
   assertKnownFlags(
     args,
@@ -921,7 +921,7 @@ async function update(projectId, name, args) {
 
 const UNLOCKED_DEPS_HINT =
   "Function was deployed before dependency locking — redeploy from source " +
-  "(run402 functions deploy <id> <name> --file <file>) to refresh its runtime instead.";
+  "(run402 functions deploy <project_id> <name> --file <file>) to refresh its runtime instead.";
 
 // Annotate a `rebuild --all` batch with an actionable hint on per-function
 // CANNOT_REBUILD_UNLOCKED_DEPS refusals. The batch endpoint returns 200 with
@@ -1031,7 +1031,7 @@ export async function run(sub, args) {
     console.log(SUB_HELP[sub] || HELP);
     process.exit(0);
   }
-  // Project selection (CLI-wide convention): `--project <id>` wins, else a
+  // Project selection (CLI-wide convention): `--project <project_id>` wins, else a
   // legacy leading `prj_...` positional, else the active project. Computed
   // lazily so unknown subcommands never trip project resolution.
   const select = () => resolveProjectSelector(args);

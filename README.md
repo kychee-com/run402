@@ -326,7 +326,7 @@ run402 repos create my-notes                  # project + vault + origin remote,
 git push -u origin main                       # publishes, encrypted before it leaves the machine
 ```
 
-`origin` is claimed additively: when the directory has no `origin` yet, the scaffold names ours `origin` — `git push origin main` just works, no side-remote name to remember. An existing `origin` is never touched; the fallback is `run402` instead, and the response says which happened and why. An app that lives inside another repository (a monorepo workspace) is never scaffolded into that repository: the skip carries a `create_nested_repo` next action, and `run402 repos create --nested --project <id>` (or `run402 up --nested`) gives the app root its own nested repository and `run402` remote, appending exactly one line to the enclosing repository's local `.git/info/exclude` and touching nothing else there; `repos create` prints a `git push` next action only for a remote it actually added. The free path is the whole path — no slug, no fee, no ceremony. When you want pretty `run402::<org-slug>/<name>` addresses (clone-by-name, push-to-create), claim an org slug once — the optional named-address upgrade described below.
+`origin` is claimed additively: when the directory has no `origin` yet, the scaffold names ours `origin` — `git push origin main` just works, no side-remote name to remember. An existing `origin` is never touched; the fallback is `run402` instead, and the response says which happened and why. An app that lives inside another repository (a monorepo workspace) is never scaffolded into that repository: the skip carries a `create_nested_repo` next action, and `run402 repos create --nested --project <project_id>` (or `run402 up --nested`) gives the app root its own nested repository and `run402` remote, appending exactly one line to the enclosing repository's local `.git/info/exclude` and touching nothing else there; `repos create` prints a `git push` next action only for a remote it actually added. The free path is the whole path — no slug, no fee, no ceremony. When you want pretty `run402::<org-slug>/<name>` addresses (clone-by-name, push-to-create), claim an org slug once — the optional named-address upgrade described below.
 
 **Named addressing.** `run402::<org-slug>/<name>` works alongside the id-form `run402::<org_id>/<project_id>` in the same slot — pick an org slug once (`run402 orgs slug <slug>`, owner-only, a small one-time fee), and every repo under it is `run402::<slug>/<name>`. Pushing a name that doesn't exist yet **push-to-creates** it: the project and vault are allocated atomically, and a losing concurrent pusher resolves cleanly to the winner's repo instead of erroring — its work is not lost, it just wasn't the creator. The first time a named remote resolves on a checkout, the resolved id is **pinned** into that checkout's local git config — every later push/fetch follows the pin directly, so a later rename of the org slug or repo name never breaks an existing clone. The id-form address needs no pin (a project id never changes) and stays the cold-restart path: an agent that lost its local state but still holds authority on the project can always fall back to `run402::<org_id>/<project_id>`.
 
@@ -348,7 +348,7 @@ run402 init
 #    against an unallocated project allocates the SAME way, lazily, on
 #    first use — the two paths don't stack; this one just does it now,
 #    explicitly, so the receipt lands in JSON stdout instead of stderr.)
-run402 repos create --project <id>
+run402 repos create --project <project_id>
 
 # 3. Snapshot — capture the working tree, encrypt it, publish a signed head.
 run402 repos snapshot --message "wip: refactor the parser"
@@ -502,19 +502,19 @@ run402 init                              # one-shot wallet + faucet + tier check
 run402 pay https://seller.example/resource --max-usd 0.05 --require-receipt
 run402 status                            # organization snapshot (wallet, rail, balances, tier, projects)
 run402 projects provision --name my-app
-run402 projects sql <id> "CREATE TABLE …"
-run402 projects validate-expose <id> --file manifest.json
-run402 projects apply-expose <id> --file manifest.json
+run402 projects sql <project_id> "CREATE TABLE …"
+run402 projects validate-expose <project_id> --file manifest.json
+run402 projects apply-expose <project_id> --file manifest.json
 run402 sites deploy-dir ./dist
-run402 deploy verify op_... --project <id> --wait  # confirm gateway/edge release coherence
-run402 deploy releases active --project <id>  # inspect current-live release inventory
-run402 deploy resolve https://example.com/events --project <id> --method GET
+run402 deploy verify op_... --project <project_id> --wait  # confirm gateway/edge release coherence
+run402 deploy releases active --project <project_id>  # inspect current-live release inventory
+run402 deploy resolve https://example.com/events --project <project_id> --method GET
 run402 deploy --manifest app.json --json     # deploy only; rehearses automatically when a live release has migrations to protect
 run402 snapshots list prj_...
 run402 branches create prj_... --ttl-days 7 --json
-run402 functions deploy <id> <name> --file fn.ts
-run402 functions runs create <id> <name> --event-type reminder.send --idempotency-key reminder:123 --delay 10m
-run402 ci link github --project <id>       # GitHub Actions OIDC deploy binding (--route-scope for CI routes)
+run402 functions deploy <project_id> <name> --file fn.ts
+run402 functions runs create <project_id> <name> --event-type reminder.send --idempotency-key reminder:123 --delay 10m
+run402 ci link github --project <project_id>       # GitHub Actions OIDC deploy binding (--route-scope for CI routes)
 run402 assets put ./asset.png --immutable
 run402 assets diagnose <url>             # inspect live CDN state for a public URL
 run402 cdn wait-fresh <url> --sha <hex>  # poll until a mutable URL serves the new SHA
@@ -536,7 +536,7 @@ run402 archives import ./project.r402ar --target core --name imported-project --
 
 `--target` names the deployment each verb talks to: `create`, `status`, and `download` export from Run402 Cloud (`--target cloud`, the default); `import` loads into a local Run402 Core (`--target core`, the default). Archive v1 excludes secret values, auth credentials, logs, billing/allowance state, Cloud operations metadata, Cloud import, and existing-project merge import. Verify is local/offline and checks integrity plus compatibility; archives remain untrusted input until Core import verifies and stages them.
 
-The active project is sticky: `run402 projects use <id>` server-validates `<id>` and stores it as the default for subsequent `<id>`-taking subcommands, so most commands work without it. Local key material is managed separately under `run402 credentials project-keys ...`; that cache is never project inventory.
+The active project is sticky: `run402 projects use <project_id>` server-validates `<project_id>` and stores it as the default for subsequent `<project_id>`-taking subcommands, so most commands work without it. Local key material is managed separately under `run402 credentials project-keys ...`; that cache is never project inventory.
 
 ## MCP server: `run402-mcp`
 
@@ -826,7 +826,7 @@ Contact management (who gets paged) is CLI/SDK only by design — an agent raise
 | `get_buzz_route` | One route's honest `health` (derived from route + credential state, never queue emptiness) with per-status delivery counts and the `revision` an update must echo — or the org's route list when the route id is omitted. A `pending_authorization` route prints the non-secret step (a Buzz community owner adds the `notification_pubkey` as a relay member) and the exact verify command. |
 | `list_buzz_route_deliveries` | Did it actually land? Keyset newest-first delivery history — dead letters included, the signed envelope never. `queued`/`retryable` are in flight (the publisher tick runs ~every 60s; retries back off to 8 attempts / 48h, then `dead_letter`); `nostr_event_id` appears on delivered rows. |
 
-Route mutations (configure / test / pause / resume / rotate / revoke) are CLI/SDK only by design — they need owner step-up, and configure/rotate hand off a Buzz-side authorization a human completes: `run402 buzz notifications configure --org <uuid> --installation <buzzci_id> --name <route_name> --channel <nip29-channel-id> --project <id>`. No surface anywhere accepts or prints a signing secret. Buzz is never a deadman channel: mandatory owner notifications keep their human paths regardless of route state.
+Route mutations (configure / test / pause / resume / rotate / revoke) are CLI/SDK only by design — they need owner step-up, and configure/rotate hand off a Buzz-side authorization a human completes: `run402 buzz notifications configure --org <uuid> --installation <buzzci_id> --name <route_name> --channel <nip29-channel-id> --project <project_id>`. No surface anywhere accepts or prints a signing secret. Buzz is never a deadman channel: mandatory owner notifications keep their human paths regardless of route state.
 
 ### repos (read-only) — the host-blind encrypted git repo family
 
@@ -863,7 +863,7 @@ Local state lives at:
 - profile `credentials/project-keys.v1.json` (`0600`): local anon/service key cache for explicit credential-required operations
 - `~/.config/run402/wallet.json` (`0600`): wallet for x402 / MPP signing
 
-Legacy `projects.json` files are one-way migration input only. `anon_key` and `service_key` have no expiry; lease enforcement happens server-side. Inspect cache state with `run402 credentials project-keys status --project <id>` and export secrets only with `run402 credentials project-keys export --project <id> --reveal`.
+Legacy `projects.json` files are one-way migration input only. `anon_key` and `service_key` have no expiry; lease enforcement happens server-side. Inspect cache state with `run402 credentials project-keys status --project <project_id>` and export secrets only with `run402 credentials project-keys export --project <project_id> --reveal`.
 
 ## Development
 

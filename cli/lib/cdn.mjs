@@ -2,7 +2,7 @@
  * run402 cdn — CloudFront CDN diagnostics for public blob URLs.
  *
  * Usage:
- *   run402 cdn wait-fresh <url> --sha <sha256> [--timeout <seconds>] [--project <id>]
+ *   run402 cdn wait-fresh <url> --sha <sha256> [--timeout <seconds>] [--project <project_id>]
  *
  * Wraps the SDK's `client.project(id).assets.waitFresh(...)`. Polls the gateway diagnose
  * endpoint until the URL serves the expected SHA, then exits 0. On timeout,
@@ -45,7 +45,7 @@ Arguments:
 Options:
   --sha <hex>         Expected hex SHA-256. Required.
   --timeout <secs>    Max wait in seconds. Default 60.
-  --project <id>      Project ID (defaults to active project)
+  --project <project_id>      Project ID (defaults to active project)
 
 Output:
   Prints a JSON result on stdout when polling ends:

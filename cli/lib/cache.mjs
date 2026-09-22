@@ -59,7 +59,7 @@ Subcommands:
 Common flags:
   --locale <code>              (inspect only) Inspect a specific locale's row
                                (default: project's default locale)
-  --release-id <id>            (inspect only) Inspect a specific release id
+  --release-id <release_id>            (inspect only) Inspect a specific release id
                                (default: project's active release)
 
 Output:

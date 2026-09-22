@@ -1467,7 +1467,7 @@ const CI_DEPLOY_ERROR_GUIDANCE = {
     hint: "The GitHub repository id in the OIDC token does not match the linked binding.",
     next_actions: [
       editRequestAction("run402 ci link github", "Re-link from the current repository."),
-      editRequestAction("run402 ci link github --repository-id <id>", "Pass the numeric GitHub repository id if automatic lookup fails."),
+      editRequestAction("run402 ci link github --repository-id <repository_id>", "Pass the numeric GitHub repository id if automatic lookup fails."),
     ],
   },
   forbidden_spec_field: {

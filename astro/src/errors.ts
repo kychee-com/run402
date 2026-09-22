@@ -106,18 +106,18 @@ function hintForCode(code: string, gatewayStatus: number | undefined): string {
     case "PROJECT_NOT_FOUND":
       return (
         "\n\n  Auth path doesn't recognize this project.\n" +
-        "    - Locally: run402 login <project-id>\n" +
+        "    - Locally: run402 login <project_id>\n" +
         "                (provisions ~/.config/run402/projects.json)\n" +
         "    - In CI:   confirm GITHUB_ACTIONS=true AND the workflow has\n" +
         "               permissions: id-token: write, then verify a binding exists with\n" +
-        "               run402 ci list --project <project-id>\n" +
+        "               run402 ci list --project <project_id>\n" +
         "  See @run402/astro README → 'Before you start' #2."
       );
     case "CI_ASSET_SCOPE_DENIED":
       return (
         "\n\n  CI binding's asset_key_scopes don't permit this prefix (closed by default).\n" +
-        "    run402 ci list --project <project-id>             # find the binding id\n" +
-        "    run402 ci set-asset-scopes <binding-id> 'astro/*' # grant the integration's prefix\n" +
+        "    run402 ci list --project <project_id>             # find the binding id\n" +
+        "    run402 ci set-asset-scopes <binding_id> 'astro/*' # grant the integration's prefix\n" +
         "  Local-laptop wallet deploys skip this check; only CI sessions hit it.\n" +
         "  See @run402/astro README → 'Before you start' #3."
       );
@@ -130,7 +130,7 @@ function hintForCode(code: string, gatewayStatus: number | undefined): string {
         "\n\n  The CI/OIDC binding was revoked — most often because the project was\n" +
         "  transferred or handed to a new owner (a transfer suspends the prior org's\n" +
         "  CI bindings). Re-create it from the repository:\n" +
-        "    run402 ci link github --project <project-id> --repo <owner/repo>\n" +
+        "    run402 ci link github --project <project_id> --repo <owner/repo>\n" +
         "  Do NOT run `set-asset-scopes` — it 409s on a revoked binding.\n" +
         "  See @run402/astro README → 'Before you start' #2."
       );
@@ -142,8 +142,8 @@ function hintForCode(code: string, gatewayStatus: number | undefined): string {
         return (
           "\n\n  HTTP 403 from the gateway. If the underlying message mentions\n" +
           "  asset_key_scopes, the CI binding hasn't been granted the integration's prefix:\n" +
-          "    run402 ci list --project <project-id>\n" +
-          "    run402 ci set-asset-scopes <binding-id> 'astro/*'\n" +
+          "    run402 ci list --project <project_id>\n" +
+          "    run402 ci set-asset-scopes <binding_id> 'astro/*'\n" +
           "  Otherwise, verify the project exists and the workflow's binding is for this repo.\n" +
           "  See @run402/astro README → 'Before you start' #2 and #3."
         );

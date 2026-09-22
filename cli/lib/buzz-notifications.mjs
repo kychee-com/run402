@@ -22,11 +22,11 @@ import {
 const HELP = `run402 buzz notifications — route project events into a Buzz community channel
 
 Usage:
-  run402 buzz notifications configure --org <uuid> --installation <buzzci_id> --name <route_name> --channel <uuid> (--project <id> [--project <id> ...] | --all-projects) [--event-type <t> ...] [--event-class <c> ...] [--include-org-events] [--on-call <hex-pubkey> [--on-call-name <display>]]
+  run402 buzz notifications configure --org <uuid> --installation <buzzci_id> --name <route_name> --channel <uuid> (--project <project_id> [--project <project_id> ...] | --all-projects) [--event-type <t> ...] [--event-class <c> ...] [--include-org-events] [--on-call <hex-pubkey> [--on-call-name <display>]]
       --all-projects         route every project the organization owns, present and future (project_scope org);
                              without it the route names its projects explicitly (--project, 1..50)
       --include-org-events   also deliver the org's own facts (the platform_payment_received receipt after a Lightning top-up) into the channel
-  run402 buzz notifications scope <buzzper_id> --org | --listed [--project <id> ...]
+  run402 buzz notifications scope <buzzper_id> --org | --listed [--project <project_id> ...]
       switch the route to the whole organization, or back to an explicit list (the stored list is kept;
       --listed on a route with no stored list needs --project)
       --on-call <hex>        the Buzz agent (64-hex pubkey) a crash or platform incident pages with a p mention — the tag that wakes a managed Buzz agent
@@ -228,7 +228,7 @@ async function projects(args) {
 }
 
 /**
- * `run402 buzz notifications scope <buzzper_id> --org | --listed [--project <id> ...]`
+ * `run402 buzz notifications scope <buzzper_id> --org | --listed [--project <project_id> ...]`
  * — switch the route between the whole organization and an explicit list.
  * The stored list survives the switch to `org`; `--listed` on a route with
  * nothing stored needs `--project`.
@@ -238,7 +238,7 @@ async function scope(args) {
   const valueFlags = ["--project"];
   assertKnownFlags(a, [...valueFlags, "--org", "--listed", "--help", "-h"], valueFlags);
   const positionals = requirePositionalCount(positionalArgs(a, valueFlags), valueFlags, {
-    min: 1, max: 1, command: "run402 buzz notifications scope <buzzper_id> --org | --listed [--project <id> ...]", missing: "<buzzper_id>",
+    min: 1, max: 1, command: "run402 buzz notifications scope <buzzper_id> --org | --listed [--project <project_id> ...]", missing: "<buzzper_id>",
   });
   const [routeId] = positionals;
   const org = a.includes("--org");

@@ -29,7 +29,7 @@ const ORG_FLAGS = ["--org", "--project"];
 const HELP = `run402 escalations — page a human when you judge you need one
 
 Usage:
-  run402 escalations raise <reason> [--severity high] [--wait] [--project <id>]
+  run402 escalations raise <reason> [--severity high] [--wait] [--project <project_id>]
   run402 escalations list [--status open] [--limit <n>] [--cursor <c>]
   run402 escalations get <escalation_id> [--delivery]
   run402 escalations ack <escalation_id>
@@ -48,12 +48,12 @@ WHEN TO RAISE — the judgement is yours, and that is the product:
 
 The flow: judge -> raise -> wait -> proceed-or-stand-down.
   \`--wait\` blocks until a human acknowledges (polls for you). Without it,
-  poll \`run402 escalations get <id>\` yourself. \`acknowledged\` means a NAMED
+  poll \`run402 escalations get <escalation_id>\` yourself. \`acknowledged\` means a NAMED
   human owns it — then do what they say, or stand down. Silence is not consent.
 
 Addressing:
   (default)         The active project's organization — a checkout needs no flags.
-  --project <id>    Resolve the org from another project.
+  --project <project_id>    Resolve the org from another project.
   --org <org_id>    Explicit organization.
 
 Delivery:
@@ -235,7 +235,7 @@ async function contacts(args) {
   fail({
     code: "COMMAND_REMOVED",
     message: "`run402 escalations contacts` moved to `run402 contacts`.",
-    hint: sub === "remove" ? "run402 contacts rm <id>" : `run402 contacts ${sub ?? "list"}`,
+    hint: sub === "remove" ? "run402 contacts rm <contact_id>" : `run402 contacts ${sub ?? "list"}`,
     details: {
       was: `escalations contacts${sub ? ` ${sub}` : ""}`,
       now: "contacts",

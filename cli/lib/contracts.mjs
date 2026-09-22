@@ -53,7 +53,7 @@ const SUB_HELP = {
   "provision-signer": `run402 contracts provision-signer — Provision a KMS-backed signer
 
 Usage:
-  run402 contracts provision-signer --chain <chain> [--project <id>] [options]
+  run402 contracts provision-signer --chain <chain> [--project <project_id>] [options]
 
 Legacy (still supported):
   run402 contracts provision-signer <project_id> --chain <chain> [options]
@@ -69,7 +69,7 @@ Options:
   "set-recovery": `run402 contracts set-recovery — Set or clear the signer recovery address
 
 Usage:
-  run402 contracts set-recovery <signer_id> [--project <id>] [options]
+  run402 contracts set-recovery <signer_id> [--project <project_id>] [options]
 
 Legacy (still supported):
   run402 contracts set-recovery <project_id> <signer_id> [options]
@@ -77,7 +77,7 @@ Legacy (still supported):
   "set-alert": `run402 contracts set-alert — Set the low-balance alert threshold
 
 Usage:
-  run402 contracts set-alert <signer_id> --threshold-wei <n> [--project <id>]
+  run402 contracts set-alert <signer_id> --threshold-wei <n> [--project <project_id>]
 
 Legacy (still supported):
   run402 contracts set-alert <project_id> <signer_id> --threshold-wei <n>
@@ -85,7 +85,7 @@ Legacy (still supported):
   call: `run402 contracts call — Submit a contract write call
 
 Usage:
-  run402 contracts call <signer_id> --to 0x... --abi <json> [--project <id>]
+  run402 contracts call <signer_id> --to 0x... --abi <json> [--project <project_id>]
 
 Legacy (still supported):
   run402 contracts call <project_id> <signer_id> --to 0x... --abi <json>
@@ -98,7 +98,7 @@ Returns the deterministic CREATE address synchronously — known from (signer, n
 before the tx confirms. Cost: chain gas at-cost + $0.000005 KMS sign fee.
 
 Usage:
-  run402 contracts deploy <signer_id> --bytecode 0x... [--project <id>] [options]
+  run402 contracts deploy <signer_id> --bytecode 0x... [--project <project_id>] [options]
 
 Legacy (still supported):
   run402 contracts deploy <project_id> <signer_id> --bytecode 0x... [options]
@@ -125,7 +125,7 @@ Usage:
   drain: `run402 contracts drain — Drain native balance to a destination address
 
 Usage:
-  run402 contracts drain <signer_id> --to 0x... --confirm [--project <id>]
+  run402 contracts drain <signer_id> --to 0x... --confirm [--project <project_id>]
 
 Legacy (still supported):
   run402 contracts drain <project_id> <signer_id> --to 0x... --confirm
@@ -133,7 +133,7 @@ Legacy (still supported):
   delete: `run402 contracts delete — Schedule the KMS key for deletion
 
 Usage:
-  run402 contracts delete <signer_id> --confirm [--project <id>]
+  run402 contracts delete <signer_id> --confirm [--project <project_id>]
 
 Legacy (still supported):
   run402 contracts delete <project_id> <signer_id> --confirm
@@ -141,7 +141,7 @@ Legacy (still supported):
   "get-signer": `run402 contracts get-signer — Get signer metadata + live balance
 
 Usage:
-  run402 contracts get-signer <signer_id> [--project <id>]
+  run402 contracts get-signer <signer_id> [--project <project_id>]
 
 Legacy (still supported):
   run402 contracts get-signer <project_id> <signer_id>
@@ -156,7 +156,7 @@ Examples:
   "list-signers": `run402 contracts list-signers — List all KMS signers for a project
 
 Usage:
-  run402 contracts list-signers [--project <id>]
+  run402 contracts list-signers [--project <project_id>]
 
 Legacy (still supported):
   run402 contracts list-signers <project_id>
@@ -173,7 +173,7 @@ Examples:
   status: `run402 contracts status — Get a contract call's status and receipt
 
 Usage:
-  run402 contracts status <call_id> [--project <id>]
+  run402 contracts status <call_id> [--project <project_id>]
 
 Legacy (still supported):
   run402 contracts status <project_id> <call_id>
@@ -502,7 +502,7 @@ async function deleteSigner(projectId, signerId, args) {
 export async function run(sub, args) {
   if (!sub || sub === "--help" || sub === "-h") { console.log(HELP); process.exit(0); }
   if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) { console.log(SUB_HELP[sub] || HELP); process.exit(0); }
-  // Project selection (CLI-wide convention): `--project <id>` wins, else a
+  // Project selection (CLI-wide convention): `--project <project_id>` wins, else a
   // legacy leading `prj_...` positional, else the active project. The signer /
   // call id stays positional (`cwlt_...` / `ccall_...`). Computed lazily so
   // unknown subcommands (and the anonymous `read`) never trip project

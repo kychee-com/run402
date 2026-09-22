@@ -12,13 +12,13 @@ Subcommands:
   browse  [--tag <tag>]                   Browse public apps
   fork    <version_id> --name <name> [--subdomain <name>]
                                            Fork a published app into your own project
-  publish [--project <id>] [--description <desc>] [--tags <t1,t2>] [--visibility <v>] [--fork-allowed]
+  publish [--project <project_id>] [--description <desc>] [--tags <t1,t2>] [--visibility <v>] [--fork-allowed]
                                            Publish a project as an app
-  versions [--project <id>]                List published versions of a project
+  versions [--project <project_id>]                List published versions of a project
   inspect <version_id>                     Inspect a published app version
-  update  <version_id> [--project <id>] [--description <desc>] [--tags <t1,t2>] [--visibility <v>] [--fork-allowed] [--no-fork]
+  update  <version_id> [--project <project_id>] [--description <desc>] [--tags <t1,t2>] [--visibility <v>] [--fork-allowed] [--no-fork]
                                            Update a published version
-  delete  <version_id> [--project <id>]    Delete a published version
+  delete  <version_id> [--project <project_id>]    Delete a published version
 
 Legacy (still supported): the old positional forms keep working, e.g.
   run402 apps fork <version_id> <name>
@@ -72,13 +72,13 @@ Examples:
   publish: `run402 apps publish — Publish a project as an app
 
 Usage:
-  run402 apps publish [--project <id>] [options]
+  run402 apps publish [--project <project_id>] [options]
 
 Legacy (still supported):
   run402 apps publish <project_id> [options]
 
 Options (project):
-  --project <id>      Project ID to publish (defaults to the active project)
+  --project <project_id>      Project ID to publish (defaults to the active project)
 
 Options:
   --description <d>   Human-readable description of the app
@@ -93,7 +93,7 @@ Examples:
   update: `run402 apps update — Update a published version's metadata
 
 Usage:
-  run402 apps update <version_id> [--project <id>] [options]
+  run402 apps update <version_id> [--project <project_id>] [options]
 
 Legacy (still supported):
   run402 apps update <project_id> <version_id> [options]
@@ -127,7 +127,7 @@ Examples:
   versions: `run402 apps versions — List published versions of a project
 
 Usage:
-  run402 apps versions [--project <id>]
+  run402 apps versions [--project <project_id>]
 
 Legacy (still supported):
   run402 apps versions <project_id>
@@ -138,7 +138,7 @@ Examples:
   delete: `run402 apps delete — Delete a published version
 
 Usage:
-  run402 apps delete <version_id> [--project <id>]
+  run402 apps delete <version_id> [--project <project_id>]
 
 Legacy (still supported):
   run402 apps delete <project_id> <version_id>

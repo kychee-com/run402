@@ -82,7 +82,7 @@ export function reportSdkError(err) {
     fail({
       code: "PROJECT_CREDENTIAL_NOT_FOUND",
       message: err?.message || "Local project credentials are not cached.",
-      hint: "This is a local credential-cache miss, not proof that the project does not exist. Use a principal-auth command, or import keys with `run402 credentials project-keys import --project <id> --service-key-stdin` for credential-required operations.",
+      hint: "This is a local credential-cache miss, not proof that the project does not exist. Use a principal-auth command, or import keys with `run402 credentials project-keys import --project <project_id> --service-key-stdin` for credential-required operations.",
       details: err?.details,
       next_actions: err?.nextActions,
       retryable: err?.retryable ?? false,

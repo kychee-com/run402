@@ -33,7 +33,7 @@ import { resolveOwningOrgId } from "./org-context.mjs";
  * @param {string} [options.orgId] Explicit owning org. Resolved via `resolveOwningOrgId` when omitted.
  * @param {boolean} [options.createRepoIfMissing] Opt into `git init`-ing `repoDir` when it is not a repository yet.
  * @param {boolean} [options.nested] Scaffold `repoDir` as its OWN repository even when it lies inside another one (`Gitvault.scaffoldRemote`'s `nested`).
- * @param {string} [options.nestedCommand] The caller's own `--nested` spelling for the `create_nested_repo` next_action (default: the SDK's `run402 repos create --nested --project <id>`).
+ * @param {string} [options.nestedCommand] The caller's own `--nested` spelling for the `create_nested_repo` next_action (default: the SDK's `run402 repos create --nested --project <project_id>`).
  * @returns {Promise<{status: "scaffolded"|"skipped"|"error", reason?: string, toplevel?: string|null, next_actions?: object[], gitvault: object|null, gitvault_skipped?: string, gitvault_error?: {code: string, message: string}}>}
  */
 export async function scaffoldGitvaultRemote({ repoDir = process.cwd(), projectId, orgId, createRepoIfMissing = false, nested = false, nestedCommand } = {}) {
@@ -74,7 +74,7 @@ export async function scaffoldGitvaultRemote({ repoDir = process.cwd(), projectI
     }
     // `allocated: false` is stated, not left to be inferred: this is local
     // git only — no vault exists for the project yet (allocation happens
-    // lazily on first push, or explicitly via `run402 repos create --project <id>`).
+    // lazily on first push, or explicitly via `run402 repos create --project <project_id>`).
     out.status = "scaffolded";
     out.gitvault = { ...remote, allocated: false };
   } catch (err) {

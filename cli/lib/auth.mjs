@@ -9,43 +9,43 @@ Usage:
   run402 auth <subcommand> [args...]
 
 Subcommands:
-  magic-link --email <addr> [--delivery link|code|both] [--redirect <url>] [--project <id>]
+  magic-link --email <addr> [--delivery link|code|both] [--redirect <url>] [--project <project_id>]
     Request passwordless email authentication. Link remains the default.
 
-  verify (--token <token> | --challenge-id <id> --code <6 digits>) [--project <id>]
+  verify (--token <token> | --challenge-id <challenge_id> --code <6 digits>) [--project <project_id>]
     Exchange one email credential for access_token + refresh_token.
 
-  create-user --email <addr> [--admin <true|false>] [--invite] [--redirect <url>] [--project <id>]
+  create-user --email <addr> [--admin <true|false>] [--invite] [--redirect <url>] [--project <project_id>]
     Create or update a project auth user with the service key.
 
-  invite-user --email <addr> --redirect <url> [--admin <true|false>] [--project <id>]
+  invite-user --email <addr> --redirect <url> [--admin <true|false>] [--project <project_id>]
     Create/update a user and send a trusted invite magic link.
 
-  set-password --token <bearer> --new <password> [--current <password>] [--project <id>]
+  set-password --token <bearer> --new <password> [--current <password>] [--project <project_id>]
     Change, reset, or set a user's password. Requires the user's access_token.
 
-  settings [--allow-password-set <true|false>] [--preferred <method|null>] [--public-signup <policy>] [--require-admin-passkey <true|false>] [--allowed-email-domains <csv|none>] [--project <id>]
+  settings [--allow-password-set <true|false>] [--preferred <method|null>] [--public-signup <policy>] [--require-admin-passkey <true|false>] [--allowed-email-domains <csv|none>] [--project <project_id>]
     Update project auth settings (requires service_key).
 
-  passkey-register-options --token <bearer> --app-origin <origin> [--project <id>]
+  passkey-register-options --token <bearer> --app-origin <origin> [--project <project_id>]
     Create WebAuthn registration options for the authenticated user.
 
-  passkey-register-verify --token <bearer> --challenge <id> --response <json> [--label <text>] [--project <id>]
+  passkey-register-verify --token <bearer> --challenge <challenge_id> --response <json> [--label <text>] [--project <project_id>]
     Verify and store a passkey registration response.
 
-  passkey-login-options --app-origin <origin> [--email <addr>] [--project <id>]
+  passkey-login-options --app-origin <origin> [--email <addr>] [--project <project_id>]
     Create WebAuthn login options.
 
-  passkey-login-verify --challenge <id> --response <json> [--project <id>]
+  passkey-login-verify --challenge <challenge_id> --response <json> [--project <project_id>]
     Verify a passkey login response and return session tokens.
 
-  passkeys --token <bearer> [--project <id>]
+  passkeys --token <bearer> [--project <project_id>]
     List the authenticated user's passkeys.
 
-  delete-passkey --token <bearer> --id <passkey_id> [--project <id>]
+  delete-passkey --token <bearer> --id <passkey_id> [--project <project_id>]
     Delete one authenticated-user passkey.
 
-  providers [--project <id>]
+  providers [--project <project_id>]
     List available auth providers for the project.
 
   scaffold-roles [--table <name>] [--user-col <col>] [--role-col <col>] [--roles <csv>] [--cache-ttl <secs>]
@@ -73,7 +73,7 @@ Options:
   --redirect <url>    Required for link/both; optional for code
   --intent <intent>   signin (default), invite, claim, or recovery
   --state <value>     Optional client_state preserved through verification
-  --project <id>      Project ID (defaults to active project)
+  --project <project_id>      Project ID (defaults to active project)
 
 Notes:
   Acceptance does not prove delivery or disclose whether an account exists.
@@ -95,7 +95,7 @@ Options:
   --invite            Send a trusted invite magic link
   --redirect <url>    Required when --invite is used
   --state <value>     Optional client_state for the invite
-  --project <id>      Project ID (defaults to active project)
+  --project <project_id>      Project ID (defaults to active project)
 
 Examples:
   run402 auth create-user --email user@example.com
@@ -112,19 +112,19 @@ Options:
   --redirect <url>    Required: allowed auth redirect URL
   --admin <bool>      Optional: set project_admin status before inviting
   --state <value>     Optional client_state for the invite
-  --project <id>      Project ID (defaults to active project)
+  --project <project_id>      Project ID (defaults to active project)
 `,
   verify: `run402 auth verify — Exchange an email credential for session tokens
 
 Usage:
   run402 auth verify --token <token> [options]
-  run402 auth verify --challenge-id <id> --code <6 digits> [options]
+  run402 auth verify --challenge-id <challenge_id> --code <6 digits> [options]
 
 Options:
   --token <token>     Required: the one-time magic-link token
-  --challenge-id <id> Required with --code: opaque handle from magic-link request
+  --challenge-id <challenge_id> Required with --code: opaque handle from magic-link request
   --code <digits>     Required with --challenge-id: six-digit email code
-  --project <id>      Project ID (defaults to active project)
+  --project <project_id>      Project ID (defaults to active project)
 
 Notes:
   Returns an access_token + refresh_token pair on success.
@@ -142,7 +142,7 @@ Options:
   --token <bearer>    Required: the user's access_token (Bearer token)
   --new <password>    Required: new password
   --current <pwd>     Current password (required when one is already set)
-  --project <id>      Project ID (defaults to active project)
+  --project <project_id>      Project ID (defaults to active project)
 
 Examples:
   run402 auth set-password --token eyJ... --new "new-pass" \\
@@ -159,7 +159,7 @@ Options:
   --public-signup <policy>              open, known_email, or invite_only
   --require-admin-passkey <true|false>  Require passkey auth for project_admin sessions
   --allowed-email-domains <csv|none>    Restrict hosted Google sign-in to these domains; 'none' clears (unrestricted)
-  --project <id>                        Project ID (defaults to active project)
+  --project <project_id>                        Project ID (defaults to active project)
 
 Notes:
   Requires the project's service_key (admin-level).
@@ -180,19 +180,19 @@ Usage:
 Options:
   --token <bearer>       Required: authenticated user's access_token
   --app-origin <origin>  Required: exact app origin for WebAuthn
-  --project <id>         Project ID (defaults to active project)
+  --project <project_id>         Project ID (defaults to active project)
 `,
   "passkey-register-verify": `run402 auth passkey-register-verify — Verify passkey registration
 
 Usage:
-  run402 auth passkey-register-verify --token <bearer> --challenge <id> --response <json> [options]
+  run402 auth passkey-register-verify --token <bearer> --challenge <challenge_id> --response <json> [options]
 
 Options:
   --token <bearer>       Required: authenticated user's access_token
-  --challenge <id>       Required: challenge_id returned by passkey-register-options
+  --challenge <challenge_id>       Required: challenge_id returned by passkey-register-options
   --response <json>      Required: browser PublicKeyCredential JSON
   --label <text>         Optional passkey label
-  --project <id>         Project ID (defaults to active project)
+  --project <project_id>         Project ID (defaults to active project)
 `,
   "passkey-login-options": `run402 auth passkey-login-options — Create passkey login options
 
@@ -202,17 +202,17 @@ Usage:
 Options:
   --app-origin <origin>  Required: exact app origin for WebAuthn
   --email <addr>         Optional email hint
-  --project <id>         Project ID (defaults to active project)
+  --project <project_id>         Project ID (defaults to active project)
 `,
   "passkey-login-verify": `run402 auth passkey-login-verify — Verify passkey login
 
 Usage:
-  run402 auth passkey-login-verify --challenge <id> --response <json> [options]
+  run402 auth passkey-login-verify --challenge <challenge_id> --response <json> [options]
 
 Options:
-  --challenge <id>       Required: challenge_id returned by passkey-login-options
+  --challenge <challenge_id>       Required: challenge_id returned by passkey-login-options
   --response <json>      Required: browser PublicKeyCredential JSON
-  --project <id>         Project ID (defaults to active project)
+  --project <project_id>         Project ID (defaults to active project)
 `,
   passkeys: `run402 auth passkeys — List passkeys
 
@@ -221,7 +221,7 @@ Usage:
 
 Options:
   --token <bearer>       Required: authenticated user's access_token
-  --project <id>         Project ID (defaults to active project)
+  --project <project_id>         Project ID (defaults to active project)
 `,
   "delete-passkey": `run402 auth delete-passkey — Delete a passkey
 
@@ -231,7 +231,7 @@ Usage:
 Options:
   --token <bearer>       Required: authenticated user's access_token
   --id <passkey_id>      Required: passkey ID to delete
-  --project <id>         Project ID (defaults to active project)
+  --project <project_id>         Project ID (defaults to active project)
 `,
   providers: `run402 auth providers — List available auth providers
 
@@ -239,7 +239,7 @@ Usage:
   run402 auth providers [options]
 
 Options:
-  --project <id>      Project ID (defaults to active project)
+  --project <project_id>      Project ID (defaults to active project)
 
 Examples:
   run402 auth providers
@@ -609,7 +609,7 @@ async function passkeyRegisterVerify(args) {
   const label = parseFlag(args, "--label");
   const projectId = resolveProjectId(parseFlag(args, "--project"));
   if (!accessToken) fail({ code: "BAD_USAGE", message: "Missing --token <bearer_token>" });
-  if (!challengeId) fail({ code: "BAD_USAGE", message: "Missing --challenge <id>" });
+  if (!challengeId) fail({ code: "BAD_USAGE", message: "Missing --challenge <challenge_id>" });
   const response = parseJsonFlag(args, "--response");
   try {
     const data = await getSdk().auth.verifyPasskeyRegistration(projectId, {
@@ -643,7 +643,7 @@ async function passkeyLoginOptions(args) {
 async function passkeyLoginVerify(args) {
   const challengeId = parseFlag(args, "--challenge");
   const projectId = resolveProjectId(parseFlag(args, "--project"));
-  if (!challengeId) fail({ code: "BAD_USAGE", message: "Missing --challenge <id>" });
+  if (!challengeId) fail({ code: "BAD_USAGE", message: "Missing --challenge <challenge_id>" });
   const response = parseJsonFlag(args, "--response");
   try {
     const data = await getSdk().auth.verifyPasskeyLogin(projectId, {

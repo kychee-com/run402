@@ -12,7 +12,7 @@
  * "how can this human be reached" — not the mechanisms, which really are
  * different and are not pretended otherwise.
  *
- * `rm <id>` takes a bare id and works out which backend owns it, because both
+ * `rm <contact_id>` takes a bare id and works out which backend owns it, because both
  * are UUIDs and a caller holding one from `contacts list` should not have to
  * know which subsystem minted it. That costs one extra read and removes a
  * `--kind` flag nobody could answer without looking it up.
@@ -44,7 +44,7 @@ Usage:
   run402 contacts list
   run402 contacts add <email> [--level <1-10>] [--name <display>]
   run402 contacts connect telegram [--label <name>]
-  run402 contacts rm <id>
+  run402 contacts rm <contact_id>
   run402 contacts preferences
   run402 contacts preferences set <key>=<value> [<key>=<value> ...]
   run402 contacts test [--source app|platform] [--type <event_type>]
@@ -339,7 +339,7 @@ async function removeContact(args) {
   assertKnownFlags(a, ["--org", "--help", "-h"], ["--org"]);
   const positionals = positionalArgs(a, ["--org"]);
   requirePositionalCount(positionals, ["--org"], {
-    min: 1, max: 1, command: "run402 contacts rm", missing: "<id>",
+    min: 1, max: 1, command: "run402 contacts rm", missing: "<contact_id>",
   });
   const id = positionals[0];
   const sdk = getSdk();

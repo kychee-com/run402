@@ -8,15 +8,15 @@ Direct-to-S3 asset storage, 1 byte to 5 TiB. Flat key namespace per project.
 
 Bulk directories: use `deploy` with `assets` slice: additive `assets: { put: [...] }`; declarative sync `assets: { put: [...], sync: { prefix, prune: true, confirm? } }`. No `run402 assets sync`; apply is canonical so HTML + asset URLs stage atomically.
 
-- `run402 assets put <file> [files...] [--project <id>] [--key <dest>] [--content-type <mime>] [--private] [--immutable] [--meta <k=v>] [--exif-policy keep|strip] [--concurrency N] [--no-resume] [--stream]` — without `--stream`, stdout is the final results array (JSON). With `--stream`, stdout is NDJSON per-file progress events. `--json` is a deprecated alias for `--stream` (writes a deprecation warning to stderr). Stdout carries the canonical snake_case wire shape only (see the `assets put` output example below); the SDK's camelCase `AssetRef` conveniences never appear on CLI stdout.
-- `run402 assets get <key> --output <file> [--project <id>]`
-- `run402 assets ls [--project <id>] [--prefix <p>] [--limit <n>] [--sort key:asc|createdAt:asc|createdAt:desc] [--filter <k=v> ...]`
-- `run402 assets rm <key> [--project <id>]`
-- `run402 assets sign <key> [--project <id>] [--ttl <seconds>]` — signed URL TTL must be an integer from 60 to 604800 seconds.
-- `run402 assets diagnose <url> [--project <id>]` — inspect live CDN state for a public URL
-- `run402 cdn wait-fresh <url> --sha <hex> [--timeout <secs>] [--project <id>]` — poll a mutable URL until it serves the expected SHA-256
+- `run402 assets put <file> [files...] [--project <project_id>] [--key <dest>] [--content-type <mime>] [--private] [--immutable] [--meta <k=v>] [--exif-policy keep|strip] [--concurrency N] [--no-resume] [--stream]` — without `--stream`, stdout is the final results array (JSON). With `--stream`, stdout is NDJSON per-file progress events. `--json` is a deprecated alias for `--stream` (writes a deprecation warning to stderr). Stdout carries the canonical snake_case wire shape only (see the `assets put` output example below); the SDK's camelCase `AssetRef` conveniences never appear on CLI stdout.
+- `run402 assets get <key> --output <file> [--project <project_id>]`
+- `run402 assets ls [--project <project_id>] [--prefix <p>] [--limit <n>] [--sort key:asc|createdAt:asc|createdAt:desc] [--filter <k=v> ...]`
+- `run402 assets rm <key> [--project <project_id>]`
+- `run402 assets sign <key> [--project <project_id>] [--ttl <seconds>]` — signed URL TTL must be an integer from 60 to 604800 seconds.
+- `run402 assets diagnose <url> [--project <project_id>]` — inspect live CDN state for a public URL
+- `run402 cdn wait-fresh <url> --sha <hex> [--timeout <secs>] [--project <project_id>]` — poll a mutable URL until it serves the expected SHA-256
 
-Project resolution for every command above: `--project <id>` > `RUN402_PROJECT_ID` (the canonical env var, same as every other project-scoped command) > the deprecated `RUN402_PROJECT` alias > the active project. `RUN402_PROJECT` works as a fallback but prints one deprecation line to stderr; switch to `RUN402_PROJECT_ID`.
+Project resolution for every command above: `--project <project_id>` > `RUN402_PROJECT_ID` (the canonical env var, same as every other project-scoped command) > the deprecated `RUN402_PROJECT` alias > the active project. `RUN402_PROJECT` works as a fallback but prints one deprecation line to stderr; switch to `RUN402_PROJECT_ID`.
 
 `put` flags:
 - `--meta key=value` repeatable; coercion: numeric-looking -> number, `true|false` -> boolean, comma -> `string[]`, else string. Serialized total <=4 KB; no nested objects; invalid -> `INVALID_ASSET_METADATA`.
@@ -166,12 +166,12 @@ await (await client.project(projectId)).apply({
 ```
 
 ### sites
-- `run402 sites deploy --manifest <file> [--project <id>]`
-- `run402 sites deploy-dir <path> [--project <id>] [--quiet] [--dry-run] [--confirm-prune]`
+- `run402 sites deploy --manifest <file> [--project <project_id>]`
+- `run402 sites deploy-dir <path> [--project <project_id>] [--quiet] [--dry-run] [--confirm-prune]`
 
 `--project` defaults to the active project. Manifest: `{"files":[{"file":"index.html","data":"..."},{"file":"style.css","data":"..."}]}`. Must include `index.html`. Free with active tier. If the project already has a subdomain, redeploying auto-reassigns it to the new release (response includes `subdomain_urls`).
 
-To inspect deploy status, use `run402 deploy events <operation_id>` or `run402 deploy list --project <id>` instead of polling a deploy artifact.
+To inspect deploy status, use `run402 deploy events <operation_id>` or `run402 deploy list --project <project_id>` instead of polling a deploy artifact.
 
 CAS-backed transport: Both `sites deploy` and `sites deploy-dir` hash each file locally and only PUT bytes the gateway doesn't already have. Re-deploying an unchanged tree returns immediately with `bytes_uploaded: 0`.
 
@@ -180,25 +180,25 @@ Dry-run: `run402 sites deploy-dir ./dist --project prj_... --dry-run` calls the 
 Progress events: `sites deploy` and `sites deploy-dir` stream unified `DeployEvent` JSON lines to stderr by default; the final result payload (release/deploy metadata, no `status` wrapper) still goes to stdout. Pipe streams separately: `run402 sites deploy-dir ./dist --project p > result.json 2> events.log`. Pass `--quiet` to suppress events (stdout still gets the result payload).
 
 ### subdomains
-- `run402 subdomains add <name> [--release <id> | --deployment <id>] [--project <id>]`
-- `run402 subdomains list [--project <id>]`
-- `run402 subdomains delete <name> --confirm [--project <id>]` — `--confirm` required (irreversible release).
+- `run402 subdomains add <name> [--release <release_id> | --deployment <deployment_id>] [--project <project_id>]`
+- `run402 subdomains list [--project <project_id>]`
+- `run402 subdomains delete <name> --confirm [--project <project_id>]` — `--confirm` required (irreversible release).
 
 All options default to the active project. With neither `--release` nor `--deployment`, `add` binds the project's live (active) release — no prior `deploy` bookkeeping needed; a project with no live site answers 404. `--release rel_…` pins a release; `--deployment` takes a legacy `dpl_…` id (`rel_…`/`op_…` accepted). Names: 3-63 chars, lowercase alphanumeric + hyphens. Creates `<name>.run402.com`. Declaring `"subdomains": { "set": ["<name>"] }` in the deploy manifest does the same at deploy time.
 
 Subdomain auto-reassignment: You only need to `add` a subdomain once. Every subsequent `run402 sites deploy` or `run402 deploy` to the same project automatically updates the subdomain to point to the new release. The response includes `subdomain_urls` showing which subdomains were reassigned. No need to re-claim after each deploy.
 
 ### domains
-- `run402 domains connect <domain> --project <id> [--web] [--authority manual-dns|hosted-zone] [--email-send] [--email-receive] [--mailbox-addresses primary|alias|managed|none] [--addresses <csv>]`
-- `run402 domains list [--project <id>]`
-- `run402 domains status <domain> [--project <id>]`
-- `run402 domains dns <domain> [--project <id>] [--format json|bind]`
-- `run402 domains check <domain> [--project <id>]`
-- `run402 domains repair <domain> [--project <id>]`
-- `run402 domains test-receive <domain> --to <local-part|address> [--project <id>]`
-- `run402 domains wait <domain> [--project <id>] [--until active|safe|receive-active]`
-- `run402 domains activate <domain> [--project <id>]`
-- `run402 domains disconnect <domain> --confirm [--project <id>]` — `--confirm` required.
+- `run402 domains connect <domain> --project <project_id> [--web] [--authority manual-dns|hosted-zone] [--email-send] [--email-receive] [--mailbox-addresses primary|alias|managed|none] [--addresses <csv>]`
+- `run402 domains list [--project <project_id>]`
+- `run402 domains status <domain> [--project <project_id>]`
+- `run402 domains dns <domain> [--project <project_id>] [--format json|bind]`
+- `run402 domains check <domain> [--project <project_id>]`
+- `run402 domains repair <domain> [--project <project_id>]`
+- `run402 domains test-receive <domain> --to <local-part|address> [--project <project_id>]`
+- `run402 domains wait <domain> [--project <project_id>] [--until active|safe|receive-active]`
+- `run402 domains activate <domain> [--project <project_id>]`
+- `run402 domains disconnect <domain> --confirm [--project <project_id>]` — `--confirm` required.
 
 ProjectDomain is the project-scoped lifecycle surface for web custom domains, custom email sending, inbound receive routing, mailbox address activation, and drift checks.
 
@@ -222,9 +222,9 @@ Auth is control-plane auth: current wallet, sign-in session, or grant key. Domai
 - `run402 apps browse [--tag <tag>]`
 - `run402 apps fork <version_id> <name> [--subdomain <name>] [--bootstrap '<json>']`
 - `run402 apps inspect <version_id>`
-- `run402 apps publish <id> [--description "..."] [--tags a,b] [--visibility <public|private>] [--fork-allowed]`
-- `run402 apps <versions|delete> <id> [<version_id>]`
-- `run402 apps update <id> <version_id> [--description "..."] [--tags a,b]`
+- `run402 apps publish <project_id> [--description "..."] [--tags a,b] [--visibility <public|private>] [--fork-allowed]`
+- `run402 apps <versions|delete> <project_id> [<version_id>]`
+- `run402 apps update <project_id> <version_id> [--description "..."] [--tags a,b]`
 
 Forking clones schema, site, and functions into a new project. If the app includes a `bootstrap` function, it runs automatically with the provided variables — use it for first-admin setup, demo data seeding, or app configuration. Response includes `bootstrap_result` (the function's return value) or `bootstrap_error` if it failed. Use `run402 apps inspect` to see what `bootstrap_variables` an app expects.
 
@@ -240,9 +240,9 @@ The paying organization matters only on the Lightning rail: a principal that bel
 ### ai
 Built-in AI helpers. Translation requires the AI Translation add-on on the project. Moderation is free for all projects.
 
-- `run402 ai translate <id> "<text>" --to <lang> [--from <lang>] [--context "<hint>"]` — translate text to a target language (ISO 639-1 codes). Source language auto-detected if `--from` omitted. Context hint guides tone/register (max 200 chars).
-- `run402 ai moderate <id> "<text>"` — run content moderation. Returns flagged status and per-category scores.
-- `run402 ai usage <id>` — check translation word quota for the current billing period (used, included, remaining).
+- `run402 ai translate <project_id> "<text>" --to <lang> [--from <lang>] [--context "<hint>"]` — translate text to a target language (ISO 639-1 codes). Source language auto-detected if `--from` omitted. Context hint guides tone/register (max 200 chars).
+- `run402 ai moderate <project_id> "<text>"` — run content moderation. Returns flagged status and per-category scores.
+- `run402 ai usage <project_id>` — check translation word quota for the current billing period (used, included, remaining).
 
 ### email
 Max 5 mailboxes/project. Inspect defaults and footer policy with `email mailboxes`; set `default_outbound_mailbox_id` / `auth_sender_mailbox_id` via `email defaults`; set per-mailbox outbound footer policy with `email update --footer-policy run402_transparency|none`. Omit `--mailbox` to use outbound default; branch on `DEFAULT_MAILBOX_REQUIRED` / `DEFAULT_MAILBOX_INVALID` + `next_actions`. `footer_policy=none` requires hobby/team; prototype projects are locked to `run402_transparency` and return `FOOTER_POLICY_TIER_REQUIRED`. Send modes: template or raw HTML; one recipient/send. Rate limits: prototype 10/day, hobby 50/day, team 500/day. Unique recipients/lease: prototype 25 / 200 / 1000.
@@ -251,25 +251,25 @@ Run402 Core uses the same CLI after `run402 init --api-base=http://my-core:4020`
 
 Templates: `project_invite` (project_name, invite_url), `magic_link` (project_name, link_url, expires_in), `notification` (project_name, message max 500 chars).
 
-- `run402 email create <slug> [--project <id>]` — create a project-scoped mailbox local part. The response's `managed_address` is `<slug>@<project-mail-host>.mail.run402.com`; another project may use the same slug. NOT idempotent: a same-project conflict (slug already in use, address in cooldown, or the project already has 5 mailboxes) returns a 409 error rather than an existing mailbox.
-- `run402 email mailboxes [--project <id>]` — list mailboxes plus `mailbox_settings`, `address`/`managed_address`, default-role/readiness/footer-policy metadata (`is_default_outbound`, `is_auth_sender`, `can_send`, `can_receive`, `send_blocked_reason`, `domain_kind`, `footer_policy`, `effective_footer_policy`, `footer_policy_locked_reason`), and gateway `next_actions`.
-- `run402 email defaults [--outbound <slug|mbx_id>] [--auth-sender <slug|mbx_id>] [--clear-outbound] [--clear-auth-sender] [--project <id>]` — show current defaults with no flags, or set/clear `default_outbound_mailbox_id` and/or `auth_sender_mailbox_id`. Slugs are resolved through `email mailboxes`; SDK PATCH uses mailbox ids.
-- `run402 email update [<slug|mbx_id>] --footer-policy <run402_transparency|none> [--mailbox <slug|mbx_id>] [--project <id>]` — set the mailbox's outbound footer policy through `PATCH /mailboxes/v1/:mailbox_id`. The optional positional target and `--mailbox` are equivalent; omit only on single-mailbox projects.
-- `run402 email status [--mailbox <slug|id>] [--project <id>]` — show mailbox info (ID, address, slug, footer policy)
-- `run402 email send --template <name> --to <email> [--var key=value ...] [--from-name <name>] [--mailbox <slug|id>] [--project <id>]`
-- `run402 email send --to <email> --subject <subject> --html <html> [--text <text>] [--attach <path>[:content-type] ...] [--from-name <name>] [--mailbox <slug|id>] [--project <id>]`
-- `run402 email list [--direction <inbound|outbound>] [--mailbox <slug|id>] [--project <id>]` — lists BOTH sent + received by default; `--direction inbound` lists received replies (the reconciliation backstop if a reply_received webhook is lost)
-- `run402 email get <message_id> [--mailbox <slug|id>] [--project <id>]`
-- `run402 email reply <message_id> --html <html> [--text <text>] [--subject <subject>] [--from-name <name>] [--mailbox <slug|id>] [--project <id>]` — reply to an inbound message (threads via In-Reply-To)
-- `run402 email get-raw <message_id> --output <file> [--mailbox <slug|id>] [--project <id>]` — fetch inbound raw RFC-822 bytes (DKIM/zk-email). `--output` required; bytes to file, stdout `{ message_id, bytes, output }`. Outbound returns 404.
-- `run402 email delete [<slug|mailbox_id>] --confirm [--project <id>]` — delete a mailbox (irreversible). Target a specific mailbox by slug or id; on a project with one mailbox the target may be omitted.
-- `run402 email webhooks list [--mailbox <slug|id>] [--project <id>]` — list all webhooks registered on the mailbox
-- `run402 email webhooks get <webhook_id> [--mailbox <slug|id>] [--project <id>]` — get webhook details
-- `run402 email webhooks delete <webhook_id> [--mailbox <slug|id>] [--project <id>]` — delete a webhook
-- `run402 email webhooks update <webhook_id> [--url <url>] [--events <e1,e2>] [--mailbox <slug|id>] [--project <id>]` — update webhook URL and/or events
-- `run402 email webhooks register --url <url> --events <e1,e2> [--mailbox <slug|id>] [--project <id>]` — register a new webhook. Valid events: delivery, bounced, complained, reply_received, mailbox_suspended
-- `run402 email webhooks deliveries [--status <pending|in_flight|delivered|failed_permanent>] [--mailbox <slug|id>] [--project <id>]` — durable delivery rows. At-least-once with bounded retries/backoff; `failed_permanent` = DLQ. Body envelope `{ id, type, created_at, schema_version, idempotency_key, payload }`; dedupe on `idempotency_key`.
-- `run402 email webhooks redrive <delivery_id> [--mailbox <slug|id>] [--project <id>]` — re-queue a dead-lettered (failed_permanent) delivery for another attempt
+- `run402 email create <slug> [--project <project_id>]` — create a project-scoped mailbox local part. The response's `managed_address` is `<slug>@<project-mail-host>.mail.run402.com`; another project may use the same slug. NOT idempotent: a same-project conflict (slug already in use, address in cooldown, or the project already has 5 mailboxes) returns a 409 error rather than an existing mailbox.
+- `run402 email mailboxes [--project <project_id>]` — list mailboxes plus `mailbox_settings`, `address`/`managed_address`, default-role/readiness/footer-policy metadata (`is_default_outbound`, `is_auth_sender`, `can_send`, `can_receive`, `send_blocked_reason`, `domain_kind`, `footer_policy`, `effective_footer_policy`, `footer_policy_locked_reason`), and gateway `next_actions`.
+- `run402 email defaults [--outbound <slug|mbx_id>] [--auth-sender <slug|mbx_id>] [--clear-outbound] [--clear-auth-sender] [--project <project_id>]` — show current defaults with no flags, or set/clear `default_outbound_mailbox_id` and/or `auth_sender_mailbox_id`. Slugs are resolved through `email mailboxes`; SDK PATCH uses mailbox ids.
+- `run402 email update [<slug|mbx_id>] --footer-policy <run402_transparency|none> [--mailbox <slug|mbx_id>] [--project <project_id>]` — set the mailbox's outbound footer policy through `PATCH /mailboxes/v1/:mailbox_id`. The optional positional target and `--mailbox` are equivalent; omit only on single-mailbox projects.
+- `run402 email status [--mailbox <slug|id>] [--project <project_id>]` — show mailbox info (ID, address, slug, footer policy)
+- `run402 email send --template <name> --to <email> [--var key=value ...] [--from-name <name>] [--mailbox <slug|id>] [--project <project_id>]`
+- `run402 email send --to <email> --subject <subject> --html <html> [--text <text>] [--attach <path>[:content-type] ...] [--from-name <name>] [--mailbox <slug|id>] [--project <project_id>]`
+- `run402 email list [--direction <inbound|outbound>] [--mailbox <slug|id>] [--project <project_id>]` — lists BOTH sent + received by default; `--direction inbound` lists received replies (the reconciliation backstop if a reply_received webhook is lost)
+- `run402 email get <message_id> [--mailbox <slug|id>] [--project <project_id>]`
+- `run402 email reply <message_id> --html <html> [--text <text>] [--subject <subject>] [--from-name <name>] [--mailbox <slug|id>] [--project <project_id>]` — reply to an inbound message (threads via In-Reply-To)
+- `run402 email get-raw <message_id> --output <file> [--mailbox <slug|id>] [--project <project_id>]` — fetch inbound raw RFC-822 bytes (DKIM/zk-email). `--output` required; bytes to file, stdout `{ message_id, bytes, output }`. Outbound returns 404.
+- `run402 email delete [<slug|mailbox_id>] --confirm [--project <project_id>]` — delete a mailbox (irreversible). Target a specific mailbox by slug or id; on a project with one mailbox the target may be omitted.
+- `run402 email webhooks list [--mailbox <slug|id>] [--project <project_id>]` — list all webhooks registered on the mailbox
+- `run402 email webhooks get <webhook_id> [--mailbox <slug|id>] [--project <project_id>]` — get webhook details
+- `run402 email webhooks delete <webhook_id> [--mailbox <slug|id>] [--project <project_id>]` — delete a webhook
+- `run402 email webhooks update <webhook_id> [--url <url>] [--events <e1,e2>] [--mailbox <slug|id>] [--project <project_id>]` — update webhook URL and/or events
+- `run402 email webhooks register --url <url> --events <e1,e2> [--mailbox <slug|id>] [--project <project_id>]` — register a new webhook. Valid events: delivery, bounced, complained, reply_received, mailbox_suspended
+- `run402 email webhooks deliveries [--status <pending|in_flight|delivered|failed_permanent>] [--mailbox <slug|id>] [--project <project_id>]` — durable delivery rows. At-least-once with bounded retries/backoff; `failed_permanent` = DLQ. Body envelope `{ id, type, created_at, schema_version, idempotency_key, payload }`; dedupe on `idempotency_key`.
+- `run402 email webhooks redrive <delivery_id> [--mailbox <slug|id>] [--project <project_id>]` — re-queue a dead-lettered (failed_permanent) delivery for another attempt
 
 Raw HTML: `--subject` max 998 chars, `--html` max 1 MB. If `--text` omitted, plaintext auto-generated. `--attach <path>[:content-type]` raw-HTML only, repeatable max 5, <=7 MB total, content-type inferred if suffix omitted. `--from-name` sets From display name. Success may include `mailbox_id`, `from_address`.
 

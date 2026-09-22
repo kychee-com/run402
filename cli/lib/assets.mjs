@@ -2,11 +2,11 @@
  * run402 assets — direct-to-S3 storage CLI.
  *
  * Usage:
- *   run402 assets put <file> [files...] [--project <id>] [--key <dest>] [--content-type <mime>] [--private] [--immutable] [--concurrency N] [--no-resume]
- *   run402 assets get <key> --output <file> [--project <id>]
- *   run402 assets ls [--project <id>] [--prefix <p>] [--limit <n>]
- *   run402 assets rm <key> [--project <id>]
- *   run402 assets sign <key> [--project <id>] [--ttl <seconds>]
+ *   run402 assets put <file> [files...] [--project <project_id>] [--key <dest>] [--content-type <mime>] [--private] [--immutable] [--concurrency N] [--no-resume]
+ *   run402 assets get <key> --output <file> [--project <project_id>]
+ *   run402 assets ls [--project <project_id>] [--prefix <p>] [--limit <n>]
+ *   run402 assets rm <key> [--project <project_id>]
+ *   run402 assets sign <key> [--project <project_id>] [--ttl <seconds>]
  *
  * For any file ≤ 5 GiB a single presigned PUT is used. Larger files use S3
  * multipart uploads with 16 MiB parts (640 parts at 10 GiB; up to 10 000
@@ -45,7 +45,7 @@ Usage:
   run402 assets diagnose <url> [options]
 
 Options:
-  --project <id>      Project ID (defaults to active project from 'run402 projects use')
+  --project <project_id>      Project ID (defaults to active project from 'run402 projects use')
   --key <dest>        Destination key (put only; defaults to file basename)
   --content-type <mime>  MIME override for blob put (defaults to extension inference)
   --private           Upload as private (not served by CDN; apikey required to read)
@@ -89,7 +89,7 @@ Arguments:
   <file>              Path to a file (or glob); pass multiple files to batch-upload
 
 Options:
-  --project <id>      Project ID (defaults to active project from 'run402 projects use')
+  --project <project_id>      Project ID (defaults to active project from 'run402 projects use')
   --key <dest>        Destination key; defaults to file basename. Use trailing '/' as prefix.
   --content-type <mime>  MIME override; defaults to inferring from the destination key extension
   --private           Upload as private (not served by CDN; apikey required to read)
@@ -124,7 +124,7 @@ Arguments:
 
 Options:
   --output <file>     Local destination path (required)
-  --project <id>      Project ID (defaults to active project)
+  --project <project_id>      Project ID (defaults to active project)
 
 Examples:
   run402 assets get images/logo.png --output /tmp/logo.png --project prj_abc123
@@ -135,7 +135,7 @@ Usage:
   run402 assets ls [options]
 
 Options:
-  --project <id>      Project ID (defaults to active project)
+  --project <project_id>      Project ID (defaults to active project)
   --prefix <p>        Only list keys starting with this prefix
   --limit <n>         Max results (default 100, max 1000)
   --sort <key>        v1.50: key:asc (default) | createdAt:asc | createdAt:desc.
@@ -162,7 +162,7 @@ Arguments:
   <key>               Blob key to delete
 
 Options:
-  --project <id>      Project ID (defaults to active project)
+  --project <project_id>      Project ID (defaults to active project)
 
 Examples:
   run402 assets rm images/logo.png --project prj_abc123
@@ -176,7 +176,7 @@ Arguments:
   <key>               Blob key to sign
 
 Options:
-  --project <id>      Project ID (defaults to active project)
+  --project <project_id>      Project ID (defaults to active project)
   --ttl <seconds>     Signed-URL TTL (default 3600, min 60, max 604800)
 
 Examples:
@@ -191,7 +191,7 @@ Arguments:
   <url>               Full blob URL (e.g. https://app.run402.com/_blob/avatar.png)
 
 Options:
-  --project <id>      Project ID (defaults to active project)
+  --project <project_id>      Project ID (defaults to active project)
 
 Output:
   - Prints the JSON envelope on stdout (parseable by agent shell loops).

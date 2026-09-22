@@ -74,51 +74,51 @@ Usage:
   run402 email <subcommand> [args...]
 
 Subcommands:
-  create <slug> [--project <id>]     Create a project-scoped mailbox local part
-  mailboxes [--project <id>]         List mailboxes with default-role metadata
+  create <slug> [--project <project_id>]     Create a project-scoped mailbox local part
+  mailboxes [--project <project_id>]         List mailboxes with default-role metadata
                                       and gateway next_actions
-  defaults [--outbound <slug|id>] [--auth-sender <slug|id>] [--project <id>]
+  defaults [--outbound <slug|id>] [--auth-sender <slug|id>] [--project <project_id>]
                                       Show or set mailbox defaults. With no
                                       flags, prints current settings/candidates.
-  update [<slug|id>] --footer-policy <run402_transparency|none> [--project <id>]
+  update [<slug|id>] --footer-policy <run402_transparency|none> [--project <project_id>]
                                       Update per-mailbox settings
-  info   [--project <id>]            Show mailbox info, including footer policy
-  status [--project <id>]            Alias for 'info' (prefer 'info')
+  info   [--project <project_id>]            Show mailbox info, including footer policy
+  status [--project <project_id>]            Alias for 'info' (prefer 'info')
   send   --to <email> [mode flags]   Send an email (template or raw HTML)
-  list   [--limit <n>] [--after <cursor>] [--direction <inbound|outbound>] [--project <id>]
+  list   [--limit <n>] [--after <cursor>] [--direction <inbound|outbound>] [--project <project_id>]
                                       List messages (paginated). Returns BOTH
                                       sent + received by default; --direction
                                       inbound is the reconciliation backstop.
-  get    <message_id> [--project <id>]  Get a message with replies
-  get-raw <message_id> --output <file> [--project <id>]
+  get    <message_id> [--project <project_id>]  Get a message with replies
+  get-raw <message_id> --output <file> [--project <project_id>]
                                       Fetch raw RFC-822 bytes (inbound only).
                                       --output is required: bytes are written
                                       to the file; stdout receives a JSON
                                       envelope { message_id, bytes, output }.
-  reply  <message_id> --html "..." [--text "..."] [--subject "..."] [--from-name "..."] [--project <id>]
+  reply  <message_id> --html "..." [--text "..."] [--subject "..."] [--from-name "..."] [--project <project_id>]
                                       Reply to an inbound message (threads via In-Reply-To)
-  delete [<slug|mailbox_id>] --confirm [--project <id>]
+  delete [<slug|mailbox_id>] --confirm [--project <project_id>]
                                       Delete the project's mailbox (irreversible)
   webhooks <action> [args...]        Manage webhooks (see below)
 
 Webhook subcommands:
-  webhooks list   [--project <id>]                List webhooks
-  webhooks get    <webhook_id> [--project <id>]   Get a webhook
-  webhooks delete <webhook_id> [--project <id>]   Delete a webhook
-  webhooks update <webhook_id> [--url <url>] [--events <e1,e2>] [--project <id>]
+  webhooks list   [--project <project_id>]                List webhooks
+  webhooks get    <webhook_id> [--project <project_id>]   Get a webhook
+  webhooks delete <webhook_id> [--project <project_id>]   Delete a webhook
+  webhooks update <webhook_id> [--url <url>] [--events <e1,e2>] [--project <project_id>]
                                                   Update a webhook
-  webhooks register --url <url> --events <e1,e2> [--project <id>]
+  webhooks register --url <url> --events <e1,e2> [--project <project_id>]
                                                   Register a new webhook
-  webhooks deliveries [--status <s>] [--project <id>]
+  webhooks deliveries [--status <s>] [--project <project_id>]
                                                   List durable delivery rows (DLQ visibility)
-  webhooks redrive <delivery_id> [--project <id>]
+  webhooks redrive <delivery_id> [--project <project_id>]
                                                   Re-queue a dead-lettered delivery
 
 Send modes:
   Template:  --template <name> --var key=value [--var ...]  OR --vars '{"k":"v",...}'
   Raw HTML:  --subject "..." --html "..." [--text "..."]    (both --subject and --html required)
   Raw HTML also supports: --attach <path>[:content-type] (repeatable; max 5, 7 MB total)
-  Both modes support: --from-name "Display Name" --project <id>
+  Both modes support: --from-name "Display Name" --project <project_id>
 
 Choosing a mailbox:
   --mailbox <slug|id>  Target a specific mailbox. Accepted by send, list, get,
@@ -185,12 +185,12 @@ Options:
                       extension when the :content-type suffix is omitted.
   --from-name "..."   Display name for the From header
   --mailbox <slug|id> Target mailbox. Omit to use default_outbound_mailbox_id.
-  --project <id>      Project ID (defaults to the active project)
+  --project <project_id>      Project ID (defaults to the active project)
 `,
   list: `run402 email list — List messages in the mailbox
 
 Usage:
-  run402 email list [--mailbox <slug|id>] [--limit <n>] [--after <cursor>] [--project <id>]
+  run402 email list [--mailbox <slug|id>] [--limit <n>] [--after <cursor>] [--project <project_id>]
 `,
   reply: `run402 email reply — Reply to an inbound message (threaded via In-Reply-To)
 
@@ -200,17 +200,17 @@ Usage:
   delete: `run402 email delete — Delete the project's mailbox (irreversible)
 
 Usage:
-  run402 email delete [<slug|mailbox_id>] --confirm [--project <id>]
+  run402 email delete [<slug|mailbox_id>] --confirm [--project <project_id>]
 `,
   info: `run402 email info — Show mailbox info, including footer policy
 
 Usage:
-  run402 email info [--project <id>]
+  run402 email info [--project <project_id>]
 `,
   status: `run402 email status — Alias for 'run402 email info' (prefer 'info')
 
 Usage:
-  run402 email status [--project <id>]
+  run402 email status [--project <project_id>]
 
 See 'run402 email info --help' for details. 'status' is kept for backward
 compatibility; new code should use 'info'.
@@ -218,7 +218,7 @@ compatibility; new code should use 'info'.
   "get-raw": `run402 email get-raw — Fetch raw RFC-822 bytes for an inbound message
 
 Usage:
-  run402 email get-raw <message_id> --output <file> [--project <id>]
+  run402 email get-raw <message_id> --output <file> [--project <project_id>]
 
 Arguments:
   <message_id>        Inbound message ID
@@ -228,14 +228,14 @@ Options:
                       stdout receives a JSON envelope
                       { message_id, bytes, output } — the MIME body is never
                       written to stdout, so the CLI stays pipeable.
-  --project <id>      Project ID (defaults to the active project)
+  --project <project_id>      Project ID (defaults to the active project)
   --mailbox <slug|id> Target a specific mailbox (required when the project
                       has more than one)
 `,
   create: `run402 email create — Create a project mailbox
 
 Usage:
-  run402 email create <slug> [--project <id>]
+  run402 email create <slug> [--project <project_id>]
 
 Arguments:
   <slug>              Mailbox slug (3-63 chars, lowercase alphanumeric +
@@ -244,7 +244,7 @@ Arguments:
                       <slug>@<project-mail-host>.mail.run402.com.
 
 Options:
-  --project <id>      Project ID (defaults to the active project)
+  --project <project_id>      Project ID (defaults to the active project)
 
 Notes:
   - Up to 5 mailboxes per project; the same slug may be used by another project
@@ -256,7 +256,7 @@ Examples:
   mailboxes: `run402 email mailboxes — List project mailboxes
 
 Usage:
-  run402 email mailboxes [--project <id>]
+  run402 email mailboxes [--project <project_id>]
 
 Returns JSON: { mailboxes, mailbox_settings?, next_actions? }. Mailbox rows
 include default-role/readiness metadata when the gateway provides it.
@@ -264,41 +264,41 @@ include default-role/readiness metadata when the gateway provides it.
   defaults: `run402 email defaults — Show or set mailbox defaults
 
 Usage:
-  run402 email defaults [--project <id>]
-  run402 email defaults --outbound <slug|mbx_id> [--auth-sender <slug|mbx_id>] [--project <id>]
-  run402 email defaults --auth-sender <slug|mbx_id> [--project <id>]
+  run402 email defaults [--project <project_id>]
+  run402 email defaults --outbound <slug|mbx_id> [--auth-sender <slug|mbx_id>] [--project <project_id>]
+  run402 email defaults --auth-sender <slug|mbx_id> [--project <project_id>]
 
 Options:
   --outbound <slug|mbx_id>     Set default_outbound_mailbox_id
   --auth-sender <slug|mbx_id>  Set auth_sender_mailbox_id
   --clear-outbound             Clear default_outbound_mailbox_id
   --clear-auth-sender          Clear auth_sender_mailbox_id
-  --project <id>               Project ID (defaults to the active project)
+  --project <project_id>               Project ID (defaults to the active project)
 `,
   update: `run402 email update — Update per-mailbox settings
 
 Usage:
-  run402 email update [<slug|mbx_id>] --footer-policy <run402_transparency|none> [--project <id>]
-  run402 email update --mailbox <slug|mbx_id> --footer-policy <run402_transparency|none> [--project <id>]
+  run402 email update [<slug|mbx_id>] --footer-policy <run402_transparency|none> [--project <project_id>]
+  run402 email update --mailbox <slug|mbx_id> --footer-policy <run402_transparency|none> [--project <project_id>]
 
 Options:
   --footer-policy <policy>  Outbound footer policy. Use run402_transparency or none.
                             Prototype projects are locked to run402_transparency;
                             attempts to set none return FOOTER_POLICY_TIER_REQUIRED.
   --mailbox <slug|id>       Target mailbox; omit only when the project has one mailbox.
-  --project <id>            Project ID (defaults to the active project)
+  --project <project_id>            Project ID (defaults to the active project)
 `,
   get: `run402 email get — Get a message with replies
 
 Usage:
-  run402 email get <message_id> [--mailbox <slug|id>] [--project <id>]
+  run402 email get <message_id> [--mailbox <slug|id>] [--project <project_id>]
 
 Arguments:
   <message_id>        Message ID to fetch
 
 Options:
   --mailbox <slug|id> Target mailbox. Omit to use default_outbound_mailbox_id.
-  --project <id>      Project ID (defaults to the active project)
+  --project <project_id>      Project ID (defaults to the active project)
 
 Examples:
   run402 email get msg_abc123 --mailbox support

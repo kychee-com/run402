@@ -1665,7 +1665,7 @@ describe("run402 repos handoff — mint a single-use Handoff Key (design D3/D10)
     assert.deepEqual(payload.handoffs, []);
   });
 
-  it("--revoke <id> calls gitvault.revokeHandoff with the resolved target and never mints", async () => {
+  it("--revoke <handoff_id> calls gitvault.revokeHandoff with the resolved target and never mints", async () => {
     const payload = await ok("handoff", ["--project", PROJECT, "--revoke", "hnd_abc123"]);
     const revokeCall = calls.find((c) => c.method === "gitvault.revokeHandoff");
     assert.ok(revokeCall);
@@ -1981,7 +1981,7 @@ describe("run402 repos invite — mint a single-use Invite Key (kygit-invite des
     assert.deepEqual(payload.invites, []);
   });
 
-  it("--revoke <id> calls gitvault.revokeInvite with the resolved target and never mints", async () => {
+  it("--revoke <invite_id> calls gitvault.revokeInvite with the resolved target and never mints", async () => {
     const payload = await ok("invite", ["--project", PROJECT, "--revoke", "inv_abc123"]);
     const revokeCall = calls.find((c) => c.method === "gitvault.revokeInvite");
     assert.ok(revokeCall);

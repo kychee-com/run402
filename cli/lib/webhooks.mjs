@@ -9,13 +9,13 @@ Usage:
   run402 email webhooks <action> [args...]
 
 Actions:
-  list       [--mailbox <slug|id>] [--project <id>]            List webhooks
-  get        <webhook_id> [--mailbox <slug|id>] [--project <id>]   Get a webhook
-  delete     <webhook_id> [--mailbox <slug|id>] [--project <id>]   Delete a webhook
+  list       [--mailbox <slug|id>] [--project <project_id>]            List webhooks
+  get        <webhook_id> [--mailbox <slug|id>] [--project <project_id>]   Get a webhook
+  delete     <webhook_id> [--mailbox <slug|id>] [--project <project_id>]   Delete a webhook
   update     <webhook_id> [--url <url>] [--events <e1,e2>] [--mailbox <slug|id>]  Update a webhook
-  register   --url <url> --events <e1,e2> [--mailbox <slug|id>] [--project <id>]  Register a new webhook
-  deliveries [--status <s>] [--mailbox <slug|id>] [--project <id>]  List durable delivery rows (DLQ visibility)
-  redrive    <delivery_id> [--mailbox <slug|id>] [--project <id>]   Re-queue a dead-lettered delivery
+  register   --url <url> --events <e1,e2> [--mailbox <slug|id>] [--project <project_id>]  Register a new webhook
+  deliveries [--status <s>] [--mailbox <slug|id>] [--project <project_id>]  List durable delivery rows (DLQ visibility)
+  redrive    <delivery_id> [--mailbox <slug|id>] [--project <project_id>]   Re-queue a dead-lettered delivery
 
 Valid events: delivery, bounced, complained, reply_received, mailbox_suspended
 Delivery statuses: pending, in_flight, delivered, failed_permanent (the DLQ)
@@ -41,12 +41,12 @@ const SUB_HELP = {
   update: `run402 email webhooks update — Update an existing webhook
 
 Usage:
-  run402 email webhooks update <webhook_id> [--url <url>] [--events <e1,e2>] [--mailbox <slug|id>] [--project <id>]
+  run402 email webhooks update <webhook_id> [--url <url>] [--events <e1,e2>] [--mailbox <slug|id>] [--project <project_id>]
 `,
   register: `run402 email webhooks register — Register a new webhook
 
 Usage:
-  run402 email webhooks register --url <url> --events <e1,e2> [--mailbox <slug|id>] [--project <id>]
+  run402 email webhooks register --url <url> --events <e1,e2> [--mailbox <slug|id>] [--project <project_id>]
 `,
 };
 

@@ -10,8 +10,8 @@ Usage:
 
 Subcommands:
   add    <name> [--project <project_id>] [--release <release_id> | --deployment <deployment_id>]   Add a subdomain
-  delete <name> --confirm [--project <id>]                              Release a subdomain. Requires --confirm.
-  list   [--project <id>]                                               List subdomains for a project
+  delete <name> --confirm [--project <project_id>]                              Release a subdomain. Requires --confirm.
+  list   [--project <project_id>]                                               List subdomains for a project
 
 Options default to the active project. With neither --release nor
 --deployment, add binds the project's live release.
@@ -39,10 +39,10 @@ Arguments:
                       hyphens). Creates <name>.run402.com.
 
 Options:
-  --project <id>      Project ID (defaults to the active project)
-  --release <id>      Release ID (rel_...) to point at. With neither flag,
+  --project <project_id>      Project ID (defaults to the active project)
+  --release <release_id>      Release ID (rel_...) to point at. With neither flag,
                       the project's live release is bound.
-  --deployment <id>   Legacy deployment ID (dpl_...); rel_.../op_... ids are
+  --deployment <deployment_id>   Legacy deployment ID (dpl_...); rel_.../op_... ids are
                       accepted too.
 
 Notes:
@@ -57,10 +57,10 @@ Examples:
   list: `run402 subdomains list — List a project's subdomains
 
 Usage:
-  run402 subdomains list [--project <id>]
+  run402 subdomains list [--project <project_id>]
 
 Options:
-  --project <id>      Project ID (defaults to the active project)
+  --project <project_id>      Project ID (defaults to the active project)
 
 Examples:
   run402 subdomains list
@@ -69,7 +69,7 @@ Examples:
   delete: `run402 subdomains delete — Release a subdomain
 
 Usage:
-  run402 subdomains delete <name> --confirm [--project <id>]
+  run402 subdomains delete <name> --confirm [--project <project_id>]
 
 Arguments:
   <name>              Subdomain name to release
@@ -77,7 +77,7 @@ Arguments:
 Options:
   --confirm           Required: releasing a subdomain is irreversible and
                       makes it available for any other project to add
-  --project <id>      Project ID (defaults to the active project)
+  --project <project_id>      Project ID (defaults to the active project)
 
 Examples:
   run402 subdomains delete myapp --confirm
@@ -117,7 +117,7 @@ async function add(args) {
     fail({
       code: "BAD_USAGE",
       message: "Pass either --release or --deployment, not both.",
-      hint: "run402 subdomains add <name> [--release <id> | --deployment <id>]",
+      hint: "run402 subdomains add <name> [--release <release_id> | --deployment <deployment_id>]",
     });
   }
   const projectId = resolveProjectId(opts.project);
@@ -147,7 +147,7 @@ async function deleteSubdomain(allArgs) {
     fail({
       code: "BAD_USAGE",
       message: "Missing <name>.",
-      hint: "run402 subdomains delete <name> --confirm [--project <id>]",
+      hint: "run402 subdomains delete <name> --confirm [--project <project_id>]",
     });
   }
   if (positionals.length > 1) {
@@ -186,7 +186,7 @@ async function list(args) {
     fail({
       code: "BAD_USAGE",
       message: `Unexpected argument for subdomains list: ${rest[0]}`,
-      hint: "Use `run402 subdomains list --project <id>`.",
+      hint: "Use `run402 subdomains list --project <project_id>`.",
     });
   }
   const projectId = resolveProjectId(project);

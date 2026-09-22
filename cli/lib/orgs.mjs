@@ -625,7 +625,7 @@ async function slug(args) {
     fail({
       code: "ORG_UNRESOLVED",
       message: "Could not resolve which organization to set this slug for.",
-      hint: "Pass --org <org_id>, or select one first with `run402 orgs use <id>`.",
+      hint: "Pass --org <org_id>, or select one first with `run402 orgs use <org_id>`.",
     });
   }
   const idempotencyKey = flagValue(a, "--idempotency-key");

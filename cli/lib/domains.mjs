@@ -9,24 +9,24 @@ Usage:
   run402 domains <subcommand> [args...]
 
 Subcommands:
-  connect      <domain> [--project <id>] [--web] [--authority hosted-zone] [--email-send] [...]
-  list         [--project <id>] [--include-managed]
-  status       <domain> [--project <id>]
-  dns          <domain> [--project <id>] [--format json|bind]
-  check        <domain> [--project <id>]
-  apply        <domain> [--project <id>] [--authority auto|provider-connect|delegated-subdomain|hosted-zone]
-  repair       <domain> [--project <id>]
-  test-receive <domain> --to <local-part|address> [--project <id>]
-  wait         <domain> [--project <id>] [--until active|safe|receive-active] [--timeout-ms <n>] [--interval-ms <n>]
-  activate     <domain> [--project <id>]
-  disconnect   <domain> --confirm [--project <id>]
+  connect      <domain> [--project <project_id>] [--web] [--authority hosted-zone] [--email-send] [...]
+  list         [--project <project_id>] [--include-managed]
+  status       <domain> [--project <project_id>]
+  dns          <domain> [--project <project_id>] [--format json|bind]
+  check        <domain> [--project <project_id>]
+  apply        <domain> [--project <project_id>] [--authority auto|provider-connect|delegated-subdomain|hosted-zone]
+  repair       <domain> [--project <project_id>]
+  test-receive <domain> --to <local-part|address> [--project <project_id>]
+  wait         <domain> [--project <project_id>] [--until active|safe|receive-active] [--timeout-ms <n>] [--interval-ms <n>]
+  activate     <domain> [--project <project_id>]
+  disconnect   <domain> --confirm [--project <project_id>]
 `;
 
 const SUB_HELP = {
   connect: `run402 domains connect — connect a ProjectDomain capability
 
 Usage:
-  run402 domains connect <domain> --project <id> [--web] [--email-send] [--email-receive] [options]
+  run402 domains connect <domain> --project <project_id> [--web] [--email-send] [--email-receive] [options]
 
 Examples:
   run402 domains connect kysigned.com --project prj_123 --email-send --email-receive --mailbox-addresses primary --addresses info
@@ -42,52 +42,52 @@ Examples:
   list: `run402 domains list — list project domains
 
 Usage:
-  run402 domains list --project <id>
+  run402 domains list --project <project_id>
 `,
   status: `run402 domains status — show one ProjectDomain aggregate
 
 Usage:
-  run402 domains status <domain> --project <id>
+  run402 domains status <domain> --project <project_id>
 `,
   dns: `run402 domains dns — print required DNS records
 
 Usage:
-  run402 domains dns <domain> --project <id> [--format json|bind]
+  run402 domains dns <domain> --project <project_id> [--format json|bind]
 `,
   check: `run402 domains check — refresh ProjectDomain observations and checks
 
 Usage:
-  run402 domains check <domain> --project <id>
+  run402 domains check <domain> --project <project_id>
 `,
   apply: `run402 domains apply — apply safe provider-managed changes
 
 Usage:
-  run402 domains apply <domain> --project <id> [--authority auto|provider-connect|delegated-subdomain|hosted-zone]
+  run402 domains apply <domain> --project <project_id> [--authority auto|provider-connect|delegated-subdomain|hosted-zone]
 `,
   repair: `run402 domains repair — repair Run402-owned domain infrastructure
 
 Usage:
-  run402 domains repair <domain> --project <id>
+  run402 domains repair <domain> --project <project_id>
 `,
   "test-receive": `run402 domains test-receive — create an inbound receive test token
 
 Usage:
-  run402 domains test-receive <domain> --project <id> --to <local-part|address>
+  run402 domains test-receive <domain> --project <project_id> --to <local-part|address>
 `,
   wait: `run402 domains wait — poll until a ProjectDomain is ready
 
 Usage:
-  run402 domains wait <domain> --project <id> [--until active|safe|receive-active] [--timeout-ms <n>] [--interval-ms <n>]
+  run402 domains wait <domain> --project <project_id> [--until active|safe|receive-active] [--timeout-ms <n>] [--interval-ms <n>]
 `,
   activate: `run402 domains activate — activate custom mailbox addresses
 
 Usage:
-  run402 domains activate <domain> --project <id>
+  run402 domains activate <domain> --project <project_id>
 `,
   disconnect: `run402 domains disconnect — disconnect a ProjectDomain
 
 Usage:
-  run402 domains disconnect <domain> --project <id> --confirm
+  run402 domains disconnect <domain> --project <project_id> --confirm
 `,
 };
 
@@ -300,7 +300,7 @@ async function connect(args) {
   ], CONNECT_VALUE_FLAGS);
   const rest = positionalArgs(parsed, CONNECT_VALUE_FLAGS);
   const domain = rest[0];
-  if (!domain) fail({ code: "BAD_USAGE", message: "Missing <domain>.", hint: "run402 domains connect <domain> --project <id> --web" });
+  if (!domain) fail({ code: "BAD_USAGE", message: "Missing <domain>.", hint: "run402 domains connect <domain> --project <project_id> --web" });
   if (rest.length > 1) fail({ code: "BAD_USAGE", message: `Unexpected argument for domains connect: ${rest[1]}` });
   if (parsed.includes("--create-mailboxes") && parsed.includes("--no-create-mailboxes")) {
     fail({ code: "BAD_FLAG", message: "Choose only one of --create-mailboxes or --no-create-mailboxes." });
@@ -328,7 +328,7 @@ async function list(args) {
 async function status(args) {
   const { projectId, rest } = parseCommon(args);
   const domain = rest[0];
-  if (!domain) fail({ code: "BAD_USAGE", message: "Missing <domain>.", hint: "run402 domains status <domain> [--project <id>]" });
+  if (!domain) fail({ code: "BAD_USAGE", message: "Missing <domain>.", hint: "run402 domains status <domain> [--project <project_id>]" });
   if (rest.length > 1) fail({ code: "BAD_USAGE", message: `Unexpected argument for domains status: ${rest[1]}` });
   try {
     print(await getSdk().domains.get(projectId, domain));
@@ -366,7 +366,7 @@ async function action(name, args) {
   assertKnownFlags(parsed, [...valueFlags, "--help", "-h"], valueFlags);
   const rest = positionalArgs(parsed, valueFlags);
   const domain = rest[0];
-  if (!domain) fail({ code: "BAD_USAGE", message: `Missing <domain>.`, hint: `run402 domains ${name} <domain> [--project <id>]` });
+  if (!domain) fail({ code: "BAD_USAGE", message: `Missing <domain>.`, hint: `run402 domains ${name} <domain> [--project <project_id>]` });
   if (rest.length > 1) fail({ code: "BAD_USAGE", message: `Unexpected argument for domains ${name}: ${rest[1]}` });
   const projectId = resolveProjectId(flagValue(parsed, "--project"));
   try {
@@ -398,7 +398,7 @@ async function disconnect(args) {
   assertKnownFlags(parsed, [...valueFlags, "--confirm", "--help", "-h"], valueFlags);
   const rest = positionalArgs(parsed, valueFlags);
   const domain = rest[0];
-  if (!domain) fail({ code: "BAD_USAGE", message: "Missing <domain>.", hint: "run402 domains disconnect <domain> --confirm [--project <id>]" });
+  if (!domain) fail({ code: "BAD_USAGE", message: "Missing <domain>.", hint: "run402 domains disconnect <domain> --confirm [--project <project_id>]" });
   if (!parsed.includes("--confirm")) {
     fail({
       code: "CONFIRMATION_REQUIRED",

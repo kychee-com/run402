@@ -6,7 +6,7 @@
  * and quietly never looked at, in violation of the CLI's own "unknown flag
  * is BAD_USAGE" convention every other command follows (`argparse.mjs`'s
  * `assertKnownFlags`). This file locks two things: (1) a truly unknown flag
- * is now rejected, never silently ignored, and (2) `--project <id>` actually
+ * is now rejected, never silently ignored, and (2) `--project <project_id>` actually
  * TARGETS the gitvault check, outranking the repo-standing/active-project
  * default `gitvault-target.mjs` otherwise resolves.
  */
@@ -176,7 +176,7 @@ describe("run402 doctor — unknown flags are BAD_USAGE, never silently ignored"
   });
 });
 
-describe("run402 doctor --project <id> — targets the gitvault check (kychee-com/run402#566)", () => {
+describe("run402 doctor --project <project_id> — targets the gitvault check (kychee-com/run402#566)", () => {
   it("without --project, the gitvault check reads the ACTIVE project (unchanged default)", async () => {
     captureStart();
     try {
@@ -189,7 +189,7 @@ describe("run402 doctor --project <id> — targets the gitvault check (kychee-co
     assert.deepEqual(gitvaultProjectReads, [ACTIVE_PROJECT]);
   });
 
-  it("--project <id> outranks the active project for the gitvault check", async () => {
+  it("--project <project_id> outranks the active project for the gitvault check", async () => {
     captureStart();
     try {
       await run("--project", [EXPLICIT_PROJECT, "--no-scan"]);

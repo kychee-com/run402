@@ -33,11 +33,11 @@ import {
 const HELP = `run402 logs — Fetch function logs by request id
 
 Usage:
-  run402 logs --request-id <id> [<function> | --function <name>] [--project <id>] [options]
-  run402 logs --function <name> [--project <id>] [options]
+  run402 logs --request-id <request_id> [<function> | --function <name>] [--project <project_id>] [options]
+  run402 logs --function <name> [--project <project_id>] [options]
 
 Required (one of):
-  --request-id <id>       A req_... id (the x-run402-request-id response header),
+  --request-id <request_id>       A req_... id (the x-run402-request-id response header),
                           or a fnrun_... / fnatt_... durable-run id. Without
                           --function, every function in the project is scanned.
   --function <name>       Limit to one function. Alone (no --request-id) this
@@ -45,7 +45,7 @@ Required (one of):
                           <function> means the same thing.
 
 Optional:
-  --project <id>          Project id (default: \$RUN402_PROJECT_ID, else the active project)
+  --project <project_id>          Project id (default: \$RUN402_PROJECT_ID, else the active project)
   --tail <n>              Max entries per function BEFORE the origin filter (default 100, max 1000)
   --since <ts>            ISO timestamp or epoch ms; only entries at or after this
   --app                   Only the function's own output (default). Lambda runtime
@@ -103,7 +103,7 @@ export async function run(sub, args = []) {
     fail({
       code: "BAD_USAGE",
       message: `Unexpected argument: ${positionals[1]}`,
-      hint: "run402 logs [<function>] --request-id <id> [--project <id>]",
+      hint: "run402 logs [<function>] --request-id <request_id> [--project <project_id>]",
       details: { argument: positionals[1] },
     });
   }
@@ -119,7 +119,7 @@ export async function run(sub, args = []) {
   if (!requestId && !fnName) {
     fail({
       code: "BAD_USAGE",
-      message: "Missing --request-id <id> (or --function <name> for a plain tail).",
+      message: "Missing --request-id <request_id> (or --function <name> for a plain tail).",
       hint: "Pass the request id from the 'x-run402-request-id' response header.",
     });
   }
@@ -130,7 +130,7 @@ export async function run(sub, args = []) {
     fail({
       code: "BAD_USAGE",
       message: "Missing project id.",
-      hint: "Pass --project <id>, set RUN402_PROJECT_ID, or 'run402 projects use <id>'.",
+      hint: "Pass --project <project_id>, set RUN402_PROJECT_ID, or 'run402 projects use <project_id>'.",
     });
   }
 

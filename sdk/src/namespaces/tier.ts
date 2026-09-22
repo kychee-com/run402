@@ -60,7 +60,7 @@ export interface TierStatusProject {
  * v1.59 (add-project-transfer): summary of a pending transfer OFFERED TO the
  * authenticated wallet. Exposed at the top level of `TierStatusResult` so the
  * inbox is visible without a separate API call. Each entry carries
- * `preview_path` for deep-linking into `GET /agent/v1/transfers/<id>`.
+ * `preview_path` for deep-linking into `GET /agent/v1/transfers/<transfer_id>`.
  */
 export interface TierStatusIncomingTransfer {
   transfer_id: string;

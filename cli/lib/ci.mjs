@@ -21,8 +21,8 @@ const { version: RUN402_VERSION } = JSON.parse(
 const HELP = `run402 ci — Manage CI/OIDC deploy bindings
 
 Usage:
-  run402 ci link github [--project <id>] [--manifest <path>] [--repo <owner/repo>] [--branch <name> | --environment <name>] [--repository-id <id>] [--workflow <path>] [--expires-at <iso>] [--route-scope <pattern> ...] [--force]
-  run402 ci list [--project <id>]
+  run402 ci link github [--project <project_id>] [--manifest <path>] [--repo <owner/repo>] [--branch <name> | --environment <name>] [--repository-id <repository_id>] [--workflow <path>] [--expires-at <iso>] [--route-scope <pattern> ...] [--force]
+  run402 ci list [--project <project_id>]
   run402 ci revoke <binding_id>
   run402 ci set-asset-scopes <binding_id> <scope1> [<scope2> ...]
 
@@ -37,15 +37,15 @@ const SUB_HELP = {
   link: `run402 ci link github — Link GitHub Actions OIDC for run402 deploy
 
 Usage:
-  run402 ci link github [--project <id>] [--manifest <path>] [--repo <owner/repo>] [--branch <name> | --environment <name>] [--repository-id <id>] [--workflow <path>] [--expires-at <iso>] [--route-scope <pattern> ...] [--force]
+  run402 ci link github [--project <project_id>] [--manifest <path>] [--repo <owner/repo>] [--branch <name> | --environment <name>] [--repository-id <repository_id>] [--workflow <path>] [--expires-at <iso>] [--route-scope <pattern> ...] [--force]
 
 Options:
-  --project <id>          Project ID (defaults to the active project)
+  --project <project_id>          Project ID (defaults to the active project)
   --manifest <path>       Manifest path used by the generated workflow (default: run402.deploy.json)
   --repo <owner/repo>     GitHub repo (default: inferred from origin remote)
   --branch <name>         Branch subject and push trigger (default: current branch)
   --environment <name>    GitHub environment subject; adds job.environment
-  --repository-id <id>    Numeric GitHub repository id when API lookup is unavailable
+  --repository-id <repository_id>    Numeric GitHub repository id when API lookup is unavailable
   --workflow <path>       Workflow path (default: .github/workflows/run402-deploy.yml)
   --expires-at <iso>      Optional binding expiration timestamp
   --route-scope <pattern> Optional exact path or final wildcard route scope, repeatable (examples: /admin, /api/*)
@@ -60,7 +60,7 @@ Notes:
   list: `run402 ci list — List CI bindings
 
 Usage:
-  run402 ci list [--project <id>]
+  run402 ci list [--project <project_id>]
 `,
   revoke: `run402 ci revoke — Revoke a CI binding
 
@@ -267,7 +267,7 @@ async function linkGithub(args) {
     fail({
       code: "BAD_USAGE",
       message: "Missing provider: github.",
-      hint: "run402 ci link github [--project <id>]",
+      hint: "run402 ci link github [--project <project_id>]",
     });
   }
   if (flags.branch && flags.environment) {
@@ -293,7 +293,7 @@ async function linkGithub(args) {
     fail({
       code: "GITHUB_REPOSITORY_ID_REQUIRED",
       message: `Could not fetch the numeric GitHub repository id for ${repo}.`,
-      hint: "Set GITHUB_TOKEN/GH_TOKEN or pass --repository-id <id>.",
+      hint: "Set GITHUB_TOKEN/GH_TOKEN or pass --repository-id <repository_id>.",
       details: { repo },
     });
   }

@@ -503,10 +503,10 @@ The integration auto-detects which path you're on:
 
 ```sh
 # Locally — provisions ~/.config/run402/projects.json
-run402 login <project-id>
+run402 login <project_id>
 
 # In CI (GitHub Actions) — workflow needs id-token: write AND a Run402 binding for the repo
-run402 ci link github --project <project-id> --repo <owner/repo>
+run402 ci link github --project <project_id> --repo <owner/repo>
 ```
 
 GitHub Actions detection is automatic when `GITHUB_ACTIONS=true` is set (which GitHub sets for you). For non-GitHub CI, pass an explicit `credentials` provider via `run402({ credentials: ... })`.
@@ -516,8 +516,8 @@ GitHub Actions detection is automatic when `GITHUB_ACTIONS=true` is set (which G
 CI bindings are closed-by-default for the `spec.assets` slice. Grant the integration's default `astro/` prefix once per binding:
 
 ```sh
-run402 ci list --project <project-id>                # find the binding id
-run402 ci set-asset-scopes <binding-id> 'astro/*'    # grant the prefix
+run402 ci list --project <project_id>                # find the binding id
+run402 ci set-asset-scopes <binding_id> 'astro/*'    # grant the prefix
 ```
 
 If you customized `assetPrefix` in `run402({ assetPrefix: 'my-app/' })`, grant `'my-app/*'` instead. **Local-laptop wallet deploys skip this check; only CI sessions hit it.**
@@ -525,7 +525,7 @@ If you customized `assetPrefix` in `run402({ assetPrefix: 'my-app/' })`, grant `
 **Transferred a project? Re-link, don't re-scope (cause of [kychee-com/run402#470](https://github.com/kychee-com/run402/issues/470)).** If the build fails with `CI_BINDING_REVOKED` ("the CI/OIDC binding was revoked"), the binding was revoked — most often because the project was transferred or handed to a new owner, which suspends the prior org's CI bindings. The fix is to re-create the binding, **not** to widen asset scopes (`set-asset-scopes` returns `409` on a revoked binding):
 
 ```sh
-run402 ci link github --project <project-id> --repo <owner/repo>
+run402 ci link github --project <project_id> --repo <owner/repo>
 ```
 
 ### 4. Image CSS uses `height: auto` (or `aspect-ratio`)

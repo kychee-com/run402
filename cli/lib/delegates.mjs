@@ -15,18 +15,18 @@ Usage:
   run402 delegates <subcommand> [args...]
 
 Subcommands:
-  create --grant <grant_id> [--project <id>] [--capability <cap>] [--kind <kind>]
+  create --grant <grant_id> [--project <project_id>] [--capability <cap>] [--kind <kind>]
          [--scope <json>] [--expires <iso8601>]
                                  Mint a delegate. The bearer is printed ONCE.
-  list [--project <id>]          List delegates (never shows tokens)
-  revoke <delegate_id> [--project <id>]
+  list [--project <project_id>]          List delegates (never shows tokens)
+  revoke <delegate_id> [--project <project_id>]
                                  Revoke immediately
-  rotate <delegate_id> [--project <id>]
+  rotate <delegate_id> [--project <project_id>]
                                  Revoke + reissue; new bearer printed ONCE
 
 Notes:
   - A delegate NARROWS an existing grant, so mint the grant first:
-      run402 grants create <agent-wallet> --capability deploy --project <id>
+      run402 grants create <agent-wallet> --capability deploy --project <project_id>
     then pass the returned grant_id to 'delegates create'.
   - Mutations require you to be an owner of the project's org (wallet SIWX).
   - A delegate can never be an owner, and is revocable and expiring.
@@ -51,7 +51,7 @@ const SUB_HELP = {
   create: `run402 delegates create — mint a scoped deploy credential
 
 Usage:
-  run402 delegates create --grant <grant_id> [--project <id>] [--capability <cap>]
+  run402 delegates create --grant <grant_id> [--project <project_id>] [--capability <cap>]
                           [--kind <kind>] [--scope <json>] [--expires <iso8601>]
 
 --capability defaults to "deploy". --kind defaults to "run402_agent_key" (the
@@ -64,21 +64,21 @@ Requires owner of the project's org.
   list: `run402 delegates list — list a project's delegates
 
 Usage:
-  run402 delegates list [--project <id>]
+  run402 delegates list [--project <project_id>]
 
 Never returns tokens or secret material — id, kind, scope, expiry, revocation.
 `,
   revoke: `run402 delegates revoke — revoke a delegate immediately
 
 Usage:
-  run402 delegates revoke <delegate_id> [--project <id>]
+  run402 delegates revoke <delegate_id> [--project <project_id>]
 
 Takes effect for every subsequent request. Requires owner of the project's org.
 `,
   rotate: `run402 delegates rotate — revoke and reissue in one step
 
 Usage:
-  run402 delegates rotate <delegate_id> [--project <id>]
+  run402 delegates rotate <delegate_id> [--project <project_id>]
 
 Keeps the same principal, grant, kind, scope, cap and expiry. The NEW bearer is
 printed once. Use this when a token is lost or possibly exposed.
@@ -99,12 +99,12 @@ async function create(args) {
   requirePositionalCount(rest, CREATE_VALUE_FLAGS, {
     min: 0,
     max: 0,
-    command: "run402 delegates create --grant <grant_id> [--project <id>]",
+    command: "run402 delegates create --grant <grant_id> [--project <project_id>]",
     missing: "",
   });
   if (!grantId) {
     console.error("Missing --grant <grant_id>. Mint one first:");
-    console.error("  run402 grants create <agent-wallet> --capability deploy --project <id>");
+    console.error("  run402 grants create <agent-wallet> --capability deploy --project <project_id>");
     process.exit(1);
   }
   const scope = scopeRaw != null
@@ -135,7 +135,7 @@ async function list(args) {
   requirePositionalCount(rest, ["--project"], {
     min: 0,
     max: 0,
-    command: "run402 delegates list [--project <id>]",
+    command: "run402 delegates list [--project <project_id>]",
     missing: "",
   });
   try {
@@ -153,7 +153,7 @@ function oneIdCommand(name) {
     const [delegateId] = requirePositionalCount(rest, ["--project"], {
       min: 1,
       max: 1,
-      command: `run402 delegates ${name} <delegate_id> [--project <id>]`,
+      command: `run402 delegates ${name} <delegate_id> [--project <project_id>]`,
       missing: "Missing <delegate_id>.",
     });
     try {

@@ -11,7 +11,7 @@
  * organization named directly outranks one derived from a project named in that
  * same class:
  *
- *   1. flag          --org <org_id>           else --project <id> -> its org
+ *   1. flag          --org <org_id>           else --project <project_id> -> its org
  *   2. environment   RUN402_ORG, else the org else RUN402_PROJECT_ID -> its org
  *                    half of RUN402_ROOM
  *   3. binding       the `org` key of the nearest .run402(.local).json

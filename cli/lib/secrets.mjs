@@ -10,10 +10,10 @@ Usage:
   run402 secrets <subcommand> [args...]
 
 Subcommands:
-  set    <key> (--value <v> | --file <path> | --stdin) [--project <id>]
+  set    <key> (--value <v> | --file <path> | --stdin) [--project <project_id>]
                                Set a secret on a project
-  list   [--project <id>]      List all secrets for a project
-  delete <key> [--project <id>]  Delete a secret from a project
+  list   [--project <project_id>]      List all secrets for a project
+  delete <key> [--project <project_id>]  Delete a secret from a project
 
 Legacy (still supported):
   run402 secrets set <prj_id> <key> <value>
@@ -38,9 +38,9 @@ const SUB_HELP = {
   set: `run402 secrets set — Set a secret on a project
 
 Usage:
-  run402 secrets set <key> --value <v> [--project <id>]
-  run402 secrets set <key> --file <path> [--project <id>]
-  run402 secrets set <key> --stdin [--project <id>]
+  run402 secrets set <key> --value <v> [--project <project_id>]
+  run402 secrets set <key> --file <path> [--project <project_id>]
+  run402 secrets set <key> --stdin [--project <project_id>]
 
 Legacy (still supported):
   run402 secrets set <prj_id> <key> <value>
@@ -50,7 +50,7 @@ Arguments:
   <key>               Secret key name (exposed as process.env.<key>)
 
 Options:
-  --project <id>      Project ID (defaults to the active project)
+  --project <project_id>      Project ID (defaults to the active project)
   --value <v>         Inline secret value (alternative to the legacy positional)
   --file <path>       Read the secret value from a file instead of inline
                       Use --file - or --file /dev/stdin to read from stdin
@@ -71,13 +71,13 @@ Examples:
   list: `run402 secrets list — List all secrets for a project
 
 Usage:
-  run402 secrets list [--project <id>]
+  run402 secrets list [--project <project_id>]
 
 Legacy (still supported):
   run402 secrets list <prj_id>
 
 Options:
-  --project <id>      Project ID (defaults to the active project)
+  --project <project_id>      Project ID (defaults to the active project)
 
 Notes:
   - Returns secret keys and timestamps only; raw values and value-derived hashes are never returned
@@ -88,7 +88,7 @@ Examples:
   delete: `run402 secrets delete — Delete a secret from a project
 
 Usage:
-  run402 secrets delete <key> [--project <id>]
+  run402 secrets delete <key> [--project <project_id>]
 
 Legacy (still supported):
   run402 secrets delete <prj_id> <key>
@@ -97,7 +97,7 @@ Arguments:
   <key>               Secret key name to remove
 
 Options:
-  --project <id>      Project ID (defaults to the active project)
+  --project <project_id>      Project ID (defaults to the active project)
 
 Examples:
   run402 secrets delete STRIPE_KEY --project prj_abc123
@@ -147,7 +147,7 @@ async function set(projectId, args = []) {
     fail({
       code: "BAD_USAGE",
       message: "Missing <key>.",
-      hint: "run402 secrets set <key> --value <v> [--project <id>]",
+      hint: "run402 secrets set <key> --value <v> [--project <project_id>]",
     });
   }
   const values = positionals.slice(1);
@@ -235,7 +235,7 @@ async function deleteSecret(projectId, args = []) {
     fail({
       code: "BAD_USAGE",
       message: "Missing <key>.",
-      hint: "run402 secrets delete <key> [--project <id>]",
+      hint: "run402 secrets delete <key> [--project <project_id>]",
     });
   }
   if (positionals.length > 1) {

@@ -303,7 +303,7 @@ Move network and database work from module initialization into the request handl
 
 Owner: `public:astro/src/runtime/server.ts`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
 
-The SSR render failed. Use `run402 logs --request-id <actual-request-id> --project <project-id>` and inspect the available application logs. Fix the reported source or configuration issue and redeploy. Public diagnostics omit private stack information; exact log detail depends on the runtime and its redaction policy.
+The SSR render failed. Use `run402 logs --request-id <request_id> --project <project_id>` and inspect the available application logs. Fix the reported source or configuration issue and redeploy. Public diagnostics omit private stack information; exact log detail depends on the runtime and its redaction policy.
 
 <h2 id="RUN402_ASTRO_LEADING_SLASH_SRC">RUN402_ASTRO_LEADING_SLASH_SRC</h2>
 

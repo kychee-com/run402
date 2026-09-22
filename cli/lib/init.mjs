@@ -69,7 +69,7 @@ Output:
   project the gitvault scaffold acted on.
 
   init scaffolds the git remote only. It does NOT allocate the vault — that is
-  \`run402 repos create --project <id>\`, which mints key material and a
+  \`run402 repos create --project <project_id>\`, which mints key material and a
   recovery receipt and therefore stays an explicit step.
 
 Steps (idempotent when re-run with the same rail; pass --switch-rail to change rails):

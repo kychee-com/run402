@@ -5073,7 +5073,7 @@ describe("CLI e2e happy path", () => {
     }
     assert.equal(threw, null, `should succeed, got: ${threw?.message || ""} / ${capturedStderr()}`);
     const del = calls.find(c => c.method === "DELETE" && c.pathNoQuery.startsWith("/mailboxes/v1/"));
-    assert.ok(del, "must issue DELETE /mailboxes/v1/<id>");
+    assert.ok(del, "must issue DELETE /mailboxes/v1/<mailbox_id>");
     assert.ok(/"deleted":\s*true/.test(capturedStdout()), `stdout should confirm deletion, got: ${capturedStdout()}`);
   });
 
@@ -5161,7 +5161,7 @@ describe("CLI destructive delete --confirm guard (GH-212)", () => {
     assert.ok(/--confirm/.test(stderr), `stderr should mention --confirm, got: ${stderr}`);
   });
 
-  it("projects delete <id> (no --confirm) refuses and does not call gateway", async () => {
+  it("projects delete <project_id> (no --confirm) refuses and does not call gateway", async () => {
     await seedActiveProject();
     const { run } = await import("./cli/lib/projects.mjs");
     const calls = [];
@@ -5180,7 +5180,7 @@ describe("CLI destructive delete --confirm guard (GH-212)", () => {
     assert.ok(/CONFIRMATION_REQUIRED/.test(capturedStderr()), `stderr: ${capturedStderr()}`);
   });
 
-  it("projects delete <id> --confirm proceeds and DELETEs the project", async () => {
+  it("projects delete <project_id> --confirm proceeds and DELETEs the project", async () => {
     await seedActiveProject();
     const { run } = await import("./cli/lib/projects.mjs");
     const calls = [];
@@ -5740,7 +5740,7 @@ describe("CLI domains list --project", () => {
     };
   }
 
-  it("domains list --project <id> resolves the project (does not parse '--project' as the id)", async () => {
+  it("domains list --project <project_id> resolves the project (does not parse '--project' as the id)", async () => {
     await seedActiveProject();
     const { run } = await import("./cli/lib/domains.mjs");
     const calls = [];
@@ -5755,7 +5755,7 @@ describe("CLI domains list --project", () => {
       globalThis.fetch = prevFetch;
     }
     assert.equal(threw, null,
-      `domains list --project <id> must not exit; got: ${threw?.message || ""} / stderr: ${capturedStderr()}`);
+      `domains list --project <project_id> must not exit; got: ${threw?.message || ""} / stderr: ${capturedStderr()}`);
     assert.ok(
       !/Project\s+--project\s+not found/.test(capturedStderr()),
       `must not parse '--project' as the positional id, got stderr: ${capturedStderr()}`,
@@ -5837,7 +5837,7 @@ describe("CLI subdomains list --project", () => {
     };
   }
 
-  it("subdomains list --project <id> resolves the project (does not parse '--project' as the id)", async () => {
+  it("subdomains list --project <project_id> resolves the project (does not parse '--project' as the id)", async () => {
     await seedActiveProject();
     const { run } = await import("./cli/lib/subdomains.mjs");
     const calls = [];
@@ -5852,7 +5852,7 @@ describe("CLI subdomains list --project", () => {
       globalThis.fetch = prevFetch;
     }
     assert.equal(threw, null,
-      `subdomains list --project <id> must not exit; got: ${threw?.message || ""} / stderr: ${capturedStderr()}`);
+      `subdomains list --project <project_id> must not exit; got: ${threw?.message || ""} / stderr: ${capturedStderr()}`);
     assert.ok(
       !/Project\s+--project\s+not found/.test(capturedStderr()),
       `must not parse '--project' as the positional id, got stderr: ${capturedStderr()}`,
@@ -6216,7 +6216,7 @@ describe("CLI webhook URL scheme validation (GH-192)", () => {
 
   // ── email webhooks update ───────────────────────────────────────────────
 
-  it("email webhooks update <id> --url javascript:alert(1) is rejected locally", async () => {
+  it("email webhooks update <webhook_id> --url javascript:alert(1) is rejected locally", async () => {
     await seedTestProject();
     const { run } = await import("./cli/lib/webhooks.mjs");
     const calls = [];
@@ -6380,7 +6380,7 @@ describe("CLI ai active-project default (GH-187)", () => {
       `Authorization header must use the active project's service_key; got: ${seen.auth}`);
   });
 
-  it("ai translate prj_<id> <text> --to <lang> still uses explicit id (GH-187)", async () => {
+  it("ai translate <project_id> <text> --to <lang> still uses explicit id (GH-187)", async () => {
     await seedActiveProject();
     // Seed a second project so the explicit id resolves.
     const { saveProject } = await import("./cli/lib/config.mjs");

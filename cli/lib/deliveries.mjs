@@ -30,7 +30,7 @@ const HELP = `run402 deliveries — did a notification actually land
 
 Usage:
   run402 deliveries list [--type <event_type>] [--since <iso>] [--limit N] [--after <cursor>]
-  run402 deliveries get <id>
+  run402 deliveries get <notification_id>
 
 Notes:
   - One row per delivery ATTEMPT, per channel, with its outcome — the audit
@@ -70,7 +70,7 @@ async function get(args) {
   assertKnownFlags(parsedArgs, ["--help", "-h"]);
   const positionals = positionalArgs(parsedArgs);
   if (positionals.length !== 1) {
-    fail({ code: "BAD_USAGE", message: "Usage: run402 notifications get <id>" });
+    fail({ code: "BAD_USAGE", message: "Usage: run402 deliveries get <notification_id>" });
   }
   walletAuthHeaders("/agent/v1/notifications");
   try {

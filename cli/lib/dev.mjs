@@ -29,12 +29,12 @@ import { fail } from "./sdk-errors.mjs";
 const HELP = `run402 dev — Run Astro dev with Run402 context
 
 Usage:
-  run402 dev [--port <n>] [--host <h>] [--project <id>]
+  run402 dev [--port <n>] [--host <h>] [--project <project_id>]
 
 Options:
   --port <n>        Astro dev port (default 4321)
   --host <h>        Astro dev host (default localhost)
-  --project <id>    Project id (default: RUN402_PROJECT_ID env var)
+  --project <project_id>    Project id (default: RUN402_PROJECT_ID env var)
 
 The command:
   1. Loads .env.local from the current directory (if present)
@@ -85,7 +85,7 @@ export async function run(sub, args = []) {
     fail({
       code: "BAD_USAGE",
       message: "Missing RUN402_PROJECT_ID.",
-      hint: "Set it in .env.local (or pass --project <id>). Run 'run402 projects provision' first if you don't have one.",
+      hint: "Set it in .env.local (or pass --project <project_id>). Run 'run402 projects provision' first if you don't have one.",
     });
   }
   if (!process.env.RUN402_SERVICE_KEY) {

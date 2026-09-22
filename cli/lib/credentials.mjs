@@ -26,18 +26,18 @@ Usage:
   run402 credentials <subcommand> [args...]
 
 Project credentials (on the gateway — named, revocable, rotatable):
-  issue --kind <anon|service> --name <name> [--project <id>] [--expires <iso8601>] [--import]
+  issue --kind <anon|service> --name <name> [--project <project_id>] [--expires <iso8601>] [--import]
                                 Mint one. The secret is printed ONCE.
                                 --import also writes it into this machine's
                                 local key cache (the cold-restart re-key path).
-  list [--project <id>] [--include-revoked]
+  list [--project <project_id>] [--include-revoked]
                                 List credentials (metadata only, never secrets)
-  status [--project <id>]       Are you still on the retiring legacy key?
-  rotate <credential_id> [--project <id>]
+  status [--project <project_id>]       Are you still on the retiring legacy key?
+  rotate <credential_id> [--project <project_id>]
                                 Replace in one step; new secret printed ONCE
-  revoke <credential_id> [--project <id>] [--reason <text>]
+  revoke <credential_id> [--project <project_id>] [--reason <text>]
                                 Revoke immediately, freeing the name
-  token [--project <id>] [--kind <anon|service>]
+  token [--project <project_id>] [--kind <anon|service>]
                                 Mint a SHORT-LIVED token. Works with only a
                                 delegate — the unattended recovery path.
 
@@ -68,12 +68,12 @@ Usage:
 
 Subcommands:
   list                                List cached project-key entries, redacted
-  status --project <id>               Show one cached entry, redacted
-  import --project <id> --service-key-stdin
-  import --project <id> --service-key-env <env>
-  import --project <id> --anon-key-env <env>   Rotate only the anon key
-  export --project <id> --reveal       Print cached keys, including secrets
-  remove --project <id>                Remove one cached key entry
+  status --project <project_id>               Show one cached entry, redacted
+  import --project <project_id> --service-key-stdin
+  import --project <project_id> --service-key-env <env>
+  import --project <project_id> --anon-key-env <env>   Rotate only the anon key
+  export --project <project_id> --reveal       Print cached keys, including secrets
+  remove --project <project_id>                Remove one cached key entry
 
 Notes:
   - This is a LOCAL CACHE surface. It is not project inventory.
@@ -89,7 +89,7 @@ const SUB_HELP = {
   issue: `run402 credentials issue — mint a named project credential
 
 Usage:
-  run402 credentials issue --kind <anon|service> --name <name> [--project <id>] [--import]
+  run402 credentials issue --kind <anon|service> --name <name> [--project <project_id>] [--import]
                            [--expires <iso8601>]
 
 --kind    "anon" is the tenant-facing key; "service" is the privileged one.
@@ -112,14 +112,14 @@ can NEVER do this; use 'run402 credentials token' instead.
   list: `run402 credentials list — list a project's credentials
 
 Usage:
-  run402 credentials list [--project <id>] [--include-revoked]
+  run402 credentials list [--project <project_id>] [--include-revoked]
 
 Metadata only — never a secret or a secret hash. Only project.read is needed.
 `,
   status: `run402 credentials status — are you still on the retiring legacy key?
 
 Usage:
-  run402 credentials status [--project <id>]
+  run402 credentials status [--project <project_id>]
 
 Returns state "legacy" while the project still depends on the derived
 anon/service keys, or "rotatable" once it holds credentials it can revoke
@@ -133,7 +133,7 @@ date the platform has not committed to.
   rotate: `run402 credentials rotate — replace a credential in one step
 
 Usage:
-  run402 credentials rotate <credential_id> [--project <id>]
+  run402 credentials rotate <credential_id> [--project <project_id>]
 
 Mints a replacement and revokes the old one in a single transaction, keeping
 the name. The NEW secret is printed once.
@@ -146,7 +146,7 @@ compromised.
   revoke: `run402 credentials revoke — revoke a credential immediately
 
 Usage:
-  run402 credentials revoke <credential_id> [--project <id>] [--reason <text>]
+  run402 credentials revoke <credential_id> [--project <project_id>] [--reason <text>]
 
 Takes effect for every subsequent request and frees the name for reuse.
 Requires owner membership plus step-up.
@@ -154,7 +154,7 @@ Requires owner membership plus step-up.
   token: `run402 credentials token — mint a short-lived project token
 
 Usage:
-  run402 credentials token [--project <id>] [--kind <anon|service>]
+  run402 credentials token [--project <project_id>] [--kind <anon|service>]
 
 The cold-restart recovery path, and the ONE credential call an agent can make
 with no human present: a delegate is accepted here. There is no step-up because
@@ -214,7 +214,7 @@ function requireProjectFlag(projectId, usage) {
   if (!projectId) {
     fail({
       code: "BAD_USAGE",
-      message: "Missing --project <id>.",
+      message: "Missing --project <project_id>.",
       hint: usage,
     });
   }
@@ -227,7 +227,7 @@ function requireCachedProject(projectId) {
     fail({
       code: "PROJECT_CREDENTIAL_NOT_FOUND",
       message: `No local project credentials cached for ${projectId}.`,
-      hint: "Import keys with `run402 credentials project-keys import --project <id> --service-key-stdin` if this operation truly requires local project credentials.",
+      hint: "Import keys with `run402 credentials project-keys import --project <project_id> --service-key-stdin` if this operation truly requires local project credentials.",
       details: { project_id: projectId, ...provenance() },
       next_actions: [{
         type: "run_command",
@@ -256,7 +256,7 @@ async function status(args) {
   if (rest.length > 0) {
     fail({ code: "BAD_USAGE", message: `Unexpected argument for project-keys status: ${rest[0]}` });
   }
-  const id = requireProjectFlag(projectId, "run402 credentials project-keys status --project <id>");
+  const id = requireProjectFlag(projectId, "run402 credentials project-keys status --project <project_id>");
   console.log(JSON.stringify(redactedEntry(id, getProject(id)), null, 2));
 }
 
@@ -311,7 +311,7 @@ async function importKey(args) {
   if (rest.length > 0) {
     fail({ code: "BAD_USAGE", message: `Unexpected argument for project-keys import: ${rest[0]}` });
   }
-  const id = requireProjectFlag(projectId, "run402 credentials project-keys import --project <id> --service-key-stdin");
+  const id = requireProjectFlag(projectId, "run402 credentials project-keys import --project <project_id> --service-key-stdin");
   // Resolve --anon-key-env before requiring a service key, so a missing service
   // key can report against the flags actually passed and an anon-only rotation
   // can reuse the cached service key.
@@ -346,12 +346,12 @@ async function exportKey(args) {
   if (rest.length > 0) {
     fail({ code: "BAD_USAGE", message: `Unexpected argument for project-keys export: ${rest[0]}` });
   }
-  const id = requireProjectFlag(projectId, "run402 credentials project-keys export --project <id> --reveal");
+  const id = requireProjectFlag(projectId, "run402 credentials project-keys export --project <project_id> --reveal");
   if (!parsed.includes("--reveal")) {
     fail({
       code: "REVEAL_REQUIRED",
       message: "Exporting full project keys requires --reveal.",
-      hint: "Use `run402 credentials project-keys status --project <id>` for redacted output.",
+      hint: "Use `run402 credentials project-keys status --project <project_id>` for redacted output.",
       details: { project_id: id, ...provenance() },
     });
   }
@@ -364,7 +364,7 @@ async function remove(args) {
   if (rest.length > 0) {
     fail({ code: "BAD_USAGE", message: `Unexpected argument for project-keys remove: ${rest[0]}` });
   }
-  const id = requireProjectFlag(projectId, "run402 credentials project-keys remove --project <id>");
+  const id = requireProjectFlag(projectId, "run402 credentials project-keys remove --project <project_id>");
   const existed = Boolean(getProject(id));
   removeProject(id, projectCredentialsFile());
   console.log(JSON.stringify({ project_id: id, removed: existed, ...provenance() }, null, 2));
@@ -423,7 +423,7 @@ async function issue(args) {
   requirePositionalCount(rest, ISSUE_VALUE_FLAGS, {
     min: 0,
     max: 0,
-    command: "run402 credentials issue --kind <anon|service> --name <name> [--project <id>] [--import]",
+    command: "run402 credentials issue --kind <anon|service> --name <name> [--project <project_id>] [--import]",
     missing: "",
   });
   if (kind !== "anon" && kind !== "service") {
@@ -485,7 +485,7 @@ async function listCredentials(args) {
   requirePositionalCount(rest, ["--project"], {
     min: 0,
     max: 0,
-    command: "run402 credentials list [--project <id>]",
+    command: "run402 credentials list [--project <project_id>]",
     missing: "",
   });
   try {
@@ -503,7 +503,7 @@ async function credentialStatus(args) {
   requirePositionalCount(rest, ["--project"], {
     min: 0,
     max: 0,
-    command: "run402 credentials status [--project <id>]",
+    command: "run402 credentials status [--project <project_id>]",
     missing: "",
   });
   try {
@@ -527,7 +527,7 @@ async function rotate(args) {
   const [credentialId] = requirePositionalCount(rest, ["--project"], {
     min: 1,
     max: 1,
-    command: "run402 credentials rotate <credential_id> [--project <id>]",
+    command: "run402 credentials rotate <credential_id> [--project <project_id>]",
     missing: "Missing <credential_id>. Find it with: run402 credentials list",
   });
   try {
@@ -545,7 +545,7 @@ async function revoke(args) {
   const [credentialId] = requirePositionalCount(rest, ["--project", "--reason"], {
     min: 1,
     max: 1,
-    command: "run402 credentials revoke <credential_id> [--project <id>]",
+    command: "run402 credentials revoke <credential_id> [--project <project_id>]",
     missing: "Missing <credential_id>. Find it with: run402 credentials list",
   });
   try {
@@ -564,7 +564,7 @@ async function token(args) {
   requirePositionalCount(rest, ["--project", "--kind"], {
     min: 0,
     max: 0,
-    command: "run402 credentials token [--project <id>]",
+    command: "run402 credentials token [--project <project_id>]",
     missing: "",
   });
   if (kind && kind !== "anon" && kind !== "service") {

@@ -101,11 +101,11 @@ export function findProject(id) {
     fail({
       code: "PROJECT_CREDENTIAL_NOT_FOUND",
       message: `No local project credentials cached for ${idStr}.`,
-      hint: "Use a principal-auth command, or import project keys with `run402 credentials project-keys import --project <id> --service-key-stdin`.",
+      hint: "Use a principal-auth command, or import project keys with `run402 credentials project-keys import --project <project_id> --service-key-stdin`.",
       details: { project_id: idStr, source: "local_cache", cache_path: projectCredentialsFile(), wallet: activeProfile(), profile: activeProfile() },
       next_actions: [{
         type: "run_command",
-        command: `run402 credentials project-keys status --project ${idStr || "<id>"}`,
+        command: `run402 credentials project-keys status --project ${idStr || "<project_id>"}`,
         why: "Inspect the local project-key cache without revealing secrets.",
       }],
     });
@@ -119,7 +119,7 @@ export function resolveProject(id) {
     fail({
       code: "PROJECT_REQUIRED",
       message: "no project specified and no active project set.",
-      hint: "Pass --project <id>, set RUN402_PROJECT_ID, or run: run402 projects use <id>",
+      hint: "Pass --project <project_id>, set RUN402_PROJECT_ID, or run: run402 projects use <project_id>",
       next_actions: [selectProjectAction()],
     });
   }
@@ -132,7 +132,7 @@ export function resolveProjectId(id) {
     fail({
       code: "PROJECT_REQUIRED",
       message: "no project specified and no active project set.",
-      hint: "Pass --project <id>, set RUN402_PROJECT_ID, or run: run402 projects use <id>",
+      hint: "Pass --project <project_id>, set RUN402_PROJECT_ID, or run: run402 projects use <project_id>",
       next_actions: [selectProjectAction()],
     });
   }

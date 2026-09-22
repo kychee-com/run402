@@ -15,9 +15,9 @@ Usage:
   run402 grants <subcommand> [args...]
 
 Subcommands:
-  create <wallet> --capability <cap> [--project <id>] [--policy <json>] [--expires <iso8601>]
+  create <wallet> --capability <cap> [--project <project_id>] [--policy <json>] [--expires <iso8601>]
                                  Issue a capability grant (owner of the project's org)
-  revoke <grant_id> [--project <id>]
+  revoke <grant_id> [--project <project_id>]
                                  Revoke a capability grant
 
 Legacy (still supported):
@@ -40,7 +40,7 @@ const SUB_HELP = {
   create: `run402 grants create — issue a per-project capability grant
 
 Usage:
-  run402 grants create <wallet> --capability <cap> [--project <id>] [--policy <json>] [--expires <iso8601>]
+  run402 grants create <wallet> --capability <cap> [--project <project_id>] [--policy <json>] [--expires <iso8601>]
 
 Legacy (still supported):
   run402 grants create <project_id> <wallet> <capability> [options]
@@ -49,7 +49,7 @@ Arguments:
   <wallet>       EVM address or named wallet the grant is issued to
 
 Options:
-  --project <id>      Project to grant access to (defaults to the active project)
+  --project <project_id>      Project to grant access to (defaults to the active project)
   --capability <cap>  e.g. deploy, functions:write (alternative to the legacy positional)
   --policy <json>     Capability-scoping policy object (gateway-interpreted)
   --expires <iso8601> Expiry timestamp; omit for a non-expiring grant
@@ -59,7 +59,7 @@ Requires you to be an owner of the project's org.
   revoke: `run402 grants revoke — revoke a per-project capability grant
 
 Usage:
-  run402 grants revoke <grant_id> [--project <id>]
+  run402 grants revoke <grant_id> [--project <project_id>]
 
 Legacy (still supported):
   run402 grants revoke <project_id> <grant_id>
@@ -81,7 +81,7 @@ async function create(args) {
   const pos = requirePositionalCount(rest, CREATE_VALUE_FLAGS, {
     min: expected,
     max: expected,
-    command: "run402 grants create <wallet> --capability <cap> [--project <id>] [--policy <json>] [--expires <iso8601>]",
+    command: "run402 grants create <wallet> --capability <cap> [--project <project_id>] [--policy <json>] [--expires <iso8601>]",
     missing: capabilityFlag ? "Missing <wallet>." : "Missing <wallet> and/or <capability>.",
   });
   const wallet = pos[0];
@@ -107,7 +107,7 @@ async function revoke(args) {
   const [grantId] = requirePositionalCount(rest, ["--project"], {
     min: 1,
     max: 1,
-    command: "run402 grants revoke <grant_id> [--project <id>]",
+    command: "run402 grants revoke <grant_id> [--project <project_id>]",
     missing: "Missing <grant_id>.",
   });
   try {

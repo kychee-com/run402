@@ -349,7 +349,7 @@ Full link syntax:
 
 ```bash
 run402 ci link github \
-  [--project <id>] \
+  [--project <project_id>] \
   [--manifest <path>] \
   [--repo <owner/repo>] \
   [--branch <name> | --environment <name>] \
@@ -421,7 +421,7 @@ Output on success:
 Management:
 
 ```bash
-run402 ci list [--project <id>]
+run402 ci list [--project <project_id>]
 run402 ci revoke <binding_id>
 ```
 

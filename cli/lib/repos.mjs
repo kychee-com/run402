@@ -63,9 +63,9 @@ Usage:
   run402 repos <verb> [options] — fifteen verbs, tiered by how often you reach for them:
 
 Common:
-  run402 repos create [name]  [--org <org_id>] [--dir <path>] [--nested] [--tier <tier>] [--project <id>]
+  run402 repos create [name]  [--org <org_id>] [--dir <path>] [--nested] [--tier <tier>] [--project <project_id>]
                               [--byo <s3://bucket/prefix>] [--profile <name> | --ambient] [--region <r>] [--endpoint <url>] [--no-init]
-  run402 repos view           [--project <id>] [--repo <repo_id>] [--human]
+  run402 repos view           [--project <project_id>] [--repo <repo_id>] [--human]
   run402 repos list           [--org <org_id>] [--human]
 
 Then plain git, forever:
@@ -73,38 +73,38 @@ Then plain git, forever:
   git clone run402::<org>/<repo>
 
 Handoff (pass a working tree to another agent):
-  run402 repos handoff [--project <id>] [--repo <repo_id>] [--ttl <seconds>] [--role <role>]
+  run402 repos handoff [--project <project_id>] [--repo <repo_id>] [--ttl <seconds>] [--role <role>]
                         [--include-sensitive <glob>]... [--note-file <path>] [--json] [--list] [--revoke <handoff_id>]
                         (the Handoff Note is JSON piped on stdin when not using --note-file)
   run402 repos resume  <kgh1_…|--key-stdin> [--to <dir>] [--no-init] [--json]
 
 Invite (bring a second agent into the SAME work, dirty tree included):
-  run402 repos invite  [--project <id>] [--repo <repo_id>] [--room <key>] [--ttl <seconds>] [--role <role>]
+  run402 repos invite  [--project <project_id>] [--repo <repo_id>] [--room <key>] [--ttl <seconds>] [--role <role>]
                         [--include-sensitive <glob>]... [--note-file <path>] [--json] [--list] [--revoke <invite_id>]
                         (the Invite Note is JSON piped on stdin when not using --note-file)
   run402 repos join    <kgi1_…|--key-stdin> [--to <dir>] [--no-init] [--json]
 
 Occasional:
-  run402 repos snapshot [--project <id>] [--repo <repo_id>] [--message <text>] [--checkpoint] [--dry-run] [--allow-dirty] [--manifest-out <path>]
-  run402 repos mirror   [<destination>] [--off] [--backfill] [--profile <name> | --ambient] [--region <r>] [--endpoint <url>] [--project <id>] [--repo <repo_id>]
+  run402 repos snapshot [--project <project_id>] [--repo <repo_id>] [--message <text>] [--checkpoint] [--dry-run] [--allow-dirty] [--manifest-out <path>]
+  run402 repos mirror   [<destination>] [--off] [--backfill] [--profile <name> | --ambient] [--region <r>] [--endpoint <url>] [--project <project_id>] [--repo <repo_id>]
   run402 repos recover  <source> --out <dir> [--repo <repo_id>] [--profile <name> | --ambient] [--region <r>] [--endpoint <url>]
                         [--bundle <file>] [--code <SRC1-…>] [--receipt <file>] [--rp-id <host>] [--human]
   run402 repos recovery-bundle [--out <file> | --out -]
 
 Lifecycle:
   run402 repos rename <new_name> [--repo <repo_id> | --project <project_id>]
-  run402 repos delete [--project <id>] [--repo <repo_id>] [--force]
+  run402 repos delete [--project <project_id>] [--repo <repo_id>] [--force]
 
 Maintenance:
-  run402 repos fsck   [--project <id>] [--repo <repo_id>] [--mirror] [--budget <n>] [--no-write] [--human]
-  run402 repos gc     [--project <id>] [--repo <repo_id>] [--force-headroom] [--submit --intent-core <path> --verifier-receipt <path> [--wait]]
+  run402 repos fsck   [--project <project_id>] [--repo <repo_id>] [--mirror] [--budget <n>] [--no-write] [--human]
+  run402 repos gc     [--project <project_id>] [--repo <repo_id>] [--force-headroom] [--submit --intent-core <path> --verifier-receipt <path> [--wait]]
   run402 repos daemon <status|stop>   The resident helper engine (gitvault-persistent-helper) — inspect or retire it; nothing requires either
-  run402 repos access [--project <id>] [--repo <repo_id>] [--human]
-  run402 repos access repair [--project <id>] [--repo <repo_id>] --recipient-state-version <n> --recipient-revocation-version <n>
-  run402 repos access revoke-key <principal_id> [--project <id>] [--repo <repo_id>]
-  run402 repos access declare-exposure [--project <id>] [--repo <repo_id>]
-  run402 repos access repin   [--project <id>] [--repo <repo_id>] --principal <principal_id> --fingerprint <ek_fingerprint>
-  run402 repos policy <required|grandfathered> [--project <id>] [--repo <repo_id>] [--reason <why>]
+  run402 repos access [--project <project_id>] [--repo <repo_id>] [--human]
+  run402 repos access repair [--project <project_id>] [--repo <repo_id>] --recipient-state-version <n> --recipient-revocation-version <n>
+  run402 repos access revoke-key <principal_id> [--project <project_id>] [--repo <repo_id>]
+  run402 repos access declare-exposure [--project <project_id>] [--repo <repo_id>]
+  run402 repos access repin   [--project <project_id>] [--repo <repo_id>] --principal <principal_id> --fingerprint <ek_fingerprint>
+  run402 repos policy <required|grandfathered> [--project <project_id>] [--repo <repo_id>] [--reason <why>]
   run402 repos policy auto-gc [<generations>|off]   (local, per-checkout — no --project/--repo)
 
 Every verb above also accepts -v/--verbose (a stderr summary line of request
@@ -115,7 +115,7 @@ Subcommands:
   create   Provision (or, with --project, ADOPT an existing project), ALLOCATE
            its vault (mints key material and, on first allocation, a one-shot
            recovery receipt), and scaffold the git remote — origin when free,
-           run402 when taken. \`--project <id>\` allocates for a project that already exists,
+           run402 when taken. \`--project <project_id>\` allocates for a project that already exists,
            nothing is provisioned. \`[name]\` is inferred from an existing git
            remote's basename or the directory name when unambiguous — NEVER a
            prompt; if the directory and an existing remote disagree, or
@@ -376,7 +376,7 @@ Subcommands:
            \`off\` (or \`0\`) disables it. No value prints the current setting.
 
 Options:
-  --project <id>    Project whose repo to act on (defaults to the active project)
+  --project <project_id>    Project whose repo to act on (defaults to the active project)
   --repo <repo_id>  Address the repo directly by id, skipping project lookup
   --org <org_id>    create/list: the owning organization (create resolves it
                     the same way \`projects provision\` does when omitted)
@@ -655,7 +655,7 @@ async function formatRepoHuman(s, mirror) {
   lines.push(`Address: ${formatRepoAddress(s)}${remotePart}`);
 
   if (!s.vault) {
-    lines.push("Repo: not allocated yet for this project — run 'run402 repos create --project <id>' to allocate one.");
+    lines.push("Repo: not allocated yet for this project — run 'run402 repos create --project <project_id>' to allocate one.");
     if (s.warnings.length > 0) lines.push(`Warnings: ${s.warnings.map((w) => w.message).join(" ")}`);
     return lines.join("\n");
   }
@@ -1040,7 +1040,7 @@ async function create(args) {
       fail({
         code: "BAD_USAGE",
         message: "a name positional and --project are mutually exclusive — --project adopts an EXISTING project.",
-        hint: "run402 repos create --project <id> to adopt, or run402 repos create <name> to provision a new one. Name it afterward with `run402 repos rename`.",
+        hint: "run402 repos create --project <project_id> to adopt, or run402 repos create <name> to provision a new one. Name it afterward with `run402 repos rename`.",
       });
     }
     if (flagValue(a, "--tier") != null || flagValue(a, "--idempotency-key") != null) {
@@ -1376,7 +1376,7 @@ async function del(args) {
   } else {
     ({ projectId, rest } = resolveProjectSelector(a, { rejectBareFirst: true }));
   }
-  requirePositionalCount(rest.filter((x) => x !== "--force"), [], { min: 0, max: 0, command: "run402 repos delete [--project <id>] [--repo <repo_id>] [--force]", missing: "" });
+  requirePositionalCount(rest.filter((x) => x !== "--force"), [], { min: 0, max: 0, command: "run402 repos delete [--project <project_id>] [--repo <repo_id>] [--force]", missing: "" });
   const force = a.includes("--force");
 
   let status;
@@ -2935,7 +2935,7 @@ async function accessRevokeKey(args) {
  * eligible starting at the NEXT rotation.
  */
 /**
- * `repos access repin --principal <id> --fingerprint <ek_…>` — a KEY-HOLDER
+ * `repos access repin --principal <principal_id> --fingerprint <ek_…>` — a KEY-HOLDER
  * explicitly accepts a recipient's CHANGED key (gitvault-agent-envelopes D3).
  * The session-start reconcile refuses `pinned_key_mismatch` and never
  * bypasses it, not even after an owner's revoke — acceptance names the new

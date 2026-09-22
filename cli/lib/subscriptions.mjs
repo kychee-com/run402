@@ -35,7 +35,7 @@ import {
 const HELP = `run402 subscriptions — which events go where
 
 Usage:
-  run402 subscriptions add --binding <binding_id> [--project <id>] [--source app|platform] [--type a,b] [--class a,b]
+  run402 subscriptions add --binding <binding_id> [--project <project_id>] [--source app|platform] [--type a,b] [--class a,b]
   run402 subscriptions list
   run402 subscriptions rm <subscription_id>
 
@@ -68,7 +68,7 @@ function splitCsv(value) {
  *  alias for anyone who learned it from that help text. */
 export const SUBSCRIPTIONS_ADD_VALUE_FLAGS = ["--binding", "--contact", "--project", "--source", "--type", "--class"];
 export const SUBSCRIPTIONS_ADD_USAGE =
-  "run402 subscriptions add --binding <binding_id> [--project <id>] [--source app|platform] [--type a,b] [--class a,b]";
+  "run402 subscriptions add --binding <binding_id> [--project <project_id>] [--source app|platform] [--type a,b] [--class a,b]";
 export { HELP as SUBSCRIPTIONS_HELP };
 
 async function rulesAdd(args) {

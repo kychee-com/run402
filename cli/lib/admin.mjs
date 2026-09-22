@@ -17,12 +17,12 @@ Subcommands:
                                          (\`reactivated: true\` in the response).
                                          Replaces the v1.56 per-project pin.
 
-  archive [--project <id>] [--reason "..."]  Moderate-archive a single project. Sets
+  archive [--project <project_id>] [--reason "..."]  Moderate-archive a single project. Sets
                                          projects.archived_at = NOW(). Independent
                                          of organization lifecycle; the rest of the
                                          organization's projects keep serving.
 
-  reactivate [--project <id>]            Un-archive a project (flips archived_at
+  reactivate [--project <project_id>]            Un-archive a project (flips archived_at
                                          back to NULL). In v1.57 this no longer
                                          touches organization-level lifecycle — to
                                          reactivate a grace-state account, use
@@ -65,7 +65,7 @@ Examples:
   archive: `run402 admin archive — Moderate-archive a single project
 
 Usage:
-  run402 admin archive [--project <id>] [--reason "..."]
+  run402 admin archive [--project <project_id>] [--reason "..."]
 
 Legacy (still supported):
   run402 admin archive <project_id> [--reason "..."]
@@ -87,7 +87,7 @@ Examples:
   reactivate: `run402 admin reactivate — Un-archive a project
 
 Usage:
-  run402 admin reactivate [--project <id>]
+  run402 admin reactivate [--project <project_id>]
 
 Legacy (still supported):
   run402 admin reactivate <project_id>
@@ -143,7 +143,7 @@ async function leasePerpetual(args) {
 }
 
 async function archive(args) {
-  // Canonical: --project <id>; legacy leading prj_... positional kept.
+  // Canonical: --project <project_id>; legacy leading prj_... positional kept.
   const { projectId, rest } = resolveProjectSelector(args, { valueFlags: FLAGS_BY_SUB.archive.values });
   let reason;
   for (let i = 0; i < rest.length; i++) {

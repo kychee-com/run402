@@ -53,8 +53,8 @@ Usage:
   run402 rooms leave [<presence_id>]
 
 Addressing:
-  --project <id>    That project's DEFAULT room (the room key IS the project id)
-  --org <id> --room <key>   A named org room
+  --project <project_id>    That project's DEFAULT room (the room key IS the project id)
+  --org <org_id> --room <key>   A named org room
   (omit both)       Resolved from RUN402_ROOM, a .run402.json binding, or the
                     wallet profile's selected org
 

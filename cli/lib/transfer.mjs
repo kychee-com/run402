@@ -140,7 +140,7 @@ async function init(args) {
   const projectFlag = flagValue(parsedArgs, "--project");
   const projectId = await resolveProjectId(projectFlag);
   if (!projectId) {
-    fail({ code: "NO_PROJECT", message: "No project id. Pass --project <id> or set an active project with 'run402 projects use <id>'." });
+    fail({ code: "NO_PROJECT", message: "No project id. Pass --project <project_id> or set an active project with 'run402 projects use <project_id>'." });
   }
   const billingPolicy = flagValue(parsedArgs, "--billing-policy");
   if (billingPolicy !== null && !BILLING_POLICIES.has(billingPolicy)) {

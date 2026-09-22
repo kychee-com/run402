@@ -49,7 +49,7 @@ Advisory, always:
   presence.
 
 Room addressing:
-  Default room of the active project with no flags; --project <id> for another
+  Default room of the active project with no flags; --project <project_id> for another
   project; --org <org_id> --room <key> (or RUN402_ROOM=<org_id>/<key>) for a
   named org room. --room <key> alone works when the org resolves on its own
   (--org / RUN402_ORG / the 'org' key of the nearest .run402.json / 'orgs use'),

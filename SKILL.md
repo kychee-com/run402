@@ -78,7 +78,7 @@ For Core, `init --api-base` stores the target in the active profile and does not
 | Sign on-chain | `run402 contracts call` |
 | One-call full-stack deploy | `run402 deploy --manifest app.json` |
 
-The active project is sticky — `run402 projects use <id>` server-validates the project and makes it the default for every subsequent `<id>`-taking command. Most commands work without an explicit `<id>` once a project is active.
+The active project is sticky — `run402 projects use <project_id>` server-validates the project and makes it the default for every subsequent `<project_id>`-taking command. Most commands work without an explicit `<project_id>` once a project is active.
 
 ## Multiple wallets (profiles)
 
@@ -112,9 +112,9 @@ Neither expires. Lease enforcement happens server-side. This is a local credenti
 
 ```bash
 run402 credentials project-keys list
-run402 credentials project-keys status --project <id>      # redacted cache status
-run402 credentials project-keys export --project <id> --reveal
-run402 projects get <id>                                   # server project detail, no keys
+run402 credentials project-keys status --project <project_id>      # redacted cache status
+run402 credentials project-keys export --project <project_id> --reveal
+run402 projects get <project_id>                                   # server project detail, no keys
 ```
 
 ## Error Envelopes and Safe Retry
@@ -127,7 +127,7 @@ Fields to use:
 - `safe_to_retry`: repeating the same request should not duplicate or corrupt a mutation
 - `mutation_state`: one of `none`, `not_started`, `committed`, `rolled_back`, `partial`, `unknown`
 - `trace_id`: include when reporting an issue
-- `request_id`: routed/function failure handle; use `run402 functions logs <id> <name> --request-id <req_...>` for diagnostics. Distinct from gateway `trace_id`.
+- `request_id`: routed/function failure handle; use `run402 functions logs <project_id> <name> --request-id <req_...>` for diagnostics. Distinct from gateway `trace_id`.
 - `details`: structured route-specific context
 - `next_actions`: advisory actions e.g. `authenticate`, `submit_payment`, `renew_tier`, `check_usage`, `retry`, `resume_deploy`, `edit_request`, `edit_migration`, `create_project`, `initialize_wallet`, `deploy`; never treat them as blindly executable. CLI-resolvable entries carry a literal `command`. Cold start: from `run402 deploy`, follow the chain it hands back — no local wallet -> `run402 init`, no tier -> `run402 tier set prototype`, no project -> `run402 projects provision` — then retry. `tier set` and `projects provision` accept `--idempotency-key` so retries never double-charge
 
@@ -484,8 +484,8 @@ This validates the auth/expose manifest used by `manifest.json`, `database.expos
 For ad-hoc changes outside a deploy — same JSON shape, no bundle:
 
 ```bash
-run402 projects apply-expose <id> --file manifest.json
-run402 projects get-expose   <id>     # source: "applied" | "introspected"
+run402 projects apply-expose <project_id> --file manifest.json
+run402 projects get-expose   <project_id>     # source: "applied" | "introspected"
 ```
 
 `get-expose` returns the live state. `source: "applied"` means it came from a prior `apply-expose` (or a bundled `manifest.json`); `"introspected"` means no manifest has ever been applied and the response was reconstructed from live DB state.
@@ -560,15 +560,15 @@ run402 cdn wait-fresh <url> --sha <hex> --timeout 120       # poll until fresh
 ## Database
 
 ```bash
-run402 projects sql <id> "CREATE TABLE items (id serial PRIMARY KEY, title text NOT NULL, user_id uuid)"
-run402 projects sql <id> --file migrations.sql
-run402 projects sql <id> "SELECT * FROM items WHERE id = \$1" --params '[42]'
+run402 projects sql <project_id> "CREATE TABLE items (id serial PRIMARY KEY, title text NOT NULL, user_id uuid)"
+run402 projects sql <project_id> --file migrations.sql
+run402 projects sql <project_id> "SELECT * FROM items WHERE id = \$1" --params '[42]'
 
-run402 projects rest <id> items "select=id,title&order=id.desc&limit=10"
-run402 projects validate-expose <id> --file manifest.json --migration-file migrations.sql
-run402 projects schema <id>          # introspect tables, columns, RLS
-run402 projects usage  <id>          # API calls, storage, lease expiry
-run402 projects costs <id> --window 30d  # staff-only finance; admin wallet required
+run402 projects rest <project_id> items "select=id,title&order=id.desc&limit=10"
+run402 projects validate-expose <project_id> --file manifest.json --migration-file migrations.sql
+run402 projects schema <project_id>          # introspect tables, columns, RLS
+run402 projects usage  <project_id>          # API calls, storage, lease expiry
+run402 projects costs <project_id> --window 30d  # staff-only finance; admin wallet required
 ```
 
 ### Idempotent migrations
@@ -594,20 +594,20 @@ The SQL endpoint blocks: `CREATE EXTENSION`, `COPY ... PROGRAM`, `ALTER SYSTEM`,
 Node 22 runtime. Handler: `export default async (req: Request) => Response`.
 
 ```bash
-run402 functions deploy <id> my-fn --file fn.ts \
+run402 functions deploy <project_id> my-fn --file fn.ts \
   --timeout 30 --memory 256 \
   --schedule "*/15 * * * *" \
   --deps "stripe,zod@^3,date-fns@3.6.0"
 
-run402 functions invoke my-fn --project <id> --body-file request.json
-run402 functions invoke paid-fn --project <id> --body-file request.json --idempotency-key paid:call:123 --wait
-run402 functions logs   <id> my-fn --tail 100 --request-id req_abc123 --follow
-run402 functions runs create <id> my-fn --event-type reminder.send --idempotency-key reminder:123 --delay 10m
-run402 functions update <id> my-fn --schedule "0 */6 * * *"
-run402 functions rebuild <id> my-fn      # refresh ONE function onto the current platform runtime
-run402 functions rebuild <id> --all      # refresh every function in the project
-run402 functions list   <id>
-run402 functions delete <id> my-fn
+run402 functions invoke my-fn --project <project_id> --body-file request.json
+run402 functions invoke paid-fn --project <project_id> --body-file request.json --idempotency-key paid:call:123 --wait
+run402 functions logs   <project_id> my-fn --tail 100 --request-id req_abc123 --follow
+run402 functions runs create <project_id> my-fn --event-type reminder.send --idempotency-key reminder:123 --delay 10m
+run402 functions update <project_id> my-fn --schedule "0 */6 * * *"
+run402 functions rebuild <project_id> my-fn      # refresh ONE function onto the current platform runtime
+run402 functions rebuild <project_id> --all      # refresh every function in the project
+run402 functions list   <project_id>
+run402 functions delete <project_id> my-fn
 ```
 
 `functions invoke --body <json>` validates JSON locally and never sends malformed or empty input. Prefer `--body-file <path>` for agents and Windows `cmd.exe`; it removes shell quoting from the request-body path.
@@ -764,7 +764,7 @@ Host ownership is server-validated; cross-project hosts throw `R402_CACHE_INVALI
 
 **Agent-DX shortcuts:**
 
-- `run402 doctor` — config/credential/network/tier/gitvault/source-scan health checks. Output is JSON by default (no flag needed); exit 1 on fail. `--only <check>` (repeatable) runs just the named check(s) and suppresses the rest, including the monorepo source scan — e.g. `run402 doctor --only gitvault` for a fast, uncluttered vault diagnosis; `run402 doctor --help` lists every check name. `--project <id>` scopes the vault check to a specific project instead of the repo-standing default.
+- `run402 doctor` — config/credential/network/tier/gitvault/source-scan health checks. Output is JSON by default (no flag needed); exit 1 on fail. `--only <check>` (repeatable) runs just the named check(s) and suppresses the rest, including the monorepo source scan — e.g. `run402 doctor --only gitvault` for a fast, uncluttered vault diagnosis; `run402 doctor --help` lists every check name. `--project <project_id>` scopes the vault check to a specific project instead of the repo-standing default.
 - `run402 dev` — runs `npx astro dev` with `.env.local` + Run402 credentials in scope.
 - `run402 logs --request-id req_XYZ` — fetch logs for a specific request id across every function in the project (parallel scan, timestamp-ascending merge).
 
@@ -845,11 +845,11 @@ Pass a 5-field cron expression. To remove a schedule: `--schedule-remove`. Tier 
 Injected as `process.env.<KEY>` inside every function. Values are write-only — `list` returns keys and timestamps only, never values or value-derived hashes. Deploy manifests use `secrets.require[]` to assert keys exist; they never carry secret values.
 
 ```bash
-run402 secrets set    <id> STRIPE_KEY --file ./.secrets/stripe-key
-printf %s "$STRIPE_KEY" | run402 secrets set <id> STRIPE_KEY --stdin
-run402 secrets set    <id> JWT_PRIVATE --file ./private.pem
-run402 secrets list   <id>
-run402 secrets delete <id> STALE_KEY
+run402 secrets set    <project_id> STRIPE_KEY --file ./.secrets/stripe-key
+printf %s "$STRIPE_KEY" | run402 secrets set <project_id> STRIPE_KEY --stdin
+run402 secrets set    <project_id> JWT_PRIVATE --file ./private.pem
+run402 secrets list   <project_id>
+run402 secrets delete <project_id> STALE_KEY
 ```
 
 ## Jobs
@@ -857,12 +857,12 @@ run402 secrets delete <id> STALE_KEY
 Platform-managed jobs. This is not arbitrary Docker execution: submit the gateway-shaped request with `job_type`, `input["input.json"]`, and `max_cost_usd_micros`, then inspect status/logs, cancel one run, or purge all project runs.
 
 ```bash
-run402 jobs submit --file job.json --project <id>
-run402 jobs get    <job_id> --project <id>
-run402 jobs logs   <job_id> --project <id> --tail 100
-run402 jobs cancel <job_id> --project <id>
-run402 jobs purge           --project <id>
-run402 jobs artifacts get <job_id> result.json --output ./result.json --project <id>
+run402 jobs submit --file job.json --project <project_id>
+run402 jobs get    <job_id> --project <project_id>
+run402 jobs logs   <job_id> --project <project_id> --tail 100
+run402 jobs cancel <job_id> --project <project_id>
+run402 jobs purge           --project <project_id>
+run402 jobs artifacts get <job_id> result.json --output ./result.json --project <project_id>
 ```
 
 When a job completes, `jobs get` returns an `artifacts` map keyed by filename, each value an object `{ url, content_type, sha256, size_bytes }` (`sha256`/`size_bytes` are omitted for pre-change jobs). Download the bytes with `jobs artifacts get`; discover the recorded filenames from the job's `artifacts` map.
@@ -901,8 +901,8 @@ Tier rate limits: prototype 10/day, hobby 50/day, team 500/day. Unique recipient
 ```bash
 run402 email webhooks register --url https://… --events delivery,bounced,reply_received
 run402 email webhooks list
-run402 email webhooks update <id> --events delivery,bounced,complained,reply_received
-run402 email webhooks delete <id>
+run402 email webhooks update <webhook_id> --events delivery,bounced,complained,reply_received
+run402 email webhooks delete <webhook_id>
 
 # Durable delivery is at-least-once (bounded retries + exponential backoff);
 # failures land in failed_permanent — the dead-letter queue. The delivered body
@@ -933,11 +933,11 @@ Auth supports passwords, passwordless email links/codes, Google OAuth, and WebAu
 run402 auth magic-link --email user@example.com --redirect https://my-app.run402.com/cb
 run402 auth verify --token <token>                       # → access_token + refresh_token
 run402 auth magic-link --email user@example.com --delivery both --redirect https://my-app.run402.com/cb
-run402 auth verify --challenge-id <opaque-id> --code <six-digits>
+run402 auth verify --challenge-id <challenge_id> --code <six-digits>
 run402 auth invite-user --email admin@example.com --redirect https://my-app.run402.com/cb --admin true
 run402 auth set-password --token <bearer> --new <pwd>    # change | reset | set
 run402 auth passkey-login-options --app-origin https://my-app.run402.com
-run402 auth passkey-login-verify --challenge <id> --response '<json>'
+run402 auth passkey-login-verify --challenge <challenge_id> --response '<json>'
 run402 auth providers
 ```
 
@@ -1182,9 +1182,9 @@ run402 repos access                           # READ-ONLY: recipients, coverage,
 
 Cloning needs a Run402 principal on this machine — a wallet and a keystore holding an envelope for this vault — this is encrypted git, not a shareable link.
 
-`--project <id>` picks the repo's project; `--repo <repo_id>` addresses it directly and needs no project lookup — that is the cold-restart path for an agent with no local state. Stdout is JSON; every human line (progress, the terminal-loss statement, advisories) goes to stderr, so `run402 repos view | jq` stays clean. For a person at the terminal, `run402 repos view --human` renders a five/six-line summary on stdout instead — address, HEAD/ref count, generations in decimal, storage, whether this machine can decrypt, and any standing warnings — an explicit opt-in, so plain `view` stays JSON.
+`--project <project_id>` picks the repo's project; `--repo <repo_id>` addresses it directly and needs no project lookup — that is the cold-restart path for an agent with no local state. Stdout is JSON; every human line (progress, the terminal-loss statement, advisories) goes to stderr, so `run402 repos view | jq` stays clean. For a person at the terminal, `run402 repos view --human` renders a five/six-line summary on stdout instead — address, HEAD/ref count, generations in decimal, storage, whether this machine can decrypt, and any standing warnings — an explicit opt-in, so plain `view` stays JSON.
 
-Allocation is `run402 repos create --project <id>`. `run402 init` scaffolds the git remote and nothing else — it needs a project selected (`run402 projects use <project_id>`, or `RUN402_PROJECT_ID`) and says so in its summary when none is. Allocation is separate because it is the step that mints key material on this machine and prints a one-shot recovery receipt; it is idempotent, so an existing vault comes back `deduplicated: true` — and `git push` / `run402 repos snapshot` allocate it the SAME way, lazily, on first use, printing the receipt to stderr. **Allocating does NOT gate the project's deploys.** `gitvault_policy` stays unset until you set it. A deploy against a vaulted, ungated project proceeds — never blocked, never an interactive prompt — and its result carries a typed `next_actions` entry offering `run402 repos policy required`, plus a standing `warnings[]` entry on every later ungated deploy until the policy is set either way. Once a project's policy IS `required`, `run402 deploy` produces the vaulted capture automatically on machines holding the keystore; un-gate with `run402 repos policy grandfathered --reason "<why>"` (owner + step-up, audited, reversible). Capturing source is never gated on a deploy, either way. Before `snapshot` reports that anything landed, the client compares every finalization receipt against its local expected manifest and reads the admitted head back from storage — a 200 alone is never enough. `run402 repos snapshot --dry-run` previews it first — a REAL preview (the actual local pipeline: capture, pack building, encryption sizing), not an estimate — reporting the objects, encrypted bytes, refs, and generation a real snapshot would publish, without publishing anything or allocating a vault that does not exist yet. `fsck` fails CLOSED and the refusal is the answer: `GENERATION_REGRESSION` (rollback), `CHAIN_BROKEN` (gap), `UPGRADE_REQUIRED` (a transition this client cannot validate), `VERIFICATION_BUDGET_EXCEEDED` (a pause, not a failure — under normal writing mode the verified prefix persists, so run it again to resume; `--no-write` never persists, so a retry restarts from scratch).
+Allocation is `run402 repos create --project <project_id>`. `run402 init` scaffolds the git remote and nothing else — it needs a project selected (`run402 projects use <project_id>`, or `RUN402_PROJECT_ID`) and says so in its summary when none is. Allocation is separate because it is the step that mints key material on this machine and prints a one-shot recovery receipt; it is idempotent, so an existing vault comes back `deduplicated: true` — and `git push` / `run402 repos snapshot` allocate it the SAME way, lazily, on first use, printing the receipt to stderr. **Allocating does NOT gate the project's deploys.** `gitvault_policy` stays unset until you set it. A deploy against a vaulted, ungated project proceeds — never blocked, never an interactive prompt — and its result carries a typed `next_actions` entry offering `run402 repos policy required`, plus a standing `warnings[]` entry on every later ungated deploy until the policy is set either way. Once a project's policy IS `required`, `run402 deploy` produces the vaulted capture automatically on machines holding the keystore; un-gate with `run402 repos policy grandfathered --reason "<why>"` (owner + step-up, audited, reversible). Capturing source is never gated on a deploy, either way. Before `snapshot` reports that anything landed, the client compares every finalization receipt against its local expected manifest and reads the admitted head back from storage — a 200 alone is never enough. `run402 repos snapshot --dry-run` previews it first — a REAL preview (the actual local pipeline: capture, pack building, encryption sizing), not an estimate — reporting the objects, encrypted bytes, refs, and generation a real snapshot would publish, without publishing anything or allocating a vault that does not exist yet. `fsck` fails CLOSED and the refusal is the answer: `GENERATION_REGRESSION` (rollback), `CHAIN_BROKEN` (gap), `UPGRADE_REQUIRED` (a transition this client cannot validate), `VERIFICATION_BUDGET_EXCEEDED` (a pause, not a failure — under normal writing mode the verified prefix persists, so run it again to resume; `--no-write` never persists, so a retry restarts from scratch).
 
 `run402 repos view` is side-effect-free — it never materializes refs or advances a local pin; `run402 repos fsck` does both, reporting them explicitly as `local_state_changed`/`pin_before`/`pin_after`, and `--no-write` computes the same real answer while persisting neither.
 
@@ -1270,9 +1270,9 @@ $0.03 per image. Aspects: `square`, `landscape`, `portrait`. Without `--output`,
 ## AI helpers
 
 ```bash
-run402 ai translate <id> "Hello world" --to es --context "marketing tagline"
-run402 ai moderate  <id> "<text>"
-run402 ai usage     <id>
+run402 ai translate <project_id> "Hello world" --to es --context "marketing tagline"
+run402 ai moderate  <project_id> "<text>"
+run402 ai usage     <project_id>
 ```
 
 Translation requires the AI Translation add-on on the project. Moderation is free.
@@ -1283,10 +1283,10 @@ Translation requires the AI Translation add-on on the project. Moderation is fre
 run402 apps browse [--tag <tag>]
 run402 apps inspect <version_id>
 run402 apps fork    <version_id> my-clone --bootstrap '{"admin_email":"me@example.com"}'
-run402 apps publish <id> --description "…" --tags todo,demo --visibility public --fork-allowed
-run402 apps versions <id>
-run402 apps update   <id> <version_id> --description "…" --tags a,b
-run402 apps delete   <id> <version_id>
+run402 apps publish <project_id> --description "…" --tags todo,demo --visibility public --fork-allowed
+run402 apps versions <project_id>
+run402 apps update   <project_id> <version_id> --description "…" --tags a,b
+run402 apps delete   <project_id> <version_id>
 ```
 
 Forking clones schema + site + functions into a new project. If the source app has a `bootstrap` function, it runs automatically with the variables you pass via `--bootstrap`. The fork response includes `bootstrap_result` (the function's return value) or `bootstrap_error`. Use `apps inspect` to see what `bootstrap_variables` an app expects.

@@ -24,7 +24,7 @@ Examples:
 
 Notes:
   - [project_id] defaults to the active project when omitted (set with
-    'run402 projects use <id>'). Project IDs start with 'prj_'; any first
+    'run402 projects use <project_id>'). Project IDs start with 'prj_'; any first
     positional that doesn't is treated as the next argument instead.
   - translate requires the AI Translation add-on on the project
   - moderate is free for all projects
@@ -47,7 +47,7 @@ Options:
   --to <lang>         Target language code (required, e.g. es, ja, fr)
   --from <lang>       Source language code (optional; auto-detected if omitted)
   --context <hint>    Optional translation hint (e.g. "formal business email")
-  --project <id>      Project ID (alternative to the positional argument)
+  --project <project_id>      Project ID (alternative to the positional argument)
 
 Notes:
   - Requires the AI Translation add-on on the project
@@ -71,7 +71,7 @@ Arguments:
   <text>              Text to check (quote it to preserve spaces)
 
 Options:
-  --project <id>      Project ID (alternative to the positional argument)
+  --project <project_id>      Project ID (alternative to the positional argument)
 
 Notes:
   - Free for all projects; uses the project's service key
@@ -91,7 +91,7 @@ Arguments:
                       Must start with 'prj_'; any other first positional is an error.
 
 Options:
-  --project <id>      Project ID (alternative to the positional argument)
+  --project <project_id>      Project ID (alternative to the positional argument)
 
 Notes:
   - Reports translation word quota and usage; only meaningful with the
@@ -111,7 +111,7 @@ async function translate(args) {
   args = normalizeArgv(args);
   assertKnownFlags(args, TRANSLATE_VALUE_FLAGS, TRANSLATE_VALUE_FLAGS);
 
-  // --project <id> wins over positional, mirroring previous behavior.
+  // --project <project_id> wins over positional, mirroring previous behavior.
   const projectOpt = flagValue(args, "--project");
   const to = flagValue(args, "--to");
   const from = flagValue(args, "--from");

@@ -197,7 +197,7 @@ describe("get_gitvault_status", () => {
   });
 
   it("is truthful when no vault is allocated", async () => {
-    statusBehavior = async () => ({ ...STATUS, repo_id: null, vault: null, pins: { highest_authenticated: null, highest_materialized: null }, next_actions: [{ action: "allocate the project's vault", command: "run402 repos create --project <id>" }] });
+    statusBehavior = async () => ({ ...STATUS, repo_id: null, vault: null, pins: { highest_authenticated: null, highest_materialized: null }, next_actions: [{ action: "allocate the project's vault", command: "run402 repos create --project <project_id>" }] });
     const out = textOf(await handleGetGitvaultStatus({ project_id: "prj_demo" }));
     assert.match(out, /No vault is allocated for project prj_demo\./);
     // The allocation verb, not `run402 init` — that one scaffolds the git

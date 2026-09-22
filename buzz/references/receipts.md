@@ -62,7 +62,7 @@ Expanded non-secret state may include the offer id, organization, identity link,
 ### Adoption complete
 - Consent receipt: `buzzha_…` (`completed`)
 - Public Buzz identity link: `idlnk_…` (`active`; attribution only)
-- Organization membership: `<membership-id>` (`owner`; grants organization authority)
+- Organization membership: `<membership_id>` (`owner`; grants organization authority)
 - Founder agent: remains an owner
 
 The identity link and organization membership are independently revocable; neither action rewrites the completed consent receipt.

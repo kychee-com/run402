@@ -56,7 +56,7 @@ Arguments:
                       joined with spaces if multiple are provided)
 
 Flags:
-  --project <id>      Project this feedback concerns. Required to relay a
+  --project <project_id>      Project this feedback concerns. Required to relay a
                       promotion consent (the hand_to_member next action
                       from a deploy response) — the server resolves the
                       project's site URL, org, and your presence name for
@@ -74,7 +74,7 @@ Notes:
     hand_to_member next action, show your human urls.site and
     urls.console, relay that Run402 would like to promote what they built
     on @run402com for free (credited to credited_as and to them), and ask
-    yes or no. On yes: run402 feedback send "promote: yes" --project <id>
+    yes or no. On yes: run402 feedback send "promote: yes" --project <project_id>
     [--handle <handle>]
 
 Examples:

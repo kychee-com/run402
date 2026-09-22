@@ -13,8 +13,8 @@ const SMALL_DIR_THRESHOLD = 5;
 const HELP = `run402 sites - Deploy and manage static sites
 
 Usage:
-  run402 sites deploy --manifest <file> [--project <id>]
-  run402 sites deploy-dir <path> --project <id>
+  run402 sites deploy --manifest <file> [--project <project_id>]
+  run402 sites deploy-dir <path> --project <project_id>
   cat manifest.json | run402 sites deploy
 
 Subcommands:
@@ -23,12 +23,12 @@ Subcommands:
 
 Options (deploy):
   --manifest <file>     Path to manifest JSON file (or read from stdin)
-  --project <id>        Project ID (defaults to active project)
+  --project <project_id>        Project ID (defaults to active project)
   --help, -h            Show this help message
 
 Options (deploy-dir):
   <path>                Positional: local directory to deploy
-  --project <id>        Project ID (defaults to active project)
+  --project <project_id>        Project ID (defaults to active project)
   --quiet               Suppress progress events on stderr
   --dry-run             Plan-only: print the diff envelope and exit
   --confirm-prune       Required when <path> has fewer files than the
@@ -58,7 +58,7 @@ Notes:
     (CAS-backed): only bytes the gateway doesn't already have are uploaded.
     Re-deploys of an unchanged tree make no S3 PUTs.
   - To check status of an in-flight deploy, use 'run402 deploy events <op>'
-    or 'run402 deploy list --project <id>'.
+    or 'run402 deploy list --project <project_id>'.
   - deploy-dir walks the directory, skips .git / node_modules / .DS_Store,
     and auto-detects binary files. Symlinks are rejected.
   - Progress events are emitted as JSON-line objects on stderr by default
@@ -71,12 +71,12 @@ const SUB_HELP = {
   deploy: `run402 sites deploy - Deploy a static site from a manifest
 
 Usage:
-  run402 sites deploy --manifest <file> [--project <id>]
-  cat manifest.json | run402 sites deploy [--project <id>]
+  run402 sites deploy --manifest <file> [--project <project_id>]
+  cat manifest.json | run402 sites deploy [--project <project_id>]
 
 Options:
   --manifest <file>   Path to manifest JSON file (or read from stdin)
-  --project <id>      Project ID (defaults to the active project)
+  --project <project_id>      Project ID (defaults to the active project)
 
 Manifest format (JSON):
   {
@@ -99,14 +99,14 @@ Examples:
   "deploy-dir": `run402 sites deploy-dir - Deploy a static site from a local directory
 
 Usage:
-  run402 sites deploy-dir <path> [--project <id>] [--quiet]
+  run402 sites deploy-dir <path> [--project <project_id>] [--quiet]
                                   [--dry-run] [--confirm-prune]
 
 Arguments:
   <path>              Local directory to deploy (positional, required)
 
 Options:
-  --project <id>      Project ID (defaults to the active project)
+  --project <project_id>      Project ID (defaults to the active project)
   --quiet             Suppress progress events on stderr (events are on by
                       default — see Progress events below)
   --dry-run           Plan the deploy and print a JSON envelope describing
@@ -196,7 +196,7 @@ async function deploy(args) {
     fail({
       code: "BAD_USAGE",
       message: `Unexpected argument for sites deploy: ${extra[0]}`,
-      hint: "Use `run402 sites deploy --manifest <file> [--project <id>]`.",
+      hint: "Use `run402 sites deploy --manifest <file> [--project <project_id>]`.",
     });
   }
   const opts = { manifest: null, project: undefined, target: undefined, quiet: false };
@@ -252,7 +252,7 @@ async function deployDir(args) {
     fail({
       code: "BAD_USAGE",
       message: `Unexpected argument for sites deploy-dir: ${positionals[1]}`,
-      hint: "Use `run402 sites deploy-dir <path> --project <id>`.",
+      hint: "Use `run402 sites deploy-dir <path> --project <project_id>`.",
     });
   }
   const opts = {
@@ -282,7 +282,7 @@ async function deployDir(args) {
     fail({
       code: "BAD_USAGE",
       message: "Missing <path>.",
-      hint: "run402 sites deploy-dir <path> --project <id>",
+      hint: "run402 sites deploy-dir <path> --project <project_id>",
     });
   }
   const projectId = resolveProjectId(opts.project);

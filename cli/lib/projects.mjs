@@ -14,26 +14,26 @@ Usage:
 
 Subcommands:
   quote                                   Show pricing tiers
-  provision [--tier <tier>] [--name <n>] [--org <id>]  Provision a new Postgres project
-  use   <id>                              Set the active project (used as default for other commands)
-  list [--org <id>] [--all]               List your projects from the server (name, site_url, custom domains, org_id, active marker)
-  rename <id> --name <label>              Rename a project (fix an auto-generated name)
+  provision [--tier <tier>] [--name <n>] [--org <org_id>]  Provision a new Postgres project
+  use   <project_id>                      Set the active project (used as default for other commands)
+  list [--org <org_id>] [--all]               List your projects from the server (name, site_url, custom domains, org_id, active marker)
+  rename <project_id> --name <label>      Rename a project (fix an auto-generated name)
   tenant-payments [project_id] [--status <s>]  List redacted tenant x402 payments for priced routes
-  get   [id]                              Authoritative server read: status, org, tier, active deploy, mailbox, usage vs limits (live; no keys)
+  get   [project_id]                      Authoritative server read: status, org, tier, active deploy, mailbox, usage vs limits (live; no keys)
   current                                 Show the active project pointer and validation status
-  sql   "<query>" [--project <id>] [--file <path>] [--params '<json>']  Run a SQL query (supports parameterized queries)
-  rest  <table> [--query "<params>"] [--project <id>]  Query a table via the REST API (PostgREST)
-  usage [id]                              Show compute/storage usage for a project
-  costs [id] [--window <w>]               Show admin-only per-project revenue/cost/margin
-  schema [id]                             Inspect the database schema
-  apply-expose [id] <manifest_json>       Apply a declarative authorization manifest
-  apply-expose [id] --file <path>         Apply a manifest from a JSON file
-  validate-expose [id] <manifest_json>    Validate an authorization manifest without applying it
-  validate-expose [id] --file <path>      Validate a manifest file without mutating the project
-  get-expose   [id]                       Get the current authorization manifest
-  delete [id] --confirm                   Immediately and irreversibly delete a project (cascade purge) and remove from local state. Requires --confirm.
-  promote-user [id] <email>               Promote a user to project_admin role
-  demote-user  [id] <email>               Demote a user from project_admin role
+  sql   "<query>" [--project <project_id>] [--file <path>] [--params '<json>']  Run a SQL query (supports parameterized queries)
+  rest  <table> [--query "<params>"] [--project <project_id>]  Query a table via the REST API (PostgREST)
+  usage [project_id]              Show compute/storage usage for a project
+  costs [project_id] [--window <w>]       Show admin-only per-project revenue/cost/margin
+  schema [project_id]             Inspect the database schema
+  apply-expose [project_id] <manifest_json>       Apply a declarative authorization manifest
+  apply-expose [project_id] --file <path>         Apply a manifest from a JSON file
+  validate-expose [project_id] <manifest_json>    Validate an authorization manifest without applying it
+  validate-expose [project_id] --file <path>      Validate a manifest file without mutating the project
+  get-expose   [project_id]                       Get the current authorization manifest
+  delete [project_id] --confirm                   Immediately and irreversibly delete a project (cascade purge) and remove from local state. Requires --confirm.
+  promote-user [project_id] <email>               Promote a user to project_admin role
+  demote-user  [project_id] <email>               Demote a user from project_admin role
 
 Examples:
   run402 projects quote
@@ -65,15 +65,15 @@ Global options (any command):
                     'run402 wallets use' default > 'default'. See 'run402 wallets'.
 
 Notes:
-  - <id> is the project_id shown in 'run402 projects list' (prefix: 'prj_')
-  - Most commands that take <id> default to the active project when omitted
-    (set it with 'run402 projects use <id>'). Project IDs start with 'prj_';
+  - <project_id> is the project_id shown in 'run402 projects list' (prefix: 'prj_')
+  - Most commands that take <project_id> default to the active project when omitted
+    (set it with 'run402 projects use <project_id>'). Project IDs start with 'prj_';
     any first positional that doesn't is treated as the next argument instead.
   - 'list', 'get', and 'use' are SERVER-authoritative project identity flows.
     Local project keys live under 'run402 credentials project-keys ...'.
   - 'list' is a SERVER read, not the local key cache: it shows every project the
     active wallet can reach (membership-scoped), with name, site_url, custom
-    domains, and org_id. '--org <id>' filters to one org; '--all' reads every
+    domains, and org_id. '--org <org_id>' filters to one org; '--all' reads every
     project you can reach across all your orgs (as your sign-in session after
     'run402 login', else as the current wallet). The 'active' marker still
     comes from local state.
@@ -106,10 +106,10 @@ const SUB_HELP = {
   list: `run402 projects list — List your projects from the server
 
 Usage:
-  run402 projects list [--org <id>] [--all]
+  run402 projects list [--org <org_id>] [--all]
 
 Options:
-  --org <id>          Filter to projects owned by one org (organization).
+  --org <org_id>          Filter to projects owned by one org (organization).
                       Authorize-before-reveal: a non-member or guessed id is a
                       403; a non-UUID id is a 400.
   --all               Read every project you can reach across all your orgs
@@ -133,10 +133,10 @@ Examples:
 	  rename: `run402 projects rename — Rename a project
 
 Usage:
-  run402 projects rename <id> --name <label>
+  run402 projects rename <project_id> --name <label>
 
 Arguments:
-  <id>                Project ID (prefix: 'prj_'). Required.
+  <project_id>                Project ID (prefix: 'prj_'). Required.
 
 Options:
   --name <label>      New display name (1-200 chars, no control characters).
@@ -181,12 +181,12 @@ Notes:
   provision: `run402 projects provision — Provision a new Postgres project
 
 Usage:
-  run402 projects provision [--tier <tier>] [--name <name>] [--org <id>] [--idempotency-key <key>]
+  run402 projects provision [--tier <tier>] [--name <name>] [--org <org_id>] [--idempotency-key <key>]
 
 Options:
   --tier <tier>       Tier for the new project (default: prototype)
   --name <name>       Human-readable name for the project
-  --org <id>          Provision into an EXISTING org (needs developer+ on it).
+  --org <org_id>          Provision into an EXISTING org (needs developer+ on it).
                       Omit for the cold-start path. Tier is org-governed.
   --idempotency-key <key>  Retry-safe key: re-running with the same key returns
                       the existing project instead of duplicating it. Auto-derived
@@ -207,8 +207,8 @@ Examples:
   sql: `run402 projects sql — Run a SQL query against a project's database
 
 Usage:
-  run402 projects sql "<query>" [--project <id>] [options]
-  run402 projects sql --file <path> [--project <id>] [options]
+  run402 projects sql "<query>" [--project <project_id>] [options]
+  run402 projects sql --file <path> [--project <project_id>] [options]
 
 Legacy (still supported):
   run402 projects sql <prj_id> "<query>" [options]
@@ -217,7 +217,7 @@ Arguments:
   <query>             Inline SQL query (quote it to preserve spaces)
 
 Options:
-  --project <id>      Project ID (defaults to the active project; a leading
+  --project <project_id>      Project ID (defaults to the active project; a leading
                       prj_... positional is also still accepted)
   --file <path>       Read SQL from a file instead of an inline query
   --params '<json>'   JSON array of parameters for a parameterized query
@@ -230,10 +230,10 @@ Examples:
   costs: `run402 projects costs — Show admin-only per-project finance
 
 Usage:
-  run402 projects costs [id] [--window <24h|7d|30d|90d>]
+  run402 projects costs [project_id] [--window <24h|7d|30d|90d>]
 
 Arguments:
-  [id]                Project ID (defaults to the active project if omitted)
+  [project_id]                Project ID (defaults to the active project if omitted)
 
 Options:
   --window <w>        Finance window (default: 30d). One of: 24h, 7d, 30d, 90d
@@ -256,12 +256,12 @@ Examples:
   "validate-expose": `run402 projects validate-expose — Validate an authorization manifest without applying it
 
 Usage:
-  run402 projects validate-expose [id] <manifest_json> [options]
-  run402 projects validate-expose [id] --file <path> [options]
-  cat manifest.json | run402 projects validate-expose [id] [options]
+  run402 projects validate-expose [project_id] <manifest_json> [options]
+  run402 projects validate-expose [project_id] --file <path> [options]
+  cat manifest.json | run402 projects validate-expose [project_id] [options]
 
 Arguments:
-  [id]                Optional project ID. When omitted, the active project is
+  [project_id]                Optional project ID. When omitted, the active project is
                       used if one is set; otherwise validation is projectless.
   <manifest_json>     Inline auth/expose manifest JSON.
 
@@ -450,7 +450,7 @@ async function validateExpose(args = []) {
       fail({
         code: "BAD_USAGE",
         message: `Unexpected extra argument: ${arg}`,
-        hint: "run402 projects validate-expose [id] <manifest_json>",
+        hint: "run402 projects validate-expose [project_id] <manifest_json>",
       });
     }
   }
@@ -458,7 +458,7 @@ async function validateExpose(args = []) {
     fail({
       code: "BAD_USAGE",
       message: "Provide either inline manifest JSON or --file <path>, not both.",
-      hint: "run402 projects validate-expose [id] --file manifest.json",
+      hint: "run402 projects validate-expose [project_id] --file manifest.json",
     });
   }
   if (migrationFile && migrationSql !== null) {
@@ -569,7 +569,7 @@ async function rename(projectId, args = []) {
     fail({
       code: "BAD_USAGE",
       message: "Missing --name.",
-      hint: "run402 projects rename <id> --name \"My Site\"",
+      hint: "run402 projects rename <project_id> --name \"My Site\"",
     });
   }
   try {
@@ -647,7 +647,7 @@ function commandMoved(name) {
   fail({
     code: "COMMAND_MOVED",
     message: `run402 projects ${name} moved to the explicit local credential-cache surface.`,
-    hint: "Use `run402 credentials project-keys status/export --project <id>`.",
+    hint: "Use `run402 credentials project-keys status/export --project <project_id>`.",
     details: {
       old_command: `projects ${name}`,
       new_command: name === "keys" ? "credentials project-keys export --reveal" : "credentials project-keys status",
@@ -656,12 +656,12 @@ function commandMoved(name) {
     next_actions: [
       {
         type: "run_command",
-        command: "run402 credentials project-keys status --project <id>",
+        command: "run402 credentials project-keys status --project <project_id>",
         why: "Inspect cached key presence without revealing secrets.",
       },
       {
         type: "run_command",
-        command: "run402 credentials project-keys export --project <id> --reveal",
+        command: "run402 credentials project-keys export --project <project_id> --reveal",
         why: "Reveal cached project keys only when you explicitly need secret material.",
       },
     ],
@@ -731,7 +731,7 @@ async function rest(projectId, restArgs = []) {
   if (!table) {
     fail({
       code: "BAD_USAGE",
-      message: "Missing <table> argument. Usage: run402 projects rest <table> [--query \"<query>\"] [--project <id>]",
+      message: "Missing <table> argument. Usage: run402 projects rest <table> [--query \"<query>\"] [--project <project_id>]",
       hint: "Run 'run402 projects schema' to list tables.",
     });
   }

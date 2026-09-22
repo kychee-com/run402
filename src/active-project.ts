@@ -3,7 +3,7 @@
  *
  * MCP DB tools (`run_sql`, `get_schema`, `rest_query`) accept an optional
  * `project_id`. When omitted, we fall back to the active project tracked in
- * local state (set by provisioning or `run402 projects use <id>`), so an agent
+ * local state (set by provisioning or `run402 projects use <project_id>`), so an agent
  * working against a single project doesn't have to thread the id through every
  * call. Returns the resolved id, or an error ToolResult when neither an explicit
  * id nor an active project is available.
@@ -32,7 +32,7 @@ export async function resolveProjectId(
         type: "text",
         text:
           "No project_id provided and no active project is set. Pass project_id explicitly, " +
-          "or set an active project first (provision one, or `run402 projects use <id>`).",
+          "or set an active project first (provision one, or `run402 projects use <project_id>`).",
       },
     ],
   };

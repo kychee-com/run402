@@ -13,15 +13,15 @@ import { loadLiveControlPlaneSession } from "../core-dist/control-plane-session.
 const HELP = `run402 up — Provision/link/deploy the current app
 
 Usage:
-  run402 up [repo-or-path] [--name <name>] [--project <id>] [--manifest <path>] [--dir <path>] [--tier <tier>] [-y|--yes] [--check|--print-spec|--print-manifest|--plan|--require-plan <id>|--repo-only] [--nested] [--verify] [--human|--json-stream] [--quiet]
-  run402 up verify [repo-or-path] [--project <id>] [--manifest <path>] [--dir <path>] [--human|--json-stream]
+  run402 up [repo-or-path] [--name <name>] [--project <project_id>] [--manifest <path>] [--dir <path>] [--tier <tier>] [-y|--yes] [--check|--print-spec|--print-manifest|--plan|--require-plan <plan_id>|--repo-only] [--nested] [--verify] [--human|--json-stream] [--quiet]
+  run402 up verify [repo-or-path] [--project <project_id>] [--manifest <path>] [--dir <path>] [--human|--json-stream]
 
 Options:
   repo-or-path        Local app directory or public Git repository URL. Defaults
                       to the current directory.
   --name <name>       Project display name when up needs to create a project.
                       Not a deploy manifest field and never renames a project.
-  --project <id>      Explicit project id. All supplied selectors must agree.
+  --project <project_id>      Explicit project id. All supplied selectors must agree.
   --manifest <path>   Manifest path. Defaults to run402.json, then
                       run402.deploy.json, then app.json in --dir/current directory.
   --dir <path>        Workspace directory to inspect (default: current dir).
@@ -39,7 +39,7 @@ Options:
                       uploads, or local writes.
   --plan              Ask the gateway for a reviewed deploy plan. No upload,
                       commit, project provisioning, or workspace link write.
-  --require-plan <id> Apply only if this reviewed plan still matches.
+  --require-plan <plan_id> Apply only if this reviewed plan still matches.
   --plan-fingerprint <fingerprint>
                       Optional fingerprint returned by --plan. Only valid
                       with --require-plan.
@@ -138,12 +138,12 @@ Works for both app manifests (run402.json) and deploy manifests
 (run402.deploy.json / app.json) that declare a top-level verify block.
 
 Usage:
-  run402 up verify [repo-or-path] [--project <id>] [--manifest <path>] [--dir <path>] [--name <name>] [--human|--json-stream]
+  run402 up verify [repo-or-path] [--project <project_id>] [--manifest <path>] [--dir <path>] [--name <name>] [--human|--json-stream]
 
 Options:
   repo-or-path        Local app directory or public Git repository URL. Defaults
                       to the current directory.
-  --project <id>      Existing project id. Defaults to .run402/project.json,
+  --project <project_id>      Existing project id. Defaults to .run402/project.json,
                       manifest project id, then active project.
   --manifest <path>   Manifest path. Defaults to run402.json, then
                       run402.deploy.json, then app.json.

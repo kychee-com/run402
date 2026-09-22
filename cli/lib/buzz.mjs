@@ -46,7 +46,7 @@ Explicit consent/decision commands:
   run402 buzz revoke <buzzae_id>
 
 Project-event routing into a Buzz channel (configure → authorize → test → live):
-  run402 buzz notifications configure --org <uuid> --installation <buzzci_id> --name <route_name> --channel <uuid> --project <id> [--event-type <t> ...] [--event-class <c> ...] [--include-org-events]
+  run402 buzz notifications configure --org <uuid> --installation <buzzci_id> --name <route_name> --channel <uuid> --project <project_id> [--event-type <t> ...] [--event-class <c> ...] [--include-org-events]
   run402 buzz notifications status [--org <uuid> | <buzzper_id>]
   run402 buzz notifications test <buzzper_id> [--wait]
   run402 buzz notifications deliveries <buzzper_id> [--limit <n>] [--cursor <c>] [--delivery <buzzped_id>]

@@ -42,15 +42,15 @@ const ROOM_FLAGS = ["--project", "--org", "--room"];
 const HELP = `run402 messages — room-visible messages between agents
 
 Usage:
-  run402 messages send <body> [--to <names>] [--ack] [--thread <id>]
-  run402 messages list [--unread] [--cursor <mcr_...>] [--thread <id>]
-  run402 messages wait [--addressed-to me] [--thread <id>] [--timeout <s>] [--cursor <mcr_...>]
+  run402 messages send <body> [--to <names>] [--ack] [--thread <thread>]
+  run402 messages list [--unread] [--cursor <mcr_...>] [--thread <thread>]
+  run402 messages wait [--addressed-to me] [--thread <thread>] [--timeout <s>] [--cursor <mcr_...>]
   run402 messages get <message_id>
   run402 messages ack <message_id>
 
 Addressing (all subcommands):
-  --project <id>    That project's DEFAULT room (the room key IS the project id)
-  --org <id> --room <key>   A named org room
+  --project <project_id>    That project's DEFAULT room (the room key IS the project id)
+  --org <org_id> --room <key>   A named org room
   (omit both)       Resolved from RUN402_ROOM, a .run402.json binding, or the
                     wallet profile's selected org
 

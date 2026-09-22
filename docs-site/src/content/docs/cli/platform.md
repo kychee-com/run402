@@ -136,7 +136,7 @@ run402 identity link nostr begin \
 # Publish challenge.json's proof_content as a standalone Buzz kind-1 message.
 # Fetch the raw event, preserving exactly id,pubkey,created_at,kind,tags,content,sig.
 run402 identity link nostr complete --event-file raw-event.json
-# Or: buzz social event --event <event-id> | run402 identity link nostr complete --event-stdin
+# Or: buzz social event --event <event_id> | run402 identity link nostr complete --event-stdin
 
 run402 identity link list
 run402 identity link show idlnk_...

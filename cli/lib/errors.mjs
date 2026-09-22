@@ -72,7 +72,7 @@ Filters (each maps 1:1 to a query param):
   --until <iso>         Window end (ISO-8601). Default: now
   --function <name>     Only this function's fingerprints
   --kind <kind>         One of: ${KINDS.join(", ")}
-  --fingerprint <id>    Only this fingerprint id (exact)
+  --fingerprint <fingerprint_id>    Only this fingerprint id (exact)
   --new-in <rel|active> Only identities first seen under this release
                         (a release id, or the literal "active" for live)
   --limit <n>           Page size (default 50, max 200)

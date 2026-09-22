@@ -23,7 +23,7 @@ Usage:
 Options:
   --tables <names>  Comma-separated live table names (tables with "live": true in the
                     expose manifest). Required.
-  --project <id>    Project to read (defaults to the active project)
+  --project <project_id>    Project to read (defaults to the active project)
   --cursor <c>      Resume from a cursor (a previous "cursor" or a change's cursor)
   --as <audience>   anon (project anon key; public-policy tables) or service (service
                     key; every hint, including owner-scoped ones). Default anon.

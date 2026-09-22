@@ -5,15 +5,15 @@
       "name": "run402",
       "type": "skill-md",
       "description": "Build, deploy and operate full-stack applications with the Run402 CLI. Postgres, auth, storage, functions and hosting with a free prototype tier and an explicit spending allowance. Use for web apps, database-backed sites, APIs and deploy.",
-      "url": "https://run402.com/skills/run402/c1ee721f4eebfc9132109793d71e6a42d2369704897be3a8887d5ed6ef1c3e93/SKILL.md",
-      "digest": "sha256:c1ee721f4eebfc9132109793d71e6a42d2369704897be3a8887d5ed6ef1c3e93"
+      "url": "https://run402.com/skills/run402/873447622ff9767de6632ec872f487a0b4996bdf7afe277aab034ae8f5a65bd6/SKILL.md",
+      "digest": "sha256:873447622ff9767de6632ec872f487a0b4996bdf7afe277aab034ae8f5a65bd6"
     },
     {
       "name": "run402-buzz",
       "type": "archive",
       "description": "Complete Run402 onboarding for a managed Buzz agent with a dedicated wallet/public identity link, report independent human-adoption and community-installation state, offer bounded per-agent enrollment before provisioning, and stop only at a real approval or repair boundary. Use when a managed Buzz user says \"install the run402.com skill\" or otherwise asks to install, initialize, set up, or connect Run402; asks to adopt a human, install a community, or enroll another agent; or later asks the linked agent to build, deploy, update, verify, or operate through Run402.",
-      "url": "https://run402.com/skills/run402-buzz/9971b4a3f29cee5f2131ead02818229581d99c8ab91d2c01d1286488141ebafd/run402-buzz.tgz",
-      "digest": "sha256:9971b4a3f29cee5f2131ead02818229581d99c8ab91d2c01d1286488141ebafd"
+      "url": "https://run402.com/skills/run402-buzz/2ff57d3923091b506cb5365aa26d993f87a12a6cd546c36de215325ea0605e81/run402-buzz.tgz",
+      "digest": "sha256:2ff57d3923091b506cb5365aa26d993f87a12a6cd546c36de215325ea0605e81"
     }
   ]
 }

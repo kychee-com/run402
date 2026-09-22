@@ -697,7 +697,7 @@ export class TransferFreezeError extends Run402Error {
   readonly kind = "transfer_freeze" as const;
   /** The pending transfer id when the gateway resolved one. */
   readonly transferId: string | null;
-  /** API path to cancel the pending transfer (e.g. `/agent/v1/transfers/<id>/cancel`). */
+  /** API path to cancel the pending transfer (e.g. `/agent/v1/transfers/<transfer_id>/cancel`). */
   readonly cancelPath: string | null;
   /** API path to view the pending transfer preview. */
   readonly previewPath: string | null;
@@ -771,7 +771,7 @@ export type NextActionType =
   | "set_repo_name"
   | "push_repo"
   // The app root lies inside another repository and the scaffold was
-  // skipped: `run402 repos create --nested --project <id>` (or `run402 up
+  // skipped: `run402 repos create --nested --project <project_id>` (or `run402 up
   // --nested`) makes it its own nested repository with an encrypted remote,
   // never touching the enclosing checkout.
   | "create_nested_repo"

@@ -15,10 +15,10 @@ import {
 const HELP = `run402 branches — Contained project data branches
 
 Usage:
-  run402 branches create [--project <id>] [--from-snapshot <snapshot-id>] [--name <label>] [--email-mode sandbox|off] [--enable-cron] [--ttl-days <n>] [--json]
-  run402 branches list [--project <id>] [--json]
-  run402 branches renew <branch-project-id> [--project <id>] [--ttl-days <n>] [--json]
-  run402 branches delete <branch-project-id> [--project <id>] [--json]
+  run402 branches create [--project <project_id>] [--from-snapshot <snapshot_id>] [--name <label>] [--email-mode sandbox|off] [--enable-cron] [--ttl-days <n>] [--json]
+  run402 branches list [--project <project_id>] [--json]
+  run402 branches renew <branch_project_id> [--project <project_id>] [--ttl-days <n>] [--json]
+  run402 branches delete <branch_project_id> [--project <project_id>] [--json]
 
 Legacy (still supported): a leading prj_... parent-project positional,
 e.g. run402 branches renew prj_parent prj_branch. --project defaults to the
@@ -77,7 +77,7 @@ async function list(args) {
 }
 
 async function renew(args) {
-  const { projectId, branchProjectId } = resolveProjectAndBranch(args, "run402 branches renew [project-id] <branch-project-id>");
+  const { projectId, branchProjectId } = resolveProjectAndBranch(args, "run402 branches renew [project_id] <branch_project_id>");
   const ttlDaysFlag = flagValue(args, "--ttl-days");
   const ttlDays = ttlDaysFlag === null ? undefined : parseIntegerFlag("--ttl-days", ttlDaysFlag, { min: 1, max: 30 });
   try {
@@ -91,7 +91,7 @@ async function renew(args) {
 }
 
 async function deleteBranch(args) {
-  const { projectId, branchProjectId } = resolveProjectAndBranch(args, "run402 branches delete [project-id] <branch-project-id>");
+  const { projectId, branchProjectId } = resolveProjectAndBranch(args, "run402 branches delete [project_id] <branch_project_id>");
   try {
     await getSdk().branches.delete(projectId, branchProjectId);
     console.log(JSON.stringify({ ok: true, project_id: projectId, branch_project_id: branchProjectId, deleted: true }, null, 2));
@@ -101,7 +101,7 @@ async function deleteBranch(args) {
 }
 
 function resolveProjectAndBranch(args, usage) {
-  // Canonical: `<branch-project-id> [--project <parent-id>]`. Branch ids are
+  // Canonical: `<branch_project_id> [--project <parent_project_id>]`. Branch ids are
   // themselves prj_..., so a leading prj_ positional is only treated as the
   // PARENT project when a second positional follows (requireRestPositional) —
   // the legacy `renew prj_parent prj_branch` form.

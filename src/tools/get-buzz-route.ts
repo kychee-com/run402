@@ -99,7 +99,7 @@ export async function handleGetBuzzRoute(args: {
           content: [
             {
               type: "text",
-              text: "No Buzz event routes. Create one on the CLI: run402 buzz notifications configure --org <uuid> --installation <buzzci_id> --name <route_name> --channel <nip29-channel-id> --project <id>",
+              text: "No Buzz event routes. Create one on the CLI: run402 buzz notifications configure --org <uuid> --installation <buzzci_id> --name <route_name> --channel <nip29-channel-id> --project <project_id>",
             },
           ],
         };

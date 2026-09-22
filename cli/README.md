@@ -82,7 +82,7 @@ A hosted git remote, encrypted before it leaves the machine — no deploy, no ma
 
 **Invite / join.** The second claim kind beside handoff/resume: a Handoff passes the work on and the sender stops; an Invite grows the team while the sender keeps working. `run402 repos invite [--room <key>] [--note-file <path>]` captures the checkpoint exactly like `handoff` — the inviter's own worktree, index, branch, refs, and access are all untouched — registers the inviter's presence in a coordination room (the project's default room, or `--room <key>` for a named org room), mints a single-use bearer key (`kgi1_…`, printed to stdout exactly once), and posts ONE room message naming the checkpoint (never the key). `run402 repos join <kgi1_…>` folds the SAME cold-start chain `resume` does before the claim, clones fresh, restores the exact dirty state, pins the invite's room locally, registers its own presence, posts ONE arrival message, and reports the inviter (name, labels, liveness), the room's other live presences, and the last few messages. `run402 messages wait` is the room's blocking read from there — the agent's ear, never an error on silence. Neither `invite` nor `join` has an MCP tool, same reasoning as `handoff`/`resume`.
 
-**Named addressing.** `run402 orgs slug <slug>` (owner-only, small one-time fee) sets an org's globally-unique, address-form slug, after which `run402::<slug>/<name>` addresses any repo under it — `git push` to a name that doesn't exist yet push-to-creates it. `run402 repos rename <name> [--project <id>]` claims the per-org-unique `<name>` half explicitly (no fee); `repos create` claims one automatically, best-effort, when the org already has a slug. Also CLI/SDK-only — no MCP tool.
+**Named addressing.** `run402 orgs slug <slug>` (owner-only, small one-time fee) sets an org's globally-unique, address-form slug, after which `run402::<slug>/<name>` addresses any repo under it — `git push` to a name that doesn't exist yet push-to-creates it. `run402 repos rename <name> [--project <project_id>]` claims the per-org-unique `<name>` half explicitly (no fee); `repos create` claims one automatically, best-effort, when the org already has a slug. Also CLI/SDK-only — no MCP tool.
 
 ### Wallet
 
@@ -144,11 +144,11 @@ reconciliation.
 ### Database
 
 ```bash
-run402 projects sql <id> "CREATE TABLE items (id serial PRIMARY KEY, …)"
-run402 projects validate-expose <id> --file manifest.json # check auth manifest, no mutation
-run402 projects apply-expose <id> --file manifest.json   # declare what's reachable
-run402 projects rest <id> items "select=*&order=id.desc&limit=10"
-run402 projects schema <id>                              # introspect tables + RLS
+run402 projects sql <project_id> "CREATE TABLE items (id serial PRIMARY KEY, …)"
+run402 projects validate-expose <project_id> --file manifest.json # check auth manifest, no mutation
+run402 projects apply-expose <project_id> --file manifest.json   # declare what's reachable
+run402 projects rest <project_id> items "select=*&order=id.desc&limit=10"
+run402 projects schema <project_id>                              # introspect tables + RLS
 ```
 
 ### Static sites
@@ -223,18 +223,18 @@ The returned `cdn_url` is content-addressed (`pr-<public_id>.run402.com/_blob/<k
 ### Functions
 
 ```bash
-run402 functions deploy <id> my-fn --file fn.ts \
+run402 functions deploy <project_id> my-fn --file fn.ts \
   --timeout 30 --memory 256 \
   --schedule "*/15 * * * *" \
   --deps "stripe,zod@^3"
-run402 functions logs <id> my-fn --tail 100 --request-id req_abc123 --follow
-run402 functions logs --request-id req_abc123 --project <id>   # <name> optional with --request-id: every function is searched
-run402 functions logs my-fn --project <id> --all               # include the Lambda INIT_START / REPORT lines
-run402 logs --request-id req_abc123 --project <id>             # the x-run402-request-id response header, no function name needed
-run402 functions invoke my-fn --project <id> --body-file request.json
-run402 functions invoke paid-fn --project <id> --body-file request.json --idempotency-key paid:call:123 --wait
-run402 functions rebuild <id> my-fn      # refresh ONE function onto the current runtime
-run402 functions rebuild <id> --all      # refresh every function in the project
+run402 functions logs <project_id> my-fn --tail 100 --request-id req_abc123 --follow
+run402 functions logs --request-id req_abc123 --project <project_id>   # <name> optional with --request-id: every function is searched
+run402 functions logs my-fn --project <project_id> --all               # include the Lambda INIT_START / REPORT lines
+run402 logs --request-id req_abc123 --project <project_id>             # the x-run402-request-id response header, no function name needed
+run402 functions invoke my-fn --project <project_id> --body-file request.json
+run402 functions invoke paid-fn --project <project_id> --body-file request.json --idempotency-key paid:call:123 --wait
+run402 functions rebuild <project_id> my-fn      # refresh ONE function onto the current runtime
+run402 functions rebuild <project_id> --all      # refresh every function in the project
 ```
 
 Log reads are app-first: every entry carries `origin: "app" | "platform"`, the Lambda runtime lines (INIT_START, START/END/REPORT RequestId, billed duration) are hidden by default (`--app`), `--platform` shows only them and `--all` the raw stream; `hidden` counts what was dropped and a `hint` explains an empty result. `--request-id` accepts `req_`, `fnrun_`, and `fnatt_` ids, `--since` takes an ISO timestamp or epoch ms, and `run402 logs` rejects unknown flags.
@@ -258,9 +258,9 @@ import { db, adminDb, auth, email, ai } from "@run402/functions";
 ### Secrets
 
 ```bash
-run402 secrets set <id> OPENAI_API_KEY --file ./.secrets/openai-key
-printf %s "$OPENAI_API_KEY" | run402 secrets set <id> OPENAI_API_KEY --stdin
-run402 secrets list <id>
+run402 secrets set <project_id> OPENAI_API_KEY --file ./.secrets/openai-key
+printf %s "$OPENAI_API_KEY" | run402 secrets set <project_id> OPENAI_API_KEY --stdin
+run402 secrets list <project_id>
 run402 deploy --manifest run402.deploy.json   # manifest uses secrets.require, not values
 ```
 
@@ -361,7 +361,7 @@ Not exposed as MCP tools by design — MCP authenticates as the agent (wallet), 
 
 ## Active project (sticky default)
 
-After `provision`, the new project becomes the active one. `run402 projects use <id>` switches it. Most commands that take `<id>` default to the active project when omitted.
+After `provision`, the new project becomes the active one. `run402 projects use <project_id>` switches it. Most commands that take `<project_id>` default to the active project when omitted.
 
 ## Help
 
