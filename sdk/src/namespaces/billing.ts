@@ -129,6 +129,8 @@ export interface LinkWalletPoolImplications {
   tier_limits: {
     api_calls: number;
     storage_bytes: number;
+    /** `storage_bytes` as a human string ("250 MB"). */
+    storage: string;
   };
   over_limit: boolean;
 }

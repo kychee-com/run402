@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
+import { formatBytesDecimal } from "../format-bytes.js";
 
 export const linkWalletToOrganizationSchema = {
   org_id: z.string().describe("The organization ID (from create_email_organization)"),
@@ -31,8 +32,8 @@ export async function handleLinkWalletToOrganization(args: {
       const storagePct = pool.tier_limits.storage_bytes > 0
         ? ((pool.organization_storage_bytes_current / pool.tier_limits.storage_bytes) * 100).toFixed(1)
         : "—";
-      const storageMb = (pool.organization_storage_bytes_current / 1_048_576).toFixed(1);
-      const storageLimitMb = (pool.tier_limits.storage_bytes / 1_048_576).toFixed(0);
+      const storage = formatBytesDecimal(pool.organization_storage_bytes_current);
+      const storageLimit = pool.tier_limits.storage ?? formatBytesDecimal(pool.tier_limits.storage_bytes);
       lines.push(
         ``,
         `### Organization pool after link`,
@@ -45,7 +46,7 @@ export async function handleLinkWalletToOrganization(args: {
         `| organization tier | ${pool.tier ?? "(no active tier)"} |`,
         `| projects in pool | ${pool.projects_in_pool_count} |`,
         `| api calls | ${pool.organization_api_calls_current.toLocaleString()} / ${pool.tier_limits.api_calls.toLocaleString()} (${apiPct}%) |`,
-        `| storage | ${storageMb} MB / ${storageLimitMb} MB (${storagePct}%) |`,
+        `| storage | ${storage} / ${storageLimit} (${storagePct}%) |`,
         `| over limit | ${pool.over_limit ? "**yes — pool is over the tier cap; renew or upgrade**" : "no"} |`,
       );
     }

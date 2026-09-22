@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
+import { formatBytesDecimal } from "../format-bytes.js";
 
 export const getUsageSchema = {
   project_id: z.string().describe("The project ID"),
@@ -12,8 +13,8 @@ export async function handleGetUsage(args: {
   try {
     const body = await getSdk().projects.getUsage(args.project_id);
 
-    const storageMB = (body.storage_bytes / (1024 * 1024)).toFixed(1);
-    const storageLimitMB = (body.storage_limit_bytes / (1024 * 1024)).toFixed(0);
+    const storage = formatBytesDecimal(body.storage_bytes);
+    const storageLimit = body.storage_limit ?? formatBytesDecimal(body.storage_limit_bytes);
     const apiPct = ((body.api_calls / body.api_calls_limit) * 100).toFixed(1);
     const storagePct = ((body.storage_bytes / body.storage_limit_bytes) * 100).toFixed(1);
 
@@ -28,7 +29,7 @@ export async function handleGetUsage(args: {
       `| Metric | Used (this project) | Organization limit | % of organization |`,
       `|--------|---------------------|---------------|--------------|`,
       `| API calls | ${body.api_calls.toLocaleString()} | ${body.api_calls_limit.toLocaleString()} | ${apiPct}% |`,
-      `| Storage | ${storageMB}MB | ${storageLimitMB}MB | ${storagePct}% |`,
+      `| Storage | ${storage} | ${storageLimit} | ${storagePct}% |`,
       ``,
       `| Field | Value |`,
       `|-------|-------|`,

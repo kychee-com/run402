@@ -1,5 +1,6 @@
 import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
+import { formatBytesDecimal } from "../format-bytes.js";
 import { requireAllowanceAuth } from "../allowance-auth.js";
 
 export const tierStatusSchema = {};
@@ -40,7 +41,8 @@ export async function handleTierStatus(
       `| expires | ${body.lease_expires_at ?? "(none)"} |`,
       `| projects in pool | ${body.pool_usage.projects} |`,
       `| pooled api calls | ${body.pool_usage.total_api_calls.toLocaleString()} / ${body.pool_usage.api_calls_limit.toLocaleString()} |`,
-      `| pooled storage | ${(body.pool_usage.total_storage_bytes / 1_048_576).toFixed(1)} MB / ${(body.pool_usage.storage_bytes_limit / 1_048_576).toFixed(0)} MB |`,
+      `| pooled storage | ${body.pool_usage.total_storage ?? formatBytesDecimal(body.pool_usage.total_storage_bytes)} / ${body.pool_usage.storage_limit ?? formatBytesDecimal(body.pool_usage.storage_bytes_limit)} |`,
+      `| pooled vault | ${body.pool_usage.gitvault_source ?? formatBytesDecimal(body.pool_usage.gitvault_source_bytes ?? 0)} / ${body.pool_usage.source_limit ?? formatBytesDecimal(body.pool_usage.source_bytes_limit ?? 0)} |`,
     ];
     const functionLimits = functionLimitsFromTierStatus(body);
     if (functionLimits) {

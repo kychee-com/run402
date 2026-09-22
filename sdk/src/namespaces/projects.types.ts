@@ -281,6 +281,8 @@ export interface ProjectUsageWithLimits {
   storage_bytes: number;
   api_calls_limit: number;
   storage_bytes_limit: number;
+  /** `storage_bytes_limit` as a human string ("250 MB"), derived from the tier constant. */
+  storage_limit: string;
 }
 
 /**
@@ -335,6 +337,8 @@ export interface UsageReport {
   api_calls_limit: number;
   storage_bytes: number;
   storage_limit_bytes: number;
+  /** `storage_limit_bytes` as a human string ("250 MB"), derived from the tier constant. */
+  storage_limit: string;
   /**
    * Optional: the `/projects/v1/admin/:id/usage` endpoint does not currently
    * include the lease expiry. Read it from `tier.status()` if you need it.
@@ -454,10 +458,22 @@ export interface ExposeManifestValidationResult {
 
 // ─── quote ──────────────────────────────────────────────────────────────
 
+/**
+ * One tier's pricing row from `GET /tiers/v1`. Byte quotas are decimal
+ * (250 MB is 250,000,000 bytes); each byte count carries its human string
+ * beside it under the same name with `_bytes` removed.
+ */
 export interface TierQuote {
   price: string;
-  lease_days: number;
-  storage_mb: number;
+  lease_days: number | null;
+  /** App/project storage quota in bytes, pooled per organization. */
+  storage_bytes: number;
+  /** `storage_bytes` as a human string ("250 MB"). */
+  storage: string;
+  /** Vault (repos) quota in bytes — a separate pooled limit from `storage_bytes`. */
+  source_bytes: number;
+  /** `source_bytes` as a human string ("1 GB"). */
+  source: string;
   api_calls: number;
   max_functions: number;
   description: string;

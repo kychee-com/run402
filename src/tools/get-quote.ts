@@ -13,13 +13,13 @@ export async function handleGetQuote(_args: Record<string, never>): Promise<{
     const lines = [
       `## Run402 Pricing`,
       ``,
-      `| Tier | Price (USDC) | Lease | Storage | API Calls |`,
-      `|------|-------------|-------|---------|-----------|`,
+      `| Tier | Price (USDC) | Lease | Storage | Vault | API Calls |`,
+      `|------|-------------|-------|---------|-------|-----------|`,
     ];
 
     for (const [name, tier] of Object.entries(body.tiers)) {
       lines.push(
-        `| ${name} | $${tier.price} | ${tier.lease_days}d | ${tier.storage_mb}MB | ${(tier.api_calls / 1000).toFixed(0)}k |`,
+        `| ${name} | $${tier.price} | ${tier.lease_days === null ? "none (free tier)" : `${tier.lease_days}d`} | ${tier.storage} | ${tier.source} | ${(tier.api_calls / 1000).toFixed(0)}k |`,
       );
     }
 

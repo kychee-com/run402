@@ -687,7 +687,7 @@ describe("projects.getQuote", () => {
     const { fetch, calls } = mockFetch(() =>
       jsonResponse({
         tiers: {
-          prototype: { price: "0", lease_days: 7, storage_mb: 100, api_calls: 10000, max_functions: 15, description: "test" },
+          prototype: { price: "0", lease_days: null, storage_bytes: 100_000_000, storage: "100 MB", source_bytes: 1_000_000_000, source: "1 GB", api_calls: 10000, max_functions: 15, description: "test" },
         },
       }),
     );
@@ -707,11 +707,14 @@ describe("projects.getQuote", () => {
         tiers: {
           prototype: {
             price: "$0.10",
-            lease_days: 7,
-            storage_mb: 250,
+            lease_days: null,
+            storage_bytes: 250_000_000,
+            storage: "250 MB",
+            source_bytes: 1_000_000_000,
+            source: "1 GB",
             api_calls: 500000,
             max_functions: 15,
-            description: "Prototype tier (FREE) — 7-day lease, 250MB storage, 500k API calls.",
+            description: "Prototype tier (FREE) — 250 MB storage, 1 GB vault, 500k API calls.",
           },
         },
         auth: { challenge: "test-challenge", expires_at: "2026-05-01T00:00:00Z" },
@@ -723,7 +726,7 @@ describe("projects.getQuote", () => {
     assert.equal(result.tiers.prototype!.max_functions, 15);
     assert.equal(
       result.tiers.prototype!.description,
-      "Prototype tier (FREE) — 7-day lease, 250MB storage, 500k API calls.",
+      "Prototype tier (FREE) — 250 MB storage, 1 GB vault, 500k API calls.",
     );
     assert.ok(result.auth, "auth field is exposed on the result");
     assert.equal((result.auth as Record<string, unknown>).challenge, "test-challenge");

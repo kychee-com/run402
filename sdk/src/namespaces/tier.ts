@@ -98,12 +98,28 @@ export interface TierStatusResult {
    * `null` only for orphan wallets with no organization row.
    */
   lease_perpetual: boolean | null;
+  /**
+   * Organization-pooled usage against the tier limits. Every byte count sits
+   * beside its human string under the same name with `_bytes` removed
+   * (`storage_bytes_limit: 250000000` + `storage_limit: "250 MB"`); quotas are
+   * decimal, derived from the tier constant.
+   */
   pool_usage: {
     projects: number;
     total_api_calls: number;
+    /** Project bytes PLUS `gitvault_source_bytes` — what the storage limit applies to. */
     total_storage_bytes: number;
+    total_storage: string;
+    /** The vault half of `total_storage_bytes`, compared against `source_bytes_limit`. */
+    gitvault_source_bytes: number;
+    gitvault_source: string;
     api_calls_limit: number;
     storage_bytes_limit: number;
+    storage_limit: string;
+    /** The vault pool's own limit, separate from `storage_bytes_limit`. */
+    source_bytes_limit: number;
+    source_limit: string;
+    [key: string]: unknown;
   };
   /**
    * Per-project summary across all projects on the wallet's organization.
@@ -144,9 +160,11 @@ export interface TierStatusResult {
 /**
  * What `set` did: `start` begins a lease (or activates the free prototype
  * tier), `renew` extends the same tier from its current expiry, `upgrade`
- * moves to a higher tier with a prorated refund to the allowance.
+ * moves to a higher tier with a prorated refund to the allowance. The open
+ * tail keeps a future action the gateway may report (a downgrade it accepts)
+ * from being a type error.
  */
-export type TierSetAction = "start" | "renew" | "upgrade";
+export type TierSetAction = "start" | "renew" | "upgrade" | (string & {});
 
 export interface TierSetResult {
   wallet: string;
