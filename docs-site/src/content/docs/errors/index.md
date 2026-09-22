@@ -663,9 +663,6 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="GRANT_NOT_FOUND"></a>
 [`GRANT_NOT_FOUND`](/errors/gateway/#GRANT_NOT_FOUND)
 
-<a id="HANDOFF_CLAIM_WRITER_KEY_MISMATCH"></a>
-[`HANDOFF_CLAIM_WRITER_KEY_MISMATCH`](/errors/gateway/#HANDOFF_CLAIM_WRITER_KEY_MISMATCH)
-
 <a id="HANDOFF_CLONE_FAILED"></a>
 [`HANDOFF_CLONE_FAILED`](/errors/client/#HANDOFF_CLONE_FAILED)
 
@@ -683,6 +680,9 @@ The catalog records owning source locations and pinned external contributions. A
 
 <a id="HANDOFF_MINT_REQUIRES_WRITER"></a>
 [`HANDOFF_MINT_REQUIRES_WRITER`](/errors/gateway/#HANDOFF_MINT_REQUIRES_WRITER)
+
+<a id="HANDOFF_REDEEM_WRITER_KEY_MISMATCH"></a>
+[`HANDOFF_REDEEM_WRITER_KEY_MISMATCH`](/errors/gateway/#HANDOFF_REDEEM_WRITER_KEY_MISMATCH)
 
 <a id="HEAD_CAS_CONFLICT"></a>
 [`HEAD_CAS_CONFLICT`](/errors/gateway/#HEAD_CAS_CONFLICT)
@@ -954,9 +954,6 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="INVALID_VERIFY_SPEC"></a>
 [`INVALID_VERIFY_SPEC`](/errors/client/#INVALID_VERIFY_SPEC)
 
-<a id="INVITE_CLAIM_WRITER_KEY_MISMATCH"></a>
-[`INVITE_CLAIM_WRITER_KEY_MISMATCH`](/errors/client/#INVITE_CLAIM_WRITER_KEY_MISMATCH)
-
 <a id="INVITE_ENVELOPE_INVALID"></a>
 [`INVITE_ENVELOPE_INVALID`](/errors/client/#INVITE_ENVELOPE_INVALID)
 
@@ -968,6 +965,9 @@ The catalog records owning source locations and pinned external contributions. A
 
 <a id="INVITE_NOT_FOUND"></a>
 [`INVITE_NOT_FOUND`](/errors/gateway/#INVITE_NOT_FOUND)
+
+<a id="INVITE_REDEEM_WRITER_KEY_MISMATCH"></a>
+[`INVITE_REDEEM_WRITER_KEY_MISMATCH`](/errors/client/#INVITE_REDEEM_WRITER_KEY_MISMATCH)
 
 <a id="ISSUER_DAILY_MINT_CAP_REACHED"></a>
 [`ISSUER_DAILY_MINT_CAP_REACHED`](/errors/gateway/#ISSUER_DAILY_MINT_CAP_REACHED)
@@ -1779,17 +1779,14 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="ROLE_FORBIDDEN"></a>
 [`ROLE_FORBIDDEN`](/errors/gateway/#ROLE_FORBIDDEN)
 
-<a id="ROOM_INVITE_CLAIM_REQUIRES_WALLET"></a>
-[`ROOM_INVITE_CLAIM_REQUIRES_WALLET`](/errors/gateway/#ROOM_INVITE_CLAIM_REQUIRES_WALLET)
-
 <a id="ROOM_INVITE_ID_CONFLICT"></a>
 [`ROOM_INVITE_ID_CONFLICT`](/errors/gateway/#ROOM_INVITE_ID_CONFLICT)
 
 <a id="ROOM_INVITE_ID_MISMATCH"></a>
 [`ROOM_INVITE_ID_MISMATCH`](/errors/client/#ROOM_INVITE_ID_MISMATCH)
 
-<a id="ROOM_INVITE_KEY_ALREADY_CLAIMED"></a>
-[`ROOM_INVITE_KEY_ALREADY_CLAIMED`](/errors/gateway/#ROOM_INVITE_KEY_ALREADY_CLAIMED)
+<a id="ROOM_INVITE_KEY_ALREADY_REDEEMED"></a>
+[`ROOM_INVITE_KEY_ALREADY_REDEEMED`](/errors/gateway/#ROOM_INVITE_KEY_ALREADY_REDEEMED)
 
 <a id="ROOM_INVITE_KEY_CONFERS_SEAT"></a>
 [`ROOM_INVITE_KEY_CONFERS_SEAT`](/errors/client/#ROOM_INVITE_KEY_CONFERS_SEAT)
@@ -1805,6 +1802,9 @@ The catalog records owning source locations and pinned external contributions. A
 
 <a id="ROOM_INVITE_OPEN_LIMIT"></a>
 [`ROOM_INVITE_OPEN_LIMIT`](/errors/gateway/#ROOM_INVITE_OPEN_LIMIT)
+
+<a id="ROOM_INVITE_REDEEM_REQUIRES_WALLET"></a>
+[`ROOM_INVITE_REDEEM_REQUIRES_WALLET`](/errors/gateway/#ROOM_INVITE_REDEEM_REQUIRES_WALLET)
 
 <a id="ROOM_REQUIRED"></a>
 [`ROOM_REQUIRED`](/errors/client/#ROOM_REQUIRED)

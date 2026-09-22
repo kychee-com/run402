@@ -677,15 +677,15 @@ Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
 
 The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
 
-<h2 id="HANDOFF_CLAIM_WRITER_KEY_MISMATCH">HANDOFF_CLAIM_WRITER_KEY_MISMATCH</h2>
-
-Owner: `public:sdk/src/namespaces/gitvault.ts`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
-
-The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
-
 <h2 id="HANDOFF_MINT_REQUIRES_WRITER">HANDOFF_MINT_REQUIRES_WRITER</h2>
 
 Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
+
+<h2 id="HANDOFF_REDEEM_WRITER_KEY_MISMATCH">HANDOFF_REDEEM_WRITER_KEY_MISMATCH</h2>
+
+Owner: `public:sdk/src/namespaces/gitvault.ts`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
 
 The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
 
@@ -1925,19 +1925,13 @@ Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
 
 The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
 
-<h2 id="ROOM_INVITE_CLAIM_REQUIRES_WALLET">ROOM_INVITE_CLAIM_REQUIRES_WALLET</h2>
-
-Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
-
-The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
-
 <h2 id="ROOM_INVITE_ID_CONFLICT">ROOM_INVITE_ID_CONFLICT</h2>
 
 Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
 
 The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
 
-<h2 id="ROOM_INVITE_KEY_ALREADY_CLAIMED">ROOM_INVITE_KEY_ALREADY_CLAIMED</h2>
+<h2 id="ROOM_INVITE_KEY_ALREADY_REDEEMED">ROOM_INVITE_KEY_ALREADY_REDEEMED</h2>
 
 Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
 
@@ -1962,6 +1956,12 @@ Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
 The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
 
 <h2 id="ROOM_INVITE_OPEN_LIMIT">ROOM_INVITE_OPEN_LIMIT</h2>
+
+Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
+
+<h2 id="ROOM_INVITE_REDEEM_REQUIRES_WALLET">ROOM_INVITE_REDEEM_REQUIRES_WALLET</h2>
 
 Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
 

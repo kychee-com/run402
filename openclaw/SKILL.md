@@ -1210,14 +1210,14 @@ No argument reads the configured destination + a keyless freshness check. `mirro
 
 ```bash
 run402 repos handoff --note-file handoff.json    # captures the tree, mints the key, prints it ALONE
-run402 repos resume kgh1_…                        # on the other machine: cold-start (faucet + prototype) if no tier, then claim, clone, restore, print the note
+run402 repos resume kgh1_…                        # on the other machine: cold-start (faucet + prototype) if no tier, then redeem, clone, restore, print the note
 ```
 
 **`run402 repos invite` / `run402 repos join`** — recognize a `kgi1_…` key by prefix, the sibling of `kgh1_…`: a Handoff passes the work on and the sender stops; an Invite grows the team while the inviter keeps pushing. `invite` captures the checkpoint exactly like `handoff` — the inviter's own worktree, index, branch, refs, and access are all untouched — signs a writer-admission grant under the inviter's own writer key (a non-writer session is refused `INVITE_MINT_REQUIRES_WRITER`, naming `run402 repos access sync`), registers the inviter's presence in a coordination room (the project's default room, or `--room <key>` for a named org room), mints `kgi1_…` (same key-once contract as `kgh1_…`), and posts ONE room message naming the checkpoint (never the key). `join kgi1_…` pays its own way in (the SAME cold-start fold as `resume`), becomes a writer of the vault under its OWN key before returning — nothing copied from the inviter — clones and restores the exact dirty state, pins the invite's room locally, registers its own presence, posts ONE arrival message, and reports who invited it (name, labels, liveness), who else is in the room, and the last few messages. Both agents push from there, interleaved, each under its own key. **After you join, `run402 messages wait` is your ear** — block on it instead of polling `messages list`; it holds on the gateway's own held read when available, degrades to bounded polling against an older gateway with the identical output shape, and silence is a normal exit-0 answer (`settled: false` + `live_presences[]` naming who is still around), never an error. Address the inviter (or anyone else) by the name `join` printed: `run402 messages send "…" --to <name>`. The minted role defaults to `developer` and never exceeds the inviter's own. Like `handoff`/`resume`, neither `invite` nor `join` has an MCP tool.
 
 ```bash
 run402 repos invite --note-file invite.json      # captures the tree, mints the key, prints it ALONE
-run402 repos join kgi1_…                          # on the other machine: pay in, claim, become a writer, clone, restore
+run402 repos join kgi1_…                          # on the other machine: pay in, redeem, become a writer, clone, restore
 run402 messages wait                              # then: block until the other agent speaks (or the timeout elapses)
 ```
 

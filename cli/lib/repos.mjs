@@ -165,8 +165,8 @@ Subcommands:
            \`create\` does (allowance → faucet → one x402 prototype payment,
            each step announced) so the resumed agent arrives as a paid-up
            run402 wallet of its own — \`--no-init\` opts out, and because the
-           claim itself needs no tier a chain failure is reported (never
-           blocks the resume); then claims the key with THIS machine's own
+           redemption itself needs no tier a chain failure is reported (never
+           blocks the resume); then redeems the key with THIS machine's own
            wallet, clones the vault at the base HEAD
            into \`--to <dir>\` (default: the vault's name), applies the
            stash-shaped checkpoint (staged/unstaged/deleted/untracked
@@ -188,10 +188,10 @@ Subcommands:
            whose key is not admitted is refused
            \`INVITE_MINT_REQUIRES_WRITER\` — have a live writer run
            \`run402 repos access sync\` (any push does it too), then retry.
-  join     Claim an Invite Key on ANY machine: the SAME cold-start fold
+  join     Redeem an Invite Key on ANY machine: the SAME cold-start fold
            \`resume\` runs (allowance → faucet → one x402 prototype payment,
            announced — \`--no-init\` opts out; a chain failure never blocks
-           the claim), clones the vault at the base HEAD into \`--to <dir>\`
+           the redemption), clones the vault at the base HEAD into \`--to <dir>\`
            (default: the vault's name), restores the stash-shaped
            checkpoint exactly like \`resume\`, pins \`r402.room\` to the
            INVITE's own room, adds \`.run402/\` to \`.git/info/exclude\`,
@@ -1726,7 +1726,7 @@ async function readInviteNoteInput(a) {
   return parseInviteNoteJson(text, "stdin");
 }
 
-/** Shared body for `parseHandoffNoteJson`/`parseInviteNoteJson` — `schema`/`kindLabel` name the claim kind's own vocabulary. */
+/** Shared body for `parseHandoffNoteJson`/`parseInviteNoteJson` — `schema`/`kindLabel` name the redeem kind's own vocabulary. */
 function parseClaimNoteJson(text, source, schema, kindLabel, helpCommand) {
   let parsed;
   try {
@@ -1817,7 +1817,7 @@ async function handoff(args) {
     // gitvault-multi-writer (rev 47) task 6.4 — a handoff is now also a
     // WRITER admission, not just a checkout pass: the recipient signs its
     // own future pushes with a NEW key this vault's chain recognizes as a
-    // writer the moment `resume` claims it (design D4 — a grant minted here,
+    // writer the moment `resume` redeems it (design D4 — a grant minted here,
     // a two-signature acceptance the recipient's own resume completes).
     console.error(`the recipient becomes a WRITER on this vault the moment they resume — their own key signs future pushes, not yours.`);
     console.error(`recipient runs: kygit resume <key printed below>`);
@@ -1839,7 +1839,7 @@ async function handoff(args) {
  * Whether this wallet needs the cold-start chain before a resume: no
  * allowance file yet (a fresh machine — the viral case), or an allowance
  * whose org holds no active tier. An unreachable tier status reads as
- * "no" — the claim needs no tier, and a resume must never wait on a status
+ * "no" — the redemption needs no tier, and a resume must never wait on a status
  * read.
  */
 async function resumeNeedsColdStart(sdk) {
@@ -1856,11 +1856,11 @@ async function resumeNeedsColdStart(sdk) {
  * `resume`'s cold-start fold: the SAME chain `create` runs on
  * NO_ACTIVE_TIER (`cold-start.mjs`), announced step by step on stderr.
  * Never throws — a failure is returned as `{ error, next_action }` so the
- * caller carries it in the result and proceeds with the claim.
+ * caller carries it in the result and proceeds with the redemption.
  */
 async function foldColdStartForResume(sdk) {
   if (!(await resumeNeedsColdStart(sdk))) return { performed: false, skipped: "tier_active" };
-  console.error("no active tier — folding the cold-start chain (allowance -> faucet -> prototype tier) before the claim");
+  console.error("no active tier — folding the cold-start chain (allowance -> faucet -> prototype tier) before the redemption");
   try {
     const { foldColdStartChain } = await import("./cold-start.mjs");
     const chain = await foldColdStartChain((line) => console.error(`  ${line}`));
@@ -1868,7 +1868,7 @@ async function foldColdStartForResume(sdk) {
   } catch (err) {
     const code = err?.body?.code ?? err?.code ?? null;
     const message = err?.body?.message ?? err?.message ?? String(err);
-    console.error(`cold-start chain failed (${code ?? "error"}: ${message}) — continuing with the claim; run \`run402 tier set prototype\` afterwards`);
+    console.error(`cold-start chain failed (${code ?? "error"}: ${message}) — continuing with the redemption; run \`run402 tier set prototype\` afterwards`);
     return {
       performed: false,
       error: { code, message },
@@ -1877,7 +1877,7 @@ async function foldColdStartForResume(sdk) {
   }
 }
 
-/** `kygit.handoff-note.v1` / `kygit.invite-note.v1` rendered as Markdown — shared body, `title` names the claim kind ("Handoff" or "Invite"). */
+/** `kygit.handoff-note.v1` / `kygit.invite-note.v1` rendered as Markdown — shared body, `title` names the redeem kind ("Handoff" or "Invite"). */
 function renderClaimNoteMarkdown(note, title) {
   if (!note) return null;
   const lines = [];
@@ -1940,11 +1940,11 @@ async function resume(args) {
   // A resumed agent is a NEW run402 wallet, and the loop is the
   // point — so on a wallet with no active tier `resume` folds the same
   // cold-start chain `create` does (allowance → faucet → one x402
-  // prototype payment, announced) BEFORE the claim. The claim itself needs
+  // prototype payment, announced) BEFORE the redemption. The redemption itself needs
   // no tier, so the chain is never allowed to block a resume: a faucet
   // throttle or payment failure is reported on stderr, carried in the
   // result as `cold_start.error` with a `renew_tier` next action, and the
-  // claim proceeds (the SDK still creates the bare wallet it needs).
+  // redemption proceeds (the SDK still creates the bare wallet it needs).
   // `--no-init` opts out entirely.
   const coldStart = a.includes("--no-init") ? { performed: false, skipped: "no_init" } : await foldColdStartForResume(sdk);
   try {
@@ -1956,7 +1956,7 @@ async function resume(args) {
       const { remoteHelperNextAction } = await import("./path-lookup.mjs");
       const helperAction = result.restored?.dir ? remoteHelperNextAction(result.restored.dir) : null;
       if (helperAction) result.next_actions = [...(result.next_actions ?? []), helperAction];
-    } catch { /* never fails a completed claim */ }
+    } catch { /* never fails a completed redemption */ }
     if (a.includes("--json")) {
       printJson(sdk, { ...result, cold_start: coldStart });
     } else {
@@ -1973,7 +1973,7 @@ async function resume(args) {
       if (result.writer_activation) {
         console.error(`writer: ${result.writer_activation.outcome} (generation ${result.writer_activation.generation})`);
       }
-      if (result.deduplicated) console.error("note: this key was already claimed by this same principal — the ORIGINAL envelope was reused (safe replay)");
+      if (result.deduplicated) console.error("note: this key was already redeemed by this same principal — the ORIGINAL envelope was reused (safe replay)");
       for (const na of result.next_actions ?? []) {
         if (na.command) console.error(`next: ${na.command}${na.why ? ` — ${na.why}` : ""}`);
       }
@@ -2093,7 +2093,7 @@ async function invite(args) {
 
 /**
  * `run402 repos join` — the full cold-start chain (SAME fold `resume`
- * uses), claim, restore exactly as `resume` does, pin `r402.room` to the
+ * uses), redeem, restore exactly as `resume` does, pin `r402.room` to the
  * invite's OWN room, register this session's presence, post ONE arrival
  * fact, and report the inviter by name and labels, live presences, the
  * catch-up cursor, and the last few messages (kygit-invite design D5).
@@ -2112,8 +2112,8 @@ async function joinInvite(args) {
   }
   // kygit-invite design D5: a joined agent is a NEW run402 wallet, so `join`
   // folds the SAME cold-start chain `resume` does (allowance → faucet → one
-  // x402 prototype payment, announced) BEFORE the claim; the claim itself
-  // needs no tier, so the chain never blocks the claim. `--no-init` opts
+  // x402 prototype payment, announced) BEFORE the redemption; the redemption itself
+  // needs no tier, so the chain never blocks the redemption. `--no-init` opts
   // out entirely.
   const coldStart = a.includes("--no-init") ? { performed: false, skipped: "no_init" } : await foldColdStartForResume(sdk);
   const { program, model } = resolveHarnessLabels();
@@ -2156,7 +2156,7 @@ async function joinInvite(args) {
       const { remoteHelperNextAction } = await import("./path-lookup.mjs");
       const helperAction = result.restored?.dir ? remoteHelperNextAction(result.restored.dir) : null;
       if (helperAction) result.next_actions = [...(result.next_actions ?? []), helperAction];
-    } catch { /* never fails a completed claim */ }
+    } catch { /* never fails a completed redemption */ }
     if (a.includes("--json")) {
       printJson(sdk, { ...result, cold_start: coldStart });
     } else {
@@ -2166,7 +2166,7 @@ async function joinInvite(args) {
       }
       console.error("");
       console.error(`joined into ${result.restored.dir} (branch ${result.restored.branch})`);
-      if (result.deduplicated) console.error("note: this key was already claimed by this same principal — the ORIGINAL envelope was reused (safe replay)");
+      if (result.deduplicated) console.error("note: this key was already redeemed by this same principal — the ORIGINAL envelope was reused (safe replay)");
       // gitvault-multi-writer (rev 47) / kygit-invite design D5 — this
       // checkout's own writer activation, printed in the SAME `writer: …`
       // shape `resume` uses. `pending` is D9's not-stranded path: the key is

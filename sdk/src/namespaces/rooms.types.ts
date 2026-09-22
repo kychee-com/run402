@@ -457,10 +457,10 @@ export interface RoomMessageWaitResult extends RoomMessagePage {
 // ─── Room Invite — mint a Room Invite Key, join through one (add-room-invite) ─
 //
 // A room invite mints a single-use `kri1_…` bearer key from the room the
-// inviter stands in; claiming it is an x402-paid seat (the `room_seat` SKU)
+// inviter stands in; redeeming it is an x402-paid charge (the `room_seat` SKU)
 // whose VERIFIED PAYER becomes a permanent `viewer` of the org — the
 // narrowest membership that can message, and one that can never be
-// auto-admitted as a vault writer. See `sdk/src/node/bearer-claim-key.ts`
+// auto-admitted as a vault writer. See `sdk/src/node/bearer-redeem-key.ts`
 // for the key format itself (`kri1_`, one derived secret, no envelope).
 
 /** {@link Rooms.invite}'s machine-readable blast-radius warning (design D7) — the seat's own next to `warning`'s human sentence. */
@@ -471,9 +471,9 @@ export interface RoomInviteWarning {
 
 /** Options for {@link Rooms.invite}. */
 export interface RoomInviteMintOptions {
-  /** Plaintext, at most 4 KiB — stored and returned verbatim to the claimant. Not secret: the gateway already reads every room message. */
+  /** Plaintext, at most 4 KiB — stored and returned verbatim to the redeemer. Not secret: the gateway already reads every room message. */
   note?: string;
-  /** The inviter's own presence id (`prs_…`), best-effort — stored opaquely so the claim response can resolve who invited the claimant. */
+  /** The inviter's own presence id (`prs_…`), best-effort — stored opaquely so the redeem response can resolve who invited the redeemer. */
   inviterPresenceId?: string;
   /** 60..86400 seconds; gateway default 3600. */
   expiresInSeconds?: number;
@@ -495,7 +495,7 @@ export interface RoomInviteMintResult {
   [key: string]: unknown;
 }
 
-/** The minting presence, resolved live at claim time (design D11) — `null` when it never registered one. */
+/** The minting presence, resolved live at redeem time (design D11) — `null` when it never registered one. */
 export interface RoomInviteInviter {
   presence_id: string;
   name: string;
@@ -507,16 +507,16 @@ export interface RoomInviteInviter {
 }
 
 /**
- * The CLAIMANT's own presence, registered by the claim itself (live-proof
+ * The REDEEMER's own presence, registered by the redemption itself (live-proof
  * defect A fix) — as distinct from {@link RoomInviteInviter}, which is the
  * MINTER's. Naming it top-level means the joiner never has to guess which
  * entry of `live_presences[]` is itself. A `deduplicated: true` replay
  * carries the SAME value as the original claim, never a freshly
- * re-registered one — the gateway resolves it from a value stored at claim
+ * re-registered one — the gateway resolves it from a value stored at redeem
  * time. `null` only when it no longer resolves (or against an older
  * gateway that predates this field).
  */
-export interface RoomInviteClaimedPresence {
+export interface RoomInviteRedeemedPresence {
   presence_id: string;
   name: string;
   [key: string]: unknown;
@@ -534,14 +534,14 @@ export interface RoomInviteSeat {
 export interface RoomInviteJoinResult {
   invite_id: string;
   kind: "room";
-  /** True on a same-payer replay — the ORIGINAL claim result, no second payment. */
+  /** True on a same-payer replay — the ORIGINAL redemption result, no second payment. */
   deduplicated: boolean;
   org_id: string;
   membership: { org_id: string; role: string; status: string };
   room: { org_id: string; room_key: string };
   inviter: RoomInviteInviter | null;
-  /** The claimant's OWN presence, registered by this claim — absent/null against an older gateway that predates it. */
-  presence?: RoomInviteClaimedPresence | null;
+  /** The redeemer's OWN presence, registered by this redemption — absent/null against an older gateway that predates it. */
+  presence?: RoomInviteRedeemedPresence | null;
   live_presences: RoomPresence[];
   /** Catch-up cursor for `messages wait`/`messages list` in this room. */
   cursor: string;

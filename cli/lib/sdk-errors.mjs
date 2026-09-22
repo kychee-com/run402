@@ -73,8 +73,8 @@ const ROOM_INVITE_TERMINAL_REFUSAL_CODES = new Set([
   "ROOM_INVITE_KEY_INVALID",
   "ROOM_INVITE_KEY_EXPIRED",
   "ROOM_INVITE_KEY_REVOKED",
-  "ROOM_INVITE_KEY_ALREADY_CLAIMED",
-  "ROOM_INVITE_CLAIM_REQUIRES_WALLET",
+  "ROOM_INVITE_KEY_ALREADY_REDEEMED",
+  "ROOM_INVITE_REDEEM_REQUIRES_WALLET",
 ]);
 
 export function reportSdkError(err) {
@@ -158,7 +158,7 @@ export function reportSdkError(err) {
     }
   }
 
-  // Live-proof defect B: a terminal room-invite claim refusal is the
+  // Live-proof defect B: a terminal room-invite redeem refusal is the
   // gateway's OWN typed envelope by the time it reaches here (the SDK's
   // default paid fetch classifies these five codes as `"failed"`, never
   // `"ambiguous"` — see `sdk/src/node/paid-fetch.ts` and
@@ -166,7 +166,7 @@ export function reportSdkError(err) {
   // no payment was charged — is worth stating explicitly rather than
   // leaving the caller to infer it from `mutation_state`.
   if (ROOM_INVITE_TERMINAL_REFUSAL_CODES.has(payload.code) && payload.hint === undefined) {
-    payload.hint = "This key was not claimable (already used, expired, revoked, or this route requires a wallet, not a session) — you were not charged; no payment was made for this attempt.";
+    payload.hint = "This key could not be redeemed (already used, expired, revoked, or this route requires a wallet, not a session) — you were not charged; no payment was made for this attempt.";
   }
 
   if (Array.isArray(payload.unacknowledged_warning_codes)) {

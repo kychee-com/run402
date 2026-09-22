@@ -648,11 +648,11 @@ export interface GitvaultHandoffMintResult {
 export interface GitvaultHandoffListEntry {
   handoff_id: string;
   kind: string;
-  state: "issued" | "claimed" | "expired" | "revoked";
+  state: "issued" | "redeemed" | "expired" | "revoked";
   minted_role: string;
   minted_by: string;
   expires_at: string;
-  claimed_by?: string | null;
+  redeemed_by?: string | null;
 }
 
 export interface GitvaultHandoffListResult {
@@ -682,7 +682,7 @@ export interface GitvaultHandoffResumeResult {
  * The gateway names the vault by its three ids on the wire — `repo_id`,
  * `org_id`, `project_id` (docs/style.md's API-boundary vocabulary) — on
  * BOTH the handoff mint (`POST /gitvault/v1/vaults/:vault_id/handoffs`) and
- * claim (`POST /gitvault/v1/handoffs/:handoff_id/claim`) responses. The SDK
+ * claim (`POST /gitvault/v1/handoffs/:handoff_id/redeem`) responses. The SDK
  * groups them under `vault` with the `organization_id` spelling every other
  * SDK result uses. Neither response carries a slug-form address, so
  * `address` is `null` unless the caller already knows one (a slug-form
@@ -692,7 +692,7 @@ export function handoffVaultFromWire(wire: { repo_id: string; org_id: string; pr
   return { vault_id: wire.repo_id, address, organization_id: wire.org_id, project_id: wire.project_id };
 }
 
-/** The claim response's `membership` block (`org_id` on the wire) in the SDK's `organization_id` spelling. Pure; exported for tests. */
+/** The redeem response's `membership` block (`org_id` on the wire) in the SDK's `organization_id` spelling. Pure; exported for tests. */
 export function handoffMembershipFromWire(wire: { org_id: string; role: string; status: string }): GitvaultHandoffResumeResult["membership"] {
   return { organization_id: wire.org_id, role: wire.role, status: wire.status };
 }
@@ -710,7 +710,7 @@ export function handoffMembershipFromWire(wire: { org_id: string; role: string; 
  */
 export const INVITE_DEFAULT_ROLE = "developer";
 
-/** A room's `(org_id, room_key)` pair, as it rides the invite mint/claim responses. */
+/** A room's `(org_id, room_key)` pair, as it rides the invite mint/redeem responses. */
 export interface GitvaultInviteRoom {
   organization_id: string;
   room_key: string;
@@ -760,19 +760,19 @@ export interface GitvaultInviteMintResult {
 export interface GitvaultInviteListEntry {
   invite_id: string;
   kind: string;
-  state: "issued" | "claimed" | "expired" | "revoked";
+  state: "issued" | "redeemed" | "expired" | "revoked";
   minted_role: string;
   minted_by: string;
   room_key: string;
   expires_at: string;
-  claimed_by?: string | null;
+  redeemed_by?: string | null;
 }
 
 export interface GitvaultInviteListResult {
   invites: GitvaultInviteListEntry[];
 }
 
-/** The inviter's presence, resolved live at claim time (design gitvault-invite's own claim requirement) — `null` when the inviter never registered one. */
+/** The inviter's presence, resolved live at redeem time (design gitvault-invite's own claim requirement) — `null` when the inviter never registered one. */
 export interface GitvaultInviteInviter {
   presence_id: string;
   name: string;
@@ -2884,7 +2884,7 @@ export class Gitvault {
     const secrets = deriveHandoffSecrets(handoff_id_bytes, master_secret);
 
     // gitvault-multi-writer rev 47 (task 5.5, design D4) — the MINTER's own
-    // writer key signs `writer_admission_grant`, authorizing whoever claims
+    // writer key signs `writer_admission_grant`, authorizing whoever redeems
     // this handoff to become a writer (D224/D225). This is a HARD
     // requirement distinct from the earlier `writer_set_pin` presence
     // check: that check only proves the fingerprint is admitted, not that
@@ -2894,8 +2894,8 @@ export class Gitvault {
     //
     // Built BEFORE the envelope is sealed — design D4's "no hash cycle:
     // grant first, then seal" — so the v2 envelope below can embed this
-    // grant's own stored-bytes SHA-256, letting the claimant's `resume()`
-    // (task 5.6) cross-check the claim response's grant against what this
+    // grant's own stored-bytes SHA-256, letting the redeemer's `resume()`
+    // (task 5.6) cross-check the redeem response's grant against what this
     // call actually sealed, independent of anything the gateway could alter.
     const signingKeypair = handle.keystore.signingKeypair(identity!); // non-null: the writer precheck above already required identity.signing_fingerprint
     if (!signingKeypair) {
@@ -2933,7 +2933,7 @@ export class Gitvault {
       // handoff minted AFTER an epoch rotation must let the recipient open
       // the pre-rotation generations too ("membership grants FULL history"),
       // and no rotation ever re-wraps old epochs to a principal that did not
-      // exist then. Found live: a recipient claimed a post-removal handoff
+      // exist then. Found live: a recipient redeemed a post-removal handoff
       // and its clone died GITVAULT_EPOCH_NOT_OPENABLE at generation 1.
       epoch_keys: { ...(repoFile.epoch_keys ?? {}), [repoFile.epoch]: repoFile.k_repo_hex },
       checkpoint: { generation: pushResult.generation, commit_oid: snapshot.oid },
@@ -3017,13 +3017,13 @@ export class Gitvault {
     };
   }
 
-  /** List a vault's handoffs (ids, kind, state, role, expiry, claimed_by — never the hash or envelope). */
+  /** List a vault's handoffs (ids, kind, state, role, expiry, redeemed_by — never the hash or envelope). */
   async listHandoffs(options: GitvaultVaultHandleOptions): Promise<GitvaultHandoffListResult> {
     const repoId = await this.#resolveRepoId(options);
     return this.#client.request<GitvaultHandoffListResult>(`/gitvault/v1/vaults/${encodeURIComponent(repoId)}/handoffs`, { context: "listing handoffs" });
   }
 
-  /** Revoke a handoff (idempotent — a second revoke of an already-revoked/claimed/expired row still answers `200`). */
+  /** Revoke a handoff (idempotent — a second revoke of an already-revoked/redeemed/expired row still answers `200`). */
   async revokeHandoff(handoffId: string, options: GitvaultVaultHandleOptions): Promise<{ handoff_id: string; state: string }> {
     const repoId = await this.#resolveRepoId(options);
     return this.#client.request<{ handoff_id: string; state: string }>(`/gitvault/v1/vaults/${encodeURIComponent(repoId)}/handoffs/${encodeURIComponent(handoffId)}`, { method: "DELETE", context: "revoking a handoff" });
@@ -3186,7 +3186,7 @@ export class Gitvault {
 
     // gitvault-multi-writer rev 47 (kygit-invite design D4) — the MINTER's
     // own writer key signs `writer_admission_grant`, authorizing whoever
-    // claims this invite to become a writer under its OWN key. Built and
+    // redeems this invite to become a writer under its OWN key. Built and
     // SIGNED BEFORE the envelope is sealed ("no hash cycle: grant first,
     // then seal") so the v2 envelope below can embed the grant's own
     // stored-bytes SHA-256 and `join()` can cross-check the claim
@@ -3324,7 +3324,7 @@ export class Gitvault {
       nextActions.push({
         type: "join_invite",
         command: door === "kygit" ? `kygit join ${key}` : `run402 repos join ${key}`,
-        why: "Run this on the other agent's machine to claim the invite.",
+        why: "Run this on the other agent's machine to redeem the invite.",
         safe_to_auto_execute: false,
       });
     }
@@ -3358,13 +3358,13 @@ export class Gitvault {
     };
   }
 
-  /** List a vault's invites (ids, kind, state, role, room, expiry, claimed_by — never the hash or envelope). */
+  /** List a vault's invites (ids, kind, state, role, room, expiry, redeemed_by — never the hash or envelope). */
   async listInvites(options: GitvaultVaultHandleOptions): Promise<GitvaultInviteListResult> {
     const repoId = await this.#resolveRepoId(options);
     return this.#client.request<GitvaultInviteListResult>(`/gitvault/v1/vaults/${encodeURIComponent(repoId)}/invites`, { context: "listing invites" });
   }
 
-  /** Revoke an invite (idempotent — a second revoke of an already-revoked/claimed/expired row still answers `200`). */
+  /** Revoke an invite (idempotent — a second revoke of an already-revoked/redeemed/expired row still answers `200`). */
   async revokeInvite(inviteId: string, options: GitvaultVaultHandleOptions): Promise<{ invite_id: string; state: string }> {
     const repoId = await this.#resolveRepoId(options);
     return this.#client.request<{ invite_id: string; state: string }>(`/gitvault/v1/vaults/${encodeURIComponent(repoId)}/invites/${encodeURIComponent(inviteId)}`, { method: "DELETE", context: "revoking an invite" });
@@ -3389,7 +3389,7 @@ export class Gitvault {
    * Resume a Handoff Key: parse → ensure this machine has a wallet (the
    * claim is bare SIWX, so on a fresh machine the allowance file is created
    * here — a keypair on disk, no faucet, no tier, no payment, ever; design
-   * D5) → claim → open the
+   * D5) → redeem → open the
    * sealed envelope → write the repo file to the keystore BEFORE touching
    * disk → clone at the base HEAD → `git stash apply --index` → local
    * git-config pins only → the session-start reconcile so a principal
@@ -3398,7 +3398,7 @@ export class Gitvault {
   /**
    * gitvault-multi-writer rev 47 (task 5.6, design D4/D5) — order: parse →
    * ensure wallet → ensure identity → derive auth/wrap/admission → build
-   * acceptance → claim → verify grant → open envelope → check the grant
+   * acceptance → redeem → verify grant → open envelope → check the grant
    * hash → persist repo file with `pending_writer_admission` → clone →
    * verify chain → submit the ref-neutral activation head → reconcile
    * principal envelope → apply the checkpoint. Reported as
@@ -3409,7 +3409,7 @@ export class Gitvault {
    * the acceptance is derived fresh every call from the (deterministic)
    * admission seed + this checkout's own identity, so re-running this
    * ENTIRE method after a crash anywhere before activation lands is safe —
-   * the claim route is itself idempotent (same-claimant replay returns the
+   * the redeem route is itself idempotent (same-redeemer replay returns the
    * SAME grant). The one step that is NOT safely repeatable is submitting
    * the activation head a second time (the chain burns `handoff_id`
    * single-use) — `submitWriterActivationHead` handles that by checking
@@ -3426,10 +3426,10 @@ export class Gitvault {
     // parse
     const parsed = parseHandoffKey(options.key);
 
-    // ensure wallet — A fresh machine has no wallet, and the claim route
+    // ensure wallet — A fresh machine has no wallet, and the redeem route
     // accepts ONLY a SIWX wallet signature (a control-plane session,
-    // delegate, or service key is refused HANDOFF_CLAIM_REQUIRES_WALLET —
-    // the keystore key the claim publishes is what makes the recipient a
+    // delegate, or service key is refused HANDOFF_REDEEM_REQUIRES_WALLET —
+    // the keystore key the redemption publishes is what makes the recipient a
     // real key-holder). Nothing upstream creates the allowance for an
     // unpaid request, so `resume` does it here, exactly as `repos resume
     // --help` promises: a keypair written to the allowance file, no
@@ -3439,8 +3439,8 @@ export class Gitvault {
     // authenticates however it authenticates.
     await this.#ensureLocalWallet(options.onLine);
 
-    // ensure identity — BEFORE claim (D5): the acceptance below needs this
-    // checkout's own signing key, which the claim REQUEST body carries.
+    // ensure identity — BEFORE redeem (D5): the acceptance below needs this
+    // checkout's own signing key, which the redeem REQUEST body carries.
     const keystore = new GitvaultKeystore(options.keystore_root !== undefined ? { rootDir: options.keystore_root } : {});
     const identity = keystore.ensureIdentity();
     const signingKeypair = keystore.signingKeypair(identity);
@@ -3451,25 +3451,25 @@ export class Gitvault {
         { code: "VAULT_UNRECOVERABLE" },
       );
     }
-    const claimantEncryptionPubkeyRaw = fromBase64url(identity.encryption_pubkey, "identity.encryption_pubkey");
+    const redeemerEncryptionPubkeyRaw = fromBase64url(identity.encryption_pubkey, "identity.encryption_pubkey");
 
     // derive auth/wrap/admission
     const secrets = deriveHandoffSecrets(parsed.handoff_id_bytes, parsed.master_secret);
     const admissionSeed = deriveWriterAdmissionSeed(parsed.handoff_id_bytes, parsed.master_secret);
 
-    // build acceptance — before claim: design D4's own point is that the
-    // claimant can construct BOTH signatures before ever seeing the stored
+    // build acceptance — before redeem: design D4's own point is that the
+    // redeemer can construct BOTH signatures before ever seeing the stored
     // grant, since `handoff_id`/`auth_hash` are already independently known.
     const acceptance = buildWriterAcceptance({
       handoff_id: parsed.handoff_id,
       auth_hash: secrets.auth_hash_hex,
       admission_seed: admissionSeed,
-      claimant_signing_seed: signingKeypair.seed,
-      claimant_encryption_pubkey_raw: claimantEncryptionPubkeyRaw,
+      redeemer_signing_seed: signingKeypair.seed,
+      redeemer_encryption_pubkey_raw: redeemerEncryptionPubkeyRaw,
     });
 
     // claim
-    const claim = await this.#client.request<{
+    const redeem = await this.#client.request<{
       handoff_id: string;
       kind: "handoff";
       deduplicated: boolean;
@@ -3485,7 +3485,7 @@ export class Gitvault {
       writer_admission_grant: string;
       writer_activation: { state: string };
       next_actions?: NextAction[];
-    }>(`/gitvault/v1/handoffs/${encodeURIComponent(parsed.handoff_id)}/claim`, {
+    }>(`/gitvault/v1/handoffs/${encodeURIComponent(parsed.handoff_id)}/redeem`, {
       method: "POST",
       // Base64url, per the documented wire contract (openapi: "Base64url — the
       // HKDF-derived auth_secret half of the parsed kgh1_ key"). The gateway
@@ -3494,13 +3494,13 @@ export class Gitvault {
       // claim answers HANDOFF_KEY_INVALID. Each side's own tests can pass
       // independently; only the cross-side vector below catches this class.
       body: { auth_secret: toBase64url(secrets.auth_secret), writer_acceptance: toBase64url(jcs(acceptance as unknown as Record<string, unknown>)) },
-      context: "claiming a handoff key",
+      context: "redeeming a handoff key",
     });
 
     // The claim names the vault by id only (no slug-form address rides the
     // wire), so the default target directory falls back to the vault id —
     // `--to <dir>` names it explicitly.
-    const vault = handoffVaultFromWire(claim);
+    const vault = handoffVaultFromWire(redeem);
 
     // verify grant — a light structural/binding check, NOT the full
     // cryptographic verification (which needs the vault's writer set to
@@ -3509,18 +3509,18 @@ export class Gitvault {
     // just not reachable from here yet).
     let grantBytes: Uint8Array;
     try {
-      grantBytes = fromBase64url(claim.writer_admission_grant, "writer_admission_grant");
+      grantBytes = fromBase64url(redeem.writer_admission_grant, "writer_admission_grant");
     } catch {
-      throw new LocalError("the claim response's writer_admission_grant is not valid base64url", "resuming a handoff", { code: "VALIDATION_FAILED", details: { field: "writer_admission_grant" } });
+      throw new LocalError("the redeem response's writer_admission_grant is not valid base64url", "resuming a handoff", { code: "VALIDATION_FAILED", details: { field: "writer_admission_grant" } });
     }
     let grant: Record<string, unknown>;
     try {
       grant = JSON.parse(new TextDecoder().decode(grantBytes)) as Record<string, unknown>;
     } catch {
-      throw new LocalError("the claim response's writer_admission_grant does not decode to valid JSON", "resuming a handoff", { code: "VALIDATION_FAILED", details: { field: "writer_admission_grant" } });
+      throw new LocalError("the redeem response's writer_admission_grant does not decode to valid JSON", "resuming a handoff", { code: "VALIDATION_FAILED", details: { field: "writer_admission_grant" } });
     }
     if (grant.handoff_id !== parsed.handoff_id || grant.auth_hash !== secrets.auth_hash_hex || grant.repo_id !== vault.vault_id) {
-      throw new LocalError("the claim response's writer_admission_grant does not bind this handoff — refusing", "resuming a handoff", { code: "VALIDATION_FAILED", details: { field: "writer_admission_grant" } });
+      throw new LocalError("the redeem response's writer_admission_grant does not bind this handoff — refusing", "resuming a handoff", { code: "VALIDATION_FAILED", details: { field: "writer_admission_grant" } });
     }
     const grantSha256 = sha256Hex(grantBytes);
 
@@ -3528,21 +3528,21 @@ export class Gitvault {
     // writer_admission_grant_sha256 is what the next step cross-checks;
     // opening under the SAME v1/v2-requiring rule that refuses a
     // pre-gitvault-multi-writer mint's envelope outright.
-    const payload = openHandoffEnvelopeV2(parsed.handoff_id_bytes, secrets.wrap_key, claim.sealed_envelope, claim.envelope_kind);
+    const payload = openHandoffEnvelopeV2(parsed.handoff_id_bytes, secrets.wrap_key, redeem.sealed_envelope, redeem.envelope_kind);
     if (payload.repo_id !== vault.vault_id) {
-      throw new LocalError("the opened envelope's repo_id does not match the claim response's vault — refusing", "resuming a handoff", { code: "HANDOFF_ENVELOPE_INVALID" });
+      throw new LocalError("the opened envelope's repo_id does not match the redeem response's vault — refusing", "resuming a handoff", { code: "HANDOFF_ENVELOPE_INVALID" });
     }
 
     // check the grant hash — design D4's own integrity binding: the SEALED
     // envelope (wrap_key-authenticated, the gateway never holds wrap_key)
-    // names the grant it was minted alongside; if the claim response's
-    // grant doesn't match, something between mint and claim substituted a
+    // names the grant it was minted alongside; if the redeem response's
+    // grant doesn't match, something between mint and redeem substituted a
     // different one — refuse before spending anything on this handoff.
     if (payload.writer_admission_grant_sha256 !== grantSha256) {
       throw new LocalError(
-        `the claim response's writer_admission_grant (sha256 ${grantSha256}) does not match the hash sealed into the envelope at mint time (${payload.writer_admission_grant_sha256}) — refusing to activate under a substituted grant`,
+        `the redeem response's writer_admission_grant (sha256 ${grantSha256}) does not match the hash sealed into the envelope at mint time (${payload.writer_admission_grant_sha256}) — refusing to activate under a substituted grant`,
         "resuming a handoff",
-        { code: "HANDOFF_CLAIM_WRITER_KEY_MISMATCH", details: { expected: payload.writer_admission_grant_sha256, received: grantSha256 } },
+        { code: "HANDOFF_REDEEM_WRITER_KEY_MISMATCH", details: { expected: payload.writer_admission_grant_sha256, received: grantSha256 } },
       );
     }
 
@@ -3565,7 +3565,7 @@ export class Gitvault {
     // persist repo file with pending_writer_admission — BEFORE clone/chain
     // work below (design D10's "write to keystore before touching disk",
     // extended): a crash from here on leaves a durable record of the
-    // ALREADY-VERIFIED grant, so a retry never needs to re-claim (the
+    // ALREADY-VERIFIED grant, so a retry never needs to re-redeem (the
     // acceptance is trivially re-derivable from data already in hand, per
     // this method's own doc comment above; only the grant is not).
     const myWriterKeyId = identity.signing_fingerprint;
@@ -3625,8 +3625,8 @@ export class Gitvault {
     // and possibly twice.
     const handle = await this.open({ repo_id: vault.vault_id, repo_dir: targetDir, keystore_root: options.keystore_root, reconcile: "forbidden" });
 
-    // `added_writer.principal_id` names the claimant's OWN control-plane
-    // principal — the claim response never carries it (its `membership`
+    // `added_writer.principal_id` names the redeemer's OWN control-plane
+    // principal — the redeem response never carries it (its `membership`
     // block names the ORG, not the principal), so resolve it fresh here,
     // the same one-call pattern `handoff()` already uses for its own role
     // resolution (task 5.5).
@@ -3660,9 +3660,9 @@ export class Gitvault {
     // the cleanest possible state to retry `resume()` from.
     const restored = await applyHandoffCheckpoint({ dir: targetDir, stash_oid: payload.checkpoint.commit_oid });
 
-    const senderIsOwner = claim.membership.role === "owner";
-    const nextActions: NextAction[] = [...(claim.next_actions ?? [])];
-    if (claim.kind === "handoff" && senderIsOwner && !nextActions.some((a) => a.type === "remove_member")) {
+    const senderIsOwner = redeem.membership.role === "owner";
+    const nextActions: NextAction[] = [...(redeem.next_actions ?? [])];
+    if (redeem.kind === "handoff" && senderIsOwner && !nextActions.some((a) => a.type === "remove_member")) {
       nextActions.push({
         type: "remove_member",
         why: "The previous agent is still an owner; if its environment is gone for good, remove it.",
@@ -3684,15 +3684,15 @@ export class Gitvault {
     }
 
     return {
-      handoff_id: claim.handoff_id,
-      kind: claim.kind,
-      deduplicated: claim.deduplicated,
+      handoff_id: redeem.handoff_id,
+      kind: redeem.kind,
+      deduplicated: redeem.deduplicated,
       note,
       note_raw: noteRaw,
       restored: { dir: targetDir, branch: restored.branch, base_head_oid: restored.base_head_oid, stash_oid: restored.stash_oid },
-      membership: handoffMembershipFromWire(claim.membership),
-      members: claim.members ?? [],
-      expires_at: claim.expires_at,
+      membership: handoffMembershipFromWire(redeem.membership),
+      members: redeem.members ?? [],
+      expires_at: redeem.expires_at,
       writer_activation: { outcome: "active", writer_key_id: myWriterKeyId, generation: activationGeneration },
       reconcile_recipients: reconcile,
       next_actions: nextActions,
@@ -3705,7 +3705,7 @@ export class Gitvault {
    * (design D5, mirroring {@link Gitvault.resume}'s own bare-wallet
    * backstop; the CALLER folds the fuller cold-start chain — allowance,
    * faucet, one x402 prototype payment — before invoking this, never
-   * blocking the claim itself) → claim → open the sealed envelope → write
+   * blocking the redemption itself) → redeem → open the sealed envelope → write
    * the repo file to the keystore BEFORE touching disk → clone at the base
    * HEAD → `git stash apply --index` → local git-config pins (including
    * `r402.room` set to the invite's OWN room, never just the project id) →
@@ -3745,11 +3745,11 @@ export class Gitvault {
     // Bare-wallet backstop, exactly like `resume` (design D5) — the claim
     // route accepts ONLY a SIWX wallet signature; the fuller cold-start
     // chain (faucet + one x402 prototype payment) is the CALLER's to fold
-    // before this call, and never blocks the claim either way.
+    // before this call, and never blocks the redemption either way.
     await this.#ensureLocalWallet(options.onLine);
 
-    // ensure identity BEFORE the claim (design D5): the `writer_acceptance`
-    // below needs THIS checkout's own signing key, and the claim REQUEST
+    // ensure identity BEFORE the redemption (design D5): the `writer_acceptance`
+    // below needs THIS checkout's own signing key, and the redeem REQUEST
     // body carries it. Nothing about the joiner's key is copied from the
     // inviter — the joiner generates it and pushes under it.
     const keystore = new GitvaultKeystore(options.keystore_root !== undefined ? { rootDir: options.keystore_root } : {});
@@ -3762,7 +3762,7 @@ export class Gitvault {
         { code: "VAULT_UNRECOVERABLE" },
       );
     }
-    const claimantEncryptionPubkeyRaw = fromBase64url(identity.encryption_pubkey, "identity.encryption_pubkey");
+    const redeemerEncryptionPubkeyRaw = fromBase64url(identity.encryption_pubkey, "identity.encryption_pubkey");
 
     // Both signatures are constructible BEFORE the stored grant is ever
     // seen — the invite id and `auth_hash` are already independently known
@@ -3774,11 +3774,11 @@ export class Gitvault {
       handoff_id: parsed.invite_id,
       auth_hash: secrets.auth_hash_hex,
       admission_seed: admissionSeed,
-      claimant_signing_seed: signingKeypair.seed,
-      claimant_encryption_pubkey_raw: claimantEncryptionPubkeyRaw,
+      redeemer_signing_seed: signingKeypair.seed,
+      redeemer_encryption_pubkey_raw: redeemerEncryptionPubkeyRaw,
     });
 
-    const claim = await this.#client.request<{
+    const redeem = await this.#client.request<{
       invite_id: string;
       kind: "invite";
       deduplicated: boolean;
@@ -3798,7 +3798,7 @@ export class Gitvault {
       writer_admission_grant: string;
       writer_activation: { state: string };
       next_actions?: NextAction[];
-    }>(`/gitvault/v1/invites/${encodeURIComponent(parsed.invite_id)}/claim`, {
+    }>(`/gitvault/v1/invites/${encodeURIComponent(parsed.invite_id)}/redeem`, {
       method: "POST",
       // Base64url, per the documented wire contract — the gateway decodes
       // base64/base64url and substitutes 32 zero bytes for anything else,
@@ -3806,13 +3806,13 @@ export class Gitvault {
       // claim answers INVITE_KEY_INVALID. Each side's own tests can pass
       // independently; only a cross-side vector catches this class.
       body: { auth_secret: toBase64url(secrets.auth_secret), writer_acceptance: toBase64url(jcs(acceptance as unknown as Record<string, unknown>)) },
-      context: "claiming an invite key",
+      context: "redeeming an invite key",
     });
 
     // The claim names the vault by id only (no slug-form address rides the
     // wire), so the default target directory falls back to the vault id —
     // `--to <dir>` names it explicitly.
-    const vault = handoffVaultFromWire(claim);
+    const vault = handoffVaultFromWire(redeem);
 
     // verify grant — a light structural/binding check, NOT the full
     // cryptographic verification (which needs the vault's writer set to
@@ -3820,26 +3820,26 @@ export class Gitvault {
     // walked below — protocol §4.17's own admission ordering).
     let grantBytes: Uint8Array;
     try {
-      grantBytes = fromBase64url(claim.writer_admission_grant, "writer_admission_grant");
+      grantBytes = fromBase64url(redeem.writer_admission_grant, "writer_admission_grant");
     } catch {
-      throw new LocalError("the claim response's writer_admission_grant is not valid base64url", "joining an invite", { code: "VALIDATION_FAILED", details: { field: "writer_admission_grant" } });
+      throw new LocalError("the redeem response's writer_admission_grant is not valid base64url", "joining an invite", { code: "VALIDATION_FAILED", details: { field: "writer_admission_grant" } });
     }
     let grant: Record<string, unknown>;
     try {
       grant = JSON.parse(new TextDecoder().decode(grantBytes)) as Record<string, unknown>;
     } catch {
-      throw new LocalError("the claim response's writer_admission_grant does not decode to valid JSON", "joining an invite", { code: "VALIDATION_FAILED", details: { field: "writer_admission_grant" } });
+      throw new LocalError("the redeem response's writer_admission_grant does not decode to valid JSON", "joining an invite", { code: "VALIDATION_FAILED", details: { field: "writer_admission_grant" } });
     }
-    // `handoff_id` is the frozen protocol spelling of the claim id (D11) —
+    // `handoff_id` is the frozen protocol spelling of the key id (D11) —
     // for an invite it carries the INVITE id.
     if (grant.handoff_id !== parsed.invite_id || grant.auth_hash !== secrets.auth_hash_hex || grant.repo_id !== vault.vault_id) {
-      throw new LocalError("the claim response's writer_admission_grant does not bind this invite — refusing", "joining an invite", { code: "VALIDATION_FAILED", details: { field: "writer_admission_grant" } });
+      throw new LocalError("the redeem response's writer_admission_grant does not bind this invite — refusing", "joining an invite", { code: "VALIDATION_FAILED", details: { field: "writer_admission_grant" } });
     }
     const grantSha256 = sha256Hex(grantBytes);
 
-    const payload = openInviteEnvelope(parsed.invite_id_bytes, secrets.wrap_key, claim.sealed_envelope, claim.envelope_kind);
+    const payload = openInviteEnvelope(parsed.invite_id_bytes, secrets.wrap_key, redeem.sealed_envelope, redeem.envelope_kind);
     if (payload.repo_id !== vault.vault_id) {
-      throw new LocalError("the opened envelope's repo_id does not match the claim response's vault — refusing", "joining an invite", { code: "INVITE_ENVELOPE_INVALID" });
+      throw new LocalError("the opened envelope's repo_id does not match the redeem response's vault — refusing", "joining an invite", { code: "INVITE_ENVELOPE_INVALID" });
     }
 
     // design D5's own integrity binding: the SEALED envelope
@@ -3849,9 +3849,9 @@ export class Gitvault {
     // keystore.
     if (payload.writer_admission_grant_sha256 !== grantSha256) {
       throw new LocalError(
-        `the claim response's writer_admission_grant (sha256 ${grantSha256}) does not match the hash sealed into the envelope at mint time (${payload.writer_admission_grant_sha256}) — refusing to activate under a substituted grant`,
+        `the redeem response's writer_admission_grant (sha256 ${grantSha256}) does not match the hash sealed into the envelope at mint time (${payload.writer_admission_grant_sha256}) — refusing to activate under a substituted grant`,
         "joining an invite",
-        { code: "INVITE_CLAIM_WRITER_KEY_MISMATCH", details: { expected: payload.writer_admission_grant_sha256, received: grantSha256 } },
+        { code: "INVITE_REDEEM_WRITER_KEY_MISMATCH", details: { expected: payload.writer_admission_grant_sha256, received: grantSha256 } },
       );
     }
 
@@ -3873,7 +3873,7 @@ export class Gitvault {
     // carrying EVERY epoch key the envelope holds so a joiner arriving after
     // a rotation can still open the pre-rotation generations, and the
     // already-verified grant as `pending_writer_admission` so a crash from
-    // here on never needs to re-claim (the acceptance is trivially
+    // here on never needs to re-redeem (the acceptance is trivially
     // re-derivable from data already in hand; only the grant is not).
     const myWriterKeyId = identity.signing_fingerprint;
     keystore.saveRepo({
@@ -3898,7 +3898,7 @@ export class Gitvault {
     // The ROW's room key — a named room, or the project id when the mint
     // omitted one — is what makes `messages wait` in the joined checkout
     // address the right room with zero flags (design D5).
-    const roomKey = claim.room?.room_key ?? vault.project_id ?? "";
+    const roomKey = redeem.room?.room_key ?? vault.project_id ?? "";
 
     // Local-only pins (design D5) — never a worktree file, never the global
     // active project. Reuses the SAME pin-writer every other gitvault
@@ -3935,7 +3935,7 @@ export class Gitvault {
     // SAME `add_writer_key` door `resume` drives — so the joiner's first
     // `git push` is an ordinary push under its OWN key, not a
     // `GITVAULT_WRITER_NOT_ADMITTED` refusal. `added_writer.principal_id`
-    // names the claimant's own control-plane principal, which the claim
+    // names the redeemer's own control-plane principal, which the claim
     // response never carries (its `membership` block names the ORG), so
     // resolve it fresh here.
     //
@@ -3943,7 +3943,7 @@ export class Gitvault {
     // concurrent rotation, a lost network) leaves this key a PENDING writer
     // of the vault, which any live writer's next push or `repos access
     // sync` admits. Report it and carry `request_writer_sync` rather than
-    // throwing away a claim already spent and a tree about to be restored.
+    // throwing away a redemption already spent and a tree about to be restored.
     let writerActivation: GitvaultInviteJoinResult["writer_activation"];
     try {
       const who = await this.#client.request<{ principal: { id: string } }>("/agent/v1/whoami", { context: "resolving this principal's id for the writer activation head" });
@@ -3982,11 +3982,11 @@ export class Gitvault {
     // design D5: register THIS session's presence, then post the ONE
     // arrival fact — both best-effort, neither ever throws `join()`.
     const rooms = new Rooms(this.#client);
-    const inviteShort = claim.invite_id.slice(0, 8);
+    const inviteShort = redeem.invite_id.slice(0, 8);
     let myPresence: { presence_id: string; name: string } | null = null;
     let presenceFailure: string | null = null;
     try {
-      const registration = await rooms.registerPresence(claim.org_id, roomKey, {
+      const registration = await rooms.registerPresence(redeem.org_id, roomKey, {
         task: options.task ?? `joined via invite ${inviteShort}`,
         ...(options.program !== undefined ? { program: options.program } : {}),
         ...(options.model !== undefined ? { model: options.model } : {}),
@@ -4001,11 +4001,11 @@ export class Gitvault {
     if (myPresence) {
       const receiptShort = payload.checkpoint.commit_oid.slice(0, 12);
       try {
-        const posted = await rooms.sendMessage(claim.org_id, roomKey, {
+        const posted = await rooms.sendMessage(redeem.org_id, roomKey, {
           body: `Joined as ${myPresence.name} from checkpoint ${receiptShort}.`,
           presenceId: myPresence.presence_id,
           ...(options.sessionKey !== undefined ? { sessionKey: options.sessionKey } : {}),
-          idempotencyKey: `invite:${claim.invite_id}:joined`,
+          idempotencyKey: `invite:${redeem.invite_id}:joined`,
         });
         if (typeof posted.cursor === "string") arrivalCursor = posted.cursor;
       } catch {
@@ -4013,11 +4013,11 @@ export class Gitvault {
       }
     }
 
-    let livePresences: RoomPresence[] = claim.live_presences ?? [];
+    let livePresences: RoomPresence[] = redeem.live_presences ?? [];
     let recentMessages: unknown[] = [];
-    let cursor: string | null = claim.cursor ?? null;
+    let cursor: string | null = redeem.cursor ?? null;
     try {
-      const page = await rooms.listMessages(claim.org_id, roomKey, {
+      const page = await rooms.listMessages(redeem.org_id, roomKey, {
         order: "desc",
         limit: options.recentMessagesLimit ?? 10,
         ...(myPresence ? { presenceId: myPresence.presence_id } : {}),
@@ -4032,19 +4032,19 @@ export class Gitvault {
       if (arrivalCursor) cursor = arrivalCursor;
       else if (typeof newestRead === "string") cursor = newestRead;
     } catch {
-      // best-effort — arrival still reports the arrival fact's cursor, else the claim's own
+      // best-effort — arrival still reports the arrival fact's cursor, else the redemption's own
       if (arrivalCursor) cursor = arrivalCursor;
     }
 
-    const nextActions: NextAction[] = [...(claim.next_actions ?? [])];
+    const nextActions: NextAction[] = [...(redeem.next_actions ?? [])];
     if (!nextActions.some((a) => a.type === "push_repo")) {
       nextActions.push({ type: "push_repo", command: "git push origin main", why: "Publish continued work back to the vault." });
     }
     if (!nextActions.some((a) => a.type === "wait_room")) {
       nextActions.push({ type: "wait_room", command: "run402 messages wait", why: "Block until the inviter (or anyone else) speaks; silence returns who is still here." });
     }
-    if (claim.inviter && !nextActions.some((a) => a.type === "send_room_message")) {
-      nextActions.push({ type: "send_room_message", command: `run402 messages send "…" --to ${claim.inviter.name}`, why: `${claim.inviter.name} invited you and may still be live.` });
+    if (redeem.inviter && !nextActions.some((a) => a.type === "send_room_message")) {
+      nextActions.push({ type: "send_room_message", command: `run402 messages send "…" --to ${redeem.inviter.name}`, why: `${redeem.inviter.name} invited you and may still be live.` });
     }
     // design D9: a joiner whose activation did not land is not stranded —
     // its key is a PENDING writer, and any live writer's reconcile admits
@@ -4068,22 +4068,22 @@ export class Gitvault {
     }
 
     return {
-      invite_id: claim.invite_id,
-      kind: claim.kind,
-      deduplicated: claim.deduplicated,
+      invite_id: redeem.invite_id,
+      kind: redeem.kind,
+      deduplicated: redeem.deduplicated,
       note,
       note_raw: noteRaw,
       restored: { dir: targetDir, branch: restored.branch, base_head_oid: restored.base_head_oid, stash_oid: restored.stash_oid },
-      membership: handoffMembershipFromWire(claim.membership),
-      members: claim.members ?? [],
-      room: { organization_id: claim.room?.org_id ?? claim.org_id, room_key: roomKey },
-      inviter: claim.inviter ?? null,
+      membership: handoffMembershipFromWire(redeem.membership),
+      members: redeem.members ?? [],
+      room: { organization_id: redeem.room?.org_id ?? redeem.org_id, room_key: roomKey },
+      inviter: redeem.inviter ?? null,
       presence: myPresence,
       presence_failure: presenceFailure,
       live_presences: livePresences,
       cursor,
       recent_messages: recentMessages,
-      expires_at: claim.expires_at,
+      expires_at: redeem.expires_at,
       writer_activation: writerActivation,
       reconcile_recipients: reconcile,
       next_actions: nextActions,

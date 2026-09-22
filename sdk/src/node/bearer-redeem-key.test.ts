@@ -10,13 +10,13 @@ import {
   deriveHandoffSecrets,
   deriveInviteSecrets,
   deriveRoomInviteAuthSecret,
-  parseClaimKey,
+  parseRedeemKey,
   parseHandoffKey,
   parseInviteKey,
   parseRoomInviteKey,
-  randomClaimId,
+  randomRedeemId,
   uuidToBytes,
-} from "./bearer-claim-key.js";
+} from "./bearer-redeem-key.js";
 import { randomBytes } from "../namespaces/gitvault.crypto.js";
 
 const HANDOFF_ID = "3fa85f64-5717-4562-b3fc-2c963f66afa6";
@@ -63,9 +63,9 @@ describe("assembleRoomInviteKey / parseRoomInviteKey — round trip", () => {
     assert.deepEqual([...parsed.master_secret], [...master_secret]);
   });
 
-  it("parseClaimKey(raw, 'room') is the same parser under its generic name", () => {
+  it("parseRedeemKey(raw, 'room') is the same parser under its generic name", () => {
     const { key } = assembleRoomInviteKey(ROOM_INVITE_ID);
-    const parsed = parseClaimKey(key, "room");
+    const parsed = parseRedeemKey(key, "room");
     assert.equal(parsed.kind, "room");
     assert.equal(parsed.id, ROOM_INVITE_ID);
   });
@@ -77,16 +77,16 @@ describe("assembleRoomInviteKey / parseRoomInviteKey — round trip", () => {
   });
 });
 
-describe("randomClaimId", () => {
+describe("randomRedeemId", () => {
   it("mints a canonical, RFC-4122-v4-shaped UUID", () => {
-    const id = randomClaimId();
+    const id = randomRedeemId();
     assert.match(id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
     // uuidToBytes/back round-trips without throwing — it is a canonical UUID.
     assert.equal(uuidToBytes(id).length, 16);
   });
 
   it("is usable directly as a room invite id", () => {
-    const id = randomClaimId();
+    const id = randomRedeemId();
     const { key } = assembleRoomInviteKey(id);
     assert.equal(parseRoomInviteKey(key).invite_id, id);
   });

@@ -1701,7 +1701,7 @@ describe("run402 repos handoff — mint a single-use Handoff Key (design D3/D10)
   });
 });
 
-describe("run402 repos resume — claim a Handoff Key and restore the stash-shaped checkpoint (design D1/D2)", () => {
+describe("run402 repos resume — redeem a Handoff Key and restore the stash-shaped checkpoint (design D1/D2)", () => {
   it("resumes via gitvault.resume, passing the key positional and a line callback", async () => {
     const payload = await ok("resume", [HANDOFF_KEY, "--json"]);
     const call = calls.find((c) => c.method === "gitvault.resume");
@@ -1734,7 +1734,7 @@ describe("run402 repos resume — claim a Handoff Key and restore the stash-shap
     assert.ok(stderr.some((l) => l === "writer: active (generation 0000000000000002)"));
   });
 
-  it("prints the safe-replay note when the key was already claimed by this same principal (dedup)", async () => {
+  it("prints the safe-replay note when the key was already redeemed by this same principal (dedup)", async () => {
     impl.resume = async () => ({
       handoff_id: "3fa85f64-5717-4562-b3fc-2c963f66afa6", kind: "handoff", deduplicated: true,
       note: { schema: "kygit.handoff-note.v1", from: { agent: "claude" }, summary: "wip", capture: {} },
@@ -1745,7 +1745,7 @@ describe("run402 repos resume — claim a Handoff Key and restore the stash-shap
       next_actions: [],
     });
     await human("resume", [HANDOFF_KEY]);
-    assert.ok(stderr.some((l) => l.includes("already claimed by this same principal")));
+    assert.ok(stderr.some((l) => l.includes("already redeemed by this same principal")));
   });
 
   it("--json prints the full envelope instead of rendering Markdown", async () => {
@@ -1769,7 +1769,7 @@ describe("run402 repos resume — claim a Handoff Key and restore the stash-shap
 
 // ─── resume folds the cold-start chain (decided 2026-09-02, amends design D5) ──
 
-describe("run402 repos resume — a resumed agent is a NEW run402 wallet: the cold-start chain runs BEFORE the claim (amends design D5, 2026-09-02)", () => {
+describe("run402 repos resume — a resumed agent is a NEW run402 wallet: the cold-start chain runs BEFORE the redemption (amends design D5, 2026-09-02)", () => {
   let cfgIndex = 0;
   /** A config dir with NO allowance file — the fresh-machine case. */
   function freshConfigDir() {
@@ -1789,7 +1789,7 @@ describe("run402 repos resume — a resumed agent is a NEW run402 wallet: the co
     freshConfigDir();
     const payload = await ok("resume", [HANDOFF_KEY, "--json"]);
     assert.equal(coldStartCalls.length, 1, "the chain folds exactly once");
-    assert.ok(calls.find((c) => c.method === "gitvault.resume"), "the claim still runs");
+    assert.ok(calls.find((c) => c.method === "gitvault.resume"), "the redemption still runs");
     // Ordering: the fold's announce lines land on stderr BEFORE resume's own "resuming" line.
     const foldLine = stderr.findIndex((l) => l.includes("folding the cold-start chain"));
     const chainLine = stderr.findIndex((l) => l.includes("setting the prototype tier"));
@@ -1816,7 +1816,7 @@ describe("run402 repos resume — a resumed agent is a NEW run402 wallet: the co
     assert.equal(payload.cold_start.performed, true);
   });
 
-  it("--no-init opts out: no status read, no chain, the bare claim (the SDK still creates the wallet it needs)", async () => {
+  it("--no-init opts out: no status read, no chain, the bare redemption (the SDK still creates the wallet it needs)", async () => {
     freshConfigDir();
     const payload = await ok("resume", [HANDOFF_KEY, "--no-init", "--json"]);
     assert.equal(coldStartCalls.length, 0);
@@ -1825,7 +1825,7 @@ describe("run402 repos resume — a resumed agent is a NEW run402 wallet: the co
     assert.deepEqual(payload.cold_start, { performed: false, skipped: "no_init" });
   });
 
-  it("a chain failure (faucet throttle, payment refusal) is reported and NEVER blocks the claim — renew_tier rides next_actions", async () => {
+  it("a chain failure (faucet throttle, payment refusal) is reported and NEVER blocks the redemption — renew_tier rides next_actions", async () => {
     freshConfigDir();
     coldStartImpl = async (announce) => {
       announce("allowance created: 0xabc");
@@ -1835,7 +1835,7 @@ describe("run402 repos resume — a resumed agent is a NEW run402 wallet: the co
     };
     const payload = await ok("resume", [HANDOFF_KEY, "--json"]);
     assert.equal(coldStartCalls.length, 1);
-    assert.ok(calls.find((c) => c.method === "gitvault.resume"), "the claim runs after the chain fails");
+    assert.ok(calls.find((c) => c.method === "gitvault.resume"), "the redemption runs after the chain fails");
     assert.equal(payload.cold_start.performed, false);
     assert.equal(payload.cold_start.error.code, "RATE_LIMITED");
     assert.ok(payload.next_actions.some((n) => n.type === "renew_tier" && n.command === "run402 tier set prototype"));
@@ -2030,7 +2030,7 @@ describe("run402 repos invite — mint a single-use Invite Key (kygit-invite des
   });
 });
 
-describe("run402 repos join — claim an Invite Key and restore the stash-shaped checkpoint (kygit-invite design D5)", () => {
+describe("run402 repos join — redeem an Invite Key and restore the stash-shaped checkpoint (kygit-invite design D5)", () => {
   it("joins via gitvault.join, passing the key positional and a line callback", async () => {
     const payload = await ok("join", [INVITE_KEY, "--json"]);
     const call = calls.find((c) => c.method === "gitvault.join");
@@ -2099,7 +2099,7 @@ describe("run402 repos join — claim an Invite Key and restore the stash-shaped
     assert.ok(stderr.some((l) => l.includes("next: run402 messages wait")));
   });
 
-  it("reports an unknown inviter when the claim carries none", async () => {
+  it("reports an unknown inviter when the redeem response carries none", async () => {
     impl.join = async () => ({
       invite_id: "3fa85f64-5717-4562-b3fc-2c963f66afa6", kind: "invite", deduplicated: false,
       note: null, note_raw: null,
@@ -2113,7 +2113,7 @@ describe("run402 repos join — claim an Invite Key and restore the stash-shaped
     assert.ok(stderr.some((l) => l.includes("invited by: unknown")));
   });
 
-  it("prints the safe-replay note when the key was already claimed by this same principal (dedup)", async () => {
+  it("prints the safe-replay note when the key was already redeemed by this same principal (dedup)", async () => {
     impl.join = async () => ({
       invite_id: "3fa85f64-5717-4562-b3fc-2c963f66afa6", kind: "invite", deduplicated: true,
       note: { schema: "kygit.invite-note.v1", from: { agent: "claude" }, summary: "wip", capture: {} },
@@ -2125,7 +2125,7 @@ describe("run402 repos join — claim an Invite Key and restore the stash-shaped
       reconcile_recipients: { attempted: false, outcome: "skipped" }, next_actions: [],
     });
     await human("join", [INVITE_KEY]);
-    assert.ok(stderr.some((l) => l.includes("already claimed by this same principal")));
+    assert.ok(stderr.some((l) => l.includes("already redeemed by this same principal")));
   });
 
   it("--json prints the full envelope instead of rendering Markdown", async () => {
@@ -2164,7 +2164,7 @@ describe("run402 repos join — claim an Invite Key and restore the stash-shaped
 
 // ─── join folds the cold-start chain, exactly like resume (kygit-invite design D5) ──
 
-describe("run402 repos join — a joined agent is a NEW run402 wallet: the cold-start chain runs BEFORE the claim (design D5)", () => {
+describe("run402 repos join — a joined agent is a NEW run402 wallet: the cold-start chain runs BEFORE the redemption (design D5)", () => {
   let cfgIndex = 0;
   /** A config dir with NO allowance file — the fresh-machine case. */
   function freshConfigDir() {
@@ -2184,7 +2184,7 @@ describe("run402 repos join — a joined agent is a NEW run402 wallet: the cold-
     freshConfigDir();
     const payload = await ok("join", [INVITE_KEY, "--json"]);
     assert.equal(coldStartCalls.length, 1, "the chain folds exactly once");
-    assert.ok(calls.find((c) => c.method === "gitvault.join"), "the claim still runs");
+    assert.ok(calls.find((c) => c.method === "gitvault.join"), "the redemption still runs");
     const foldLine = stderr.findIndex((l) => l.includes("folding the cold-start chain"));
     const chainLine = stderr.findIndex((l) => l.includes("setting the prototype tier"));
     assert.ok(foldLine >= 0 && chainLine > foldLine, "the fold is announced, then each chain step");
@@ -2202,7 +2202,7 @@ describe("run402 repos join — a joined agent is a NEW run402 wallet: the cold-
     assert.deepEqual(payload.cold_start, { performed: false, skipped: "tier_active" });
   });
 
-  it("--no-init opts out: no status read, no chain, the bare claim (the SDK still creates the wallet it needs)", async () => {
+  it("--no-init opts out: no status read, no chain, the bare redemption (the SDK still creates the wallet it needs)", async () => {
     freshConfigDir();
     const payload = await ok("join", [INVITE_KEY, "--no-init", "--json"]);
     assert.equal(coldStartCalls.length, 0);
@@ -2211,7 +2211,7 @@ describe("run402 repos join — a joined agent is a NEW run402 wallet: the cold-
     assert.deepEqual(payload.cold_start, { performed: false, skipped: "no_init" });
   });
 
-  it("a chain failure (faucet throttle, payment refusal) is reported and NEVER blocks the claim — renew_tier rides next_actions", async () => {
+  it("a chain failure (faucet throttle, payment refusal) is reported and NEVER blocks the redemption — renew_tier rides next_actions", async () => {
     freshConfigDir();
     coldStartImpl = async (announce) => {
       announce("allowance created: 0xabc");
@@ -2221,7 +2221,7 @@ describe("run402 repos join — a joined agent is a NEW run402 wallet: the cold-
     };
     const payload = await ok("join", [INVITE_KEY, "--json"]);
     assert.equal(coldStartCalls.length, 1);
-    assert.ok(calls.find((c) => c.method === "gitvault.join"), "the claim runs after the chain fails");
+    assert.ok(calls.find((c) => c.method === "gitvault.join"), "the redemption runs after the chain fails");
     assert.equal(payload.cold_start.performed, false);
     assert.equal(payload.cold_start.error.code, "RATE_LIMITED");
     assert.ok(payload.next_actions.some((n) => n.type === "renew_tier" && n.command === "run402 tier set prototype"));

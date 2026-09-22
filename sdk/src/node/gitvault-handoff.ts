@@ -16,7 +16,7 @@
  * would recover.
  *
  * The prefix is a REGISTRY (design D9 rule 4 / kygit-invite D3): `kgh1_` is
- * the first row, `kgi1_` the second. `parseClaimKey` refuses any other
+ * the first row, `kgi1_` the second. `parseRedeemKey` refuses any other
  * recognized-shape-but-wrong-kind prefix BY NAME, pointing at its own verb,
  * rather than misreading it as a malformed key of the kind it expected.
  * `parseHandoffKey`/`parseInviteKey` are thin kind-bound aliases over the
@@ -58,14 +58,14 @@ import {
 } from "../namespaces/gitvault.crypto.js";
 // add-room-invite design D2: the pure key-format primitives (the registry,
 // uuidToBytes, assemble/parse, the HKDF derive) moved to
-// `bearer-claim-key.ts` — a move, not a copy — so the room kind (`kri1_`)
+// `bearer-redeem-key.ts` — a move, not a copy — so the room kind (`kri1_`)
 // can share them without teaching THIS vault-shaped module a room-shaped
 // kind. Every symbol this module previously exported is re-exported here
 // under its existing name, so nothing importing it changes.
 import {
-  type ClaimKind,
+  type RedeemKind,
   type HandoffKeyPrefixEntry,
-  type ClaimKeyParts,
+  type RedeemKeyParts,
   type HandoffKeyParts,
   type InviteKeyParts,
   type HandoffSecrets,
@@ -73,25 +73,25 @@ import {
   uuidToBytes,
   assembleHandoffKey,
   assembleInviteKey,
-  parseClaimKey,
+  parseRedeemKey,
   parseHandoffKey,
   parseInviteKey,
   deriveHandoffSecrets,
   deriveInviteSecrets,
-} from "./bearer-claim-key.js";
+} from "./bearer-redeem-key.js";
 
 export {
   HANDOFF_KEY_PREFIXES,
   uuidToBytes,
   assembleHandoffKey,
   assembleInviteKey,
-  parseClaimKey,
+  parseRedeemKey,
   parseHandoffKey,
   parseInviteKey,
   deriveHandoffSecrets,
   deriveInviteSecrets,
 };
-export type { ClaimKind, HandoffKeyPrefixEntry, ClaimKeyParts, HandoffKeyParts, InviteKeyParts, HandoffSecrets };
+export type { RedeemKind, HandoffKeyPrefixEntry, RedeemKeyParts, HandoffKeyParts, InviteKeyParts, HandoffSecrets };
 
 function fail(code: string, message: string, context: string, details?: unknown): never {
   throw new LocalError(message, context, { code, details });
@@ -99,18 +99,18 @@ function fail(code: string, message: string, context: string, details?: unknown)
 
 // `HANDOFF_KEY_PREFIXES[0]`/`[1]` — the vault kinds, which (unlike the room
 // kind at `[2]`) always carry `envelopeKind`/`noteSchema`/`frameMagic`; this
-// narrowing is what lets `sealClaimEnvelope`/`openClaimEnvelope` below keep
+// narrowing is what lets `sealRedeemEnvelope`/`openRedeemEnvelope` below keep
 // those fields required without widening the shared registry's own type.
-type VaultClaimKeyEntry = HandoffKeyPrefixEntry & { envelopeKind: string; noteSchema: string; frameMagic: string };
-const HANDOFF_ENTRY = HANDOFF_KEY_PREFIXES[0] as VaultClaimKeyEntry;
-const INVITE_ENTRY = HANDOFF_KEY_PREFIXES[1] as VaultClaimKeyEntry;
+type VaultRedeemKeyEntry = HandoffKeyPrefixEntry & { envelopeKind: string; noteSchema: string; frameMagic: string };
+const HANDOFF_ENTRY = HANDOFF_KEY_PREFIXES[0] as VaultRedeemKeyEntry;
+const INVITE_ENTRY = HANDOFF_KEY_PREFIXES[1] as VaultRedeemKeyEntry;
 
 // ─── Writer-admission grant + acceptance (gitvault-multi-writer D4/§4.17) ───
 //
 // The bearer-completable path for `add_writer_key{authorization.kind:
 // "handoff"}` — an unknown-at-mint, possibly-sender-gone recipient becomes a
 // vault WRITER (not just a K_repo holder) via a sender-signed grant plus the
-// claimant's own two-signature acceptance. Reuses ONLY existing primitives:
+// redeemer's own two-signature acceptance. Reuses ONLY existing primitives:
 // `signaturePreimage`/`ed25519Sign`/`ed25519VerifyStrict`/`vkFingerprint`/
 // `ekFingerprint` from `gitvault.crypto.ts` — the SAME "r402s/v0/<kind>\n" +
 // JCS(object minus signature) preimage rule every other chain object uses
@@ -122,28 +122,28 @@ const INVITE_ENTRY = HANDOFF_KEY_PREFIXES[1] as VaultClaimKeyEntry;
 // the identical convention used here).
 
 /**
- * Third HKDF output of a claim key's `master_secret` (design D4, protocol
+ * Third HKDF output of a redeem key's `master_secret` (design D4, protocol
  * §4.17; kind-parameterized by kygit-invite design D3): the one-use
  * admission Ed25519 seed. Derived directly from `master_secret` —
  * deliberately NEVER from `auth_secret` or `wrap_key` — so the gateway,
- * which receives `auth_secret` at claim, stays computationally unable to
- * derive this seed and manufacture a different claimant completion. The info
+ * which receives `auth_secret` at redeem, stays computationally unable to
+ * derive this seed and manufacture a different redeemer completion. The info
  * string is domain-separated by kind (`kygit/<kind>/writer-admission/v1`),
  * so an invite's admission seed never matches a handoff's for the same id
  * and master secret.
  */
-export function deriveClaimWriterAdmissionSeed(kind: ClaimKind, idBytes: Uint8Array, masterSecret: Uint8Array): Uint8Array {
+export function deriveRedeemWriterAdmissionSeed(kind: RedeemKind, idBytes: Uint8Array, masterSecret: Uint8Array): Uint8Array {
   return hkdf(sha256, masterSecret, idBytes, utf8ToBytes(`kygit/${kind}/writer-admission/v1`), 32);
 }
 
-/** Handoff-bound alias of {@link deriveClaimWriterAdmissionSeed} — `kygit/handoff/writer-admission/v1`. */
+/** Handoff-bound alias of {@link deriveRedeemWriterAdmissionSeed} — `kygit/handoff/writer-admission/v1`. */
 export function deriveWriterAdmissionSeed(handoffIdBytes: Uint8Array, masterSecret: Uint8Array): Uint8Array {
-  return deriveClaimWriterAdmissionSeed("handoff", handoffIdBytes, masterSecret);
+  return deriveRedeemWriterAdmissionSeed("handoff", handoffIdBytes, masterSecret);
 }
 
 /** The invite-kind sibling of {@link deriveWriterAdmissionSeed} — `kygit/invite/writer-admission/v1` (kygit-invite design D3). */
 export function deriveInviteWriterAdmissionSeed(inviteIdBytes: Uint8Array, masterSecret: Uint8Array): Uint8Array {
-  return deriveClaimWriterAdmissionSeed("invite", inviteIdBytes, masterSecret);
+  return deriveRedeemWriterAdmissionSeed("invite", inviteIdBytes, masterSecret);
 }
 
 export type GitvaultWriterMintedRole = "owner" | "admin" | "developer" | "billing" | "viewer";
@@ -242,7 +242,7 @@ export interface HandoffWriterAcceptStatement {
   encryption_fingerprint: string;
 }
 
-/** ONE object, TWO signatures over the SAME statement: possession of the one-use admission capability (`acceptance_signature`) AND possession of the claimant's own permanent writer key (`possession_signature`). Never chain-stored directly — embedded verbatim inside an admitted `add_writer_key` transition's `authorization.kind:"handoff".acceptance` once consumed. */
+/** ONE object, TWO signatures over the SAME statement: possession of the one-use admission capability (`acceptance_signature`) AND possession of the redeemer's own permanent writer key (`possession_signature`). Never chain-stored directly — embedded verbatim inside an admitted `add_writer_key` transition's `authorization.kind:"handoff".acceptance` once consumed. */
 export interface WriterAcceptance {
   statement: HandoffWriterAcceptStatement;
   acceptance_signature: string;
@@ -254,41 +254,41 @@ export interface BuildWriterAcceptanceInput {
   auth_hash: string;
   /** {@link deriveWriterAdmissionSeed}'s output — B derives it the SAME way A did, from its own copy of `master_secret`. */
   admission_seed: Uint8Array;
-  /** The claimant's OWN permanent writer signing seed — becomes `writer_key_id`/`signing_pubkey` on the statement. */
-  claimant_signing_seed: Uint8Array;
-  claimant_encryption_pubkey_raw: Uint8Array;
+  /** The redeemer's OWN permanent writer signing seed — becomes `writer_key_id`/`signing_pubkey` on the statement. */
+  redeemer_signing_seed: Uint8Array;
+  redeemer_encryption_pubkey_raw: Uint8Array;
 }
 
 /**
- * Claim side (D4): the claimant can construct BOTH signatures before ever
+ * Redeem side (D4): the redeemer can construct BOTH signatures before ever
  * seeing the stored grant, since it already knows `handoff_id`, `auth_hash`
- * (recomputed exactly as the existing claim flow already does via
+ * (recomputed exactly as the existing redeem flow already does via
  * {@link deriveHandoffSecrets}), and its own keys.
  */
 export function buildWriterAcceptance(input: BuildWriterAcceptanceInput): WriterAcceptance {
   if (!GITVAULT_SHA256_RE.test(input.auth_hash)) fail("VALIDATION_FAILED", "auth_hash must be 64 lowercase hex", "building writer_acceptance", { field: "auth_hash" });
-  const signingPubkeyRaw = ed25519PublicKey(input.claimant_signing_seed);
+  const signingPubkeyRaw = ed25519PublicKey(input.redeemer_signing_seed);
   const statement: HandoffWriterAcceptStatement = {
     domain: HANDOFF_WRITER_ACCEPT_DOMAIN,
     handoff_id: input.handoff_id,
     auth_hash: input.auth_hash,
     writer_key_id: vkFingerprint(signingPubkeyRaw),
     signing_pubkey: toBase64url(signingPubkeyRaw),
-    encryption_pubkey: toBase64url(input.claimant_encryption_pubkey_raw),
-    encryption_fingerprint: ekFingerprint(input.claimant_encryption_pubkey_raw),
+    encryption_pubkey: toBase64url(input.redeemer_encryption_pubkey_raw),
+    encryption_fingerprint: ekFingerprint(input.redeemer_encryption_pubkey_raw),
   };
   const preimage = signaturePreimage(HANDOFF_WRITER_ACCEPT_PREIMAGE_DOMAIN, statement as unknown as Record<string, unknown>);
   return {
     statement,
     acceptance_signature: toBase64url(ed25519Sign(preimage, input.admission_seed)),
-    possession_signature: toBase64url(ed25519Sign(preimage, input.claimant_signing_seed)),
+    possession_signature: toBase64url(ed25519Sign(preimage, input.redeemer_signing_seed)),
   };
 }
 
 /**
  * Verifies BOTH signatures over the SAME statement: `acceptance_signature`
  * under the grant's `handoff_admission_pubkey` (proves B legitimately
- * claimed THIS handoff), `possession_signature` under the statement's own
+ * redeemed THIS handoff), `possession_signature` under the statement's own
  * `signing_pubkey` (proves `writer_key_id`/`signing_pubkey` really belong
  * to whoever is submitting it, not a replayed statement about someone
  * else's key). Does not check `handoff_id`/`auth_hash` binding to a stored
@@ -314,7 +314,7 @@ export function verifyWriterAcceptance(acceptance: WriterAcceptance, admissionPu
 
 // ─── The sealed envelope (design D3; kind-parameterized by kygit-invite D3) ─
 
-/** The literal payload the mint side seals and the claim side opens, for the handoff kind. */
+/** The literal payload the mint side seals and the redeem side opens, for the handoff kind. */
 export interface HandoffEnvelopePayload {
   v: 1;
   kind: "handoff";
@@ -343,13 +343,13 @@ const FRAME_VERSION_BYTE = 0x01;
 const CLAIM_NONCE_BYTES = 24;
 const CLAIM_FRAME_HEADER_BYTES = FRAME_MAGIC_BYTES + 1 + CLAIM_NONCE_BYTES;
 
-function claimAeadSeal(key32: Uint8Array, nonce24: Uint8Array, aad: Uint8Array, plaintext: Uint8Array): Uint8Array {
+function redeemAeadSeal(key32: Uint8Array, nonce24: Uint8Array, aad: Uint8Array, plaintext: Uint8Array): Uint8Array {
   const backend = _gitvaultAeadBackend();
   if (backend) return backend.seal(key32, nonce24, aad, plaintext);
   return xchacha20poly1305(key32, nonce24, aad).encrypt(plaintext);
 }
 
-function claimAeadOpen(key32: Uint8Array, nonce24: Uint8Array, aad: Uint8Array, ctAndTag: Uint8Array): Uint8Array | null {
+function redeemAeadOpen(key32: Uint8Array, nonce24: Uint8Array, aad: Uint8Array, ctAndTag: Uint8Array): Uint8Array | null {
   try {
     const backend = _gitvaultAeadBackend();
     if (backend) return backend.open(key32, nonce24, aad, ctAndTag);
@@ -360,13 +360,13 @@ function claimAeadOpen(key32: Uint8Array, nonce24: Uint8Array, aad: Uint8Array, 
 }
 
 /** AAD = `id[16] ‖ envelopeKind` (design D3) — `envelopeKind` is this envelope format's own tag, UTF-8. */
-function claimEnvelopeAad(idBytes: Uint8Array, envelopeKind: string): Uint8Array {
+function redeemEnvelopeAad(idBytes: Uint8Array, envelopeKind: string): Uint8Array {
   return concatBytes(idBytes, utf8ToBytes(envelopeKind));
 }
 
 /**
  * `sealed_envelope` on the wire is STANDARD base64 — openapi spells it
- * `format: byte` in both the mint body and the claim response, and the
+ * `format: byte` in both the mint body and the redeem response, and the
  * gateway echoes the stored bytes with `Buffer#toString("base64")` (`+`,
  * `/`, `=` padding). Decoding it with the canonical-base64url-only
  * `fromBase64url`, which refuses every `+`/`/`/`=`, takes a 200 from the
@@ -375,7 +375,7 @@ function claimEnvelopeAad(idBytes: Uint8Array, envelopeKind: string): Uint8Array
  * clients mint; padding is optional either way. Anything outside the two
  * alphabets is a refusal (`null` — the caller raises the typed
  * `*_ENVELOPE_INVALID`), never a silent partial decode. Shared by both
- * claim kinds: the invite routes encode exactly as the handoff routes do,
+ * redeem kinds: the invite routes encode exactly as the handoff routes do,
  * byte for byte, rather than "fixing" the alphabet on one side only
  * (kygit-invite design D3's cross-side trap).
  */
@@ -401,16 +401,16 @@ function decodeSealedEnvelope(value: string): Uint8Array | null {
  * byte-canonical determinism (design D3's "the frozen protocol is
  * untouched" — reusing the object-frame profile here would be exactly the
  * kind of accidental protocol coupling that note warns against). Shared by
- * every claim kind and every envelope version (v1, v2, …) so the frame
+ * every redeem kind and every envelope version (v1, v2, …) so the frame
  * byte-layout lives in exactly one place — a kind or version divergence here
  * would be invisible to either side until a cross-open failed.
  */
-function sealClaimEnvelope(entry: VaultClaimKeyEntry, idBytes: Uint8Array, wrapKey: Uint8Array, payload: unknown, envelopeKind: string, nonce?: Uint8Array): { sealed_envelope: string; envelope_kind: string } {
+function sealRedeemEnvelope(entry: VaultRedeemKeyEntry, idBytes: Uint8Array, wrapKey: Uint8Array, payload: unknown, envelopeKind: string, nonce?: Uint8Array): { sealed_envelope: string; envelope_kind: string } {
   const plaintext = utf8ToBytes(JSON.stringify(payload));
   const n = nonce ?? randomBytes(CLAIM_NONCE_BYTES);
   if (n.length !== CLAIM_NONCE_BYTES) fail(`${entry.errorPrefix}_ENVELOPE_INVALID`, "nonce must be 24 bytes", `sealing ${entry.kind} envelope`);
-  const aad = claimEnvelopeAad(idBytes, envelopeKind);
-  const ct = claimAeadSeal(wrapKey, n, aad, plaintext);
+  const aad = redeemEnvelopeAad(idBytes, envelopeKind);
+  const ct = redeemAeadSeal(wrapKey, n, aad, plaintext);
   const frame = concatBytes(utf8ToBytes(entry.frameMagic), new Uint8Array([FRAME_VERSION_BYTE]), n, ct);
   return { sealed_envelope: base64.encode(frame), envelope_kind: envelopeKind };
 }
@@ -418,7 +418,7 @@ function sealClaimEnvelope(entry: VaultClaimKeyEntry, idBytes: Uint8Array, wrapK
 /**
  * Decodes, header-checks, AEAD-opens, and JSON-parses a sealed envelope for
  * `entry`'s kind, returning the RAW parsed payload with no shape validation
- * (mirrors {@link sealClaimEnvelope} on the seal side) so the frame
+ * (mirrors {@link sealRedeemEnvelope} on the seal side) so the frame
  * byte-layout lives in exactly one place. Each envelope kind/version's own
  * `open*` function applies its OWN shape check on the result; this function
  * deliberately does not, since a shape check IS the version discriminator (a
@@ -427,7 +427,7 @@ function sealClaimEnvelope(entry: VaultClaimKeyEntry, idBytes: Uint8Array, wrapK
  * on any header mismatch and `${errorPrefix}_AEAD_AUTH_FAILURE` on a bad
  * key/AAD/ciphertext.
  */
-function openClaimEnvelope(entry: VaultClaimKeyEntry, idBytes: Uint8Array, wrapKey: Uint8Array, sealedEnvelope: string, envelopeKind: string): unknown {
+function openRedeemEnvelope(entry: VaultRedeemKeyEntry, idBytes: Uint8Array, wrapKey: Uint8Array, sealedEnvelope: string, envelopeKind: string): unknown {
   const frame = decodeSealedEnvelope(sealedEnvelope);
   if (frame === null) {
     fail(`${entry.errorPrefix}_ENVELOPE_INVALID`, "sealed_envelope is not valid base64", `opening ${entry.kind} envelope`);
@@ -441,8 +441,8 @@ function openClaimEnvelope(entry: VaultClaimKeyEntry, idBytes: Uint8Array, wrapK
   }
   const nonce = frame.subarray(FRAME_MAGIC_BYTES + 1, CLAIM_FRAME_HEADER_BYTES);
   const ct = frame.subarray(CLAIM_FRAME_HEADER_BYTES);
-  const aad = claimEnvelopeAad(idBytes, envelopeKind);
-  const opened = claimAeadOpen(wrapKey, nonce, aad, ct);
+  const aad = redeemEnvelopeAad(idBytes, envelopeKind);
+  const opened = redeemAeadOpen(wrapKey, nonce, aad, ct);
   if (opened === null) fail(`${entry.errorPrefix}_AEAD_AUTH_FAILURE`, "the sealed envelope failed AEAD authentication under this key", `opening ${entry.kind} envelope`);
   try {
     return JSON.parse(new TextDecoder().decode(opened));
@@ -453,12 +453,12 @@ function openClaimEnvelope(entry: VaultClaimKeyEntry, idBytes: Uint8Array, wrapK
 
 /** Seal the handoff payload under `wrap_key` as a LEGACY v1 envelope. Returns the standard-base64 wire form (openapi `format: byte`) + its declared kind tag. Nothing in the shipped flow calls this any more — {@link sealHandoffEnvelopeV2} is what `handoff` seals — but the v1 shape stays openable and sealable for the conformance vectors. */
 export function sealHandoffEnvelope(handoffIdBytes: Uint8Array, wrapKey: Uint8Array, payload: HandoffEnvelopePayload, nonce?: Uint8Array): { sealed_envelope: string; envelope_kind: string } {
-  return sealClaimEnvelope(HANDOFF_ENTRY, handoffIdBytes, wrapKey, payload, HANDOFF_ENVELOPE_KIND, nonce);
+  return sealRedeemEnvelope(HANDOFF_ENTRY, handoffIdBytes, wrapKey, payload, HANDOFF_ENVELOPE_KIND, nonce);
 }
 
-/** Open a sealed handoff envelope under `wrap_key` (standard base64 as the claim response carries it, or base64url). Throws `HANDOFF_ENVELOPE_INVALID` on any header mismatch, a `v:2` (or otherwise non-v1) payload shape, and `HANDOFF_AEAD_AUTH_FAILURE` on a bad key/AAD/ciphertext. */
+/** Open a sealed handoff envelope under `wrap_key` (standard base64 as the redeem response carries it, or base64url). Throws `HANDOFF_ENVELOPE_INVALID` on any header mismatch, a `v:2` (or otherwise non-v1) payload shape, and `HANDOFF_AEAD_AUTH_FAILURE` on a bad key/AAD/ciphertext. */
 export function openHandoffEnvelope(handoffIdBytes: Uint8Array, wrapKey: Uint8Array, sealedEnvelope: string, envelopeKind: string = HANDOFF_ENVELOPE_KIND): HandoffEnvelopePayload {
-  const p = openClaimEnvelope(HANDOFF_ENTRY, handoffIdBytes, wrapKey, sealedEnvelope, envelopeKind) as Partial<HandoffEnvelopePayload>;
+  const p = openRedeemEnvelope(HANDOFF_ENTRY, handoffIdBytes, wrapKey, sealedEnvelope, envelopeKind) as Partial<HandoffEnvelopePayload>;
   if (p.v !== 1 || p.kind !== "handoff" || typeof p.repo_id !== "string" || typeof p.epoch !== "string" || typeof p.k_e_hex !== "string" || !p.checkpoint || p.note_schema !== "kygit.handoff-note.v1") {
     fail("HANDOFF_ENVELOPE_INVALID", "opened envelope does not match the kygit.handoff-note.v1 payload shape", "opening handoff envelope");
   }
@@ -470,11 +470,11 @@ export function openHandoffEnvelope(handoffIdBytes: Uint8Array, wrapKey: Uint8Ar
 // `writer_admission_grant_sha256` is what makes v2 v2 — design D4's "no hash
 // cycle: grant first, then seal": the minter builds + signs
 // {@link WriterAdmissionGrant} FIRST, hashes its stored bytes SECOND, and
-// only THEN seals this envelope carrying that hash. The claimant
+// only THEN seals this envelope carrying that hash. The redeemer
 // cross-checks it against the grant the gateway independently returns at
-// claim, an integrity binding entirely independent of anything the gateway
+// redeem, an integrity binding entirely independent of anything the gateway
 // could tamper with (the envelope's AEAD authenticity comes from `wrap_key`,
-// which the gateway never holds). BOTH claim kinds seal v2 — an invite has
+// which the gateway never holds). BOTH redeem kinds seal v2 — an invite has
 // no v1 at all, and a handoff's v1 survives only as a legacy opener.
 
 /** The v2 envelope kind the handoff mint seals. */
@@ -505,7 +505,7 @@ export function sealHandoffEnvelopeV2(handoffIdBytes: Uint8Array, wrapKey: Uint8
   if (!GITVAULT_SHA256_RE.test(payload.writer_admission_grant_sha256)) {
     fail("VALIDATION_FAILED", "writer_admission_grant_sha256 must be 64 lowercase hex", "sealing handoff envelope v2", { field: "writer_admission_grant_sha256" });
   }
-  return sealClaimEnvelope(HANDOFF_ENTRY, handoffIdBytes, wrapKey, payload, HANDOFF_ENVELOPE_V2_KIND, nonce);
+  return sealRedeemEnvelope(HANDOFF_ENTRY, handoffIdBytes, wrapKey, payload, HANDOFF_ENVELOPE_V2_KIND, nonce);
 }
 
 /** The invite-kind sibling of {@link sealHandoffEnvelopeV2} — the ONLY invite envelope there is (kygit-invite design D3). */
@@ -513,7 +513,7 @@ export function sealInviteEnvelope(inviteIdBytes: Uint8Array, wrapKey: Uint8Arra
   if (!GITVAULT_SHA256_RE.test(payload.writer_admission_grant_sha256)) {
     fail("VALIDATION_FAILED", "writer_admission_grant_sha256 must be 64 lowercase hex", "sealing invite envelope", { field: "writer_admission_grant_sha256" });
   }
-  return sealClaimEnvelope(INVITE_ENTRY, inviteIdBytes, wrapKey, payload, INVITE_ENVELOPE_V2_KIND, nonce);
+  return sealRedeemEnvelope(INVITE_ENTRY, inviteIdBytes, wrapKey, payload, INVITE_ENVELOPE_V2_KIND, nonce);
 }
 
 /**
@@ -523,7 +523,7 @@ export function sealInviteEnvelope(inviteIdBytes: Uint8Array, wrapKey: Uint8Arra
  * writer-activation-aware `resume` needs `writer_admission_grant_sha256` to
  * cross-check the returned grant, and a pre-rev-47 v1 envelope structurally
  * has none. Shares ONLY the frame/AEAD-opening step with
- * {@link openHandoffEnvelope} ({@link openClaimEnvelope}) — NOT that
+ * {@link openHandoffEnvelope} ({@link openRedeemEnvelope}) — NOT that
  * function itself, since its `v !== 1` shape check would (correctly) refuse
  * a v2 payload; this function applies its own `v !== 2` shape check
  * instead. Callers that only need K_repo/checkpoint delivery, with no
@@ -540,7 +540,7 @@ export function openHandoffEnvelopeV2(handoffIdBytes: Uint8Array, wrapKey: Uint8
       { received: envelopeKind, required: HANDOFF_ENVELOPE_V2_KIND },
     );
   }
-  const p = openClaimEnvelope(HANDOFF_ENTRY, handoffIdBytes, wrapKey, sealedEnvelope, envelopeKind) as Partial<HandoffEnvelopePayloadV2>;
+  const p = openRedeemEnvelope(HANDOFF_ENTRY, handoffIdBytes, wrapKey, sealedEnvelope, envelopeKind) as Partial<HandoffEnvelopePayloadV2>;
   if (
     p.v !== 2 ||
     p.kind !== "handoff" ||
@@ -567,7 +567,7 @@ export function openInviteEnvelope(inviteIdBytes: Uint8Array, wrapKey: Uint8Arra
       { received: envelopeKind, required: INVITE_ENVELOPE_V2_KIND },
     );
   }
-  const p = openClaimEnvelope(INVITE_ENTRY, inviteIdBytes, wrapKey, sealedEnvelope, envelopeKind) as Partial<InviteEnvelopePayloadV2>;
+  const p = openRedeemEnvelope(INVITE_ENTRY, inviteIdBytes, wrapKey, sealedEnvelope, envelopeKind) as Partial<InviteEnvelopePayloadV2>;
   if (
     p.v !== 2 ||
     p.kind !== "invite" ||
@@ -595,8 +595,8 @@ export interface KygitHandoffNoteCapture {
   ignored_not_transferred_count: number;
 }
 
-/** The fields shared by every claim-kind note — free-text fields are Markdown. */
-interface KygitClaimNoteBase {
+/** The fields shared by every redeem-kind note — free-text fields are Markdown. */
+interface KygitRedeemNoteBase {
   created_at: string;
   from: { agent: string; harness?: string; model?: string };
   summary: string;
@@ -612,12 +612,12 @@ interface KygitClaimNoteBase {
 }
 
 /** `kygit.handoff-note.v1` — the handoff commit's message, verbatim JSON. */
-export interface KygitHandoffNote extends KygitClaimNoteBase {
+export interface KygitHandoffNote extends KygitRedeemNoteBase {
   schema: "kygit.handoff-note.v1";
 }
 
 /** `kygit.invite-note.v1` — the invite commit's message, verbatim JSON. Same fields as {@link KygitHandoffNote} (kygit-invite design D3). */
-export interface KygitInviteNote extends KygitClaimNoteBase {
+export interface KygitInviteNote extends KygitRedeemNoteBase {
   schema: "kygit.invite-note.v1";
 }
 
@@ -678,8 +678,8 @@ export interface HandoffNoteSecretFinding {
   reason: string;
 }
 
-/** Every string leaf in a claim note, `path` = dotted field name for the refusal. */
-function* noteStringLeaves(note: KygitClaimNoteBase): Generator<{ path: string; text: string }> {
+/** Every string leaf in a note, `path` = dotted field name for the refusal. */
+function* noteStringLeaves(note: KygitRedeemNoteBase): Generator<{ path: string; text: string }> {
   yield { path: "summary", text: note.summary };
   for (const [group, arr] of [
     ["completed", note.completed],
@@ -704,9 +704,9 @@ function* noteStringLeaves(note: KygitClaimNoteBase): Generator<{ path: string; 
  * Refuse a note that carries a bare secret — no override flag exists
  * (design D10): a note is read by another agent, and secrets have the
  * secrets API. `null` when the note is clean. Shared implementation for
- * every claim-note kind.
+ * every note kind.
  */
-function scanNoteForSecrets(note: KygitClaimNoteBase): HandoffNoteSecretFinding | null {
+function scanNoteForSecrets(note: KygitRedeemNoteBase): HandoffNoteSecretFinding | null {
   for (const { path, text } of noteStringLeaves(note)) {
     for (const re of HANDOFF_NOTE_SECRET_PREFIXES) {
       if (re.test(text)) return { field: path, reason: `matches a known secret prefix (${re.source})` };

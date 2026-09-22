@@ -683,12 +683,6 @@ Owner: `public:sdk/src/node/deploy-manifest.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
-<h2 id="INVITE_CLAIM_WRITER_KEY_MISMATCH">INVITE_CLAIM_WRITER_KEY_MISMATCH</h2>
-
-Owner: `public:sdk/src/namespaces/gitvault.ts`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
 <h2 id="INVITE_ENVELOPE_INVALID">INVITE_ENVELOPE_INVALID</h2>
 
 Owner: `public:sdk/src/namespaces/gitvault.ts`.
@@ -702,6 +696,12 @@ Owner: `public:sdk/src/namespaces/gitvault.ts`.
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
 <h2 id="INVITE_MINT_GRANT_MISMATCH">INVITE_MINT_GRANT_MISMATCH</h2>
+
+Owner: `public:sdk/src/namespaces/gitvault.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="INVITE_REDEEM_WRITER_KEY_MISMATCH">INVITE_REDEEM_WRITER_KEY_MISMATCH</h2>
 
 Owner: `public:sdk/src/namespaces/gitvault.ts`.
 

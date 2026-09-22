@@ -855,10 +855,6 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="GRANT_NOT_FOUND"></a>
 [`GRANT_NOT_FOUND`](/errors/gateway/#GRANT_NOT_FOUND)
 
-<a id="handoff_claim_writer_key_mismatch"></a>
-<a id="HANDOFF_CLAIM_WRITER_KEY_MISMATCH"></a>
-[`HANDOFF_CLAIM_WRITER_KEY_MISMATCH`](/errors/gateway/#HANDOFF_CLAIM_WRITER_KEY_MISMATCH)
-
 <a id="handoff_clone_failed"></a>
 <a id="HANDOFF_CLONE_FAILED"></a>
 [`HANDOFF_CLONE_FAILED`](/errors/client/#HANDOFF_CLONE_FAILED)
@@ -882,6 +878,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="handoff_mint_requires_writer"></a>
 <a id="HANDOFF_MINT_REQUIRES_WRITER"></a>
 [`HANDOFF_MINT_REQUIRES_WRITER`](/errors/gateway/#HANDOFF_MINT_REQUIRES_WRITER)
+
+<a id="handoff_redeem_writer_key_mismatch"></a>
+<a id="HANDOFF_REDEEM_WRITER_KEY_MISMATCH"></a>
+[`HANDOFF_REDEEM_WRITER_KEY_MISMATCH`](/errors/gateway/#HANDOFF_REDEEM_WRITER_KEY_MISMATCH)
 
 <a id="head_cas_conflict"></a>
 <a id="HEAD_CAS_CONFLICT"></a>
@@ -1243,10 +1243,6 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="INVALID_VERIFY_SPEC"></a>
 [`INVALID_VERIFY_SPEC`](/errors/client/#INVALID_VERIFY_SPEC)
 
-<a id="invite_claim_writer_key_mismatch"></a>
-<a id="INVITE_CLAIM_WRITER_KEY_MISMATCH"></a>
-[`INVITE_CLAIM_WRITER_KEY_MISMATCH`](/errors/client/#INVITE_CLAIM_WRITER_KEY_MISMATCH)
-
 <a id="invite_envelope_invalid"></a>
 <a id="INVITE_ENVELOPE_INVALID"></a>
 [`INVITE_ENVELOPE_INVALID`](/errors/client/#INVITE_ENVELOPE_INVALID)
@@ -1262,6 +1258,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="invite_not_found"></a>
 <a id="INVITE_NOT_FOUND"></a>
 [`INVITE_NOT_FOUND`](/errors/gateway/#INVITE_NOT_FOUND)
+
+<a id="invite_redeem_writer_key_mismatch"></a>
+<a id="INVITE_REDEEM_WRITER_KEY_MISMATCH"></a>
+[`INVITE_REDEEM_WRITER_KEY_MISMATCH`](/errors/client/#INVITE_REDEEM_WRITER_KEY_MISMATCH)
 
 <a id="issuer_daily_mint_cap_reached"></a>
 <a id="ISSUER_DAILY_MINT_CAP_REACHED"></a>
@@ -2337,10 +2337,6 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="ROLE_FORBIDDEN"></a>
 [`ROLE_FORBIDDEN`](/errors/gateway/#ROLE_FORBIDDEN)
 
-<a id="room_invite_claim_requires_wallet"></a>
-<a id="ROOM_INVITE_CLAIM_REQUIRES_WALLET"></a>
-[`ROOM_INVITE_CLAIM_REQUIRES_WALLET`](/errors/gateway/#ROOM_INVITE_CLAIM_REQUIRES_WALLET)
-
 <a id="room_invite_id_conflict"></a>
 <a id="ROOM_INVITE_ID_CONFLICT"></a>
 [`ROOM_INVITE_ID_CONFLICT`](/errors/gateway/#ROOM_INVITE_ID_CONFLICT)
@@ -2349,9 +2345,9 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="ROOM_INVITE_ID_MISMATCH"></a>
 [`ROOM_INVITE_ID_MISMATCH`](/errors/client/#ROOM_INVITE_ID_MISMATCH)
 
-<a id="room_invite_key_already_claimed"></a>
-<a id="ROOM_INVITE_KEY_ALREADY_CLAIMED"></a>
-[`ROOM_INVITE_KEY_ALREADY_CLAIMED`](/errors/gateway/#ROOM_INVITE_KEY_ALREADY_CLAIMED)
+<a id="room_invite_key_already_redeemed"></a>
+<a id="ROOM_INVITE_KEY_ALREADY_REDEEMED"></a>
+[`ROOM_INVITE_KEY_ALREADY_REDEEMED`](/errors/gateway/#ROOM_INVITE_KEY_ALREADY_REDEEMED)
 
 <a id="room_invite_key_confers_seat"></a>
 <a id="ROOM_INVITE_KEY_CONFERS_SEAT"></a>
@@ -2372,6 +2368,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="room_invite_open_limit"></a>
 <a id="ROOM_INVITE_OPEN_LIMIT"></a>
 [`ROOM_INVITE_OPEN_LIMIT`](/errors/gateway/#ROOM_INVITE_OPEN_LIMIT)
+
+<a id="room_invite_redeem_requires_wallet"></a>
+<a id="ROOM_INVITE_REDEEM_REQUIRES_WALLET"></a>
+[`ROOM_INVITE_REDEEM_REQUIRES_WALLET`](/errors/gateway/#ROOM_INVITE_REDEEM_REQUIRES_WALLET)
 
 <a id="room_required"></a>
 <a id="ROOM_REQUIRED"></a>

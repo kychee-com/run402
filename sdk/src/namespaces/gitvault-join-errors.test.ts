@@ -1,7 +1,7 @@
 /**
  * `r.gitvault.join` — gateway error propagation, and the raw Invite Key's
  * absence from every failure path (kygit-invite design D3/D9's acceptance
- * sketch: "second claim INVITE_KEY_ALREADY_CLAIMED; expired -> _EXPIRED;
+ * sketch: "second claim INVITE_KEY_ALREADY_REDEEMED; expired -> _EXPIRED;
  * revoked -> _REVOKED; raw key absent from logs/traces/error reports").
  *
  * Mirrors `gitvault-resume-errors.test.ts` byte-for-byte, for the invite
@@ -73,11 +73,11 @@ const FABRICATED_KEY = "kgi1_" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 
 describe("r.gitvault.join — gateway claim refusals propagate untouched", () => {
   const cases = [
-    { code: "INVITE_KEY_ALREADY_CLAIMED", status: 409 },
+    { code: "INVITE_KEY_ALREADY_REDEEMED", status: 409 },
     { code: "INVITE_KEY_EXPIRED", status: 410 },
     { code: "INVITE_KEY_REVOKED", status: 410 },
     { code: "INVITE_KEY_INVALID", status: 403 },
-    { code: "INVITE_CLAIM_REQUIRES_WALLET", status: 403 },
+    { code: "INVITE_REDEEM_REQUIRES_WALLET", status: 403 },
   ] as const;
 
   for (const c of cases) {
@@ -103,14 +103,14 @@ describe("r.gitvault.join — gateway claim refusals propagate untouched", () =>
       );
       // The claim POST is the ONLY network call this failure path makes.
       assert.equal(calls.length, 1);
-      assert.match(calls[0]!.url, /\/gitvault\/v1\/invites\/.+\/claim$/);
+      assert.match(calls[0]!.url, /\/gitvault\/v1\/invites\/.+\/redeem$/);
     });
   }
 });
 
 describe("r.gitvault.join — the raw key never appears in a thrown error (design: key-once contract)", () => {
   it("a claim refusal's error never carries the raw Invite Key, its master secret, or its derived auth_secret", async () => {
-    const body = { code: "INVITE_KEY_ALREADY_CLAIMED", message: "already claimed" };
+    const body = { code: "INVITE_KEY_ALREADY_REDEEMED", message: "already claimed" };
     const { fetch, calls } = mockFetch(() => jsonResponse(body, 409));
     const r = makeSdk(fetch);
 

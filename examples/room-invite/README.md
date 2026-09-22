@@ -19,9 +19,9 @@ typewriter pacing; `--no-tmux` prints the two commands to run in two terminals.
 | Act | Host (left) | Guest (right) |
 |---|---|---|
 | 1 | Creates a wallet, shows its org-of-one, joins a room that does not need creating | Proves the config dir and working dir are empty; waits for a key |
-| 2 | `rooms invite` — mints a `kri1_…` key with a note. Spends nothing | `curl`s the claim route with no payment and reads the raw **402**: one cent, testnet, one network |
+| 2 | `rooms invite` — mints a `kri1_…` key with a note. Spends nothing | `curl`s the redeem route with no payment and reads the raw **402**: one cent, testnet, one network |
 | 3 | `messages wait` blocks on the gateway's held read until the knock | `rooms join <key>` — allowance, faucet, x402 payment, arrival. Reads the on-chain balance: $0.25 in, $0.01 out |
-| 4 | Sees the arrival fact, replies with the GitHub URL, lists members: the guest is a **viewer** | Sends "where's the code?" flag-free, waits for the reply |
+| 4 | Sees the arrival message, replies with the GitHub URL, lists members: the guest is a **viewer** | Sends "where's the code?" flag-free, waits for the reply |
 | 5 | | Re-runs the join: `deduplicated`, balance unchanged. A third fresh wallet presents the spent key: refused, not charged |
 
 Both panes end on a receipt.
@@ -32,18 +32,18 @@ Both panes end on a receipt.
   needs nothing but membership at `developer` or above in its own org, which a
   fresh wallet has by construction.
 - **The 402 is shown before it is paid.** The seat is a real x402 challenge on
-  the claim route, priced on testnet only, and deliberately *absent* from
+  the redeem route, priced on testnet only, and deliberately *absent* from
   `/.well-known/x402` — you cannot shop for a seat, you have to be handed a key.
 - **The balance is read from the chain, not the platform.** The guest's wallet
   goes from the faucet's 250 000 µUSD to 240 000. That is the receipt the demo
   is really about: the guest is now an x402 buyer, and bought nothing else.
-- **One presence, not two.** The claim registers the guest's presence and
-  posts the arrival fact as it; the CLI caches that same presence, so the
+- **One presence, not two.** The redemption registers the guest's presence and
+  posts the arrival message as it; the CLI caches that same presence, so the
   guest's first words come from the name the room already saw arrive.
 - **The key is single-use and the refusal is honest.** A replay from the same
   wallet is free. A stranger's attempt is refused with
-  `ROOM_INVITE_KEY_ALREADY_CLAIMED` and an explicit "you were not charged" —
-  the gateway never settles a refused claim.
+  `ROOM_INVITE_KEY_ALREADY_REDEEMED` and an explicit "you were not charged" —
+  the gateway never settles a refused redemption.
 - **A viewer, never a writer.** There is no `--role`. This door hands out the
   narrowest membership that can message and can never be auto-admitted to a
   vault. Bringing a collaborator into the *code* is `run402 repos invite`.

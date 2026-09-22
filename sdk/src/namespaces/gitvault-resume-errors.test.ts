@@ -1,7 +1,7 @@
 /**
  * `r.gitvault.resume` — gateway error propagation, and the raw Handoff Key's
  * absence from every failure path (kygit-handoff design D3, task 9.4's
- * acceptance sketch: "second claim HANDOFF_KEY_ALREADY_CLAIMED; expired ->
+ * acceptance sketch: "second claim HANDOFF_KEY_ALREADY_REDEEMED; expired ->
  * _EXPIRED; revoked -> _REVOKED; raw key absent from logs/traces/error
  * reports").
  *
@@ -70,7 +70,7 @@ const FABRICATED_KEY = "kgh1_" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 
 describe("r.gitvault.resume — gateway claim refusals propagate untouched", () => {
   const cases = [
-    { code: "HANDOFF_KEY_ALREADY_CLAIMED", status: 409 },
+    { code: "HANDOFF_KEY_ALREADY_REDEEMED", status: 409 },
     { code: "HANDOFF_KEY_EXPIRED", status: 410 },
     { code: "HANDOFF_KEY_REVOKED", status: 409 },
     { code: "HANDOFF_NOT_FOUND", status: 404 },
@@ -93,14 +93,14 @@ describe("r.gitvault.resume — gateway claim refusals propagate untouched", () 
       );
       // The claim POST is the ONLY network call this failure path makes.
       assert.equal(calls.length, 1);
-      assert.match(calls[0]!.url, /\/gitvault\/v1\/handoffs\/.+\/claim$/);
+      assert.match(calls[0]!.url, /\/gitvault\/v1\/handoffs\/.+\/redeem$/);
     });
   }
 });
 
 describe("r.gitvault.resume — the raw key never appears in a thrown error (design: key-once contract)", () => {
   it("a claim refusal's error never carries the raw Handoff Key, its master secret, or its derived auth_secret", async () => {
-    const body = { code: "HANDOFF_KEY_ALREADY_CLAIMED", message: "already claimed" };
+    const body = { code: "HANDOFF_KEY_ALREADY_REDEEMED", message: "already claimed" };
     const { fetch, calls } = mockFetch(() => jsonResponse(body, 409));
     const r = makeSdk(fetch);
 

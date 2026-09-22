@@ -24,7 +24,7 @@ import { Run402 } from "../index.js";
 import type { AllowanceData, CredentialsProvider } from "../credentials.js";
 
 const FABRICATED_KEY = "kgh1_" + "A".repeat(64);
-const CLAIM_REFUSAL = { code: "HANDOFF_KEY_ALREADY_CLAIMED", message: "already claimed" };
+const CLAIM_REFUSAL = { code: "HANDOFF_KEY_ALREADY_REDEEMED", message: "already claimed" };
 
 function mockFetch(): { fetch: typeof globalThis.fetch; order: string[] } {
   const order: string[] = [];
@@ -79,7 +79,7 @@ describe("r.gitvault.resume — wallet bootstrap before the claim (design D5)", 
     assert.equal(order[0], "readAllowance");
     assert.equal(order[1], "createAllowance");
     assert.equal(order[2], `saveAllowance ${CREATED.address}`);
-    assert.match(order[3]!, /^fetch \/gitvault\/v1\/handoffs\/.+\/claim$/);
+    assert.match(order[3]!, /^fetch \/gitvault\/v1\/handoffs\/.+\/redeem$/);
     assert.equal(order.length, 4, "exactly one network call, after the wallet exists");
     // The address is announced (it is public; the private key never is).
     assert.ok(lines.some((l) => l.includes(CREATED.address)), "the created wallet's address is announced on the progress line");
@@ -96,7 +96,7 @@ describe("r.gitvault.resume — wallet bootstrap before the claim (design D5)", 
     );
 
     assert.equal(order[0], "readAllowance");
-    assert.match(order[1]!, /^fetch \/gitvault\/v1\/handoffs\/.+\/claim$/);
+    assert.match(order[1]!, /^fetch \/gitvault\/v1\/handoffs\/.+\/redeem$/);
     assert.equal(order.length, 2);
   });
 
@@ -118,6 +118,6 @@ describe("r.gitvault.resume — wallet bootstrap before the claim (design D5)", 
     );
 
     assert.equal(order.length, 1);
-    assert.match(order[0]!, /^fetch \/gitvault\/v1\/handoffs\/.+\/claim$/);
+    assert.match(order[0]!, /^fetch \/gitvault\/v1\/handoffs\/.+\/redeem$/);
   });
 });

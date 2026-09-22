@@ -68,11 +68,11 @@ import type {
  * `invite`/`join` (the two verbs that touch a bearer key) ever pay this
  * dynamic-import cost.
  */
-type BearerClaimKeyModule = typeof import("../node/bearer-claim-key.js");
+type BearerRedeemKeyModule = typeof import("../node/bearer-redeem-key.js");
 
-async function nodeOnlyBearerClaimKey(verb: string): Promise<BearerClaimKeyModule> {
+async function nodeOnlyBearerRedeemKey(verb: string): Promise<BearerRedeemKeyModule> {
   try {
-    return await import("../node/bearer-claim-key.js");
+    return await import("../node/bearer-redeem-key.js");
   } catch (e) {
     throw new LocalError(
       `\`r.rooms.${verb}\` needs the Node runtime for its bearer-key cryptography; import it from a Node process.`,
@@ -556,7 +556,7 @@ export class Rooms {
   /**
    * Mint a Room Invite Key from the room the caller stands in
    * (`POST /orgs/v1/:org_id/rooms/:room_key/invites`) — a single-use bearer
-   * key (`kri1_…`) whose claimant becomes a permanent `viewer` of the org,
+   * key (`kri1_…`) whose redeemer becomes a permanent `viewer` of the org,
    * the narrowest membership that can message (design D4: never `--role`,
    * never wider, never auto-admitted as a vault writer). Requires
    * `developer`+ (session, wallet, or admin credential — a delegate is
@@ -574,9 +574,9 @@ export class Rooms {
     if (!roomKey) {
       throw new LocalError("rooms.invite requires a roomKey", "minting a room invite");
     }
-    const { assembleRoomInviteKey, deriveRoomInviteAuthSecret, computeRoomInviteAuthHash, randomClaimId } = await nodeOnlyBearerClaimKey("invite");
+    const { assembleRoomInviteKey, deriveRoomInviteAuthSecret, computeRoomInviteAuthHash, randomRedeemId } = await nodeOnlyBearerRedeemKey("invite");
 
-    const inviteId = randomClaimId();
+    const inviteId = randomRedeemId();
     const { key, invite_id_bytes, master_secret } = assembleRoomInviteKey(inviteId);
     const authHash = computeRoomInviteAuthHash(deriveRoomInviteAuthSecret(invite_id_bytes, master_secret));
 
@@ -625,35 +625,35 @@ export class Rooms {
   }
 
   /**
-   * Claim a Room Invite Key (`POST /rooms/v1/invites/:invite_id/claim`) —
+   * Claim a Room Invite Key (`POST /rooms/v1/invites/:invite_id/redeem`) —
    * parses the key CLIENT-SIDE first, refusing a `kgh1_`/`kgi1_` vault key
    * BY NAME (pointing at `run402 repos resume`/`run402 repos join`) before
-   * any network call (design D3). The claim is an x402-PAID resource (the
+   * any network call (design D3). The redemption is an x402-PAID resource (the
    * `room_seat` SKU, testnet only): the VERIFIED PAYER of that payment
-   * becomes the claimant, so this call is sent through the client's paid
+   * becomes the redeemer, so this call is sent through the client's paid
    * fetch WITHOUT a bearer credential (`withAuth: false`) — no
    * `SIGN-IN-WITH-X` header, and any cached control-plane session is
    * deliberately not attached, exactly matching the gateway's own
-   * `403 ROOM_INVITE_CLAIM_REQUIRES_WALLET` refusal for a bearer-credentialed
+   * `403 ROOM_INVITE_REDEEM_REQUIRES_WALLET` refusal for a bearer-credentialed
    * request at this route. A same-payer replay never pays twice
    * (`deduplicated: true`, no second charge).
    */
   async join(key: string): Promise<RoomInviteJoinResult> {
     if (!key) {
-      throw new LocalError("rooms.join requires a key", "claiming a room invite");
+      throw new LocalError("rooms.join requires a key", "redeeming a room invite");
     }
-    const { parseRoomInviteKey, deriveRoomInviteAuthSecret } = await nodeOnlyBearerClaimKey("join");
+    const { parseRoomInviteKey, deriveRoomInviteAuthSecret } = await nodeOnlyBearerRedeemKey("join");
     const parsed = parseRoomInviteKey(key); // throws ROOM_INVITE_KEY_WRONG_KIND/_KEY_INVALID synchronously — never contacts the gateway on a bad key
     const authSecret = deriveRoomInviteAuthSecret(parsed.invite_id_bytes, parsed.master_secret);
 
-    return this.client.request<RoomInviteJoinResult>(`/rooms/v1/invites/${encodeURIComponent(parsed.invite_id)}/claim`, {
+    return this.client.request<RoomInviteJoinResult>(`/rooms/v1/invites/${encodeURIComponent(parsed.invite_id)}/redeem`, {
       method: "POST",
       // Base64url — the gateway decodes base64/base64url and substitutes 32
       // zero bytes for anything else, so a malformed value never matches
       // any stored hash rather than raising a distinguishing error.
       body: { auth_secret: toBase64url(authSecret) },
       withAuth: false,
-      context: "claiming a room invite",
+      context: "redeeming a room invite",
     });
   }
 
@@ -693,11 +693,11 @@ export class Rooms {
 }
 
 /**
- * Terminal room-invite claim refusals the gateway's own x402 paywall NEVER
+ * Terminal room-invite redeem refusals the gateway's own x402 paywall NEVER
  * settles for (design D5 — the paywall buffers and settles only on a
  * sub-400 response, so any of these five codes means no payment ever
  * completed, refunded or otherwise). Live-proof defect B: without this, a
- * spent/expired/revoked key, or a bearer credential presented to the claim
+ * spent/expired/revoked key, or a bearer credential presented to the redeem route
  * route, surfaced as a generic `X402_PAYMENT_OUTCOME_AMBIGUOUS` — alarming
  * and wrong, since the gateway had already answered with one of these and
  * moved no funds. `node/paid-fetch.ts`'s default paid fetch recognizes a
@@ -713,8 +713,8 @@ export const ROOM_INVITE_TERMINAL_REFUSAL_CODES: ReadonlySet<string> = new Set([
   "ROOM_INVITE_KEY_INVALID",
   "ROOM_INVITE_KEY_EXPIRED",
   "ROOM_INVITE_KEY_REVOKED",
-  "ROOM_INVITE_KEY_ALREADY_CLAIMED",
-  "ROOM_INVITE_CLAIM_REQUIRES_WALLET",
+  "ROOM_INVITE_KEY_ALREADY_REDEEMED",
+  "ROOM_INVITE_REDEEM_REQUIRES_WALLET",
 ]);
 
 /** True when `envelope.code` is one of {@link ROOM_INVITE_TERMINAL_REFUSAL_CODES}. */

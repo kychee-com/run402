@@ -51,8 +51,8 @@ for (const code of [
   "ROOM_INVITE_KEY_INVALID",
   "ROOM_INVITE_KEY_EXPIRED",
   "ROOM_INVITE_KEY_REVOKED",
-  "ROOM_INVITE_KEY_ALREADY_CLAIMED",
-  "ROOM_INVITE_CLAIM_REQUIRES_WALLET",
+  "ROOM_INVITE_KEY_ALREADY_REDEEMED",
+  "ROOM_INVITE_REDEEM_REQUIRES_WALLET",
 ]) {
   test(`reportSdkError adds a "not charged" hint for ${code}`, () => {
     const { stderr, exitCode } = captureExit(() => reportSdkError(fakeApiError(code)));
@@ -73,7 +73,7 @@ test("reportSdkError never adds the room-invite hint for an unrelated code", () 
 
 test("reportSdkError never overrides a hint the gateway/SDK already supplied", () => {
   const { stderr } = captureExit(() =>
-    reportSdkError(fakeApiError("ROOM_INVITE_KEY_ALREADY_CLAIMED", { hint: "a more specific upstream hint" })));
+    reportSdkError(fakeApiError("ROOM_INVITE_KEY_ALREADY_REDEEMED", { hint: "a more specific upstream hint" })));
   const payload = JSON.parse(stderr.trim());
   assert.equal(payload.hint, "a more specific upstream hint");
 });

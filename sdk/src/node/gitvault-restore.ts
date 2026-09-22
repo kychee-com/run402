@@ -140,7 +140,7 @@ export async function applyHandoffCheckpoint(options: GitvaultHandoffRestoreOpti
 
 /**
  * `--to <dir>` wins; otherwise the vault's address-form name (`org/name` →
- * `name`) when the claim response carried one, otherwise the vault id.
+ * `name`) when the redeem response carried one, otherwise the vault id.
  * Always absolute — `cloneGitvaultRemote` runs in `tmpdir()`, so a
  * relative destination must be resolved against the CALLER's cwd first.
  */

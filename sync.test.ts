@@ -848,14 +848,14 @@ const SURFACE: Capability[] = [
   // client-surface spec's own "No MCP tool exists for handoff or resume"
   // requirement.
   { id: "repos_handoff", endpoint: "POST /gitvault/v1/vaults/:vault_id/handoffs", mcp: null, cli: "repos:handoff", openclaw: "repos:handoff" },
-  { id: "repos_resume", endpoint: "POST /gitvault/v1/handoffs/:handoff_id/claim", mcp: null, cli: "repos:resume", openclaw: "repos:resume" },
+  { id: "repos_resume", endpoint: "POST /gitvault/v1/handoffs/:handoff_id/redeem", mcp: null, cli: "repos:resume", openclaw: "repos:resume" },
   // kygit-invite design D1/D9: the second claim kind, same law as
   // handoff/resume above — a bearer secret is minted (`invite`) and
   // membership + a working tree are mutated (`join`), so `mcp: null` is
   // pinned by the client-surface spec's own "No MCP tool exists for invite
   // or join" requirement.
   { id: "repos_invite", endpoint: "POST /gitvault/v1/vaults/:vault_id/invites", mcp: null, cli: "repos:invite", openclaw: "repos:invite" },
-  { id: "repos_join", endpoint: "POST /gitvault/v1/invites/:invite_id/claim", mcp: null, cli: "repos:join", openclaw: "repos:join" },
+  { id: "repos_join", endpoint: "POST /gitvault/v1/invites/:invite_id/redeem", mcp: null, cli: "repos:join", openclaw: "repos:join" },
   // The gateway's own GITVAULT_CLIENT_UPGRADE_REQUIRED envelope names
   // `run402 repos policy grandfathered --reason <why>` as a next_action, so
   // the verb has to exist: without it a user can allocate themselves into a

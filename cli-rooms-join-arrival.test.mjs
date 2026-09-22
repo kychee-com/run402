@@ -67,7 +67,7 @@ mock.module("./cli/lib/cold-start.mjs", {
 });
 
 const { run } = await import("./cli/lib/rooms.mjs");
-const { assembleRoomInviteKey } = await import("./sdk/dist/node/bearer-claim-key.js");
+const { assembleRoomInviteKey } = await import("./sdk/dist/node/bearer-redeem-key.js");
 const { getSelectedOrgId, clearSelectedOrgId } = await import("./cli/lib/org-context.mjs");
 const { readBindingFile, bindingFilePath } = await import("./cli/lib/wallet-context.mjs");
 const { getRoomState } = await import("./cli/lib/rooms-context.mjs");

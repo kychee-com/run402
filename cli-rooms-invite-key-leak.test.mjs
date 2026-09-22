@@ -101,7 +101,7 @@ mock.module("./cli/lib/cold-start.mjs", {
 });
 
 const { run } = await import("./cli/lib/rooms.mjs");
-const { assembleRoomInviteKey } = await import("./sdk/dist/node/bearer-claim-key.js");
+const { assembleRoomInviteKey } = await import("./sdk/dist/node/bearer-redeem-key.js");
 const { assembleInviteKey, assembleHandoffKey } = await import("./sdk/dist/node/gitvault-handoff.js");
 
 function captureStart() {
@@ -240,14 +240,14 @@ describe("run402 rooms join <key> — every error path leaks nothing", () => {
     const { key } = assembleRoomInviteKey("66666666-6666-4666-8666-666666666666");
     impl.join = async () => {
       const err = new Error("this room invite was already claimed by a different principal");
-      err.code = "ROOM_INVITE_KEY_ALREADY_CLAIMED";
+      err.code = "ROOM_INVITE_KEY_ALREADY_REDEEMED";
       err.status = 409;
       throw err;
     };
     await invokeExpectingExit("join", [key]);
     assert.equal(countSubstring(stdout, key), 0);
     assert.equal(countSubstring(stderr, key), 0);
-    assert.ok(stderr.some((l) => l.includes("ROOM_INVITE_KEY_ALREADY_CLAIMED")));
+    assert.ok(stderr.some((l) => l.includes("ROOM_INVITE_KEY_ALREADY_REDEEMED")));
   });
 
   it("a PaymentRequired refusal (payment failed) leaks nothing", async () => {

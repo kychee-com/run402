@@ -228,15 +228,15 @@ describe("setupPaidFetch", () => {
       call += 1;
       if (call === 1) return new Response("payment required", { status: 402 });
       const body = JSON.stringify({
-        code: "ROOM_INVITE_KEY_ALREADY_CLAIMED",
-        error: "ROOM_INVITE_KEY_ALREADY_CLAIMED",
+        code: "ROOM_INVITE_KEY_ALREADY_REDEEMED",
+        error: "ROOM_INVITE_KEY_ALREADY_REDEEMED",
         message: "this room invite was already claimed by a different principal",
         category: "conflict",
         mutation_state: "none",
         claimed_at: "2026-01-01T00:00:00.000Z",
       });
       const response = new Response(body, { status: 409, headers: { "content-type": "application/json" } });
-      Object.defineProperty(response, "url", { value: "https://api.run402.test/rooms/v1/invites/inv_1/claim" });
+      Object.defineProperty(response, "url", { value: "https://api.run402.test/rooms/v1/invites/inv_1/redeem" });
       return response;
     }) as typeof globalThis.fetch;
 
@@ -246,10 +246,10 @@ describe("setupPaidFetch", () => {
     });
     assert.ok(f);
 
-    const response = await f("https://api.run402.test/rooms/v1/invites/inv_1/claim", { method: "POST" });
+    const response = await f("https://api.run402.test/rooms/v1/invites/inv_1/redeem", { method: "POST" });
     assert.equal(response.status, 409);
     const parsed = await response.json();
-    assert.equal(parsed.code, "ROOM_INVITE_KEY_ALREADY_CLAIMED");
+    assert.equal(parsed.code, "ROOM_INVITE_KEY_ALREADY_REDEEMED");
     assert.equal(parsed.mutation_state, "none");
 
     // The on-disk journal shape is unchanged: the existing "failed"
@@ -267,7 +267,7 @@ describe("setupPaidFetch", () => {
     globalThis.fetch = (async () => {
       call += 1;
       if (call === 1) return new Response("payment required", { status: 402 });
-      const body = JSON.stringify({ code: "ROOM_INVITE_KEY_ALREADY_CLAIMED", message: "spoofed" });
+      const body = JSON.stringify({ code: "ROOM_INVITE_KEY_ALREADY_REDEEMED", message: "spoofed" });
       const response = new Response(body, { status: 409, headers: { "content-type": "application/json" } });
       Object.defineProperty(response, "url", { value: "https://tenant.example/paid" });
       return response;

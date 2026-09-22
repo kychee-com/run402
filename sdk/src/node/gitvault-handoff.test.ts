@@ -20,7 +20,7 @@ import {
   openHandoffEnvelope,
   openHandoffEnvelopeV2,
   openInviteEnvelope,
-  parseClaimKey,
+  parseRedeemKey,
   parseHandoffKey,
   parseInviteKey,
   scanHandoffNoteForSecrets,
@@ -256,8 +256,8 @@ describe("buildWriterAcceptance / verifyWriterAcceptance (design D4/§4.17 — O
       handoff_id: HANDOFF_ID,
       auth_hash: auth_hash_hex,
       admission_seed: admissionSeed,
-      claimant_signing_seed: claimantSigningSeed,
-      claimant_encryption_pubkey_raw: claimantEncryptionPubkey,
+      redeemer_signing_seed: claimantSigningSeed,
+      redeemer_encryption_pubkey_raw: claimantEncryptionPubkey,
     });
     return { admissionSeed, claimantSigningSeed, claimantEncryptionPubkey, acceptance };
   }
@@ -501,7 +501,7 @@ describe("scanHandoffNoteForSecrets / assertHandoffNoteHasNoSecret", () => {
 describe("HANDOFF_KEY_PREFIXES — kgi1_ is the second row (kygit-invite design D3)", () => {
   it("kgi1_ is registered as the invite kind, pointing at join", () => {
     // add-room-invite design D3 adds a THIRD row (kri1_/room/join) — see
-    // sdk/src/node/bearer-claim-key.test.ts for its own registry assertions.
+    // sdk/src/node/bearer-redeem-key.test.ts for its own registry assertions.
     assert.equal(HANDOFF_KEY_PREFIXES.length, 3);
     assert.equal(HANDOFF_KEY_PREFIXES[1]!.prefix, "kgi1_");
     assert.equal(HANDOFF_KEY_PREFIXES[1]!.kind, "invite");
@@ -523,9 +523,9 @@ describe("assembleInviteKey / parseInviteKey — round trip", () => {
     assert.deepEqual([...parsed.master_secret], [...master_secret]);
   });
 
-  it("parseClaimKey(raw, 'invite') is the same parser under its generic name", () => {
+  it("parseRedeemKey(raw, 'invite') is the same parser under its generic name", () => {
     const { key } = assembleInviteKey(INVITE_ID);
-    const parsed = parseClaimKey(key, "invite");
+    const parsed = parseRedeemKey(key, "invite");
     assert.equal(parsed.kind, "invite");
     assert.equal(parsed.id, INVITE_ID);
   });
@@ -693,8 +693,8 @@ describe("an invite's writer admission rides the FROZEN handoff bytes (kygit-inv
       handoff_id: INVITE_ID,
       auth_hash: secrets.auth_hash_hex,
       admission_seed: admissionSeed,
-      claimant_signing_seed: joinerSeed,
-      claimant_encryption_pubkey_raw: joinerEncryptionPubkey,
+      redeemer_signing_seed: joinerSeed,
+      redeemer_encryption_pubkey_raw: joinerEncryptionPubkey,
     });
     assert.equal(acceptance.statement.domain, HANDOFF_WRITER_ACCEPT_DOMAIN);
     assert.equal(acceptance.statement.handoff_id, INVITE_ID);
@@ -711,8 +711,8 @@ describe("an invite's writer admission rides the FROZEN handoff bytes (kygit-inv
       handoff_id: INVITE_ID,
       auth_hash: secrets.auth_hash_hex,
       admission_seed: deriveWriterAdmissionSeed(idBytes, masterSecret),
-      claimant_signing_seed: randomBytes(32),
-      claimant_encryption_pubkey_raw: randomBytes(32),
+      redeemer_signing_seed: randomBytes(32),
+      redeemer_encryption_pubkey_raw: randomBytes(32),
     });
     assert.equal(verifyWriterAcceptance(acceptance, ed25519PublicKey(inviteSeed)), false);
   });

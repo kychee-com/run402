@@ -556,7 +556,7 @@ export {
   openHandoffEnvelope,
   openHandoffEnvelopeV2,
   openInviteEnvelope,
-  parseClaimKey,
+  parseRedeemKey,
   parseHandoffKey,
   parseInviteKey,
   scanHandoffNoteForSecrets,
@@ -568,7 +568,7 @@ export {
 } from "./gitvault-handoff.js";
 // add-room-invite (design D3) — the Room Invite Key: `kri1_`, its own
 // registry row, and its own (single-secret, envelope-free) HKDF derivation.
-// Lives directly in `bearer-claim-key.ts` rather than riding the vault-
+// Lives directly in `bearer-redeem-key.ts` rather than riding the vault-
 // shaped `gitvault-handoff.js` re-export above, since a room invite is not a
 // vault kind. `r.rooms.invite`/`.join` delegate to this module internally.
 export {
@@ -576,12 +576,12 @@ export {
   computeRoomInviteAuthHash,
   deriveRoomInviteAuthSecret,
   parseRoomInviteKey,
-  randomClaimId,
-} from "./bearer-claim-key.js";
-export type { RoomInviteKeyParts } from "./bearer-claim-key.js";
+  randomRedeemId,
+} from "./bearer-redeem-key.js";
+export type { RoomInviteKeyParts } from "./bearer-redeem-key.js";
 export type {
-  ClaimKeyParts,
-  ClaimKind,
+  RedeemKeyParts,
+  RedeemKind,
   HandoffEnvelopePayload,
   HandoffEnvelopePayloadV2,
   HandoffKeyParts,
@@ -597,14 +597,14 @@ export type {
 // gitvault-multi-writer (rev 47, task 5.4/5.10) — the writer-admission grant
 // chain: mint an admission seed from a handoff's own master_secret (never
 // auth_secret/wrap_key), the grantor-signed grant, and the two-signature
-// acceptance a claimant builds. `Gitvault.handoff`/`.resume` delegate to
+// acceptance a redeemer builds. `Gitvault.handoff`/`.resume` delegate to
 // these; exported here so an external programmatic consumer can build or
 // verify the SAME objects without reaching into the node-only module path.
 export {
   HANDOFF_WRITER_ACCEPT_DOMAIN,
   buildWriterAcceptance,
   buildWriterAdmissionGrant,
-  deriveClaimWriterAdmissionSeed,
+  deriveRedeemWriterAdmissionSeed,
   deriveInviteWriterAdmissionSeed,
   deriveWriterAdmissionSeed,
   verifyWriterAcceptance,

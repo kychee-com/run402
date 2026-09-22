@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { Run402, isLocalError } from "../index.js";
 import type { CredentialsProvider } from "../credentials.js";
 import { fromBase64url } from "./gitvault.crypto.js";
-import { computeRoomInviteAuthHash, deriveRoomInviteAuthSecret, uuidToBytes } from "../node/bearer-claim-key.js";
+import { computeRoomInviteAuthHash, deriveRoomInviteAuthSecret, uuidToBytes } from "../node/bearer-redeem-key.js";
 
 interface FetchCall {
   url: string;
@@ -168,7 +168,7 @@ describe("rooms.join (key form)", () => {
   const INVITE_ID = "22222222-2222-4222-8222-222222222222";
 
   async function mintTestKey(): Promise<string> {
-    const { assembleRoomInviteKey } = await import("../node/bearer-claim-key.js");
+    const { assembleRoomInviteKey } = await import("../node/bearer-redeem-key.js");
     return assembleRoomInviteKey(INVITE_ID).key;
   }
 
@@ -176,7 +176,7 @@ describe("rooms.join (key form)", () => {
     const key = await mintTestKey();
     const { fetch, calls } = mockFetch((call) => {
       assert.equal(call.method, "POST");
-      assert.equal(call.url, `https://api.example.test/rooms/v1/invites/${INVITE_ID}/claim`);
+      assert.equal(call.url, `https://api.example.test/rooms/v1/invites/${INVITE_ID}/redeem`);
       // Design D5: no SIGN-IN-WITH-X, no Authorization — even though this
       // SDK instance's credentials provider WOULD hand both out.
       assert.equal(call.headers["sign-in-with-x"], undefined);
@@ -211,7 +211,7 @@ describe("rooms.join (key form)", () => {
 
   it("sends auth_secret as base64url, matching the key's own derivation", async () => {
     const key = await mintTestKey();
-    const { parseRoomInviteKey, deriveRoomInviteAuthSecret } = await import("../node/bearer-claim-key.js");
+    const { parseRoomInviteKey, deriveRoomInviteAuthSecret } = await import("../node/bearer-redeem-key.js");
     const parsed = parseRoomInviteKey(key);
     const expectedSecret = deriveRoomInviteAuthSecret(parsed.invite_id_bytes, parsed.master_secret);
     const { toBase64url } = await import("./gitvault.crypto.js");
