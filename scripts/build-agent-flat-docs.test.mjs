@@ -69,7 +69,7 @@ describe("build-agent-flat-docs — sliced CLI reference", () => {
   it("the committed index is within budget, keeps the first-deploy contract, and names every slice", () => {
     const index = read("cli/llms-cli.txt");
     assertByteBudget("cli/llms-cli.txt", index, INDEX_BUDGET);
-    for (const heading of ["## TL;DR", "## Output Contract", "## `run402 up`", "## Error JSON and Safe Retry", "## Step 3: Subscribe to a Tier", "## Fetchable reference slices"]) {
+    for (const heading of ["## TL;DR", "## Output Contract", "## `run402 up`", "## Error JSON and Safe Retry", "## Step 3: Set a Tier", "## Fetchable reference slices"]) {
       assert.ok(index.includes(`\n${heading}`), `index must carry ${heading}`);
     }
     assert.ok(!index.includes("\n## Command Reference"), "the command reference lives in slices, not the index");
