@@ -116,7 +116,7 @@ export interface NotificationRow {
   attempt_count: number;
   is_test: boolean;
   related_project_id: string | null;
-  related_organization_id: string | null;
+  related_org_id: string | null;
   related_wallet_address: string | null;
   created_at: string;
   redacted_at: string | null;

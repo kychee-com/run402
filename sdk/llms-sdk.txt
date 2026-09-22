@@ -2776,7 +2776,7 @@ initiate({ projectId, toWallet, billingPolicy?, message?, kysignedRecordId? })  
 initiate({ projectId, toEmail, message?, retainMember? })                        // email recipient
   : Promise<InitiateEmailTransferResult>       // { status: "ok", transfer_id, to_email, expires_at }
 initiate({ projectId, toOrgId, message? })                                      // owned-org recipient, same-actor only
-  : Promise<InitiateOrgTransferResult>         // { status: "accepted", project_id, to_organization_id, transfer_id?, completed_at?, anon_key, service_key, ... }
+  : Promise<InitiateOrgTransferResult>         // { status: "accepted", project_id, from_org_id, to_org_id, transfer_id?, completed_at?, anon_key, service_key, ... }
   // initiate({ toOrgId }) persists returned keys via saveProject + setActiveProject when supported.
 // Exactly one of toWallet / toEmail / toOrgId — multiple-or-none throws a local VALIDATION_ERROR before any request.
 // billingPolicy + kysignedRecordId are wallet-only; retainMember is email-only.
@@ -2787,11 +2787,11 @@ preview(transferId: string): Promise<ProjectTransferPreview>
   //   github_repo_note, billing_implications, retain_member? }
 accept(transferId, { orgId?, acceptRetainedMember? }): Promise<AcceptTransferResult>   // the ONE completion
   // wallet-addressed row → AcceptWalletTransferResult:
-  //   { project_id, from_wallet, to_wallet, new_organization_id, completed_at,
+  //   { project_id, from_wallet, to_wallet, new_org_id, completed_at,
   //     secrets_rotation_advised: true, secret_names_inherited[], secrets_count_inherited, github_repo_note,
   //     anon_key, service_key }
   // email-addressed row (orgId / acceptRetainedMember apply here) → AcceptEmailTransferResult:
-  //   { status: "accepted", project_id, to_organization_id, created_new_org, retained_member_principal_id,
+  //   { status: "accepted", project_id, to_org_id, created_new_org, retained_member_principal_id,
   //     credentials_revoked?, credentials_issued?, anon_key, service_key }
   // Both persist the new owner's keys via saveProject + setActiveProject (when the provider supports
   // them), mirroring provision. The email path's auth is principal-based (a sign-in session OR a

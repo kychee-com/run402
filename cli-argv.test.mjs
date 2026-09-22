@@ -2671,7 +2671,8 @@ describe("transfer owned-org init argv plumbing (GH-469)", () => {
       return json({
         status: "accepted",
         project_id: "prj_test123",
-        to_organization_id: "org_123",
+        from_org_id: "org_old",
+        to_org_id: "org_123",
         anon_key: "anon_new",
         service_key: "svc_new",
       });

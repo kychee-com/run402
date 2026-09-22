@@ -169,7 +169,7 @@ describe("admin.transfers.initiate (owned org)", () => {
           status: "accepted",
           transfer_id: "ptx_org",
           project_id: "prj_abc",
-          to_organization_id: "org_9",
+          to_org_id: "org_9",
           completed_at: "2026-06-19T12:00:00Z",
           anon_key: "anon_new",
           service_key: "svc_new",
@@ -185,7 +185,7 @@ describe("admin.transfers.initiate (owned org)", () => {
     });
 
     assert.equal(res.status, "accepted");
-    assert.equal(res.to_organization_id, "org_9");
+    assert.equal(res.to_org_id, "org_9");
     assert.deepEqual(saved, [{ id: "prj_abc", keys: { anon_key: "anon_new", service_key: "svc_new" } }]);
     assert.deepEqual(active, ["prj_abc"]);
     assert.equal(calls.length, 1);
@@ -286,8 +286,8 @@ describe("admin.transfers.preview", () => {
       signers: [],
       github_repo_note: "GitHub repository ownership is not transferred by Run402.",
       billing_implications: {
-        from_organization_id: "org_1",
-        target_organization_id: null,
+        from_org_id: "org_1",
+        target_org_id: null,
         tier: "hobby",
         secrets_count: 1,
         functions_count: 0,
@@ -342,8 +342,8 @@ describe("admin.transfers.preview", () => {
         signers: [],
         github_repo_note: "n",
         billing_implications: {
-          from_organization_id: "org_1",
-          target_organization_id: null,
+          from_org_id: "org_1",
+          target_org_id: null,
           tier: null,
           secrets_count: 0,
           functions_count: 0,
@@ -369,7 +369,7 @@ describe("admin.transfers.accept (wallet completion)", () => {
         project_id: "prj_abc",
         from_wallet: "0xaaa",
         to_wallet: "0xbeef",
-        new_organization_id: "org_2",
+        new_org_id: "org_2",
         completed_at: "2026-05-27T01:00:00Z",
         secrets_rotation_advised: true,
         secret_names_inherited: ["DB_URL"],
@@ -464,21 +464,21 @@ describe("admin.transfers.accept (email-addressed row, the same route)", () => {
       return jsonResponse({
         status: "accepted",
         project_id: "prj_abc",
-        to_organization_id: "org_9",
+        to_org_id: "org_9",
         created_new_org: false,
         retained_member_principal_id: null,
       });
     });
     const res = await makeSdk(r1.fetch).admin.transfers.accept("ptx_e1", { orgId: "org_9" });
     assert.equal(res.status, "accepted");
-    assert.equal(res.to_organization_id, "org_9");
+    assert.equal(res.to_org_id, "org_9");
 
     const r2 = mockFetch((call) => {
       assert.deepEqual(JSON.parse(String(call.body)), {});
       return jsonResponse({
         status: "accepted",
         project_id: "prj_abc",
-        to_organization_id: "org_new",
+        to_org_id: "org_new",
         created_new_org: true,
         retained_member_principal_id: null,
       });
@@ -508,7 +508,7 @@ describe("admin.transfers.accept (email-addressed row, the same route)", () => {
       jsonResponse({
         status: "accepted",
         project_id: "prj_new",
-        to_organization_id: "org_1",
+        to_org_id: "org_1",
         created_new_org: false,
         retained_member_principal_id: null,
         anon_key: "anon_jwt",
@@ -528,7 +528,7 @@ describe("admin.transfers.accept (email-addressed row, the same route)", () => {
       jsonResponse({
         status: "accepted",
         project_id: "prj_abc",
-        to_organization_id: "org_1",
+        to_org_id: "org_1",
         created_new_org: false,
         retained_member_principal_id: null,
         anon_key: "anon_jwt",
@@ -544,7 +544,7 @@ describe("admin.transfers.accept (email-addressed row, the same route)", () => {
       jsonResponse({
         status: "accepted",
         project_id: "prj_abc",
-        to_organization_id: "org_1",
+        to_org_id: "org_1",
         created_new_org: false,
         retained_member_principal_id: "prn_sender",
       }),
@@ -565,7 +565,7 @@ describe("admin.transfers.accept (email-addressed row, the same route)", () => {
       jsonResponse({
         status: "accepted",
         project_id: "prj_abc",
-        to_organization_id: "org_1",
+        to_org_id: "org_1",
         created_new_org: false,
         retained_member_principal_id: null,
       }),
@@ -634,7 +634,7 @@ describe("admin.transfers.listIncoming / listOutgoing", () => {
           project_name_snapshot: "email-demo",
           recipient_kind: "email" as const,
           to_email: "alice@example.com",
-          from_organization_id: "org_1",
+          from_org_id: "org_1",
           billing_policy: "migrate" as const,
           message: null,
           expires_at: "2026-06-10T00:00:00Z",

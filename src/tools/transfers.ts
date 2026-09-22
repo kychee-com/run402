@@ -96,7 +96,7 @@ export async function handleInitiateProjectTransfer(args: {
         toOrgId: args.to_org_id as string,
         message: args.message,
       });
-      const toOrg = res.to_organization_id ?? res.to_org_id ?? args.to_org_id;
+      const toOrg = res.to_org_id ?? args.to_org_id;
       const lines = [
         `Project \`${res.project_id ?? args.project_id}\` moved to org \`${toOrg}\`.`,
         `- status: ${res.status}`,
@@ -169,7 +169,7 @@ export async function handlePreviewProjectTransfer(args: {
     if (p.recipient_kind === "email") {
       lines.push(`- to_email: ${p.to_email ?? "(unknown)"}`);
     } else if (p.recipient_kind === "org") {
-      lines.push(`- to_org_id: ${p.to_organization_id ?? p.to_org_id ?? "(unknown)"}`);
+      lines.push(`- to_org_id: ${p.to_org_id ?? "(unknown)"}`);
     } else {
       lines.push(`- from: ${p.from_wallet_display} → to: ${p.to_wallet_display}`);
     }
@@ -231,7 +231,7 @@ export async function handleAcceptProjectTransfer(args: {
     });
     if ("status" in res) {
       const lines = [
-        `Transfer \`${args.transfer_id}\` accepted. Project \`${res.project_id}\` is now in org \`${res.to_organization_id}\`${res.created_new_org ? " (new org created)" : ""}.`,
+        `Transfer \`${args.transfer_id}\` accepted. Project \`${res.project_id}\` is now in org \`${res.to_org_id}\`${res.created_new_org ? " (new org created)" : ""}.`,
       ];
       if (res.retained_member_principal_id) {
         lines.push(`- retained_member_principal_id: ${res.retained_member_principal_id}`);
@@ -242,7 +242,7 @@ export async function handleAcceptProjectTransfer(args: {
     const lines = [
       `Transfer accepted. Project \`${res.project_id}\` is now owned by ${res.to_wallet}.`,
       `- completed_at: ${res.completed_at}`,
-      `- new_organization_id: ${res.new_organization_id ?? "null"}`,
+      `- new_org_id: ${res.new_org_id ?? "null"}`,
       `- secrets inherited: ${res.secrets_count_inherited}`,
     ];
     if (res.secret_names_inherited.length > 0) {
@@ -311,7 +311,7 @@ export async function handleListIncomingTransfers(args: {
         t.recipient_kind === "email"
           ? `to_email ${t.to_email}`
           : t.recipient_kind === "org"
-          ? `to_org ${t.to_organization_id ?? t.to_org_id}`
+          ? `to_org ${t.to_org_id}`
           : `from ${t.from_wallet}`;
       lines.push(`- \`${t.transfer_id}\` [${t.recipient_kind}] — project \`${t.project_id}\`${t.project_name_snapshot ? ` (${t.project_name_snapshot})` : ""}, ${who}, billing_policy=${t.billing_policy}, expires ${t.expires_at}`);
       lines.push(`  preview: ${t.preview_path}`);
@@ -350,7 +350,7 @@ export async function handleListOutgoingTransfers(args: {
         t.recipient_kind === "email"
           ? `to_email ${t.to_email}`
           : t.recipient_kind === "org"
-          ? `to_org ${t.to_organization_id ?? t.to_org_id}`
+          ? `to_org ${t.to_org_id}`
           : `to ${t.to_wallet}`;
       lines.push(`- \`${t.transfer_id}\` [${t.recipient_kind}] — project \`${t.project_id}\`${t.project_name_snapshot ? ` (${t.project_name_snapshot})` : ""}, ${who}, billing_policy=${t.billing_policy}, expires ${t.expires_at}`);
       lines.push(`  preview: ${t.preview_path}`);

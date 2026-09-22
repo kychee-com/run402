@@ -163,9 +163,10 @@ export interface InitiateEmailTransferResult {
 export interface InitiateOrgTransferResult {
   status: "accepted";
   project_id: string;
-  to_organization_id: string;
-  /** Echo of the requested org id when a gateway chooses the shorter wire key. */
-  to_org_id?: string;
+  /** The org the project left. */
+  from_org_id: string;
+  /** The org that now owns the project. */
+  to_org_id: string;
   /** Present when the gateway materializes an audit transfer row. */
   transfer_id?: string;
   /** Present when the gateway returns the completion timestamp inline. */
@@ -184,7 +185,7 @@ export interface AcceptWalletTransferResult {
   project_id: string;
   from_wallet: string;
   to_wallet: string;
-  new_organization_id: string | null;
+  new_org_id: string | null;
   completed_at: string;
   /** New owner's project anon key (stateless JWT). The SDK persists it on accept. */
   anon_key: string;
@@ -207,7 +208,7 @@ export interface AcceptWalletTransferResult {
 export interface AcceptEmailTransferResult {
   status: "accepted";
   project_id: string;
-  to_organization_id: string;
+  to_org_id: string;
   created_new_org: boolean;
   /**
    * The sender's principal id retained as a `developer` of the new org, or
@@ -238,8 +239,7 @@ export interface CancelTransferResult {
  * Summary row used in `/agent/v1/transfers/incoming` and `/outgoing`. The list
  * is kind-agnostic: `recipient_kind` discriminates wallet, email, and future
  * org rows. Wallet rows carry `from_wallet`/`to_wallet`; email rows carry
- * `to_email` + `from_organization_id`; future org rows carry `to_org_id` /
- * `to_organization_id`.
+ * `to_email` + `from_org_id`; future org rows carry `to_org_id`.
  */
 export interface TransferSummary {
   transfer_id: string;
@@ -262,11 +262,9 @@ export interface TransferSummary {
   /** Email rows only. */
   to_email?: string;
   /** Email rows only. */
-  from_organization_id?: string | null;
+  from_org_id?: string | null;
   /** Org rows only (future non-same-actor org transfers). */
   to_org_id?: string;
-  /** Org rows only (canonical gateway field when present). */
-  to_organization_id?: string;
   initiated_by?: OperationActorSnapshot | null;
   source_organization?: { org_id: string } | null;
   destination_organization?: { org_id: string } | null;
@@ -324,9 +322,38 @@ export interface SignerPreview {
   chain: string;
 }
 
+/** One priced route the recipient org must be able to receive payouts for. */
+export interface PricedTransferRouteSummary {
+  pattern: string;
+  methods: string[] | null;
+  target_function: string | null;
+  amount_usd_micros: number;
+  networks: string[];
+  pay_to: "org_default_payout";
+}
+
+/**
+ * Whether the receiving org can take the project's priced-route payouts.
+ * `required` / `ambiguous` block acceptance with `RECIPIENT_PAYOUT_WALLET_REQUIRED`,
+ * whose details repeat `recipient_org_id` and `next_actions`.
+ */
+export interface RecipientPricedRoutePayoutCheck {
+  required: boolean;
+  status: "not_required" | "ready" | "recipient_org_unknown" | "required" | "ambiguous";
+  code: string | null;
+  project_id: string;
+  current_release_id: string | null;
+  recipient_org_id: string | null;
+  priced_routes: PricedTransferRouteSummary[];
+  resolved_wallet_address: string | null;
+  payout_failure_code: string | null;
+  message: string | null;
+  next_actions: Array<{ type: string; method: string; path: string; auth: string; why: string }>;
+}
+
 export interface BillingImplications {
-  from_organization_id: string | null;
-  target_organization_id: string | null;
+  from_org_id: string | null;
+  target_org_id: string | null;
   tier: string | null;
   secrets_count: number;
   functions_count: number;
@@ -352,7 +379,7 @@ export interface RetainMemberPreview {
 /**
  * Kind-agnostic preview document. Wallet-identity fields are `null` on email
  * and org rows; `to_email` and `retain_member` are populated on email
- * rows, while org rows carry `to_org_id` / `to_organization_id` when returned.
+ * rows, while org rows carry `to_org_id` when returned.
  */
 export interface ProjectTransferPreview {
   transfer_id: string;
@@ -368,8 +395,6 @@ export interface ProjectTransferPreview {
   to_email?: string;
   /** Org rows only (future non-same-actor org transfers). */
   to_org_id?: string;
-  /** Org rows only (canonical gateway field when present). */
-  to_organization_id?: string;
   billing_policy: TransferBillingPolicy;
   message: string | null;
   initiated_at: string;
@@ -386,6 +411,8 @@ export interface ProjectTransferPreview {
   signers: SignerPreview[];
   github_repo_note: string;
   billing_implications: BillingImplications;
+  /** Whether the receiving org can take priced-route payouts after the transfer. */
+  priced_route_payout?: RecipientPricedRoutePayoutCheck;
   /** Sender-retained-membership offer (email rows), or `null` when none was requested. */
   retain_member?: RetainMemberPreview | null;
   initiated_by?: OperationActorSnapshot | null;
