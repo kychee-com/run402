@@ -85,9 +85,13 @@ export interface NodeRun402Options {
   paymentSigner?: EvmPaymentSignerProvider;
   /**
    * Which surface is constructing the client — selects the default credential
-   * mode. `"cli"` opts into `auto` (wallet, else the sign-in session); `"mcp"` /
-   * `"sdk"` stay `wallet`-only so a human's approval never leaks into agent
-   * tool calls. Ignored when `credentials` is supplied.
+   * mode, the client metadata `surface`, and the client capabilities. `"cli"`
+   * opts into `auto` (wallet, else the sign-in session); `"mcp"` / `"sdk"` /
+   * `"sandbox"` stay `wallet`-only so a human's approval never leaks into
+   * agent tool calls (credential mode is ignored when `credentials` is
+   * supplied). `"sandbox"` (an MCP `run` snippet) also sets
+   * `capabilities.returnSecrets: false`, so every method that would return or
+   * consume a one-time secret refuses with `SECRET_REQUIRES_CLI`.
    */
   surface?: CredentialSurface;
   /** Explicit credential mode override (otherwise derived from `surface`). */
@@ -175,6 +179,7 @@ export function run402(opts: NodeRun402Options = {}): NodeRun402 {
         : lazyPaidFetch!),
     payExecutor: opts.payExecutor ?? lazyPaidFetch?.pay,
     clientMetadata: nodeClientMetadata(opts),
+    capabilities: { returnSecrets: opts.surface !== "sandbox" },
   };
   const base = new Run402(runOpts);
 
@@ -704,6 +709,7 @@ export {
   verifyArchive,
 } from "./archives-node.js";
 export { NodeCredentialsProvider } from "./credentials.js";
+export type { AuthMode, CredentialSurface, NodeCredentialsOptions } from "./credentials.js";
 export { NodeActions, resolveDeploymentTarget } from "./actions-node.js";
 export type { NodeActionTargetKind, NodeActionsOptions } from "./actions-node.js";
 export { setupPaidFetch, createLazyPaidFetch, X402BalanceError } from "./paid-fetch.js";

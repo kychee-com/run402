@@ -6,7 +6,7 @@
  * defaults (keystore + wallet + x402), use `@run402/sdk/node` instead.
  */
 
-import { buildClient, type Client, type ClientStats, type KernelConfig, type Run402ClientMetadata } from "./kernel.js";
+import { buildClient, type Client, type ClientCapabilities, type ClientStats, type KernelConfig, type Run402ClientMetadata } from "./kernel.js";
 import type { CredentialsProvider } from "./credentials.js";
 import { Projects } from "./namespaces/projects.js";
 import { Assets } from "./namespaces/assets.js";
@@ -73,6 +73,12 @@ export interface Run402Options {
    * opts in.
    */
   clientMetadata?: Run402ClientMetadata | false;
+  /**
+   * What this client may hand back to its caller. Omitted fields take the
+   * defaults (`returnSecrets: true`). `@run402/sdk/node` sets
+   * `returnSecrets: false` for the `sandbox` surface.
+   */
+  capabilities?: Partial<ClientCapabilities>;
 }
 
 export class Run402 {
@@ -238,6 +244,7 @@ export class Run402 {
       fetch: opts.fetch ?? globalThis.fetch.bind(globalThis),
       credentials: opts.credentials,
       clientMetadata: opts.clientMetadata,
+      capabilities: opts.capabilities,
     };
     this.apiBase = opts.apiBase;
     const client: Client = buildClient(kernel);
@@ -419,6 +426,15 @@ export class Run402 {
   stats(): ClientStats {
     return this.#client.stats();
   }
+
+  /**
+   * What this client may hand back to its caller. `returnSecrets` is false on
+   * the `sandbox` surface, where every method that would return or consume a
+   * one-time secret refuses with `SECRET_REQUIRES_CLI`.
+   */
+  get capabilities(): Readonly<ClientCapabilities> {
+    return this.#client.capabilities;
+  }
 }
 
 /** Result of {@link Run402.whoami}. */
@@ -474,7 +490,8 @@ export function run402(opts: Run402Options): Run402 {
   return new Run402(opts);
 }
 
-export type { Run402ClientMetadata } from "./kernel.js";
+export type { ClientCapabilities, Run402ClientMetadata } from "./kernel.js";
+export { DEFAULT_CLIENT_CAPABILITIES } from "./kernel.js";
 
 export {
   Run402Error,

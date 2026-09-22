@@ -36,8 +36,13 @@ import type { WalletData, AuthRequestMeta, CredentialsProvider, ProjectKeys, Wal
 import { GRANT_KEY_CREDENTIALS, grantKeyFromEnv } from "../grant-key-credentials.js";
 import { LocalError } from "../errors.js";
 
-/** Where credential resolution runs — selects the default `authMode`. */
-export type CredentialSurface = "cli" | "mcp" | "sdk";
+/**
+ * Where credential resolution runs — selects the default `authMode`.
+ * `sandbox` is an MCP `run` snippet: wallet-only credentials like `mcp`, and
+ * the client additionally refuses methods that would return a one-time
+ * secret (`capabilities.returnSecrets: false`).
+ */
+export type CredentialSurface = "cli" | "mcp" | "sdk" | "sandbox";
 /** How a request's credentials are chosen. `auto` = wallet, else the sign-in session. */
 export type AuthMode = "auto" | "wallet" | "session" | "grant_key" | "none";
 
@@ -47,7 +52,7 @@ export interface NodeCredentialsOptions {
   keystorePath?: string;
   /** Non-secret profile state path for active project pointers. Defaults to state.json. */
   profileStatePath?: string;
-  /** Default is `wallet` (no ambient sign-in session authority); `cli` opts into `auto`. */
+  /** Default is `wallet` (no ambient sign-in session authority); `cli` opts into `auto`; `mcp` and `sandbox` stay `wallet`. */
   surface?: CredentialSurface;
   /** Explicit override; otherwise derived from `surface`. */
   authMode?: AuthMode;
@@ -88,7 +93,7 @@ export class NodeCredentialsProvider implements CredentialsProvider {
    * Deterministic credential resolution — selects exactly one credential class
    * and never silently falls back to another after a failure.
    *
-   * - `wallet` (default; the MCP/agent path): only the SIWX wallet. NEVER
+   * - `wallet` (default; the MCP, sandbox, and agent path): only the SIWX wallet. NEVER
    *   reads the sign-in session or write-approval caches, so a person's
    *   ambient authority cannot leak into an agent tool call.
    * - `auto` (CLI): SIWX wallet if present; otherwise the live control-plane

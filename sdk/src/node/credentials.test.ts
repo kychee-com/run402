@@ -140,13 +140,25 @@ function writeApprovalCache(over: Record<string, unknown> = {}): void {
 const DEPLOY_META = { capability: "project.deploy" as const, target: { project_id: "prj_x" } };
 
 describe("NodeCredentialsProvider.getAuth — surface resolution (no ambient approval)", () => {
-  it("default/mcp surface never reads the control-plane session (wallet-only)", async () => {
+  it("default/mcp/sandbox surface never reads the control-plane session (wallet-only)", async () => {
     writeCp();
     writeApprovalCache();
-    for (const surface of ["mcp", undefined] as const) {
+    for (const surface of ["mcp", "sandbox", undefined] as const) {
       const p = new NodeCredentialsProvider(surface ? { surface } : {});
       assert.equal(await p.getAuth("/projects/v1", DEPLOY_META), null, `surface=${surface} must not use cp/approval`);
     }
+  });
+
+  it("sandbox surface signs with the wallet only, even beside a cached sign-in session and write approval", async () => {
+    const privateKey = "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d";
+    writeFileSync(join(tempDir, "wallet.json"), JSON.stringify({ address: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8", privateKey, rail: "x402" }));
+    writeCp();
+    writeApprovalCache();
+    const p = new NodeCredentialsProvider({ surface: "sandbox" });
+    const h = await p.getAuth("/apply/v1/plans", DEPLOY_META);
+    assert.ok(h?.["SIGN-IN-WITH-X"], "sandbox ⇒ SIWX from the wallet");
+    assert.equal(h?.Authorization, undefined, "sandbox ⇒ never the sign-in session");
+    assert.equal(h?.["X-Run402-Write-Approval"], undefined, "sandbox ⇒ never a write approval");
   });
 
   it("cli surface falls back to the control-plane bearer when no wallet is present", async () => {

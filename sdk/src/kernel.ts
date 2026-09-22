@@ -37,6 +37,8 @@ export interface KernelConfig {
   fetch: typeof globalThis.fetch;
   credentials: CredentialsProvider;
   clientMetadata?: Run402ClientMetadata | false;
+  /** What this client may do beyond plain requests. Defaults to {@link DEFAULT_CLIENT_CAPABILITIES}. */
+  capabilities?: Partial<ClientCapabilities>;
   /**
    * Per-client observability accumulator, mutated by every request made
    * through this kernel config. Set by {@link buildClient} — a fresh
@@ -46,6 +48,32 @@ export interface KernelConfig {
    * @internal
    */
   stats?: ClientStats;
+}
+
+/**
+ * What a client is allowed to hand back to its caller. Carried on every
+ * {@link Client}; namespaces consult it before doing something only some
+ * callers may receive.
+ */
+export interface ClientCapabilities {
+  /**
+   * Whether a method may return (or consume) a one-time secret the SDK does
+   * not persist itself: a grant key, a Handoff or Invite Key, project
+   * credentials, a private key, a Lightning pairing. `true` for the `cli`,
+   * `sdk`, and `mcp` surfaces; `false` for `sandbox` (an MCP `run` snippet),
+   * where such a method throws `SECRET_REQUIRES_CLI` before any request.
+   */
+  returnSecrets: boolean;
+}
+
+/** Capabilities a client has when the caller names none. */
+export const DEFAULT_CLIENT_CAPABILITIES: Readonly<ClientCapabilities> = Object.freeze({ returnSecrets: true });
+
+/** Resolve a partial capability set against the defaults. */
+export function resolveClientCapabilities(partial?: Partial<ClientCapabilities>): ClientCapabilities {
+  return {
+    returnSecrets: typeof partial?.returnSecrets === "boolean" ? partial.returnSecrets : DEFAULT_CLIENT_CAPABILITIES.returnSecrets,
+  };
 }
 
 export interface Run402ClientMetadata {
@@ -241,6 +269,8 @@ export interface Client {
   readonly fetch: typeof globalThis.fetch;
   /** Cumulative observability for this client instance. See {@link ClientStats}. */
   stats(): ClientStats;
+  /** What this client may hand back to its caller. See {@link ClientCapabilities}. */
+  readonly capabilities: Readonly<ClientCapabilities>;
 }
 
 export async function request<T>(
@@ -471,8 +501,10 @@ export function buildClient(kernel: KernelConfig): Client {
     kernel.credentials.getProjectCredentials
       ? kernel.credentials.getProjectCredentials(id)
       : kernel.credentials.getProject?.(id) ?? Promise.resolve(null);
+  const capabilities = Object.freeze(resolveClientCapabilities(kernel.capabilities));
   return {
     apiBase: kernel.apiBase,
+    capabilities,
     request: <T>(path: string, opts: RequestOptions) => request<T>(kernelWithStats, path, opts),
     requestWithResponse: <T>(path: string, opts: RequestOptions) =>
       requestWithResponse<T>(kernelWithStats, path, opts),
