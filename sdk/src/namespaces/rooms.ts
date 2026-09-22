@@ -29,6 +29,7 @@
  * keep coordinating.
  */
 
+import { gateSecret } from "../secret-gate.js";
 import type { Client } from "../kernel.js";
 import { LocalError } from "../errors.js";
 import { toBase64url } from "./vault.crypto.js";
@@ -568,6 +569,7 @@ export class Rooms {
    * nothing here or downstream persists it.
    */
   async invite(orgId: string, roomKey: string, opts: RoomInviteMintOptions = {}): Promise<RoomInviteMintResult> {
+    gateSecret(this.client, "rooms.invite", orgId, roomKey, opts);
     if (!orgId) {
       throw new LocalError("rooms.invite requires an orgId", "minting a room invite");
     }
@@ -639,6 +641,7 @@ export class Rooms {
    * (`deduplicated: true`, no second charge).
    */
   async join(key: string): Promise<RoomInviteJoinResult> {
+    gateSecret(this.client, "rooms.join", key);
     if (!key) {
       throw new LocalError("rooms.join requires a key", "redeeming a room invite");
     }

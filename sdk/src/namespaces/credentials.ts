@@ -21,6 +21,7 @@
  * `mintToken()`. There is no read that returns it. Never write one of these
  * responses to a result cache, tmp file, or expansion handle.
  */
+import { gateSecret } from "../secret-gate.js";
 import type { ProjectCredentialCacheInfo, ProjectKeys } from "../credentials.js";
 import { LocalError } from "../errors.js";
 import type { Client } from "../kernel.js";
@@ -95,6 +96,7 @@ export class Credentials {
    * else; there is no read that returns it, only `rotate()` for a new one.
    */
   async issue(projectId: string, input: IssueProjectCredentialInput): Promise<ProjectCredentialIssued> {
+    gateSecret(this.client, "credentials.issue", projectId, input);
     if (!projectId) {
       throw new LocalError("credentials.issue requires a projectId", "issuing project credential");
     }
@@ -171,6 +173,7 @@ export class Credentials {
    * is the right call when the old secret is already compromised.
    */
   async rotate(projectId: string, credentialId: string): Promise<ProjectCredentialIssued> {
+    gateSecret(this.client, "credentials.rotate", projectId, credentialId);
     if (!projectId) {
       throw new LocalError("credentials.rotate requires a projectId", "rotating project credential");
     }
@@ -224,6 +227,7 @@ export class Credentials {
     projectId: string,
     opts: { kind?: ProjectCredentialKind } = {},
   ): Promise<ProjectTokenIssued> {
+    gateSecret(this.client, "credentials.mintToken", projectId, opts);
     if (!projectId) {
       throw new LocalError("credentials.mintToken requires a projectId", "minting project token");
     }
@@ -261,6 +265,7 @@ export class ProjectKeysCache {
   }
 
   async import(projectId: string, opts: ProjectKeyCacheImportOptions): Promise<ProjectKeyCacheMutationResult> {
+    gateSecret(this.client, "credentials.projectKeys.import", projectId, opts);
     if (!this.client.credentials.saveProject) {
       throw unsupported("importing local project keys", "saveProject");
     }
@@ -282,6 +287,7 @@ export class ProjectKeysCache {
   }
 
   async export(projectId: string, opts: ProjectKeyCacheExportOptions = {}): Promise<ProjectKeyCacheExportResult> {
+    gateSecret(this.client, "credentials.projectKeys.export", projectId, opts);
     if (opts.reveal !== true) {
       throw new LocalError("Exporting full project keys requires { reveal: true }", "exporting local project keys", {
         code: "REVEAL_REQUIRED",

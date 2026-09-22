@@ -1,3 +1,4 @@
+import { gateSecret } from "../secret-gate.js";
 import type { Client } from "../kernel.js";
 import { LocalError } from "../errors.js";
 import type {
@@ -12,6 +13,7 @@ export class Branches {
   constructor(private readonly client: Client) {}
 
   async create(projectId: string, opts: ProjectBranchCreateOptions = {}): Promise<ProjectBranchCreateResult> {
+    gateSecret(this.client, "branches.create", projectId, opts);
     assertProjectId(projectId, "creating project branch");
     const body: Record<string, unknown> = {};
     if (opts.fromSnapshotId !== undefined) body.from_snapshot_id = opts.fromSnapshotId;

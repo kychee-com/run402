@@ -23,6 +23,7 @@
  * label)` form is deprecated (see the `sdk-call-shape-conventions` change).
  */
 
+import { gateSecret } from "../secret-gate.js";
 import type { Client } from "../kernel.js";
 import type { WalletData } from "../credentials.js";
 import { LocalError } from "../errors.js";
@@ -161,6 +162,7 @@ export class Wallets {
    * when the provider doesn't support local wallet management.
    */
   async create(): Promise<WalletCreateResult> {
+    gateSecret(this.client, "wallets.create");
     const reader = this.client.credentials.readWallet;
     const creator = this.client.credentials.createWallet;
     const saver = this.client.credentials.saveWallet;

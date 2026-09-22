@@ -12,6 +12,7 @@
  * `STEP_UP_REQUIRED` when driven by a stale control-plane session.
  */
 
+import { gateSecret } from "../secret-gate.js";
 import type { Client } from "../kernel.js";
 import { LocalError } from "../errors.js";
 import type {
@@ -376,6 +377,7 @@ export class OrgAdopt {
 
   /** Request a single-use challenge nonce the wallet must sign (`POST /orgs/v1/adopt/challenge`). */
   async challenge(input: AdoptChallengeInput): Promise<AdoptChallenge> {
+    gateSecret(this.client, "orgs.adopt.challenge", input);
     if (!input?.wallet) {
       throw new LocalError("orgs.adopt.challenge requires { wallet }", "requesting org adopt challenge");
     }
@@ -395,6 +397,7 @@ export class OrgAdopt {
    * is not passkey-fresh, and `ApiError` (`WALLET_PROOF_INVALID`) on a bad proof.
    */
   async submit(input: AdoptSubmitInput): Promise<AdoptResult> {
+    gateSecret(this.client, "orgs.adopt.submit", input);
     if (!input?.siwx) {
       throw new LocalError("orgs.adopt.submit requires { siwx } (the SIGN-IN-WITH-X proof)", "adopting org");
     }

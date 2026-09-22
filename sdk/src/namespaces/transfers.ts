@@ -29,6 +29,7 @@
  * the row needs, on the SAME `transfer_id`.
  */
 
+import { gateSecret } from "../secret-gate.js";
 import type { OperationActorSnapshot, PrincipalRepresentation } from "./identity-links.types.js";
 
 import type { Client } from "../kernel.js";
@@ -454,6 +455,7 @@ export class Transfers {
   async initiate(
     input: InitiateTransferInput,
   ): Promise<InitiateTransferResult | InitiateEmailTransferResult | InitiateOrgTransferResult> {
+    gateSecret(this.client, "admin.transfers.initiate", input);
     const toWallet = "toWallet" in input ? input.toWallet : undefined;
     const toEmail = "toEmail" in input ? input.toEmail : undefined;
     const toOrgId = "toOrgId" in input ? input.toOrgId : undefined;
@@ -536,6 +538,7 @@ export class Transfers {
    * keystore so the new owner can operate the project immediately.
    */
   async accept(transferId: string, opts: AcceptTransferOptions = {}): Promise<AcceptTransferResult> {
+    gateSecret(this.client, "admin.transfers.accept", transferId, opts);
     const body: Record<string, unknown> = {};
     if (opts.orgId !== undefined) body.org_id = opts.orgId;
     if (opts.acceptRetainedMember !== undefined) body.accept_retained_member = opts.acceptRetainedMember;

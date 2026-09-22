@@ -7,6 +7,7 @@
  * `r.projects.list({ all: true })`.
  */
 
+import { gateSecret } from "../secret-gate.js";
 import type { Client } from "../kernel.js";
 import type { SessionGrade } from "./org.types.js";
 
@@ -108,6 +109,7 @@ export class Me {
 
   /** The account overview across every organization the caller is a member of. */
   async overview(opts: MeTokenOpts = {}): Promise<AccountOverview> {
+    gateSecret(this.client, "me.overview", opts);
     return this.client.request<AccountOverview>("/agent/v1/me/overview", {
       ...authFor(opts),
       context: "fetching account overview",
@@ -116,6 +118,7 @@ export class Me {
 
   /** The owner snapshot `run402 doctor` reads. */
   async status(opts: MeTokenOpts = {}): Promise<MeStatusResult> {
+    gateSecret(this.client, "me.status", opts);
     return this.client.request<MeStatusResult>("/agent/v1/me/status", {
       ...authFor(opts),
       context: "fetching account status",

@@ -28,6 +28,7 @@
  * ({@link WriteApproval}) never satisfies step-up.
  */
 
+import { gateSecret } from "../secret-gate.js";
 import type { Client } from "../kernel.js";
 import { ApiError, NetworkError } from "../errors.js";
 import type { SessionGrade, WhoAmIResult } from "./org.types.js";
@@ -221,6 +222,7 @@ export class Session {
    * the code + verifier are the credential.
    */
   async exchangeCliToken(params: CliTokenExchange): Promise<ControlPlaneSession> {
+    gateSecret(this.client, "session.exchangeCliToken", params);
     return this.client.request<ControlPlaneSession>("/agent/v1/control-plane/cli/token", {
       method: "POST",
       body: {
@@ -258,6 +260,7 @@ export class Session {
    * is `device` grade (read-only).
    */
   async devicePoll(deviceCode: string): Promise<DevicePollResult> {
+    gateSecret(this.client, "session.devicePoll", deviceCode);
     const url = `${this.client.apiBase}/agent/v1/control-plane/cli/device/token`;
     let res: Response;
     try {
@@ -312,6 +315,7 @@ export class Session {
    * (`amr: ["email"]`).
    */
   async verifyEmail(input: { token: string }): Promise<ControlPlaneSession> {
+    gateSecret(this.client, "session.verifyEmail", input);
     return this.client.request<ControlPlaneSession>("/agent/v1/control-plane/session/email/verify", {
       method: "POST",
       body: { token: input.token },
@@ -340,6 +344,7 @@ export class Session {
    * the browser.
    */
   async passkeyVerify(input: { email: string; response: unknown }): Promise<ControlPlaneSession> {
+    gateSecret(this.client, "session.passkeyVerify", input);
     return this.client.request<ControlPlaneSession>("/agent/v1/control-plane/session/passkey/verify", {
       method: "POST",
       body: { email: input.email, response: input.response },
@@ -367,6 +372,7 @@ export class Session {
    * (`must_enroll_passkey: true`) — enrol a passkey to restore full access.
    */
   async consumeRecoveryCode(input: { code: string }): Promise<RecoveryConsumeResult> {
+    gateSecret(this.client, "session.consumeRecoveryCode", input);
     return this.client.request<RecoveryConsumeResult>("/agent/v1/control-plane/recovery/consume", {
       method: "POST",
       body: { code: input.code },
@@ -384,6 +390,7 @@ export class Session {
    * uses the credential provider, and `session` is `null` for a wallet caller.
    */
   async whoami(opts: SessionTokenOpts = {}): Promise<WhoAmIResult> {
+    gateSecret(this.client, "session.whoami", opts);
     return this.client.request<WhoAmIResult>("/agent/v1/whoami", {
       ...authFor(opts),
       context: "resolving sign-in session",
@@ -392,6 +399,7 @@ export class Session {
 
   /** Rotate the access token (`POST …/session/refresh`). */
   async refresh(opts: SessionTokenOpts = {}): Promise<ControlPlaneRefreshResult> {
+    gateSecret(this.client, "session.refresh", opts);
     return this.client.request<ControlPlaneRefreshResult>("/agent/v1/control-plane/session/refresh", {
       method: "POST",
       ...authFor(opts),
@@ -401,6 +409,7 @@ export class Session {
 
   /** Sign out — revoke the session server-side (`POST …/session/revoke`). Idempotent. */
   async revoke(opts: SessionTokenOpts = {}): Promise<{ status: string; [key: string]: unknown }> {
+    gateSecret(this.client, "session.revoke", opts);
     return this.client.request<{ status: string }>("/agent/v1/control-plane/session/revoke", {
       method: "POST",
       ...authFor(opts),
@@ -412,6 +421,7 @@ export class Session {
 
   /** WebAuthn registration options for a new passkey (`POST …/passkey/enroll/options`). */
   async enrollPasskeyOptions(opts: SessionTokenOpts = {}): Promise<WebAuthnOptionsResult> {
+    gateSecret(this.client, "session.enrollPasskeyOptions", opts);
     return this.client.request<WebAuthnOptionsResult>("/agent/v1/control-plane/passkey/enroll/options", {
       method: "POST",
       ...authFor(opts),
@@ -423,6 +433,7 @@ export class Session {
   async enrollPasskeyVerify(
     input: { response: unknown; label?: string | null } & SessionTokenOpts,
   ): Promise<EnrollPasskeyResult> {
+    gateSecret(this.client, "session.enrollPasskeyVerify", input);
     const { token, response, label } = input;
     return this.client.request<EnrollPasskeyResult>("/agent/v1/control-plane/passkey/enroll/verify", {
       method: "POST",
@@ -440,6 +451,7 @@ export class Session {
    * `"project.transfer"` (see {@link StepUpRequiredError.requiredAmr}).
    */
   async stepUpOptions(input: { opClass?: string } & SessionTokenOpts = {}): Promise<WebAuthnOptionsResult> {
+    gateSecret(this.client, "session.stepUpOptions", input);
     const { token, opClass } = input;
     return this.client.request<WebAuthnOptionsResult>("/agent/v1/control-plane/step-up/options", {
       method: "POST",
@@ -462,6 +474,7 @@ export class Session {
       objectId?: string | null;
     } & SessionTokenOpts,
   ): Promise<StepUpVerifyResult> {
+    gateSecret(this.client, "session.stepUpVerify", input);
     const { token, response, opClass, objectKind, objectId } = input;
     return this.client.request<StepUpVerifyResult>("/agent/v1/control-plane/step-up/verify", {
       method: "POST",
@@ -480,6 +493,7 @@ export class Session {
 
   /** (Re)issue recovery codes — shown ONCE (`POST …/recovery/issue`). */
   async issueRecoveryCodes(opts: SessionTokenOpts = {}): Promise<RecoveryCodesResult> {
+    gateSecret(this.client, "session.issueRecoveryCodes", opts);
     return this.client.request<RecoveryCodesResult>("/agent/v1/control-plane/recovery/issue", {
       method: "POST",
       ...authFor(opts),
@@ -491,6 +505,7 @@ export class Session {
 
   /** List my active authenticators — no secret material (`GET …/authenticators`). */
   async listAuthenticators(opts: SessionTokenOpts = {}): Promise<Authenticator[]> {
+    gateSecret(this.client, "session.listAuthenticators", opts);
     const res = await this.client.request<{ authenticators: Authenticator[] }>(
       "/agent/v1/control-plane/authenticators",
       { ...authFor(opts), context: "listing control-plane authenticators" },
@@ -504,6 +519,7 @@ export class Session {
    * (`OWNER_NEEDS_PASSKEY`).
    */
   async revokeAuthenticator(input: { id: string } & SessionTokenOpts): Promise<AuthenticatorRevokeResult> {
+    gateSecret(this.client, "session.revokeAuthenticator", input);
     const { token, id } = input;
     return this.client.request<AuthenticatorRevokeResult>(
       `/agent/v1/control-plane/authenticators/${encodeURIComponent(id)}`,
@@ -521,6 +537,7 @@ export class Session {
    * are console ceremonies (WebAuthn); this SDK surface is read-only.
    */
   async sourceAccessWrappers(opts: SessionTokenOpts = {}): Promise<SourceAccessWrappersResult> {
+    gateSecret(this.client, "session.sourceAccessWrappers", opts);
     return this.client.request<SourceAccessWrappersResult>("/agent/v1/source-access/wrappers", {
       ...authFor(opts),
       context: "reading source-access wrappers",
@@ -537,6 +554,7 @@ export class Session {
    * gateway stamps the export as recovery-posture evidence.
    */
   async sourceAccessRecoveryBundle(opts: SessionTokenOpts = {}): Promise<SourceAccessRecoveryBundleResult> {
+    gateSecret(this.client, "session.sourceAccessRecoveryBundle", opts);
     return this.client.request<SourceAccessRecoveryBundleResult>("/agent/v1/source-access/recovery-bundle", {
       ...authFor(opts),
       context: "exporting source-access recovery bundle",

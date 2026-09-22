@@ -11,6 +11,7 @@
  *     v1.56 `projects.pin` removed in v1.57)
  */
 
+import { gateSecret } from "../secret-gate.js";
 import { restDiagnostic } from "../rest-diagnostics.js";
 import type { Client } from "../kernel.js";
 import type { ProjectKeys } from "../credentials.js";
@@ -108,6 +109,7 @@ export class Projects {
    *   the fetch wrapper cannot sign the 402 retry.
    */
   async provision(opts: ProvisionOptions = {}): Promise<ProvisionResult> {
+    gateSecret(this.client, "projects.provision", opts);
     const body: Record<string, unknown> = {};
     if (opts.tier !== undefined) body.tier = opts.tier;
     if (opts.name !== undefined) body.name = opts.name;
@@ -196,6 +198,7 @@ export class Projects {
    *   configured and the gateway rejects the missing SIWX header).
    */
   async list(opts: ListProjectsOptions = {}): Promise<ListProjectsResult> {
+    gateSecret(this.client, "projects.list", opts);
     if (opts.all && opts.org !== undefined) {
       throw new LocalError(
         "projects.list({ all, org }): `all` (every organization) and `org` (single-org filter) are mutually exclusive.",
@@ -474,6 +477,7 @@ export class Projects {
    * @throws {ProjectCredentialNotFound} if local project credentials are absent.
    */
   async info(id: string): Promise<ProjectInfo> {
+    gateSecret(this.client, "projects.info", id);
     const keys = await requireProjectCredentials(this.client, id, "fetching project info");
     return { project_id: id, ...keys };
   }
@@ -485,6 +489,7 @@ export class Projects {
    * @throws {ProjectCredentialNotFound} if local project credentials are absent.
    */
   async keys(id: string): Promise<ProjectKeys> {
+    gateSecret(this.client, "projects.keys", id);
     return requireProjectCredentials(this.client, id, "fetching project keys");
   }
 

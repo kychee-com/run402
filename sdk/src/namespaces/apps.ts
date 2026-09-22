@@ -2,6 +2,7 @@
  * `apps` namespace — marketplace browse/fork and app version publishing.
  */
 
+import { gateSecret } from "../secret-gate.js";
 import type { Client } from "../kernel.js";
 import { requireProjectCredentials } from "../project-credentials.js";
 import type { ProjectTier } from "./projects.types.js";
@@ -164,6 +165,7 @@ export class Apps {
    * when the fork has a price.
    */
   async fork(opts: ForkAppOptions): Promise<ForkAppResult> {
+    gateSecret(this.client, "apps.fork", opts);
     const result = await this.client.request<ForkAppResult>("/fork/v1", {
       method: "POST",
       body: {

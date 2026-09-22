@@ -18,6 +18,7 @@
  * (`r.project(id).grants.create(…)`), mirroring `r.functions` / `r.jobs`.
  */
 
+import { gateSecret } from "../secret-gate.js";
 import type { Client } from "../kernel.js";
 import { LocalError } from "../errors.js";
 import type {
@@ -55,6 +56,7 @@ export class Grants {
    * returned **once** — persist it immediately, or rotate for a new one.
    */
   async create(projectId: string, input: CreateGrantInput): Promise<GrantCreateResult> {
+    gateSecret(this.client, "grants.create", projectId, input);
     if (!projectId) {
       throw new LocalError("grants.create requires a projectId", "creating project grant");
     }
@@ -116,6 +118,7 @@ export class Grants {
    * returned **once**.
    */
   async createKey(projectId: string, grantId: string, input: GrantKeyInput = {}): Promise<GrantKeyCreateResult> {
+    gateSecret(this.client, "grants.createKey", projectId, grantId, input);
     if (!projectId) {
       throw new LocalError("grants.createKey requires a projectId", "minting grant key");
     }
@@ -151,6 +154,7 @@ export class Grants {
    * kind, scope, cap and expiry. The new `key.token` is returned **once**.
    */
   async rotateKey(projectId: string, keyId: string): Promise<GrantKeyRotateResult> {
+    gateSecret(this.client, "grants.rotateKey", projectId, keyId);
     if (!projectId) {
       throw new LocalError("grants.rotateKey requires a projectId", "rotating grant key");
     }

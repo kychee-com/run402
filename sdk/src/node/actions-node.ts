@@ -1,3 +1,4 @@
+import { gateSecret } from "../secret-gate.js";
 import { serializeDeployManifest, manifestExportUnsupported } from "./manifest-export.js";
 import { prototypeBalance } from "./prototype-balance.js";
 import { afterFaucet } from "./funded-payment.js";
@@ -279,6 +280,7 @@ export class NodeActions implements Run402Actions {
     input: Run402ActionInput,
     opts: Run402ActionRunOptions = {},
   ): Promise<Run402ActionResult> {
+    gateSecret(this.sdk, "actions.run", input, opts);
     const run = new ActionRun(input, opts, this.#targetKind());
     try {
       switch (input.type) {
@@ -320,6 +322,7 @@ export class NodeActions implements Run402Actions {
     input: Omit<Run402UpActionInput, "type"> = {},
     opts?: Run402ActionRunOptions,
   ): Promise<Run402ActionResult<Run402UpResult>> {
+    gateSecret(this.sdk, "actions.up", input, opts);
     return this.run({ type: Run402Action.Up, ...input }, opts);
   }
 

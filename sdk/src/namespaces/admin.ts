@@ -6,6 +6,7 @@
  * they stitch together multiple SDK namespaces + local state.)
  */
 
+import { gateSecret } from "../secret-gate.js";
 import type { Client } from "../kernel.js";
 import { LocalError } from "../errors.js";
 import { Transfers } from "./transfers.js";
@@ -414,6 +415,7 @@ export class Channels {
    * `CONTACT_EMAIL_NOT_VERIFIED` when the caller has no verified email yet.
    */
   async connectTelegram(opts: ConnectTelegramOptions = {}, proofs?: SessionProofs): Promise<ConnectTelegramResult> {
+    gateSecret(this.client, "admin.channels.connectTelegram", opts, proofs);
     const body: Record<string, unknown> = {};
     if (opts.label !== undefined) body.label = opts.label;
     return this.client.request<ConnectTelegramResult>(
@@ -437,6 +439,7 @@ export class Channels {
    * (authorize-before-reveal) — no existence oracle.
    */
   async revokeTelegram(bindingId: string, proofs?: SessionProofs): Promise<RevokeTelegramResult> {
+    gateSecret(this.client, "admin.channels.revokeTelegram", bindingId, proofs);
     return this.client.request<RevokeTelegramResult>(
       `/agent/v1/notifications/channels/telegram/${encodeURIComponent(bindingId)}`,
       { method: "DELETE", context: "revoking a Telegram notification channel", ...sessionProofRequest(proofs) },
@@ -469,6 +472,7 @@ export class Rules {
    * (authorize-before-reveal).
    */
   async create(input: CreateRoutingRuleInput, proofs?: SessionProofs): Promise<CreateRoutingRuleResult> {
+    gateSecret(this.client, "admin.rules.create", input, proofs);
     const body: Record<string, unknown> = { telegram_binding_id: input.telegramBindingId };
     if (input.projectId !== undefined) body.project_id = input.projectId;
     if (input.source !== undefined) body.source = input.source;
@@ -487,6 +491,7 @@ export class Rules {
    * {@link UpdateRoutingRulePatch}).
    */
   async update(ruleId: string, patch: UpdateRoutingRulePatch, proofs?: SessionProofs): Promise<RoutingRule> {
+    gateSecret(this.client, "admin.rules.update", ruleId, patch, proofs);
     const body: Record<string, unknown> = {};
     if ("projectId" in patch) body.project_id = patch.projectId;
     if ("source" in patch) body.source = patch.source;
@@ -502,6 +507,7 @@ export class Rules {
 
   /** Delete a routing rule. */
   async delete(ruleId: string, proofs?: SessionProofs): Promise<DeleteRoutingRuleResult> {
+    gateSecret(this.client, "admin.rules.delete", ruleId, proofs);
     return this.client.request<DeleteRoutingRuleResult>(
       `/agent/v1/notifications/rules/${encodeURIComponent(ruleId)}`,
       { method: "DELETE", context: "deleting a notification routing rule", ...sessionProofRequest(proofs) },
@@ -707,6 +713,7 @@ export class Admin {
     patch: NotificationPreferencesPatch,
     proofs?: SessionProofs,
   ): Promise<NotificationPreferences> {
+    gateSecret(this.client, "admin.setNotificationPreferences", patch, proofs);
     return this.client.request<NotificationPreferences>(
       "/agent/v1/notifications/preferences",
       {
@@ -744,6 +751,7 @@ export class Admin {
    * hours (dual-secret grace window). Requires `operator_passkey` assurance.
    */
   async rotateWebhookSecret(proofs?: SessionProofs): Promise<RotateWebhookSecretResult> {
+    gateSecret(this.client, "admin.rotateWebhookSecret", proofs);
     return this.client.request<RotateWebhookSecretResult>(
       "/agent/v1/webhook-secret/rotate",
       { method: "POST", context: "rotating webhook signing secret", ...sessionProofRequest(proofs) },

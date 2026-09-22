@@ -1,3 +1,4 @@
+import { gateSecret } from "../secret-gate.js";
 import type { Client } from "../kernel.js";
 import { LocalError } from "../errors.js";
 import type {
@@ -22,6 +23,7 @@ export class AgentLightningWallets {
    * `pairing` only when this call is the one that first observed it active.
    */
   async mint(opts: AgentLightningWalletWaitOptions & { wait?: boolean } = {}): Promise<AgentLightningWallet> {
+    gateSecret(this.client, "agent.lightningWallet.mint", opts);
     const first = await this.client.request<AgentLightningWallet>("/agent/v1/lightning-wallet", {
       method: "POST",
       context: "minting a Lightning wallet",
@@ -32,6 +34,7 @@ export class AgentLightningWallets {
 
   /** The wallet's facts; the first read of an active wallet hands out `pairing` once. */
   async get(): Promise<AgentLightningWallet> {
+    gateSecret(this.client, "agent.lightningWallet.get");
     return this.client.request<AgentLightningWallet>("/agent/v1/lightning-wallet", {
       method: "GET",
       context: "reading the Lightning wallet",
@@ -40,6 +43,7 @@ export class AgentLightningWallets {
 
   /** Poll `get()` until the wallet leaves `minting`. */
   async waitForActive(opts: AgentLightningWalletWaitOptions = {}): Promise<AgentLightningWallet> {
+    gateSecret(this.client, "agent.lightningWallet.waitForActive", opts);
     const timeoutMs = opts.timeoutMs ?? 30_000;
     const intervalMs = opts.intervalMs ?? 2_000;
     const deadline = Date.now() + timeoutMs;

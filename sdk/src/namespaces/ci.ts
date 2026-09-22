@@ -1,5 +1,6 @@
 /** CI/OIDC federation namespace and canonical delegation helpers. */
 
+import { gateSecret } from "../secret-gate.js";
 import type { Client } from "../kernel.js";
 import { LocalError, Run402DeployError, Unauthorized, isRun402Error } from "../errors.js";
 import type { PlanRequest, ReleaseSpec } from "./deploy.types.js";
@@ -178,6 +179,7 @@ export class Ci {
   }
 
   async exchangeToken(input: CiTokenExchangeInput): Promise<CiTokenExchangeResponse> {
+    gateSecret(this.client, "ci.exchangeToken", input);
     if (!input?.project_id || !input.subject_token) {
       throw new LocalError(
         "ci.exchangeToken requires { project_id, subject_token }",

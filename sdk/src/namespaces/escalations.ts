@@ -65,6 +65,7 @@
  *   an agent may most need a person.
  */
 
+import { gateSecret } from "../secret-gate.js";
 import type { Client } from "../kernel.js";
 import { LocalError } from "../errors.js";
 import { waitFor } from "../wait.js";
@@ -214,6 +215,7 @@ export class Escalations {
    * acknowledge. Normally the hosted page calls this, not your code.
    */
   async ackWithToken(token: string): Promise<TokenAckResult> {
+    gateSecret(this.client, "escalations.ackWithToken", token);
     if (!token) {
       throw new LocalError("escalations.ackWithToken requires a token", "acknowledging an escalation");
     }

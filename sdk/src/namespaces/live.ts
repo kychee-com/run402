@@ -14,6 +14,7 @@
  * exactly `changes` and `subscribe` (the surface sync test enumerates runtime
  * methods, and `private` is erased at runtime).
  */
+import { gateSecret } from "../secret-gate.js";
 import type { Client } from "../kernel.js";
 import { LocalError } from "../errors.js";
 import type {
@@ -33,6 +34,7 @@ export class Live {
 
   /** `GET /live/v1/changes` — hints since `cursor`, or hold up to `wait` seconds for the first one. */
   async changes(projectId: string, opts: LiveChangesOptions): Promise<LiveChangesPage> {
+    gateSecret(this.client, "live.changes", projectId, opts);
     const context = "reading live changes";
     const tables = assertTables(opts.tables, context);
     const headers = await authHeadersFor(this.client, projectId, opts, context);
@@ -50,6 +52,7 @@ export class Live {
    * rejects `done` with the gateway's error envelope, as `request` would.
    */
   subscribe(projectId: string, opts: LiveSubscribeOptions, onEvent: (event: LiveEvent) => void): LiveSubscription {
+    gateSecret(this.client, "live.subscribe", projectId, opts, onEvent);
     const context = "subscribing to live changes";
     const tables = assertTables(opts.tables, context);
     const controller = new AbortController();

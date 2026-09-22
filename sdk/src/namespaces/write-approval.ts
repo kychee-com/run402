@@ -16,6 +16,7 @@
  * CLI (`run402 approve`).
  */
 
+import { gateSecret } from "../secret-gate.js";
 import type { Client } from "../kernel.js";
 import type { WriteApprovalCapability } from "../credentials.js";
 
@@ -97,6 +98,7 @@ export class WriteApproval {
    * Carries the sign-in session bearer; a `device`-grade session is refused.
    */
   async requestChallenge(input: WriteApprovalChallengeInput): Promise<WriteApprovalChallengeResult> {
+    gateSecret(this.client, "writeApproval.requestChallenge", input);
     const body: Record<string, unknown> = {
       action: input.action,
       cli_redirect_uri: input.cliRedirectUri,
@@ -125,6 +127,7 @@ export class WriteApproval {
    * credential); the minted token is still bound to the issuing sign-in session.
    */
   async exchangeClaimCode(input: WriteApprovalClaimInput): Promise<WriteApprovalTokenResult> {
+    gateSecret(this.client, "writeApproval.exchangeClaimCode", input);
     return this.client.request<WriteApprovalTokenResult>(
       "/agent/v1/control-plane/write-approval/cli/token",
       {

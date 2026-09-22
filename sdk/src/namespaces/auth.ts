@@ -6,6 +6,7 @@
  * end-user flows). Settings + promote/demote use the service key.
  */
 
+import { gateSecret } from "../secret-gate.js";
 import type { Client } from "../kernel.js";
 import { LocalError } from "../errors.js";
 import { requireProjectCredentials } from "../project-credentials.js";
@@ -305,6 +306,7 @@ export class Auth {
 
   /** Exchange a magic-link token for access + refresh tokens. */
   async verifyMagicLink(projectId: string, token: string): Promise<MagicLinkVerifyResult> {
+    gateSecret(this.client, "auth.verifyMagicLink", projectId, token);
     assertNonEmptyString(token, "token", "verifying magic link");
     const project = await requireProjectCredentials(this.client, projectId, "verifying magic link");
 
@@ -324,6 +326,7 @@ export class Auth {
 
   /** Exchange an opaque challenge handle plus a six-digit code. Never auto-retried. */
   async verifyEmailCode(projectId: string, opts: EmailCodeVerifyOptions): Promise<MagicLinkVerifyResult> {
+    gateSecret(this.client, "auth.verifyEmailCode", projectId, opts);
     if (!opts || typeof opts !== "object" || Array.isArray(opts)) {
       throw new LocalError(
         "r.auth.verifyEmailCode(projectId, opts) requires { challengeId, code }",
@@ -354,6 +357,7 @@ export class Auth {
    * Bearer credential.
    */
   async setUserPassword(projectId: string, opts: SetPasswordOptions): Promise<void> {
+    gateSecret(this.client, "auth.setUserPassword", projectId, opts);
     if (!opts || typeof opts !== "object" || Array.isArray(opts)) {
       throw new LocalError(
         "r.auth.setUserPassword(projectId, opts) requires an opts object as the 2nd argument (e.g., { accessToken, newPassword })",
@@ -450,6 +454,7 @@ export class Auth {
     projectId: string,
     opts: PasskeyRegistrationOptions,
   ): Promise<PasskeyOptionsResult> {
+    gateSecret(this.client, "auth.createPasskeyRegistrationOptions", projectId, opts);
     if (!opts || typeof opts !== "object") {
       throw new LocalError(
         "r.auth.createPasskeyRegistrationOptions(projectId, opts) requires { accessToken, appOrigin }",
@@ -474,6 +479,7 @@ export class Auth {
     projectId: string,
     opts: PasskeyRegistrationVerifyOptions,
   ): Promise<PasskeyRecord> {
+    gateSecret(this.client, "auth.verifyPasskeyRegistration", projectId, opts);
     if (!opts || typeof opts !== "object") {
       throw new LocalError(
         "r.auth.verifyPasskeyRegistration(projectId, opts) requires { accessToken, challengeId, response }",
@@ -525,6 +531,7 @@ export class Auth {
 
   /** Verify a WebAuthn login assertion and return a normal auth session. */
   async verifyPasskeyLogin(projectId: string, opts: PasskeyLoginVerifyOptions): Promise<AuthSessionResult> {
+    gateSecret(this.client, "auth.verifyPasskeyLogin", projectId, opts);
     if (!opts || typeof opts !== "object") {
       throw new LocalError(
         "r.auth.verifyPasskeyLogin(projectId, opts) requires { challengeId, response }",
@@ -549,6 +556,7 @@ export class Auth {
 
   /** List the authenticated user's active passkeys. */
   async listPasskeys(projectId: string, opts: PasskeyListOptions): Promise<{ passkeys: PasskeyRecord[] }> {
+    gateSecret(this.client, "auth.listPasskeys", projectId, opts);
     if (!opts || typeof opts !== "object") {
       throw new LocalError(
         "r.auth.listPasskeys(projectId, opts) requires { accessToken }",
@@ -569,6 +577,7 @@ export class Auth {
 
   /** Delete one authenticated-user passkey by id. */
   async deletePasskey(projectId: string, opts: PasskeyDeleteOptions): Promise<void> {
+    gateSecret(this.client, "auth.deletePasskey", projectId, opts);
     if (!opts || typeof opts !== "object") {
       throw new LocalError(
         "r.auth.deletePasskey(projectId, opts) requires { accessToken, passkeyId }",

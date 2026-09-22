@@ -29,6 +29,7 @@
  * never persisted into an agent-surface result store, and never logged.
  */
 
+import { gateSecret } from "../secret-gate.js";
 import type { Client } from "../kernel.js";
 import { LocalError, isRun402Error , isNetworkError } from "../errors.js";
 import {
@@ -2792,6 +2793,7 @@ export class Repos {
       onCommitLine?: (line: string) => void;
     },
   ): Promise<VaultHandoffMintResult> {
+    gateSecret(this.#client, "repos.handoff", options);
     const [{ deployRefTransaction }, { captureHandoffSnapshot, snapshotCommitment }, ho] = await Promise.all([this.#publication(), this.#snapshot(), this.#handoff()]);
     const { assembleHandoffKey, deriveHandoffSecrets, sealHandoffEnvelopeV2, assertHandoffNoteHasNoSecret, buildWriterAdmissionGrant, deriveWriterAdmissionSeed } = ho;
 
@@ -3075,6 +3077,7 @@ export class Repos {
       task?: string;
     },
   ): Promise<VaultInviteMintResult> {
+    gateSecret(this.#client, "repos.invite", options);
     const [{ deployRefTransaction }, { captureHandoffSnapshot, snapshotCommitment }] = await Promise.all([this.#publication(), this.#snapshot()]);
     const ho = await nodeOnly(() => import("../node/vault-handoff.js"), "invite");
     const { assembleInviteKey, deriveInviteSecrets, sealInviteEnvelope, assertInviteNoteHasNoSecret, buildWriterAdmissionGrant, deriveInviteWriterAdmissionSeed, INVITE_ENVELOPE_V2_KIND } = ho;
@@ -3420,6 +3423,7 @@ export class Repos {
    * "not yet a writer" refuses; here "already a writer" means skip.
    */
   async resume(options: { key: string; to?: string; keystore_root?: string; onLine?: (line: string) => void }): Promise<VaultHandoffResumeResult> {
+    gateSecret(this.#client, "repos.resume", options);
     const [ho, { VaultKeystore }, restore] = await Promise.all([this.#handoff(), this.#keystore(), this.#restore()]);
     const { parseHandoffKey, deriveHandoffSecrets, deriveWriterAdmissionSeed, buildWriterAcceptance, openHandoffEnvelopeV2 } = ho;
     const { cloneVaultRemote, applyHandoffCheckpoint, resolveResumeTargetDir, readGitCommitMessage, excludeMessagingCacheFromGit } = restore;
@@ -3731,6 +3735,7 @@ export class Repos {
     /** How many recent messages to read for the arrival view. Default 10. */
     recentMessagesLimit?: number;
   }): Promise<VaultInviteJoinResult> {
+    gateSecret(this.#client, "repos.join", options);
     const [ho, { VaultKeystore }, { createVaultHttpTransport }] = await Promise.all([
       nodeOnly(() => import("../node/vault-handoff.js"), "join"),
       this.#keystore(),
