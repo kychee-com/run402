@@ -19,7 +19,7 @@ A release can be activated while a host's edge state is still pending. Use [depl
 
 Transferring a project can change host and authority relationships. Review the transfer preview and returned cleanup/rotation guidance before moving ownership.
 
-Replace `app.example.com` with a domain you control. The default connect mode returns DNS records for you to apply; it does not prove DNS or TLS is already active. Follow the returned checks and rerun `domains check` after the records propagate. For a Run402 managed hostname on a live release, use `run402 subdomains claim <name> --project <project_id>` or declare `subdomains.set` in the release.
+Replace `app.example.com` with a domain you control. The default connect mode returns DNS records for you to apply; it does not prove DNS or TLS is already active. Follow the returned checks and rerun `domains check` after the records propagate. For a Run402 managed hostname on a live release, use `run402 subdomains add <name> --project <project_id>` or declare `subdomains.set` in the release.
 
 ## Read the result and recover
 

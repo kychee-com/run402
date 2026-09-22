@@ -81,29 +81,29 @@ export function upDeployAction() {
 }
 
 /**
- * `repos create` (and `gitvault init`) on an org with no claimed slug: the
+ * `repos create` (and `gitvault init`) on an org with no slug set: the
  * response's `address: null` had no pointer to WHY, or to the named-addressing
  * feature at all. Owner-only. Wording deliberately
  * omits a price: the first slug per org is free, and renames/re-claims cost
  * $1 — a gateway change lands the fee separately, so this stays true under
  * both the old and new pricing rule.
  */
-export function claimOrgSlugAction() {
-  return nextAction("claim_org_slug", {
+export function setOrgSlugAction() {
+  return nextAction("set_org_slug", {
     command: "run402 org slug <slug>",
-    why: "This organization has no claimed slug yet, so its repos have no run402::<slug>/<name> address. Owner-only.",
+    why: "This organization has no slug set yet, so its repos have no run402::<slug>/<name> address. Owner-only.",
   });
 }
 
 /**
  * The org already has a slug, but this project's address-form repo name was
- * not claimed this time (a collision, or the best-effort claim failed for
- * some other reason) — point at the explicit claim verb instead of leaving
+ * not set this time (a collision, or the best-effort set failed for
+ * some other reason) — point at the explicit set verb instead of leaving
  * `address: null` unexplained.
  */
-export function claimRepoNameAction(projectId) {
-  return nextAction("claim_repo_name", {
+export function setRepoNameAction(projectId) {
+  return nextAction("set_repo_name", {
     command: `run402 repos name <name> --project ${projectId}`,
-    why: "The owning organization has a slug, but this project has no claimed address-form name yet.",
+    why: "The owning organization has a slug, but this project has no address-form name set yet.",
   });
 }

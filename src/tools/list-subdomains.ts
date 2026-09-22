@@ -17,7 +17,7 @@ export async function handleListSubdomains(args: {
         content: [
           {
             type: "text",
-            text: `## Subdomains\n\n_No subdomains claimed. Use \`claim_subdomain\` to claim one._`,
+            text: `## Subdomains\n\n_No subdomains yet. Use \`add_subdomain\` to add one._`,
           },
         ],
       };

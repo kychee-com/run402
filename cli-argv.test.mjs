@@ -670,9 +670,9 @@ describe("2026-05 CLI bug backlog argv validation", () => {
     },
     {
       issue: "GH-290",
-      name: "subdomains claim rejects missing flag values",
+      name: "subdomains add rejects missing flag values",
       module: "./cli/lib/subdomains.mjs",
-      call: (run) => run("claim", ["site-a", "--deployment"]),
+      call: (run) => run("add", ["site-a", "--deployment"]),
       code: "BAD_FLAG",
     },
     {

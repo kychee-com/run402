@@ -373,7 +373,7 @@ export async function run(args = []) {
             ? undefined
             : undefined,
       });
-      // Cache the activated deployment id so `run402 subdomains claim` can
+      // Cache the activated deployment id so `run402 subdomains add` can
       // pass it as an optimization (the gateway binds the live release
       // without it). Best-effort: a keystore hiccup never fails `up`.
       {

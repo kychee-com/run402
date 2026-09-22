@@ -77,7 +77,7 @@ demoteUser(id, email): Promise<void>
 
 `r.projects.rename(projectId, name)` renames a project (`PATCH /projects/v1/:id`, project-findability) and returns `{ project_id, name }`. Caller-authed (SIWX/control-plane, not a project service key), so it works without the project in the local project-key cache. Authorization is org `admin`+ (or a `project:write` grant) on the owning org and authorize-before-reveal — an unauthorized/guessed id throws `Unauthorized` (403), never a not-found oracle; an invalid name throws `ApiError` (400). Scoped form: `r.project(id).rename(name)`.
 
-`r.projects.setRepoName(projectId, name)` claims or renames the project's per-org-unique, ADDRESS-form name (`POST /projects/v1/:id/repo-name`, repo-first-onramp design D6, task 4.2) — the `<name>` half of `run402::<org-slug>/<name>` — and returns `{ project_id, repo_name, previous_repo_name }`. Distinct from `rename` above (the free-text display name, unchanged): the address-form name is charset-restricted (`[a-z0-9-]`, ≤63 chars) and per-org-unique. No fee, unlike the org-slug claim. Same authority as `rename`. Scoped form: `r.project(id).setRepoName(name)`.
+`r.projects.setRepoName(projectId, name)` sets or renames the project's per-org-unique, ADDRESS-form name (`POST /projects/v1/:id/repo-name`, repo-first-onramp design D6, task 4.2) — the `<name>` half of `run402::<org-slug>/<name>` — and returns `{ project_id, repo_name, previous_repo_name }`. Distinct from `rename` above (the free-text display name, unchanged): the address-form name is charset-restricted (`[a-z0-9-]`, ≤63 chars) and per-org-unique. No fee, unlike the org-slug claim. Same authority as `rename`. Scoped form: `r.project(id).setRepoName(name)`.
 
 `r.projects.getUsage(id)` still surfaces `effective_status` and `organization_lifecycle_state` because that endpoint scopes to a single project and the derivation collapses per-project `archived_at` / `deleted_at` together with the organization's lifecycle.
 
@@ -619,16 +619,16 @@ Secret values and value-derived hashes are never returned. For deploys, use `sec
 ### `r.subdomains`
 
 ```
-claim({ name, releaseId?, deploymentId?, projectId? }): Promise<SubdomainClaimResult>  // omit both ids to bind the live release
+add({ name, releaseId?, deploymentId?, projectId? }): Promise<SubdomainAddResult>  // omit both ids to bind the live release
 delete(name, opts?: { projectId? }): Promise<void>
 list(projectId): Promise<SubdomainSummary[]>
 ```
 
-Most agents do not call `claim` directly — declare subdomains in
+Most agents do not call `add` directly — declare subdomains in
 `r.project(id).apply({ subdomains: { set: ["my-app"] } })` and the deploy primitive
 claims them as part of the release.
 
-Subdomain auto-reassignment: claim once. Every subsequent deploy to the same project automatically points the subdomain at the new release.
+Subdomain auto-reassignment: add once. Every subsequent deploy to the same project automatically points the subdomain at the new release.
 
 ### `r.domains`
 

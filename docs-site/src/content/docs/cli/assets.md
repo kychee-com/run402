@@ -184,13 +184,13 @@ Dry-run: `run402 sites deploy-dir ./dist --project prj_... --dry-run` calls the 
 Progress events: `sites deploy` and `sites deploy-dir` stream unified `DeployEvent` JSON lines to stderr by default; the final result payload (release/deploy metadata, no `status` wrapper) still goes to stdout. Pipe streams separately: `run402 sites deploy-dir ./dist --project p > result.json 2> events.log`. Pass `--quiet` to suppress events (stdout still gets the result payload).
 
 ### subdomains
-- `run402 subdomains claim <name> [--release <id> | --deployment <id>] [--project <id>]`
+- `run402 subdomains add <name> [--release <id> | --deployment <id>] [--project <id>]`
 - `run402 subdomains list [--project <id>]`
 - `run402 subdomains delete <name> --confirm [--project <id>]` — `--confirm` required (irreversible release).
 
-All options default to the active project. With neither `--release` nor `--deployment`, `claim` binds the project's live (active) release — no prior `deploy` bookkeeping needed; a project with no live site answers 404. `--release rel_…` pins a release; `--deployment` takes a legacy `dpl_…` id (`rel_…`/`op_…` accepted). Names: 3-63 chars, lowercase alphanumeric + hyphens. Creates `<name>.run402.com`. Declaring `"subdomains": { "set": ["<name>"] }` in the deploy manifest does the same at deploy time.
+All options default to the active project. With neither `--release` nor `--deployment`, `add` binds the project's live (active) release — no prior `deploy` bookkeeping needed; a project with no live site answers 404. `--release rel_…` pins a release; `--deployment` takes a legacy `dpl_…` id (`rel_…`/`op_…` accepted). Names: 3-63 chars, lowercase alphanumeric + hyphens. Creates `<name>.run402.com`. Declaring `"subdomains": { "set": ["<name>"] }` in the deploy manifest does the same at deploy time.
 
-Subdomain auto-reassignment: You only need to `claim` a subdomain once. Every subsequent `run402 sites deploy` or `run402 deploy` to the same project automatically updates the subdomain to point to the new release. The response includes `subdomain_urls` showing which subdomains were reassigned. No need to re-claim after each deploy.
+Subdomain auto-reassignment: You only need to `add` a subdomain once. Every subsequent `run402 sites deploy` or `run402 deploy` to the same project automatically updates the subdomain to point to the new release. The response includes `subdomain_urls` showing which subdomains were reassigned. No need to re-claim after each deploy.
 
 ### domains
 - `run402 domains connect <domain> --project <id> [--web] [--authority manual-dns|hosted-zone] [--email-send] [--email-receive] [--mailbox-addresses primary|alias|managed|none] [--addresses <csv>]`

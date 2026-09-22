@@ -35,7 +35,7 @@ import {
   handleCiListBindings,
   handleCiRevokeBinding,
 } from "./tools/ci.js";
-import { claimSubdomainSchema, handleClaimSubdomain } from "./tools/subdomain.js";
+import { addSubdomainSchema, handleAddSubdomain } from "./tools/subdomain.js";
 import { deleteSubdomainSchema, handleDeleteSubdomain } from "./tools/subdomain.js";
 import { deployFunctionSchema, handleDeployFunction } from "./tools/deploy-function.js";
 import { invokeFunctionSchema, handleInvokeFunction } from "./tools/invoke-function.js";
@@ -931,10 +931,10 @@ server.tool(
 );
 
 server.tool(
-  "claim_subdomain",
-  "Claim a custom subdomain (e.g. myapp.run402.com) and point it at an existing deployment. Free, requires service_key auth.",
-  claimSubdomainSchema,
-  async (args) => handleClaimSubdomain(args),
+  "add_subdomain",
+  "Add a subdomain (e.g. myapp.run402.com) to a project and point it at a release. Free, requires service_key auth.",
+  addSubdomainSchema,
+  async (args) => handleAddSubdomain(args),
 );
 
 server.tool(
@@ -946,7 +946,7 @@ server.tool(
 
 server.tool(
   "list_subdomains",
-  "List all subdomains claimed by a project.",
+  "List a project's subdomains.",
   listSubdomainsSchema,
   async (args) => handleListSubdomains(args),
 );

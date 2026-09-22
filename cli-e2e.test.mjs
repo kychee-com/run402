@@ -3643,12 +3643,12 @@ describe("CLI e2e happy path", () => {
 
   // ── Subdomains ──────────────────────────────────────────────────────────
 
-  it("subdomains claim", async () => {
+  it("subdomains add", async () => {
     const { run } = await import("./cli/lib/subdomains.mjs");
     captureStart();
-    await run("claim", ["my-app", "--deployment", "dpl_test456", "--project", "prj_test123"]);
+    await run("add", ["my-app", "--deployment", "dpl_test456", "--project", "prj_test123"]);
     captureStop();
-    assert.ok(captured().includes("my-app"), "should claim subdomain");
+    assert.ok(captured().includes("my-app"), "should add subdomain");
   });
 
   it("subdomains list", async () => {
@@ -5453,12 +5453,12 @@ describe("CLI canonical error envelope (GH-215, GH-174)", () => {
     return JSON.parse(line);
   }
 
-  it("subdomains claim with empty name emits BAD_USAGE envelope", async () => {
+  it("subdomains add with empty name emits BAD_USAGE envelope", async () => {
     const { run } = await import("./cli/lib/subdomains.mjs");
     let threw = null;
     captureStart();
     try {
-      await run("claim", [""]);
+      await run("add", [""]);
     } catch (e) { threw = e; } finally {
       captureStop();
     }
@@ -5466,10 +5466,10 @@ describe("CLI canonical error envelope (GH-215, GH-174)", () => {
     const parsed = parseStderrJson();
     assert.equal(parsed.status, "error");
     assert.equal(parsed.code, "BAD_USAGE");
-    assert.ok(/run402 subdomains claim/.test(parsed.hint || ""), `hint should retain usage, got: ${parsed.hint}`);
+    assert.ok(/run402 subdomains add/.test(parsed.hint || ""), `hint should retain usage, got: ${parsed.hint}`);
   });
 
-  it("subdomains claim without a target sends only name (gateway binds the live release)", async () => {
+  it("subdomains add without a target sends only name (gateway binds the live release)", async () => {
     const { setActiveProjectId, saveProject } = await import("./cli/lib/config.mjs");
     saveProject("prj_no_deploy_test", { anon_key: "a", service_key: "s" });
     setActiveProjectId("prj_no_deploy_test");
@@ -5487,7 +5487,7 @@ describe("CLI canonical error envelope (GH-215, GH-174)", () => {
     let threw = null;
     captureStart();
     try {
-      await run("claim", ["foo"]);
+      await run("add", ["foo"]);
     } catch (e) { threw = e; } finally {
       captureStop();
       globalThis.fetch = prevFetch;
@@ -5499,7 +5499,7 @@ describe("CLI canonical error envelope (GH-215, GH-174)", () => {
     assert.deepEqual(bodies, [{ name: "foo" }], "body carries neither deployment_id nor release_id");
   });
 
-  it("subdomains claim --release sends release_id and no deployment_id", async () => {
+  it("subdomains add --release sends release_id and no deployment_id", async () => {
     const { run } = await import("./cli/lib/subdomains.mjs");
     const bodies = [];
     const prevFetch = globalThis.fetch;
@@ -5512,7 +5512,7 @@ describe("CLI canonical error envelope (GH-215, GH-174)", () => {
     };
     captureStart();
     try {
-      await run("claim", ["foo", "--release", "rel_abc", "--project", "prj_test123"]);
+      await run("add", ["foo", "--release", "rel_abc", "--project", "prj_test123"]);
     } finally {
       captureStop();
       globalThis.fetch = prevFetch;

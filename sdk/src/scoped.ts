@@ -213,9 +213,9 @@ import type {
   ProjectBranchRenewOptions,
 } from "./namespaces/branches.types.js";
 import type {
-  SubdomainClaimInput,
+  SubdomainAddInput,
   SubdomainClaimOptions,
-  SubdomainClaimResult,
+  SubdomainAddResult,
   SubdomainDeleteResult,
   SubdomainSummary,
 } from "./namespaces/subdomains.js";
@@ -997,8 +997,8 @@ class ScopedSubdomains {
   list(): Promise<SubdomainSummary[]> {
     return this.parent.subdomains.list(this.projectId);
   }
-  claim(input: SubdomainClaimInput): Promise<SubdomainClaimResult> {
-    return this.parent.subdomains.claim({
+  add(input: SubdomainAddInput): Promise<SubdomainAddResult> {
+    return this.parent.subdomains.add({
       ...input,
       projectId: input.projectId ?? this.projectId,
     });

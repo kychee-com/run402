@@ -1,7 +1,7 @@
 /**
  * `subdomains` namespace — `*.run402.com` subdomain claims pointing at
  * deployments or releases (defaulting to the project's live release).
- * `claim` and `delete` accept an optional `projectId` for ownership
+ * `add` and `delete` accept an optional `projectId` for ownership
  * tracking; `list` requires one.
  */
 
@@ -14,7 +14,7 @@ export interface SubdomainClaimOptions {
   projectId?: string;
 }
 
-export interface SubdomainClaimInput extends SubdomainClaimOptions {
+export interface SubdomainAddInput extends SubdomainClaimOptions {
   name: string;
   /**
    * Target to bind: a legacy `dpl_…` deployment id, or a `rel_…` / `op_…`
@@ -26,7 +26,7 @@ export interface SubdomainClaimInput extends SubdomainClaimOptions {
   releaseId?: string;
 }
 
-export interface SubdomainClaimResult {
+export interface SubdomainAddResult {
   name: string;
   deployment_id: string;
   url: string;
@@ -78,14 +78,14 @@ export class Subdomains {
    * the gateway resolves it, and answers 404 only when the project has no
    * live release with a site.
    */
-  async claim(input: SubdomainClaimInput): Promise<SubdomainClaimResult> {
+  async add(input: SubdomainAddInput): Promise<SubdomainAddResult> {
     const name = input.name;
     const options: SubdomainClaimOptions = { projectId: input.projectId };
 
-    const projectId = await this.#resolveProjectId(options, "claiming subdomain");
-    const project = await requireProjectCredentials(this.client, projectId, "claiming subdomain");
+    const projectId = await this.#resolveProjectId(options, "adding subdomain");
+    const project = await requireProjectCredentials(this.client, projectId, "adding subdomain");
 
-    return this.client.request<SubdomainClaimResult>("/subdomains/v1", {
+    return this.client.request<SubdomainAddResult>("/subdomains/v1", {
       method: "POST",
       headers: { Authorization: `Bearer ${project.service_key}` },
       body: {
@@ -93,7 +93,7 @@ export class Subdomains {
         ...(input.deploymentId ? { deployment_id: input.deploymentId } : {}),
         ...(input.releaseId ? { release_id: input.releaseId } : {}),
       },
-      context: "claiming subdomain",
+      context: "adding subdomain",
     });
   }
 
@@ -115,7 +115,7 @@ export class Subdomains {
     );
   }
 
-  /** List all subdomains claimed by a project. */
+  /** List a project's subdomains. */
   async list(projectId: string): Promise<SubdomainSummary[]> {
     const project = await requireProjectCredentials(this.client, projectId, "listing subdomains");
 

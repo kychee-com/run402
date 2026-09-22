@@ -156,7 +156,7 @@ describe("subdomains.delete", () => {
       }),
     );
     const sdk = makeSdk(makeCreds(), fetch);
-    await sdk.subdomains.claim({ name: "x", releaseId: "rel_y", projectId: "prj_known" });
+    await sdk.subdomains.add({ name: "x", releaseId: "rel_y", projectId: "prj_known" });
 
     assert.equal(calls.length, 1);
     assert.deepEqual(JSON.parse(calls[0]!.body as string), {
@@ -178,7 +178,7 @@ describe("subdomains.delete", () => {
       }),
     );
     const sdk = makeSdk(makeCreds(), fetch);
-    const result = await sdk.subdomains.claim({ name: "x", projectId: "prj_known" });
+    const result = await sdk.subdomains.add({ name: "x", projectId: "prj_known" });
 
     assert.equal(calls.length, 1);
     assert.deepEqual(JSON.parse(calls[0]!.body as string), { name: "x" });
@@ -291,7 +291,7 @@ describe("subdomains.claim", () => {
       }),
     );
     const sdk = makeSdk(makeCreds(), fetch);
-    const result = await sdk.subdomains.claim({ name: "x", deploymentId: "dpl_y", projectId: "prj_known" });
+    const result = await sdk.subdomains.add({ name: "x", deploymentId: "dpl_y", projectId: "prj_known" });
 
     assert.equal(calls.length, 1);
     assert.equal(calls[0]!.url, "https://api.example.test/subdomains/v1");
@@ -317,7 +317,7 @@ describe("subdomains.claim", () => {
       }),
     );
     const sdk = makeSdk(makeCreds(), fetch);
-    await sdk.subdomains.claim({ name: "x", releaseId: "rel_y", projectId: "prj_known" });
+    await sdk.subdomains.add({ name: "x", releaseId: "rel_y", projectId: "prj_known" });
 
     assert.equal(calls.length, 1);
     assert.deepEqual(JSON.parse(calls[0]!.body as string), {
@@ -339,7 +339,7 @@ describe("subdomains.claim", () => {
       }),
     );
     const sdk = makeSdk(makeCreds(), fetch);
-    const result = await sdk.subdomains.claim({ name: "x", projectId: "prj_known" });
+    const result = await sdk.subdomains.add({ name: "x", projectId: "prj_known" });
 
     assert.equal(calls.length, 1);
     assert.deepEqual(JSON.parse(calls[0]!.body as string), { name: "x" });
@@ -366,7 +366,7 @@ describe("subdomains.claim", () => {
       }),
       fetch,
     );
-    const result = await sdk.subdomains.claim({ name: "x", deploymentId: "dpl_y" });
+    const result = await sdk.subdomains.add({ name: "x", deploymentId: "dpl_y" });
 
     assert.equal(calls.length, 1);
     assert.equal(calls[0]!.headers["Authorization"], "Bearer service_xxx");
@@ -395,7 +395,7 @@ describe("subdomains.claim", () => {
       }),
       fetch,
     );
-    await sdk.subdomains.claim({ name: "x", deploymentId: "dpl_y", projectId: "prj_known" });
+    await sdk.subdomains.add({ name: "x", deploymentId: "dpl_y", projectId: "prj_known" });
 
     assert.equal(calls.length, 1);
     assert.equal(calls[0]!.headers["Authorization"], "Bearer service_xxx");
@@ -406,7 +406,7 @@ describe("subdomains.claim", () => {
     const { fetch, calls } = mockFetch(() => jsonResponse({}));
     const sdk = makeSdk(makeCreds(), fetch);
     await assert.rejects(
-      sdk.subdomains.claim({ name: "x", deploymentId: "dpl_y" }),
+      sdk.subdomains.add({ name: "x", deploymentId: "dpl_y" }),
       (err: unknown) =>
         err instanceof LocalError &&
         /projectId|active project/i.test((err as LocalError).message),
@@ -425,7 +425,7 @@ describe("subdomains.claim", () => {
       fetch,
     );
     await assert.rejects(
-      sdk.subdomains.claim({ name: "x", deploymentId: "dpl_y" }),
+      sdk.subdomains.add({ name: "x", deploymentId: "dpl_y" }),
       (err: unknown) =>
         err instanceof LocalError &&
         /projectId|active project/i.test((err as LocalError).message),

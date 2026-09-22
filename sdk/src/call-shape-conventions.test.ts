@@ -105,7 +105,7 @@ describe("options-object call shapes send the expected wire body", () => {
   it("subdomains.claim", async () => {
     const bodies: unknown[] = [];
     const r = sdkCapturing(bodies);
-    await r.subdomains.claim({ name: "foo", deploymentId: "dep_1", projectId: "prj_1" });
+    await r.subdomains.add({ name: "foo", deploymentId: "dep_1", projectId: "prj_1" });
     assert.deepEqual(bodies[0], { name: "foo", deployment_id: "dep_1" });
   });
 

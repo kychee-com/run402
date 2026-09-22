@@ -1076,7 +1076,7 @@ export function collectManifestSourceFiles(spec, baseDir) {
 
 /**
  * Persist an activated release's `deployment_id` into the local keystore.
- * `run402 subdomains claim` reads it as an optimization only — the gateway
+ * `run402 subdomains add` reads it as an optimization only — the gateway
  * binds the live release without it — so this must never throw.
  */
 export function rememberLastDeployment(projectId, deploymentId) {
@@ -1353,7 +1353,7 @@ async function deployCmd(args) {
         onCommitLine: (line) => { if (!opts.quiet) process.stderr.write(`${line}\n`); },
       }),
     );
-    // Cache the activated deployment id so `run402 subdomains claim` can
+    // Cache the activated deployment id so `run402 subdomains add` can
     // pass it as an optimization (the gateway defaults to the live release
     // without it). Best-effort: a keystore hiccup never fails the deploy.
     rememberLastDeployment(releaseSpec.project, outcome.deploy?.urls?.deployment_id);

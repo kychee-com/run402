@@ -19,7 +19,7 @@ import type {
   AuditEvent,
   AuditOptions,
   AuditResult,
-  ClaimOrgSlugResult,
+  SetOrgSlugResult,
   CreateInviteInput,
   CreateOrgInput,
   MemberMutationResult,
@@ -221,11 +221,11 @@ export class ScopedOrg {
    * genesis claim, `false` for a rename or an idempotent no-op replay of the
    * SAME target slug.
    */
-  async claimSlug(slug: string, opts: { idempotencyKey?: string } = {}): Promise<ClaimOrgSlugResult> {
+  async setSlug(slug: string, opts: { idempotencyKey?: string } = {}): Promise<SetOrgSlugResult> {
     if (!slug) {
-      throw new LocalError("org.claimSlug requires a non-empty slug", "claiming org slug");
+      throw new LocalError("org.setSlug requires a non-empty slug", "claiming org slug");
     }
-    return this.client.request<ClaimOrgSlugResult>(`/orgs/v1/${encodeURIComponent(this.orgId)}/slug`, {
+    return this.client.request<SetOrgSlugResult>(`/orgs/v1/${encodeURIComponent(this.orgId)}/slug`, {
       method: "POST",
       body: { slug },
       headers: { "Idempotency-Key": opts.idempotencyKey ?? randomIdempotencyKey() },

@@ -14,7 +14,7 @@ let testBalance: bigint | Error = 0n;
 mock.module("./prototype-balance.js", { namedExports: {
   prototypeBalance: async () => { if (testBalance instanceof Error) throw testBalance; return testBalance; },
 } });
-const { NodeActions, claimSubdomainNextAction, subdomainSlugFromProjectName } = await import("./actions-node.js");
+const { NodeActions, addSubdomainNextAction, subdomainSlugFromProjectName } = await import("./actions-node.js");
 
 test("sponsored wallet bootstrap skips faucet without a faucet marker", async () => {
   const calls: string[] = [];
@@ -1567,25 +1567,25 @@ test("up verify.http with no resolvable origin fails loudly with a missing_publi
     // manifest. With no project name known the command carries `<name>`.
     const nextAction = result.result?.verify?.next_action as Record<string, unknown> | null | undefined;
     assert.ok(nextAction, "verify.next_action present");
-    assert.equal(nextAction?.type, "claim_subdomain");
+    assert.equal(nextAction?.type, "add_subdomain");
     assert.equal(nextAction?.node_id, "verify.http.home");
-    assert.equal(nextAction?.command, "run402 subdomains claim <name>");
-    assert.deepEqual(nextAction?.argv, ["run402", "subdomains", "claim", "<name>"]);
+    assert.equal(nextAction?.command, "run402 subdomains add <name>");
+    assert.deepEqual(nextAction?.argv, ["run402", "subdomains", "add", "<name>"]);
     assert.match(String(nextAction?.message ?? ""), /"subdomains": \{ "set": \["<name>"\] \}/);
   } finally {
     rmSync(dir, { force: true, recursive: true });
   }
 });
 
-test("claim_subdomain next action slugs the project name into a claimable label", () => {
-  const action = claimSubdomainNextAction("My Cool App!", "home");
-  assert.equal(action.type, "claim_subdomain");
-  assert.equal(action.command, "run402 subdomains claim my-cool-app");
-  assert.deepEqual(action.argv, ["run402", "subdomains", "claim", "my-cool-app"]);
+test("add_subdomain next action slugs the project name into a claimable label", () => {
+  const action = addSubdomainNextAction("My Cool App!", "home");
+  assert.equal(action.type, "add_subdomain");
+  assert.equal(action.command, "run402 subdomains add my-cool-app");
+  assert.deepEqual(action.argv, ["run402", "subdomains", "add", "my-cool-app"]);
   assert.match(String(action.message), /"subdomains": \{ "set": \["my-cool-app"\] \}/);
   assert.equal(subdomainSlugFromProjectName("ab"), null, "too short to claim");
   assert.equal(subdomainSlugFromProjectName(null), null);
-  assert.equal(claimSubdomainNextAction(null, "x").command, "run402 subdomains claim <name>");
+  assert.equal(addSubdomainNextAction(null, "x").command, "run402 subdomains add <name>");
 });
 
 test("up verify reruns deploy-manifest verify.http checks without deploying", async (t) => {

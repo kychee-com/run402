@@ -621,7 +621,7 @@ run402 projects apply-expose    <project_id> --file manifest.json
 run402 sites deploy --manifest site.json
 
 # 6. Claim a subdomain (uses active project + its live release automatically)
-run402 subdomains claim my-app
+run402 subdomains add my-app
 ```
 
 ---

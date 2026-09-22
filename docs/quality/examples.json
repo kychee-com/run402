@@ -356,7 +356,7 @@
     "line": 609,
     "language": "bash",
     "kind": "commands",
-    "sha256": "53037c99f5f77a7c082faafce353ac2760490ceaae8dd31dbaf209f8c82d4ed8",
+    "sha256": "5f1a89cd231076711841c67d4cd8a2fbf2e0bd03212d378f6ba7f023082b6a8d",
     "validation": "cli-help-output-sync"
   },
   {
@@ -1412,7 +1412,7 @@
     "line": 621,
     "language": "",
     "kind": "output-or-pseudocode",
-    "sha256": "46a42c4cbe46aa87cc176da8d489c92c050663f87826b17617456e87c137a744",
+    "sha256": "5baacc3150fd1def7250b54a9e3445a8dad0248d83e8e313c0313b62760c966c",
     "validation": "sdk-snippets"
   },
   {

@@ -97,8 +97,8 @@ export interface OrgSummary {
   org_id: string;
   display_name: string | null;
   /**
-   * The org's globally-unique, claimable address-form slug (repo-first-onramp
-   * design D6) — `null` until claimed via {@link ScopedOrg.claimSlug}. GitHub
+   * The org's globally-unique address-form slug (repo-first-onramp
+   * design D6) — `null` until set via {@link ScopedOrg.setSlug}. GitHub
    * + DNS-safe grammar: lowercase `[a-z0-9-]`, no leading/trailing/double
    * hyphen, ≤39 chars.
    */
@@ -120,13 +120,13 @@ export interface OrgDetail extends OrgSummary {
   role: OrgRole | null;
 }
 
-/** `POST /orgs/v1/:org_id/slug` — {@link ScopedOrg.claimSlug}'s result (repo-first-onramp design D6). */
-export interface ClaimOrgSlugResult {
+/** `POST /orgs/v1/:org_id/slug` — {@link ScopedOrg.setSlug}'s result (repo-first-onramp design D6). */
+export interface SetOrgSlugResult {
   org_id: string;
   slug: string;
-  /** The org's PRIOR slug, or `null` for a genesis claim. Released into its ~90-day cooldown on a rename. */
+  /** The org's PRIOR slug, or `null` for a genesis set. Released into its ~90-day cooldown on a rename. */
   previous_slug: string | null;
-  /** `true` for a genesis claim (this org had no slug before); `false` for a rename or an idempotent no-op replay. */
+  /** `true` for a genesis set (this org had no slug before); `false` for a rename or an idempotent no-op replay. */
   created: boolean;
 }
 

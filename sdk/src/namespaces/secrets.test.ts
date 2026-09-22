@@ -99,7 +99,7 @@ describe("subdomains", () => {
   it("claim throws LocalError when no projectId and no active project", async () => {
     const { fetch } = mockFetch(() => json({}));
     await assert.rejects(
-      sdk(fetch).subdomains.claim({ name: "app", deploymentId: "dpl_1" }),
+      sdk(fetch).subdomains.add({ name: "app", deploymentId: "dpl_1" }),
       (err: Error) => /projectId|active project/.test(err.message),
     );
   });
@@ -108,7 +108,7 @@ describe("subdomains", () => {
     const { fetch, calls } = mockFetch(() =>
       json({ name: "app", deployment_id: "dpl_1", url: "u", deployment_url: "du", project_id: "prj_k", created_at: "t", updated_at: "t" }),
     );
-    await sdk(fetch).subdomains.claim({ name: "app", deploymentId: "dpl_1", projectId: "prj_k" });
+    await sdk(fetch).subdomains.add({ name: "app", deploymentId: "dpl_1", projectId: "prj_k" });
     assert.equal(calls[0]!.headers["Authorization"], "Bearer s");
   });
 

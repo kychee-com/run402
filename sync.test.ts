@@ -457,7 +457,7 @@ const SURFACE: Capability[] = [
   // ── Sites / Subdomains ───────────────────────────────────────────────────
   { id: "deploy_site",       endpoint: "POST /apply/v1/plans",             mcp: "deploy_site",       cli: "sites:deploy",       openclaw: "sites:deploy" },
   { id: "deploy_site_dir",   endpoint: "POST /apply/v1/plans",             mcp: "deploy_site_dir",   cli: "sites:deploy-dir",   openclaw: "sites:deploy-dir" },
-  { id: "claim_subdomain",   endpoint: "POST /subdomains/v1",              mcp: "claim_subdomain",   cli: "subdomains:claim",   openclaw: "subdomains:claim" },
+  { id: "add_subdomain",   endpoint: "POST /subdomains/v1",              mcp: "add_subdomain",   cli: "subdomains:add",   openclaw: "subdomains:add" },
   { id: "delete_subdomain",  endpoint: "DELETE /subdomains/v1/:name",      mcp: "delete_subdomain",  cli: "subdomains:delete",  openclaw: "subdomains:delete" },
   { id: "list_subdomains",   endpoint: "GET /subdomains/v1",               mcp: "list_subdomains",   cli: "subdomains:list",    openclaw: "subdomains:list" },
 
@@ -1102,7 +1102,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   // Sites / Subdomains
   deploy_site: null, // MCP stages files to a temp dir and composes deployDir
   deploy_site_dir: "sites.deployDir", // Node-only SDK helper: walks fs + unified deploy primitive
-  claim_subdomain: "subdomains.claim",
+  add_subdomain: "subdomains.add",
   delete_subdomain: "subdomains.delete",
   list_subdomains: "subdomains.list",
 
@@ -1290,7 +1290,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   get_org: "org.get",
   rename_org: "org.rename",
   set_org_payout_wallet: "org.setPayoutWallet",
-  org_slug: "org.claimSlug",
+  org_slug: "org.setSlug",
   whoami: "orgs.whoami",
   list_orgs: "orgs.list",
   list_org_members: "org.members.list",

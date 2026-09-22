@@ -9,16 +9,16 @@ Usage:
   run402 subdomains <subcommand> [args...]
 
 Subcommands:
-  claim  <name> [--project <id>] [--release <id> | --deployment <id>]   Claim a subdomain
+  add    <name> [--project <project_id>] [--release <release_id> | --deployment <deployment_id>]   Add a subdomain
   delete <name> --confirm [--project <id>]                              Release a subdomain. Requires --confirm.
   list   [--project <id>]                                               List subdomains for a project
 
 Options default to the active project. With neither --release nor
---deployment, claim binds the project's live release.
+--deployment, add binds the project's live release.
 
 Examples:
-  run402 subdomains claim myapp
-  run402 subdomains claim myapp --release rel_abc123 --project prj_abc123
+  run402 subdomains add myapp
+  run402 subdomains add myapp --release rel_abc123 --project prj_abc123
   run402 subdomains delete myapp --confirm
   run402 subdomains list
 
@@ -29,10 +29,10 @@ Notes:
 `;
 
 const SUB_HELP = {
-  claim: `run402 subdomains claim — Claim a custom subdomain for a release
+  add: `run402 subdomains add — Add a subdomain for a release
 
 Usage:
-  run402 subdomains claim <name> [--project <id>] [--release <id> | --deployment <id>]
+  run402 subdomains add <name> [--project <project_id>] [--release <release_id> | --deployment <deployment_id>]
 
 Arguments:
   <name>              Subdomain name (3-63 chars, lowercase alphanumeric +
@@ -51,10 +51,10 @@ Notes:
   - A deploy manifest can declare the same thing: "subdomains": { "set": ["<name>"] }
 
 Examples:
-  run402 subdomains claim myapp
-  run402 subdomains claim myapp --release rel_abc123 --project prj_abc123
+  run402 subdomains add myapp
+  run402 subdomains add myapp --release rel_abc123 --project prj_abc123
 `,
-  list: `run402 subdomains list — List subdomains claimed by a project
+  list: `run402 subdomains list — List a project's subdomains
 
 Usage:
   run402 subdomains list [--project <id>]
@@ -66,7 +66,7 @@ Examples:
   run402 subdomains list
   run402 subdomains list --project prj_abc123
 `,
-  delete: `run402 subdomains delete — Release a claimed subdomain
+  delete: `run402 subdomains delete — Release a subdomain
 
 Usage:
   run402 subdomains delete <name> --confirm [--project <id>]
@@ -76,7 +76,7 @@ Arguments:
 
 Options:
   --confirm           Required: releasing a subdomain is irreversible and
-                      makes it available for any other project to claim
+                      makes it available for any other project to add
   --project <id>      Project ID (defaults to the active project)
 
 Examples:
@@ -85,7 +85,7 @@ Examples:
 `,
 };
 
-async function claim(args) {
+async function add(args) {
   const parsedArgs = normalizeArgv(args);
   const valueFlags = ["--project", "--deployment", "--release"];
   assertKnownFlags(parsedArgs, [...valueFlags, "--help", "-h"], valueFlags);
@@ -99,8 +99,8 @@ async function claim(args) {
   if (positionals.length > 1) {
     fail({
       code: "BAD_USAGE",
-      message: `Unexpected argument for subdomains claim: ${positionals[1]}`,
-      hint: "Use `run402 subdomains claim <name> [--release <rel_id>]`.",
+      message: `Unexpected argument for subdomains add: ${positionals[1]}`,
+      hint: "Use `run402 subdomains add <name> [--release <rel_id>]`.",
     });
   }
   if (positionals.length === 1) {
@@ -110,14 +110,14 @@ async function claim(args) {
     fail({
       code: "BAD_USAGE",
       message: "Missing <name>.",
-      hint: "run402 subdomains claim <name> [--project <id>] [--release <id> | --deployment <id>]",
+      hint: "run402 subdomains add <name> [--project <project_id>] [--release <release_id> | --deployment <deployment_id>]",
     });
   }
   if (opts.deployment && opts.release) {
     fail({
       code: "BAD_USAGE",
       message: "Pass either --release or --deployment, not both.",
-      hint: "run402 subdomains claim <name> [--release <id> | --deployment <id>]",
+      hint: "run402 subdomains add <name> [--release <id> | --deployment <id>]",
     });
   }
   const projectId = resolveProjectId(opts.project);
@@ -129,7 +129,7 @@ async function claim(args) {
   const deploymentId = opts.deployment || (opts.release ? undefined : p.last_deployment_id) || undefined;
   const releaseId = opts.release || undefined;
   try {
-    const data = await getSdk().subdomains.claim({ name, deploymentId, releaseId, projectId });
+    const data = await getSdk().subdomains.add({ name, deploymentId, releaseId, projectId });
     console.log(JSON.stringify(data, null, 2));
   } catch (err) {
     reportSdkError(err);
@@ -156,7 +156,7 @@ async function deleteSubdomain(allArgs) {
   if (!argList.includes("--confirm")) {
     fail({
       code: "CONFIRMATION_REQUIRED",
-      message: `Destructive: releasing subdomain '${name}' makes it available for any other project to claim. This is irreversible. Re-run with --confirm to proceed.`,
+      message: `Destructive: releasing subdomain '${name}' makes it available for any other project to add. This is irreversible. Re-run with --confirm to proceed.`,
       details: { name },
     });
   }
@@ -202,7 +202,7 @@ export async function run(sub, args) {
   if (!sub || sub === '--help' || sub === '-h') { console.log(HELP); process.exit(0); }
   if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) { console.log(SUB_HELP[sub] || HELP); process.exit(0); }
   switch (sub) {
-    case "claim": await claim(args); break;
+    case "add": await add(args); break;
     case "delete": await deleteSubdomain(args); break;
     case "list":   await list(args); break;
     default:

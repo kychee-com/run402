@@ -379,7 +379,7 @@ export const COMMAND_MANIFEST = [
   { path: ["sites", "deploy-dir"], positionals: [p("dir")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["__SCRATCH_DIR__"] },
 
   // ── subdomains ───────────────────────────────────────────────────────────
-  { path: ["subdomains", "claim"], positionals: [p("name")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["gate-sub"] },
+  { path: ["subdomains", "add"], positionals: [p("name")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["gate-sub"] },
   { path: ["subdomains", "list"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [] },
   { path: ["subdomains", "delete"], positionals: [p("name")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["gate-sub", "--confirm"] },
 

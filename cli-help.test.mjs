@@ -103,7 +103,7 @@ const MATRIX = {
   },
   cdn: { shared: [], specific: ["wait-fresh"] },
   sites: { shared: ["status"], specific: ["deploy", "deploy-dir"] },
-  subdomains: { shared: [], specific: ["claim", "list", "delete"] },
+  subdomains: { shared: [], specific: ["add", "list", "delete"] },
   domains: {
     shared: [],
     specific: [

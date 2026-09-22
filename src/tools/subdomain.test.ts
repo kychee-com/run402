@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { handleClaimSubdomain, handleDeleteSubdomain } from "./subdomain.js";
+import { handleAddSubdomain, handleDeleteSubdomain } from "./subdomain.js";
 import { saveProject } from "../keystore.js";
 import { _resetSdk } from "../sdk.js";
 
@@ -25,7 +25,7 @@ afterEach(() => {
   delete process.env.RUN402_API_BASE;
 });
 
-describe("claim_subdomain tool", { concurrency: false }, () => {
+describe("add_subdomain tool", { concurrency: false }, () => {
   it("returns success with subdomain URL on 201", async () => {
     saveProject("proj-1", {
       anon_key: "ak",
@@ -48,7 +48,7 @@ describe("claim_subdomain tool", { concurrency: false }, () => {
         { status: 201, headers: { "Content-Type": "application/json" } },
       )) as typeof fetch;
 
-    const result = await handleClaimSubdomain({
+    const result = await handleAddSubdomain({
       name: "myapp",
       deployment_id: "dpl_1709337600000_a1b2c3",
       project_id: "proj-1",
@@ -61,7 +61,7 @@ describe("claim_subdomain tool", { concurrency: false }, () => {
   });
 
   it("returns isError when project not in keystore", async () => {
-    const result = await handleClaimSubdomain({
+    const result = await handleAddSubdomain({
       name: "myapp",
       deployment_id: "dpl_123",
       project_id: "no-such-proj",
@@ -85,7 +85,7 @@ describe("claim_subdomain tool", { concurrency: false }, () => {
         { status: 400, headers: { "Content-Type": "application/json" } },
       )) as typeof fetch;
 
-    const result = await handleClaimSubdomain({
+    const result = await handleAddSubdomain({
       name: "ab",
       deployment_id: "dpl_123",
       project_id: "proj-2",
@@ -109,7 +109,7 @@ describe("claim_subdomain tool", { concurrency: false }, () => {
         { status: 403, headers: { "Content-Type": "application/json" } },
       )) as typeof fetch;
 
-    const result = await handleClaimSubdomain({
+    const result = await handleAddSubdomain({
       name: "taken",
       deployment_id: "dpl_123",
       project_id: "proj-3",
@@ -146,7 +146,7 @@ describe("claim_subdomain tool", { concurrency: false }, () => {
       );
     }) as typeof fetch;
 
-    await handleClaimSubdomain({
+    await handleAddSubdomain({
       name: "test",
       deployment_id: "dpl_123",
       project_id: "proj-4",
@@ -162,7 +162,7 @@ describe("claim_subdomain tool", { concurrency: false }, () => {
   });
 });
 
-describe("claim_subdomain tool target defaults", { concurrency: false }, () => {
+describe("add_subdomain tool target defaults", { concurrency: false }, () => {
   function claimResponse() {
     return new Response(
       JSON.stringify({
@@ -191,7 +191,7 @@ describe("claim_subdomain tool target defaults", { concurrency: false }, () => {
       return claimResponse();
     }) as typeof fetch;
 
-    const result = await handleClaimSubdomain({ name: "test", project_id: "proj-7" });
+    const result = await handleAddSubdomain({ name: "test", project_id: "proj-7" });
 
     assert.equal(result.isError, undefined);
     assert.deepEqual(JSON.parse(capturedInit?.body as string), { name: "test" });
@@ -211,7 +211,7 @@ describe("claim_subdomain tool target defaults", { concurrency: false }, () => {
       return claimResponse();
     }) as typeof fetch;
 
-    await handleClaimSubdomain({ name: "test", release_id: "rel_abc", project_id: "proj-7" });
+    await handleAddSubdomain({ name: "test", release_id: "rel_abc", project_id: "proj-7" });
 
     assert.deepEqual(JSON.parse(capturedInit?.body as string), { name: "test", release_id: "rel_abc" });
   });

@@ -207,7 +207,7 @@ interface AppResourceState {
 
 interface AppVerifyContext {
   projectId: string;
-  /** Human project name, when known — slugged into the `claim_subdomain` next action. */
+  /** Human project name, when known — slugged into the `add_subdomain` next action. */
   projectName?: string | null;
   claimedHosts: Set<string>;
   bindings: SubdomainBindingFreshness[];
@@ -1993,7 +1993,7 @@ export class NodeActions implements Run402Actions {
           diagnostic: {
             error: "missing_public_origin",
             message,
-            hint: "Path checks resolve against the project's public origin. Use an absolute `url` in the check, or deploy/claim a subdomain so the project has a site URL.",
+            hint: "Path checks resolve against the project's public origin. Use an absolute `url` in the check, or deploy/add a subdomain so the project has a site URL.",
           },
         });
         diagnostics.push({
@@ -2002,7 +2002,7 @@ export class NodeActions implements Run402Actions {
           node_id: `verify.http.${check.id}`,
           message,
         });
-        nextAction ??= claimSubdomainNextAction(context.projectName ?? null, check.id);
+        nextAction ??= addSubdomainNextAction(context.projectName ?? null, check.id);
         continue;
       }
       const retries = Math.max(1, check.retries ?? 1);
@@ -3003,7 +3003,7 @@ function propagationWarning(
 }
 
 /**
- * Slug a human project name into a claimable `<name>.run402.com` label
+ * Slug a human project name into an addable `<name>.run402.com` label
  * (3-63 chars, lowercase alphanumeric + hyphens), or null when it cannot be.
  */
 export function subdomainSlugFromProjectName(name: string | null | undefined): string | null {
@@ -3021,18 +3021,18 @@ export function subdomainSlugFromProjectName(name: string | null | undefined): s
 /**
  * The `missing_public_origin` remedy: a path check cannot resolve without a
  * public origin, and the fix is to bind a subdomain — either right now via
- * `run402 subdomains claim <name>` (which binds the live release with no
+ * `run402 subdomains add <name>` (which binds the live release with no
  * further flags) or declaratively in the manifest's `subdomains.set`.
  */
-export function claimSubdomainNextAction(projectName: string | null, checkId: string): Run402AppUpNextAction {
+export function addSubdomainNextAction(projectName: string | null, checkId: string): Run402AppUpNextAction {
   const name = subdomainSlugFromProjectName(projectName) ?? "<name>";
   return {
-    type: "claim_subdomain",
+    type: "add_subdomain",
     code: "VERIFY_FAILED",
     node_id: `verify.http.${checkId}`,
-    message: `The project has no public origin, so path checks cannot resolve. Claim a subdomain with \`run402 subdomains claim ${name}\` (binds the live release), or add \`"subdomains": { "set": ["${name}"] }\` to the deploy manifest and redeploy; then rerun \`run402 up verify\`.`,
-    command: `run402 subdomains claim ${name}`,
-    argv: ["run402", "subdomains", "claim", name],
+    message: `The project has no public origin, so path checks cannot resolve. Claim a subdomain with \`run402 subdomains add ${name}\` (binds the live release), or add \`"subdomains": { "set": ["${name}"] }\` to the deploy manifest and redeploy; then rerun \`run402 up verify\`.`,
+    command: `run402 subdomains add ${name}`,
+    argv: ["run402", "subdomains", "add", name],
   };
 }
 

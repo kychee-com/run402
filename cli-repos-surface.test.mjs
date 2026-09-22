@@ -627,7 +627,7 @@ describe("run402 repos create — provision + allocate + scaffold, zero deploy c
   it("claims no address and points at claiming an org slug when the org has none", async () => {
     const payload = await ok("create", ["no-slug-org", "--org", ORG]);
     assert.equal(payload.address, null);
-    assert.ok(payload.next_actions.find((a) => a.type === "claim_org_slug"));
+    assert.ok(payload.next_actions.find((a) => a.type === "set_org_slug"));
   });
 
   it("refuses an empty name before ever calling the SDK", async () => {

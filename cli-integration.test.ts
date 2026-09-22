@@ -424,7 +424,7 @@ describe("CLI integration (live API, no mocks)", { timeout: 180_000 }, () => {
 
   const subdomainName = `integ-${Date.now().toString(36)}`;
 
-  it("subdomains claim", async () => {
+  it("subdomains add", async () => {
     const { run } = await import("./cli/lib/subdomains.mjs");
     captureStart();
     await run("claim", [subdomainName, "--deployment", deploymentId, "--project", projectId]);

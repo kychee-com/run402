@@ -64,7 +64,7 @@ Subcommands:
   get         Read one org (label + tier/lease + your role)
   rename      Set or clear an org's display label (owner-only)
   slug        Claim or rename the org's globally-unique, address-form slug
-              (owner-only). A genesis claim spends a one-time claim fee; a
+              (owner-only). A genesis set spends a one-time fee; a
               rename releases the old slug into a ~90-day cooldown.
   use         Select the current org for this wallet profile
   current     Report the resolved current org and where it came from
@@ -136,17 +136,17 @@ Legacy (still supported):
 Owner-only + step-up gated. Pass --clear (or an empty display_name) to remove
 the label. Output includes the updated tier and lease timestamps.
 `,
-  slug: `run402 org slug — claim or rename the org's address-form slug
+  slug: `run402 org slug — set or rename the org's address-form slug
 
 Usage:
   run402 org slug <slug> [--org <org_id>] [--idempotency-key <key>]
 
-The slug is a globally-unique, claimable, address-form handle for the org
+The slug is a globally-unique, address-form handle for the org
 (repo-first-onramp design D6) — the <org-slug> half of a named repo address
 run402::<org-slug>/<name>. Grammar: lowercase [a-z0-9-], no leading/trailing/
 double hyphen, max 39 chars. Owner-only.
 
-A genesis claim (the org had no prior slug) spends a one-time claim fee off
+A genesis set (the org had no prior slug) spends a one-time fee off
 the org's balance. A rename is free but releases the OLD slug into a ~90-day
 cooldown: it stops resolving, with a typed SLUG_RELEASED refusal naming the
 new slug as successor — there is no redirect, so update every remote and
@@ -556,8 +556,8 @@ async function payoutWallet(args) {
 }
 
 /**
- * `run402 org slug <slug>` — claim or rename the org's address-form slug.
- * Owner-only, and a genesis claim spends a one-time claim fee — this is a
+ * `run402 org slug <slug>` — set or rename the org's address-form slug.
+ * Owner-only, and a genesis set spends a one-time fee — this is a
  * PAID, side-effecting mutation, so it
  * requires `Idempotency-Key`; the SDK generates one client-side when
  * `--idempotency-key` is omitted, so a retried call after a dropped response
@@ -629,16 +629,16 @@ async function slug(args) {
   if (!org) {
     fail({
       code: "ORG_UNRESOLVED",
-      message: "Could not resolve which organization to claim this slug for.",
+      message: "Could not resolve which organization to set this slug for.",
       hint: "Pass --org <org_id>, or select one first with `run402 org use <id>`.",
     });
   }
   const idempotencyKey = flagValue(a, "--idempotency-key");
   try {
-    const result = await getSdk().org(org.orgId).claimSlug(newSlug, idempotencyKey != null ? { idempotencyKey } : {});
+    const result = await getSdk().org(org.orgId).setSlug(newSlug, idempotencyKey != null ? { idempotencyKey } : {});
     console.log(JSON.stringify(result, null, 2));
     if (result.created) {
-      console.error(`slug "${result.slug}" claimed for ${org.orgId} — a one-time claim fee was debited from the org's balance.`);
+      console.error(`slug "${result.slug}" set for ${org.orgId} — a one-time fee was debited from the org's balance.`);
     } else if (result.previous_slug && result.previous_slug !== result.slug) {
       console.error(
         `org ${org.orgId} renamed from "${result.previous_slug}" to "${result.slug}" — no fee. ` +

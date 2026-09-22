@@ -226,7 +226,7 @@ describe("r.org(id).rename", () => {
   });
 });
 
-describe("r.org(id).claimSlug", () => {
+describe("r.org(id).setSlug", () => {
   it("POSTs /orgs/v1/:org_id/slug with a generated Idempotency-Key when none is supplied", async () => {
     const { fetch, calls } = mockFetch((call) => {
       assert.equal(call.method, "POST");
@@ -235,7 +235,7 @@ describe("r.org(id).claimSlug", () => {
       assert.ok(call.headers.get("Idempotency-Key"), "a client-generated Idempotency-Key must be present");
       return jsonResponse({ org_id: "org_abc", slug: "acme", previous_slug: null, created: true }, 201);
     });
-    const result = await makeSdk(fetch).org("org_abc").claimSlug("acme");
+    const result = await makeSdk(fetch).org("org_abc").setSlug("acme");
     assert.equal(result.slug, "acme");
     assert.equal(result.created, true);
     assert.equal(result.previous_slug, null);
@@ -246,7 +246,7 @@ describe("r.org(id).claimSlug", () => {
     const { fetch, calls } = mockFetch((call) =>
       jsonResponse({ org_id: "org_abc", slug: "acme-hq", previous_slug: "acme", created: false }, 200),
     );
-    const result = await makeSdk(fetch).org("org_abc").claimSlug("acme-hq", { idempotencyKey: "fixed-key-1" });
+    const result = await makeSdk(fetch).org("org_abc").setSlug("acme-hq", { idempotencyKey: "fixed-key-1" });
     assert.equal(calls[0]!.headers.get("Idempotency-Key"), "fixed-key-1");
     assert.equal(result.previous_slug, "acme");
     assert.equal(result.created, false);
@@ -259,15 +259,15 @@ describe("r.org(id).claimSlug", () => {
       return jsonResponse({ org_id: "org_abc", slug: "acme", previous_slug: null, created: true }, 201);
     });
     const sdk = makeSdk(fetch);
-    await sdk.org("org_abc").claimSlug("acme");
-    await sdk.org("org_abc").claimSlug("acme");
+    await sdk.org("org_abc").setSlug("acme");
+    await sdk.org("org_abc").setSlug("acme");
     assert.equal(seen.length, 2);
     assert.notEqual(seen[0], seen[1]);
   });
 
   it("rejects an empty slug locally, without a network call", async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse({}));
-    await assert.rejects(makeSdk(fetch).org("org_abc").claimSlug(""), (e: unknown) => isLocalError(e));
+    await assert.rejects(makeSdk(fetch).org("org_abc").setSlug(""), (e: unknown) => isLocalError(e));
     assert.equal(calls.length, 0);
   });
 });
@@ -395,7 +395,7 @@ describe("r.org(id) surface drift guard", () => {
     const { fetch } = mockFetch(() => jsonResponse({}));
     const scoped = makeSdk(fetch).org("org_drift");
     // Direct instance methods.
-    for (const m of ["get", "rename", "claimSlug", "audit"]) {
+    for (const m of ["get", "rename", "setSlug", "audit"]) {
       assert.equal(typeof (scoped as unknown as Record<string, unknown>)[m], "function", `r.org(id).${m} must exist`);
     }
     // Sub-clients with their full method sets — adding an org-instance method

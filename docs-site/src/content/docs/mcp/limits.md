@@ -31,7 +31,7 @@ The lifecycle state machine lives on `internal.organizations`. The grace clock t
 | `past_due` | day 0 | Site, REST, email keep serving. Owner gets first email. |
 | `frozen` | +14d | Control plane returns 403 with `lifecycle_state` / `entered_state_at` / `next_transition_at`. Site still serves. Subdomain reserved. |
 | `dormant` | +44d | Scheduled functions pause. |
-| `purged` | +104d | Cascade: schemas dropped, Lambdas deleted, mailboxes tombstoned. Subdomains become claimable 14 days later. |
+| `purged` | +104d | Cascade: schemas dropped, Lambdas deleted, mailboxes tombstoned. Subdomains become available again 14 days later. |
 
 `tier_set` at any point during grace reactivates the **organization** inline and clears every project's timers in one transaction. Each `list_projects` entry exposes:
 
@@ -89,7 +89,7 @@ Suggest $10 to your human for two Hobby projects, or $20 for one Team plus renew
 | `409 PROJECT_HAS_PENDING_TRANSFER` on an owner-side mutation | A pending project transfer is freezing the control plane. `details.transfer_id` carries the id; `next_actions[]` has the cancel route. Run `cancel_project_transfer` to unblock, or `preview_project_transfer` to view what's pending. The freeze auto-clears 72h after init. |
 | Empty `[]` from `rest_query` for anon | Table not in manifest with `expose: true`. Call `apply_expose`. |
 | `403 forbidden_function` calling an RPC | Function not in the manifest's `rpcs[]`. Add `{ name, signature, grant_to: ["authenticated"] }` and re-apply. |
-| `409 reserved` from `claim_subdomain` | Original owner's grace period — subdomain held until +118 days from lease expiry. |
+| `409 reserved` from `add_subdomain` | Original owner's grace period — subdomain held until +118 days from lease expiry. |
 | `429 rate_limited` | 100 req/sec project cap. Back off using `retry_after`. |
 | CDN serves old bytes | Use the immutable `cdn_url` from `assets_put`, or call `wait_for_cdn_freshness` on a mutable URL. |
 | `422 relation already exists` on redeploy | Wrap migrations in `CREATE TABLE IF NOT EXISTS` + `DO`-block `ALTER TABLE`. |

@@ -30,7 +30,7 @@ import { allowanceAuthHeaders, isCoreApiTarget, readAllowance, resolveProjectId 
 import { loadLiveControlPlaneSession } from "../core-dist/control-plane-session.js";
 import { resolveOrgId, resolveOwningOrgId } from "./org-context.mjs";
 import { resolveGitvaultTarget } from "./gitvault-target.mjs";
-import { nextAction, claimOrgSlugAction, claimRepoNameAction } from "./next-actions.mjs";
+import { nextAction, setOrgSlugAction, setRepoNameAction } from "./next-actions.mjs";
 import { resolveHarnessLabels, resolveSessionKey, resolveTaskLabel, persistSessionKey } from "./harness-context.mjs";
 import { updateRoomState } from "./rooms-context.mjs";
 import { printKeystoreLocation } from "./gitvault.mjs";
@@ -851,7 +851,7 @@ async function printCreateResult({ sdk, projectId, vault, adopted, name, verbose
       }
     }
   } catch (err) {
-    if (name) console.error(`repo name not claimed (non-fatal): ${err?.message ?? String(err)}`);
+    if (name) console.error(`repo name not set (non-fatal): ${err?.message ?? String(err)}`);
   }
 
   // A `push_repo` action names a remote that EXISTS — only a scaffolded
@@ -863,7 +863,7 @@ async function printCreateResult({ sdk, projectId, vault, adopted, name, verbose
     ? nextAction("push_repo", { command: `git push -u ${vault.remote.name} HEAD`, why: "Publish the current branch to the encrypted Run402 remote." })
     : null;
   const remoteSkippedActions = vault.remote?.status === "skipped" ? (vault.remote.next_actions ?? []) : [];
-  const claimAction = address ? null : orgSlug ? claimRepoNameAction(projectId) : claimOrgSlugAction();
+  const nameAction = address ? null : orgSlug ? setRepoNameAction(projectId) : setOrgSlugAction();
   // gitvault-byo-primary-bucket task 3.5: a BYO vault's "add a copy" remedy
   // names a SECOND customer-held location (D7) — the plain mirror hint
   // frames the mirror as the FIRST custody-held copy, which is false once
@@ -872,7 +872,7 @@ async function printCreateResult({ sdk, projectId, vault, adopted, name, verbose
   const mirrorAction = isByo
     ? nextAction("configure_mirror", { command: "run402 repos mirror <destination>", why: GITVAULT_BYO_UNMIRRORED_REMEDY_STATEMENT })
     : nextAction("configure_mirror", { command: "run402 repos mirror <destination>", why: GITVAULT_MIRROR_SETUP_HINT });
-  const nextActions = [pushAction, ...remoteSkippedActions, mirrorAction, claimAction].filter(Boolean);
+  const nextActions = [pushAction, ...remoteSkippedActions, mirrorAction, nameAction].filter(Boolean);
 
   // Secret-bearing (recovery_receipt): built fresh every call, printed once,
   // and never spilled into any cache path — see spillIfLarge's own doc
@@ -897,8 +897,8 @@ async function printCreateResult({ sdk, projectId, vault, adopted, name, verbose
     (vault.deduplicated ? "already existed — nothing was re-allocated" : `allocated (genesis ${vault.genesis_sha256})`),
   );
   if (address) console.error(`address: ${address}`);
-  else if (!orgSlug) console.error("no named address yet — claim an org slug (run402 org slug <slug>) to get run402::<slug>/<name> addresses");
-  else console.error(`no address claimed — run 'run402 repos rename <name> --project ${projectId}' to claim one`);
+  else if (!orgSlug) console.error("no named address yet — set an org slug (run402 org slug <slug>) to get run402::<slug>/<name> addresses");
+  else console.error(`no address set — run 'run402 repos rename <name> --project ${projectId}' to set one`);
   if (remoteScaffolded) {
     console.error(`remote '${vault.remote.name}' -> ${vault.remote.url} (${vault.remote.reason})`);
     if (vault.remote.nested) console.error(`nested repository inside ${vault.remote.enclosing_toplevel}${vault.remote.excluded_in_enclosing ? " — excluded there via .git/info/exclude" : " — could not write its .git/info/exclude"}`);
@@ -1159,7 +1159,7 @@ async function list(args) {
   }
   printJson(sdk, { org_id: orgId, org_slug: orgSlug, repos });
   console.error(`${repos.length} vault-bearing project(s) in this organization${usedFallback ? " (per-project fallback read — the bulk vaults-by-org route is not live on this gateway yet)" : ""}`);
-  if (orgSlug) console.error(`org slug: ${orgSlug} — a repo with a claimed address-form name is reachable at run402::${orgSlug}/<name>`);
+  if (orgSlug) console.error(`org slug: ${orgSlug} — a repo with an address-form name set is reachable at run402::${orgSlug}/<name>`);
   printVerboseStats(a, sdk);
 }
 
@@ -1288,16 +1288,16 @@ async function rename(args) {
       const orgSlug = owningOrg ? (await sdk.org(owningOrg).get()).slug : null;
       if (orgSlug) address = gitvaultRemoteUrlForRepo(orgSlug, result.repo_name);
     } catch {
-      // The claim itself already succeeded — a failed address-preview lookup is never fatal.
+      // The name is already set — a failed address-preview lookup is never fatal.
     }
     printJson(sdk, { ...result, address });
     console.error(
       result.previous_repo_name && result.previous_repo_name !== result.repo_name
         ? `renamed from "${result.previous_repo_name}" to "${result.repo_name}"`
-        : `name "${result.repo_name}" claimed for ${projectId}`,
+        : `name "${result.repo_name}" set for ${projectId}`,
     );
     if (address) console.error(`address: ${address}`);
-    else console.error("this org has no slug yet — claim one with `run402 org slug <slug>` to get a full run402::<slug>/<name> address");
+    else console.error("this org has no slug yet — set one with `run402 org slug <slug>` to get a full run402::<slug>/<name> address");
     printVerboseStats(a, sdk);
   } catch (err) {
     reportSdkError(err);

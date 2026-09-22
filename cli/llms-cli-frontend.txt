@@ -172,7 +172,7 @@ Signup does not return an access token. Call `/auth/v1/token` to log in. Returns
 
 Google sign-in is on for all projects with zero config. When a user signs in with Google, Run402 creates a project-scoped user with their Google name, email, and avatar.
 
-Allowed redirect origins: `http://localhost:*` (any port) + any claimed subdomain (`https://{name}.run402.com`). No manual config needed.
+Allowed redirect origins: `http://localhost:*` (any port) + any added subdomain (`https://{name}.run402.com`). No manual config needed.
 
 Flow: Frontend generates PKCE verifier + challenge → calls `/auth/v1/oauth/google/start` → navigates to Google → user picks account → Google redirects back to your app with `#code=xxx&state=yyy` → frontend exchanges code for tokens.
 

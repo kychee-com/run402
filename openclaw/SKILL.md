@@ -929,7 +929,7 @@ run402 domains test-receive example.com --to info # create inbound receive token
 
 ## User auth
 
-Auth supports passwords, passwordless email links/codes, Google OAuth, and WebAuthn passkeys. Google is on for all projects with zero config; passkeys require an exact allowed `app_origin` (claimed subdomain, project public-id host, active custom domain, or localhost when allowed).
+Auth supports passwords, passwordless email links/codes, Google OAuth, and WebAuthn passkeys. Google is on for all projects with zero config; passkeys require an exact allowed `app_origin` (an added subdomain, project public-id host, active custom domain, or localhost when allowed).
 
 ```bash
 run402 auth magic-link --email user@example.com --redirect https://my-app.run402.com/cb
@@ -950,7 +950,7 @@ For browser-side flows (PKCE, Google OAuth, refresh-token rotation), see <https:
 ## Subdomains and project domains
 
 ```bash
-run402 subdomains claim my-app                    # → https://my-app.run402.com
+run402 subdomains add my-app                    # → https://my-app.run402.com
 run402 subdomains list
 run402 subdomains delete my-app --confirm
 
@@ -963,7 +963,7 @@ run402 domains disconnect example.com --confirm
 
 Domain commands use project-scoped control-plane auth (wallet, sign-in session, or grant key), so a project shown by `run402 projects list` is not vetoed by a missing local project-key cache entry.
 
-Subdomain auto-reassignment: claim once. Every subsequent `run402 sites deploy-dir` to the same project automatically points the subdomain at the new release. The deploy response includes `subdomain_urls` showing what got reassigned. No re-claim needed.
+Subdomain auto-reassignment: add once. Every subsequent `run402 sites deploy-dir` to the same project automatically points the subdomain at the new release. The deploy response includes `subdomain_urls` showing what got reassigned. No re-claim needed.
 
 ## On-chain — KMS signers
 
@@ -1038,9 +1038,9 @@ The grace clock ticks per **organization**, not per project — every project on
 |---|---|---|
 | `active` | — | Full read/write |
 | `past_due` | day 0 | Site, REST, email keep serving. Owner gets first email. |
-| `frozen` | +14d | Control plane (deploys, secrets, subdomain claims, function upload) returns 403 with `lifecycle_state` / `entered_state_at` / `next_transition_at`. Site still serves. Subdomain reserved so the brand can't be claimed by another wallet. |
+| `frozen` | +14d | Control plane (deploys, secrets, subdomain adds, function upload) returns 403 with `lifecycle_state` / `entered_state_at` / `next_transition_at`. Site still serves. Subdomain reserved so the brand can't be claimed by another wallet. |
 | `dormant` | +44d | Scheduled (cron) functions pause. |
-| `purged` | +104d | Cascade: schemas dropped, Lambdas deleted, mailboxes tombstoned. Subdomains become claimable 14 days later. |
+| `purged` | +104d | Cascade: schemas dropped, Lambdas deleted, mailboxes tombstoned. Subdomains become available again 14 days later. |
 
 `run402 tier set …` at any point during grace reactivates the organization inline and clears every project's timers in one transaction. Each project entry also exposes:
 
@@ -1149,7 +1149,7 @@ git push -u origin main                       # publishes, encrypted before it l
 
 `origin` is claimed additively: when the repository has no `origin` yet, the scaffold names ours `origin`, so `git push origin main` just works. An existing `origin` is never touched; the fallback is `run402` instead. When the scaffold has to `git init` a fresh directory (`repos create`, `run402 init --git-remote`, no repo yet), it always creates branch `main` — regardless of this machine's own git defaults — so `git push origin main` is never a guess. **State this plainly if the user asks: V0 is single-principal** — exactly one machine can open the vault until human envelopes ship.
 
-**Named addressing.** `run402::<org-slug>/<name>` and the id-form `run402::<org_id>/<project_id>` both work in the same `git remote` slot. `run402 org slug <slug>` (owner-only, a small one-time fee) claims an org's slug; every repo under it is `run402::<slug>/<name>`, and pushing a name that doesn't resolve yet **push-to-creates** it (project + vault allocated atomically; a losing concurrent pusher resolves to the winner's repo instead of erroring). The first time a named remote resolves on a checkout it is **pinned** into that checkout's local git config, so a later rename of the slug or name never breaks that clone. The id-form address needs no pin and stays the cold-restart path.
+**Named addressing.** `run402::<org-slug>/<name>` and the id-form `run402::<org_id>/<project_id>` both work in the same `git remote` slot. `run402 org slug <slug>` (owner-only, a small one-time fee) sets an org's slug; every repo under it is `run402::<slug>/<name>`, and pushing a name that doesn't resolve yet **push-to-creates** it (project + vault allocated atomically; a losing concurrent pusher resolves to the winner's repo instead of erroring). The first time a named remote resolves on a checkout it is **pinned** into that checkout's local git config, so a later rename of the slug or name never breaks that clone. The id-form address needs no pin and stays the cold-restart path.
 
 **`run402 repos create` — the same track, one call.** No address to remember, no separate allocate step:
 
@@ -1344,9 +1344,9 @@ EOF
 run402 projects validate-expose $PROJECT --file manifest.json --migration-file setup.sql
 run402 projects apply-expose $PROJECT --file manifest.json
 
-# 5. Deploy site + claim subdomain
+# 5. Deploy site + add subdomain
 run402 sites deploy-dir ./dist
-run402 subdomains claim my-app
+run402 subdomains add my-app
 
 # 6. Optional: a server function
 run402 functions deploy $PROJECT my-fn --file fn.ts
@@ -1425,7 +1425,7 @@ run402 operator logout           # revoke server-side + clear the local cache
 | `403 admin_required` | Subcommand is staff only (e.g., `run402 admin lease-perpetual`, `run402 admin archive`, `run402 admin reactivate`). Use a staff allowance wallet; project owners can't toggle these. |
 | Empty `[]` from `/rest/v1/items` for anon | Table not in manifest with `expose: true`. Run `run402 projects apply-expose`. |
 | `403 forbidden_function` calling an RPC | Function's not in the manifest's `rpcs[]`. Add `{ name, signature, grant_to: ["authenticated"] }`. |
-| `409 reserved` on subdomain claim | Original owner's grace period — subdomain held until +118 days from lease expiry. |
+| `409 reserved` on subdomain add | Original owner's grace period — subdomain held until +118 days from lease expiry. |
 | `429 rate_limited` | 100 req/sec project cap. Back off using `retry_after`. |
 | CDN serves old bytes | Use the immutable URL from the upload response, or `run402 cdn wait-fresh <url> --sha <hex>`. |
 | `422 relation already exists` on redeploy | Wrap migrations in `CREATE TABLE IF NOT EXISTS` + `DO`-block `ALTER TABLE`. |

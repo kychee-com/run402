@@ -2,7 +2,7 @@ import { z } from "zod";
 import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
 
-export const claimSubdomainSchema = {
+export const addSubdomainSchema = {
   name: z
     .string()
     .describe("Custom subdomain name (e.g. 'myapp' → myapp.run402.com). 3-63 chars, lowercase alphanumeric + hyphens."),
@@ -20,14 +20,14 @@ export const claimSubdomainSchema = {
     .describe("Optional project ID for ownership tracking. Uses stored service_key for auth."),
 };
 
-export async function handleClaimSubdomain(args: {
+export async function handleAddSubdomain(args: {
   name: string;
   deployment_id?: string;
   release_id?: string;
   project_id?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   try {
-    const body = await getSdk().subdomains.claim({
+    const body = await getSdk().subdomains.add({
       name: args.name,
       deploymentId: args.deployment_id,
       releaseId: args.release_id,
@@ -49,7 +49,7 @@ export async function handleClaimSubdomain(args: {
 
     return { content: [{ type: "text", text: lines.join("\n") }] };
   } catch (err) {
-    return mapSdkError(err, "claiming subdomain");
+    return mapSdkError(err, "adding subdomain");
   }
 }
 
