@@ -88,7 +88,7 @@ export type EffectiveProjectStatus =
 /**
  * One project row from the named, domain-aware inventory (gateway
  * `project-findability`). Returned by `GET /projects/v1` (membership-scoped)
- * and `GET /agent/v1/operator/projects` (operator email-union, `--all`) — both
+ * and `GET /agent/v1/me/projects` (every organization, `--all`) — both
  * share this shape.
  *
  * Tier and lifecycle live on the owning organization, not the project; the
@@ -103,7 +103,7 @@ export interface ProjectSummary {
   /**
    * Primary public URL: the first claimed run402.com subdomain, else the first
    * custom domain, else null. Surfaced by the named inventory (`GET /projects/v1`
-   * and the operator `--all` read).
+   * and the `--all` read).
    */
   site_url?: string | null;
   /**
@@ -161,16 +161,16 @@ export interface ListProjectsOptions {
    */
   org?: string;
   /**
-   * Read the operator email-union inventory across every wallet controlling the
-   * operator's verified email (`GET /agent/v1/operator/projects`) instead of the
-   * single membership-scoped slice. Supply `token` for the cross-wallet union;
-   * without it, `all` authenticates with SIWX wallet auth and returns only that
-   * wallet's slice. Mutually exclusive with `org`.
+   * Read every project the caller can reach across all its organizations
+   * (`GET /agent/v1/me/projects`) instead of the single membership-scoped page.
+   * Supply `token` (a sign-in session) for the person's account; without it,
+   * `all` uses the credential provider and a SIWX wallet reads its own slice.
+   * Mutually exclusive with `org`.
    */
   all?: boolean;
   /**
-   * Operator-session bearer token for the `all` email-union read. When omitted,
-   * `all` uses SIWX wallet auth. Ignored when `all` is not set.
+   * Sign-in session bearer token for the `all` read. When omitted, `all` uses
+   * the credential provider. Ignored when `all` is not set.
    */
   token?: string;
   /** Page size. Server default 50, max 200. Ignored for `all` (union, unpaged). */
@@ -185,7 +185,7 @@ export interface ListProjectsResult {
   has_more?: boolean;
   /** Cursor to fetch the next page, or null at the end. */
   next_cursor?: string | null;
-  /** `all` reads echo the resolved scope: `"email"` (union) or `"wallet"` (slice). */
+  /** `all` reads echo the resolved scope: `"principal"` (a sign-in session) or `"wallet"` (a wallet slice). */
   scope?: string;
 }
 

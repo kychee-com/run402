@@ -245,7 +245,7 @@ export class Escalations {
    * active OWNER membership plus a fresh passkey step-up — who gets paged is
    * as sensitive as who is a member.
    *
-   * An address with no verified operator email is ACCEPTED with a `warnings[]`
+   * An address with no verified contact email is ACCEPTED with a `warnings[]`
    * reachability note rather than rejected: the human you most want on a
    * level-2 chain may hold no platform credential at all.
    */

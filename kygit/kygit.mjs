@@ -132,7 +132,7 @@ export function planInvocation(surface, argv) {
 
   // The one funnel alias: the write-capable human session.
   if (words[0] === "login") {
-    return { kind: "exec", args: ["operator", "login", "--loopback", ...words.slice(1)] };
+    return { kind: "exec", args: ["login", ...words.slice(1)] };
   }
 
   // Leading non-flag words are verb-tail candidates.
@@ -195,7 +195,7 @@ export function renderHelp(surface, ownVersion, clientVersion) {
     `  ${[...core, ...rest].join(" · ")}`,
     ``,
     `Humans`,
-    `  kygit login               browser sign-in (= run402 operator login --loopback)`,
+    `  kygit login               browser sign-in (= run402 login)`,
     ``,
     `Everything else lives on the canonical CLI: npx run402 --help`,
     `Reference: https://run402.com/llms-full.txt`,

@@ -1,5 +1,5 @@
 /**
- * `admin` namespace — operator-adjacent operations that don't fit a public
+ * `admin` namespace — operations that don't fit a public
  * resource namespace cleanly: messages/contact plus internal finance reads.
  *
  * (The compound `init` and `status` flows live at the MCP/CLI edge because
@@ -50,7 +50,7 @@ export interface SendMessageResult {
 export interface FeedbackSendOptions {
   /**
    * Project this feedback concerns. Required to relay a promotion consent
-   * (a `hand_to_operator` `next_actions` entry from a deploy response) —
+   * (a `hand_to_member` `next_actions` entry from a deploy response) —
    * the server resolves the project's site URL, org, and the sender's live
    * presence name for the delivered message.
    */
@@ -65,7 +65,7 @@ export interface AdminProjectFinanceOptions {
   /** Time window for the finance rollup. Defaults to "30d". */
   window?: AdminFinanceWindow;
   /**
-   * Optional admin session cookie header. Node operators can pass the value of
+   * Optional admin session cookie header. Staff can pass the value of
    * RUN402_ADMIN_COOKIE when they want browser-session auth; otherwise the
    * credential provider's normal auth headers are used.
    */
@@ -93,7 +93,7 @@ export interface AdminProjectFinanceResult {
 const FINANCE_WINDOWS = new Set<AdminFinanceWindow>(["24h", "7d", "30d", "90d"]);
 
 // ---------------------------------------------------------------------------
-// Operator notifications (v1.55, add-operator-health-notifications).
+// Owner notifications (v1.55).
 // ---------------------------------------------------------------------------
 
 export type NotificationKind = "digest" | "lifecycle_event" | "threshold_alert" | "missing_verified_recipient";
@@ -183,7 +183,7 @@ export interface TestNotificationOptions {
 }
 
 /** One Telegram destination's outcome from a `testNotification()` call —
- *  present only when the operator has a routing rule matching the synthetic
+ *  present only when the caller has a routing rule matching the synthetic
  *  event. Empty `telegram.destinations` is Faithful (no matching rule), not
  *  an error. */
 export interface TestNotificationDestination {
@@ -207,7 +207,7 @@ export interface TestNotificationResult {
     failed_permanent: number;
   };
   /** Telegram delivery report for the synthetic event, routed through the
-   *  operator's normal rules — the full binding + rule + render + send
+   *  caller's normal rules — the full binding + rule + render + send
    *  chain, not just email/webhook. */
   telegram: { destinations: TestNotificationDestination[] };
   note: string;
@@ -260,22 +260,22 @@ export interface ConnectTelegramOptions {
 /**
  * one-passkey-per-person: the two proofs a wallet-authenticated notification
  * mutation may carry on ONE request — the `SIGN-IN-WITH-X` wallet signature
- * (which contact) and the human's control-plane session bearer (the passkey
- * assurance). A person who logged in with `run402 operator login --loopback`
- * never enrolls a second passkey: the gateway accepts a passkey-fresh session
- * for the wallet contact's verified email as `operator_passkey` assurance.
- * When omitted, the request carries the provider's wallet auth alone — byte-
- * identical to before.
+ * (which contact) and the person's sign-in session bearer (the passkey
+ * assurance). A person signed in with `run402 login` never enrolls a second
+ * passkey: the gateway accepts a passkey-fresh session for the wallet
+ * contact's verified email as `operator_passkey` assurance (the stored
+ * assurance level's wire spelling). When omitted, the request carries the
+ * provider's wallet auth alone.
  */
-export interface OperatorProofs {
+export interface SessionProofs {
   /** The `SIGN-IN-WITH-X` header value for the target path. */
   siwx: string;
-  /** The control-plane session token (`Authorization: Bearer`). */
+  /** The sign-in session token (`Authorization: Bearer`). */
   token: string;
 }
 
 /** Request options carrying both proofs, or nothing when no session is at hand. */
-export function operatorProofRequest(proofs?: OperatorProofs): { headers?: Record<string, string>; withAuth?: boolean } {
+export function sessionProofRequest(proofs?: SessionProofs): { headers?: Record<string, string>; withAuth?: boolean } {
   if (!proofs) return {};
   return { headers: { "SIGN-IN-WITH-X": proofs.siwx, Authorization: `Bearer ${proofs.token}` }, withAuth: false };
 }
@@ -302,7 +302,7 @@ export interface ConnectTelegramResult {
 export interface NotificationChannelsResult {
   email: { address: string | null; verified: boolean };
   webhook: { configured: boolean; url: string | null; secret_configured: boolean };
-  /** Every live (non-revoked) Telegram binding for this operator, newest first. */
+  /** Every live (non-revoked) Telegram binding for this caller, newest first. */
   telegram: TelegramChannelBinding[];
 }
 
@@ -392,9 +392,9 @@ export interface DeleteRoutingRuleResult {
  * `r.admin.channels` — the Telegram notification-channel binding lifecycle
  * (connect / list / revoke). Mutations (`connectTelegram`, `revokeTelegram`)
  * require `operator_passkey` assurance; `connectTelegram` additionally
- * requires a VERIFIED operator email (bindings are addressed to it). See
+ * requires a VERIFIED contact email (bindings are addressed to it). See
  * `r.admin.setAgentContact` / `r.admin.verifyAgentContactEmail` and
- * `r.admin.startOperatorPasskeyEnrollment` to reach that assurance level —
+ * `r.admin.startContactPasskeyEnrollment` (or `run402 login`) to reach that assurance level —
  * same ladder as {@link Admin.rotateWebhookSecret}.
  */
 export class Channels {
@@ -411,14 +411,14 @@ export class Channels {
    * Throws (via the generic SDK error hierarchy — check `err.code`) HTTP 503
    * `TELEGRAM_CHANNEL_NOT_CONFIGURED` until the platform's dedicated
    * notification bot is provisioned, and HTTP 412
-   * `OPERATOR_EMAIL_NOT_VERIFIED` when the caller has no verified email yet.
+   * `CONTACT_EMAIL_NOT_VERIFIED` when the caller has no verified email yet.
    */
-  async connectTelegram(opts: ConnectTelegramOptions = {}, proofs?: OperatorProofs): Promise<ConnectTelegramResult> {
+  async connectTelegram(opts: ConnectTelegramOptions = {}, proofs?: SessionProofs): Promise<ConnectTelegramResult> {
     const body: Record<string, unknown> = {};
     if (opts.label !== undefined) body.label = opts.label;
     return this.client.request<ConnectTelegramResult>(
       "/agent/v1/notifications/channels/telegram",
-      { method: "POST", body, context: "connecting a Telegram notification channel", ...operatorProofRequest(proofs) },
+      { method: "POST", body, context: "connecting a Telegram notification channel", ...sessionProofRequest(proofs) },
     );
   }
 
@@ -433,13 +433,13 @@ export class Channels {
 
   /**
    * Revoke a Telegram binding. Missing / already-revoked / another
-   * operator's binding id all return the SAME not-found error
+   * caller's binding id all return the SAME not-found error
    * (authorize-before-reveal) — no existence oracle.
    */
-  async revokeTelegram(bindingId: string, proofs?: OperatorProofs): Promise<RevokeTelegramResult> {
+  async revokeTelegram(bindingId: string, proofs?: SessionProofs): Promise<RevokeTelegramResult> {
     return this.client.request<RevokeTelegramResult>(
       `/agent/v1/notifications/channels/telegram/${encodeURIComponent(bindingId)}`,
-      { method: "DELETE", context: "revoking a Telegram notification channel", ...operatorProofRequest(proofs) },
+      { method: "DELETE", context: "revoking a Telegram notification channel", ...sessionProofRequest(proofs) },
     );
   }
 }
@@ -454,7 +454,7 @@ export class Channels {
 export class Rules {
   constructor(private readonly client: Client) {}
 
-  /** List the operator's routing rules, newest first. */
+  /** List the caller's routing rules, newest first. */
   async list(): Promise<ListRoutingRulesResult> {
     return this.client.request<ListRoutingRulesResult>(
       "/agent/v1/notifications/rules",
@@ -464,11 +464,11 @@ export class Rules {
 
   /**
    * Create a routing rule. `telegramBindingId` must reference a binding this
-   * operator owns and that is currently usable (`status: "active"`); an
+   * caller owns and that is currently usable (`status: "active"`); an
    * unusable or foreign binding id returns the same 404 as a nonexistent one
    * (authorize-before-reveal).
    */
-  async create(input: CreateRoutingRuleInput, proofs?: OperatorProofs): Promise<CreateRoutingRuleResult> {
+  async create(input: CreateRoutingRuleInput, proofs?: SessionProofs): Promise<CreateRoutingRuleResult> {
     const body: Record<string, unknown> = { telegram_binding_id: input.telegramBindingId };
     if (input.projectId !== undefined) body.project_id = input.projectId;
     if (input.source !== undefined) body.source = input.source;
@@ -476,7 +476,7 @@ export class Rules {
     if (input.classes !== undefined) body.classes = input.classes;
     return this.client.request<CreateRoutingRuleResult>(
       "/agent/v1/notifications/rules",
-      { method: "POST", body, context: "creating a notification routing rule", ...operatorProofRequest(proofs) },
+      { method: "POST", body, context: "creating a notification routing rule", ...sessionProofRequest(proofs) },
     );
   }
 
@@ -486,7 +486,7 @@ export class Rules {
    * wildcard; omitting a field leaves it unchanged (see
    * {@link UpdateRoutingRulePatch}).
    */
-  async update(ruleId: string, patch: UpdateRoutingRulePatch, proofs?: OperatorProofs): Promise<RoutingRule> {
+  async update(ruleId: string, patch: UpdateRoutingRulePatch, proofs?: SessionProofs): Promise<RoutingRule> {
     const body: Record<string, unknown> = {};
     if ("projectId" in patch) body.project_id = patch.projectId;
     if ("source" in patch) body.source = patch.source;
@@ -496,21 +496,21 @@ export class Rules {
     if ("enabled" in patch) body.enabled = patch.enabled;
     return this.client.request<RoutingRule>(
       `/agent/v1/notifications/rules/${encodeURIComponent(ruleId)}`,
-      { method: "PATCH", body, context: "updating a notification routing rule", ...operatorProofRequest(proofs) },
+      { method: "PATCH", body, context: "updating a notification routing rule", ...sessionProofRequest(proofs) },
     );
   }
 
   /** Delete a routing rule. */
-  async delete(ruleId: string, proofs?: OperatorProofs): Promise<DeleteRoutingRuleResult> {
+  async delete(ruleId: string, proofs?: SessionProofs): Promise<DeleteRoutingRuleResult> {
     return this.client.request<DeleteRoutingRuleResult>(
       `/agent/v1/notifications/rules/${encodeURIComponent(ruleId)}`,
-      { method: "DELETE", context: "deleting a notification routing rule", ...operatorProofRequest(proofs) },
+      { method: "DELETE", context: "deleting a notification routing rule", ...sessionProofRequest(proofs) },
     );
   }
 }
 
 // ---------------------------------------------------------------------------
-// Operator-only project + organization actions (v1.57,
+// Staff-only project + organization actions (v1.57,
 // lifecycle-state-on-organization).
 // ---------------------------------------------------------------------------
 
@@ -552,63 +552,6 @@ export interface ReactivateProjectResult {
   note?: "not archived";
 }
 
-export interface OperatorStatusResult {
-  operator_contact: {
-    email_status: "none" | "pending" | "verified" | "bouncing";
-    passkey_status: "none" | "pending" | "verified";
-    recovery_gap: boolean;
-  };
-  critical_items: Array<{ kind: string; detail: string }>;
-  skipped_notifications: Array<{
-    id: string;
-    event_type: string;
-    related_project_id: string | null;
-    related_organization_id: string | null;
-    related_wallet_address: string | null;
-    created_at: string;
-  }>;
-  organizations: Array<Record<string, unknown>>;
-  projects: Array<Record<string, unknown>>;
-  active_thresholds: Array<{
-    resource: string;
-    level: "warn" | "critical";
-    scope_kind: string;
-    scope_id: string;
-    crossed_at: string;
-    last_observed_value: number | null;
-  }>;
-  /**
-   * Runtime-staleness summary for the wallet's deployed functions
-   * (capability `function-runtime-rebuild`, gateway v1.69+). A function is
-   * stale when its deployed Lambda zip carries an older gateway entry wrapper
-   * / bundled runtime than the gateway's current build. Read-only — observing
-   * staleness never mutates a function. Refresh with `run402 functions
-   * rebuild --all`. Omitted by gateways older than v1.69.
-   */
-  runtime?: {
-    stale_function_count: number;
-    stale_functions: Array<{ project_id: string; name: string }>;
-  };
-  /**
-   * Whether a mandatory-class (recovery/security/billing/verification)
-   * notification can reach a verified human for the caller's org(s) —
-   * computed from the union of the verified `agent_contacts` chain and
-   * org-membership verified emails (recovery-event-reachability). When
-   * `reachable` is false the response also carries a top-level
-   * `next_actions[]` entry pointing at `POST /agent/v1/contact`. Omitted by
-   * older gateways.
-   */
-  operator_reachability?: {
-    reachable: boolean;
-    verified_recipient_count: number;
-    sources: Array<"agent_contacts" | "org_membership">;
-    /** Notifications skipped with no resolvable recipient, trailing 90 days. */
-    skipped_last_90d: number;
-  };
-  /** Present when `operator_reachability.reachable` is false — the remedy. */
-  next_actions?: Array<{ type: string; method?: string; path?: string; why?: string }>;
-}
-
 export class Admin {
   /**
    * Project transfer sub-namespace — unified wallet, email, and owned-org
@@ -636,7 +579,7 @@ export class Admin {
   }
 
   /**
-   * Operator-scoped sub-client for an org id — the operator analog of
+   * Staff-scoped sub-client for an org id — the staff analog of
    * `r.org(id)`, kept on `r.admin` because these actions require platform-admin
    * (`X-Admin-Mode`) auth, a different principal from the member-facing
    * `r.org(id)`. Exposes `pinLease()` / `unpinLease()`. Lazy and synchronous.
@@ -646,7 +589,7 @@ export class Admin {
   }
 
   /**
-   * Operator-scoped sub-client for a project id. Exposes `archive(opts?)`,
+   * Staff-scoped sub-client for a project id. Exposes `archive(opts?)`,
    * `reactivate()`, and `finance(opts?)` with the id pre-bound. Lazy and
    * synchronous.
    */
@@ -661,7 +604,7 @@ export class Admin {
    * human is required, raise an escalation instead.
    *
    * Also the way a promotion consent is relayed: after a deploy response
-   * carries a `hand_to_operator` next action, ask your human yes or no, and
+   * carries a `hand_to_member` next action, ask your human yes or no, and
    * on yes call `sendFeedback("promote: yes", { project_id, handle })`.
    */
   async sendFeedback(message: string, opts?: FeedbackSendOptions): Promise<SendMessageResult> {
@@ -707,7 +650,7 @@ export class Admin {
     });
   }
 
-  /** Start or resend the operator email reply challenge. */
+  /** Start or resend the contact email reply challenge. */
   async verifyAgentContactEmail(): Promise<AgentContactResult> {
     return this.client.request<AgentContactResult>("/agent/v1/contact/verify-email", {
       method: "POST",
@@ -715,19 +658,19 @@ export class Admin {
     });
   }
 
-  /** Email a passkey enrollment link to the verified operator email. */
-  async startOperatorPasskeyEnrollment(): Promise<AgentContactResult> {
+  /** Email a passkey enrollment link to the verified contact email. */
+  async startContactPasskeyEnrollment(): Promise<AgentContactResult> {
     return this.client.request<AgentContactResult>("/agent/v1/contact/passkey/enroll", {
       method: "POST",
-      context: "starting operator passkey enrollment",
+      context: "starting contact passkey enrollment",
     });
   }
 
   // ---------------------------------------------------------------------------
-  // Operator notifications (v1.55, add-operator-health-notifications).
+  // Owner notifications (v1.55).
   // ---------------------------------------------------------------------------
 
-  /** List operator notification audit rows (paginated, filterable). */
+  /** List notification audit rows (paginated, filterable). */
   async listNotifications(opts: ListNotificationsOptions = {}): Promise<ListNotificationsResult> {
     const q: string[] = [];
     if (opts.type) q.push(`type=${encodeURIComponent(opts.type)}`);
@@ -751,7 +694,7 @@ export class Admin {
     );
   }
 
-  /** Read the current operator notification preferences. */
+  /** Read the current notification preferences. */
   async getNotificationPreferences(): Promise<NotificationPreferences> {
     return this.client.request<NotificationPreferences>(
       "/agent/v1/notifications/preferences",
@@ -759,10 +702,10 @@ export class Admin {
     );
   }
 
-  /** Patch operator notification preferences (assurance ladder applies). */
+  /** Patch notification preferences (assurance ladder applies). */
   async setNotificationPreferences(
     patch: NotificationPreferencesPatch,
-    proofs?: OperatorProofs,
+    proofs?: SessionProofs,
   ): Promise<NotificationPreferences> {
     return this.client.request<NotificationPreferences>(
       "/agent/v1/notifications/preferences",
@@ -770,7 +713,7 @@ export class Admin {
         method: "PATCH",
         body: patch as unknown as Record<string, unknown>,
         context: "updating notification preferences",
-        ...operatorProofRequest(proofs),
+        ...sessionProofRequest(proofs),
       },
     );
   }
@@ -779,7 +722,7 @@ export class Admin {
    * Trigger a real test notification. Sends a sample `project_past_due`
    * event through the normal worker pipeline (email/webhook); the audit row
    * is marked `is_test: true`. ALSO delivers a synthetic event through the
-   * operator's Telegram routing rules end-to-end (binding + rule + render +
+   * caller's Telegram routing rules end-to-end (binding + rule + render +
    * send) and reports a per-destination outcome in `telegram.destinations`
    * — pass `opts.source` / `opts.eventType` to target a specific rule's
    * filters instead of the default sample event. Rate-limited per wallet at
@@ -796,27 +739,19 @@ export class Admin {
   }
 
   /**
-   * Rotate the operator's webhook signing secret. The new plaintext secret
+   * Rotate the caller's webhook signing secret. The new plaintext secret
    * is returned EXACTLY once. The previous secret remains valid for 24
    * hours (dual-secret grace window). Requires `operator_passkey` assurance.
    */
-  async rotateWebhookSecret(proofs?: OperatorProofs): Promise<RotateWebhookSecretResult> {
+  async rotateWebhookSecret(proofs?: SessionProofs): Promise<RotateWebhookSecretResult> {
     return this.client.request<RotateWebhookSecretResult>(
       "/agent/v1/webhook-secret/rotate",
-      { method: "POST", context: "rotating webhook signing secret", ...operatorProofRequest(proofs) },
-    );
-  }
-
-  /** Compact operator-health snapshot for the authenticated wallet. */
-  async getOperatorStatus(): Promise<OperatorStatusResult> {
-    return this.client.request<OperatorStatusResult>(
-      "/agent/v1/operator/status",
-      { method: "GET", context: "fetching operator status" },
+      { method: "POST", context: "rotating webhook signing secret", ...sessionProofRequest(proofs) },
     );
   }
 
   /**
-   * Fetch per-project finance for platform operators.
+   * Fetch per-project finance for staff.
    *
    * This is the same admin-only surface used by the Run402 Finance tab. It is
    * gated by platform-admin auth; project service keys are not sufficient.
@@ -849,11 +784,11 @@ export class Admin {
   }
 
   // -------------------------------------------------------------------------
-  // Operator-only project + organization actions (v1.57).
+  // Staff-only project + organization actions (v1.57).
   // -------------------------------------------------------------------------
 
   /**
-   * Toggle a organization's `lease_perpetual` flag — the operator escape
+   * Toggle a organization's `lease_perpetual` flag — the staff escape
    * hatch that pins every project in the organization (replaces the v1.56
    * per-project `pin` removed in v1.57). When enabling on an organization in a
    * grace state, the gateway reactivates inline and reports it via
@@ -883,7 +818,7 @@ export class Admin {
   }
 
   /**
-   * Operator moderation action — archive a single project (ToS / abuse).
+   * Staff moderation action — archive a single project (ToS / abuse).
    * Sets `projects.archived_at` to NOW(). Independent of organization-level
    * lifecycle; the rest of the organization's projects continue serving.
    *
@@ -907,7 +842,7 @@ export class Admin {
   }
 
   /**
-   * Operator "un-archive" — flips `projects.archived_at` back to NULL. It does
+   * Staff "un-archive" — flips `projects.archived_at` back to NULL. It does
    * not touch organization-level lifecycle. To reactivate a grace-state
    * organization, either set a tier or set `lease_perpetual: true`
    * via {@link setLeasePerpetual}.
@@ -927,9 +862,9 @@ export class Admin {
 }
 
 /**
- * Operator-scoped sub-client for a single org, returned by `r.admin.org(id)`.
+ * Staff-scoped sub-client for a single org, returned by `r.admin.org(id)`.
  * Replaces the boolean `admin.setLeasePerpetual(orgId, perpetual)` with two
- * intent-named verbs. Carries platform-admin auth; operator-only errors surface
+ * intent-named verbs. Carries platform-admin auth; staff-only errors surface
  * at call time.
  */
 export class ScopedAdminOrg {
@@ -947,14 +882,14 @@ export class ScopedAdminOrg {
 }
 
 /**
- * Operator-scoped sub-client for a single project, returned by
+ * Staff-scoped sub-client for a single project, returned by
  * `r.admin.project(id)`. The project id is pre-bound; methods carry
  * platform-admin auth.
  */
 export class ScopedAdminProject {
   constructor(private readonly admin: Admin, private readonly projectId: string) {}
 
-  /** Archive the project (operator moderation). */
+  /** Archive the project (staff moderation). */
   archive(opts: ArchiveProjectOptions = {}): Promise<ArchiveProjectResult> {
     return this.admin.archiveProject(this.projectId, opts);
   }
@@ -964,7 +899,7 @@ export class ScopedAdminProject {
     return this.admin.reactivateProject(this.projectId);
   }
 
-  /** Read per-project finance (operator Finance tab). */
+  /** Read per-project finance (staff Finance tab). */
   finance(opts: AdminProjectFinanceOptions = {}): Promise<AdminProjectFinanceResult> {
     return this.admin.getProjectFinance(this.projectId, opts);
   }

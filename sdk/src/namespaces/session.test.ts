@@ -1,7 +1,6 @@
 /**
- * Unit tests for `r.operator.session.*` — the hosted control-plane session
- * client surface (gateway v1.78). Mocked fetch: assert URL / method / body and
- * the auth-header selection that mirrors `operator.overview` — public mint
+ * Unit tests for `r.session.*` — the sign-in session client surface. Mocked
+ * fetch: assert URL / method / body and the auth-header selection — public mint
  * methods send NO auth (the body/link token is the credential); session-bound
  * methods send the `control_plane_session` bearer when `token` is passed and
  * fall back to the credential provider (SIWX) when it is omitted.
@@ -64,12 +63,12 @@ const SESSION = {
   amr: ["email"],
 };
 
-describe("operator.session — public mint methods (no auth)", () => {
+describe("session — public mint methods (no auth)", () => {
   it("email POSTs {email} unauthenticated (non-enumerating)", async () => {
     const { fetch, calls } = mockFetch(() =>
       jsonResponse({ status: "ok", message: "If that email can sign in, a link is on its way." }),
     );
-    const res = await makeSdk(fetch).operator.session.email({ email: "a@b.com" });
+    const res = await makeSdk(fetch).session.email({ email: "a@b.com" });
 
     assert.equal(calls[0]!.url, "https://api.example.test/agent/v1/control-plane/session/email");
     assert.equal(calls[0]!.method, "POST");
@@ -81,7 +80,7 @@ describe("operator.session — public mint methods (no auth)", () => {
 
   it("verifyEmail POSTs {token} → session (no auth)", async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse(SESSION));
-    const res = await makeSdk(fetch).operator.session.verifyEmail({ token: "ml_tok" });
+    const res = await makeSdk(fetch).session.verifyEmail({ token: "ml_tok" });
 
     assert.equal(calls[0]!.url, "https://api.example.test/agent/v1/control-plane/session/email/verify");
     assert.equal(calls[0]!.method, "POST");
@@ -96,8 +95,8 @@ describe("operator.session — public mint methods (no auth)", () => {
       c.url.endsWith("/options") ? jsonResponse({ options: { challenge: "x" } }) : jsonResponse(SESSION),
     );
     const sdk = makeSdk(fetch);
-    const opts = await sdk.operator.session.passkeyOptions({ email: "a@b.com" });
-    const verified = await sdk.operator.session.passkeyVerify({ email: "a@b.com", response: { id: "cred" } });
+    const opts = await sdk.session.passkeyOptions({ email: "a@b.com" });
+    const verified = await sdk.session.passkeyVerify({ email: "a@b.com", response: { id: "cred" } });
 
     assert.equal(calls[0]!.url, "https://api.example.test/agent/v1/control-plane/session/passkey/options");
     assert.equal(calls[1]!.url, "https://api.example.test/agent/v1/control-plane/session/passkey/verify");
@@ -109,7 +108,7 @@ describe("operator.session — public mint methods (no auth)", () => {
 
   it("oauthUrl builds the provider start URL with no network", () => {
     const { fetch, calls } = mockFetch(() => jsonResponse({}));
-    const url = makeSdk(fetch).operator.session.oauthUrl("google");
+    const url = makeSdk(fetch).session.oauthUrl("google");
     assert.equal(calls.length, 0);
     assert.equal(url, "https://api.example.test/agent/v1/control-plane/oauth/google/start");
   });
@@ -118,7 +117,7 @@ describe("operator.session — public mint methods (no auth)", () => {
     const { fetch, calls } = mockFetch(() =>
       jsonResponse({ ...SESSION, amr: ["recovery_code"], must_enroll_passkey: true }),
     );
-    const res = await makeSdk(fetch).operator.session.consumeRecoveryCode({ code: "abc-123" });
+    const res = await makeSdk(fetch).session.consumeRecoveryCode({ code: "abc-123" });
 
     assert.equal(calls[0]!.url, "https://api.example.test/agent/v1/control-plane/recovery/consume");
     assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], undefined);
@@ -127,30 +126,30 @@ describe("operator.session — public mint methods (no auth)", () => {
   });
 });
 
-describe("operator.session — session-bound methods (bearer vs SIWX fallback)", () => {
+describe("session — session-bound methods (bearer vs SIWX fallback)", () => {
   it("whoami with a token: bearer, no SIWX; returns principal + memberships", async () => {
     const who = {
       principal: { id: "prn_1", type: "human", display_name: null, created_at: "2026-01-01T00:00:00Z", disabled_at: null },
       memberships: [{ org_id: "org_1", role: "developer", status: "active" }],
-      amr: ["passkey"],
-      amr_times: { passkey: 1 },
+      session: { grade: "loopback", amr: ["passkey"], amr_times: { passkey: 1 } },
     };
     const { fetch, calls } = mockFetch(() => jsonResponse(who));
-    const res = await makeSdk(fetch).operator.session.whoami({ token: "cps_tok" });
+    const res = await makeSdk(fetch).session.whoami({ token: "cps_tok" });
 
-    assert.equal(calls[0]!.url, "https://api.example.test/agent/v1/control-plane/session");
+    assert.equal(calls[0]!.url, "https://api.example.test/agent/v1/whoami");
     assert.equal(calls[0]!.method, "GET");
     assert.equal(calls[0]!.headers["Authorization"], "Bearer cps_tok");
     assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], undefined);
     assert.equal(res.principal.id, "prn_1");
     assert.equal(res.memberships[0]!.org_id, "org_1");
+    assert.equal(res.session?.grade, "loopback");
   });
 
   it("whoami without a token: falls back to SIWX (credential provider)", async () => {
     const { fetch, calls } = mockFetch(() =>
-      jsonResponse({ principal: { id: "p", type: "human", display_name: null, created_at: "x", disabled_at: null }, memberships: [], amr: [] }),
+      jsonResponse({ principal: { id: "p", type: "human", display_name: null, created_at: "x", disabled_at: null }, memberships: [], session: null }),
     );
-    await makeSdk(fetch).operator.session.whoami();
+    await makeSdk(fetch).session.whoami();
     assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "test-siwx");
     assert.equal(calls[0]!.headers["Authorization"], undefined);
   });
@@ -162,8 +161,8 @@ describe("operator.session — session-bound methods (bearer vs SIWX fallback)",
         : jsonResponse({ status: "revoked" }),
     );
     const sdk = makeSdk(fetch);
-    const refreshed = await sdk.operator.session.refresh({ token: "cps_tok" });
-    const revoked = await sdk.operator.session.revoke({ token: "cps_tok" });
+    const refreshed = await sdk.session.refresh({ token: "cps_tok" });
+    const revoked = await sdk.session.revoke({ token: "cps_tok" });
 
     assert.equal(calls[0]!.url, "https://api.example.test/agent/v1/control-plane/session/refresh");
     assert.equal(calls[0]!.method, "POST");
@@ -175,7 +174,7 @@ describe("operator.session — session-bound methods (bearer vs SIWX fallback)",
 
   it("enrollPasskeyVerify sends {response,label} with the bearer", async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse({ status: "ok", credential_id: "cred_1" }, 201));
-    const res = await makeSdk(fetch).operator.session.enrollPasskeyVerify({
+    const res = await makeSdk(fetch).session.enrollPasskeyVerify({
       token: "cps_tok",
       response: { id: "x" },
       label: "My Laptop",
@@ -191,8 +190,8 @@ describe("operator.session — session-bound methods (bearer vs SIWX fallback)",
       c.url.endsWith("/options") ? jsonResponse({ options: {} }) : jsonResponse({ status: "ok", stepped_up: true }),
     );
     const sdk = makeSdk(fetch);
-    await sdk.operator.session.stepUpOptions({ token: "cps_tok", opClass: "org.invite" });
-    const verified = await sdk.operator.session.stepUpVerify({
+    await sdk.session.stepUpOptions({ token: "cps_tok", opClass: "org.invite" });
+    const verified = await sdk.session.stepUpVerify({
       token: "cps_tok",
       response: { id: "x" },
       opClass: "org.invite",
@@ -214,7 +213,7 @@ describe("operator.session — session-bound methods (bearer vs SIWX fallback)",
     const { fetch } = mockFetch(() =>
       jsonResponse({ status: "ok", recovery_codes: ["c1", "c2"], note: "once" }, 201),
     );
-    const res = await makeSdk(fetch).operator.session.issueRecoveryCodes({ token: "cps_tok" });
+    const res = await makeSdk(fetch).session.issueRecoveryCodes({ token: "cps_tok" });
     assert.deepEqual(res.recovery_codes, ["c1", "c2"]);
   });
 
@@ -225,8 +224,8 @@ describe("operator.session — session-bound methods (bearer vs SIWX fallback)",
         : jsonResponse({ status: "revoked", kind: "webauthn" }),
     );
     const sdk = makeSdk(fetch);
-    const list = await sdk.operator.session.listAuthenticators({ token: "cps_tok" });
-    const revoked = await sdk.operator.session.revokeAuthenticator({ token: "cps_tok", id: "auth_1" });
+    const list = await sdk.session.listAuthenticators({ token: "cps_tok" });
+    const revoked = await sdk.session.revokeAuthenticator({ token: "cps_tok", id: "auth_1" });
 
     assert.equal(calls[0]!.url, "https://api.example.test/agent/v1/control-plane/authenticators");
     assert.deepEqual(list, [{ id: "auth_1", kind: "webauthn" }]);

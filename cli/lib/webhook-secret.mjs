@@ -1,5 +1,5 @@
 /**
- * run402 webhook-secret — Manage the operator webhook signing secret.
+ * run402 webhook-secret — Manage your webhook signing secret.
  *
  * Split out from notifications.mjs so the SURFACE inventory parser sees
  * `webhook-secret:rotate` as its own command, separate from the
@@ -7,12 +7,12 @@
  */
 
 import { walletAuthHeaders } from "./config.mjs";
-import { operatorProofs } from "./operator-proofs.mjs";
+import { sessionProofs } from "./session-proofs.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError } from "./sdk-errors.mjs";
 import { assertKnownFlags, normalizeArgv, failUnknownSubcommand } from "./argparse.mjs";
 
-const HELP = `run402 webhook-secret — Manage the operator webhook signing secret
+const HELP = `run402 webhook-secret — Manage your webhook signing secret
 
 Usage:
   run402 webhook-secret rotate
@@ -20,7 +20,7 @@ Usage:
 Notes:
   - Returns the new plaintext secret EXACTLY once. Store it immediately.
   - Previous secret remains valid for 24 hours after rotation.
-  - Requires operator_passkey assurance level.
+  - Requires passkey assurance ('run402 login', or 'run402 agent passkey enroll').
 `;
 
 export async function run(sub, args = []) {
@@ -39,7 +39,7 @@ export async function run(sub, args = []) {
   }
   const parsedArgs = normalizeArgv(args);
   assertKnownFlags(parsedArgs, ["--help", "-h"]);
-  const proofs = operatorProofs("/agent/v1/webhook-secret/rotate");
+  const proofs = sessionProofs("/agent/v1/webhook-secret/rotate");
   try {
     const data = await getSdk().admin.rotateWebhookSecret(proofs);
     console.log(JSON.stringify(data, null, 2));

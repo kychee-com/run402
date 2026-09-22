@@ -7,7 +7,7 @@ export const createNotificationRuleSchema = {
   telegram_binding_id: z
     .string()
     .describe(
-      "The Telegram binding (chat) this rule routes matching events to. Must be an active binding owned by this operator — see list_notification_channels.",
+      "The Telegram binding (chat) this rule routes matching events to. Must be an active binding owned by the caller — see list_notification_channels.",
     ),
   project_id: z.string().optional().describe("Only match events for this project. Omit to match every project (wildcard)."),
   source: z

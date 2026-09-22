@@ -69,7 +69,7 @@ What can be routed:
   Omitting --event-type/--event-class routes every registered type / every
   non-forbidden class. There is no empty filter: the gateway rejects [].
 
-Buzz is never a deadman channel: mandatory operator notifications keep their
+Buzz is never a deadman channel: mandatory owner notifications keep their
 human paths (email, Telegram) regardless of route state, and a Buzz delivery
 acknowledges nothing.
 

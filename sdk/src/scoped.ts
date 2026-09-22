@@ -654,7 +654,7 @@ export interface ScopedApplyHero {
     opts?: { onEvent?: (event: DeployEvent) => void; project?: string },
   ): Promise<DeployResult>;
   /**
-   * Operator pointer-swap: promote an existing release to be the project's
+   * Pointer swap: promote an existing release to be the project's
    * current live release without re-running the apply pipeline. v1.58+.
    * See `Deploy.promote` for full semantics + warning surface.
    */

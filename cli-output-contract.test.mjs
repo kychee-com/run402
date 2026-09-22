@@ -56,7 +56,6 @@ const GROUPED_COMMANDS = [
   "deliveries",
   "contacts",
   "subscriptions",
-  "operator",
   "org",
   "projects",
   "secrets",

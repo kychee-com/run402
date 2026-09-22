@@ -13,7 +13,7 @@ export const listProjectsSchema = {
     .boolean()
     .optional()
     .describe(
-      "Read the cross-wallet inventory across every wallet controlling your operator email instead of just this wallet's membership-scoped slice. Mutually exclusive with org_id.",
+      "Read every project the caller can reach across all its orgs (GET /agent/v1/me/projects) instead of the single membership-scoped page. Mutually exclusive with org_id.",
     ),
   limit: z
     .number()

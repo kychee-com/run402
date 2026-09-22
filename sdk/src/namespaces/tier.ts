@@ -93,7 +93,7 @@ export interface TierStatusResult {
     | "purged"
     | null;
   /**
-   * Operator escape hatch flag on the owning organization. When `true`,
+   * Staff escape hatch flag on the owning organization. When `true`,
    * the organization never advances past `active` regardless of lease expiry.
    * `null` only for orphan wallets with no organization row.
    */
@@ -144,14 +144,14 @@ export interface TierStatusResult {
   };
   /**
    * Org-level advisories (recovery-event-reachability). Present only when at
-   * least one applies; absent on older gateways. `operator_unreachable`
+   * least one applies; absent on older gateways. `owner_unreachable`
    * means the owning organization resolves to ZERO verified notification
    * recipients — mandatory recovery/security events currently reach nobody —
    * with the registration remedy carried in `next_actions[]`
-   * (`POST /agent/v1/contact`).
+   * (`register_contact`, `POST /agent/v1/contact`).
    */
   advisories?: Array<{
-    type: "operator_unreachable" | (string & {});
+    type: "owner_unreachable" | "contact_email_stale" | (string & {});
     summary: string;
     next_actions: Array<{ type: string; method?: string; path?: string; why?: string }>;
   }>;

@@ -20,7 +20,7 @@ Notes:
 
 Finishing a deploy — the promotion consent flow:
   When a commit or promote response reaches status "ready" with a public
-  site, it carries a next_actions entry of type hand_to_operator. That is
+  site, it carries a next_actions entry of type hand_to_member. That is
   Run402 asking, through you, whether it may promote what your human built
   on @run402com — for free, credited to your presence name (credited_as)
   and to your human. Show your human both links (urls.site, urls.console),
@@ -57,7 +57,7 @@ Arguments:
 
 Flags:
   --project <id>      Project this feedback concerns. Required to relay a
-                      promotion consent (the hand_to_operator next action
+                      promotion consent (the hand_to_member next action
                       from a deploy response) — the server resolves the
                       project's site URL, org, and your presence name for
                       the delivered message.
@@ -71,7 +71,7 @@ Notes:
   - Messages are capped at 8 KB (8192 bytes UTF-8) to keep the developer
     inbox useful and prevent payload-dump misuse.
   - Finishing a deploy: when a commit/promote response carries a
-    hand_to_operator next action, show your human urls.site and
+    hand_to_member next action, show your human urls.site and
     urls.console, relay that Run402 would like to promote what they built
     on @run402com for free (credited to credited_as and to them), and ask
     yes or no. On yes: run402 feedback send "promote: yes" --project <id>

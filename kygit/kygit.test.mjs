@@ -70,10 +70,10 @@ describe("planInvocation — mapping", () => {
     });
   });
 
-  it("maps `login` to the write-capable operator session", () => {
+  it("maps `login` to `run402 login` (the sign-in session)", () => {
     assert.deepEqual(planInvocation(SURFACE, ["login"]), {
       kind: "exec",
-      args: ["operator", "login", "--loopback"],
+      args: ["login"],
     });
   });
 
@@ -130,7 +130,7 @@ describe("help / version / resolution", () => {
     const help = renderHelp(SURFACE, "0.1.0", "9.9.9");
     assert.match(help, /kygit <verb> = run402 repos <verb>/);
     assert.match(help, /access revoke-key/);
-    assert.match(help, /operator login --loopback/);
+    assert.match(help, /run402 login\)/);
   });
 
   it("liveTails derives only the repos family", () => {

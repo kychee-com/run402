@@ -34,7 +34,7 @@ export const setNotificationPreferencesSchema = {
     .string()
     .nullable()
     .optional()
-    .describe("HTTPS webhook URL (requires operator_passkey assurance)"),
+    .describe("HTTPS webhook URL (requires passkey assurance, `operator_passkey`)"),
   locale: z.string().optional().describe("BCP-47 (e.g. en-US)"),
   timezone: z.string().optional().describe("IANA timezone (e.g. UTC)"),
 };

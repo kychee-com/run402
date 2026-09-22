@@ -2361,7 +2361,7 @@ export interface CommitResponse {
   snapshot_skipped_reason?: string;
   actor?: OperationActorSnapshot | null;
   /** Gateway riders on a synchronous `ready` commit: the events-feed `poll`
-   *  entry, `watch_errors`, and the `hand_to_operator` offer. Passed through
+   *  entry, `watch_errors`, and the `hand_to_member` offer. Passed through
    *  to {@link DeployResult.next_actions} verbatim. */
   next_actions?: NextAction[];
 }
@@ -2393,7 +2393,7 @@ export interface OperationSnapshot {
   rehearsal_report?: ApplyRehearsalReport;
   actor?: OperationActorSnapshot | null;
   /** Present on a `ready` snapshot only: the same gateway riders a synchronous
-   *  ready commit carries (`poll`, `watch_errors`, `hand_to_operator`). A
+   *  ready commit carries (`poll`, `watch_errors`, `hand_to_member`). A
    *  polled deploy is never a weaker contract than the commit response. */
   next_actions?: NextAction[];
 }
@@ -2744,7 +2744,7 @@ export interface DeployResult {
    * Advisory follow-ups — never a gateway plan warning (those stay in
    * {@link warnings}). Carries the gateway's own riders from a synchronous
    * `ready` commit verbatim (`poll` positioned at this deploy's activation
-   * event, `watch_errors`, and `hand_to_operator` — the offer to hand your
+   * event, `watch_errors`, and `hand_to_member` — the offer to hand your
    * human the site and console links and relay Run402's free promotion),
    * plus the one shape the deploy itself synthesizes:
    * `gitvault_policy_required`, offered on every deploy of a vaulted project
@@ -2928,7 +2928,7 @@ export interface StartOptions {
 }
 
 /**
- * Options for the `r.project(id).apply.promote(releaseId, opts?)` operator
+ * Options for the `r.project(id).apply.promote(releaseId, opts?)`
  * pointer-swap operation. Mirrors `ApplyOptions` for the parts that apply
  * (`allowWarnings`, `allowWarningCodes`); skips the parts that don't
  * (`onEvent` — promote is a single-shot operation, no per-phase events;

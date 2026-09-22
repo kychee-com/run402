@@ -86,7 +86,7 @@ export async function adoptOrg(r: Run402, opts: AdoptOrgOptions = {}): Promise<A
     const session = loadLiveControlPlaneSession(opts.controlPlaneSessionPath);
     if (!session) {
       throw new LocalError(
-        "No live control-plane session. Run `run402 operator login --loopback` (write-capable, passkey-fresh) before adopting an org.",
+        "No live sign-in session. Run `run402 login` (passkey-fresh) before adopting an org.",
         "adopting org",
       );
     }

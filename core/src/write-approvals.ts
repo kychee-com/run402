@@ -13,21 +13,22 @@ import { randomBytes, createHash } from "node:crypto";
 import { getConfigBaseDir } from "./config.js";
 
 /**
- * Cache of **operator-approval** tokens — the passkey-fresh write-auth tokens a
- * wallet-less human mints to provision/deploy (gateway v1.85/v1.87). Distinct
- * from the control-plane session ({@link ControlPlaneSessionCache}) it pairs
- * with: the gateway scopes each token to one `(action, target)`, so this is a
+ * Cache of **write approvals** — the passkey-signed, target-scoped tokens a
+ * wallet-less person mints with `run402 approve` to provision, deploy, or write
+ * secrets from the command line. Distinct from the sign-in session
+ * ({@link ControlPlaneSessionCache}) it pairs with, and never a step-up. The
+ * gateway scopes each token to one `(action, target)`, so this is a
  * **multi-entry** cache keyed by `(api_origin, control_plane_session_hash,
  * action, target)`. An `org.project.create` approval for org Y and a
  * `project.deploy` approval for project X coexist.
  *
  * Stored at the BASE config dir (principal-scoped), mode 0600 — as sensitive as
- * the wallet key. The token dies with its control-plane session; the
+ * the wallet key. The token dies with its sign-in session; the
  * `control_plane_session_hash` binding lets the client drop a stale approval
- * locally rather than replay it into a `WRITE_AUTH_BINDING_MISMATCH`.
+ * locally rather than replay it into a `WRITE_APPROVAL_BINDING_MISMATCH`.
  */
-export interface WriteAuthApproval {
-  write_auth_token: string;
+export interface WriteApproval {
+  write_approval_token: string;
   token_type: string;
   header: string;
   /** Gateway capability: `org.project.create` | `project.deploy` | `project.secret.write`. */
@@ -45,18 +46,18 @@ export interface WriteAuthApproval {
   minted_at: number;
 }
 
-/** The token payload from `POST /agent/v1/control-plane/write-auth/cli/token`. */
-export interface WriteAuthTokenResponse {
-  write_auth_token: string;
+/** The token payload from `POST /agent/v1/control-plane/write-approval/cli/token`. */
+export interface WriteApprovalTokenResponse {
+  write_approval_token: string;
   token_type?: string;
   header?: string;
-  /** The write-auth session; its expiry is the token's expiry. */
-  session?: { expires_at?: string | number; absolute_expires_at?: string | number; amr?: string[]; [k: string]: unknown } | null;
+  /** The write-approval session; its idle expiry is the token's expiry. */
+  session?: { idle_expires_at?: string | number; expires_at?: string | number; absolute_expires_at?: string | number; amr?: string[]; [k: string]: unknown } | null;
   [k: string]: unknown;
 }
 
 /** A capability target — exactly one of these is set per approval. */
-export interface WriteAuthTargetKey {
+export interface WriteApprovalTargetKey {
   org_id?: string;
   project_id?: string;
 }
@@ -64,13 +65,13 @@ export interface WriteAuthTargetKey {
 const DEFAULT_TTL_MS = 30 * 60 * 1000;
 
 /**
- * Path to the approval cache: `{base}/write-auth-session.json`.
- * `RUN402_WRITE_AUTH_SESSION_PATH` overrides for testing.
+ * Path to the approval cache: `{base}/write-approvals.json`.
+ * `RUN402_WRITE_APPROVALS_PATH` overrides for testing.
  */
-export function getWriteAuthSessionPath(): string {
+export function getWriteApprovalsPath(): string {
   return (
-    process.env.RUN402_WRITE_AUTH_SESSION_PATH ||
-    join(getConfigBaseDir(), "write-auth-session.json")
+    process.env.RUN402_WRITE_APPROVALS_PATH ||
+    join(getConfigBaseDir(), "write-approvals.json")
   );
 }
 
@@ -95,12 +96,12 @@ function selfHealPermissions(p: string): void {
   }
 }
 
-function isApproval(x: unknown): x is WriteAuthApproval {
+function isApproval(x: unknown): x is WriteApproval {
   if (!x || typeof x !== "object") return false;
-  const a = x as Partial<WriteAuthApproval>;
+  const a = x as Partial<WriteApproval>;
   return (
-    typeof a.write_auth_token === "string" &&
-    a.write_auth_token.length > 0 &&
+    typeof a.write_approval_token === "string" &&
+    a.write_approval_token.length > 0 &&
     typeof a.action === "string" &&
     typeof a.api_origin === "string" &&
     typeof a.control_plane_session_hash === "string" &&
@@ -114,8 +115,8 @@ function isApproval(x: unknown): x is WriteAuthApproval {
  * unreadable, unparseable). Throws when the file parses as JSON but the shape
  * is wrong, so a corrupted cache surfaces a clear fix-it.
  */
-export function readApprovals(path?: string): WriteAuthApproval[] {
-  const p = path ?? getWriteAuthSessionPath();
+export function readApprovals(path?: string): WriteApproval[] {
+  const p = path ?? getWriteApprovalsPath();
   if (!existsSync(p)) return [];
   selfHealPermissions(p);
   let raw: string;
@@ -132,33 +133,33 @@ export function readApprovals(path?: string): WriteAuthApproval[] {
   }
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error(
-      "write-auth-session.json must contain a JSON object. Delete it and re-run 'run402 operator approve' to recreate it.",
+      "write-approvals.json must contain a JSON object. Delete it and re-run 'run402 approve' to recreate it.",
     );
   }
   const approvals = (parsed as { approvals?: unknown }).approvals;
   if (!Array.isArray(approvals)) {
     throw new Error(
-      "write-auth-session.json missing an 'approvals' array. Delete it and re-run 'run402 operator approve'.",
+      "write-approvals.json missing an 'approvals' array. Delete it and re-run 'run402 approve'.",
     );
   }
   return approvals.filter(isApproval);
 }
 
-function writeApprovals(approvals: WriteAuthApproval[], path?: string): void {
-  const p = path ?? getWriteAuthSessionPath();
+function writeApprovals(approvals: WriteApproval[], path?: string): void {
+  const p = path ?? getWriteApprovalsPath();
   const dir = dirname(p);
   mkdirSync(dir, { recursive: true });
-  const tmp = join(dir, `.write-auth-session.${randomBytes(4).toString("hex")}.tmp`);
+  const tmp = join(dir, `.write-approvals.${randomBytes(4).toString("hex")}.tmp`);
   writeFileSync(tmp, JSON.stringify({ approvals }, null, 2), { mode: 0o600 });
   renameSync(tmp, p);
   chmodSync(p, 0o600);
 }
 
-function sameTarget(a: { org_id?: string; project_id?: string }, b: WriteAuthTargetKey): boolean {
+function sameTarget(a: { org_id?: string; project_id?: string }, b: WriteApprovalTargetKey): boolean {
   return (a.org_id ?? null) === (b.org_id ?? null) && (a.project_id ?? null) === (b.project_id ?? null);
 }
 
-function sameKey(a: WriteAuthApproval, b: WriteAuthApproval): boolean {
+function sameKey(a: WriteApproval, b: WriteApproval): boolean {
   return (
     a.api_origin === b.api_origin &&
     a.control_plane_session_hash === b.control_plane_session_hash &&
@@ -172,15 +173,15 @@ function sameKey(a: WriteAuthApproval, b: WriteAuthApproval): boolean {
  * `(api_origin, control_plane_session_hash, action, target)` key and leaves
  * every other entry intact (multi-entry, non-thrashing). Atomic, mode 0600.
  */
-export function saveApproval(approval: WriteAuthApproval, path?: string): void {
+export function saveApproval(approval: WriteApproval, path?: string): void {
   const existing = readApprovals(path).filter((a) => !sameKey(a, approval));
   existing.push(approval);
   writeApprovals(existing, path);
 }
 
-/** Delete the whole approval cache — local half of `operator logout`. Idempotent. */
+/** Delete the whole approval cache — local half of `run402 logout`. Idempotent. */
 export function clearApprovals(path?: string): void {
-  const p = path ?? getWriteAuthSessionPath();
+  const p = path ?? getWriteApprovalsPath();
   try {
     rmSync(p, { force: true });
   } catch {
@@ -190,7 +191,7 @@ export function clearApprovals(path?: string): void {
 
 /** Whether an approval is past its usable life (with a small skew buffer). */
 export function isApprovalExpired(
-  approval: WriteAuthApproval,
+  approval: WriteApproval,
   nowMs: number = Date.now(),
   skewMs = 10_000,
 ): boolean {
@@ -208,11 +209,11 @@ export function loadLiveApproval(
     apiOrigin: string;
     cpSessionHash: string;
     capability: string;
-    target: WriteAuthTargetKey;
+    target: WriteApprovalTargetKey;
   },
   path?: string,
   nowMs: number = Date.now(),
-): WriteAuthApproval | null {
+): WriteApproval | null {
   for (const a of readApprovals(path)) {
     if (
       a.api_origin === q.apiOrigin &&
@@ -229,10 +230,10 @@ export function loadLiveApproval(
 
 /** Parse a gateway-returned session expiry (ISO string or epoch) to epoch ms. */
 function sessionExpiryMs(
-  session: WriteAuthTokenResponse["session"],
+  session: WriteApprovalTokenResponse["session"],
   nowMs: number,
 ): number {
-  const raw = session?.expires_at ?? session?.absolute_expires_at;
+  const raw = session?.idle_expires_at ?? session?.expires_at ?? session?.absolute_expires_at;
   if (typeof raw === "number" && Number.isFinite(raw)) return raw > 1e12 ? raw : raw * 1000;
   if (typeof raw === "string") {
     const ms = Date.parse(raw);
@@ -247,23 +248,23 @@ function sessionExpiryMs(
  * target)` it covers). Expiry is taken from the returned `session`.
  */
 export function approvalFromTokenResponse(
-  resp: WriteAuthTokenResponse,
+  resp: WriteApprovalTokenResponse,
   binding: {
     action: string;
-    target: WriteAuthTargetKey;
+    target: WriteApprovalTargetKey;
     apiOrigin: string;
     controlPlaneSessionHash: string;
     controlPlanePrincipalId: string;
   },
   nowMs: number = Date.now(),
-): WriteAuthApproval {
+): WriteApproval {
   const amr = Array.isArray(resp.session?.amr)
     ? (resp.session!.amr as unknown[]).filter((a): a is string => typeof a === "string")
     : undefined;
   return {
-    write_auth_token: resp.write_auth_token,
-    token_type: typeof resp.token_type === "string" ? resp.token_type : "write_auth",
-    header: typeof resp.header === "string" ? resp.header : "X-Run402-Write-Auth",
+    write_approval_token: resp.write_approval_token,
+    token_type: typeof resp.token_type === "string" ? resp.token_type : "write_approval",
+    header: typeof resp.header === "string" ? resp.header : "X-Run402-Write-Approval",
     action: binding.action,
     ...(binding.target.org_id ? { org_id: binding.target.org_id } : {}),
     ...(binding.target.project_id ? { project_id: binding.target.project_id } : {}),

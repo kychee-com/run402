@@ -176,7 +176,7 @@ export const whoamiSchema = {
     .max(64)
     .optional()
     .describe(
-      "Set this principal's display name (PATCH /agent/v1/me) before reading it back. The name promotion credit (`hand_to_operator.credited_as`), `up`'s room presence, and audit surfaces show for this principal; `up` sets a detected default when it is empty.",
+      "Set this principal's display name (PATCH /agent/v1/me) before reading it back. The name promotion credit (`hand_to_member.credited_as`), `up`'s room presence, and audit surfaces show for this principal; `up` sets a detected default when it is empty.",
     ),
 };
 
@@ -196,6 +196,30 @@ export async function handleWhoami(args: { set_display_name?: string } = {}): Pr
       ),
     ];
     if (me.memberships.length === 0) lines[lines.length - 1] = `- memberships: none`;
+    // The sign-in session that authenticated this read, graded by provenance;
+    // an MCP host authenticates with its wallet, so this is normally none.
+    lines.push(
+      me.session
+        ? `- session: ${me.session.grade}${me.session.grade === "device" ? " (read-only)" : ""}`
+        : "- session: none (wallet)",
+    );
+    // Account health (`GET /agent/v1/me/status`): contact assurance and whether
+    // mandatory notifications reach anyone. Best-effort — identity stands alone.
+    try {
+      const status = await getSdk().me.status();
+      lines.push(
+        `- contact: email ${status.contact.email_status}, passkey ${status.contact.passkey_status}`,
+      );
+      if (status.reachability) {
+        lines.push(
+          `- notifications reachable: ${status.reachability.reachable ? "yes" : "no"} (${status.reachability.verified_recipient_count} verified recipient(s))`,
+        );
+      }
+      for (const item of status.critical_items ?? []) lines.push(`- critical: ${item.kind}: ${item.detail}`);
+      for (const action of status.next_actions ?? []) lines.push(`- next_action: ${JSON.stringify(action)}`);
+    } catch {
+      // Older gateway or a caller the account status does not accept.
+    }
     if (me.buzz) {
       lines.push(`- buzz_control_plane: supported`);
       lines.push(`  - human_adoption_offers: ${me.buzz.human_adoption_offers?.length ?? 0}`);

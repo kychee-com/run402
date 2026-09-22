@@ -264,7 +264,7 @@ describe("doctor pre-init hints and check-failure composition", () => {
       if (url.includes("/tiers/v1/status")) {
         return Promise.resolve(jsonResponse({ code: "UNAUTHORIZED", message: SIWX_MESSAGE }, 401));
       }
-      if (url.includes("/agent/v1/operator/status")) {
+      if (url.includes("/agent/v1/me/status")) {
         return Promise.resolve(jsonResponse({ code: "UNAUTHORIZED", message: SIWX_MESSAGE }, 401));
       }
       return Promise.resolve(jsonResponse({ ok: true }));
@@ -313,7 +313,7 @@ describe("doctor pre-init hints and check-failure composition", () => {
     }
   });
 
-  it("tier / operator_health / runtime_staleness failures are composed context-first (no '. while ')", async () => {
+  it("tier / account_health / runtime_staleness failures are composed context-first (no '. while ')", async () => {
     // Seeded wallet so the SIWX-signed request actually reaches the
     // mocked gateway and comes back 401 with the period-terminated message
     // that used to produce "…challenge. while checking tier status".
@@ -337,12 +337,12 @@ describe("doctor pre-init hints and check-failure composition", () => {
       assert.match(tier.message, /^tier status check failed: /);
       assert.doesNotMatch(tier.message, /\. while /);
       assert.match(tier.message, /SIGN-IN-WITH-X/);
-      for (const name of ["operator_health", "runtime_staleness"]) {
+      for (const name of ["account_health", "runtime_staleness"]) {
         const check = report.checks.find((c) => c.name === name);
         assert.ok(check, `${name} check present`);
         if (check.message) {
           assert.doesNotMatch(check.message, /\. while /, `${name} message must not be mid-sentence composed`);
-          assert.match(check.message, /^operator status check failed: /);
+          assert.match(check.message, /^account status check failed: /);
         }
       }
     } finally {

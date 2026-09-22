@@ -90,7 +90,7 @@ export interface Escalation {
 
 /**
  * Who the raise is about to page. FUTURE TENSE on purpose: at raise time the
- * page is enqueued, not delivered, and a contact with no verified operator
+ * page is enqueued, not delivered, and a contact with no verified contact
  * email never receives the Telegram half at all. Ask for
  * `include: "delivery"` on a read to learn what actually landed.
  */
@@ -132,7 +132,7 @@ export interface EscalationContact {
   /** An ordering, not a rank: level 1 is paged first. */
   level: number;
   created_at: string;
-  /** Present when the address has no verified operator email yet. */
+  /** Present when the address has no verified contact email yet. */
   warnings?: string[];
 }
 

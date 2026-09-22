@@ -96,7 +96,7 @@ describe("NodeCredentialsProvider.getAuth", () => {
   });
 });
 
-import { hashControlPlaneSession } from "../../core-dist/write-auth-session.js";
+import { hashControlPlaneSession } from "../../core-dist/write-approvals.js";
 
 const ORIGIN = "https://api.run402.test";
 
@@ -106,7 +106,7 @@ function writeCp(token = "cp_tok"): void {
     JSON.stringify({
       control_plane_session_token: token,
       token_type: "Bearer",
-      provenance: "loopback_pkce",
+      grade: "loopback",
       principal_id: "prn_1",
       amr: ["passkey"],
       expires_at: Date.now() + 3_600_000,
@@ -116,13 +116,13 @@ function writeCp(token = "cp_tok"): void {
 
 function writeApprovalCache(over: Record<string, unknown> = {}): void {
   writeFileSync(
-    join(tempDir, "write-auth-session.json"),
+    join(tempDir, "write-approvals.json"),
     JSON.stringify({
       approvals: [
         {
-          write_auth_token: "wat_x",
-          token_type: "write_auth",
-          header: "X-Run402-Write-Auth",
+          write_approval_token: "wat_x",
+          token_type: "write_approval",
+          header: "X-Run402-Write-Approval",
           action: "project.deploy",
           project_id: "prj_x",
           expires_at: Date.now() + 3_600_000,
@@ -154,7 +154,7 @@ describe("NodeCredentialsProvider.getAuth — surface resolution (no ambient app
     const p = new NodeCredentialsProvider({ surface: "cli" });
     const h = await p.getAuth("/projects/v1");
     assert.equal(h?.Authorization, "Bearer cp_tok");
-    assert.equal(h?.["X-Run402-Write-Auth"], undefined, "no capability ⇒ no approval header");
+    assert.equal(h?.["X-Run402-Write-Approval"], undefined, "no capability ⇒ no approval header");
   });
 
   it("cli surface attaches the approval header on a matching (capability, target)", async () => {
@@ -163,7 +163,7 @@ describe("NodeCredentialsProvider.getAuth — surface resolution (no ambient app
     const p = new NodeCredentialsProvider({ surface: "cli" });
     const h = await p.getAuth("/apply/v1/plans", DEPLOY_META);
     assert.equal(h?.Authorization, "Bearer cp_tok");
-    assert.equal(h?.["X-Run402-Write-Auth"], "Bearer wat_x");
+    assert.equal(h?.["X-Run402-Write-Approval"], "Bearer wat_x");
   });
 
   it("cli surface withholds the approval header on a target mismatch (fails closed)", async () => {
@@ -172,7 +172,7 @@ describe("NodeCredentialsProvider.getAuth — surface resolution (no ambient app
     const p = new NodeCredentialsProvider({ surface: "cli" });
     const h = await p.getAuth("/apply/v1/plans", DEPLOY_META);
     assert.equal(h?.Authorization, "Bearer cp_tok");
-    assert.equal(h?.["X-Run402-Write-Auth"], undefined, "wrong target ⇒ no approval");
+    assert.equal(h?.["X-Run402-Write-Approval"], undefined, "wrong target ⇒ no approval");
   });
 
   it("cli surface prefers the wallet when a wallet is present (no cp fallback)", async () => {
@@ -184,6 +184,6 @@ describe("NodeCredentialsProvider.getAuth — surface resolution (no ambient app
     const h = await p.getAuth("/apply/v1/plans", DEPLOY_META);
     assert.ok(h?.["SIGN-IN-WITH-X"], "wallet present ⇒ SIWX");
     assert.equal(h?.Authorization, undefined, "wallet present ⇒ no cp bearer");
-    assert.equal(h?.["X-Run402-Write-Auth"], undefined, "wallet present ⇒ no approval");
+    assert.equal(h?.["X-Run402-Write-Approval"], undefined, "wallet present ⇒ no approval");
   });
 });

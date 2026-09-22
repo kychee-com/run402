@@ -85,7 +85,7 @@ export interface NodeRun402Options {
   paymentSigner?: EvmPaymentSignerProvider;
   /**
    * Which surface is constructing the client — selects the default credential
-   * mode. `"cli"` opts into `auto` (wallet, else operator-approval); `"mcp"` /
+   * mode. `"cli"` opts into `auto` (wallet, else the sign-in session); `"mcp"` /
    * `"sdk"` stay `wallet`-only so a human's approval never leaks into agent
    * tool calls. Ignored when `credentials` is supplied.
    */
@@ -788,7 +788,7 @@ export {
   isUnauthorized,
   isNotAuthorized,
   isStepUpRequired,
-  isOperatorApprovalRequired,
+  isWriteApprovalRequired,
   isApiError,
   isNetworkError,
   isPaymentAttemptError,

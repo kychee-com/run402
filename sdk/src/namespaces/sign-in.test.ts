@@ -1,8 +1,8 @@
 /**
- * Unit tests for the `operator` namespace. Contract-first: the device + revoke
- * endpoints 404 against the live gateway until
- * that ships, so these exercise the client against mocked fetch — URL, method,
- * auth header selection (bearer vs SIWX vs none), and the RFC 8628 poll state
+ * Unit tests for command-line sign-in (`r.session` device + loopback seams),
+ * the account reads (`r.me`), and the write approval (`r.writeApproval` +
+ * `WriteApprovalRequiredError`), against mocked fetch — URL, method, auth
+ * header selection (bearer vs SIWX vs none), and the RFC 8628 poll state
  * machine (pending/slow_down are data, not exceptions).
  */
 
@@ -10,8 +10,8 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import { Run402 } from "../index.js";
-import { isOperatorApprovalRequired } from "../errors.js";
-import type { OperatorApprovalRequiredError } from "../errors.js";
+import { isWriteApprovalRequired } from "../errors.js";
+import type { WriteApprovalRequiredError } from "../errors.js";
 import type { CredentialsProvider } from "../credentials.js";
 
 interface FetchCall {
@@ -66,30 +66,31 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 const TOKEN_PAYLOAD = {
-  operator_session_token: "ops_tok.abc.def",
+  control_plane_session_token: "cps_tok.abc.def",
   token_type: "Bearer",
   expires_in: 1800,
+  principal_id: "prn_1",
+  amr: ["passkey"],
+  grade: "device",
   absolute_expires_at: "2099-01-01T00:00:00.000Z",
-  email: "tal@kychee.com",
-  wallets: ["0xabc"],
 };
 
-describe("operator.deviceStart", () => {
+describe("session.deviceStart", () => {
   it("POSTs the device endpoint unauthenticated (no SIWX header)", async () => {
     const start = {
       device_code: "dc_secret",
       user_code: "WXYZ-1234",
-      verification_uri: "https://api.example.test/operator",
-      verification_uri_complete: "https://api.example.test/operator?code=WXYZ-1234",
+      verification_uri: "https://api.example.test/device",
+      verification_uri_complete: "https://api.example.test/device?code=WXYZ-1234",
       expires_in: 600,
       interval: 5,
     };
     const { fetch, calls } = mockFetch(() => jsonResponse(start));
     const sdk = makeSdk(fetch);
-    const result = await sdk.operator.deviceStart();
+    const result = await sdk.session.deviceStart();
 
     assert.equal(calls.length, 1);
-    assert.equal(calls[0]!.url, "https://api.example.test/agent/v1/operator/session/device");
+    assert.equal(calls[0]!.url, "https://api.example.test/agent/v1/control-plane/cli/device");
     assert.equal(calls[0]!.method, "POST");
     assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], undefined);
     assert.equal(result.user_code, "WXYZ-1234");
@@ -97,89 +98,91 @@ describe("operator.deviceStart", () => {
   });
 });
 
-describe("operator.devicePoll", () => {
+describe("session.devicePoll", () => {
   it("returns {kind:'approved'} with the session on 200 + token", async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse(TOKEN_PAYLOAD));
     const sdk = makeSdk(fetch);
-    const result = await sdk.operator.devicePoll("dc_secret");
+    const result = await sdk.session.devicePoll("dc_secret");
 
-    assert.equal(calls[0]!.url, "https://api.example.test/agent/v1/operator/session/device/token");
+    assert.equal(calls[0]!.url, "https://api.example.test/agent/v1/control-plane/cli/device/token");
     assert.equal(calls[0]!.method, "POST");
     assert.deepEqual(JSON.parse(String(calls[0]!.body)), { device_code: "dc_secret" });
     assert.equal(result.kind, "approved");
     if (result.kind === "approved") {
-      assert.equal(result.session.operator_session_token, "ops_tok.abc.def");
-      assert.equal(result.session.email, "tal@kychee.com");
+      assert.equal(result.session.control_plane_session_token, "cps_tok.abc.def");
+      assert.equal(result.session.grade, "device");
     }
   });
 
   it("maps authorization_pending (HTTP 400 + {error}) to a non-throwing result", async () => {
     const { fetch } = mockFetch(() => jsonResponse({ error: "authorization_pending" }, 400));
     const sdk = makeSdk(fetch);
-    assert.deepEqual(await sdk.operator.devicePoll("dc"), { kind: "authorization_pending" });
+    assert.deepEqual(await sdk.session.devicePoll("dc"), { kind: "authorization_pending" });
   });
 
   it("maps slow_down, access_denied, expired_token", async () => {
     for (const code of ["slow_down", "access_denied", "expired_token"] as const) {
       const { fetch } = mockFetch(() => jsonResponse({ error: code }, 400));
       const sdk = makeSdk(fetch);
-      assert.deepEqual(await sdk.operator.devicePoll("dc"), { kind: code });
+      assert.deepEqual(await sdk.session.devicePoll("dc"), { kind: code });
     }
   });
 
   it("tolerates an error envelope returned with HTTP 200", async () => {
     const { fetch } = mockFetch(() => jsonResponse({ error: "authorization_pending" }, 200));
     const sdk = makeSdk(fetch);
-    assert.deepEqual(await sdk.operator.devicePoll("dc"), { kind: "authorization_pending" });
+    assert.deepEqual(await sdk.session.devicePoll("dc"), { kind: "authorization_pending" });
   });
 
   it("throws on an unexpected response shape (so callers don't loop forever)", async () => {
     const { fetch } = mockFetch(() => jsonResponse({ unexpected: true }, 500));
     const sdk = makeSdk(fetch);
-    await assert.rejects(() => sdk.operator.devicePoll("dc"), /Unexpected operator device-token response/);
+    await assert.rejects(() => sdk.session.devicePoll("dc"), /Unexpected device-token response/);
   });
 });
 
-describe("operator.overview", () => {
-  it("with a token: sends the bearer and NOT the SIWX header (email-union)", async () => {
-    const overview = { scope: { kind: "email", principal: "tal@kychee.com" }, wallets: [{}, {}] };
+describe("me.overview", () => {
+  it("with a token: sends the bearer and NOT the SIWX header", async () => {
+    const overview = { scope: { kind: "principal", principal: "tal@kychee.com" }, session: { grade: "loopback", amr: ["passkey"] }, wallets: [{}, {}] };
     const { fetch, calls } = mockFetch(() => jsonResponse(overview));
     const sdk = makeSdk(fetch);
-    const result = await sdk.operator.overview({ token: "ops_tok" });
+    const result = await sdk.me.overview({ token: "cps_tok" });
 
-    assert.equal(calls[0]!.url, "https://api.example.test/agent/v1/operator/overview");
+    assert.equal(calls[0]!.url, "https://api.example.test/agent/v1/me/overview");
     assert.equal(calls[0]!.method, "GET");
-    assert.equal(calls[0]!.headers["Authorization"], "Bearer ops_tok");
+    assert.equal(calls[0]!.headers["Authorization"], "Bearer cps_tok");
     assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], undefined);
-    assert.equal(result.scope?.kind, "email");
+    assert.equal(result.scope?.kind, "principal");
+    assert.equal(result.session?.grade, "loopback");
   });
 
   it("without a token: falls back to SIWX (wallet slice)", async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse({ scope: { kind: "wallet" } }));
     const sdk = makeSdk(fetch);
-    await sdk.operator.overview();
+    await sdk.me.overview();
 
     assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "test-siwx");
     assert.equal(calls[0]!.headers["Authorization"], undefined);
   });
 });
 
-describe("operator.revoke", () => {
-  it("POSTs the revoke endpoint with the bearer and resolves on 204", async () => {
-    const { fetch, calls } = mockFetch(() => new Response(null, { status: 204 }));
-    const sdk = makeSdk(fetch);
-    await sdk.operator.revoke({ token: "ops_tok" });
-
-    assert.equal(calls[0]!.url, "https://api.example.test/agent/v1/operator/session/revoke");
-    assert.equal(calls[0]!.method, "POST");
-    assert.equal(calls[0]!.headers["Authorization"], "Bearer ops_tok");
+describe("me.status", () => {
+  it("GETs /agent/v1/me/status and returns contact + reachability", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({ contact: { email_status: "verified", passkey_status: "none" }, reachability: { reachable: true, verified_recipient_count: 1, sources: [], skipped_last_90d: 0 }, critical_items: [], skipped_notifications: [], organizations: [], projects: [], active_thresholds: [] }),
+    );
+    const status = await makeSdk(fetch).me.status();
+    assert.equal(calls[0]!.url, "https://api.example.test/agent/v1/me/status");
+    assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "test-siwx");
+    assert.equal(status.contact.email_status, "verified");
+    assert.equal(status.reachability?.reachable, true);
   });
 });
 
-describe("operator loopback-PKCE write-login (v1.78)", () => {
+describe("session loopback-PKCE login", () => {
   it("buildCliAuthorizeUrl composes the authorize URL with S256 + params (no network)", () => {
     const { fetch, calls } = mockFetch(() => jsonResponse({}));
-    const url = makeSdk(fetch).operator.buildCliAuthorizeUrl({
+    const url = makeSdk(fetch).session.buildCliAuthorizeUrl({
       redirectUri: "http://127.0.0.1:54321/callback",
       codeChallenge: "chal_abc",
       state: "st_1",
@@ -212,31 +215,31 @@ describe("operator loopback-PKCE write-login (v1.78)", () => {
         control_plane_session_token: "cps_tok",
         token_type: "Bearer",
         expires_in: 900,
-        provenance: "loopback_pkce",
+        grade: "loopback",
         principal_id: "prn_1",
         amr: ["passkey"],
       });
     });
-    const session = await makeSdk(fetch).operator.exchangeCliToken({
+    const session = await makeSdk(fetch).session.exchangeCliToken({
       code: "code_1",
       codeVerifier: "ver_1",
       redirectUri: "http://127.0.0.1:54321/callback",
       state: "st_1",
     });
     assert.equal(session.control_plane_session_token, "cps_tok");
-    assert.equal(session.provenance, "loopback_pkce");
+    assert.equal(session.grade, "loopback");
     assert.deepEqual(session.amr, ["passkey"]);
     assert.equal(calls.length, 1);
   });
 });
 
-describe("operator.approval ceremony seams (v1.85/v1.87)", () => {
+describe("writeApproval ceremony seams", () => {
   it("requestChallenge POSTs the challenge with action + target + PKCE, carrying the explicit bearer", async () => {
     const { fetch, calls } = mockFetch(() =>
       jsonResponse({ challenge_id: "ch_1", confirm_url: "https://api.example.test/confirm", delivery: "cli_loopback" }, 201),
     );
     const sdk = makeSdk(fetch);
-    const res = await sdk.operator.approval.requestChallenge({
+    const res = await sdk.writeApproval.requestChallenge({
       action: "project.deploy",
       projectId: "prj_x",
       cliRedirectUri: "http://127.0.0.1:5555/callback",
@@ -244,7 +247,7 @@ describe("operator.approval ceremony seams (v1.85/v1.87)", () => {
       state: "st4te",
       token: "cp_tok",
     });
-    assert.equal(calls[0].url, "https://api.example.test/agent/v1/control-plane/write-auth/challenges");
+    assert.equal(calls[0].url, "https://api.example.test/agent/v1/control-plane/write-approval/challenges");
     assert.equal(calls[0].method, "POST");
     assert.equal(calls[0].headers["Authorization"], "Bearer cp_tok");
     assert.equal(calls[0].headers["SIGN-IN-WITH-X"], undefined, "explicit bearer ⇒ no SIWX");
@@ -260,23 +263,23 @@ describe("operator.approval ceremony seams (v1.85/v1.87)", () => {
 
   it("exchangeClaimCode POSTs {code, code_verifier, state} only (no redirect_uri), unauthenticated", async () => {
     const { fetch, calls } = mockFetch(() =>
-      jsonResponse({ write_auth_token: "wat_x", token_type: "write_auth", header: "X-Run402-Write-Auth", session: { expires_at: "2099-01-01T00:00:00Z" } }, 201),
+      jsonResponse({ write_approval_token: "wat_x", token_type: "write_approval", header: "X-Run402-Write-Approval", session: { write_approval_session_id: "was_1", idle_expires_at: "2099-01-01T00:00:00Z" } }, 201),
     );
     const sdk = makeSdk(fetch);
-    const res = await sdk.operator.approval.exchangeClaimCode({ code: "code1", codeVerifier: "ver1", state: "st4te" });
-    assert.equal(calls[0].url, "https://api.example.test/agent/v1/control-plane/write-auth/cli/token");
+    const res = await sdk.writeApproval.exchangeClaimCode({ code: "code1", codeVerifier: "ver1", state: "st4te" });
+    assert.equal(calls[0].url, "https://api.example.test/agent/v1/control-plane/write-approval/cli/token");
     assert.equal(calls[0].headers["SIGN-IN-WITH-X"], undefined, "unauthenticated exchange");
     const body = JSON.parse(String(calls[0].body));
     assert.deepEqual(body, { code: "code1", code_verifier: "ver1", state: "st4te" });
     assert.equal("redirect_uri" in body, false);
-    assert.equal(res.write_auth_token, "wat_x");
+    assert.equal(res.write_approval_token, "wat_x");
   });
 });
 
-describe("OperatorApprovalRequiredError mapping", () => {
-  it("maps 403 WRITE_AUTH_REQUIRED to a typed error with a resolved approve command", async () => {
+describe("WriteApprovalRequiredError mapping", () => {
+  it("maps 403 WRITE_APPROVAL_REQUIRED to a typed error with a resolved approve command", async () => {
     const { fetch } = mockFetch(() =>
-      jsonResponse({ code: "WRITE_AUTH_REQUIRED", error: "needs approval", hint: "..." }, 403),
+      jsonResponse({ code: "WRITE_APPROVAL_REQUIRED", error: "needs approval", hint: "..." }, 403),
     );
     const sdk = makeSdk(fetch);
     let threw: unknown;
@@ -285,20 +288,29 @@ describe("OperatorApprovalRequiredError mapping", () => {
     } catch (e) {
       threw = e;
     }
-    assert.ok(isOperatorApprovalRequired(threw), "expected OperatorApprovalRequiredError");
-    const err = threw as OperatorApprovalRequiredError;
+    assert.ok(isWriteApprovalRequired(threw), "expected WriteApprovalRequiredError");
+    const err = threw as WriteApprovalRequiredError;
     assert.equal(err.capability, "org.project.create");
     assert.deepEqual(err.target, { org_id: "org_y" });
-    assert.equal(err.approveCommand, "run402 operator approve --action org.project.create --org org_y");
+    assert.equal(err.approveCommand, "run402 approve --action org.project.create --org org_y");
     assert.ok(Array.isArray(err.nextActions) && err.nextActions.length > 0);
+    assert.equal((err.nextActions![0] as { type: string }).type, "approve_write");
   });
 
-  it("maps WRITE_AUTH_BINDING_MISMATCH to the same typed error", async () => {
-    const { fetch } = mockFetch(() => jsonResponse({ code: "WRITE_AUTH_BINDING_MISMATCH" }, 403));
+  it("maps WRITE_APPROVAL_SCOPE_MISMATCH and a 401 WRITE_APPROVAL_SESSION_INVALID to the same typed error", async () => {
+    for (const [code, status] of [["WRITE_APPROVAL_SCOPE_MISMATCH", 403], ["WRITE_APPROVAL_SESSION_INVALID", 401]] as const) {
+      const { fetch } = mockFetch(() => jsonResponse({ code }, status));
+      const sdk = makeSdk(fetch);
+      await assert.rejects(
+        () => sdk.projects.provision({ orgId: "org_z" }),
+        (e: unknown) => isWriteApprovalRequired(e),
+      );
+    }
+    const { fetch } = mockFetch(() => jsonResponse({ code: "WRITE_APPROVAL_BINDING_MISMATCH" }, 403));
     const sdk = makeSdk(fetch);
     await assert.rejects(
       () => sdk.projects.provision({ orgId: "org_z" }),
-      (e: unknown) => isOperatorApprovalRequired(e),
+      (e: unknown) => isWriteApprovalRequired(e),
     );
   });
 });

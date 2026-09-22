@@ -35,7 +35,6 @@ let calls = [];
 let stdout = [];
 let runOrg;
 let runGrants;
-let runOperator;
 let runProjects;
 
 function json(data, status = 200) {
@@ -184,7 +183,6 @@ before(async () => {
   process.exit = (code) => { throw new Error(`process.exit(${code})`); };
   ({ run: runOrg } = await import("./cli/lib/org.mjs"));
   ({ run: runGrants } = await import("./cli/lib/grants.mjs"));
-  ({ run: runOperator } = await import("./cli/lib/operator.mjs"));
   ({ run: runProjects } = await import("./cli/lib/projects.mjs"));
 });
 
@@ -214,9 +212,14 @@ describe("run402 org", () => {
     assert.deepEqual(output.linked_identities, [], "an unlinked principal must render an empty list, not synthesized identity data");
   });
 
-  it("list GETs /orgs/v1", async () => {
+  it("list GETs /orgs/v1 and joins the account overview (GET /agent/v1/me/overview)", async () => {
     capture(); await runOrg("list", []); uncapture();
-    assert.equal(lastCall().url, `${API}/orgs/v1`);
+    const urls = calls.map((c) => c.url);
+    assert.ok(urls.includes(`${API}/orgs/v1`));
+    assert.ok(urls.includes(`${API}/agent/v1/me/overview`));
+    const output = JSON.parse(stdout.join("\n"));
+    assert.deepEqual(output.orgs, []);
+    assert.equal(output.session, null);
   });
 
   it("members GETs the members route", async () => {
@@ -375,7 +378,7 @@ describe("run402 provision --org", () => {
 });
 
 describe("run402 org adopt", () => {
-  it("exits 1 with loopback-login guidance when no control-plane session is cached", async () => {
+  it("exits 1 with login guidance when no sign-in session is cached", async () => {
     const stderr = [];
     const origErr = console.error;
     console.log = () => {};
@@ -390,8 +393,8 @@ describe("run402 org adopt", () => {
       console.error = origErr;
       console.log = originalLog;
     }
-    assert.equal(exitCode, 1, "no control-plane session should exit 1");
-    assert.match(stderr.join("\n"), /operator login --loopback/);
+    assert.equal(exitCode, 1, "no sign-in session should exit 1");
+    assert.match(stderr.join("\n"), /run402 login/);
   });
 });
 

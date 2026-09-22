@@ -179,7 +179,7 @@ export class Functions {
    * {@link FunctionDeployResult.deps_resolved} and `runtime_version` are `null`.
    *
    * Authorizes through the standard apply credential — a SIWX wallet, or the
-   * operator-approval `project.deploy` gate for a wallet-less human — NOT the
+   * write-approval `project.deploy` gate for a wallet-less person — NOT the
    * project service key. Non-fatal deploy issues (bundle size warnings, esbuild
    * advisories) surface in {@link FunctionDeployResult.warnings}.
    *

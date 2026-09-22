@@ -31,15 +31,15 @@ import {
 } from "../../core-dist/config.js";
 import { readMeta } from "../../core-dist/profiles.js";
 import { loadLiveControlPlaneSession } from "../../core-dist/control-plane-session.js";
-import { loadLiveApproval, hashControlPlaneSession } from "../../core-dist/write-auth-session.js";
+import { loadLiveApproval, hashControlPlaneSession } from "../../core-dist/write-approvals.js";
 import type { WalletData, AuthRequestMeta, CredentialsProvider, ProjectKeys, WalletIdentity } from "../credentials.js";
 import { DELEGATE_CREDENTIALS, delegateTokenFromEnv } from "../delegate-credentials.js";
 import { LocalError } from "../errors.js";
 
 /** Where credential resolution runs — selects the default `authMode`. */
 export type CredentialSurface = "cli" | "mcp" | "sdk";
-/** How a request's credentials are chosen. `auto` = wallet, else operator (control-plane) session. */
-export type AuthMode = "auto" | "wallet" | "operator" | "delegate" | "none";
+/** How a request's credentials are chosen. `auto` = wallet, else the sign-in session. */
+export type AuthMode = "auto" | "wallet" | "session" | "delegate" | "none";
 
 export interface NodeCredentialsOptions {
   walletPath?: string;
@@ -47,7 +47,7 @@ export interface NodeCredentialsOptions {
   keystorePath?: string;
   /** Non-secret profile state path for active project pointers. Defaults to state.json. */
   profileStatePath?: string;
-  /** Default is `wallet` (no ambient operator authority); `cli` opts into `auto`. */
+  /** Default is `wallet` (no ambient sign-in session authority); `cli` opts into `auto`. */
   surface?: CredentialSurface;
   /** Explicit override; otherwise derived from `surface`. */
   authMode?: AuthMode;
@@ -89,13 +89,14 @@ export class NodeCredentialsProvider implements CredentialsProvider {
    * and never silently falls back to another after a failure.
    *
    * - `wallet` (default; the MCP/agent path): only the SIWX wallet. NEVER
-   *   reads the control-plane session or operator-approval caches, so a human's
+   *   reads the sign-in session or write-approval caches, so a person's
    *   ambient authority cannot leak into an agent tool call.
    * - `auto` (CLI): SIWX wallet if present; otherwise the live control-plane
-   *   session, plus an `X-Run402-Write-Auth` approval ONLY when the request's
+   *   sign-in session, plus an `X-Run402-Write-Approval` approval ONLY when the request's
    *   `(capability, target)` exactly matches a cached, origin/session-bound
    *   approval. A gated write with no match is sent cp-bearer-only and fails
-   *   closed with `WRITE_AUTH_REQUIRED`.
+   *   closed with `WRITE_APPROVAL_REQUIRED`.
+   * - `session`: only the sign-in session (plus a matching write approval).
    */
   async getAuth(path: string, metadata?: AuthRequestMeta): Promise<Record<string, string> | null> {
     const mode = this.resolveAuthMode();
@@ -115,7 +116,7 @@ export class NodeCredentialsProvider implements CredentialsProvider {
     if (mode === "wallet") return wallet ? { ...wallet } : null;
     if (mode === "auto" && wallet) return { ...wallet };
 
-    // operator mode, or auto with no wallet: the control-plane session principal.
+    // session mode, or auto with no wallet: the sign-in session principal.
     const cp = loadLiveControlPlaneSession();
     if (!cp) return wallet ? { ...wallet } : null;
 
@@ -130,7 +131,7 @@ export class NodeCredentialsProvider implements CredentialsProvider {
         capability: metadata.capability,
         target: metadata.target,
       });
-      if (approval) headers["X-Run402-Write-Auth"] = `Bearer ${approval.write_auth_token}`;
+      if (approval) headers["X-Run402-Write-Approval"] = `Bearer ${approval.write_approval_token}`;
     }
     return headers;
   }

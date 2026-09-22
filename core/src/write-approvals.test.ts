@@ -10,17 +10,17 @@ import {
   loadLiveApproval,
   approvalFromTokenResponse,
   hashControlPlaneSession,
-  type WriteAuthApproval,
-} from "./write-auth-session.js";
+  type WriteApproval,
+} from "./write-approvals.js";
 
 let dir: string;
 let cachePath: string;
 
-function entry(over: Partial<WriteAuthApproval> = {}): WriteAuthApproval {
+function entry(over: Partial<WriteApproval> = {}): WriteApproval {
   return {
-    write_auth_token: "wat_tok",
-    token_type: "write_auth",
-    header: "X-Run402-Write-Auth",
+    write_approval_token: "wat_tok",
+    token_type: "write_approval",
+    header: "X-Run402-Write-Approval",
     action: "project.deploy",
     project_id: "prj_x",
     expires_at: Date.now() + 60_000,
@@ -33,38 +33,38 @@ function entry(over: Partial<WriteAuthApproval> = {}): WriteAuthApproval {
 }
 
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), "wa-sess-"));
-  cachePath = join(dir, "write-auth-session.json");
+  dir = mkdtempSync(join(tmpdir(), "wa-cache-"));
+  cachePath = join(dir, "write-approvals.json");
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-describe("write-auth-session cache", () => {
+describe("write-approvals cache", () => {
   it("round-trips a saved approval", () => {
-    saveApproval(entry({ write_auth_token: "tok-a" }), cachePath);
+    saveApproval(entry({ write_approval_token: "tok-a" }), cachePath);
     const got = loadLiveApproval(
       { apiOrigin: "https://api.run402.com", cpSessionHash: "cphash1", capability: "project.deploy", target: { project_id: "prj_x" } },
       cachePath,
     );
-    assert.equal(got?.write_auth_token, "tok-a");
+    assert.equal(got?.write_approval_token, "tok-a");
   });
 
   it("keeps distinct (action, target) approvals — multi-entry, non-thrashing", () => {
-    saveApproval(entry({ action: "project.deploy", project_id: "prj_x", write_auth_token: "deploy-x" }), cachePath);
-    saveApproval(entry({ action: "org.project.create", project_id: undefined, org_id: "org_y", write_auth_token: "create-y" }), cachePath);
+    saveApproval(entry({ action: "project.deploy", project_id: "prj_x", write_approval_token: "deploy-x" }), cachePath);
+    saveApproval(entry({ action: "org.project.create", project_id: undefined, org_id: "org_y", write_approval_token: "create-y" }), cachePath);
     assert.equal(readApprovals(cachePath).length, 2);
     const a = loadLiveApproval({ apiOrigin: "https://api.run402.com", cpSessionHash: "cphash1", capability: "project.deploy", target: { project_id: "prj_x" } }, cachePath);
     const b = loadLiveApproval({ apiOrigin: "https://api.run402.com", cpSessionHash: "cphash1", capability: "org.project.create", target: { org_id: "org_y" } }, cachePath);
-    assert.equal(a?.write_auth_token, "deploy-x");
-    assert.equal(b?.write_auth_token, "create-y");
+    assert.equal(a?.write_approval_token, "deploy-x");
+    assert.equal(b?.write_approval_token, "create-y");
   });
 
   it("replaces the entry with the same key, keeps others", () => {
-    saveApproval(entry({ project_id: "prj_x", write_auth_token: "old" }), cachePath);
-    saveApproval(entry({ project_id: "prj_other", write_auth_token: "keep" }), cachePath);
-    saveApproval(entry({ project_id: "prj_x", write_auth_token: "new" }), cachePath);
+    saveApproval(entry({ project_id: "prj_x", write_approval_token: "old" }), cachePath);
+    saveApproval(entry({ project_id: "prj_other", write_approval_token: "keep" }), cachePath);
+    saveApproval(entry({ project_id: "prj_x", write_approval_token: "new" }), cachePath);
     assert.equal(readApprovals(cachePath).length, 2);
     const x = loadLiveApproval({ apiOrigin: "https://api.run402.com", cpSessionHash: "cphash1", capability: "project.deploy", target: { project_id: "prj_x" } }, cachePath);
-    assert.equal(x?.write_auth_token, "new");
+    assert.equal(x?.write_approval_token, "new");
   });
 
   it("returns null on a non-matching target, action, origin, or cp-session", () => {
@@ -105,7 +105,7 @@ describe("write-auth-session cache", () => {
   it("approvalFromTokenResponse derives expiry from session + binds origin/session/target", () => {
     const exp = new Date(Date.now() + 120_000).toISOString();
     const a = approvalFromTokenResponse(
-      { write_auth_token: "tok", token_type: "write_auth", header: "X-Run402-Write-Auth", session: { expires_at: exp } },
+      { write_approval_token: "tok", token_type: "write_approval", header: "X-Run402-Write-Approval", session: { expires_at: exp } },
       { action: "project.deploy", target: { project_id: "prj_z" }, apiOrigin: "https://api.run402.com", controlPlaneSessionHash: "h", controlPlanePrincipalId: "p" },
     );
     assert.equal(a.action, "project.deploy");

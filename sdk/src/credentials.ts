@@ -65,10 +65,10 @@ export interface WalletIdentity {
 }
 
 /**
- * Gateway write-auth (operator-approval) capabilities. Each is scoped to a
- * target: `org.project.create` → an org, the others → a project.
+ * Gateway write-approval capabilities. Each is scoped to a target:
+ * `org.project.create` → an org, the others → a project.
  */
-export type WriteAuthCapability =
+export type WriteApprovalCapability =
   | "org.project.create"
   | "project.deploy"
   | "project.secret.write"
@@ -77,7 +77,7 @@ export type WriteAuthCapability =
   | "project.branches.manage";
 
 /** A write-capability target: an org (for `org.project.create`) or a project. */
-export interface WriteAuthTarget {
+export interface WriteApprovalTarget {
   org_id?: string;
   project_id?: string;
 }
@@ -85,15 +85,15 @@ export interface WriteAuthTarget {
 /**
  * Per-request metadata a typed SDK method may pass to {@link
  * CredentialsProvider.getAuth}. `capability` + `target` let a provider decide
- * whether (and which) operator-approval credential to attach for a gated write.
+ * whether (and which) write approval to attach for a gated write.
  */
 export interface AuthRequestMeta {
   /** Diagnostic: the SDK method name (e.g. "projects.provision"). */
   method?: string;
   /** The gateway write capability this request exercises, if any. */
-  capability?: WriteAuthCapability;
+  capability?: WriteApprovalCapability;
   /** The capability's target. */
-  target?: WriteAuthTarget;
+  target?: WriteApprovalTarget;
 }
 
 export interface CredentialsProvider {
@@ -106,7 +106,7 @@ export interface CredentialsProvider {
    * overwriting headers explicitly set on the request.
    *
    * `metadata` (optional) carries the request's write capability + target so a
-   * provider can attach a matching operator-approval credential. Providers that
+   * provider can attach a matching write approval. Providers that
    * ignore it (wallet-only) simply omit the parameter.
    */
   getAuth(path: string, metadata?: AuthRequestMeta): Promise<Record<string, string> | null>;

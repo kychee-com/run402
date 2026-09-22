@@ -34,7 +34,9 @@ import { Jobs } from "./namespaces/jobs.js";
 import { Archives } from "./namespaces/archives.js";
 import { Snapshots } from "./namespaces/snapshots.js";
 import { Branches } from "./namespaces/branches.js";
-import { Operator } from "./namespaces/operator.js";
+import { Session } from "./namespaces/session.js";
+import { WriteApproval } from "./namespaces/write-approval.js";
+import { Me } from "./namespaces/me.js";
 import { Orgs, ScopedOrg } from "./namespaces/org.js";
 import { Grants } from "./namespaces/grants.js";
 import { Delegates } from "./namespaces/delegates.js";
@@ -111,10 +113,20 @@ export class Run402 {
   readonly snapshots: Snapshots;
   readonly branches: Branches;
   /**
-   * The *human* (email) principal — browser-delegated operator session (RFC
-   * 8628 device flow), distinct from the agent's per-wallet SIWX identity.
+   * A person's sign-in session: the browser, loopback (`run402 login`), and
+   * device (`run402 login --device`, read-only) mints, plus refresh, revoke,
+   * step-up, passkey enrollment, and authenticators. Distinct from the agent's
+   * per-wallet SIWX identity.
    */
-  readonly operator: Operator;
+  readonly session: Session;
+  /**
+   * The passkey-signed, target-scoped write approval a signed-in person needs
+   * to provision, deploy, or write secrets from the command line
+   * (`r.writeApproval.requestChallenge` + `exchangeClaimCode`).
+   */
+  readonly writeApproval: WriteApproval;
+  /** The caller's own account reads: `r.me.overview()` and `r.me.status()`. */
+  readonly me: Me;
   /**
    * Org collection + identity (gateway v1.77+, first-class in v1.82):
    * `r.orgs.create()` / `list()` / `whoami()`. For operations on a single org by
@@ -265,7 +277,9 @@ export class Run402 {
     this.archives = new Archives(client);
     this.snapshots = new Snapshots(client);
     this.branches = new Branches(client);
-    this.operator = new Operator(client);
+    this.session = new Session(client);
+    this.writeApproval = new WriteApproval(client);
+    this.me = new Me(client);
     this.orgs = new Orgs(client);
     this.grants = new Grants(client);
     this.delegates = new Delegates(client);
@@ -482,7 +496,7 @@ export {
   Run402DeployError,
   TransferFreezeError,
   StepUpRequiredError,
-  OperatorApprovalRequiredError,
+  WriteApprovalRequiredError,
   PROJECT_CREDENTIAL_ERROR_CODES,
   isRun402Error,
   isPaymentRequired,
@@ -501,7 +515,7 @@ export {
   isDeployError,
   isTransferFreezeError,
   isStepUpRequired,
-  isOperatorApprovalRequired,
+  isWriteApprovalRequired,
   isRetryableRun402Error,
   getQuotaScope,
 } from "./errors.js";
@@ -609,9 +623,12 @@ export type * from "./namespaces/email.js";
 export { FunctionRunTerminalError, FunctionRuns, classifyFunctionLogLine } from "./namespaces/functions.js";
 export type * from "./namespaces/functions.types.js";
 export type * from "./namespaces/jobs.js";
-export type * from "./namespaces/operator.js";
-export { OperatorSession } from "./namespaces/operator-session.js";
-export type * from "./namespaces/operator-session.js";
+export { Session } from "./namespaces/session.js";
+export type * from "./namespaces/session.js";
+export { WriteApproval } from "./namespaces/write-approval.js";
+export type * from "./namespaces/write-approval.js";
+export { Me } from "./namespaces/me.js";
+export type * from "./namespaces/me.js";
 export { Orgs, ScopedOrg, OrgMembers, OrgInvites, OrgAdopt } from "./namespaces/org.js";
 export type { AdoptChallenge, AdoptChallengeInput, AdoptSubmitInput, AdoptResult, SelectableOrg } from "./namespaces/org.js";
 export type * from "./namespaces/org.types.js";

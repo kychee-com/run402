@@ -196,7 +196,7 @@ Options:
 Output:
   - Prints the JSON envelope on stdout (parseable by agent shell loops).
   - Vantage caveat ("# probed once from gateway-us-east-1; not a global view")
-    on stderr — visible to TTY operators, ignored by piped consumers.
+    on stderr — visible to a person at a TTY, ignored by piped consumers.
 
 Exit codes:
   0   observed SHA matches the gateway's expected SHA
@@ -575,7 +575,7 @@ async function diagnose(argv) {
     const env = await getSdk().assets.diagnoseUrl(resolvedId, url);
     // Always print the JSON envelope for agent consumption (parseable).
     console.log(JSON.stringify(toCliDiagnoseEnvelope(env), null, 2));
-    // Vantage caveat to stderr so a TTY operator sees it; agent shell loops
+    // Vantage caveat to stderr so a person at a TTY sees it; agent shell loops
     // that pipe stdout into another tool aren't affected.
     process.stderr.write(
       `\n# probed once from ${env.vantage}; not a global view\n`,

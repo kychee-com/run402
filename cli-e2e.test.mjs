@@ -217,8 +217,8 @@ async function mockFetch(input, init) {
       next_cursor: null,
     }));
   }
-  // project-findability: operator email-union inventory for `--all`.
-  if (pathNoQuery === "/agent/v1/operator/projects" && method === "GET") {
+  // project-findability: the account-wide inventory for `--all`.
+  if (pathNoQuery === "/agent/v1/me/projects" && method === "GET") {
     return Promise.resolve(json({
       projects: [{
         id: "prj_test123",
@@ -1479,13 +1479,13 @@ describe("CLI e2e happy path", () => {
     assert.ok(out.includes("11111111-2222-3333-4444-555555555555"), "should render the owning org id");
   });
 
-  it("projects list --all reads the operator inventory and echoes scope", async () => {
+  it("projects list --all reads the account-wide inventory and echoes scope", async () => {
     const { run } = await import("./cli/lib/projects.mjs");
     captureStart();
     await run("list", ["--all"]);
     captureStop();
     const out = captured();
-    assert.ok(out.includes("prj_test123"), "should list the project from the operator inventory");
+    assert.ok(out.includes("prj_test123"), "should list the project from the account-wide inventory");
     assert.ok(out.includes("\"scope\""), "should echo the resolved scope");
   });
 

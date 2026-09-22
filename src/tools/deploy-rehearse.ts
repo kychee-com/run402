@@ -9,7 +9,7 @@ type ToolResult = { content: Array<{ type: "text"; text: string }>; isError?: bo
 export const deployRehearseSchema = {
   plan_id: z.string().optional().describe("Persisted apply plan ID. Its bytes must be uploaded; when the gateway answers REHEARSAL_CONTENT_MISSING and `manifest` is given, the manifest is planned, its bytes uploaded, and the rehearsal retried (a fresh plan is used and reported if facts changed). Omit with `manifest` to plan, upload, and rehearse in one call."),
   manifest: z.string().optional().describe("Path to a deploy manifest (run402.json, run402.deploy.json, app.json, or an executable config) to plan from and upload bytes for."),
-  project_id: z.string().optional().describe("Project ID for operator-approval metadata and follow-up status reads."),
+  project_id: z.string().optional().describe("Project ID for write-approval metadata and follow-up status reads."),
   teardown: z.enum(["keep", "on_pass", "always"]).optional().describe("Rehearsal branch cleanup policy. Default on_pass."),
 };
 

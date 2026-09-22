@@ -85,7 +85,7 @@ function readCommandSource(filePath: string): string | null {
 function parseCliCommands(): string[] {
   const cmds: string[] = [];
   const reserved = reservedSubcommands();
-  for (const mod of ["admin", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "feedback", "agent", "operator", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "deliveries", "contacts", "subscriptions", "webhook-secret", "cloud", "archives", "core", "rooms", "messages", "claims", "escalations", "gitvault", "repos", "source-access"]) {
+  for (const mod of ["admin", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "feedback", "agent", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "deliveries", "contacts", "subscriptions", "webhook-secret", "cloud", "archives", "core", "rooms", "messages", "claims", "escalations", "gitvault", "repos", "source-access"]) {
     for (const sub of parseSubcommands(join(__dirname, "cli/lib", `${mod}.mjs`))) {
       if (reserved.has(`${mod}:${sub}`)) continue;
       cmds.push(`${mod}:${sub}`);
@@ -122,6 +122,9 @@ function parseCliCommands(): string[] {
   if (existsSync(join(__dirname, "cli/lib/errors.mjs"))) cmds.push("errors");
   if (existsSync(join(__dirname, "cli/lib/dev.mjs"))) cmds.push("dev");
   if (existsSync(join(__dirname, "cli/lib/logs.mjs"))) cmds.push("logs");
+  for (const verb of ["login", "logout", "whoami", "approve"]) {
+    if (existsSync(join(__dirname, "cli/lib", `${verb}.mjs`))) cmds.push(verb);
+  }
   return cmds.sort();
 }
 
@@ -129,7 +132,7 @@ function parseCliCommands(): string[] {
 function parseOpenClawCommands(): string[] {
   const cmds: string[] = [];
   const reserved = reservedSubcommands();
-  for (const mod of ["admin", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "feedback", "agent", "operator", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "deliveries", "contacts", "subscriptions", "webhook-secret", "cloud", "archives", "core", "rooms", "messages", "claims", "escalations", "gitvault", "repos", "source-access"]) {
+  for (const mod of ["admin", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "feedback", "agent", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "deliveries", "contacts", "subscriptions", "webhook-secret", "cloud", "archives", "core", "rooms", "messages", "claims", "escalations", "gitvault", "repos", "source-access"]) {
     for (const sub of parseSubcommands(join(__dirname, "openclaw/scripts", `${mod}.mjs`))) {
       if (reserved.has(`${mod}:${sub}`)) continue;
       cmds.push(`${mod}:${sub}`);
@@ -164,6 +167,9 @@ function parseOpenClawCommands(): string[] {
   if (existsSync(join(__dirname, "openclaw/scripts/errors.mjs"))) cmds.push("errors");
   if (existsSync(join(__dirname, "openclaw/scripts/dev.mjs"))) cmds.push("dev");
   if (existsSync(join(__dirname, "openclaw/scripts/logs.mjs"))) cmds.push("logs");
+  for (const verb of ["login", "logout", "whoami", "approve"]) {
+    if (existsSync(join(__dirname, "openclaw/scripts", `${verb}.mjs`))) cmds.push(verb);
+  }
   return cmds.sort();
 }
 
@@ -552,10 +558,9 @@ const SURFACE: Capability[] = [
   { id: "set_agent_contact", endpoint: "POST /agent/v1/contact",            mcp: "set_agent_contact",   cli: "agent:contact",    openclaw: "agent:contact" },
   { id: "get_agent_contact_status", endpoint: "GET /agent/v1/contact/status", mcp: "get_agent_contact_status", cli: "agent:status", openclaw: "agent:status" },
   { id: "verify_agent_contact_email", endpoint: "POST /agent/v1/contact/verify-email", mcp: "verify_agent_contact_email", cli: "agent:verify-email", openclaw: "agent:verify-email" },
-  { id: "start_operator_passkey_enrollment", endpoint: "POST /agent/v1/contact/passkey/enroll", mcp: "start_operator_passkey_enrollment", cli: "agent:passkey", openclaw: "agent:passkey" },
+  { id: "start_contact_passkey_enrollment", endpoint: "POST /agent/v1/contact/passkey/enroll", mcp: "start_contact_passkey_enrollment", cli: "agent:passkey", openclaw: "agent:passkey" },
 
-  // ── Operator health notifications (v1.55) ──────────────────────────────
-  { id: "get_operator_status",          endpoint: "GET /agent/v1/operator/status",                 mcp: "get_operator_status",          cli: null,                            openclaw: null },
+  // ── Owner notifications (v1.55) ────────────────────────────────────────
   { id: "list_notifications",           endpoint: "GET /agent/v1/notifications",                   mcp: "list_notifications",           cli: "deliveries:list",            openclaw: "deliveries:list" },
   { id: "get_notification",             endpoint: "GET /agent/v1/notifications/:id",               mcp: null,                            cli: "deliveries:get",             openclaw: "deliveries:get" },
   { id: "get_notification_preferences", endpoint: "GET /agent/v1/notifications/preferences",       mcp: "get_notification_preferences", cli: "contacts:preferences",     openclaw: "contacts:preferences" },
@@ -601,10 +606,10 @@ const SURFACE: Capability[] = [
   // add-room-invite: `run402 rooms join` is ONE CLI verb with two forms — no
   // positional registers a presence (the route below); a `kri1_…` positional
   // redeems the key FIRST (`POST /rooms/v1/invites/:invite_id/redeem`,
-  // x402-paid, folded in the same way `operator_login`'s endpoint parenthetically
+  // x402-paid, folded in the same way `login`'s endpoint parenthetically
   // names its own second route) and only then arrives. The redemption's own SDK
   // method (`rooms.join`) has no capability row of its own — same law as
-  // `operator.devicePoll` sharing the `login` verb — see SDK_ONLY_METHODS.
+  // `session.devicePoll` sharing the `login` verb — see SDK_ONLY_METHODS.
   { id: "join_room",                    endpoint: "POST /orgs/v1/:org_id/rooms/:room_key/presences (+ POST /rooms/v1/invites/:invite_id/redeem)", mcp: "join_room",                    cli: "rooms:join", openclaw: "rooms:join" },
   { id: "leave_room",                   endpoint: "DELETE /orgs/v1/:org_id/rooms/:room_key/presences/:presence_id", mcp: "leave_room", cli: "rooms:leave", openclaw: "rooms:leave" },
   // Rooms are derived from use: list_rooms enumerates the rooms a credential
@@ -655,18 +660,14 @@ const SURFACE: Capability[] = [
   // SDK_ONLY_METHODS (no dedicated verb/tool of their own).
   { id: "errors_list",                  endpoint: "GET /projects/v1/:id/errors",                   mcp: "errors_list",                  cli: "errors",                        openclaw: "errors" },
 
-  // ── Operator session (human/email principal, RFC 8628 device-auth) ──────
-  // The operator is the human (email), distinct from the agent (wallet/SIWX).
-  // Human-only surface → MCP null by design (MCP authenticates as the agent;
-  // the human device-login must not hand the email-union session to the agent).
-  // The wallet's own account view is `run402 status`, not an operator command.
-  { id: "operator_login",    endpoint: "POST /agent/v1/operator/session/device (+ /device/token)", mcp: null, cli: "operator:login",    openclaw: "operator:login" },
-  { id: "operator_overview", endpoint: "GET /agent/v1/operator/overview (operator-session bearer)", mcp: null, cli: "operator:overview", openclaw: "operator:overview" },
-  { id: "operator_logout",   endpoint: "POST /agent/v1/operator/session/revoke",                   mcp: null, cli: "operator:logout",   openclaw: "operator:logout" },
-  { id: "operator_whoami",   endpoint: "(local)",                                                  mcp: null, cli: "operator:whoami",   openclaw: "operator:whoami" },
+  // ── Sign-in session and write approval (a person, not the agent) ─────────
+  // One sign-in session graded by provenance (loopback | device). A browser
+  // ceremony → MCP null by design (an MCP host holds no browser, and a
+  // person's session must not become the agent's ambient authority).
+  { id: "login",             endpoint: "POST /agent/v1/control-plane/cli/token (+ /cli/device, /cli/device/token)", mcp: null, cli: "login", openclaw: "login" },
+  { id: "logout",            endpoint: "POST /agent/v1/control-plane/session/revoke",              mcp: null, cli: "logout",    openclaw: "logout" },
   { id: "adopt_org",         endpoint: "POST /orgs/v1/adopt (+ /challenge)",                        mcp: null, cli: "org:adopt", openclaw: "org:adopt" },
-  { id: "operator_approve",  endpoint: "POST /agent/v1/control-plane/write-auth/challenges (+ /cli/token)", mcp: null, cli: "operator:approve",  openclaw: "operator:approve" },
-  { id: "operator_status",   endpoint: "(local)",                                                  mcp: null, cli: "operator:status",   openclaw: "operator:status" },
+  { id: "approve",           endpoint: "POST /agent/v1/control-plane/write-approval/challenges (+ /cli/token)", mcp: null, cli: "approve", openclaw: "approve" },
 
   // ── Additional billing ─────────────────────────────────────────────────
   { id: "create_checkout",   endpoint: "POST /orgs/v1/:org_id/checkouts",        mcp: "create_checkout",     cli: "billing:checkout",  openclaw: "billing:checkout" },
@@ -682,7 +683,7 @@ const SURFACE: Capability[] = [
   // ── Admin ──────────────────────────────────────────────────────────────
   // v1.57: pin/unpin endpoints removed. Per-project pin is superseded by the
   // organization-level escape hatch (admin_set_lease_perpetual). archive and
-  // reactivate are operator moderation actions, scoped to a single project.
+  // reactivate are staff moderation actions, scoped to a single project.
   { id: "admin_set_lease_perpetual", endpoint: "POST /orgs/v1/admin/:org_id/lease-perpetual", mcp: "admin_set_lease_perpetual", cli: "admin:lease-perpetual", openclaw: "admin:lease-perpetual" },
   { id: "admin_archive_project",     endpoint: "POST /projects/v1/admin/:id/archive",                 mcp: "admin_archive_project",     cli: "admin:archive",          openclaw: "admin:archive" },
   { id: "admin_reactivate_project",  endpoint: "POST /projects/v1/admin/:id/reactivate",              mcp: "admin_reactivate_project",  cli: "admin:reactivate",       openclaw: "admin:reactivate" },
@@ -709,8 +710,9 @@ const SURFACE: Capability[] = [
   // org-owned naming surface for the same reasons: a paid, side-effecting,
   // hard-to-undo mutation belongs to a command the caller typed).
   { id: "org_slug",            endpoint: "POST /orgs/v1/:org_id/slug",                    mcp: null,                    cli: "org:slug",          openclaw: "org:slug" },
-  { id: "whoami",              endpoint: "GET /agent/v1/whoami",                          mcp: "whoami",                cli: "org:whoami",        openclaw: "org:whoami" },
-  { id: "list_orgs",           endpoint: "GET /orgs/v1",                                  mcp: "list_orgs",             cli: "org:list",          openclaw: "org:list" },
+  { id: "whoami",              endpoint: "GET /agent/v1/whoami",                          mcp: "whoami",                cli: "whoami",            openclaw: "whoami" },
+  { id: "org_whoami",          endpoint: "GET /agent/v1/whoami (+ PATCH /agent/v1/me)",   mcp: null,                    cli: "org:whoami",        openclaw: "org:whoami" },
+  { id: "list_orgs",           endpoint: "GET /orgs/v1 (+ GET /agent/v1/me/overview)",    mcp: "list_orgs",             cli: "org:list",          openclaw: "org:list" },
   { id: "list_org_members",    endpoint: "GET /orgs/v1/:org_id/members",                      mcp: "list_org_members",      cli: "org:member:list",   openclaw: "org:member:list" },
   { id: "add_org_member",      endpoint: "POST /orgs/v1/:org_id/members",                     mcp: "add_org_member",        cli: "org:member:add",    openclaw: "org:member:add" },
   { id: "set_org_member_role", endpoint: "PATCH /orgs/v1/:org_id/members/:principal_id",      mcp: "set_org_member_role",   cli: "org:member:role",   openclaw: "org:member:role" },
@@ -997,7 +999,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   repos_daemon: null, // local socket probe only (gitvault-persistent-helper) — no SDK capability
   repos_access: "gitvault.access",
   repos_recover: "gitvault.recover",
-  repos_recovery_bundle: "operator.session.sourceAccessRecoveryBundle",
+  repos_recovery_bundle: "session.sourceAccessRecoveryBundle",
   // The result store is MCP-local plumbing, not a gateway capability.
   expand_result: null,
 
@@ -1207,8 +1209,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   get_agent_contact_status: "admin.getAgentContactStatus",
   verify_agent_contact_email: "admin.verifyAgentContactEmail",
 
-  // Operator health notifications (v1.55)
-  get_operator_status: "admin.getOperatorStatus",
+  // Owner notifications (v1.55)
   list_notifications: "admin.listNotifications",
   list_project_events: "events.list",
   // tenant-live-changes: the CLI verb streams via `live.subscribe`; the held
@@ -1241,7 +1242,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   set_notification_preferences: "admin.setNotificationPreferences",
   test_notification: "admin.testNotification",
   rotate_webhook_secret: "admin.rotateWebhookSecret",
-  start_operator_passkey_enrollment: "admin.startOperatorPasskeyEnrollment",
+  start_contact_passkey_enrollment: "admin.startContactPasskeyEnrollment",
 
   // Telegram notification channel + routing rules
   // (notification-channel-routing-telegram) — sub-namespaces on admin, same
@@ -1253,18 +1254,15 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   create_notification_rule: "admin.rules.create",
   delete_notification_rule: "admin.rules.delete",
 
-  // Operator session (human/email, RFC 8628 device-auth). `operator login`
-  // brokers deviceStart + devicePoll; devicePoll has no dedicated capability
-  // (it shares the `login` verb) and is listed in SDK_ONLY_METHODS below.
-  operator_login: "operator.deviceStart",
-  operator_overview: "operator.overview",
-  operator_logout: "operator.revoke",
-  operator_whoami: null, // local-only cache read (core/operator-session.ts)
+  // Sign-in session. `login` maps to the loopback exchange; the authorize URL
+  // and the device flow (`login --device`) share the verb and are listed in
+  // SDK_ONLY_METHODS below.
+  login: "session.exchangeCliToken",
+  logout: "session.revoke",
   // Claim maps to the submit step; the challenge step is in SDK_ONLY_METHODS and
   // the full dance is the Node convenience `adoptOrg` (a standalone export).
   adopt_org: "orgs.adopt.submit",
-  operator_approve: "operator.approval.requestChallenge",
-  operator_status: null, // local-only cache read (core/write-auth-session.ts)
+  approve: "writeApproval.requestChallenge",
 
   // Admin (v1.57)
   admin_set_lease_perpetual: "admin._setLeasePerpetual",
@@ -1289,6 +1287,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   set_org_payout_wallet: "org.setPayoutWallet",
   org_slug: "org.setSlug",
   whoami: "orgs.whoami",
+  org_whoami: "orgs.whoami",
   list_orgs: "orgs.list",
   list_org_members: "org.members.list",
   add_org_member: "org.members.add",
@@ -1622,7 +1621,7 @@ describe("SDK surface alignment", () => {
       // gitvault-recovery-custody: the wrapper-states read has no verb of
       // its own — `repos access` composes it into its member_custody block
       // (the capability row maps to gitvault.access, the primary read).
-      "operator.session.sourceAccessWrappers",
+      "session.sourceAccessWrappers",
       // gitvault-compaction-headroom-preflight: the same arithmetic
       // `gitvault.compact` preflights on, with none of its policy. It has no
       // verb of its own — `repos gc` composes it into its `headroom` block on
@@ -1633,7 +1632,7 @@ describe("SDK surface alignment", () => {
       // gitvault-checkpoint-cadence design D3: `compact()` opens/closes the
       // compaction headroom grant internally (before staging the checkpoint,
       // closed once it publishes) — these standalone entry points exist for
-      // tests and a future operator/diagnostic surface, not as a verb of
+      // tests and a future staff/diagnostic surface, not as a verb of
       // their own; there is no CLI/MCP surface that opens or closes a grant
       // without also compacting.
       "gitvault.openCompactionGrant",
@@ -1645,7 +1644,7 @@ describe("SDK surface alignment", () => {
       "admin.sendMessage",
       // add-room-invite: the key-form redemption `rooms join <kri1_…>` runs —
       // it has no capability row of its own, the same law as
-      // `operator.devicePoll` sharing the `login` verb above: `join_room`'s
+      // `session.devicePoll` sharing the `login` verb above: `join_room`'s
       // own CLI spelling (`rooms:join`) already covers both forms, and a
       // second row here would collide on that one `cli` string.
       "rooms.join",
@@ -1772,7 +1771,7 @@ describe("SDK surface alignment", () => {
       "wallets.getLabel",
       "wallets.setLabel",
       // ─── call-shape conventions (sdk-positional-arg-ergonomics) ───────────
-      // r.admin.org(id) / r.admin.project(id) are operator scope-handle
+      // r.admin.org(id) / r.admin.project(id) are staff scope-handle
       // factories (the admin analog of r.project(id)/r.org(id)). Their methods
       // (pinLease/unpinLease, archive/reactivate/finance) reach the existing
       // admin SURFACE capabilities (lease-perpetual, archive, reactivate,
@@ -1966,41 +1965,41 @@ describe("SDK surface alignment", () => {
       // to the mutating confirm call; restorePlan is the typed planning half
       // used by CLI/MCP before confirming the same endpoint.
       "snapshots.restorePlan",
-      // ─── operator session (human/email, RFC 8628) ────────────────────────
-      // `operator login` brokers the device flow via deviceStart + devicePoll;
-      // devicePoll shares the `login` verb (no dedicated capability), like the
-      // cache.invalidate* variants above.
-      "operator.devicePoll",
-      // Loopback-PKCE write-login (v1.78): both helpers are part of the
-      // `operator login --loopback` ceremony, with no dedicated capability.
-      "operator.buildCliAuthorizeUrl",
-      "operator.exchangeCliToken",
-      // Operator-approval ceremony (v1.85/v1.87): requestChallenge is mapped to
-      // `operator_approve`; exchangeClaimCode is the second half of the same
-      // `operator approve` loopback dance, with no dedicated capability.
-      "operator.approval.exchangeClaimCode",
-      // ─── hosted control-plane session (v1.78, passkey-principals-onboarding) ─
-      // `r.operator.session.*` is the browser/console session-login client
-      // surface (email magic-link / passkey / OAuth / lifecycle / step-up /
-      // recovery / authenticators). Browser-interactive by design — no MCP tool
-      // and no dedicated CLI verb (the CLI write-login is the loopback ceremony
-      // above; `whoami` is also called internally to surface claimed invites).
-      "operator.session.email",
-      "operator.session.verifyEmail",
-      "operator.session.passkeyOptions",
-      "operator.session.passkeyVerify",
-      "operator.session.oauthUrl",
-      "operator.session.consumeRecoveryCode",
-      "operator.session.whoami",
-      "operator.session.refresh",
-      "operator.session.revoke",
-      "operator.session.enrollPasskeyOptions",
-      "operator.session.enrollPasskeyVerify",
-      "operator.session.stepUpOptions",
-      "operator.session.stepUpVerify",
-      "operator.session.issueRecoveryCodes",
-      "operator.session.listAuthenticators",
-      "operator.session.revokeAuthenticator",
+      // ─── sign-in session ─────────────────────────────────────────────────
+      // `run402 login` builds the authorize URL (mapped: exchangeCliToken);
+      // `run402 login --device` runs deviceStart + devicePoll. All share the
+      // `login` verb, like the cache.invalidate* variants above.
+      "session.buildCliAuthorizeUrl",
+      "session.deviceStart",
+      "session.devicePoll",
+      // `run402 approve`: requestChallenge is mapped to `approve`;
+      // exchangeClaimCode is the second half of the same loopback dance.
+      "writeApproval.exchangeClaimCode",
+      // The account reads: `run402 org list` joins me.overview into the
+      // membership list (`list_orgs` maps to orgs.list); `run402 doctor` and
+      // MCP `whoami` read me.status. Neither has a verb of its own.
+      "me.overview",
+      "me.status",
+      // `r.session.*` is also the browser/console sign-in client surface
+      // (email magic link / passkey / OAuth / lifecycle / step-up / recovery /
+      // authenticators). Browser-interactive by design — no MCP tool and no
+      // dedicated CLI verb (the CLI sign-in is the loopback ceremony above;
+      // `whoami` is also called by `run402 login` and `run402 whoami`).
+      "session.email",
+      "session.verifyEmail",
+      "session.passkeyOptions",
+      "session.passkeyVerify",
+      "session.oauthUrl",
+      "session.consumeRecoveryCode",
+      "session.whoami",
+      "session.refresh",
+      "session.enrollPasskeyOptions",
+      "session.enrollPasskeyVerify",
+      "session.stepUpOptions",
+      "session.stepUpVerify",
+      "session.issueRecoveryCodes",
+      "session.listAuthenticators",
+      "session.revokeAuthenticator",
       // Email-code verification is the second credential shape accepted by
       // the existing auth:verify CLI/OpenClaw command and verify_magic_link
       // MCP tool, whose canonical SURFACE mapping remains verifyMagicLink.

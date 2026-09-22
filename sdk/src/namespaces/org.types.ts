@@ -65,9 +65,31 @@ export interface OrgMembership {
  * address + profile label): this returns the control-plane principal and every
  * org it is a member of.
  */
+/**
+ * How a sign-in session was minted, as the gateway reports it: `browser` (the
+ * console), `loopback` (`run402 login`), or `device` (`run402 login --device`,
+ * read-only — every mutation answers `SESSION_READ_ONLY`).
+ */
+export type SessionGrade = "browser" | "loopback" | "device";
+
+/** The sign-in session that authenticated a `whoami` read. */
+export interface WhoAmISession {
+  grade: SessionGrade | (string & {});
+  /** Auth methods satisfied on this session, e.g. `["passkey"]`. */
+  amr: string[];
+  /** Per-AMR last-proven time (epoch seconds), the step-up freshness source. */
+  amr_times?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
 export interface WhoAmIResult {
   principal: Principal;
   memberships: OrgMembership[];
+  /**
+   * The sign-in session that authenticated this read, or `null` for a wallet
+   * (SIWX) or grant-key caller.
+   */
+  session?: WhoAmISession | null;
   authenticator_id: string | null;
   active_authenticator: ActiveAuthenticatorRepresentation | null;
   linked_identities: LinkedIdentityRepresentation[];

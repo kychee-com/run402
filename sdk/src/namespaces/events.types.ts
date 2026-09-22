@@ -144,7 +144,7 @@ export interface ProjectEventFeedPage {
   /**
    * Health rider: `"degraded"` while an open platform incident is global or
    * affects one of your projects; omitted when clear. The same rider appears
-   * on `r.admin.getOperatorStatus()` and `r.tiers.status()`. Pass-through via
+   * on `r.me.status()` and `r.tiers.status()`. Pass-through via
    * the index signature.
    */
   platform_status?: string;

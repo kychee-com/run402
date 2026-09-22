@@ -295,7 +295,7 @@ export function scanFileContent(content: string, opts: ScanOptions = {}) {
   //    Pattern is intentionally narrow (`user_id` literal column name + a
   //    value expression matching `<ident>.id`) to keep the false-positive
   //    rate low. Heuristic — RLS-binding is unknown at scan time; the rule
-  //    fires on the shape, and the operator either annotates or fixes.
+  //    fires on the shape, and the author either annotates or fixes.
   const redundantFilterRegex =
     /\.eq\s*\(\s*['"]user_id['"]\s*,\s*([a-zA-Z_$][\w$]*)\.id\s*\)/g;
   const lines = content.split(/\r?\n/);

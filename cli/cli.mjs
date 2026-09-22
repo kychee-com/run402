@@ -76,13 +76,16 @@ AUTHORITY — who may act, and with what credential
   identity    Public proof-backed external agent identity links
   auth        Manage project user authentication (magic link, passwords, settings)
   ci          Link GitHub Actions OIDC deploy bindings
-  operator    Operator (human/email) session — login, then overview across your wallets
+  login       Sign in as a person (browser passkey; --device for a read-only session)
+  logout      End your sign-in session and clear it from this machine
+  whoami      Who this CLI acts as: principal, memberships, session grade
+  approve     Write approval for one action on one target (provision, deploy, secrets)
 
 DELIVER — reach a human when something happens
   deliveries     Did a notification actually land (list, get)
   contacts       Where a human is reachable — paging ladder + Telegram (list, add, connect, rm, preferences)
   subscriptions  Which events go where (add, list, rm)
-  webhook-secret Rotate the operator webhook signing secret
+  webhook-secret Rotate your webhook signing secret
   email          Send template-based emails from your project
 
 PLATFORM — everything else, and the things still finding a home
@@ -437,9 +440,24 @@ switch (cmd) {
     await run(sub, rest);
     break;
   }
-  case "operator": {
-    const { run } = await import("./lib/operator.mjs");
-    await run(sub, rest);
+  case "login": {
+    const { run } = await import("./lib/login.mjs");
+    await run([sub, ...rest].filter(Boolean));
+    break;
+  }
+  case "logout": {
+    const { run } = await import("./lib/logout.mjs");
+    await run([sub, ...rest].filter(Boolean));
+    break;
+  }
+  case "whoami": {
+    const { run } = await import("./lib/whoami.mjs");
+    await run([sub, ...rest].filter(Boolean));
+    break;
+  }
+  case "approve": {
+    const { run } = await import("./lib/approve.mjs");
+    await run([sub, ...rest].filter(Boolean));
     break;
   }
   case "source-access": {

@@ -65,7 +65,7 @@ Delivery:
 
 Contacts are attention policy, never authorization — adding someone says
 "page this human", never "this human may do anything". Owner + passkey
-step-up to change. An address with no verified operator email is accepted
+step-up to change. An address with no verified contact email is accepted
 with a warning rather than rejected (the person you most want on a level-2
 chain may hold no platform credential at all).
 

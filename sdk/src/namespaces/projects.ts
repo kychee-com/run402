@@ -5,7 +5,7 @@
  *   - remote: provision, delete, list, getUsage, getSchema, getQuote
  *   - local:  info, keys, use (require provider support for persistence methods)
  *
- * Operator-only project actions live on the {@link Admin} namespace:
+ * Staff-only project actions live on the {@link Admin} namespace:
  *   - `admin.archiveProject` / `admin.reactivateProject` — moderate-archive
  *   - `admin.setLeasePerpetual` — organization-level escape hatch (replaces the
  *     v1.56 `projects.pin` removed in v1.57)
@@ -119,7 +119,7 @@ export class Projects {
       // Retry-safety: a caller-supplied key collapses a re-run (the agent's
       // natural mode after a crash) onto the same project instead of duplicating.
       ...(opts.idempotencyKey ? { headers: { "Idempotency-Key": opts.idempotencyKey } } : {}),
-      // Operator-approval scope: creating a project in an org is `org.project.create`
+      // Write-approval scope: creating a project in an org is `org.project.create`
       // targeting that org. Only meaningful when provisioning into an existing org.
       ...(opts.orgId
         ? {
@@ -182,12 +182,12 @@ export class Projects {
    *
    * - `{ org }` narrows to one owning org (authorize-before-reveal: a non-member
    *   or guessed id is a 403, a non-UUID id a 400).
-   * - `{ all: true }` reads the operator email-union inventory across every
-   *   wallet controlling the operator's verified email
-   *   (`GET /agent/v1/operator/projects`). Pass `{ all: true, token }` with an
-   *   operator-session token for the cross-wallet union; without `token`, `all`
-   *   uses SIWX wallet auth and returns only that wallet's slice. The response
-   *   echoes the resolved `scope` (`"email"` or `"wallet"`) and is unpaged.
+   * - `{ all: true }` reads every project the caller can reach across all its
+   *   organizations (`GET /agent/v1/me/projects`). Pass `{ all: true, token }`
+   *   with a sign-in session token for the person's account; without `token`,
+   *   `all` uses the credential provider (a SIWX wallet reads its own slice).
+   *   The response echoes the resolved `scope` (`"principal"` or `"wallet"`)
+   *   and is unpaged.
    * - `{ limit, cursor }` paginate the membership-scoped read (server default
    *   50, max 200).
    *
@@ -198,17 +198,17 @@ export class Projects {
   async list(opts: ListProjectsOptions = {}): Promise<ListProjectsResult> {
     if (opts.all && opts.org !== undefined) {
       throw new LocalError(
-        "projects.list({ all, org }): `all` (operator email-union) and `org` (single-org filter) are mutually exclusive.",
+        "projects.list({ all, org }): `all` (every organization) and `org` (single-org filter) are mutually exclusive.",
         "listing projects",
       );
     }
 
     if (opts.all) {
-      // Operator email-union inventory (`--all`). With an operator-session
-      // token, the gateway returns the cross-wallet union; without one, it
-      // falls back to the SIWX wallet's own slice (same row shape either way).
+      // Account-wide inventory (`--all`). With a sign-in session token the
+      // gateway returns every project the person can reach; without one, the
+      // credential provider's wallet reads its own slice (same row shape).
       const headers = opts.token ? { Authorization: `Bearer ${opts.token}` } : undefined;
-      const result = await this.client.request<ListProjectsResult>("/agent/v1/operator/projects", {
+      const result = await this.client.request<ListProjectsResult>("/agent/v1/me/projects", {
         context: "listing projects",
         ...(headers ? { headers, withAuth: false } : {}),
       });

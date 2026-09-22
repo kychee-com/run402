@@ -107,7 +107,7 @@ import { listSubdomainsSchema, handleListSubdomains } from "./tools/list-subdoma
 import { deleteProjectSchema, handleDeleteProject } from "./tools/delete-project.js";
 import { renameProjectSchema, handleRenameProject } from "./tools/rename-project.js";
 
-// Operator-only project + organization actions
+// Staff-only project + organization actions
 import {
   adminSetLeasePerpetualSchema,
   handleAdminSetLeasePerpetual,
@@ -305,10 +305,9 @@ import { setAgentContactSchema, handleSetAgentContact } from "./tools/set-agent-
 import { getAgentContactStatusSchema, handleGetAgentContactStatus } from "./tools/get-agent-contact-status.js";
 import { verifyAgentContactEmailSchema, handleVerifyAgentContactEmail } from "./tools/verify-agent-contact-email.js";
 import {
-  startOperatorPasskeyEnrollmentSchema,
-  handleStartOperatorPasskeyEnrollment,
-} from "./tools/start-operator-passkey-enrollment.js";
-import { getOperatorStatusSchema, handleGetOperatorStatus } from "./tools/get-operator-status.js";
+  startContactPasskeyEnrollmentSchema,
+  handleStartContactPasskeyEnrollment,
+} from "./tools/start-contact-passkey-enrollment.js";
 import { getNotificationPreferencesSchema, handleGetNotificationPreferences } from "./tools/get-notification-preferences.js";
 import { setNotificationPreferencesSchema, handleSetNotificationPreferences } from "./tools/set-notification-preferences.js";
 import { listNotificationsSchema, handleListNotifications } from "./tools/list-notifications.js";
@@ -1042,14 +1041,14 @@ server.tool(
 
 server.tool(
   "admin_archive_project",
-  "Operator moderation action — archive a single project (sets `projects.archived_at = NOW()`). Independent of organization-level lifecycle: sibling projects on the same organization keep serving. No-op when the project is already archived. Platform-admin only. Calls POST /projects/v1/admin/:id/archive.",
+  "Staff moderation action — archive a single project (sets `projects.archived_at = NOW()`). Independent of organization-level lifecycle: sibling projects on the same organization keep serving. No-op when the project is already archived. Platform-admin only. Calls POST /projects/v1/admin/:id/archive.",
   adminArchiveProjectSchema,
   async (args) => handleAdminArchiveProject(args),
 );
 
 server.tool(
   "admin_reactivate_project",
-  "Operator un-archive — flips `projects.archived_at` back to NULL. In v1.57 this was narrowed: it no longer touches organization-level lifecycle. To reactivate a grace-state organization, set a tier (`tier_set`) or enable lease-perpetual (`admin_set_lease_perpetual`). Platform-admin only. Calls POST /projects/v1/admin/:id/reactivate.",
+  "Staff un-archive — flips `projects.archived_at` back to NULL. In v1.57 this was narrowed: it no longer touches organization-level lifecycle. To reactivate a grace-state organization, set a tier (`tier_set`) or enable lease-perpetual (`admin_set_lease_perpetual`). Platform-admin only. Calls POST /projects/v1/admin/:id/reactivate.",
   adminReactivateProjectSchema,
   async (args) => handleAdminReactivateProject(args),
 );
@@ -1123,7 +1122,7 @@ server.tool(
 
 server.tool(
   "list_projects",
-  "List projects from the named, domain-aware inventory (GET /projects/v1). Membership-scoped by default: every project owned by an org the agent's wallet is an active member of, with name, site_url, custom_domains, org (org_id), and status. SIWX wallet auth is signed automatically. Pass org_id to filter to one org (authorize-before-reveal: non-member/guessed → 403, non-UUID → 400), all:true to read the cross-wallet inventory across every wallet controlling your operator email, or limit/cursor to paginate.",
+  "List projects from the named, domain-aware inventory (GET /projects/v1). Membership-scoped by default: every project owned by an org the agent's wallet is an active member of, with name, site_url, custom_domains, org (org_id), and status. SIWX wallet auth is signed automatically. Pass org_id to filter to one org (authorize-before-reveal: non-member/guessed → 403, non-UUID → 400), all:true to read every project the caller can reach across all its orgs (GET /agent/v1/me/projects), or limit/cursor to paginate.",
   listProjectsSchema,
   async (args) => handleListProjects(args),
 );
@@ -1336,65 +1335,58 @@ server.tool(
 
 server.tool(
   "send_feedback",
-  "Send feedback to the Run402 developers - a bug report, a rough edge, a request. WRITE-ONLY: there is no inbox to read and no reply path, so do NOT use this when you need an answer. To reach the humans who own this organization and wait for one to take ownership, raise_escalation; to talk to the other agents working alongside you, send_room_message. Requires an active tier. Also the way a deploy's promotion offer is answered: when a commit or promote response reaches status \"ready\" with a public site, it carries a next_actions entry of type hand_to_operator - Run402 asking, through you, whether it may promote what your human built on @run402com, for free, credited to credited_as and to your human. Show your human urls.site and urls.console, relay the offer honestly (it's an offer, not a claim the build has been reviewed), and ask yes or no. On yes, optionally ask for an X/Twitter handle, then call send_feedback with message \"promote: yes\", this project_id, and the optional handle. The offer disappears once answered.",
+  "Send feedback to the Run402 developers - a bug report, a rough edge, a request. WRITE-ONLY: there is no inbox to read and no reply path, so do NOT use this when you need an answer. To reach the humans who own this organization and wait for one to take ownership, raise_escalation; to talk to the other agents working alongside you, send_room_message. Requires an active tier. Also the way a deploy's promotion offer is answered: when a commit or promote response reaches status \"ready\" with a public site, it carries a next_actions entry of type hand_to_member - Run402 asking, through you, whether it may promote what your human built on @run402com, for free, credited to credited_as and to your human. Show your human urls.site and urls.console, relay the offer honestly (it's an offer, not a claim the build has been reviewed), and ask yes or no. On yes, optionally ask for an X/Twitter handle, then call send_feedback with message \"promote: yes\", this project_id, and the optional handle. The offer disappears once answered.",
   sendFeedbackSchema,
   async (args) => handleSendFeedback(args),
 );
 
 server.tool(
   "set_agent_contact",
-  "Register agent contact info (name, email, webhook). New or changed emails start operator email reply verification. Free with SIWX auth.",
+  "Register agent contact info (name, email, webhook). New or changed emails start contact email reply verification. Free with SIWX auth.",
   setAgentContactSchema,
   async (args) => handleSetAgentContact(args),
 );
 
 server.tool(
   "get_agent_contact_status",
-  "Get the current agent contact assurance state: wallet_only, email_pending, email_verified, passkey_pending, or operator_passkey.",
+  "Get the current agent contact assurance state: wallet_only, email_pending, email_verified, passkey_pending, or operator_passkey (passkey assurance; a person signed in with `run402 login` satisfies it for a contact whose verified email their principal holds).",
   getAgentContactStatusSchema,
   async (args) => handleGetAgentContactStatus(args),
 );
 
 server.tool(
   "verify_agent_contact_email",
-  "Start or resend the operator email reply challenge for the active agent contact email. Does not expose the challenge secret.",
+  "Start or resend the contact email reply challenge for the active agent contact email. Does not expose the challenge secret.",
   verifyAgentContactEmailSchema,
   async (args) => handleVerifyAgentContactEmail(args),
 );
 
 server.tool(
-  "start_operator_passkey_enrollment",
-  "Email a short-lived Run402 operator passkey enrollment link to the verified contact email. Requires email_verified.",
-  startOperatorPasskeyEnrollmentSchema,
-  async (args) => handleStartOperatorPasskeyEnrollment(args),
+  "start_contact_passkey_enrollment",
+  "Email a short-lived Run402 passkey enrollment link to the verified contact email. Requires email_verified.",
+  startContactPasskeyEnrollmentSchema,
+  async (args) => handleStartContactPasskeyEnrollment(args),
 );
 
-// ─── Operator notifications ─────────────────────────────────────────────
-
-server.tool(
-  "get_operator_status",
-  "Compact operator-health snapshot: contact assurance, critical items, skipped notifications, organizations, projects, active thresholds. Read via run402 doctor.",
-  getOperatorStatusSchema,
-  async (args) => handleGetOperatorStatus(args),
-);
+// ─── Owner notifications ────────────────────────────────────────────────
 
 server.tool(
   "get_notification_preferences",
-  "Read the operator's notification preferences (channels, cadence, threshold/lifecycle/security toggles, locale, timezone).",
+  "Read your notification preferences (channels, cadence, threshold/lifecycle/security toggles, locale, timezone).",
   getNotificationPreferencesSchema,
   async (args) => handleGetNotificationPreferences(args),
 );
 
 server.tool(
   "set_notification_preferences",
-  "Update operator notification preferences. Cross-wallet effects require email_verified assurance; webhook URL changes require operator_passkey assurance.",
+  "Update your notification preferences. Cross-wallet effects require email_verified assurance; webhook URL changes require passkey assurance (`operator_passkey`).",
   setNotificationPreferencesSchema,
   async (args) => handleSetNotificationPreferences(args),
 );
 
 server.tool(
   "list_notifications",
-  "List the operator's notification audit log (delivered, failed, and skipped attempts). Paginated; filter by event type or since timestamp.",
+  "List your notification audit log (delivered, failed, and skipped attempts). Paginated; filter by event type or since timestamp.",
   listNotificationsSchema,
   async (args) => handleListNotifications(args),
 );
@@ -1515,14 +1507,14 @@ server.tool(
 
 server.tool(
   "rotate_webhook_secret",
-  "Generate a fresh HMAC signing secret for the operator's webhook endpoint. Returned EXACTLY once. Previous secret remains valid for 24h. Requires operator_passkey assurance.",
+  "Generate a fresh HMAC signing secret for your webhook endpoint. Returned EXACTLY once. Previous secret remains valid for 24h. Requires passkey assurance (`operator_passkey`).",
   rotateWebhookSecretSchema,
   async (args) => handleRotateWebhookSecret(args),
 );
 
 // ─── Telegram notification channel + routing rules
 //     (notification-channel-routing-telegram) ──────────────────────────────
-// Self-serve Telegram push on top of the operator-notifications substrate
+// Self-serve Telegram push on top of the owner-notifications substrate
 // above: connect a chat, then add per-project/source/event_type/class rules
 // so ONLY matching events page that chat. No rule = no Telegram traffic;
 // the mandatory email floor (security/recovery/billing_critical/
@@ -1534,28 +1526,28 @@ server.tool(
 
 server.tool(
   "list_notification_channels",
-  "List every notification channel for the operator: email, webhook, and every live (non-revoked) Telegram binding with its id, status (pending/active/revoked), chat metadata, and label. Use this to find a telegram_binding_id for create_notification_rule.",
+  "List every notification channel for the caller: email, webhook, and every live (non-revoked) Telegram binding with its id, status (pending/active/revoked), chat metadata, and label. Use this to find a telegram_binding_id for create_notification_rule.",
   listNotificationChannelsSchema,
   async (args) => handleListNotificationChannels(args),
 );
 
 server.tool(
   "list_notification_rules",
-  "List the operator's Telegram routing rules. Each rule ANDs its match dimensions (project_id, source, event_types, classes); an omitted dimension is a wildcard. One rule always targets exactly one Telegram binding.",
+  "List your Telegram routing rules. Each rule ANDs its match dimensions (project_id, source, event_types, classes); an omitted dimension is a wildcard. One rule always targets exactly one Telegram binding.",
   listNotificationRulesSchema,
   async (args) => handleListNotificationRules(args),
 );
 
 server.tool(
   "create_notification_rule",
-  "Create a Telegram routing rule: one match (project_id / source / event_types / classes, all ANDed, each optional — omitted = wildcard) routes to one Telegram binding. Requires operator_passkey assurance. An unusable or foreign telegram_binding_id returns the same 404 as a nonexistent one.",
+  "Create a Telegram routing rule: one match (project_id / source / event_types / classes, all ANDed, each optional — omitted = wildcard) routes to one Telegram binding. Requires passkey assurance (`operator_passkey`). An unusable or foreign telegram_binding_id returns the same 404 as a nonexistent one.",
   createNotificationRuleSchema,
   async (args) => handleCreateNotificationRule(args),
 );
 
 server.tool(
   "delete_notification_rule",
-  "Delete a Telegram routing rule. Requires operator_passkey assurance.",
+  "Delete a Telegram routing rule. Requires passkey assurance (`operator_passkey`).",
   deleteNotificationRuleSchema,
   async (args) => handleDeleteNotificationRule(args),
 );
@@ -1969,7 +1961,7 @@ server.tool(
 
 server.tool(
   "whoami",
-  "Resolve the caller's control-plane principal and its org memberships (GET /agent/v1/whoami), optionally setting the principal's display name first (`set_display_name` → PATCH /agent/v1/me; 1–64 chars — the name promotion credit, `up`'s room presence, and audit surfaces show for this principal). A wallet authenticates; ownership is the org. Returns the principal (id/type/display_name/created_at), authenticator_id, and every org membership (org_id, display_name, role, status). This is the REMOTE identity — for the local wallet/profile state use `status`.",
+  "Resolve the caller's control-plane principal and its org memberships (GET /agent/v1/whoami), optionally setting the principal's display name first (`set_display_name` → PATCH /agent/v1/me; 1–64 chars — the name promotion credit, `up`'s room presence, and audit surfaces show for this principal). A wallet authenticates; ownership is the org. Returns the principal (id/type/display_name/created_at), authenticator_id, and every org membership (org_id, display_name, role, status). Also reports `session` — the sign-in session's grade (`browser` | `loopback` | `device`, read-only) or none for a wallet caller — and the account health from GET /agent/v1/me/status (contact assurance, whether mandatory notifications reach anyone, critical items). There is no MCP login: a person signs in with `run402 login`. This is the REMOTE identity — for the local wallet/profile state use `status`.",
   whoamiSchema,
   async (args) => handleWhoami(args),
 );

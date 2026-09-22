@@ -1,4 +1,4 @@
-// Regression test for the `operator login --loopback` hang: after a successful
+// Regression test for the `run402 login` hang: after a successful
 // loopback-PKCE login the CLI must EXIT, not linger on the 127.0.0.1 server's
 // keep-alive socket. We spawn the real CLI against a mock gateway, drive the
 // loopback callback ourselves, and assert the process exits within a timeout.
@@ -14,8 +14,8 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-test("operator login --loopback exits after a successful login (no hang)", async () => {
-  // Mock gateway: token exchange returns a control-plane session; everything
+test("run402 login exits after a successful loopback login (no hang)", async () => {
+  // Mock gateway: token exchange returns a sign-in session; everything
   // else (incl. the best-effort whoami) returns a benign JSON object.
   const gateway = createServer((req, res) => {
     let body = "";
@@ -27,7 +27,7 @@ test("operator login --loopback exits after a successful login (no hang)", async
           control_plane_session_token: "cps_test",
           token_type: "Bearer",
           expires_in: 1800,
-          provenance: "loopback_pkce",
+          grade: "loopback",
           principal_id: "prn_test",
           amr: [],
         }));
@@ -42,7 +42,7 @@ test("operator login --loopback exits after a successful login (no hang)", async
 
   const child = spawn(
     process.execPath,
-    ["cli/cli.mjs", "operator", "login", "--loopback", "--no-open"],
+    ["cli/cli.mjs", "login", "--no-open"],
     {
       cwd: __dirname,
       env: { ...process.env, RUN402_API_BASE: apiBase, RUN402_CONFIG_DIR: configDir },
@@ -77,5 +77,5 @@ test("operator login --loopback exits after a successful login (no hang)", async
 
   gateway.close();
   rmSync(configDir, { recursive: true, force: true });
-  assert.equal(exitCode, 0, `operator login --loopback should exit 0; got ${exitCode}. stderr:\n${stderr}`);
+  assert.equal(exitCode, 0, `run402 login should exit 0; got ${exitCode}. stderr:\n${stderr}`);
 });

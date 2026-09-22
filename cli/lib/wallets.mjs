@@ -354,7 +354,7 @@ function flagVal(args, flag) {
  * (not the active one) so a just-created/renamed wallet can set its own label.
  *
  * ON by default — the gateway label endpoint is live, and the display label is
- * what makes the wallet name show up cross-machine and in the operator console
+ * what makes the wallet name show up cross-machine and in the console
  * (WEB). Set `RUN402_WALLET_LABEL_SYNC=0` to disable (fully-offline wallet ops,
  * or hermetic tests). The local folder name is always the source of truth; this
  * only mirrors the display label to the server. Always best-effort — `setLabel`

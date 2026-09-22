@@ -122,7 +122,7 @@ async function adopt(args) {
     assertKnownFlags(a, values, values);
     const [id] = requirePositionalCount(a, values, { min: 1, max: 1, command: "run402 buzz adopt complete <buzzha_id> --event-file <json>" });
     const event = readJsonFile(requiredFlag(a, "--event-file"), "--event-file");
-    return invoke(() => getSdk({ authMode: "operator" }).buzz.humanAdoptions.complete(id, event, flagValue(a, "--idempotency-key") ?? undefined));
+    return invoke(() => getSdk({ authMode: "session" }).buzz.humanAdoptions.complete(id, event, flagValue(a, "--idempotency-key") ?? undefined));
   }
   if (operation === "cancel") {
     const a = normalizeArgv(rest);

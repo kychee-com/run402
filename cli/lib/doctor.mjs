@@ -51,7 +51,7 @@ const DOCTOR_CHECK_NAMES = [
   "projects",
   "api_reachable",
   "tier",
-  "operator_health",
+  "account_health",
   "runtime_staleness",
   "recovery_posture",
   "gitvault",
@@ -90,7 +90,7 @@ Output:
     blocking  would stop a deploy: config_dir / wallet missing or error,
               api_reachable error, tier inactive / frozen / past_due /
               dormant / missing / error, error-severity source_scan findings
-    advisory  a warning that never stops a deploy: operator_health,
+    advisory  a warning that never stops a deploy: account_health,
               recovery_posture, gitvault, runtime_staleness, cli_update gaps
     info      ok / skipped / unknown
   Agents: branch on \`ok\`; read \`warnings[]\` (one entry per gap) for the
@@ -127,7 +127,7 @@ Options:
                  source-tree scan, is suppressed rather than merely hidden: a
                  skipped check's network/filesystem work never runs at all, so
                  \`doctor --only gitvault\` costs one gitvault read, not a
-                 config/tier/operator/scan sweep. An unknown check name is
+                 config/tier/account/scan sweep. An unknown check name is
                  BAD_USAGE listing the valid names below. Not used with --buzz
                  (buzz mode is its own separate, always-complete check set).
   --buzz         Run only the zero-mutation Buzz setup preflight
@@ -178,7 +178,7 @@ Buzz mode checks (in order):
   session_shell, node_runtime, run402_cli, buzz_cli, buzz_agent_target,
   run402_api, run402_console, buzz_relay, wallet_profile.
   Buzz mode is read-only and skips the ordinary wallet, tier, project,
-  operator, runtime-staleness, and source-tree checks.
+  account, runtime-staleness, and source-tree checks.
 
 Exit codes:
   0  — ok: true (advisory warnings never change the exit code)
@@ -550,41 +550,42 @@ export async function run(sub, args = []) {
     });
   }
 
-  // 6. Operator health snapshot (v1.55 + v1.56 verification attempt detail).
-  // The checks below all ride the SAME operator-status read (runtime_staleness
-  // and recovery_posture reuse the response operator_health already pulled),
+  // 6. Account health snapshot (v1.55 + v1.56 verification attempt detail).
+  // The checks below all ride the SAME `GET /agent/v1/me/status` read
+  // (runtime_staleness and recovery_posture reuse the response account_health
+  // already pulled),
   // so the whole block is gated on wanting ANY — --only runtime_staleness
   // alone still needs this read, but --only-ing none skips it entirely, same
   // "don't do the work of a check nobody asked for" discipline the rest of
   // --only follows.
-  if (wanted("operator_health") || wanted("runtime_staleness") || wanted("recovery_posture")) try {
+  if (wanted("account_health") || wanted("runtime_staleness") || wanted("recovery_posture")) try {
     const sdk = getSdk();
-    const status = await sdk.admin.getOperatorStatus();
+    const status = await sdk.me.status();
     const gaps = [];
-    if (status.operator_contact.email_status !== "verified") {
+    if (status.contact.email_status !== "verified") {
       // v1.56: prefer the structured email_verification.last_challenge.hint
       // over the generic "email not verified" message. The gateway computes
-      // a per-reason remediation hint that's actionable for the operator.
+      // a per-reason remediation hint that's actionable for the reader.
       const ev = status.email_verification;
       const ch = ev?.last_challenge;
       if (ch && ch.hint) {
         const attemptsLine = ch.attempt_count > 0
           ? ` (${ch.attempt_count}/${ch.attempt_count + ch.remaining_attempts} attempts used, ${ch.remaining_attempts} remaining)`
           : "";
-        gaps.push(`operator email not verified${attemptsLine}: ${ch.hint}`);
+        gaps.push(`contact email not verified${attemptsLine}: ${ch.hint}`);
       } else {
-        gaps.push(`operator email not verified (${status.operator_contact.email_status}) — run 'run402 agent contact --email ...' then reply to the challenge`);
+        gaps.push(`contact email not verified (${status.contact.email_status}) — run 'run402 agent contact --email ...' then reply to the challenge`);
       }
     }
-    if (status.operator_contact.passkey_status !== "verified") {
-      gaps.push("operator passkey not bound — run 'run402 agent passkey enroll' after email verification");
+    if (status.contact.passkey_status !== "verified") {
+      gaps.push("contact passkey not bound — run 'run402 login' (or 'run402 agent passkey enroll') after email verification");
     }
     // recovery-event-reachability: org-level reachability of mandatory
     // (recovery/security) notifications. Distinct from the per-wallet contact
     // check above — an org can be reachable via a member's verified email
     // even when this wallet has no contact, and vice versa. Omitted by older
     // gateways.
-    const reach = status.operator_reachability;
+    const reach = status.reachability;
     if (reach && reach.reachable === false) {
       const skipped = reach.skipped_last_90d > 0
         ? ` (${reach.skipped_last_90d} notification(s) already skipped in the last 90 days)`
@@ -599,16 +600,16 @@ export async function run(sub, args = []) {
         gaps.push(`${item.kind}: ${item.detail}`);
       }
     }
-    if (wanted("operator_health")) {
+    if (wanted("account_health")) {
       if (gaps.length > 0) {
         checks.push({
-          name: "operator_health",
+          name: "account_health",
           status: "warning",
           value: { gaps },
           hint: "Address the above gaps; they're what 'run402 notifications' is designed to surface.",
         });
       } else {
-        checks.push({ name: "operator_health", status: "ok" });
+        checks.push({ name: "account_health", status: "ok" });
       }
     }
 
@@ -618,7 +619,7 @@ export async function run(sub, args = []) {
     // gateway's current build — a plain redeploy with unchanged source does
     // NOT refresh it (apply's release diff keys on the source code_hash, not
     // the wrapper). Read-only signal; refreshing is strictly opt-in. Reuses
-    // the operator status fetched above to avoid a second round-trip.
+    // the account status fetched above to avoid a second round-trip.
     if (wanted("runtime_staleness")) {
       const runtime = status.runtime;
       if (runtime && typeof runtime.stale_function_count === "number") {
@@ -644,13 +645,13 @@ export async function run(sub, args = []) {
         checks.push({
           name: "runtime_staleness",
           status: "skipped",
-          ...(verbose && { hint: "operator status has no 'runtime' block; requires v1.69+ gateway." }),
+          ...(verbose && { hint: "account status has no 'runtime' block; requires v1.69+ gateway." }),
         });
       }
     }
 
     // 6c. Org recovery posture (gitvault-recovery-custody). One entry per
-    // vault-owning org the caller can see; rides the same operator-status
+    // vault-owning org the caller can see; rides the same account-status
     // read. Evidence levels, not guarantees: "configured" names what the
     // platform VERIFIED — it can never observe whether an off-platform
     // passkey or saved code still exists. The two headline facts mirror the
@@ -664,7 +665,7 @@ export async function run(sub, args = []) {
         checks.push({
           name: "recovery_posture",
           status: "skipped",
-          ...(verbose && { hint: "operator status has no 'recovery_posture' block; requires a gitvault-recovery-custody gateway." }),
+          ...(verbose && { hint: "account status has no 'recovery_posture' block; requires a gitvault-recovery-custody gateway." }),
         });
       } else if (posture.length === 0) {
         // No vault-owning org in the caller's view — nothing to lose, nothing to advise.
@@ -696,25 +697,24 @@ export async function run(sub, args = []) {
       }
     }
   } catch (err) {
-    // Operator status endpoint may not be reachable if the operator-binding
-    // substrate isn't deployed yet on the target API. Don't fail the whole
+    // The account status endpoint may not be reachable on the target API. Don't fail the whole
     // doctor over it — emit as a soft warning. The runtime-staleness check
     // rides on the same fetch, so skip it for the same reason.
-    if (wanted("operator_health")) checks.push({
-      name: "operator_health",
+    if (wanted("account_health")) checks.push({
+      name: "account_health",
       status: "skipped",
-      message: describeCheckFailure("operator status check", err),
-      ...(verbose && { hint: "GET /agent/v1/operator/status not reachable; requires v1.55+ gateway." }),
+      message: describeCheckFailure("account status check", err),
+      ...(verbose && { hint: "GET /agent/v1/me/status not reachable." }),
     });
     if (wanted("runtime_staleness")) checks.push({
       name: "runtime_staleness",
       status: "skipped",
-      message: describeCheckFailure("operator status check", err),
+      message: describeCheckFailure("account status check", err),
     });
     if (wanted("recovery_posture")) checks.push({
       name: "recovery_posture",
       status: "skipped",
-      message: describeCheckFailure("operator status check", err),
+      message: describeCheckFailure("account status check", err),
     });
   }
 

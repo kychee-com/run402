@@ -48,7 +48,7 @@ Notes:
   - 'issue', 'rotate' and 'revoke' need owner membership on the project's org
     plus a fresh step-up, so a scoped agent credential can never escalate
     itself into a permanent root. Authenticate with a wallet (SIWX) or a
-    control-plane session ('run402 operator login --step-up').
+    sign-in session ('run402 login').
   - 'token' is the exception: a delegate can mint one with no human present.
   - Secrets are returned EXACTLY ONCE and are never recoverable. Full JSON goes
     to stdout so you can pipe it; the warnings go to stderr.
@@ -126,7 +126,7 @@ anon/service keys, or "rotatable" once it holds credentials it can revoke
 individually.
 
 There is deliberately NO deadline: retirement is gated on conditions (every
-tenant migrated, 30 consecutive days of zero legacy-key use, explicit operator
+tenant migrated, 30 consecutive days of zero legacy-key use, explicit staff
 approval), not a date. Read retirement.gated_on rather than planning against a
 date the platform has not committed to.
 `,

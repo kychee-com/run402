@@ -29,7 +29,7 @@ export type Run402ErrorKind =
   | "deploy_error"
   | "transfer_freeze"
   | "step_up_required"
-  | "operator_approval_required";
+  | "write_approval_required";
 
 /**
  * Quota-denial scope discriminator (v1.46+). Indicates whether a quota-related
@@ -724,7 +724,7 @@ export class TransferFreezeError extends Run402Error {
 /**
  * Known `type` values for a {@link NextAction}. The gateway set (style.md
  * §Errors) extended with the client-side bootstrap verbs `create_project` and
- * `initialize_wallet`, plus `operator_approve` (synthesized for WRITE_AUTH),
+ * `initialize_wallet`, plus `approve_write` (synthesized for WRITE_APPROVAL_*),
  * and `set_org_slug` / `set_repo_name` (named addressing onboarding,
  * repo-first-onramp follow-up — `run402 repos create` points here when the
  * owning org has no slug yet, or has one but this project's address-form
@@ -757,7 +757,14 @@ export type NextActionType =
   | "create_project"
   | "initialize_wallet"
   | "deploy"
-  | "operator_approve"
+  | "approve_write"
+  // The deploy promotion offer: ask the person whether Run402 may promote
+  // what they built (answered through `send_feedback`).
+  | "hand_to_member"
+  // Register or verify a contact email so lifecycle notifications reach someone.
+  | "register_contact"
+  // The remedy needs Run402 staff.
+  | "contact_staff"
   | "contact_support"
   | "gitvault_policy_required"
   | "set_org_slug"
@@ -820,8 +827,8 @@ export interface NextAction {
 
 /**
  * Synthesize a canonical next action when the gateway returned a known error
- * code with an empty/absent `next_actions[]`. Mirrors the WRITE_AUTH synthesis
- * on {@link OperatorApprovalRequiredError}; only fills gaps, never overrides.
+ * code with an empty/absent `next_actions[]`. Mirrors the WRITE_APPROVAL_*
+ * synthesis on {@link WriteApprovalRequiredError}; only fills gaps, never overrides.
  */
 function synthesizeNextActions(code: string | undefined): NextAction[] {
   switch (code) {
@@ -852,9 +859,9 @@ function pickNextActionPath(actions: unknown[], type: string): string | null {
  * HTTP 403 `STEP_UP_REQUIRED` — the gateway requires a fresh, same-client
  * step-up (a recent `passkey` AMR) before this high-stakes control-plane
  * operation (delete / transfer / membership / invite / payment drain·rotate)
- * may proceed. A `device_flow`-minted session can never satisfy it; the caller
- * must complete the challenge at {@link challengeUrl} (e.g. via
- * `run402 operator login --step-up`) on the same client and retry.
+ * may proceed. A `device`-grade session and a write approval can never satisfy
+ * it; the caller must complete the challenge at {@link challengeUrl} (e.g. by
+ * signing in again with `run402 login`) on the same client and retry.
  *
  * Typed fields are lifted from the gateway `details` envelope; the same
  * remediation pointer is also present in {@link Run402Error.nextActions} as an
@@ -909,27 +916,25 @@ export class StepUpRequiredError extends Run402Error {
 }
 
 /**
- * HTTP 403 — a wallet-less human (control-plane session) write needs a
- * passkey-fresh **operator approval** scoped to a specific `(capability,
- * target)`. Maps the gateway codes `WRITE_AUTH_REQUIRED` (no approval),
- * `WRITE_AUTH_BINDING_MISMATCH` (cached approval targeted the wrong org/project),
- * and `WRITE_AUTH_SESSION_INVALID` (stale approval).
+ * A signed-in person's command-line write (no wallet) needs a passkey-signed
+ * **write approval** scoped to a specific `(capability, target)`. Maps the
+ * gateway codes `WRITE_APPROVAL_REQUIRED` (none attached),
+ * `WRITE_APPROVAL_SCOPE_MISMATCH` (the attached approval covers a different
+ * action or target), `WRITE_APPROVAL_BINDING_MISMATCH` (bound to another sign-in
+ * session), and `WRITE_APPROVAL_SESSION_INVALID` (expired or revoked).
  *
- * The gateway envelope is bare, so the SDK synthesizes a fully-resolved
- * remediation from the failing request's capability+target: read
- * {@link approveCommand} (e.g. `run402 operator approve --action project.deploy
- * --project prj_x`) or the structured {@link nextActions}. The SIWX wallet path
- * never triggers this. Never catch-and-swallow — surface the command to the
- * human/agent. Branch on `kind === "operator_approval_required"` (or
- * {@link isOperatorApprovalRequired}).
+ * The SDK synthesizes a fully-resolved remediation from the failing request's
+ * capability + target: read {@link approveCommand} (e.g. `run402 approve
+ * --action project.deploy --project prj_x`) or the structured
+ * {@link nextActions}. The SIWX wallet path never triggers this. A write
+ * approval never satisfies step-up. Branch on
+ * `kind === "write_approval_required"` (or {@link isWriteApprovalRequired}).
  */
-export class OperatorApprovalRequiredError extends Run402Error {
-  static readonly DEFAULT_CODE = "WRITE_AUTH_REQUIRED";
+export class WriteApprovalRequiredError extends Run402Error {
+  static readonly DEFAULT_CODE = "WRITE_APPROVAL_REQUIRED";
   static readonly DEFAULT_CATEGORY = "auth";
   static readonly DEFAULT_RETRYABLE = false;
-  readonly kind = "operator_approval_required" as const;
-  /** The principal class the approval belongs to. Always `"operator"` (the human). */
-  readonly principal = "operator" as const;
+  readonly kind = "write_approval_required" as const;
   /** The gateway write capability needing approval, when known from the request. */
   readonly capability: string | null;
   /** The capability's target (`{ org_id }` or `{ project_id }`), when known. */
@@ -948,11 +953,11 @@ export class OperatorApprovalRequiredError extends Run402Error {
     this.capability = meta?.capability ?? null;
     this.target = meta?.target ?? null;
     this.approveCommand = buildApproveCommand(this.capability, this.target);
-    // The gateway WRITE_AUTH_* envelope carries no next_actions — synthesize a
-    // structured one so generic consumers get the remediation too.
+    // The gateway WRITE_APPROVAL_* envelope carries no next_actions — synthesize
+    // a structured one so generic consumers get the remediation too.
     if ((!this.nextActions || this.nextActions.length === 0) && this.approveCommand) {
       (this as { nextActions?: unknown[] }).nextActions = [
-        { type: "operator_approve", command: this.approveCommand, why: approveWhy(this.code) },
+        { type: "approve_write", command: this.approveCommand, why: approveWhy(this.code) },
       ];
     }
   }
@@ -960,7 +965,6 @@ export class OperatorApprovalRequiredError extends Run402Error {
   override toJSON(): Record<string, unknown> {
     return {
       ...super.toJSON(),
-      principal: this.principal,
       capability: this.capability,
       target: this.target,
       approveCommand: this.approveCommand,
@@ -973,17 +977,17 @@ function buildApproveCommand(
   target: { org_id?: string; project_id?: string } | null,
 ): string | null {
   if (!capability) return null;
-  if (target?.org_id) return `run402 operator approve --action ${capability} --org ${target.org_id}`;
-  if (target?.project_id) return `run402 operator approve --action ${capability} --project ${target.project_id}`;
-  return `run402 operator approve --action ${capability}`;
+  if (target?.org_id) return `run402 approve --action ${capability} --org ${target.org_id}`;
+  if (target?.project_id) return `run402 approve --action ${capability} --project ${target.project_id}`;
+  return `run402 approve --action ${capability}`;
 }
 
 function approveWhy(code?: string): string {
-  if (code === "WRITE_AUTH_BINDING_MISMATCH")
-    return "A cached approval targets a different org/project. Re-approve for this exact target.";
-  if (code === "WRITE_AUTH_SESSION_INVALID")
-    return "The cached approval is stale (its control-plane session changed). Re-approve.";
-  return "This write needs a passkey operator approval.";
+  if (code === "WRITE_APPROVAL_SCOPE_MISMATCH" || code === "WRITE_APPROVAL_BINDING_MISMATCH")
+    return "The attached write approval covers a different action, target, or sign-in session. Approve this exact target.";
+  if (code === "WRITE_APPROVAL_SESSION_INVALID")
+    return "The write approval expired or was revoked. Approve again.";
+  return "This write needs a passkey write approval.";
 }
 
 // ─── Type guards ─────────────────────────────────────────────────────────────
@@ -1083,9 +1087,9 @@ export function isStepUpRequired(e: unknown): e is StepUpRequiredError {
   return isRun402Error(e) && e.kind === "step_up_required";
 }
 
-/** True if `e` is an {@link OperatorApprovalRequiredError} (wallet-less write needs a passkey approval). */
-export function isOperatorApprovalRequired(e: unknown): e is OperatorApprovalRequiredError {
-  return isRun402Error(e) && e.kind === "operator_approval_required";
+/** True if `e` is a {@link WriteApprovalRequiredError} (a wallet-less write needs a passkey write approval). */
+export function isWriteApprovalRequired(e: unknown): e is WriteApprovalRequiredError {
+  return isRun402Error(e) && e.kind === "write_approval_required";
 }
 
 /**

@@ -22,7 +22,7 @@
  * are PATH-scoped and must keep naming the real routes.
  */
 import { walletAuthHeaders } from "./config.mjs";
-import { operatorProofs } from "./operator-proofs.mjs";
+import { sessionProofs } from "./session-proofs.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 import {
@@ -59,7 +59,7 @@ Two kinds, one question:
 Every row carries \`kind\`. \`rm\` takes either kind's id and works out which.
 
 Notes:
-  - Adding an address with no verified operator email is ACCEPTED with a
+  - Adding an address with no verified contact email is ACCEPTED with a
     reachability warning — you must be able to configure the chain before the
     humans are bound.
   - What actually landed is \`run402 deliveries\`.
@@ -104,7 +104,7 @@ async function preferences(args) {
     }
   }
   try {
-    const data = await getSdk().admin.setNotificationPreferences(patch, operatorProofs("/agent/v1/notifications/preferences"));
+    const data = await getSdk().admin.setNotificationPreferences(patch, sessionProofs("/agent/v1/notifications/preferences"));
     console.log(JSON.stringify(data, null, 2));
   } catch (err) {
     reportSdkError(err);
@@ -185,7 +185,7 @@ async function channelsConnect(args) {
     fail({ code: "BAD_USAGE", message: `Unexpected argument for notifications channels connect: ${positionals[1]}` });
   }
 
-  const proofs = operatorProofs("/agent/v1/notifications/channels/telegram");
+  const proofs = sessionProofs("/agent/v1/notifications/channels/telegram");
   let pending;
   try {
     pending = await getSdk().admin.channels.connectTelegram(label ? { label } : {}, proofs);
@@ -234,7 +234,7 @@ async function channelsRevoke(args) {
   });
   walletAuthHeaders("/agent/v1/notifications/channels/telegram");
   try {
-    console.log(JSON.stringify(await getSdk().admin.channels.revokeTelegram(bindingId, operatorProofs("/agent/v1/notifications/channels/telegram")), null, 2));
+    console.log(JSON.stringify(await getSdk().admin.channels.revokeTelegram(bindingId, sessionProofs("/agent/v1/notifications/channels/telegram")), null, 2));
   } catch (err) {
     reportSdkError(err);
   }

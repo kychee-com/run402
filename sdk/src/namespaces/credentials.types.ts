@@ -61,7 +61,7 @@ export interface ProjectCredentialRevoked extends ProjectCredentialRecord {
  *
  * `retirement.deadline` is ALWAYS null, on purpose: retirement is gated on
  * conditions (every tenant migrated, 30 consecutive days of zero legacy use,
- * explicit operator approval), never on a date. Do not plan against a date the
+ * explicit staff approval), never on a date. Do not plan against a date the
  * platform has not committed to — read `gated_on` instead.
  */
 export interface ProjectCredentialStatus {

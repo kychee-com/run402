@@ -425,17 +425,16 @@ export const COMMAND_MANIFEST = [
   { path: ["email", "webhooks", "deliveries"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [] },
   { path: ["email", "webhooks", "redrive"], positionals: [p("delivery_id")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["dlv_gate1"] },
 
-  // ── message / agent / operator ───────────────────────────────────────────
+  // ── message / agent / sign-in ────────────────────────────────────────────
   { path: ["feedback", "send"], positionals: [p("words", { variadic: true })], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["hello", "from", "the", "gate"] },
   { path: ["agent", "contact"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["--name", "gate-agent"] },
   { path: ["agent", "status"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
   { path: ["agent", "verify-email"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
   { path: ["agent", "passkey"], positionals: [p("action")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["enroll"] },
-  { path: ["operator", "login"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [], skipBehavioral: "opens a browser / loopback listener" },
-  { path: ["operator", "logout"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
-  { path: ["operator", "overview"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
-  { path: ["operator", "whoami"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
-  { path: ["operator", "approve"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["--action", "org.project.create", "--org", "org_gate1", "--no-open"] },
+  { path: ["login"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [], runStyle: "flat", skipBehavioral: "opens a browser / loopback listener" },
+  { path: ["logout"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [], runStyle: "flat" },
+  { path: ["whoami"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [], runStyle: "flat", skipBehavioral: "requires live principal authentication" },
+  { path: ["approve"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["--action", "org.project.create", "--org", "org_gate1", "--no-open"], runStyle: "flat" },
 
   // ── auth ─────────────────────────────────────────────────────────────────
   { path: ["auth", "magic-link"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["--email", "gate@example.com", "--redirect", "https://example.com/cb"] },

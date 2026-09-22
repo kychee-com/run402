@@ -7,7 +7,7 @@
  * falls back to another after a failure", and a delegate is the class an owner
  * hands an agent deliberately. If presenting one could be silently overridden
  * by an ambient wallet — or if a revoked one quietly downgraded to the
- * operator's own authority — the scoping guarantee would be worthless.
+ * owner's own authority — the scoping guarantee would be worthless.
  */
 
 import { describe, it } from "node:test";

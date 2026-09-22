@@ -544,7 +544,9 @@ describe("ScopedRun402 drift protection", () => {
     "projects",
     "sites", // Sites class is empty — intentionally not exposed on ScopedRun402
     "ci", // CI binding lifecycle is intentionally unscoped in v1.
-    "operator", // human/email principal session — not project-scoped.
+    "session", // a person's sign-in session — not project-scoped.
+    "writeApproval", // the write-approval ceremony — scoped by its own action + target.
+    "me", // the caller's own account reads — not project-scoped.
     "org", // org membership is organization-scoped, not project-scoped.
     "rooms", // rooms are organization-scoped; the project connection is forProject(), not r.project(id).
     // `grants` IS project-scoped (exposed as r.project(id).grants) — checked below.

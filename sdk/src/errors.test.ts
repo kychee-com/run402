@@ -93,10 +93,10 @@ describe("StepUpRequiredError", () => {
     details: {
       required_amr: ["passkey"],
       max_age_seconds: 300,
-      challenge_url: "https://run402.com/operator/step-up",
+      challenge_url: "https://run402.com/console/step-up",
       reason: "device_flow_forbidden",
     },
-    next_actions: [{ type: "authenticate", path: "https://run402.com/operator/step-up" }],
+    next_actions: [{ type: "authenticate", path: "https://run402.com/console/step-up" }],
   };
 
   it("carries kind='step_up_required', DEFAULT_CODE, and status", () => {
@@ -110,7 +110,7 @@ describe("StepUpRequiredError", () => {
     const e = new StepUpRequiredError("nope", 403, body, "ctx");
     assert.deepEqual(e.requiredAmr, ["passkey"]);
     assert.equal(e.maxAgeSeconds, 300);
-    assert.equal(e.challengeUrl, "https://run402.com/operator/step-up");
+    assert.equal(e.challengeUrl, "https://run402.com/console/step-up");
     assert.equal(e.reason, "device_flow_forbidden");
   });
 
@@ -133,7 +133,7 @@ describe("StepUpRequiredError", () => {
     const e = new StepUpRequiredError("nope", 403, body, "ctx");
     const j = e.toJSON();
     assert.equal(j.kind, "step_up_required");
-    assert.equal(j.challengeUrl, "https://run402.com/operator/step-up");
+    assert.equal(j.challengeUrl, "https://run402.com/console/step-up");
     assert.deepEqual(j.requiredAmr, ["passkey"]);
     assert.ok(Array.isArray(j.nextActions));
   });

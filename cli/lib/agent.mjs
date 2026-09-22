@@ -65,13 +65,15 @@ Usage:
 Sends or reuses a reply challenge for the active contact email. The challenge
 secret is emailed and never printed.
 `,
-  passkey: `run402 agent passkey — Manage operator passkey binding
+  passkey: `run402 agent passkey — Bind a passkey to the contact
 
 Usage:
   run402 agent passkey enroll
 
-Sends a short-lived Run402 operator passkey enrollment link to the verified
-contact email. Requires assurance_level=email_verified first.
+Sends a short-lived Run402 passkey enrollment link to the verified
+contact email. Requires assurance_level=email_verified first. A person
+signed in with 'run402 login' already has passkey assurance for a contact
+whose verified email their principal holds.
 `,
 };
 
@@ -125,14 +127,14 @@ async function status(args = []) {
     const sdk = getSdk();
     const data = await sdk.admin.getAgentContactStatus();
     // v1.56: augment the response with email_verification.last_challenge from
-    // /agent/v1/operator/status so the operator sees per-attempt status
+    // /agent/v1/me/status so the reader sees per-attempt status
     // (trust_rejected with which verdicts, attempts remaining, hint) without
     // a second command. Best-effort — older gateways without the v1.55+ route
     // skip the augment silently.
     try {
-      const opStatus = await sdk.admin.getOperatorStatus();
-      if (opStatus && opStatus.email_verification) {
-        data.email_verification = opStatus.email_verification;
+      const meStatus = await sdk.me.status();
+      if (meStatus && meStatus.email_verification) {
+        data.email_verification = meStatus.email_verification;
       }
     } catch {
       // Older gateway — keep the original response shape.
@@ -174,7 +176,7 @@ async function passkey(args) {
   walletAuthHeaders("/agent/v1/contact/passkey/enroll");
 
   try {
-    const data = await getSdk().admin.startOperatorPasskeyEnrollment();
+    const data = await getSdk().admin.startContactPasskeyEnrollment();
     console.log(JSON.stringify(data, null, 2));
   } catch (err) {
     reportSdkError(err);

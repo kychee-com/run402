@@ -252,7 +252,7 @@ describe("Deploy.apply (happy path)", () => {
     assert.equal(new TextDecoder().decode(w.puts[0].body), html);
   });
 
-  it("passes the gateway's ready riders (poll, watch_errors, hand_to_operator) through to the result", async () => {
+  it("passes the gateway's ready riders (poll, watch_errors, hand_to_member) through to the result", async () => {
     const w = makeWiring();
     const plan: PlanResponse = {
       plan_id: "plan_riders",
@@ -274,7 +274,7 @@ describe("Deploy.apply (happy path)", () => {
         { type: "poll", method: "GET", path: "/projects/v1/prj_test/events?cursor=evc_10" },
         { type: "watch_errors", command: "run402 errors --project prj_test --new-in rel_riders --watch 10m --fail-on-new" },
         {
-          type: "hand_to_operator",
+          type: "hand_to_member",
           method: "POST",
           path: "/feedback/v1",
           body: { project_id: "prj_test", message: "promote: yes", handle: "@…" },
@@ -296,8 +296,8 @@ describe("Deploy.apply (happy path)", () => {
 
     assert.equal(result.urls.console, "https://console.run402.com/orgs/org_1/projects/prj_test");
     assert.ok(result.next_actions, "gateway riders survive into the deploy result");
-    assert.deepEqual(result.next_actions!.map((a) => a.type), ["poll", "watch_errors", "hand_to_operator"]);
-    const offer = result.next_actions!.find((a) => a.type === "hand_to_operator")!;
+    assert.deepEqual(result.next_actions!.map((a) => a.type), ["poll", "watch_errors", "hand_to_member"]);
+    const offer = result.next_actions!.find((a) => a.type === "hand_to_member")!;
     assert.equal(offer.credited_as, "SnowyJim32");
     assert.equal(offer.path, "/feedback/v1");
   });
@@ -1052,7 +1052,7 @@ describe("Deploy.apply (happy path)", () => {
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
           ...(ready
-            ? { next_actions: [{ type: "watch_errors" }, { type: "hand_to_operator", path: "/feedback/v1", credited_as: null }] }
+            ? { next_actions: [{ type: "watch_errors" }, { type: "hand_to_member", path: "/feedback/v1", credited_as: null }] }
             : {}),
         };
         return snap;
@@ -1063,7 +1063,7 @@ describe("Deploy.apply (happy path)", () => {
     const deploy = new Deploy(w.client);
     const result = await deploy.apply({ project: "prj_test", site: { replace: { "x.html": "x" } } });
     assert.equal(result.urls.console, "https://console.run402.com/orgs/o/projects/prj_test");
-    assert.deepEqual((result.next_actions ?? []).map((a) => a.type), ["watch_errors", "hand_to_operator"]);
+    assert.deepEqual((result.next_actions ?? []).map((a) => a.type), ["watch_errors", "hand_to_member"]);
   });
 
   it("normalizes schedule triggers into the planned ReleaseSpec", async () => {

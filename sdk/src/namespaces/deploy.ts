@@ -390,7 +390,7 @@ export class Deploy {
   /**
    * Promote an existing release to be the project's current live release —
    * a pointer swap on `internal.projects.live_release_id` without re-running
-   * the apply pipeline. Designed for operator recovery from a destructive
+   * the apply pipeline. Designed for recovery from a destructive
    * apply ("oops on a real project ID"). The prior release's bytes,
    * functions, and migrations remain persisted; this just routes traffic
    * back to them.
@@ -1543,7 +1543,7 @@ async function planInternal(
     plan = withClientPlanWarnings(normalized, normalizePlanResponse(await client.request<PlanResponse>(dryRun ? "/apply/v1/plans?dry_run=true" : "/apply/v1/plans", {
       method: "POST",
       body,
-      // Operator-approval scope: deploying a release is `project.deploy` on this project.
+      // Write-approval scope: deploying a release is `project.deploy` on this project.
       authMeta: { method: "deploy.plan", capability: "project.deploy", target: { project_id: spec.project } },
       context: "planning deploy",
     })));
@@ -2086,7 +2086,7 @@ async function commitInternal(
       {
         method: "POST",
         body,
-        // Operator-approval scope: committing a deploy is `project.deploy` on this project.
+        // Write-approval scope: committing a deploy is `project.deploy` on this project.
         ...(project
           ? {
               authMeta: {
@@ -2437,7 +2437,7 @@ async function pollUntilReady(
       ...(commit.subdomain_bindings ? { subdomain_bindings: commit.subdomain_bindings } : {}),
       ...(commit.static_continuity ? { static_continuity: commit.static_continuity } : {}),
       ...(commit.edge ? { edge: commit.edge } : {}),
-      // The gateway's riders (poll / watch_errors / hand_to_operator) ride the
+      // The gateway's riders (poll / watch_errors / hand_to_member) ride the
       // synchronous ready response and nowhere else — dropping them here is
       // how an agent never learns the offer existed (builder-promotion).
       ...(Array.isArray(commit.next_actions) && commit.next_actions.length > 0
@@ -2578,7 +2578,7 @@ async function pollSnapshotUntilReady(
         ...(snapshot.edge ? { edge: snapshot.edge } : {}),
         // The gateway now attaches the same riders to a ready operation
         // snapshot as to a synchronous ready commit (poll / watch_errors /
-        // hand_to_operator) — pass them through exactly as the fast path does.
+        // hand_to_member) — pass them through exactly as the fast path does.
         ...(Array.isArray(snapshot.next_actions) && snapshot.next_actions.length > 0
           ? { next_actions: snapshot.next_actions }
           : {}),

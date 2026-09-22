@@ -16,7 +16,7 @@ let cachedKey: string | null = null;
 
 export function getSdk(): NodeRun402 {
   // surface: "mcp" keeps credential resolution wallet-only — an agent tool call
-  // never spends the human's cached operator approval (no ambient authority).
+  // never spends a person's cached sign-in session or write approval (no ambient authority).
   const key = sdkCacheKey();
   if (!cached || cachedKey !== key) {
     cached = createNodeSdk({ surface: "mcp" });

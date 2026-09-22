@@ -25,7 +25,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
-import { withAutoApprove } from "./operator.mjs";
+import { withAutoApprove } from "./sign-in.mjs";
 import { walletAuthHeaders, isCoreApiTarget, readWallet, resolveProjectId } from "./config.mjs";
 import { loadLiveControlPlaneSession } from "../core-dist/control-plane-session.js";
 import { resolveOrgId, resolveOwningOrgId } from "./org-context.mjs";
@@ -275,8 +275,8 @@ Subcommands:
            cwd unless \`--out\` says otherwise (\`--out -\` prints only); the
            full JSON always goes to stdout. Principal-scoped, not
            repo-scoped (one bundle covers every vault you can read) — auth
-           is your control-plane session (\`run402 operator login
-           --loopback\` first; without one it answers for the active
+           is your sign-in session (\`run402 login\` first; without one
+           it answers for the active
            WALLET's agent principal, normally no wrappers, and says so).
            To make it travel WITH a mirror, copy it to
            member-recovery-bundles/<name>.json under the mirrored prefix —
@@ -2591,8 +2591,8 @@ async function fsck(args) {
 const GC_VALUE_FLAGS = [...COMMON_VALUE_FLAGS, "--intent-core", "--verifier-receipt"];
 
 /**
- * One line of headroom disclosure. Printed whether or not things fit: an
- * operator deciding when to compact wants the numbers in the passing case too
+ * One line of headroom disclosure. Printed whether or not things fit: a
+ * person deciding when to compact wants the numbers in the passing case too
  * (gitvault-compaction-headroom-preflight D4).
  */
 function printHeadroomNote(headroom) {
@@ -2767,7 +2767,7 @@ async function accessRead(args) {
     const cp = loadLiveControlPlaneSession();
     if (cp) {
       try {
-        const mine = await sdk.operator.session.sourceAccessWrappers({ token: cp.control_plane_session_token });
+        const mine = await sdk.session.sourceAccessWrappers({ token: cp.control_plane_session_token });
         result.member_custody = mine.encryption_key
           ? {
               available: true,
@@ -2782,7 +2782,7 @@ async function accessRead(args) {
         result.member_custody = { available: false, reason: e?.code ?? "read_failed", hint: "your own wrapper custody could not be read (older gateway, or the session lacks it)." };
       }
     } else {
-      result.member_custody = { available: false, reason: "no_control_plane_session", hint: "run 'run402 operator login --loopback' to include your own wrapper custody here." };
+      result.member_custody = { available: false, reason: "no_control_plane_session", hint: "run 'run402 login' to include your own wrapper custody here." };
     }
     if (human) {
       console.log(formatAccessHuman(result));
@@ -3172,7 +3172,7 @@ async function recover(args) {
  *
  * Principal-scoped, not repo-scoped (one bundle covers every vault you are
  * a recipient of) — which is why the auth is your control-plane (human)
- * session (`run402 operator login --loopback`), not the wallet. Without a
+ * session (`run402 login`), not the wallet. Without a
  * session the request falls back to the active WALLET's agent principal,
  * which normally holds no wrappers — truthful, with a stderr note saying so.
  * Enrollment/activation/revocation are browser ceremonies at
@@ -3182,7 +3182,7 @@ function sourceAccessTokenOpts(commandLabel) {
   const cp = loadLiveControlPlaneSession();
   if (!cp) {
     console.error(
-      `no control-plane (human) session — ${commandLabel} will answer for the active WALLET's agent principal, which normally holds no wrappers. Run 'run402 operator login --loopback' to act as yourself.`,
+      `no control-plane (human) session — ${commandLabel} will answer for the active WALLET's agent principal, which normally holds no wrappers. Run 'run402 login' to act as yourself.`,
     );
     return {};
   }
@@ -3196,7 +3196,7 @@ async function recoveryBundle(args) {
   const out = flagValue(a, "--out");
   const sdk = getSdk();
   try {
-    const bundle = await sdk.operator.session.sourceAccessRecoveryBundle(sourceAccessTokenOpts("recovery-bundle"));
+    const bundle = await sdk.session.sourceAccessRecoveryBundle(sourceAccessTokenOpts("recovery-bundle"));
     // Full JSON to stdout regardless — the pipe contract is sacred; the file
     // is the keep-a-copy convenience (0600 — the bundle is ciphertext the
     // platform cannot open, but it is still half of a recovery credential).

@@ -1,11 +1,11 @@
 /**
- * Control-plane **session** credential provider (gateway v1.78). Carries a
- * write-capable `control_plane_session` bearer so the whole SDK authenticates as
- * the human principal — the token is "accepted everywhere a SIWX wallet is", so
- * `r.org.*`, `r.admin.transfers.*`, and `r.operator.session.*` all act as that
- * principal.
+ * **Sign-in session** credential provider (gateway v1.78). Carries a
+ * `control_plane_session` bearer so the whole SDK authenticates as the person's
+ * principal — the token is accepted everywhere a SIWX wallet is, so `r.org.*`,
+ * `r.admin.transfers.*`, and `r.session.*` all act as that principal. A
+ * `device`-grade session is read-only (`SESSION_READ_ONLY` on every mutation).
  *
- * Isomorphic — no Node APIs. Mint a session with `r.operator.session.verifyEmail`
+ * Isomorphic — no Node APIs. Mint a session with `r.session.verifyEmail`
  * / `passkeyVerify` / the loopback-PKCE `exchangeCliToken`, then:
  *
  *   const r = run402({ credentials: controlPlaneSessionCredentials({ token }) });
@@ -13,7 +13,7 @@
  *
  * High-stakes writes still require a fresh passkey — an `email`/`oauth` session
  * gets {@link StepUpRequiredError}; run the step-up ceremony
- * (`r.operator.session.stepUpOptions`/`stepUpVerify`) and retry.
+ * (`r.session.stepUpOptions`/`stepUpVerify`) and retry.
  *
  * This credential authenticates control-plane operations only; it carries no
  * project anon/service keys, so {@link CredentialsProvider.getProject} returns
@@ -37,7 +37,7 @@ export interface ControlPlaneSessionCredentialsOptions {
   token?: string;
   /**
    * Lazily resolve the current token (e.g. read a cache, or rotate via
-   * `r.operator.session.refresh`). Called before every authenticated request.
+   * `r.session.refresh`). Called before every authenticated request.
    */
   getToken?: () => string | Promise<string>;
 }

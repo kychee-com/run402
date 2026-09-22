@@ -407,7 +407,7 @@ describe("projects.list", () => {
     assert.equal(item.created_at, "2026-04-30T15:32:59.891Z");
   });
 
-  it("reads the operator email-union inventory with a token for { all: true }", async () => {
+  it("reads every organization's projects with a sign-in session token for { all: true }", async () => {
     const { fetch, calls } = mockFetch(() =>
       jsonResponse({
         projects: [
@@ -421,30 +421,30 @@ describe("projects.list", () => {
             created_at: "2026-04-30T15:32:59.891Z",
           },
         ],
-        scope: "email",
+        scope: "principal",
       }),
     );
     const sdk = makeSdk(makeCreds(), fetch);
-    const result = await sdk.projects.list({ all: true, token: "op_sess_tok" });
+    const result = await sdk.projects.list({ all: true, token: "cps_tok" });
 
     assert.equal(calls.length, 1);
-    assert.equal(calls[0]!.url, "https://api.example.test/agent/v1/operator/projects");
+    assert.equal(calls[0]!.url, "https://api.example.test/agent/v1/me/projects");
     assert.equal(calls[0]!.method, "GET");
-    // Operator-session bearer overrides SIWX; provider auth is not injected.
-    assert.equal(calls[0]!.headers["Authorization"], "Bearer op_sess_tok");
+    // The sign-in session bearer overrides SIWX; provider auth is not injected.
+    assert.equal(calls[0]!.headers["Authorization"], "Bearer cps_tok");
     assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], undefined);
-    assert.equal(result.scope, "email");
+    assert.equal(result.scope, "principal");
     assert.equal(result.projects[0]!.name, "alpha");
   });
 
-  it("{ all: true } without a token falls back to SIWX wallet auth (single-wallet slice)", async () => {
+  it("{ all: true } without a token uses SIWX wallet auth (single-wallet slice)", async () => {
     const { fetch, calls } = mockFetch(() =>
       jsonResponse({ projects: [], scope: "wallet" }),
     );
     const sdk = makeSdk(makeCreds(), fetch);
     const result = await sdk.projects.list({ all: true });
 
-    assert.equal(calls[0]!.url, "https://api.example.test/agent/v1/operator/projects");
+    assert.equal(calls[0]!.url, "https://api.example.test/agent/v1/me/projects");
     assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "test-siwx");
     assert.equal(calls[0]!.headers["Authorization"], undefined);
     assert.equal(result.scope, "wallet");

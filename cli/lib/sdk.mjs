@@ -12,7 +12,7 @@ import { walletFile, profileStateFile, projectCredentialsFile } from "./config.m
 
 export function getSdk(opts = {}) {
   // surface: "cli" opts the default credential resolution into `auto` — wallet
-  // if present, else the operator (control-plane) session + matched approval.
+  // if present, else the sign-in session + a matched write approval.
   return run402({
     surface: "cli",
     walletPath: walletFile(),

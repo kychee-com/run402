@@ -60,7 +60,7 @@ async function mockFetch(input) {
     // was read, not the vault contents.
     return json({}, 404);
   }
-  // Every other endpoint (service/status, tier/status, operator/status, ...):
+  // Every other endpoint (service/status, tier/status, me/status, ...):
   // an empty 200 is enough for doctor's own try/catch-wrapped checks to move on.
   return json({});
 }
@@ -259,7 +259,7 @@ describe("run402 doctor --only <check> — scoped checks (kychee-com/run402#566)
     assert.equal(report.checks.some((c) => c.name === "source_scan"), false);
   });
 
-  it("--only gitvault does the WORK of only the gitvault check — no tier/api/operator fetch happened", async () => {
+  it("--only gitvault does the WORK of only the gitvault check — no tier/api/account fetch happened", async () => {
     captureStart();
     try {
       await run("--only", ["gitvault"]);
@@ -269,7 +269,7 @@ describe("run402 doctor --only <check> — scoped checks (kychee-com/run402#566)
       captureStop();
     }
     // Exactly one network read: the gitvault vault lookup. Every other
-    // check's own fetch (service/status, tier/status, operator/status) must
+    // check's own fetch (service/status, tier/status, me/status) must
     // never have been attempted — --only skips the WORK, not just the output.
     assert.equal(allFetchUrls.length, 1, `expected exactly one fetch; saw: ${JSON.stringify(allFetchUrls)}`);
     assert.match(allFetchUrls[0], /\/gitvault\/v1\/vaults/);
@@ -356,20 +356,20 @@ describe("run402 doctor --only <check> — scoped checks (kychee-com/run402#566)
 });
 
 describe("run402 doctor — recovery_posture (gitvault-recovery-custody)", () => {
-  /** Temporarily answer operator/status with a specific recovery_posture payload (or none). */
-  function withOperatorStatus(body, fn) {
+  /** Temporarily answer me/status with a specific recovery_posture payload (or none). */
+  function withAccountStatus(body, fn) {
     const prior = globalThis.fetch;
     globalThis.fetch = async (input) => {
       const url = typeof input === "string" ? input : String(input?.url ?? input);
-      if (url.includes("/agent/v1/operator/status")) return json(body);
+      if (url.includes("/agent/v1/me/status")) return json(body);
       return prior(input);
     };
     return fn().finally(() => { globalThis.fetch = prior; });
   }
 
   const BASE_STATUS = {
-    operator_contact: { email_status: "verified", passkey_status: "verified" },
-    operator_reachability: { reachable: true, verified_recipient_count: 1, sources: [], skipped_last_90d: 0 },
+    contact: { email_status: "verified", passkey_status: "verified" },
+    reachability: { reachable: true, verified_recipient_count: 1, sources: [], skipped_last_90d: 0 },
     skipped_notifications: [],
     critical_items: [],
     runtime: { stale_function_count: 0, stale_functions: [] },
@@ -390,7 +390,7 @@ describe("run402 doctor — recovery_posture (gitvault-recovery-custody)", () =>
   }
 
   it("degraded posture renders each gap with its remedy (Anticipatory), one line per fact per org", async () => {
-    const check = await withOperatorStatus({
+    const check = await withAccountStatus({
       ...BASE_STATUS,
       recovery_posture: [{
         org_id: "org-1111", vault_count: 2,
@@ -412,7 +412,7 @@ describe("run402 doctor — recovery_posture (gitvault-recovery-custody)", () =>
   });
 
   it("legacy custody warns even when source backup exists (a single-credential key is a standing risk)", async () => {
-    const check = await withOperatorStatus({
+    const check = await withAccountStatus({
       ...BASE_STATUS,
       recovery_posture: [{
         org_id: "org-2222", vault_count: 1,
@@ -431,7 +431,7 @@ describe("run402 doctor — recovery_posture (gitvault-recovery-custody)", () =>
   });
 
   it("healthy posture is ok and still carries the org facts", async () => {
-    const check = await withOperatorStatus({
+    const check = await withAccountStatus({
       ...BASE_STATUS,
       recovery_posture: [{
         org_id: "org-3333", vault_count: 1,
@@ -448,13 +448,13 @@ describe("run402 doctor — recovery_posture (gitvault-recovery-custody)", () =>
   });
 
   it("no vault-owning org is ok with an empty orgs list (nothing to lose, nothing to advise)", async () => {
-    const check = await withOperatorStatus({ ...BASE_STATUS, recovery_posture: [] }, runOnlyPosture);
+    const check = await withAccountStatus({ ...BASE_STATUS, recovery_posture: [] }, runOnlyPosture);
     assert.equal(check.status, "ok");
     assert.deepEqual(check.value.orgs, []);
   });
 
   it("a gateway without the block reports skipped, never a doctor failure", async () => {
-    const check = await withOperatorStatus(BASE_STATUS, runOnlyPosture);
+    const check = await withAccountStatus(BASE_STATUS, runOnlyPosture);
     assert.equal(check.status, "skipped");
   });
 });
@@ -462,7 +462,7 @@ describe("run402 doctor — recovery_posture (gitvault-recovery-custody)", () =>
 // ─── ok vs warnings[] — the "can this agent ship" split ──────────────────────
 //
 // An agent user's report: `ok: false` with only two NON-blocking findings
-// (operator passkey not bound, recovery posture degraded on another org) —
+// (contact passkey not bound, recovery posture degraded on another org) —
 // and it could still deploy. `ok` now answers exactly one question (is any
 // check blocking?) and is structural, never a status-string allowlist; every
 // check carries `severity`, advisory gaps ride in `warnings[]`, and
@@ -503,9 +503,9 @@ describe("run402 doctor — ok is 'can this agent ship'; warnings[] carries the 
     lease_expires_at: "2099-01-01T00:00:00.000Z",
     projects: [{ id: ACTIVE_PROJECT, name: "active" }],
   };
-  const OPERATOR_WITH_GAPS = {
-    operator_contact: { email_status: "verified", passkey_status: "not_bound" },
-    operator_reachability: { reachable: true, verified_recipient_count: 1, sources: [], skipped_last_90d: 0 },
+  const ACCOUNT_WITH_GAPS = {
+    contact: { email_status: "verified", passkey_status: "not_bound" },
+    reachability: { reachable: true, verified_recipient_count: 1, sources: [], skipped_last_90d: 0 },
     skipped_notifications: [],
     critical_items: [],
     runtime: { stale_function_count: 0, stale_functions: [] },
@@ -519,19 +519,19 @@ describe("run402 doctor — ok is 'can this agent ship'; warnings[] carries the 
       state_generation: 2,
     }],
   };
-  const ONLY_SHIP_CHECKS = ["--only", "tier", "--only", "operator_health", "--only", "recovery_posture", "--only", "runtime_staleness"];
+  const ONLY_SHIP_CHECKS = ["--only", "tier", "--only", "account_health", "--only", "recovery_posture", "--only", "runtime_staleness"];
 
   it("the user's exact shape — passkey not bound + degraded posture on another org — is ok:true, exit 0, with both gaps in warnings[]", async () => {
     const { exit, report } = await withRoutes({
       "/tiers/v1/status": ACTIVE_TIER,
-      "/agent/v1/operator/status": OPERATOR_WITH_GAPS,
+      "/agent/v1/me/status": ACCOUNT_WITH_GAPS,
     }, () => runDoctor(ONLY_SHIP_CHECKS));
     assert.equal(exit, "process.exit(0)", "advisory warnings must never change the exit code");
     assert.equal(report.ok, true);
     assert.deepEqual(report.blocking, []);
     assert.ok(report.warnings.length >= 2, `expected the two advisory gaps in warnings[], got ${JSON.stringify(report.warnings)}`);
     const forCheck = (name) => report.warnings.filter((w) => w.check === name);
-    assert.match(forCheck("operator_health")[0].message, /operator passkey not bound/);
+    assert.match(forCheck("account_health")[0].message, /contact passkey not bound/);
     assert.match(forCheck("recovery_posture")[0].message, /org org-other \(1 vault\): no human owner/);
     for (const w of report.warnings) {
       assert.equal(typeof w.check, "string");
@@ -539,15 +539,15 @@ describe("run402 doctor — ok is 'can this agent ship'; warnings[] carries the 
     }
     // The advisory checks are still reported as `warning` with their gaps —
     // checks[] is unchanged apart from the added severity.
-    assert.equal(report.checks.find((c) => c.name === "operator_health").status, "warning");
-    assert.equal(report.checks.find((c) => c.name === "operator_health").severity, "advisory");
+    assert.equal(report.checks.find((c) => c.name === "account_health").status, "warning");
+    assert.equal(report.checks.find((c) => c.name === "account_health").severity, "advisory");
     assert.equal(report.checks.find((c) => c.name === "tier").severity, "info");
   });
 
   it("a frozen tier is ok:false, exit 1, with tier as the blocking entry (GH-570 semantics kept)", async () => {
     const { exit, report } = await withRoutes({
       "/tiers/v1/status": { ...ACTIVE_TIER, tier: "prototype", active: false, organization_lifecycle_state: "frozen" },
-      "/agent/v1/operator/status": OPERATOR_WITH_GAPS,
+      "/agent/v1/me/status": ACCOUNT_WITH_GAPS,
     }, () => runDoctor(ONLY_SHIP_CHECKS));
     assert.equal(exit, "process.exit(1)");
     assert.equal(report.ok, false);
@@ -561,7 +561,7 @@ describe("run402 doctor — ok is 'can this agent ship'; warnings[] carries the 
     assert.equal(tier.value.tier, "prototype");
     assert.equal(tier.value.lifecycle, "frozen");
     // The advisory gaps are STILL surfaced alongside the blocker.
-    assert.ok(report.warnings.some((w) => w.check === "operator_health"));
+    assert.ok(report.warnings.some((w) => w.check === "account_health"));
   });
 
   it("every check carries severity ∈ {blocking, advisory, info}, on a full run, --only, and --refresh alike", async () => {

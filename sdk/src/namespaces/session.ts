@@ -1,41 +1,117 @@
 /**
- * `operator.session` — the hosted/browser control-plane **session** surface
- * (gateway v1.78 `passkey-principals-onboarding`). The write-capable human
- * principal: log in (email magic-link / passkey / Google / GitHub), manage the
- * session (whoami / refresh / revoke), enrol a passkey, run a step-up ceremony,
- * and manage authenticators + recovery codes.
+ * `session` — a person's **sign-in session** (wire token class
+ * `control_plane_session`). One session, bound to the principal, graded by how
+ * it was minted (`grade` on every mint response and on `GET /agent/v1/whoami`):
  *
- * Reached as `r.operator.session.*`. Distinct from the read-only operator
- * overview session (`r.operator.deviceStart`/`overview`) and from the CLI
- * loopback-PKCE write-login (`r.operator.buildCliAuthorizeUrl`/`exchangeCliToken`,
- * which is the headless variant of this same browser ceremony). All three are
- * the one human principal; this group is the browser/console front door that the
- * hosted login pages and `@run402/sdk` consumers call.
+ * - `browser` — the console: email magic link, passkey, Google, or GitHub.
+ * - `loopback` — `run402 login`: the loopback-PKCE browser ceremony
+ *   ({@link Session.buildCliAuthorizeUrl} + {@link Session.exchangeCliToken}).
+ *   Full and step-up-able.
+ * - `device` — `run402 login --device`: RFC 8628 device authorization
+ *   ({@link Session.deviceStart} + {@link Session.devicePoll}). Read-only: the
+ *   gateway refuses every mutation with `403 SESSION_READ_ONLY`.
  *
- * Isomorphic — no Node APIs. The token model mirrors {@link Operator.overview}:
- * the public *mint* methods (`email`/`verifyEmail`/`passkey*`/`consumeRecoveryCode`)
- * send no auth (the body or the magic-link token IS the credential); the
- * *session-bound* methods take `opts.token` to send the `control_plane_session`
- * bearer explicitly, and fall back to the credential provider's default auth
- * (e.g. {@link controlPlaneSessionCredentials} or a SIWX wallet) when omitted.
+ * Reached as `r.session.*`. Isomorphic — no Node APIs; the loopback server and
+ * PKCE generation live in the Node CLI. The public *mint* methods send no auth
+ * (the body, the magic-link token, or the code + verifier is the credential);
+ * the *session-bound* methods take `opts.token` to send the bearer explicitly,
+ * and fall back to the credential provider's default auth (e.g.
+ * {@link controlPlaneSessionCredentials} or a SIWX wallet) when omitted.
  *
  * WebAuthn option/assertion payloads are opaque passthroughs (`unknown`) — the
  * browser runs the actual ceremony; a headless client cannot.
  *
- * High-stakes writes (invite, membership, handoff, delete) require a **fresh
+ * High-stakes writes (invite, membership, transfer, delete) require a **fresh
  * passkey** — a magic-link/OAuth session does NOT satisfy step-up, so the
  * gateway returns {@link StepUpRequiredError}; `stepUpOptions`/`stepUpVerify`
- * are how a long-lived session re-establishes that freshness.
+ * are how a long-lived session re-establishes that freshness. A write approval
+ * ({@link WriteApproval}) never satisfies step-up.
  */
 
 import type { Client } from "../kernel.js";
-import type { ControlPlaneSession } from "./operator.js";
-import type { Principal, OrgMembership } from "./org.types.js";
+import { ApiError, NetworkError } from "../errors.js";
+import type { SessionGrade, WhoAmIResult } from "./org.types.js";
 
-/** OAuth identity providers bridged for control-plane login. */
+/**
+ * A minted sign-in session (`POST /agent/v1/control-plane/cli/token`,
+ * `…/cli/device/token`, and the browser mint routes). Forward-compatible.
+ */
+export interface ControlPlaneSession {
+  control_plane_session_token: string;
+  token_type?: string;
+  /** Relative lifetime in seconds. */
+  expires_in?: number;
+  /** How it was minted: `browser`, `loopback`, or `device` (read-only). */
+  grade?: SessionGrade | (string & {});
+  /** The principal id. */
+  principal_id?: string;
+  /** Auth methods satisfied (e.g. `["passkey"]`). */
+  amr?: string[];
+  /** ISO-8601 absolute expiry, when the mint route reports one. */
+  absolute_expires_at?: string;
+  [key: string]: unknown;
+}
+
+/** RFC 8628 device-authorization start response (`POST …/cli/device`). */
+export interface DeviceAuthStart {
+  device_code: string;
+  user_code: string;
+  verification_uri: string;
+  /** Pre-fills the user_code so the person can click straight through. */
+  verification_uri_complete?: string;
+  expires_in: number;
+  /** Minimum seconds between `devicePoll` calls. */
+  interval: number;
+}
+
+/**
+ * Result of one {@link Session.devicePoll}. The non-approved states are the
+ * RFC 8628 token error codes — expected polling states, NOT thrown errors, so
+ * callers can run the poll loop without try/catch. An approved session carries
+ * `grade: "device"`.
+ */
+export type DevicePollResult =
+  | { kind: "approved"; session: ControlPlaneSession }
+  | { kind: "authorization_pending" }
+  | { kind: "slow_down" }
+  | { kind: "access_denied" }
+  | { kind: "expired_token" };
+
+/** Parameters for {@link Session.buildCliAuthorizeUrl}. */
+export interface CliAuthorizeParams {
+  /** The CLI's loopback redirect, e.g. `http://127.0.0.1:54321/callback`. */
+  redirectUri: string;
+  /** PKCE S256 challenge = base64url(sha256(verifier)). */
+  codeChallenge: string;
+  /** Opaque CSRF state echoed back on the redirect. */
+  state: string;
+  /** Replay nonce. */
+  nonce: string;
+}
+
+/** Parameters for {@link Session.exchangeCliToken}. */
+export interface CliTokenExchange {
+  /** Authorization code received on the loopback redirect. */
+  code: string;
+  /** The PKCE verifier whose hash was sent as `codeChallenge`. */
+  codeVerifier: string;
+  /** Must match the `redirectUri` used at authorize time. */
+  redirectUri: string;
+  /** Must match the `state` used at authorize time. */
+  state: string;
+}
+
+const POLL_ERROR_CODES = new Set([
+  "authorization_pending",
+  "slow_down",
+  "access_denied",
+  "expired_token",
+]);
+
+/** OAuth identity providers bridged for sign-in. */
 export type ControlPlaneOAuthProvider = "google" | "github";
 
-/** Generic, non-enumerating response from {@link OperatorSession.email}. */
+/** Generic, non-enumerating response from {@link Session.email}. */
 export interface MagicLinkSendResult {
   status: string;
   message: string;
@@ -43,7 +119,7 @@ export interface MagicLinkSendResult {
 }
 
 /**
- * Result of {@link OperatorSession.consumeRecoveryCode} — a minted session that
+ * Result of {@link Session.consumeRecoveryCode} — a minted session that
  * cannot perform high-stakes ops until a passkey is enrolled
  * (`must_enroll_passkey: true`). Recovery `amr` never satisfies step-up.
  */
@@ -52,23 +128,7 @@ export interface RecoveryConsumeResult extends ControlPlaneSession {
   note?: string;
 }
 
-/**
- * Result of {@link OperatorSession.whoami} (`GET /agent/v1/control-plane/session`)
- * — the live session's principal, every org membership (newly-active rows here
- * are the auto-claimed invites), and the freshness substrate (`amr` + per-AMR
- * `amr_times`) the step-up gate reads. Forward-compatible.
- */
-export interface ControlPlaneWhoAmI {
-  principal: Principal;
-  memberships: OrgMembership[];
-  /** Auth methods satisfied on this session, e.g. `["passkey"]`. */
-  amr: string[];
-  /** Per-AMR last-proven time (epoch ms or ISO), the step-up freshness source. */
-  amr_times?: Record<string, unknown>;
-  [key: string]: unknown;
-}
-
-/** Result of {@link OperatorSession.refresh} (`POST …/session/refresh`). */
+/** Result of {@link Session.refresh} (`POST …/session/refresh`). */
 export interface ControlPlaneRefreshResult {
   control_plane_session_token: string;
   token_type?: string;
@@ -82,21 +142,21 @@ export interface WebAuthnOptionsResult {
   [key: string]: unknown;
 }
 
-/** Result of {@link OperatorSession.enrollPasskeyVerify}. */
+/** Result of {@link Session.enrollPasskeyVerify}. */
 export interface EnrollPasskeyResult {
   status: string;
   credential_id: string;
   [key: string]: unknown;
 }
 
-/** Result of {@link OperatorSession.stepUpVerify}. */
+/** Result of {@link Session.stepUpVerify}. */
 export interface StepUpVerifyResult {
   status: string;
   stepped_up: boolean;
   [key: string]: unknown;
 }
 
-/** Result of {@link OperatorSession.issueRecoveryCodes} — shown ONCE. */
+/** Result of {@link Session.issueRecoveryCodes} — shown ONCE. */
 export interface RecoveryCodesResult {
   status: string;
   recovery_codes: string[];
@@ -117,7 +177,7 @@ export interface Authenticator {
   [key: string]: unknown;
 }
 
-/** Result of {@link OperatorSession.revokeAuthenticator}. */
+/** Result of {@link Session.revokeAuthenticator}. */
 export interface AuthenticatorRevokeResult {
   status: string;
   kind: string;
@@ -133,8 +193,101 @@ export interface SessionTokenOpts {
   token?: string;
 }
 
-export class OperatorSession {
+export class Session {
   constructor(private readonly client: Client) {}
+
+  // ── command-line login (public — no auth) ──
+
+  /**
+   * Build the loopback-PKCE authorize URL `run402 login` opens in the browser
+   * (`GET /agent/v1/control-plane/cli/authorize`). Pure — no network. The
+   * caller generates `codeChallenge`/`state`/`nonce` and runs the redirect
+   * server on `127.0.0.1`.
+   */
+  buildCliAuthorizeUrl(params: CliAuthorizeParams): string {
+    const q = new URLSearchParams({
+      redirect_uri: params.redirectUri,
+      code_challenge: params.codeChallenge,
+      code_challenge_method: "S256",
+      state: params.state,
+      nonce: params.nonce,
+    });
+    return `${this.client.apiBase}/agent/v1/control-plane/cli/authorize?${q.toString()}`;
+  }
+
+  /**
+   * Exchange the loopback authorization code (+ PKCE verifier) for a
+   * `loopback`-grade sign-in session (`POST …/cli/token`). Unauthenticated —
+   * the code + verifier are the credential.
+   */
+  async exchangeCliToken(params: CliTokenExchange): Promise<ControlPlaneSession> {
+    return this.client.request<ControlPlaneSession>("/agent/v1/control-plane/cli/token", {
+      method: "POST",
+      body: {
+        code: params.code,
+        code_verifier: params.codeVerifier,
+        redirect_uri: params.redirectUri,
+        state: params.state,
+      },
+      withAuth: false,
+      context: "exchanging CLI authorization code",
+    });
+  }
+
+  /**
+   * Begin RFC 8628 device authorization (`POST …/cli/device`) for
+   * `run402 login --device`. Unauthenticated. Returns the codes the CLI prints
+   * (`user_code` + `verification_uri`) plus the poll `interval` and
+   * `expires_in`. The person approves in the console, which needs a recent
+   * sign-in (`403 RECENT_SIGN_IN_REQUIRED` otherwise).
+   */
+  async deviceStart(): Promise<DeviceAuthStart> {
+    return this.client.request<DeviceAuthStart>("/agent/v1/control-plane/cli/device", {
+      method: "POST",
+      body: {},
+      withAuth: false,
+      context: "starting device authorization",
+    });
+  }
+
+  /**
+   * Poll once for approval (`POST …/cli/device/token`). Bypasses the kernel's
+   * error mapping on purpose: the RFC 8628 error codes (`authorization_pending`,
+   * `slow_down`, ...) are normal polling states returned as data, not
+   * exceptions. Only an unexpected response shape throws. The approved session
+   * is `device` grade (read-only).
+   */
+  async devicePoll(deviceCode: string): Promise<DevicePollResult> {
+    const url = `${this.client.apiBase}/agent/v1/control-plane/cli/device/token`;
+    let res: Response;
+    try {
+      res = await this.client.fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ device_code: deviceCode }),
+      });
+    } catch (err) {
+      throw new NetworkError(
+        `Network error while polling device token: ${(err as Error).message}`,
+        err,
+        "polling device token",
+      );
+    }
+    const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+    if (res.ok && body && typeof body.control_plane_session_token === "string") {
+      return { kind: "approved", session: body as unknown as ControlPlaneSession };
+    }
+    const error = body && typeof body.error === "string" ? body.error : null;
+    if (error && POLL_ERROR_CODES.has(error)) {
+      return { kind: error as Exclude<DevicePollResult["kind"], "approved"> };
+    }
+    throw new ApiError(
+      `Unexpected device-token response (HTTP ${res.status})`,
+      res.status,
+      body,
+      "polling device token",
+    );
+  }
 
   // ── login / mint (public — no auth; the body or link token is the credential) ──
 
@@ -153,7 +306,7 @@ export class OperatorSession {
   }
 
   /**
-   * Exchange a magic-link token for a control-plane session
+   * Exchange a magic-link token for a sign-in session
    * (`POST …/session/email/verify`). Verifies the email, resolves/creates the
    * principal, **auto-claims any pending invites**, and mints the session
    * (`amr: ["email"]`).
@@ -225,14 +378,15 @@ export class OperatorSession {
   // ── session lifecycle (bearer; falls back to credential provider) ──
 
   /**
-   * Resolve the current session's principal + memberships + freshness
-   * (`GET /agent/v1/control-plane/session`). The `memberships` reflect any
-   * invites auto-claimed at login.
+   * Resolve the session's principal, memberships, and `session` —
+   * `{ grade, amr, amr_times }` (`GET /agent/v1/whoami`). The `memberships`
+   * reflect any invites auto-claimed at sign-in. With no `token` the request
+   * uses the credential provider, and `session` is `null` for a wallet caller.
    */
-  async whoami(opts: SessionTokenOpts = {}): Promise<ControlPlaneWhoAmI> {
-    return this.client.request<ControlPlaneWhoAmI>("/agent/v1/control-plane/session", {
+  async whoami(opts: SessionTokenOpts = {}): Promise<WhoAmIResult> {
+    return this.client.request<WhoAmIResult>("/agent/v1/whoami", {
       ...authFor(opts),
-      context: "resolving control-plane session",
+      context: "resolving sign-in session",
     });
   }
 
@@ -241,7 +395,7 @@ export class OperatorSession {
     return this.client.request<ControlPlaneRefreshResult>("/agent/v1/control-plane/session/refresh", {
       method: "POST",
       ...authFor(opts),
-      context: "refreshing control-plane session",
+      context: "refreshing sign-in session",
     });
   }
 
@@ -250,7 +404,7 @@ export class OperatorSession {
     return this.client.request<{ status: string }>("/agent/v1/control-plane/session/revoke", {
       method: "POST",
       ...authFor(opts),
-      context: "revoking control-plane session",
+      context: "revoking sign-in session",
     });
   }
 
@@ -436,7 +590,7 @@ export interface SourceAccessRecoveryBundleResult {
 /**
  * Build the auth half of a request: explicit `Authorization: Bearer <token>`
  * (and `withAuth: false`) when a token is passed, else fall through to the
- * credential provider (`withAuth` defaults true). Mirrors {@link Operator.overview}.
+ * credential provider (`withAuth` defaults true).
  */
 function authFor(opts: SessionTokenOpts): { headers?: Record<string, string>; withAuth?: boolean } {
   return opts.token

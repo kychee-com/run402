@@ -9,7 +9,7 @@ export const sendFeedbackSchema = {
     .string()
     .optional()
     .describe(
-      "Project this feedback concerns. Required to relay a promotion consent (the hand_to_operator " +
+      "Project this feedback concerns. Required to relay a promotion consent (the hand_to_member " +
         "next action a deploy response carries on activation): after showing your human the site and " +
         "console links and getting a yes, call send_feedback with message \"promote: yes\" and this " +
         "project_id. The server resolves the project's site URL, org, and your presence name for the " +

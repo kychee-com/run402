@@ -139,7 +139,12 @@ const MATRIX = {
     ],
   },
   agent: { shared: [], specific: ["contact"] },
-  operator: { shared: ["login", "logout", "overview", "whoami"], specific: [] },
+  // login / logout / whoami / approve are flag-based top-level verbs: --help
+  // short-circuits before any browser, listener, or network call.
+  login: { shared: [], specific: [] },
+  logout: { shared: [], specific: [] },
+  whoami: { shared: [], specific: [] },
+  approve: { shared: [], specific: [] },
   service: { shared: [], specific: ["status", "health"] },
   cache: { shared: ["inspect", "invalidate"], specific: [] },
   // RETIRED (legible-cli-surface): one help — the migration map — and no

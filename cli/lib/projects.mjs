@@ -1,8 +1,7 @@
 import { readFileSync } from "fs";
 import { walletAuthHeaders, resolveProjectId, getActiveProjectId, isCoreApiTarget } from "./config.mjs";
-import { loadLiveOperatorSession } from "../core-dist/operator-session.js";
 import { loadLiveControlPlaneSession } from "../core-dist/control-plane-session.js";
-import { withAutoApprove } from "./operator.mjs";
+import { withAutoApprove } from "./sign-in.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail, parseFlagJson } from "./sdk-errors.mjs";
 import { stampOrgFromProject } from "./org-context.mjs";
@@ -76,10 +75,10 @@ Notes:
     Local project keys live under 'run402 credentials project-keys ...'.
   - 'list' is a SERVER read, not the local key cache: it shows every project the
     active wallet can reach (membership-scoped), with name, site_url, custom
-    domains, and org_id. '--org <id>' filters to one org; '--all' reads the
-    cross-wallet inventory for every wallet controlling your operator email
-    (run 'run402 operator login' first for the union, else it falls back to the
-    current wallet's slice). The 'active' marker still comes from local state.
+    domains, and org_id. '--org <id>' filters to one org; '--all' reads every
+    project you can reach across all your orgs (as your sign-in session after
+    'run402 login', else as the current wallet). The 'active' marker still
+    comes from local state.
   - 'rename' fixes a project's display name. You must be an org admin (or hold a
     project:write grant) on the owning org; it works even if the project was
     never provisioned from this machine.
@@ -115,11 +114,10 @@ Options:
   --org <id>          Filter to projects owned by one org (organization).
                       Authorize-before-reveal: a non-member or guessed id is a
                       403; a non-UUID id is a 400.
-  --all               Read the cross-wallet inventory across every wallet
-                      controlling your operator email. Run 'run402 operator
-                      login' first for the union; without a session it falls
-                      back to the current wallet's slice. Mutually exclusive
-                      with --org.
+  --all               Read every project you can reach across all your orgs
+                      (GET /agent/v1/me/projects). After 'run402 login' it
+                      reads as your sign-in session; without one, as the
+                      current wallet. Mutually exclusive with --org.
 
 Notes:
   - This is a SERVER read (membership-scoped), not the local keystore. Each row
@@ -362,8 +360,8 @@ async function provision(args) {
     }
   }
   // Aggressive early exit when no local wallet is configured — but only when
-  // there's also no operator (control-plane) session, since a wallet-less human
-  // provisions into an org via their operator approval instead of a wallet.
+  // there's also no sign-in session, since a wallet-less person provisions
+  // into an org via a write approval instead of a wallet.
   if (!isCoreApiTarget() && !loadLiveControlPlaneSession()) walletAuthHeaders("/projects/v1");
 
   const activeBefore = getActiveProjectId();
@@ -525,25 +523,24 @@ async function list(args = []) {
     fail({
       code: "BAD_USAGE",
       message: "--all and --org are mutually exclusive.",
-      hint: "--all reads the cross-wallet operator inventory; --org filters the membership-scoped list to one org.",
+      hint: "--all reads every project across all your orgs; --org filters the membership-scoped list to one org.",
     });
   }
 
-  // `--all` reads the operator email-union inventory across every wallet
-  // controlling your verified email. Pass the cached operator-session token
-  // when present (cross-wallet union); otherwise the SDK falls back to SIWX
-  // wallet auth and the gateway returns just this wallet's slice.
+  // `--all` reads every project the caller can reach across all its orgs.
+  // Pass the cached sign-in session token when present; otherwise the SDK
+  // uses the credential provider and the gateway returns this wallet's slice.
   const opts = {};
   if (all) {
     opts.all = true;
-    const session = loadLiveOperatorSession();
-    if (session) opts.token = session.operator_session_token;
+    const session = loadLiveControlPlaneSession();
+    if (session) opts.token = session.control_plane_session_token;
   } else if (org) {
     opts.org = org;
   }
 
   // Active marker comes from local state; the inventory itself is the server
-  // read (NOT the keystore), so it surfaces every project the wallet/email can
+  // read (NOT the keystore), so it surfaces every project the principal can
   // reach — including ones never provisioned from this machine.
   const activeId = getActiveProjectId();
 

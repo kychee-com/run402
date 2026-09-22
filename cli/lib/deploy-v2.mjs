@@ -47,7 +47,7 @@ import { API, walletAuthHeaders, getActiveProjectId, resolveProjectId, isCoreApi
 import { delegateTokenFromEnv } from "#sdk/node";
 import { flagValue, normalizeArgv } from "./argparse.mjs";
 import { loadLiveControlPlaneSession } from "../core-dist/control-plane-session.js";
-import { withAutoApprove } from "./operator.mjs";
+import { withAutoApprove } from "./sign-in.mjs";
 import { editRequestAction, nextAction, retryAction } from "./next-actions.mjs";
 import { createUpdateCheckScheduler, emitUpdateNotice } from "./update-check.mjs";
 import { sdkStats, printVerboseStats } from "./stats.mjs";
@@ -553,14 +553,14 @@ async function rehearseCmd(rawArgs) {
   }
 }
 
-const PROMOTE_HELP = `run402 deploy promote — Operator pointer-swap recovery (v1.58+)
+const PROMOTE_HELP = `run402 deploy promote — Pointer-swap recovery (v1.58+)
 
 Usage:
   run402 deploy promote <release_id> [--project <project_id>] [--allow-warning <code>] [--allow-warnings] [--quiet]
 
 Re-points the project's live release at an existing release row without
 re-running the apply pipeline. Designed for "oops on a real project ID"
-recovery — when an apply shipped content the operator regrets, promote
+recovery — when an apply shipped content you regret, promote
 back to the prior release in seconds instead of re-deploying.
 
 Promotable statuses: ready, active, superseded. Releases with status
@@ -1311,7 +1311,7 @@ async function deployCmd(args) {
     sdkOpts = { delegateToken, disablePaidFetch: true };
   } else if (!isCoreApiTarget() && !loadLiveControlPlaneSession()) {
     // Aggressive early exit when no local wallet is configured — unless a
-    // wallet-less human is deploying via their operator (control-plane) session
+    // wallet-less person is deploying via their sign-in session
     // or the active target is a self-hosted Core Gateway.
     walletAuthHeaders("/apply/v1/plans");
   }

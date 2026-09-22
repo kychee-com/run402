@@ -18,7 +18,7 @@ export type BuzzEventRouteStatus = "pending_authorization" | "active" | "paused"
 /**
  * `owner` = an explicit pause; `delivery_failures` = the gateway auto-paused
  * after ten consecutive hard publish failures (a mandatory
- * `buzz_route_auto_paused` operator notification fired alongside).
+ * `buzz_route_auto_paused` owner notification fired alongside).
  */
 export type BuzzEventRoutePauseReason = "owner" | "delivery_failures";
 

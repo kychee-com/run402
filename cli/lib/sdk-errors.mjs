@@ -148,6 +148,11 @@ export function reportSdkError(err) {
       "Returned as 403 even when the project does not exist, so verify the project id too.";
   }
 
+  // A `device`-grade sign-in session (`run402 login --device`) is read-only.
+  if (payload.code === "SESSION_READ_ONLY" && payload.hint === undefined) {
+    payload.hint = "This sign-in session came from `run402 login --device` and can only read. Run `run402 login` (the browser passkey sign-in) to write.";
+  }
+
   if (typeof payload.code === "string" && payload.code.startsWith("PROJECT_CREDENTIAL_") && payload.hint === undefined) {
     if (payload.code === "PROJECT_CREDENTIAL_PROJECT_MISMATCH") {
       payload.hint =

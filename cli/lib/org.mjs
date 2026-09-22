@@ -60,7 +60,7 @@ The second attribute may also be passed positionally (run402 org member add <wal
 
 Subcommands:
   create      Create an empty org on the prototype tier (you become owner)
-  list        Orgs you are a member of
+  list        Your orgs: role, tier, lifecycle, quotas, allowance, advisories
   get         Read one org (label + tier/lease + your role)
   rename      Set or clear an org's display label (owner-only)
   slug        Claim or rename the org's globally-unique, address-form slug
@@ -111,10 +111,19 @@ created org's prototype tier plus lease_started_at / lease_expires_at. Paid
 tiers are a separate flow. Step-up gated for control-plane sessions; the
 free-org cap may apply.
 `,
-  list: `run402 org list — orgs you are a member of
+  list: `run402 org list — your orgs, with the account overview
 
 Usage:
   run402 org list
+
+Lists every org you are a member of (GET /orgs/v1) and joins each row with
+the account overview (GET /agent/v1/me/overview): tier, lifecycle state,
+lease, quotas, allowance. The output also carries the overview's wallets,
+rollup, and advisories, plus scope and session (the sign-in session's grade,
+or null when a wallet reads). Both reads use the CLI's credential: the active
+wallet when there is one, else the sign-in session from 'run402 login'. When the overview
+read is refused (a grant key, for one), the memberships still print and
+'overview' is null.
 `,
   get: `run402 org get — read one org (label + tier/lease + your role)
 
@@ -331,11 +340,35 @@ async function list(args) {
   const a = normalizeArgv(args);
   assertKnownFlags(a, ["--help", "-h"]);
   requirePositionalCount(a, [], { min: 0, max: 0, command: "run402 org list" });
+  const sdk = getSdk();
+  let orgs;
   try {
-    console.log(JSON.stringify({ orgs: await getSdk().orgs.list() }, null, 2));
+    orgs = await sdk.orgs.list();
   } catch (err) {
-    reportSdkError(err);
+    return reportSdkError(err);
   }
+  // The account overview is the richer read, made with the same credential as
+  // the membership list; a caller the overview does not accept (a grant key)
+  // still gets its memberships.
+  let overview = null;
+  try {
+    overview = await sdk.me.overview();
+  } catch {
+    overview = null;
+  }
+  const byId = new Map((overview?.organizations ?? []).map((o) => [o.id, o]));
+  console.log(JSON.stringify({
+    orgs: orgs.map((m) => (byId.has(m.org_id) ? { ...m, overview: byId.get(m.org_id) } : m)),
+    ...(overview
+      ? {
+          scope: overview.scope ?? null,
+          session: overview.session ?? null,
+          rollup: overview.rollup ?? null,
+          wallets: overview.wallets ?? [],
+          advisories: overview.advisories ?? [],
+        }
+      : { overview: null }),
+  }, null, 2));
 }
 
 async function whoami(args) {
@@ -608,7 +641,7 @@ async function adopt(args) {
       return fail({
         code: "STEP_UP_REQUIRED",
         message: "Adopting an org needs a fresh passkey step-up.",
-        hint: "Run 'run402 operator login --step-up', then re-run 'run402 org adopt'.",
+        hint: "Run 'run402 login' (a fresh passkey sign-in), then re-run 'run402 org adopt'.",
       });
     }
     reportSdkError(err);

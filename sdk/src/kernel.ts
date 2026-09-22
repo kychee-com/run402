@@ -15,7 +15,7 @@ import {
   ApiError,
   NetworkError,
   NotAuthorizedError,
-  OperatorApprovalRequiredError,
+  WriteApprovalRequiredError,
   PaymentRequired,
   StepUpRequiredError,
   TransferFreezeError,
@@ -23,11 +23,12 @@ import {
   isRun402Error,
 } from "./errors.js";
 
-/** Gateway 403 codes that mean "a passkey operator approval is needed for this (capability, target)". */
-const WRITE_AUTH_CODES = new Set([
-  "WRITE_AUTH_REQUIRED",
-  "WRITE_AUTH_BINDING_MISMATCH",
-  "WRITE_AUTH_SESSION_INVALID",
+/** Gateway codes that mean "a passkey write approval is needed for this (capability, target)". */
+const WRITE_APPROVAL_CODES = new Set([
+  "WRITE_APPROVAL_REQUIRED",
+  "WRITE_APPROVAL_SCOPE_MISMATCH",
+  "WRITE_APPROVAL_BINDING_MISMATCH",
+  "WRITE_APPROVAL_SESSION_INVALID",
 ]);
 import type { AuthRequestMeta, CredentialsProvider, ProjectKeys } from "./credentials.js";
 
@@ -61,7 +62,7 @@ export interface RequestOptions {
   rawBody?: string | Uint8Array;
   /** Include credential headers from `credentials.getAuth(path)`. Default: true. */
   withAuth?: boolean;
-  /** Optional write capability + target, passed to `getAuth` for operator-approval matching. */
+  /** Optional write capability + target, passed to `getAuth` for write-approval matching. */
   authMeta?: AuthRequestMeta;
   /** Short verb phrase attached to thrown errors (e.g. "provisioning project"). */
   context: string;
@@ -255,7 +256,7 @@ export async function request<T>(
  * credentials and the kernel will not merge a provider auth header alongside —
  * preventing duplicate/contradictory credentials once dual-header auth exists.
  */
-const AUTH_HEADER_NAMES = ["authorization", "sign-in-with-x", "x-run402-write-auth"];
+const AUTH_HEADER_NAMES = ["authorization", "sign-in-with-x", "x-run402-write-approval"];
 
 /** Case-insensitive header presence check. */
 function hasHeader(headers: Record<string, string>, name: string): boolean {
@@ -393,9 +394,9 @@ export async function requestWithResponse<T>(
       context,
     );
   }
-  if (res.status === 403 && WRITE_AUTH_CODES.has(envelopeCode(resBody) ?? "")) {
-    throw new OperatorApprovalRequiredError(
-      `${displayMessage(resBody, "Operator approval required")} while ${context}`,
+  if ((res.status === 401 || res.status === 403) && WRITE_APPROVAL_CODES.has(envelopeCode(resBody) ?? "")) {
+    throw new WriteApprovalRequiredError(
+      `${displayMessage(resBody, "Write approval required")} while ${context}`,
       res.status,
       resBody,
       context,

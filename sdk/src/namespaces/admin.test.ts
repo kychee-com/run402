@@ -150,14 +150,14 @@ describe("admin agent contact assurance", () => {
     assert.equal(result.verification_retry_after_seconds, 60);
   });
 
-  it("starts operator passkey enrollment", async () => {
+  it("starts contact passkey enrollment", async () => {
     const { fetch, calls } = mockFetch(() => json(contactEnvelope({
       passkey_binding_status: "pending",
       assurance_level: "passkey_pending",
       enrollment_sent_to: "ops@example.com",
     })));
 
-    const result = await sdk(fetch).admin.startOperatorPasskeyEnrollment();
+    const result = await sdk(fetch).admin.startContactPasskeyEnrollment();
 
     assert.equal(calls[0]!.url, "https://api.test/agent/v1/contact/passkey/enroll");
     assert.equal(calls[0]!.method, "POST");
@@ -359,7 +359,7 @@ describe("admin.reactivateProject (v1.57)", () => {
 // notification-channel-routing-telegram — r.admin.channels / r.admin.rules.
 // ---------------------------------------------------------------------------
 
-describe("one-passkey-per-person: operator proofs ride beside the wallet proof", () => {
+describe("one-passkey-per-person: session proofs ride beside the wallet proof", () => {
   const hdr = (h: Record<string, string>, name: string) => Object.entries(h).find(([k]) => k.toLowerCase() === name.toLowerCase())?.[1];
 
   it("connectTelegram(opts, proofs) sends SIGN-IN-WITH-X and the session bearer on ONE request, and no provider auth", async () => {
