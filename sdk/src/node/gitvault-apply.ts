@@ -261,7 +261,7 @@ export async function applyWithGitvault(options: ApplyWithGitvaultOptions): Prom
   // A self-hosted Core gateway has no vault gate; never spend a round trip.
   if (options.target === "core") return plain({ kind: "none", reason: "no_vault" });
 
-  const record = await readVaultRecord(options.sdk.gitvault, options.spec.project);
+  const record = await readVaultRecord(options.sdk.gitvault, options.spec.project_id);
   if (!record) return plain({ kind: "none", reason: "policy_unreadable" });
   if (record.gitvault_policy === "grandfathered") {
     return plain({ kind: "grandfathered", repo_id: record.repo_id });

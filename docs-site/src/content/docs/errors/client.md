@@ -1057,7 +1057,7 @@ The client could not complete this operation. Inspect its typed error kind, mess
 
 <h2 id="RUN402_PROJECT_CONFLICT">RUN402_PROJECT_CONFLICT</h2>
 
-Owner: `public:sdk/src/node/actions-node.ts`, `public:sdk/src/node/deploy-manifest.ts`, `public:cli/lib/up.mjs`.
+Owner: `public:sdk/src/node/actions-node.ts`, `public:cli/lib/up.mjs`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 

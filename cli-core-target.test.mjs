@@ -236,7 +236,7 @@ describe("CLI Core target", () => {
 
     const plan = calls.find((call) => call.path === "/apply/v1/plans" && call.method === "POST");
     assert.equal(plan.body.spec.project, "prj_core_test");
-    assert.equal("project_id" in plan.body.spec, false, "Core deploy plans use ReleaseSpec.project");
+    assert.equal("project_id" in plan.body.spec, false, "Core deploy plans use the @run402/release project field");
     assert.ok(calls.every((call) => call.url.startsWith(CORE)), "all API calls should target Core");
   });
 

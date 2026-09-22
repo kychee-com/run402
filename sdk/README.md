@@ -537,7 +537,7 @@ if (result.hasErrors) console.log(result.errors);
 
 `migrationSql` is reference context only; it is not executed as a PostgreSQL dry run. This method validates authorization manifests, not deploy manifests.
 
-### Unified apply — `r.project(spec.project).apply`
+### Unified apply — `r.project(spec.project_id).apply`
 
 The canonical primitive for any deploy (database + migrations + manifest + value-free secret declarations + functions + site + subdomain). Three layers:
 
@@ -546,7 +546,7 @@ import { run402, summarizeDeployResult, type ReleaseSpec } from "@run402/sdk/nod
 
 const r = run402();
 const spec: ReleaseSpec = {
-  project: "prj_...",
+  project_id: "prj_...",
   site: {
     patch: {
       put: {
@@ -562,12 +562,12 @@ const spec: ReleaseSpec = {
 };
 
 // One-shot — most agents use this.
-const result = await (await r.project(spec.project)).apply(spec);
+const result = await (await r.project(spec.project_id)).apply(spec);
 const summary = summarizeDeployResult(result);
 console.log(summary.headline);
 
 // Long-running with progress events. Events are a discriminated union on `type`.
-const op = await (await r.project(spec.project)).apply.start(spec);
+const op = await (await r.project(spec.project_id)).apply.start(spec);
 for await (const ev of op.events()) console.log(ev.type);
 const final = await op.result();
 
@@ -583,11 +583,11 @@ const resumed = await (await r.project(projectId)).apply.resume("op_...");
 - **Warnings are structured.** `DeployResult.warnings` contains `WarningEntry[]` (`code`, `severity`, `requires_confirmation`, `message`, optional `affected`/`details`/`confidence`); the type preserves legacy low/medium/high plan warnings and modern deploy-observability info/warn/high warnings. `apply()` emits `plan.warnings` and stops before upload/commit on confirmation-required warnings unless broad `allowWarnings` is set or every blocking code is listed in `allowWarningCodes`. For `MISSING_REQUIRED_SECRET`, set the affected keys with `r.secrets.set`, then retry.
 - **Deploy summaries are SDK-owned convenience.** `summarizeDeployResult(result)` returns `DeploySummary` (`schema_version: "deploy-summary.v1"`) with a headline plus reliable current buckets for site path counts, CAS new/reused bytes, functions, migrations, routes, secrets, subdomains, and warning counts. It is derived from `DeployResult.diff` / `DeployResult.warnings`; it makes no extra gateway calls, omits sections the gateway did not return, and intentionally excludes timings, client-side duration estimates, and function old/new code hashes.
 - **Safe release-race retries are SDK-owned.** `apply()` automatically re-plans and retries omitted/current-base specs when the gateway returns `BASE_RELEASE_CONFLICT` with `safe_to_retry: true`. Static activation/config failures reported from `activation_pending` throw immediately with gateway metadata preserved. The default retry budget is two retries after the initial attempt; pass `{ maxRetries: 0 }` to opt out.
-- **Planning has two explicit non-deploying modes.** `(await r.project(spec.project)).apply.plan(spec, { mode: "reviewedPlan" })` calls the gateway reviewed-plan route and returns `plan_id`, `plan_fingerprint`, `plan_expires_at`, diff, warnings, and `next_actions[]` without uploading bytes or committing. Exact apply passes `{ requiredPlan: { planId, planFingerprint? } }` to `apply()` / `start()` / `commit()`; the SDK verifies before upload and commit. Legacy `{ dryRun: true }` still calls the no-row debug route and returns `plan_id: null`, but it is not require-able.
+- **Planning has two explicit non-deploying modes.** `(await r.project(spec.project_id)).apply.plan(spec, { mode: "reviewedPlan" })` calls the gateway reviewed-plan route and returns `plan_id`, `plan_fingerprint`, `plan_expires_at`, diff, warnings, and `next_actions[]` without uploading bytes or committing. Exact apply passes `{ requiredPlan: { planId, planFingerprint? } }` to `apply()` / `start()` / `commit()`; the SDK verifies before upload and commit. Legacy `{ dryRun: true }` still calls the no-row debug route and returns `plan_id: null`, but it is not require-able.
 - **Rehearsals run candidate plans on contained branches.** Use the lower-level sequence when you want an explicit gate before commit:
 
   ```ts
-  const p = await r.project(spec.project);
+  const p = await r.project(spec.project_id);
   const { plan, byteReaders } = await p.apply.plan(spec);
   await p.apply.upload(plan, { byteReaders });
   if (!plan.plan_id) throw new Error("Preview plans cannot be rehearsed");
@@ -629,7 +629,7 @@ const resumed = await (await r.project(projectId)).apply.resume("op_...");
     { pattern: "/login", methods: ["POST"], target: { type: "function", name: "auth" } },
   ];
   const spec: ReleaseSpec = {
-    project: projectId,
+    project_id: projectId,
     functions: {
       replace: {
         api: { source: "export default async function handler(req) { const url = new URL(req.url); return Response.json({ ok: true, path: url.pathname }); }" },
@@ -645,7 +645,7 @@ const resumed = await (await r.project(projectId)).apply.resume("op_...");
     routes: { replace: routes },
   };
 
-  await (await r.project(spec.project)).apply(spec);
+  await (await r.project(spec.project_id)).apply(spec);
   ```
 
   Matching is exact or final `/*` prefix only. `/admin/*` does not match `/admin`; deploy both `/admin` and `/admin/*` when the section root is dynamic. Release static asset paths and public browser paths are distinct. In the example, `events.html` is a release asset and `/events` is the public static URL declared by `site.public_paths`; `/events.html` is not public in explicit mode unless separately declared. A route-only static alias looks like `{ pattern: "/events", methods: ["GET", "HEAD"], target: { type: "static", file: "events.html" } }`; prefer `site.public_paths` for ordinary clean URLs and reserve static route targets for exact method-aware route-table behavior. Avoid routing every static file, wildcard static targets, leading-slash files, directory shorthand, broad method lists by default, and one-static-route-target-per-page route-table exhaustion. Query strings are ignored for matching and preserved in the handler's full public `req.url`. Exact beats prefix, longest prefix wins, and method-compatible dynamic routes beat static files. A method-specific `POST /login` route lets static `GET /login` serve HTML. Unsafe method mismatch returns `405`; matched dynamic route failures do not fall back to static assets.
@@ -707,11 +707,11 @@ const resumed = await (await r.project(projectId)).apply.resume("op_...");
 
   const r = run402();
   const { spec, idempotencyKey } = await loadDeployManifest("./run402.deploy.json");
-  await (await r.project(spec.project)).apply(spec, { idempotencyKey });
+  await (await r.project(spec.project_id)).apply(spec, { idempotencyKey });
   ```
 
-  `loadDeployManifest(path)` parses JSON relative to the manifest file, maps
-  agent-friendly `project_id` into `ReleaseSpec.project`, decodes base64 file
+  `loadDeployManifest(path)` parses JSON relative to the manifest file, carries
+  `project_id` into `ReleaseSpec.project_id`, decodes base64 file
   entries, turns `{ path }` entries into lazy `FsFileSource` values, and reads
   migration `sql_path` / `sql_file`. It also loads explicit executable
   `.ts/.mts/.cts/.js/.mjs/.cjs` configs and rejects executable auto-discovery
@@ -729,7 +729,7 @@ const resumed = await (await r.project(projectId)).apply.resume("op_...");
   import { defineConfig, dir, nodeFunction, sqlFile } from "@run402/sdk/config";
 
   export default defineConfig(({ env }) => ({
-    project: env.required("RUN402_PROJECT_ID"),
+    project_id: env.required("RUN402_PROJECT_ID"),
     database: { migrations: [sqlFile("db/001_init.sql")] },
     site: { replace: dir("dist"), public_paths: { mode: "implicit" } },
     functions: { replace: { api: nodeFunction("dist/functions/api.js") } },
@@ -859,7 +859,7 @@ console.log(heard.settled, heard.messages, heard.live_presences);
 
 ### GitHub Actions OIDC — CI credentials drive deploy
 
-The v1 CI path keeps the deploy primitive simple: link a GitHub repository once, then call the existing `r.project(spec.project).apply` with CI-marked credentials. There is no separate `r.ci.deployApply` method and no public `ci: true` deploy option.
+The v1 CI path keeps the deploy primitive simple: link a GitHub repository once, then call the existing `r.project(spec.project_id).apply` with CI-marked credentials. There is no separate `r.ci.deployApply` method and no public `ci: true` deploy option.
 
 The CLI is the easiest setup path (`run402 ci link github`), but the SDK exposes the building blocks:
 
@@ -905,15 +905,15 @@ const r = run402({
 });
 
 const ciSpec: ReleaseSpec = {
-  project: projectId,
+  project_id: projectId,
   base: { release: "current" },
   site: { patch: { put: { "index.html": "<h1>ship</h1>" } } },
 };
 
-await (await r.project(ciSpec.project)).apply(ciSpec);
+await (await r.project(ciSpec.project_id)).apply(ciSpec);
 ```
 
-CI deploys intentionally allow only `project`, `database`, `functions`, `site`, absent/current `base`, and `routes` authorized by the binding's `route_scopes`. Omitted or empty `route_scopes` preserves the original no-routes CI posture. The SDK normalizes scopes, sends `route_scopes` only when non-empty, and still rejects `secrets`, `subdomains`, `checks`, unknown future top-level fields, non-current `base`, and specs large enough to require `manifest_ref` before upload/plan. Gateway planning enforces route diffs and can return `CI_ROUTE_SCOPE_DENIED`; re-link with covering exact scopes like `/admin` or final-wildcard scopes like `/api/*`, or deploy locally. Use the canonical builders (`buildCiDelegationStatement`, `buildCiDelegationResourceUri`) instead of hand-rolling SIWX text; gateway tests pin those strings as golden vectors.
+CI deploys intentionally allow only `project_id`, `database`, `functions`, `site`, absent/current `base`, and `routes` authorized by the binding's `route_scopes`. Omitted or empty `route_scopes` preserves the original no-routes CI posture. The SDK normalizes scopes, sends `route_scopes` only when non-empty, and still rejects `secrets`, `subdomains`, `checks`, unknown future top-level fields, non-current `base`, and specs large enough to require `manifest_ref` before upload/plan. Gateway planning enforces route diffs and can return `CI_ROUTE_SCOPE_DENIED`; re-link with covering exact scopes like `/admin` or final-wildcard scopes like `/api/*`, or deploy locally. Use the canonical builders (`buildCiDelegationStatement`, `buildCiDelegationResourceUri`) instead of hand-rolling SIWX text; gateway tests pin those strings as golden vectors.
 
 ### Timestamp Convention
 
@@ -964,7 +964,7 @@ declare const spec: ReleaseSpec;
 const r = run402();
 
 try {
-  await (await r.project(spec.project)).apply(spec);
+  await (await r.project(spec.project_id)).apply(spec);
 } catch (e) {
   if (isPaymentRequired(e)) {
     // e is narrowed to PaymentRequired
@@ -992,7 +992,7 @@ should not duplicate or corrupt state, not that lifecycle/payment/auth gates
 will become allowed without an action. Pair retries with the SDK method's own
 `idempotencyKey` so retried mutations dedup server-side:
 
-For `r.project(spec.project).apply()`, safe `BASE_RELEASE_CONFLICT` release races are already
+For `r.project(spec.project_id).apply()`, safe `BASE_RELEASE_CONFLICT` release races are already
 handled by the apply hero with a fresh plan and visible `deploy.retry`
 events. Use `withRetry` for caller-owned retry policies around other operations,
 or pass `maxRetries: 0` to `apply` when you want to handle deploy races
@@ -1012,7 +1012,7 @@ const r = run402();
 
 try {
   const release = await withRetry(
-    async () => (await r.project(spec.project)).apply(spec, { idempotencyKey: "deploy-2026-05-01" }),
+    async () => (await r.project(spec.project_id)).apply(spec, { idempotencyKey: "deploy-2026-05-01" }),
     {
       attempts: 3,
       onRetry: (e, attempt, delayMs) =>

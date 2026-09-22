@@ -33,7 +33,7 @@ describe("tenant x402 wallet-stats example", () => {
       `
         import { normalizeDeployManifest } from "../../sdk/src/node/deploy-manifest.ts";
         const out = await normalizeDeployManifest({
-          project: "prj_test",
+          project_id: "prj_test",
           routes: {
             replace: [{
               pattern: "/wallet-stats",

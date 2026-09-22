@@ -22,7 +22,7 @@ describe("ReleaseSpec JSON Schema", () => {
 
     assert.equal(schema.$id, "https://run402.com/schemas/release-spec.v1.json");
     assert.equal(schema.properties.$schema.type, "string");
-    assert.ok(schema.properties.project);
+    assert.equal(schema.properties.project, undefined);
     assert.ok(schema.properties.project_id);
   });
 

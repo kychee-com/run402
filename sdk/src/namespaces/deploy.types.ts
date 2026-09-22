@@ -89,7 +89,7 @@ export interface ReleaseSpec {
   /** JSON Schema metadata for editor-authored specs. Stripped before plan requests. */
   $schema?: string;
   /** Project id the release belongs to. */
-  project: string;
+  project_id: string;
   /** Diff base for the new release. Default: `{ release: "current" }`. Pass
    *  `{ release: "empty" }` for a fresh deploy that should fail if a release
    *  already exists, or `{ release_id: "rel_..." }` to pin a specific base. */
@@ -2557,7 +2557,7 @@ export type GitvaultCommitDeclaration =
   | { allow_unvaulted: true; override_reason: string };
 
 export interface NormalizedReleaseSpec {
-  project: string;
+  project_id: string;
   base?: ReleaseSpec["base"];
   database?: NormalizedDatabaseSpec;
   secrets?: SecretsSpec;

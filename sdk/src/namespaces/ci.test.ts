@@ -509,10 +509,10 @@ describe("CI validation helpers", () => {
 });
 
 describe("assertCiDeployableSpec", () => {
-  it("accepts project, database, functions, site, and current base", () => {
+  it("accepts project_id, database, functions, site, and current base", () => {
     assert.doesNotThrow(() =>
       assertCiDeployableSpec({
-        project: "prj_abc",
+        project_id: "prj_abc",
         base: { release: "current" },
         database: { migrations: [] },
         functions: { patch: { delete: ["old"] } },
@@ -522,17 +522,17 @@ describe("assertCiDeployableSpec", () => {
     );
     assert.doesNotThrow(() =>
       assertCiDeployableSpec({
-        spec: { project: "prj_abc", site: { patch: { delete: ["old.html"] } } },
+        spec: { project_id: "prj_abc", site: { patch: { delete: ["old.html"] } } },
         manifest_ref: null,
       }),
     );
   });
 
   it("accepts routes in CI preflight because the gateway enforces route scopes", () => {
-    assert.doesNotThrow(() => assertCiDeployableSpec({ project: "prj_abc", routes: null }));
+    assert.doesNotThrow(() => assertCiDeployableSpec({ project_id: "prj_abc", routes: null }));
     assert.doesNotThrow(() =>
       assertCiDeployableSpec({
-        project: "prj_abc",
+        project_id: "prj_abc",
         routes: { replace: [{ pattern: "/admin", target: { type: "function", name: "admin" } }] },
       }),
     );
@@ -543,10 +543,10 @@ describe("assertCiDeployableSpec", () => {
     // (gated per-entry by the binding's asset_key_scopes). SDK
     // pre-validation that omits `assets` from its allowed-keys set breaks
     // every CI consumer of `client.assets.put` (including @run402/astro).
-    assert.doesNotThrow(() => assertCiDeployableSpec({ project: "prj_abc", assets: null }));
+    assert.doesNotThrow(() => assertCiDeployableSpec({ project_id: "prj_abc", assets: null }));
     assert.doesNotThrow(() =>
       assertCiDeployableSpec({
-        project: "prj_abc",
+        project_id: "prj_abc",
         assets: { put: [{ key: "astro/hero.jpg", content_sha256: "a".repeat(64) }] },
       }),
     );
@@ -555,7 +555,7 @@ describe("assertCiDeployableSpec", () => {
   it("rejects forbidden fields by property presence, including empty containers", () => {
     for (const field of ["secrets", "subdomains", "checks"]) {
       assert.throws(
-        () => assertCiDeployableSpec({ project: "prj_abc", [field]: field === "checks" ? [] : {} }),
+        () => assertCiDeployableSpec({ project_id: "prj_abc", [field]: field === "checks" ? [] : {} }),
         (err: unknown) =>
           err instanceof Run402DeployError &&
           err.code === "forbidden_spec_field" &&
@@ -566,17 +566,17 @@ describe("assertCiDeployableSpec", () => {
 
   it("rejects unknown future fields, non-current base, and non-null manifest_ref", () => {
     assert.throws(
-      () => assertCiDeployableSpec({ project: "prj_abc", lifecycle: {} }),
+      () => assertCiDeployableSpec({ project_id: "prj_abc", lifecycle: {} }),
       (err: unknown) => err instanceof Run402DeployError && err.resource === "lifecycle",
     );
     assert.throws(
-      () => assertCiDeployableSpec({ project: "prj_abc", base: { release: "empty" } }),
+      () => assertCiDeployableSpec({ project_id: "prj_abc", base: { release: "empty" } }),
       (err: unknown) => err instanceof Run402DeployError && err.resource === "base",
     );
     assert.throws(
       () =>
         assertCiDeployableSpec({
-          spec: { project: "prj_abc" },
+          spec: { project_id: "prj_abc" },
           manifest_ref: { sha256: "a".repeat(64), size: 1 },
         }),
       (err: unknown) => err instanceof Run402DeployError && err.resource === "manifest_ref",

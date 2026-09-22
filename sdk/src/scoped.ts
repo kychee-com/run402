@@ -633,11 +633,11 @@ class ScopedContracts {
  */
 export interface ScopedApplyHero {
   (
-    spec: Omit<ReleaseSpec, "project"> & { project?: string },
+    spec: Omit<ReleaseSpec, "project_id"> & { project_id?: string },
     opts?: ApplyOptions,
   ): Promise<DeployResult>;
   plan(
-    spec: Omit<ReleaseSpec, "project"> & { project?: string },
+    spec: Omit<ReleaseSpec, "project_id"> & { project_id?: string },
     opts?: {
       idempotencyKey?: string;
       dryRun?: boolean;
@@ -646,7 +646,7 @@ export interface ScopedApplyHero {
     },
   ): Promise<{ plan: PlanResponse; byteReaders: Map<string, ByteReader> }>;
   start(
-    spec: Omit<ReleaseSpec, "project"> & { project?: string },
+    spec: Omit<ReleaseSpec, "project_id"> & { project_id?: string },
     opts?: StartOptions,
   ): Promise<DeployOperation>;
   resume(
@@ -716,8 +716,8 @@ export interface ScopedApplyHero {
 
 function createScopedApplyHero(parent: Run402, projectId: string): ScopedApplyHero {
   const bindProject = (
-    spec: Omit<ReleaseSpec, "project"> & { project?: string },
-  ): ReleaseSpec => ({ ...spec, project: spec.project ?? projectId } as ReleaseSpec);
+    spec: Omit<ReleaseSpec, "project_id"> & { project_id?: string },
+  ): ReleaseSpec => ({ ...spec, project_id: spec.project_id ?? projectId } as ReleaseSpec);
   const hero = ((spec, opts) =>
     parent._applyEngine.apply(bindProject(spec), opts)) as ScopedApplyHero;
   hero.plan = (spec, opts) => parent._applyEngine.plan(bindProject(spec), opts);

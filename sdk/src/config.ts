@@ -96,8 +96,7 @@ export type Run402SqlFileConfigMigration =
   | Run402SqlFileConfigIdMigration
   | Run402SqlFileConfigNameMigration;
 
-export type Run402ReleaseConfig = Omit<ReleaseSpec, "project"> & {
-  project?: string;
+export type Run402ReleaseConfig = Omit<ReleaseSpec, "project_id"> & {
   project_id?: string;
   idempotency_key?: string;
 };

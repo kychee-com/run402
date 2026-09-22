@@ -45,7 +45,7 @@ const CI_ROUTE_SCOPE_LIMIT = 100;
 const CI_ROUTE_SCOPE_BYTE_LIMIT = 256;
 const NONCE_RE = /^[0-9a-f]{16,64}$/;
 const CI_DEPLOY_SPEC_ALLOWED_KEYS = new Set([
-  "project",
+  "project_id",
   "database",
   "functions",
   "site",
@@ -470,7 +470,7 @@ export function assertCiDeployableSpec(specOrPlanBody: ReleaseSpec | PlanRequest
       }
       throwCiDeploySpecError(
         key,
-        `CI deploy cannot ship spec.${key}; only project, database, functions, site, routes, assets, and base:{release:"current"} are allowed.`,
+        `CI deploy cannot ship spec.${key}; only project_id, database, functions, site, routes, assets, and base:{release:"current"} are allowed.`,
       );
     }
   }
@@ -542,7 +542,7 @@ function unwrapSpecOrPlanBody(
     typeof value === "object" &&
     !Array.isArray(value) &&
     "spec" in value &&
-    !("project" in value)
+    !("project_id" in value)
   ) {
     const body = value as { spec?: unknown; manifest_ref?: unknown };
     return { spec: body.spec, manifestRef: body.manifest_ref };

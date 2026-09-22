@@ -131,7 +131,7 @@ function writeTypedDeployConfig(root, bodyText = "hello") {
   const manifestPath = join(root, "run402.deploy.ts");
   writeFileSync(manifestPath, `
     export default {
-      project: "prj_test123",
+      project_id: "prj_test123",
       site: { replace: { "index.html": { data: ${JSON.stringify(bodyText)} } } },
     };
   `);
@@ -248,7 +248,8 @@ describe("typed release config CLI modes", () => {
       const printed = await captureSuccess(() =>
         run(["--manifest", manifestPath, "--print-spec"]),
       );
-      assert.equal(printed.json.project, "prj_test123");
+      assert.equal(printed.json.project_id, "prj_test123");
+      assert.equal(printed.json.project, undefined);
       assert.equal(printed.json.site.replace["index.html"], "v1");
       assert.equal(calls.some((call) => call.path === "/apply/v1/plans"), false, "--print-spec must stay local-only");
 

@@ -452,7 +452,7 @@ export class Deploy {
           context: "promoting release",
           headers: { "content-type": "application/json" },
           body: {
-            project,
+            project_id: project,
             allow_warning_codes: allowCodes,
           },
         },
@@ -964,7 +964,7 @@ async function applyOnce(
   }
 
   if (target === "core") {
-    await uploadCoreContent(client, spec.project, byteReaders, emit);
+    await uploadCoreContent(client, spec.project_id, byteReaders, emit);
 
     emit({
       type: "commit.phase",
@@ -973,14 +973,14 @@ async function applyOnce(
       ...(sliceKinds.length > 0 ? { slice_kinds: sliceKinds } : {}),
     });
     const planId = requirePlanId(plan, "applying deploy to Core");
-    const commit = await commitInternal(client, planId, opts.idempotencyKey, spec.project, opts.requiredPlan);
+    const commit = await commitInternal(client, planId, opts.idempotencyKey, spec.project_id, opts.requiredPlan);
     if (!isCoreCommitResponse(commit)) {
-      return await pollUntilReady(client, commit, plan.diff, plan.warnings, emit, spec.project, sliceKinds);
+      return await pollUntilReady(client, commit, plan.diff, plan.warnings, emit, spec.project_id, sliceKinds);
     }
-    return await coreDeployResult(client, commit, plan.diff, plan.warnings, emit, spec.project, sliceKinds);
+    return await coreDeployResult(client, commit, plan.diff, plan.warnings, emit, spec.project_id, sliceKinds);
   }
 
-  await uploadMissing(client, spec.project, plan.missing_content, byteReaders, emit);
+  await uploadMissing(client, spec.project_id, plan.missing_content, byteReaders, emit);
 
   emit({
     type: "commit.phase",
@@ -996,7 +996,7 @@ async function applyOnce(
   // protect and commits directly. A passed rehearsal binds the commit to the
   // report's `required_plan` — unbound commits of rehearsed plans are
   // refused by the gateway.
-  const rehearsal = await rehearseBeforeCommit(client, plan, planId, spec.project, opts, emit);
+  const rehearsal = await rehearseBeforeCommit(client, plan, planId, spec.project_id, opts, emit);
   const requiredPlan = rehearsal.requiredPlan ?? opts.requiredPlan;
   // gitvault §6.5 — the handshake. Content is uploaded, so the artifacts this
   // release ships are fixed; `authorize` verifies snapshot correspondence,
@@ -1011,10 +1011,10 @@ async function applyOnce(
       })
     : undefined;
   const commit = requireCloudCommitResponse(
-    await commitInternal(client, planId, opts.idempotencyKey, spec.project, requiredPlan, gitvaultCommit),
+    await commitInternal(client, planId, opts.idempotencyKey, spec.project_id, requiredPlan, gitvaultCommit),
     "applying deploy",
   );
-  const result = await pollUntilReady(client, commit, plan.diff, plan.warnings, emit, spec.project, sliceKinds);
+  const result = await pollUntilReady(client, commit, plan.diff, plan.warnings, emit, spec.project_id, sliceKinds);
   result.rehearsal = rehearsal.block;
 
   // v1.48 unified-apply: thread the plan response's `asset_entries[]` back
@@ -1412,7 +1412,7 @@ function i18nToWire(i18n: NonNullable<NormalizedReleaseSpec["i18n"]>): Record<st
 
 function releaseSpecToCoreSpec(spec: NormalizedReleaseSpec): Record<string, unknown> {
   return {
-    project: spec.project,
+    project: spec.project_id,
     ...(spec.base !== undefined ? { base: spec.base } : {}),
     ...(spec.database !== undefined ? { database: databaseToCoreSpec(spec.database) } : {}),
     ...(spec.secrets !== undefined ? { secrets: spec.secrets } : {}),
@@ -1428,7 +1428,7 @@ function releaseSpecToCoreSpec(spec: NormalizedReleaseSpec): Record<string, unkn
 
 function releaseSpecToWire(spec: NormalizedReleaseSpec): Record<string, unknown> {
   return {
-    project_id: spec.project,
+    project_id: spec.project_id,
     ...(spec.base !== undefined ? { base: spec.base } : {}),
     ...(spec.database !== undefined ? { database: databaseToWire(spec.database) } : {}),
     ...(spec.secrets !== undefined ? { secrets: spec.secrets } : {}),
@@ -1529,11 +1529,11 @@ async function planInternal(
     const manifestBytes = new TextEncoder().encode(JSON.stringify(wireSpec));
     const ref = await uploadInlineCas(
       client,
-      spec.project,
+      spec.project_id,
       manifestBytes,
       MANIFEST_CONTENT_TYPE,
     );
-    body = { spec: { project_id: spec.project }, manifest_ref: contentRefToWire(ref) };
+    body = { spec: { project_id: spec.project_id }, manifest_ref: contentRefToWire(ref) };
     if (idempotencyKey) body.idempotency_key = idempotencyKey;
     if (opts.gitvault) body.gitvault = opts.gitvault;
   }
@@ -1544,7 +1544,7 @@ async function planInternal(
       method: "POST",
       body,
       // Write-approval scope: deploying a release is `project.deploy` on this project.
-      authMeta: { method: "deploy.plan", capability: "project.deploy", target: { project_id: spec.project } },
+      authMeta: { method: "deploy.plan", capability: "project.deploy", target: { project_id: spec.project_id } },
       context: "planning deploy",
     })));
   } catch (err) {
@@ -1839,7 +1839,7 @@ async function computeDesiredScheduledFunctionCount(
   }
 
   if (!functions.patch) return null;
-  const activeScheduled = await readActiveScheduledFunctionNames(client, spec.project);
+  const activeScheduled = await readActiveScheduledFunctionNames(client, spec.project_id);
   if (!activeScheduled) return null;
   applyScheduledFunctionPatch(activeScheduled, functions.patch);
   return { count: activeScheduled.size, source: "active_release_inventory" };
@@ -2750,7 +2750,7 @@ async function startInternal(
 
   const sliceKinds = deriveSliceKinds(spec);
   const resultPromise: Promise<DeployResult> = (async () => {
-    await uploadMissing(client, spec.project, plan.missing_content, byteReaders, emit);
+    await uploadMissing(client, spec.project_id, plan.missing_content, byteReaders, emit);
     emit({
       type: "commit.phase",
       phase: "validate",
@@ -2759,10 +2759,10 @@ async function startInternal(
     });
     const { planId } = requirePersistedPlan(plan, "starting deploy");
     const commit = requireCloudCommitResponse(
-      await commitInternal(client, planId, opts.idempotencyKey, spec.project, opts.requiredPlan),
+      await commitInternal(client, planId, opts.idempotencyKey, spec.project_id, opts.requiredPlan),
       "starting deploy",
     );
-    return await pollUntilReady(client, commit, plan.diff, plan.warnings, emit, spec.project, sliceKinds);
+    return await pollUntilReady(client, commit, plan.diff, plan.warnings, emit, spec.project_id, sliceKinds);
   })();
   // Avoid an unhandled-rejection at construction time. Consumers must call
   // .result() to actually observe the error.
@@ -2770,7 +2770,7 @@ async function startInternal(
 
   let snapshot: OperationSnapshot | null = null;
   const { operationId } = requirePersistedPlan(plan, "starting deploy");
-  const startHeaders = await apikeyHeaders(client, spec.project);
+  const startHeaders = await apikeyHeaders(client, spec.project_id);
   const fetchSnapshot = async (): Promise<OperationSnapshot> => {
     if (snapshot && TERMINAL_STATUSES.includes(snapshot.status)) return snapshot;
     snapshot = await client.request<OperationSnapshot>(
@@ -2890,7 +2890,7 @@ interface ResolvedContent {
 
 const RELEASE_SPEC_FIELDS = new Set([
   "$schema",
-  "project",
+  "project_id",
   "base",
   "database",
   "secrets",
@@ -2974,18 +2974,16 @@ function validateSpec(spec: ReleaseSpec): void {
 
   const raw = spec as unknown as Record<string, unknown>;
   validateKnownFields(raw, "spec", RELEASE_SPEC_FIELDS, {
-    project_id:
-      "Use `project` in ReleaseSpec, or call `loadDeployManifest()` / `normalizeDeployManifest()` for MCP/CLI-style manifests.",
     subdomain: "Use `subdomains: { set: [name] }`.",
   });
 
-  if (!spec.project || typeof spec.project !== "string") {
-    throw new Run402DeployError("ReleaseSpec.project is required", {
+  if (!spec.project_id || typeof spec.project_id !== "string") {
+    throw new Run402DeployError("ReleaseSpec.project_id is required", {
       code: "INVALID_SPEC",
       phase: "validate",
-      resource: "spec.project",
+      resource: "spec.project_id",
       retryable: false,
-      fix: { action: "set_field", path: "project" },
+      fix: { action: "set_field", path: "project_id" },
       context: "validating spec",
     });
   }
@@ -4317,7 +4315,7 @@ async function normalizeReleaseSpec(
   const rememberRelease = makeRemember("release");
   const rememberAsset = makeRemember("asset");
 
-  const normalized: NormalizedReleaseSpec = { project: spec.project };
+  const normalized: NormalizedReleaseSpec = { project_id: spec.project_id };
   if (spec.base) normalized.base = spec.base;
   if (spec.subdomains) normalized.subdomains = spec.subdomains;
   if (hasOwn(spec as unknown as Record<string, unknown>, "routes")) {
@@ -4338,7 +4336,7 @@ async function normalizeReleaseSpec(
     if (spec.database.migrations && spec.database.migrations.length > 0) {
       db.migrations = await Promise.all(
         spec.database.migrations.map(async (m) =>
-          normalizeMigration(client, spec.project, m, rememberRelease, opts),
+          normalizeMigration(client, spec.project_id, m, rememberRelease, opts),
         ),
       );
       assertUniqueMigrationIds(db.migrations);

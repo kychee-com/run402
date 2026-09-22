@@ -7,7 +7,7 @@ Use `run402 up --check` for local validation and `run402 up --plan` for gateway 
 
 ## Run402 ReleaseSpec v1
 
-[Download schema](/schemas/release-spec.v1.json). Authoring schema for Run402 deploy manifests. Use run402 up for complete application workflows. Project selection may be supplied by an explicit CLI target, app-local link or approved --name creation; the SDK requires a resolved project before gateway planning. SDK-native ReleaseSpec uses project; CLI/MCP manifests may use project_id.
+[Download schema](/schemas/release-spec.v1.json). Authoring schema for Run402 deploy manifests. Use run402 up for complete application workflows. Project selection may be supplied by an explicit CLI target, app-local link or approved --name creation; the SDK requires a resolved project before gateway planning.
 
 <h3 id="release-root">root</h3>
 
@@ -15,8 +15,7 @@ Use `run402 up --check` for local validation and `run402 up --plan` for gateway 
 |---|---|---|---|
 | `$schema` | `string` | no | Editor metadata only. Manifest adapters strip this before deploy planning. |
 | `x-run402-omitted_features` | `array` | no | App-kit evidence metadata for humans/agents. Manifest adapters preserve it in the loaded manifest and strip it before deploy planning. |
-| `project` | `string` | no | SDK-native project id. |
-| `project_id` | `string` | no | CLI/MCP-friendly project id, normalized to ReleaseSpec.project. |
+| `project_id` | `string` | no | The target project id. The one spelling in a manifest, in a typed ReleaseSpec, and on the wire. |
 | `idempotency_key` | `string` | no | See the downloadable schema for constraints. |
 | `idempotencyKey` | `string` | no | See the downloadable schema for constraints. |
 | `base` | `#/$defs/base` | no | See the downloadable schema for constraints. |

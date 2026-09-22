@@ -618,7 +618,7 @@ export class Assets {
     const { Deploy } = await import("./deploy.js");
     const deploy = new Deploy(this.client);
     const result = await deploy.apply({
-      project: projectId,
+      project_id: projectId,
       assets: {
         put: [
           {

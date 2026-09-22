@@ -210,7 +210,7 @@ export class Functions {
     if (opts.schedule !== undefined) fn.schedule = opts.schedule;
 
     const spec: ReleaseSpec = {
-      project: projectId,
+      project_id: projectId,
       functions: { patch: { set: { [opts.name]: fn } } },
     };
 

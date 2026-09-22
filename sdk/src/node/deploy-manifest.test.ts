@@ -31,7 +31,7 @@ describe("Node deploy manifest helpers", () => {
       writeFileSync(manifestPath, `
         import { defineConfig, dir, emailTrigger, file, nodeFunction, scheduleTrigger, sqlFile } from ${JSON.stringify(helperUrl)};
         export default defineConfig({
-          project: "prj_typed",
+          project_id: "prj_typed",
           site: { replace: dir("./dist"), public_paths: { mode: "implicit" } },
           database: { migrations: [sqlFile("./db/001_init.sql")] },
           functions: { replace: { api: nodeFunction("./functions/api.mjs", {
@@ -57,7 +57,7 @@ describe("Node deploy manifest helpers", () => {
       `);
 
       const normalized = await loadDeployManifest(manifestPath);
-      assert.equal(normalized.spec.project, "prj_typed");
+      assert.equal(normalized.spec.project_id, "prj_typed");
       assert.equal(normalized.manifestPath, manifestPath);
       assert.deepEqual(normalized.spec.site && "replace" in normalized.spec.site && normalized.spec.site.replace, {
         __source: "local-dir",
@@ -103,17 +103,17 @@ describe("Node deploy manifest helpers", () => {
     const root = mkdtempSync(join(tmpdir(), "run402-exec-config-exts-"));
     try {
       const cases = [
-        ["run402.deploy.ts", 'export default { project: "prj_ts", site: { public_paths: { mode: "implicit" } } };'],
-        ["run402.deploy.mjs", 'export default { project: "prj_mjs", site: { public_paths: { mode: "implicit" } } };'],
-        ["run402.deploy.cjs", 'module.exports = { project: "prj_cjs", site: { public_paths: { mode: "implicit" } } };'],
-        ["run402.deploy.mts", 'export default { project: "prj_mts", site: { public_paths: { mode: "implicit" } } };'],
+        ["run402.deploy.ts", 'export default { project_id: "prj_ts", site: { public_paths: { mode: "implicit" } } };'],
+        ["run402.deploy.mjs", 'export default { project_id: "prj_mjs", site: { public_paths: { mode: "implicit" } } };'],
+        ["run402.deploy.cjs", 'module.exports = { project_id: "prj_cjs", site: { public_paths: { mode: "implicit" } } };'],
+        ["run402.deploy.mts", 'export default { project_id: "prj_mts", site: { public_paths: { mode: "implicit" } } };'],
       ] as const;
 
       for (const [fileName, source] of cases) {
         const manifestPath = join(root, fileName);
         writeFileSync(manifestPath, source);
         const normalized = await loadDeployManifest(manifestPath);
-        assert.equal(normalized.spec.project, `prj_${fileName.split(".").at(-1)}`);
+        assert.equal(normalized.spec.project_id, `prj_${fileName.split(".").at(-1)}`);
         assert.equal(normalized.manifestPath, manifestPath);
       }
     } finally {
@@ -131,7 +131,7 @@ describe("Node deploy manifest helpers", () => {
       writeFileSync(manifestPath, `
         import { defineConfig, sqlFile } from ${JSON.stringify(helperUrl)};
         export default defineConfig({
-          project: "prj_typed",
+          project_id: "prj_typed",
           database: { migrations: [sqlFile("./db/seed.sql", { name: "seed" })] },
         });
       `);
@@ -251,7 +251,7 @@ describe("Node deploy manifest helpers", () => {
       const manifestPath = join(root, "run402.deploy.mjs");
       writeFileSync(manifestPath, `
         export default ({ env, manifestPath, rootDir }) => ({
-          project: env.required("RUN402_PROJECT_ID"),
+          project_id: env.required("RUN402_PROJECT_ID"),
           checks: [{ name: "root", url: env.get("RUN402_CHECK_URL") ?? rootDir }],
           site: { replace: { "meta.txt": { data: manifestPath } } },
         });
@@ -263,7 +263,7 @@ describe("Node deploy manifest helpers", () => {
         },
       });
 
-      assert.equal(normalized.spec.project, "prj_env");
+      assert.equal(normalized.spec.project_id, "prj_env");
       assert.deepEqual(normalized.config?.env_accessed, ["RUN402_CHECK_URL", "RUN402_PROJECT_ID"]);
       assert.equal(normalized.spec.checks?.[0]?.url, "https://example.test/health");
       assert.equal(
@@ -283,7 +283,7 @@ describe("Node deploy manifest helpers", () => {
       const manifestPath = join(root, "run402.deploy.mjs");
       writeFileSync(manifestPath, `
         export default ({ env }) => ({
-          project: env.required("RUN402_PROJECT_ID"),
+          project_id: env.required("RUN402_PROJECT_ID"),
         });
       `);
 
@@ -310,7 +310,7 @@ describe("Node deploy manifest helpers", () => {
       writeFileSync(manifestPath, `
         import { defineConfig, sqlFile } from ${JSON.stringify(helperUrl)};
         export default defineConfig({
-          project: "prj_missing",
+          project_id: "prj_missing",
           database: { migrations: [sqlFile("./db/missing.sql")] },
         });
       `);
@@ -345,7 +345,7 @@ describe("Node deploy manifest helpers", () => {
       writeFileSync(manifestPath, `
         import { defineConfig, nodeFunction } from ${JSON.stringify(helperUrl)};
         export default defineConfig({
-          project: "prj_typed",
+          project_id: "prj_typed",
           functions: { replace: { api: nodeFunction("./functions/api.ts") } },
         });
       `);
@@ -396,7 +396,7 @@ describe("Node deploy manifest helpers", () => {
       },
     });
 
-    assert.equal(normalized.spec.project, "prj_manifest");
+    assert.equal(normalized.spec.project_id, "prj_manifest");
     assert.equal("$schema" in normalized.spec, false);
     assert.equal(normalized.manifest.$schema, "https://run402.com/schemas/release-spec.v1.json");
     assert.equal(normalized.idempotencyKey, "idem_1");
@@ -562,7 +562,7 @@ describe("Node deploy manifest helpers", () => {
       },
     });
 
-    assert.equal(normalized.spec.project, "prj_manifest");
+    assert.equal(normalized.spec.project_id, "prj_manifest");
     assert.deepEqual(normalized.spec.site?.public_paths, {
       mode: "explicit",
       replace: {

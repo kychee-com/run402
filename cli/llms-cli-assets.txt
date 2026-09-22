@@ -159,7 +159,7 @@ console.log(manifest.byKey["static/logo.png"].cdn_url);
 // Or as part of a release apply (assets promote inside the same activation
 // transaction that flips live_release_id).
 await (await client.project(projectId)).apply({
-  project: projectId,
+  project_id: projectId,
   assets: { put: [{ key: "static/logo.png", source: bytes }] },
   site: dir("./dist"),
 });

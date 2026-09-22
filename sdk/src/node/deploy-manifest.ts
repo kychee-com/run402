@@ -273,7 +273,6 @@ function isMissingFileError(err: unknown): boolean {
 const MANIFEST_FIELDS = new Set([
   "$schema",
   "x-run402-omitted_features",
-  "project",
   "project_id",
   "idempotency_key",
   "base",
@@ -519,14 +518,12 @@ export interface NormalizedDeployManifestVerify {
 }
 
 export interface DeployManifestInput
-  extends Omit<ReleaseSpec, "project" | "database" | "functions" | "site" | "assets" | "i18n"> {
+  extends Omit<ReleaseSpec, "project_id" | "database" | "functions" | "site" | "assets" | "i18n"> {
   /** JSON Schema metadata for editors. Stripped before deploy planning. */
   $schema?: string;
   /** App-kit evidence metadata for humans/agents. Stripped before deploy planning. */
   "x-run402-omitted_features"?: unknown;
-  /** CLI/MCP project field, normalized to SDK-native `ReleaseSpec.project`. */
-  project?: string;
-  /** CLI/MCP project field, normalized to SDK-native `ReleaseSpec.project`. */
+  /** Target project id. Optional here: an override or default project may supply it. */
   project_id?: string;
   database?: DeployManifestDatabaseSpec;
   functions?: DeployManifestFunctionsSpec;
@@ -553,7 +550,7 @@ export interface NormalizeDeployManifestOptions {
   baseDir?: string;
   /** Explicit project override, equivalent to CLI `--project`. Conflicts with a different manifest project. */
   project?: string;
-  /** Fallback project used only when the manifest omits both `project` and `project_id`. */
+  /** Fallback project used only when the manifest omits `project_id`. */
   defaultProject?: string;
 }
 
@@ -817,7 +814,7 @@ export async function normalizeDeployManifest(
   });
   if (opts.validateFiles) await assertAuthoringFileReferences(manifest, opts.baseDir ?? process.cwd(), opts.manifestPath);
   const project = resolveProject(manifest, opts);
-  const spec: ReleaseSpec = { project };
+  const spec: ReleaseSpec = { project_id: project };
 
   if (manifest.base !== undefined) spec.base = manifest.base;
   if (manifest.subdomains !== undefined) spec.subdomains = manifest.subdomains;
@@ -988,7 +985,7 @@ function resolveProject(
     opts.project !== manifestProject
   ) {
     throw new LocalError(
-      `project conflict: manifest project=${manifestProject} but override project=${opts.project}`,
+      `project conflict: manifest project_id=${manifestProject} but override project=${opts.project}`,
       CONTEXT,
     );
   }
@@ -1010,19 +1007,7 @@ function resolveIdempotencyKey(
 }
 
 function resolveManifestProject(manifest: DeployManifestInput): string | undefined {
-  const snake = manifest.project_id;
-  const sdk = manifest.project;
-  if (snake !== undefined && sdk !== undefined && snake !== sdk) {
-    throw new LocalError(
-      `project conflict: manifest project=${sdk} but project_id=${snake}`,
-      CONTEXT,
-      {
-        code: "RUN402_PROJECT_CONFLICT",
-        details: { project: sdk, project_id: snake },
-      },
-    );
-  }
-  return sdk ?? snake;
+  return manifest.project_id;
 }
 
 async function mapDatabase(

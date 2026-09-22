@@ -88,8 +88,8 @@ export interface Run402AppBuildCommand {
   cwd?: string;
 }
 
-export type Run402AppReleaseSpec = Omit<Partial<ReleaseSpec>, "project"> & {
-  project?: never;
+export type Run402AppReleaseSpec = Omit<Partial<ReleaseSpec>, "project_id"> & {
+  project_id?: never;
 };
 
 export interface Run402AppHttpVerifySpec {

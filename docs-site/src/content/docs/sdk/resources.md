@@ -129,16 +129,16 @@ import { run402, summarizeDeployResult, type ReleaseSpec } from "@run402/sdk/nod
 
 const r = run402();
 const spec: ReleaseSpec = {
-  project: "prj_...",
+  project_id: "prj_...",
   site: { patch: { put: { "index.html": "<h1>Hello</h1>" } } },
 };
 
-const result = await (await r.project(spec.project)).apply(spec);
+const result = await (await r.project(spec.project_id)).apply(spec);
 const summary = summarizeDeployResult(result);
 console.log(summary.headline, summary.site?.cas?.reused_bytes);
 ```
 
-For live event streaming during an in-flight apply, use `(await r.project(spec.project)).apply.start(spec)` and
+For live event streaming during an in-flight apply, use `(await r.project(spec.project_id)).apply.start(spec)` and
 iterate `op.events()` (an `AsyncIterable<DeployEvent>`). The `r.project(id).apply.events(operationId)`
 method returns the events the gateway has recorded so far for an operation —
 useful for inspecting an apply after the event, not for live streaming.
@@ -1014,7 +1014,7 @@ if (plan.allocation_needed) {
 import { applyWithGitvault, run402 } from "@run402/sdk/node";
 import type { ReleaseSpec } from "@run402/sdk";
 const r = run402();
-const spec: ReleaseSpec = { project: "prj_123", site: { replace: { "index.html": "<h1>hi</h1>" } } };
+const spec: ReleaseSpec = { project_id: "prj_123", site: { replace: { "index.html": "<h1>hi</h1>" } } };
 
 const { mode, deploy, gitvault } = await applyWithGitvault({
   sdk: r,

@@ -222,7 +222,7 @@ describe("Deploy.apply (happy path)", () => {
 
     const deploy = new Deploy(w.client);
     const result = await deploy.apply({
-      project: "prj_test",
+      project_id: "prj_test",
       site: { replace: { "index.html": html } },
     });
 
@@ -292,7 +292,7 @@ describe("Deploy.apply (happy path)", () => {
     });
 
     const deploy = new Deploy(w.client);
-    const result = await deploy.apply({ project: "prj_test", subdomains: { set: ["prj-test"] } });
+    const result = await deploy.apply({ project_id: "prj_test", subdomains: { set: ["prj-test"] } });
 
     assert.equal(result.urls.console, "https://console.run402.com/orgs/org_1/projects/prj_test");
     assert.ok(result.next_actions, "gateway riders survive into the deploy result");
@@ -323,7 +323,7 @@ describe("Deploy.apply (happy path)", () => {
           assert(payload.includes(fnSha), "wire spec should contain the staged function content digest");
           const body = req.body as { spec: Record<string, unknown> };
           assert.equal(body.spec.project, "prj_test");
-          assert.equal("project_id" in body.spec, false, "Core wire shape uses ReleaseSpec.project");
+          assert.equal("project_id" in body.spec, false, "Core wire shape uses the @run402/release project field");
           const database = body.spec.database as { migrations: Array<Record<string, unknown>> };
           assert.equal(database.migrations[0]?.sql, migrationSql);
           assert.equal(database.migrations[0]?.sql_ref, undefined);
@@ -371,7 +371,7 @@ describe("Deploy.apply (happy path)", () => {
       const deploy = new Deploy(w.client);
       const events: DeployEvent[] = [];
       const result = await deploy.apply({
-        project: "prj_test",
+        project_id: "prj_test",
         database: { migrations: [{ id: "001", sql: migrationSql }] },
         functions: {
           replace: {
@@ -470,7 +470,7 @@ describe("Deploy.apply (happy path)", () => {
 
     const deploy = new Deploy(w.client);
     await deploy.apply({
-      project: "prj_test",
+      project_id: "prj_test",
       site: { replace: { "index.html": html } },
     });
 
@@ -552,7 +552,7 @@ describe("Deploy.apply (happy path)", () => {
 
     const deploy = new Deploy(w.client);
     const result = await deploy.apply({
-      project: "prj_test",
+      project_id: "prj_test",
       site: { replace: { "index.html": html } },
     });
 
@@ -599,7 +599,7 @@ describe("Deploy.apply (happy path)", () => {
 
       const deploy = new Deploy(w.client);
       await deploy.apply({
-        project: "prj_test",
+        project_id: "prj_test",
         routes,
         ...(routes === null ? { site: { patch: { delete: ["old.html"] } } } : {}),
       });
@@ -640,7 +640,7 @@ describe("Deploy.apply (happy path)", () => {
 
     const deploy = new Deploy(w.client);
     await deploy.apply({
-      project: "prj_test",
+      project_id: "prj_test",
       site: {
         public_paths: {
           mode: "explicit",
@@ -688,7 +688,7 @@ describe("Deploy.apply (happy path)", () => {
     await assert.rejects(
       () =>
         deploy.apply({
-          project: "prj_test",
+          project_id: "prj_test",
           site: {
             public_paths: {
               mode: "explicit",
@@ -747,7 +747,7 @@ describe("Deploy.apply (happy path)", () => {
     await assert.rejects(
       () =>
         deploy.apply({
-          project: "prj_x",
+          project_id: "prj_x",
           site: { patch: { delete: ["old.html"] } },
         }),
       (err: unknown) => {
@@ -771,22 +771,22 @@ describe("Deploy.apply (happy path)", () => {
     const cases: Array<{ spec: Record<string, unknown>; resource: string }> = [
       {
         spec: {
-          project: "prj_test",
+          project_id: "prj_test",
           secrets: { require: ["API_KEY"] },
           site: { patch: { delete: ["old.html"] } },
         },
         resource: "secrets",
       },
       {
-        spec: { project: "prj_test", subdomains: { set: [] }, site: { patch: { delete: ["old.html"] } } },
+        spec: { project_id: "prj_test", subdomains: { set: [] }, site: { patch: { delete: ["old.html"] } } },
         resource: "subdomains",
       },
       {
-        spec: { project: "prj_test", checks: [], site: { patch: { delete: ["old.html"] } } },
+        spec: { project_id: "prj_test", checks: [], site: { patch: { delete: ["old.html"] } } },
         resource: "checks",
       },
       {
-        spec: { project: "prj_test", base: { release: "empty" }, site: { patch: { delete: ["old.html"] } } },
+        spec: { project_id: "prj_test", base: { release: "empty" }, site: { patch: { delete: ["old.html"] } } },
         resource: "base",
       },
     ];
@@ -825,7 +825,7 @@ describe("Deploy.apply (happy path)", () => {
     const deploy = new Deploy(w.client);
     await assert.rejects(
       deploy.apply({
-        project: "prj_test",
+        project_id: "prj_test",
         database: { expose: { huge: "x".repeat(5 * 1024 * 1024) } },
       }),
       (err: unknown) =>
@@ -868,7 +868,7 @@ describe("Deploy.apply (happy path)", () => {
 
     const deploy = new Deploy(w.client);
     const result = await deploy.apply({
-      project: "prj_test",
+      project_id: "prj_test",
       secrets: { require: ["API_KEY"], delete: ["OLD_KEY"] },
     });
 
@@ -906,7 +906,7 @@ describe("Deploy.apply (happy path)", () => {
 
     const deploy = new Deploy(w.client);
     await deploy.apply({
-      project: "prj_test",
+      project_id: "prj_test",
       site: { replace: { "index.html": "<h1>hi</h1>" } },
     });
 
@@ -944,7 +944,7 @@ describe("Deploy.apply (happy path)", () => {
     const deploy = new Deploy(w.client);
     await deploy.apply(
       {
-        project: "prj_test",
+        project_id: "prj_test",
         site: { replace: { "index.html": html } },
       },
       {
@@ -1010,7 +1010,7 @@ describe("Deploy.apply (happy path)", () => {
 
     const deploy = new Deploy(w.client);
     const result = await deploy.apply({
-      project: "prj_test",
+      project_id: "prj_test",
       site: { replace: { "x.html": "x" } },
     });
     assert.equal(result.release_id, "rel_3");
@@ -1061,7 +1061,7 @@ describe("Deploy.apply (happy path)", () => {
     });
 
     const deploy = new Deploy(w.client);
-    const result = await deploy.apply({ project: "prj_test", site: { replace: { "x.html": "x" } } });
+    const result = await deploy.apply({ project_id: "prj_test", site: { replace: { "x.html": "x" } } });
     assert.equal(result.urls.console, "https://console.run402.com/orgs/o/projects/prj_test");
     assert.deepEqual((result.next_actions ?? []).map((a) => a.type), ["watch_errors", "hand_to_member"]);
   });
@@ -1102,7 +1102,7 @@ describe("Deploy.apply (happy path)", () => {
 
     const deploy = new Deploy(w.client);
     await deploy.plan({
-      project: "prj_test",
+      project_id: "prj_test",
       functions: {
         replace: {
           worker: {
@@ -1163,7 +1163,7 @@ describe("Deploy.apply (happy path)", () => {
 
     const deploy = new Deploy(w.client);
     await deploy.plan({
-      project: "prj_test",
+      project_id: "prj_test",
       functions: {
         replace: {
           worker: {
@@ -1231,7 +1231,7 @@ describe("Deploy.apply (tier function preflight)", () => {
     await assert.rejects(
       () =>
         deploy.apply({
-          project: "prj_test",
+          project_id: "prj_test",
           functions: {
             replace: {
               api: {
@@ -1324,7 +1324,7 @@ describe("Deploy.plan", () => {
 
     const deploy = new Deploy(w.client);
     const { plan } = await deploy.plan(
-      { project: "prj_abc", site: { replace: { "index.html": "hello" } } },
+      { project_id: "prj_abc", site: { replace: { "index.html": "hello" } } },
       { dryRun: true, idempotencyKey: "ignored-for-dry-run" },
     );
 
@@ -1360,7 +1360,7 @@ describe("Deploy.plan", () => {
     const deploy = new Deploy(w.client);
     const { plan } = await deploy.plan(
       {
-        project: "prj_test",
+        project_id: "prj_test",
         routes: {
           replace: [
             {
@@ -1405,7 +1405,7 @@ describe("Deploy.plan", () => {
     const deploy = new Deploy(w.client);
     const { plan } = await deploy.plan(
       {
-        project: "prj_test",
+        project_id: "prj_test",
         routes: {
           replace: [
             {
@@ -1452,7 +1452,7 @@ describe("Deploy.plan", () => {
     const deploy = new Deploy(w.client);
     const { byteReaders } = await deploy.plan(
       {
-        project: "prj_test",
+        project_id: "prj_test",
         site: {
           replace: { "events.html": html },
           public_paths: {
@@ -1505,7 +1505,7 @@ describe("Deploy.plan", () => {
     const deploy = new Deploy(w.client);
     const { byteReaders } = await deploy.plan(
       {
-        project: "prj_test",
+        project_id: "prj_test",
         site: {
           public_paths: { mode: "explicit", replace: {} },
         },
@@ -1574,7 +1574,7 @@ describe("Deploy.apply (rehearsal decision)", () => {
     const deploy = new Deploy(w.client);
     const result = await deploy.apply(
       {
-        project: "prj_test",
+        project_id: "prj_test",
         site: { replace: { "index.html": "<h1>hi</h1>" } },
         database: { migrations: [{ id: "001_init", sql: "select 1" }] },
       },
@@ -1640,7 +1640,7 @@ describe("Deploy.apply (validation)", () => {
     await assert.rejects(
       () =>
         deploy.apply({
-          project: "prj_test",
+          project_id: "prj_test",
           subdomains: { set: ["a", "b"] },
         }),
       (err: unknown) =>
@@ -1666,16 +1666,16 @@ describe("Deploy.apply (validation)", () => {
     for (const [spec, resource, pattern] of [
       [
         {
+          project_id: "prj_test",
           project: "prj_test",
-          project_id: "prj_other",
           site: { replace: { "index.html": "hi" } },
         },
-        "spec.project_id",
-        /normalizeDeployManifest/,
+        "spec.project",
+        /Unknown ReleaseSpec field: spec\.project\./,
       ],
       [
         {
-          project: "prj_test",
+          project_id: "prj_test",
           subdomain: "my-app",
           site: { replace: { "index.html": "hi" } },
         },
@@ -1684,7 +1684,7 @@ describe("Deploy.apply (validation)", () => {
       ],
       [
         {
-          project: "prj_test",
+          project_id: "prj_test",
           site: { replcae: { "index.html": "hi" } },
         },
         "site.replcae",
@@ -1727,7 +1727,7 @@ describe("Deploy.apply (validation)", () => {
     await deploy.plan(
       {
         $schema: "https://run402.com/schemas/release-spec.v1.json",
-        project: "prj_test",
+        project_id: "prj_test",
         site: { replace: { "index.html": "hi" } },
       },
       { dryRun: true },
@@ -1756,7 +1756,7 @@ describe("Deploy.apply (validation)", () => {
     const deploy = new Deploy(w.client);
     await deploy.plan(
       {
-        project: "prj_test",
+        project_id: "prj_test",
         functions: {
           replace: {
             authed: {
@@ -1826,7 +1826,7 @@ describe("Deploy.apply (validation)", () => {
     const deploy = new Deploy(w.client);
     await deploy.plan(
       {
-        project: "prj_test",
+        project_id: "prj_test",
         functions: {
           replace: {
             ssr: {
@@ -1853,7 +1853,7 @@ describe("Deploy.apply (validation)", () => {
     const deploy = new Deploy(w.client);
     const specs = [
       {
-        project: "prj_test",
+        project_id: "prj_test",
         functions: {
           replace: {
             hello: {
@@ -1864,7 +1864,7 @@ describe("Deploy.apply (validation)", () => {
         },
       },
       {
-        project: "prj_test",
+        project_id: "prj_test",
         functions: {
           patch: {
             set: {
@@ -1877,7 +1877,7 @@ describe("Deploy.apply (validation)", () => {
         },
       },
       {
-        project: "prj_test",
+        project_id: "prj_test",
         functions: {
           replace: {
             hello: {
@@ -1908,18 +1908,18 @@ describe("Deploy.apply (validation)", () => {
     const w = makeWiring();
     const deploy = new Deploy(w.client);
     const specs = [
-      { project: "prj_test" },
-      { project: "prj_test", base: { release: "empty" } },
-      { project: "prj_test", database: { zero_downtime: true } },
-      { project: "prj_test", database: { expose: {} } },
-      { project: "prj_test", site: { replace: {} } },
-      { project: "prj_test", site: { patch: { put: {}, delete: [] } } },
-      { project: "prj_test", functions: { replace: {} } },
-      { project: "prj_test", functions: { patch: { set: {}, delete: [] } } },
-      { project: "prj_test", secrets: { require: [], delete: [] } },
-      { project: "prj_test", subdomains: { set: [], add: [], remove: [] } },
-      { project: "prj_test", routes: null },
-      { project: "prj_test", checks: [] },
+      { project_id: "prj_test" },
+      { project_id: "prj_test", base: { release: "empty" } },
+      { project_id: "prj_test", database: { zero_downtime: true } },
+      { project_id: "prj_test", database: { expose: {} } },
+      { project_id: "prj_test", site: { replace: {} } },
+      { project_id: "prj_test", site: { patch: { put: {}, delete: [] } } },
+      { project_id: "prj_test", functions: { replace: {} } },
+      { project_id: "prj_test", functions: { patch: { set: {}, delete: [] } } },
+      { project_id: "prj_test", secrets: { require: [], delete: [] } },
+      { project_id: "prj_test", subdomains: { set: [], add: [], remove: [] } },
+      { project_id: "prj_test", routes: null },
+      { project_id: "prj_test", checks: [] },
     ];
 
     for (const spec of specs) {
@@ -1979,7 +1979,7 @@ describe("Deploy.apply (validation)", () => {
         () =>
           deploy.plan(
             {
-              project: "prj_test",
+              project_id: "prj_test",
               site: { public_paths: publicPaths as never },
             },
             { dryRun: true },
@@ -2015,7 +2015,7 @@ describe("Deploy.apply (validation)", () => {
     const deploy = new Deploy(w.client);
     await deploy.plan(
       {
-        project: "prj_test",
+        project_id: "prj_test",
         site: { public_paths: { mode: "implicit" } },
       },
       { dryRun: true },
@@ -2048,7 +2048,7 @@ describe("Deploy.apply (validation)", () => {
     const deploy = new Deploy(w.client);
     await deploy.plan(
       {
-        project: "prj_test",
+        project_id: "prj_test",
         routes: null,
         site: { patch: { delete: ["old.html"] } },
       },
@@ -2077,7 +2077,7 @@ describe("Deploy.apply (validation)", () => {
 
     const deploy = new Deploy(w.client);
     await deploy.plan(
-      { project: "prj_test", routes: { replace: [] } },
+      { project_id: "prj_test", routes: { replace: [] } },
       { dryRun: true },
     );
 
@@ -2106,7 +2106,7 @@ describe("Deploy.apply (validation)", () => {
     const deploy = new Deploy(w.client);
     await deploy.plan(
       {
-        project: "prj_test",
+        project_id: "prj_test",
         routes: {
           replace: [
             {
@@ -2185,7 +2185,7 @@ describe("Deploy.apply (validation)", () => {
     const deploy = new Deploy(w.client);
     await deploy.plan(
       {
-        project: "prj_test",
+        project_id: "prj_test",
         routes: {
           replace: [
             {
@@ -2232,7 +2232,7 @@ describe("Deploy.apply (validation)", () => {
     const deploy = new Deploy(w.client);
     await deploy.plan(
       {
-        project: "prj_test",
+        project_id: "prj_test",
         routes: {
           replace: [
             {
@@ -2277,7 +2277,7 @@ describe("Deploy.apply (validation)", () => {
     await assert.rejects(
       () =>
         deploy.apply({
-          project: "prj_test",
+          project_id: "prj_test",
           routes: { "/api/*": { function: "api" } },
         } as never),
       (err: unknown) => {
@@ -2450,7 +2450,7 @@ describe("Deploy.apply (validation)", () => {
 
     for (const [routes, resource, pattern] of badSpecs) {
       await assert.rejects(
-        () => deploy.apply({ project: "prj_test", routes } as never),
+        () => deploy.apply({ project_id: "prj_test", routes } as never),
         (err: unknown) => {
           assert(err instanceof Run402DeployError);
           assert.equal(err.code, "INVALID_SPEC");
@@ -2825,7 +2825,7 @@ describe("Deploy.apply (validation)", () => {
 
     const deploy = new Deploy(w.client);
     await deploy.plan(
-      { project: "prj_test", site: { patch: { delete: ["old.html"] } } },
+      { project_id: "prj_test", site: { patch: { delete: ["old.html"] } } },
       { dryRun: true },
     );
 
@@ -2846,7 +2846,7 @@ describe("Deploy.apply (validation)", () => {
       await assert.rejects(
         () =>
           deploy.apply({
-            project: "prj_test",
+            project_id: "prj_test",
             secrets: { [field]: { API_KEY: { value: "secret" } } } as never,
           }),
         (err: unknown) =>
@@ -2865,7 +2865,7 @@ describe("Deploy.apply (validation)", () => {
     await assert.rejects(
       () =>
         deploy.apply({
-          project: "prj_test",
+          project_id: "prj_test",
           secrets: { require: ["bad-key"] },
         }),
       (err: unknown) =>
@@ -2876,7 +2876,7 @@ describe("Deploy.apply (validation)", () => {
     await assert.rejects(
       () =>
         deploy.apply({
-          project: "prj_test",
+          project_id: "prj_test",
           secrets: { require: ["API_KEY"], delete: ["API_KEY"] },
         }),
       (err: unknown) =>
@@ -2893,7 +2893,7 @@ describe("Deploy.apply (validation)", () => {
     await assert.rejects(
       () =>
         deploy.apply({
-          project: "prj_test",
+          project_id: "prj_test",
           database: { migrations: [{ id: "001_init" }] },
         }),
       (err: unknown) =>
@@ -2931,7 +2931,7 @@ describe("Deploy.apply (i18n validation)", () => {
     "rejects defaultLocale not in locales (byte-identical requirement)",
     expectInvalidI18nSpec(
       {
-        project: "prj_test",
+        project_id: "prj_test",
         i18n: { defaultLocale: "EN", locales: ["en", "es"] },
       },
       "i18n.defaultLocale",
@@ -2943,7 +2943,7 @@ describe("Deploy.apply (i18n validation)", () => {
     "rejects empty locales[]",
     expectInvalidI18nSpec(
       {
-        project: "prj_test",
+        project_id: "prj_test",
         i18n: { defaultLocale: "en", locales: [] },
       },
       "i18n.locales",
@@ -2955,7 +2955,7 @@ describe("Deploy.apply (i18n validation)", () => {
     "rejects locale tags that violate the safety regex",
     expectInvalidI18nSpec(
       {
-        project: "prj_test",
+        project_id: "prj_test",
         i18n: { defaultLocale: "en", locales: ["en", "es!"] },
       },
       "i18n.locales.1",
@@ -2967,7 +2967,7 @@ describe("Deploy.apply (i18n validation)", () => {
     "rejects duplicate locale tags",
     expectInvalidI18nSpec(
       {
-        project: "prj_test",
+        project_id: "prj_test",
         i18n: { defaultLocale: "en", locales: ["en", "en"] },
       },
       "i18n.locales.1",
@@ -2982,7 +2982,7 @@ describe("Deploy.apply (i18n validation)", () => {
     await assert.rejects(
       () =>
         deploy.apply({
-          project: "prj_test",
+          project_id: "prj_test",
           i18n: { defaultLocale: "loc0", locales },
         }),
       (err: unknown) => {
@@ -2999,7 +2999,7 @@ describe("Deploy.apply (i18n validation)", () => {
     "rejects unknown detect source",
     expectInvalidI18nSpec(
       {
-        project: "prj_test",
+        project_id: "prj_test",
         i18n: {
           defaultLocale: "en",
           locales: ["en"],
@@ -3015,7 +3015,7 @@ describe("Deploy.apply (i18n validation)", () => {
     "rejects cookie source with invalid RFC 6265 cookie name",
     expectInvalidI18nSpec(
       {
-        project: "prj_test",
+        project_id: "prj_test",
         i18n: {
           defaultLocale: "en",
           locales: ["en"],
@@ -3031,7 +3031,7 @@ describe("Deploy.apply (i18n validation)", () => {
     "rejects cookie source with empty cookie name",
     expectInvalidI18nSpec(
       {
-        project: "prj_test",
+        project_id: "prj_test",
         i18n: {
           defaultLocale: "en",
           locales: ["en"],
@@ -3050,7 +3050,7 @@ describe("Deploy.apply (i18n validation)", () => {
     await assert.rejects(
       () =>
         deploy.apply({
-          project: "prj_test",
+          project_id: "prj_test",
           i18n: { defaultLocale: "en", locales: ["en"], detect },
         }),
       (err: unknown) => {
@@ -3067,7 +3067,7 @@ describe("Deploy.apply (i18n validation)", () => {
     "rejects unknown i18n field",
     expectInvalidI18nSpec(
       {
-        project: "prj_test",
+        project_id: "prj_test",
         i18n: { defaultLocale: "en", locales: ["en"], default_locale: "en" },
       },
       "i18n.default_locale",
@@ -3090,7 +3090,7 @@ describe("Deploy.apply (i18n validation)", () => {
     });
     const deploy = new Deploy(w.client);
     const result = await deploy.apply({
-      project: "prj_test",
+      project_id: "prj_test",
       i18n: {
         defaultLocale: "en",
         locales: ["en", "es", "fr"],
@@ -3120,7 +3120,7 @@ describe("Deploy.apply (i18n validation)", () => {
       throw new Error(`unexpected ${req.path}`);
     });
     const deploy = new Deploy(w.client);
-    await deploy.apply({ project: "prj_test", i18n: null });
+    await deploy.apply({ project_id: "prj_test", i18n: null });
     const body = plannedBody as { spec?: { i18n?: unknown } };
     assert.equal(body.spec?.i18n, null);
   });
@@ -3140,7 +3140,7 @@ describe("Deploy.apply (plan warnings)", () => {
       () =>
         deploy.apply(
           {
-            project: "prj_test",
+            project_id: "prj_test",
             routes: {
               replace: [
                 {
@@ -3198,7 +3198,7 @@ describe("Deploy.apply (plan warnings)", () => {
       () =>
         deploy.apply(
           {
-            project: "prj_test",
+            project_id: "prj_test",
             secrets: { require: ["OPENAI_API_KEY"] },
           },
           { onEvent: (event) => events.push(event) },
@@ -3258,7 +3258,7 @@ describe("Deploy.apply (plan warnings)", () => {
     const deploy = new Deploy(w.client);
     const result = await deploy.apply(
       {
-        project: "prj_test",
+        project_id: "prj_test",
         routes: { replace: [] },
       },
       { allowWarningCodes: ["WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS"] },
@@ -3306,7 +3306,7 @@ describe("Deploy.apply (plan warnings)", () => {
       () =>
         deploy.apply(
           {
-            project: "prj_test",
+            project_id: "prj_test",
             secrets: { require: ["OPENAI_API_KEY"] },
           },
           { allowWarningCodes: ["WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS"] },
@@ -3364,7 +3364,7 @@ describe("Deploy.apply (plan warnings)", () => {
     const deploy = new Deploy(w.client);
     const result = await deploy.apply(
       {
-        project: "prj_test",
+        project_id: "prj_test",
         secrets: { delete: ["OLD_KEY"] },
       },
       { allowWarnings: true },
@@ -3392,7 +3392,7 @@ describe("Deploy.apply (network errors)", () => {
     await assert.rejects(
       () =>
         deploy.apply({
-          project: "prj_test",
+          project_id: "prj_test",
           site: { replace: { "index.html": "<h1>hi</h1>" } },
         }),
       (err: unknown) => {
@@ -3424,7 +3424,7 @@ describe("Deploy.apply (validate-phase structured error context)", () => {
     );
   });
 
-  it("populates phase/resource/fix when project is missing", async () => {
+  it("populates phase/resource/fix when project_id is missing", async () => {
     const w = makeWiring();
     const deploy = new Deploy(w.client);
     await assert.rejects(
@@ -3434,8 +3434,8 @@ describe("Deploy.apply (validate-phase structured error context)", () => {
         const e = err as Run402DeployError;
         assert.equal(e.code, "INVALID_SPEC");
         assert.equal(e.phase, "validate");
-        assert.equal(e.resource, "spec.project");
-        assert.deepEqual(e.fix, { action: "set_field", path: "project" });
+        assert.equal(e.resource, "spec.project_id");
+        assert.deepEqual(e.fix, { action: "set_field", path: "project_id" });
         return true;
       },
     );
@@ -3447,7 +3447,7 @@ describe("Deploy.apply (validate-phase structured error context)", () => {
     await assert.rejects(
       () =>
         deploy.apply({
-          project: "prj_test",
+          project_id: "prj_test",
           subdomains: { set: ["a", "b"] },
         }),
       (err: unknown) => {
@@ -3468,7 +3468,7 @@ describe("Deploy.apply (validate-phase structured error context)", () => {
     await assert.rejects(
       () =>
         deploy.apply({
-          project: "prj_test",
+          project_id: "prj_test",
           database: { migrations: [{ sql: "SELECT 1" } as never] },
         }),
       (err: unknown) => {
@@ -3491,7 +3491,7 @@ describe("Deploy.apply (validate-phase structured error context)", () => {
     await assert.rejects(
       () =>
         deploy.apply({
-          project: "prj_test",
+          project_id: "prj_test",
           database: { migrations: [{ id: "001_init" }] },
         }),
       (err: unknown) => {
@@ -3515,7 +3515,7 @@ describe("Deploy.apply (validate-phase structured error context)", () => {
     await assert.rejects(
       () =>
         deploy.apply({
-          project: "prj_test",
+          project_id: "prj_test",
           database: { migrations: [{ id: "001_init", name: "seed", sql: "SELECT 1" } as never] },
         }),
       (err: unknown) => {
@@ -3534,7 +3534,7 @@ describe("Deploy.apply (validate-phase structured error context)", () => {
     await assert.rejects(
       () =>
         new Deploy(invalid.client).apply({
-          project: "prj_test",
+          project_id: "prj_test",
           database: { migrations: [{ name: "bad seed!", sql: "SELECT 1" }] },
         }),
       (err: unknown) => {
@@ -3550,7 +3550,7 @@ describe("Deploy.apply (validate-phase structured error context)", () => {
     await assert.rejects(
       () =>
         new Deploy(duplicate.client).apply({
-          project: "prj_test",
+          project_id: "prj_test",
           database: {
             migrations: [
               { name: "seed", sql: "SELECT 1" },
@@ -3601,7 +3601,7 @@ describe("Deploy.apply (byte source normalization)", () => {
 
     const deploy = new Deploy(w.client);
     await deploy.apply({
-      project: "prj_test",
+      project_id: "prj_test",
       site: { replace: { "index.html": html } },
     });
 
@@ -3626,7 +3626,7 @@ describe("Deploy.apply (byte source normalization)", () => {
     });
 
     await new Deploy(w.client).apply({
-      project: "prj_test",
+      project_id: "prj_test",
       database: { migrations: [{ name: "seed", sql }] },
     });
 
@@ -3652,7 +3652,7 @@ describe("Deploy.apply (byte source normalization)", () => {
     });
 
     await new Deploy(w.client).apply({
-      project: "prj_test",
+      project_id: "prj_test",
       database: { migrations: [{ name: "seed_ref", sql_ref: { sha256, size: 1234 } }] },
     });
 
@@ -3676,9 +3676,9 @@ describe("Deploy.apply (byte source normalization)", () => {
     });
 
     const deploy = new Deploy(w.client);
-    await deploy.plan({ project: "prj_test", database: { migrations: [{ name: "seed", sql: "select 1;" }] } });
-    await deploy.plan({ project: "prj_test", database: { migrations: [{ name: "seed", sql: "select 1;" }] } });
-    await deploy.plan({ project: "prj_test", database: { migrations: [{ name: "seed", sql: "select 2;" }] } });
+    await deploy.plan({ project_id: "prj_test", database: { migrations: [{ name: "seed", sql: "select 1;" }] } });
+    await deploy.plan({ project_id: "prj_test", database: { migrations: [{ name: "seed", sql: "select 1;" }] } });
+    await deploy.plan({ project_id: "prj_test", database: { migrations: [{ name: "seed", sql: "select 2;" }] } });
 
     assert.equal(ids[0], ids[1]);
     assert.notEqual(ids[1], ids[2]);
@@ -3692,7 +3692,7 @@ describe("Deploy.apply (byte source normalization)", () => {
     await assert.rejects(
       () =>
         new Deploy(w.client).apply({
-          project: "prj_test",
+          project_id: "prj_test",
           database: {
             migrations: [
               { name: "seed", sql },
@@ -3742,7 +3742,7 @@ describe("Deploy.apply (byte source normalization)", () => {
 
     const deploy = new Deploy(w.client);
     await deploy.apply({
-      project: "prj_test",
+      project_id: "prj_test",
       site: { replace: { "data.bin": bytes } },
     });
     assert(JSON.stringify(plannedSpec).includes(expected));
@@ -3783,7 +3783,7 @@ describe("Deploy.apply (byte source normalization)", () => {
       const deploy = new Deploy(w.client);
       const fileSet = await fileSetFromDir(root);
       await deploy.apply({
-        project: "prj_test",
+        project_id: "prj_test",
         site: { replace: fileSet },
       });
       assert(JSON.stringify(plannedSpec).includes(expected));
@@ -3798,7 +3798,7 @@ describe("Deploy.apply (byte source normalization)", () => {
 
     await assert.rejects(
       deploy.apply({
-        project: "prj_test",
+        project_id: "prj_test",
         site: { replace: { "game.wasm": "\u0000asm\ufffd" } },
       }),
       (err: unknown) => {
@@ -3851,7 +3851,7 @@ describe("Deploy.apply (byte source normalization)", () => {
 
       const deploy = new Deploy(w.client);
       await deploy.apply({
-        project: "prj_test",
+        project_id: "prj_test",
         site: { replace: dir(root) },
       });
       const sent = JSON.stringify(plannedSpec);
@@ -3897,7 +3897,7 @@ describe("Deploy.apply (byte source normalization)", () => {
 
       const deploy = new Deploy(w.client);
       await deploy.apply({
-        project: "prj_test",
+        project_id: "prj_test",
         site: { patch: { put: dir(root) } },
       });
       const sent = JSON.stringify(plannedSpec);
@@ -3939,7 +3939,7 @@ describe("Deploy.apply (byte source normalization)", () => {
 
       const deploy = new Deploy(w.client);
       await deploy.apply({
-        project: "prj_test",
+        project_id: "prj_test",
         site: { replace: dir(root, { prefix: "static/" }) },
       });
       const sent = JSON.stringify(plannedSpec);
@@ -4032,7 +4032,7 @@ describe("Deploy.apply (manifest-ref escape hatch)", () => {
 
     const deploy = new Deploy(w.client);
     await deploy.apply({
-      project: "prj_test",
+      project_id: "prj_test",
       site: { replace },
     });
 
@@ -4311,7 +4311,7 @@ describe("Deploy.apply (gateway error translation)", () => {
     let caught: unknown;
     try {
       await deploy.apply({
-        project: "prj_test",
+        project_id: "prj_test",
         database: { migrations: [{ id: "001_init", sql: "select 1" }] },
       });
       assert.fail("expected apply engine to reject");
@@ -4413,7 +4413,7 @@ describe("Deploy.apply (gateway error translation)", () => {
     await assert.rejects(
       () =>
         deploy.apply({
-          project: "prj_test",
+          project_id: "prj_test",
           database: { migrations: [{ id: "001_init", sql: "select 1" }] },
         }),
       (err: unknown) => {
@@ -4464,7 +4464,7 @@ describe("Deploy.apply (gateway error translation)", () => {
     await assert.rejects(
       () =>
         deploy.apply({
-          project: "prj_test",
+          project_id: "prj_test",
           database: { migrations: [{ id: "001_init", sql: "select 1" }] },
         }),
       (err: unknown) => {
@@ -4605,7 +4605,7 @@ describe("Deploy.apply (activation_pending classification)", () => {
     await assert.rejects(
       () =>
         deploy.apply({
-          project: "prj_test",
+          project_id: "prj_test",
           site: { replace: { "index.html": "ok" } },
         }),
       (err: unknown) => {
@@ -4667,7 +4667,7 @@ describe("Deploy.apply (activation_pending classification)", () => {
 
     const deploy = new Deploy(w.client);
     const result = await deploy.apply({
-      project: "prj_test",
+      project_id: "prj_test",
       site: { replace: { "index.html": "ok" } },
     });
 
@@ -4724,7 +4724,7 @@ describe("Deploy.apply (safe race retry)", () => {
     await assert.rejects(
       () =>
         deploy.apply(
-          { project: "prj_test", site: { replace: { "index.html": "ok" } } },
+          { project_id: "prj_test", site: { replace: { "index.html": "ok" } } },
           { onEvent: (event) => events.push(event) },
         ),
       (err: unknown) => err instanceof Run402DeployError &&
@@ -4765,7 +4765,7 @@ describe("Deploy.apply (safe race retry)", () => {
 
     const deploy = new Deploy(w.client);
     const result = await deploy.apply(
-      { project: "prj_test", site: { replace: { "index.html": "hello" } } },
+      { project_id: "prj_test", site: { replace: { "index.html": "hello" } } },
       { maxRetries: 1, onEvent: (event) => events.push(event) },
     );
 
@@ -4824,7 +4824,7 @@ describe("Deploy.apply (safe race retry)", () => {
     });
 
     const result = await new Deploy(w.client).apply(
-      { project: "prj_test", site: { replace: { "index.html": "hello" } } },
+      { project_id: "prj_test", site: { replace: { "index.html": "hello" } } },
       { onEvent: (event) => events.push(event) },
     );
 
@@ -4879,7 +4879,7 @@ describe("Deploy.apply (safe race retry)", () => {
       await assert.rejects(
         () =>
           new Deploy(w.client).apply({
-            project: "prj_test",
+            project_id: "prj_test",
             site: { replace: { "index.html": "hello" } },
           }),
         (err: unknown) => err instanceof Run402DeployError,
@@ -4896,13 +4896,13 @@ describe("Deploy.apply (safe race retry)", () => {
     }> = [
       {
         name: "omitted",
-        spec: { project: "prj_test", site: { replace: { "index.html": "hello" } } },
+        spec: { project_id: "prj_test", site: { replace: { "index.html": "hello" } } },
         expectedPlans: 2,
       },
       {
         name: "current",
         spec: {
-          project: "prj_test",
+          project_id: "prj_test",
           base: { release: "current" },
           site: { replace: { "index.html": "hello" } },
         },
@@ -4911,7 +4911,7 @@ describe("Deploy.apply (safe race retry)", () => {
       {
         name: "pinned",
         spec: {
-          project: "prj_test",
+          project_id: "prj_test",
           base: { release_id: "rel_pinned" },
           site: { replace: { "index.html": "hello" } },
         },
@@ -4920,7 +4920,7 @@ describe("Deploy.apply (safe race retry)", () => {
       {
         name: "empty",
         spec: {
-          project: "prj_test",
+          project_id: "prj_test",
           base: { release: "empty" },
           site: { replace: { "index.html": "hello" } },
         },
@@ -4982,7 +4982,7 @@ describe("Deploy.apply (safe race retry)", () => {
     await assert.rejects(
       () =>
         new Deploy(disabled.client).apply(
-          { project: "prj_test", site: { replace: { "index.html": "hello" } } },
+          { project_id: "prj_test", site: { replace: { "index.html": "hello" } } },
           { maxRetries: 0 },
         ),
       (err: unknown) => err instanceof Run402DeployError,
@@ -5012,7 +5012,7 @@ describe("Deploy.apply (safe race retry)", () => {
     await assert.rejects(
       () =>
         new Deploy(exhausted.client).apply(
-          { project: "prj_test", site: { replace: { "index.html": "hello" } } },
+          { project_id: "prj_test", site: { replace: { "index.html": "hello" } } },
           { maxRetries: 1 },
         ),
       (err: unknown) => {
@@ -5044,7 +5044,7 @@ describe("Deploy.apply (safe race retry)", () => {
       await assert.rejects(
         () =>
           deploy.apply(
-            { project: "prj_test", site: { replace: { "index.html": "hello" } } },
+            { project_id: "prj_test", site: { replace: { "index.html": "hello" } } },
             { maxRetries },
           ),
         (err: unknown) =>
@@ -5078,7 +5078,7 @@ describe("Deploy.apply (safe race retry)", () => {
     });
 
     const result = await new Deploy(w.client).apply(
-      { project: "prj_test", site: { replace: { "index.html": "hello" } } },
+      { project_id: "prj_test", site: { replace: { "index.html": "hello" } } },
       {
         maxRetries: 1,
         onEvent(event) {
@@ -5105,7 +5105,7 @@ describe("Deploy.apply (safe race retry)", () => {
     });
 
     const op = await new Deploy(started.client).start({
-      project: "prj_test",
+      project_id: "prj_test",
       site: { replace: { "index.html": "hello" } },
     });
     await assert.rejects(
@@ -5216,7 +5216,7 @@ describe("Deploy.apply (retry on retryable CONTENT_UPLOAD_FAILED)", () => {
 
     const deploy = new Deploy(w.client);
     const result = await deploy.apply({
-      project: "prj_test",
+      project_id: "prj_test",
       site: { replace: { "index.html": htmlBytes } },
     });
 
@@ -5239,7 +5239,7 @@ describe("Deploy.apply (retry on retryable CONTENT_UPLOAD_FAILED)", () => {
     await assert.rejects(
       () =>
         deploy.apply({
-          project: "prj_test",
+          project_id: "prj_test",
           site: { replace: { "index.html": "<html><body>retry-me</body></html>" } },
         }),
       (err: unknown) =>
@@ -5299,7 +5299,7 @@ describe("Deploy.apply (commit.phase done events between transitions)", () => {
     const events: DeployEvent[] = [];
     const deploy = new Deploy(w.client);
     await deploy.apply(
-      { project: "prj_test", site: { replace: { "index.html": "<h1>ready</h1>" } } },
+      { project_id: "prj_test", site: { replace: { "index.html": "<h1>ready</h1>" } } },
       { onEvent: (e) => events.push(e) },
     );
 
@@ -5345,7 +5345,7 @@ describe("Deploy.apply (commit.phase done events between transitions)", () => {
     const events: DeployEvent[] = [];
     const deploy = new Deploy(w.client);
     await deploy.apply(
-      { project: "prj_test", site: { replace: { "index.html": "<h1>ready</h1>" } } },
+      { project_id: "prj_test", site: { replace: { "index.html": "<h1>ready</h1>" } } },
       { onEvent: (e) => events.push(e) },
     );
 
@@ -5409,7 +5409,7 @@ describe("Deploy.apply (commit.phase done events between transitions)", () => {
     const events: DeployEvent[] = [];
     const deploy = new Deploy(w.client);
     await deploy.apply(
-      { project: "prj_test", site: { replace: { "index.html": html } } },
+      { project_id: "prj_test", site: { replace: { "index.html": html } } },
       { onEvent: (e) => events.push(e) },
     );
 
@@ -5465,7 +5465,7 @@ describe("Deploy.start (events iterator lifecycle)", () => {
 
     const deploy = new Deploy(w.client);
     const op = await deploy.start({
-      project: "prj_test",
+      project_id: "prj_test",
       site: { replace: { "index.html": html } },
     });
 
@@ -5529,7 +5529,7 @@ describe("Deploy.start (events iterator lifecycle)", () => {
 
     const deploy = new Deploy(w.client);
     const op = await deploy.start({
-      project: "prj_test",
+      project_id: "prj_test",
       site: { replace: { "x.html": "x" } },
     });
 
@@ -6183,7 +6183,7 @@ describe("Deploy.apply (Astro adapter build-tree guard — gh#411)", () => {
     await assert.rejects(
       () =>
         deploy.apply({
-          project: "prj_test",
+          project_id: "prj_test",
           site: {
             replace: {
               "run402/adapter.json": "{}",
@@ -6212,7 +6212,7 @@ describe("Deploy.apply (Astro adapter build-tree guard — gh#411)", () => {
     await assert.rejects(
       () =>
         deploy.apply({
-          project: "prj_test",
+          project_id: "prj_test",
           site: { patch: { put: { "run402/server/chunks/x.mjs": "export {}" } } },
         }),
       (err: unknown) => {
@@ -6239,7 +6239,7 @@ describe("Deploy.apply (Astro adapter build-tree guard — gh#411)", () => {
       await assert.rejects(
         () =>
           deploy.apply({
-            project: "prj_test",
+            project_id: "prj_test",
             site: { replace: dir(root) },
           }),
         (err: unknown) => {
@@ -6264,7 +6264,7 @@ describe("Deploy.apply (Astro adapter build-tree guard — gh#411)", () => {
     });
     const deploy = new Deploy(w.client);
     const result = await deploy.apply({
-      project: "prj_test",
+      project_id: "prj_test",
       site: {
         replace: {
           "index.html": "<html></html>",
@@ -6301,7 +6301,7 @@ describe("gitvault: the capture declaration and the activation block on the wire
     });
 
     const { plan } = await new Deploy(w.client).plan(
-      { project: "prj_test", site: { replace: { "index.html": "<h1>hi</h1>" } } },
+      { project_id: "prj_test", site: { replace: { "index.html": "<h1>hi</h1>" } } },
       { gitvault: CAPTURE },
     );
 
@@ -6313,7 +6313,7 @@ describe("gitvault: the capture declaration and the activation block on the wire
   it("a plan with no capture sends no gitvault key at all — not an empty object", async () => {
     const w = makeWiring();
     w.setHandler(() => noContentPlan("plan_plain", "op_plain"));
-    await new Deploy(w.client).plan({ project: "prj_test", site: { replace: { "index.html": "<h1>hi</h1>" } } });
+    await new Deploy(w.client).plan({ project_id: "prj_test", site: { replace: { "index.html": "<h1>hi</h1>" } } });
     const body = w.requests[0]!.body as Record<string, unknown>;
     assert.equal("gitvault" in body, false);
   });
@@ -6355,7 +6355,7 @@ describe("gitvault: the capture declaration and the activation block on the wire
 
     const seen: unknown[] = [];
     await new Deploy(w.client).apply(
-      { project: "prj_test", site: { replace: { "index.html": "<h1>hi</h1>" } } },
+      { project_id: "prj_test", site: { replace: { "index.html": "<h1>hi</h1>" } } },
       {
         gitvault: {
           declaration: CAPTURE,
@@ -6389,7 +6389,7 @@ describe("gitvault: the capture declaration and the activation block on the wire
 
     await assert.rejects(
       new Deploy(w.client).apply(
-        { project: "prj_test", site: { replace: { "index.html": "<h1>hi</h1>" } } },
+        { project_id: "prj_test", site: { replace: { "index.html": "<h1>hi</h1>" } } },
         {
           gitvault: {
             declaration: CAPTURE,
@@ -6416,7 +6416,7 @@ describe("gitvault: the capture declaration and the activation block on the wire
 
     await assert.rejects(
       new Deploy(w.client).apply(
-        { project: "prj_test", site: { replace: { "index.html": "<h1>hi</h1>" } } },
+        { project_id: "prj_test", site: { replace: { "index.html": "<h1>hi</h1>" } } },
         { maxRetries: 2, gitvault: { declaration: CAPTURE, authorize: async () => ({ activation_token_id: "ct_" + "2".repeat(32) }) } },
       ),
     );
@@ -6460,14 +6460,14 @@ describe("deploy.apply — site.embedding wire carry", () => {
   it("carries the declaration alone and beside public_paths", async () => {
     const w = wiring();
     await new Deploy(w.client).apply({
-      project: "prj_test",
+      project_id: "prj_test",
       site: { embedding: { frame_ancestors: ["localhost"] } },
     });
     assert.deepEqual(planSite(w), { embedding: { frame_ancestors: ["localhost"] } });
 
     const w2 = wiring();
     await new Deploy(w2.client).apply({
-      project: "prj_test",
+      project_id: "prj_test",
       site: { public_paths: { mode: "implicit" }, embedding: { frame_ancestors: ["localhost"] } },
     });
     assert.deepEqual(planSite(w2), {
@@ -6478,7 +6478,7 @@ describe("deploy.apply — site.embedding wire carry", () => {
 
   it("carries an explicit null so the gateway clears the declaration", async () => {
     const w = wiring();
-    await new Deploy(w.client).apply({ project: "prj_test", site: { embedding: null } });
+    await new Deploy(w.client).apply({ project_id: "prj_test", site: { embedding: null } });
     assert.deepEqual(planSite(w), { embedding: null });
   });
 
@@ -6486,7 +6486,7 @@ describe("deploy.apply — site.embedding wire carry", () => {
     const w = wiring();
     await assert.rejects(
       () => new Deploy(w.client).apply({
-        project: "prj_test",
+        project_id: "prj_test",
         site: { embedding: { frame_ancestors: [] } },
       }),
       /site\.embedding\.frame_ancestors/,
@@ -6506,8 +6506,19 @@ describe('static continuity result parity', () => {
       if (req.path.endsWith('/commit') || req.path === '/apply/v1/operations/op_continuity') return { operation_id: 'op_continuity', status: 'ready', release_id: 'rel_B', urls: {}, static_continuity: continuity, warnings: [{ code: 'STATIC_PATHS_REMAIN_REACHABLE', severity: 'info', requires_confirmation: false, message: 'Retained', details: continuity }] };
       throw new Error('unexpected ' + req.path);
     });
-    const result = await new Deploy(w.client).apply({ project: 'prj_test', site: { replace: { 'index.html': 'B' } } });
+    const result = await new Deploy(w.client).apply({ project_id: 'prj_test', site: { replace: { 'index.html': 'B' } } });
     assert.deepEqual(result.static_continuity, continuity);
     assert.equal(result.warnings[0].details?.origin_available_until, continuity.origin_available_until);
+  });
+});
+
+describe("Deploy.promote wire body", () => {
+  it("names the target project_id and the acknowledged warning codes", async () => {
+    const w = makeWiring();
+    w.setHandler(() => ({ status: "ok", release_id: "rel_B", operation_id: "op_p", previous_release_id: "rel_A", diff: { functions: { only_in_current: [], only_in_target: [], changed: [] }, migrations: { only_in_current: [], only_in_target: [] } }, warnings: [] }));
+    await new Deploy(w.client).promote("prj_test", "rel_B", { allowWarningCodes: ["MIGRATIONS_NOT_REVERSIBLE"] });
+    assert.equal(w.requests.length, 1);
+    assert.equal(w.requests[0].path, "/apply/v1/releases/rel_B/promote");
+    assert.deepEqual(w.requests[0].body, { project_id: "prj_test", allow_warning_codes: ["MIGRATIONS_NOT_REVERSIBLE"] });
   });
 });

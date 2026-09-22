@@ -502,7 +502,7 @@ export class NodeActions implements Run402Actions {
         manifest_path: manifest.manifestPath,
         preflight: describeLocalPreflight({ appRoot: workspaceDir, manifestPath: manifest.manifestPath, target: target!, authoring: manifest.loaded?.manifest, spec: manifest.releaseSpec, apiBase: this.sdk.apiBase, profile: this.opts.profile }),
         ...(run.executionMode === "printManifest" ? { manifest: serializeDeployManifest(manifest.loaded!, workspaceDir, input.projectId) } : {}),
-        ...(run.executionMode === "printSpec" ? { spec: { ...manifest.releaseSpec, project: target?.project_id ?? undefined } } : {}),
+        ...(run.executionMode === "printSpec" ? { spec: { ...manifest.releaseSpec, project_id: target?.project_id ?? undefined } } : {}),
       });
     }
 
@@ -1043,7 +1043,7 @@ export class NodeActions implements Run402Actions {
     run.setState(step, "succeeded", {
       manifest_kind: "release",
       manifest_path: manifestPath,
-      project_id: loaded.spec.project === "prj_up_preflight_placeholder" ? null : loaded.spec.project,
+      project_id: loaded.spec.project_id === "prj_up_preflight_placeholder" ? null : loaded.spec.project_id,
       idempotency_key: loaded.idempotencyKey ?? null,
     });
     return {
@@ -1052,9 +1052,9 @@ export class NodeActions implements Run402Actions {
       releaseSpec: loaded.spec,
       loaded,
       idempotencyKey: loaded.idempotencyKey,
-      manifestProjectId: loaded.spec.project === "prj_up_preflight_placeholder"
+      manifestProjectId: loaded.spec.project_id === "prj_up_preflight_placeholder"
         ? undefined
-        : loaded.spec.project,
+        : loaded.spec.project_id,
       ...(loaded.verify ? { verify: loaded.verify } : {}),
     };
   }
@@ -3643,6 +3643,6 @@ async function nearbyBinding(manifestPath: string): Promise<Record<string, unkno
   try {
     const manifest = JSON.parse(await readFile(manifestPath, "utf-8"));
     const link = await readWorkspaceProjectLink(join(dirname(manifestPath), ".run402", "project.json"));
-    return { app_name: manifest.app?.name ?? manifest.app?.id ?? null, manifest_project_id: typeof manifest.project === "string" ? manifest.project : manifest.project_id ?? manifest.project?.id ?? null, linked_project_id: link?.project_id ?? null, target: link?.target ?? null };
+    return { app_name: manifest.app?.name ?? manifest.app?.id ?? null, manifest_project_id: manifest.project_id ?? manifest.project?.id ?? null, linked_project_id: link?.project_id ?? null, target: link?.target ?? null };
   } catch { return { status: "unknown", reason: "Local binding could not be read; select the application and run its check." }; }
 }

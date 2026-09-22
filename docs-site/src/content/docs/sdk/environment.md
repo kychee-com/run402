@@ -114,7 +114,7 @@ Typed configs compile to the same SDK-native `ReleaseSpec` as JSON manifests. Ra
 import { defineConfig, dir, file, nodeFunction, sqlFile } from "@run402/sdk/config";
 
 export default defineConfig(({ env }) => ({
-  project: env.required("RUN402_PROJECT_ID"),
+  project_id: env.required("RUN402_PROJECT_ID"),
   database: { migrations: [sqlFile("db/001_init.sql")] },
   site: {
     replace: dir("dist"),

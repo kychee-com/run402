@@ -430,7 +430,7 @@ describe("ScopedRun402 wrapper routing", () => {
     );
   });
 
-  it("scoped apply injects spec.project", async () => {
+  it("scoped apply injects spec.project_id", async () => {
     const { fetch, calls } = mockFetch((call) => {
       if (call.url.endsWith("/apply/v1/plans") && call.method === "POST") {
         return jsonResponse({
@@ -463,27 +463,28 @@ describe("ScopedRun402 wrapper routing", () => {
     assert.ok(planCall, "expected a plan POST");
     const body = JSON.parse(planCall!.body as string);
     assert.equal(body.spec.project_id, "prj_known");
+    assert.equal("project" in body.spec, false);
   });
 });
 
 describe("ScopedRun402 type-level guarantees (validated when tsc runs over this file)", () => {
-  it("p.apply can omit project; (no public r.deploy.apply or r.apply exists)", async () => {
+  it("p.apply can omit project_id; (no public r.deploy.apply or r.apply exists)", async () => {
     const { fetch } = mockFetch(() => jsonResponse({}));
     const sdk = makeSdk(makeCreds(), fetch);
     const p = await sdk.project("prj_known");
 
-    // The hero callable drops the required `project` field — should compile.
+    // The hero callable drops the required `project_id` field — should compile.
     void (() => p.apply({ site: { patch: { delete: ["old.html"] } } }));
 
     // Per design D5, neither bare `r.apply` nor `r.deploy.apply` is public.
     // The engine is reachable only via _applyEngine (marked @internal).
     // @ts-expect-error r.apply is not a public surface
-    void (() => sdk.apply({ project: "prj_x" }));
+    void (() => sdk.apply({ project_id: "prj_x" }));
     // @ts-expect-error r.deploy is not a public surface
-    void (() => sdk.deploy.apply({ project: "prj_x" }));
+    void (() => sdk.deploy.apply({ project_id: "prj_x" }));
 
-    // Caller-supplied project on the scoped hero is fine and overrides.
-    void (() => p.apply({ project: "prj_other" }));
+    // Caller-supplied project_id on the scoped hero is fine and overrides.
+    void (() => p.apply({ project_id: "prj_other" }));
   });
 });
 

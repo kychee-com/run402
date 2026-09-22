@@ -1,7 +1,7 @@
 import { defineConfig, dir, nodeFunction, sqlFile } from "@run402/sdk/config";
 
 export default defineConfig(({ env }) => ({
-  project: env.get("RUN402_PROJECT_ID"),
+  project_id: env.get("RUN402_PROJECT_ID"),
   database: {
     migrations: [sqlFile("run402/db/001_dreamdrops.sql")],
     expose: {

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://run402.com/schemas/release-spec.v1.json",
   "title": "Run402 ReleaseSpec v1",
-  "description": "Authoring schema for Run402 deploy manifests. Use run402 up for complete application workflows. Project selection may be supplied by an explicit CLI target, app-local link or approved --name creation; the SDK requires a resolved project before gateway planning. SDK-native ReleaseSpec uses project; CLI/MCP manifests may use project_id.",
+  "description": "Authoring schema for Run402 deploy manifests. Use run402 up for complete application workflows. Project selection may be supplied by an explicit CLI target, app-local link or approved --name creation; the SDK requires a resolved project before gateway planning.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
@@ -14,13 +14,9 @@
       "type": "array",
       "description": "App-kit evidence metadata for humans/agents. Manifest adapters preserve it in the loaded manifest and strip it before deploy planning."
     },
-    "project": {
-      "type": "string",
-      "description": "SDK-native project id."
-    },
     "project_id": {
       "type": "string",
-      "description": "CLI/MCP-friendly project id, normalized to ReleaseSpec.project."
+      "description": "The target project id. The one spelling in a manifest, in a typed ReleaseSpec, and on the wire."
     },
     "idempotency_key": {
       "type": "string"

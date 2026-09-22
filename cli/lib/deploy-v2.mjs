@@ -506,14 +506,14 @@ async function rehearseCmd(rawArgs) {
     });
     const planId = planned.plan.plan_id;
     if (!planId) {
-      fail({ code: "DRY_RUN_PLAN_NOT_COMMITTABLE", message: "Rehearsal requires a persisted plan_id, but the plan response did not include one.", details: { project_id: normalized.spec.project } });
+      fail({ code: "DRY_RUN_PLAN_NOT_COMMITTABLE", message: "Rehearsal requires a persisted plan_id, but the plan response did not include one.", details: { project_id: normalized.spec.project_id } });
     }
     await sdk._applyEngine.upload(planned.plan, {
-      project: normalized.spec.project,
+      project: normalized.spec.project_id,
       byteReaders: planned.byteReaders,
       onEvent: emit,
     });
-    return { planId, plan: planned.plan, projectId: normalized.spec.project };
+    return { planId, plan: planned.plan, projectId: normalized.spec.project_id };
   }
 
   try {
@@ -1250,11 +1250,11 @@ async function deployCmd(args) {
     target = await resolveDeploymentTarget({
       appRoot: applicationScope.app_root,
       manifestPath: manifestPath ?? undefined, projectId: opts.project || undefined, environmentProjectId: process.env.RUN402_PROJECT_ID || undefined,
-      manifestProjectId: manifestProject || (releaseSpec.project === "prj_up_preflight_placeholder" ? undefined : releaseSpec.project),
+      manifestProjectId: manifestProject || (releaseSpec.project_id === "prj_up_preflight_placeholder" ? undefined : releaseSpec.project_id),
       targetKind: isCoreApiTarget() ? "core" : "cloud", apiBase: API,
       allowUnresolved: opts.mode === "check" || opts.mode === "printSpec" || opts.mode === "printManifest",
     });
-    if (target.project_id) releaseSpec.project = target.project_id;
+    if (target.project_id) releaseSpec.project_id = target.project_id;
   } catch (err) { reportSdkError(err); }
   const idempotencyKey = normalizedManifest.idempotencyKey;
 
@@ -1289,7 +1289,7 @@ async function deployCmd(args) {
     return;
   }
   if (opts.mode === "printSpec") {
-    console.log(JSON.stringify({ ...releaseSpec, project: target.project_id ?? undefined }, null, 2));
+    console.log(JSON.stringify({ ...releaseSpec, project_id: target.project_id ?? undefined }, null, 2));
     return;
   }
 
@@ -1298,7 +1298,7 @@ async function deployCmd(args) {
   const delegateToken = delegateTokenFromEnv();
   if (useGithubActionsOidc) {
     sdkOpts = {
-      credentials: githubActionsCredentials({ projectId: releaseSpec.project, apiBase: API }),
+      credentials: githubActionsCredentials({ projectId: releaseSpec.project_id, apiBase: API }),
       disablePaidFetch: true,
     };
   } else if (delegateToken) {
@@ -1356,7 +1356,7 @@ async function deployCmd(args) {
     // Cache the activated deployment id so `run402 subdomains add` can
     // pass it as an optimization (the gateway defaults to the live release
     // without it). Best-effort: a keystore hiccup never fails the deploy.
-    rememberLastDeployment(releaseSpec.project, outcome.deploy?.urls?.deployment_id);
+    rememberLastDeployment(releaseSpec.project_id, outcome.deploy?.urls?.deployment_id);
     if (!outcome.gitvault) {
       console.log(JSON.stringify({ ...outcome.deploy, stats: sdkStats(sdk) }, null, 2));
       printVerboseStats(opts.verbose, sdk);

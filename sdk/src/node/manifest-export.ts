@@ -44,9 +44,9 @@ export function serializeDeployManifest(loaded: NormalizedDeployManifest, baseDi
       return result;
     } finally { seen.delete(value); }
   }
-  const { project: _project, ...spec } = loaded.spec;
+  const { project_id: _projectId, ...spec } = loaded.spec;
   const result = visit(spec, "") as Record<string, unknown>;
-  const project = explicitProject ?? loaded.manifest.project_id ?? loaded.manifest.project;
+  const project = explicitProject ?? loaded.manifest.project_id;
   if (project) result.project_id = project;
   if (loaded.idempotencyKey) result.idempotency_key = loaded.idempotencyKey;
   if (loaded.verify) result.verify = visit(loaded.verify, "verify");

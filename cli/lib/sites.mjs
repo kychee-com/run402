@@ -325,7 +325,7 @@ async function deployDir(args) {
   if (opts.dryRun) {
     try {
       const { plan } = await getSdk()._applyEngine.plan({
-        project: projectId,
+        project_id: projectId,
         site: { replace: fileSet },
       }, { dryRun: true });
       console.log(JSON.stringify({

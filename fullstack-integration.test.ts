@@ -98,7 +98,7 @@ async function buildInitialSpec(): Promise<Record<string, unknown>> {
   });
 
   return {
-    project: projectId,
+    project_id: projectId,
     database: {
       migrations: [{ id: "fullstack_integration_001", sql: migrationSql() }],
       expose: exposeManifest(),
@@ -137,7 +137,7 @@ async function buildInitialSpec(): Promise<Record<string, unknown>> {
 
 function buildChangedSpec(): Record<string, unknown> {
   return {
-    project: projectId,
+    project_id: projectId,
     site: {
       patch: {
         put: {

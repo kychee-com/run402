@@ -103,7 +103,7 @@ run402 up --manifest run402.deploy.ts --require-plan plan_...
 import { defineConfig, dir, nodeFunction, sqlFile } from "@run402/sdk/config";
 
 export default defineConfig(({ env }) => ({
-  project: env.required("RUN402_PROJECT_ID"),
+  project_id: env.required("RUN402_PROJECT_ID"),
   database: { migrations: [sqlFile("db/001_init.sql")] },
   site: { replace: dir("dist"), public_paths: { mode: "implicit" } },
   functions: { replace: { api: nodeFunction("dist/functions/api.js") } },

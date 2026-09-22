@@ -46,7 +46,7 @@ const r = run402();
 
 try {
   const release = await withRetry(
-    async () => (await r.project(spec.project)).apply(spec, { idempotencyKey: "deploy-2026-05-01" }),
+    async () => (await r.project(spec.project_id)).apply(spec, { idempotencyKey: "deploy-2026-05-01" }),
     {
       attempts: 3,
       onRetry: (_e, attempt, delayMs) =>

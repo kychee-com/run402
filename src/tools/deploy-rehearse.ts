@@ -25,8 +25,8 @@ async function planAndUpload(manifest: string, project?: string): Promise<{ plan
   const planned = await sdk._applyEngine.plan(normalized.spec, { idempotencyKey: normalized.idempotencyKey, mode: "reviewedPlan" });
   const planId = planned.plan.plan_id;
   if (!planId) throw new Error("Rehearsal requires a persisted plan_id, but the plan response did not include one.");
-  await sdk._applyEngine.upload(planned.plan, { project: normalized.spec.project, byteReaders: planned.byteReaders });
-  return { planId, projectId: normalized.spec.project };
+  await sdk._applyEngine.upload(planned.plan, { project: normalized.spec.project_id, byteReaders: planned.byteReaders });
+  return { planId, projectId: normalized.spec.project_id };
 }
 
 export async function handleDeployRehearse(args: {

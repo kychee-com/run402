@@ -252,7 +252,7 @@ export interface Run402UpResult {
   workspace_link_path?: string;
   app_graph?: Run402AppInstallGraph;
   app_result?: Run402AppUpResultEnvelope;
-  spec?: Omit<ReleaseSpec, "project"> & { project?: string };
+  spec?: Omit<ReleaseSpec, "project_id"> & { project_id?: string };
   plan?: PlanResponse;
   deploy?: DeployResult;
   /** Deploy-manifest `verify.http[]` per-check results (app manifests report

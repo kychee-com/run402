@@ -55,7 +55,7 @@ export class NodeSites extends Sites {
     );
 
     const result = await deploy.apply(
-      { project: opts.project, site: { replace: fileSet } },
+      { project_id: opts.project, site: { replace: fileSet } },
       { onEvent: makeSafeEventForwarder(opts.onEvent) },
     );
 

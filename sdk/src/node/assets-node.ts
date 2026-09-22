@@ -367,7 +367,7 @@ export class NodeAssets extends Assets {
       exifPolicy: opts.exifPolicy,
     }, "uploading asset directory");
     const result = await this.applyEngine().apply(
-      { project: opts.project, assets: { put: decoratedEntries } },
+      { project_id: opts.project, assets: { put: decoratedEntries } },
       { onEvent: opts.onEvent },
     );
     return manifestFromResult(result, undefined, Date.now() - start);
@@ -400,7 +400,7 @@ export class NodeAssets extends Assets {
     if (!opts.prune) {
       // Additive sync — same path as uploadDir.
       const result = await this.applyEngine().apply(
-        { project: opts.project, assets: { put: entries } },
+        { project_id: opts.project, assets: { put: entries } },
         { onEvent: opts.onEvent },
       );
       return manifestFromResult(result, undefined, Date.now() - start);
@@ -420,7 +420,7 @@ export class NodeAssets extends Assets {
       // to a user, then retry with `confirm: {...}` populated.
       const { plan } = await this.applyEngine().plan(
         {
-          project: opts.project,
+          project_id: opts.project,
           assets: {
             put: entries,
             sync: { prefix: opts.prefix, prune: true },
@@ -446,7 +446,7 @@ export class NodeAssets extends Assets {
     }
     const result = await this.applyEngine().apply(
       {
-        project: opts.project,
+        project_id: opts.project,
         assets: {
           put: entries,
           sync: {
@@ -501,7 +501,7 @@ export class NodeAssets extends Assets {
     // sources retained) as the applySlice so the SDK normalizer can
     // register byte readers when the caller commits.
     const { plan } = await this.applyEngine().plan(
-      { project: opts.project, assets: { put: entries } } as ReleaseSpec,
+      { project_id: opts.project, assets: { put: entries } } as ReleaseSpec,
       { dryRun: true },
     );
     const planEntries = plan.asset_entries ?? [];
@@ -574,7 +574,7 @@ export class NodeAssets extends Assets {
       ...(item.exifPolicy !== undefined ? { exifPolicy: item.exifPolicy } : {}),
     }));
     const result = await this.applyEngine().apply(
-      { project: opts.project, assets: { put: entries } },
+      { project_id: opts.project, assets: { put: entries } },
       { onEvent: opts.onEvent },
     );
     return manifestFromResult(result, undefined, Date.now() - start);

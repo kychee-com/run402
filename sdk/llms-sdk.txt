@@ -475,7 +475,7 @@ Typed configs compile to the same SDK-native `ReleaseSpec` as JSON manifests. Ra
 import { defineConfig, dir, file, nodeFunction, sqlFile } from "@run402/sdk/config";
 
 export default defineConfig(({ env }) => ({
-  project: env.required("RUN402_PROJECT_ID"),
+  project_id: env.required("RUN402_PROJECT_ID"),
   database: { migrations: [sqlFile("db/001_init.sql")] },
   site: {
     replace: dir("dist"),
@@ -693,7 +693,7 @@ const r = run402();
 
 try {
   const release = await withRetry(
-    async () => (await r.project(spec.project)).apply(spec, { idempotencyKey: "deploy-2026-05-01" }),
+    async () => (await r.project(spec.project_id)).apply(spec, { idempotencyKey: "deploy-2026-05-01" }),
     {
       attempts: 3,
       onRetry: (_e, attempt, delayMs) =>
@@ -803,10 +803,10 @@ The canonical primitive for any deploy (database + migrations + manifest + value
 
 ```ts
 // One-shot — most agents use this. Awaits to a terminal state.
-const result = await (await r.project(spec.project)).apply(spec);
+const result = await (await r.project(spec.project_id)).apply(spec);
 
 // Long-running with progress events. Events are a discriminated union on `type`.
-const op = await (await r.project(spec.project)).apply.start(spec);
+const op = await (await r.project(spec.project_id)).apply.start(spec);
 for await (const ev of op.events()) {
   console.log(ev.type, ev);
 }
@@ -816,7 +816,7 @@ const final = await op.result();
 const resumed = await (await r.project(projectId)).apply.resume(operationId);
 
 // Lower-level steps for CLI debugging:
-const pScoped = await r.project(spec.project);
+const pScoped = await r.project(spec.project_id);
 const { plan: lowPlan, byteReaders } = await pScoped.apply.plan(spec);
 await pScoped.apply.upload(lowPlan, { byteReaders });
 if (!lowPlan.plan_id) throw new Error("Preview plans cannot be committed");
@@ -859,7 +859,7 @@ The full type is exported as `ReleaseSpec` from `@run402/sdk` and `@run402/sdk/n
 ```
 {
   $schema?: "https://run402.com/schemas/release-spec.v1.json", // editor metadata; stripped before planning
-  project: "prj_…",                        // SDK field is `project`, not `project_id`
+  project_id: "prj_…",                     // the one spelling: manifest, typed spec, and wire
   base?: { release: "current" | "empty" } | { release_id: "rel_…" },
   database?: {
     migrations?: MigrationSpec[],          // each has exactly one of id or name, plus sql? | sql_ref?, checksum?, transaction?
@@ -930,13 +930,13 @@ import { loadDeployManifest, normalizeDeployManifest, run402 } from "@run402/sdk
 const r = run402();
 
 const loaded = await loadDeployManifest("./run402.deploy.json");
-await (await r.project(loaded.spec.project)).apply(loaded.spec, { idempotencyKey: loaded.idempotencyKey });
+await (await r.project(loaded.spec.project_id)).apply(loaded.spec, { idempotencyKey: loaded.idempotencyKey });
 
 const inMemory = await normalizeDeployManifest({
   project_id: projectId,
   site: { patch: { put: { "index.html": { data: "<h1>hi</h1>" } } } },
 });
-await (await r.project(inMemory.spec.project)).apply(inMemory.spec, { idempotencyKey: inMemory.idempotencyKey });
+await (await r.project(inMemory.spec.project_id)).apply(inMemory.spec, { idempotencyKey: inMemory.idempotencyKey });
 ```
 
 `DeployManifestInput` is the agent-facing JSON shape: `project_id` becomes SDK `project`, `idempotency_key` is returned separately for deploy options, `{ data, encoding: "base64", content_type? }` decodes to bytes, `{ path, content_type? }` becomes a lazy `FsFileSource`, and `database.migrations[].sql_path` / `sql_file` are read as UTF-8 SQL. Each migration declares exactly one of `id` or `name`: use `id` for immutable versioned migrations, and `name` for generated/idempotent SQL whose compiled id should track content changes. Snake manifest fields such as `config.timeout_seconds`, `require_auth`, `require_role.id_column`, and `i18n.default_locale` normalize to the SDK's camelCase `ReleaseSpec`. `loadDeployManifest(path)` resolves relative paths against the manifest file's directory; `normalizeDeployManifest(input, { baseDir? })` defaults relative paths to `process.cwd()`. Manifest normalization is strict too: unknown fields are rejected instead of dropped, so a valid site deploy plus typoed `subdomain` cannot become a partial site-only deploy.
@@ -954,7 +954,7 @@ const routes: RouteSpec[] = [
   { pattern: "/login", methods: ["POST"], target: { type: "function", name: "auth" } },
 ];
 const specWithRoutes: ReleaseSpec = {
-  project: projectId,
+  project_id: projectId,
   site: { replace: {
     "index.html": "<!doctype html><main id='app'></main>",
     "events.html": "<!doctype html><h1>Events</h1>",
@@ -968,7 +968,7 @@ const specWithRoutes: ReleaseSpec = {
   },
   routes: { replace: routes },
 };
-await (await r.project(specWithRoutes.project)).apply(specWithRoutes);
+await (await r.project(specWithRoutes.project_id)).apply(specWithRoutes);
 ```
 
 Route matching and routed HTTP contract:
@@ -989,7 +989,7 @@ Recipe — static home page + SPA shell. A SPA site ships `index.html` as the sh
 
 ```ts
 const spaWithStaticHome: ReleaseSpec = {
-  project: projectId,
+  project_id: projectId,
   site: { replace: {
     "index.html": "<!doctype html><main id='app'></main><script src='/app.js'></script>",
     "home.html": "<!doctype html><h1>Welcome</h1><a href='/dashboard'>Open the app</a>",
@@ -999,7 +999,7 @@ const spaWithStaticHome: ReleaseSpec = {
     { pattern: "/", target: { type: "static", file: "home.html" } },
   ] },
 };
-await (await r.project(spaWithStaticHome.project)).apply(spaWithStaticHome);
+await (await r.project(spaWithStaticHome.project_id)).apply(spaWithStaticHome);
 ```
 
 - Route matching runs before all static resolution — including the implicit `/` -> `index.html` root mapping — and SPA-fallback derivation is independent of the route table. So `GET /` serves `home.html` (match `route_static_alias`), unmatched app routes e.g. `/dashboard` still serve the `index.html` shell (match `spa_fallback`), and named static pages keep serving unchanged (match `static_exact`).
@@ -1115,15 +1115,15 @@ const r = run402({
 });
 
 const ciSpec: ReleaseSpec = {
-  project: projectId,
+  project_id: projectId,
   base: { release: "current" },
   site: { patch: { put: { "index.html": "<h1>ship</h1>" } } },
 };
 
-await (await r.project(ciSpec.project)).apply(ciSpec);
+await (await r.project(ciSpec.project_id)).apply(ciSpec);
 ```
 
-CI deploy restrictions are part of the client contract: allowed top-level fields are only `project`, `database`, `functions`, `site`, absent/current `base`, and `routes` authorized by the binding's `route_scopes`. Omitted or empty `route_scopes` preserves the original no-routes CI posture. `spec.secrets`, `spec.subdomains`, `spec.checks`, unknown future fields, non-current `base`, and oversized specs that would require `manifest_ref` are rejected before any upload or plan call. Non-CI deploy behavior is unchanged. Gateway planning enforces route diffs and returns `CI_ROUTE_SCOPE_DENIED` when a route declaration falls outside the delegated exact paths or final wildcard prefixes.
+CI deploy restrictions are part of the client contract: allowed top-level fields are only `project_id`, `database`, `functions`, `site`, absent/current `base`, and `routes` authorized by the binding's `route_scopes`. Omitted or empty `route_scopes` preserves the original no-routes CI posture. `spec.secrets`, `spec.subdomains`, `spec.checks`, unknown future fields, non-current `base`, and oversized specs that would require `manifest_ref` are rejected before any upload or plan call. Non-CI deploy behavior is unchanged. Gateway planning enforces route diffs and returns `CI_ROUTE_SCOPE_DENIED` when a route declaration falls outside the delegated exact paths or final wildcard prefixes.
 
 ### Dark-by-default tables + the expose manifest
 
@@ -1334,16 +1334,16 @@ import { run402, summarizeDeployResult, type ReleaseSpec } from "@run402/sdk/nod
 
 const r = run402();
 const spec: ReleaseSpec = {
-  project: "prj_...",
+  project_id: "prj_...",
   site: { patch: { put: { "index.html": "<h1>Hello</h1>" } } },
 };
 
-const result = await (await r.project(spec.project)).apply(spec);
+const result = await (await r.project(spec.project_id)).apply(spec);
 const summary = summarizeDeployResult(result);
 console.log(summary.headline, summary.site?.cas?.reused_bytes);
 ```
 
-For live event streaming during an in-flight apply, use `(await r.project(spec.project)).apply.start(spec)` and
+For live event streaming during an in-flight apply, use `(await r.project(spec.project_id)).apply.start(spec)` and
 iterate `op.events()` (an `AsyncIterable<DeployEvent>`). The `r.project(id).apply.events(operationId)`
 method returns the events the gateway has recorded so far for an operation —
 useful for inspecting an apply after the event, not for live streaming.
@@ -2219,7 +2219,7 @@ if (plan.allocation_needed) {
 import { applyWithGitvault, run402 } from "@run402/sdk/node";
 import type { ReleaseSpec } from "@run402/sdk";
 const r = run402();
-const spec: ReleaseSpec = { project: "prj_123", site: { replace: { "index.html": "<h1>hi</h1>" } } };
+const spec: ReleaseSpec = { project_id: "prj_123", site: { replace: { "index.html": "<h1>hi</h1>" } } };
 
 const { mode, deploy, gitvault } = await applyWithGitvault({
   sdk: r,
