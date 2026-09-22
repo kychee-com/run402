@@ -19,7 +19,7 @@ const REQUIRED_CAPABILITIES = [
   ["buzz", "status", "--help"],
   ["buzz", "install", "discover", "--help"],
 ];
-export const BUZZ_SETUP_MIN_RUN402_VERSION = "4.17.2";
+export const BUZZ_SETUP_MIN_RUN402_VERSION = "4.95.0";
 
 export class BuzzSetupError extends Error {
   constructor(stage, code, message, options = {}) {

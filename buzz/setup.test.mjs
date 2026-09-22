@@ -441,7 +441,7 @@ describe("Run402 for Buzz setup state machine", () => {
     );
   });
 
-  it("upgrades a pre-4.17.2 CLI before trusting its doctor and continues setup", async () => {
+  it("upgrades a pre-4.95.0 CLI before trusting its doctor and continues setup", async () => {
     const fake = makeRunner({ cliVersion: "4.17.1", linked: true });
     const result = await runSetup({ pubkey: PUBKEY, wallet: PROFILE, runner: fake.runner, reporter: () => {} });
     assert.equal(result.status, "ready");
@@ -462,7 +462,7 @@ describe("Run402 for Buzz setup state machine", () => {
         assert.equal(error.mutationState, "not_started");
         assert.equal(error.nextAction.type, "upgrade_run402_cli");
         assert.deepEqual(error.nextAction.argv, ["npm", "install", "-g", "run402@latest"]);
-        assert.equal(error.details.minimum_version, "4.17.2");
+        assert.equal(error.details.minimum_version, "4.95.0");
         return true;
       },
     );
