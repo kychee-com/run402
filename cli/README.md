@@ -4,7 +4,7 @@
 
 Command-line interface for [Run402](https://run402.com) — provision Postgres databases, deploy static sites, run Node 22 serverless functions, host content-addressed CDN assets, send email, sign on-chain. Paid autonomously with x402 (USDC on Base) or MPP (pathUSD on Tempo, or sats over Bitcoin Lightning). **Prototype tier is free on testnet.**
 
-The CLI lets an agent act as its own first-class Run402 principal rather than borrowing a human account. Identity records who invoked an action; organization roles, grants, delegates, freshness, and spend policy determine what that principal may do. People remain first-class owners and collaborators without becoming routine CLI operators.
+The CLI lets an agent act as its own first-class Run402 principal rather than borrowing a human account. Identity records who invoked an action; organization roles, grants, delegates, freshness, and spend policy determine what that principal may do. People remain first-class owners and members without having to run the CLI themselves.
 
 For the full CLI reference (every flag, every subcommand) start at **<https://docs.run402.com/llms-cli.txt>** — the index holds the first-deploy contract and links one fetchable `/llms-cli-<slice>.txt` per topic (deploy, commands, repos, orgs, functions, assets, ops, errors, frontend, platform); <https://docs.run402.com/llms-cli-full.txt> is the whole reference as one document.
 
@@ -289,7 +289,7 @@ run402 email send --to user@example.com --subject "Welcome" --html "<h1>Hi</h1>"
 run402 email send --to user@example.com --template notification --var project_name="My App"
 ```
 
-For Run402 Core, use the same commands after `run402 init --api-base=http://my-core:4020`. The Core gateway operator must configure an outbound provider such as SES first; `run402 email mailboxes` surfaces `provider_readiness`, `can_send`, `send_blocked_reason`, and `next_actions` when setup is missing. Core's first email slice supports raw outbound mail with attachments; managed templates, inbound reply handling, sender-domain automation, and delivery operations may remain Cloud-only until the Core gateway adds those capabilities.
+For Run402 Core, use the same commands after `run402 init --api-base=http://my-core:4020`. Whoever runs the Core gateway must configure an outbound provider such as SES first; `run402 email mailboxes` surfaces `provider_readiness`, `can_send`, `send_blocked_reason`, and `next_actions` when setup is missing. Core's first email slice supports raw outbound mail with attachments; managed templates, inbound reply handling, sender-domain automation, and delivery operations may remain Cloud-only until the Core gateway adds those capabilities.
 
 ### Image generation
 
@@ -323,7 +323,7 @@ run402 doctor                    # { ok, blocking[], warnings[], checks[] }
 run402 doctor --refresh          # live npm check for a newer run402
 ```
 
-`ok` is structural: `true` exactly when `blocking[]` is empty. Every check carries `severity: "blocking" | "advisory" | "info"`; advisory findings (an unbound operator passkey, a degraded recovery posture on another org, a stale CLI, gitvault gaps) land in `warnings[]` without changing `ok` or the exit code. The `tier` check's `status` is a fixed vocabulary (`ok | inactive | frozen | past_due | dormant | purged | missing | unknown | error`, never a tier name; see `value.tier` / `value.lifecycle`), and a wallet whose own org holds no tier but can reach another org's projects reports `missing` as advisory (`TIER_MISSING_ON_OWN_ORG`).
+`ok` is structural: `true` exactly when `blocking[]` is empty. Every check carries `severity: "blocking" | "advisory" | "info"`; advisory findings (an unbound contact passkey, a degraded recovery posture on another org, a stale CLI, gitvault gaps) land in `warnings[]` without changing `ok` or the exit code. The `tier` check's `status` is a fixed vocabulary (`ok | inactive | frozen | past_due | dormant | purged | missing | unknown | error`, never a tier name; see `value.tier` / `value.lifecycle`), and a wallet whose own org holds no tier but can reach another org's projects reports `missing` as advisory (`TIER_MISSING_ON_OWN_ORG`).
 
 ## State
 
@@ -346,16 +346,18 @@ Hold several wallets on one machine and select between them:
 
 The CLI handles all x402 / MPP payment signing automatically — never ask the human for a private key or set up payment libraries by hand.
 
-### Operator (human / email session)
+### Sign-in session (a person)
 
-The **operator** is YOU, the human, identified by email — distinct from the agent (your wallet). One browser login spans every wallet that verified your email, so the overview is a cross-wallet union. For a single wallet's account state, use `run402 status`.
+A person signs in; the agent is your wallet (`run402 status` shows the wallet's own organization state). There is one sign-in session, graded by how it was minted.
 
-- `run402 operator login` — browser-delegated sign-in (device-authorization, RFC 8628, like `aws sso login`): magic-link or passkey in the browser, no WebAuthn in the CLI. Caches an email-scoped session at the base config dir (shared across named wallets).
-- `run402 operator overview` — account view across ALL wallets controlling your email (requires login; never falls back to a single wallet).
-- `run402 operator whoami` — show the cached session (email, wallets, expiry); local, no network.
-- `run402 operator logout` — revoke the session server-side and clear the local cache.
+- `run402 login` — browser passkey sign-in over loopback PKCE (RFC 8252, like `aws sso login`): the CLI listens on `127.0.0.1`, the browser runs the ceremony, and the session (grade `loopback`: full, step-up-able) is cached at the base config dir (shared across named wallets). Signing in again is the step-up.
+- `run402 login --device` — RFC 8628 device code for a terminal with no browser; approve it in the console. The session is grade `device`: read-only.
+- `run402 whoami` — principal, memberships, `session.grade`, and the write approvals cached on this machine.
+- `run402 approve --action <capability> (--org <org_id> | --project <project_id>)` — passkey-signed write approval for one action on one target; a person without a wallet needs it to provision, deploy, or write secrets (an interactive `provision`/`deploy` opens it for you).
+- `run402 logout` — revoke the session server-side and clear it and every write approval locally.
+- `run402 org list` — your orgs joined with the account overview (tier, lifecycle, quotas, allowance, advisories).
 
-Not exposed as MCP tools by design — MCP authenticates as the agent (wallet), and the human session must not be handed to it.
+Not exposed as MCP tools by design — MCP authenticates as the agent (wallet), and a person's session must not become its ambient authority.
 
 ## Active project (sticky default)
 

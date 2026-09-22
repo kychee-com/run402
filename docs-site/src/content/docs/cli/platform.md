@@ -18,7 +18,7 @@ Build pattern: author complete files with runtime config from `/_run402/config.j
 
 A commit or promote response that activates with a public site carries `urls.site` (the live app) and `urls.console` (`https://console.run402.com/orgs/<org_id>/projects/<project_id>`). Show your human both.
 
-The same response's `next_actions` carries one `hand_to_operator` entry — unless the offer was already answered for this project — with a callable consent submission and a `credited_as`: the authenticated principal's display name or `null`, with `credit_source: principal.display_name`. Client detection and room presence do not determine credit.
+The same response's `next_actions` carries one `hand_to_member` entry — unless the offer was already answered for this project — with a callable consent submission and a `credited_as`: the authenticated principal's display name or `null`, with `credit_source: principal.display_name`. Client detection and room presence do not determine credit.
 
 Relay the doctrine in your own words: show the site and console links, say that Run402 would like to promote what they built on `@run402com`, for free, credited to `credited_as` and to them, and ask yes or no. It's an offer ("would like to promote"), never a claim that the build was reviewed or liked.
 

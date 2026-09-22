@@ -17,6 +17,18 @@ Owner: `public:sdk/src/app-up.ts`, `public:sdk/src/node/actions-node.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
+<h2 id="APPROVE_BAD_CONFIRM_URL">APPROVE_BAD_CONFIRM_URL</h2>
+
+Owner: `public:cli/lib/sign-in.mjs`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="APPROVE_FAILED">APPROVE_FAILED</h2>
+
+Owner: `public:cli/lib/sign-in.mjs`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
 <h2 id="ARCHIVE_DESCRIPTOR_MISSING">ARCHIVE_DESCRIPTOR_MISSING</h2>
 
 Owner: `public:sdk/src/node/archives-node.ts`.
@@ -127,7 +139,7 @@ The client could not complete this operation. Inspect its typed error kind, mess
 
 <h2 id="BAD_FLAG">BAD_FLAG</h2>
 
-Owner: `public:cli/lib/argparse.mjs`, `public:cli/lib/assets.mjs`, `public:cli/lib/auth.mjs`, `public:cli/lib/billing.mjs`, `public:cli/lib/buzz-notifications.mjs`, `public:cli/lib/buzz.mjs`, `public:cli/lib/cdn.mjs`, `public:cli/lib/contracts.mjs`, `public:cli/lib/core.mjs`, `public:cli/lib/doctor.mjs`, `public:cli/lib/domains.mjs`, `public:cli/lib/email.mjs`, `public:cli/lib/errors.mjs`, `public:cli/lib/feedback.mjs`, `public:cli/lib/identity.mjs`, `public:cli/lib/operator.mjs`, `public:cli/lib/pay.mjs`, `public:cli/lib/projects.mjs`, `public:cli/lib/repos.mjs`, `public:cli/lib/sites.mjs`, `public:cli/lib/transfer.mjs`, `public:cli/lib/up.mjs`, `public:cli/lib/wallet-context.mjs`, `public:cli/lib/wallets.mjs`, `public:cli/lib/webhooks.mjs`.
+Owner: `public:cli/lib/approve.mjs`, `public:cli/lib/argparse.mjs`, `public:cli/lib/assets.mjs`, `public:cli/lib/auth.mjs`, `public:cli/lib/billing.mjs`, `public:cli/lib/buzz-notifications.mjs`, `public:cli/lib/buzz.mjs`, `public:cli/lib/cdn.mjs`, `public:cli/lib/contracts.mjs`, `public:cli/lib/core.mjs`, `public:cli/lib/doctor.mjs`, `public:cli/lib/domains.mjs`, `public:cli/lib/email.mjs`, `public:cli/lib/errors.mjs`, `public:cli/lib/feedback.mjs`, `public:cli/lib/identity.mjs`, `public:cli/lib/pay.mjs`, `public:cli/lib/projects.mjs`, `public:cli/lib/repos.mjs`, `public:cli/lib/sites.mjs`, `public:cli/lib/transfer.mjs`, `public:cli/lib/up.mjs`, `public:cli/lib/wallet-context.mjs`, `public:cli/lib/wallets.mjs`, `public:cli/lib/webhooks.mjs`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
@@ -175,7 +187,7 @@ The client could not complete this operation. Inspect its typed error kind, mess
 
 <h2 id="BAD_USAGE">BAD_USAGE</h2>
 
-Owner: `public:sdk/src/namespaces/credentials.ts`, `public:cli/lib/admin.mjs`, `public:cli/lib/agent.mjs`, `public:cli/lib/ai.mjs`, `public:cli/lib/apps.mjs`, `public:cli/lib/archives.mjs`, `public:cli/lib/argparse.mjs`, `public:cli/lib/assets.mjs`, `public:cli/lib/auth.mjs`, `public:cli/lib/billing.mjs`, `public:cli/lib/branches.mjs`, `public:cli/lib/buzz.mjs`, `public:cli/lib/cache.mjs`, `public:cli/lib/cdn.mjs`, `public:cli/lib/ci.mjs`, `public:cli/lib/cloud.mjs`, `public:cli/lib/contacts.mjs`, `public:cli/lib/contracts.mjs`, `public:cli/lib/core.mjs`, `public:cli/lib/credentials.mjs`, `public:cli/lib/deliveries.mjs`, `public:cli/lib/deploy-v2.mjs`, `public:cli/lib/dev.mjs`, `public:cli/lib/doctor.mjs`, `public:cli/lib/domains.mjs`, `public:cli/lib/email.mjs`, `public:cli/lib/errors.mjs`, `public:cli/lib/events.mjs`, `public:cli/lib/feedback.mjs`, `public:cli/lib/functions.mjs`, `public:cli/lib/image.mjs`, `public:cli/lib/init-astro.mjs`, `public:cli/lib/init.mjs`, `public:cli/lib/jobs.mjs`, `public:cli/lib/live.mjs`, `public:cli/lib/logs.mjs`, `public:cli/lib/org-context.mjs`, `public:cli/lib/org.mjs`, `public:cli/lib/pay.mjs`, `public:cli/lib/projects.mjs`, `public:cli/lib/redeem.mjs`, `public:cli/lib/repos.mjs`, `public:cli/lib/rooms-context.mjs`, `public:cli/lib/rooms.mjs`, `public:cli/lib/secrets.mjs`, `public:cli/lib/sites.mjs`, `public:cli/lib/snapshots.mjs`, `public:cli/lib/status.mjs`, `public:cli/lib/subdomains.mjs`, `public:cli/lib/subscriptions.mjs`, `public:cli/lib/tier.mjs`, `public:cli/lib/transfer.mjs`, `public:cli/lib/up.mjs`, `public:cli/lib/wallets.mjs`, `public:cli/lib/webhooks.mjs`.
+Owner: `public:sdk/src/namespaces/credentials.ts`, `public:cli/lib/admin.mjs`, `public:cli/lib/agent.mjs`, `public:cli/lib/ai.mjs`, `public:cli/lib/approve.mjs`, `public:cli/lib/apps.mjs`, `public:cli/lib/archives.mjs`, `public:cli/lib/argparse.mjs`, `public:cli/lib/assets.mjs`, `public:cli/lib/auth.mjs`, `public:cli/lib/billing.mjs`, `public:cli/lib/branches.mjs`, `public:cli/lib/buzz.mjs`, `public:cli/lib/cache.mjs`, `public:cli/lib/cdn.mjs`, `public:cli/lib/ci.mjs`, `public:cli/lib/cloud.mjs`, `public:cli/lib/contacts.mjs`, `public:cli/lib/contracts.mjs`, `public:cli/lib/core.mjs`, `public:cli/lib/credentials.mjs`, `public:cli/lib/deliveries.mjs`, `public:cli/lib/deploy-v2.mjs`, `public:cli/lib/dev.mjs`, `public:cli/lib/doctor.mjs`, `public:cli/lib/domains.mjs`, `public:cli/lib/email.mjs`, `public:cli/lib/errors.mjs`, `public:cli/lib/events.mjs`, `public:cli/lib/feedback.mjs`, `public:cli/lib/functions.mjs`, `public:cli/lib/image.mjs`, `public:cli/lib/init-astro.mjs`, `public:cli/lib/init.mjs`, `public:cli/lib/jobs.mjs`, `public:cli/lib/live.mjs`, `public:cli/lib/login.mjs`, `public:cli/lib/logout.mjs`, `public:cli/lib/logs.mjs`, `public:cli/lib/org-context.mjs`, `public:cli/lib/org.mjs`, `public:cli/lib/pay.mjs`, `public:cli/lib/projects.mjs`, `public:cli/lib/redeem.mjs`, `public:cli/lib/repos.mjs`, `public:cli/lib/rooms-context.mjs`, `public:cli/lib/rooms.mjs`, `public:cli/lib/secrets.mjs`, `public:cli/lib/sites.mjs`, `public:cli/lib/snapshots.mjs`, `public:cli/lib/status.mjs`, `public:cli/lib/subdomains.mjs`, `public:cli/lib/subscriptions.mjs`, `public:cli/lib/tier.mjs`, `public:cli/lib/transfer.mjs`, `public:cli/lib/up.mjs`, `public:cli/lib/wallets.mjs`, `public:cli/lib/webhooks.mjs`, `public:cli/lib/whoami.mjs`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
@@ -719,6 +731,42 @@ Owner: `public:sdk/src/node/preflight.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
+<h2 id="LOGIN_DENIED">LOGIN_DENIED</h2>
+
+Owner: `public:cli/lib/login.mjs`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="LOGIN_EXPIRED">LOGIN_EXPIRED</h2>
+
+Owner: `public:cli/lib/login.mjs`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="LOGIN_FAILED">LOGIN_FAILED</h2>
+
+Owner: `public:cli/lib/login.mjs`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="LOGIN_REQUIRED">LOGIN_REQUIRED</h2>
+
+Owner: `public:cli/lib/sign-in.mjs`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="LOGIN_TIMEOUT">LOGIN_TIMEOUT</h2>
+
+Owner: `public:cli/lib/login.mjs`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="LOOPBACK_FAILED">LOOPBACK_FAILED</h2>
+
+Owner: `public:cli/lib/login.mjs`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
 <h2 id="MAILBOX_NOT_FOUND">MAILBOX_NOT_FOUND</h2>
 
 Owner: `public:cli/lib/email.mjs`.
@@ -818,60 +866,6 @@ The client could not complete this operation. Inspect its typed error kind, mess
 <h2 id="NOT_FOUND">NOT_FOUND</h2>
 
 Owner: `public:cli/lib/contacts.mjs`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
-<h2 id="OPERATOR_APPROVE_BAD_CONFIRM_URL">OPERATOR_APPROVE_BAD_CONFIRM_URL</h2>
-
-Owner: `public:cli/lib/operator.mjs`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
-<h2 id="OPERATOR_APPROVE_FAILED">OPERATOR_APPROVE_FAILED</h2>
-
-Owner: `public:cli/lib/operator.mjs`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
-<h2 id="OPERATOR_LOGIN_DENIED">OPERATOR_LOGIN_DENIED</h2>
-
-Owner: `public:cli/lib/operator.mjs`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
-<h2 id="OPERATOR_LOGIN_EXPIRED">OPERATOR_LOGIN_EXPIRED</h2>
-
-Owner: `public:cli/lib/operator.mjs`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
-<h2 id="OPERATOR_LOGIN_FAILED">OPERATOR_LOGIN_FAILED</h2>
-
-Owner: `public:cli/lib/operator.mjs`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
-<h2 id="OPERATOR_LOGIN_REQUIRED">OPERATOR_LOGIN_REQUIRED</h2>
-
-Owner: `public:cli/lib/operator.mjs`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
-<h2 id="OPERATOR_LOGIN_TIMEOUT">OPERATOR_LOGIN_TIMEOUT</h2>
-
-Owner: `public:cli/lib/operator.mjs`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
-<h2 id="OPERATOR_LOOPBACK_FAILED">OPERATOR_LOOPBACK_FAILED</h2>
-
-Owner: `public:cli/lib/operator.mjs`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
-<h2 id="OPERATOR_SESSION_INVALID">OPERATOR_SESSION_INVALID</h2>
-
-Owner: `public:cli/lib/operator.mjs`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
@@ -1112,6 +1106,12 @@ The client could not complete this operation. Inspect its typed error kind, mess
 <h2 id="RUN402_WORKSPACE_LINK_SYMLINK">RUN402_WORKSPACE_LINK_SYMLINK</h2>
 
 Owner: `public:sdk/src/node/actions-node.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="SESSION_INVALID">SESSION_INVALID</h2>
+
+Owner: `public:cli/lib/whoami.mjs`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 

@@ -33,7 +33,7 @@ The local tests verify handler auth/validation boundaries using a stub database 
 
 ## Edit the CMS through the CLI
 
-Only the operator edits article content in this example; the exposure policy grants public SELECT, not browser writes. Use the actual returned project ID and hostname:
+Only the site owner edits article content in this example; the exposure policy grants public SELECT, not browser writes. Use the actual returned project ID and hostname:
 
 ```bash
 run402 projects sql prj_example "UPDATE articles SET title = 'Updated article' WHERE slug = 'welcome'"

@@ -568,7 +568,7 @@ run402 projects rest <id> items "select=id,title&order=id.desc&limit=10"
 run402 projects validate-expose <id> --file manifest.json --migration-file migrations.sql
 run402 projects schema <id>          # introspect tables, columns, RLS
 run402 projects usage  <id>          # API calls, storage, lease expiry
-run402 projects costs <id> --window 30d  # operator-only finance; admin wallet required
+run402 projects costs <id> --window 30d  # staff-only finance; admin wallet required
 ```
 
 ### Idempotent migrations
@@ -1402,18 +1402,20 @@ Other wallet options:
 - Coinbase AgentKit — MPC wallet on Base with built-in x402.
 - AgentPayy — auto-bootstraps an MPC wallet on Base via Coinbase CDP.
 
-## Sign-in session (human / email)
+## Sign-in session (a person)
 
-The **person** is the human, identified by email — distinct from the **agent** (your wallet). One browser login spans every wallet that verified your email, so `operator overview` returns the cross-wallet union. For a single wallet's state, use `run402 status` (there is no `operator status`).
+A **person** signs in; the **agent** is your wallet. `run402 login` opens the browser for a passkey sign-in and caches one sign-in session (grade `loopback`: full, step-up-able). `run402 login --device` prints a code to approve in the console from any device and caches a read-only session (grade `device`: every write answers `SESSION_READ_ONLY`). For the wallet's own state, use `run402 status`.
 
 ```bash
-run402 operator login            # browser device-auth (RFC 8628, like `aws sso login`): magic-link OR passkey
-run402 operator overview         # organization view across ALL wallets controlling your email (requires login)
-run402 operator whoami           # cached session: email, wallets, expiry - local, no network
-run402 operator logout           # revoke server-side + clear the local cache
+run402 login                     # browser passkey sign-in (loopback PKCE, like `aws sso login`)
+run402 login --device            # device code (RFC 8628) for a terminal with no browser: read-only
+run402 whoami                    # principal, memberships, session.grade, cached write approvals
+run402 org list                  # your orgs with tier, lifecycle, quotas, allowance, advisories
+run402 approve --action project.deploy --project <project_id>   # write approval for one action on one target
+run402 logout                    # revoke server-side + clear the session and approvals locally
 ```
 
-`login` prints a verification URL + short code (and opens the browser on a TTY); you approve in the browser, and the CLI brokers the resulting session token (cached at the base config dir, ~30m TTL, shared across named wallets). `overview` requires login and never falls back to a single wallet's slice. These are CLI-only (no MCP tool) by design — MCP authenticates as the agent, not the human.
+Without a wallet, provisioning, deploying, and writing secrets also need a **write approval**: passkey-signed, one action on one org or project, 30 minutes idle. From an interactive terminal `projects provision` and `deploy` open it for you; otherwise relay the `run402 approve …` command a `WRITE_APPROVAL_REQUIRED` error names. A write approval never counts as a step-up. The session is cached at the base config dir, shared across named wallets. There is no MCP login by design — MCP authenticates as the agent; MCP `whoami` reports the grade.
 
 ## Troubleshooting
 

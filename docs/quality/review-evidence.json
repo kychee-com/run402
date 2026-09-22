@@ -275,10 +275,6 @@
       "sha256": "433fbd26a79846d7df51100246f786a29fd3c682d10e08371615ba59150f20c4",
       "review": "reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution"
     },
-    "public:cli/lib/operator.mjs": {
-      "sha256": "80f1b72d0e7d87ec213850f7a589417e8d906c07e51569db7b5d9c4e1c39d611",
-      "review": "reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution"
-    },
     "public:cli/lib/org.mjs": {
       "sha256": "4e33ed856bee3a79f5d991ec03391d1cc70f04203fdd014fbb44f7cfa8513049",
       "review": "reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution"

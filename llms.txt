@@ -80,7 +80,7 @@ The result is JSON. The following is a shortened example, not the complete respo
     "deploy": {
       "status": "ready",
       "urls": { "site": "https://my-app.run402.com", "console": "https://console.run402.com/orgs/…/projects/prj_…" },
-      "next_actions": [{ "type": "hand_to_operator", "credited_as": "claude-code", "why": "Show your human the site and the console link…" }]
+      "next_actions": [{ "type": "hand_to_member", "credited_as": "claude-code", "why": "Show your human the site and the console link…" }]
     }
   }
 }

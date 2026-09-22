@@ -5,9 +5,9 @@ description: Preserved reference URL with links to owned errors.
 
 See [error contracts and recovery](/errors/). Fields are surface-specific.
 
-<a id="above_write_auth_ceiling"></a>
-<a id="ABOVE_WRITE_AUTH_CEILING"></a>
-[`ABOVE_WRITE_AUTH_CEILING`](/errors/gateway/#ABOVE_WRITE_AUTH_CEILING)
+<a id="above_write_approval_ceiling"></a>
+<a id="ABOVE_WRITE_APPROVAL_CEILING"></a>
+[`ABOVE_WRITE_APPROVAL_CEILING`](/errors/gateway/#ABOVE_WRITE_APPROVAL_CEILING)
 
 <a id="accept_payment_invalid"></a>
 <a id="ACCEPT_PAYMENT_INVALID"></a>
@@ -81,13 +81,13 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="AMBIGUOUS_MAILBOX"></a>
 [`AMBIGUOUS_MAILBOX`](/errors/gateway/#AMBIGUOUS_MAILBOX)
 
-<a id="ambiguous_operator_recipient"></a>
-<a id="AMBIGUOUS_OPERATOR_RECIPIENT"></a>
-[`AMBIGUOUS_OPERATOR_RECIPIENT`](/errors/gateway/#AMBIGUOUS_OPERATOR_RECIPIENT)
-
 <a id="ambiguous_org"></a>
 <a id="AMBIGUOUS_ORG"></a>
 [`AMBIGUOUS_ORG`](/errors/client/#AMBIGUOUS_ORG)
+
+<a id="ambiguous_recipient"></a>
+<a id="AMBIGUOUS_RECIPIENT"></a>
+[`AMBIGUOUS_RECIPIENT`](/errors/gateway/#AMBIGUOUS_RECIPIENT)
 
 <a id="app_install_state_not_found"></a>
 <a id="APP_INSTALL_STATE_NOT_FOUND"></a>
@@ -96,6 +96,14 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="app_spec_invalid"></a>
 <a id="APP_SPEC_INVALID"></a>
 [`APP_SPEC_INVALID`](/errors/client/#APP_SPEC_INVALID)
+
+<a id="approve_bad_confirm_url"></a>
+<a id="APPROVE_BAD_CONFIRM_URL"></a>
+[`APPROVE_BAD_CONFIRM_URL`](/errors/client/#APPROVE_BAD_CONFIRM_URL)
+
+<a id="approve_failed"></a>
+<a id="APPROVE_FAILED"></a>
+[`APPROVE_FAILED`](/errors/client/#APPROVE_FAILED)
 
 <a id="archive_blob_missing"></a>
 <a id="ARCHIVE_BLOB_MISSING"></a>
@@ -423,6 +431,14 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="confirmation_required"></a>
 <a id="CONFIRMATION_REQUIRED"></a>
 [`CONFIRMATION_REQUIRED`](/errors/client/#CONFIRMATION_REQUIRED)
+
+<a id="contact_email_not_verified"></a>
+<a id="CONTACT_EMAIL_NOT_VERIFIED"></a>
+[`CONTACT_EMAIL_NOT_VERIFIED`](/errors/gateway/#CONTACT_EMAIL_NOT_VERIFIED)
+
+<a id="contact_passkey_required"></a>
+<a id="CONTACT_PASSKEY_REQUIRED"></a>
+[`CONTACT_PASSKEY_REQUIRED`](/errors/gateway/#CONTACT_PASSKEY_REQUIRED)
 
 <a id="content_digest_mismatch"></a>
 <a id="CONTENT_DIGEST_MISMATCH"></a>
@@ -1350,6 +1366,30 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="LOCAL_ROUTE_TARGET_UNDECLARED"></a>
 [`LOCAL_ROUTE_TARGET_UNDECLARED`](/errors/client/#LOCAL_ROUTE_TARGET_UNDECLARED)
 
+<a id="login_denied"></a>
+<a id="LOGIN_DENIED"></a>
+[`LOGIN_DENIED`](/errors/client/#LOGIN_DENIED)
+
+<a id="login_expired"></a>
+<a id="LOGIN_EXPIRED"></a>
+[`LOGIN_EXPIRED`](/errors/client/#LOGIN_EXPIRED)
+
+<a id="login_failed"></a>
+<a id="LOGIN_FAILED"></a>
+[`LOGIN_FAILED`](/errors/client/#LOGIN_FAILED)
+
+<a id="login_required"></a>
+<a id="LOGIN_REQUIRED"></a>
+[`LOGIN_REQUIRED`](/errors/client/#LOGIN_REQUIRED)
+
+<a id="login_timeout"></a>
+<a id="LOGIN_TIMEOUT"></a>
+[`LOGIN_TIMEOUT`](/errors/client/#LOGIN_TIMEOUT)
+
+<a id="loopback_failed"></a>
+<a id="LOOPBACK_FAILED"></a>
+[`LOOPBACK_FAILED`](/errors/client/#LOOPBACK_FAILED)
+
 <a id="mailbox_not_found"></a>
 <a id="MAILBOX_NOT_FOUND"></a>
 [`MAILBOX_NOT_FOUND`](/errors/client/#MAILBOX_NOT_FOUND)
@@ -1517,54 +1557,6 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="OPERATION_NOT_FOUND"></a>
 [`OPERATION_NOT_FOUND`](/errors/gateway/#OPERATION_NOT_FOUND)
 
-<a id="operator_approve_bad_confirm_url"></a>
-<a id="OPERATOR_APPROVE_BAD_CONFIRM_URL"></a>
-[`OPERATOR_APPROVE_BAD_CONFIRM_URL`](/errors/client/#OPERATOR_APPROVE_BAD_CONFIRM_URL)
-
-<a id="operator_approve_failed"></a>
-<a id="OPERATOR_APPROVE_FAILED"></a>
-[`OPERATOR_APPROVE_FAILED`](/errors/client/#OPERATOR_APPROVE_FAILED)
-
-<a id="operator_email_not_verified"></a>
-<a id="OPERATOR_EMAIL_NOT_VERIFIED"></a>
-[`OPERATOR_EMAIL_NOT_VERIFIED`](/errors/gateway/#OPERATOR_EMAIL_NOT_VERIFIED)
-
-<a id="operator_login_denied"></a>
-<a id="OPERATOR_LOGIN_DENIED"></a>
-[`OPERATOR_LOGIN_DENIED`](/errors/client/#OPERATOR_LOGIN_DENIED)
-
-<a id="operator_login_expired"></a>
-<a id="OPERATOR_LOGIN_EXPIRED"></a>
-[`OPERATOR_LOGIN_EXPIRED`](/errors/client/#OPERATOR_LOGIN_EXPIRED)
-
-<a id="operator_login_failed"></a>
-<a id="OPERATOR_LOGIN_FAILED"></a>
-[`OPERATOR_LOGIN_FAILED`](/errors/client/#OPERATOR_LOGIN_FAILED)
-
-<a id="operator_login_required"></a>
-<a id="OPERATOR_LOGIN_REQUIRED"></a>
-[`OPERATOR_LOGIN_REQUIRED`](/errors/client/#OPERATOR_LOGIN_REQUIRED)
-
-<a id="operator_login_timeout"></a>
-<a id="OPERATOR_LOGIN_TIMEOUT"></a>
-[`OPERATOR_LOGIN_TIMEOUT`](/errors/client/#OPERATOR_LOGIN_TIMEOUT)
-
-<a id="operator_loopback_failed"></a>
-<a id="OPERATOR_LOOPBACK_FAILED"></a>
-[`OPERATOR_LOOPBACK_FAILED`](/errors/client/#OPERATOR_LOOPBACK_FAILED)
-
-<a id="operator_passkey_required"></a>
-<a id="OPERATOR_PASSKEY_REQUIRED"></a>
-[`OPERATOR_PASSKEY_REQUIRED`](/errors/gateway/#OPERATOR_PASSKEY_REQUIRED)
-
-<a id="operator_reauth_required"></a>
-<a id="OPERATOR_REAUTH_REQUIRED"></a>
-[`OPERATOR_REAUTH_REQUIRED`](/errors/gateway/#OPERATOR_REAUTH_REQUIRED)
-
-<a id="operator_session_invalid"></a>
-<a id="OPERATOR_SESSION_INVALID"></a>
-[`OPERATOR_SESSION_INVALID`](/errors/client/#OPERATOR_SESSION_INVALID)
-
 <a id="org_has_no_billing_wallet"></a>
 <a id="ORG_HAS_NO_BILLING_WALLET"></a>
 [`ORG_HAS_NO_BILLING_WALLET`](/errors/gateway/#ORG_HAS_NO_BILLING_WALLET)
@@ -1608,6 +1600,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="passkey_enrollment_required"></a>
 <a id="PASSKEY_ENROLLMENT_REQUIRED"></a>
 [`PASSKEY_ENROLLMENT_REQUIRED`](/errors/gateway/#PASSKEY_ENROLLMENT_REQUIRED)
+
+<a id="passkey_session_required"></a>
+<a id="PASSKEY_SESSION_REQUIRED"></a>
+[`PASSKEY_SESSION_REQUIRED`](/errors/gateway/#PASSKEY_SESSION_REQUIRED)
 
 <a id="payment_attempt_read_failed"></a>
 <a id="PAYMENT_ATTEMPT_READ_FAILED"></a>
@@ -2235,6 +2231,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="RATE_LIMITED"></a>
 [`RATE_LIMITED`](/errors/gateway/#RATE_LIMITED)
 
+<a id="recent_sign_in_required"></a>
+<a id="RECENT_SIGN_IN_REQUIRED"></a>
+[`RECENT_SIGN_IN_REQUIRED`](/errors/gateway/#RECENT_SIGN_IN_REQUIRED)
+
 <a id="recipient_set_mismatch"></a>
 <a id="RECIPIENT_SET_MISMATCH"></a>
 [`RECIPIENT_SET_MISMATCH`](/errors/gateway/#RECIPIENT_SET_MISMATCH)
@@ -2464,6 +2464,14 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="session_expired"></a>
 <a id="SESSION_EXPIRED"></a>
 [`SESSION_EXPIRED`](/errors/gateway/#SESSION_EXPIRED)
+
+<a id="session_invalid"></a>
+<a id="SESSION_INVALID"></a>
+[`SESSION_INVALID`](/errors/client/#SESSION_INVALID)
+
+<a id="session_read_only"></a>
+<a id="SESSION_READ_ONLY"></a>
+[`SESSION_READ_ONLY`](/errors/gateway/#SESSION_READ_ONLY)
 
 <a id="slug_protected"></a>
 <a id="SLUG_PROTECTED"></a>
@@ -2720,49 +2728,49 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="WRAPPER_NOT_PENDING"></a>
 [`WRAPPER_NOT_PENDING`](/errors/gateway/#WRAPPER_NOT_PENDING)
 
-<a id="write_auth_binding_mismatch"></a>
-<a id="WRITE_AUTH_BINDING_MISMATCH"></a>
-[`WRITE_AUTH_BINDING_MISMATCH`](/errors/gateway/#WRITE_AUTH_BINDING_MISMATCH)
+<a id="write_approval_binding_mismatch"></a>
+<a id="WRITE_APPROVAL_BINDING_MISMATCH"></a>
+[`WRITE_APPROVAL_BINDING_MISMATCH`](/errors/gateway/#WRITE_APPROVAL_BINDING_MISMATCH)
 
-<a id="write_auth_challenge_invalid"></a>
-<a id="WRITE_AUTH_CHALLENGE_INVALID"></a>
-[`WRITE_AUTH_CHALLENGE_INVALID`](/errors/gateway/#WRITE_AUTH_CHALLENGE_INVALID)
+<a id="write_approval_challenge_invalid"></a>
+<a id="WRITE_APPROVAL_CHALLENGE_INVALID"></a>
+[`WRITE_APPROVAL_CHALLENGE_INVALID`](/errors/gateway/#WRITE_APPROVAL_CHALLENGE_INVALID)
 
-<a id="write_auth_claim_invalid"></a>
-<a id="WRITE_AUTH_CLAIM_INVALID"></a>
-[`WRITE_AUTH_CLAIM_INVALID`](/errors/gateway/#WRITE_AUTH_CLAIM_INVALID)
+<a id="write_approval_claim_invalid"></a>
+<a id="WRITE_APPROVAL_CLAIM_INVALID"></a>
+[`WRITE_APPROVAL_CLAIM_INVALID`](/errors/gateway/#WRITE_APPROVAL_CLAIM_INVALID)
 
-<a id="write_auth_class_rejected"></a>
-<a id="WRITE_AUTH_CLASS_REJECTED"></a>
-[`WRITE_AUTH_CLASS_REJECTED`](/errors/gateway/#WRITE_AUTH_CLASS_REJECTED)
+<a id="write_approval_class_rejected"></a>
+<a id="WRITE_APPROVAL_CLASS_REJECTED"></a>
+[`WRITE_APPROVAL_CLASS_REJECTED`](/errors/gateway/#WRITE_APPROVAL_CLASS_REJECTED)
 
-<a id="write_auth_cp_session_dead"></a>
-<a id="WRITE_AUTH_CP_SESSION_DEAD"></a>
-[`WRITE_AUTH_CP_SESSION_DEAD`](/errors/gateway/#WRITE_AUTH_CP_SESSION_DEAD)
+<a id="write_approval_cp_session_dead"></a>
+<a id="WRITE_APPROVAL_CP_SESSION_DEAD"></a>
+[`WRITE_APPROVAL_CP_SESSION_DEAD`](/errors/gateway/#WRITE_APPROVAL_CP_SESSION_DEAD)
 
-<a id="write_auth_disabled"></a>
-<a id="WRITE_AUTH_DISABLED"></a>
-[`WRITE_AUTH_DISABLED`](/errors/gateway/#WRITE_AUTH_DISABLED)
+<a id="write_approval_disabled"></a>
+<a id="WRITE_APPROVAL_DISABLED"></a>
+[`WRITE_APPROVAL_DISABLED`](/errors/gateway/#WRITE_APPROVAL_DISABLED)
 
-<a id="write_auth_not_available"></a>
-<a id="WRITE_AUTH_NOT_AVAILABLE"></a>
-[`WRITE_AUTH_NOT_AVAILABLE`](/errors/gateway/#WRITE_AUTH_NOT_AVAILABLE)
+<a id="write_approval_not_available"></a>
+<a id="WRITE_APPROVAL_NOT_AVAILABLE"></a>
+[`WRITE_APPROVAL_NOT_AVAILABLE`](/errors/gateway/#WRITE_APPROVAL_NOT_AVAILABLE)
 
-<a id="write_auth_required"></a>
-<a id="WRITE_AUTH_REQUIRED"></a>
-[`WRITE_AUTH_REQUIRED`](/errors/gateway/#WRITE_AUTH_REQUIRED)
+<a id="write_approval_required"></a>
+<a id="WRITE_APPROVAL_REQUIRED"></a>
+[`WRITE_APPROVAL_REQUIRED`](/errors/gateway/#WRITE_APPROVAL_REQUIRED)
 
-<a id="write_auth_scope_mismatch"></a>
-<a id="WRITE_AUTH_SCOPE_MISMATCH"></a>
-[`WRITE_AUTH_SCOPE_MISMATCH`](/errors/gateway/#WRITE_AUTH_SCOPE_MISMATCH)
+<a id="write_approval_scope_mismatch"></a>
+<a id="WRITE_APPROVAL_SCOPE_MISMATCH"></a>
+[`WRITE_APPROVAL_SCOPE_MISMATCH`](/errors/gateway/#WRITE_APPROVAL_SCOPE_MISMATCH)
 
-<a id="write_auth_session_invalid"></a>
-<a id="WRITE_AUTH_SESSION_INVALID"></a>
-[`WRITE_AUTH_SESSION_INVALID`](/errors/gateway/#WRITE_AUTH_SESSION_INVALID)
+<a id="write_approval_session_invalid"></a>
+<a id="WRITE_APPROVAL_SESSION_INVALID"></a>
+[`WRITE_APPROVAL_SESSION_INVALID`](/errors/gateway/#WRITE_APPROVAL_SESSION_INVALID)
 
-<a id="write_auth_verify_failed"></a>
-<a id="WRITE_AUTH_VERIFY_FAILED"></a>
-[`WRITE_AUTH_VERIFY_FAILED`](/errors/gateway/#WRITE_AUTH_VERIFY_FAILED)
+<a id="write_approval_verify_failed"></a>
+<a id="WRITE_APPROVAL_VERIFY_FAILED"></a>
+[`WRITE_APPROVAL_VERIFY_FAILED`](/errors/gateway/#WRITE_APPROVAL_VERIFY_FAILED)
 
 <a id="x402_amount_exceeds_first_party_cap"></a>
 <a id="X402_AMOUNT_EXCEEDS_FIRST_PARTY_CAP"></a>

@@ -11,14 +11,14 @@
   },
   "records": [
     {
-      "code": "ABOVE_WRITE_AUTH_CEILING",
+      "code": "ABOVE_WRITE_APPROVAL_CEILING",
       "owners": [
         {
           "owner": "gateway",
           "source": "packages/gateway/src/utils/error-envelope.ts"
         }
       ],
-      "topic": "/errors/gateway/#ABOVE_WRITE_AUTH_CEILING"
+      "topic": "/errors/gateway/#ABOVE_WRITE_APPROVAL_CEILING"
     },
     {
       "code": "ACCEPT_PAYMENT_INVALID",
@@ -201,16 +201,6 @@
       "topic": "/errors/gateway/#AMBIGUOUS_MAILBOX"
     },
     {
-      "code": "AMBIGUOUS_OPERATOR_RECIPIENT",
-      "owners": [
-        {
-          "owner": "gateway",
-          "source": "packages/gateway/src/utils/error-envelope.ts"
-        }
-      ],
-      "topic": "/errors/gateway/#AMBIGUOUS_OPERATOR_RECIPIENT"
-    },
-    {
       "code": "AMBIGUOUS_ORG",
       "owners": [
         {
@@ -223,6 +213,16 @@
         }
       ],
       "topic": "/errors/client/#AMBIGUOUS_ORG"
+    },
+    {
+      "code": "AMBIGUOUS_RECIPIENT",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#AMBIGUOUS_RECIPIENT"
     },
     {
       "code": "APP_INSTALL_STATE_NOT_FOUND",
@@ -247,6 +247,26 @@
         }
       ],
       "topic": "/errors/client/#APP_SPEC_INVALID"
+    },
+    {
+      "code": "APPROVE_BAD_CONFIRM_URL",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "cli/lib/sign-in.mjs"
+        }
+      ],
+      "topic": "/errors/client/#APPROVE_BAD_CONFIRM_URL"
+    },
+    {
+      "code": "APPROVE_FAILED",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "cli/lib/sign-in.mjs"
+        }
+      ],
+      "topic": "/errors/client/#APPROVE_FAILED"
     },
     {
       "code": "ARCHIVE_BLOB_MISSING",
@@ -537,6 +557,10 @@
       "owners": [
         {
           "owner": "public",
+          "source": "cli/lib/approve.mjs"
+        },
+        {
+          "owner": "public",
           "source": "cli/lib/argparse.mjs"
         },
         {
@@ -594,10 +618,6 @@
         {
           "owner": "public",
           "source": "cli/lib/identity.mjs"
-        },
-        {
-          "owner": "public",
-          "source": "cli/lib/operator.mjs"
         },
         {
           "owner": "public",
@@ -737,6 +757,10 @@
         },
         {
           "owner": "public",
+          "source": "cli/lib/approve.mjs"
+        },
+        {
+          "owner": "public",
           "source": "cli/lib/apps.mjs"
         },
         {
@@ -861,6 +885,14 @@
         },
         {
           "owner": "public",
+          "source": "cli/lib/login.mjs"
+        },
+        {
+          "owner": "public",
+          "source": "cli/lib/logout.mjs"
+        },
+        {
+          "owner": "public",
           "source": "cli/lib/logs.mjs"
         },
         {
@@ -938,6 +970,10 @@
         {
           "owner": "public",
           "source": "cli/lib/webhooks.mjs"
+        },
+        {
+          "owner": "public",
+          "source": "cli/lib/whoami.mjs"
         }
       ],
       "topic": "/errors/client/#BAD_USAGE"
@@ -1447,6 +1483,26 @@
         }
       ],
       "topic": "/errors/client/#CONFIRMATION_REQUIRED"
+    },
+    {
+      "code": "CONTACT_EMAIL_NOT_VERIFIED",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#CONTACT_EMAIL_NOT_VERIFIED"
+    },
+    {
+      "code": "CONTACT_PASSKEY_REQUIRED",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#CONTACT_PASSKEY_REQUIRED"
     },
     {
       "code": "CONTENT_DIGEST_MISMATCH",
@@ -3875,6 +3931,66 @@
       "topic": "/errors/client/#LOCAL_ROUTE_TARGET_UNDECLARED"
     },
     {
+      "code": "LOGIN_DENIED",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "cli/lib/login.mjs"
+        }
+      ],
+      "topic": "/errors/client/#LOGIN_DENIED"
+    },
+    {
+      "code": "LOGIN_EXPIRED",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "cli/lib/login.mjs"
+        }
+      ],
+      "topic": "/errors/client/#LOGIN_EXPIRED"
+    },
+    {
+      "code": "LOGIN_FAILED",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "cli/lib/login.mjs"
+        }
+      ],
+      "topic": "/errors/client/#LOGIN_FAILED"
+    },
+    {
+      "code": "LOGIN_REQUIRED",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "cli/lib/sign-in.mjs"
+        }
+      ],
+      "topic": "/errors/client/#LOGIN_REQUIRED"
+    },
+    {
+      "code": "LOGIN_TIMEOUT",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "cli/lib/login.mjs"
+        }
+      ],
+      "topic": "/errors/client/#LOGIN_TIMEOUT"
+    },
+    {
+      "code": "LOOPBACK_FAILED",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "cli/lib/login.mjs"
+        }
+      ],
+      "topic": "/errors/client/#LOOPBACK_FAILED"
+    },
+    {
       "code": "MAILBOX_NOT_FOUND",
       "owners": [
         {
@@ -4315,126 +4431,6 @@
       "topic": "/errors/gateway/#OPERATION_NOT_FOUND"
     },
     {
-      "code": "OPERATOR_APPROVE_BAD_CONFIRM_URL",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "cli/lib/operator.mjs"
-        }
-      ],
-      "topic": "/errors/client/#OPERATOR_APPROVE_BAD_CONFIRM_URL"
-    },
-    {
-      "code": "OPERATOR_APPROVE_FAILED",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "cli/lib/operator.mjs"
-        }
-      ],
-      "topic": "/errors/client/#OPERATOR_APPROVE_FAILED"
-    },
-    {
-      "code": "OPERATOR_EMAIL_NOT_VERIFIED",
-      "owners": [
-        {
-          "owner": "gateway",
-          "source": "packages/gateway/src/utils/error-envelope.ts"
-        }
-      ],
-      "topic": "/errors/gateway/#OPERATOR_EMAIL_NOT_VERIFIED"
-    },
-    {
-      "code": "OPERATOR_LOGIN_DENIED",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "cli/lib/operator.mjs"
-        }
-      ],
-      "topic": "/errors/client/#OPERATOR_LOGIN_DENIED"
-    },
-    {
-      "code": "OPERATOR_LOGIN_EXPIRED",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "cli/lib/operator.mjs"
-        }
-      ],
-      "topic": "/errors/client/#OPERATOR_LOGIN_EXPIRED"
-    },
-    {
-      "code": "OPERATOR_LOGIN_FAILED",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "cli/lib/operator.mjs"
-        }
-      ],
-      "topic": "/errors/client/#OPERATOR_LOGIN_FAILED"
-    },
-    {
-      "code": "OPERATOR_LOGIN_REQUIRED",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "cli/lib/operator.mjs"
-        }
-      ],
-      "topic": "/errors/client/#OPERATOR_LOGIN_REQUIRED"
-    },
-    {
-      "code": "OPERATOR_LOGIN_TIMEOUT",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "cli/lib/operator.mjs"
-        }
-      ],
-      "topic": "/errors/client/#OPERATOR_LOGIN_TIMEOUT"
-    },
-    {
-      "code": "OPERATOR_LOOPBACK_FAILED",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "cli/lib/operator.mjs"
-        }
-      ],
-      "topic": "/errors/client/#OPERATOR_LOOPBACK_FAILED"
-    },
-    {
-      "code": "OPERATOR_PASSKEY_REQUIRED",
-      "owners": [
-        {
-          "owner": "gateway",
-          "source": "packages/gateway/src/utils/error-envelope.ts"
-        }
-      ],
-      "topic": "/errors/gateway/#OPERATOR_PASSKEY_REQUIRED"
-    },
-    {
-      "code": "OPERATOR_REAUTH_REQUIRED",
-      "owners": [
-        {
-          "owner": "gateway",
-          "source": "packages/gateway/src/utils/error-envelope.ts"
-        }
-      ],
-      "topic": "/errors/gateway/#OPERATOR_REAUTH_REQUIRED"
-    },
-    {
-      "code": "OPERATOR_SESSION_INVALID",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "cli/lib/operator.mjs"
-        }
-      ],
-      "topic": "/errors/client/#OPERATOR_SESSION_INVALID"
-    },
-    {
       "code": "ORG_HAS_NO_BILLING_WALLET",
       "owners": [
         {
@@ -4543,6 +4539,16 @@
         }
       ],
       "topic": "/errors/gateway/#PASSKEY_ENROLLMENT_REQUIRED"
+    },
+    {
+      "code": "PASSKEY_SESSION_REQUIRED",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#PASSKEY_SESSION_REQUIRED"
     },
     {
       "code": "PAYMENT_ATTEMPT_READ_FAILED",
@@ -6351,6 +6357,16 @@
       "topic": "/errors/gateway/#RATE_LIMITED"
     },
     {
+      "code": "RECENT_SIGN_IN_REQUIRED",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#RECENT_SIGN_IN_REQUIRED"
+    },
+    {
       "code": "RECIPIENT_SET_MISMATCH",
       "owners": [
         {
@@ -6949,6 +6965,30 @@
         }
       ],
       "topic": "/errors/gateway/#SESSION_EXPIRED"
+    },
+    {
+      "code": "SESSION_INVALID",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "cli/lib/whoami.mjs"
+        }
+      ],
+      "topic": "/errors/client/#SESSION_INVALID"
+    },
+    {
+      "code": "SESSION_READ_ONLY",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "cli/lib/sign-in.mjs"
+        },
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#SESSION_READ_ONLY"
     },
     {
       "code": "SLUG_PROTECTED",
@@ -7635,114 +7675,114 @@
       "topic": "/errors/gateway/#WRAPPER_NOT_PENDING"
     },
     {
-      "code": "WRITE_AUTH_BINDING_MISMATCH",
+      "code": "WRITE_APPROVAL_BINDING_MISMATCH",
       "owners": [
         {
           "owner": "gateway",
           "source": "packages/gateway/src/utils/error-envelope.ts"
         }
       ],
-      "topic": "/errors/gateway/#WRITE_AUTH_BINDING_MISMATCH"
+      "topic": "/errors/gateway/#WRITE_APPROVAL_BINDING_MISMATCH"
     },
     {
-      "code": "WRITE_AUTH_CHALLENGE_INVALID",
+      "code": "WRITE_APPROVAL_CHALLENGE_INVALID",
       "owners": [
         {
           "owner": "gateway",
           "source": "packages/gateway/src/utils/error-envelope.ts"
         }
       ],
-      "topic": "/errors/gateway/#WRITE_AUTH_CHALLENGE_INVALID"
+      "topic": "/errors/gateway/#WRITE_APPROVAL_CHALLENGE_INVALID"
     },
     {
-      "code": "WRITE_AUTH_CLAIM_INVALID",
+      "code": "WRITE_APPROVAL_CLAIM_INVALID",
       "owners": [
         {
           "owner": "gateway",
           "source": "packages/gateway/src/utils/error-envelope.ts"
         }
       ],
-      "topic": "/errors/gateway/#WRITE_AUTH_CLAIM_INVALID"
+      "topic": "/errors/gateway/#WRITE_APPROVAL_CLAIM_INVALID"
     },
     {
-      "code": "WRITE_AUTH_CLASS_REJECTED",
+      "code": "WRITE_APPROVAL_CLASS_REJECTED",
       "owners": [
         {
           "owner": "gateway",
           "source": "packages/gateway/src/utils/error-envelope.ts"
         }
       ],
-      "topic": "/errors/gateway/#WRITE_AUTH_CLASS_REJECTED"
+      "topic": "/errors/gateway/#WRITE_APPROVAL_CLASS_REJECTED"
     },
     {
-      "code": "WRITE_AUTH_CP_SESSION_DEAD",
+      "code": "WRITE_APPROVAL_CP_SESSION_DEAD",
       "owners": [
         {
           "owner": "gateway",
           "source": "packages/gateway/src/utils/error-envelope.ts"
         }
       ],
-      "topic": "/errors/gateway/#WRITE_AUTH_CP_SESSION_DEAD"
+      "topic": "/errors/gateway/#WRITE_APPROVAL_CP_SESSION_DEAD"
     },
     {
-      "code": "WRITE_AUTH_DISABLED",
+      "code": "WRITE_APPROVAL_DISABLED",
       "owners": [
         {
           "owner": "gateway",
           "source": "packages/gateway/src/utils/error-envelope.ts"
         }
       ],
-      "topic": "/errors/gateway/#WRITE_AUTH_DISABLED"
+      "topic": "/errors/gateway/#WRITE_APPROVAL_DISABLED"
     },
     {
-      "code": "WRITE_AUTH_NOT_AVAILABLE",
+      "code": "WRITE_APPROVAL_NOT_AVAILABLE",
       "owners": [
         {
           "owner": "gateway",
           "source": "packages/gateway/src/utils/error-envelope.ts"
         }
       ],
-      "topic": "/errors/gateway/#WRITE_AUTH_NOT_AVAILABLE"
+      "topic": "/errors/gateway/#WRITE_APPROVAL_NOT_AVAILABLE"
     },
     {
-      "code": "WRITE_AUTH_REQUIRED",
+      "code": "WRITE_APPROVAL_REQUIRED",
       "owners": [
         {
           "owner": "gateway",
           "source": "packages/gateway/src/utils/error-envelope.ts"
         }
       ],
-      "topic": "/errors/gateway/#WRITE_AUTH_REQUIRED"
+      "topic": "/errors/gateway/#WRITE_APPROVAL_REQUIRED"
     },
     {
-      "code": "WRITE_AUTH_SCOPE_MISMATCH",
+      "code": "WRITE_APPROVAL_SCOPE_MISMATCH",
       "owners": [
         {
           "owner": "gateway",
           "source": "packages/gateway/src/utils/error-envelope.ts"
         }
       ],
-      "topic": "/errors/gateway/#WRITE_AUTH_SCOPE_MISMATCH"
+      "topic": "/errors/gateway/#WRITE_APPROVAL_SCOPE_MISMATCH"
     },
     {
-      "code": "WRITE_AUTH_SESSION_INVALID",
+      "code": "WRITE_APPROVAL_SESSION_INVALID",
       "owners": [
         {
           "owner": "gateway",
           "source": "packages/gateway/src/utils/error-envelope.ts"
         }
       ],
-      "topic": "/errors/gateway/#WRITE_AUTH_SESSION_INVALID"
+      "topic": "/errors/gateway/#WRITE_APPROVAL_SESSION_INVALID"
     },
     {
-      "code": "WRITE_AUTH_VERIFY_FAILED",
+      "code": "WRITE_APPROVAL_VERIFY_FAILED",
       "owners": [
         {
           "owner": "gateway",
           "source": "packages/gateway/src/utils/error-envelope.ts"
         }
       ],
-      "topic": "/errors/gateway/#WRITE_AUTH_VERIFY_FAILED"
+      "topic": "/errors/gateway/#WRITE_APPROVAL_VERIFY_FAILED"
     },
     {
       "code": "X402_AMOUNT_EXCEEDS_FIRST_PARTY_CAP",

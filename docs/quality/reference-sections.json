@@ -73,7 +73,7 @@
         "`r.snapshots`",
         "`r.branches`",
         "`r.ci`",
-        "`r.operator`",
+        "`r.session`, `r.writeApproval`, `r.me`",
         "`r.sites`",
         "`r.assets`",
         "`r.archives`",

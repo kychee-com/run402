@@ -39,7 +39,7 @@ name on the box matches the name on the site, and nothing else:
 
 - Every kygit command **is** a run402 command: `kygit <verb>` executes
   `run402 repos <verb>` verbatim (same flags, same output, same exit
-  codes). `kygit login` executes `run402 operator login --loopback`.
+  codes). `kygit login` executes `run402 login`.
 - The verb table is **derived at runtime** from the installed `run402`
   package's own `gitvault-surface.json` — the same machine-readable
   contract file that gates the marketing pages — so this shim can never
@@ -69,7 +69,7 @@ name on the box matches the name on the site, and nothing else:
 | `kygit resume kgh1_…` | `run402 repos resume kgh1_…` |
 | `kygit invite` | `run402 repos invite` |
 | `kygit join kgi1_…` | `run402 repos join kgi1_…` |
-| `kygit login` | `run402 operator login --loopback` |
+| `kygit login` | `run402 login` |
 
 After `kygit resume` or `kygit join` you are a writer of the vault under your own key — `git push` works at once. After a resume the sender's machine can be gone; after a join the inviter is still pushing beside you.
 
