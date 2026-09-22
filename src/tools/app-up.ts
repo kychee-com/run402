@@ -1,5 +1,5 @@
 import { storeResult } from "../result-store.js";
-import { prepareWorkflowOutput } from "@run402/sdk/node";
+import { prepareWorkflowOutput } from "../../sdk/dist/node/index.js";
 import { z } from "zod";
 import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";

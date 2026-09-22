@@ -228,12 +228,29 @@ jobs:
           node "$SMOKE/cli/package/cli.mjs" doctor --help | grep -q -- '--buzz-agent'
           echo "CLI archive smoke OK"
 
-          # MCP: extract, install, verify getSdk resolves (don't boot the
-          # stdio server — it doesn't exit).
+          # MCP: extract, install, verify getSdk resolves AND every tool module
+          # loads from the packed install (don't boot the stdio server via
+          # dist/index.js — it connects at import and doesn't exit). Resolving
+          # getSdk alone is not enough: 4.93.0 shipped dist/tools/app-up.js
+          # importing the bare "@run402/sdk/node" specifier, which resolves in
+          # the monorepo (workspace hoist) and nowhere else; dist/sdk.js loaded
+          # fine and `npx run402-mcp` crashed ERR_MODULE_NOT_FOUND on a clean
+          # machine. Importing every tool is what the server does at boot, so
+          # this is the load the smoke has to reproduce.
           mkdir "$SMOKE/mcp" && tar xzf "$SMOKE/run402-mcp-$NEW.tgz" -C "$SMOKE/mcp"
           (cd "$SMOKE/mcp/package" && npm install --omit=dev)
           assert_vendored_sdk_deps run402-mcp "$SMOKE/mcp/package"
-          (cd "$SMOKE/mcp/package" && node -e "import('./dist/sdk.js').then(m => { if (typeof m.getSdk !== 'function') { console.error('getSdk is not a function'); process.exit(1); } console.log('MCP smoke OK'); }).catch(e => { console.error('Import failed:', e.message); process.exit(1); })")
+          (cd "$SMOKE/mcp/package" && node -e "import('./dist/sdk.js').then(m => { if (typeof m.getSdk !== 'function') { console.error('getSdk is not a function'); process.exit(1); } console.log('MCP getSdk smoke OK'); }).catch(e => { console.error('Import failed:', e.message); process.exit(1); })")
+          (cd "$SMOKE/mcp/package" && node -e "
+            const fs = require('fs'), path = require('path');
+            const dir = path.join(process.cwd(), 'dist', 'tools');
+            const files = fs.readdirSync(dir).filter(function (f) { return f.endsWith('.js') && !f.endsWith('.test.js'); });
+            if (files.length < 50) { console.error('expected the full tool set in dist/tools, found ' + files.length); process.exit(1); }
+            Promise.all(files.map(function (f) {
+              return import(path.join(dir, f)).catch(function (e) { throw new Error(f + ': ' + e.message); });
+            })).then(function () { console.log('MCP tool-module smoke OK: ' + files.length + ' modules load from the packed install'); })
+              .catch(function (e) { console.error('Tool module failed to load from the packed tarball: ' + e.message); process.exit(1); });
+          ")
 
           # SDK: extract, install, verify both entry points.
           mkdir "$SMOKE/sdk" && tar xzf "$SMOKE/run402-sdk-$NEW.tgz" -C "$SMOKE/sdk"
