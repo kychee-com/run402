@@ -30,7 +30,7 @@ export function signCiDelegation(
   const localWallet = readWallet(opts.walletPath);
   if (!localWallet || !localWallet.address || !localWallet.privateKey) {
     throw new LocalError(
-      "No local wallet configured. Run `run402 init` or `run402 init` before linking CI.",
+      "No local wallet configured. Run `run402 init` before linking CI.",
       "signing CI delegation",
     );
   }

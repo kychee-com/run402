@@ -30,7 +30,7 @@ export function signOrgAdopt(nonce: string, opts: SignOrgAdoptOptions = {}): str
   const localWallet = readWallet(opts.walletPath);
   if (!localWallet || !localWallet.address || !localWallet.privateKey) {
     throw new LocalError(
-      "No local wallet configured. Run `run402 init` or `run402 init` before adopting an org.",
+      "No local wallet configured. Run `run402 init` before adopting an org.",
       "signing org adopt",
     );
   }
