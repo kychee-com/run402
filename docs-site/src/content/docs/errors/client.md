@@ -461,6 +461,12 @@ Owner: `public:sdk/src/node/archives-node.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
+<h2 id="INVALID_ARGUMENTS">INVALID_ARGUMENTS</h2>
+
+Owner: `public:src/input-guard.ts`.
+
+An MCP tool argument has the wrong type or shape. The call was refused before the tool ran. `details.issues[]` names each argument's `path` and what was expected; fix those and call again.
+
 <h2 id="INVALID_ASSET_METADATA">INVALID_ASSET_METADATA</h2>
 
 Owner: `public:sdk/src/namespaces/assets-validation.ts`.
@@ -1018,6 +1024,12 @@ The client could not complete this operation. Inspect its typed error kind, mess
 Owner: `public:sdk/src/namespaces/repos.ts`, `public:sdk/src/node/vault-deploy.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="UNKNOWN_ARGUMENT">UNKNOWN_ARGUMENT</h2>
+
+Owner: `public:src/input-guard.ts`.
+
+An MCP tool was called with an argument it does not declare. Tool arguments are strict, so the call was refused before the tool ran and nothing happened. The `edit_request` next action names the `unknown` arguments, the closest declared name for each (`did_you_mean`), and every `accepted` name: drop or rename the argument and call again.
 
 <h2 id="UNKNOWN_FLAG">UNKNOWN_FLAG</h2>
 

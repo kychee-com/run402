@@ -21,5 +21,7 @@
   "FAUCET_CONFIRMATION_PENDING": "The faucet broadcast a transfer but could not confirm its receipt within the bounded wait. Inspect the returned transaction_hash or run `run402 wallets balance`. Do not request another drip while the outcome is unknown.",
   "FAUCET_TRANSFER_REVERTED": "The faucet transaction reverted. No funds were delivered; the existing cooldown remains. Report the returned transaction_hash to support.",
   "RESULT_REF_NOT_FOUND": "The ref `expand_result` was given is not held: refs live in one MCP server process, expire 30 minutes after the tool ran, and only the 32 most recent are kept. Unknown, evicted and expired are the same answer because the recovery is the same: re-run the tool that produced the ref. A result that carried a secret never had a ref.",
-  "DOCS_TOPIC_NOT_FOUND": "The MCP `docs` tool has no section by that topic. Call `docs` with no arguments for the topic list, or pass `search` with words the section contains."
+  "DOCS_TOPIC_NOT_FOUND": "The MCP `docs` tool has no section by that topic. Call `docs` with no arguments for the topic list, or pass `search` with words the section contains.",
+  "UNKNOWN_ARGUMENT": "An MCP tool was called with an argument it does not declare. Tool arguments are strict, so the call was refused before the tool ran and nothing happened. The `edit_request` next action names the `unknown` arguments, the closest declared name for each (`did_you_mean`), and every `accepted` name: drop or rename the argument and call again.",
+  "INVALID_ARGUMENTS": "An MCP tool argument has the wrong type or shape. The call was refused before the tool ran. `details.issues[]` names each argument's `path` and what was expected; fix those and call again."
 }

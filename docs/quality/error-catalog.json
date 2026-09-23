@@ -2831,6 +2831,16 @@
       "topic": "/errors/gateway/#INTERNAL_ERROR"
     },
     {
+      "code": "INVALID_ARGUMENTS",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "src/input-guard.ts"
+        }
+      ],
+      "topic": "/errors/client/#INVALID_ARGUMENTS"
+    },
+    {
       "code": "INVALID_ASSET_KEY",
       "owners": [
         {
@@ -6943,6 +6953,16 @@
         }
       ],
       "topic": "/errors/client/#UNKNOWN"
+    },
+    {
+      "code": "UNKNOWN_ARGUMENT",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "src/input-guard.ts"
+        }
+      ],
+      "topic": "/errors/client/#UNKNOWN_ARGUMENT"
     },
     {
       "code": "UNKNOWN_CREDENTIAL",

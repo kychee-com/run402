@@ -153,6 +153,17 @@ describe("run tool", () => {
     assert.equal(run.calls[0]?.code, "RUN_UNKNOWN_MEMBER");
   });
 
+  it("points a member reached from the wrong parent at where it lives", async () => {
+    const run = envelope(await handleRun({ code: 'await r.project("prj_1").sql("select 1")' }));
+    assert.equal(run.error?.code, "RUN_UNKNOWN_MEMBER");
+    const next = run.error!.next_actions[0]!;
+    assert.equal(next.path, "r.project(…).sql");
+    const suggestions = next.did_you_mean as string[];
+    assert.ok(suggestions.includes("r.project(…).projects.sql"), JSON.stringify(suggestions));
+    assert.ok(suggestions.includes("r.projects.sql"), JSON.stringify(suggestions));
+    assert.match(run.error!.message, /r\.project\(…\)\.sql is not part of the SDK\. Did you mean /);
+  });
+
   it("reports undefined as null data with value_kind undefined", async () => {
     const run = envelope(await handleRun({ code: "let x = 1" }));
     assert.equal(run.status, "ok");

@@ -277,8 +277,8 @@ function runError(error: SandboxError, host: ChainHost): NonNullable<RunResult["
       next_actions: [{
         type: "edit_request",
         why: LOCAL_NEXT_ACTION.RUN_UNKNOWN_MEMBER,
-        path: `r.${original.path}`,
-        did_you_mean: original.suggestions.map((s) => `r.${s}`),
+        path: original.path,
+        did_you_mean: original.suggestions,
       }],
     };
   }

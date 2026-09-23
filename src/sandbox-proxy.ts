@@ -69,6 +69,8 @@ interface HandleEntry {
   receiver: unknown;
   /** The path that produced the handle, so chains from it read naturally in `calls[]`. */
   path: string;
+  /** The same path as a snippet writes it, calls included, e.g. `r.project(…)`. */
+  display: string;
 }
 
 /**
@@ -282,6 +284,11 @@ class RefusedProperty extends TypeError {}
  */
 export class UnknownMember extends TypeError {
   readonly code = "RUN_UNKNOWN_MEMBER";
+  /**
+   * @param path        the missing member as a snippet writes it, e.g. `r.project(…).sql`
+   * @param suggestions full paths, as a snippet writes them, that do exist
+   * @param members     the parent's public members
+   */
   constructor(
     readonly path: string,
     readonly suggestions: string[],
@@ -289,11 +296,42 @@ export class UnknownMember extends TypeError {
   ) {
     super(
       suggestions.length > 0
-        ? `r.${path} is not part of the SDK. Did you mean ${suggestions.map((s) => `r.${s}`).join(" or ")}?`
-        : `r.${path} is not part of the SDK. Its parent has: ${members.slice(0, 20).join(", ")}${members.length > 20 ? ", …" : ""}.`,
+        ? `${path} is not part of the SDK. Did you mean ${suggestions.join(" or ")}?`
+        : `${path} is not part of the SDK. Its parent has: ${members.slice(0, 20).join(", ")}${members.length > 20 ? ", …" : ""}.`,
     );
     this.name = "UnknownMember";
   }
+}
+
+/** True for an SDK namespace object worth searching: an object, not plain data, not a function. */
+function isNamespace(v: unknown): v is object {
+  return typeof v === "object" && v !== null && !isPlainData(v);
+}
+
+function hasMember(holder: object, key: string): boolean {
+  return publicMembers(holder).includes(key);
+}
+
+/**
+ * Where else `key` lives, for a member the parent lacks: the parent's own
+ * namespaces first (`r.project(…).projects.sql`), then the root and the root's
+ * namespaces (`r.projects.sql`). Reads only public members of SDK objects.
+ */
+function findElsewhere(key: string, holder: object, parentDisplay: string, root: unknown): string[] {
+  const found: string[] = [];
+  const add = (p: string) => { if (!found.includes(p)) found.push(p); };
+  for (const m of publicMembers(holder)) {
+    const child = (holder as Record<string, unknown>)[m];
+    if (isNamespace(child) && hasMember(child, key)) add(`${parentDisplay}.${m}.${key}`);
+  }
+  if (isNamespace(root) && root !== holder) {
+    if (hasMember(root, key)) add(`r.${key}`);
+    for (const m of publicMembers(root)) {
+      const child = (root as Record<string, unknown>)[m];
+      if (child !== holder && isNamespace(child) && hasMember(child, key)) add(`r.${m}.${key}`);
+    }
+  }
+  return found.slice(0, 3);
 }
 
 /** The public members an SDK object offers: own and inherited, minus private, internal, and intrinsic ones. */
@@ -345,7 +383,7 @@ export function closestMembers(key: string, members: string[]): string[] {
 }
 
 /** Read `key` from `holder` if the SDK's public surface allows it; throw otherwise. */
-function readAllowed(holder: unknown, key: string, path: string): unknown {
+function readAllowed(holder: unknown, key: string, path: string, where: { display: string; root: unknown } = { display: path ? `r.${path}` : "r", root: undefined }): unknown {
   if (holder === null || holder === undefined) {
     throw new TypeError(`cannot read property '${key}' of ${String(holder)} (${path})`);
   }
@@ -367,8 +405,9 @@ function readAllowed(holder: unknown, key: string, path: string): unknown {
     // An SDK object has no such member: name the closest ones rather than
     // letting the next call fail as "is not a function".
     const members = publicMembers(holder as object);
-    const full = path ? `${path}.${key}` : key;
-    throw new UnknownMember(full, closestMembers(key, members).map((m) => (path ? `${path}.${m}` : m)), members);
+    const near = closestMembers(key, members).map((m) => `${where.display}.${m}`);
+    const suggestions = near.length > 0 ? near : findElsewhere(key, holder as object, where.display, where.root);
+    throw new UnknownMember(`${where.display}.${key}`, suggestions, members);
   }
   if (INTRINSIC_PROTOTYPES.has(owner)) {
     throw new RefusedProperty(`${path ? `${path}.` : ""}${key} is not part of the SDK surface`);
@@ -485,18 +524,22 @@ export class ChainHost {
     }
     for (const s of req.segments) if (s.op === "get") path = path ? `${path}.${s.key}` : s.key;
     const callPath = path || "r";
+    let display = "r";
 
     this.#inflight++;
     try {
       let walked = req.base === "root" ? "" : (this.#handles.get(req.base)?.path ?? "");
+      display = req.base === "root" ? "r" : (this.#handles.get(req.base)?.display ?? "r");
       for (const segment of req.segments) {
         if (segment.op === "get") {
           if (typeof segment.key !== "string") throw new RefusedProperty("only string property names cross into the host");
-          const next = readAllowed(value, segment.key, walked);
+          const next = readAllowed(value, segment.key, walked, { display, root: this.#root });
           receiver = value;
           value = next;
           walked = walked ? `${walked}.${segment.key}` : segment.key;
+          display = `${display}.${segment.key}`;
         } else {
+          display = `${display}(…)`;
           if (typeof value !== "function") throw new TypeError(`${walked || "r"} is not a function`);
           const args = (segment.args ?? []).map((a) => this.#decodeArg(a));
           value = Reflect.apply(value as (...a: unknown[]) => unknown, receiver, args);
@@ -522,10 +565,10 @@ export class ChainHost {
     }
 
     this.#record({ path: callPath, duration_ms: Date.now() - started, ok: true });
-    return this.#encodeResult(value, receiver, callPath);
+    return this.#encodeResult(value, receiver, callPath, display);
   }
 
-  #encodeResult(value: unknown, receiver: unknown, path: string): string {
+  #encodeResult(value: unknown, receiver: unknown, path: string, display: string): string {
     if (value instanceof Uint8Array || value instanceof ArrayBuffer) {
       const bytes = value instanceof ArrayBuffer ? new Uint8Array(value) : value;
       if (bytes.byteLength > CHAIN_MAX_TRANSFER_BYTES / 4) return this.#tooLarge(path, bytes.byteLength);
@@ -537,7 +580,7 @@ export class ChainHost {
       return json === undefined ? JSON.stringify({ ok: true }) : `{"ok":true,"value":${json}}`;
     }
     const id = `h${this.#nextHandle++}`;
-    this.#handles.set(id, { value, receiver, path });
+    this.#handles.set(id, { value, receiver, path, display });
     return JSON.stringify({ ok: true, value: { __r402: { t: "handle", v: id, path } } });
   }
 

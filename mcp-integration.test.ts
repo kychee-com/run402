@@ -141,6 +141,22 @@ describe("MCP server end to end (stdio, mock gateway)", { timeout: 120_000 }, ()
     assert.ok("wallet" in body.result);
   });
 
+  it("refuses an argument a tool does not declare, with structured content", async () => {
+    const before = requests.length;
+    const result = await client.callTool({ name: "up", arguments: { bogus: true } });
+    assert.equal(result.isError, true);
+    const body = result.structuredContent as { status: string; error: { code: string; next_actions: Array<{ unknown: string[] }> } };
+    assert.equal(body.status, "error");
+    assert.equal(body.error.code, "UNKNOWN_ARGUMENT");
+    assert.deepEqual(body.error.next_actions[0]!.unknown, ["bogus"]);
+    assert.equal(requests.length, before, "no gateway call");
+  });
+
+  it("publishes closed input schemas", async () => {
+    const { tools } = await client.listTools();
+    for (const tool of tools) assert.equal(tool.inputSchema.additionalProperties, false, `${tool.name} input is closed`);
+  });
+
   it("run: a list", async () => {
     const before = requests.length;
     const run1 = await run(`(await r.project("${PROJECT}").functions.list()).functions.map((f) => f.name)`);

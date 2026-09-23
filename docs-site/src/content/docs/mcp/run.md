@@ -55,7 +55,7 @@ On failure `status` is `"error"` and `error` is `{ code, message, next_actions }
 | `RUN_VALUE_NOT_SERIALIZABLE` | the result is not JSON (a handle, a function, a BigInt, a cycle) | `edit_request` |
 | `RUN_VALUE_TOO_LARGE` | the result is over 4 MB | `edit_request`: select less in the snippet |
 | `RUN_ARGUMENT_NOT_CLONEABLE` | an argument to `r` is not data | `edit_request` |
-| `RUN_UNKNOWN_MEMBER` | the snippet reached an `r.` path the SDK does not have | `edit_request` with `path` and `did_you_mean` (the closest public members) |
+| `RUN_UNKNOWN_MEMBER` | the snippet reached an `r.` path the SDK does not have | `edit_request` with `path` and `did_you_mean`: the closest public members, or, when the parent has nothing close, where that member does live (`r.project(…).sql` suggests `r.project(…).projects.sql` and `r.projects.sql`) |
 | `RUN_EXCEPTION` | the snippet threw | `edit_request` |
 | `RUN_BUSY` | four runs are already in flight on this server | `retry` |
 | `SECRET_REQUIRES_CLI` | an SDK method refused because it returns or consumes a one-time secret | `run_cli_command` with the exact `command` |

@@ -729,6 +729,9 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="INTERNAL_ERROR"></a>
 [`INTERNAL_ERROR`](/errors/gateway/#INTERNAL_ERROR)
 
+<a id="INVALID_ARGUMENTS"></a>
+[`INVALID_ARGUMENTS`](/errors/client/#INVALID_ARGUMENTS)
+
 <a id="INVALID_ASSET_KEY"></a>
 [`INVALID_ASSET_KEY`](/errors/gateway/#INVALID_ASSET_KEY)
 
@@ -1865,6 +1868,9 @@ The catalog records owning source locations and pinned external contributions. A
 
 <a id="UNKNOWN"></a>
 [`UNKNOWN`](/errors/client/#UNKNOWN)
+
+<a id="UNKNOWN_ARGUMENT"></a>
+[`UNKNOWN_ARGUMENT`](/errors/client/#UNKNOWN_ARGUMENT)
 
 <a id="UNKNOWN_CREDENTIAL"></a>
 [`UNKNOWN_CREDENTIAL`](/errors/gateway/#UNKNOWN_CREDENTIAL)

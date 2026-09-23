@@ -943,6 +943,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="INTERNAL_ERROR"></a>
 [`INTERNAL_ERROR`](/errors/gateway/#INTERNAL_ERROR)
 
+<a id="invalid_arguments"></a>
+<a id="INVALID_ARGUMENTS"></a>
+[`INVALID_ARGUMENTS`](/errors/client/#INVALID_ARGUMENTS)
+
 <a id="invalid_asset_key"></a>
 <a id="INVALID_ASSET_KEY"></a>
 [`INVALID_ASSET_KEY`](/errors/gateway/#INVALID_ASSET_KEY)
@@ -2452,6 +2456,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="unknown"></a>
 <a id="UNKNOWN"></a>
 [`UNKNOWN`](/errors/client/#UNKNOWN)
+
+<a id="unknown_argument"></a>
+<a id="UNKNOWN_ARGUMENT"></a>
+[`UNKNOWN_ARGUMENT`](/errors/client/#UNKNOWN_ARGUMENT)
 
 <a id="unknown_credential"></a>
 <a id="UNKNOWN_CREDENTIAL"></a>

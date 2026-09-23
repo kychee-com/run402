@@ -42,6 +42,8 @@ export type LocalToolErrorCode =
   | "RESULT_REF_NOT_FOUND"
   | "DOCS_TOPIC_NOT_FOUND"
   | "WALLET_NOT_FOUND"
+  | "UNKNOWN_ARGUMENT"
+  | "INVALID_ARGUMENTS"
   | "INTERNAL_ERROR";
 
 export interface ToolError {

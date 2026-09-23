@@ -52,9 +52,11 @@ Every structured result has `status: "ok" | "error"`:
 | `expand_result` | `ref`, `kind`, `offset`, `shown`, `total`, `items` |
 | `docs` | `kind`, `ref`, `shown`, `total`, `lines` |
 
-On failure, `isError` is true and `error` holds `code`, `message`, and `next_actions`, plus `category`, `retryable`, `safe_to_retry`, `http_status`, `mutation_state`, `trace_id`, and `details` when the error supplies them. A `deploy` error adds `phase`, `resource`, `operation_id`, `plan_id`, `fix`, and up to 50 `logs` lines, with `events` and `warnings` beside `error`. An SDK or gateway error keeps its own code. A local failure gets one of these codes: `PROJECT_NOT_FOUND`, `PROJECT_CREDENTIAL_NOT_FOUND`, `WALLET_NOT_FOUND`, `NETWORK_ERROR`, `RESULT_REF_NOT_FOUND`, `DOCS_TOPIC_NOT_FOUND`, or `INTERNAL_ERROR`.
+On failure, `isError` is true and `error` holds `code`, `message`, and `next_actions`, plus `category`, `retryable`, `safe_to_retry`, `http_status`, `mutation_state`, `trace_id`, and `details` when the error supplies them. A `deploy` error adds `phase`, `resource`, `operation_id`, `plan_id`, `fix`, and up to 50 `logs` lines, with `events` and `warnings` beside `error`. An SDK or gateway error keeps its own code. A local failure gets one of these codes: `PROJECT_NOT_FOUND`, `PROJECT_CREDENTIAL_NOT_FOUND`, `WALLET_NOT_FOUND`, `NETWORK_ERROR`, `RESULT_REF_NOT_FOUND`, `DOCS_TOPIC_NOT_FOUND`, `UNKNOWN_ARGUMENT`, `INVALID_ARGUMENTS`, or `INTERNAL_ERROR`.
 
-The schemas are open: they name the fields a host branches on, and any other field passes through. Branch on `status` and `error.code`; follow `error.next_actions`.
+Arguments are strict. Every input schema is closed (`additionalProperties: false`), and a call that passes an argument the tool does not declare is refused before the tool runs: `UNKNOWN_ARGUMENT`, whose `edit_request` next action lists the `unknown` names, the closest declared name for each (`did_you_mean`), and the `accepted` names. An argument of the wrong type is `INVALID_ARGUMENTS`, with `details.issues[]` of `{ path, message }`. Both arrive as an ordinary error result with `structuredContent`, never a protocol error.
+
+The output schemas are open: they name the fields a host branches on, and any other field passes through. Branch on `status` and `error.code`; follow `error.next_actions`.
 
 ## One-time secrets stay in the CLI
 
