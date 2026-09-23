@@ -22,7 +22,7 @@
  * Unknown keys are ignored on purpose: that is what makes an older client
  * forward-compatible with a binding file written by a newer one.
  */
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
 /** The committed binding file. Safe to check in — it names, never authorizes. */
@@ -86,4 +86,32 @@ export function readBindingFile(dir: string = process.cwd()): Record<string, unk
   } catch {
     return {};
   }
+}
+
+/**
+ * MERGE keys into a directory's committed binding file. A `null` (or
+ * `undefined`) value removes its key; a file left with no keys is deleted
+ * rather than committed empty.
+ *
+ * The file is shared by tiers (`wallet` from `wallets bind`, `org`/`room` from
+ * `orgs bind`) and unknown keys are preserved, so one tier can never clobber
+ * another's binding.
+ */
+export function updateBindingFile(
+  dir: string,
+  patch: Record<string, unknown>,
+): { file: string; contents: Record<string, unknown> | null; removed: boolean } {
+  const file = bindingFilePath(dir);
+  const next: Record<string, unknown> = { ...readBindingFile(dir) };
+  for (const [k, v] of Object.entries(patch)) {
+    if (v === null || v === undefined) delete next[k];
+    else next[k] = v;
+  }
+  if (Object.keys(next).length === 0) {
+    const existed = existsSync(file);
+    if (existed) rmSync(file, { force: true });
+    return { file, contents: null, removed: existed };
+  }
+  writeFileSync(file, JSON.stringify(next, null, 2) + "\n");
+  return { file, contents: next, removed: false };
 }

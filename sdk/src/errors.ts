@@ -485,41 +485,52 @@ export class LocalError extends Run402Error {
   static readonly DEFAULT_RETRYABLE = false;
   readonly kind = "local_error" as const;
   readonly cause?: unknown;
+  /** One-line remedy for a person reading the error, when the thrower has one. */
+  readonly hint?: string;
   /**
    * @param message Human-readable error message.
    * @param context Short verb phrase identifying the operation (used for triage).
    * @param opts Optional. Pass a raw `unknown` for back-compat (treated as `cause`),
-   *   or an options bag `{ cause?, code?, details?, next_actions? }` to thread a stable error
+   *   or an options bag `{ cause?, code?, hint?, details?, next_actions? }` to thread a stable error
    *   `code` (mirrors a gateway error code so client-side validators throw with
    *   the same `code` field consumers branch on).
    */
   constructor(
     message: string,
     context: string,
-    opts?: unknown | { cause?: unknown; code?: string; details?: unknown; next_actions?: unknown[] },
+    opts?: unknown | { cause?: unknown; code?: string; hint?: string; details?: unknown; next_actions?: unknown[] },
   ) {
     const bag =
       opts && typeof opts === "object" && !Array.isArray(opts) &&
       ("cause" in (opts as object) ||
         "code" in (opts as object) ||
+        "hint" in (opts as object) ||
         "details" in (opts as object) ||
         "next_actions" in (opts as object))
-        ? (opts as { cause?: unknown; code?: string; details?: unknown; next_actions?: unknown[] })
+        ? (opts as { cause?: unknown; code?: string; hint?: string; details?: unknown; next_actions?: unknown[] })
         : null;
     const code = bag?.code;
+    const hint = bag?.hint;
     const details = bag?.details;
     const nextActions = bag?.next_actions;
     const cause = bag ? bag.cause : opts;
     const envelope: Record<string, unknown> | null =
-      code !== undefined || details !== undefined || nextActions !== undefined
+      code !== undefined || hint !== undefined || details !== undefined || nextActions !== undefined
         ? {
             ...(code !== undefined ? { code } : {}),
+            ...(hint !== undefined ? { hint } : {}),
             ...(details !== undefined ? { details } : {}),
             ...(nextActions !== undefined ? { next_actions: nextActions } : {}),
           }
         : null;
     super(message, null, envelope, context);
     if (cause !== undefined) this.cause = cause;
+    if (hint !== undefined) this.hint = hint;
+  }
+
+  override toJSON(): Record<string, unknown> {
+    const json = super.toJSON();
+    return this.hint === undefined ? json : { ...json, hint: this.hint };
   }
 }
 
