@@ -2229,6 +2229,38 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="ROUTED_PUBLIC_RATE_LIMITED"></a>
 [`ROUTED_PUBLIC_RATE_LIMITED`](/errors/gateway/#ROUTED_PUBLIC_RATE_LIMITED)
 
+<a id="run_argument_not_cloneable"></a>
+<a id="RUN_ARGUMENT_NOT_CLONEABLE"></a>
+[`RUN_ARGUMENT_NOT_CLONEABLE`](/errors/client/#RUN_ARGUMENT_NOT_CLONEABLE)
+
+<a id="run_busy"></a>
+<a id="RUN_BUSY"></a>
+[`RUN_BUSY`](/errors/client/#RUN_BUSY)
+
+<a id="run_exception"></a>
+<a id="RUN_EXCEPTION"></a>
+[`RUN_EXCEPTION`](/errors/client/#RUN_EXCEPTION)
+
+<a id="run_memory_exceeded"></a>
+<a id="RUN_MEMORY_EXCEEDED"></a>
+[`RUN_MEMORY_EXCEEDED`](/errors/client/#RUN_MEMORY_EXCEEDED)
+
+<a id="run_syntax_error"></a>
+<a id="RUN_SYNTAX_ERROR"></a>
+[`RUN_SYNTAX_ERROR`](/errors/client/#RUN_SYNTAX_ERROR)
+
+<a id="run_timeout"></a>
+<a id="RUN_TIMEOUT"></a>
+[`RUN_TIMEOUT`](/errors/client/#RUN_TIMEOUT)
+
+<a id="run_value_not_serializable"></a>
+<a id="RUN_VALUE_NOT_SERIALIZABLE"></a>
+[`RUN_VALUE_NOT_SERIALIZABLE`](/errors/client/#RUN_VALUE_NOT_SERIALIZABLE)
+
+<a id="run_value_too_large"></a>
+<a id="RUN_VALUE_TOO_LARGE"></a>
+[`RUN_VALUE_TOO_LARGE`](/errors/client/#RUN_VALUE_TOO_LARGE)
+
 <a id="run402_action_failed"></a>
 <a id="RUN402_ACTION_FAILED"></a>
 [`RUN402_ACTION_FAILED`](/errors/client/#RUN402_ACTION_FAILED)

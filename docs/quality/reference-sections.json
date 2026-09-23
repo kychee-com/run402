@@ -127,8 +127,21 @@
     {
       "file": "docs-site/src/content/docs/mcp/reference.md",
       "sections": [
-        "Mental model",
+        "Eight tools, and everything else is a snippet",
+        "One-time secrets stay in the CLI",
+        "Authority",
+        "Paying",
         "Quickstart"
+      ]
+    },
+    {
+      "file": "docs-site/src/content/docs/mcp/run.md",
+      "sections": [
+        "`run`: a snippet against the SDK",
+        "The result",
+        "Errors",
+        "One-time secrets stay in the CLI",
+        "Examples"
       ]
     },
     {
@@ -146,6 +159,8 @@
         "Paste-and-go assets — content-addressed URLs with SRI",
         "Dark-by-default tables + the expose manifest",
         "Slick Deploys",
+        "Release inventories and diffs",
+        "GitHub Actions OIDC deploys",
         "In-function helpers — `db(req)` vs `adminDb()`",
         "Function-level auth gates"
       ]
@@ -153,31 +168,15 @@
     {
       "file": "docs-site/src/content/docs/mcp/tools.md",
       "sections": [
-        "Tools by category",
-        "Database",
-        "Asset storage (content-addressed CDN)",
-        "Sites & subdomains",
-        "Rehearsals, snapshots, and branches",
-        "Portable archives",
-        "CI/OIDC bindings",
-        "Functions",
-        "Secrets",
-        "Managed jobs",
-        "Auth & email",
-        "AI helpers",
-        "Apps marketplace",
-        "Tier & billing",
-        "KMS signers (on-chain signing)",
-        "Wallet & organization",
-        "Notification channels & routing rules (Telegram)",
-        "Project transfer (unified noun, owned-org recipient)",
-        "Organization, membership & grants (org-owned control plane)",
-        "Project events feed",
-        "Agent messaging — coordination rooms",
-        "Agent escalations — the hotline to a human",
-        "Buzz project-event routing — read-only route health",
-        "Release error rollup",
-        "Service status (no auth, no setup)"
+        "The eight tools",
+        "`up`",
+        "`deploy`",
+        "`status`",
+        "`whoami`",
+        "`doctor`",
+        "`docs`",
+        "`run`",
+        "`expand_result`"
       ]
     },
     {
@@ -195,7 +194,6 @@
       "file": "docs-site/src/content/docs/mcp/installation.md",
       "sections": [
         "Install",
-        "`RUN402_MCP_PROFILE=buyer` — 6 tools instead of 198",
         "Claude Desktop",
         "Cursor",
         "Cline",

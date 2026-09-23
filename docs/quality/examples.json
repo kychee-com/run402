@@ -697,15 +697,7 @@
   },
   {
     "file": "docs-site/src/content/docs//mcp/installation.md",
-    "line": 15,
-    "language": "",
-    "kind": "output-or-pseudocode",
-    "sha256": "98258045db172f4116628c5393c9d6a0a14e4694d659d216a1d5d651f246034b",
-    "validation": "tool-schema-and-sync"
-  },
-  {
-    "file": "docs-site/src/content/docs//mcp/installation.md",
-    "line": 31,
+    "line": 21,
     "language": "json",
     "kind": "configuration",
     "sha256": "aa17219dc7503b89ff1e5d54eb0ddef63be84597dbe3440f08112046ff71f1de",
@@ -713,7 +705,7 @@
   },
   {
     "file": "docs-site/src/content/docs//mcp/installation.md",
-    "line": 43,
+    "line": 33,
     "language": "json",
     "kind": "configuration",
     "sha256": "aa17219dc7503b89ff1e5d54eb0ddef63be84597dbe3440f08112046ff71f1de",
@@ -721,10 +713,18 @@
   },
   {
     "file": "docs-site/src/content/docs//mcp/installation.md",
-    "line": 57,
+    "line": 47,
     "language": "bash",
     "kind": "commands",
     "sha256": "5ae02423d372c54ef0fe9548336f01c0ffa61ed79f308a082acbb827782119c8",
+    "validation": "tool-schema-and-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//mcp/lifecycle.md",
+    "line": 13,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "033f36b8feeacc366124da1da6bdf5992336e20658783aeb275fb42a27951ece",
     "validation": "tool-schema-and-sync"
   },
   {
@@ -737,7 +737,7 @@
   },
   {
     "file": "docs-site/src/content/docs//mcp/patterns.md",
-    "line": 35,
+    "line": 37,
     "language": "json",
     "kind": "configuration",
     "sha256": "cf66595ad2533253be612dd204f9ce202b044341ef88c5d8cace13c5f5a0e493",
@@ -745,7 +745,7 @@
   },
   {
     "file": "docs-site/src/content/docs//mcp/patterns.md",
-    "line": 83,
+    "line": 85,
     "language": "json",
     "kind": "configuration",
     "sha256": "07e4333b5c5aa68eb689ff6f0b18e9754ab1650ca58701eaa03bd5116b8dd894",
@@ -753,7 +753,7 @@
   },
   {
     "file": "docs-site/src/content/docs//mcp/patterns.md",
-    "line": 149,
+    "line": 151,
     "language": "json",
     "kind": "configuration",
     "sha256": "eb46910ebee4d7015a9d8dbb8185c72e7c913b06e2d1fa0856ce00baa0f60094",
@@ -761,7 +761,15 @@
   },
   {
     "file": "docs-site/src/content/docs//mcp/patterns.md",
-    "line": 173,
+    "line": 175,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "408a4c4d08a47f93bc5564fc0a796d36b8484c1894673d7099a299be4fc23f64",
+    "validation": "tool-schema-and-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//mcp/patterns.md",
+    "line": 192,
     "language": "ts",
     "kind": "application-or-sdk",
     "sha256": "a680e5ac4eb0ebe339f8a69bc15a3771c5bef3c05f82031737334952c977b396",
@@ -769,7 +777,7 @@
   },
   {
     "file": "docs-site/src/content/docs//mcp/patterns.md",
-    "line": 219,
+    "line": 238,
     "language": "json",
     "kind": "configuration",
     "sha256": "36ca941314536b5501f364dee34cf2bb98f53b1d04840f728066847daa518422",
@@ -777,10 +785,66 @@
   },
   {
     "file": "docs-site/src/content/docs//mcp/reference.md",
-    "line": 63,
+    "line": 35,
+    "language": "json",
+    "kind": "configuration",
+    "sha256": "c897202c93caea23cacee61e4e529a809818fff91757a7f5b7b897b8eedd1f09",
+    "validation": "tool-schema-and-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//mcp/reference.md",
+    "line": 66,
     "language": "json",
     "kind": "configuration",
     "sha256": "0e8eba4998c65fe2e92bf0dc60e12ce464dab988bb8319cd167655ff3bd4cdb1",
+    "validation": "tool-schema-and-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//mcp/run.md",
+    "line": 11,
+    "language": "json",
+    "kind": "configuration",
+    "sha256": "ee104101dc1ce0ef3b4878b3eef5bd45710b108ecf17e7e2dae88d54d0890f6c",
+    "validation": "tool-schema-and-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//mcp/run.md",
+    "line": 25,
+    "language": "json",
+    "kind": "configuration",
+    "sha256": "79bd5160118d571a4a8028514df10ea1a716fff2e31b631ead4c24e019f9af80",
+    "validation": "tool-schema-and-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//mcp/run.md",
+    "line": 68,
+    "language": "json",
+    "kind": "configuration",
+    "sha256": "f84a6267ee3551b45ffd74f7f786525fd32255812107ca02c4b4fac9eae05eac",
+    "validation": "tool-schema-and-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//mcp/run.md",
+    "line": 81,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "c5ecf73c46e3e63ed9cc248a49751a237635da21d618e7022d1ac8448b0622e2",
+    "validation": "tool-schema-and-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//mcp/run.md",
+    "line": 88,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "5397538ea8710873ea6eb0675794b764d27961acb399b5c6e70ccbd5644965e5",
+    "validation": "tool-schema-and-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//mcp/run.md",
+    "line": 96,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "3fc52cef31c0671dc9357a419d5dfd2d828cc8d93759c3978ed51ab6f7334551",
     "validation": "tool-schema-and-sync"
   },
   {

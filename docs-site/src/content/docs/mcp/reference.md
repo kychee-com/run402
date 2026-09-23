@@ -1,61 +1,64 @@
 ---
 title: "MCP reference"
-description: "Native MCP reference — reference."
+description: "Native MCP reference — eight tools and the run snippet form."
 order: 10
 ---
 
 > Package: `run402-mcp` (npm)
 > Connect via: Claude Desktop / Cursor / Cline / Claude Code
-> Remote (no install, free discovery tools only): streamable-http at https://mcp.run402.com/mcp — `run402_quickstart` · `x402_price_check` · `experiment_scoreboard`. The remote never handles funds; every paid tool below requires this local server (it holds YOUR wallet).
+> Remote (no install, free discovery tools only): streamable-http at https://mcp.run402.com/mcp — `run402_quickstart` · `x402_price_check` · `experiment_scoreboard`. The remote never handles funds; paying and deploying need this local server (it holds YOUR wallet).
 > Wayfinder: https://run402.com/llms.txt
 > Sibling references: SDK at https://docs.run402.com/llms-sdk.txt · CLI at https://docs.run402.com/llms-cli.txt · HTTP at https://run402.com/llms-full.txt
 > Source: docs-site/src/content/docs/mcp/ in https://github.com/kychee-com/run402
 
-This file is canonical reference for the `run402-mcp` MCP server's tool surface. Every action is an MCP tool call — natural-language framings work because the schemas are loaded into your context by the host.
+This file is the canonical reference for the `run402-mcp` MCP server. If your host already has the run402-mcp tools loaded, this is your reference; if not, install the server first (the Install section below).
 
-If you're an MCP-host agent that already has the run402-mcp tools available, this is your reference. If you don't have the tools loaded, install the server first (instructions at the bottom).
+Run402 treats you as a first-class participant acting through your own principal and authenticator, not as an invisible process borrowing a human account. Identity records who acted; organization roles, grants, grant keys, freshness, and spend policy determine what you may do.
 
-Run402 treats you as a first-class participant acting through your own principal and authenticator, not as an invisible process borrowing a human account. Identity records who acted; organization roles, grants, grant keys, freshness, and spend policy determine what you may do. Founder-agent ownership is legitimate, while an agent entering somebody else's organization uses bounded authority.
+## Eight tools, and everything else is a snippet
 
-## Mental model
+`run402-mcp` registers exactly eight tools:
 
-`run402-mcp` is a thin shim over [`@run402/sdk`](https://docs.run402.com/llms-sdk.txt). Each MCP tool is a schema-parsing wrapper around an SDK method. The configured API target, active project state, wallet, and local project-key cache are shared with the CLI; provisioning a project from any surface makes its `anon_key` and `service_key` available to credential-required operations without treating cached keys as project inventory.
+| Tool | What it does |
+|---|---|
+| `up` | The first deploy: any missing setup (wallet, tier, project, workspace link), then the deploy. Returns the `run402.up.result` envelope. |
+| `deploy` | Applies a ReleaseSpec to a project (`r.project(id).apply`). Returns the `DeployResult`. |
+| `status` | `r.status()`: the wallet this server acts as (`local_label`, `server_label`, address), tier and lease, allowance, projects, active project. |
+| `whoami` | `r.orgs.whoami()`: the remote principal, its authenticators, org memberships, and sign-in session grade. |
+| `doctor` | `r.doctor()`: `{ ok, blocking[], warnings[], checks[] }`. |
+| `docs` | The SDK reference and the `run` primer, shipped in this package. |
+| `run` | Runs a TypeScript snippet against the SDK in a sandbox. |
+| `expand_result` | Pages a stored result (`ref`, `offset`, `limit`). |
 
-Public Buzz/Nostr identity links are deliberately **not** an MCP mutation tool. Agent creation uses the CLI/SDK EOA ceremony; human creation/revocation uses the normal browser/passkey/Buzz flow at <https://console.run402.com/identity-links/connect>. MCP never asks for a raw signed event, Nostr private key, passkey, session credential, or resource id. Existing reads render every returned active/revoked link with its `identity_link_id`, subject, proof protocol, and lifecycle, explicitly as public attribution rather than organization authority. Project/deploy/transfer reads preserve immutable actor provenance. Unknown future principal/authenticator/authority/proof kinds remain data.
+There is no tool per operation. Anything the SDK can do is one `run` call: the snippet gets `r`, the Node SDK client (`@run402/sdk/node`), and composes what it needs, so listing, filtering, and joining happen in code instead of across tool calls. `docs` answers "what does `r` offer" from the reference that ships with the SDK the snippet runs against; `docs({ topic: "assets" })` is one namespace, and `docs({ search: "waitForMessages" })` finds a section by content.
 
-Buzz human-adoption offers/attempts, community installation, and agent enrollment are also intentionally not MCP mutation tools. `whoami` renders their independent capability/state, including a current normal HTTPS ownership transfer and exact `run402 buzz adopt offer show …` poll command; project reads identify enrollment provenance. MCP never receives a human sign-in session, passkey step-up, or Buzz signing capability. A durable offer is inert and a click is not completion. Authoritative completed polling distinguishes the terminal consent receipt, public human identity attribution, and ordinary membership; only membership grants org authority, and link/membership revocation are independent.
+```json
+{ "code": "const { projects } = await r.projects.list();\nprojects.map((p) => ({ id: p.id, name: p.name, site: p.site_url }))" }
+```
 
-Tools that require payment (`provision_postgres_project`, `tier_set`, `deploy`, `generate_image`) return 402 payment details as informational text (not an error) — the LLM should reason about cost, guide the user through funding if needed, and retry the same tool call.
+A `run` result carries the value, the captured `console` lines, and `calls[]`, the SDK chains the snippet made, with the wallet that signed them. Large values are stored whole and shown as a window; `expand_result` pages the rest. The contract, limits, and error codes are in the `run` section below.
 
-After a successful purchase, `generate_image` reports what actually settled —
-amount, network and transaction — and, when the settlement network is a testnet,
-states plainly that it was **not a real payment** and cannot appear on the wall.
-This matters because `init` faucet-funds Base Sepolia: without it an agent can
-watch a payment succeed and never learn it moved test money. The testnet verdict
-is read from the settlement receipt, not from local wallet config, so an agent
-holding mainnet USDC is never told its real payment was fake. `pay_url` reports
-the same events for arbitrary sellers.
+## One-time secrets stay in the CLI
 
-`pay_url` is the general x402 buyer tool for external HTTP(S) endpoints. Params:
-`url`, optional `method`, `body`, `idempotency_key`, `max_usd_micros`
-(default `100000`, or $0.10), and `require_receipt`. It hands off to SDK
-`pay.fetch`. `require_receipt: true` requires a verified wallet-rooted offer
-before payment and a matching receipt afterward. Structured content is the
-complete `x402-commerce-result.v1` envelope; the text view curates amount and
-destination, settlement, movement/replay, merchant receipt, signer
-relationship, and policy. Portable evidence is preserved, but payment proofs,
-cookies, authorization headers, bodies, private keys, and tenant secrets are
-never cached. On trusted Run402
-`PAYMENT_INTENT_PENDING`, wait for `Retry-After` and call `pay_url` again with
-the same payer, identical arguments, and the same `idempotency_key`; never
-substitute a new key. Custom/arbitrary hosts remain ambiguous. The live SDK
-instance can also re-present its original in-memory proof.
+Operations that return or consume a one-time secret (minting or rotating a grant key, a Handoff or Invite Key, a Room Invite Key, provisioning a project or rotating its credentials, minting a project token, creating, importing, or exporting a wallet, the Lightning wallet's pairing, redeeming any of those keys, a person's sign-in session) refuse inside `run` with `SECRET_REQUIRES_CLI`. The refusal happens in the SDK method before any request and carries one next action, `{ "type": "run_cli_command", "command": "run402 …" }`, the exact command for the same operation. Hand that command to the person; the CLI prints the secret to them once. Nothing secret reaches a result or `expand_result`. `up` still provisions a project for a first deploy: it saves the keys to the local key cache and never prints them.
+
+## Authority
+
+This server authenticates as the active wallet, resolved as the CLI resolves it with no flag: `RUN402_WALLET`, else the nearest `.run402.json` binding from the server's working directory, else the global default (`run402 wallets use`), else `default`. `status` and every `run` result name it. A person's cached sign-in session or write approval is never used: MCP authenticates as the agent. Snippet requests carry client metadata surface `sandbox`; the fixed tools carry `mcp`.
+
+Public Buzz/Nostr identity links, Buzz human-adoption offers, community installation, and agent enrollment sign through Buzz's own boundary: the SDK reads them from `run`, and the signing steps are CLI commands (`run402 identity link`, `run402 buzz adopt offer`). `whoami` renders their state; a durable offer is inert and a click is not completion.
+
+## Paying
+
+Paid calls (a tier, image generation, an x402 URL through `r.pay.fetch`) pay automatically from the wallet: x402 (USDC on Base), MPP on Tempo, or MPP on Bitcoin Lightning. A 402 the wallet cannot cover comes back as the SDK's `PaymentRequired` error with its `next_actions`; reason about the cost, guide the person through funding, and run the same snippet again.
+
+`r.pay.fetch(url, init?, { maxUsdMicros, idempotencyKey, requireReceipt })` is the general x402 buyer for external HTTP(S) endpoints (`maxUsdMicros` defaults to `100000`, $0.10). `requireReceipt: true` requires a verified wallet-rooted offer before payment and a matching receipt afterward. The result is the complete `x402-commerce-result.v1` envelope; settlement names the network it was read from, so a testnet payment is reported as test money, never as a real payment. On trusted Run402 `PAYMENT_INTENT_PENDING`, wait for `Retry-After` and call again with the same payer, identical arguments, and the same idempotency key.
 
 ## Quickstart
 
 Use the CLI by default when your host has a shell. This native reference is for MCP hosts. With the local server configured, prepare the complete manifest and referenced app files from [Your first deploy](https://docs.run402.com/start/first-deploy/), then call `up` with `name: "my-app"`, the manifest path, and explicit approval for the required setup. The tool calls the shared SDK `up` action. Its schema is authoritative for input names. Inspect deploy status and verification evidence before reporting success.
 
-`deploy`, `provision_postgres_project`, `run_sql`, `apply_expose` and `deploy_site_dir` are advanced primitives, not a second cold-start recipe. Some CLI mutations deliberately have no MCP tool.
+`deploy` is the advanced primitive for a spec you built yourself, not a second cold-start recipe.
 
 Call `up` with these schema-checked arguments after preparing the files:
 

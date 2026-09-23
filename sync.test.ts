@@ -1455,8 +1455,8 @@ describe("MCP tool set", () => {
  * references are written in: "the `x` tool", "MCP `x`", "tool `x`", a list
  * after "MCP tools …:", a call written `x({ … })`, `{ "tool": "x" }`, and in
  * markdown, a table whose first column is headed "Tool". On an MCP reference
- * page (docs-site/…/mcp/) a `### \`x\`` heading and a "- `x` — …" bullet name
- * a tool too.
+ * page (docs-site/…/mcp/) a `### \`x\`` heading names a tool, and so does a
+ * "- `x` — …" bullet under a heading that says "tool".
  */
 const TOOL_REFERENCE_PATTERNS: RegExp[] = [
   /\bMCP(?:\s+tools?)?\s+`([a-z][a-z0-9_]*)`/g, // MCP `x`, MCP tool `x`
@@ -1467,15 +1467,12 @@ const TOOL_REFERENCE_PATTERNS: RegExp[] = [
 /** `x({ … })`, excluding a method or a package factory (`r.x({`, `run402({`). */
 const TOOL_CALL_PATTERN = /(?<![\w.$])`([a-z][a-z0-9_]*)\(\{/g;
 const TOOL_LIST_PATTERN = /\bMCP tools?\b[^.:\n]*:((?:\s*,?\s*(?:and\s+|or\s+)?`[a-z][a-z0-9_]*`)+)/g;
-const MCP_PAGE_PATTERNS: RegExp[] = [
-  /^#{2,4} `([a-z][a-z0-9_]*)`/gm, // ### `x`
-  /^\s*[-*] `([a-z][a-z0-9_]*)` —/gm, // - `x` — what it does
-];
+const MCP_PAGE_HEADING = /^#{2,4} `([a-z][a-z0-9_]*)`/gm; // ### `x`
 const NOT_A_TOOL_CALL = new Set(["run402"]);
 
 export function toolReferences(text: string, opts: { mcpPage?: boolean } = {}): string[] {
   const names = new Set<string>();
-  const patterns = opts.mcpPage ? [...TOOL_REFERENCE_PATTERNS, ...MCP_PAGE_PATTERNS] : TOOL_REFERENCE_PATTERNS;
+  const patterns = opts.mcpPage ? [...TOOL_REFERENCE_PATTERNS, MCP_PAGE_HEADING] : TOOL_REFERENCE_PATTERNS;
   for (const pattern of patterns) {
     for (const m of text.matchAll(pattern)) names.add(m[1]!);
   }
@@ -1483,9 +1480,15 @@ export function toolReferences(text: string, opts: { mcpPage?: boolean } = {}): 
   for (const m of text.matchAll(TOOL_LIST_PATTERN)) {
     for (const n of m[1]!.matchAll(/`([a-z][a-z0-9_]*)`/g)) names.add(n[1]!);
   }
-  // A markdown table whose first column is headed "Tool" lists tools.
+  // A markdown table whose first column is headed "Tool" lists tools; on an
+  // MCP page, so does a "- `x` — …" bullet under a heading that says "tool".
   let toolTable = false;
+  let toolSection = false;
   for (const line of text.split("\n")) {
+    const heading = /^#{1,6} (.*)$/.exec(line);
+    if (heading) toolSection = /\btools?\b/i.test(heading[1]!);
+    const bullet = /^\s*[-*] `([a-z][a-z0-9_]*)` —/.exec(line);
+    if (opts.mcpPage && toolSection && bullet) names.add(bullet[1]!);
     if (!line.trimStart().startsWith("|")) {
       toolTable = false;
       continue;
@@ -1528,7 +1531,8 @@ describe("MCP doc drift", () => {
     assert.deepEqual(toolReferences("then `docs({ topic: \"assets\" })`"), ["docs"]);
     assert.deepEqual(toolReferences("MCP tools mirror the same flow: `a_b`, `c_d`, and `e_f`."), ["a_b", "c_d", "e_f"]);
     assert.deepEqual(toolReferences("| Tool | Description |\n|---|---|\n| `run_sql` | SQL |\n"), ["run_sql"]);
-    assert.deepEqual(toolReferences("### `get_usage`\n- `list_orgs` — lists", { mcpPage: true }), ["get_usage", "list_orgs"]);
+    assert.deepEqual(toolReferences("### `get_usage`\n## Tools\n- `list_orgs` — lists", { mcpPage: true }), ["get_usage", "list_orgs"]);
+    assert.deepEqual(toolReferences("## Credentials\n- `anon_key` — read-only", { mcpPage: true }), []);
     assert.deepEqual(toolReferences("`project_id` is a field; `r.projects.list({ limit })` and `run402({ surface })` are SDK"), []);
   });
 

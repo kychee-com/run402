@@ -851,6 +851,54 @@ Owner: `public:cli/lib/repos.mjs`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
+<h2 id="RUN_ARGUMENT_NOT_CLONEABLE">RUN_ARGUMENT_NOT_CLONEABLE</h2>
+
+Owner: `public:src/sandbox-proxy.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="RUN_BUSY">RUN_BUSY</h2>
+
+Owner: `public:src/tools/run.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="RUN_EXCEPTION">RUN_EXCEPTION</h2>
+
+Owner: `public:src/sandbox.ts`, `public:src/tools/run.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="RUN_MEMORY_EXCEEDED">RUN_MEMORY_EXCEEDED</h2>
+
+Owner: `public:src/sandbox.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="RUN_SYNTAX_ERROR">RUN_SYNTAX_ERROR</h2>
+
+Owner: `public:src/sandbox.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="RUN_TIMEOUT">RUN_TIMEOUT</h2>
+
+Owner: `public:src/sandbox.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="RUN_VALUE_NOT_SERIALIZABLE">RUN_VALUE_NOT_SERIALIZABLE</h2>
+
+Owner: `public:src/sandbox.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="RUN_VALUE_TOO_LARGE">RUN_VALUE_TOO_LARGE</h2>
+
+Owner: `public:src/sandbox-proxy.ts`, `public:src/sandbox.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
 <h2 id="RUN402_ACTION_FAILED">RUN402_ACTION_FAILED</h2>
 
 Owner: `public:sdk/src/node/actions-node.ts`.

@@ -6341,6 +6341,94 @@
       "topic": "/errors/gateway/#ROUTED_PUBLIC_RATE_LIMITED"
     },
     {
+      "code": "RUN_ARGUMENT_NOT_CLONEABLE",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "src/sandbox-proxy.ts"
+        }
+      ],
+      "topic": "/errors/client/#RUN_ARGUMENT_NOT_CLONEABLE"
+    },
+    {
+      "code": "RUN_BUSY",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "src/tools/run.ts"
+        }
+      ],
+      "topic": "/errors/client/#RUN_BUSY"
+    },
+    {
+      "code": "RUN_EXCEPTION",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "src/sandbox.ts"
+        },
+        {
+          "owner": "public",
+          "source": "src/tools/run.ts"
+        }
+      ],
+      "topic": "/errors/client/#RUN_EXCEPTION"
+    },
+    {
+      "code": "RUN_MEMORY_EXCEEDED",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "src/sandbox.ts"
+        }
+      ],
+      "topic": "/errors/client/#RUN_MEMORY_EXCEEDED"
+    },
+    {
+      "code": "RUN_SYNTAX_ERROR",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "src/sandbox.ts"
+        }
+      ],
+      "topic": "/errors/client/#RUN_SYNTAX_ERROR"
+    },
+    {
+      "code": "RUN_TIMEOUT",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "src/sandbox.ts"
+        }
+      ],
+      "topic": "/errors/client/#RUN_TIMEOUT"
+    },
+    {
+      "code": "RUN_VALUE_NOT_SERIALIZABLE",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "src/sandbox.ts"
+        }
+      ],
+      "topic": "/errors/client/#RUN_VALUE_NOT_SERIALIZABLE"
+    },
+    {
+      "code": "RUN_VALUE_TOO_LARGE",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "src/sandbox-proxy.ts"
+        },
+        {
+          "owner": "public",
+          "source": "src/sandbox.ts"
+        }
+      ],
+      "topic": "/errors/client/#RUN_VALUE_TOO_LARGE"
+    },
+    {
       "code": "RUN402_ACTION_FAILED",
       "owners": [
         {

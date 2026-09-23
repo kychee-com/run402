@@ -8,21 +8,11 @@ order: 60
 
 Stdio MCP transports must keep stdout reserved for JSON-RPC. Use the package bin (`npx -y run402-mcp`) or `node dist/index.js` from a built checkout. If a host insists on `npm start`, set `npm_config_loglevel=silent`; npm's lifecycle banner is stdout and otherwise appears as non-JSON prelude. The repo `.npmrc` and Docker image set this for source/container hosts.
 
-### `RUN402_MCP_PROFILE=buyer` — 6 tools instead of 198
+The server needs Node.js 22.13 or later (the `run` tool strips TypeScript types with Node's own `stripTypeScriptTypes`). It installs as plain JavaScript and WebAssembly: no compiler, no native addon.
 
-The full surface is **198 tools (~43,200 tokens)** loaded into your context before the first call. If you only intend to BUY — generate an image for $0.03 — that is a fifth to a third of a context window spent on 191 tools you will never call.
+**Paying needs the LOCAL server.** An x402 payment is signed with a key, so the wallet-less remote (`mcp.run402.com/mcp`) cannot make one; it can only decode a challenge (`x402_price_check`).
 
-```
-RUN402_MCP_PROFILE=buyer npx -y run402-mcp     # 7 tools, ~740 tokens
-```
-
-Registers `generate_image` · `init` · `check_balance` · `wallet_status` · `lightning_wallet` · `wallet_export` · `request_faucet` · `redeem_voucher` — enough to bootstrap a wallet, fund it (Base Sepolia faucet, a promo code, or a mainnet address from `wallet_export`), confirm the money landed, and buy.
-
-Use the profile when the task is a purchase. Leave it unset when you may provision, deploy, or manage a project — the other 191 tools are how you do that.
-
-Default is unchanged when unset. An unknown profile name exits 1 listing the known profiles, rather than silently serving the full surface or nothing.
-
-**This must be the LOCAL server.** An x402 payment is signed with a key, so the wallet-less remote (`mcp.run402.com/mcp`) cannot make one — it can only decode a challenge (`x402_price_check`).
+The server acts as the wallet the CLI would pick in its working directory (`RUN402_WALLET`, else the nearest `.run402.json` binding, else the global default). Set `RUN402_WALLET` in the host's server config to pin one.
 
 ### Claude Desktop
 
