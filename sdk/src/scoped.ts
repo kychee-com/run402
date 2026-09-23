@@ -42,6 +42,10 @@ import type {
   TenantPaymentListResult,
   UsageReport,
   ValidateExposeOptions,
+  SqlBatchOptions,
+  SqlBatchResult,
+  SqlBatchStatement,
+  SqlResult,
 } from "./namespaces/projects.types.js";
 import type {
   AppDetails,
@@ -260,8 +264,11 @@ class ScopedProjects {
   getSchema(): Promise<SchemaReport> {
     return this.parent.projects.getSchema(this.projectId);
   }
-  sql(sql: string, params?: unknown[]): Promise<unknown> {
+  sql(sql: string, params?: unknown[]): Promise<SqlResult> {
     return this.parent.projects.sql(this.projectId, sql, params);
+  }
+  sqlBatch(statements: SqlBatchStatement[], opts?: SqlBatchOptions): Promise<SqlBatchResult> {
+    return this.parent.projects.sqlBatch(this.projectId, statements, opts);
   }
   rest<T = unknown>(table: string, options?: ProjectRestOptions): Promise<T> {
     return this.parent.projects.rest<T>(this.projectId, table, options);

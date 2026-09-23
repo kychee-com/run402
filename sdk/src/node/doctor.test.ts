@@ -151,6 +151,29 @@ describe("r.doctor — report shape and severity", () => {
     assert.equal(absent.checks[0]!.status, "skipped");
   });
 
+  it("retiring routes: calls to a retiring route are advisory and name the fix; an older gateway is skipped", async () => {
+    const report = await doctor({ only: ["retiring_routes"] }, {
+      "/agent/v1/me/status": {
+        ...BASE_STATUS,
+        retiring_routes: [
+          { project_id: "prj_fn", retirement_id: "project_admin_sql", legacy: "POST /projects/v1/admin/:project_id/sql (service key)", successor: "POST /projects/v1/:project_id/sql", phase: "warn", calls_7d: 12, caller_kinds: ["function"], function_names: ["nightly"], last_seen_at: "2026-09-23T00:00:00.000Z" },
+          { project_id: "prj_srv", retirement_id: "admin_v1_rest", legacy: "/admin/v1/rest/*", successor: "/projects/v1/:project_id/rest/*", phase: "warn", calls_7d: 3, caller_kinds: ["direct"], function_names: [], last_seen_at: "2026-09-23T00:00:00.000Z" },
+        ],
+      },
+    });
+    assert.equal(report.ok, true);
+    const check = report.checks[0]!;
+    assert.equal(check.name, "retiring_routes");
+    assert.equal(check.status, "warning");
+    const fixes = (check.value as { fixes: string[] }).fixes;
+    assert.match(fixes[0]!, /run402 functions rebuild --all --project prj_fn/);
+    assert.match(fixes[1]!, /call \/projects\/v1\/:project_id\/rest\/\* instead/);
+    const clean = await doctor({ only: ["retiring_routes"] }, { "/agent/v1/me/status": { ...BASE_STATUS, retiring_routes: [] } });
+    assert.equal(clean.checks[0]!.status, "ok");
+    const older = await doctor({ only: ["retiring_routes"] }, { "/agent/v1/me/status": BASE_STATUS });
+    assert.equal(older.checks[0]!.status, "skipped");
+  });
+
   it("buildDoctorReport fails an unknown status closed as blocking", () => {
     const report = buildDoctorReport([{ name: "x", status: "brand_new_status" }, { name: "y", status: "ok" }]);
     assert.equal(report.ok, false);

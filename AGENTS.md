@@ -225,7 +225,7 @@ Quick reference of the public surface (full package docs live in `run402-core`):
 - **`auth.sessions.endResponse()`** — sign-out.
 - **`auth.identities.link({ provider, subject, proof })`** — atomic nonce consumption + identity insert.
 - **`db(req?)`** — caller-context PostgREST client. Inside an SSR request with a verified actor, mints a 60s actor JWT (`sub`, `project_id`, `session_id`, `authz_version`) so `run402.current_user_id()` resolves in RLS without any client-side header plumbing.
-- **`adminDb()`** — service-key client. Routes to `/admin/v1/rest/*`. Use only when the function acts on behalf of the platform, not the caller.
+- **`adminDb()`** — service-key client. Routes to `/projects/v1/:project_id/rest/*` (and `.sql()` to `/projects/v1/:project_id/sql`). Use only when the function acts on behalf of the platform, not the caller.
 - **`adminDb().sql(query, params?)`** — raw parameterized SQL, always BYPASSRLS.
 - For per-user gating in functions OUTSIDE the cookie-session flow: read `req.headers.get("x-run402-user-id")` / `req.headers.get("x-run402-user-role")` directly (the gateway injects these when a `requireAuth` / `requireRole` deploy-spec gate ran). The bare `getUser(req)` / `getUserId(req)` / `getRole(req)` exports throw `R402_AUTH_UNKNOWN_EXPORT`. For the canonical cookie-session flow, use `auth.*` above.
 - **`email.send(opts)`** — send email from the project's mailbox (raw HTML or template).

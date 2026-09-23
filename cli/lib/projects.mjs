@@ -208,6 +208,7 @@ Examples:
 Usage:
   run402 projects sql "<query>" [--project <project_id>] [options]
   run402 projects sql --file <path> [--project <project_id>] [options]
+  run402 projects sql --batch <path> [--transaction all|each] [--project <project_id>]
 
 Legacy (still supported):
   run402 projects sql <prj_id> "<query>" [options]
@@ -220,11 +221,21 @@ Options:
                       prj_... positional is also still accepted)
   --file <path>       Read SQL from a file instead of an inline query
   --params '<json>'   JSON array of parameters for a parameterized query
+  --batch <path>      Run several statements from a JSON file: an array of
+                      { "sql": "...", "params": [...] } (one statement each)
+  --transaction <all|each>
+                      With --batch: "all" (default) rolls back every statement
+                      on the first failure; "each" commits each on its own
+
+Result: { rows, row_count, fields, statements, warnings }. warnings[] never
+changes the result: SCHEMA_CHANGE_OUTSIDE_MIGRATION means a schema change on
+a released project belongs in spec.database.migrations.
 
 Examples:
   run402 projects sql "SELECT * FROM users LIMIT 5" --project prj_abc123
   run402 projects sql "SELECT * FROM users WHERE id = $1" --params '[42]'
   run402 projects sql --file setup.sql --project prj_abc123
+  run402 projects sql --batch seed.json --transaction all --project prj_abc123
 `,
   costs: `run402 projects costs — Show admin-only per-project finance
 
@@ -671,10 +682,18 @@ async function sqlCmd(projectId, args = []) {
   let file = null;
   let query = null;
   let paramsRaw = null;
+  let batchFile = null;
+  let transaction = null;
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--file" && args[i + 1]) { file = args[++i]; }
     else if (args[i] === "--params" && args[i + 1]) { paramsRaw = args[++i]; }
+    else if (args[i] === "--batch" && args[i + 1]) { batchFile = args[++i]; }
+    else if (args[i] === "--transaction" && args[i + 1]) { transaction = args[++i]; }
     else if (!query && !args[i].startsWith("--")) { query = args[i]; }
+  }
+  if (batchFile) return sqlBatchCmd(projectId, batchFile, transaction, { query, file, paramsRaw });
+  if (transaction) {
+    fail({ code: "BAD_USAGE", message: "--transaction applies only with --batch <path>." });
   }
   if (file) validateRegularFile(file, "--file");
   const sql = file ? readFileSync(file, "utf-8") : query;
@@ -698,6 +717,38 @@ async function sqlCmd(projectId, args = []) {
   try {
     const data = await getSdk().projects.sql(projectId, sql, params);
     console.log(JSON.stringify(toCliSqlResult(data), null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+async function sqlBatchCmd(projectId, batchFile, transaction, others) {
+  if (others.query || others.file || others.paramsRaw) {
+    fail({ code: "BAD_USAGE", message: "--batch takes its statements from the file; drop the inline query, --file, and --params." });
+  }
+  if (transaction !== null && transaction !== "all" && transaction !== "each") {
+    fail({ code: "BAD_USAGE", message: "--transaction must be all or each." });
+  }
+  validateRegularFile(batchFile, "--batch");
+  let parsed;
+  try {
+    parsed = JSON.parse(readFileSync(batchFile, "utf-8"));
+  } catch (err) {
+    fail({ code: "BAD_USAGE", message: `--batch ${batchFile} is not valid JSON: ${err.message}` });
+  }
+  const statements = Array.isArray(parsed) ? parsed : parsed?.statements;
+  if (!Array.isArray(statements) || statements.length === 0) {
+    fail({
+      code: "BAD_USAGE",
+      message: "--batch expects a JSON array of { \"sql\": \"...\", \"params\": [...] } statements.",
+      hint: "One statement per entry, e.g. [{\"sql\":\"INSERT INTO t VALUES ($1)\",\"params\":[1]},{\"sql\":\"SELECT * FROM t\"}]",
+    });
+  }
+  const tx = transaction ?? (Array.isArray(parsed) ? undefined : parsed?.transaction);
+  try {
+    const data = await getSdk().projects.sqlBatch(projectId, statements, tx ? { transaction: tx } : {});
+    console.log(JSON.stringify(data, null, 2));
+    if (data && data.status === "partial") process.exitCode = 1;
   } catch (err) {
     reportSdkError(err);
   }
@@ -875,7 +926,7 @@ const FLAGS_BY_SUB = {
   "get-expose": { known: ["--project"], values: ["--project"] },
   "promote-user": { known: ["--project"], values: ["--project"] },
   "demote-user": { known: ["--project"], values: ["--project"] },
-  sql: { known: ["--project", "--file", "--params"], values: ["--project", "--file", "--params"] },
+  sql: { known: ["--project", "--file", "--params", "--batch", "--transaction"], values: ["--project", "--file", "--params", "--batch", "--transaction"] },
   costs: { known: ["--project", "--window"], values: ["--project", "--window"] },
   "apply-expose": { known: ["--project", "--file"], values: ["--project", "--file"] },
   "validate-expose": {

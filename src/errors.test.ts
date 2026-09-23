@@ -416,14 +416,14 @@ describe("formatApiError", () => {
           message: "service_role is not permitted on /rest/v1/*",
           code: "ADMIN_REQUIRED",
           category: "auth",
-          hint: "Use /admin/v1/rest/* with Bearer <service_key>",
+          hint: "Use /projects/v1/:project_id/rest/* with Bearer <service_key>",
         },
       },
       "querying REST API",
     );
     const text = result.content[0]!.text;
     assert.ok(text.includes("Code: `ADMIN_REQUIRED`"));
-    assert.ok(text.includes("/admin/v1/rest/*"));
+    assert.ok(text.includes("/projects/v1/:project_id/rest/*"));
     assert.ok(!text.includes("lease may have expired"));
   });
 

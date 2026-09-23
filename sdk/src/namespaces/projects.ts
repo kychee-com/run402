@@ -19,6 +19,10 @@ import { LocalError } from "../errors.js";
 import { requireProjectCredentials } from "../project-credentials.js";
 import type { ExposeManifest } from "./deploy.types.js";
 import type {
+  SqlBatchOptions,
+  SqlBatchResult,
+  SqlBatchStatement,
+  SqlResult,
   ExposeManifestValidationInput,
   ExposeManifestValidationIssue,
   ExposeManifestValidationResult,
@@ -60,7 +64,7 @@ function normalizeListProjectsResult(result: ListProjectsResult | { projects?: W
 }
 
 // The SQL response is returned VERBATIM in the wire shape:
-// { status, schema, rows, row_count, fields, statements } (snake_case, docs/style.md).
+// { status, schema, rows, row_count, fields, statements, warnings } (snake_case, docs/style.md).
 // A former normalization here renamed row_count -> rowCount, which made the
 // SDK the odd layer out — the gateway, the in-function `adminDb().sql()`
 // runtime, and the CLI all speak row_count. One logical operation, one shape.
@@ -317,16 +321,20 @@ export class Projects {
     });
   }
 
-  /** Run SQL against the project's database using the service key. Returns
-   *  the gateway envelope verbatim: `{ status, schema, rows, row_count, fields,
-   *  statements }`. `rows` and `fields` come from the last statement and
+  /** Run SQL against the project's database using the service key
+   *  (`POST /projects/v1/:project_id/sql`). Returns the gateway envelope
+   *  verbatim: `{ status, schema, rows, row_count, fields, statements,
+   *  warnings }`. `rows` and `fields` come from the last statement and
    *  `row_count` is that statement's count; `statements[]` carries each
-   *  statement's `{ command, row_count }` for a multi-statement batch. */
-  async sql(id: string, sql: string, params?: unknown[]): Promise<unknown> {
+   *  statement's `{ command, row_count }` for a multi-statement text.
+   *  `warnings[]` never changes the result: `SCHEMA_CHANGE_OUTSIDE_MIGRATION`
+   *  means a schema change on a released project belongs in a migration, and
+   *  `MULTI_STATEMENT_TEXT_BODY` points at {@link sqlBatch}. */
+  async sql(id: string, sql: string, params?: unknown[]): Promise<SqlResult> {
     const keys = await requireProjectCredentials(this.client, id, "running SQL");
 
     const useParams = Array.isArray(params) && params.length > 0;
-    return this.client.request<unknown>(`/projects/v1/admin/${id}/sql`, {
+    return this.client.request<SqlResult>(`/projects/v1/${id}/sql`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${keys.service_key}`,
@@ -335,6 +343,22 @@ export class Projects {
       body: useParams ? { sql, params } : undefined,
       rawBody: useParams ? undefined : sql,
       context: "running SQL",
+    });
+  }
+
+  /** Run several statements (1 to 100, one statement each) with an explicit
+   *  transaction (`POST /projects/v1/:project_id/sql/batch`). With
+   *  `transaction: "all"` (default) the first failure rolls back the batch and
+   *  throws `SQL_BATCH_STATEMENT_FAILED` naming the statement's index; with
+   *  `"each"` every statement commits on its own and `results[i].status` says
+   *  how each went. */
+  async sqlBatch(id: string, statements: SqlBatchStatement[], opts: SqlBatchOptions = {}): Promise<SqlBatchResult> {
+    const keys = await requireProjectCredentials(this.client, id, "running a SQL batch");
+    return this.client.request<SqlBatchResult>(`/projects/v1/${id}/sql/batch`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${keys.service_key}` },
+      body: { statements, transaction: opts.transaction ?? "all" },
+      context: "running a SQL batch",
     });
   }
 
@@ -367,10 +391,11 @@ export class Projects {
     if (method !== "GET") headers.Prefer = "return=representation";
 
     // The gateway rejects the service_role on the public PostgREST path
-    // (/rest/v1/*), so service-key REST is routed through the admin REST
-    // route (/admin/v1/rest/*). Anon keys use the public path.
+    // (/rest/v1/*), so service-key REST is routed through the project's
+    // service REST route (/projects/v1/:project_id/rest/*). Anon keys use the
+    // public path.
     const path = useService
-      ? `/admin/v1/rest/${encodeURIComponent(table)}${query}`
+      ? `/projects/v1/${id}/rest/${encodeURIComponent(table)}${query}`
       : `/rest/v1/${encodeURIComponent(table)}${query}`;
 
     try {

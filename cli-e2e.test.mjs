@@ -2098,7 +2098,7 @@ describe("CLI e2e happy path", () => {
       captureStop();
       globalThis.fetch = prevFetch;
     }
-    assert.ok(seenUrl && seenUrl.includes("/projects/v1/admin/prj_test123/sql"),
+    assert.ok(seenUrl && seenUrl.includes("/projects/v1/prj_test123/sql"),
       `sql should hit the active project URL; got: ${seenUrl}`);
     assert.ok(seenBody && seenBody.includes("SELECT 1"),
       `request body should contain the SQL query "SELECT 1"; got: ${seenBody}`);

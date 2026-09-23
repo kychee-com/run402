@@ -41,6 +41,7 @@ export const DOCTOR_CHECK_NAMES = [
   "tier",
   "account_health",
   "runtime_staleness",
+  "retiring_routes",
   "recovery_posture",
   "vault",
   "source_scan",
@@ -367,7 +368,7 @@ export async function runDoctor(r: Run402, opts: DoctorOptions = {}): Promise<Do
 
   // 6. Account health, runtime staleness, and recovery posture all ride ONE
   // `GET /agent/v1/me/status` read, skipped entirely when none is wanted.
-  if (wanted("account_health") || wanted("runtime_staleness") || wanted("recovery_posture")) try {
+  if (wanted("account_health") || wanted("runtime_staleness") || wanted("retiring_routes") || wanted("recovery_posture")) try {
     const status = (await r.me.status()) as unknown as Record<string, any>;
     const gaps: string[] = [];
     if (status.contact.email_status !== "verified") {
@@ -434,6 +435,38 @@ export async function runDoctor(r: Run402, opts: DoctorOptions = {}): Promise<Do
       }
     }
 
+    // 6b'. Retiring routes: calls this principal's projects made to a route
+    // being retired (surface-retirement), with the successor and the fix.
+    if (wanted("retiring_routes")) {
+      const retiring = (status as { retiring_routes?: Array<Record<string, unknown>> }).retiring_routes;
+      if (!Array.isArray(retiring)) {
+        checks.push({
+          name: "retiring_routes",
+          status: "skipped",
+          ...(verbose && { hint: "account status has no 'retiring_routes' block; requires a newer gateway." }),
+        });
+      } else if (retiring.length === 0) {
+        checks.push({ name: "retiring_routes", status: "ok", value: { callers: 0 } });
+      } else {
+        const fixes = retiring.map((r) => {
+          const kinds = Array.isArray(r.caller_kinds) ? (r.caller_kinds as string[]) : [];
+          const fns = Array.isArray(r.function_names) ? (r.function_names as string[]) : [];
+          const fix = kinds.includes("function") || fns.length > 0
+            ? `run402 functions rebuild --all --project ${String(r.project_id)}`
+            : kinds.some((k) => k === "cli" || k === "sdk" || k === "mcp" || k === "sandbox")
+              ? "npm i -g run402@latest"
+              : `call ${String(r.successor)} instead`;
+          return `${String(r.project_id)}: ${String(r.calls_7d)} call(s) in 7 days to ${String(r.legacy)} (${kinds.join(", ") || "unknown caller"}${fns.length ? `: ${fns.join(", ")}` : ""}); fix: ${fix}`;
+        });
+        checks.push({
+          name: "retiring_routes",
+          status: "warning",
+          value: { callers: retiring.length, routes: retiring, fixes },
+          hint: `Your projects still call routes that are being retired and will answer 410 once retired. ${fixes.join(" · ")}`,
+        });
+      }
+    }
+
     // 6c. Org recovery posture: evidence levels, never guarantees.
     if (wanted("recovery_posture")) {
       const posture = status.recovery_posture;
@@ -480,6 +513,7 @@ export async function runDoctor(r: Run402, opts: DoctorOptions = {}): Promise<Do
       ...(verbose && { hint: "GET /agent/v1/me/status not reachable." }),
     });
     if (wanted("runtime_staleness")) checks.push({ name: "runtime_staleness", status: "skipped", message: describeCheckFailure("account status check", err) });
+    if (wanted("retiring_routes")) checks.push({ name: "retiring_routes", status: "skipped", message: describeCheckFailure("account status check", err) });
     if (wanted("recovery_posture")) checks.push({ name: "recovery_posture", status: "skipped", message: describeCheckFailure("account status check", err) });
   }
 

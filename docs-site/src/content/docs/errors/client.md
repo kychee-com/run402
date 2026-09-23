@@ -869,6 +869,12 @@ Owner: `public:cli/lib/repos.mjs`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
+<h2 id="ROUTE_RETIRING">ROUTE_RETIRING</h2>
+
+Owner: `public:sdk/src/namespaces/projects.types.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
 <h2 id="RUN_ARGUMENT_NOT_CLONEABLE">RUN_ARGUMENT_NOT_CLONEABLE</h2>
 
 Owner: `public:src/sandbox-proxy.ts`.
@@ -992,6 +998,12 @@ The client could not complete this operation. Inspect its typed error kind, mess
 <h2 id="SECRET_REQUIRES_CLI">SECRET_REQUIRES_CLI</h2>
 
 Owner: `public:sdk/src/errors.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="SERVICE_KEY_IN_USER_REQUEST">SERVICE_KEY_IN_USER_REQUEST</h2>
+
+Owner: `public:sdk/src/node/source-scan.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 

@@ -379,6 +379,37 @@ export function scanFileContent(content: string, opts: ScanOptions = {}) {
     }
   }
 
+  // 9) The service key inside a user's request. A handler that reads the
+  //    current user (`auth.user()`, `auth.requireUser()`, …) and then calls
+  //    `adminDb()` answers that user's request with a key that bypasses row-
+  //    level security, so a bug in the handler's own checks exposes every row.
+  //    `db(req)` runs as the user and lets RLS decide. Advisory: some handlers
+  //    do need the service key after an explicit check (an admin action), and
+  //    say so with: // run402-allow-admin-db: <reason>
+  if (/\bauth\s*\.\s*(?:user|requireUser|requireRole|requireMembership)\s*\(|\brequireUser\s*\(/.test(content)) {
+    const adminDbRegex = /\badminDb\s*\(\s*\)/g;
+    let adminMatch;
+    while ((adminMatch = adminDbRegex.exec(content)) !== null) {
+      const lineIdx = lineIndexFor(adminMatch.index);
+      const thisLine = lines[lineIdx] ?? "";
+      const prevLine = lineIdx > 0 ? (lines[lineIdx - 1] ?? "") : "";
+      if (/\/\/\s*run402-allow-admin-db/i.test(thisLine) || /\/\/\s*run402-allow-admin-db/i.test(prevLine)) continue;
+      findings.push({
+        code: "SERVICE_KEY_IN_USER_REQUEST",
+        severity: SCAN_SEVERITY.WARN,
+        file: filePath,
+        line: lineIdx + 1,
+        message:
+          "adminDb() uses the project service key, which bypasses row-level security, in a file that reads the current user. " +
+          "A request made for that user should run as that user: db(req) lets RLS decide which rows it sees.",
+        fix:
+          "Use db(req) for the user's reads and writes. If this handler needs the service key after its own check (an admin action), " +
+          "silence with: // run402-allow-admin-db: <reason>",
+        docs: "https://run402.com/errors/#SERVICE_KEY_IN_USER_REQUEST",
+      });
+    }
+  }
+
   return findings;
 }
 

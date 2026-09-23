@@ -1701,6 +1701,9 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="ROTATION_ID_MISMATCH"></a>
 [`ROTATION_ID_MISMATCH`](/errors/gateway/#ROTATION_ID_MISMATCH)
 
+<a id="ROUTE_RETIRING"></a>
+[`ROUTE_RETIRING`](/errors/client/#ROUTE_RETIRING)
+
 <a id="ROUTED_FUNCTION_INVOKE_FAILED"></a>
 [`ROUTED_FUNCTION_INVOKE_FAILED`](/errors/gateway/#ROUTED_FUNCTION_INVOKE_FAILED)
 
@@ -1784,6 +1787,9 @@ The catalog records owning source locations and pinned external contributions. A
 
 <a id="SECRET_REQUIRES_CLI"></a>
 [`SECRET_REQUIRES_CLI`](/errors/client/#SECRET_REQUIRES_CLI)
+
+<a id="SERVICE_KEY_IN_USER_REQUEST"></a>
+[`SERVICE_KEY_IN_USER_REQUEST`](/errors/client/#SERVICE_KEY_IN_USER_REQUEST)
 
 <a id="SERVICE_UNAVAILABLE"></a>
 [`SERVICE_UNAVAILABLE`](/errors/gateway/#SERVICE_UNAVAILABLE)

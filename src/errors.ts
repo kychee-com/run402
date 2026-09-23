@@ -238,7 +238,7 @@ function addCodeGuidance(
       lines.push(`\nNext step: This operation is not permitted. Some SQL — CREATE ROLE, CREATE SCHEMA, CREATE EXTENSION, GRANT — needs cluster privileges that run402 projects don't grant; rework it within your project's schema. Otherwise verify the key is authorized for this action.`);
       return true;
     case "ADMIN_REQUIRED":
-      lines.push(`\nNext step: Use the admin path for this operation — the admin REST endpoint (\`/admin/v1/rest/*\` with the service key) or a \`run\` snippet \`await r.project(id).sql(query)\` for SQL.`);
+      lines.push(`\nNext step: Use the admin path for this operation — the project's service REST endpoint (\`/projects/v1/:project_id/rest/*\` with the service key) or a \`run\` snippet \`await r.project(id).sql(query)\` for SQL.`);
       return true;
     case "LAST_OWNER":
       lines.push(

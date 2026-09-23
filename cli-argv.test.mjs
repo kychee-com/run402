@@ -1611,12 +1611,28 @@ describe("project-id heuristic", () => {
     captureStart();
     await run("sql", ["SELECT 1"]);
     captureStop();
-    assert.equal(calls.some((c) => /\/projects\/v1\/admin\/prj_test123\/sql$/.test(c.path)), true);
+    assert.equal(calls.some((c) => /\/projects\/v1\/prj_test123\/sql$/.test(c.path)), true);
 
     calls = [];
     const err = await expectExit1(() => run("sql", ["badly-typed-id", "DELETE FROM users"]));
     assert.equal(err.code, "BAD_PROJECT_ID");
     assert.match(err.message, /badly-typed-id/);
+    assert.equal(calls.length, 0);
+  });
+
+  it("projects sql --batch posts the file's statements to the batch route", async () => {
+    const { run } = await import("./cli/lib/projects.mjs");
+    const batchFile = join(tempDir, "seed.json");
+    writeFileSync(batchFile, JSON.stringify([{ sql: "INSERT INTO t VALUES ($1)", params: [1] }, { sql: "SELECT * FROM t" }]));
+    captureStart();
+    await run("sql", ["--batch", batchFile, "--transaction", "each"]);
+    captureStop();
+    const call = calls.find((c) => /\/projects\/v1\/prj_test123\/sql\/batch$/.test(c.path));
+    assert.ok(call, `expected a batch call; got ${calls.map((c) => c.path).join(", ")}`);
+
+    calls = [];
+    const err = await expectExit1(() => run("sql", ["SELECT 1", "--transaction", "each"]));
+    assert.equal(err.code, "BAD_USAGE");
     assert.equal(calls.length, 0);
   });
 

@@ -6367,6 +6367,16 @@
       "topic": "/errors/gateway/#ROTATION_ID_MISMATCH"
     },
     {
+      "code": "ROUTE_RETIRING",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/namespaces/projects.types.ts"
+        }
+      ],
+      "topic": "/errors/client/#ROUTE_RETIRING"
+    },
+    {
       "code": "ROUTED_FUNCTION_INVOKE_FAILED",
       "owners": [
         {
@@ -6661,6 +6671,16 @@
         }
       ],
       "topic": "/errors/client/#SECRET_REQUIRES_CLI"
+    },
+    {
+      "code": "SERVICE_KEY_IN_USER_REQUEST",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/node/source-scan.ts"
+        }
+      ],
+      "topic": "/errors/client/#SERVICE_KEY_IN_USER_REQUEST"
     },
     {
       "code": "SERVICE_UNAVAILABLE",

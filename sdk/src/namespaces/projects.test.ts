@@ -746,7 +746,7 @@ describe("projects admin helpers (SDK/CLI parity)", () => {
     const sdk = makeSdk(makeCreds(), fetch);
     const result = await sdk.projects.sql("prj_known", "SELECT $1::int AS n", [42]);
 
-    assert.equal(calls[0]!.url, "https://api.example.test/projects/v1/admin/prj_known/sql");
+    assert.equal(calls[0]!.url, "https://api.example.test/projects/v1/prj_known/sql");
     assert.equal(calls[0]!.method, "POST");
     assert.equal(calls[0]!.headers["Authorization"], "Bearer service_xxx");
     assert.equal(calls[0]!.headers["Content-Type"], "application/json");
@@ -757,6 +757,19 @@ describe("projects admin helpers (SDK/CLI parity)", () => {
     // Uniform-JSON contract: the SDK passes the gateway body through verbatim
     // (snake_case row_count) — no camelCase renaming layer.
     assert.deepEqual(result, wireBody);
+  });
+
+  it("runs a SQL batch with an explicit transaction", async () => {
+    const wireBody = { status: "ok", schema: "p0001", transaction: "each", results: [{ index: 0, status: "ok", command: "SELECT", rows: [], row_count: 0, fields: [] }], warnings: [] };
+    const { fetch, calls } = mockFetch(() => jsonResponse(wireBody));
+    const sdk = makeSdk(makeCreds(), fetch);
+    const result = await sdk.projects.sqlBatch("prj_known", [{ sql: "SELECT 1" }], { transaction: "each" });
+    assert.equal(calls[0]!.url, "https://api.example.test/projects/v1/prj_known/sql/batch");
+    assert.equal(calls[0]!.headers["Authorization"], "Bearer service_xxx");
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), { statements: [{ sql: "SELECT 1" }], transaction: "each" });
+    assert.deepEqual(result, wireBody);
+    await sdk.project("prj_known").projects.sqlBatch([{ sql: "SELECT 2" }]);
+    assert.deepEqual(JSON.parse(calls[1]!.body as string), { statements: [{ sql: "SELECT 2" }], transaction: "all" });
   });
 
   it("runs raw SQL as text/plain when no params are provided (GH-181)", async () => {
@@ -810,9 +823,9 @@ describe("projects admin helpers (SDK/CLI parity)", () => {
       keyType: "service",
     });
 
-    // service key routes through the admin REST path (the gateway rejects
-    // service_role on /rest/v1/*); anon keys keep the public /rest/v1/ path.
-    assert.equal(calls[0]!.url, "https://api.example.test/admin/v1/rest/todos");
+    // service key routes through the project's service REST path (the gateway
+    // rejects service_role on /rest/v1/*); anon keys keep the public /rest/v1/ path.
+    assert.equal(calls[0]!.url, "https://api.example.test/projects/v1/prj_known/rest/todos");
     assert.equal(calls[0]!.method, "POST");
     assert.equal(calls[0]!.headers["apikey"], "service_xxx");
     assert.equal(calls[0]!.headers["Authorization"], "Bearer service_xxx");

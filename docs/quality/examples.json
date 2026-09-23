@@ -1340,12 +1340,12 @@
     "line": 41,
     "language": "",
     "kind": "output-or-pseudocode",
-    "sha256": "8a370f50a0481fe750803b9551c5893ff5560e19992a394381ebbb5cbb4b7329",
+    "sha256": "55514dec94724f9c5bff2d9670067425e19e72c45a8309c9a545a4b4055fd9dc",
     "validation": "sdk-snippets"
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 93,
+    "line": 99,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "5575bb80fc51eff29b27dc8beba59f7fb7c2582899a519ce758113cc3ec8cbfe",
@@ -1353,7 +1353,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 121,
+    "line": 127,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "5adef13992d8bbc5916795891923219f35f92442ef96e19d525189b8746b00ef",
@@ -1361,7 +1361,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 127,
+    "line": 133,
     "language": "ts",
     "kind": "application-or-sdk",
     "sha256": "4a421ffef61b742bb1e06c578db28071c0759c440cad3b68e58db25b17c54046",
@@ -1369,7 +1369,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 150,
+    "line": 156,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "01e10439a193d1df672bb22b3a0e5426a72224db3be576f636ec76e2505e38f5",
@@ -1377,7 +1377,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 167,
+    "line": 173,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "1c43d36ffe14e56874c792edfd21db93e8add5dce798fbc304f04a62b408d715",
@@ -1385,7 +1385,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 186,
+    "line": 192,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "8e64b93712e7e57ee00ac9e95cc7d5125eaafe02ea9157ae2b1c56d86aa30439",
@@ -1393,7 +1393,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 230,
+    "line": 236,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "ed421e87e4ddc14652eb4d83b12494dac604c323dd5489bdc0316090dc1bcf9f",
@@ -1401,7 +1401,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 243,
+    "line": 249,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "966f0989a82100f6df5ba50e2e36cf29950652832abf26b8b6ae5eb9a40d78f1",
@@ -1409,7 +1409,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 263,
+    "line": 269,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "efdf32e0942bebabd3f37e30ef06e622cde0c2f6b51cba7275c70ad5f6177fef",
@@ -1417,7 +1417,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 287,
+    "line": 293,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "a71cc268f5ea42ad195f9beeac100e63b1b3b39cda3e88509be3c6e9392311ec",
@@ -1425,7 +1425,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 309,
+    "line": 315,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "e8bb959dcd7196702e720d6a05a7dc785a2a5da8bc02dc9bdd93b3117351b002",
@@ -1433,7 +1433,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 331,
+    "line": 337,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "7f32ebc07612ae48006c0ede2432c3e8f9a63a28905e21e0e0d4378e4a01271a",
@@ -1441,7 +1441,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 346,
+    "line": 352,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "619bfbed15598eca16b10bc1bf0de1b7e29865e07921802a1e47fc34e6a18573",
@@ -1449,7 +1449,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 362,
+    "line": 368,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "e2c0f5a9e4caa14b54fbdfc994bc58549b63fba9558f847db981dc858f13866b",
@@ -1457,7 +1457,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 377,
+    "line": 383,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "862ae979685693e17c99f76ddaa0791cbff5544c722cbbb1963cde68f71a92cb",
@@ -1465,7 +1465,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 389,
+    "line": 395,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "865ea22af4ba6c2a2e46b11beb7c645c6aa478cf0cc6df93d6d3bdc894ed751f",
@@ -1473,7 +1473,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 478,
+    "line": 484,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "0c8b269909cfec85b5dd1fc54d993c1feb0ba656381490a267835858dd5ad55c",
@@ -1481,7 +1481,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 503,
+    "line": 509,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "2af22368bda57c135daed92129272e02a67335f7c6038fc88bb376f32ddafff1",
@@ -1489,7 +1489,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 524,
+    "line": 530,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "e8693be9ddfd7a86f4e72a61d10cad8699cc45f25be2d8affd9e7f10ff6f5d55",
@@ -1497,7 +1497,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 542,
+    "line": 548,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "583cf7ff7dab86ed1324deaf84acfcbe61ffa55368a7d4969ccbafe14dacafa0",
@@ -1505,7 +1505,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 592,
+    "line": 598,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "fe61c73e2732c742efe3e049a33c63865705771e5398b7fc62045ece2c97e518",
@@ -1513,7 +1513,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 612,
+    "line": 618,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "d3984f12fb77d18890653a68506fb72552a665e6ba5b8f5ba93c1882b7767e16",
@@ -1521,7 +1521,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 622,
+    "line": 628,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "5baacc3150fd1def7250b54a9e3445a8dad0248d83e8e313c0313b62760c966c",
@@ -1529,7 +1529,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 638,
+    "line": 644,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "f0ccabec238ffe95db8e8fd01ef3d0c33dbdd42c2a831ca7ea9b736487c856ad",
@@ -1537,7 +1537,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 653,
+    "line": 659,
     "language": "ts",
     "kind": "application-or-sdk",
     "sha256": "f3d77ac419a157f428f2a9de6e86367f3e1d6405093d6a47dabacbd5eedb8805",
@@ -1545,7 +1545,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 677,
+    "line": 683,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "72905498bfb955d92d5db718f04c5ee3537340864a5ef71aa5a5105915e081d4",
@@ -1553,7 +1553,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 700,
+    "line": 706,
     "language": "ts",
     "kind": "application-or-sdk",
     "sha256": "763355b7b8c15224255b57da73915ed31270eede8cd8c1fc4261334566b3310f",
@@ -1561,7 +1561,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 725,
+    "line": 731,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "b781b1c4f79e50f8004b2c1d1ea535b1953dda55b1073aabe383acb3899690c3",
@@ -1569,7 +1569,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 789,
+    "line": 795,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "78d101a7b1d3b1ed9ddc9c0c8a4e6f343de6ef839e0c5c7f32ec0a11200fc4d5",
@@ -1577,7 +1577,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 803,
+    "line": 809,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "00e98c05c84eff524913a34c8df20b4761893dc5f9c70af8ccf917b740fd64bb",
@@ -1585,7 +1585,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 833,
+    "line": 839,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "d54ee6b7ac626e713215bd52d61f4640cb627a8f1fe3c2ccec6825b26cf5f35a",
@@ -1593,7 +1593,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 879,
+    "line": 885,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "cac93a376125ec2efbdedc28d73597ad82c939a6aa67d8fcf1dec41568825807",
@@ -1601,7 +1601,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 895,
+    "line": 901,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "7404b9b9c52ccf1f03f4da4d95d40163bda5fa760e5451c3d0f9fab06ec1510c",
@@ -1609,7 +1609,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 930,
+    "line": 936,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "0d8e9cde1cc3c0988b06c3565da22cf15c49d175cf0971d70eca4f6798204386",
@@ -1617,7 +1617,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 953,
+    "line": 959,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "5283d3a932ae7e91191701d514a1301150fc6b6195a485a151de1937fa7c7794",
@@ -1625,7 +1625,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 970,
+    "line": 976,
     "language": "ts",
     "kind": "application-or-sdk",
     "sha256": "622d943a6afd8f4d313b763dd9cdc5e15f6feeece3c3273ae1d5c2526425107d",
@@ -1633,7 +1633,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 984,
+    "line": 990,
     "language": "ts",
     "kind": "application-or-sdk",
     "sha256": "40b15cc238bb06f7ad7c53f6b0308a05afa977b65f39ba953e664246105655e1",
@@ -1641,7 +1641,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 1014,
+    "line": 1020,
     "language": "ts",
     "kind": "application-or-sdk",
     "sha256": "c84ce8ca2ed45c4e4a56ead69bf2ef908278a5cd52477ee364bb5143b97b09c1",
@@ -1649,7 +1649,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 1065,
+    "line": 1071,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "4992392c9ad79ca14fda3d5257ed8d594455da78b9e3d92be33117591bf1c8e3",
@@ -1657,7 +1657,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 1091,
+    "line": 1097,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "911780855ea623e9590b6e1e4c31079372017beb9c1ee43e64f8225a08f9d00e",
@@ -1665,7 +1665,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 1153,
+    "line": 1159,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "af91383acf101a4f42d623c30c2e3511938d78ef4dc60035e9c6c31c32071c57",
@@ -1673,7 +1673,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 1192,
+    "line": 1198,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "e55023b22619495044a0f94d1d59f88c14865f789aafa1cc4d5c51ef9842a977",
@@ -1681,7 +1681,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 1206,
+    "line": 1212,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "e7bd9cb74410a02bec826530ac4ce2741d16f53cd9baa2d585b8bc8c0a5074c5",
@@ -1689,7 +1689,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 1250,
+    "line": 1256,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "d061a7c31d1534fbb8508903733215d74ac621c9adbf98214b5b02e0e8d1863f",
@@ -1697,7 +1697,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 1285,
+    "line": 1291,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "0fb5fe5c19774ee760c0288ff42607bd3c246d6b0cdc30fcedbc8b5ae9f36af6",
@@ -1705,7 +1705,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 1309,
+    "line": 1315,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "283a10ebf8ff2bee2bbe0f140c3c51df66d2ba52d8afd6119dbc81c2cf84fcee",
@@ -1713,7 +1713,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 1336,
+    "line": 1342,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "29f95d288e470a1d15c1cdce00736757e99900f946d74cd9eb1de2b6558ffab0",
@@ -1721,7 +1721,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 1358,
+    "line": 1364,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "ed207aa8ff7c025089fd174c53277f3d112f2aae55622e6912789019e98feaed",
@@ -1729,7 +1729,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 1371,
+    "line": 1377,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "57f406ef51c0a82ca47fda5d666e1546df0e15c56cb35678867afb1111198e39",
@@ -1737,7 +1737,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 1399,
+    "line": 1405,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "35ca68803cd1b5f10f24b1d91f5fe75d3d71c65ba9d2c0f39f5d89aeaa877ca8",
@@ -1745,7 +1745,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 1406,
+    "line": 1412,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "ab99c58337ffb3cb33a4e82a4bd1cd53c5d1c05e7fccc5c67416c280d72c1856",
@@ -1753,7 +1753,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 1423,
+    "line": 1429,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "f39d630716b5df5df61178cd727f89be5860062de63edd4cf9efc8af05f2f0a5",
@@ -1761,7 +1761,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 1432,
+    "line": 1438,
     "language": "ts",
     "kind": "application-or-sdk",
     "sha256": "d691908e929a378e71014d8b59cb5537348f992ffd884e7229231830659715f4",
@@ -1769,7 +1769,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 1446,
+    "line": 1452,
     "language": "ts",
     "kind": "application-or-sdk",
     "sha256": "49b817d3aac2abf967a50a690f5e70897c107d3dec5a607ede995becd2c59efe",
@@ -1777,7 +1777,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 1472,
+    "line": 1478,
     "language": "ts",
     "kind": "application-or-sdk",
     "sha256": "c19d68d54ca3d88e3f187be9618a47dc9654ba35abdf8bd9799dd786433c721e",
@@ -1785,7 +1785,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 1485,
+    "line": 1491,
     "language": "ts",
     "kind": "application-or-sdk",
     "sha256": "a42bfdc2fc1a1dd8ee62e637d5884151af0b3295c7297304deb7a58ccdd66ee1",
@@ -1793,7 +1793,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 1499,
+    "line": 1505,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "e934b8b033e47b9f194340c19c00c346b6934c5764a8e5a89e3a6b41faff8b95",
@@ -1801,7 +1801,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 1534,
+    "line": 1540,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "5e8e12c23b9bb6fd744daaae19b4ceb88ac83a1d562ec6120af26fad6c023318",
@@ -1809,7 +1809,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 1544,
+    "line": 1550,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "15087e74a3f0f5a2a28e5730ab4c71d5230dc95b18a21e21eb816cacbc84d8d3",
@@ -1817,7 +1817,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 1569,
+    "line": 1575,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "0eac250cfbb4f027c2d3471db7e240f9740d98c4fb5ae1694198620b0f2bb57e",
@@ -1825,7 +1825,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 1607,
+    "line": 1613,
     "language": "ts",
     "kind": "application-or-sdk",
     "sha256": "1273a5d793c6fbbcab7e20b2ac7abad4437e58cef386f59fae923147b7fe8fe2",

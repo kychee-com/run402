@@ -2233,6 +2233,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="ROTATION_ID_MISMATCH"></a>
 [`ROTATION_ID_MISMATCH`](/errors/gateway/#ROTATION_ID_MISMATCH)
 
+<a id="route_retiring"></a>
+<a id="ROUTE_RETIRING"></a>
+[`ROUTE_RETIRING`](/errors/client/#ROUTE_RETIRING)
+
 <a id="routed_function_invoke_failed"></a>
 <a id="ROUTED_FUNCTION_INVOKE_FAILED"></a>
 [`ROUTED_FUNCTION_INVOKE_FAILED`](/errors/gateway/#ROUTED_FUNCTION_INVOKE_FAILED)
@@ -2344,6 +2348,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="secret_requires_cli"></a>
 <a id="SECRET_REQUIRES_CLI"></a>
 [`SECRET_REQUIRES_CLI`](/errors/client/#SECRET_REQUIRES_CLI)
+
+<a id="service_key_in_user_request"></a>
+<a id="SERVICE_KEY_IN_USER_REQUEST"></a>
+[`SERVICE_KEY_IN_USER_REQUEST`](/errors/client/#SERVICE_KEY_IN_USER_REQUEST)
 
 <a id="service_unavailable"></a>
 <a id="SERVICE_UNAVAILABLE"></a>

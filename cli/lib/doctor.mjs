@@ -51,7 +51,8 @@ Output:
               api_reachable error, tier inactive / frozen / past_due /
               dormant / missing / error, error-severity source_scan findings
     advisory  a warning that never stops a deploy: account_health,
-              recovery_posture, vault, runtime_staleness, cli_update gaps
+              recovery_posture, vault, runtime_staleness, retiring_routes,
+              cli_update gaps
     info      ok / skipped / unknown
   Agents: branch on \`ok\`; read \`warnings[]\` (one entry per gap) for the
   non-blocking gaps and \`blocking[]\` for what to fix when \`ok\` is false.

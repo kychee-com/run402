@@ -519,3 +519,32 @@ describe("scanSourceFiles — explicit file list (GH-409)", () => {
     );
   });
 });
+
+describe("scanFileContent — the service key inside a user's request (SERVICE_KEY_IN_USER_REQUEST)", () => {
+  it("flags adminDb() in a file that reads the current user", () => {
+    const content = [
+      'import { adminDb, auth } from "@run402/functions";',
+      "const user = await auth.requireUser();",
+      'const rows = await adminDb().from("posts").select("*");',
+    ].join("\n");
+    const f = scanFileContent(content).find((x) => x.code === "SERVICE_KEY_IN_USER_REQUEST");
+    assert.ok(f, "expected a SERVICE_KEY_IN_USER_REQUEST finding");
+    assert.equal(f.severity, SCAN_SEVERITY.WARN);
+    assert.equal(f.line, 3);
+    assert.match(f.fix, /db\(req\)/);
+  });
+
+  it("does not flag adminDb() in a file that never reads a user", () => {
+    const content = 'import { adminDb } from "@run402/functions";\nawait adminDb().sql("DELETE FROM sessions WHERE expires_at < now()");';
+    assert.ok(!scanFileContent(content).some((x) => x.code === "SERVICE_KEY_IN_USER_REQUEST"));
+  });
+
+  it("is silenced by `// run402-allow-admin-db:` on the line before", () => {
+    const content = [
+      "const user = await auth.user();",
+      "// run402-allow-admin-db: admin-only action, checked above",
+      'await adminDb().from("audit").insert({ actor: user.id });',
+    ].join("\n");
+    assert.ok(!scanFileContent(content).some((x) => x.code === "SERVICE_KEY_IN_USER_REQUEST"));
+  });
+});

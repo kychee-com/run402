@@ -395,6 +395,68 @@ export interface SchemaReport {
 
 // ─── REST / PostgREST ─────────────────────────────────────────────────
 
+/** A warning on a SQL result. A warning never changes the result. */
+export interface SqlWarning {
+  /** `ROUTE_RETIRING` (a retiring route was called), `SCHEMA_CHANGE_OUTSIDE_MIGRATION`
+   *  (DDL on a project with a live release, which the release no longer
+   *  describes), or `MULTI_STATEMENT_TEXT_BODY` (several statements in one text
+   *  body; use {@link Projects.sqlBatch}). Future codes remain valid strings. */
+  code: "ROUTE_RETIRING" | "SCHEMA_CHANGE_OUTSIDE_MIGRATION" | "MULTI_STATEMENT_TEXT_BODY" | (string & {});
+  severity?: string;
+  message: string;
+  next_actions: Array<Record<string, unknown>>;
+  [key: string]: unknown;
+}
+
+/** One result column: its name and Postgres type. */
+export interface SqlField {
+  name: string;
+  type: string;
+}
+
+/** The result of {@link Projects.sql}, in the wire shape. */
+export interface SqlResult {
+  status: string;
+  schema: string;
+  /** The last statement's rows. */
+  rows: Array<Record<string, unknown>>;
+  /** The last statement's row count (returned or affected). */
+  row_count: number;
+  /** The last statement's columns. */
+  fields: SqlField[];
+  /** One entry per statement, in order; their sum is a batch's total. */
+  statements: Array<{ command: string | null; row_count: number }>;
+  warnings: SqlWarning[];
+}
+
+/** One statement in a {@link Projects.sqlBatch} call: exactly one SQL statement. */
+export interface SqlBatchStatement {
+  sql: string;
+  params?: unknown[];
+}
+
+export interface SqlBatchOptions {
+  /** `all` (default): one transaction; the first failure rolls back every
+   *  statement and throws `SQL_BATCH_STATEMENT_FAILED` naming its index.
+   *  `each`: every statement in its own transaction; failures are reported
+   *  per statement and later statements still run. */
+  transaction?: "all" | "each";
+}
+
+export type SqlBatchStatementResult =
+  | { index: number; status: "ok"; command: string | null; rows: Array<Record<string, unknown>>; row_count: number; fields: SqlField[] }
+  | { index: number; status: "error"; message: string };
+
+/** The result of {@link Projects.sqlBatch}. `status` is `partial` when a
+ *  statement failed under `transaction: "each"`. */
+export interface SqlBatchResult {
+  status: "ok" | "partial";
+  schema: string;
+  transaction: "all" | "each";
+  results: SqlBatchStatementResult[];
+  warnings: SqlWarning[];
+}
+
 export type ProjectRestMethod = "GET" | "POST" | "PATCH" | "DELETE";
 export type ProjectRestKeyType = "anon" | "service";
 

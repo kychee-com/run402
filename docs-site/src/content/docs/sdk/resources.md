@@ -44,7 +44,13 @@ delete(id: string): Promise<void>
 list(wallet?: string): Promise<ListProjectsResult>
 getUsage(id: string): Promise<UsageReport>
 getSchema(id: string): Promise<SchemaReport>
-sql(id: string, sql: string, params?: unknown[]): Promise<unknown>
+sql(id: string, sql: string, params?: unknown[]): Promise<SqlResult>   // POST /projects/v1/:project_id/sql → { status, schema, rows, row_count, fields, statements, warnings }
+sqlBatch(id: string, statements: { sql: string; params?: unknown[] }[], opts?: { transaction?: "all" | "each" }): Promise<SqlBatchResult>   // one statement per entry; "all" (default) rolls back on the first failure (SQL_BATCH_STATEMENT_FAILED, details.index); "each" commits each and reports results[i].status
+// sql/sqlBatch results carry warnings[] that never change the result:
+//   SCHEMA_CHANGE_OUTSIDE_MIGRATION: CREATE/ALTER/DROP/COMMENT on a project with a live release,
+//     which the release no longer describes; write it as a migration (spec.database.migrations).
+//     Schema changes on released projects will be refused outside migrations in a later release.
+//   MULTI_STATEMENT_TEXT_BODY: several statements in one text; use sqlBatch.
 rest<T = unknown>(id: string, table: string, queryOrOptions?: string | ProjectRestOptions): Promise<T>
 restResponse<T = unknown>(id: string, table: string, queryOrOptions?: string | ProjectRestOptions): Promise<ProjectRestResponse<T>>
 validateExpose(manifest: ExposeManifest | string, opts?: { project?: string; project_id?: string; migrationSql?: string }): Promise<ExposeManifestValidationResult>

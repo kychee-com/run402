@@ -666,7 +666,7 @@ describe("Run402 full-stack integration (live API, no mocks)", { timeout: 900_00
     const options = await fetch(`${routeBase}/api/fullstack`, { method: "OPTIONS" });
     assert.equal(options.status, 204);
 
-    // Gap 3: adminDb().from() — PostgREST /admin/v1/rest/* bypass path
+    // Gap 3: adminDb().from() — PostgREST /projects/v1/:project_id/rest/* bypass path
     const adminFrom = await directFunctionJson({
       headers: apiHeaders("service"),
       body: { action: "admin-db-from" },

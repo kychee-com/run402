@@ -393,7 +393,9 @@ const SURFACE: Capability[] = [
   { id: "faucet",            endpoint: "POST /faucet/v1",                        cli: "wallets:fund",        openclaw: "wallets:fund" },
 
   // ── Database / Admin ─────────────────────────────────────────────────────
-  { id: "run_sql",           endpoint: "POST /projects/v1/admin/:id/sql",        cli: "projects:sql",        openclaw: "projects:sql" },
+  { id: "run_sql",           endpoint: "POST /projects/v1/:project_id/sql",      cli: "projects:sql",        openclaw: "projects:sql" },
+  // Reached through `run402 projects sql --batch <path>`; the command is run_sql's.
+  { id: "run_sql_batch",     endpoint: "POST /projects/v1/:project_id/sql/batch", cli: null,                openclaw: null },
   { id: "rest_query",        endpoint: "/rest/v1/:table",                        cli: "projects:rest",       openclaw: "projects:rest" },
   { id: "apply_expose",      endpoint: "POST /projects/v1/admin/:id/expose",     cli: "projects:apply-expose", openclaw: "projects:apply-expose" },
   { id: "validate_manifest", endpoint: "POST /projects/v1/expose/validate",      cli: "projects:validate-expose", openclaw: "projects:validate-expose" },
@@ -1011,6 +1013,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
 
   // Database / Admin
   run_sql: "projects.sql",
+  run_sql_batch: "projects.sqlBatch",
   rest_query: "projects.rest",
   apply_expose: "projects.applyExpose",
   validate_manifest: "projects.validateExpose",
