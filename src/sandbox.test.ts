@@ -192,15 +192,23 @@ describe("errors", () => {
   });
 
   it("waits for an in-flight host call at the deadline before returning", async () => {
+    // The deadline clock starts before the WASM module loads, so the budget
+    // leaves room for startup; the call must begin before the deadline for the
+    // test to mean anything, and must outlast it.
+    let startedAt = 0;
     let settledAt = 0;
     const slow: SandboxExtension = {
       install: "(function (host) { globalThis.slow = () => host.slow(); })",
       async: {
-        slow: () => new Promise((resolve) => setTimeout(() => { settledAt = Date.now(); resolve("done"); }, 400)),
+        slow: () => {
+          startedAt = Date.now();
+          return new Promise((resolve) => setTimeout(() => { settledAt = Date.now(); resolve("done"); }, 1_300));
+        },
       },
     };
-    const outcome = await runInSandbox({ code: "await slow();\nfor (;;) {}", timeoutMs: 150, extensions: [slow] });
+    const outcome = await runInSandbox({ code: "await slow();\nfor (;;) {}", timeoutMs: 1_000, extensions: [slow] });
     assert.equal(outcome.error?.code, "RUN_TIMEOUT");
+    assert.ok(startedAt > 0, "the call began before the deadline");
     assert.ok(settledAt > 0, "the in-flight call settled before the run returned");
   });
 });
