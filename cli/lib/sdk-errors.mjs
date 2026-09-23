@@ -45,6 +45,32 @@ export function fail({ message, code, hint, details, next_actions, field, retrya
 }
 
 /**
+ * Report a refusal the Node SDK's local-state verbs threw (wallet selection,
+ * organization context, doctor/init argument checks): the same envelope
+ * `fail()` prints, fields taken from the error. Local refusals carry their
+ * own `hint` and `next_actions`; they never went through the HTTP-error
+ * rendering `reportSdkError` applies.
+ */
+export function failLocal(err) {
+  fail({
+    code: err?.code,
+    message: err?.message,
+    hint: err?.hint,
+    details: err?.details,
+    next_actions: err?.nextActions,
+  });
+}
+
+/**
+ * `failLocal` for a local refusal from a local-state verb, `reportSdkError`
+ * for anything else (a gateway error, a network error, a cache miss).
+ */
+export function reportLocalOrSdkError(err) {
+  if (err?.kind === "local_error" && err?.status === null && err?.code !== "PROJECT_CREDENTIAL_NOT_FOUND") failLocal(err);
+  reportSdkError(err);
+}
+
+/**
  * Parse a JSON-bearing CLI flag value, naming the flag in the failure envelope.
  *
  * Wraps `JSON.parse` so the failure says which flag was bad and includes a

@@ -653,10 +653,6 @@
         },
         {
           "owner": "public",
-          "source": "cli/lib/wallet-context.mjs"
-        },
-        {
-          "owner": "public",
           "source": "cli/lib/wallets.mjs"
         },
         {
@@ -710,10 +706,6 @@
         {
           "owner": "public",
           "source": "sdk/src/node/wallets.ts"
-        },
-        {
-          "owner": "public",
-          "source": "cli/lib/wallets.mjs"
         }
       ],
       "topic": "/errors/client/#BAD_PRIVATE_KEY"
@@ -1018,14 +1010,6 @@
         {
           "owner": "public",
           "source": "sdk/src/node/wallets.ts"
-        },
-        {
-          "owner": "public",
-          "source": "cli/lib/wallet-context.mjs"
-        },
-        {
-          "owner": "public",
-          "source": "cli/lib/wallets.mjs"
         }
       ],
       "topic": "/errors/client/#BAD_WALLET_NAME"
@@ -1496,10 +1480,6 @@
         {
           "owner": "public",
           "source": "cli/lib/subdomains.mjs"
-        },
-        {
-          "owner": "public",
-          "source": "cli/lib/wallets.mjs"
         }
       ],
       "topic": "/errors/client/#CONFIRMATION_REQUIRED"
@@ -7612,10 +7592,6 @@
         {
           "owner": "public",
           "source": "sdk/src/node/wallets.ts"
-        },
-        {
-          "owner": "public",
-          "source": "cli/lib/wallets.mjs"
         }
       ],
       "topic": "/errors/client/#WALLET_EXISTS"
@@ -7626,10 +7602,6 @@
         {
           "owner": "public",
           "source": "sdk/src/node/wallets.ts"
-        },
-        {
-          "owner": "public",
-          "source": "cli/lib/wallets.mjs"
         }
       ],
       "topic": "/errors/client/#WALLET_LABEL_DRIFT"
@@ -7640,14 +7612,6 @@
         {
           "owner": "public",
           "source": "sdk/src/node/wallets.ts"
-        },
-        {
-          "owner": "public",
-          "source": "cli/lib/wallet-context.mjs"
-        },
-        {
-          "owner": "public",
-          "source": "cli/lib/wallets.mjs"
         }
       ],
       "topic": "/errors/client/#WALLET_NOT_FOUND"
@@ -7668,10 +7632,6 @@
         {
           "owner": "public",
           "source": "sdk/src/node/wallets.ts"
-        },
-        {
-          "owner": "public",
-          "source": "cli/lib/wallets.mjs"
         }
       ],
       "topic": "/errors/client/#WALLET_PROTECTED"
@@ -7682,10 +7642,6 @@
         {
           "owner": "public",
           "source": "sdk/src/node/wallets.ts"
-        },
-        {
-          "owner": "public",
-          "source": "cli/lib/wallets.mjs"
         }
       ],
       "topic": "/errors/client/#WALLET_RENAME_FAILED"
@@ -7696,14 +7652,6 @@
         {
           "owner": "public",
           "source": "sdk/src/node/wallets.ts"
-        },
-        {
-          "owner": "public",
-          "source": "cli/lib/wallet-context.mjs"
-        },
-        {
-          "owner": "public",
-          "source": "cli/lib/wallets.mjs"
         }
       ],
       "topic": "/errors/client/#WALLET_SELECTION_CONFLICT"

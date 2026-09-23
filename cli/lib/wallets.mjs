@@ -1,44 +1,20 @@
 /**
  * run402 wallets — manage named wallets (profiles).
  *
- * Each named wallet is a self-contained profile directory under
- * `{config_dir}/profiles/<name>/` with its own key, project keystore, and
- * non-secret meta.json. The reserved `default` wallet lives at the config-dir
- * root (zero migration). Selection (which wallet a normal command uses) is
- * resolved at the CLI edge — see wallet-context.mjs. These subcommands operate
- * on EXPLICIT named targets via core's path-aware helpers, so they are
- * independent of the active selection.
+ * A shim over `r.wallets` on `@run402/sdk/node`, which owns wallet selection
+ * and the named-wallet (profile) verbs: this module parses argv, makes one SDK
+ * call, and prints its JSON. `fund`, `balance`, and `lightning` act on the
+ * ACTIVE wallet.
  *
  * Agent-first: JSON to stdout, structured errors to stderr, no interactive
  * prompts (destructive `rm` requires an explicit --yes).
  */
 
-import { writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { failUnknownSubcommand } from "./argparse.mjs";
-import { join } from "node:path";
-import { fail, reportSdkError } from "./sdk-errors.mjs";
-import { walletFile, readWallet as readActiveWallet, saveWallet as saveActiveWallet } from "./config.mjs";
-import { isValidProfileName, getActiveProfile } from "../core-dist/config.js";
-import {
-  listProfileNames,
-  profileExists,
-  profileDir,
-  readMeta,
-  writeMeta,
-  ensureProfileDir,
-  removeProfile,
-  renameProfile,
-  getDefaultWallet,
-  setDefaultWallet,
-} from "../core-dist/profiles.js";
-import { readWallet, saveWallet } from "../core-dist/wallet.js";
-import { describeRejectedValue } from "../core-dist/redact.js";
+import { fail, reportLocalOrSdkError, reportSdkError } from "./sdk-errors.mjs";
+import { readWallet as readActiveWallet, saveWallet as saveActiveWallet } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
-import { readBindingFile, updateBindingFile } from "./wallet-context.mjs";
-import { initializeWalletAction } from "./next-actions.mjs";
-
-const DEFAULT = "default";
-const PRIVATE_KEY_RE = /^0x[0-9a-fA-F]{64}$/;
 
 const HELP = `run402 wallets — manage named wallets (profiles)
 
@@ -73,270 +49,12 @@ Notes:
   • .run402.json holds only a wallet NAME (never a key) — safe to commit.
 `;
 
-function shortAddr(a) {
-  return typeof a === "string" && a.length >= 12 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a ?? null;
-}
-
 function out(obj) {
   console.log(JSON.stringify(obj, null, 2));
 }
 
-// See core-dist/redact.js's doc comment: a
-// value that fails this check may be a secret pasted into a name argument
-// by mistake, so it must never be echoed verbatim — describeRejectedValue()
-// still shows a short/plain typo in full.
-function requireName(name, what = "wallet name") {
-  if (!name) fail({ code: "BAD_USAGE", message: `Missing ${what}.`, hint: "run402 wallets --help" });
-  if (name === DEFAULT) return name;
-  if (!isValidProfileName(name)) {
-    fail({
-      code: "BAD_WALLET_NAME",
-      message: `Invalid ${what} ${JSON.stringify(describeRejectedValue(name))}.`,
-      hint: "Names must match /^[a-z0-9][a-z0-9_-]{0,63}$/ (lowercase letters, digits, '_' and '-').",
-      details: { name: describeRejectedValue(name) },
-    });
-  }
-  return name;
-}
-
-function walletInfo(name, active) {
-  const meta = readMeta(name);
-  let address = meta?.address ?? null;
-  let rail = meta?.rail ?? null;
-  const label = meta?.label ?? null;
-  if (!address) {
-    try {
-      const a = readWallet(join(profileDir(name), "wallet.json"));
-      address = a?.address ?? null;
-      rail = rail ?? a?.rail ?? null;
-    } catch {
-      /* best-effort */
-    }
-  }
-  return { local_label: name, server_label: label, address, address_short: shortAddr(address), rail, active: name === active };
-}
-
-function activeContext() {
-  try {
-    const ctx = JSON.parse(process.env.RUN402_ACTIVE_WALLET_JSON || "");
-    if (ctx && typeof ctx === "object") return ctx;
-  } catch {
-    /* not set / malformed */
-  }
-  return null;
-}
-
-function cmdList() {
-  const active = getActiveProfile();
-  out(listProfileNames().map((n) => walletInfo(n, active)));
-}
-
-async function cmdCurrent() {
-  const ctx = activeContext();
-  const name = ctx?.name ?? getActiveProfile();
-  const info = walletInfo(name, name);
-  const warnings = [];
-  if (ctx?.diverged && ctx.binding) {
-    warnings.push({
-      code: "WALLET_SELECTION_CONFLICT",
-      message: `RUN402_WALLET=${ctx.envName} but ${ctx.binding.file} selects '${ctx.binding.wallet}'.`,
-      hint: "Resolve with: --wallet <name>, unset RUN402_WALLET, or run402 wallets unbind.",
-    });
-  }
-  if (info.server_label && info.server_label !== name) {
-    warnings.push({
-      code: "WALLET_LABEL_DRIFT",
-      message: `Local label '${name}' differs from the server label '${info.server_label}'.`,
-      hint: "Run 'run402 wallets rename' to reconcile.",
-    });
-  }
-  // The active wallet's own file: when it was created, its persisted rail, and
-  // whether the faucet has been used on it. `faucet_used` tracks faucet
-  // invocation, not pay-readiness — `run402 wallets balance` reads real funds.
-  let local = null;
-  try {
-    local = await getSdk().wallets.status();
-  } catch (err) {
-    reportSdkError(err);
-  }
-  out({
-    local_label: name,
-    source: ctx?.source ?? "unknown",
-    source_detail: ctx?.sourceDetail ?? null,
-    address: local?.configured ? local.address : info.address,
-    server_label: info.server_label,
-    configured: !!local?.configured,
-    created: local?.created ?? null,
-    rail: local?.configured ? local.rail ?? "x402" : info.rail,
-    faucet_used: !!local?.faucet_used,
-    path: local?.path ?? walletFile(),
-    ...(local?.configured ? {} : { next_actions: [initializeWalletAction()] }),
-    warnings,
-  });
-}
-
-async function cmdNew(args) {
-  const name = requireName(args.find((a) => a && !a.startsWith("-")));
-  if (profileExists(name)) {
-    fail({ code: "WALLET_EXISTS", message: `A wallet named '${name}' already exists.`, hint: "run402 wallets list", details: { name } });
-  }
-  const railFlag = args.indexOf("--rail");
-  const requested = railFlag >= 0 ? args[railFlag + 1] : args.includes("--mpp") ? "mpp" : "x402";
-  if (!["x402", "mpp", "lightning"].includes(requested)) {
-    fail({ code: "BAD_USAGE", message: "--rail must be x402, mpp, or lightning", details: { rail: requested } });
-  }
-  const rail = requested;
-  const { generatePrivateKey, privateKeyToAccount } = await import("viem/accounts");
-  const privateKey = generatePrivateKey();
-  const address = privateKeyToAccount(privateKey).address;
-  const created = new Date().toISOString();
-  ensureProfileDir(name);
-  saveWallet({ address, privateKey, created, funded: false, rail }, join(profileDir(name), "wallet.json"));
-  // The reserved `default` wallet lives at the config-dir root and carries no
-  // server label; a named wallet mirrors its name as the label.
-  if (name === DEFAULT) {
-    writeMeta(name, { name, address, rail, created });
-  } else {
-    writeMeta(name, { name, address, label: name, rail, created });
-    await maybePushLabel(name, name, address);
-  }
-  // requireName constrains aliases to shell-safe lowercase identifiers.
-  const command = rail === "lightning"
-    ? `run402 --wallet ${name} init lightning`
-    : name === DEFAULT ? "run402 wallets fund" : `run402 wallets use ${name}`;
-  const why = rail === "lightning"
-    ? "Initialize this Lightning wallet."
-    : name === DEFAULT ? "Fund the wallet you just created from the testnet faucet." : "Select the wallet you just created.";
-  out({ local_label: name, address, rail, created: true, next: command, next_actions: [{ type: "run_command", command, why }] });
-}
-
-function cmdUse(args) {
-  const name = requireName(args.find((a) => a && !a.startsWith("-")));
-  if (name !== DEFAULT && !profileExists(name)) {
-    // `name` already passed requireName's charset check, but a bare (no
-    // "0x") 64-hex private key satisfies that charset too — describeRejectedValue()
-    // is the backstop against echoing it here.
-    fail({ code: "WALLET_NOT_FOUND", message: `No local wallet named '${describeRejectedValue(name)}'.`, hint: "run402 wallets list", details: { name: describeRejectedValue(name) } });
-  }
-  setDefaultWallet(name);
-  out({ local_label: name, active: true });
-}
-
-async function cmdRename(args) {
-  const toFlag = flagVal(args, "--to");
-  const positionals = args.filter((a, i) => a && !a.startsWith("-") && args[i - 1] !== "--to");
-  const oldName = requireName(positionals[0], "old wallet name");
-  const newName = requireName(toFlag ?? positionals[1], "new wallet name");
-  if (newName === DEFAULT) {
-    fail({ code: "BAD_WALLET_NAME", message: "Cannot rename a wallet to the reserved name 'default'.", details: { name: newName } });
-  }
-  if (!profileExists(oldName)) {
-    fail({ code: "WALLET_NOT_FOUND", message: `No local wallet named '${describeRejectedValue(oldName)}'.`, hint: "run402 wallets list", details: { name: describeRejectedValue(oldName) } });
-  }
-  try {
-    renameProfile(oldName, newName);
-  } catch (e) {
-    fail({ code: "WALLET_RENAME_FAILED", message: e?.message ?? "rename failed", details: { from: oldName, to: newName } });
-  }
-  if (getDefaultWallet() === oldName) setDefaultWallet(newName);
-  const meta = readMeta(newName) ?? {};
-  let address = meta.address ?? null;
-  if (!address) {
-    try {
-      address = readWallet(join(profileDir(newName), "wallet.json"))?.address ?? null;
-    } catch {
-      /* best-effort */
-    }
-  }
-  writeMeta(newName, { ...meta, name: newName, label: newName, ...(address ? { address } : {}) });
-  await maybePushLabel(newName, newName, address);
-  out({ from: oldName, to: newName, renamed: true });
-}
-
-function cmdBind(args) {
-  let name = args.find((a) => a && !a.startsWith("-"));
-  name = name ? requireName(name) : getActiveProfile();
-  // MERGE, never clobber: the same file carries `org`/`room` from `orgs bind`.
-  const { contents } = updateBindingFile(process.cwd(), { wallet: name });
-  const result = {
-    wallet: name,
-    file: ".run402.json",
-    bound: true,
-    safe_to_commit: true,
-    note: "Safe to commit — contains no secrets, only the wallet name.",
-    binding: contents,
-  };
-  if (name !== DEFAULT && !profileExists(name)) {
-    result.warning = `No local wallet named '${name}' yet — create it with 'run402 wallets new ${name}'.`;
-  }
-  out(result);
-}
-
-function cmdUnbind() {
-  // Removes only the WALLET key. An `org`/`room` binding in the same file
-  // belongs to another tier and must survive; the file is deleted only when
-  // unbinding leaves nothing behind.
-  const had = readBindingFile(process.cwd()).wallet !== undefined;
-  const { contents, removed } = updateBindingFile(process.cwd(), { wallet: null });
-  out({ file: ".run402.json", unbound: had, removed, binding: contents });
-}
-
-async function cmdImport(args) {
-  const name = requireName(args.find((a) => a && !a.startsWith("-")));
-  if (name === DEFAULT) {
-    fail({ code: "BAD_WALLET_NAME", message: "'default' is reserved.", details: { name } });
-  }
-  if (profileExists(name)) {
-    fail({ code: "WALLET_EXISTS", message: `A wallet named '${name}' already exists.`, details: { name } });
-  }
-  const keyArg = flagVal(args, "--key");
-  if (!keyArg) {
-    fail({ code: "BAD_USAGE", message: "--key <path|-> is required for import.", hint: "Use '-' to read the key from stdin." });
-  }
-  let raw;
-  try {
-    raw = keyArg === "-" ? readFileSync(0, "utf8") : readFileSync(keyArg, "utf8");
-  } catch (e) {
-    fail({ code: "FILE_NOT_FOUND", message: `Could not read key from ${keyArg === "-" ? "stdin" : keyArg}: ${e?.message}`, details: { key: keyArg } });
-  }
-  const privateKey = raw.trim();
-  if (!PRIVATE_KEY_RE.test(privateKey)) {
-    fail({ code: "BAD_PRIVATE_KEY", message: "Key must be a 0x-prefixed 64-hex secp256k1 private key.", details: { name } });
-  }
-  const { privateKeyToAccount } = await import("viem/accounts");
-  let address;
-  try {
-    address = privateKeyToAccount(privateKey).address;
-  } catch (e) {
-    fail({ code: "BAD_PRIVATE_KEY", message: `Invalid private key: ${e?.message}`, details: { name } });
-  }
-  const created = new Date().toISOString();
-  ensureProfileDir(name);
-  saveWallet({ address, privateKey, created, funded: false, rail: "x402" }, join(profileDir(name), "wallet.json"));
-  writeMeta(name, { name, address, label: name, rail: "x402", created });
-  await maybePushLabel(name, name, address);
-  out({ local_label: name, address, imported: true });
-}
-
-function cmdRm(args) {
-  const name = requireName(args.find((a) => a && !a.startsWith("-")));
-  if (name === DEFAULT) {
-    fail({ code: "WALLET_PROTECTED", message: "Refusing to remove the reserved 'default' wallet.", details: { name } });
-  }
-  if (!profileExists(name)) {
-    fail({ code: "WALLET_NOT_FOUND", message: `No local wallet named '${describeRejectedValue(name)}'.`, hint: "run402 wallets list", details: { name: describeRejectedValue(name) } });
-  }
-  if (!args.includes("--yes")) {
-    fail({
-      code: "CONFIRMATION_REQUIRED",
-      message: `Removing wallet '${name}' deletes its private key and project keystore. This cannot be undone.`,
-      hint: `Re-run with --yes to confirm: run402 wallets rm ${name} --yes`,
-      details: { name },
-    });
-  }
-  removeProfile(name);
-  if (getDefaultWallet() === name) setDefaultWallet(DEFAULT);
-  out({ local_label: name, removed: true });
+function firstPositional(args) {
+  return args.find((a) => a && !a.startsWith("-"));
 }
 
 function flagVal(args, flag) {
@@ -349,31 +67,50 @@ function flagVal(args, flag) {
   return v;
 }
 
-/**
- * Best-effort server-side label push. Signs with the TARGET wallet's key
- * (not the active one) so a just-created/renamed wallet can set its own label.
- *
- * ON by default — the gateway label endpoint is live, and the display label is
- * what makes the wallet name show up cross-machine and in the console
- * (WEB). Set `RUN402_WALLET_LABEL_SYNC=0` to disable (fully-offline wallet ops,
- * or hermetic tests). The local folder name is always the source of truth; this
- * only mirrors the display label to the server. Always best-effort — `setLabel`
- * swallows its own errors and this never throws, so wallet creation/rename stays
- * fully functional offline.
- */
-async function maybePushLabel(name, label, address) {
-  if (process.env.RUN402_WALLET_LABEL_SYNC === "0") return;
-  if (!address) return;
+async function call(fn) {
   try {
-    const sdk = getSdk({
-      walletPath: join(profileDir(name), "wallet.json"),
-      keystorePath: join(profileDir(name), "projects.json"),
-    });
-    await sdk.wallet(address).setLabel(label);
-  } catch {
-    /* best-effort — never block the local operation */
+    out(await fn(getSdk().wallets));
+  } catch (err) {
+    reportLocalOrSdkError(err);
   }
 }
+
+const cmdList = () => call((w) => w.list());
+const cmdCurrent = () => call((w) => w.current());
+
+function cmdNew(args) {
+  const railFlag = args.indexOf("--rail");
+  const rail = railFlag >= 0 ? args[railFlag + 1] : args.includes("--mpp") ? "mpp" : "x402";
+  return call((w) => w.create(firstPositional(args), { rail }));
+}
+
+const cmdUse = (args) => call((w) => w.use(firstPositional(args)));
+
+function cmdRename(args) {
+  const toFlag = flagVal(args, "--to");
+  const positionals = args.filter((a, i) => a && !a.startsWith("-") && args[i - 1] !== "--to");
+  return call((w) => w.rename(positionals[0], toFlag ?? positionals[1]));
+}
+
+const cmdBind = (args) => call((w) => w.bind(firstPositional(args)));
+const cmdUnbind = () => call((w) => w.unbind());
+
+function cmdImport(args) {
+  // The key is read only after the SDK has accepted the name.
+  return call((w) => w.import(firstPositional(args), () => {
+    const keyArg = flagVal(args, "--key");
+    if (!keyArg) {
+      fail({ code: "BAD_USAGE", message: "--key <path|-> is required for import.", hint: "Use '-' to read the key from stdin." });
+    }
+    try {
+      return keyArg === "-" ? readFileSync(0, "utf8") : readFileSync(keyArg, "utf8");
+    } catch (e) {
+      fail({ code: "FILE_NOT_FOUND", message: `Could not read key from ${keyArg === "-" ? "stdin" : keyArg}: ${e?.message}`, details: { key: keyArg } });
+    }
+  }));
+}
+
+const cmdRm = (args) => call((w) => w.remove(firstPositional(args), { confirm: args.includes("--yes") }));
 
 export async function run(sub, args = []) {
   const rest = Array.isArray(args) ? args : [];
@@ -404,7 +141,7 @@ export async function run(sub, args = []) {
 // The pairing secret stays in wallet.json and is never printed.
 async function cmdLightning(args) {
   const action = args.find((a) => a && !a.startsWith("-")) ?? "status";
-  const { ensureLightningWallet, revokeLightningWallet, describeLightning, readLightningBalance } = await import("./lightning-wallet.mjs");
+  const { ensureLightningWallet, revokeLightningWallet, describeLightning, readLightningBalance } = await import("#sdk/node");
   const { readWallet } = await import("../core-dist/wallet.js");
   try {
     if (action === "status") {
@@ -421,13 +158,13 @@ async function cmdLightning(args) {
       return;
     }
     if (action === "mint") {
-      const result = await ensureLightningWallet();
+      const result = await ensureLightningWallet(getSdk().agent);
       const balance = result.outcome === "stored" || result.outcome === "present" ? await readLightningBalance(result.localWallet) : null;
       out({ outcome: result.outcome, rail: result.localWallet.rail ?? "x402", lightning: describeLightning(result.localWallet, result.wallet, balance) });
       return;
     }
     if (action === "revoke") {
-      const wallet = await revokeLightningWallet();
+      const wallet = await revokeLightningWallet(getSdk().agent);
       out({ revoked: true, status: wallet?.status ?? "revoked", rail: "x402", next: "run402 init lightning  (mint again once the deletion completes)" });
       return;
     }

@@ -1,51 +1,49 @@
 /**
- * Active-wallet (profile) resolution for the CLI edge.
+ * The `--wallet` edge of the CLI: what has to happen before any subcommand
+ * module (and so before `cli/lib/config.mjs` snapshots credential paths) is
+ * loaded, and how a wallet-selection refusal is reported.
  *
- * Runs at the top of cli.mjs BEFORE any subcommand module (and therefore
- * before cli/lib/config.mjs snapshots its paths) is loaded. Resolves which
- * named wallet a command operates on, sets `process.env.RUN402_WALLET` so all
- * core path functions resolve under it. Core itself stays env-only — the
- * `--wallet` flag and the per-directory `.run402.json` binding are translated
- * into the env var here, at the edge.
- *
- * Precedence (highest first):
- *   1. --wallet <name> / --profile <name>   (flag; under `repos`, only --wallet —
- *      `repos create|mirror|recover --profile <name>` is the AWS credential profile)
- *   2. RUN402_WALLET / RUN402_PROFILE        (env)
- *   3. nearest .run402.local.json/.run402.json (directory binding, walk up)
- *   4. config.json active_wallet              (global `wallets use`)
- *   5. "default"                              (root wallet)
- *
- * The flag is also the conflict resolver: when env and binding name different
- * wallets and no flag is given, that is a hard error (not a silent pick).
+ * The selection itself — the precedence chain (flag, RUN402_WALLET, the
+ * nearest .run402(.local).json binding, the global `wallets use` default,
+ * `default`), the env-vs-binding conflict, and the fail-closed existence
+ * check — is the Node SDK's (`resolveWalletSelection`, `assertWalletExists`,
+ * `selectWallet`). This module adds only:
+ *   - reading `--wallet` / `--profile` off argv (`splitWalletFlag`);
+ *   - which commands must keep working while selection is ambiguous or names
+ *     a wallet that does not exist yet (the wallet-management group, `init`,
+ *     `doctor`);
+ *   - translating a `WalletSelectionError` into `fail()` for the CLI, while
+ *     `git-remote-run402` (which must never `process.exit()` mid-stream)
+ *     catches the same error and reports it through its own channel;
+ *   - the opt-in stderr provenance line.
  */
 
-import { existsSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fail } from "./sdk-errors.mjs";
-import { isValidProfileName } from "../core-dist/config.js";
-import { getDefaultWallet, profileExists, readMeta, profileDir } from "../core-dist/profiles.js";
+import { profileDir, readMeta } from "../core-dist/profiles.js";
 import { readWallet } from "../core-dist/wallet.js";
-import { describeRejectedValue } from "../core-dist/redact.js";
-// The binding file is a CHECKOUT-LEVEL CONTRACT read by more than one surface,
-// so its reader lives in core — `run402-mcp` ships core/dist but not cli/, and
-// two readers of one file format is exactly the drift worth not having.
-// Re-exported here under the names the rest of the CLI already imports.
 import {
   findBindingKey,
   bindingFilePath,
   readBindingFile,
-  BINDING_FILE,
+  updateBindingFile,
 } from "../core-dist/binding-file.js";
+import {
+  WalletSelectionError,
+  assertWalletExists,
+  findWalletBinding,
+  resolveWalletSelection,
+  selectWallet,
+} from "#sdk/node";
 
-export { findBindingKey, bindingFilePath, readBindingFile };
+export { findBindingKey, bindingFilePath, readBindingFile, updateBindingFile, WalletSelectionError };
 
 const DEFAULT = "default";
 const GLOBAL_FLAGS = new Set(["--wallet", "--profile"]);
 // `repos` owns `--profile` itself (the AWS credential profile for a BYO
 // destination, a mirror, or a recovery source), so under that command only
 // `--wallet` selects the wallet; RUN402_WALLET and the directory binding still
-// apply. Stripping `--profile` there made the documented s3 flags unreachable.
+// apply.
 const OWNS_PROFILE_FLAG = new Set(["repos"]);
 // The `wallets` group is the management + escape surface — it must work even
 // when selection is ambiguous (so you can `wallets unbind`), and it validates
@@ -57,10 +55,10 @@ const EXISTENCE_EXEMPT = new Set(["wallets", "init", "doctor"]);
 /**
  * Split the global --wallet/--profile flag (and its value) out of argv so the
  * subcommand never sees it — except `--profile` under a command that owns the
- * flag (OWNS_PROFILE_FLAG), which is passed through untouched. Pure: no core imports, no side effects. Returns
+ * flag (OWNS_PROFILE_FLAG), which is passed through untouched. Pure. Returns
  * the cleaned argv and the selected flag (`{ flag, value }` or null). Last
- * occurrence wins. A missing value is left as `value: undefined` for
- * resolveWallet to reject with a precise error.
+ * occurrence wins. A missing value is left as `value: undefined` for the
+ * resolver to reject with a precise error.
  */
 export function splitWalletFlag(rawArgv = []) {
   const argv = [];
@@ -99,201 +97,46 @@ export function splitWalletFlag(rawArgv = []) {
   return { argv, walletFlag: flag };
 }
 
-/**
- * MERGE keys into a directory's binding file. A `null` value removes its key;
- * a file left with no keys is deleted rather than committed empty.
- *
- * The file is shared by tiers (`wallet` from `wallets bind`, `org`/`room` from
- * `orgs bind`) and unknown keys are preserved, so one tier can never clobber
- * another's binding — which a whole-file write did until this existed.
- */
-export function updateBindingFile(dir, patch) {
-  const file = bindingFilePath(dir);
-  const next = { ...readBindingFile(dir) };
-  for (const [k, v] of Object.entries(patch)) {
-    if (v === null || v === undefined) delete next[k];
-    else next[k] = v;
-  }
-  if (Object.keys(next).length === 0) {
-    const existed = existsSync(file);
-    if (existed) rmSync(file, { force: true });
-    return { file, contents: null, removed: existed };
-  }
-  writeFileSync(file, JSON.stringify(next, null, 2) + "\n");
-  return { file, contents: next, removed: false };
-}
-
 /** Nearest wallet binding walking up from `startDir` to the filesystem root. */
 export function findBinding(startDir) {
-  const hit = findBindingKey(startDir, "wallet");
-  return hit ? { wallet: hit.value, file: hit.file } : null;
+  return findWalletBinding(startDir);
 }
 
 /**
- * Thrown by the `*Core` functions below instead of calling `fail()` directly
- * — carries the exact `{code, message, hint, details}` shape `fail()`
- * expects, so a caller that CAN safely call `process.exit()` (the CLI, at
- * the top of `cli.mjs`, before any protocol stream has started) does
- * `fail(err)` verbatim, and a caller that CANNOT (`git-remote-run402` — see
- * that file's own header: `process.exit()` mid-stream can truncate a
- * pending stdout write on a pipe) catches it and reports through its own
- * non-exiting error path instead.
- */
-export class WalletSelectionError extends Error {
-  constructor({ code, message, hint, details }) {
-    super(message);
-    this.name = "WalletSelectionError";
-    this.code = code;
-    this.hint = hint;
-    this.details = details;
-  }
-}
-
-// A rejected name is a value we know nothing about — the most likely
-// mistake is a typo, but a live Base-mainnet private key pasted into
-// RUN402_WALLET (a NAME field, not a key field) is a demonstrated case, and
-// echoing the raw value prints it to a terminal, a log, and a session
-// transcript. Route it
-// through describeRejectedValue() so a short/plain typo still shows in
-// full (that's what makes the error useful) while anything long or
-// hex-shaped enough to be a secret is redacted instead.
-function assertValidNameCore(name, origin) {
-  if (name === DEFAULT || isValidProfileName(name)) return;
-  throw new WalletSelectionError({
-    code: "BAD_WALLET_NAME",
-    message: `Invalid wallet name ${JSON.stringify(describeRejectedValue(name))} (from ${origin}).`,
-    hint: "Wallet names must match /^[a-z0-9][a-z0-9_-]{0,63}$/ (lowercase letters, digits, '_' and '-'). If a private key or other secret ended up here, it does not belong in a NAME field — see `run402 wallets import` — and should be treated as compromised.",
-    details: { name: describeRejectedValue(name), origin },
-  });
-}
-
-function assertValidName(name, origin) {
-  try {
-    assertValidNameCore(name, origin);
-  } catch (err) {
-    if (err instanceof WalletSelectionError) fail(err);
-    throw err;
-  }
-}
-
-/**
- * Pure precedence resolution + conflict detection — no flag layer, never
- * prompts, never calls `fail()`/`process.exit()`. Returns
- * `{ name, source, sourceDetail }` or throws {@link WalletSelectionError}.
- *
- * Shared verbatim by `resolveWallet` below (the CLI wrapper: `--wallet` flag
- * layered on top, failures routed through `fail()`) AND by
- * `git-remote-run402` (no flag layer — the helper has no argv flags at all
- * — failures routed through its own protocol-safe error reporting). Calling
- * `getSdk()` directly instead would run no wallet selection at all, so a
- * `.run402.json` binding — and even the global `wallets use` default —
- * would silently never reach the helper; only the `RUN402_WALLET` env layer
- * would work.
- *
- * Precedence beneath an optional flag (highest first): `RUN402_WALLET` /
- * `RUN402_PROFILE` env > nearest `.run402.local.json`/`.run402.json` binding
- * (walked from `cwd`, which callers choose deliberately — see this file's
- * own module doc and `git-remote-run402`'s "WHICH REPOSITORY" note: the
- * binding walk must start from the REPOSITORY directory when one is
- * resolvable, cwd only for repository-free commands) > `wallets use` global
- * default > `"default"`. env-vs-binding disagreement is a hard error unless
- * `cmd` is conflict-exempt (`wallets`) — same rule for every caller.
+ * The SDK's selection for command `cmd` (a non-CLI caller passes none), throwing
+ * {@link WalletSelectionError}. `git-remote-run402` composes this directly so a
+ * refusal never exits mid-protocol.
  */
 export function resolveWalletCore({ walletFlag, env = {}, cwd = process.cwd(), cmd } = {}) {
-  if (walletFlag) {
-    if (walletFlag.value === undefined || walletFlag.value === "") {
-      throw new WalletSelectionError({ code: "BAD_FLAG", message: `${walletFlag.flag} requires a value`, details: { flag: walletFlag.flag } });
-    }
-    assertValidNameCore(walletFlag.value, walletFlag.flag);
-    return { name: walletFlag.value, source: "flag", sourceDetail: walletFlag.flag };
-  }
-
-  const envRaw = env.RUN402_WALLET ?? env.RUN402_PROFILE;
-  const envName = typeof envRaw === "string" && envRaw.trim() ? envRaw.trim() : null;
-  const binding = findBinding(cwd);
-
-  if (envName && binding && envName !== binding.wallet && !CONFLICT_EXEMPT.has(cmd)) {
-    // This conflict check runs BEFORE assertValidNameCore below, so an
-    // unvalidated (possibly secret-shaped)
-    // RUN402_WALLET reaches here first whenever a directory binding exists
-    // (routine per this repo's own fleet-coordination convention). Redact
-    // the env side the same way the format check would; `binding.wallet`
-    // comes from a committed .run402.json, which by convention never holds
-    // a secret (`wallets bind` validates the name before writing it).
-    throw new WalletSelectionError({
-      code: "WALLET_SELECTION_CONFLICT",
-      message: `Ambiguous wallet: RUN402_WALLET=${describeRejectedValue(envName)} but ${binding.file} selects '${binding.wallet}'.`,
-      hint: "Resolve with one of: pass --wallet <name>, unset RUN402_WALLET, or run402 wallets unbind.",
-      details: { env_wallet: describeRejectedValue(envName), binding_wallet: binding.wallet, binding_file: binding.file },
-    });
-  }
-
-  if (envName) {
-    assertValidNameCore(envName, "RUN402_WALLET");
-    return { name: envName, source: "env", sourceDetail: "RUN402_WALLET" };
-  }
-  if (binding) {
-    assertValidNameCore(binding.wallet, binding.file);
-    return { name: binding.wallet, source: "binding", sourceDetail: binding.file };
-  }
-  const def = getDefaultWallet();
-  if (def && def !== DEFAULT) return { name: def, source: "config", sourceDetail: "wallets use" };
-  return { name: DEFAULT, source: "default", sourceDetail: null };
+  return resolveWalletSelection({ walletFlag, env, cwd, allowConflict: CONFLICT_EXEMPT.has(cmd) });
 }
 
-/** CLI wrapper over {@link resolveWalletCore}: identical resolution, `fail()` on error. */
+/** Fail closed on a missing wallet unless `cmd` creates or manages wallets; throws {@link WalletSelectionError}. */
+export function enforceWalletExistsCore(resolved, cmd) {
+  if (EXISTENCE_EXEMPT.has(cmd)) return;
+  assertWalletExists(resolved);
+}
+
+function failSelection(err) {
+  if (err instanceof WalletSelectionError) fail(err);
+  throw err;
+}
+
+/** {@link resolveWalletCore}, `fail()` on a refusal. */
 export function resolveWallet(opts) {
   try {
     return resolveWalletCore(opts);
   } catch (err) {
-    if (err instanceof WalletSelectionError) fail(err);
-    throw err;
+    return failSelection(err);
   }
 }
 
-function looksLikeAddress(s) {
-  return typeof s === "string" && /^0x[a-fA-F0-9]{40}$/.test(s);
-}
-
-/**
- * Fail-closed check that a non-default, non-exempt selection names a wallet
- * that actually exists locally — pure, throws {@link WalletSelectionError}.
- * `cmd` is `undefined` for a non-CLI caller (`git-remote-run402`), which
- * matches neither `EXISTENCE_EXEMPT` entry, so the check always runs there.
- */
-export function enforceWalletExistsCore({ name, source }, cmd) {
-  if (name === DEFAULT) return;
-  if (EXISTENCE_EXEMPT.has(cmd)) return;
-  if (profileExists(name)) return;
-  // `name` already passed the format check (assertValidNameCore), which
-  // constrains it to lowercase/digits/'_'/'-' — but a bare 64-hex private
-  // key with no "0x" prefix satisfies that charset too, so this "not found"
-  // path can still see raw key material. looksLikeAddress() is safe to echo
-  // (an address is public); anything else goes through describeRejectedValue(),
-  // which leaves a short/plain name untouched but redacts anything shaped
-  // like a secret — so only the untouched case gets a "create it" command
-  // that's actually safe (and sensible) to suggest re-typing.
-  const shown = describeRejectedValue(name);
-  const hint = looksLikeAddress(name)
-    ? `'${name}' looks like an address. For billing use: run402 billing ... --wallet-address ${name}`
-    : shown === name
-      ? `Run 'run402 wallets list' to see wallets, or 'run402 wallets new ${name}' to create it.`
-      : "Run 'run402 wallets list' to see wallets. This value was not shown because it looks like a secret rather than a wallet name — if a private key or other credential landed here, treat it as compromised.";
-  throw new WalletSelectionError({
-    code: "WALLET_NOT_FOUND",
-    message: `No local wallet named '${shown}'.`,
-    hint,
-    details: { wallet: shown, source },
-  });
-}
-
-/** CLI wrapper over {@link enforceWalletExistsCore}: identical check, `fail()` on error. */
+/** {@link enforceWalletExistsCore}, `fail()` on a refusal. */
 export function enforceWalletExists(resolved, cmd) {
   try {
     enforceWalletExistsCore(resolved, cmd);
   } catch (err) {
-    if (err instanceof WalletSelectionError) fail(err);
-    throw err;
+    failSelection(err);
   }
 }
 
@@ -328,31 +171,22 @@ export function emitProvenance({ name, source, sourceDetail }, { cmd, quiet, sho
 }
 
 /**
- * Orchestrate edge resolution: resolve → fail-closed → publish to the env so
- * core paths resolve → provenance. Returns the resolved selection.
+ * Resolve, fail closed, and publish the selection to the environment (the
+ * SDK's `selectWallet`), then the optional provenance line.
  */
 export function applyWalletSelection({ walletFlag, cmd, cwd = process.cwd(), env = process.env, quiet = false } = {}) {
-  // Capture the pre-resolution signals so `wallets current` can report
-  // provenance and any env-vs-binding divergence (it can't recompute them once
-  // we overwrite RUN402_WALLET below).
-  const envRaw = env.RUN402_WALLET ?? env.RUN402_PROFILE;
-  const envName = typeof envRaw === "string" && envRaw.trim() ? envRaw.trim() : null;
-  const binding = findBinding(cwd);
-
-  const resolved = resolveWallet({ walletFlag, env, cwd, cmd });
-  enforceWalletExists(resolved, cmd);
-
-  // Publish to the env so all core path functions resolve under this wallet.
-  env.RUN402_WALLET = resolved.name;
-  env.RUN402_ACTIVE_WALLET_JSON = JSON.stringify({
-    name: resolved.name,
-    source: resolved.source,
-    sourceDetail: resolved.sourceDetail,
-    binding: binding ? { wallet: binding.wallet, file: binding.file } : null,
-    envName,
-    diverged: !!(envName && binding && envName !== binding.wallet),
-  });
-
+  let resolved;
+  try {
+    resolved = selectWallet({
+      walletFlag,
+      env,
+      cwd,
+      allowConflict: CONFLICT_EXEMPT.has(cmd),
+      allowMissing: EXISTENCE_EXEMPT.has(cmd),
+    });
+  } catch (err) {
+    failSelection(err);
+  }
   emitProvenance(resolved, {
     cmd,
     quiet,

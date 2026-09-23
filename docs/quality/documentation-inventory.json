@@ -90,7 +90,7 @@
       "purpose": "maintainer",
       "interface": "mixed",
       "exception": "Repository development and implementation instructions; product operations still prefer CLI.",
-      "sha256": "612fdf98ca6cf3289412813e31fdc700bcd83b62b0ed769b049aef629dfa4ee7",
+      "sha256": "11e39cc46c985a70d72d939d387d8132fdea46819439659f1559145fceb2d706",
       "outputs": [],
       "url": null,
       "checks": [
@@ -1630,7 +1630,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "f95f05753636b02312cd656a88411f57b1a511b0ec579aabc8b4c8167e8730be",
+      "sha256": "390b8989111f3371e1dcdf2f6dedf8133372f3a069f07dc40d53e223e3b7f967",
       "outputs": [],
       "url": null,
       "checks": [
@@ -2865,7 +2865,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "e3f07c20e5827136d2a006dcdac6a124184d526717efe73537c5d34f54610dd5",
+      "sha256": "39c974ae70e3d6bfa15ff577033db13ec21893c86f946eb5d6f1bebd8326cb5b",
       "outputs": [],
       "url": "https://docs.run402.com/errors/client/",
       "checks": [

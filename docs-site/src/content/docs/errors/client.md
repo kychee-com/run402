@@ -139,7 +139,7 @@ The client could not complete this operation. Inspect its typed error kind, mess
 
 <h2 id="BAD_FLAG">BAD_FLAG</h2>
 
-Owner: `public:sdk/src/node/wallets.ts`, `public:cli/lib/approve.mjs`, `public:cli/lib/archives.mjs`, `public:cli/lib/argparse.mjs`, `public:cli/lib/assets.mjs`, `public:cli/lib/auth.mjs`, `public:cli/lib/billing.mjs`, `public:cli/lib/buzz-notifications.mjs`, `public:cli/lib/buzz.mjs`, `public:cli/lib/cdn.mjs`, `public:cli/lib/contracts.mjs`, `public:cli/lib/doctor.mjs`, `public:cli/lib/domains.mjs`, `public:cli/lib/email.mjs`, `public:cli/lib/errors.mjs`, `public:cli/lib/feedback.mjs`, `public:cli/lib/identity.mjs`, `public:cli/lib/pay.mjs`, `public:cli/lib/projects.mjs`, `public:cli/lib/repos.mjs`, `public:cli/lib/sites.mjs`, `public:cli/lib/transfer.mjs`, `public:cli/lib/up.mjs`, `public:cli/lib/wallet-context.mjs`, `public:cli/lib/wallets.mjs`, `public:cli/lib/webhooks.mjs`.
+Owner: `public:sdk/src/node/wallets.ts`, `public:cli/lib/approve.mjs`, `public:cli/lib/archives.mjs`, `public:cli/lib/argparse.mjs`, `public:cli/lib/assets.mjs`, `public:cli/lib/auth.mjs`, `public:cli/lib/billing.mjs`, `public:cli/lib/buzz-notifications.mjs`, `public:cli/lib/buzz.mjs`, `public:cli/lib/cdn.mjs`, `public:cli/lib/contracts.mjs`, `public:cli/lib/doctor.mjs`, `public:cli/lib/domains.mjs`, `public:cli/lib/email.mjs`, `public:cli/lib/errors.mjs`, `public:cli/lib/feedback.mjs`, `public:cli/lib/identity.mjs`, `public:cli/lib/pay.mjs`, `public:cli/lib/projects.mjs`, `public:cli/lib/repos.mjs`, `public:cli/lib/sites.mjs`, `public:cli/lib/transfer.mjs`, `public:cli/lib/up.mjs`, `public:cli/lib/wallets.mjs`, `public:cli/lib/webhooks.mjs`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
@@ -163,7 +163,7 @@ The client could not complete this operation. Inspect its typed error kind, mess
 
 <h2 id="BAD_PRIVATE_KEY">BAD_PRIVATE_KEY</h2>
 
-Owner: `public:sdk/src/node/wallets.ts`, `public:cli/lib/wallets.mjs`.
+Owner: `public:sdk/src/node/wallets.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
@@ -199,7 +199,7 @@ The client could not complete this operation. Inspect its typed error kind, mess
 
 <h2 id="BAD_WALLET_NAME">BAD_WALLET_NAME</h2>
 
-Owner: `public:sdk/src/node/wallets.ts`, `public:cli/lib/wallet-context.mjs`, `public:cli/lib/wallets.mjs`.
+Owner: `public:sdk/src/node/wallets.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
@@ -265,7 +265,7 @@ The client could not complete this operation. Inspect its typed error kind, mess
 
 <h2 id="CONFIRMATION_REQUIRED">CONFIRMATION_REQUIRED</h2>
 
-Owner: `public:sdk/src/node/wallets.ts`, `public:cli/lib/contracts.mjs`, `public:cli/lib/domains.mjs`, `public:cli/lib/email.mjs`, `public:cli/lib/projects.mjs`, `public:cli/lib/repos.mjs`, `public:cli/lib/subdomains.mjs`, `public:cli/lib/wallets.mjs`.
+Owner: `public:sdk/src/node/wallets.ts`, `public:cli/lib/contracts.mjs`, `public:cli/lib/domains.mjs`, `public:cli/lib/email.mjs`, `public:cli/lib/projects.mjs`, `public:cli/lib/repos.mjs`, `public:cli/lib/subdomains.mjs`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
@@ -1243,37 +1243,37 @@ The client could not complete this operation. Inspect its typed error kind, mess
 
 <h2 id="WALLET_EXISTS">WALLET_EXISTS</h2>
 
-Owner: `public:sdk/src/node/wallets.ts`, `public:cli/lib/wallets.mjs`.
+Owner: `public:sdk/src/node/wallets.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
 <h2 id="WALLET_LABEL_DRIFT">WALLET_LABEL_DRIFT</h2>
 
-Owner: `public:sdk/src/node/wallets.ts`, `public:cli/lib/wallets.mjs`.
+Owner: `public:sdk/src/node/wallets.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
 <h2 id="WALLET_NOT_FOUND">WALLET_NOT_FOUND</h2>
 
-Owner: `public:sdk/src/node/wallets.ts`, `public:cli/lib/wallet-context.mjs`, `public:cli/lib/wallets.mjs`.
+Owner: `public:sdk/src/node/wallets.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
 <h2 id="WALLET_PROTECTED">WALLET_PROTECTED</h2>
 
-Owner: `public:sdk/src/node/wallets.ts`, `public:cli/lib/wallets.mjs`.
+Owner: `public:sdk/src/node/wallets.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
 <h2 id="WALLET_RENAME_FAILED">WALLET_RENAME_FAILED</h2>
 
-Owner: `public:sdk/src/node/wallets.ts`, `public:cli/lib/wallets.mjs`.
+Owner: `public:sdk/src/node/wallets.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
 <h2 id="WALLET_SELECTION_CONFLICT">WALLET_SELECTION_CONFLICT</h2>
 
-Owner: `public:sdk/src/node/wallets.ts`, `public:cli/lib/wallet-context.mjs`, `public:cli/lib/wallets.mjs`.
+Owner: `public:sdk/src/node/wallets.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
