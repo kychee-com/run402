@@ -1,281 +1,191 @@
 /**
- * mcp-integration.test.ts — MCP tool handler integration test against LIVE production.
+ * mcp-integration.test.ts — the MCP server end to end, over stdio, against a
+ * local mock gateway.
  *
- * NO MOCKS. Every tool handler call hits https://api.run402.com for real.
- * Uses a pre-funded wallet. Tests that MCP tools routed through
- * `@run402/sdk/node` can auto-pay x402 and succeed — the same flow the CLI uses.
- *
- * Covers:
- *   - tier_set (x402 payment for prototype tier)
- *   - provision (SIWX auth + project creation)
- *   - deploy_function (service_key auth + function deploy)
- *   - invoke_function (service_key auth + function invocation)
- *   - generate_image (x402 payment for image generation)
- *   - deploy (SIWX auth + full-stack deploy)
- *   - Cleanup: delete function, delete project
- *
- * Prerequisites:
- *   - Set BUYER_PRIVATE_KEY env var (or have it in ~/Developer/run402-private/.env).
- *     This is an EVM private key with testnet USDC on Base Sepolia.
+ * Starts the real server (`src/index.ts`) as a child process, connects the MCP
+ * client SDK to it, and drives the `run` tool the way a host does: a list, a
+ * scoped chain through a handle, a refusal that names the CLI command, a
+ * timeout that lists the call that completed before it, and an
+ * `expand_result` of a stored value. The mock gateway is an HTTP server on
+ * 127.0.0.1 that records every request, so the test also proves what did and
+ * did not reach the network.
  *
  * Run:
- *   node --test --import tsx mcp-integration.test.ts
- *
- * Takes ~1-2 minutes. Costs ~$0.13 testnet USDC (tier + image).
+ *   npm run test:integration:mcp
  */
 
-import { describe, it, before, after } from "node:test";
+import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
-// ─── Test harness ────────────────────────────────────────────────────────────
+const PROJECT = "prj_integ";
+const MCP_TOOLS = ["deploy", "docs", "doctor", "expand_result", "run", "status", "up", "whoami"];
 
-const API = "https://api.run402.com";
-let tempDir: string;
+let gateway: Server;
+let apiBase: string;
+let configDir: string;
+let client: Client;
+const requests: Array<{ method: string; path: string; client: string | undefined }> = [];
 
-// ─── State passed between tests ──────────────────────────────────────────────
+function json(res: ServerResponse, status: number, body: unknown): void {
+  res.writeHead(status, { "Content-Type": "application/json" });
+  res.end(JSON.stringify(body));
+}
 
-let projectId: string;
+function handle(req: IncomingMessage, res: ServerResponse): void {
+  const path = new URL(req.url ?? "/", "http://127.0.0.1").pathname;
+  requests.push({ method: req.method ?? "GET", path, client: req.headers["run402-client"] as string | undefined });
+  if (req.method === "GET" && path === `/projects/v1/admin/${PROJECT}/functions`) {
+    return json(res, 200, {
+      functions: [
+        { name: "hello", runtime: "node22", url: `${apiBase}/functions/v1/hello` },
+        { name: "nightly", runtime: "node22", url: `${apiBase}/functions/v1/nightly` },
+      ],
+    });
+  }
+  if (req.method === "GET" && path === `/projects/v1/admin/${PROJECT}/secrets`) {
+    return json(res, 200, { secrets: [{ key: "STRIPE_KEY", created_at: "2026-09-01T00:00:00.000Z" }] });
+  }
+  return json(res, 404, { error: "Not found", code: "NOT_FOUND" });
+}
 
-// ─── Setup & teardown ────────────────────────────────────────────────────────
+interface RunEnvelope {
+  status: "ok" | "error";
+  value?: unknown;
+  value_ref: string | null;
+  shown: number;
+  total: number;
+  calls: Array<{ path: string; ok: boolean; code?: string }>;
+  wallet: { local_label: string; address: string | null };
+  error?: { code: string; message: string; next_actions: Array<{ type: string; command?: string }> };
+}
+
+function textOf(result: unknown): string {
+  const content = (result as { content: Array<{ type: string; text?: string }> }).content;
+  return content.filter((c) => c.type === "text").map((c) => c.text ?? "").join("\n");
+}
+
+function envelopeOf(result: unknown): RunEnvelope {
+  const blocks = [...textOf(result).matchAll(/```json\n([\s\S]*?)\n```/g)];
+  return JSON.parse(blocks[blocks.length - 1]![1]!) as RunEnvelope;
+}
+
+async function run(code: string, timeout_seconds?: number): Promise<RunEnvelope> {
+  const result = await client.callTool({ name: "run", arguments: { code, ...(timeout_seconds ? { timeout_seconds } : {}) } });
+  return envelopeOf(result);
+}
 
 before(async () => {
-  // Load BUYER_PRIVATE_KEY from env or from sibling run402 repo's .env
-  let buyerKey = process.env.BUYER_PRIVATE_KEY;
-  if (!buyerKey) {
-    const { fileURLToPath } = await import("node:url");
-    const { dirname } = await import("node:path");
-    const thisDir = dirname(fileURLToPath(import.meta.url));
-    const searchPaths = [
-      join(thisDir, "..", "run402-private", ".env"),
-      join(thisDir, "..", "run402", ".env"),
-      join(thisDir, "..", "..", "dev", "run402", ".env"),
-    ];
-    for (const envPath of searchPaths) {
-      try {
-        const envContent = readFileSync(envPath, "utf-8");
-        const match = envContent.match(/BUYER_PRIVATE_KEY=(.+)/);
-        if (match) { buyerKey = match[1].trim(); break; }
-      } catch { /* try next */ }
-    }
-  }
-  if (!buyerKey) {
-    throw new Error("BUYER_PRIVATE_KEY not found. Set env var or ensure ../run402-private/.env exists.");
-  }
+  gateway = createServer(handle);
+  await new Promise<void>((resolve) => gateway.listen(0, "127.0.0.1", resolve));
+  const address = gateway.address();
+  assert.ok(address && typeof address === "object");
+  apiBase = `http://127.0.0.1:${address.port}`;
 
-  tempDir = mkdtempSync(join(tmpdir(), "run402-mcp-integ-"));
-  process.env.RUN402_CONFIG_DIR = tempDir;
-  process.env.RUN402_API_BASE = API;
+  configDir = mkdtempSync(join(tmpdir(), "run402-mcp-integ-"));
+  writeFileSync(join(configDir, "projects.json"), JSON.stringify({
+    projects: { [PROJECT]: { anon_key: "anon-integ", service_key: "service-integ", tier: "prototype", lease_expires_at: "2030-01-01T00:00:00.000Z" } },
+  }), { mode: 0o600 });
 
-  // Seed the wallet file with the pre-funded wallet
-  const { privateKeyToAccount } = await import("viem/accounts");
-  const account = privateKeyToAccount(buyerKey as `0x${string}`);
-  writeFileSync(
-    join(tempDir, "wallet.json"),
-    JSON.stringify({
-      address: account.address,
-      privateKey: buyerKey,
-      created: new Date().toISOString(),
-      funded: true,
-      rail: "x402",
-    }),
-    { mode: 0o600 },
-  );
+  const env: Record<string, string> = {};
+  for (const [k, v] of Object.entries(process.env)) if (v !== undefined && !k.startsWith("RUN402_")) env[k] = v;
+  env.RUN402_API_BASE = apiBase;
+  env.RUN402_CONFIG_DIR = configDir;
+  env.RUN402_WALLET_LABEL_SYNC = "0";
 
-  // Reset the SDK singleton so it reconstructs with the fresh wallet
-  // (paid-fetch lives inside each Run402 instance now, not at module scope).
-  const { _resetSdk } = await import("./src/sdk.js");
-  _resetSdk();
+  client = new Client({ name: "mcp-integration", version: "1.0.0" });
+  await client.connect(new StdioClientTransport({
+    command: process.execPath,
+    // The server runs from a directory of its own (no wallet binding), so tsx
+    // is loaded by its resolved URL rather than by name from that directory.
+    args: ["--no-warnings", "--import", import.meta.resolve("tsx"), join(import.meta.dirname, "src/index.ts")],
+    env,
+    cwd: configDir,
+    stderr: "pipe",
+  }));
 });
 
 after(async () => {
-  // Failure-surviving teardown: the "cleanup — delete project" test step only
-  // runs when everything before it passed — a mid-suite failure/timeout used
-  // to leak `mcp-integ-test` projects on the production wallet forever.
-  // Deleting an already-deleted project is a tolerated error here. Runs
-  // BEFORE the env/keystore teardown because the tool needs RUN402_CONFIG_DIR.
-  if (projectId) {
-    try {
-      const { handleDeleteProject } = await import("./src/tools/delete-project.js");
-      await handleDeleteProject({ project_id: projectId });
-    } catch {
-      // already deleted by the cleanup test step — fine
-    }
-  }
-
-  delete process.env.RUN402_CONFIG_DIR;
-  delete process.env.RUN402_API_BASE;
-  if (tempDir) rmSync(tempDir, { recursive: true, force: true });
+  await client?.close();
+  await new Promise<void>((resolve) => gateway?.close(() => resolve()));
+  if (configDir) rmSync(configDir, { recursive: true, force: true });
 });
 
-// ─── Helper ──────────────────────────────────────────────────────────────────
-
-function text(result: { content: Array<{ type: string; text?: string }> }): string {
-  return result.content
-    .filter((c) => c.type === "text")
-    .map((c) => c.text)
-    .join("\n");
-}
-
-// ─── Tests — sequential, MCP tool handlers against live API ──────────────────
-
-describe("MCP integration (live API, no mocks)", { timeout: 180_000 }, () => {
-
-  // ── Tier (x402 payment) ─────────────────────────────────────────────
-
-  it("tier_set — start/renew prototype via x402 auto-payment", async () => {
-    const { handleTierSet } = await import("./src/tools/tier-set.js");
-    const result = await handleTierSet({ tier: "prototype" });
-    const out = text(result);
-
-    // Two valid outcomes:
-    // 1. Auto-paid → "Tier Started/Renewed/Upgraded"
-    // 2. 402 informational → tier already active (server may return plain 402
-    //    without x402 protocol headers when wallet already has an active tier)
-    assert.equal(result.isError, undefined, `Expected no isError, got: ${out}`);
-    const paid = out.includes("Started") || out.includes("Renewed") || out.includes("Upgraded");
-    const alreadyActive = out.includes("Payment Required") && out.includes("already active");
-    assert.ok(paid || alreadyActive, `Expected tier success or already-active 402, got: ${out}`);
+describe("MCP server end to end (stdio, mock gateway)", { timeout: 120_000 }, () => {
+  it("lists exactly the eight tools", async () => {
+    const { tools } = await client.listTools();
+    assert.deepEqual(tools.map((t) => t.name).sort(), MCP_TOOLS);
   });
 
-  // ── Provision (SIWX auth) ───────────────────────────────────────────
-
-  it("provision — create project with SIWX auth", async () => {
-    const { handleProvision } = await import("./src/tools/provision.js");
-    const result = await handleProvision({ tier: "prototype", name: "mcp-integ-test" });
-    const out = text(result);
-
-    assert.equal(result.isError, undefined, `Expected no error, got: ${out}`);
-    assert.ok(out.includes("Project Provisioned"), `Expected 'Project Provisioned' in: ${out}`);
-
-    // Extract project_id from markdown table
-    const match = out.match(/project_id \| `(prj_[a-zA-Z0-9_]+)`/);
-    assert.ok(match, `Expected project_id in: ${out}`);
-    projectId = match![1];
+  it("run: a list", async () => {
+    const before = requests.length;
+    const run1 = await run(`(await r.project("${PROJECT}").functions.list()).functions.map((f) => f.name)`);
+    assert.equal(run1.status, "ok", JSON.stringify(run1.error));
+    assert.deepEqual(run1.value, ["hello", "nightly"]);
+    assert.deepEqual(run1.calls.map((c) => [c.path, c.ok]), [["project.functions.list", true]]);
+    assert.equal(run1.wallet.local_label, "default");
+    const sent = requests.slice(before);
+    assert.deepEqual(sent.map((r) => `${r.method} ${r.path}`), [`GET /projects/v1/admin/${PROJECT}/functions`]);
+    assert.match(sent[0]!.client ?? "", /surface="sandbox"/);
   });
 
-  // ── Deploy function (service_key auth) ──────────────────────────────
+  it("run: a scoped chain through a handle", async () => {
+    const run2 = await run(
+      `const p = await r.project("${PROJECT}");\n` +
+      "const [fns, secrets] = await Promise.all([p.functions.list(), p.secrets.list()]);\n" +
+      "({ functions: fns.functions.length, secrets: secrets.secrets.map((s) => s.key) })",
+    );
+    assert.equal(run2.status, "ok", JSON.stringify(run2.error));
+    assert.deepEqual(run2.value, { functions: 2, secrets: ["STRIPE_KEY"] });
+    assert.deepEqual(run2.calls.map((c) => c.path).sort(), ["project", "project.functions.list", "project.secrets.list"]);
+  });
 
-  it("deploy_function — deploy a hello-world function", async () => {
-    const { handleDeployFunction } = await import("./src/tools/deploy-function.js");
-    const result = await handleDeployFunction({
-      project_id: projectId,
-      name: "mcp-hello",
-      code: `export default async (req) => new Response(JSON.stringify({ hello: "mcp" }), { headers: { "Content-Type": "application/json" } })`,
+  it("run: a secret-returning call refuses and names the CLI command, before any request", async () => {
+    const before = requests.length;
+    const result = await client.callTool({
+      name: "run",
+      arguments: { code: `await r.project("${PROJECT}").grants.create({ wallet: "0x1111111111111111111111111111111111111111", capability: "deploy", key: true })` },
     });
-    const out = text(result);
-
-    assert.equal(result.isError, undefined, `Expected no error, got: ${out}`);
-    assert.ok(out.includes("Function Deployed"), `Expected 'Function Deployed' in: ${out}`);
-    assert.ok(out.includes("mcp-hello"), `Expected 'mcp-hello' in: ${out}`);
+    assert.equal((result as { isError?: boolean }).isError, true);
+    const run3 = envelopeOf(result);
+    assert.equal(run3.error?.code, "SECRET_REQUIRES_CLI");
+    assert.equal(run3.error?.next_actions.length, 1);
+    assert.equal(run3.error?.next_actions[0]?.type, "run_cli_command");
+    assert.equal(
+      run3.error?.next_actions[0]?.command,
+      `run402 grants create 0x1111111111111111111111111111111111111111 --capability deploy --key --project ${PROJECT}`,
+    );
+    assert.equal(requests.length, before, "the refusal made no request");
   });
 
-  // ── Invoke function ─────────────────────────────────────────────────
-
-  it("invoke_function — call the deployed function", async () => {
-    const { handleInvokeFunction } = await import("./src/tools/invoke-function.js");
-
-    // Lambda cold start — retry once after 3s
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const result = await handleInvokeFunction({
-        project_id: projectId,
-        name: "mcp-hello",
-      });
-      const out = text(result);
-
-      if (!result.isError && out.includes("Function Response")) {
-        assert.ok(out.includes("mcp") || out.includes("hello"), `Expected response body in: ${out}`);
-        return;
-      }
-
-      if (attempt === 0) await new Promise((r) => setTimeout(r, 3000));
-    }
-    assert.fail("invoke_function failed after retries");
+  it("run: a timeout lists the call that completed before it", async () => {
+    const run4 = await run(`await r.project("${PROJECT}").functions.list();\nfor (;;) {}`, 1);
+    assert.equal(run4.status, "error");
+    assert.equal(run4.error?.code, "RUN_TIMEOUT");
+    assert.deepEqual(run4.calls.map((c) => [c.path, c.ok]), [["project.functions.list", true]]);
   });
 
-  // ── Generate image (x402 payment) ───────────────────────────────────
-
-  it("generate_image — generate image via x402 auto-payment", async () => {
-    const { handleGenerateImage } = await import("./src/tools/generate-image.js");
-
-    // Image generation can hit 504 timeouts — retry once
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const result = await handleGenerateImage({
-        prompt: "a tiny blue robot waving hello, pixel art",
-        aspect: "square",
-      });
-      const out = text(result);
-
-      if (!result.isError && out.includes("Generated")) {
-        // Should include an image content block
-        const imageBlock = result.content.find((c) => c.type === "image");
-        assert.ok(imageBlock, "Expected image content block in response");
-        return;
-      }
-
-      // Transient server error (504, 502, 503) — retry once
-      if (result.isError && (out.includes("504") || out.includes("502") || out.includes("503") || out.includes("timed out"))) {
-        if (attempt === 0) {
-          await new Promise((r) => setTimeout(r, 2000));
-          continue;
-        }
-      }
-
-      // Payment required (no x402 protocol) — treat as acceptable like tier_set
-      if (!result.isError && out.includes("Payment Required")) {
-        assert.ok(true, "generate_image returned 402 informational (x402 payment may not have fired)");
-        return;
-      }
-
-      // Any other error — fail with details
-      assert.equal(result.isError, undefined, `Expected no error on attempt ${attempt + 1}, got: ${out}`);
-    }
-    assert.fail("generate_image failed after retries (transient server errors)");
+  it("expand_result pages a stored value the run did not show", async () => {
+    const run5 = await run("Array.from({ length: 1000 }, (_, i) => ({ i, name: `row-${i}` }))");
+    assert.equal(run5.status, "ok");
+    assert.equal(run5.shown, 200);
+    assert.ok(run5.total > 200);
+    assert.equal(run5.value, undefined, "a windowed value is left out of the envelope");
+    const page = await client.callTool({ name: "expand_result", arguments: { ref: run5.value_ref, offset: 200, limit: 20 } });
+    const text = textOf(page);
+    assert.match(text, /run_value/);
+    assert.match(text, /row-\d+/);
   });
 
-  // ── Unified deploy (SIWX auth, full-stack) ─────────────────────────
-
-  it("deploy — deploy site + function in one call", async () => {
-    const { handleDeploy } = await import("./src/tools/deploy.js");
-    const result = await handleDeploy({
-      project_id: projectId,
-      site: {
-        replace: {
-          "index.html": "<!DOCTYPE html><html><body><h1>MCP Integration Test</h1></body></html>",
-        },
-      },
-      functions: {
-        replace: {
-          "mcp-deploy-fn": {
-            runtime: "node22",
-            source: `export default async (req) => new Response("deploy ok")`,
-          },
-        },
-      },
-    });
-    const out = text(result);
-
-    assert.equal(result.isError, undefined, `Expected no error, got: ${out}`);
-    assert.ok(out.includes("Release Activated"), `Expected 'Release Activated' in: ${out}`);
-    assert.ok(out.includes(projectId), `Expected project_id in: ${out}`);
-  });
-
-  // ── Cleanup ─────────────────────────────────────────────────────────
-
-  it("cleanup — delete functions", async () => {
-    const { handleDeleteFunction } = await import("./src/tools/delete-function.js");
-
-    // mcp-hello is already deleted by deploy's function replacement, so skip it here.
-    const r2 = await handleDeleteFunction({ project_id: projectId, name: "mcp-deploy-fn" });
-    assert.equal(r2.isError, undefined, `Expected no error deleting mcp-deploy-fn: ${text(r2)}`);
-  });
-
-  it("cleanup — delete project", async () => {
-    const { handleDeleteProject } = await import("./src/tools/delete-project.js");
-    const result = await handleDeleteProject({ project_id: projectId });
-    const out = text(result);
-    assert.equal(result.isError, undefined, `Expected no error, got: ${out}`);
+  it("docs answers from the packaged reference without a network call", async () => {
+    const before = requests.length;
+    const result = await client.callTool({ name: "docs", arguments: {} });
+    assert.match(textOf(result), /## `r` namespaces/);
+    assert.equal(requests.length, before);
   });
 });
