@@ -45,9 +45,9 @@ const PRIVATE_KEY_RE = /^0x[a-fA-F0-9]{64}$/;
  *   - `core/src/wallet-auth.ts` passes a malformed `privateKey` to
  *     `@noble/curves` which throws "expected 32 bytes, got N".
  *
- * The CLI's `cli/lib/config.mjs:readWallet()` wrapper and the MCP
- * `src/tools/{status,init}.ts` callers translate the throw into their own
- * structured envelopes (`code: BAD_WALLET_FILE`).
+ * The CLI's `cli/lib/config.mjs:readWallet()` wrapper and the Node SDK's
+ * `readLocalWallet()` (`sdk/src/node/wallets.ts`) translate the throw into
+ * their own structured envelopes (`code: BAD_WALLET_FILE`).
  */
 /**
  * If a wallet file is readable by group or other (any of the low 0o077

@@ -10,9 +10,9 @@
  * an edit. Copy may shorten only by omitting a whole clause, never by rewording
  * one.
  *
- * This test pins both directions against the shipped surface: the tool
- * descriptions in src/index.ts (what an agent reads before it calls anything),
- * the tool module itself, and EVERY public doc surface that mentions the vault
+ * This test pins both directions against the shipped surface: the MCP
+ * result-store copy an agent reads (the expand_result description and its
+ * modules), and EVERY public doc surface that mentions the vault
  * (the CLI/SDK docs-site sources and their generated flat files, README.md,
  * SKILL.md, sdk/README.md). Docs are where this copy rots
  * fastest — nobody re-reads a reference section when the protocol changes, and a
@@ -34,7 +34,6 @@ const readSection = (section: string): string => {
 };
 
 const INDEX_SRC = read("../index.ts");
-const VAULT_SRC = read("./repos.ts");
 const EXPAND_SRC = read("./expand-result.ts");
 const STORE_SRC = read("../result-store.ts");
 
@@ -73,8 +72,6 @@ const DOC_SURFACES = {
   "docs-site mcp/reference.md": readSection("mcp"),
   "llms-mcp.txt": read("../../llms-mcp.txt"),
 } as const;
-
-const VAULT_TOOLS = ["repos_view", "repos_list_heads", "repos_fsck"] as const;
 
 /**
  * Pull the description literal a `server.tool(...)` registration carries. It is
@@ -166,15 +163,8 @@ const BANNED_PHRASES = [
   "storage with receipts",
 ] as const;
 
-const DESCRIPTIONS = Object.fromEntries(VAULT_TOOLS.map((t) => [t, toolDescription(t)])) as Record<
-  (typeof VAULT_TOOLS)[number],
-  string
->;
-
 /** Everything an agent or a reader can see of this feature's copy. */
-const CORPUS = [VAULT_SRC, EXPAND_SRC, STORE_SRC, toolDescription("expand_result"), ...Object.values(DESCRIPTIONS)].join(
-  "\n",
-);
+const CORPUS = [EXPAND_SRC, STORE_SRC, toolDescription("expand_result")].join("\n");
 
 /**
  * Strip markdown emphasis + code markers and collapse whitespace, so markup can
@@ -291,50 +281,6 @@ describe("vault copy — the doc surfaces state the claims", () => {
     // what the platform promises.
     assert.ok(NORMALIZED_DOCS["docs-site cli/reference.md"].includes(normalize(CLAIM_CONFIDENTIALITY)));
     assert.ok(NORMALIZED_DOCS["docs-site sdk/reference.md"].includes(normalize(CLAIM_CONFIDENTIALITY)));
-  });
-});
-
-describe("vault copy — the approved claims, byte-for-byte", () => {
-  it("repos_view states the confidentiality claim", () => {
-    assert.ok(
-      DESCRIPTIONS.repos_view.includes(CLAIM_CONFIDENTIALITY),
-      "the confidentiality claim must appear verbatim, including the deployment-artifact custody sentence that scopes it",
-    );
-  });
-
-  it("repos_view states the activation claim", () => {
-    assert.ok(
-      DESCRIPTIONS.repos_view.includes(CLAIM_ACTIVATION),
-      "the tool reports vault_policy and pending overrides, so it must say that an audited override exists",
-    );
-  });
-
-  it("repos_view states the terminal-loss sentence", () => {
-    assert.ok(
-      DESCRIPTIONS.repos_view.includes(TERMINAL_LOSS),
-      "the terminal-loss sentence is a reviewed product commitment and is stated verbatim, not summarised",
-    );
-  });
-
-  it("repos_fsck states the retention claim", () => {
-    assert.ok(
-      DESCRIPTIONS.repos_fsck.includes(CLAIM_RETENTION),
-      "verification proves the chain; retention is the thing it cannot prove, so the claim belongs here",
-    );
-  });
-
-  it("the tool module carries the keystore-qualified durability sentence", () => {
-    assert.ok(
-      VAULT_SRC.includes(KEYSTORE_QUALIFIED_DURABILITY),
-      "durability copy without the keystore qualifier is banned; this is the qualified form",
-    );
-  });
-
-  it("the tool module carries the scoped confidentiality sentence", () => {
-    assert.ok(
-      VAULT_SRC.includes(SCOPED_CONFIDENTIALITY),
-      "the scoped sentence is the ONLY permitted form of the ciphertext claim",
-    );
   });
 });
 
@@ -542,34 +488,5 @@ describe("vault copy — the vendored protocol docs stay in sync", () => {
       PROTOCOL_HEAD.includes(`rev ${vectors["x-r402s-revision"]}`),
       `docs/kygit/protocol-v0.md's title line ("${PROTOCOL_HEAD}") does not carry rev ${vectors["x-r402s-revision"]} — one of the two vendored sets was re-synced without the other`,
     );
-  });
-});
-
-describe("vault copy — the read-only boundary is stated, not implied", () => {
-  it("no mutating vault verb is registered as a tool", () => {
-    for (const forbidden of [
-      "vault_push",
-      "vault_init",
-      "vault_compact",
-      "vault_prune",
-      "vault_deploy",
-      "set_vault_policy",
-    ]) {
-      assert.equal(
-        INDEX_SRC.includes(`server.tool(\n  "${forbidden}"`),
-        false,
-        `${forbidden} must stay CLI-only — see the header of src/tools/repos.ts for the reasoning`,
-      );
-    }
-  });
-
-  it("the module explains WHY each mutation is excluded", () => {
-    // A bare "read-only by design" comment rots; the reasons are what a future
-    // reader needs in order to decide whether an exclusion still holds.
-    for (const verb of ["push", "init", "compact", "prune", "deploy", "setPolicy"]) {
-      assert.ok(VAULT_SRC.includes(verb), `the header must name ${verb} among the excluded mutations`);
-    }
-    assert.ok(VAULT_SRC.includes("holder_token"), "the compact exclusion turns on the once-returned lease token");
-    assert.ok(VAULT_SRC.includes("recovery receipt"), "the init exclusion turns on the one-shot recovery receipt");
   });
 });

@@ -3,7 +3,6 @@
  */
 
 import { getWalletAuthHeaders as _getWalletAuthHeaders, type SIWxAuthHeaders } from "../core/dist/wallet-auth.js";
-import { isToolAvailable } from "./tool-profiles.js";
 
 export type { SIWxAuthHeaders };
 
@@ -24,12 +23,9 @@ export function requireWalletAuth(path: string): {
         content: [
           {
             type: "text",
-            // `wallet_create` is not registered under the buyer profile, so
-            // naming it there sends the caller to a tool they cannot invoke.
-            // `init` is the buyer's single-call bootstrap and does both steps.
-            text: isToolAvailable("wallet_create")
-              ? "Error: No local wallet configured. Use `wallet_create` to create one first, then `request_faucet` to fund it."
-              : "Error: No local wallet configured. Use `init` to create and fund an agent wallet in one call.",
+            // Creating a wallet writes a private key, which only the CLI hands
+            // to a person; `up` sets one up as part of its missing setup.
+            text: "Error: No local wallet configured. `up` sets one up with the rest of any missing setup, or run `run402 init` to create and fund one.",
           },
         ],
         isError: true,

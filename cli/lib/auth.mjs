@@ -710,8 +710,7 @@ function scaffoldIdent(args, flag, def) {
 
 // Pure, offline generator — no SDK / network / project. Emits the conventional
 // role-table migration, the matching requireRole gate snippet, and a
-// first-operator bootstrap. (Keep in sync with the MCP `scaffold_roles` tool in
-// src/tools/scaffold-roles.ts — same artifacts, different presentation.)
+// first-operator bootstrap.
 function scaffoldRoles(args) {
   const table = scaffoldIdent(args, "--table", "app_roles");
   const userCol = scaffoldIdent(args, "--user-col", "user_id");

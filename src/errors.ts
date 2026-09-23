@@ -88,13 +88,13 @@ export function formatApiError(
     switch (res.status) {
       case 401:
         lines.push(
-          `\nNext step: Re-provision the project with \`provision_postgres_project\`, or check that your service key is correct.`,
+          `\nNext step: Create a project with \`up\` (or \`run402 projects provision\`), or check that your service key is correct.`,
         );
         break;
       case 402:
         if (inGrace) {
           lines.push(
-            `\nNext step: Project is in the soft-delete grace window — control-plane mutations are blocked. Use \`tier_set\` to renew/upgrade and reactivate the project in one transaction.`,
+            `\nNext step: Project is in the soft-delete grace window — control-plane mutations are blocked. Renew or upgrade with a \`run\` snippet \`await r.tier.set("<tier>")\` (or \`run402 tier set <tier>\`) to reactivate the project in one transaction.`,
           );
         }
         break;
@@ -106,11 +106,11 @@ export function formatApiError(
           // reserves 402 for genuine payment challenges. Give the same
           // richer grace-window guidance as the 402 branch above.
           lines.push(
-            `\nNext step: Project is in the soft-delete grace window — control-plane mutations are blocked. Use \`tier_set\` to renew/upgrade and reactivate the project in one transaction.`,
+            `\nNext step: Project is in the soft-delete grace window — control-plane mutations are blocked. Renew or upgrade with a \`run\` snippet \`await r.tier.set("<tier>")\` (or \`run402 tier set <tier>\`) to reactivate the project in one transaction.`,
           );
         } else {
           lines.push(
-            `\nNext step: The project lease may have expired. Use \`get_usage\` to check status, or \`tier_set\` to renew the lease.`,
+            `\nNext step: The project lease may have expired. Check with a \`run\` snippet \`await r.projects.getUsage("<project_id>")\`, or renew with a \`run\` snippet \`await r.tier.set("<tier>")\` (or \`run402 tier set <tier>\`).`,
           );
         }
         break;
@@ -134,7 +134,7 @@ export function formatApiError(
     }
   } else if ((res.status === 402 || res.status === 403) && inGrace) {
     lines.push(
-      `\nNext step: Project is in the soft-delete grace window — control-plane mutations are blocked. Use \`tier_set\` to renew/upgrade and reactivate the project in one transaction.`,
+      `\nNext step: Project is in the soft-delete grace window — control-plane mutations are blocked. Renew or upgrade with a \`run\` snippet \`await r.tier.set("<tier>")\` (or \`run402 tier set <tier>\`) to reactivate the project in one transaction.`,
     );
   }
 
@@ -247,7 +247,7 @@ function addCodeGuidance(
     case "PROJECT_FROZEN":
     case "PROJECT_DORMANT":
     case "PROJECT_PAST_DUE":
-      lines.push(`\nNext step: Use \`get_usage\` to inspect lifecycle state, or \`tier_set\` to renew/reactivate the project.`);
+      lines.push(`\nNext step: Inspect the lifecycle state with a \`run\` snippet \`await r.projects.getUsage("<project_id>")\`, or renew with a \`run\` snippet \`await r.tier.set("<tier>")\` (or \`run402 tier set <tier>\`).`);
       return true;
     case "RATE_LIMITED":
       lines.push(`\nNext step: Rate limit hit. Wait and retry.`);
@@ -362,7 +362,7 @@ export function projectNotFound(projectId: string): ToolResult {
         type: "text",
         text:
           `Error: Project \`${projectId}\` not found in key store. ` +
-          `Use \`provision_postgres_project\` to create a project first.`,
+          `Create a project first with \`up\` (or \`run402 projects provision\`).`,
       },
     ],
     isError: true,

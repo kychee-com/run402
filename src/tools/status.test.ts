@@ -53,8 +53,12 @@ function mockApis(opts: {
   }) as typeof fetch;
 }
 
+function envelope(text: string): Record<string, any> {
+  return JSON.parse(/```json\n([\s\S]*?)\n```/.exec(text)![1]!);
+}
+
 describe("status tool", () => {
-  it("returns full organization snapshot", async () => {
+  it("returns r.status(): the wallet, the tier and lease, the projects, the active project", async () => {
     writeWallet({ address: TEST_ADDR, privateKey: TEST_PK, created: "2026-01-01T00:00:00Z", funded: true, rail: "x402" });
     writeKeystore({ active_project_id: "proj-1", projects: { "proj-1": { anon_key: "ak1", service_key: "sk1" } } });
     mockApis({
@@ -63,32 +67,33 @@ describe("status tool", () => {
       projects: { projects: [{ id: "proj-1" }] },
     });
 
-    const result = await handleStatus({} as Record<string, never>);
-    const text = result.content[0]!.text;
-    assert.ok(text.includes(TEST_ADDR));
-    assert.ok(text.includes("prototype"));
-    assert.ok(text.includes("$0.25"));
-    assert.ok(text.includes("proj-1"));
-    assert.ok(text.includes("(active)"));
+    const result = await handleStatus();
     assert.equal(result.isError, undefined);
+    const text = result.content[0]!.text;
+    assert.match(text, /^## Status: wallet default \(/);
+    const status = envelope(text);
+    assert.equal(status.wallet.local_label, "default");
+    assert.equal(status.wallet.address.toLowerCase(), TEST_ADDR);
+    assert.equal(status.balances.allowance_usd_micros, 250000);
+    assert.equal(status.tier.name, "prototype");
+    assert.ok(!/privateKey|private_key|sk1/.test(text), "never key material");
   });
 
-  it("returns error when no local wallet", async () => {
-    const result = await handleStatus({} as Record<string, never>);
-    assert.equal(result.isError, true);
-    assert.ok(result.content[0]!.text.includes("No local wallet"));
+  it("names the next command when there is no local wallet", async () => {
+    globalThis.fetch = (async () => new Response("error", { status: 500 })) as typeof fetch;
+    const result = await handleStatus();
+    assert.equal(result.isError, undefined);
+    assert.match(result.content[0]!.text, /^## Status: no local wallet/);
+    assert.equal(envelope(result.content[0]!.text).wallet, null);
   });
 
-  it("handles API failures gracefully", async () => {
+  it("reports unavailable remote reads without failing", async () => {
     writeWallet({ address: TEST_ADDR, privateKey: TEST_PK, created: "2026-01-01T00:00:00Z", funded: true, rail: "x402" });
-    // All APIs return 500
     globalThis.fetch = (async () => new Response("error", { status: 500 })) as typeof fetch;
 
-    const result = await handleStatus({} as Record<string, never>);
-    assert.equal(result.isError, undefined); // not an error
-    const text = result.content[0]!.text;
-    assert.ok(text.includes("| tier | (unavailable) |"));
-    assert.doesNotMatch(text, /Use `tier_set`/);
-    assert.ok(text.includes("(none)"));
+    const result = await handleStatus();
+    assert.equal(result.isError, undefined);
+    const status = envelope(result.content[0]!.text);
+    assert.equal(status.tier, null);
   });
 });

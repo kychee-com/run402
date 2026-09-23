@@ -295,6 +295,17 @@ function render(result: RunResult): ToolResult {
     lines.push("", `logs — ${result.logs.length} of ${logsTotal} lines shown below; expand_result with ref ${result.logs_ref} pages the rest (offset ${result.logs.length}).`);
   }
 
-  lines.push("", "```json", JSON.stringify(result, null, 2), "```");
+  lines.push("", "```json", JSON.stringify(inContractOrder(result), null, 2), "```");
   return { content: [{ type: "text", text: lines.join("\n") }], ...(result.status === "error" ? { isError: true } : {}) };
+}
+
+/** The envelope's fields in the Frozen Contract's order, absent ones left out. */
+function inContractOrder(result: RunResult): Record<string, unknown> {
+  const order: Array<keyof RunResult> = [
+    "status", "value", "value_kind", "value_ref", "shown", "total", "logs", "logs_ref", "logs_dropped",
+    "calls", "calls_dropped", "duration_ms", "wallet", "error",
+  ];
+  const out: Record<string, unknown> = {};
+  for (const key of order) if (result[key] !== undefined) out[key] = result[key];
+  return out;
 }

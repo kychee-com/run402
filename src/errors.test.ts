@@ -104,8 +104,8 @@ describe("formatApiError", () => {
     assert.ok(text.includes("Safe to retry: true"));
     assert.ok(text.includes("Mutation state: none"));
     assert.ok(text.includes("Trace: trc_abc"));
-    assert.ok(text.includes("get_usage"));
-    assert.ok(text.includes("tier_set"));
+    assert.ok(text.includes("r.projects.getUsage"));
+    assert.ok(text.includes("r.tier.set"));
     assert.ok(!text.includes("lease may have expired"));
   });
 
@@ -206,7 +206,7 @@ describe("formatApiError", () => {
 
   it("adds correct guidance for each status code", () => {
     const cases: Array<[number, string]> = [
-      [401, "Re-provision the project"],
+      [401, "Create a project with `up`"],
       [403, "lease may have expired"],
       [404, "Check that the resource name"],
       [429, "Rate limit hit"],
@@ -256,7 +256,7 @@ describe("formatApiError", () => {
     assert.ok(text.includes("next=2026-04-15T00:00:00Z"));
     assert.ok(text.includes("purge_at=2026-07-14T00:00:00Z"));
     assert.ok(text.includes("soft-delete grace window"));
-    assert.ok(text.includes("tier_set"));
+    assert.ok(text.includes("r.tier.set"));
     assert.ok(text.includes("Renew URL: /tiers/v1/prototype"));
   });
 
@@ -297,7 +297,7 @@ describe("formatApiError", () => {
     );
     const text = result.content[0]!.text;
     assert.ok(text.includes("soft-delete grace window"));
-    assert.ok(text.includes("tier_set"));
+    assert.ok(text.includes("r.tier.set"));
   });
 
   it("leaves non-lifecycle 402 guidance unchanged when lifecycle_state is absent", () => {
@@ -384,7 +384,7 @@ describe("formatApiError", () => {
     assert.ok(/owner.*membership/i.test(text));
     // must NOT fall through to the generic 403 lease-expired guidance
     assert.ok(!text.includes("lease may have expired"));
-    assert.ok(!text.includes("tier_set"));
+    assert.ok(!text.includes("r.tier.set"));
   });
 
   it("maps 403 FORBIDDEN to permission guidance, not the generic lease-expired text", () => {
@@ -452,7 +452,7 @@ describe("projectNotFound", () => {
     const result = projectNotFound("proj-123");
     assert.ok(result.content[0]!.text.includes("proj-123"));
     assert.ok(result.content[0]!.text.includes("not found in key store"));
-    assert.ok(result.content[0]!.text.includes("provision_postgres_project"));
+    assert.ok(result.content[0]!.text.includes("run402 projects provision"));
   });
 
   it("always sets isError to true", () => {
