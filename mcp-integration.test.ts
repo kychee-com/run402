@@ -192,13 +192,16 @@ describe("MCP server end to end (stdio, mock gateway)", { timeout: 120_000 }, ()
   it("expand_result pages a stored value the run did not show", async () => {
     const run5 = await run("Array.from({ length: 1000 }, (_, i) => ({ i, name: `row-${i}` }))");
     assert.equal(run5.status, "ok");
-    assert.equal(run5.shown, 200);
-    assert.ok(run5.total > 200);
-    assert.equal(run5.value, undefined, "a windowed value is left out of the envelope");
-    const page = await client.callTool({ name: "expand_result", arguments: { ref: run5.value_ref, offset: 200, limit: 20 } });
-    const text = textOf(page);
-    assert.match(text, /run_value/);
-    assert.match(text, /row-\d+/);
+    assert.equal(run5.total, 1000, "total counts rows");
+    assert.ok(run5.shown > 0 && run5.shown < 1000);
+    assert.equal(run5.value, undefined, "a windowed value is not inlined whole");
+    const window = (run5 as unknown as { value_window: { path: string; items: Array<{ i: number }> } }).value_window;
+    assert.equal(window.path, "$");
+    assert.deepEqual(window.items[0], { i: 0, name: "row-0" }, "the structured window carries whole rows");
+    const page = await client.callTool({ name: "expand_result", arguments: { ref: run5.value_ref, offset: run5.shown, limit: 20 } });
+    const items = (page.structuredContent as { items: Array<{ i: number; name: string }> }).items;
+    assert.equal(items.length, 20);
+    assert.deepEqual(items[0], { i: run5.shown, name: `row-${run5.shown}` }, "expand_result pages whole rows, never text fragments");
   });
 
   it("docs answers from the packaged reference without a network call", async () => {

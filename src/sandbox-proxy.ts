@@ -276,6 +276,74 @@ function isPlainData(value: object): boolean {
 
 class RefusedProperty extends TypeError {}
 
+/**
+ * A member the SDK object does not have. Carries the closest public members,
+ * so the run's error can say "did you mean" instead of "is not a function".
+ */
+export class UnknownMember extends TypeError {
+  readonly code = "RUN_UNKNOWN_MEMBER";
+  constructor(
+    readonly path: string,
+    readonly suggestions: string[],
+    readonly members: string[],
+  ) {
+    super(
+      suggestions.length > 0
+        ? `r.${path} is not part of the SDK. Did you mean ${suggestions.map((s) => `r.${s}`).join(" or ")}?`
+        : `r.${path} is not part of the SDK. Its parent has: ${members.slice(0, 20).join(", ")}${members.length > 20 ? ", …" : ""}.`,
+    );
+    this.name = "UnknownMember";
+  }
+}
+
+/** The public members an SDK object offers: own and inherited, minus private, internal, and intrinsic ones. */
+function publicMembers(holder: object): string[] {
+  const out = new Set<string>();
+  const privates = sdkPrivateMembers();
+  for (let p: object | null = holder; p && !INTRINSIC_PROTOTYPES.has(p); p = Object.getPrototypeOf(p)) {
+    const className = typeof p === "function" ? null : (p as { constructor?: { name?: unknown } }).constructor?.name;
+    const hidden = typeof className === "string" ? privates.get(className) : undefined;
+    for (const key of Object.getOwnPropertyNames(p)) {
+      if (ALWAYS_REFUSED.has(key) || key.startsWith("_") || key.startsWith("#") || hidden?.has(key)) continue;
+      if (typeof holder === "function" && (key === "length" || key === "name" || key === "arguments" || key === "caller")) continue;
+      out.add(key);
+    }
+  }
+  return [...out].sort();
+}
+
+/** Edit distance with adjacent transpositions (optimal string alignment). */
+function editDistance(a: string, b: string): number {
+  const d: number[][] = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) d[0]![j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      d[i]![j] = Math.min(d[i - 1]![j]! + 1, d[i]![j - 1]! + 1, d[i - 1]![j - 1]! + cost);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i]![j] = Math.min(d[i]![j]!, d[i - 2]![j - 2]! + 1);
+    }
+  }
+  return d[a.length]![b.length]!;
+}
+
+/** The members closest to `key`: case-insensitive match first, then small edit distance, then containment. At most three. */
+export function closestMembers(key: string, members: string[]): string[] {
+  const lower = key.toLowerCase();
+  const scored: Array<{ m: string; score: number }> = [];
+  for (const m of members) {
+    const ml = m.toLowerCase();
+    let score: number | null = null;
+    if (ml === lower) score = 0;
+    else {
+      const dist = editDistance(lower, ml);
+      if (dist <= Math.max(2, Math.floor(key.length / 3))) score = dist;
+      else if (lower.length >= 3 && (ml.includes(lower) || lower.includes(ml))) score = 10;
+    }
+    if (score !== null) scored.push({ m, score });
+  }
+  return scored.sort((x, y) => x.score - y.score || x.m.localeCompare(y.m)).slice(0, 3).map((s) => s.m);
+}
+
 /** Read `key` from `holder` if the SDK's public surface allows it; throw otherwise. */
 function readAllowed(holder: unknown, key: string, path: string): unknown {
   if (holder === null || holder === undefined) {
@@ -295,7 +363,13 @@ function readAllowed(holder: unknown, key: string, path: string): unknown {
   // An SDK object or function: find where the property lives.
   let owner: object | null = holder as object;
   while (owner && !Object.prototype.hasOwnProperty.call(owner, key)) owner = Object.getPrototypeOf(owner);
-  if (!owner) return undefined;
+  if (!owner) {
+    // An SDK object has no such member: name the closest ones rather than
+    // letting the next call fail as "is not a function".
+    const members = publicMembers(holder as object);
+    const full = path ? `${path}.${key}` : key;
+    throw new UnknownMember(full, closestMembers(key, members).map((m) => (path ? `${path}.${m}` : m)), members);
+  }
   if (INTRINSIC_PROTOTYPES.has(owner)) {
     throw new RefusedProperty(`${path ? `${path}.` : ""}${key} is not part of the SDK surface`);
   }
@@ -339,6 +413,7 @@ function describeError(err: unknown): { name: string; message: string; code?: st
       ...(e.retryable !== undefined ? { retryable: e.retryable } : {}),
     };
   }
+  if (err instanceof UnknownMember) return { name: err.name, message: err.message, code: err.code };
   if (err instanceof Error) return { name: err.name, message: err.message };
   return { name: "Error", message: String(err) };
 }

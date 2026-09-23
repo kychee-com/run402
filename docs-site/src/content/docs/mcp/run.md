@@ -27,8 +27,8 @@ The sandbox is QuickJS compiled to WebAssembly. It has no filesystem, no `proces
   "status": "ok",
   "value": ["prj_a", "prj_b"],
   "value_ref": "res_…",
-  "shown": 4,
-  "total": 4,
+  "shown": 2,
+  "total": 2,
   "logs": [{ "level": "log", "line": "…" }],
   "logs_ref": "res_…",
   "calls": [{ "path": "projects.list", "duration_ms": 212, "ok": true }],
@@ -37,7 +37,7 @@ The sandbox is QuickJS compiled to WebAssembly. It has no filesystem, no `proces
 }
 ```
 
-- `value` is the result. It is stored whole, as pretty-printed JSON lines, under `value_ref`; `shown` and `total` count those lines. Up to 200 lines are inline. A longer value is shown as a window above the envelope, `value` is left out of the envelope, and `expand_result` with `value_ref` pages the rest without running the snippet again.
+- `value` is the result, inline whole when its pretty-printed JSON fits in 200 lines. It is stored under `value_ref` by item, and `shown` and `total` count items: an array's elements, or for an object the rows of its largest top-level array (a SQL result's `rows`), or an object's entries as `{ key, value }`, or a string's lines. A larger value is left out as `value` and arrives as `value_window`: `{ path, items, rest? }`, the leading whole items that fit the same budget, where they live (`$`, `$.rows`, `$entries`, `$lines`), and for `$.rows` the object's other fields whole. `expand_result` with `value_ref` and `offset: shown` pages the rest by item, never by text line, without running the snippet again.
 - `undefined` is reported as `value: null` with `value_kind: "undefined"`, so silence never looks like null data.
 - `logs` are the captured `console.log|info|warn|error` lines, 50 inline and the rest under `logs_ref` (500 lines of 2 KB are kept).
 - `calls` lists every SDK chain the run replayed: its dotted path, `duration_ms`, and `ok` or the error `code`. It is the audit trail of what the snippet did.
@@ -55,6 +55,7 @@ On failure `status` is `"error"` and `error` is `{ code, message, next_actions }
 | `RUN_VALUE_NOT_SERIALIZABLE` | the result is not JSON (a handle, a function, a BigInt, a cycle) | `edit_request` |
 | `RUN_VALUE_TOO_LARGE` | the result is over 4 MB | `edit_request`: select less in the snippet |
 | `RUN_ARGUMENT_NOT_CLONEABLE` | an argument to `r` is not data | `edit_request` |
+| `RUN_UNKNOWN_MEMBER` | the snippet reached an `r.` path the SDK does not have | `edit_request` with `path` and `did_you_mean` (the closest public members) |
 | `RUN_EXCEPTION` | the snippet threw | `edit_request` |
 | `RUN_BUSY` | four runs are already in flight on this server | `retry` |
 | `SECRET_REQUIRES_CLI` | an SDK method refused because it returns or consumes a one-time secret | `run_cli_command` with the exact `command` |

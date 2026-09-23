@@ -1722,6 +1722,9 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="RUN_TIMEOUT"></a>
 [`RUN_TIMEOUT`](/errors/client/#RUN_TIMEOUT)
 
+<a id="RUN_UNKNOWN_MEMBER"></a>
+[`RUN_UNKNOWN_MEMBER`](/errors/client/#RUN_UNKNOWN_MEMBER)
+
 <a id="RUN_VALUE_NOT_SERIALIZABLE"></a>
 [`RUN_VALUE_NOT_SERIALIZABLE`](/errors/client/#RUN_VALUE_NOT_SERIALIZABLE)
 

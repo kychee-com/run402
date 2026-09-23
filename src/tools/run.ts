@@ -10,9 +10,11 @@
  * before any request, so nothing secret can reach the result store.
  *
  * The result is the value, the logs, and the calls, all bounded and all
- * honest: the value is stored line-wise (pretty-printed JSON) under
- * `value_ref` and shown as a window of at most 200 lines with `shown` /
- * `total`; logs likewise under `logs_ref` (50 inline); `calls[]` lists every
+ * honest: the value is stored by items (`../value-paging.ts`: an array's
+ * elements, the rows of an object's largest array, an object's entries, or a
+ * string's lines) under `value_ref`; a value that does not fit inline carries
+ * its leading whole items as `value_window`, with `shown` / `total` counting
+ * items; logs likewise under `logs_ref` (50 inline); `calls[]` lists every
  * SDK chain the replay ran with its outcome, including on a timeout, because
  * those side effects happened. Every result names the active wallet.
  */
@@ -23,9 +25,10 @@ import { isRun402Error } from "../../sdk/dist/index.js";
 import { getActiveProfile } from "../config.js";
 import { readWallet } from "../wallet.js";
 import { storeResult } from "../result-store.js";
-import { ChainHost, type ChainCall } from "../sandbox-proxy.js";
+import { ChainHost, UnknownMember, type ChainCall } from "../sandbox-proxy.js";
 import { runInSandbox, type SandboxError, type SandboxLogLine } from "../sandbox.js";
 import { jsonBlock, type ToolResult } from "../structured.js";
+import { fitsInline, pageableItems, pageValue, VALUE_INLINE_LINES } from "../value-paging.js";
 import { getSandboxSdk } from "../sdk.js";
 
 /** At most this many runs execute at once on one server; the next is `RUN_BUSY`. */
@@ -34,8 +37,8 @@ export const RUN_DEFAULT_TIMEOUT_SECONDS = 60;
 export const RUN_MAX_TIMEOUT_SECONDS = 300;
 /** Source size cap, in bytes. */
 export const RUN_MAX_SOURCE_BYTES = 64 * 1024;
-/** Pretty-printed value lines shown inline. */
-export const RUN_VALUE_WINDOW_LINES = 200;
+/** A value whose pretty-printed JSON fits in this many lines is inline whole; a larger one is windowed by items within the same budget. */
+export const RUN_VALUE_WINDOW_LINES = VALUE_INLINE_LINES;
 /** Console lines shown inline. */
 export const RUN_LOG_WINDOW_LINES = 50;
 
@@ -47,7 +50,8 @@ export type RunErrorCode =
   | "RUN_VALUE_TOO_LARGE"
   | "RUN_BUSY"
   | "RUN_EXCEPTION"
-  | "RUN_ARGUMENT_NOT_CLONEABLE";
+  | "RUN_ARGUMENT_NOT_CLONEABLE"
+  | "RUN_UNKNOWN_MEMBER";
 
 export interface RunNextAction {
   type: string;
@@ -61,10 +65,16 @@ export interface RunResult {
   /** The value, when the whole of it fits the inline window (`shown === total`). */
   value?: unknown;
   value_kind?: "undefined";
+  /**
+   * For a value too large to inline: the leading whole items, where they live
+   * in the value (`$`, `$.<key>`, `$entries`, `$lines`), and, for `$.<key>`,
+   * the object's other fields. `expand_result(value_ref)` pages the rest.
+   */
+  value_window?: { path: string; items: unknown[]; rest?: Record<string, unknown> };
   value_ref: string | null;
-  /** Pretty-printed value lines shown inline. */
+  /** Items shown: all of them when `value` is inline, else `value_window.items.length`. */
   shown: number;
-  /** Pretty-printed value lines in the whole value. */
+  /** Items in the whole value. */
   total: number;
   logs: SandboxLogLine[];
   logs_ref: string | null;
@@ -151,13 +161,22 @@ export async function handleRun(args: { code: string; timeout_seconds?: number }
         result.value_kind = "undefined";
       } else {
         const parsed: unknown = JSON.parse(outcome.value_json);
-        const lines = JSON.stringify(parsed, null, 2).split("\n");
-        const stored = storeResult("run_value", lines, { shown: RUN_VALUE_WINDOW_LINES });
-        result.value_ref = stored.ref;
-        result.shown = stored.shown;
-        result.total = stored.total;
-        if (stored.shown === stored.total) result.value = parsed;
-        extras(result).valueWindow = stored.items;
+        if (fitsInline(parsed)) {
+          const { items } = pageableItems(parsed);
+          const stored = storeResult("run_value", items, { shown: items.length });
+          result.value = parsed;
+          result.value_ref = stored.ref;
+          result.shown = stored.total;
+          result.total = stored.total;
+        } else {
+          // Paged by items, never by text lines: the window is whole rows.
+          const paged = pageValue(parsed);
+          const stored = storeResult("run_value", paged.items, { shown: paged.window.length });
+          result.value_window = { path: paged.path, items: paged.window, ...(paged.rest ? { rest: paged.rest } : {}) };
+          result.value_ref = stored.ref;
+          result.shown = stored.shown;
+          result.total = stored.total;
+        }
       }
     } else if (outcome.error) {
       result.error = runError(outcome.error, host);
@@ -185,8 +204,8 @@ export async function handleRun(args: { code: string; timeout_seconds?: number }
 }
 
 /** What rendering needs beside the envelope: the value's inline lines and the stored log count. */
-const renderExtras = new WeakMap<RunResult, { valueWindow?: string[]; logsTotal?: number }>();
-function extras(result: RunResult): { valueWindow?: string[]; logsTotal?: number } {
+const renderExtras = new WeakMap<RunResult, { logsTotal?: number }>();
+function extras(result: RunResult): { logsTotal?: number } {
   let e = renderExtras.get(result);
   if (!e) {
     e = {};
@@ -235,6 +254,7 @@ const LOCAL_NEXT_ACTION: Record<Exclude<RunErrorCode, "RUN_BUSY">, string> = {
   RUN_VALUE_TOO_LARGE: "Narrow the selection in the snippet (filter, map to the fields you need, slice) and return less.",
   RUN_EXCEPTION: "Fix the snippet; the message names the error and, when known, its line.",
   RUN_ARGUMENT_NOT_CLONEABLE: "Pass data to r, not functions, class instances, or un-awaited r calls; await the call first and pass its result.",
+  RUN_UNKNOWN_MEMBER: "Use one of the members named in did_you_mean, or call docs with the namespace as topic for the full list.",
 };
 
 function runError(error: SandboxError, host: ChainHost): NonNullable<RunResult["error"]> {
@@ -247,6 +267,19 @@ function runError(error: SandboxError, host: ChainHost): NonNullable<RunResult["
       code: e.code ?? "RUN402_ERROR",
       message: e.message,
       next_actions: Array.isArray(e.nextActions) ? e.nextActions : [],
+    };
+  }
+  // A path the SDK does not have: name the closest members.
+  if (original instanceof UnknownMember) {
+    return {
+      code: "RUN_UNKNOWN_MEMBER",
+      message: original.message,
+      next_actions: [{
+        type: "edit_request",
+        why: LOCAL_NEXT_ACTION.RUN_UNKNOWN_MEMBER,
+        path: `r.${original.path}`,
+        did_you_mean: original.suggestions.map((s) => `r.${s}`),
+      }],
     };
   }
   let code: Exclude<RunErrorCode, "RUN_BUSY"> = error.code;
@@ -281,14 +314,11 @@ function render(result: RunResult): ToolResult {
     lines.push("", result.error?.message ?? "");
   }
 
-  const { valueWindow: window, logsTotal } = renderExtras.get(result) ?? {};
-  if (window && result.shown < result.total) {
+  const { logsTotal } = renderExtras.get(result) ?? {};
+  if (result.value_window) {
     lines.push(
       "",
-      `value — lines 1–${result.shown} of ${result.total}. The whole value is stored: expand_result with ref ${result.value_ref} pages the rest (offset ${result.shown}).`,
-      "```json",
-      ...window,
-      "```",
+      `value — items 1–${result.shown} of ${result.total} at ${result.value_window.path} are in value_window below. The whole value is stored: expand_result with ref ${result.value_ref} pages the rest by item (offset ${result.shown}).`,
     );
   }
   if (logsTotal !== undefined && result.logs.length < logsTotal) {
@@ -308,7 +338,7 @@ function render(result: RunResult): ToolResult {
 /** The envelope's fields in the Frozen Contract's order, absent ones left out. */
 function inContractOrder(result: RunResult): Record<string, unknown> {
   const order: Array<keyof RunResult> = [
-    "status", "value", "value_kind", "value_ref", "shown", "total", "logs", "logs_ref", "logs_dropped",
+    "status", "value", "value_kind", "value_window", "value_ref", "shown", "total", "logs", "logs_ref", "logs_dropped",
     "calls", "calls_dropped", "duration_ms", "wallet", "error",
   ];
   const out: Record<string, unknown> = {};

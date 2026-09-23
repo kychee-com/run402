@@ -210,6 +210,11 @@ const runLogSchema = open({ level: z.enum(["log", "info", "warn", "error"]), lin
 export const runOutputSchema = envelope({
   value: z.unknown().optional(),
   value_kind: z.literal("undefined").optional(),
+  value_window: open({
+    path: z.string(),
+    items: z.array(z.unknown()),
+    rest: open({}).optional(),
+  }).optional(),
   value_ref: z.string().nullable().optional(),
   shown: z.number().int().optional(),
   total: z.number().int().optional(),

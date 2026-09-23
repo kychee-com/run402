@@ -899,6 +899,12 @@ Owner: `public:src/sandbox.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
+<h2 id="RUN_UNKNOWN_MEMBER">RUN_UNKNOWN_MEMBER</h2>
+
+Owner: `public:src/sandbox-proxy.ts`, `public:src/tools/run.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
 <h2 id="RUN_VALUE_NOT_SERIALIZABLE">RUN_VALUE_NOT_SERIALIZABLE</h2>
 
 Owner: `public:src/sandbox.ts`.

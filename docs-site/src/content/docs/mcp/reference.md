@@ -36,7 +36,7 @@ There is no tool per operation. Anything the SDK can do is one `run` call: the s
 { "code": "const { projects } = await r.projects.list();\nprojects.map((p) => ({ id: p.id, name: p.name, site: p.site_url }))" }
 ```
 
-A `run` result carries the value, the captured `console` lines, and `calls[]`, the SDK chains the snippet made, with the wallet that signed them. Large values are stored whole and shown as a window; `expand_result` pages the rest. The contract, limits, and error codes are in the `run` section below.
+A `run` result carries the value, the captured `console` lines, and `calls[]`, the SDK chains the snippet made, with the wallet that signed them. Large values are stored whole by item and their leading whole items arrive in `value_window`; `expand_result` pages the rest by item. The contract, limits, and error codes are in the `run` section below.
 
 ## Structured results
 
@@ -46,7 +46,7 @@ Every structured result has `status: "ok" | "error"`:
 
 | Tool | On `ok` |
 |---|---|
-| `run` | The run envelope: `value` (or `value_ref`, `shown`, `total` for a windowed value), `logs`, `calls`, `duration_ms`, `wallet` |
+| `run` | The run envelope: `value`, or for a large value `value_window` (its leading whole items) with `value_ref`, `shown`, `total`; `logs`, `calls`, `duration_ms`, `wallet` |
 | `up`, `status`, `whoami`, `doctor` | `result`: the SDK object the tool returns |
 | `deploy` | `result`: the `DeployResult`; `events`: the progress events |
 | `expand_result` | `ref`, `kind`, `offset`, `shown`, `total`, `items` |

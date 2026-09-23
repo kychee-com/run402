@@ -6441,6 +6441,20 @@
       "topic": "/errors/client/#RUN_TIMEOUT"
     },
     {
+      "code": "RUN_UNKNOWN_MEMBER",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "src/sandbox-proxy.ts"
+        },
+        {
+          "owner": "public",
+          "source": "src/tools/run.ts"
+        }
+      ],
+      "topic": "/errors/client/#RUN_UNKNOWN_MEMBER"
+    },
+    {
       "code": "RUN_VALUE_NOT_SERIALIZABLE",
       "owners": [
         {

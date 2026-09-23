@@ -622,7 +622,7 @@ A snippet is the body of an async function; the value of its last expression is 
 { "code": "const { projects } = await r.projects.list();\nprojects.filter((p) => !p.site_url).map((p) => p.id)" }
 ```
 
-The result is `{ status, value, value_ref, shown, total, logs, logs_ref, calls, duration_ms, wallet, error? }`: a large value is stored whole and shown as a 200-line window (`expand_result` pages the rest), `calls[]` lists every SDK call with its outcome, and a timeout (60 s by default, 300 s at most) still lists the calls that completed. An SDK error passes through with its own `code` and `next_actions`.
+The result is `{ status, value, value_ref, shown, total, logs, logs_ref, calls, duration_ms, wallet, error? }`: a large value is stored whole by item (an array's elements, a result's `rows`) and its leading whole items arrive in `value_window`, including in `structuredContent` (`expand_result` pages the rest by item), `calls[]` lists every SDK call with its outcome, and a timeout (60 s by default, 300 s at most) still lists the calls that completed. An SDK error passes through with its own `code` and `next_actions`.
 
 **Structured results.** Every tool also returns its result as `structuredContent` under a declared `outputSchema`, so a host reads fields instead of parsing text. The object has `status: "ok" | "error"`; the fixed tools put the SDK object under `result`, and every error carries `error.code`, `error.message`, and `error.next_actions`. The fenced JSON in the text is the same object.
 

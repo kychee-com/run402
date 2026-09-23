@@ -157,7 +157,7 @@ export function prepareSnippet(code: string): PreparedSnippet {
   const wrapped = `${WRAP_HEAD}${code}${WRAP_TAIL}`;
   let stripped: string;
   try {
-    stripped = stripTypeScriptTypes(wrapped, { mode: "strip" });
+    stripped = stripTypesQuietly(wrapped);
   } catch (err) {
     return { ok: false, error: syntaxErrorFromStrip(err) };
   }
@@ -771,4 +771,26 @@ function dumpError(ctx: QuickJSAsyncContext, handle: QuickJSHandle): ThrownDescr
 
 function readString(ctx: QuickJSAsyncContext, h: QuickJSHandle): string | undefined {
   return ctx.typeof(h) === "undefined" ? undefined : ctx.getString(h);
+}
+
+/**
+ * `stripTypeScriptTypes` announces itself with a one-time ExperimentalWarning
+ * on stderr, which an MCP host shows as noise on every server start. Drop
+ * exactly that warning, for the duration of this call only; every other
+ * warning still reaches the process.
+ */
+function stripTypesQuietly(source: string): string {
+  const emit = process.emitWarning;
+  process.emitWarning = function quietStripWarning(this: unknown, warning: string | Error, ...rest: unknown[]): void {
+    const type = typeof rest[0] === "string" ? rest[0] : (rest[0] as { type?: unknown } | undefined)?.type;
+    const message = typeof warning === "string" ? warning : warning?.message ?? "";
+    const name = typeof warning === "string" ? undefined : warning?.name;
+    if ((type === "ExperimentalWarning" || name === "ExperimentalWarning") && /stripTypeScriptTypes|type strip/i.test(message)) return;
+    return (emit as (...args: unknown[]) => void).call(process, warning, ...rest);
+  } as typeof process.emitWarning;
+  try {
+    return stripTypeScriptTypes(source, { mode: "strip" });
+  } finally {
+    process.emitWarning = emit;
+  }
 }

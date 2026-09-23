@@ -60,7 +60,7 @@ function normalizeListProjectsResult(result: ListProjectsResult | { projects?: W
 }
 
 // The SQL response is returned VERBATIM in the wire shape:
-// { status, schema, rows, row_count, fields } (snake_case, docs/style.md).
+// { status, schema, rows, row_count, fields, statements } (snake_case, docs/style.md).
 // A former normalization here renamed row_count -> rowCount, which made the
 // SDK the odd layer out — the gateway, the in-function `adminDb().sql()`
 // runtime, and the CLI all speak row_count. One logical operation, one shape.
@@ -318,7 +318,10 @@ export class Projects {
   }
 
   /** Run SQL against the project's database using the service key. Returns
-   *  the gateway envelope verbatim: `{ status, schema, rows, row_count, fields }`. */
+   *  the gateway envelope verbatim: `{ status, schema, rows, row_count, fields,
+   *  statements }`. `rows` and `fields` come from the last statement and
+   *  `row_count` is that statement's count; `statements[]` carries each
+   *  statement's `{ command, row_count }` for a multi-statement batch. */
   async sql(id: string, sql: string, params?: unknown[]): Promise<unknown> {
     const keys = await requireProjectCredentials(this.client, id, "running SQL");
 

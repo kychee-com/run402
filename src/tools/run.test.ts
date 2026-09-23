@@ -105,16 +105,52 @@ describe("run tool", () => {
     assert.match(requests[0]!.headers.get("Run402-Client") ?? "", /surface="sandbox"/);
   });
 
-  it("windows a large value and stores it whole, line-wise", async () => {
+  it("windows a large array by whole items and pages the rest by item", async () => {
     const run = envelope(await handleRun({ code: "Array.from({ length: 5000 }, (_, i) => ({ i }))" }));
     assert.equal(run.status, "ok");
-    assert.equal(run.shown, 200);
-    assert.ok(run.total > 5000);
-    assert.equal(run.value, undefined, "a windowed value is not inlined in the envelope");
-    const rest = expandResult(run.value_ref!, { offset: 200, limit: 10 });
+    assert.equal(run.value, undefined, "a windowed value is not inlined whole");
+    assert.equal(run.total, 5000, "total counts items, not text lines");
+    assert.equal(run.value_window?.path, "$");
+    assert.equal(run.value_window?.items.length, run.shown);
+    assert.ok(run.shown > 1 && run.shown < 5000);
+    assert.deepEqual(run.value_window?.items[0], { i: 0 }, "the window is whole items");
+    const rest = expandResult(run.value_ref!, { offset: run.shown, limit: 3 });
     assert.ok(rest);
     assert.equal(rest!.kind, "run_value");
-    assert.equal(rest!.total, run.total);
+    assert.equal(rest!.total, 5000);
+    assert.deepEqual(rest!.items, [{ i: run.shown }, { i: run.shown + 1 }, { i: run.shown + 2 }], "expand_result pages items, never text fragments");
+  });
+
+  it("pages an object by the rows of its largest array and keeps its other fields whole", async () => {
+    const run = envelope(await handleRun({ code: "({ status: 'ok', row_count: 3000, rows: Array.from({ length: 3000 }, (_, id) => ({ id, name: 'n' + id })) })" }));
+    assert.equal(run.status, "ok");
+    assert.equal(run.value_window?.path, "$.rows");
+    assert.deepEqual(run.value_window?.rest, { status: "ok", row_count: 3000 });
+    assert.deepEqual(run.value_window?.items[0], { id: 0, name: "n0" });
+    assert.equal(run.total, 3000);
+    const rest = expandResult(run.value_ref!, { offset: run.shown, limit: 1 });
+    assert.deepEqual(rest!.items, [{ id: run.shown, name: "n" + run.shown }]);
+  });
+
+  it("inlines a value that fits and counts its items", async () => {
+    const run = envelope(await handleRun({ code: "[1, 2, 3]" }));
+    assert.deepEqual(run.value, [1, 2, 3]);
+    assert.equal(run.value_window, undefined);
+    assert.equal(run.shown, 3);
+    assert.equal(run.total, 3);
+  });
+
+  it("names the closest members when a snippet reaches a path the SDK does not have", async () => {
+    const run = envelope(await handleRun({ code: "await r.projects.lst()" }));
+    assert.equal(run.status, "error");
+    assert.equal(run.error?.code, "RUN_UNKNOWN_MEMBER");
+    assert.match(run.error!.message, /Did you mean r\.projects\.list/);
+    const next = run.error!.next_actions[0]!;
+    assert.equal(next.type, "edit_request");
+    assert.equal(next.path, "r.projects.lst");
+    assert.ok((next.did_you_mean as string[]).includes("r.projects.list"));
+    assert.equal(run.calls[0]?.path, "projects.lst");
+    assert.equal(run.calls[0]?.code, "RUN_UNKNOWN_MEMBER");
   });
 
   it("reports undefined as null data with value_kind undefined", async () => {

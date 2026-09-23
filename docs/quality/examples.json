@@ -812,12 +812,12 @@
     "line": 25,
     "language": "json",
     "kind": "configuration",
-    "sha256": "79bd5160118d571a4a8028514df10ea1a716fff2e31b631ead4c24e019f9af80",
+    "sha256": "f9009c257ee129cf7ec8161dd65006b5e1dbd1231d180afd0b163ce30e0faf42",
     "validation": "tool-schema-and-sync"
   },
   {
     "file": "docs-site/src/content/docs//mcp/run.md",
-    "line": 68,
+    "line": 69,
     "language": "json",
     "kind": "configuration",
     "sha256": "f84a6267ee3551b45ffd74f7f786525fd32255812107ca02c4b4fac9eae05eac",
@@ -825,7 +825,7 @@
   },
   {
     "file": "docs-site/src/content/docs//mcp/run.md",
-    "line": 81,
+    "line": 82,
     "language": "ts",
     "kind": "application-or-sdk",
     "sha256": "c5ecf73c46e3e63ed9cc248a49751a237635da21d618e7022d1ac8448b0622e2",
@@ -833,7 +833,7 @@
   },
   {
     "file": "docs-site/src/content/docs//mcp/run.md",
-    "line": 88,
+    "line": 89,
     "language": "ts",
     "kind": "application-or-sdk",
     "sha256": "5397538ea8710873ea6eb0675794b764d27961acb399b5c6e70ccbd5644965e5",
@@ -841,7 +841,7 @@
   },
   {
     "file": "docs-site/src/content/docs//mcp/run.md",
-    "line": 96,
+    "line": 97,
     "language": "ts",
     "kind": "application-or-sdk",
     "sha256": "3fc52cef31c0671dc9357a419d5dfd2d828cc8d93759c3978ed51ab6f7334551",
