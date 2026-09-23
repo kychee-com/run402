@@ -544,6 +544,8 @@ export type {
   PaymentAttemptMutationState,
 } from "./errors.js";
 export { withRetry } from "./retry.js";
+export { SECRET_RETURNING_METHODS } from "./secret-gate.js";
+export type { SecretGateEntry, SecretReturningMethod } from "./secret-gate.js";
 export type * from "./retry.js";
 export { Run402Action } from "./actions.js";
 export type * from "./actions.js";

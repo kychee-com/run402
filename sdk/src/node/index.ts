@@ -941,6 +941,7 @@ export {
   isPaymentPolicyError,
   isLocalError,
   isSecretRequiresCli,
+  SECRET_RETURNING_METHODS,
   isDeployError,
   isRetryableRun402Error,
   isCiSessionCredentials,

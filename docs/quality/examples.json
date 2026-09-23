@@ -969,7 +969,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/errors.md",
-    "line": 35,
+    "line": 36,
     "language": "ts",
     "kind": "application-or-sdk",
     "sha256": "dbdb3ad6373148f78d3296033bed6be2894a29386f059dee21e1bea89f837704",
@@ -1053,6 +1053,54 @@
     "language": "json",
     "kind": "configuration",
     "sha256": "6bd1e720d7c3aff6376d2918cc1994d4530ce6eb8460e3e93405f54ab4cad7a0",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/local-state.md",
+    "line": 23,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "cae0d2f588908836ac96b00be32ef1298a3dfc63eccc9ee857fe00abf17afe02",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/local-state.md",
+    "line": 43,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "7a2ce8e8e2a3cb2904bbc3848b309a345275a73a389ab728415f736daf0b828e",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/local-state.md",
+    "line": 58,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "5e31c5101e50cfdcb086bec994b0f0f093fb727afc79e6a5da3574ea84d1509b",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/local-state.md",
+    "line": 69,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "ccfdc95f788b1af154cc5a0f65a33553529d6ef25238bd41a80cbe4e867f05ab",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/local-state.md",
+    "line": 82,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "cb9adec22a83035f77222c31152f3ca312103d786d6a31e28d7b3447073caf4a",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/local-state.md",
+    "line": 91,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "6cc11dc294735174757bbf8e51fd6a6adfedee744961c2e3e710a82b45747d29",
     "validation": "sdk-snippets"
   },
   {

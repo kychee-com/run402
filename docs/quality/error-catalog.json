@@ -205,6 +205,10 @@
       "owners": [
         {
           "owner": "public",
+          "source": "sdk/src/node/org-context.ts"
+        },
+        {
+          "owner": "public",
           "source": "cli/lib/org-context.mjs"
         },
         {
@@ -557,6 +561,10 @@
       "owners": [
         {
           "owner": "public",
+          "source": "sdk/src/node/wallets.ts"
+        },
+        {
+          "owner": "public",
           "source": "cli/lib/approve.mjs"
         },
         {
@@ -687,6 +695,10 @@
       "owners": [
         {
           "owner": "public",
+          "source": "sdk/src/node/org-context.ts"
+        },
+        {
+          "owner": "public",
           "source": "cli/lib/org-context.mjs"
         }
       ],
@@ -695,6 +707,10 @@
     {
       "code": "BAD_PRIVATE_KEY",
       "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/node/wallets.ts"
+        },
         {
           "owner": "public",
           "source": "cli/lib/wallets.mjs"
@@ -742,6 +758,18 @@
         {
           "owner": "public",
           "source": "sdk/src/namespaces/credentials.ts"
+        },
+        {
+          "owner": "public",
+          "source": "sdk/src/node/doctor.ts"
+        },
+        {
+          "owner": "public",
+          "source": "sdk/src/node/init.ts"
+        },
+        {
+          "owner": "public",
+          "source": "sdk/src/node/wallets.ts"
         },
         {
           "owner": "public",
@@ -987,6 +1015,10 @@
     {
       "code": "BAD_WALLET_NAME",
       "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/node/wallets.ts"
+        },
         {
           "owner": "public",
           "source": "cli/lib/wallet-context.mjs"
@@ -1437,6 +1469,10 @@
     {
       "code": "CONFIRMATION_REQUIRED",
       "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/node/wallets.ts"
+        },
         {
           "owner": "public",
           "source": "cli/lib/contracts.mjs"
@@ -3391,6 +3427,16 @@
       "topic": "/errors/gateway/#LIGHTNING_TOPUP_PROVIDER_UNAVAILABLE"
     },
     {
+      "code": "LIGHTNING_WALLET_FAILED",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/node/lightning-wallet.ts"
+        }
+      ],
+      "topic": "/errors/client/#LIGHTNING_WALLET_FAILED"
+    },
+    {
       "code": "LIGHTNING_WALLET_NOT_AVAILABLE",
       "owners": [
         {
@@ -3803,6 +3849,10 @@
       "owners": [
         {
           "owner": "public",
+          "source": "sdk/src/node/org-context.ts"
+        },
+        {
+          "owner": "public",
           "source": "cli/lib/orgs.mjs"
         }
       ],
@@ -3983,6 +4033,10 @@
     {
       "code": "ORG_REQUIRED",
       "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/node/org-context.ts"
+        },
         {
           "owner": "public",
           "source": "cli/lib/org-context.mjs"
@@ -5871,6 +5925,10 @@
       "owners": [
         {
           "owner": "public",
+          "source": "sdk/src/node/init.ts"
+        },
+        {
+          "owner": "public",
           "source": "cli/lib/init.mjs"
         }
       ],
@@ -6481,6 +6539,16 @@
         }
       ],
       "topic": "/errors/client/#RUN402_WORKSPACE_LINK_SYMLINK"
+    },
+    {
+      "code": "SECRET_REQUIRES_CLI",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/errors.ts"
+        }
+      ],
+      "topic": "/errors/client/#SECRET_REQUIRES_CLI"
     },
     {
       "code": "SERVICE_UNAVAILABLE",
@@ -7543,6 +7611,10 @@
       "owners": [
         {
           "owner": "public",
+          "source": "sdk/src/node/wallets.ts"
+        },
+        {
+          "owner": "public",
           "source": "cli/lib/wallets.mjs"
         }
       ],
@@ -7553,6 +7625,10 @@
       "owners": [
         {
           "owner": "public",
+          "source": "sdk/src/node/wallets.ts"
+        },
+        {
+          "owner": "public",
           "source": "cli/lib/wallets.mjs"
         }
       ],
@@ -7561,6 +7637,10 @@
     {
       "code": "WALLET_NOT_FOUND",
       "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/node/wallets.ts"
+        },
         {
           "owner": "public",
           "source": "cli/lib/wallet-context.mjs"
@@ -7587,6 +7667,10 @@
       "owners": [
         {
           "owner": "public",
+          "source": "sdk/src/node/wallets.ts"
+        },
+        {
+          "owner": "public",
           "source": "cli/lib/wallets.mjs"
         }
       ],
@@ -7597,6 +7681,10 @@
       "owners": [
         {
           "owner": "public",
+          "source": "sdk/src/node/wallets.ts"
+        },
+        {
+          "owner": "public",
           "source": "cli/lib/wallets.mjs"
         }
       ],
@@ -7605,6 +7693,10 @@
     {
       "code": "WALLET_SELECTION_CONFLICT",
       "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/node/wallets.ts"
+        },
         {
           "owner": "public",
           "source": "cli/lib/wallet-context.mjs"

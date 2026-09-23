@@ -1167,6 +1167,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="LIGHTNING_TOPUP_PROVIDER_UNAVAILABLE"></a>
 [`LIGHTNING_TOPUP_PROVIDER_UNAVAILABLE`](/errors/gateway/#LIGHTNING_TOPUP_PROVIDER_UNAVAILABLE)
 
+<a id="lightning_wallet_failed"></a>
+<a id="LIGHTNING_WALLET_FAILED"></a>
+[`LIGHTNING_WALLET_FAILED`](/errors/client/#LIGHTNING_WALLET_FAILED)
+
 <a id="lightning_wallet_not_available"></a>
 <a id="LIGHTNING_WALLET_NOT_AVAILABLE"></a>
 [`LIGHTNING_WALLET_NOT_AVAILABLE`](/errors/gateway/#LIGHTNING_WALLET_NOT_AVAILABLE)
@@ -2288,6 +2292,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="run402_workspace_link_symlink"></a>
 <a id="RUN402_WORKSPACE_LINK_SYMLINK"></a>
 [`RUN402_WORKSPACE_LINK_SYMLINK`](/errors/client/#RUN402_WORKSPACE_LINK_SYMLINK)
+
+<a id="secret_requires_cli"></a>
+<a id="SECRET_REQUIRES_CLI"></a>
+[`SECRET_REQUIRES_CLI`](/errors/client/#SECRET_REQUIRES_CLI)
 
 <a id="service_unavailable"></a>
 <a id="SERVICE_UNAVAILABLE"></a>

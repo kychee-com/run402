@@ -897,6 +897,9 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="LIGHTNING_TOPUP_PROVIDER_UNAVAILABLE"></a>
 [`LIGHTNING_TOPUP_PROVIDER_UNAVAILABLE`](/errors/gateway/#LIGHTNING_TOPUP_PROVIDER_UNAVAILABLE)
 
+<a id="LIGHTNING_WALLET_FAILED"></a>
+[`LIGHTNING_WALLET_FAILED`](/errors/client/#LIGHTNING_WALLET_FAILED)
+
 <a id="LIGHTNING_WALLET_NOT_AVAILABLE"></a>
 [`LIGHTNING_WALLET_NOT_AVAILABLE`](/errors/gateway/#LIGHTNING_WALLET_NOT_AVAILABLE)
 
@@ -1742,6 +1745,9 @@ The catalog records owning source locations and pinned external contributions. A
 
 <a id="RUN402_WORKSPACE_LINK_SYMLINK"></a>
 [`RUN402_WORKSPACE_LINK_SYMLINK`](/errors/client/#RUN402_WORKSPACE_LINK_SYMLINK)
+
+<a id="SECRET_REQUIRES_CLI"></a>
+[`SECRET_REQUIRES_CLI`](/errors/client/#SECRET_REQUIRES_CLI)
 
 <a id="SERVICE_UNAVAILABLE"></a>
 [`SERVICE_UNAVAILABLE`](/errors/gateway/#SERVICE_UNAVAILABLE)
