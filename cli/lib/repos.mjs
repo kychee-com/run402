@@ -21,7 +21,7 @@ import { reportSdkError, fail } from "./sdk-errors.mjs";
 import { withAutoApprove } from "./sign-in.mjs";
 import { walletAuthHeaders, isCoreApiTarget, readWallet, resolveProjectId } from "./config.mjs";
 import { loadLiveControlPlaneSession } from "../core-dist/control-plane-session.js";
-import { resolveOrgId, resolveOwningOrgId } from "./org-context.mjs";
+import { resolveOrgId } from "./org-context.mjs";
 import { resolveVaultTarget } from "./vault-target.mjs";
 import { nextAction, setOrgSlugAction, setRepoNameAction } from "./next-actions.mjs";
 import { resolveHarnessLabels, resolveSessionKey, resolveTaskLabel, persistSessionKey } from "./harness-context.mjs";
@@ -845,7 +845,7 @@ async function printCreateResult({ sdk, projectId, vault, adopted, name, verbose
   let address = null;
   let orgSlug = null;
   try {
-    const owningOrg = await resolveOwningOrgId(projectId);
+    const owningOrg = await getSdk().orgs.owningOrgOf(projectId);
     const orgRecord = owningOrg ? await sdk.org(owningOrg).get() : null;
     orgSlug = orgRecord?.slug ?? null;
     if (orgSlug && name) {
@@ -929,7 +929,7 @@ async function printCreateResult({ sdk, projectId, vault, adopted, name, verbose
 
 async function createAdopt(projectId, dir, a) {
   const sdk = getSdk();
-  const orgId = flagValue(a, "--org") ?? await resolveOwningOrgId(projectId);
+  const orgId = flagValue(a, "--org") ?? await getSdk().orgs.owningOrgOf(projectId);
   if (!orgId) {
     fail({
       code: "VAULT_ORG_UNRESOLVED",
@@ -1010,7 +1010,7 @@ async function createProvision(name, dir, a) {
     }
   }
 
-  const effectiveOrgId = orgId ?? (await resolveOwningOrgId(provisioned.project_id));
+  const effectiveOrgId = orgId ?? (await getSdk().orgs.owningOrgOf(provisioned.project_id));
   if (!effectiveOrgId) {
     fail({
       code: "VAULT_ORG_UNRESOLVED",
@@ -1278,7 +1278,7 @@ async function rename(args) {
     const result = await sdk.projects.setRepoName(projectId, repoName);
     let address = null;
     try {
-      const owningOrg = await resolveOwningOrgId(projectId);
+      const owningOrg = await getSdk().orgs.owningOrgOf(projectId);
       const orgSlug = owningOrg ? (await sdk.org(owningOrg).get()).slug : null;
       if (orgSlug) address = vaultRemoteUrlForRepo(orgSlug, result.repo_name);
     } catch {
@@ -1554,7 +1554,7 @@ async function capture(args) {
   const repoDir = process.cwd();
   const address = await detectSlugFormRemote(a, repoDir);
   const target = address ? { repo_dir: repoDir } : await vaultTarget(a);
-  const orgId = !address && !dryRun && target.project_id ? await resolveOwningOrgId(target.project_id) : null;
+  const orgId = !address && !dryRun && target.project_id ? await getSdk().orgs.owningOrgOf(target.project_id) : null;
   const opts = {
     ...target,
     ...(address ? { address } : {}),

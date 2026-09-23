@@ -1150,7 +1150,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "fb5aaa99c0f46cb17b0e3f5aa0dd148dfcf3151415456bfa69d804eacf97f29e",
+      "sha256": "c1d76f264e3ae618591bcfa6b68b915fa517ef72eab96ef6cffc4bbff44bf857",
       "outputs": [],
       "url": null,
       "checks": [
@@ -1310,7 +1310,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "fe9265f966279e66ba96631993e7696898f8f6fdc052d0c3b5bf14a960c25e9a",
+      "sha256": "6232fa41f359b027ee00475c52adb35c77365a8235ecc329f1b6e4282b41b4c0",
       "outputs": [],
       "url": null,
       "checks": [
@@ -1350,7 +1350,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "b0ba19328388ce193d165ad8d69fd9fd9661b877e168f98053328cc2bf1e20bd",
+      "sha256": "1f60be4f50f04ce881c26cddc580ac75616b57d4273e688340c000118801a324",
       "outputs": [],
       "url": null,
       "checks": [
@@ -1390,7 +1390,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "f98f81d06a0744d8e2ddb344371c905d50ba6892ce7b0994ed5db8c1be60f18e",
+      "sha256": "5537554d7e6aa63371a9b02e9330a084e3862f20631f58664fdb8d76dbb86556",
       "outputs": [],
       "url": null,
       "checks": [
@@ -1410,7 +1410,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "1b721aa24ffa8afb384c75f9772f3e8cc21712419755fe364aa5db439c6553f0",
+      "sha256": "a03c68300f89f189306adf523e971e6e82cfe7f89d5eaf4802db7e35a5fd2db9",
       "outputs": [],
       "url": null,
       "checks": [
@@ -1610,7 +1610,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "e778240999caa79026994ad6d5137c05b6729166e5848a090b30463d8793da3a",
+      "sha256": "e73072d084c79db846c60ed6c0e7c0ef51fb2cfe2af173b4e385c369fe340b26",
       "outputs": [],
       "url": null,
       "checks": [
@@ -2865,7 +2865,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "39c974ae70e3d6bfa15ff577033db13ec21893c86f946eb5d6f1bebd8326cb5b",
+      "sha256": "40ed83769277807d66e2d740e0af676b98bee7b9044018a303bdc60fe0948dba",
       "outputs": [],
       "url": "https://docs.run402.com/errors/client/",
       "checks": [

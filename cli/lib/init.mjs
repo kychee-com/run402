@@ -2,7 +2,6 @@ import { readWallet, saveWallet, loadKeyStore, configDir, configureApiBase, getA
 import { getSdk } from "./sdk.mjs";
 import { fail } from "./sdk-errors.mjs";
 import { upDeployAction, deployAction } from "./next-actions.mjs";
-import { resolveOwningOrgId } from "./org-context.mjs";
 import { getActiveProfile } from "../core-dist/config.js";
 import { readMeta } from "../core-dist/profiles.js";
 import { mkdirSync } from "fs";
@@ -684,7 +683,7 @@ export async function run(args = []) {
         summary.vault_skipped = "not a git repository — re-run with --git-remote to create one and add the remote";
         line("Vault", "skipped — not a git repository (--git-remote creates one)");
       } else {
-        const orgId = await resolveOwningOrgId(activeProjectId);
+        const orgId = await getSdk().orgs.owningOrgOf(activeProjectId);
         if (!orgId) {
           summary.vault_skipped = `could not resolve the owning org for ${activeProjectId} — the run402 remote was not added`;
           line("Vault", "skipped — owning org unresolved");

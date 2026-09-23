@@ -210,10 +210,6 @@
         {
           "owner": "public",
           "source": "cli/lib/org-context.mjs"
-        },
-        {
-          "owner": "public",
-          "source": "cli/lib/orgs.mjs"
         }
       ],
       "topic": "/errors/client/#AMBIGUOUS_ORG"
@@ -692,10 +688,6 @@
         {
           "owner": "public",
           "source": "sdk/src/node/org-context.ts"
-        },
-        {
-          "owner": "public",
-          "source": "cli/lib/org-context.mjs"
         }
       ],
       "topic": "/errors/client/#BAD_ORG_ID"
@@ -3830,10 +3822,6 @@
         {
           "owner": "public",
           "source": "sdk/src/node/org-context.ts"
-        },
-        {
-          "owner": "public",
-          "source": "cli/lib/orgs.mjs"
         }
       ],
       "topic": "/errors/client/#NO_ORGS"
@@ -4016,10 +4004,6 @@
         {
           "owner": "public",
           "source": "sdk/src/node/org-context.ts"
-        },
-        {
-          "owner": "public",
-          "source": "cli/lib/org-context.mjs"
         }
       ],
       "topic": "/errors/client/#ORG_REQUIRED"

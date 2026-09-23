@@ -24,13 +24,12 @@
  * throw.
  */
 import { getSdk } from "./sdk.mjs";
-import { resolveOwningOrgId } from "./org-context.mjs";
 
 /**
  * @param {object} options
  * @param {string} [options.repoDir] Working tree to scaffold. Defaults to `process.cwd()`.
  * @param {string} options.projectId The project the remote should point at.
- * @param {string} [options.orgId] Explicit owning org. Resolved via `resolveOwningOrgId` when omitted.
+ * @param {string} [options.orgId] Explicit owning org. Resolved via `r.orgs.owningOrgOf` when omitted.
  * @param {boolean} [options.createRepoIfMissing] Opt into `git init`-ing `repoDir` when it is not a repository yet.
  * @param {boolean} [options.nested] Scaffold `repoDir` as its OWN repository even when it lies inside another one (`Repos.scaffoldRemote`'s `nested`).
  * @param {string} [options.nestedCommand] The caller's own `--nested` spelling for the `create_nested_repo` next_action (default: the SDK's `run402 repos create --nested --project <project_id>`).
@@ -51,7 +50,7 @@ export async function scaffoldVaultRemote({ repoDir = process.cwd(), projectId, 
       out.vault_skipped = "not a git repository — re-run with --git-remote to create one and add the remote";
       return out;
     }
-    const resolvedOrgId = orgId ?? (await resolveOwningOrgId(projectId));
+    const resolvedOrgId = orgId ?? (await getSdk().orgs.owningOrgOf(projectId));
     if (!resolvedOrgId) {
       out.reason = "org_unresolved";
       out.vault_skipped = `could not resolve the owning org for ${projectId} — the run402 remote was not added`;

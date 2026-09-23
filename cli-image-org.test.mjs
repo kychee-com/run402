@@ -111,7 +111,7 @@ async function runImage(args) {
   }
 }
 
-let orgCtx;
+let orgs;
 let config;
 let keystore;
 
@@ -122,7 +122,8 @@ before(async () => {
   globalThis.fetch = mockFetch;
   process.exit = (code) => { throw new Error(`process.exit(${code})`); };
   process.chdir(bareDir);
-  orgCtx = await import("./cli/lib/org-context.mjs");
+  const { getSdk } = await import("./cli/lib/sdk.mjs");
+  orgs = () => getSdk().orgs;
   config = await import("./cli/lib/config.mjs");
   keystore = await import("./cli/core-dist/keystore.js");
 });
@@ -138,10 +139,10 @@ after(() => {
   rmSync(tempDir, { recursive: true, force: true });
 });
 
-beforeEach(() => {
+beforeEach(async () => {
   imageCalls = [];
   imageResponder = () => imageOk();
-  orgCtx.clearSelectedOrgId();
+  await orgs().clear();
   for (const id of ["prj_active", "prj_other"]) {
     try { config.removeProject(id); } catch { /* absent */ }
     try { keystore.clearActiveProjectId(id); } catch { /* absent */ }
@@ -157,7 +158,7 @@ describe("image generate — the paying organization", () => {
   });
 
   it("derives org_id from the profile's current organization (org use)", async () => {
-    orgCtx.setSelectedOrgId(ORG_B);
+    await orgs().use(ORG_B);
     const envelope = await runImage(["a cat"]);
     assert.equal(envelope, null, stderr.join("\n"));
     assert.deepEqual(imageCalls, [{ prompt: "a cat", aspect: "square", org_id: ORG_B }]);
@@ -180,7 +181,7 @@ describe("image generate — the paying organization", () => {
   });
 
   it("--org outranks every derived context", async () => {
-    orgCtx.setSelectedOrgId(ORG_B);
+    await orgs().use(ORG_B);
     const envelope = await runImage(["a cat", "--org", ORG_FLAG]);
     assert.equal(envelope, null, stderr.join("\n"));
     assert.deepEqual(imageCalls, [{ prompt: "a cat", aspect: "square", org_id: ORG_FLAG }]);
@@ -218,7 +219,7 @@ describe("image generate — the paying organization", () => {
   });
 
   it("a billing refusal on a derived org says where the org came from", async () => {
-    orgCtx.setSelectedOrgId(ORG_B);
+    await orgs().use(ORG_B);
     imageResponder = () => json({
       error: "Organization billing role required",
       message: "Organization billing role required",

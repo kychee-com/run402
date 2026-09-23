@@ -7,11 +7,22 @@ import { afterEach, beforeEach, describe, it, mock } from "node:test";
 let sdk;
 const authModes = [];
 
+// Organization resolution is real (the `--org` flag resolves locally); every
+// other namespace is the test's fake, and `authModes` records the auth mode of
+// each client that reaches one.
+const { run402: realSdk } = await import("../sdk/dist/node/index.js");
 mock.module("./sdk.mjs", {
   namedExports: {
     getSdk: (options = {}) => {
-      authModes.push(options.authMode ?? "default");
-      return sdk;
+      let recorded = false;
+      return new Proxy({}, {
+        get(_target, prop) {
+          if (prop === "orgs") return realSdk({ surface: "cli", disablePaidFetch: true }).orgs;
+          if (!recorded) authModes.push(options.authMode ?? "default");
+          recorded = true;
+          return sdk?.[prop];
+        },
+      });
     },
   },
 });

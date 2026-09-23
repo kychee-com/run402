@@ -689,9 +689,8 @@ async function gitInitIfNeeded(dir) {
  * never turn an otherwise-successful `up` into a failure.
  */
 async function composeRepoPushStep({ sdk, workDir, projectId, createdRepository, nested = false }) {
-  const { resolveOwningOrgId } = await import("./org-context.mjs");
   const { scaffoldVaultRemote } = await import("./vault-scaffold.mjs");
-  const orgId = await resolveOwningOrgId(projectId);
+  const orgId = await getSdk().orgs.owningOrgOf(projectId);
   // `--nested`: an app root INSIDE another repository (a monorepo workspace)
   // becomes its own repository with the encrypted remote — the enclosing
   // checkout only gains one local `.git/info/exclude` line. Without it the

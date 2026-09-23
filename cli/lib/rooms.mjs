@@ -448,8 +448,7 @@ async function joinWithKey(key, a) {
     // Arrival state (design D10) — best-effort throughout: the redemption
     // already succeeded, and none of this may fail a completed join.
     try {
-      const { setSelectedOrgId } = await import("./org-context.mjs");
-      setSelectedOrgId(result.org_id);
+      await getSdk().orgs.use(result.org_id);
     } catch { /* best-effort */ }
 
     const cwd = process.cwd();

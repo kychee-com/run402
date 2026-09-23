@@ -1,17 +1,6 @@
 import { getSdk } from "./sdk.mjs";
-import { reportSdkError, fail } from "./sdk-errors.mjs";
-import { readBindingFile, updateBindingFile } from "./wallet-context.mjs";
-import { nextAction } from "./next-actions.mjs";
-import {
-  requireOrgIdShape,
-  resolveOrg,
-  takeOrgPositional,
-  requireRest,
-  orgProvenance,
-  getSelectedOrgId,
-  setSelectedOrgId,
-  clearSelectedOrgId,
-} from "./org-context.mjs";
+import { reportSdkError, fail, failLocal } from "./sdk-errors.mjs";
+import { resolveOrg, takeOrgPositional, requireRest } from "./org-context.mjs";
 import {
   normalizeArgv,
   assertKnownFlags,
@@ -370,130 +359,57 @@ async function use(args) {
   requirePositionalCount(a, [], {
     min: 1, max: 1, command: "run402 orgs use <org_id>", missing: "<org_id>",
   });
-  const orgId = positionalArgs(a, [])[0];
-  setSelectedOrgId(orgId);
-  console.log(JSON.stringify({ org_id: orgId, selected: true, scope: "wallet_profile" }, null, 2));
+  await printOrgContext((orgs) => orgs.use(positionalArgs(a, [])[0]));
 }
 
 async function clear(args) {
   const a = normalizeArgv(args);
   assertKnownFlags(a, ["--help", "-h"]);
   requirePositionalCount(a, [], { min: 0, max: 0, command: "run402 orgs clear" });
-  const previous = getSelectedOrgId();
-  clearSelectedOrgId();
-  console.log(JSON.stringify({ org_id: null, selected: false, previous_org_id: previous ?? null }, null, 2));
+  await printOrgContext((orgs) => orgs.clear());
 }
 
 /**
- * Slugify a directory name into a legal room key.
- * Room keys match /^[a-z0-9][a-z0-9._-]{0,63}$/ (the DB CHECK on every
- * agent-messaging table), so the repo's own name has to be coerced, not trusted.
- */
-function roomKeyFromDir(dir) {
-  const base = dir.split("/").filter(Boolean).pop() ?? "";
-  const slug = base.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+/, "").slice(0, 64);
-  return /^[a-z0-9]/.test(slug) ? slug : null;
-}
-
-/**
- * Write this checkout's org (and room) into `.run402.json`.
- *
- * WHY THIS PICKS FOR YOU WHEN YOU OWN EXACTLY ONE ORG, while the resolution
- * chain never does: they are different acts. The chain runs on EVERY command
- * and must not change meaning the day you are invited to a second org — so it
- * refuses to infer. This runs ONCE, because you asked it to, and it WRITES THE
- * ANSWER DOWN. Nothing is inferred afterwards; the file is read verbatim
- * forever after. An explicit act with a recorded result is not a heuristic.
- *
- * With two or more orgs there is nothing to pick, so it lists them and stops.
+ * Write this checkout's org (and room) into `.run402.json`. With no `--org`,
+ * the caller's sole membership is written down; the resolution chain itself
+ * never infers one.
  */
 async function bind(args) {
   const a = normalizeArgv(args);
   const valueFlags = ["--org", "--room"];
   assertKnownFlags(a, [...valueFlags, "--help", "-h"], valueFlags);
   requirePositionalCount(a, valueFlags, { min: 0, max: 0, command: "run402 orgs bind [--org <org_id>] [--room <key>]" });
-
-  let orgId = flagValue(a, "--org");
-  let picked = "flag";
-  if (!orgId) {
-    let orgs;
-    try {
-      orgs = await getSdk().orgs.list();
-    } catch (err) {
-      reportSdkError(err);
-      return;
-    }
-    const rows = Array.isArray(orgs) ? orgs : (orgs?.orgs ?? []);
-    if (rows.length === 0) {
-      fail({
-        code: "NO_ORGS",
-        message: "This wallet is a member of no organization yet.",
-        hint: "Run 'run402 init' to provision one, or ask an owner to add you with 'run402 orgs members add'.",
-        next_actions: [nextAction("initialize_wallet", { command: "run402 init", why: "Provision this wallet's organization, then retry." })],
-      });
-    }
-    if (rows.length > 1) {
-      fail({
-        code: "AMBIGUOUS_ORG",
-        message: `This wallet belongs to ${rows.length} organizations — name the one to bind.`,
-        hint: "run402 orgs bind --org <org_id>",
-        details: { orgs: rows.map((o) => ({ org_id: o.org_id, display_name: o.display_name ?? null, role: o.role ?? null })) },
-        next_actions: [nextAction("edit_request", { command: "run402 orgs bind --org <org_id>", why: "Name which organization this checkout coordinates in." })],
-      });
-    }
-    orgId = rows[0].org_id;
-    picked = "sole_membership";
-  }
-
-  const room = flagValue(a, "--room") ?? roomKeyFromDir(process.cwd());
-  const { contents, file } = updateBindingFile(process.cwd(), {
-    org: requireOrgIdShape(orgId, picked === "flag" ? "--org" : "orgs list"),
-    ...(room ? { room } : {}),
-  });
-  console.log(JSON.stringify({
-    org_id: orgId,
-    room_key: room ?? null,
-    org_source: picked,
-    file: ".run402.json",
-    path: file,
-    bound: true,
-    safe_to_commit: true,
-    note: "Safe to commit — an org id is an identifier, not a credential; authorization stays server-side.",
-    binding: contents,
-  }, null, 2));
+  await printOrgContext((orgs) => orgs.bind(flagValue(a, "--org"), { room: flagValue(a, "--room") }));
 }
 
 async function unbind(args) {
   const a = normalizeArgv(args);
   assertKnownFlags(a, ["--help", "-h"]);
   requirePositionalCount(a, [], { min: 0, max: 0, command: "run402 orgs unbind" });
-  const previous = readBindingFile(process.cwd());
-  const { contents, removed } = updateBindingFile(process.cwd(), { org: null, room: null });
-  console.log(JSON.stringify({
-    file: ".run402.json",
-    unbound: previous.org !== undefined || previous.room !== undefined,
-    removed,
-    binding: contents,
-  }, null, 2));
+  await printOrgContext((orgs) => orgs.unbind());
 }
 
 async function current(args) {
   const a = normalizeArgv(args);
   assertKnownFlags(a, ["--help", "-h"]);
   requirePositionalCount(a, [], { min: 0, max: 0, command: "run402 orgs current" });
+  await printOrgContext((orgs) => orgs.current());
+}
+
+/** The organization-context refusals `r.orgs` raises locally; anything else is the server's answer. */
+const ORG_CONTEXT_CODES = new Set(["BAD_ORG_ID", "AMBIGUOUS_ORG", "ORG_REQUIRED", "NO_ORGS"]);
+
+/** Run one `r.orgs` context verb and print its result, or the refusal envelope. */
+async function printOrgContext(fn) {
+  let result;
   try {
-    // `cmd: "orgs"` exempts this from the ambiguity error on purpose: the
-    // command that reports the selection must stay usable while it is ambiguous.
-    // `optional` keeps an empty selection an explicit null state rather than a
-    // failure — reporting is not acting.
-    const resolved = await resolveOrg([], { cmd: "orgs", optional: true });
-    console.log(JSON.stringify({
-      ...orgProvenance(resolved),
-      selected_org_id: getSelectedOrgId() ?? null,
-    }, null, 2));
+    result = await fn(getSdk().orgs);
   } catch (err) {
+    if (err?.kind === "local_error" && ORG_CONTEXT_CODES.has(err?.code)) failLocal(err);
     reportSdkError(err);
+    return;
   }
+  console.log(JSON.stringify(result, null, 2));
 }
 
 async function get(args) {

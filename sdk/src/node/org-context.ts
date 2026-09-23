@@ -223,12 +223,18 @@ export function orgProvenance(resolved: ResolvedOrg | null): OrgProvenance {
  */
 export class NodeOrgs extends Orgs {
   readonly #client: Client;
-  readonly #rooms: Rooms;
+  readonly #rooms: Pick<Rooms, "forProject">;
+  readonly #projects: Pick<Projects, "list">;
 
-  constructor(client: Client) {
+  /**
+   * @param namespaces the reads the resolver makes (a project's org, the
+   *   project listing); default to fresh namespaces on `client`.
+   */
+  constructor(client: Client, namespaces: { rooms?: Pick<Rooms, "forProject">; projects?: Pick<Projects, "list"> } = {}) {
     super(client);
     this.#client = client;
-    this.#rooms = new Rooms(client);
+    this.#rooms = namespaces.rooms ?? new Rooms(client);
+    this.#projects = namespaces.projects ?? new Projects(client);
   }
 
   /**
@@ -369,7 +375,7 @@ export class NodeOrgs extends Orgs {
    */
   async bind(orgId?: string | null, opts: { room?: string | null; cwd?: string } = {}): Promise<OrgBindResult> {
     const cwd = opts.cwd ?? process.cwd();
-    let chosen = trimmed(orgId);
+    let chosen = orgId || null;
     let picked: "flag" | "sole_membership" = "flag";
     if (!chosen) {
       const rows = await this.list();
@@ -391,7 +397,7 @@ export class NodeOrgs extends Orgs {
       chosen = rows[0]!.org_id;
       picked = "sole_membership";
     }
-    const room = trimmed(opts.room) ?? roomKeyFromDir(cwd);
+    const room = opts.room ?? roomKeyFromDir(cwd);
     const { contents, file } = updateBindingFile(cwd, {
       org: assertOrgIdShape(chosen, picked === "flag" ? "--org" : "orgs list"),
       ...(room ? { room } : {}),
@@ -451,7 +457,7 @@ export class NodeOrgs extends Orgs {
     const cached = (getProject(projectId) as { org_id?: unknown } | undefined)?.org_id;
     if (typeof cached === "string" && cached.length > 0) return cached;
     try {
-      const listed = await new Projects(this.#client).list();
+      const listed = await this.#projects.list();
       const rows = Array.isArray(listed?.projects) ? listed.projects : [];
       const row = rows.find((p: { id?: string; project_id?: string }) => (p?.id ?? p?.project_id) === projectId) as { org_id?: string } | undefined;
       const orgId = row?.org_id;

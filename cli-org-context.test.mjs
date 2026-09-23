@@ -39,6 +39,7 @@ const deepDir = join(bindingDir, "packages", "api");
 const bareDir = join(tempDir, "bare");
 
 let orgCtx;
+let orgs;
 let errors = [];
 
 function json(data, status = 200) {
@@ -75,6 +76,8 @@ before(async () => {
   globalThis.fetch = mockFetch;
   process.exit = (code) => { throw new Error(`process.exit(${code})`); };
   orgCtx = await import("./cli/lib/org-context.mjs");
+  const { getSdk } = await import("./cli/lib/sdk.mjs");
+  orgs = () => getSdk().orgs;
 });
 
 after(() => {
@@ -86,11 +89,11 @@ after(() => {
   rmSync(tempDir, { recursive: true, force: true });
 });
 
-beforeEach(() => { orgCtx.clearSelectedOrgId(); });
+beforeEach(async () => { await orgs().clear(); });
 
 describe("resolveOrg — class precedence", () => {
   it("a directly named org outranks every lower class", async () => {
-    orgCtx.setSelectedOrgId(SELECTED);
+    await orgs().use(SELECTED);
     const r = await orgCtx.resolveOrg({ org: A }, { cwd: deepDir, env: { RUN402_ORG: B } });
     assert.equal(r.orgId, A);
     assert.equal(r.source, "flag");
@@ -98,7 +101,7 @@ describe("resolveOrg — class precedence", () => {
   });
 
   it("an explicitly addressed project decides the org over a profile selection", async () => {
-    orgCtx.setSelectedOrgId(SELECTED);
+    await orgs().use(SELECTED);
     const r = await orgCtx.resolveOrg({ project: "prj_x" }, { cwd: bareDir, env: {} });
     assert.equal(r.orgId, PROJECT_ORG);
     assert.equal(r.source, "flag");
@@ -112,7 +115,7 @@ describe("resolveOrg — class precedence", () => {
   });
 
   it("environment outranks the profile selection", async () => {
-    orgCtx.setSelectedOrgId(SELECTED);
+    await orgs().use(SELECTED);
     const r = await orgCtx.resolveOrg({}, { cwd: bareDir, env: { RUN402_ORG: A } });
     assert.equal(r.orgId, A);
     assert.equal(r.source, "env");
@@ -132,7 +135,7 @@ describe("resolveOrg — class precedence", () => {
   });
 
   it("the binding walks up from a nested directory and outranks the profile selection", async () => {
-    orgCtx.setSelectedOrgId(SELECTED);
+    await orgs().use(SELECTED);
     const r = await orgCtx.resolveOrg({}, { cwd: deepDir, env: {} });
     assert.equal(r.orgId, BOUND);
     assert.equal(r.source, "binding");
@@ -140,7 +143,7 @@ describe("resolveOrg — class precedence", () => {
   });
 
   it("falls through to the profile selection when nothing above supplies one", async () => {
-    orgCtx.setSelectedOrgId(SELECTED);
+    await orgs().use(SELECTED);
     const r = await orgCtx.resolveOrg({}, { cwd: bareDir, env: {} });
     assert.equal(r.orgId, SELECTED);
     assert.equal(r.source, "profile");
@@ -184,7 +187,7 @@ describe("resolveOrg — ambiguity", () => {
   });
 
   it("a binding beats the profile selection SILENTLY — that is what a binding is for", async () => {
-    orgCtx.setSelectedOrgId(SELECTED);
+    await orgs().use(SELECTED);
     const r = await orgCtx.resolveOrg({}, { cwd: deepDir, env: {} });
     assert.equal(r.orgId, BOUND);
   });
@@ -253,22 +256,22 @@ describe("resolveOrg — failure and validation", () => {
 });
 
 describe("selection is per wallet profile", () => {
-  it("round-trips through the profile state", () => {
-    orgCtx.setSelectedOrgId(SELECTED);
-    assert.equal(orgCtx.getSelectedOrgId(), SELECTED);
-    orgCtx.clearSelectedOrgId();
-    assert.equal(orgCtx.getSelectedOrgId(), null);
+  it("round-trips through the profile state", async () => {
+    await orgs().use(SELECTED);
+    assert.equal(orgs().selected(), SELECTED);
+    await orgs().clear();
+    assert.equal(orgs().selected(), null);
   });
 
-  it("never writes the selection to the base-level config.json", () => {
-    orgCtx.setSelectedOrgId(SELECTED);
+  it("never writes the selection to the base-level config.json", async () => {
+    await orgs().use(SELECTED);
     let raw = "";
     try { raw = require("node:fs").readFileSync(join(configDir, "config.json"), "utf8"); } catch { raw = ""; }
     assert.ok(!raw.includes(SELECTED), "the org selection must live in per-profile state, not config.json");
   });
 
   it("reports provenance as a bounded pair", async () => {
-    orgCtx.setSelectedOrgId(SELECTED);
+    await orgs().use(SELECTED);
     const resolved = await orgCtx.resolveOrg({}, { cwd: bareDir, env: {} });
     assert.deepEqual(Object.keys(orgCtx.orgProvenance(resolved)).sort(), ["org_id", "org_source", "org_source_detail"]);
     assert.deepEqual(orgCtx.orgProvenance(null), { org_id: null, org_source: null, org_source_detail: null });
@@ -325,7 +328,7 @@ describe("one resolver serves every org-scoped family", () => {
     const { resolveRoom } = await import("./cli/lib/rooms-context.mjs");
     const prevCwd = process.cwd();
     process.chdir(bareDir); // no binding here: the org comes from the profile
-    orgCtx.setSelectedOrgId(SELECTED);
+    await orgs().use(SELECTED);
     try {
       const room = await resolveRoom({ room: "named-room" });
       assert.equal(room.orgId, SELECTED);
@@ -396,7 +399,7 @@ describe("the Agent Trace recovery paths, end to end", () => {
     assert.ok(recovery, "the wall must offer `orgs use` as a recovery action");
 
     // 2. Take the offered action.
-    orgCtx.setSelectedOrgId(SELECTED);
+    await orgs().use(SELECTED);
 
     // 3. The ORIGINAL call now succeeds, unchanged.
     const r = await orgCtx.resolveOrg({}, { cwd: bareDir, env: {} });
@@ -421,7 +424,7 @@ describe("the Agent Trace recovery paths, end to end", () => {
 
 describe("an authorization failure is the server's answer, not a retry", () => {
   it("an explicitly named project that the caller cannot read stops the chain", async () => {
-    orgCtx.setSelectedOrgId(SELECTED); // a LOWER class that could paper over the failure
+    await orgs().use(SELECTED); // a LOWER class that could paper over the failure
     const previous = globalThis.fetch;
     globalThis.fetch = async () => json({ error: "forbidden" }, 403);
     try {
@@ -440,7 +443,7 @@ describe("an authorization failure is the server's answer, not a retry", () => {
     const previous = globalThis.fetch;
     globalThis.fetch = async () => json({ error: "forbidden" }, 403);
     try {
-      orgCtx.setSelectedOrgId(SELECTED);
+      await orgs().use(SELECTED);
       const r = await orgCtx.resolveOrg({}, { cwd: bareDir, env: { RUN402_PROJECT_ID: "prj_stale" } });
       assert.equal(r.orgId, SELECTED);
       assert.equal(r.source, "profile");
@@ -455,7 +458,7 @@ describe("state.json stays readable by an older CLI", () => {
     const { loadProfileState, setActiveProjectId, getActiveProjectId } =
       await import("./cli/core-dist/profile-state.js");
     setActiveProjectId("prj_older");
-    orgCtx.setSelectedOrgId(SELECTED);
+    await orgs().use(SELECTED);
 
     // An older binary reads active_projects / active_project_id and knows
     // nothing about active_orgs — that must still resolve.
@@ -468,7 +471,7 @@ describe("state.json stays readable by an older CLI", () => {
     // reads back as simply having no selection, never as a crash.
     const { saveProfileState } = await import("./cli/core-dist/profile-state.js");
     saveProfileState({ active_project_id: "prj_from_old_cli" });
-    assert.equal(orgCtx.getSelectedOrgId(), null);
+    assert.equal(orgs().selected(), null);
     assert.equal(getActiveProjectId(), "prj_from_old_cli");
   });
 });

@@ -50,12 +50,18 @@ function claimResult(overrides = {}) {
   };
 }
 
+// The organization context is real local state: `rooms join` stamps the
+// room's org through `r.orgs.use`, and the assertions read it back.
+const { run402: realSdk } = await import("./cli/sdk/dist/node/index.js");
+const realOrgs = () => realSdk({ surface: "cli", disablePaidFetch: true }).orgs;
+
 mock.module("./cli/lib/sdk.mjs", {
   namedExports: {
     getSdk: () => ({
       rooms: {
         join: async (key) => (impl.join ?? (async () => claimResult()))(key),
       },
+      orgs: realOrgs(),
     }),
   },
 });
@@ -68,7 +74,6 @@ mock.module("./cli/lib/cold-start.mjs", {
 
 const { run } = await import("./cli/lib/rooms.mjs");
 const { assembleRoomInviteKey } = await import("./sdk/dist/node/bearer-redeem-key.js");
-const { getSelectedOrgId, clearSelectedOrgId } = await import("./cli/lib/org-context.mjs");
 const { readBindingFile, bindingFilePath } = await import("./cli/lib/wallet-context.mjs");
 const { getRoomState } = await import("./cli/lib/rooms-context.mjs");
 
@@ -96,9 +101,9 @@ after(() => {
   rmSync(configDir, { recursive: true, force: true });
   for (const d of createdDirs) rmSync(d, { recursive: true, force: true });
 });
-beforeEach(() => {
+beforeEach(async () => {
   impl = {};
-  try { clearSelectedOrgId(); } catch { /* fine if nothing was selected */ }
+  await realOrgs().clear();
 });
 
 describe("arrival outside a git repository", () => {
@@ -125,7 +130,7 @@ describe("arrival outside a git repository", () => {
     assert.ok(existsSync(bindingFilePath(dir)), ".run402.json must exist outside a git repository");
 
     // The current org is set (org use semantics).
-    assert.equal(getSelectedOrgId(), ORG);
+    assert.equal(realOrgs().selected(), ORG);
 
     // The returned cursor is persisted for messages wait/list.
     const state = getRoomState(ORG, ROOM, { cwd: dir });
@@ -210,7 +215,7 @@ describe("arrival inside a git repository", () => {
     assert.equal(existsSync(join(dir, ".gitignore")), false, "the captured/tracked tree's .gitignore must never be touched");
 
     // The current org is set the same way as the non-git case.
-    assert.equal(getSelectedOrgId(), ORG);
+    assert.equal(realOrgs().selected(), ORG);
 
     // The cursor is persisted the same way as the non-git case.
     const state = getRoomState(ORG, ROOM, { cwd: dir });

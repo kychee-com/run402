@@ -17,9 +17,19 @@ let stderr = [];
 let upCalls = [];
 let upImpl = async () => ({ ok: true });
 
+// The organization context is the Node SDK's own resolver, run against this
+// file's fake namespaces (the owning-org read lists projects through them).
+const { NodeOrgs } = await import("./cli/sdk/dist/node/index.js");
+const { getProject: cachedProject } = await import("./cli/core-dist/keystore.js");
+function withOrgs(sdk) {
+  const orgs = new NodeOrgs({ getProjectCredentials: async (id) => cachedProject(id) ?? null }, { projects: sdk.projects, rooms: sdk.rooms });
+  sdk.orgs = sdk.orgs ? Object.assign(orgs, sdk.orgs) : orgs;
+  return sdk;
+}
+
 mock.module("./cli/lib/sdk.mjs", {
   namedExports: {
-    getSdk: () => ({
+    getSdk: () => withOrgs({
       up: (input, options) => {
         upCalls.push({ input, options });
         return upImpl(input, options);

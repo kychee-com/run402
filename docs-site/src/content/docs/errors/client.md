@@ -7,7 +7,7 @@ description: Owned codes and recovery guidance.
 
 <h2 id="AMBIGUOUS_ORG">AMBIGUOUS_ORG</h2>
 
-Owner: `public:sdk/src/node/org-context.ts`, `public:cli/lib/org-context.mjs`, `public:cli/lib/orgs.mjs`.
+Owner: `public:sdk/src/node/org-context.ts`, `public:cli/lib/org-context.mjs`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
@@ -157,7 +157,7 @@ The client could not complete this operation. Inspect its typed error kind, mess
 
 <h2 id="BAD_ORG_ID">BAD_ORG_ID</h2>
 
-Owner: `public:sdk/src/node/org-context.ts`, `public:cli/lib/org-context.mjs`.
+Owner: `public:sdk/src/node/org-context.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
@@ -637,7 +637,7 @@ The client could not complete this operation. Inspect its typed error kind, mess
 
 <h2 id="NO_ORGS">NO_ORGS</h2>
 
-Owner: `public:sdk/src/node/org-context.ts`, `public:cli/lib/orgs.mjs`.
+Owner: `public:sdk/src/node/org-context.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
@@ -673,7 +673,7 @@ The client could not complete this operation. Inspect its typed error kind, mess
 
 <h2 id="ORG_REQUIRED">ORG_REQUIRED</h2>
 
-Owner: `public:sdk/src/node/org-context.ts`, `public:cli/lib/org-context.mjs`.
+Owner: `public:sdk/src/node/org-context.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
