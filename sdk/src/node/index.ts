@@ -59,6 +59,7 @@ import { NodeArchives } from "./archives-node.js";
 import { NodeActions, type NodeActionTargetKind } from "./actions-node.js";
 import { NodeWallets } from "./wallets.js";
 import { NodeOrgs } from "./org-context.js";
+import { runDoctor, type DoctorOptions, type DoctorReport } from "./doctor.js";
 
 export interface NodeRun402Options {
   /** Override the API base URL. Defaults to `getApiBase()` (env var or production URL). */
@@ -127,6 +128,8 @@ export type NodeRun402 = Omit<Run402, "sites" | "assets" | "archives" | "wallets
   wallets: NodeWallets;
   /** The org collection and identity, plus the local organization context and its one resolver. */
   orgs: NodeOrgs;
+  /** Local health and configuration diagnostics: `{ ok, blocking[], warnings[], checks[] }`. */
+  doctor(opts?: DoctorOptions): Promise<DoctorReport>;
   actions: NodeActions;
   up: NodeActions["up"];
   /** Public address/source selected for automatic payment; never includes keys or signed proofs. */
@@ -213,6 +216,7 @@ export function run402(opts: NodeRun402Options = {}): NodeRun402 {
   });
   (base as unknown as { actions: NodeActions }).actions = actions;
   (base as unknown as { up: NodeActions["up"] }).up = actions.up.bind(actions);
+  (base as unknown as { doctor: NodeRun402["doctor"] }).doctor = (doctorOpts) => runDoctor(base, doctorOpts);
   (base as unknown as { paymentPayer: NodeRun402["paymentPayer"] }).paymentPayer = async () =>
     lazyPaidFetch?.getPayer() ?? null;
 
@@ -732,6 +736,10 @@ export {
   resolveWalletSelection,
   selectWallet,
 } from "./wallets.js";
+export { DOCTOR_CHECK_NAMES, assertDoctorCheckNames, buildDoctorReport, runDoctor } from "./doctor.js";
+export type { DoctorCheck, DoctorCheckName, DoctorOptions, DoctorReport, DoctorReportCheck, DoctorSeverity } from "./doctor.js";
+export { repoOwnVaultTarget, resolveVaultTarget } from "./vault-target.js";
+export type { RepoOwnVaultTarget, VaultTarget } from "./vault-target.js";
 export {
   NodeOrgs,
   ORG_ENV,
