@@ -901,9 +901,10 @@ const SURFACE: Capability[] = [
 const SDK_BY_CAPABILITY: Record<string, string | null> = {
   // Local-only compound flows — MCP handlers compose SDK calls internally.
   up: "actions.up",
-  init: null,
+  // Local state (code-mode MCP section 2): the Node SDK's root methods.
+  init: "init",
   pay_url: "pay.fetch",
-  status: null,
+  status: "status",
   identity_links: "identityLinks.nostr.begin",
   buzz_status: "buzz.status",
   buzz_adopt: "buzz.offerAdoption",
@@ -972,24 +973,27 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   // The result store is MCP-local plumbing, not a gateway capability.
   expand_result: null,
 
-  // Named wallets — local profile management (no SDK gateway method).
-  wallets_list: null,
-  wallets_current: "wallets.status",
-  wallets_new: null,
-  wallets_use: null,
-  org_use: null,
-  org_current: null,
-  org_clear: null,
-  org_bind: null,
-  org_unbind: null,
-  wallets_rename: null,
-  wallets_bind: null,
-  wallets_unbind: null,
-  wallets_import: null,
-  wallets_rm: null,
+  // Named wallets and the organization context — local state owned by
+  // `@run402/sdk/node` (NodeWallets, NodeOrgs).
+  wallets_list: "wallets.list",
+  wallets_current: "wallets.current",
+  wallets_new: "wallets.create",
+  wallets_use: "wallets.use",
+  org_use: "orgs.use",
+  org_current: "orgs.current",
+  org_clear: "orgs.clear",
+  org_bind: "orgs.bind",
+  org_unbind: "orgs.unbind",
+  wallets_rename: "wallets.rename",
+  wallets_bind: "wallets.bind",
+  wallets_unbind: "wallets.unbind",
+  wallets_import: "wallets.import",
+  wallets_rm: "wallets.remove",
 
+  // `run402 doctor` is the Node SDK's root `doctor()`; `--buzz` rides it
+  // (buzz.doctor is in SDK_ONLY_METHODS).
+  doctor: "doctor",
   // SSR Runtime DX (v1.52) — local/CLI-only; no MCP, no SDK
-  doctor: null,
   dev: null,
   // `run402 logs` is the project-wide request-id search; the SDK owns the
   // cross-function fan-out (no gateway route exists for it).
@@ -1390,6 +1394,12 @@ async function listSdkMethods(): Promise<string[]> {
     { namespace: "org", modulePath: "./sdk/dist/index.js", exportName: "ScopedOrg" },
     { namespace: "org.members", modulePath: "./sdk/dist/index.js", exportName: "OrgMembers" },
     { namespace: "org.invites", modulePath: "./sdk/dist/index.js", exportName: "OrgInvites" },
+    // Local state (code-mode MCP section 2): the Node entry's wallets, orgs,
+    // and buzz namespaces extend the isomorphic ones; diagnostics is Node-only.
+    { namespace: "wallets", modulePath: "./sdk/dist/node/wallets.js", exportName: "NodeWallets" },
+    { namespace: "orgs", modulePath: "./sdk/dist/node/org-context.js", exportName: "NodeOrgs" },
+    { namespace: "buzz", modulePath: "./sdk/dist/node/buzz-doctor.js", exportName: "NodeBuzz" },
+    { namespace: "diagnostics", modulePath: "./sdk/dist/node/diagnostics.js", exportName: "Diagnostics" },
   ];
   for (const aug of nodeAugments) {
     const mod = (await import(aug.modulePath)) as Record<string, unknown>;
@@ -1401,6 +1411,14 @@ async function listSdkMethods(): Promise<string[]> {
       const path = `${aug.namespace}.${name}`;
       if (!methods.includes(path)) methods.push(path);
     }
+  }
+
+  // Root-level methods the Node entry adds to the client itself (`r.doctor()`,
+  // `r.init()`, `r.status()`), listed by bare name.
+  const nodeModule = (await import("./sdk/dist/node/index.js")) as { run402: (opts: unknown) => Record<string, unknown> };
+  const nodeClient = nodeModule.run402({ apiBase: "https://invalid.example", credentials: stub, disablePaidFetch: true });
+  for (const name of ["doctor", "init", "status"]) {
+    if (typeof nodeClient[name] === "function" && !methods.includes(name)) methods.push(name);
   }
 
   return methods.sort();
@@ -1566,6 +1584,21 @@ describe("SDK surface alignment", () => {
     // runtime-enforced), plus convenience methods consumers can compose
     // without needing their own MCP tool.
     const SDK_ONLY_METHODS = new Set([
+      // The organization resolver every org-scoped verb consumes (through
+      // cli/lib/org-context.mjs) and its helpers: `projects use` stamps the
+      // project's org, the vault scaffold reads the owning org. No verb of
+      // their own.
+      "orgs.resolve",
+      "orgs.selected",
+      "orgs.selectFromProject",
+      "orgs.owningOrgOf",
+      // The MCP wallet_status tool's local wallet read; `wallets current` is
+      // wallets.current.
+      "wallets.status",
+      // `run402 doctor --buzz` rides the doctor capability; the preflight
+      // measures origins with diagnostics.probeOrigin.
+      "buzz.doctor",
+      "diagnostics.probeOrigin",
       // Minting another key against an existing grant: `grants create --key`
       // mints the first key with the grant; a second key is an SDK call.
       "grants.createKey",
