@@ -26,7 +26,7 @@
   "scripts": {
     "build:core": "rm -rf core/dist && tsc -p core/tsconfig.json",
     "build:sdk": "rm -rf sdk/dist sdk/core-dist && mkdir -p sdk/core-dist && cp core/dist/*.js sdk/core-dist/ && cp core/dist/*.d.ts sdk/core-dist/ && tsc -p sdk/tsconfig.json",
-    "build": "rm -rf dist cli/core-dist cli/sdk/dist cli/sdk/core-dist && npm run build:core && npm run build:sdk && tsc && mkdir -p cli/core-dist cli/sdk/dist cli/sdk/core-dist && cp core/dist/*.js cli/core-dist/ && cp -R sdk/dist/. cli/sdk/dist/ && cp sdk/core-dist/*.js cli/sdk/core-dist/",
+    "build": "rm -rf dist cli/core-dist cli/sdk/dist cli/sdk/core-dist && npm run build:core && npm run build:sdk && tsc && mkdir -p cli/core-dist cli/sdk/dist cli/sdk/core-dist && cp core/dist/*.js cli/core-dist/ && cp -R sdk/dist/. cli/sdk/dist/ && cp sdk/core-dist/*.js cli/sdk/core-dist/ && mkdir -p dist/docs && cp sdk/llms-sdk.txt docs-site/src/content/docs/mcp/run.md dist/docs/",
     "start": "node dist/index.js",
     "test:skill": "node scripts/build-agent-skills-index.mjs --check && node --test --import tsx SKILL.test.ts buzz/setup.test.mjs buzz/helper.test.mjs buzz/package.test.mjs scripts/build-agent-skills-index.test.mjs",
     "test:vault-surface": "node scripts/build-vault-surface.mjs --check && node --test scripts/build-vault-surface.test.mjs",

@@ -179,6 +179,7 @@ Run `node scripts/documentation-inventory.mjs` to reject newly discovered unclas
 | public | [docs-site/src/content/docs/mcp/limits.md](docs-site/src/content/docs/mcp/limits.md) | reference / mcp | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [docs-site/src/content/docs/mcp/patterns.md](docs-site/src/content/docs/mcp/patterns.md) | reference / mcp | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [docs-site/src/content/docs/mcp/reference.md](docs-site/src/content/docs/mcp/reference.md) | reference / mcp | pending: source changed since editorial review | pending: source changed since publication evidence |
+| public | [docs-site/src/content/docs/mcp/run.md](docs-site/src/content/docs/mcp/run.md) | reference / mcp | pending | pending |
 | public | [docs-site/src/content/docs/mcp/tools.md](docs-site/src/content/docs/mcp/tools.md) | reference / mcp | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [docs-site/src/content/docs/operate/billing.md](docs-site/src/content/docs/operate/billing.md) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [docs-site/src/content/docs/operate/ci.md](docs-site/src/content/docs/operate/ci.md) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
