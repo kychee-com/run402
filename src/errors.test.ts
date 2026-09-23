@@ -352,7 +352,8 @@ describe("formatApiError", () => {
     assert.ok(text.includes("409"));
     assert.ok(text.includes("Code: `CANNOT_REBUILD_UNLOCKED_DEPS`"));
     assert.ok(/redeploy/i.test(text));
-    assert.ok(text.includes("deploy_function"));
+    assert.ok(text.includes("Redeploy it from source with `deploy`"));
+    assert.ok(!text.includes("deploy_function"), "names no deleted MCP tool");
     // code-specific guidance suppresses the misleading generic 409 message
     assert.ok(!text.includes("already in use or reserved"));
   });
@@ -441,7 +442,8 @@ describe("formatApiError", () => {
     const text = result.content[0]!.text;
     assert.ok(text.includes("409"));
     assert.ok(text.includes("Code: `LAST_OWNER`"));
-    assert.ok(text.includes("set_org_member_role"));
+    assert.ok(text.includes("run402 orgs members role --principal <principal_id> --role owner"));
+    assert.ok(!text.includes("set_org_member_role"), "names no deleted MCP tool");
     assert.ok(/at least one active .?owner/i.test(text));
     assert.ok(!text.includes("already in use or reserved"));
   });

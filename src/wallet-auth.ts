@@ -4,6 +4,8 @@
 
 import { getWalletAuthHeaders as _getWalletAuthHeaders, type SIWxAuthHeaders } from "../core/dist/wallet-auth.js";
 
+import { errorResult, type ToolResult } from "./structured.js";
+
 export type { SIWxAuthHeaders };
 
 export const getWalletAuthHeaders = _getWalletAuthHeaders;
@@ -14,22 +16,23 @@ export const getWalletAuthHeaders = _getWalletAuthHeaders;
 export function requireWalletAuth(path: string): {
   headers: SIWxAuthHeaders;
 } | {
-  error: { content: Array<{ type: "text"; text: string }>; isError: true };
+  error: ToolResult;
 } {
   const headers = getWalletAuthHeaders(path);
   if (!headers) {
+    // Creating a wallet writes a private key, which only the CLI hands to a
+    // person; `up` sets one up as part of its missing setup.
     return {
-      error: {
-        content: [
-          {
-            type: "text",
-            // Creating a wallet writes a private key, which only the CLI hands
-            // to a person; `up` sets one up as part of its missing setup.
-            text: "Error: No local wallet configured. `up` sets one up with the rest of any missing setup, or run `run402 init` to create and fund one.",
-          },
-        ],
-        isError: true,
-      },
+      error: errorResult(
+        "Error: No local wallet configured. `up` sets one up with the rest of any missing setup, or run `run402 init` to create and fund one.",
+        {
+          code: "WALLET_NOT_FOUND",
+          message: "No local wallet configured.",
+          next_actions: [
+            { type: "run_cli_command", command: "run402 init", why: "Create and fund a local wallet, or call `up`, which sets one up with the rest of any missing setup." },
+          ],
+        },
+      ),
     };
   }
   return { headers };

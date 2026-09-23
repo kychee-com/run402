@@ -9,8 +9,8 @@
 import { z } from "zod";
 import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
+import { jsonBlock, okResult, type ToolResult } from "../structured.js";
 
-type ToolResult = { content: Array<{ type: "text"; text: string }>; isError?: boolean };
 
 export const doctorSchema = {
   project_id: z
@@ -25,7 +25,8 @@ export async function handleDoctor(args: { project_id?: string } = {}): Promise<
     const head = report.ok
       ? `## Doctor: ok (${report.warnings.length} warning${report.warnings.length === 1 ? "" : "s"})`
       : `## Doctor: ${report.blocking.length} blocking finding${report.blocking.length === 1 ? "" : "s"}`;
-    return { content: [{ type: "text", text: [head, "", "```json", JSON.stringify(report, null, 2), "```"].join("\n") }] };
+    const structured = okResult(report);
+    return { content: [{ type: "text", text: [head, "", jsonBlock(structured)].join("\n") }], structuredContent: structured };
   } catch (err) {
     return mapSdkError(err, "running doctor");
   }

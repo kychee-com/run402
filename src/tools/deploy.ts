@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { getSdk } from "../sdk.js";
 import { formatCanonicalErrorContext, mapSdkError, projectNotFound } from "../errors.js";
+import { jsonBlock, toolErrorFrom, type ToolResult } from "../structured.js";
 import { requireWalletAuth } from "../wallet-auth.js";
 import { updateProject } from "../keystore.js";
 import {
@@ -462,7 +463,7 @@ type DeployArgs = {
 
 export async function handleDeploy(
   args: DeployArgs,
-): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
+): Promise<ToolResult> {
   if (!args.project_id) return projectNotFound("(none — project_id is required)");
 
   const auth = requireWalletAuth("/apply/v1/plans");
@@ -517,13 +518,13 @@ export async function handleDeploy(
     if (result.warnings.length > 0) {
       lines.push(``, renderWarningsMarkdown(result.warnings));
     }
+    // One value, two views: the fenced JSON is the envelope, and the progress
+    // events block is its `events` field.
     lines.push(
       ``,
       `### Raw Deploy Result`,
       ``,
-      "```json",
-      JSON.stringify(result, null, 2),
-      "```",
+      jsonBlock({ status: "ok", result }),
     );
 
     return {
@@ -531,23 +532,28 @@ export async function handleDeploy(
         { type: "text", text: lines.join("\n") },
         { type: "text", text: renderEventsBlock(events) },
       ],
+      structuredContent: { status: "ok", result, events },
     };
   } catch (err) {
     if (err instanceof PaymentRequired) {
+      // An uncovered payment is an error, as `run` reports the same failure.
       const body = (err.body ?? {}) as Record<string, unknown>;
-      return {
+      const error = toolErrorFrom(err, "deploying release");
+      const out: ToolResult = {
         content: [
           {
             type: "text",
             text:
               `## Payment Required\n\nThis deploy requires payment (project lease renewal or x402 quote).\n\n` +
-              "```json\n" +
-              JSON.stringify(body, null, 2) +
-              "\n```\n\n" +
-              "Resolve payment via the organization's allowance or the wallet, and retry this tool call.",
+              jsonBlock(body) +
+              "\n\nResolve payment via the organization's allowance or the wallet, and retry this tool call.",
           },
         ],
+        structuredContent: { status: "error", error, events },
+        isError: true,
       };
+      if (events.length > 0) out.content.push({ type: "text", text: renderEventsBlock(events) });
+      return out;
     }
     if (err instanceof Run402DeployError) {
       const lines = [
@@ -582,8 +588,9 @@ export async function handleDeploy(
         lines.push(``, `**Logs:**`);
         lines.push("```", ...err.logs.slice(0, 50), "```");
       }
-      const out: { content: Array<{ type: "text"; text: string }>; isError?: boolean } = {
+      const out: ToolResult = {
         content: [{ type: "text", text: lines.join("\n") }],
+        structuredContent: { status: "error", error: toolErrorFrom(err, "deploying release"), events, warnings },
         isError: true,
       };
       if (events.length > 0) {
@@ -592,6 +599,7 @@ export async function handleDeploy(
       return out;
     }
     const errResp = mapSdkError(err, "deploying release");
+    errResp.structuredContent = { ...errResp.structuredContent, events };
     if (events.length > 0) {
       errResp.content.push({ type: "text", text: renderEventsBlock(events) });
     }

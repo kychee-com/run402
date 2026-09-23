@@ -9,8 +9,8 @@
 
 import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
+import { jsonBlock, okResult, type ToolResult } from "../structured.js";
 
-type ToolResult = { content: Array<{ type: "text"; text: string }>; isError?: boolean };
 
 export const statusSchema = {};
 
@@ -30,8 +30,9 @@ export async function handleStatus(): Promise<ToolResult> {
         `- projects: ${status.projects.length}`,
       );
     }
-    lines.push("", "```json", JSON.stringify(status, null, 2), "```");
-    return { content: [{ type: "text", text: lines.join("\n") }] };
+    const structured = okResult(status);
+    lines.push("", jsonBlock(structured));
+    return { content: [{ type: "text", text: lines.join("\n") }], structuredContent: structured };
   } catch (err) {
     return mapSdkError(err, "reading status");
   }

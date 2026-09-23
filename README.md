@@ -624,6 +624,8 @@ A snippet is the body of an async function; the value of its last expression is 
 
 The result is `{ status, value, value_ref, shown, total, logs, logs_ref, calls, duration_ms, wallet, error? }`: a large value is stored whole and shown as a 200-line window (`expand_result` pages the rest), `calls[]` lists every SDK call with its outcome, and a timeout (60 s by default, 300 s at most) still lists the calls that completed. An SDK error passes through with its own `code` and `next_actions`.
 
+**Structured results.** Every tool also returns its result as `structuredContent` under a declared `outputSchema`, so a host reads fields instead of parsing text. The object has `status: "ok" | "error"`; the fixed tools put the SDK object under `result`, and every error carries `error.code`, `error.message`, and `error.next_actions`. The fenced JSON in the text is the same object.
+
 **One-time secrets stay in the CLI.** An operation that returns or consumes a one-time secret (minting or rotating a grant key, a Handoff or Invite Key, a Room Invite Key, provisioning a project or rotating its credentials, a project token, creating, importing, or exporting a wallet, the Lightning pairing) refuses inside `run` with `SECRET_REQUIRES_CLI` and one next action, `{ "type": "run_cli_command", "command": "run402 …" }`, naming the exact command to hand the person. The refusal is in the SDK method itself, before any request, so nothing secret reaches a result.
 
 Full reference: [`llms-mcp.txt`](https://docs.run402.com/llms-mcp.txt).

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 import { handleStatus } from "./status.js";
+import { statusOutputSchema } from "../structured.js";
 
 const originalFetch = globalThis.fetch;
 let tempDir: string;
@@ -53,8 +54,17 @@ function mockApis(opts: {
   }) as typeof fetch;
 }
 
+/** The fenced JSON is the structured object; its `result` is `r.status()`. */
 function envelope(text: string): Record<string, any> {
-  return JSON.parse(/```json\n([\s\S]*?)\n```/.exec(text)![1]!);
+  const structured = JSON.parse(/```json\n([\s\S]*?)\n```/.exec(text)![1]!);
+  assert.equal(structured.status, "ok");
+  return structured.result;
+}
+
+function assertStructured(result: { content: Array<{ text: string }>; structuredContent?: Record<string, unknown> }): void {
+  assert.ok(result.structuredContent, "structuredContent is present");
+  statusOutputSchema.parse(result.structuredContent);
+  assert.deepEqual(result.structuredContent, JSON.parse(/```json\n([\s\S]*?)\n```/.exec(result.content[0]!.text)![1]!), "the fenced JSON is the structured object");
 }
 
 describe("status tool", () => {
@@ -77,6 +87,8 @@ describe("status tool", () => {
     assert.equal(status.balances.allowance_usd_micros, 250000);
     assert.equal(status.tier.name, "prototype");
     assert.ok(!/privateKey|private_key|sk1/.test(text), "never key material");
+    assertStructured(result);
+    assert.ok(!/privateKey|private_key|sk1/.test(JSON.stringify(result.structuredContent)), "never key material in the structured channel");
   });
 
   it("names the next command when there is no local wallet", async () => {
@@ -85,6 +97,7 @@ describe("status tool", () => {
     assert.equal(result.isError, undefined);
     assert.match(result.content[0]!.text, /^## Status: no local wallet/);
     assert.equal(envelope(result.content[0]!.text).wallet, null);
+    assertStructured(result);
   });
 
   it("reports unavailable remote reads without failing", async () => {

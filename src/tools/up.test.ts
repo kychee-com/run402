@@ -40,6 +40,7 @@ mock.module("../errors.js", {
 });
 
 const { handleUp } = await import("./up.js");
+const { upOutputSchema } = await import("../structured.js");
 
 beforeEach(() => {
   calls = [];
@@ -77,7 +78,11 @@ describe("up tool", () => {
         approval: "yes",
       },
     }]);
-    const parsed = JSON.parse(result.content[0]!.text);
+    const structured = JSON.parse(result.content[0]!.text);
+    assert.deepEqual(result.structuredContent, structured, "the text is the structured object");
+    assert.equal(structured.status, "ok");
+    upOutputSchema.parse(result.structuredContent);
+    const parsed = structured.result;
     assert.equal(parsed.action, "up");
     assert.equal(parsed.result.app_result.kind, "run402.up.summary");
     assert.equal(parsed.result.app_result.status, "planned");

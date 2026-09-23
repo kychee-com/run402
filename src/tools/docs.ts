@@ -27,7 +27,7 @@ export const DOCS_WINDOW_LINES = 200;
 /** Sections a search returns at most. */
 export const DOCS_SEARCH_MAX_SECTIONS = 8;
 
-type ToolResult = { content: Array<{ type: "text"; text: string }>; isError?: boolean };
+import type { ToolError, ToolResult } from "../structured.js";
 
 export const docsSchema = {
   topic: z
@@ -216,14 +216,16 @@ function searchLines(c: Corpus, query: string): { lines: string[]; matched: numb
   return { lines, matched: hits.length };
 }
 
-function respond(kind: string, header: string, lines: string[], isError = false): ToolResult {
+function respond(kind: string, header: string, lines: string[], error?: ToolError): ToolResult {
   const view = storeResult(kind, lines, { shown: DOCS_WINDOW_LINES });
   const where =
     view.shown < view.total
       ? `lines 1–${view.shown} of ${view.total}; expand_result with ref ${view.ref} and offset ${view.shown} pages the rest.`
       : `${view.total} lines, all shown (ref ${view.ref}).`;
   const text = [`${header} — ${where}`, "", ...view.items].join("\n");
-  return { content: [{ type: "text", text }], ...(isError ? { isError: true } : {}) };
+  const page = { kind, ref: view.ref, shown: view.shown, total: view.total, lines: view.items };
+  if (error) return { content: [{ type: "text", text }], structuredContent: { status: "error", ...page, error }, isError: true };
+  return { content: [{ type: "text", text }], structuredContent: { status: "ok", ...page } };
 }
 
 export async function handleDocs(args: { topic?: string; search?: string }): Promise<ToolResult> {
@@ -249,7 +251,11 @@ export async function handleDocs(args: { topic?: string; search?: string }): Pro
       "docs",
       `docs: unknown topic "${topic}"`,
       [`No topic "${topic}". Topics: index, sdk, run, ${topics.join(", ")}.`, "", "Or search: docs({ search: \"words\" })."],
-      true,
+      {
+        code: "DOCS_TOPIC_NOT_FOUND",
+        message: `No topic "${topic}".`,
+        next_actions: [{ type: "call_tool", tool: "docs", why: "Call docs with no arguments for the topic list, or pass search." }],
+      },
     );
   }
   return respond("docs", `docs: ${section.keys[0]}`, section.lines);

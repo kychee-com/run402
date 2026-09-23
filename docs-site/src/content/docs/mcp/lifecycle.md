@@ -54,3 +54,4 @@ Safe retry policy:
 - 5xx with `safe_to_retry: false`, or `mutation_state` is `committed` / `partial` / `unknown` → inspect or poll state before retrying. For deploys, resume with `await r.project(projectId).apply.resume(operationId)` in a `run` snippet.
 - Lifecycle / payment errors → take the action, don't blind-retry. `PROJECT_FROZEN` → `await r.tier.set("<tier>")`; `PAYMENT_REQUIRED` → submit payment, then retry.
 - A snippet's `run` result reports an SDK error with the SDK's own `code`, `message`, and `next_actions`, and marks the failing call in `calls[]`; branch on those, exactly as above.
+- Every tool's error result carries the same fields under `structuredContent.error` (see the Structured results section of the reference); a host reads them there instead of parsing text.

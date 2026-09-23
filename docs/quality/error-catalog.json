@@ -1689,6 +1689,16 @@
       "topic": "/errors/gateway/#DIFF_SAME_RELEASE"
     },
     {
+      "code": "DOCS_TOPIC_NOT_FOUND",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "src/tools/docs.ts"
+        }
+      ],
+      "topic": "/errors/client/#DOCS_TOPIC_NOT_FOUND"
+    },
+    {
       "code": "DOMAIN_WAIT_TIMEOUT",
       "owners": [
         {
@@ -2808,6 +2818,10 @@
         {
           "owner": "public",
           "source": "sdk/src/namespaces/deploy.ts"
+        },
+        {
+          "owner": "public",
+          "source": "src/structured.ts"
         },
         {
           "owner": "gateway",
@@ -4637,6 +4651,10 @@
         },
         {
           "owner": "public",
+          "source": "src/structured.ts"
+        },
+        {
+          "owner": "public",
           "source": "cli/lib/config.mjs"
         },
         {
@@ -4735,6 +4753,14 @@
     {
       "code": "PROJECT_NOT_FOUND",
       "owners": [
+        {
+          "owner": "public",
+          "source": "src/errors.ts"
+        },
+        {
+          "owner": "public",
+          "source": "src/structured.ts"
+        },
         {
           "owner": "public",
           "source": "cli/lib/sdk-errors.mjs"
@@ -6155,6 +6181,16 @@
         }
       ],
       "topic": "/errors/gateway/#REST_PERMISSION_DENIED"
+    },
+    {
+      "code": "RESULT_REF_NOT_FOUND",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "src/tools/expand-result.ts"
+        }
+      ],
+      "topic": "/errors/client/#RESULT_REF_NOT_FOUND"
     },
     {
       "code": "REVEAL_REQUIRED",
@@ -7684,6 +7720,10 @@
         {
           "owner": "public",
           "source": "sdk/src/node/wallets.ts"
+        },
+        {
+          "owner": "public",
+          "source": "src/wallet-auth.ts"
         }
       ],
       "topic": "/errors/client/#WALLET_NOT_FOUND"

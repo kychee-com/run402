@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { handleWhoami } from "./whoami.js";
 import { _resetSdk } from "../sdk.js";
+import { whoamiOutputSchema } from "../structured.js";
 
 const originalFetch = globalThis.fetch;
 let tempDir: string;
@@ -52,5 +53,10 @@ describe("whoami tool", () => {
     assert.match(text, /- memberships: `00000000-0000-4000-8000-000000000001` \("Acme"\) owner \(active\)/);
     assert.match(text, /- session: none \(wallet\)/);
     assert.deepEqual(paths.filter((p) => p.startsWith("/agent/")), ["/agent/v1/whoami"]);
+
+    const structured = whoamiOutputSchema.parse(result.structuredContent);
+    assert.equal(structured.status, "ok");
+    assert.equal(structured.result?.principal.id, "prn_1");
+    assert.deepEqual(result.structuredContent, JSON.parse(/```json\n([\s\S]*?)\n```/.exec(text)![1]!), "the fenced JSON is the structured object");
   });
 });

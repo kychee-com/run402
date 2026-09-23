@@ -510,6 +510,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="DIFF_SAME_RELEASE"></a>
 [`DIFF_SAME_RELEASE`](/errors/gateway/#DIFF_SAME_RELEASE)
 
+<a id="docs_topic_not_found"></a>
+<a id="DOCS_TOPIC_NOT_FOUND"></a>
+[`DOCS_TOPIC_NOT_FOUND`](/errors/client/#DOCS_TOPIC_NOT_FOUND)
+
 <a id="domain_wait_timeout"></a>
 <a id="DOMAIN_WAIT_TIMEOUT"></a>
 [`DOMAIN_WAIT_TIMEOUT`](/errors/client/#DOMAIN_WAIT_TIMEOUT)
@@ -2156,6 +2160,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="rest_permission_denied"></a>
 <a id="REST_PERMISSION_DENIED"></a>
 [`REST_PERMISSION_DENIED`](/errors/gateway/#REST_PERMISSION_DENIED)
+
+<a id="result_ref_not_found"></a>
+<a id="RESULT_REF_NOT_FOUND"></a>
+[`RESULT_REF_NOT_FOUND`](/errors/client/#RESULT_REF_NOT_FOUND)
 
 <a id="reveal_required"></a>
 <a id="REVEAL_REQUIRED"></a>

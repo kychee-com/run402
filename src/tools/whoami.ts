@@ -11,14 +11,15 @@
 import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
 import { formatLinkedIdentity } from "../identity-format.js";
+import { jsonBlock, okResult, type ToolResult } from "../structured.js";
 
-type ToolResult = { content: Array<{ type: "text"; text: string }>; isError?: boolean };
 
 export const whoamiSchema = {};
 
 export async function handleWhoami(): Promise<ToolResult> {
   try {
     const me = await getSdk().orgs.whoami();
+    const structured = okResult(me);
     const lines = [
       `## Principal \`${me.principal.id}\` (${me.principal.type}${me.principal.display_name ? `, ${me.principal.display_name}` : ""})`,
       "",
@@ -27,11 +28,9 @@ export async function handleWhoami(): Promise<ToolResult> {
       `- memberships: ${me.memberships.length > 0 ? me.memberships.map((m) => `\`${m.org_id}\`${m.display_name ? ` ("${m.display_name}")` : ""} ${m.role} (${m.status})`).join("; ") : "none"}`,
       `- session: ${me.session ? `${me.session.grade}${me.session.grade === "device" ? " (read-only)" : ""}` : "none (wallet)"}`,
       "",
-      "```json",
-      JSON.stringify(me, null, 2),
-      "```",
+      jsonBlock(structured),
     ];
-    return { content: [{ type: "text", text: lines.join("\n") }] };
+    return { content: [{ type: "text", text: lines.join("\n") }], structuredContent: structured };
   } catch (err) {
     return mapSdkError(err, "resolving principal identity");
   }

@@ -51,7 +51,8 @@ mock.module("../sdk.js", {
 });
 
 const { handleDeploy, deploySchema } = await import("./deploy.js");
-const { Run402DeployError } = await import("../../sdk/dist/index.js");
+const { Run402DeployError, PaymentRequired } = await import("../../sdk/dist/index.js");
+const { deployOutputSchema, toolErrorSchema } = await import("../structured.js");
 const { z } = await import("zod");
 
 let tempDir: string;
@@ -96,6 +97,10 @@ describe("handleDeploy bare-string file entries (GH-136)", () => {
 
     assert.equal(result.isError, undefined, JSON.stringify(result));
     assert.match(result.content[0].text, /Release Activated/);
+    const structured = deployOutputSchema.parse(result.structuredContent);
+    assert.equal(structured.status, "ok");
+    assert.ok(structured.result?.release_id, "the DeployResult rides under result");
+    assert.ok(Array.isArray(structured.events), "the progress events ride under events");
 
     // Spec passed to the SDK must carry the bare string as the byte source.
     const spec = lastApplySpec as {
@@ -293,6 +298,37 @@ describe("handleDeploy deploy error formatting", () => {
     assert.ok(text.includes("**Resource:** `database.migrations.001_init`"));
     assert.ok(text.includes("**Operation:** `op_1`"));
     assert.ok(text.includes("**Plan:** `plan_1`"));
+
+    const structured = deployOutputSchema.parse(result.structuredContent);
+    assert.equal(structured.status, "error");
+    const e = toolErrorSchema.parse(structured.error);
+    assert.equal(e.code, "MIGRATION_FAILED");
+    assert.equal(e.phase, "migrate");
+    assert.equal(e.resource, "database.migrations.001_init");
+    assert.equal(e.operation_id, "op_1");
+    assert.equal(e.plan_id, "plan_1");
+    assert.equal(e.safe_to_retry, true);
+    assert.equal(e.trace_id, "trc_tool");
+    assert.deepEqual(e.next_actions.map((a) => a.type), ["edit_migration", "resume_deploy"]);
+  });
+
+  it("reports an uncovered payment as an error, as run does", async () => {
+    nextApplyImpl = async () => {
+      throw new PaymentRequired("Payment required", 402, {
+        code: "PAYMENT_REQUIRED",
+        message: "The allowance does not cover this deploy.",
+        next_actions: [{ type: "top_up_allowance", why: "Top up the organization's allowance." }],
+      }, "deploying release");
+    };
+    const result = await handleDeploy({ project_id: "prj_xxx", site: { replace: { "index.html": "<h1>x</h1>" } as never } as never });
+    assert.equal(result.isError, true);
+    assert.match(result.content[0]!.text, /## Payment Required/);
+    const structured = deployOutputSchema.parse(result.structuredContent);
+    assert.equal(structured.status, "error");
+    const e = toolErrorSchema.parse(structured.error);
+    assert.equal(e.code, "PAYMENT_REQUIRED");
+    assert.equal(e.http_status, 402);
+    assert.equal(e.next_actions[0]!.type, "top_up_allowance");
   });
 
   it("renders plan warnings outside the raw event stream", async () => {

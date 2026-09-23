@@ -74,14 +74,14 @@ const DOC_SURFACES = {
 } as const;
 
 /**
- * Pull the description literal a `server.tool(...)` registration carries. It is
- * the second argument and always a plain double-quoted string in this file, so
- * the literal round-trips through JSON.parse.
+ * Pull the description literal a `server.registerTool(...)` registration
+ * carries in its config's `description`. It is always a plain double-quoted
+ * string in this file, so the literal round-trips through JSON.parse.
  */
 function toolDescription(name: string): string {
-  const anchor = `server.tool(\n  "${name}",\n  `;
+  const anchor = `server.registerTool(\n  "${name}",\n  {\n    description: `;
   const at = INDEX_SRC.indexOf(anchor);
-  assert.notEqual(at, -1, `server.tool("${name}", ...) is not registered in src/index.ts`);
+  assert.notEqual(at, -1, `server.registerTool("${name}", ...) is not registered in src/index.ts`);
   const from = at + anchor.length;
   assert.equal(INDEX_SRC[from], '"', `${name}'s description must be a plain double-quoted string literal`);
   let i = from + 1;

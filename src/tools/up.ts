@@ -3,6 +3,7 @@ import { prepareWorkflowOutput } from "../../sdk/dist/node/index.js";
 import { z } from "zod";
 import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
+import { okResult, type ToolResult } from "../structured.js";
 
 export const upSchema = {
   source: z.string().optional().describe("Local app directory or public Git repository URL. Defaults to the current directory."),
@@ -22,8 +23,6 @@ export const upSchema = {
   display_name: z.string().min(1).max(64).optional().describe("Display name to set on this principal (promotion credit and room presence use it); overrides an existing name. Omitted: RUN402_AGENT_NAME when set (same effect); else, only when the principal has no name yet, the detected client name (claude-code, codex, cursor, or grok; RUN402_CLIENT=<name> declares one that is not auto-detected) is set and reported as identity.source \"detected\"; otherwise nothing is written (identity.source \"undetected\", room presence 'agent' for coordination only). A detected client that was not applied is still reported under identity.detected / identity.detection."),
 };
 
-type McpResult = { content: Array<{ type: "text"; text: string }>; isError?: boolean };
-
 export async function handleUp(args: {
   source?: string;
   name?: string;
@@ -40,7 +39,7 @@ export async function handleUp(args: {
   idempotency_key?: string;
   no_rehearse?: boolean;
   display_name?: string;
-}): Promise<McpResult> {
+}): Promise<ToolResult> {
   try {
     const result = await getSdk().up({
       source: args.source,
@@ -60,15 +59,13 @@ export async function handleUp(args: {
       dryRun: args.dry_run === true,
       approval: args.yes === true ? "yes" : "never",
     });
-    return {
-      content: [{
-        type: "text",
-        text: JSON.stringify(prepareWorkflowOutput(result, args.dir ?? process.cwd(), { storeDetails: (detail) => {
-          const stored = storeResult("up", [detail], { shown: 0 });
-          return stored.ref ? { ref: stored.ref, next_action: { type: "expand_result", ref: stored.ref, why: "Read the redacted detail for this execution with expand_result." } } : null;
-        } }), null, 2),
-      }],
-    };
+    const prepared = prepareWorkflowOutput(result, args.dir ?? process.cwd(), { storeDetails: (detail) => {
+      const stored = storeResult("up", [detail], { shown: 0 });
+      return stored.ref ? { ref: stored.ref, next_action: { type: "expand_result", ref: stored.ref, why: "Read the redacted detail for this execution with expand_result." } } : null;
+    } });
+    // The text is the structured object itself: one value, two views.
+    const structured = okResult(prepared);
+    return { content: [{ type: "text", text: JSON.stringify(structured, null, 2) }], structuredContent: structured };
   } catch (err) {
     return mapSdkError(err, "running up");
   }

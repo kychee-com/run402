@@ -275,6 +275,12 @@ Owner: `public:sdk/src/namespaces/deploy.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
+<h2 id="DOCS_TOPIC_NOT_FOUND">DOCS_TOPIC_NOT_FOUND</h2>
+
+Owner: `public:src/tools/docs.ts`.
+
+The MCP `docs` tool has no section by that topic. Call `docs` with no arguments for the topic list, or pass `search` with words the section contains.
+
 <h2 id="DOMAIN_WAIT_TIMEOUT">DOMAIN_WAIT_TIMEOUT</h2>
 
 Owner: `public:sdk/src/namespaces/domains.ts`.
@@ -751,7 +757,7 @@ The client could not complete this operation. Inspect its typed error kind, mess
 
 <h2 id="PROJECT_CREDENTIAL_NOT_FOUND">PROJECT_CREDENTIAL_NOT_FOUND</h2>
 
-Owner: `public:sdk/src/errors.ts`, `public:cli/lib/config.mjs`, `public:cli/lib/credentials.mjs`, `public:cli/lib/sdk-errors.mjs`.
+Owner: `public:sdk/src/errors.ts`, `public:src/structured.ts`, `public:cli/lib/config.mjs`, `public:cli/lib/credentials.mjs`, `public:cli/lib/sdk-errors.mjs`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
@@ -814,6 +820,12 @@ The client could not complete this operation. Inspect its typed error kind, mess
 Owner: `public:cli/lib/repos.mjs`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="RESULT_REF_NOT_FOUND">RESULT_REF_NOT_FOUND</h2>
+
+Owner: `public:src/tools/expand-result.ts`.
+
+The ref `expand_result` was given is not held: refs live in one MCP server process, expire 30 minutes after the tool ran, and only the 32 most recent are kept. Unknown, evicted and expired are the same answer because the recovery is the same: re-run the tool that produced the ref. A result that carried a secret never had a ref.
 
 <h2 id="REVEAL_REQUIRED">REVEAL_REQUIRED</h2>
 
@@ -1303,7 +1315,7 @@ The client could not complete this operation. Inspect its typed error kind, mess
 
 <h2 id="WALLET_NOT_FOUND">WALLET_NOT_FOUND</h2>
 
-Owner: `public:sdk/src/node/wallets.ts`.
+Owner: `public:sdk/src/node/wallets.ts`, `public:src/wallet-auth.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 

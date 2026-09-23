@@ -402,6 +402,9 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="DIFF_SAME_RELEASE"></a>
 [`DIFF_SAME_RELEASE`](/errors/gateway/#DIFF_SAME_RELEASE)
 
+<a id="DOCS_TOPIC_NOT_FOUND"></a>
+[`DOCS_TOPIC_NOT_FOUND`](/errors/client/#DOCS_TOPIC_NOT_FOUND)
+
 <a id="DOMAIN_WAIT_TIMEOUT"></a>
 [`DOMAIN_WAIT_TIMEOUT`](/errors/client/#DOMAIN_WAIT_TIMEOUT)
 
@@ -1643,6 +1646,9 @@ The catalog records owning source locations and pinned external contributions. A
 
 <a id="REST_PERMISSION_DENIED"></a>
 [`REST_PERMISSION_DENIED`](/errors/gateway/#REST_PERMISSION_DENIED)
+
+<a id="RESULT_REF_NOT_FOUND"></a>
+[`RESULT_REF_NOT_FOUND`](/errors/client/#RESULT_REF_NOT_FOUND)
 
 <a id="REVEAL_REQUIRED"></a>
 [`REVEAL_REQUIRED`](/errors/client/#REVEAL_REQUIRED)

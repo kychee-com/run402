@@ -793,7 +793,7 @@
   },
   {
     "file": "docs-site/src/content/docs//mcp/reference.md",
-    "line": 66,
+    "line": 84,
     "language": "json",
     "kind": "configuration",
     "sha256": "0e8eba4998c65fe2e92bf0dc60e12ce464dab988bb8319cd167655ff3bd4cdb1",

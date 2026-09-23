@@ -71,6 +71,7 @@ Tests are excluded from the build (`tsconfig.json`, `core/tsconfig.json`, and fr
 
 `sync.test.ts` defines the canonical API surface in a `SURFACE` array (columns `id`, `endpoint`, `cli`, `openclaw`; MCP has no column, because MCP reaches every SDK method through `run`) and checks:
 - `src/index.ts` registers exactly `MCP_TOOLS`, the literal list of the eight tools, and each has a line in `docs-site/src/content/docs/mcp/`
+- Every tool is registered with `server.registerTool` and an `outputSchema`
 - No doc surface (`README.md`, `SKILL.md`, `openclaw/SKILL.md`, `docs-site/**`) and no `src/**` module names an MCP tool outside `MCP_TOOLS` (the doc-drift check)
 - CLI commands in `cli/lib/*.mjs` match the expected set
 - OpenClaw commands in `openclaw/scripts/*.mjs` match the expected set (follows re-exports to CLI)
@@ -237,12 +238,13 @@ Quick reference of the public surface (full package docs live in `run402-core`):
 
 ### MCP Server (`src/`)
 
-- **`index.ts`** — Entry point. Resolves the wallet with the SDK's `selectWallet` (environment, nearest binding, global default) and registers exactly the eight tools; `MCP_TOOLS` in `sync.test.ts` pins the set.
+- **`index.ts`** — Entry point. Resolves the wallet with the SDK's `selectWallet` (environment, nearest binding, global default) and registers exactly the eight tools with `server.registerTool`, each with its `outputSchema` from `OUTPUT_SCHEMAS`; `MCP_TOOLS` in `sync.test.ts` pins the set.
 - **`sdk.ts`** — Lazy SDK clients: `getSdk()` (surface `mcp`, for the fixed tools) and `getSandboxSdk()` (surface `sandbox`, for `run`: wallet-only credentials, client metadata `sandbox`, `capabilities.returnSecrets: false`). Rebuilt when the selecting environment changes; tests call `_resetSdk()`.
 - **`sandbox.ts`** — The `run` sandbox: QuickJS compiled to WebAssembly (the asyncify build of `quickjs-emscripten`), a fresh module per run, a 64 MB memory limit, a stack limit, a deadline enforced by the interrupt handler and the event loop, captured `console`, and the pinned global inventory (`SANDBOX_GLOBALS`: the ECMAScript builtins plus `URL`, `TextEncoder`, `TextDecoder`, `structuredClone`, `crypto.randomUUID`, `console`, `r`). Types are stripped with `node:module`'s `stripTypeScriptTypes`; the source is wrapped as an async function body and a final expression statement becomes a `return` from an `acorn` parse tree.
 - **`sandbox-proxy.ts`** — The chain proxy: `r` in the sandbox records property accesses and calls; an awaited chain replays on the host (`ChainHost`) against the sandbox client. JSON data crosses back as JSON, anything else as a per-run handle; arguments must be structured-cloneable data (`RUN_ARGUMENT_NOT_CLONEABLE` otherwise). The replay walks only the public SDK surface (members the SDK's declaration files mark private or protected, `_`-prefixed names, `constructor`/`prototype`/`__proto__`, and JavaScript intrinsics are refused) and records every chain in `calls[]`.
 - **`result-store.ts`** — The bounded result store behind `expand_result`: the full result under a `ref`, a window with `shown`/`total`, 32 entries, 30-minute TTL; a `secret: true` result is never stored.
-- **`errors.ts`** — `formatApiError`, `projectNotFound`, and `mapSdkError` which translates `Run402Error` → MCP `{isError, content}` shape (the fixed tools).
+- **`structured.ts`** — the structured channel: the shared error object (`ToolError`, `toolErrorFrom`, local codes), the per-tool output schemas (`OUTPUT_SCHEMAS`, every object open via `.passthrough()`), and the envelope builders. Every tool returns `structuredContent` with `status: "ok" | "error"` beside its text block, and the text's fenced JSON is that object.
+- **`errors.ts`** — `formatApiError`, `projectNotFound`, and `mapSdkError`, which translate a thrown error into the prose a model reads plus the `structuredContent.error` a host reads (the fixed tools).
 - **`config.ts`**, **`keystore.ts`**, **`wallet.ts`** — re-export from `core/dist/`.
 - **`wallet-auth.ts`** — re-exports core's `getWalletAuthHeaders()` + adds `requireWalletAuth()` (early-exit with MCP error when no local wallet), used by `deploy`.
 - **`identity-format.ts`** — renders linked identities for `whoami`.
@@ -287,7 +289,7 @@ Published via OIDC Trusted Publisher (`.github/workflows/publish-astro.yml`) —
 
 Every tool in `src/tools/` exports two things:
 1. A Zod schema object (e.g., `runSchema`) defining input parameters
-2. An async handler function (e.g., `handleRun`) returning `{ content: [{type: "text", text: string}], isError?: boolean }`
+2. An async handler function (e.g., `handleRun`) returning `{ content: [{type: "text", text: string}], structuredContent, isError? }`, where `structuredContent` satisfies the tool's entry in `OUTPUT_SCHEMAS` (`src/structured.ts`), which `src/index.ts` passes to `server.registerTool` as `outputSchema`
 
 The set is closed: a new capability is an SDK method, which `run` reaches without a tool of its own. Paid calls pay automatically from the wallet; a 402 the wallet cannot cover is the SDK's `PaymentRequired` error with its `next_actions`, which `run` reports unchanged.
 
@@ -295,9 +297,9 @@ The set is closed: a new capability is an SDK method, which `run` reaches withou
 
 The fixed tools use shared error helpers from `src/errors.ts`:
 
-- **`formatApiError(res, context)`** — Formats a non-OK API response into the standard `{ content: [...], isError: true }` shape. Includes HTTP status, extracts `hint`/`retry_after`/`renew_url`/`usage`/`expires_at` from the response body, and adds actionable guidance based on status code. The `context` parameter is a short verb phrase describing what failed (e.g. "running SQL").
+- **`formatApiError(res, context)`** — Formats a non-OK API response into the standard `{ content: [...], structuredContent: { status: "error", error }, isError: true }` shape. Includes HTTP status, extracts `hint`/`retry_after`/`renew_url`/`usage`/`expires_at` from the response body, and adds actionable guidance based on status code. The `context` parameter is a short verb phrase describing what failed (e.g. "running SQL").
 - **`projectNotFound(projectId)`** — Returns a consistent "project not found in key store" error with guidance to provision first.
-- **`mapSdkError(err)`** — Translates a thrown `Run402Error` subclass into the same `{isError, content}` shape, preserving payment-required envelopes as informational text.
+- **`mapSdkError(err)`** — Translates a thrown error into the same shape, with `structuredContent.error` built by `toolErrorFrom` from the same error value. A payment the wallet cannot cover is an error result, as in `run`.
 
 When adding a new tool, use these helpers instead of inline error formatting:
 ```ts

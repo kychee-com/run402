@@ -6,12 +6,9 @@ import {
   ProjectCredentialNotFound as SdkProjectCredentialNotFound,
   ProjectNotFound as SdkProjectNotFound,
 } from "../sdk/dist/index.js";
+import { toolErrorFrom, type ToolError, type ToolResult } from "./structured.js";
 
-/** Standard return shape for all MCP tool handlers. */
-export interface ToolResult {
-  content: Array<{ type: "text"; text: string }>;
-  isError?: boolean;
-}
+export type { ToolResult } from "./structured.js";
 
 /**
  * Format an API error response into an agent-friendly MCP tool result.
@@ -30,6 +27,7 @@ export interface ToolResult {
 export function formatApiError(
   res: { status: number; body: unknown },
   context: string,
+  error?: ToolError,
 ): ToolResult {
   const body =
     res.body && typeof res.body === "object"
@@ -138,7 +136,34 @@ export function formatApiError(
     );
   }
 
-  return { content: [{ type: "text", text: lines.join("\n") }], isError: true };
+  return {
+    content: [{ type: "text", text: lines.join("\n") }],
+    structuredContent: { status: "error", error: error ?? toolErrorFromBody(res, primary) },
+    isError: true,
+  };
+}
+
+/** The error object for a bare `{ status, body }` response that did not arrive as a `Run402Error`. */
+function toolErrorFromBody(res: { status: number; body: unknown }, message: string): ToolError {
+  const body = res.body && typeof res.body === "object" && !Array.isArray(res.body) ? (res.body as Record<string, unknown>) : null;
+  const out: ToolError = {
+    code: stringField(body, "code") ?? `HTTP_${res.status}`,
+    message,
+    next_actions: Array.isArray(body?.next_actions)
+      ? (body!.next_actions as unknown[]).filter((a): a is Record<string, unknown> => Boolean(a) && typeof a === "object" && !Array.isArray(a))
+      : [],
+    http_status: res.status,
+  };
+  const category = stringField(body, "category");
+  if (category) out.category = category;
+  if (typeof body?.retryable === "boolean") out.retryable = body.retryable;
+  if (typeof body?.safe_to_retry === "boolean") out.safe_to_retry = body.safe_to_retry;
+  const mutation = stringField(body, "mutation_state");
+  if (mutation) out.mutation_state = mutation;
+  const trace = stringField(body, "trace_id");
+  if (trace) out.trace_id = trace;
+  if (body?.details !== undefined && body.details !== null) out.details = body.details;
+  return out;
 }
 
 export function formatCanonicalErrorContext(
@@ -213,11 +238,11 @@ function addCodeGuidance(
       lines.push(`\nNext step: This operation is not permitted. Some SQL — CREATE ROLE, CREATE SCHEMA, CREATE EXTENSION, GRANT — needs cluster privileges that run402 projects don't grant; rework it within your project's schema. Otherwise verify the key is authorized for this action.`);
       return true;
     case "ADMIN_REQUIRED":
-      lines.push(`\nNext step: Use the admin path for this operation — the admin REST endpoint (\`/admin/v1/rest/*\` with the service key) or \`run_sql\` for SQL.`);
+      lines.push(`\nNext step: Use the admin path for this operation — the admin REST endpoint (\`/admin/v1/rest/*\` with the service key) or a \`run\` snippet \`await r.project(id).sql(query)\` for SQL.`);
       return true;
     case "LAST_OWNER":
       lines.push(
-        `\nNext step: An org must keep at least one active \`owner\`. This change would remove or demote the last one. Promote another member to \`owner\` first (\`set_org_member_role\`), then retry.`,
+        `\nNext step: An org must keep at least one active \`owner\`. This change would remove or demote the last one. Promote another member to \`owner\` first (\`run402 orgs members role --principal <principal_id> --role owner\`), then retry.`,
       );
       return true;
     case "PAYMENT_REQUIRED":
@@ -270,12 +295,12 @@ function addCodeGuidance(
       return true;
     case "PROJECT_HAS_PENDING_TRANSFER":
       lines.push(
-        `\nNext step: The project has a pending transfer; owner-side mutations are blocked until it is accepted, cancelled, or expires (72h). Use \`cancel_project_transfer\` to cancel it or \`preview_project_transfer\` to view it. The transfer id is in \`details.transfer_id\`.`,
+        `\nNext step: The project has a pending transfer; owner-side mutations are blocked until it is accepted, cancelled, or expires (72h). View it with \`run402 transfer preview <transfer_id>\` or cancel it with \`run402 transfer cancel <transfer_id>\` (from MCP, a \`run\` snippet over \`r.admin.transfers\`). The transfer id is in \`details.transfer_id\`.`,
       );
       return true;
     case "CANNOT_REBUILD_UNLOCKED_DEPS":
       lines.push(
-        `\nNext step: This function was deployed before dependency locking and can't be rebuilt deterministically. Redeploy it from source with \`deploy_function\` to refresh its runtime.`,
+        `\nNext step: This function was deployed before dependency locking and can't be rebuilt deterministically. Redeploy it from source with \`deploy\` (its \`functions\` slice) to refresh its runtime.`,
       );
       return true;
     default:
@@ -365,6 +390,14 @@ export function projectNotFound(projectId: string): ToolResult {
           `Create a project first with \`up\` (or \`run402 projects provision\`).`,
       },
     ],
+    structuredContent: {
+      status: "error",
+      error: {
+        code: "PROJECT_NOT_FOUND",
+        message: `Project ${projectId} not found in key store.`,
+        next_actions: [{ type: "create_project", why: "Create a project first with `up` (or `run402 projects provision`)." }],
+      },
+    },
     isError: true,
   };
 }
@@ -381,6 +414,7 @@ export function projectCredentialNotFound(err: SdkProjectCredentialNotFound): To
   lines.push(...formatCanonicalErrorContext(err, { includeDetails: true }));
   return {
     content: [{ type: "text", text: lines.join("\n") }],
+    structuredContent: { status: "error", error: toolErrorFrom(err) },
     isError: true,
   };
 }
@@ -404,20 +438,23 @@ export function mapSdkError(err: unknown, context: string): ToolResult {
   if (err instanceof SdkProjectNotFound) {
     return projectNotFound(err.projectId);
   }
+  const error = toolErrorFrom(err, context);
+  const structuredContent = { status: "error", error };
   if (err instanceof Run402Error) {
     if (err.code === "REST_PERMISSION_DENIED") {
-      return { isError: true, content: [{ type: "text", text: [
+      return { isError: true, structuredContent, content: [{ type: "text", text: [
         `Error ${context}: ${err.message} (HTTP ${err.status})`,
         ...formatCanonicalErrorContext({ code: err.code, details: err.details, retryable: err.retryable }, { includeDetails: true }),
         "Upstream body:", JSON.stringify(err.body),
       ].join("\n") }] };
     }
     if (err.status !== null) {
-      return formatApiError({ status: err.status, body: err.body }, context);
+      return formatApiError({ status: err.status, body: err.body }, context, error);
     }
     if (err instanceof NetworkError) {
       return {
         content: [{ type: "text", text: `Error ${context}: ${err.message}` }],
+        structuredContent,
         isError: true,
       };
     }
@@ -425,6 +462,7 @@ export function mapSdkError(err: unknown, context: string): ToolResult {
     lines.push(...formatCanonicalErrorContext(err, { includeDetails: true }));
     return {
       content: [{ type: "text", text: lines.join("\n") }],
+      structuredContent,
       isError: true,
     };
   }
@@ -435,6 +473,7 @@ export function mapSdkError(err: unknown, context: string): ToolResult {
         text: `Error ${context}: ${(err as Error)?.message ?? String(err)}`,
       },
     ],
+    structuredContent,
     isError: true,
   };
 }

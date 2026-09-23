@@ -7,7 +7,9 @@
  * read; `docs` serves the SDK reference that ships in this package; `run`
  * executes a TypeScript snippet against the SDK in a sandbox, which is how
  * every other operation is reached; `expand_result` pages a stored result.
- * The set is pinned by `MCP_TOOLS` in sync.test.ts.
+ * The set is pinned by `MCP_TOOLS` in sync.test.ts. Every tool declares an
+ * `outputSchema` and returns `structuredContent` beside its text block
+ * (`src/structured.ts`).
  */
 import { readFileSync } from "node:fs";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -22,6 +24,7 @@ import { doctorSchema, handleDoctor } from "./tools/doctor.js";
 import { docsSchema, handleDocs } from "./tools/docs.js";
 import { runSchema, handleRun } from "./tools/run.js";
 import { expandResultSchema, handleExpandResult } from "./tools/expand-result.js";
+import { OUTPUT_SCHEMAS } from "./structured.js";
 
 function currentPackageVersion(): string {
   const raw = readFileSync(new URL("../package.json", import.meta.url), "utf8");
@@ -47,59 +50,83 @@ const server = new McpServer({
 
 const RUN_HINT = "Any other operation is a `run` snippet against `r`, the Node SDK client; `docs` is its reference.";
 
-server.tool(
+server.registerTool(
   "up",
-  "Plan or run the canonical app-aware `run402 up` workflow from a local path or repo URL: any missing setup (wallet, tier, project, workspace link), then the deploy. Delegates to the SDK and returns the shared up result envelope with graph steps, resources, diagnostics, and next_actions. `deploy` only deploys.",
-  upSchema,
+  {
+    description: "Plan or run the canonical app-aware `run402 up` workflow from a local path or repo URL: any missing setup (wallet, tier, project, workspace link), then the deploy. Delegates to the SDK and returns the shared up result envelope with graph steps, resources, diagnostics, and next_actions. `deploy` only deploys.",
+    inputSchema: upSchema,
+    outputSchema: OUTPUT_SCHEMAS.up,
+  },
   async (args) => handleUp(args),
 );
 
-server.tool(
+server.registerTool(
   "deploy",
-  "Unified apply primitive. Accepts a structured ReleaseSpec — database (migrations + expose), value-free secrets.require/delete declarations, functions, site, site.public_paths, site.embedding (framing opt-in by catalog key, e.g. { frame_ancestors: ['localhost'] }; null = deny), subdomains, and routes.replace web routes — with explicit replace vs patch semantics per resource. Migration entries use id for immutable versioned SQL or name for generated/idempotent content-tracked SQL; name compiles client-side to <name>_<sha256(sql)[0:16]>. Use site.public_paths for clean static URLs such as /events backed by release asset events.html; explicit mode does not expose /events.html unless separately declared, while mode: 'implicit' restores filename-derived reachability and can widen access. Route entries map exact/final-wildcard browser paths like /admin and /admin/* to Node 22 Fetch Request -> Response functions, or exact GET/HEAD method-aware static aliases such as /events to { type: 'static', file: 'events.html' }; intentional read-only GET/HEAD wildcard function routes may set acknowledge_readonly: true. Direct /functions/v1/:name remains API-key protected. Secret values are set first with `r.secrets.set` (a `run` snippet) or `run402 secrets set`, never placed in deploy specs. All bytes ride through CAS (no inline-body cap). Returns release_id, URLs, warnings, and a structured progress-event log. Stops before upload/commit on confirmation-required warnings unless reviewed codes are passed with allow_warning_codes or allow_warnings is true.",
-  deploySchema,
+  {
+    description: "Unified apply primitive. Accepts a structured ReleaseSpec — database (migrations + expose), value-free secrets.require/delete declarations, functions, site, site.public_paths, site.embedding (framing opt-in by catalog key, e.g. { frame_ancestors: ['localhost'] }; null = deny), subdomains, and routes.replace web routes — with explicit replace vs patch semantics per resource. Migration entries use id for immutable versioned SQL or name for generated/idempotent content-tracked SQL; name compiles client-side to <name>_<sha256(sql)[0:16]>. Use site.public_paths for clean static URLs such as /events backed by release asset events.html; explicit mode does not expose /events.html unless separately declared, while mode: 'implicit' restores filename-derived reachability and can widen access. Route entries map exact/final-wildcard browser paths like /admin and /admin/* to Node 22 Fetch Request -> Response functions, or exact GET/HEAD method-aware static aliases such as /events to { type: 'static', file: 'events.html' }; intentional read-only GET/HEAD wildcard function routes may set acknowledge_readonly: true. Direct /functions/v1/:name remains API-key protected. Secret values are set first with `r.secrets.set` (a `run` snippet) or `run402 secrets set`, never placed in deploy specs. All bytes ride through CAS (no inline-body cap). Returns release_id, URLs, warnings, and a structured progress-event log. Stops before upload/commit on confirmation-required warnings unless reviewed codes are passed with allow_warning_codes or allow_warnings is true.",
+    inputSchema: deploySchema,
+    outputSchema: OUTPUT_SCHEMAS.deploy,
+  },
   async (args) => handleDeploy(args),
 );
 
-server.tool(
+server.registerTool(
   "status",
-  `The organization's state as this server's wallet sees it (r.status()): the wallet's local_label, server_label, and address, the tier and its lease, the allowance, the projects, and the active project. Never key material. ${RUN_HINT}`,
-  statusSchema,
+  {
+    description: `The organization's state as this server's wallet sees it (r.status()): the wallet's local_label, server_label, and address, the tier and its lease, the allowance, the projects, and the active project. Never key material. ${RUN_HINT}`,
+    inputSchema: statusSchema,
+    outputSchema: OUTPUT_SCHEMAS.status,
+  },
   async () => handleStatus(),
 );
 
-server.tool(
+server.registerTool(
   "whoami",
-  `The remote identity (r.orgs.whoami()): the control-plane principal this server's wallet resolves to, its active authenticator and linked identities, its org memberships, and the sign-in session grade (none for a wallet). For the local wallet use status. ${RUN_HINT}`,
-  whoamiSchema,
+  {
+    description: `The remote identity (r.orgs.whoami()): the control-plane principal this server's wallet resolves to, its active authenticator and linked identities, its org memberships, and the sign-in session grade (none for a wallet). For the local wallet use status. ${RUN_HINT}`,
+    inputSchema: whoamiSchema,
+    outputSchema: OUTPUT_SCHEMAS.whoami,
+  },
   async () => handleWhoami(),
 );
 
-server.tool(
+server.registerTool(
   "doctor",
-  `Local health and configuration diagnostics (r.doctor()): { ok, blocking[], warnings[], checks[] }, the same report as \`run402 doctor\`. ok is false only on a blocking finding. ${RUN_HINT}`,
-  doctorSchema,
+  {
+    description: `Local health and configuration diagnostics (r.doctor()): { ok, blocking[], warnings[], checks[] }, the same report as \`run402 doctor\`. ok is false only on a blocking finding. ${RUN_HINT}`,
+    inputSchema: doctorSchema,
+    outputSchema: OUTPUT_SCHEMAS.doctor,
+  },
   async (args) => handleDoctor(args),
 );
 
-server.tool(
+server.registerTool(
   "docs",
-  `The SDK reference for \`run\` snippets, from the copy shipped in this package, so it matches the SDK the snippet runs against. No arguments: the run primer, the r namespace table, and the topics. topic: one namespace or section (assets, project.apply, rooms, local-state) or sdk for all of it; search: sections containing every word. Long answers are a window plus a ref for expand_result. ${RUN_HINT}`,
-  docsSchema,
+  {
+    description: `The SDK reference for \`run\` snippets, from the copy shipped in this package, so it matches the SDK the snippet runs against. No arguments: the run primer, the r namespace table, and the topics. topic: one namespace or section (assets, project.apply, rooms, local-state) or sdk for all of it; search: sections containing every word. Long answers are a window plus a ref for expand_result. ${RUN_HINT}`,
+    inputSchema: docsSchema,
+    outputSchema: OUTPUT_SCHEMAS.docs,
+  },
   async (args) => handleDocs(args),
 );
 
-server.tool(
+server.registerTool(
   "run",
-  "Run a TypeScript snippet against the SDK in a sandbox. `r` is the Node SDK client (@run402/sdk/node); call `docs` for its reference. The code is the body of an async function: await r chains, and the value of the last expression (or a return) is the result, e.g. `(await r.projects.list()).projects.map((p) => p.id)`. No filesystem, process, fetch, timers, or imports; console is captured. Returns { status, value, value_ref, shown, total, logs, logs_ref, calls, duration_ms, wallet, error? }; a large value is stored whole and expand_result pages it. Operations that return or consume a one-time secret (grant keys, Handoff and Invite Keys, project credentials, wallet keys) refuse with SECRET_REQUIRES_CLI naming the exact CLI command to hand the person. Any other operation is a run snippet against r.",
-  runSchema,
+  {
+    description: "Run a TypeScript snippet against the SDK in a sandbox. `r` is the Node SDK client (@run402/sdk/node); call `docs` for its reference. The code is the body of an async function: await r chains, and the value of the last expression (or a return) is the result, e.g. `(await r.projects.list()).projects.map((p) => p.id)`. No filesystem, process, fetch, timers, or imports; console is captured. Returns { status, value, value_ref, shown, total, logs, logs_ref, calls, duration_ms, wallet, error? }; a large value is stored whole and expand_result pages it. Operations that return or consume a one-time secret (grant keys, Handoff and Invite Keys, project credentials, wallet keys) refuse with SECRET_REQUIRES_CLI naming the exact CLI command to hand the person. Any other operation is a run snippet against r.",
+    inputSchema: runSchema,
+    outputSchema: OUTPUT_SCHEMAS.run,
+  },
   async (args) => handleRun(args),
 );
 
-server.tool(
+server.registerTool(
   "expand_result",
-  "Fetch more of a result a previous tool showed you only a window of. Tools on this surface truncate the VIEW, never the DATA: when one prints a ref together with shown and total, the full result is held behind that ref and this is how you read the rest of it. Pass the ref plus offset and limit to page through it. Refs live in this server process only — they expire after 30 minutes and only the most recent handful are kept, so re-run the producing tool rather than storing a ref across sessions. A result that carried a secret is never retained and never has a ref, so nothing here can hand one back.",
-  expandResultSchema,
+  {
+    description: "Fetch more of a result a previous tool showed you only a window of. Tools on this surface truncate the VIEW, never the DATA: when one prints a ref together with shown and total, the full result is held behind that ref and this is how you read the rest of it. Pass the ref plus offset and limit to page through it. Refs live in this server process only — they expire after 30 minutes and only the most recent handful are kept, so re-run the producing tool rather than storing a ref across sessions. A result that carried a secret is never retained and never has a ref, so nothing here can hand one back.",
+    inputSchema: expandResultSchema,
+    outputSchema: OUTPUT_SCHEMAS.expand_result,
+  },
   async (args) => handleExpandResult(args),
 );
 

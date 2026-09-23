@@ -70,9 +70,13 @@ function textOf(result: unknown): string {
   return content.filter((c) => c.type === "text").map((c) => c.text ?? "").join("\n");
 }
 
+/** The run envelope, read from the structured channel and checked against the text's fenced JSON. */
 function envelopeOf(result: unknown): RunEnvelope {
   const blocks = [...textOf(result).matchAll(/```json\n([\s\S]*?)\n```/g)];
-  return JSON.parse(blocks[blocks.length - 1]![1]!) as RunEnvelope;
+  const fenced = JSON.parse(blocks[blocks.length - 1]![1]!) as RunEnvelope;
+  const structured = (result as { structuredContent?: unknown }).structuredContent;
+  assert.deepEqual(structured, fenced, "structuredContent is the envelope the text shows");
+  return structured as RunEnvelope;
 }
 
 async function run(code: string, timeout_seconds?: number): Promise<RunEnvelope> {
@@ -120,6 +124,21 @@ describe("MCP server end to end (stdio, mock gateway)", { timeout: 120_000 }, ()
   it("lists exactly the eight tools", async () => {
     const { tools } = await client.listTools();
     assert.deepEqual(tools.map((t) => t.name).sort(), MCP_TOOLS);
+  });
+
+  it("declares an open output schema for every tool", async () => {
+    const { tools } = await client.listTools();
+    for (const tool of tools) {
+      assert.equal(tool.outputSchema?.type, "object", `${tool.name} declares an outputSchema`);
+      assert.ok(!JSON.stringify(tool.outputSchema).includes('"additionalProperties":false'), `${tool.name}'s schema is open`);
+    }
+  });
+
+  it("status returns structuredContent the SDK validated", async () => {
+    const result = await client.callTool({ name: "status", arguments: {} });
+    const body = result.structuredContent as { status: string; result: { wallet: unknown } };
+    assert.equal(body.status, "ok");
+    assert.ok("wallet" in body.result);
   });
 
   it("run: a list", async () => {

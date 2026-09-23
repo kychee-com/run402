@@ -37,14 +37,28 @@ const RELEASE_SPEC_SCHEMA_PATH = join(__dirname, "schemas/release-spec.v1.json")
 
 // ─── Source-file parsers ─────────────────────────────────────────────────────
 
-/** Extract all server.tool("name", ...) registrations from src/index.ts */
-function parseMcpTools(): string[] {
+/**
+ * Every tool registration in src/index.ts, as `server.registerTool("name", { ... })`
+ * or the older `server.tool("name", ...)`, with whether its config declares an
+ * `outputSchema` (the older form cannot).
+ */
+function parseMcpRegistrations(): Array<{ name: string; outputSchema: boolean }> {
   const src = readFileSync(join(__dirname, "src/index.ts"), "utf-8");
-  const tools: string[] = [];
-  const re = /server\.tool\(\s*\n?\s*"([^"]+)"/g;
+  const out: Array<{ name: string; outputSchema: boolean }> = [];
+  const re = /server\.(registerTool|tool)\(\s*\n?\s*"([^"]+)"/g;
+  const starts: Array<{ index: number; kind: string; name: string }> = [];
   let m;
-  while ((m = re.exec(src))) tools.push(m[1]);
-  return tools.sort();
+  while ((m = re.exec(src))) starts.push({ index: m.index, kind: m[1]!, name: m[2]! });
+  starts.forEach((start, i) => {
+    const body = src.slice(start.index, starts[i + 1]?.index ?? src.length);
+    out.push({ name: start.name, outputSchema: start.kind === "registerTool" && /\boutputSchema\s*:/.test(body) });
+  });
+  return out;
+}
+
+/** The names of every tool registered in src/index.ts. */
+function parseMcpTools(): string[] {
+  return parseMcpRegistrations().map((r) => r.name).sort();
 }
 
 /** Extract subcommand names from a .mjs file.
@@ -1437,6 +1451,16 @@ describe("MCP tool set", () => {
       [...MCP_TOOLS].sort(),
       "src/index.ts must register exactly the tools in MCP_TOOLS (sync.test.ts): up, deploy, status, whoami, doctor, docs, run, expand_result. " +
         "A capability is reached through `run`, never through a tool of its own.",
+    );
+  });
+
+  it("every MCP tool declares an outputSchema", () => {
+    const missing = parseMcpRegistrations().filter((r) => !r.outputSchema).map((r) => r.name);
+    assert.deepEqual(
+      missing,
+      [],
+      `Register these tools with server.registerTool and an outputSchema (src/structured.ts OUTPUT_SCHEMAS): ${missing.join(", ")}. ` +
+        "Every tool returns structuredContent under a declared schema.",
     );
   });
 

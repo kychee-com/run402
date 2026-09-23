@@ -20,7 +20,7 @@ import {
   expandResult,
 } from "../result-store.js";
 
-type ToolResult = { content: Array<{ type: "text"; text: string }>; isError?: boolean };
+import { errorResult, type ToolResult } from "../structured.js";
 
 const TTL_MINUTES = Math.round(RESULT_STORE_TTL_MS / 60_000);
 
@@ -58,21 +58,20 @@ export async function handleExpandResult(args: {
   });
 
   if (!page) {
-    return {
-      isError: true,
-      content: [
-        {
-          type: "text",
-          text: [
-            `No result is held under ref ${args.ref}.`,
-            "",
-            `Refs live in this server process only: they expire ${TTL_MINUTES} minutes after the tool ran, and only the ${RESULT_STORE_MAX_ENTRIES} most recent are kept.`,
-            "Unknown, evicted and expired are deliberately the same answer, because the recovery is the same one: re-run the tool that produced the ref.",
-            "A result that carried a secret never has a ref at all — it is not retained, so there is nothing here to expand.",
-          ].join("\n"),
-        },
-      ],
-    };
+    return errorResult(
+      [
+        `No result is held under ref ${args.ref}.`,
+        "",
+        `Refs live in this server process only: they expire ${TTL_MINUTES} minutes after the tool ran, and only the ${RESULT_STORE_MAX_ENTRIES} most recent are kept.`,
+        "Unknown, evicted and expired are deliberately the same answer, because the recovery is the same one: re-run the tool that produced the ref.",
+        "A result that carried a secret never has a ref at all — it is not retained, so there is nothing here to expand.",
+      ].join("\n"),
+      {
+        code: "RESULT_REF_NOT_FOUND",
+        message: `No result is held under ref ${args.ref}.`,
+        next_actions: [{ type: "rerun_tool", why: "Refs are per-process and expire; re-run the tool that produced the ref." }],
+      },
+    );
   }
 
   const end = page.offset + page.shown;
@@ -86,5 +85,16 @@ export async function handleExpandResult(args: {
   }
   lines.push("", JSON.stringify(page.items, null, 2));
 
-  return { content: [{ type: "text", text: lines.join("\n") }] };
+  return {
+    content: [{ type: "text", text: lines.join("\n") }],
+    structuredContent: {
+      status: "ok",
+      ref: page.ref,
+      kind: page.kind,
+      offset: page.offset,
+      shown: page.shown,
+      total: page.total,
+      items: page.items,
+    },
+  };
 }

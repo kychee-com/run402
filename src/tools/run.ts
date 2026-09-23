@@ -25,6 +25,7 @@ import { readWallet } from "../wallet.js";
 import { storeResult } from "../result-store.js";
 import { ChainHost, type ChainCall } from "../sandbox-proxy.js";
 import { runInSandbox, type SandboxError, type SandboxLogLine } from "../sandbox.js";
+import { jsonBlock, type ToolResult } from "../structured.js";
 import { getSandboxSdk } from "../sdk.js";
 
 /** At most this many runs execute at once on one server; the next is `RUN_BUSY`. */
@@ -83,7 +84,6 @@ export interface RunResult {
   };
 }
 
-type ToolResult = { content: Array<{ type: "text"; text: string }>; isError?: boolean };
 
 export const runSchema = {
   code: z
@@ -295,8 +295,14 @@ function render(result: RunResult): ToolResult {
     lines.push("", `logs — ${result.logs.length} of ${logsTotal} lines shown below; expand_result with ref ${result.logs_ref} pages the rest (offset ${result.logs.length}).`);
   }
 
-  lines.push("", "```json", JSON.stringify(inContractOrder(result), null, 2), "```");
-  return { content: [{ type: "text", text: lines.join("\n") }], ...(result.status === "error" ? { isError: true } : {}) };
+  // The fenced JSON is the structured object itself: one value, two views.
+  const structured = inContractOrder(result);
+  lines.push("", jsonBlock(structured));
+  return {
+    content: [{ type: "text", text: lines.join("\n") }],
+    structuredContent: structured,
+    ...(result.status === "error" ? { isError: true } : {}),
+  };
 }
 
 /** The envelope's fields in the Frozen Contract's order, absent ones left out. */

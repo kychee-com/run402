@@ -38,6 +38,24 @@ There is no tool per operation. Anything the SDK can do is one `run` call: the s
 
 A `run` result carries the value, the captured `console` lines, and `calls[]`, the SDK chains the snippet made, with the wallet that signed them. Large values are stored whole and shown as a window; `expand_result` pages the rest. The contract, limits, and error codes are in the `run` section below.
 
+## Structured results
+
+Every tool returns two channels. `content` is the text a model reads. `structuredContent` is one JSON object a host reads, and each tool declares its shape as an `outputSchema`. The text block's fenced JSON is that same object, so the two channels never disagree, and a host never has to parse Markdown.
+
+Every structured result has `status: "ok" | "error"`:
+
+| Tool | On `ok` |
+|---|---|
+| `run` | The run envelope: `value` (or `value_ref`, `shown`, `total` for a windowed value), `logs`, `calls`, `duration_ms`, `wallet` |
+| `up`, `status`, `whoami`, `doctor` | `result`: the SDK object the tool returns |
+| `deploy` | `result`: the `DeployResult`; `events`: the progress events |
+| `expand_result` | `ref`, `kind`, `offset`, `shown`, `total`, `items` |
+| `docs` | `kind`, `ref`, `shown`, `total`, `lines` |
+
+On failure, `isError` is true and `error` holds `code`, `message`, and `next_actions`, plus `category`, `retryable`, `safe_to_retry`, `http_status`, `mutation_state`, `trace_id`, and `details` when the error supplies them. A `deploy` error adds `phase`, `resource`, `operation_id`, `plan_id`, `fix`, and up to 50 `logs` lines, with `events` and `warnings` beside `error`. An SDK or gateway error keeps its own code. A local failure gets one of these codes: `PROJECT_NOT_FOUND`, `PROJECT_CREDENTIAL_NOT_FOUND`, `WALLET_NOT_FOUND`, `NETWORK_ERROR`, `RESULT_REF_NOT_FOUND`, `DOCS_TOPIC_NOT_FOUND`, or `INTERNAL_ERROR`.
+
+The schemas are open: they name the fields a host branches on, and any other field passes through. Branch on `status` and `error.code`; follow `error.next_actions`.
+
 ## One-time secrets stay in the CLI
 
 Operations that return or consume a one-time secret (minting or rotating a grant key, a Handoff or Invite Key, a Room Invite Key, provisioning a project or rotating its credentials, minting a project token, creating, importing, or exporting a wallet, the Lightning wallet's pairing, redeeming any of those keys, a person's sign-in session) refuse inside `run` with `SECRET_REQUIRES_CLI`. The refusal happens in the SDK method before any request and carries one next action, `{ "type": "run_cli_command", "command": "run402 …" }`, the exact command for the same operation. Hand that command to the person; the CLI prints the secret to them once. Nothing secret reaches a result or `expand_result`. `up` still provisions a project for a first deploy: it saves the keys to the local key cache and never prints them.
@@ -50,7 +68,7 @@ Public Buzz/Nostr identity links, Buzz human-adoption offers, community installa
 
 ## Paying
 
-Paid calls (a tier, image generation, an x402 URL through `r.pay.fetch`) pay automatically from the wallet: x402 (USDC on Base), MPP on Tempo, or MPP on Bitcoin Lightning. A 402 the wallet cannot cover comes back as the SDK's `PaymentRequired` error with its `next_actions`; reason about the cost, guide the person through funding, and run the same snippet again.
+Paid calls (a tier, image generation, an x402 URL through `r.pay.fetch`) pay automatically from the wallet: x402 (USDC on Base), MPP on Tempo, or MPP on Bitcoin Lightning. A 402 the wallet cannot cover comes back as the SDK's `PaymentRequired` error with its `next_actions`, from `run` and `deploy` alike (an error result with `error.code` set); reason about the cost, guide the person through funding, and run the same call again.
 
 `r.pay.fetch(url, init?, { maxUsdMicros, idempotencyKey, requireReceipt })` is the general x402 buyer for external HTTP(S) endpoints (`maxUsdMicros` defaults to `100000`, $0.10). `requireReceipt: true` requires a verified wallet-rooted offer before payment and a matching receipt afterward. The result is the complete `x402-commerce-result.v1` envelope; settlement names the network it was read from, so a testnet payment is reported as test money, never as a real payment. On trusted Run402 `PAYMENT_INTENT_PENDING`, wait for `Retry-After` and call again with the same payer, identical arguments, and the same idempotency key.
 

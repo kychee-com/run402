@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { handleRun, RUN_MAX_CONCURRENT, type RunResult } from "./run.js";
 import { _resetResultStore, expandResult } from "../result-store.js";
 import { _resetSdk } from "../sdk.js";
+import { runOutputSchema, toolErrorSchema } from "../structured.js";
 
 const originalFetch = globalThis.fetch;
 const originalConsoleError = console.error;
@@ -17,10 +18,22 @@ let stderr: string[];
 const TEST_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
 const TEST_ADDRESS = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
 
-function envelope(result: { content: Array<{ text: string }> }): RunResult {
+/**
+ * The envelope a run printed. Every call also checks the structured channel:
+ * `structuredContent` is the same object as the fenced JSON, and it satisfies
+ * the declared output schema (and, on failure, the shared error schema).
+ */
+function envelope(result: { content: Array<{ text: string }>; structuredContent?: Record<string, unknown>; isError?: boolean }): RunResult {
   const text = result.content[0]!.text;
   const blocks = [...text.matchAll(/```json\n([\s\S]*?)\n```/g)];
-  return JSON.parse(blocks[blocks.length - 1]![1]!);
+  const parsed = JSON.parse(blocks[blocks.length - 1]![1]!) as RunResult;
+  assert.deepEqual(result.structuredContent, parsed, "structuredContent is the fenced envelope");
+  runOutputSchema.parse(result.structuredContent);
+  if (parsed.status === "error") {
+    assert.equal(result.isError, true);
+    toolErrorSchema.parse(parsed.error);
+  }
+  return parsed;
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
