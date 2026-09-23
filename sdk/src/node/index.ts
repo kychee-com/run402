@@ -58,6 +58,7 @@ import { NodeAssets } from "./assets-node.js";
 import { NodeArchives } from "./archives-node.js";
 import { NodeActions, type NodeActionTargetKind } from "./actions-node.js";
 import { NodeWallets } from "./wallets.js";
+import { NodeOrgs } from "./org-context.js";
 
 export interface NodeRun402Options {
   /** Override the API base URL. Defaults to `getApiBase()` (env var or production URL). */
@@ -118,12 +119,14 @@ export interface NodeRun402Options {
  *  (v1.34 unified-deploy convenience) and `assets.uploadDir` /
  *  `assets.syncDir` / `assets.prepareDir` / `assets.putMany`
  *  (v1.48 unified-apply ergonomics). */
-export type NodeRun402 = Omit<Run402, "sites" | "assets" | "archives" | "wallets"> & {
+export type NodeRun402 = Omit<Run402, "sites" | "assets" | "archives" | "wallets" | "orgs"> & {
   sites: NodeSites;
   assets: NodeAssets;
   archives: NodeArchives;
   /** The local wallet, its server-side label, and the named-wallet (profile) management verbs. */
   wallets: NodeWallets;
+  /** The org collection and identity, plus the local organization context and its one resolver. */
+  orgs: NodeOrgs;
   actions: NodeActions;
   up: NodeActions["up"];
   /** Public address/source selected for automatic payment; never includes keys or signed proofs. */
@@ -196,6 +199,7 @@ export function run402(opts: NodeRun402Options = {}): NodeRun402 {
   // Same single-Client pattern as the sites upgrade above.
   (base as unknown as { assets: NodeAssets }).assets = new NodeAssets(client);
   (base as unknown as { archives: NodeArchives }).archives = new NodeArchives(client);
+  (base as unknown as { orgs: NodeOrgs }).orgs = new NodeOrgs(client);
   // Named-wallet management; the label push signs as the TARGET wallet, so it
   // builds a sibling client over that wallet's own files.
   (base as unknown as { wallets: NodeWallets }).wallets = new NodeWallets(client, {
@@ -728,6 +732,28 @@ export {
   resolveWalletSelection,
   selectWallet,
 } from "./wallets.js";
+export {
+  NodeOrgs,
+  ORG_ENV,
+  ORG_ID_RE,
+  PROJECT_ENV,
+  ROOM_ENV,
+  assertOrgIdShape,
+  listOrgsAction,
+  orgProvenance,
+  orgRequiredActions,
+  orgRequiredError,
+} from "./org-context.js";
+export type {
+  CurrentOrgResult,
+  OrgBindResult,
+  OrgProvenance,
+  OrgSource,
+  OrgUnbindResult,
+  ResolveOrgInput,
+  ResolveOrgOptions,
+  ResolvedOrg,
+} from "./org-context.js";
 export type {
   ActiveWalletContext,
   CreatedWalletProfile,
