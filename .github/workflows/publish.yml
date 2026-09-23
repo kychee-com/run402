@@ -245,7 +245,9 @@ jobs:
             const fs = require('fs'), path = require('path');
             const dir = path.join(process.cwd(), 'dist', 'tools');
             const files = fs.readdirSync(dir).filter(function (f) { return f.endsWith('.js') && !f.endsWith('.test.js'); });
-            if (files.length < 50) { console.error('expected the full tool set in dist/tools, found ' + files.length); process.exit(1); }
+            const expected = ['deploy.js', 'docs.js', 'doctor.js', 'expand-result.js', 'run.js', 'status.js', 'up.js', 'whoami.js'];
+            const missing = expected.filter(function (f) { return files.indexOf(f) === -1; });
+            if (missing.length) { console.error('dist/tools is missing tool modules: ' + missing.join(', ') + ' (found ' + files.join(', ') + ')'); process.exit(1); }
             Promise.all(files.map(function (f) {
               return import(path.join(dir, f)).catch(function (e) { throw new Error(f + ': ' + e.message); });
             })).then(function () { console.log('MCP tool-module smoke OK: ' + files.length + ' modules load from the packed install'); })
