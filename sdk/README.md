@@ -523,7 +523,7 @@ await p.apply({
 
 ### Expose manifest validation
 
-Validate the auth/expose manifest used by `manifest.json`, `database.expose`, and `apply_expose` before mutating a project:
+Validate the auth/expose manifest used by `manifest.json`, `database.expose`, and `r.projects.applyExpose` before mutating a project:
 
 ```ts
 const manifest = { version: "1" as const, tables: [] };
@@ -779,7 +779,7 @@ Scoped handles expose the same surface as `p.snapshots.*` and `p.branches.*`.
 
 ### repos (`r.repos`) — the encrypted Git remote behind `run402 repos`, and its isomorphic/Node split
 
-`r.repos` is the host-blind encrypted Git remote (`r402s/v0`): KyGit is the brand, a vault is the resource, and a repo is what you have, so the SDK namespace matches the CLI noun. Every piece of protocol behaviour — crypto core, keystore, creation journal, snapshot + capture, publication state machines, ref transactions, verification budget, repair — lives here once; `run402 repos …`, `git-remote-run402`, and the MCP tools (`repos_view`/`repos_list_heads`/`repos_fsck`) are adapters over this namespace with identical semantics.
+`r.repos` is the host-blind encrypted Git remote (`r402s/v0`): KyGit is the brand, a vault is the resource, and a repo is what you have, so the SDK namespace matches the CLI noun. Every piece of protocol behaviour — crypto core, keystore, creation journal, snapshot + capture, publication state machines, ref transactions, verification budget, repair — lives here once; `run402 repos …`, `git-remote-run402`, and MCP `run` snippets are callers of this namespace with identical semantics.
 
 **Three claims, three different strengths.** These are the entire approved claims vocabulary:
 

@@ -1273,7 +1273,7 @@ The trigger only fills omitted or explicit `null` owner values; it does not over
 
 **Preferred path: put the manifest object under `database.expose` in a v2 `ReleaseSpec`.** The gateway validates it against migration SQL and applies it atomically with the rest of the release.
 
-**Non-mutating validation:** `r.projects.validateExpose(manifestOrJsonString, { project?, project_id?, migrationSql? })` validates the auth/expose manifest used by `database.expose` and `apply_expose`. With `project` / `project_id`, validation uses the live project schema through a server-authoritative endpoint; without it, validation is projectless. Invalid JSON strings return `{ hasErrors: true, errors, warnings }` instead of throwing. `migrationSql` is reference context only and is not executed as a PostgreSQL dry run. This is not deploy-manifest validation.
+**Non-mutating validation:** `r.projects.validateExpose(manifestOrJsonString, { project?, project_id?, migrationSql? })` validates the auth/expose manifest used by `database.expose` and `r.projects.applyExpose`. With `project` / `project_id`, validation uses the live project schema through a server-authoritative endpoint; without it, validation is projectless. Invalid JSON strings return `{ hasErrors: true, errors, warnings }` instead of throwing. `migrationSql` is reference context only and is not executed as a PostgreSQL dry run. This is not deploy-manifest validation.
 
 **Imperative path:** `r.projects.applyExpose(projectId, manifest)` POSTs the same JSON shape to `/projects/v1/admin/:id/expose`; `r.projects.getExpose(projectId)` reads the currently-applied manifest. Prefer `r.project(id).apply` for production deploys so schema migrations and expose policy land together, but the direct methods are useful for round-tripping an existing manifest.
 
@@ -2166,7 +2166,7 @@ Only three reviewed event types are routable (`deploy_activated`, `error_fingerp
 
 ### `r.repos`
 
-The host-blind encrypted Git remote (`r402s/v0`). All protocol behaviour — crypto core, keystore, creation journal, snapshot + capture, publication state machines, ref transactions, verification budget, token exchange, repair — is implemented ONCE here. `run402 repos …`, `git-remote-run402`, and the MCP tools (`repos_view`/`repos_list_heads`/`repos_fsck`) are adapters over this namespace: argument parsing, TTY output, exit codes, and local file I/O only. Anything the CLI can do is reachable programmatically with identical semantics. KyGit is the brand, a vault is the resource, and a repo is what you have: the SDK namespace (`r.repos`), the CLI noun (`run402 repos`), and the MCP tools (`repos_*`) share one name, while protocol-level types and crypto are `Vault*`.
+The host-blind encrypted Git remote (`r402s/v0`). All protocol behaviour — crypto core, keystore, creation journal, snapshot + capture, publication state machines, ref transactions, verification budget, token exchange, repair — is implemented ONCE here. `run402 repos …` and `git-remote-run402` are adapters over this namespace (argument parsing, TTY output, exit codes, and local file I/O only), and MCP reaches it through `run` snippets. Anything the CLI can do is reachable programmatically with identical semantics. KyGit is the brand, a vault is the resource, and a repo is what you have: the SDK namespace (`r.repos`), the CLI noun (`run402 repos`), and the MCP tools (`repos_*`) share one name, while protocol-level types and crypto are `Vault*`.
 
 **What Run402 claims about it.** These are the entire approved claims vocabulary:
 

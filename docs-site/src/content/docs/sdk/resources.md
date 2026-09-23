@@ -864,7 +864,7 @@ Only three reviewed event types are routable (`deploy_activated`, `error_fingerp
 
 ### `r.repos`
 
-The host-blind encrypted Git remote (`r402s/v0`). All protocol behaviour — crypto core, keystore, creation journal, snapshot + capture, publication state machines, ref transactions, verification budget, token exchange, repair — is implemented ONCE here. `run402 repos …`, `git-remote-run402`, and the MCP tools (`repos_view`/`repos_list_heads`/`repos_fsck`) are adapters over this namespace: argument parsing, TTY output, exit codes, and local file I/O only. Anything the CLI can do is reachable programmatically with identical semantics. KyGit is the brand, a vault is the resource, and a repo is what you have: the SDK namespace (`r.repos`), the CLI noun (`run402 repos`), and the MCP tools (`repos_*`) share one name, while protocol-level types and crypto are `Vault*`.
+The host-blind encrypted Git remote (`r402s/v0`). All protocol behaviour — crypto core, keystore, creation journal, snapshot + capture, publication state machines, ref transactions, verification budget, token exchange, repair — is implemented ONCE here. `run402 repos …` and `git-remote-run402` are adapters over this namespace (argument parsing, TTY output, exit codes, and local file I/O only), and MCP reaches it through `run` snippets. Anything the CLI can do is reachable programmatically with identical semantics. KyGit is the brand, a vault is the resource, and a repo is what you have: the SDK namespace (`r.repos`), the CLI noun (`run402 repos`), and the MCP tools (`repos_*`) share one name, while protocol-level types and crypto are `Vault*`.
 
 **What Run402 claims about it.** These are the entire approved claims vocabulary:
 
