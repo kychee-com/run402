@@ -46,7 +46,7 @@ import {
   setDefaultWallet,
   writeMeta,
 } from "../../core-dist/profiles.js";
-import { readWallet, saveWallet } from "../../core-dist/wallet.js";
+import { readWallet, saveWallet, type WalletData } from "../../core-dist/wallet.js";
 import { describeRejectedValue } from "../../core-dist/redact.js";
 import { findBindingKey, readBindingFile, updateBindingFile } from "../../core-dist/binding-file.js";
 import { LocalError, type NextAction } from "../errors.js";
@@ -54,6 +54,24 @@ import type { Client } from "../kernel.js";
 import { Wallets, type WalletCreateResult } from "../namespaces/wallets.js";
 import { gateSecret } from "../secret-gate.js";
 import { initializeWalletAction } from "./local-actions.js";
+
+/**
+ * The active profile's wallet, or null when there is none. A file that exists
+ * but cannot be read as a wallet is `BAD_WALLET_FILE`, naming the file and
+ * the way to recreate it, never the parser's own failure.
+ */
+export function readLocalWallet(): WalletData | null {
+  try {
+    return readWallet();
+  } catch (err) {
+    throw new LocalError((err as { message?: string } | null)?.message ?? "wallet.json is malformed", "reading the local wallet", {
+      code: "BAD_WALLET_FILE",
+      hint: "Back up ~/.config/run402/wallet.json and run 'run402 init' to recreate it.",
+      details: { path: getWalletPath() },
+      next_actions: [initializeWalletAction()],
+    });
+  }
+}
 
 const DEFAULT = DEFAULT_PROFILE;
 const PRIVATE_KEY_RE = /^0x[0-9a-fA-F]{64}$/;

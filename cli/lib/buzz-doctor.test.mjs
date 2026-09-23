@@ -5,15 +5,16 @@ import { join } from "node:path";
 import { describe, it } from "node:test";
 import { bech32 } from "@scure/base";
 import {
-  buildBuzzDoctorReport,
+  BUZZ_DOCTOR_CHECK_ORDER,
+  BUZZ_DOCTOR_CONTRACT,
   BUZZ_DOCTOR_MIN_RUN402_VERSION,
   BUZZ_DOCTOR_REPAIR_MATRIX,
   isPublicAddress,
   normalizeNostrSubject,
-  parseBuzzDoctorArgs,
   pinnedLookup,
-} from "./buzz-doctor.mjs";
-import { BUZZ_DOCTOR_CHECK_ORDER, BUZZ_DOCTOR_CONTRACT, validateBuzzDoctorReport } from "./buzz-doctor-contract.mjs";
+  validateBuzzDoctorReport,
+} from "#sdk/node";
+import { buildBuzzDoctorReport, parseBuzzDoctorArgs } from "./buzz-doctor.mjs";
 
 const SUBJECT = "6b6951a5738dfe576d0c44bf7a5f8afe655005a156f9d3e648d81437c3f5ebbf";
 const OTHER_SUBJECT = "a".repeat(64);
@@ -72,7 +73,7 @@ function healthyDependencies(overrides = {}) {
     runCommand,
     lookup: async () => [{ address: "93.184.216.34", family: 4 }],
     pinnedRelayRead: async () => ({ ok: true, status: 200, elapsed_ms: 4 }),
-    originProbe: async () => ({ ok: true, status: 200, elapsed_ms: 3 }),
+    originProbe: async () => ({ reachable: true, classification: "ok", status: 200, elapsed_ms: 3 }),
     updateCheck: async () => ({ name: "cli_update", status: "ok" }),
     getActiveProfile: () => "buzz-fizz",
     profileExistsImpl: () => true,
@@ -154,7 +155,7 @@ describe("Buzz doctor bounded zero-mutation runner", () => {
       }
       return commandError();
     };
-    dependencies.originProbe = async () => ({ ok: false, status: 503, failure: "http_503" });
+    dependencies.originProbe = async () => ({ reachable: false, classification: "http", status: 503, error: "http_503", elapsed_ms: 3 });
     dependencies.lookup = async () => [
       { address: "93.184.216.34", family: 4 },
       { address: "127.0.0.1", family: 4 },

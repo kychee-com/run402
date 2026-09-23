@@ -18,7 +18,6 @@
     "cli.mjs",
     "git-remote-run402.mjs",
     "lib/",
-    "fixtures/",
     "core-dist/",
     "sdk/",
     "vault-surface.json"

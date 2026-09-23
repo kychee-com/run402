@@ -18,7 +18,7 @@ import {
   getApiBaseSource,
   getApiTargetKind,
 } from "../../core-dist/config.js";
-import { readWallet } from "../../core-dist/wallet.js";
+import { readLocalWallet } from "./wallets.js";
 import { getActiveProjectId, loadKeyStore } from "../../core-dist/keystore.js";
 import { readMeta } from "../../core-dist/profiles.js";
 import type { Run402 } from "../index.js";
@@ -114,7 +114,7 @@ function normalizeProject(raw: Record<string, unknown>): Record<string, unknown>
 }
 
 export async function runStatus(r: Run402): Promise<StatusResult> {
-  const localWallet = readWallet();
+  const localWallet = readLocalWallet();
   const target: StatusTarget = {
     api_base: getApiBase(),
     api_base_source: getApiBaseSource(),

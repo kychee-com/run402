@@ -3,15 +3,13 @@
  * (code-mode MCP, task 1.9): each outcome is classified — ok, http,
  * redirect (never followed), dns, tls, timeout, network — and the Buzz
  * preflight measures the Run402 origins through it rather than with a raw
- * fetch of its own. The embedded Buzz doctor contract and capability fixture
- * must stay byte-for-byte the published `buzz/fixtures` JSON.
+ * fetch of its own.
  */
 
 import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 
-import { BUZZ_CLI_CAPABILITIES, BUZZ_DOCTOR_CONTRACT, Diagnostics, run402 } from "./index.js";
+import { Diagnostics, run402 } from "./index.js";
 
 const originalFetch = globalThis.fetch;
 let responder: (url: string, init?: RequestInit) => Promise<Response> = async () => new Response("ok");
@@ -100,13 +98,5 @@ describe("r.buzz.doctor measures the Run402 origins through probeOrigin", () => 
     assert.ok(seen.some((s) => s.url === "https://api.example.test/status"));
     const cli = report.checks.find((c: { name: string }) => c.name === "run402_cli");
     assert.equal(cli.code, "BUZZ_PREFLIGHT_RUN402_UNAVAILABLE", "no CLI hooks: the SDK is not the run402 CLI");
-  });
-});
-
-describe("the embedded Buzz doctor fixtures", () => {
-  it("are the published buzz/fixtures JSON, verbatim", () => {
-    const read = (name: string) => JSON.parse(readFileSync(new URL(`../../../buzz/fixtures/${name}`, import.meta.url), "utf8"));
-    assert.deepEqual(JSON.parse(JSON.stringify(BUZZ_DOCTOR_CONTRACT)), read("run402-buzz-doctor-v1-contract.json"));
-    assert.deepEqual(JSON.parse(JSON.stringify(BUZZ_CLI_CAPABILITIES)), read("buzz-v0.5.2-cli-capabilities.json"));
   });
 });

@@ -9,7 +9,7 @@
 
 import { after, afterEach, before, beforeEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -160,6 +160,16 @@ describe("r.status", () => {
     assert.equal(status.active_project, null);
     assert.equal(status.target.api_base, API);
     assert.equal(status.hint, "Run: run402 init");
+  });
+
+  it("a wallet file that cannot be read is BAD_WALLET_FILE naming the file and run402 init", async () => {
+    mkdirSync(join(tempDir, "config"), { recursive: true });
+    writeFileSync(join(tempDir, "config", "wallet.json"), "{}");
+    await assert.rejects(sdk().status(), (err: unknown) => {
+      const e = err as LocalError;
+      return e.code === "BAD_WALLET_FILE" && /address/i.test(e.message) && e.nextActions?.[0]?.command === "run402 init"
+        && (e.details as { path?: string }).path === join(tempDir, "config", "wallet.json");
+    });
   });
 
   it("with a wallet, groups balances, names the wallet, and keys projects by project_id", async () => {

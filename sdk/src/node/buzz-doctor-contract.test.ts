@@ -2,16 +2,17 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import {
+  BUZZ_CLI_CAPABILITIES,
   BUZZ_DOCTOR_CHECK_ORDER,
   BUZZ_DOCTOR_CONTRACT,
   BUZZ_DOCTOR_CONTRACT_ID,
   validateBuzzDoctorAction,
   validateBuzzDoctorReport,
-} from "./buzz-doctor-contract.mjs";
+} from "./buzz-doctor-contract.js";
 
-const FIXTURE = JSON.parse(readFileSync(new URL("../fixtures/buzz-v0.5.2-cli-capabilities.json", import.meta.url), "utf8"));
-const RELEASED_FIXTURE = JSON.parse(readFileSync(new URL("../../buzz/fixtures/buzz-v0.5.2-cli-capabilities.json", import.meta.url), "utf8"));
-const RELEASED_CONTRACT = JSON.parse(readFileSync(new URL("../../buzz/fixtures/run402-buzz-doctor-v1-contract.json", import.meta.url), "utf8"));
+const FIXTURE = JSON.parse(JSON.stringify(BUZZ_CLI_CAPABILITIES));
+const RELEASED_FIXTURE = JSON.parse(readFileSync(new URL("../../../buzz/fixtures/buzz-v0.5.2-cli-capabilities.json", import.meta.url), "utf8"));
+const RELEASED_CONTRACT = JSON.parse(readFileSync(new URL("../../../buzz/fixtures/run402-buzz-doctor-v1-contract.json", import.meta.url), "utf8"));
 
 function shellAction() {
   return {

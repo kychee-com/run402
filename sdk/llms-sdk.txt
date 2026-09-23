@@ -610,7 +610,7 @@ console.log(summary.next_step);   // "run402 up -y" until the account holds a ti
 
 ### Status
 
-`r.status()` is the local view: the active wallet (`local_label`, `server_label`, address), its rail, grouped `balances` (on-chain and allowance), the tier and lease, the projects (server-side, else the local key cache), the active project, and the API target. With no local wallet it returns `wallet: null`, the locally known projects, and the next command. It never returns key material.
+`r.status()` is the local view: the active wallet (`local_label`, `server_label`, address), its rail, grouped `balances` (on-chain and allowance), the tier and lease, the projects (server-side, else the local key cache), the active project, and the API target. With no local wallet it returns `wallet: null`, the locally known projects, and the next command. It never returns key material. A wallet file that exists but cannot be read makes `r.status()`, `r.init()`, and `r.doctor()` throw `BAD_WALLET_FILE`, naming the file and `run402 init`.
 
 ### Origin probe
 

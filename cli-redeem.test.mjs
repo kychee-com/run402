@@ -56,9 +56,16 @@ mock.module("viem/accounts", {
   },
 });
 
+// `run402 init` is `r.init()`: the real setup flow, run against the fake
+// namespaces below.
+const { runInit } = await import("./cli/sdk/dist/node/index.js");
+
 mock.module("./cli/lib/sdk.mjs", {
   namedExports: {
     getSdk: () => ({
+      init(opts) {
+        return runInit(this, {}, opts);
+      },
       vouchers: {
         redeem: (code) => {
           redeemCalls.push(code);

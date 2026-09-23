@@ -1,16 +1,14 @@
-import { readWallet, saveWallet, loadKeyStore, configDir, configureApiBase, getActiveProjectId } from "./config.mjs";
+/**
+ * run402 init — the CLI edge of `r.init()` (`@run402/sdk/node`), which sets up
+ * the active profile (wallet, rail, funding, voucher, Lightning wallet, tier,
+ * projects, vault remote, organization, next step) or, with `--api-base`,
+ * configures a Run402 Core target. This module parses argv, refuses the flag
+ * combinations that cannot mean anything, streams the progress lines to
+ * stderr, and prints the summary. `run402 init astro` routes to the Astro
+ * scaffolder.
+ */
 import { getSdk } from "./sdk.mjs";
-import { fail } from "./sdk-errors.mjs";
-import { upDeployAction, deployAction } from "./next-actions.mjs";
-import { getActiveProfile } from "../core-dist/config.js";
-import { readMeta } from "../core-dist/profiles.js";
-import { mkdirSync } from "fs";
-import { fundingRecovery, fundingBlocksBootstrap } from "#sdk/node";
-
-const USDC_ABI = [{ name: "balanceOf", type: "function", stateMutability: "view", inputs: [{ name: "account", type: "address" }], outputs: [{ name: "", type: "uint256" }] }];
-const USDC_SEPOLIA = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
-const PATH_USD = "0x20c0000000000000000000000000000000000000";
-const TEMPO_RPC = "https://rpc.moderato.tempo.xyz/";
+import { fail, reportLocalOrSdkError } from "./sdk-errors.mjs";
 
 const HELP = `run402 init — Set up wallet, funding, and check tier status
 
@@ -82,8 +80,6 @@ Steps (idempotent when re-run with the same rail; pass --switch-rail to change r
 
 Run this once to get started, or again to check your setup.
 `;
-
-function short(addr) { return addr.slice(0, 6) + "..." + addr.slice(-4); }
 
 function parseApiBaseFlag(args) {
   for (let i = 0; i < args.length; i++) {
@@ -182,70 +178,9 @@ function parseGitRemoteFlag(args) {
   return { value: true, args: [...args.slice(0, idx), ...args.slice(idx + 1)] };
 }
 
-function sameOrigin(a, b) {
-  try {
-    return new URL(a).origin === new URL(b).origin;
-  } catch {
-    return false;
-  }
-}
-
-async function detectTarget(apiBase) {
-  try {
-    const health = await getSdk({ apiBase, disablePaidFetch: true, authMode: "none" }).service.health();
-    const kind = health && typeof health === "object" && health.mode === "core"
-      ? "core"
-      : sameOrigin(apiBase, "https://api.run402.com") ? "cloud" : "core";
-    return {
-      kind,
-      health_status: typeof health?.status === "string" ? health.status : "ok",
-    };
-  } catch (err) {
-    return {
-      kind: sameOrigin(apiBase, "https://api.run402.com") ? "cloud" : "core",
-      health_error: errorMessage(err),
-    };
-  }
-}
-
-function errorMessage(err) {
-  if (err?.body && typeof err.body === "object") return err.body.message || err.body.error || err.message;
-  return err?.message || String(err);
-}
-
-/**
- * Which project the vault scaffold acts on — and why it may act on none.
- *
- * The CLI-wide resolution order (`RUN402_PROJECT_ID`, then the active
- * project), not `getActiveProjectId()` alone. Reading only the active project
- * meant an agent that had exported `RUN402_PROJECT_ID` — the normal way to
- * address a project without mutating machine state — got a silent no-op: no
- * remote, no allocation, and no `vault` key in the summary at all, with
- * nothing anywhere saying `run402 projects use` was a prerequisite
- * (dogfood #1, finding A). A command that exits 0 having done nothing is worse
- * than an error, so the no-project case names itself.
- *
- * Exported so the decision is testable on its own: it is one expression, and
- * it was wrong in two ways at once.
- */
-export function resolveScaffoldProject(env = process.env, activeProjectId = getActiveProjectId()) {
-  const fromEnv = typeof env.RUN402_PROJECT_ID === "string" ? env.RUN402_PROJECT_ID.trim() : "";
-  const projectId = fromEnv || activeProjectId || null;
-  if (projectId) return { projectId, skipped: null };
-  return {
-    projectId: null,
-    skipped: "no project is selected, so there is nothing to point a run402 remote at — run `run402 projects use <project_id>` (or set RUN402_PROJECT_ID), then re-run `run402 init`",
-  };
-}
-
 export async function run(args = []) {
-  // Capability `astro-ssr-runtime` (v1.52): scaffold an Astro project.
-  // Sub-routes when first positional is 'astro'. Handle BEFORE the
-  // outer --help check so `run402 init astro --help` shows the astro
-  // scaffolder's help, not the rail-setup help. The rest of init's
-  // payment-rail setup is intentionally orthogonal — agents typically
-  // run `run402 init astro <dir>` to scaffold AND `run402 init` once
-  // to set up wallet / tier.
+  // `run402 init astro <dir>` scaffolds an Astro project; handled BEFORE the
+  // --help check so `run402 init astro --help` shows the scaffolder's help.
   if (args[0] === "astro") {
     const { runInitAstro } = await import("./init-astro.mjs");
     await runInitAstro(args.slice(1));
@@ -254,9 +189,8 @@ export async function run(args = []) {
 
   if (args.includes("--help") || args.includes("-h")) { console.log(HELP); process.exit(0); }
 
-  // Strip --voucher before anything else parses argv, so the rail/positional
-  // logic below never sees it (an unrecognized token there would be read as a
-  // rail name).
+  // Strip the value flags before the rail positional is read, so an
+  // unrecognized token is never taken for a rail name.
   const parsedVoucher = parseVoucherFlag(args);
   args = parsedVoucher.args;
   const voucherCode = parsedVoucher.value;
@@ -265,9 +199,6 @@ export async function run(args = []) {
   args = parsedGitRemote.args;
   const scaffoldGitRemote = parsedGitRemote.value;
 
-  // principal-display-name (first-deploy-agent-dx): `--name <name>` sets this
-  // principal's display name once (PATCH /agent/v1/me). Stripped here so the
-  // rail/positional logic never sees it.
   const parsedName = parseValueFlag(args, "--name");
   args = parsedName.args;
   const displayName = parsedName.value;
@@ -275,7 +206,9 @@ export async function run(args = []) {
     fail({ code: "BAD_USAGE", message: "--name requires a non-empty value.", details: { flag: "--name" } });
   }
 
+  const onLine = (line) => console.error(line);
   const parsedApiBase = parseApiBaseFlag(args);
+  let summary;
   if (parsedApiBase.value) {
     if (parsedApiBase.args.some((arg) => typeof arg === "string" && !arg.startsWith("--"))) {
       fail({
@@ -284,10 +217,8 @@ export async function run(args = []) {
         hint: "Run `run402 init --api-base=http://my-core:4020` for Core, or `run402 init` for Run402 Cloud.",
       });
     }
-    // This branch configures a Core/API target and returns without setting up
-    // a wallet — there is no organization here to credit, and promo
-    // vouchers are a Run402 Cloud concept. Say so instead of accepting the
-    // flag and silently dropping it.
+    // The target branch touches no wallet and no project: a voucher has no
+    // organization to credit and a git scaffold has nothing to point at.
     if (voucherCode) {
       fail({
         code: "BAD_USAGE",
@@ -295,9 +226,6 @@ export async function run(args = []) {
         hint: "Configure the target first (`run402 init --api-base=…`), then redeem against Run402 Cloud with `run402 redeem <code>`.",
       });
     }
-    // Same reasoning as --voucher: this branch configures a target and returns
-    // without an active project, so a git scaffold has nothing to point at.
-    // Say so rather than accepting the flag and silently dropping it.
     if (scaffoldGitRemote) {
       fail({
         code: "BAD_USAGE",
@@ -305,497 +233,29 @@ export async function run(args = []) {
         hint: "Configure the target first (`run402 init --api-base=…`), provision a project, then run `run402 init --git-remote` from the project directory.",
       });
     }
-    const CONFIG_DIR = configDir();
-    const detected = await detectTarget(parsedApiBase.value);
-    const config = configureApiBase(parsedApiBase.value, {
-      target_kind: detected.kind,
-      ...(detected.health_status ? { health_status: detected.health_status } : {}),
-      ...(detected.health_error ? { health_error: detected.health_error } : {}),
-    });
-    mkdirSync(CONFIG_DIR, { recursive: true });
-    console.error("");
-    console.error(`  ${"Config".padEnd(10)} ${CONFIG_DIR}`);
-    console.error(`  ${"API base".padEnd(10)} ${config.api_base}`);
-    console.error(`  ${"Target".padEnd(10)} ${config.target_kind}`);
-    if (detected.health_status) console.error(`  ${"Health".padEnd(10)} ${detected.health_status}`);
-    if (detected.health_error) console.error(`  ${"Health".padEnd(10)} ${detected.health_error}`);
-    console.error("");
-    const summary = {
-      config_dir: CONFIG_DIR,
-      api_base: config.api_base,
-      api_base_source: "profile",
-      target: {
-        kind: config.target_kind,
-        ...(config.health_status ? { health_status: config.health_status } : {}),
-        ...(config.health_error ? { health_error: config.health_error } : {}),
-      },
-      payment_required: config.target_kind === "cloud",
-      next_actions: [{
-        type: "create_project",
-        command: 'run402 projects provision --name "my-app"',
-      }],
-      next_step: 'run402 projects provision --name "my-app"',
-    };
+    try {
+      summary = await getSdk().init({ apiBase: parsedApiBase.value, onLine });
+    } catch (err) {
+      reportLocalOrSdkError(err);
+      return;
+    }
     console.log(JSON.stringify(summary, null, 2));
     return;
   }
 
-  // Resolve once for this invocation — reflects the active wallet/profile that
-  // cli.mjs published to RUN402_WALLET before this module loaded.
-  const CONFIG_DIR = configDir();
-
-  const isMpp = args[0] === "mpp";
-  const isLightning = args[0] === "lightning";
-  const requestedRail = isLightning ? "lightning" : isMpp ? "mpp" : "x402";
-  const switchRailConfirmed = args.includes("--switch-rail");
-
-  const existingWallet = readWallet();
-  if (existingWallet?.rail && existingWallet.rail !== requestedRail && !switchRailConfirmed) {
-    fail({
-      code: "RAIL_SWITCH_REQUIRES_CONFIRM",
-      message: `Already on rail '${existingWallet.rail}'. Pass --switch-rail to switch to '${requestedRail}'.`,
-      details: { current_rail: existingWallet.rail, requested_rail: requestedRail },
-    });
-  }
-
-  // Human-readable progress lines go to stderr so stdout stays JSON-clean for
-  // agents. Final structured summary emits to stdout at the end.
-  const write = (s) => console.error(s);
-  const line = (label, value) => write(`  ${label.padEnd(10)} ${value}`);
-  const summary = {
-    config_dir: CONFIG_DIR,
-    wallet: null,
-    rail: null,
-    network: null,
-    balances: null,
-    // Present (null or an object) only when --voucher was passed, so its
-    // absence means "no code was offered" rather than "a code silently
-    // vanished". `voucher_error` appears alongside a null `voucher`.
-    ...(voucherCode ? { voucher: null } : {}),
-    tier: null,
-    projects_saved: 0,
-    /** The project init acted on — the input to the vault scaffold decision. */
-    active_project_id: null,
-    next_actions: [],
-    next_step: null,
-  };
-
-  write("");
-
-  // 1. Config directory
-  mkdirSync(CONFIG_DIR, { recursive: true });
-  line("Config", CONFIG_DIR);
-
-  // 2. Wallet
-  let localWallet = existingWallet;
-  const previousRail = localWallet?.rail;
-  if (!localWallet) {
-    const { generatePrivateKey, privateKeyToAccount } = await import("viem/accounts");
-    const privateKey = generatePrivateKey();
-    const account = privateKeyToAccount(privateKey);
-    localWallet = { address: account.address, privateKey, created: new Date().toISOString(), funded: false, rail: requestedRail };
-    saveWallet(localWallet);
-    line("Wallet", `${short(localWallet.address)} (created)`);
-  } else {
-    // Update rail if switching (a wallet leaving Lightning keeps its pairing on disk until revoked).
-    if (localWallet.rail !== requestedRail) {
-      localWallet = { ...localWallet, rail: requestedRail };
-      saveWallet(localWallet);
-    }
-    line("Wallet", short(localWallet.address));
-  }
-
-  const walletName = getActiveProfile();
-  const walletMeta = readMeta(walletName);
-  summary.wallet = { local_label: walletName, server_label: walletMeta?.label ?? null, address: localWallet.address };
-  summary.network = isLightning ? "bitcoin-mainnet" : isMpp ? "tempo-moderato" : "base-sepolia";
-  summary.rail = requestedRail;
-
-  line("Network", isLightning ? "Bitcoin mainnet (Lightning) + Base Sepolia fallback" : isMpp ? "Tempo Moderato (testnet)" : "Base Sepolia (testnet)");
-  line("Rail", requestedRail);
-
-  // 3. Balance — check on-chain, faucet if zero
-  let balance = 0;
-  let fundingError;
-  let fundingPending = false;
-
-  if (isMpp) {
-    // Tempo Moderato: read pathUSD balance
-    const { createPublicClient, http, defineChain } = await import("viem");
-    const tempoModerato = defineChain({
-      id: 42431,
-      name: "Tempo Moderato",
-      nativeCurrency: { name: "pathUSD", symbol: "pathUSD", decimals: 6 },
-      rpcUrls: { default: { http: [TEMPO_RPC] } },
-    });
-    const client = createPublicClient({ chain: tempoModerato, transport: http() });
-
-    try {
-      const raw = await client.readContract({ address: PATH_USD, abi: USDC_ABI, functionName: "balanceOf", args: [localWallet.address] });
-      balance = Number(raw);
-    } catch {}
-
-    if (balance === 0) {
-      line("Balance", "0 pathUSD — requesting Tempo faucet...");
-      try {
-        const res = await fetch(TEMPO_RPC, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ jsonrpc: "2.0", method: "tempo_fundAddress", params: [localWallet.address], id: 1 }),
-        });
-        const data = await res.json();
-        if (data.result) {
-          // Tempo faucet is "instant" on-chain, but the client RPC read can be
-          // racy relative to faucet settlement — poll up to 30s, mirroring
-          // the x402 path below.
-          for (let i = 0; i < 30; i++) {
-            await new Promise(r => setTimeout(r, 1000));
-            try {
-              const raw = await client.readContract({ address: PATH_USD, abi: USDC_ABI, functionName: "balanceOf", args: [localWallet.address] });
-              balance = Number(raw);
-              if (balance > 0) break;
-            } catch {}
-          }
-          saveWallet({ ...localWallet, funded: true, lastFaucet: new Date().toISOString() });
-          if (balance > 0) {
-            line("Balance", `${(balance / 1e6).toFixed(2)} pathUSD (funded)`);
-          } else {
-            fundingPending = true;
-            line("Balance", "faucet sent — not yet confirmed on-chain");
-          }
-        } else {
-          fundingError = data.error ?? new Error("Faucet failed");
-          line("Balance", `faucet failed: ${data.error?.message || "unknown error"}`);
-        }
-      } catch (err) {
-        fundingError = err;
-        line("Balance", `faucet error: ${err.message}`);
-      }
-    } else {
-      line("Balance", `${(balance / 1e6).toFixed(2)} pathUSD`);
-    }
-  } else {
-    // Base Sepolia: read USDC balance (existing behavior)
-    const { createPublicClient, http } = await import("viem");
-    const { baseSepolia } = await import("viem/chains");
-    const client = createPublicClient({ chain: baseSepolia, transport: http() });
-
-    try {
-      const raw = await client.readContract({ address: USDC_SEPOLIA, abi: USDC_ABI, functionName: "balanceOf", args: [localWallet.address] });
-      balance = Number(raw);
-    } catch {}
-
-    if (balance === 0) {
-      line("Balance", "0 USDC — requesting faucet...");
-      try {
-        await getSdk().wallets.faucet(localWallet.address);
-        // Poll for up to 30s
-        for (let i = 0; i < 30; i++) {
-          await new Promise(r => setTimeout(r, 1000));
-          try {
-            const raw = await client.readContract({ address: USDC_SEPOLIA, abi: USDC_ABI, functionName: "balanceOf", args: [localWallet.address] });
-            balance = Number(raw);
-            if (balance > 0) break;
-          } catch {}
-        }
-        saveWallet({ ...localWallet, funded: true, lastFaucet: new Date().toISOString() });
-        if (balance > 0) {
-          line("Balance", `${(balance / 1e6).toFixed(2)} USDC (funded)`);
-        } else {
-          fundingPending = true;
-          line("Balance", "faucet sent — not yet confirmed on-chain");
-        }
-      } catch (err) {
-        fundingError = err;
-        line("Balance", `faucet failed: ${errorMessage(err)}`);
-      }
-    } else {
-      line("Balance", `${(balance / 1e6).toFixed(2)} USDC`);
-    }
-  }
-
-  // 3b. Promo code, when one was handed to us.
-  //
-  // This runs BEFORE the balance read below so the redeemed amount shows up in
-  // `allowance_usd_micros` without a second round-trip, and AFTER the
-  // wallet exists so the redemption authenticates as this agent.
-  //
-  // NOTHING here may fail init. An advertised gift that dead-ends a build is
-  // worse than no gift at all: the agent was told to run one command, and that
-  // command must still leave it set up and able to work. Every failure — bad
-  // code, expired, already used by someone else, org at its ceiling, network
-  // down, gateway too old to know the route — warns on stderr, records
-  // `voucher_error` in the JSON summary, and lets setup finish.
-  if (voucherCode) {
-    try {
-      const redemption = await getSdk().vouchers.redeem(voucherCode);
-      const redeemed = (redemption.amount_usd_micros / 1_000_000).toFixed(2);
-      line(
-        "Voucher",
-        redemption.already_redeemed
-          ? `$${redeemed} already added to the allowance (not added twice)`
-          : `$${redeemed} added to the allowance`,
-      );
-      summary.voucher = {
-        voucher_id: redemption.voucher_id,
-        amount_usd_micros: redemption.amount_usd_micros,
-        already_redeemed: redemption.already_redeemed,
-        next_actions: Array.isArray(redemption.next_actions) ? redemption.next_actions : [],
-      };
-      // Relate the gift to what it buys, in the gateway's own words: its
-      // `set_tier` next action names the largest tier the allowance covers, and
-      // that purchase settles from the allowance — no wallet funding step between.
-      const covers = summary.voucher.next_actions.find((a) => a?.type === "set_tier" && typeof a.cli === "string");
-      if (covers) {
-        const tierName = covers.highest_affordable_tier ?? covers.cli.replace(/^run402 tier set\s+/, "");
-        line("Allowance", `$${redeemed} covers ${tierName} — ${covers.cli} (settles from the allowance; no wallet funds needed)`);
-      }
-    } catch (err) {
-      // Faithful: name what failed and keep going. `voucher_error` is a
-      // first-class summary field, not an omission the caller has to infer.
-      const reason = errorMessage(err);
-      line("Voucher", `not applied: ${reason}`);
-      summary.voucher = null;
-      summary.voucher_error = {
-        code: err?.body?.code ?? err?.code ?? "VOUCHER_REDEEM_FAILED",
-        message: reason,
-      };
-    }
-  }
-
-  // Balances mirror `run402 status`: the on-chain wallet figure above plus the
-  // organization's Run402-held allowance (rail-independent). The allowance is
-  // fetched best-effort so a billing read failure never blocks setup.
-  const billing = await getSdk().billing.checkBalance(localWallet.address).catch(() => null);
-  const hasBilling = billing && billing.exists !== false;
-  summary.balances = {
-    on_chain_usd_micros: balance,
-    on_chain_token: isMpp ? "pathUSD" : "USDC",
-    allowance_usd_micros: hasBilling ? billing.allowance_usd_micros : null,
-    held_usd_micros: hasBilling ? (billing.held_usd_micros ?? 0) : null,
-  };
-
-  // Show note if switching rails
-  if (previousRail && previousRail !== (isMpp ? "mpp" : "x402")) {
-    const prev = previousRail === "mpp" ? "Tempo pathUSD" : "Base Sepolia USDC";
-    line("Note", `Switched from ${previousRail} — ${prev} balance still available if you switch back`);
-  }
-
-  // 3b. The Lightning wallet (mpp-lightning-over-nwc): a budgeted wallet
-  // on Run402's Hub, minted by the platform, its pairing kept beside the
-  // Base key. Never printed. A Hub that is not configured leaves the rail
-  // on Lightning with x402 as the live fallback, and says so.
-  summary.lightning = null;
-  if (isLightning) {
-    try {
-      const { ensureLightningWallet, describeLightning, readLightningBalance } = await import("./lightning-wallet.mjs");
-      const result = await ensureLightningWallet();
-      localWallet = result.localWallet;
-      const settled = result.outcome === "stored" || result.outcome === "present";
-      const balance = settled ? await readLightningBalance(localWallet) : null;
-      summary.lightning = { ...(describeLightning(localWallet, result.wallet, balance) ?? {}), outcome: result.outcome };
-      if (result.outcome === "stored") {
-        line("Lightning", `wallet minted on Run402's Hub (${result.wallet.budget_sats} sats budget, ${result.wallet.starter_sats} starter)`);
-      } else if (result.outcome === "present") {
-        line("Lightning", `wallet ${localWallet.lightning.wallet_id}${balance ? ` — ${balance.balance_sats} sats` : ""}`);
-      } else if (result.outcome === "minting") {
-        line("Lightning", "the platform is still minting the wallet — rerun `run402 init lightning` in a few seconds");
-      } else if (result.outcome === "unavailable") {
-        line("Lightning", "no Hub on this gateway — paying over x402 until it is back");
-      } else if (result.outcome === "pairing_lost") {
-        line("Lightning", "wallet is active but its pairing was handed to another machine — `run402 wallets lightning revoke`, then init again");
-      } else {
-        line("Lightning", `wallet is ${result.outcome}`);
-      }
-    } catch (err) {
-      summary.lightning = { outcome: "error", code: err?.body?.code ?? err?.code ?? "LIGHTNING_WALLET_FAILED", message: err?.message ?? String(err) };
-      line("Lightning", `wallet setup failed: ${err?.message ?? String(err)} — paying over x402 until it is fixed`);
-    }
-  }
-
-  // 4. Tier status
-  const store = loadKeyStore();
-  let tierInfo = null;
+  const rail = args[0] === "lightning" ? "lightning" : args[0] === "mpp" ? "mpp" : "x402";
   try {
-    tierInfo = await getSdk().tier.status();
-  } catch {}
-
-  if (tierInfo && tierInfo.tier && tierInfo.active) {
-    const expiry = tierInfo.lease_expires_at ? tierInfo.lease_expires_at.split("T")[0] : "unknown";
-    line("Tier", `${tierInfo.tier} (expires ${expiry})`);
-    summary.tier = { name: tierInfo.tier, expires: tierInfo.lease_expires_at || null };
-  } else {
-    line("Tier", "(none)");
-    summary.tier = null;
+    summary = await getSdk().init({
+      rail,
+      switchRail: args.includes("--switch-rail"),
+      voucher: voucherCode,
+      gitRemote: scaffoldGitRemote,
+      ...(displayName !== undefined ? { name: displayName } : {}),
+      onLine,
+    });
+  } catch (err) {
+    reportLocalOrSdkError(err);
+    return;
   }
-
-  // 5. Projects — count locally saved project entries. Note: "saved" (not
-  // "active") — these are all projects in the keystore, regardless of whether
-  // the server considers them active. A project selected with
-  // `run402 projects use` but never provisioned FROM this machine holds no
-  // local keys, so it is legitimately not counted here; `active_project_id`
-  // below is the field that says which project init actually acted on, and
-  // reading `projects_saved: 0` as "init did nothing" is what made the
-  // vault skip look silent (dogfood #1, finding A).
-  summary.projects_saved = Object.keys(store.projects).length;
-  line("Projects", `${summary.projects_saved} saved`);
-
-  // 5b. vault git remote (vault-client-surface, task 5.7).
-  //
-  // Purely LOCAL git. No vault is allocated and no key material is written
-  // here — the spec is explicit that neither exists until first capture, so the
-  // cold-start path gains no prompt and no new failure mode. Allocation happens
-  // on the first `git push origin <branch>` or `run402 repos capture` (D2,
-  // repo-first-onramp) — NOT on deploy: `applyWithVault` only ever reads an
-  // EXISTING vault's policy (D3) and never allocates one that does not exist,
-  // so a project with no vault deploys exactly as it always did.
-  //
-  // Adding the remote is the DEFAULT inside a repository that already exists,
-  // because it is pure addition: `origin` is never modified or claimed, no file
-  // is created, nothing is rewritten. CREATING a repository is NOT the default
-  // — `run402 init` is routinely run outside a project directory, and
-  // `git init`-ing whatever directory the user happened to be in would be a
-  // genuinely bad surprise. `--git-remote` opts into that one step.
-  //
-  // NON-FATAL in every branch: a missing git, a directory that is not a
-  // repository, an unreachable gateway, or a `run402` remote already pointing
-  // somewhere else must warn and let setup finish.
-  const { projectId: activeProjectId, skipped: noProjectSkip } = resolveScaffoldProject();
-  summary.active_project_id = activeProjectId;
-  if (noProjectSkip) {
-    summary.vault = null;
-    summary.vault_skipped = noProjectSkip;
-    line("Vault", "skipped — no project selected (run402 projects use <project_id>)");
-  } else {
-    summary.vault = null;
-    try {
-      // Dynamic import: the scaffold is the only thing here that needs the
-      // Node SDK's hardened git runner, and a top-level import would drag it
-      // into every init invocation (and every test that mocks ./sdk.mjs).
-      const { hardenedGit } = await import("#sdk/node");
-      let insideRepo = true;
-      try {
-        await hardenedGit(process.cwd(), ["rev-parse", "--git-dir"]);
-      } catch {
-        insideRepo = false;
-      }
-      if (!insideRepo && !scaffoldGitRemote) {
-        summary.vault_skipped = "not a git repository — re-run with --git-remote to create one and add the remote";
-        line("Vault", "skipped — not a git repository (--git-remote creates one)");
-      } else {
-        const orgId = await getSdk().orgs.owningOrgOf(activeProjectId);
-        if (!orgId) {
-          summary.vault_skipped = `could not resolve the owning org for ${activeProjectId} — the run402 remote was not added`;
-          line("Vault", "skipped — owning org unresolved");
-        } else {
-          const remote = await getSdk().repos.scaffoldRemote({
-            repo_dir: process.cwd(),
-            org_id: orgId,
-            project_id: activeProjectId,
-          });
-          // `allocated: false` is stated, not left to be inferred: this was
-          // local git only, and no vault exists for the project yet.
-          summary.vault = { ...remote, allocated: false };
-          if (remote.already_present && remote.existing_url !== remote.url) {
-            // Left exactly as it was. Name the URL that is actually in place
-            // rather than implying the remote now points at this project.
-            line("Vault", `remote '${remote.name}' already points at ${remote.existing_url} — left unchanged (${remote.reason})`);
-          } else if (remote.already_present) {
-            line("Vault", `remote '${remote.name}' already set (${remote.url})`);
-          } else {
-            // D1: `origin` when it was free, `run402` when it was already
-            // taken by something else — `remote.reason` says which happened.
-            line("Vault", `${remote.created_repository ? "initialized a repository and added" : "added"} remote '${remote.name}' -> ${remote.url} (${remote.reason})`);
-          }
-        }
-      }
-    } catch (err) {
-      const reason = errorMessage(err);
-      summary.vault = null;
-      summary.vault_error = {
-        code: err?.body?.code ?? err?.code ?? "VAULT_SCAFFOLD_FAILED",
-        message: reason,
-      };
-      line("Vault", `remote not added: ${reason}`);
-    }
-  }
-
-  // 5b. The org. `init` already materializes it (the tier read above
-  // authenticates, which provisions the wallet's org-of-one), so NOT reporting
-  // it forced every agent that wanted to coordinate to go find it with a second
-  // command and copy a UUID by hand. It is an identifier, not a credential.
-  try {
-    const orgs = await getSdk().orgs.list();
-    const rows = Array.isArray(orgs) ? orgs : (orgs?.orgs ?? []);
-    summary.orgs = rows.map((o) => ({
-      org_id: o.org_id,
-      display_name: o.display_name ?? null,
-      role: o.role ?? null,
-    }));
-    if (rows.length === 1) {
-      line("Org", `${rows[0].org_id}${rows[0].display_name ? ` (${rows[0].display_name})` : ""}`);
-    } else if (rows.length > 1) {
-      line("Org", `${rows.length} organizations — run402 orgs list`);
-    }
-  } catch {
-    // Best-effort, exactly like the billing read: a listing failure must never
-    // fail setup.
-    summary.orgs = null;
-  }
-
-  // 6. Next step — canonical typed action(s); `next_step` is the back-compat
-  // string mirror of the first action's command (one spelling, surface-wide).
-  write("");
-  const tierMissing = !tierInfo || !tierInfo.tier || !tierInfo.active;
-  summary.funding = fundingRecovery(fundingError, fundingPending);
-  const fundingBlocked = fundingBlocksBootstrap(summary.funding, {
-    activeTier: !tierMissing, onChainBalance: balance,
-    allowanceBalance: summary.balances.allowance_usd_micros,
-    lightningBalance: summary.lightning?.balance_sats,
-  });
-  summary.next_actions = [tierMissing ? upDeployAction() : deployAction()];
-  if (fundingBlocked) {
-    const quotedWallet = `'${walletName.replaceAll("'", "'\\''")}'`;
-    summary.next_actions = summary.funding.next_actions.map(action => ({ ...action,
-      ...(["retry", "check_balance"].includes(action.type) ? {
-        command: `run402 --wallet ${quotedWallet} wallets ${action.type === "retry" ? "fund" : "balance"}`,
-      } : {}),
-    }));
-  }
-  summary.next_step = summary.next_actions[0].command ?? null;
-  if (fundingBlocked) {
-    line("Funding", summary.funding.status);
-    write(`  ${summary.next_actions[0].why}`);
-    if (summary.next_step) write(`  Next: ${summary.next_step}`);
-  } else if (tierMissing) {
-    // `up -y` sets the prototype tier itself as part of the first
-    // deploy; `init` never buys the tier, so the one command that finishes
-    // the cold start is `up`, with `tier set` named as the standalone option.
-    const allowanceCovers = summary.voucher?.next_actions?.find((a) => a?.type === "set_tier" && typeof a.cli === "string");
-    write("  Next: run402 up -y");
-    write("        Deploy with run402 up -y — it sets the prototype tier (free on testnet) as part of the first deploy.");
-    if (allowanceCovers) {
-      write(`        Your allowance covers ${allowanceCovers.highest_affordable_tier ?? "a larger tier"}: ${allowanceCovers.cli} — then run402 up -y.`);
-    } else {
-      write("        Or set it separately: run402 tier set prototype.");
-    }
-  } else {
-    write("  Ready to deploy. Run: run402 deploy --manifest app.json");
-  }
-  write("");
-
-  // 5c. Display name (principal-display-name). Best-effort: a hiccup never
-  // fails init — the summary says what happened.
-  if (displayName !== undefined) {
-    try {
-      const me = await getSdk().orgs.setDisplayName(displayName.trim());
-      summary.display_name = me?.principal?.display_name ?? displayName.trim();
-      line("Name", summary.display_name);
-    } catch (err) {
-      summary.display_name = null;
-      summary.display_name_error = { code: err?.body?.code ?? err?.code ?? "DISPLAY_NAME_FAILED", message: err?.message ?? String(err) };
-    }
-  }
-
   console.log(JSON.stringify(summary, null, 2));
 }

@@ -1,62 +1,22 @@
-import { resolveApplicationScope, loadApplicationScanInput, scanDeploymentSources } from "#sdk/node";
 /**
- * run402 doctor — Health and config diagnostics.
- *
- * Reports the state of the local Run402 setup: config dir, wallet,
- * tier, project selection, API reachability. Agent-friendly: with
- * `--json`, emits a structured report the agent can branch on without
- * parsing English output.
- *
- * Capability `astro-ssr-runtime` (Run402 v1.52). Part of the agent-DX
- * contract — agents run `run402 doctor` first to verify the environment
- * before attempting other commands.
+ * run402 doctor — health and config diagnostics: the CLI edge of `r.doctor()`
+ * (`@run402/sdk/node`), which owns every ordinary-mode check and the
+ * `{ ok, blocking[], warnings[], checks[] }` fold. This module parses argv,
+ * supplies what only the CLI knows — its own update check and its resident
+ * vault helper — prints the report, and exits 0 exactly when `ok`.
+ * `--buzz` runs the Buzz setup preflight instead (`buzz-doctor.mjs`).
  */
 
-import { existsSync, statSync } from "node:fs";
-import { VAULT_BYO_NO_PAYLOAD_COPY_STATEMENT } from "#sdk";
-import { configDir, readWallet, loadKeyStore } from "./config.mjs";
-import { resolveVaultTarget } from "./vault-target.mjs";
+import { DOCTOR_CHECK_NAMES, assertDoctorCheckNames } from "#sdk/node";
 import { getSdk } from "./sdk.mjs";
-import {
-  resolveScanRoot,
-  scanSourceTree,
-  SCAN_SEVERITY,
-} from "./doctor-source-scan.mjs";
 import { doctorUpdateCheck } from "./update-check.mjs";
 import { buildBuzzDoctorReport, parseBuzzDoctorArgs } from "./buzz-doctor.mjs";
 import { queueBuzzDoctorTelemetry } from "./diagnostic-telemetry.mjs";
-import { fail } from "./sdk-errors.mjs";
+import { fail, failLocal, reportLocalOrSdkError } from "./sdk-errors.mjs";
 import { normalizeArgv, assertKnownFlags, flagValue } from "./argparse.mjs";
 
 /** Value-taking flags — the flag set doctor actually parses; anything else is BAD_USAGE via assertKnownFlags, never silently ignored. */
 const DOCTOR_VALUE_FLAGS = ["--scan-dir", "--dir", "--manifest", "--buzz-agent", "--project", "--only"];
-
-/**
- * The stable, complete registry of ordinary-mode check names. One entry
- * per `checks.push({ name: ... })` call below,
- * in the order each check normally runs. This is the ONE place `--only`
- * validates its argument against and the ONE place its help text is derived
- * from, so a check can never be selectable-but-undocumented or
- * documented-but-unselectable.
- *
- * Deliberately excludes buzz mode's own check names (`session_shell`,
- * `node_runtime`, …) — buzz mode is a wholly separate report shape that
- * returns before this array is ever consulted; see the `--only`/`--buzz`
- * mutual-exclusion check in `run()`.
- */
-const DOCTOR_CHECK_NAMES = [
-  "config_dir",
-  "cli_update",
-  "wallet",
-  "projects",
-  "api_reachable",
-  "tier",
-  "account_health",
-  "runtime_staleness",
-  "recovery_posture",
-  "vault",
-  "source_scan",
-];
 
 /** Every value passed to a repeatable flag, in argv order (mirrors the pattern in buzz-notifications.mjs). */
 function collectRepeatableFlag(args, flag) {
@@ -186,112 +146,50 @@ Exit codes:
 `;
 
 /**
- * Check statuses that carry no finding at all. Everything else is either the
- * one advisory status (`warning`) or a blocking status — so a NEW status
- * string that slips into a check (a lifecycle name, a tier name, a typo)
- * fails closed as blocking instead of silently passing.
+ * A bounded LOCAL probe of the resident vault helper engine: `{running:false}`
+ * is a fine answer, never a finding (the helper is an accelerator, not a
+ * dependency). Reported inside the vault check's `value.daemon`.
  */
-const INFO_STATUSES = new Set(["ok", "skipped", "unknown"]);
-
-/** Non-active organization lifecycle states the gateway can report (`organization-lifecycle` spec); each is its own blocking tier status. */
-const TIER_LIFECYCLE_STATUSES = new Set(["past_due", "frozen", "dormant", "purged"]);
-
-/**
- * The severity contract, in one place: `blocking` = would stop this agent
- * from shipping; `advisory` = a gap worth surfacing that never stops a
- * deploy; `info` = nothing to act on. A check may pin its own `severity`
- * explicitly (the tier check does, for the missing-but-can-reach-projects
- * shape); otherwise it is derived from `status`.
- */
-function severityOf(check) {
-  if (check.severity === "blocking" || check.severity === "advisory" || check.severity === "info") return check.severity;
-  if (INFO_STATUSES.has(check.status)) return "info";
-  if (check.status === "warning") return "advisory";
-  return "blocking";
-}
-
-/** Stable codes for advisory checks that report ONE finding (no `value.gaps`), keyed by check name. */
-const ADVISORY_CODES = {
-  cli_update: "CLI_UPDATE_AVAILABLE",
-  runtime_staleness: "FUNCTION_RUNTIME_STALE",
-  source_scan: "SOURCE_SCAN_WARNINGS",
-  tier: "TIER_MISSING_ON_OWN_ORG",
-};
-
-/**
- * Fold the per-check report into the agent-facing envelope:
- * `{ ok, blocking[], warnings[], checks[] }`. `warnings[]` carries one entry
- * per gap string of every advisory check (plus one for an advisory check
- * with no gaps); `blocking[]` carries one entry per blocking check and is
- * empty exactly when `ok` is true. Pure — the same fold serves a full run,
- * `--only`, and `--refresh`.
- */
-export function buildDoctorReport(rawChecks) {
-  const checks = rawChecks.map((check) => {
-    const { name, status, severity: _pinned, ...rest } = check;
-    return { name, status, severity: severityOf(check), ...rest };
-  });
-  const blocking = [];
-  const warnings = [];
-  for (const check of checks) {
-    if (check.severity === "blocking") {
-      blocking.push({
-        check: check.name,
-        status: check.status,
-        message: check.message ?? `${check.name}: ${check.status}`,
-        ...(check.hint && { hint: check.hint }),
+async function daemonStatus() {
+  try {
+    const { daemonSocketPath } = await import("./daemon-path.mjs");
+    const { connect: netConnect } = await import("node:net");
+    return await new Promise((resolve) => {
+      let settled = false;
+      const done = (v) => {
+        if (!settled) {
+          settled = true;
+          resolve(v);
+        }
+      };
+      const socket = netConnect(daemonSocketPath());
+      const timer = setTimeout(() => {
+        socket.destroy();
+        done({ running: false });
+      }, 500);
+      let data = "";
+      socket.on("data", (c) => {
+        data += c.toString("utf8");
+        const nl = data.indexOf("\n");
+        if (nl === -1) return;
+        clearTimeout(timer);
+        try {
+          const { t: _t, ...rest } = JSON.parse(data.slice(0, nl));
+          done({ running: true, ...rest });
+        } catch {
+          done({ running: false });
+        }
+        socket.end();
       });
-      continue;
-    }
-    if (check.severity !== "advisory") continue;
-    const gaps = Array.isArray(check.value?.gaps) ? check.value.gaps.filter((g) => typeof g === "string" && g.length > 0) : [];
-    if (gaps.length > 0) {
-      for (const gap of gaps) {
-        warnings.push({ check: check.name, message: gap, ...(check.hint && { hint: check.hint }) });
-      }
-    } else {
-      const code = check.code ?? ADVISORY_CODES[check.name];
-      const message = check.message ?? check.hint ?? `${check.name}: ${check.status}`;
-      warnings.push({
-        check: check.name,
-        ...(code && { code }),
-        message,
-        // Only carry `hint` when it adds something the message does not.
-        ...(check.hint && check.hint !== message && { hint: check.hint }),
+      socket.once("error", () => {
+        clearTimeout(timer);
+        done({ running: false });
       });
-    }
+      socket.once("connect", () => socket.write('{"t":"status"}\n'));
+    });
+  } catch {
+    return { running: false };
   }
-  return { ok: blocking.length === 0, blocking, warnings, checks };
-}
-
-function redactWalletForDiagnostics(localWallet) {
-  if (!localWallet || typeof localWallet !== "object") return localWallet;
-  const safe = { ...localWallet };
-  delete safe.privateKey;
-  if (typeof safe.funded === "boolean") safe.faucet_used = safe.funded;
-  delete safe.funded;
-  return safe;
-}
-
-/**
- * Compose a check-failure message context-first.
- *
- * The SDK kernel composes thrown messages as `<envelope message> while
- * <context>`, which reads as two jammed fragments when the envelope message
- * ends with a period ("…header. while checking tier status"). Strip the
- * SDK's trailing ` while <context>` segment (using the error's own
- * `context` field) and lead with the check label instead.
- */
-function describeCheckFailure(label, err) {
-  const raw = err instanceof Error ? err.message : String(err);
-  const context = typeof err?.context === "string" && err.context.length > 0 ? err.context : null;
-  let reason = raw;
-  if (context) {
-    const marker = ` while ${context}`;
-    const idx = raw.indexOf(marker);
-    if (idx !== -1) reason = (raw.slice(0, idx) + raw.slice(idx + marker.length)).trim();
-  }
-  return `${label} failed: ${reason}`;
 }
 
 export async function run(sub, args = []) {
@@ -300,38 +198,18 @@ export async function run(sub, args = []) {
     console.log(HELP);
     return;
   }
-  // Accepting ANY flag silently means an unrecognized one (a typo) is
-  // never looked at. Any flag doctor actually parses is listed here;
-  // anything else is a structured BAD_USAGE/UNKNOWN_FLAG rejection instead
-  // of quietly doing nothing.
   assertKnownFlags(all, ["--verbose", "--refresh", "--no-scan", "--buzz", ...DOCTOR_VALUE_FLAGS], DOCTOR_VALUE_FLAGS);
-  const verbose = all.includes("--verbose");
-  const refresh = all.includes("--refresh");
-  const skipScan = all.includes("--no-scan");
-  const scanDirArgIdx = all.indexOf("--scan-dir");
-  const scanDirOverride = scanDirArgIdx >= 0 ? all[scanDirArgIdx + 1] : null;
-  // Scoped to the vault check (see HELP): every other check is
-  // wallet/machine-wide, not per-project.
-  const projectOverride = flagValue(all, "--project");
 
-  // --only <check>, repeatable. Validated against the stable registry
-  // ABOVE the buzz early-return, so an unknown name is BAD_USAGE regardless
-  // of which mode was also requested — the same "every accepted flag must
-  // work or BAD_USAGE" bar as every other doctor flag.
+  // --only <check>, repeatable. Validated ABOVE the buzz branch, so an unknown
+  // name is BAD_USAGE whichever mode was also requested.
   const onlyChecks = collectRepeatableFlag(all, "--only");
-  for (const name of onlyChecks) {
-    if (!DOCTOR_CHECK_NAMES.includes(name)) {
-      fail({
-        code: "BAD_USAGE",
-        message: `Unknown doctor check: '${name}'.`,
-        hint: `Valid check names: ${DOCTOR_CHECK_NAMES.join(", ")}.`,
-        details: { check: name, known_checks: DOCTOR_CHECK_NAMES },
-      });
-    }
+  try {
+    assertDoctorCheckNames(onlyChecks);
+  } catch (err) {
+    failLocal(err);
   }
-  // Buzz mode is a wholly separate, always-complete report shape — an --only
-  // that named ordinary-mode checks would be silently ignored under --buzz
-  // — an accepted-but-inert flag. Reject the combination instead.
+  // Buzz mode is a separate, always-complete report shape: an --only there
+  // would be accepted but inert, so the combination is refused.
   if (onlyChecks.length > 0 && all.includes("--buzz")) {
     fail({
       code: "BAD_USAGE",
@@ -340,9 +218,6 @@ export async function run(sub, args = []) {
       details: { only: onlyChecks },
     });
   }
-  const only = new Set(onlyChecks);
-  /** `true` when `name` should run — every check when --only was not passed, otherwise exactly the named ones. */
-  const wanted = (name) => only.size === 0 || only.has(name);
 
   const buzzArgs = parseBuzzDoctorArgs(all);
   if (buzzArgs.error) fail(buzzArgs.error);
@@ -355,639 +230,25 @@ export async function run(sub, args = []) {
     return;
   }
 
-  const checks = [];
-  const CONFIG_DIR = configDir();
-
-  // 1. Config directory.
-  if (wanted("config_dir")) try {
-    if (existsSync(CONFIG_DIR) && statSync(CONFIG_DIR).isDirectory()) {
-      checks.push({ name: "config_dir", status: "ok", value: CONFIG_DIR });
-    } else {
-      checks.push({
-        name: "config_dir",
-        status: "missing",
-        value: CONFIG_DIR,
-        hint: "Run 'run402 init' to set up the config directory.",
-      });
-    }
-  } catch (err) {
-    checks.push({
-      name: "config_dir",
-      status: "error",
-      message: err instanceof Error ? err.message : String(err),
-    });
-  }
-
-  // 1b. CLI version/update state. This is advisory: stale or unknown version
-  // state should help the user, not hide the rest of doctor.
-  if (wanted("cli_update")) try {
-    checks.push(await doctorUpdateCheck({ refresh }));
-  } catch (err) {
-    checks.push({
-      name: "cli_update",
-      status: "unknown",
-      message: err instanceof Error ? err.message : String(err),
-    });
-  }
-
-  // 2. Wallet.
-  let walletConfigured = false;
-  if (wanted("wallet")) try {
-    const localWallet = readWallet();
-    if (localWallet) {
-      walletConfigured = true;
-      checks.push({
-        name: "wallet",
-        status: "ok",
-        value: {
-          rail: localWallet.rail,
-          // Don't surface amounts or addresses unless --verbose; agents
-          // checking for config presence don't need wallet details. Never
-          // include keystore secrets in diagnostics, even in verbose mode.
-          ...(verbose && { details: redactWalletForDiagnostics(localWallet) }),
-        },
-      });
-    } else {
-      checks.push({
-        name: "wallet",
-        status: "missing",
-        hint: "Run 'run402 init' to create a wallet.",
-      });
-    }
-  } catch (err) {
-    checks.push({
-      name: "wallet",
-      status: "error",
-      message: err instanceof Error ? err.message : String(err),
-    });
-  }
-
-  // 3. Project keystore. The wallet itself lives in wallet.json (verified
-  // by check 2 above); this checks the per-project keys (anon_key /
-  // service_key) that `run402 projects provision` writes. An empty store is
-  // normal for fresh installs that haven't provisioned a project yet, so
-  // report informationally as `ok` rather than warning.
-  if (wanted("projects")) try {
-    const keystore = loadKeyStore();
-    const projectCount = Object.keys(keystore?.projects ?? {}).length;
-    checks.push({
-      name: "projects",
-      status: "ok",
-      value: { project_count: projectCount },
-      // State-aware parenthetical: only claim the wallet is set up when the
-      // wallet check above actually passed; pre-init installs are pointed
-      // at `run402 init` first.
-      ...(projectCount === 0 && {
-        hint: walletConfigured
-          ? "No projects yet — run 'run402 projects provision' to create one (wallet is already set up)."
-          : "No projects yet — run 'run402 init' to set up the wallet first, then 'run402 projects provision'.",
-      }),
+  let report;
+  try {
+    report = await getSdk().doctor({
+      verbose: all.includes("--verbose"),
+      refresh: all.includes("--refresh"),
+      noScan: all.includes("--no-scan"),
+      scanDir: flagValue(all, "--scan-dir"),
+      dir: flagValue(all, "--dir"),
+      manifest: flagValue(all, "--manifest"),
+      // Scoped to the vault check: every other check is wallet/machine-wide.
+      project: flagValue(all, "--project"),
+      only: onlyChecks,
+      cliUpdate: doctorUpdateCheck,
+      daemonStatus,
     });
   } catch (err) {
-    checks.push({
-      name: "projects",
-      status: "error",
-      message: err instanceof Error ? err.message : String(err),
-    });
+    reportLocalOrSdkError(err);
+    return;
   }
-
-  // 4. API base reachability.
-  if (wanted("api_reachable")) try {
-    const sdk = getSdk();
-    // Use the service.status endpoint (read-only, unauthenticated).
-    const t0 = Date.now();
-    await sdk.service.status();
-    const elapsed = Date.now() - t0;
-    checks.push({
-      name: "api_reachable",
-      status: "ok",
-      ...(verbose && { value: { elapsed_ms: elapsed } }),
-    });
-  } catch (err) {
-    checks.push({
-      name: "api_reachable",
-      status: "error",
-      message: err instanceof Error ? err.message : String(err),
-      hint: "Check the RUN402_API_BASE env var and your network connection.",
-    });
-  }
-
-  // 5. Active tier.
-  //
-  // `status` is a FIXED vocabulary — ok | inactive | frozen | past_due |
-  // dormant | purged | missing | unknown | error — never the tier name and
-  // never a raw gateway string: the old derivation fell through to
-  // `tierName ?? "missing"`, which could put a tier NAME ("team") in the
-  // status slot, and any status outside the ok-allowlist silently flipped
-  // the whole report to ok:false while looking benign. The tier name and the
-  // raw lifecycle ride in value.tier / value.lifecycle instead.
-  if (wanted("tier")) try {
-    const sdk = getSdk();
-    const tier = await sdk.tier.status();
-    const tierName = typeof tier?.tier === "string" && tier.tier.length > 0 ? tier.tier : null;
-    const lifecycle = typeof tier?.organization_lifecycle_state === "string" && tier.organization_lifecycle_state.length > 0
-      ? tier.organization_lifecycle_state
-      : null;
-    const active = tier?.active === true;
-    // Projects this wallet can reach through org membership or a grant —
-    // the tier read already carries them. A wallet whose OWN org-of-one
-    // never bought a tier can still ship into another org's projects, so
-    // "missing" is only a blocker when there is nowhere to ship.
-    const reachableProjects = Array.isArray(tier?.projects) ? tier.projects.length : 0;
-    let status;
-    if (lifecycle !== null && lifecycle !== "active") {
-      status = TIER_LIFECYCLE_STATUSES.has(lifecycle) ? lifecycle : "inactive";
-    } else if (tierName === null) {
-      status = "missing";
-    } else if (!active) {
-      status = "inactive";
-    } else if (lifecycle === null) {
-      status = "unknown";
-    } else {
-      status = "ok";
-    }
-    const value = {
-      tier: tierName,
-      lifecycle,
-      active,
-      organization_lifecycle_state: lifecycle,
-      lease_expires_at: tier?.lease_perpetual === true ? null : tier?.lease_expires_at ?? null,
-      reachable_projects: reachableProjects,
-    };
-    if (status === "ok") {
-      checks.push({ name: "tier", status, value });
-    } else if (status === "missing" && reachableProjects > 0) {
-      checks.push({
-        name: "tier",
-        status,
-        severity: "advisory",
-        value,
-        message: `this wallet's own organization holds no tier, but it can reach ${reachableProjects} project(s) owned by another organization (membership or grant) — deploys to those are unaffected`,
-        hint: "Run 'run402 tier set prototype' only if you want to provision projects under this wallet's own organization.",
-      });
-    } else {
-      checks.push({
-        name: "tier",
-        status,
-        value,
-        message: status === "unknown"
-          ? "tier resolved, but the organization lifecycle could not be determined"
-          : status === "missing"
-            ? "no tier on this wallet's organization and no reachable project — nothing can be provisioned or deployed from here"
-            : status === "inactive"
-              ? `tier '${tierName ?? "(none)"}' is not active${lifecycle && lifecycle !== "active" ? ` (organization lifecycle '${lifecycle}')` : ""}`
-              : `organization lifecycle is '${lifecycle}' — the control plane is gated until the tier is reactivated`,
-        hint: status === "unknown"
-          ? "Tier resolved, but organization lifecycle could not be determined. Check `run402 tier status` before assuming the account is healthy."
-          : "Run 'run402 tier set prototype' to set, renew, or reactivate the tier.",
-      });
-    }
-  } catch (err) {
-    checks.push({
-      name: "tier",
-      status: "error",
-      message: describeCheckFailure("tier status check", err),
-    });
-  }
-
-  // 6. Account health snapshot (v1.55 + v1.56 verification attempt detail).
-  // The checks below all ride the SAME `GET /agent/v1/me/status` read
-  // (runtime_staleness and recovery_posture reuse the response account_health
-  // already pulled),
-  // so the whole block is gated on wanting ANY — --only runtime_staleness
-  // alone still needs this read, but --only-ing none skips it entirely, same
-  // "don't do the work of a check nobody asked for" discipline the rest of
-  // --only follows.
-  if (wanted("account_health") || wanted("runtime_staleness") || wanted("recovery_posture")) try {
-    const sdk = getSdk();
-    const status = await sdk.me.status();
-    const gaps = [];
-    if (status.contact.email_status !== "verified") {
-      // v1.56: prefer the structured email_verification.last_challenge.hint
-      // over the generic "email not verified" message. The gateway computes
-      // a per-reason remediation hint that's actionable for the reader.
-      const ev = status.email_verification;
-      const ch = ev?.last_challenge;
-      if (ch && ch.hint) {
-        const attemptsLine = ch.attempt_count > 0
-          ? ` (${ch.attempt_count}/${ch.attempt_count + ch.remaining_attempts} attempts used, ${ch.remaining_attempts} remaining)`
-          : "";
-        gaps.push(`contact email not verified${attemptsLine}: ${ch.hint}`);
-      } else {
-        gaps.push(`contact email not verified (${status.contact.email_status}) — run 'run402 agent contact --email ...' then reply to the challenge`);
-      }
-    }
-    if (status.contact.passkey_status !== "verified") {
-      gaps.push("contact passkey not bound — run 'run402 login' (or 'run402 agent passkey enroll') after email verification");
-    }
-    // recovery-event-reachability: org-level reachability of mandatory
-    // (recovery/security) notifications. Distinct from the per-wallet contact
-    // check above — an org can be reachable via a member's verified email
-    // even when this wallet has no contact, and vice versa. Omitted by older
-    // gateways.
-    const reach = status.reachability;
-    if (reach && reach.reachable === false) {
-      const skipped = reach.skipped_last_90d > 0
-        ? ` (${reach.skipped_last_90d} notification(s) already skipped in the last 90 days)`
-        : "";
-      gaps.push(`no verified notification recipient — mandatory recovery/security notifications currently reach nobody${skipped}; run 'run402 agent contact --email ...' then reply to the challenge`);
-    }
-    if (Array.isArray(status.skipped_notifications) && status.skipped_notifications.length > 0) {
-      gaps.push(`${status.skipped_notifications.length} notification(s) skipped due to missing verified recipient`);
-    }
-    if (Array.isArray(status.critical_items) && status.critical_items.length > 0) {
-      for (const item of status.critical_items) {
-        gaps.push(`${item.kind}: ${item.detail}`);
-      }
-    }
-    if (wanted("account_health")) {
-      if (gaps.length > 0) {
-        checks.push({
-          name: "account_health",
-          status: "warning",
-          value: { gaps },
-          hint: "Address the above gaps; they're what 'run402 notifications' is designed to surface.",
-        });
-      } else {
-        checks.push({ name: "account_health", status: "ok" });
-      }
-    }
-
-    // 6b. Function runtime staleness (v1.69, capability
-    // function-runtime-rebuild). A deployed function is stale when its Lambda
-    // zip carries an older platform entry wrapper / bundled runtime than the
-    // gateway's current build — a plain redeploy with unchanged source does
-    // NOT refresh it (apply's release diff keys on the source code_hash, not
-    // the wrapper). Read-only signal; refreshing is strictly opt-in. Reuses
-    // the account status fetched above to avoid a second round-trip.
-    if (wanted("runtime_staleness")) {
-      const runtime = status.runtime;
-      if (runtime && typeof runtime.stale_function_count === "number") {
-        if (runtime.stale_function_count > 0) {
-          checks.push({
-            name: "runtime_staleness",
-            status: "warning",
-            value: {
-              stale_function_count: runtime.stale_function_count,
-              stale_functions: runtime.stale_functions ?? [],
-            },
-            hint: `${runtime.stale_function_count} function(s) are running an older platform runtime. Run 'run402 functions rebuild --all' to refresh (re-bundles from your stored source; no source change).`,
-          });
-        } else {
-          checks.push({
-            name: "runtime_staleness",
-            status: "ok",
-            value: { stale_function_count: 0 },
-          });
-        }
-      } else {
-        // Gateway older than v1.69 doesn't surface the runtime block.
-        checks.push({
-          name: "runtime_staleness",
-          status: "skipped",
-          ...(verbose && { hint: "account status has no 'runtime' block; requires v1.69+ gateway." }),
-        });
-      }
-    }
-
-    // 6c. Org recovery posture (vault-recovery-custody). One entry per
-    // vault-owning org the caller can see; rides the same account-status
-    // read. Evidence levels, not guarantees: "configured" names what the
-    // platform VERIFIED — it can never observe whether an off-platform
-    // passkey or saved code still exists. The two headline facts mirror the
-    // feed events org_recovery_posture_degraded/_recovered; each gap line
-    // carries its remedy (Anticipatory), same shape as the reachability gaps
-    // above.
-    if (wanted("recovery_posture")) {
-      const posture = status.recovery_posture;
-      if (!Array.isArray(posture)) {
-        // Gateway older than vault-recovery-custody doesn't surface it.
-        checks.push({
-          name: "recovery_posture",
-          status: "skipped",
-          ...(verbose && { hint: "account status has no 'recovery_posture' block; requires a vault-recovery-custody gateway." }),
-        });
-      } else if (posture.length === 0) {
-        // No vault-owning org in the caller's view — nothing to lose, nothing to advise.
-        checks.push({ name: "recovery_posture", status: "ok", value: { orgs: [] } });
-      } else {
-        const gaps = [];
-        for (const org of posture) {
-          const label = `org ${org.org_id} (${org.vault_count} vault${org.vault_count === 1 ? "" : "s"})`;
-          if (org.control_plane_configured === false) {
-            gaps.push(`${label}: no human owner with a working control-plane login — if this org's agent machine dies, nobody can sign in to recover it. Invite a backup human (run402 orgs invite create ${org.org_id} --email <their-email> --role owner) and have them complete login at console.run402.com.`);
-          }
-          if (org.source_backup_configured === false) {
-            gaps.push(`${label}: no human member holds a working source-access key — vault history has no member-side decryption backup. Have a member complete source enrollment at console.run402.com/account → Source access.`);
-          }
-          if (org.custody_legacy_present === true) {
-            gaps.push(`${label}: a member key is still on single-credential legacy custody (one passkey, no recovery code — losing that one credential loses source access). Re-enroll at console.run402.com/account to move to wrapper custody with a recovery code.`);
-          }
-        }
-        checks.push(
-          gaps.length > 0
-            ? {
-                name: "recovery_posture",
-                status: "warning",
-                value: { orgs: posture, gaps },
-                hint: "These are the org's disaster-recovery backstops — the same facts arrive as org_recovery_posture_degraded/_recovered feed events. After enrolling, export the recovery bundle (run402 repos recovery-bundle) and store it separately from the code.",
-              }
-            : { name: "recovery_posture", status: "ok", value: { orgs: posture } },
-        );
-      }
-    }
-  } catch (err) {
-    // The account status endpoint may not be reachable on the target API. Don't fail the whole
-    // doctor over it — emit as a soft warning. The runtime-staleness check
-    // rides on the same fetch, so skip it for the same reason.
-    if (wanted("account_health")) checks.push({
-      name: "account_health",
-      status: "skipped",
-      message: describeCheckFailure("account status check", err),
-      ...(verbose && { hint: "GET /agent/v1/me/status not reachable." }),
-    });
-    if (wanted("runtime_staleness")) checks.push({
-      name: "runtime_staleness",
-      status: "skipped",
-      message: describeCheckFailure("account status check", err),
-    });
-    if (wanted("recovery_posture")) checks.push({
-      name: "recovery_posture",
-      status: "skipped",
-      message: describeCheckFailure("account status check", err),
-    });
-  }
-
-  // 6c. vault (add-vault). Doctor was completely silent about the vault
-  // even when `vault_policy: required` was the single thing that would break
-  // the project's next deploy (dogfood #1, finding D1) — and doctor is where a
-  // user looks when something is wrong. It also prints WHERE the keystore is:
-  // "whole-keystore loss is terminal" was stated three times across this
-  // surface while the directory to back up was stated nowhere (finding D2).
-  //
-  // Read-only and best-effort in every branch: no project, no vault, or a
-  // gateway that does not know vault are all ordinary and report `skipped`
-  // or `ok`, never a doctor failure. A vault-only project that has never
-  // deployed is a first-class shape (protocol D183), so its mere absence of a
-  // deploy raises nothing.
-  //
-  // TARGETING: when cwd is a repository
-  // with its own pinned repo id or run402/origin remote, doctor checks THAT
-  // vault, not the profile's active project — the same pin > remote >
-  // RUN402_PROJECT_ID env > active-project order every other vault verb
-  // follows (`vault-target.mjs`). An explicit `--project <project_id>` outranks
-  // all of that (the resolver's own top tier), same as every other vault
-  // verb's `--project`.
-  if (wanted("vault")) {
-    // vault-persistent-helper: a bounded LOCAL probe of the resident
-    // helper engine — {running:false} is a fine answer, never a finding
-    // (the daemon is an accelerator, not a dependency).
-    const daemonInfo = await (async () => {
-      try {
-        const { daemonSocketPath } = await import("./daemon-path.mjs");
-        const { connect: netConnect } = await import("node:net");
-        return await new Promise((resolve) => {
-          let settled = false;
-          const done = (v) => {
-            if (!settled) {
-              settled = true;
-              resolve(v);
-            }
-          };
-          const socket = netConnect(daemonSocketPath());
-          const timer = setTimeout(() => {
-            socket.destroy();
-            done({ running: false });
-          }, 500);
-          let data = "";
-          socket.on("data", (c) => {
-            data += c.toString("utf8");
-            const nl = data.indexOf("\n");
-            if (nl === -1) return;
-            clearTimeout(timer);
-            try {
-              const { t: _t, ...rest } = JSON.parse(data.slice(0, nl));
-              done({ running: true, ...rest });
-            } catch {
-              done({ running: false });
-            }
-            socket.end();
-          });
-          socket.once("error", () => {
-            clearTimeout(timer);
-            done({ running: false });
-          });
-          socket.once("connect", () => socket.write('{"t":"status"}\n'));
-        });
-      } catch {
-        return { running: false };
-      }
-    })();
-    const target = await resolveVaultTarget({ repoDir: process.cwd(), explicitProjectId: projectOverride ?? undefined });
-    const projectId = target.project_id ?? null;
-    const repoId = target.repo_id ?? null;
-    if (!projectId && !repoId) {
-      checks.push({
-        name: "vault",
-        status: "skipped",
-        ...(verbose && { hint: "no active project — run 'run402 projects use <project_id>' to check its vault." }),
-      });
-    } else {
-      try {
-        const gv = await getSdk().repos.status({
-          ...(repoId ? { repo_id: repoId } : { project_id: projectId }),
-          repo_dir: process.cwd(),
-        });
-        const value = {
-          project_id: gv.project_id ?? projectId,
-          repo_id: gv.repo_id,
-          vault: gv.vault === null ? null : "allocated",
-          // vault-byo-primary-bucket task 3.5 — absent-or-"managed" is
-          // byte-identical to before this fold for every non-BYO vault.
-          storage_profile: gv.vault?.storage_profile ?? null,
-          byo_destination: gv.vault?.byo_destination ?? null,
-          vault_policy: gv.vault_policy,
-          keystore_root: gv.keystore.root,
-          can_sign: gv.keystore.can_sign,
-          holds_repo_key: gv.keystore.holds_repo_key,
-          pending_overrides: gv.pending_overrides,
-          pins: gv.pins,
-          remote: gv.remote,
-          // dogfood item 2: `null` (unknown) or <= 1 means the single-principal
-          // V0-A terminal-loss statement below is honest; >= 2 means the SDK
-          // already proved a second covering recipient, so the hint switches
-          // to the durability sentence instead of the terminal-loss claim.
-          covering_recipients: gv.covering_recipients ?? null,
-          daemon: daemonInfo,
-          // vault-multi-writer (rev 47) task 6.2 — this machine's own
-          // standing on the vault's chain-verified writer set. `null` only
-          // when there is no vault at all (nothing to be a writer OF).
-          // `read_only_vault` takes priority over the caller's own standing
-          // — the D228 terminal state blocks EVERY push regardless of who
-          // is asking.
-          writer: gv.vault === null
-            ? null
-            : gv.vault.read_only_terminal
-              ? "read_only_vault"
-              : gv.vault.writer_set?.writers.some((w) => w.writer_key_id === gv.keystore.identity_fingerprint)
-                ? "active"
-                : gv.vault.pending_writers?.some((p) => p.writer_key_id === gv.keystore.identity_fingerprint)
-                  ? "pending"
-                  : "not_admitted",
-        };
-        const gaps = [];
-        if (value.writer === "read_only_vault") {
-          gaps.push("this vault has lost its last writer (D228 read-only terminal) — it still serves reads, but no push can be admitted until a new writer is admitted through a recovery path");
-        } else if (value.writer === "pending") {
-          gaps.push("this machine's key is an eligible writer candidate but not yet admitted — run 'run402 repos access sync' if you already hold writer standing on this vault, or ask a current writer to run any vault operation");
-        } else if (value.writer === "not_admitted") {
-          gaps.push("this machine's key is not an active writer on this vault — a push from here is refused VAULT_WRITER_NOT_ADMITTED; ask a current writer to admit you (org membership at role developer+ and a published signing key make you eligible)");
-        }
-        // The one that actually breaks the next deploy: the project demands a
-        // vaulted capture and THIS machine cannot produce one.
-        if (gv.vault_policy === "required" && !gv.keystore.holds_repo_key) {
-          gaps.push(
-            "vault_policy is 'required' but this machine holds no key for the vault — a deploy from here is refused with VAULT_CLIENT_UPGRADE_REQUIRED. " +
-            "Run 'run402 repos create --project <project_id>' (idempotent; resolves to the existing repo), or 'run402 repos policy grandfathered --reason <why>' to un-gate the project.",
-          );
-        } else if (gv.vault_policy === "required" && !gv.keystore.can_sign) {
-          gaps.push("vault_policy is 'required' and this keystore is read-only (no signing key) — it can verify but cannot publish the capture a deploy needs");
-        }
-        if (gv.pending_overrides > 0) {
-          gaps.push(`${gv.pending_overrides} unvaulted-override journal(s) are still open — run 'run402 repos capture' to drain them`);
-        }
-        // `matches` is a TRI-STATE: `false` alone is
-        // a real mismatch. `null` (a slug-form remote not yet resolved on
-        // this machine) is not evidence of anything wrong — a bare
-        // `!gv.remote.matches` would treat null the same as false and warn.
-        if (gv.remote && gv.remote.matches === false) {
-          gaps.push(`the '${gv.remote.name}' git remote points at a different project than ${value.project_id} (${gv.remote.url})`);
-        }
-        // Echoed exactly as the SDK reported them — including the
-        // doctor-persistent `grandfathered` advisory it owns.
-        for (const w of gv.warnings ?? []) gaps.push(`${w.kind}: ${w.message}`);
-
-        // vault-mirror-and-recover task 4.3 + vault-mirror-default:
-        // mirror currency, reported ALONGSIDE (never in place of) the
-        // deploy-related gaps above, and never blocking `run402 deploy`'s
-        // own gate — the vault lane's outcome is unaffected regardless of
-        // mirror state (design D6). `mirror_currency` mirrors `mirror
-        // status`'s own tri-state: `current` / `stale` / `unknown` (mirror
-        // unreachable or vault unread). Only STALE is actionable enough to
-        // become a warning gap; a vault with no successful mirror copy yet
-        // carries the SDK-computed `vault_unmirrored` finding — named and
-        // standing (vault-mirror-default supersedes the old anonymous
-        // `advisory` string), echoed verbatim, and deliberately NOT pushed
-        // into `gaps`: informational, never blocking, computed client-side
-        // only, cleared by the first successful mirror write or sync.
-        if (gv.vault !== null && value.repo_id) {
-          try {
-            const mirrorStatus = await getSdk().repos.mirrorStatus({ repo_id: value.repo_id, is_byo: value.storage_profile === "byo" });
-            value.vault_mirror = {
-              configured: mirrorStatus.configured,
-              destination: mirrorStatus.destination,
-              mirrored_generation: mirrorStatus.mirrored_generation,
-              newest_generation: mirrorStatus.newest_generation,
-              is_current: mirrorStatus.is_current,
-              last_success_at: mirrorStatus.last_success_at,
-              finding: mirrorStatus.finding,
-              validity_not_freshness: mirrorStatus.validity_not_freshness,
-              keystore_still_required: mirrorStatus.keystore_still_required,
-            };
-            if (mirrorStatus.is_current === false) {
-              gaps.push(`the ciphertext mirror at ${mirrorStatus.destination} is STALE (mirrored generation ${mirrorStatus.mirrored_generation ?? "(none)"}, vault newest ${mirrorStatus.newest_generation ?? "(none)"}) — ${mirrorStatus.closing_command}`);
-            }
-          } catch {
-            // Best-effort: a mirror status read failing is never a doctor
-            // failure, and never touches the deploy-related gaps above.
-          }
-        }
-
-        // vault-byo-primary-bucket task 3.5 — unconditional, independent
-        // of mirror status (D7); imported from the canonical constants, never
-        // paraphrased.
-        const byoDisclosure = value.storage_profile === "byo" ? ` Storage: byo (${value.byo_destination ?? "(unknown)"}) — ${VAULT_BYO_NO_PAYLOAD_COPY_STATEMENT}` : "";
-        checks.push({
-          name: "vault",
-          status: gaps.length > 0 ? "warning" : "ok",
-          value: gaps.length > 0 ? { ...value, gaps } : value,
-          hint: (gv.vault === null
-            ? `No vault for this project (that is a normal shape). Allocate one with 'run402 repos create --project <project_id>'. Keystore: ${gv.keystore.root}`
-            : gv.durability_statement
-              ? `Back up ${gv.keystore.root} anyway — ${gv.durability_statement} (covering_recipients: ${gv.covering_recipients})`
-              : `Back up ${gv.keystore.root} — whole-machine or whole-keystore loss is terminal for vault history.`) + byoDisclosure,
-        });
-      } catch (err) {
-        // A gateway without vault, an unreachable API, or a project this
-        // wallet cannot see. None of those is a local health problem.
-        checks.push({
-          name: "vault",
-          status: "skipped",
-          message: describeCheckFailure("vault status check", err),
-        });
-      }
-    }
-  }
-
-  // 7. Source-tree scan (auth-aware-ssr Section 9). Detects hallucinated
-  // SDK names, state-changing GETs, auth.* in prerendered pages, and
-  // direct mutation of internal.sessions.authz_version. Hits with severity
-  // `error` block deploy (`run402 deploy` wraps doctor and respects exit
-  // code). Skipped via --no-scan when the user wants config-only checks, and
-  // by any --only that omits it — on a monorepo this check's findings can
-  // otherwise bury the vault diagnosis under thousands of hits.
-  if (!skipScan && wanted("source_scan")) {
-    try {
-      const scope = await resolveApplicationScope({ dir: flagValue(all, "--dir") ?? undefined, manifest: flagValue(all, "--manifest") ?? undefined });
-      if (!scanDirOverride && !scope.selected) {
-        checks.push({ name: "source_scan", status: "skipped", value: { scope: "unscoped", app_root: scope.app_root }, message: "No application selected. Run doctor --dir <app> or --manifest <path>; sibling applications are not deployment blockers." });
-      } else {
-      const scanRoot = scanDirOverride ?? resolveScanRoot(scope.app_root);
-      const scanContext = { scope: scanDirOverride ? "explicit_scan_directory" : "application", app_root: scope.app_root, manifest_path: scope.manifest_path };
-      let findings;
-      if (scanDirOverride) findings = scanSourceTree(scanRoot, { cwd: scope.app_root });
-      else {
-        const selected = await loadApplicationScanInput(scope.manifest_path);
-        scanContext.build_outputs = selected.build_deferred ? "deferred_until_build" : "not_deferred";
-        findings = scanDeploymentSources(selected.spec, scope.app_root).findings;
-      }
-      const errorFindings = findings.filter((f) => f.severity === SCAN_SEVERITY.ERROR);
-      const warnFindings = findings.filter((f) => f.severity === SCAN_SEVERITY.WARN);
-      if (findings.length === 0) {
-        checks.push({ name: "source_scan", status: "ok", value: { ...scanContext, scan_root: scanRoot, file_count_with_findings: 0 } });
-      } else {
-        checks.push({
-          name: "source_scan",
-          status: errorFindings.length > 0 ? "error" : "warning",
-          ...(scanDirOverride ? { severity: "advisory" } : {}),
-          value: {
-            ...scanContext,
-            scan_root: scanRoot,
-            findings: errorFindings.length + warnFindings.length,
-            errors: errorFindings.length,
-            warnings: warnFindings.length,
-            details: findings,
-          },
-          hint: errorFindings.length > 0
-            ? scanDirOverride ? "Findings are from the explicit arbitrary scan directory; they do not establish that an application deploy will be refused." : "Fix the findings in this application. The same scoped source scan gates up and deploy."
-            : "Source scan emitted warnings (non-blocking). Review and address when convenient.",
-        });
-      }
-      }
-    } catch (err) {
-      checks.push({
-        name: "source_scan",
-        status: "error",
-        value: { code: err?.code ?? "APPLICATION_SCAN_FAILED", details: err?.details ?? null },
-        message: err instanceof Error ? err.message : String(err),
-      });
-    }
-  }
-
-  // `ok` is structural — "no check is blocking" — never an allowlist of
-  // status strings. Advisory warnings ride in `warnings[]` and never change
-  // the exit code; `blocking[]` is what to fix when `ok` is false.
-  const report = buildDoctorReport(checks);
   console.log(JSON.stringify(report, null, 2));
   process.exit(report.ok ? 0 : 1);
 }

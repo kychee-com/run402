@@ -19,7 +19,7 @@
 
 import { existsSync, statSync } from "node:fs";
 import { getConfigDir } from "../../core-dist/config.js";
-import { readWallet } from "../../core-dist/wallet.js";
+import { readLocalWallet } from "./wallets.js";
 import { loadKeyStore } from "../../core-dist/keystore.js";
 import { LocalError } from "../errors.js";
 import { VAULT_BYO_NO_PAYLOAD_COPY_STATEMENT } from "../namespaces/vault.crypto.js";
@@ -245,7 +245,7 @@ export async function runDoctor(r: Run402, opts: DoctorOptions = {}): Promise<Do
   // 2. Wallet.
   let walletConfigured = false;
   if (wanted("wallet")) try {
-    const localWallet = readWallet();
+    const localWallet = readLocalWallet();
     if (localWallet) {
       walletConfigured = true;
       checks.push({
@@ -261,6 +261,9 @@ export async function runDoctor(r: Run402, opts: DoctorOptions = {}): Promise<Do
       checks.push({ name: "wallet", status: "missing", hint: "Run 'run402 init' to create a wallet." });
     }
   } catch (err) {
+    // A wallet file that exists but is unreadable stops the run: nothing
+    // after it can be trusted to describe this machine.
+    if ((err as { code?: string } | null)?.code === "BAD_WALLET_FILE") throw err;
     checks.push({ name: "wallet", status: "error", message: message(err) });
   }
 

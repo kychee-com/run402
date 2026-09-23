@@ -16,7 +16,8 @@
 
 import { mkdirSync } from "node:fs";
 import { configureApiBase, getActiveProfile, getConfigDir } from "../../core-dist/config.js";
-import { readWallet, saveWallet, type WalletData } from "../../core-dist/wallet.js";
+import { saveWallet, type WalletData } from "../../core-dist/wallet.js";
+import { readLocalWallet } from "./wallets.js";
 import { getActiveProjectId, loadKeyStore } from "../../core-dist/keystore.js";
 import { readMeta } from "../../core-dist/profiles.js";
 import { LocalError, type NextAction } from "../errors.js";
@@ -228,7 +229,7 @@ export async function runInit(r: InitSdk, client: Client, opts: InitOptions = {}
   const isMpp = requestedRail === "mpp";
   const isLightning = requestedRail === "lightning";
 
-  const existingWallet = readWallet();
+  const existingWallet = readLocalWallet();
   // Creating the wallet writes a private key: the same refusal as wallets.create.
   if (!existingWallet) gateSecret(client, "wallets.create");
   if (existingWallet?.rail && existingWallet.rail !== requestedRail && !opts.switchRail) {

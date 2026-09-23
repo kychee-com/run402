@@ -2078,16 +2078,12 @@ describe("CLI/MCP SDK-boundary guard", () => {
       // hero). Those allowlist entries are kept out so a regression that
       // reintroduces raw HTTP from a tool file fails the guard.
       ["cli/lib/wallets.mjs", [/\bfetch\(TEMPO_RPC\b/]], // Tempo faucet/RPC
-      ["cli/lib/init.mjs", [/\bfetch\(TEMPO_RPC\b/]], // Tempo faucet/RPC
       ["cli/lib/ci.mjs", [/\bfetch\(`https:\/\/api\.github\.com\/repos\//]], // GitHub repository lookup
       ["src/tools/init.ts", [/\bfetch\(TEMPO_RPC\b/]], // Tempo faucet/RPC
       // These are the intentional SDK buyer calls added by GH-607. The guard's
       // lexical `fetch(` scan cannot distinguish `sdk.pay.fetch` from raw HTTP.
       ["cli/lib/pay.mjs", [/\.pay\.fetch\(/]],
       ["src/tools/pay-url.ts", [/\.pay\.fetch\(/]],
-      // Doctor deliberately measures anonymous origin reachability itself so
-      // DNS/TLS/redirect failures remain distinguishable from SDK/API errors.
-      ["cli/lib/buzz-doctor.mjs", [/\bfetch\(url,/]],
       // doctor-source-scan.mjs documents the canonical fix string for
       // browser-bearer scans — the string itself contains "auth.fetch()"
       // as the recommended replacement, not a real fetch call.

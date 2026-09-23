@@ -193,7 +193,7 @@ The client could not complete this operation. Inspect its typed error kind, mess
 
 <h2 id="BAD_WALLET_FILE">BAD_WALLET_FILE</h2>
 
-Owner: `public:cli/lib/config.mjs`.
+Owner: `public:sdk/src/node/wallets.ts`, `public:cli/lib/config.mjs`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
@@ -775,7 +775,7 @@ The client could not complete this operation. Inspect its typed error kind, mess
 
 <h2 id="RAIL_SWITCH_REQUIRES_CONFIRM">RAIL_SWITCH_REQUIRES_CONFIRM</h2>
 
-Owner: `public:sdk/src/node/init.ts`, `public:cli/lib/init.mjs`.
+Owner: `public:sdk/src/node/init.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 

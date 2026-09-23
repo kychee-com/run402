@@ -991,6 +991,10 @@
       "owners": [
         {
           "owner": "public",
+          "source": "sdk/src/node/wallets.ts"
+        },
+        {
+          "owner": "public",
           "source": "cli/lib/config.mjs"
         }
       ],
@@ -5890,10 +5894,6 @@
         {
           "owner": "public",
           "source": "sdk/src/node/init.ts"
-        },
-        {
-          "owner": "public",
-          "source": "cli/lib/init.mjs"
         }
       ],
       "topic": "/errors/client/#RAIL_SWITCH_REQUIRES_CONFIRM"
