@@ -1,6 +1,11 @@
 /**
- * sync.test.ts — Ensures MCP, CLI, and OpenClaw interfaces stay in sync
- * with the Run402 API surface defined in llms.txt.
+ * sync.test.ts — Ensures the CLI, OpenClaw, and the SDK stay in sync with the
+ * Run402 API surface, and pins the MCP server's fixed eight tools.
+ *
+ * MCP carries no per-capability column: every capability the SDK exposes is
+ * reached from MCP through the `run` tool, so the MCP half of this gate is the
+ * literal MCP_TOOLS list (exact registration) and a doc-drift check that no
+ * public surface names an MCP tool outside it.
  *
  * Run:  node --test --import tsx sync.test.ts
  *       npm run test:sync
@@ -271,8 +276,6 @@ interface Capability {
   id: string;
   /** API endpoint(s) from llms.txt */
   endpoint: string;
-  /** Expected MCP tool name, or null if intentionally excluded */
-  mcp: string | null;
   /** Expected CLI command as "module:sub" or "module", or null */
   cli: string | null;
   /** Expected OpenClaw command (must match CLI if both non-null) */
@@ -281,290 +284,284 @@ interface Capability {
 
 const SURFACE: Capability[] = [
   // ── Init / status (local-only) ──────────────────────────────────────────
-  { id: "up",                endpoint: "(compound local+gateway action)",       mcp: "up",                            cli: "up",                  openclaw: "up" },
-  { id: "init",              endpoint: "(local)",                              mcp: "init",                          cli: "init",                openclaw: "init" },
-  { id: "pay_url",           endpoint: "(external x402 URL)",                  mcp: "pay_url",                       cli: "pay",                 openclaw: "pay" },
+  { id: "up",                endpoint: "(compound local+gateway action)",       cli: "up",                  openclaw: "up" },
+  { id: "init",              endpoint: "(local)",                              cli: "init",                openclaw: "init" },
+  { id: "pay_url",           endpoint: "(external x402 URL)",                  cli: "pay",                 openclaw: "pay" },
   // Redeeming is on every surface on purpose: a promo code can arrive in a
-  // pasted prompt to a shell agent, an MCP client with no shell, or a human's
-  // OpenClaw session, and the code is worthless to whichever one cannot use it.
-  { id: "redeem_voucher",    endpoint: "POST /vouchers/v1/redemptions",        mcp: "redeem_voucher",                cli: "redeem",              openclaw: "redeem" },
-  { id: "status",            endpoint: "(local)",                              mcp: "status",                        cli: "status",              openclaw: "status" },
-  // Identity-link mutations stay out of MCP v1: the CLI/OpenClaw group hands
-  // public content to Buzz's signer boundary and never accepts a Nostr secret.
-  { id: "identity_links",    endpoint: "/identity-links/v1 + /identity-link-proofs/v1/:id", mcp: null, cli: "identity:link", openclaw: "identity:link" },
-  // Buzz signing remains outside MCP: status and every mutation preserve an
-  // exact CLI/SDK handoff without collecting Nostr private keys.
-  { id: "buzz_status",       endpoint: "GET /agent/v1/whoami",                               mcp: null, cli: "buzz:status",  openclaw: "buzz:status" },
+  // pasted prompt to a shell agent, an MCP client (a `run` snippet), or a
+  // human's OpenClaw session, and the code is worthless to whichever one cannot use it.
+  { id: "redeem_voucher",    endpoint: "POST /vouchers/v1/redemptions",        cli: "redeem",              openclaw: "redeem" },
+  { id: "status",            endpoint: "(local)",                              cli: "status",              openclaw: "status" },
+  // The CLI/OpenClaw group hands public content to Buzz's signer boundary and
+  // never accepts a Nostr secret.
+  { id: "identity_links",    endpoint: "/identity-links/v1 + /identity-link-proofs/v1/:id", cli: "identity:link", openclaw: "identity:link" },
+  // Status and every mutation preserve an exact CLI/SDK handoff without
+  // collecting Nostr private keys.
+  { id: "buzz_status",       endpoint: "GET /agent/v1/whoami",                               cli: "buzz:status",  openclaw: "buzz:status" },
   // The one goal-shaped `buzz adopt` command owns the canonical offer flow and
   // its explicitly advanced direct-adoption compatibility path.
-  { id: "buzz_adopt",        endpoint: "/buzz-human-adoption-offers/v1 + /buzz-human-adoptions/v1", mcp: null, cli: "buzz:adopt", openclaw: "buzz:adopt" },
-  { id: "buzz_install",      endpoint: "/buzz-community-installations/v1",                    mcp: null, cli: "buzz:install", openclaw: "buzz:install" },
-  { id: "buzz_enroll",       endpoint: "/buzz-agent-enrollments/v1",                          mcp: null, cli: "buzz:enroll",  openclaw: "buzz:enroll" },
-  { id: "buzz_join",         endpoint: "/buzz-community-installations/v1/:id/teammates",      mcp: null, cli: "buzz:join",    openclaw: "buzz:join" },
-  { id: "buzz_approve",      endpoint: "POST /buzz-agent-enrollments/v1/:id/approve",          mcp: null, cli: "buzz:approve", openclaw: "buzz:approve" },
-  { id: "buzz_deny",         endpoint: "POST /buzz-agent-enrollments/v1/:id/deny",             mcp: null, cli: "buzz:deny",    openclaw: "buzz:deny" },
-  { id: "buzz_revoke",       endpoint: "DELETE /buzz-agent-enrollments/v1/:id",                mcp: null, cli: "buzz:revoke",  openclaw: "buzz:revoke" },
+  { id: "buzz_adopt",        endpoint: "/buzz-human-adoption-offers/v1 + /buzz-human-adoptions/v1", cli: "buzz:adopt", openclaw: "buzz:adopt" },
+  { id: "buzz_install",      endpoint: "/buzz-community-installations/v1",                    cli: "buzz:install", openclaw: "buzz:install" },
+  { id: "buzz_enroll",       endpoint: "/buzz-agent-enrollments/v1",                          cli: "buzz:enroll",  openclaw: "buzz:enroll" },
+  { id: "buzz_join",         endpoint: "/buzz-community-installations/v1/:id/teammates",      cli: "buzz:join",    openclaw: "buzz:join" },
+  { id: "buzz_approve",      endpoint: "POST /buzz-agent-enrollments/v1/:id/approve",          cli: "buzz:approve", openclaw: "buzz:approve" },
+  { id: "buzz_deny",         endpoint: "POST /buzz-agent-enrollments/v1/:id/deny",             cli: "buzz:deny",    openclaw: "buzz:deny" },
+  { id: "buzz_revoke",       endpoint: "DELETE /buzz-agent-enrollments/v1/:id",                cli: "buzz:revoke",  openclaw: "buzz:revoke" },
   // Project-event routing into a Buzz channel (add-buzz-project-event-routing).
-  // Mutations stay off MCP (owner step-up + the authorization handoff live on
-  // the CLI/SDK boundary); the two reads are MCP tools because "is the route
-  // healthy / did the delivery land" is exactly the mid-session question an
-  // agent asks, and neither response carries credential material.
-  { id: "buzz_notify_configure",  endpoint: "POST /buzz-project-event-routes/v1",                       mcp: null, cli: "buzz:notifications:configure",  openclaw: "buzz:notifications:configure" },
+  // Mutations need owner step-up and the authorization handoff on the CLI/SDK
+  // boundary; the two reads answer "is the route healthy / did the delivery
+  // land", and neither response carries credential material.
+  { id: "buzz_notify_configure",  endpoint: "POST /buzz-project-event-routes/v1",                       cli: "buzz:notifications:configure",  openclaw: "buzz:notifications:configure" },
   // One surface member covers both reads on each side: the CLI's `status`
   // takes either --org (list) or a route id (get), and get_buzz_route with the
   // route id omitted lists (the get_escalation precedent — the agent's loop is
-  // "check MY route"). The list row carries the CLI command, the get row the
-  // MCP tool, so neither inventory double-counts.
-  { id: "buzz_notify_list",       endpoint: "GET /buzz-project-event-routes/v1?org_id=...",             mcp: null, cli: "buzz:notifications:status",     openclaw: "buzz:notifications:status" },
-  { id: "buzz_notify_get",        endpoint: "GET /buzz-project-event-routes/v1/:id",                    mcp: "get_buzz_route", cli: null, openclaw: null },
-  { id: "buzz_notify_test",       endpoint: "POST /buzz-project-event-routes/v1/:id/test",              mcp: null, cli: "buzz:notifications:test",       openclaw: "buzz:notifications:test" },
-  { id: "buzz_notify_deliveries", endpoint: "GET /buzz-project-event-routes/v1/:id/deliveries",         mcp: "list_buzz_route_deliveries", cli: "buzz:notifications:deliveries", openclaw: "buzz:notifications:deliveries" },
-  { id: "buzz_notify_pause",      endpoint: "POST /buzz-project-event-routes/v1/:id/pause",             mcp: null, cli: "buzz:notifications:pause",      openclaw: "buzz:notifications:pause" },
-  { id: "buzz_notify_resume",     endpoint: "POST /buzz-project-event-routes/v1/:id/resume",            mcp: null, cli: "buzz:notifications:resume",     openclaw: "buzz:notifications:resume" },
-  { id: "buzz_notify_rotate",     endpoint: "POST /buzz-project-event-routes/v1/:id/rotate",            mcp: null, cli: "buzz:notifications:rotate",     openclaw: "buzz:notifications:rotate" },
-  { id: "buzz_notify_revoke",     endpoint: "DELETE /buzz-project-event-routes/v1/:id",                 mcp: null, cli: "buzz:notifications:revoke",     openclaw: "buzz:notifications:revoke" },
+  // "check MY route"). The list row carries the CLI command and the get row
+  // the SDK read, so neither inventory double-counts.
+  { id: "buzz_notify_list",       endpoint: "GET /buzz-project-event-routes/v1?org_id=...",             cli: "buzz:notifications:status",     openclaw: "buzz:notifications:status" },
+  { id: "buzz_notify_get",        endpoint: "GET /buzz-project-event-routes/v1/:id",                    cli: null, openclaw: null },
+  { id: "buzz_notify_test",       endpoint: "POST /buzz-project-event-routes/v1/:id/test",              cli: "buzz:notifications:test",       openclaw: "buzz:notifications:test" },
+  { id: "buzz_notify_deliveries", endpoint: "GET /buzz-project-event-routes/v1/:id/deliveries",         cli: "buzz:notifications:deliveries", openclaw: "buzz:notifications:deliveries" },
+  { id: "buzz_notify_pause",      endpoint: "POST /buzz-project-event-routes/v1/:id/pause",             cli: "buzz:notifications:pause",      openclaw: "buzz:notifications:pause" },
+  { id: "buzz_notify_resume",     endpoint: "POST /buzz-project-event-routes/v1/:id/resume",            cli: "buzz:notifications:resume",     openclaw: "buzz:notifications:resume" },
+  { id: "buzz_notify_rotate",     endpoint: "POST /buzz-project-event-routes/v1/:id/rotate",            cli: "buzz:notifications:rotate",     openclaw: "buzz:notifications:rotate" },
+  { id: "buzz_notify_revoke",     endpoint: "DELETE /buzz-project-event-routes/v1/:id",                 cli: "buzz:notifications:revoke",     openclaw: "buzz:notifications:revoke" },
   // The one PATCH verb with a CLI spelling: set/clear the agent a crash or
   // incident pages. The rest of the PATCH surface stays SDK-only.
-  { id: "buzz_notify_on_call",    endpoint: "PATCH /buzz-project-event-routes/v1/:id",                  mcp: null, cli: "buzz:notifications:on-call",    openclaw: "buzz:notifications:on-call" },
+  { id: "buzz_notify_on_call",    endpoint: "PATCH /buzz-project-event-routes/v1/:id",                  cli: "buzz:notifications:on-call",    openclaw: "buzz:notifications:on-call" },
   // The scope verb: a route names its projects explicitly, so a project an
   // agent provisions later is added here (same PATCH, project_ids).
-  { id: "buzz_notify_projects",   endpoint: "PATCH /buzz-project-event-routes/v1/:id",                  mcp: null, cli: "buzz:notifications:projects",   openclaw: "buzz:notifications:projects" },
-  { id: "buzz_notify_scope",      endpoint: "PATCH /buzz-project-event-routes/v1/:id",                  mcp: null, cli: "buzz:notifications:scope",      openclaw: "buzz:notifications:scope" },
+  { id: "buzz_notify_projects",   endpoint: "PATCH /buzz-project-event-routes/v1/:id",                  cli: "buzz:notifications:projects",   openclaw: "buzz:notifications:projects" },
+  { id: "buzz_notify_scope",      endpoint: "PATCH /buzz-project-event-routes/v1/:id",                  cli: "buzz:notifications:scope",      openclaw: "buzz:notifications:scope" },
 
   // ── Named wallets / profiles (local-only management; selection via --wallet) ─
-  { id: "wallets_list",      endpoint: "(local)",                              mcp: null, cli: "wallets:list",     openclaw: "wallets:list" },
-  { id: "wallets_current",   endpoint: "(local)",                              mcp: "wallet_status", cli: "wallets:current",  openclaw: "wallets:current" },
-  { id: "wallets_new",       endpoint: "(local)",                              mcp: null, cli: "wallets:new",      openclaw: "wallets:new" },
-  { id: "wallets_use",       endpoint: "(local)",                              mcp: null, cli: "wallets:use",      openclaw: "wallets:use" },
-  { id: "wallets_rename",    endpoint: "(local)",                              mcp: null, cli: "wallets:rename",   openclaw: "wallets:rename" },
-  { id: "wallets_bind",      endpoint: "(local)",                              mcp: null, cli: "wallets:bind",     openclaw: "wallets:bind" },
-  { id: "wallets_unbind",    endpoint: "(local)",                              mcp: null, cli: "wallets:unbind",   openclaw: "wallets:unbind" },
-  { id: "wallets_import",    endpoint: "(local)",                              mcp: null, cli: "wallets:import",   openclaw: "wallets:import" },
-  { id: "wallets_rm",        endpoint: "(local)",                              mcp: null, cli: "wallets:rm",       openclaw: "wallets:rm" },
+  { id: "wallets_list",      endpoint: "(local)",                              cli: "wallets:list",     openclaw: "wallets:list" },
+  { id: "wallets_current",   endpoint: "(local)",                              cli: "wallets:current",  openclaw: "wallets:current" },
+  { id: "wallets_new",       endpoint: "(local)",                              cli: "wallets:new",      openclaw: "wallets:new" },
+  { id: "wallets_use",       endpoint: "(local)",                              cli: "wallets:use",      openclaw: "wallets:use" },
+  { id: "wallets_rename",    endpoint: "(local)",                              cli: "wallets:rename",   openclaw: "wallets:rename" },
+  { id: "wallets_bind",      endpoint: "(local)",                              cli: "wallets:bind",     openclaw: "wallets:bind" },
+  { id: "wallets_unbind",    endpoint: "(local)",                              cli: "wallets:unbind",   openclaw: "wallets:unbind" },
+  { id: "wallets_import",    endpoint: "(local)",                              cli: "wallets:import",   openclaw: "wallets:import" },
+  { id: "wallets_rm",        endpoint: "(local)",                              cli: "wallets:rm",       openclaw: "wallets:rm" },
 
   // ── SSR Runtime DX (v1.52, local-only / CLI-only) ──────────────────────
-  // doctor / dev / logs are agent-DX shortcuts: no MCP/SDK tool, just CLI parity with OpenClaw.
-  { id: "doctor",            endpoint: "(local)",                              mcp: null,                            cli: "doctor",              openclaw: "doctor" },
-  { id: "dev",               endpoint: "(local)",                              mcp: null,                            cli: "dev",                 openclaw: "dev" },
-  { id: "logs",              endpoint: "GET /functions/v1/:name/logs (filtered)", mcp: null,                         cli: "logs",                openclaw: "logs" },
+  // doctor / dev / logs are agent-DX shortcuts: CLI parity with OpenClaw.
+  { id: "doctor",            endpoint: "(local)",                              cli: "doctor",              openclaw: "doctor" },
+  { id: "dev",               endpoint: "(local)",                              cli: "dev",                 openclaw: "dev" },
+  { id: "logs",              endpoint: "GET /functions/v1/:name/logs (filtered)", cli: "logs",                openclaw: "logs" },
 
   // ── SSR origin cache (v1.52) ────────────────────────────────────────────
-  { id: "cache_invalidate",  endpoint: "POST /cache/v1/invalidate",            mcp: null,                            cli: "cache:invalidate",    openclaw: "cache:invalidate" },
-  { id: "cache_inspect",     endpoint: "GET /cache/v1/inspect",                mcp: null,                            cli: "cache:inspect",       openclaw: "cache:inspect" },
+  { id: "cache_invalidate",  endpoint: "POST /cache/v1/invalidate",            cli: "cache:invalidate",    openclaw: "cache:invalidate" },
+  { id: "cache_inspect",     endpoint: "GET /cache/v1/inspect",                cli: "cache:inspect",       openclaw: "cache:inspect" },
 
   // ── Project lifecycle ────────────────────────────────────────────────────
-  { id: "get_quote",         endpoint: "POST /projects/v1/quote",                mcp: "get_quote",                    cli: "projects:quote",      openclaw: "projects:quote" },
-  { id: "provision",         endpoint: "POST /projects/v1",                      mcp: "provision_postgres_project",    cli: "projects:provision",  openclaw: "projects:provision" },
-  { id: "tier_set",           endpoint: "POST /tiers/v1/:tier",                   mcp: "tier_set",                      cli: "tier:set",            openclaw: "tier:set" },
-  { id: "delete",            endpoint: "DELETE /projects/v1/:id",                mcp: "delete_project",                cli: "projects:delete",     openclaw: "projects:delete" },
-  { id: "export_project_archive", endpoint: "POST /projects/v1/:project_id/archives", mcp: "export_project_archive", cli: "archives:create", openclaw: "archives:create" },
-  { id: "download_project_archive", endpoint: "GET /projects/v1/:project_id/archives/:archive_id/download", mcp: null, cli: "archives:download", openclaw: "archives:download" },
-  { id: "get_project_archive", endpoint: "GET /projects/v1/:project_id/archives/:archive_id", mcp: null, cli: "archives:status", openclaw: "archives:status" },
-  { id: "inspect_project_archive", endpoint: "(local archive inspect)", mcp: "inspect_project_archive", cli: "archives:inspect", openclaw: "archives:inspect" },
-  { id: "verify_project_archive", endpoint: "(local archive verify)", mcp: "verify_project_archive", cli: "archives:verify", openclaw: "archives:verify" },
-  { id: "import_project_archive", endpoint: "POST /archives/v1/import (Run402 Core)", mcp: "import_project_archive", cli: "archives:import", openclaw: "archives:import" },
-  { id: "create_project_snapshot", endpoint: "POST /projects/v1/:project_id/snapshots", mcp: "create_project_snapshot", cli: "snapshots:create", openclaw: "snapshots:create" },
-  { id: "list_project_snapshots", endpoint: "GET /projects/v1/:project_id/snapshots", mcp: "list_project_snapshots", cli: "snapshots:list", openclaw: "snapshots:list" },
-  { id: "get_project_snapshot", endpoint: "GET /projects/v1/:project_id/snapshots/:snapshot_id", mcp: "get_project_snapshot", cli: "snapshots:get", openclaw: "snapshots:get" },
-  { id: "restore_project_snapshot", endpoint: "POST /projects/v1/:project_id/snapshots/:snapshot_id/restore", mcp: "restore_project_snapshot", cli: "snapshots:restore", openclaw: "snapshots:restore" },
-  { id: "delete_project_snapshot", endpoint: "DELETE /projects/v1/:project_id/snapshots/:snapshot_id", mcp: "delete_project_snapshot", cli: "snapshots:delete", openclaw: "snapshots:delete" },
-  { id: "create_project_branch", endpoint: "POST /projects/v1/:project_id/branches", mcp: "create_project_branch", cli: "branches:create", openclaw: "branches:create" },
-  { id: "list_project_branches", endpoint: "GET /projects/v1/:project_id/branches", mcp: "list_project_branches", cli: "branches:list", openclaw: "branches:list" },
-  { id: "renew_project_branch", endpoint: "POST /projects/v1/:project_id/branches/:branch_project_id/renew", mcp: "renew_project_branch", cli: "branches:renew", openclaw: "branches:renew" },
-  { id: "delete_project_branch", endpoint: "DELETE /projects/v1/:project_id/branches/:branch_project_id", mcp: "delete_project_branch", cli: "branches:delete", openclaw: "branches:delete" },
+  { id: "get_quote",         endpoint: "POST /projects/v1/quote",                cli: "projects:quote",      openclaw: "projects:quote" },
+  { id: "provision",         endpoint: "POST /projects/v1",                      cli: "projects:provision",  openclaw: "projects:provision" },
+  { id: "tier_set",           endpoint: "POST /tiers/v1/:tier",                   cli: "tier:set",            openclaw: "tier:set" },
+  { id: "delete",            endpoint: "DELETE /projects/v1/:id",                cli: "projects:delete",     openclaw: "projects:delete" },
+  { id: "export_project_archive", endpoint: "POST /projects/v1/:project_id/archives", cli: "archives:create", openclaw: "archives:create" },
+  { id: "download_project_archive", endpoint: "GET /projects/v1/:project_id/archives/:archive_id/download", cli: "archives:download", openclaw: "archives:download" },
+  { id: "get_project_archive", endpoint: "GET /projects/v1/:project_id/archives/:archive_id", cli: "archives:status", openclaw: "archives:status" },
+  { id: "inspect_project_archive", endpoint: "(local archive inspect)", cli: "archives:inspect", openclaw: "archives:inspect" },
+  { id: "verify_project_archive", endpoint: "(local archive verify)", cli: "archives:verify", openclaw: "archives:verify" },
+  { id: "import_project_archive", endpoint: "POST /archives/v1/import (Run402 Core)", cli: "archives:import", openclaw: "archives:import" },
+  { id: "create_project_snapshot", endpoint: "POST /projects/v1/:project_id/snapshots", cli: "snapshots:create", openclaw: "snapshots:create" },
+  { id: "list_project_snapshots", endpoint: "GET /projects/v1/:project_id/snapshots", cli: "snapshots:list", openclaw: "snapshots:list" },
+  { id: "get_project_snapshot", endpoint: "GET /projects/v1/:project_id/snapshots/:snapshot_id", cli: "snapshots:get", openclaw: "snapshots:get" },
+  { id: "restore_project_snapshot", endpoint: "POST /projects/v1/:project_id/snapshots/:snapshot_id/restore", cli: "snapshots:restore", openclaw: "snapshots:restore" },
+  { id: "delete_project_snapshot", endpoint: "DELETE /projects/v1/:project_id/snapshots/:snapshot_id", cli: "snapshots:delete", openclaw: "snapshots:delete" },
+  { id: "create_project_branch", endpoint: "POST /projects/v1/:project_id/branches", cli: "branches:create", openclaw: "branches:create" },
+  { id: "list_project_branches", endpoint: "GET /projects/v1/:project_id/branches", cli: "branches:list", openclaw: "branches:list" },
+  { id: "renew_project_branch", endpoint: "POST /projects/v1/:project_id/branches/:branch_project_id/renew", cli: "branches:renew", openclaw: "branches:renew" },
+  { id: "delete_project_branch", endpoint: "DELETE /projects/v1/:project_id/branches/:branch_project_id", cli: "branches:delete", openclaw: "branches:delete" },
 
   // ── Faucet ───────────────────────────────────────────────────────────────
-  { id: "faucet",            endpoint: "POST /faucet/v1",                        mcp: "request_faucet",                cli: "wallets:fund",        openclaw: "wallets:fund" },
+  { id: "faucet",            endpoint: "POST /faucet/v1",                        cli: "wallets:fund",        openclaw: "wallets:fund" },
 
   // ── Database / Admin ─────────────────────────────────────────────────────
-  { id: "run_sql",           endpoint: "POST /projects/v1/admin/:id/sql",        mcp: "run_sql",                       cli: "projects:sql",        openclaw: "projects:sql" },
-  { id: "rest_query",        endpoint: "/rest/v1/:table",                        mcp: "rest_query",                    cli: "projects:rest",       openclaw: "projects:rest" },
-  { id: "apply_expose",      endpoint: "POST /projects/v1/admin/:id/expose",     mcp: "apply_expose",                  cli: "projects:apply-expose", openclaw: "projects:apply-expose" },
-  { id: "validate_manifest", endpoint: "POST /projects/v1/expose/validate",      mcp: "validate_manifest",             cli: "projects:validate-expose", openclaw: "projects:validate-expose" },
-  { id: "get_expose",        endpoint: "GET /projects/v1/admin/:id/expose",      mcp: "get_expose",                    cli: "projects:get-expose",   openclaw: "projects:get-expose" },
-  { id: "get_schema",        endpoint: "GET /projects/v1/admin/:id/schema",      mcp: "get_schema",                    cli: "projects:schema",     openclaw: "projects:schema" },
-  { id: "get_usage",         endpoint: "GET /projects/v1/admin/:id/usage",       mcp: "get_usage",                     cli: "projects:usage",      openclaw: "projects:usage" },
+  { id: "run_sql",           endpoint: "POST /projects/v1/admin/:id/sql",        cli: "projects:sql",        openclaw: "projects:sql" },
+  { id: "rest_query",        endpoint: "/rest/v1/:table",                        cli: "projects:rest",       openclaw: "projects:rest" },
+  { id: "apply_expose",      endpoint: "POST /projects/v1/admin/:id/expose",     cli: "projects:apply-expose", openclaw: "projects:apply-expose" },
+  { id: "validate_manifest", endpoint: "POST /projects/v1/expose/validate",      cli: "projects:validate-expose", openclaw: "projects:validate-expose" },
+  { id: "get_expose",        endpoint: "GET /projects/v1/admin/:id/expose",      cli: "projects:get-expose",   openclaw: "projects:get-expose" },
+  { id: "get_schema",        endpoint: "GET /projects/v1/admin/:id/schema",      cli: "projects:schema",     openclaw: "projects:schema" },
+  { id: "get_usage",         endpoint: "GET /projects/v1/admin/:id/usage",       cli: "projects:usage",      openclaw: "projects:usage" },
 
   // ── Assets (direct-to-S3 storage, v1.48 unified-apply rename of blobs) ──
-  { id: "assets_put",        endpoint: "POST /apply/v1/plans",                   mcp: "assets_put",     cli: "assets:put",       openclaw: "assets:put" },
-  { id: "assets_get",        endpoint: "GET /storage/v1/blob/{key}",             mcp: "assets_get",     cli: "assets:get",       openclaw: "assets:get" },
-  { id: "assets_ls",         endpoint: "GET /storage/v1/blobs",                  mcp: "assets_ls",      cli: "assets:ls",        openclaw: "assets:ls" },
-  { id: "assets_rm",         endpoint: "DELETE /storage/v1/blob/{key}",          mcp: "assets_rm",      cli: "assets:rm",        openclaw: "assets:rm" },
-  { id: "assets_sign",       endpoint: "POST /storage/v1/blob/{key}/sign",       mcp: "assets_sign",    cli: "assets:sign",      openclaw: "assets:sign" },
+  { id: "assets_put",        endpoint: "POST /apply/v1/plans",                   cli: "assets:put",       openclaw: "assets:put" },
+  { id: "assets_get",        endpoint: "GET /storage/v1/blob/{key}",             cli: "assets:get",       openclaw: "assets:get" },
+  { id: "assets_ls",         endpoint: "GET /storage/v1/blobs",                  cli: "assets:ls",        openclaw: "assets:ls" },
+  { id: "assets_rm",         endpoint: "DELETE /storage/v1/blob/{key}",          cli: "assets:rm",        openclaw: "assets:rm" },
+  { id: "assets_sign",       endpoint: "POST /storage/v1/blob/{key}/sign",       cli: "assets:sign",      openclaw: "assets:sign" },
   // v1.45: agent-DX CDN diagnostics for asset URLs (CLI: assets diagnose / cdn wait-fresh).
-  { id: "diagnose_public_url",   endpoint: "GET /storage/v1/blobs/diagnose",       mcp: "diagnose_public_url",     cli: "assets:diagnose",   openclaw: "assets:diagnose" },
-  { id: "wait_for_cdn_freshness", endpoint: "GET /storage/v1/blobs/diagnose (poll)", mcp: "wait_for_cdn_freshness",  cli: "cdn:wait-fresh",    openclaw: "cdn:wait-fresh" },
+  { id: "diagnose_public_url",   endpoint: "GET /storage/v1/blobs/diagnose",       cli: "assets:diagnose",   openclaw: "assets:diagnose" },
+  { id: "wait_for_cdn_freshness", endpoint: "GET /storage/v1/blobs/diagnose (poll)", cli: "cdn:wait-fresh",    openclaw: "cdn:wait-fresh" },
 
   // ── Functions ────────────────────────────────────────────────────────────
-  { id: "deploy_function",   endpoint: "POST /apply/v1/plans (functions.patch.set)",          mcp: "deploy_function",   cli: "functions:deploy", openclaw: "functions:deploy" },
-  { id: "invoke_function",   endpoint: "POST /functions/v1/:name",                            mcp: "invoke_function",   cli: "functions:invoke", openclaw: "functions:invoke" },
-  { id: "get_function_logs", endpoint: "GET /projects/v1/admin/:id/functions/:name/logs",    mcp: "get_function_logs", cli: "functions:logs",   openclaw: "functions:logs" },
-  { id: "list_functions",    endpoint: "GET /projects/v1/admin/:id/functions",                mcp: "list_functions",    cli: "functions:list",   openclaw: "functions:list" },
-  { id: "delete_function",   endpoint: "DELETE /projects/v1/admin/:id/functions/:name",      mcp: "delete_function",   cli: "functions:delete", openclaw: "functions:delete" },
-  { id: "update_function",   endpoint: "PATCH /projects/v1/admin/:id/functions/:name",     mcp: "update_function",   cli: "functions:update", openclaw: "functions:update" },
+  { id: "deploy_function",   endpoint: "POST /apply/v1/plans (functions.patch.set)",          cli: "functions:deploy", openclaw: "functions:deploy" },
+  { id: "invoke_function",   endpoint: "POST /functions/v1/:name",                            cli: "functions:invoke", openclaw: "functions:invoke" },
+  { id: "get_function_logs", endpoint: "GET /projects/v1/admin/:id/functions/:name/logs",    cli: "functions:logs",   openclaw: "functions:logs" },
+  { id: "list_functions",    endpoint: "GET /projects/v1/admin/:id/functions",                cli: "functions:list",   openclaw: "functions:list" },
+  { id: "delete_function",   endpoint: "DELETE /projects/v1/admin/:id/functions/:name",      cli: "functions:delete", openclaw: "functions:delete" },
+  { id: "update_function",   endpoint: "PATCH /projects/v1/admin/:id/functions/:name",     cli: "functions:update", openclaw: "functions:update" },
   // function-runtime-rebuild (v1.69): opt-in refresh onto the current platform
   // runtime. The CLI `functions rebuild [name] [--all]` collapses the single
   // (`:name/rebuild`) and project-wide (`/rebuild`) endpoints into one verb;
-  // the batch SDK method is in SDK_ONLY_METHODS. MCP tool `functions_rebuild`
-  // (name → single, omitted → batch) landed the deferred gh#416 follow-up.
-  { id: "rebuild_function",  endpoint: "POST /projects/v1/:id/functions/:name/rebuild",     mcp: "functions_rebuild", cli: "functions:rebuild", openclaw: "functions:rebuild" },
+  // the batch SDK method is in SDK_ONLY_METHODS.
+  { id: "rebuild_function",  endpoint: "POST /projects/v1/:id/functions/:name/rebuild",     cli: "functions:rebuild", openclaw: "functions:rebuild" },
   // durable-function-requests: one CLI/OpenClaw `functions runs <action>` group
-  // maps to six MCP tools and typed SDK methods.
-  { id: "create_function_run", endpoint: "POST /functions/v1/:name/runs",        mcp: "create_function_run",       cli: "functions:runs", openclaw: "functions:runs" },
-  { id: "list_function_runs",  endpoint: "GET /functions/v1/:name/runs",         mcp: "list_function_runs",        cli: null, openclaw: null },
-  { id: "get_function_run",    endpoint: "GET /functions/v1/runs/:run_id",       mcp: "get_function_run",          cli: null, openclaw: null },
-  { id: "get_function_run_logs", endpoint: "GET /functions/v1/runs/:run_id/logs", mcp: "get_function_run_logs",    cli: null, openclaw: null },
-  { id: "cancel_function_run", endpoint: "POST /functions/v1/runs/:run_id/cancel", mcp: "cancel_function_run",     cli: null, openclaw: null },
-  { id: "redrive_function_run", endpoint: "POST /functions/v1/runs/:run_id/redrive", mcp: "redrive_function_run",  cli: null, openclaw: null },
+  // maps to six typed SDK methods.
+  { id: "create_function_run", endpoint: "POST /functions/v1/:name/runs",        cli: "functions:runs", openclaw: "functions:runs" },
+  { id: "list_function_runs",  endpoint: "GET /functions/v1/:name/runs",         cli: null, openclaw: null },
+  { id: "get_function_run",    endpoint: "GET /functions/v1/runs/:run_id",       cli: null, openclaw: null },
+  { id: "get_function_run_logs", endpoint: "GET /functions/v1/runs/:run_id/logs", cli: null, openclaw: null },
+  { id: "cancel_function_run", endpoint: "POST /functions/v1/runs/:run_id/cancel", cli: null, openclaw: null },
+  { id: "redrive_function_run", endpoint: "POST /functions/v1/runs/:run_id/redrive", cli: null, openclaw: null },
 
   // ── Secrets ──────────────────────────────────────────────────────────────
-  { id: "set_secret",        endpoint: "POST /projects/v1/admin/:id/secrets",        mcp: "set_secret",    cli: "secrets:set",    openclaw: "secrets:set" },
-  { id: "list_secrets",      endpoint: "GET /projects/v1/admin/:id/secrets",         mcp: "list_secrets",  cli: "secrets:list",   openclaw: "secrets:list" },
-  { id: "delete_secret",     endpoint: "DELETE /projects/v1/admin/:id/secrets/:key", mcp: "delete_secret", cli: "secrets:delete", openclaw: "secrets:delete" },
+  { id: "set_secret",        endpoint: "POST /projects/v1/admin/:id/secrets",        cli: "secrets:set",    openclaw: "secrets:set" },
+  { id: "list_secrets",      endpoint: "GET /projects/v1/admin/:id/secrets",         cli: "secrets:list",   openclaw: "secrets:list" },
+  { id: "delete_secret",     endpoint: "DELETE /projects/v1/admin/:id/secrets/:key", cli: "secrets:delete", openclaw: "secrets:delete" },
 
   // ── Managed jobs ────────────────────────────────────────────────────────
-  { id: "jobs_submit",       endpoint: "POST /jobs/v1/runs",                 mcp: "jobs_submit", cli: "jobs:submit", openclaw: "jobs:submit" },
-  { id: "jobs_get",          endpoint: "GET /jobs/v1/runs/:job_id",          mcp: "jobs_get",    cli: "jobs:get",    openclaw: "jobs:get" },
-  { id: "jobs_logs",         endpoint: "GET /jobs/v1/runs/:job_id/logs",     mcp: "jobs_logs",   cli: "jobs:logs",   openclaw: "jobs:logs" },
-  { id: "jobs_cancel",       endpoint: "DELETE /jobs/v1/runs/:job_id",       mcp: "jobs_cancel", cli: "jobs:cancel", openclaw: "jobs:cancel" },
-  { id: "jobs_purge",        endpoint: "DELETE /jobs/v1/runs",               mcp: "jobs_purge",  cli: "jobs:purge",  openclaw: "jobs:purge" },
-  { id: "jobs_download_artifact", endpoint: "GET /jobs/v1/runs/:job_id/artifacts/:filename", mcp: "jobs_download_artifact", cli: "jobs:artifacts:get", openclaw: "jobs:artifacts:get" },
+  { id: "jobs_submit",       endpoint: "POST /jobs/v1/runs",                 cli: "jobs:submit", openclaw: "jobs:submit" },
+  { id: "jobs_get",          endpoint: "GET /jobs/v1/runs/:job_id",          cli: "jobs:get",    openclaw: "jobs:get" },
+  { id: "jobs_logs",         endpoint: "GET /jobs/v1/runs/:job_id/logs",     cli: "jobs:logs",   openclaw: "jobs:logs" },
+  { id: "jobs_cancel",       endpoint: "DELETE /jobs/v1/runs/:job_id",       cli: "jobs:cancel", openclaw: "jobs:cancel" },
+  { id: "jobs_purge",        endpoint: "DELETE /jobs/v1/runs",               cli: "jobs:purge",  openclaw: "jobs:purge" },
+  { id: "jobs_download_artifact", endpoint: "GET /jobs/v1/runs/:job_id/artifacts/:filename", cli: "jobs:artifacts:get", openclaw: "jobs:artifacts:get" },
 
   // ── Sites / Subdomains ───────────────────────────────────────────────────
-  { id: "deploy_site",       endpoint: "POST /apply/v1/plans",             mcp: "deploy_site",       cli: "sites:deploy",       openclaw: "sites:deploy" },
-  { id: "deploy_site_dir",   endpoint: "POST /apply/v1/plans",             mcp: "deploy_site_dir",   cli: "sites:deploy-dir",   openclaw: "sites:deploy-dir" },
-  { id: "add_subdomain",   endpoint: "POST /subdomains/v1",              mcp: "add_subdomain",   cli: "subdomains:add",   openclaw: "subdomains:add" },
-  { id: "delete_subdomain",  endpoint: "DELETE /subdomains/v1/:name",      mcp: "delete_subdomain",  cli: "subdomains:delete",  openclaw: "subdomains:delete" },
-  { id: "list_subdomains",   endpoint: "GET /subdomains/v1",               mcp: "list_subdomains",   cli: "subdomains:list",    openclaw: "subdomains:list" },
+  { id: "deploy_site",       endpoint: "POST /apply/v1/plans",             cli: "sites:deploy",       openclaw: "sites:deploy" },
+  { id: "deploy_site_dir",   endpoint: "POST /apply/v1/plans",             cli: "sites:deploy-dir",   openclaw: "sites:deploy-dir" },
+  { id: "add_subdomain",   endpoint: "POST /subdomains/v1",              cli: "subdomains:add",   openclaw: "subdomains:add" },
+  { id: "delete_subdomain",  endpoint: "DELETE /subdomains/v1/:name",      cli: "subdomains:delete",  openclaw: "subdomains:delete" },
+  { id: "list_subdomains",   endpoint: "GET /subdomains/v1",               cli: "subdomains:list",    openclaw: "subdomains:list" },
 
   // ── Project domains ─────────────────────────────────────────────────────
-  { id: "domains_connect",      endpoint: "POST /projects/v1/:project_id/domains",              mcp: "domains_connect",      cli: "domains:connect",      openclaw: "domains:connect" },
-  { id: "domains_list",         endpoint: "GET /projects/v1/:project_id/domains",               mcp: "domains_list",         cli: "domains:list",         openclaw: "domains:list" },
-  { id: "domains_get",          endpoint: "GET /projects/v1/:project_id/domains/:domain",       mcp: "domains_get",          cli: "domains:status",       openclaw: "domains:status" },
-  { id: "domains_dns",          endpoint: "GET /projects/v1/:project_id/domains/:domain",       mcp: null,                   cli: "domains:dns",          openclaw: "domains:dns" },
-  { id: "domains_check",        endpoint: "POST /projects/v1/:project_id/domains/:domain/actions/check", mcp: "domains_check", cli: "domains:check",        openclaw: "domains:check" },
-  { id: "domains_apply",        endpoint: "POST /projects/v1/:project_id/domains/:domain/actions/apply", mcp: "domains_apply", cli: "domains:apply",        openclaw: "domains:apply" },
-  { id: "domains_repair",       endpoint: "POST /projects/v1/:project_id/domains/:domain/actions/repair", mcp: "domains_repair", cli: "domains:repair",      openclaw: "domains:repair" },
-  { id: "domains_test_receive", endpoint: "POST /projects/v1/:project_id/domains/:domain/actions/test_receive", mcp: "domains_test_receive", cli: "domains:test-receive", openclaw: "domains:test-receive" },
-  { id: "domains_wait",         endpoint: "POST /projects/v1/:project_id/domains/:domain/actions/check (poll)", mcp: null, cli: "domains:wait", openclaw: "domains:wait" },
-  { id: "domains_activate",     endpoint: "POST /projects/v1/:project_id/domains/:domain/actions/activate_mailbox_addresses", mcp: "domains_activate", cli: "domains:activate", openclaw: "domains:activate" },
-  { id: "domains_disconnect",   endpoint: "DELETE /projects/v1/:project_id/domains/:domain",    mcp: "domains_disconnect",   cli: "domains:disconnect",   openclaw: "domains:disconnect" },
+  { id: "domains_connect",      endpoint: "POST /projects/v1/:project_id/domains",              cli: "domains:connect",      openclaw: "domains:connect" },
+  { id: "domains_list",         endpoint: "GET /projects/v1/:project_id/domains",               cli: "domains:list",         openclaw: "domains:list" },
+  { id: "domains_get",          endpoint: "GET /projects/v1/:project_id/domains/:domain",       cli: "domains:status",       openclaw: "domains:status" },
+  { id: "domains_dns",          endpoint: "GET /projects/v1/:project_id/domains/:domain",       cli: "domains:dns",          openclaw: "domains:dns" },
+  { id: "domains_check",        endpoint: "POST /projects/v1/:project_id/domains/:domain/actions/check", cli: "domains:check",        openclaw: "domains:check" },
+  { id: "domains_apply",        endpoint: "POST /projects/v1/:project_id/domains/:domain/actions/apply", cli: "domains:apply",        openclaw: "domains:apply" },
+  { id: "domains_repair",       endpoint: "POST /projects/v1/:project_id/domains/:domain/actions/repair", cli: "domains:repair",      openclaw: "domains:repair" },
+  { id: "domains_test_receive", endpoint: "POST /projects/v1/:project_id/domains/:domain/actions/test_receive", cli: "domains:test-receive", openclaw: "domains:test-receive" },
+  { id: "domains_wait",         endpoint: "POST /projects/v1/:project_id/domains/:domain/actions/check (poll)", cli: "domains:wait", openclaw: "domains:wait" },
+  { id: "domains_activate",     endpoint: "POST /projects/v1/:project_id/domains/:domain/actions/activate_mailbox_addresses", cli: "domains:activate", openclaw: "domains:activate" },
+  { id: "domains_disconnect",   endpoint: "DELETE /projects/v1/:project_id/domains/:domain",    cli: "domains:disconnect",   openclaw: "domains:disconnect" },
 
   // ── Unified apply ────────────────────────────────────────────────────────
-  { id: "deploy",            endpoint: "POST /apply/v1/plans",                            mcp: "deploy",            cli: "deploy",            openclaw: "deploy" },
-  { id: "deploy_rehearse",   endpoint: "POST /apply/v1/plans/:plan_id/rehearse",           mcp: "deploy_rehearse",   cli: "deploy:rehearse",   openclaw: "deploy:rehearse" },
-  { id: "deploy_resume",     endpoint: "POST /apply/v1/operations/:operation_id/resume",            mcp: "deploy_resume",     cli: "deploy:resume",     openclaw: "deploy:resume" },
-  { id: "deploy_status",     endpoint: "GET /apply/v1/operations/:operation_id",                    mcp: null,                cli: "deploy:status",     openclaw: "deploy:status" },
-  { id: "deploy_promote",    endpoint: "POST /apply/v1/releases/:release_id/promote",              mcp: null,                cli: "deploy:promote",    openclaw: "deploy:promote" },
-  { id: "deploy_list",       endpoint: "GET /apply/v1/operations",                        mcp: "deploy_list",       cli: "deploy:list",       openclaw: "deploy:list" },
-  { id: "deploy_events",     endpoint: "GET /apply/v1/operations/:operation_id/events",             mcp: "deploy_events",     cli: "deploy:events",     openclaw: "deploy:events" },
-  { id: "deploy_verify_edge", endpoint: "GET /apply/v1/operations/:operation_id/edge-coherence",     mcp: "deploy_verify_edge", cli: "deploy:verify",     openclaw: "deploy:verify" },
-  { id: "deploy_releases_get",    endpoint: "GET /apply/v1/releases/:release_id",         mcp: "deploy_releases_get",    cli: "deploy:releases:get",    openclaw: "deploy:releases:get" },
-  { id: "deploy_releases_active", endpoint: "GET /apply/v1/releases/active",              mcp: "deploy_releases_active", cli: "deploy:releases:active", openclaw: "deploy:releases:active" },
-  { id: "deploy_releases_diff",   endpoint: "GET /apply/v1/releases/diff",                mcp: "deploy_releases_diff",   cli: "deploy:releases:diff",   openclaw: "deploy:releases:diff" },
-  { id: "deploy_resolve",         endpoint: "GET /apply/v1/resolve",                      mcp: "deploy_resolve",         cli: "deploy:resolve",         openclaw: "deploy:resolve" },
+  { id: "deploy",            endpoint: "POST /apply/v1/plans",                            cli: "deploy",            openclaw: "deploy" },
+  { id: "deploy_rehearse",   endpoint: "POST /apply/v1/plans/:plan_id/rehearse",           cli: "deploy:rehearse",   openclaw: "deploy:rehearse" },
+  { id: "deploy_resume",     endpoint: "POST /apply/v1/operations/:operation_id/resume",            cli: "deploy:resume",     openclaw: "deploy:resume" },
+  { id: "deploy_status",     endpoint: "GET /apply/v1/operations/:operation_id",                    cli: "deploy:status",     openclaw: "deploy:status" },
+  { id: "deploy_promote",    endpoint: "POST /apply/v1/releases/:release_id/promote",              cli: "deploy:promote",    openclaw: "deploy:promote" },
+  { id: "deploy_list",       endpoint: "GET /apply/v1/operations",                        cli: "deploy:list",       openclaw: "deploy:list" },
+  { id: "deploy_events",     endpoint: "GET /apply/v1/operations/:operation_id/events",             cli: "deploy:events",     openclaw: "deploy:events" },
+  { id: "deploy_verify_edge", endpoint: "GET /apply/v1/operations/:operation_id/edge-coherence",     cli: "deploy:verify",     openclaw: "deploy:verify" },
+  { id: "deploy_releases_get",    endpoint: "GET /apply/v1/releases/:release_id",         cli: "deploy:releases:get",    openclaw: "deploy:releases:get" },
+  { id: "deploy_releases_active", endpoint: "GET /apply/v1/releases/active",              cli: "deploy:releases:active", openclaw: "deploy:releases:active" },
+  { id: "deploy_releases_diff",   endpoint: "GET /apply/v1/releases/diff",                cli: "deploy:releases:diff",   openclaw: "deploy:releases:diff" },
+  { id: "deploy_resolve",         endpoint: "GET /apply/v1/resolve",                      cli: "deploy:resolve",         openclaw: "deploy:resolve" },
 
   // ── CI/OIDC federation ──────────────────────────────────────────────────
-  { id: "ci_link_github",    endpoint: "POST /ci/v1/bindings",                              mcp: "ci_create_binding", cli: "ci:link",          openclaw: "ci:link" },
-  { id: "ci_list_bindings",  endpoint: "GET /ci/v1/bindings",                               mcp: "ci_list_bindings",  cli: "ci:list",          openclaw: "ci:list" },
-  { id: "ci_get_binding",    endpoint: "GET /ci/v1/bindings/:id",                           mcp: "ci_get_binding",    cli: null,               openclaw: null },
-  { id: "ci_revoke_binding", endpoint: "POST /ci/v1/bindings/:id/revoke",                   mcp: "ci_revoke_binding", cli: "ci:revoke",        openclaw: "ci:revoke" },
-  { id: "ci_set_asset_scopes", endpoint: "POST /ci/v1/bindings/:id/asset-scopes",            mcp: null,                cli: "ci:set-asset-scopes", openclaw: "ci:set-asset-scopes" },
+  { id: "ci_link_github",    endpoint: "POST /ci/v1/bindings",                              cli: "ci:link",          openclaw: "ci:link" },
+  { id: "ci_list_bindings",  endpoint: "GET /ci/v1/bindings",                               cli: "ci:list",          openclaw: "ci:list" },
+  { id: "ci_get_binding",    endpoint: "GET /ci/v1/bindings/:id",                           cli: null,               openclaw: null },
+  { id: "ci_revoke_binding", endpoint: "POST /ci/v1/bindings/:id/revoke",                   cli: "ci:revoke",        openclaw: "ci:revoke" },
+  { id: "ci_set_asset_scopes", endpoint: "POST /ci/v1/bindings/:id/asset-scopes",            cli: "ci:set-asset-scopes", openclaw: "ci:set-asset-scopes" },
 
   // ── Marketplace ──────────────────────────────────────────────────────────
-  { id: "browse_apps",       endpoint: "GET /apps/v1",                              mcp: "browse_apps",   cli: "apps:browse",   openclaw: "apps:browse" },
-  { id: "fork_app",          endpoint: "POST /fork/v1",                             mcp: "fork_app",      cli: "apps:fork",     openclaw: "apps:fork" },
-  { id: "publish_app",       endpoint: "POST /projects/v1/admin/:id/publish",       mcp: "publish_app",   cli: "apps:publish",  openclaw: "apps:publish" },
-  { id: "list_versions",     endpoint: "GET /projects/v1/admin/:id/versions",       mcp: "list_versions", cli: "apps:versions", openclaw: "apps:versions" },
+  { id: "browse_apps",       endpoint: "GET /apps/v1",                              cli: "apps:browse",   openclaw: "apps:browse" },
+  { id: "fork_app",          endpoint: "POST /fork/v1",                             cli: "apps:fork",     openclaw: "apps:fork" },
+  { id: "publish_app",       endpoint: "POST /projects/v1/admin/:id/publish",       cli: "apps:publish",  openclaw: "apps:publish" },
+  { id: "list_versions",     endpoint: "GET /projects/v1/admin/:id/versions",       cli: "apps:versions", openclaw: "apps:versions" },
 
   // ── Billing ──────────────────────────────────────────────────────────────
-  { id: "check_balance",     endpoint: "GET /orgs/v1/lookup?wallet=",           mcp: "check_balance",  cli: "wallets:balance", openclaw: "wallets:balance" },
-  { id: "list_projects",     endpoint: "GET /projects/v1",                           mcp: "list_projects",  cli: "projects:list",  openclaw: "projects:list" },
-  { id: "list_tenant_payments", endpoint: "GET /projects/v1/:project_id/tenant-payments", mcp: "list_tenant_payments", cli: "projects:tenant-payments", openclaw: "projects:tenant-payments" },
-  { id: "rename_project",    endpoint: "PATCH /projects/v1/:project_id",             mcp: "rename_project", cli: "projects:rename", openclaw: "projects:rename" },
-  { id: "project_get",       endpoint: "GET /projects/v1/:project_id",               mcp: "project_get",    cli: "projects:get",   openclaw: "projects:get" },
-  { id: "project_info_moved", endpoint: "(moved local credential command)",           mcp: null,             cli: "projects:info",  openclaw: "projects:info" },
-  { id: "project_use",       endpoint: "GET /projects/v1/:project_id + local active state", mcp: "project_use", cli: "projects:use", openclaw: "projects:use" },
-  { id: "project_keys_moved", endpoint: "(moved local credential command)",           mcp: null,             cli: "projects:keys",  openclaw: "projects:keys" },
-  { id: "project_current",   endpoint: "(local active-project state)",               mcp: null,             cli: "projects:current", openclaw: "projects:current" },
-  { id: "project_key_cache_list",   endpoint: "(local credential cache)",            mcp: null,             cli: "credentials:project-keys:list",   openclaw: "credentials:project-keys:list" },
-  { id: "project_key_cache_status", endpoint: "(local credential cache)",            mcp: "project_key_cache_status", cli: "credentials:project-keys:status", openclaw: "credentials:project-keys:status" },
-  { id: "project_key_cache_import", endpoint: "(local credential cache)",            mcp: null,             cli: "credentials:project-keys:import", openclaw: "credentials:project-keys:import" },
-  { id: "project_key_cache_export", endpoint: "(local credential cache)",            mcp: "project_key_cache_export", cli: "credentials:project-keys:export", openclaw: "credentials:project-keys:export" },
-  { id: "project_key_cache_remove", endpoint: "(local credential cache)",            mcp: null,             cli: "credentials:project-keys:remove", openclaw: "credentials:project-keys:remove" },
+  { id: "check_balance",     endpoint: "GET /orgs/v1/lookup?wallet=",           cli: "wallets:balance", openclaw: "wallets:balance" },
+  { id: "list_projects",     endpoint: "GET /projects/v1",                           cli: "projects:list",  openclaw: "projects:list" },
+  { id: "list_tenant_payments", endpoint: "GET /projects/v1/:project_id/tenant-payments", cli: "projects:tenant-payments", openclaw: "projects:tenant-payments" },
+  { id: "rename_project",    endpoint: "PATCH /projects/v1/:project_id",             cli: "projects:rename", openclaw: "projects:rename" },
+  { id: "project_get",       endpoint: "GET /projects/v1/:project_id",               cli: "projects:get",   openclaw: "projects:get" },
+  { id: "project_info_moved", endpoint: "(moved local credential command)",           cli: "projects:info",  openclaw: "projects:info" },
+  { id: "project_use",       endpoint: "GET /projects/v1/:project_id + local active state", cli: "projects:use", openclaw: "projects:use" },
+  { id: "project_keys_moved", endpoint: "(moved local credential command)",           cli: "projects:keys",  openclaw: "projects:keys" },
+  { id: "project_current",   endpoint: "(local active-project state)",               cli: "projects:current", openclaw: "projects:current" },
+  { id: "project_key_cache_list",   endpoint: "(local credential cache)",            cli: "credentials:project-keys:list",   openclaw: "credentials:project-keys:list" },
+  { id: "project_key_cache_status", endpoint: "(local credential cache)",            cli: "credentials:project-keys:status", openclaw: "credentials:project-keys:status" },
+  { id: "project_key_cache_import", endpoint: "(local credential cache)",            cli: "credentials:project-keys:import", openclaw: "credentials:project-keys:import" },
+  { id: "project_key_cache_export", endpoint: "(local credential cache)",            cli: "credentials:project-keys:export", openclaw: "credentials:project-keys:export" },
+  { id: "project_key_cache_remove", endpoint: "(local credential cache)",            cli: "credentials:project-keys:remove", openclaw: "credentials:project-keys:remove" },
 
   // ── Image generation ─────────────────────────────────────────────────────
-  { id: "generate_image",    endpoint: "POST /generate-image/v1",           mcp: "generate_image",   cli: "image:generate",   openclaw: "image:generate" },
+  { id: "generate_image",    endpoint: "POST /generate-image/v1",           cli: "image:generate",   openclaw: "image:generate" },
 
   // ── Email ──────────────────────────────────────────────────────────────
-  { id: "create_mailbox",  endpoint: "POST /mailboxes/v1",                      mcp: "create_mailbox",  cli: "email:create",  openclaw: "email:create" },
-  { id: "list_mailboxes",  endpoint: "GET /mailboxes/v1",                       mcp: "list_mailboxes",   cli: "email:mailboxes", openclaw: "email:mailboxes" },
-  { id: "set_mailbox_defaults", endpoint: "PATCH /mailboxes/v1/settings",        mcp: "set_mailbox_defaults", cli: "email:defaults", openclaw: "email:defaults" },
-  { id: "update_mailbox",  endpoint: "PATCH /mailboxes/v1/:mailbox_id",          mcp: "update_mailbox",  cli: "email:update",  openclaw: "email:update" },
-  { id: "send_email",      endpoint: "POST /mailboxes/v1/:mailbox_id/messages",         mcp: "send_email",      cli: "email:send",    openclaw: "email:send" },
-  { id: "list_emails",     endpoint: "GET /mailboxes/v1/:mailbox_id/messages",          mcp: "list_emails",     cli: "email:list",    openclaw: "email:list" },
-  { id: "get_email",       endpoint: "GET /mailboxes/v1/:mailbox_id/messages/:message_id",   mcp: "get_email",       cli: "email:get",     openclaw: "email:get" },
-  { id: "get_email_raw",   endpoint: "GET /mailboxes/v1/:mailbox_id/messages/:message_id/raw", mcp: "get_email_raw", cli: "email:get-raw", openclaw: "email:get-raw" },
-  { id: "get_mailbox",     endpoint: "GET /mailboxes/v1",                        mcp: "get_mailbox",     cli: "email:info",    openclaw: "email:info" },
-  { id: "delete_mailbox",  endpoint: "DELETE /mailboxes/v1/:mailbox_id",                 mcp: "delete_mailbox",  cli: "email:delete",  openclaw: "email:delete" },
-  { id: "reply_email",     endpoint: "POST /mailboxes/v1/:mailbox_id/messages",          mcp: null,              cli: "email:reply",   openclaw: "email:reply" },
+  { id: "create_mailbox",  endpoint: "POST /mailboxes/v1",                      cli: "email:create",  openclaw: "email:create" },
+  { id: "list_mailboxes",  endpoint: "GET /mailboxes/v1",                       cli: "email:mailboxes", openclaw: "email:mailboxes" },
+  { id: "set_mailbox_defaults", endpoint: "PATCH /mailboxes/v1/settings",        cli: "email:defaults", openclaw: "email:defaults" },
+  { id: "update_mailbox",  endpoint: "PATCH /mailboxes/v1/:mailbox_id",          cli: "email:update",  openclaw: "email:update" },
+  { id: "send_email",      endpoint: "POST /mailboxes/v1/:mailbox_id/messages",         cli: "email:send",    openclaw: "email:send" },
+  { id: "list_emails",     endpoint: "GET /mailboxes/v1/:mailbox_id/messages",          cli: "email:list",    openclaw: "email:list" },
+  { id: "get_email",       endpoint: "GET /mailboxes/v1/:mailbox_id/messages/:message_id",   cli: "email:get",     openclaw: "email:get" },
+  { id: "get_email_raw",   endpoint: "GET /mailboxes/v1/:mailbox_id/messages/:message_id/raw", cli: "email:get-raw", openclaw: "email:get-raw" },
+  { id: "get_mailbox",     endpoint: "GET /mailboxes/v1",                        cli: "email:info",    openclaw: "email:info" },
+  { id: "delete_mailbox",  endpoint: "DELETE /mailboxes/v1/:mailbox_id",                 cli: "email:delete",  openclaw: "email:delete" },
+  { id: "reply_email",     endpoint: "POST /mailboxes/v1/:mailbox_id/messages",          cli: "email:reply",   openclaw: "email:reply" },
 
   // ── Mailbox webhooks ──────────────────────────────────────────────────
-  { id: "register_mailbox_webhook", endpoint: "POST /mailboxes/v1/:mailbox_id/webhooks",              mcp: "register_mailbox_webhook", cli: "webhooks:register", openclaw: "webhooks:register" },
-  { id: "list_mailbox_webhooks",    endpoint: "GET /mailboxes/v1/:mailbox_id/webhooks",               mcp: "list_mailbox_webhooks",    cli: "webhooks:list",     openclaw: "webhooks:list" },
-  { id: "get_mailbox_webhook",      endpoint: "GET /mailboxes/v1/:mailbox_id/webhooks/:webhook_id",   mcp: "get_mailbox_webhook",      cli: "webhooks:get",      openclaw: "webhooks:get" },
-  { id: "delete_mailbox_webhook",   endpoint: "DELETE /mailboxes/v1/:mailbox_id/webhooks/:webhook_id", mcp: "delete_mailbox_webhook",  cli: "webhooks:delete",   openclaw: "webhooks:delete" },
-  { id: "update_mailbox_webhook",   endpoint: "PATCH /mailboxes/v1/:mailbox_id/webhooks/:webhook_id", mcp: "update_mailbox_webhook",   cli: "webhooks:update",   openclaw: "webhooks:update" },
-  { id: "list_mailbox_webhook_deliveries", endpoint: "GET /mailboxes/v1/:mailbox_id/webhooks/deliveries", mcp: "list_mailbox_webhook_deliveries", cli: "webhooks:deliveries", openclaw: "webhooks:deliveries" },
-  { id: "redrive_mailbox_webhook_delivery", endpoint: "POST /mailboxes/v1/:mailbox_id/webhooks/deliveries/:delivery_id/redrive", mcp: "redrive_mailbox_webhook_delivery", cli: "webhooks:redrive", openclaw: "webhooks:redrive" },
+  { id: "register_mailbox_webhook", endpoint: "POST /mailboxes/v1/:mailbox_id/webhooks",              cli: "webhooks:register", openclaw: "webhooks:register" },
+  { id: "list_mailbox_webhooks",    endpoint: "GET /mailboxes/v1/:mailbox_id/webhooks",               cli: "webhooks:list",     openclaw: "webhooks:list" },
+  { id: "get_mailbox_webhook",      endpoint: "GET /mailboxes/v1/:mailbox_id/webhooks/:webhook_id",   cli: "webhooks:get",      openclaw: "webhooks:get" },
+  { id: "delete_mailbox_webhook",   endpoint: "DELETE /mailboxes/v1/:mailbox_id/webhooks/:webhook_id", cli: "webhooks:delete",   openclaw: "webhooks:delete" },
+  { id: "update_mailbox_webhook",   endpoint: "PATCH /mailboxes/v1/:mailbox_id/webhooks/:webhook_id", cli: "webhooks:update",   openclaw: "webhooks:update" },
+  { id: "list_mailbox_webhook_deliveries", endpoint: "GET /mailboxes/v1/:mailbox_id/webhooks/deliveries", cli: "webhooks:deliveries", openclaw: "webhooks:deliveries" },
+  { id: "redrive_mailbox_webhook_delivery", endpoint: "POST /mailboxes/v1/:mailbox_id/webhooks/deliveries/:delivery_id/redrive", cli: "webhooks:redrive", openclaw: "webhooks:redrive" },
 
   // ── AI ──────────────────────────────────────────────────────────────────
-  { id: "ai_translate",    endpoint: "POST /ai/v1/translate",      mcp: "ai_translate",    cli: "ai:translate",  openclaw: "ai:translate" },
-  { id: "ai_moderate",     endpoint: "POST /ai/v1/moderate",       mcp: "ai_moderate",     cli: "ai:moderate",   openclaw: "ai:moderate" },
-  { id: "ai_usage",        endpoint: "GET /ai/v1/usage",           mcp: "ai_usage",        cli: "ai:usage",      openclaw: "ai:usage" },
+  { id: "ai_translate",    endpoint: "POST /ai/v1/translate",      cli: "ai:translate",  openclaw: "ai:translate" },
+  { id: "ai_moderate",     endpoint: "POST /ai/v1/moderate",       cli: "ai:moderate",   openclaw: "ai:moderate" },
+  { id: "ai_usage",        endpoint: "GET /ai/v1/usage",           cli: "ai:usage",      openclaw: "ai:usage" },
 
   // ── Messaging & agent contact ──────────────────────────────────────────
-  { id: "send_feedback",      endpoint: "POST /feedback/v1",                 mcp: "send_feedback",        cli: "feedback:send",     openclaw: "feedback:send" },
-  { id: "set_agent_contact", endpoint: "POST /agent/v1/contact",            mcp: "set_agent_contact",   cli: "agent:contact",    openclaw: "agent:contact" },
-  { id: "get_agent_contact_status", endpoint: "GET /agent/v1/contact/status", mcp: "get_agent_contact_status", cli: "agent:status", openclaw: "agent:status" },
-  { id: "verify_agent_contact_email", endpoint: "POST /agent/v1/contact/verify-email", mcp: "verify_agent_contact_email", cli: "agent:verify-email", openclaw: "agent:verify-email" },
-  { id: "start_contact_passkey_enrollment", endpoint: "POST /agent/v1/contact/passkey/enroll", mcp: "start_contact_passkey_enrollment", cli: "agent:passkey", openclaw: "agent:passkey" },
+  { id: "send_feedback",      endpoint: "POST /feedback/v1",                 cli: "feedback:send",     openclaw: "feedback:send" },
+  { id: "set_agent_contact", endpoint: "POST /agent/v1/contact",            cli: "agent:contact",    openclaw: "agent:contact" },
+  { id: "get_agent_contact_status", endpoint: "GET /agent/v1/contact/status", cli: "agent:status", openclaw: "agent:status" },
+  { id: "verify_agent_contact_email", endpoint: "POST /agent/v1/contact/verify-email", cli: "agent:verify-email", openclaw: "agent:verify-email" },
+  { id: "start_contact_passkey_enrollment", endpoint: "POST /agent/v1/contact/passkey/enroll", cli: "agent:passkey", openclaw: "agent:passkey" },
 
   // ── Owner notifications (v1.55) ────────────────────────────────────────
-  { id: "list_notifications",           endpoint: "GET /agent/v1/notifications",                   mcp: "list_notifications",           cli: "deliveries:list",            openclaw: "deliveries:list" },
-  { id: "get_notification",             endpoint: "GET /agent/v1/notifications/:id",               mcp: null,                            cli: "deliveries:get",             openclaw: "deliveries:get" },
-  { id: "get_notification_preferences", endpoint: "GET /agent/v1/notifications/preferences",       mcp: "get_notification_preferences", cli: "contacts:preferences",     openclaw: "contacts:preferences" },
+  { id: "list_notifications",           endpoint: "GET /agent/v1/notifications",                   cli: "deliveries:list",            openclaw: "deliveries:list" },
+  { id: "get_notification",             endpoint: "GET /agent/v1/notifications/:id",               cli: "deliveries:get",             openclaw: "deliveries:get" },
+  { id: "get_notification_preferences", endpoint: "GET /agent/v1/notifications/preferences",       cli: "contacts:preferences",     openclaw: "contacts:preferences" },
   // CLI surfaces both get + set under one `notifications preferences` command
-  // (positional `set k=v...`). MCP keeps the read and write as separate tools.
-  { id: "set_notification_preferences", endpoint: "PATCH /agent/v1/notifications/preferences",     mcp: "set_notification_preferences", cli: null,                            openclaw: null },
-  { id: "test_notification",            endpoint: "POST /agent/v1/notifications/test",             mcp: "test_notification",            cli: "contacts:test",                 openclaw: "contacts:test" },
-  { id: "rotate_webhook_secret",        endpoint: "POST /agent/v1/webhook-secret/rotate",          mcp: "rotate_webhook_secret",        cli: "webhook-secret:rotate",         openclaw: "webhook-secret:rotate" },
+  // (positional `set k=v...`); the SDK keeps the read and write as separate methods.
+  { id: "set_notification_preferences", endpoint: "PATCH /agent/v1/notifications/preferences",     cli: null,                            openclaw: null },
+  { id: "test_notification",            endpoint: "POST /agent/v1/notifications/test",             cli: "contacts:test",                 openclaw: "contacts:test" },
+  { id: "rotate_webhook_secret",        endpoint: "POST /agent/v1/webhook-secret/rotate",          cli: "webhook-secret:rotate",         openclaw: "webhook-secret:rotate" },
 
   // ── Telegram notification channel + routing rules
   //    (notification-channel-routing-telegram) ─────────────────────────────
-  // `connect`/`revoke` are CLI/SDK-only by design: connect blocks on a human
-  // tapping a Telegram deep link out-of-band (the CLI polls; a single MCP
-  // tool call can't sensibly block on that), and neither was in the MCP
-  // scope this change shipped (channels list + rules list/add/rm only) — see
-  // the PR description for the full write-tool-parity rationale.
-  { id: "connect_telegram_channel", endpoint: "POST /agent/v1/notifications/channels/telegram",              mcp: null,                          cli: "contacts:connect", openclaw: "contacts:connect" },
-  { id: "list_notification_channels", endpoint: "GET /agent/v1/notifications/channels",                      mcp: "list_notification_channels", cli: "contacts:list",    openclaw: "contacts:list" },
-  { id: "revoke_telegram_channel",  endpoint: "DELETE /agent/v1/notifications/channels/telegram/:binding_id", mcp: null,                          cli: "contacts:rm",     openclaw: "contacts:rm" },
-  { id: "list_notification_rules",  endpoint: "GET /agent/v1/notifications/rules",                           mcp: "list_notification_rules",    cli: "subscriptions:list",       openclaw: "subscriptions:list" },
-  { id: "create_notification_rule", endpoint: "POST /agent/v1/notifications/rules",                          mcp: "create_notification_rule",   cli: "subscriptions:add",        openclaw: "subscriptions:add" },
+  // `connect` blocks on a human tapping a Telegram deep link out-of-band (the
+  // CLI polls).
+  { id: "connect_telegram_channel", endpoint: "POST /agent/v1/notifications/channels/telegram",              cli: "contacts:connect", openclaw: "contacts:connect" },
+  { id: "list_notification_channels", endpoint: "GET /agent/v1/notifications/channels",                      cli: "contacts:list",    openclaw: "contacts:list" },
+  { id: "revoke_telegram_channel",  endpoint: "DELETE /agent/v1/notifications/channels/telegram/:binding_id", cli: "contacts:rm",     openclaw: "contacts:rm" },
+  { id: "list_notification_rules",  endpoint: "GET /agent/v1/notifications/rules",                           cli: "subscriptions:list",       openclaw: "subscriptions:list" },
+  { id: "create_notification_rule", endpoint: "POST /agent/v1/notifications/rules",                          cli: "subscriptions:add",        openclaw: "subscriptions:add" },
   // update_notification_rule (PATCH .../rules/:rule_id) is SDK-typed only in
-  // v1 (admin.rules.update) — no CLI verb or MCP tool; see SDK_ONLY_METHODS.
-  { id: "delete_notification_rule", endpoint: "DELETE /agent/v1/notifications/rules/:rule_id",               mcp: "delete_notification_rule",   cli: "subscriptions:rm",         openclaw: "subscriptions:rm" },
+  // v1 (admin.rules.update) — no CLI verb; see SDK_ONLY_METHODS.
+  { id: "delete_notification_rule", endpoint: "DELETE /agent/v1/notifications/rules/:rule_id",               cli: "subscriptions:rm",         openclaw: "subscriptions:rm" },
 
   // ── Project events feed (project-events-outbox) ─────────────────────────
-  // One CLI command + one MCP tool cover both scopes: the org-wide union
+  // One CLI command covers both scopes: the org-wide union
   // (GET /orgs/v1/:org_id/events) is the same surface addressed with
   // --org / org_id; the SDK's events.listForOrg is tracked in SDK_ONLY_METHODS.
-  { id: "list_project_events",          endpoint: "GET /projects/v1/:id/events",                   mcp: "list_project_events",          cli: "events:list",                   openclaw: "events:list" },
-  // tenant-live-changes: a long-lived stream has no MCP tool by design (see the
-  // change design); the held read is the polling-friendly shape for MCP callers
-  // via plain HTTP.
-  { id: "live_changes",                 endpoint: "GET /live/v1 + GET /live/v1/changes (+ /_run402/live* on tenant hosts)", mcp: null, cli: "live", openclaw: "live" },
+  { id: "list_project_events",          endpoint: "GET /projects/v1/:id/events",                   cli: "events:list",                   openclaw: "events:list" },
+  // tenant-live-changes: a long-lived stream has no verb of its own (see the
+  // change design); the held read is the polling-friendly shape.
+  { id: "live_changes",                 endpoint: "GET /live/v1 + GET /live/v1/changes (+ /_run402/live* on tenant hosts)", cli: "live", openclaw: "live" },
 
   // ── Agent messaging — coordination rooms (add-agent-messaging) ──────────
   // One CLI family per resource: `rooms` (the room itself: list/get/join/
@@ -580,195 +577,187 @@ const SURFACE: Capability[] = [
   // names its own second route) and only then arrives. The redemption's own SDK
   // method (`rooms.join`) has no capability row of its own — same law as
   // `session.devicePoll` sharing the `login` verb — see SDK_ONLY_METHODS.
-  { id: "join_room",                    endpoint: "POST /orgs/v1/:org_id/rooms/:room_key/presences (+ POST /rooms/v1/invites/:invite_id/redeem)", mcp: "join_room",                    cli: "rooms:join", openclaw: "rooms:join" },
-  { id: "leave_room",                   endpoint: "DELETE /orgs/v1/:org_id/rooms/:room_key/presences/:presence_id", mcp: "leave_room", cli: "rooms:leave", openclaw: "rooms:leave" },
+  { id: "join_room",                    endpoint: "POST /orgs/v1/:org_id/rooms/:room_key/presences (+ POST /rooms/v1/invites/:invite_id/redeem)", cli: "rooms:join", openclaw: "rooms:join" },
+  { id: "leave_room",                   endpoint: "DELETE /orgs/v1/:org_id/rooms/:room_key/presences/:presence_id", cli: "rooms:leave", openclaw: "rooms:leave" },
   // Rooms are derived from use: list_rooms enumerates the rooms a credential
   // can reach, get_room inspects one WITHOUT joining it (an unused key reads
   // as empty, never 404).
-  { id: "list_rooms",                   endpoint: "GET /orgs/v1/:org_id/rooms", mcp: "list_rooms", cli: "rooms:list", openclaw: "rooms:list" },
-  { id: "get_room",                     endpoint: "GET /orgs/v1/:org_id/rooms/:room_key", mcp: "get_room", cli: "rooms:get", openclaw: "rooms:get" },
-  { id: "send_room_message",            endpoint: "POST /orgs/v1/:org_id/rooms/:room_key/messages", mcp: "send_room_message",            cli: "messages:send", openclaw: "messages:send" },
-  { id: "read_room_messages",           endpoint: "GET /orgs/v1/:org_id/rooms/:room_key/messages", mcp: "read_room_messages",           cli: "messages:list", openclaw: "messages:list" },
+  { id: "list_rooms",                   endpoint: "GET /orgs/v1/:org_id/rooms", cli: "rooms:list", openclaw: "rooms:list" },
+  { id: "get_room",                     endpoint: "GET /orgs/v1/:org_id/rooms/:room_key", cli: "rooms:get", openclaw: "rooms:get" },
+  { id: "send_room_message",            endpoint: "POST /orgs/v1/:org_id/rooms/:room_key/messages", cli: "messages:send", openclaw: "messages:send" },
+  { id: "read_room_messages",           endpoint: "GET /orgs/v1/:org_id/rooms/:room_key/messages", cli: "messages:list", openclaw: "messages:list" },
   // kygit-invite design D6/D7: the agent's ear — a blocking wait built on
   // the SAME read route as read_room_messages, held query parameter `wait`.
-  // No dedicated MCP tool: `read_room_messages` gains a `wait` parameter
-  // instead (one held read, no client loop — an MCP tool call should
-  // return inside one server hold).
-  { id: "messages_wait",                endpoint: "GET /orgs/v1/:org_id/rooms/:room_key/messages?wait=<1..25>", mcp: null, cli: "messages:wait", openclaw: "messages:wait" },
-  { id: "ack_room_message",             endpoint: "POST /orgs/v1/:org_id/rooms/:room_key/messages/:message_id/ack", mcp: "ack_room_message",             cli: "messages:ack", openclaw: "messages:ack" },
-  { id: "get_room_message",             endpoint: "GET /orgs/v1/:org_id/rooms/:room_key/messages/:message_id", mcp: null, cli: "messages:get", openclaw: "messages:get" },
-  { id: "raise_escalation",             endpoint: "POST /orgs/v1/:org_id/escalations", mcp: "raise_escalation",           cli: "escalations:raise", openclaw: "escalations:raise" },
-  { id: "get_escalation",               endpoint: "GET /orgs/v1/:org_id/escalations/:escalation_id", mcp: "get_escalation",  cli: "escalations:get", openclaw: "escalations:get" },
-  // One MCP tool covers both reads: get_escalation with escalation_id omitted
-  // lists. The agent's loop is "poll MY escalation", and a second tool for the
-  // list would be two names for one question.
-  { id: "list_escalations",             endpoint: "GET /orgs/v1/:org_id/escalations", mcp: null,                          cli: "escalations:list", openclaw: "escalations:list" },
-  { id: "ack_escalation",               endpoint: "POST /orgs/v1/:org_id/escalations/:escalation_id/ack", mcp: null,       cli: "escalations:ack", openclaw: "escalations:ack" },
-  { id: "resolve_escalation",           endpoint: "POST /orgs/v1/:org_id/escalations/:escalation_id/resolve", mcp: null,   cli: "escalations:resolve", openclaw: "escalations:resolve" },
-  // Owner-only contact management (who gets paged). No MCP tool by design: an
-  // agent raises, it does not decide which humans exist to be paged — that is
-  // an owner action gated behind a passkey step-up.
-  { id: "manage_escalation_contacts",   endpoint: "GET /orgs/v1/:org_id/escalation-contacts", mcp: null,                  cli: "contacts:add", openclaw: "contacts:add" },
-  { id: "claim_room_resource",          endpoint: "POST /orgs/v1/:org_id/rooms/:room_key/claims",  mcp: "claim_room_resource",          cli: "claims:create", openclaw: "claims:create" },
-  { id: "list_room_claims",             endpoint: "GET /orgs/v1/:org_id/rooms/:room_key/claims", mcp: null, cli: "claims:list", openclaw: "claims:list" },
-  { id: "release_room_claim",           endpoint: "DELETE /orgs/v1/:org_id/rooms/:room_key/claims/:claim_id", mcp: "release_room_claim",           cli: "claims:release", openclaw: "claims:release" },
+  // The SDK's `rooms.waitForMessages` owns the loop; `listMessages` takes
+  // `wait` for one held read.
+  { id: "messages_wait",                endpoint: "GET /orgs/v1/:org_id/rooms/:room_key/messages?wait=<1..25>", cli: "messages:wait", openclaw: "messages:wait" },
+  { id: "ack_room_message",             endpoint: "POST /orgs/v1/:org_id/rooms/:room_key/messages/:message_id/ack", cli: "messages:ack", openclaw: "messages:ack" },
+  { id: "get_room_message",             endpoint: "GET /orgs/v1/:org_id/rooms/:room_key/messages/:message_id", cli: "messages:get", openclaw: "messages:get" },
+  { id: "raise_escalation",             endpoint: "POST /orgs/v1/:org_id/escalations", cli: "escalations:raise", openclaw: "escalations:raise" },
+  { id: "get_escalation",               endpoint: "GET /orgs/v1/:org_id/escalations/:escalation_id", cli: "escalations:get", openclaw: "escalations:get" },
+  // The agent's loop is "poll MY escalation".
+  { id: "list_escalations",             endpoint: "GET /orgs/v1/:org_id/escalations", cli: "escalations:list", openclaw: "escalations:list" },
+  { id: "ack_escalation",               endpoint: "POST /orgs/v1/:org_id/escalations/:escalation_id/ack", cli: "escalations:ack", openclaw: "escalations:ack" },
+  { id: "resolve_escalation",           endpoint: "POST /orgs/v1/:org_id/escalations/:escalation_id/resolve", cli: "escalations:resolve", openclaw: "escalations:resolve" },
+  // Owner-only contact management (who gets paged): an agent raises, it does
+  // not decide which humans exist to be paged — that is an owner action gated
+  // behind a passkey step-up.
+  { id: "manage_escalation_contacts",   endpoint: "GET /orgs/v1/:org_id/escalation-contacts", cli: "contacts:add", openclaw: "contacts:add" },
+  { id: "claim_room_resource",          endpoint: "POST /orgs/v1/:org_id/rooms/:room_key/claims",  cli: "claims:create", openclaw: "claims:create" },
+  { id: "list_room_claims",             endpoint: "GET /orgs/v1/:org_id/rooms/:room_key/claims", cli: "claims:list", openclaw: "claims:list" },
+  { id: "release_room_claim",           endpoint: "DELETE /orgs/v1/:org_id/rooms/:room_key/claims/:claim_id", cli: "claims:release", openclaw: "claims:release" },
 
   // add-room-invite: a copy-paste door into an org and a room with no vault
   // and no human — mint a single-use `kri1_…` bearer key from the room the
   // inviter stands in; joining through one is `join_room`'s own row above
   // (the claim route rides its endpoint parenthetically, and `rooms.join`
   // is in SDK_ONLY_METHODS — one CLI verb, no second SURFACE row, no
-  // duplicate `cli` string). `mcp: null` here for the same law as vault's
-  // `repos_invite`/`repos_join`: a bearer secret is minted, no MCP tool.
-  { id: "rooms_invite",                 endpoint: "POST /orgs/v1/:org_id/rooms/:room_key/invites", mcp: null, cli: "rooms:invite", openclaw: "rooms:invite" },
+  // duplicate `cli` string). Minting and redeeming the key refuse on the
+  // sandbox surface (SECRET_REQUIRES_CLI): a bearer secret is minted.
+  { id: "rooms_invite",                 endpoint: "POST /orgs/v1/:org_id/rooms/:room_key/invites", cli: "rooms:invite", openclaw: "rooms:invite" },
 
   // ── Release error rollup (release-error-rollup) ─────────────────────────
   // `run402 errors list` (list + verdict, and the promote-gate `--watch`) and
-  // `run402 errors get <fingerprint_id>` (one identity's detail). One MCP tool
-  // (`errors_list`) covers both through its `fingerprint_id` param. The SDK's
+  // `run402 errors get <fingerprint_id>` (one identity's detail). The SDK's
   // errors.watch is tracked in SDK_ONLY_METHODS (it rides `errors list --watch`).
-  { id: "errors_list",                  endpoint: "GET /projects/v1/:project_id/errors",           mcp: "errors_list",                  cli: "errors:list",                   openclaw: "errors:list" },
-  { id: "errors_get",                   endpoint: "GET /projects/v1/:project_id/errors/:fingerprint_id", mcp: null,                      cli: "errors:get",                    openclaw: "errors:get" },
+  { id: "errors_list",                  endpoint: "GET /projects/v1/:project_id/errors",           cli: "errors:list",                   openclaw: "errors:list" },
+  { id: "errors_get",                   endpoint: "GET /projects/v1/:project_id/errors/:fingerprint_id", cli: "errors:get",                    openclaw: "errors:get" },
 
   // ── Sign-in session and write approval (a person, not the agent) ─────────
   // One sign-in session graded by provenance (loopback | device). A browser
-  // ceremony → MCP null by design (an MCP host holds no browser, and a
-  // person's session must not become the agent's ambient authority).
-  { id: "login",             endpoint: "POST /agent/v1/control-plane/cli/token (+ /cli/device, /cli/device/token)", mcp: null, cli: "login", openclaw: "login" },
-  { id: "logout",            endpoint: "POST /agent/v1/control-plane/session/revoke",              mcp: null, cli: "logout",    openclaw: "logout" },
-  { id: "adopt_org",         endpoint: "POST /orgs/v1/adopt (+ /challenge)",                        mcp: null, cli: "orgs:adopt", openclaw: "orgs:adopt" },
-  { id: "approve",           endpoint: "POST /agent/v1/control-plane/write-approval/challenges (+ /cli/token)", mcp: null, cli: "approve", openclaw: "approve" },
+  // ceremony (an MCP host holds no browser, and a person's session must not
+  // become the agent's ambient authority).
+  { id: "login",             endpoint: "POST /agent/v1/control-plane/cli/token (+ /cli/device, /cli/device/token)", cli: "login", openclaw: "login" },
+  { id: "logout",            endpoint: "POST /agent/v1/control-plane/session/revoke",              cli: "logout",    openclaw: "logout" },
+  { id: "adopt_org",         endpoint: "POST /orgs/v1/adopt (+ /challenge)",                        cli: "orgs:adopt", openclaw: "orgs:adopt" },
+  { id: "approve",           endpoint: "POST /agent/v1/control-plane/write-approval/challenges (+ /cli/token)", cli: "approve", openclaw: "approve" },
 
   // ── Additional billing ─────────────────────────────────────────────────
-  { id: "create_checkout",   endpoint: "POST /orgs/v1/:org_id/checkouts",        mcp: "create_checkout",     cli: "billing:checkout",  openclaw: "billing:checkout" },
-  { id: "create_lightning_topup", endpoint: "POST /orgs/v1/:org_id/checkouts (rail: lightning)", mcp: "create_lightning_topup", cli: "billing:topup", openclaw: "billing:topup" },
-  { id: "get_topup",         endpoint: "GET /orgs/v1/:org_id/checkouts/:topup_id", mcp: "get_topup",          cli: null,                openclaw: null },
-  { id: "billing_history",   endpoint: "GET /orgs/v1/:org_id/billing/history", mcp: "billing_history", cli: null, openclaw: null },
+  { id: "create_checkout",   endpoint: "POST /orgs/v1/:org_id/checkouts",        cli: "billing:checkout",  openclaw: "billing:checkout" },
+  { id: "create_lightning_topup", endpoint: "POST /orgs/v1/:org_id/checkouts (rail: lightning)", cli: "billing:topup", openclaw: "billing:topup" },
+  { id: "get_topup",         endpoint: "GET /orgs/v1/:org_id/checkouts/:topup_id", cli: null,                openclaw: null },
+  { id: "billing_history",   endpoint: "GET /orgs/v1/:org_id/billing/history", cli: null, openclaw: null },
 
   // ── Version management ─────────────────────────────────────────────────
-  { id: "update_version",    endpoint: "PATCH /projects/v1/admin/:id/versions/:version_id", mcp: "update_version", cli: "apps:update", openclaw: "apps:update" },
-  { id: "delete_version",    endpoint: "DELETE /projects/v1/admin/:id/versions/:version_id", mcp: "delete_version", cli: "apps:delete", openclaw: "apps:delete" },
-  { id: "get_app",           endpoint: "GET /apps/v1/:version_id",          mcp: "get_app",             cli: "apps:inspect",     openclaw: "apps:inspect" },
+  { id: "update_version",    endpoint: "PATCH /projects/v1/admin/:id/versions/:version_id", cli: "apps:update", openclaw: "apps:update" },
+  { id: "delete_version",    endpoint: "DELETE /projects/v1/admin/:id/versions/:version_id", cli: "apps:delete", openclaw: "apps:delete" },
+  { id: "get_app",           endpoint: "GET /apps/v1/:version_id",          cli: "apps:inspect",     openclaw: "apps:inspect" },
 
   // ── Admin ──────────────────────────────────────────────────────────────
   // v1.57: pin/unpin endpoints removed. Per-project pin is superseded by the
   // organization-level escape hatch (admin_set_lease_perpetual). archive and
   // reactivate are staff moderation actions, scoped to a single project.
-  { id: "admin_set_lease_perpetual", endpoint: "POST /orgs/v1/admin/:org_id/lease-perpetual", mcp: "admin_set_lease_perpetual", cli: "admin:lease-perpetual", openclaw: "admin:lease-perpetual" },
-  { id: "admin_archive_project",     endpoint: "POST /projects/v1/admin/:id/archive",                 mcp: "admin_archive_project",     cli: "admin:archive",          openclaw: "admin:archive" },
-  { id: "admin_reactivate_project",  endpoint: "POST /projects/v1/admin/:id/reactivate",              mcp: "admin_reactivate_project",  cli: "admin:reactivate",       openclaw: "admin:reactivate" },
-  { id: "promote_user",    endpoint: "POST /projects/v1/admin/:id/promote-user", mcp: "promote_user", cli: "projects:promote-user", openclaw: "projects:promote-user" },
-  { id: "demote_user",     endpoint: "POST /projects/v1/admin/:id/demote-user",  mcp: "demote_user",  cli: "projects:demote-user",  openclaw: "projects:demote-user" },
-  { id: "admin_project_finance", endpoint: "GET /admin/api/finance/project/:id", mcp: null, cli: "projects:costs", openclaw: "projects:costs" },
+  { id: "admin_set_lease_perpetual", endpoint: "POST /orgs/v1/admin/:org_id/lease-perpetual", cli: "admin:lease-perpetual", openclaw: "admin:lease-perpetual" },
+  { id: "admin_archive_project",     endpoint: "POST /projects/v1/admin/:id/archive",                 cli: "admin:archive",          openclaw: "admin:archive" },
+  { id: "admin_reactivate_project",  endpoint: "POST /projects/v1/admin/:id/reactivate",              cli: "admin:reactivate",       openclaw: "admin:reactivate" },
+  { id: "promote_user",    endpoint: "POST /projects/v1/admin/:id/promote-user", cli: "projects:promote-user", openclaw: "projects:promote-user" },
+  { id: "demote_user",     endpoint: "POST /projects/v1/admin/:id/demote-user",  cli: "projects:demote-user",  openclaw: "projects:demote-user" },
+  { id: "admin_project_finance", endpoint: "GET /admin/api/finance/project/:id", cli: "projects:costs", openclaw: "projects:costs" },
 
   // ── Project transfer (unified noun) — wallet + email (one accept) + owned-org (immediate) ──
-  { id: "initiate_project_transfer", endpoint: "POST /projects/v1/:project_id/transfers",       mcp: "initiate_project_transfer", cli: "transfer:init",    openclaw: "transfer:init" },
-  { id: "preview_project_transfer",  endpoint: "GET /agent/v1/transfers/:transfer_id",          mcp: "preview_project_transfer",  cli: "transfer:preview", openclaw: "transfer:preview" },
-  { id: "accept_project_transfer",   endpoint: "POST /agent/v1/transfers/:transfer_id/accept",  mcp: "accept_project_transfer",   cli: "transfer:accept",  openclaw: "transfer:accept" },
-  { id: "cancel_project_transfer",   endpoint: "POST /agent/v1/transfers/:transfer_id/cancel",  mcp: "cancel_project_transfer",   cli: "transfer:cancel",  openclaw: "transfer:cancel" },
-  { id: "list_incoming_transfers",   endpoint: "GET /agent/v1/transfers/incoming",              mcp: "list_incoming_transfers",   cli: "transfer:list",    openclaw: "transfer:list" },
-  { id: "list_outgoing_transfers",   endpoint: "GET /agent/v1/transfers/outgoing",              mcp: "list_outgoing_transfers",   cli: null,               openclaw: null },
+  { id: "initiate_project_transfer", endpoint: "POST /projects/v1/:project_id/transfers",       cli: "transfer:init",    openclaw: "transfer:init" },
+  { id: "preview_project_transfer",  endpoint: "GET /agent/v1/transfers/:transfer_id",          cli: "transfer:preview", openclaw: "transfer:preview" },
+  { id: "accept_project_transfer",   endpoint: "POST /agent/v1/transfers/:transfer_id/accept",  cli: "transfer:accept",  openclaw: "transfer:accept" },
+  { id: "cancel_project_transfer",   endpoint: "POST /agent/v1/transfers/:transfer_id/cancel",  cli: "transfer:cancel",  openclaw: "transfer:cancel" },
+  { id: "list_incoming_transfers",   endpoint: "GET /agent/v1/transfers/incoming",              cli: "transfer:list",    openclaw: "transfer:list" },
+  { id: "list_outgoing_transfers",   endpoint: "GET /agent/v1/transfers/outgoing",              cli: null,               openclaw: null },
 
   // ── Org-owned control plane: identity, membership, grants (v1.77+) ──────
-  { id: "create_org",          endpoint: "POST /orgs/v1",                                 mcp: "create_org",            cli: "orgs:create",        openclaw: "orgs:create" },
-  { id: "get_org",             endpoint: "GET /orgs/v1/:org_id",                          mcp: "get_org",               cli: "orgs:get",           openclaw: "orgs:get" },
-  { id: "rename_org",          endpoint: "PATCH /orgs/v1/:org_id",                        mcp: "rename_org",            cli: "orgs:rename",        openclaw: "orgs:rename" },
-  { id: "set_org_payout_wallet", endpoint: "PATCH /orgs/v1/:org_id/payout-wallet",         mcp: "set_org_payout_wallet", cli: "orgs:payout-wallet", openclaw: "orgs:payout-wallet" },
+  { id: "create_org",          endpoint: "POST /orgs/v1",                                 cli: "orgs:create",        openclaw: "orgs:create" },
+  { id: "get_org",             endpoint: "GET /orgs/v1/:org_id",                          cli: "orgs:get",           openclaw: "orgs:get" },
+  { id: "rename_org",          endpoint: "PATCH /orgs/v1/:org_id",                        cli: "orgs:rename",        openclaw: "orgs:rename" },
+  { id: "set_org_payout_wallet", endpoint: "PATCH /orgs/v1/:org_id/payout-wallet",         cli: "orgs:payout-wallet", openclaw: "orgs:payout-wallet" },
   // repo-first-onramp task 4 (design D6): the slug CLAIM spends money and is
-  // a permanent handle — CLI/SDK only, no MCP tool (documentation.md's
-  // vault row's "mutating verbs are CLI-only" law extends to this sibling
-  // org-owned naming surface for the same reasons: a paid, side-effecting,
-  // hard-to-undo mutation belongs to a command the caller typed).
-  { id: "org_slug",            endpoint: "POST /orgs/v1/:org_id/slug",                    mcp: null,                    cli: "orgs:slug",          openclaw: "orgs:slug" },
-  { id: "whoami",              endpoint: "GET /agent/v1/whoami (+ PATCH /agent/v1/me)", mcp: "whoami",                cli: "whoami",            openclaw: "whoami" },
-  { id: "list_orgs",           endpoint: "GET /orgs/v1 (+ GET /agent/v1/me/overview)",    mcp: "list_orgs",             cli: "orgs:list",          openclaw: "orgs:list" },
-  { id: "list_org_members",    endpoint: "GET /orgs/v1/:org_id/members",                      mcp: "list_org_members",      cli: "orgs:members:list",   openclaw: "orgs:members:list" },
-  { id: "add_org_member",      endpoint: "POST /orgs/v1/:org_id/members",                     mcp: "add_org_member",        cli: "orgs:members:add",    openclaw: "orgs:members:add" },
-  { id: "set_org_member_role", endpoint: "PATCH /orgs/v1/:org_id/members/:principal_id",      mcp: "set_org_member_role",   cli: "orgs:members:role",   openclaw: "orgs:members:role" },
-  { id: "remove_org_member",   endpoint: "DELETE /orgs/v1/:org_id/members/:principal_id",     mcp: "remove_org_member",     cli: "orgs:members:rm",     openclaw: "orgs:members:rm" },
-  // vault-agent-envelopes D3: the owner's independent-credential rotation path — no MCP tool by design (owner + step-up mutation, CLI-only like every other vault mutating verb).
-  { id: "revoke_org_member_encryption_key", endpoint: "DELETE /orgs/v1/:org_id/members/:principal_id/encryption-key", mcp: null, cli: "orgs:members:revoke-key", openclaw: "orgs:members:revoke-key" },
-  { id: "org_audit",           endpoint: "GET /orgs/v1/:org_id/audit",                        mcp: null,                    cli: "orgs:audit",         openclaw: "orgs:audit" },
+  // a permanent handle: a paid, side-effecting, hard-to-undo mutation belongs
+  // to a command the caller typed.
+  { id: "org_slug",            endpoint: "POST /orgs/v1/:org_id/slug",                    cli: "orgs:slug",          openclaw: "orgs:slug" },
+  { id: "whoami",              endpoint: "GET /agent/v1/whoami (+ PATCH /agent/v1/me)", cli: "whoami",            openclaw: "whoami" },
+  { id: "list_orgs",           endpoint: "GET /orgs/v1 (+ GET /agent/v1/me/overview)",    cli: "orgs:list",          openclaw: "orgs:list" },
+  { id: "list_org_members",    endpoint: "GET /orgs/v1/:org_id/members",                      cli: "orgs:members:list",   openclaw: "orgs:members:list" },
+  { id: "add_org_member",      endpoint: "POST /orgs/v1/:org_id/members",                     cli: "orgs:members:add",    openclaw: "orgs:members:add" },
+  { id: "set_org_member_role", endpoint: "PATCH /orgs/v1/:org_id/members/:principal_id",      cli: "orgs:members:role",   openclaw: "orgs:members:role" },
+  { id: "remove_org_member",   endpoint: "DELETE /orgs/v1/:org_id/members/:principal_id",     cli: "orgs:members:rm",     openclaw: "orgs:members:rm" },
+  // vault-agent-envelopes D3: the owner's independent-credential rotation path (owner + step-up mutation).
+  { id: "revoke_org_member_encryption_key", endpoint: "DELETE /orgs/v1/:org_id/members/:principal_id/encryption-key", cli: "orgs:members:revoke-key", openclaw: "orgs:members:revoke-key" },
+  { id: "org_audit",           endpoint: "GET /orgs/v1/:org_id/audit",                        cli: "orgs:audit",         openclaw: "orgs:audit" },
   // Current-org selection (add-cli-current-org): LOCAL state, like wallets:use
   // and the local half of projects:use. No endpoint — the org id is resolved
   // client-side and only travels as a path segment on the calls that use it.
-  { id: "org_use",             endpoint: "(local)",                                           mcp: null,                    cli: "orgs:use",           openclaw: "orgs:use" },
-  { id: "org_current",         endpoint: "(local)",                                           mcp: null,                    cli: "orgs:current",       openclaw: "orgs:current" },
-  { id: "org_clear",           endpoint: "(local)",                                           mcp: null,                    cli: "orgs:clear",         openclaw: "orgs:clear" },
-  { id: "org_bind",            endpoint: "(local)",                                           mcp: null,                    cli: "orgs:bind",          openclaw: "orgs:bind" },
-  { id: "org_unbind",          endpoint: "(local)",                                           mcp: null,                    cli: "orgs:unbind",        openclaw: "orgs:unbind" },
-  { id: "org_invite_list",     endpoint: "GET /orgs/v1/:org_id/invites",                      mcp: null,                    cli: "orgs:invite:list",   openclaw: "orgs:invite:list" },
-  { id: "org_invite_create",   endpoint: "POST /orgs/v1/:org_id/invites",                     mcp: null,                    cli: "orgs:invite:create", openclaw: "orgs:invite:create" },
-  { id: "org_invite_rm",       endpoint: "DELETE /orgs/v1/:org_id/invites/:principal_id",     mcp: null,                    cli: "orgs:invite:rm",     openclaw: "orgs:invite:rm" },
-  { id: "create_project_grant", endpoint: "POST /projects/v1/:id/grants",                 mcp: "create_project_grant",  cli: "grants:create",     openclaw: "grants:create" },
-  { id: "list_project_grants",  endpoint: "GET /projects/v1/:id/grants",                  mcp: "list_project_grants",   cli: "grants:list",       openclaw: "grants:list" },
-  { id: "revoke_project_grant", endpoint: "DELETE /projects/v1/:id/grants/:grant_id",     mcp: "revoke_project_grant",  cli: "grants:revoke",     openclaw: "grants:revoke" },
-  { id: "revoke_project_grant_key", endpoint: "DELETE /projects/v1/:id/grant-keys/:key_id", mcp: "revoke_project_grant_key", cli: "grants:revoke-key", openclaw: "grants:revoke-key" },
-  // Rotating a grant key returns its token once: `mcp: null`, same reason as
-  // the project credentials below.
-  { id: "rotate_project_grant_key", endpoint: "POST /projects/v1/:id/grant-keys/:key_id/rotate", mcp: null, cli: "grants:rotate-key", openclaw: "grants:rotate-key" },
-  // Project credentials. `mcp: null` because
-  // issue/rotate/token return a one-time secret, and MCP renders tool output
-  // into an agent transcript — exactly where agent-response-design.md says
+  { id: "org_use",             endpoint: "(local)",                                           cli: "orgs:use",           openclaw: "orgs:use" },
+  { id: "org_current",         endpoint: "(local)",                                           cli: "orgs:current",       openclaw: "orgs:current" },
+  { id: "org_clear",           endpoint: "(local)",                                           cli: "orgs:clear",         openclaw: "orgs:clear" },
+  { id: "org_bind",            endpoint: "(local)",                                           cli: "orgs:bind",          openclaw: "orgs:bind" },
+  { id: "org_unbind",          endpoint: "(local)",                                           cli: "orgs:unbind",        openclaw: "orgs:unbind" },
+  { id: "org_invite_list",     endpoint: "GET /orgs/v1/:org_id/invites",                      cli: "orgs:invite:list",   openclaw: "orgs:invite:list" },
+  { id: "org_invite_create",   endpoint: "POST /orgs/v1/:org_id/invites",                     cli: "orgs:invite:create", openclaw: "orgs:invite:create" },
+  { id: "org_invite_rm",       endpoint: "DELETE /orgs/v1/:org_id/invites/:principal_id",     cli: "orgs:invite:rm",     openclaw: "orgs:invite:rm" },
+  { id: "create_project_grant", endpoint: "POST /projects/v1/:id/grants",                 cli: "grants:create",     openclaw: "grants:create" },
+  { id: "list_project_grants",  endpoint: "GET /projects/v1/:id/grants",                  cli: "grants:list",       openclaw: "grants:list" },
+  { id: "revoke_project_grant", endpoint: "DELETE /projects/v1/:id/grants/:grant_id",     cli: "grants:revoke",     openclaw: "grants:revoke" },
+  { id: "revoke_project_grant_key", endpoint: "DELETE /projects/v1/:id/grant-keys/:key_id", cli: "grants:revoke-key", openclaw: "grants:revoke-key" },
+  // Rotating a grant key returns its token once: it refuses on the sandbox
+  // surface (SECRET_REQUIRES_CLI), same as the project credentials below.
+  { id: "rotate_project_grant_key", endpoint: "POST /projects/v1/:id/grant-keys/:key_id/rotate", cli: "grants:rotate-key", openclaw: "grants:rotate-key" },
+  // Project credentials. issue/rotate/token return a one-time secret and
+  // refuse on the sandbox surface (SECRET_REQUIRES_CLI): an MCP result lands
+  // in an agent transcript, exactly where agent-response-design.md says
   // credential-create / credential-rotate / token-mint must never be persisted.
-  // The read-only pair could take an MCP tool later; they are held with the
-  // group so the surface stays one coherent thing rather than half a feature.
-  { id: "issue_project_credential",  endpoint: "POST /projects/v1/:id/credentials",                     mcp: null, cli: "credentials:issue",  openclaw: "credentials:issue" },
-  { id: "list_project_credentials",  endpoint: "GET /projects/v1/:id/credentials",                      mcp: null, cli: "credentials:list",   openclaw: "credentials:list" },
-  { id: "project_credential_status", endpoint: "GET /projects/v1/:id/credential-status",                mcp: null, cli: "credentials:status", openclaw: "credentials:status" },
-  { id: "rotate_project_credential", endpoint: "POST /projects/v1/:id/credentials/:credential_id/rotate", mcp: null, cli: "credentials:rotate", openclaw: "credentials:rotate" },
-  { id: "revoke_project_credential", endpoint: "DELETE /projects/v1/:id/credentials/:credential_id",    mcp: null, cli: "credentials:revoke", openclaw: "credentials:revoke" },
-  { id: "mint_project_token",        endpoint: "POST /projects/v1/:id/tokens",                          mcp: null, cli: "credentials:token",  openclaw: "credentials:token" },
+  { id: "issue_project_credential",  endpoint: "POST /projects/v1/:id/credentials",                     cli: "credentials:issue",  openclaw: "credentials:issue" },
+  { id: "list_project_credentials",  endpoint: "GET /projects/v1/:id/credentials",                      cli: "credentials:list",   openclaw: "credentials:list" },
+  { id: "project_credential_status", endpoint: "GET /projects/v1/:id/credential-status",                cli: "credentials:status", openclaw: "credentials:status" },
+  { id: "rotate_project_credential", endpoint: "POST /projects/v1/:id/credentials/:credential_id/rotate", cli: "credentials:rotate", openclaw: "credentials:rotate" },
+  { id: "revoke_project_credential", endpoint: "DELETE /projects/v1/:id/credentials/:credential_id",    cli: "credentials:revoke", openclaw: "credentials:revoke" },
+  { id: "mint_project_token",        endpoint: "POST /projects/v1/:id/tokens",                          cli: "credentials:token",  openclaw: "credentials:token" },
 
   // ── Auth (project user) ────────────────────────────────────────────────
-  { id: "request_magic_link", endpoint: "POST /auth/v1/magic-link",           mcp: "request_magic_link", cli: "auth:magic-link",    openclaw: "auth:magic-link" },
-  { id: "verify_magic_link",  endpoint: "POST /auth/v1/token?grant_type=magic_link|email_code", mcp: "verify_magic_link", cli: "auth:verify", openclaw: "auth:verify" },
-  { id: "create_auth_user",   endpoint: "POST /auth/v1/admin/users",          mcp: "create_auth_user",   cli: "auth:create-user",  openclaw: "auth:create-user" },
-  { id: "invite_auth_user",   endpoint: "POST /auth/v1/admin/users",          mcp: "invite_auth_user",   cli: "auth:invite-user",  openclaw: "auth:invite-user" },
-  { id: "set_user_password",  endpoint: "PUT /auth/v1/user/password",         mcp: "set_user_password",  cli: "auth:set-password",  openclaw: "auth:set-password" },
-  { id: "auth_settings",      endpoint: "PATCH /auth/v1/settings",            mcp: "auth_settings",      cli: "auth:settings",      openclaw: "auth:settings" },
-  { id: "passkey_register_options", endpoint: "POST /auth/v1/passkeys/register/options", mcp: "passkey_register_options", cli: "auth:passkey-register-options", openclaw: "auth:passkey-register-options" },
-  { id: "passkey_register_verify",  endpoint: "POST /auth/v1/passkeys/register/verify",  mcp: "passkey_register_verify",  cli: "auth:passkey-register-verify",  openclaw: "auth:passkey-register-verify" },
-  { id: "passkey_login_options",    endpoint: "POST /auth/v1/passkeys/login/options",    mcp: "passkey_login_options",    cli: "auth:passkey-login-options",    openclaw: "auth:passkey-login-options" },
-  { id: "passkey_login_verify",     endpoint: "POST /auth/v1/passkeys/login/verify",     mcp: "passkey_login_verify",     cli: "auth:passkey-login-verify",     openclaw: "auth:passkey-login-verify" },
-  { id: "list_passkeys",            endpoint: "GET /auth/v1/passkeys",                   mcp: "list_passkeys",            cli: "auth:passkeys",                 openclaw: "auth:passkeys" },
-  { id: "delete_passkey",           endpoint: "DELETE /auth/v1/passkeys/:id",             mcp: "delete_passkey",           cli: "auth:delete-passkey",           openclaw: "auth:delete-passkey" },
-  { id: "auth_providers",    endpoint: "GET /auth/v1/providers",              mcp: null,                 cli: "auth:providers",     openclaw: "auth:providers" },
-  { id: "auth_scaffold_roles", endpoint: "(local)",                           mcp: "scaffold_roles",     cli: "auth:scaffold-roles", openclaw: "auth:scaffold-roles" },
+  { id: "request_magic_link", endpoint: "POST /auth/v1/magic-link",           cli: "auth:magic-link",    openclaw: "auth:magic-link" },
+  { id: "verify_magic_link",  endpoint: "POST /auth/v1/token?grant_type=magic_link|email_code", cli: "auth:verify", openclaw: "auth:verify" },
+  { id: "create_auth_user",   endpoint: "POST /auth/v1/admin/users",          cli: "auth:create-user",  openclaw: "auth:create-user" },
+  { id: "invite_auth_user",   endpoint: "POST /auth/v1/admin/users",          cli: "auth:invite-user",  openclaw: "auth:invite-user" },
+  { id: "set_user_password",  endpoint: "PUT /auth/v1/user/password",         cli: "auth:set-password",  openclaw: "auth:set-password" },
+  { id: "auth_settings",      endpoint: "PATCH /auth/v1/settings",            cli: "auth:settings",      openclaw: "auth:settings" },
+  { id: "passkey_register_options", endpoint: "POST /auth/v1/passkeys/register/options", cli: "auth:passkey-register-options", openclaw: "auth:passkey-register-options" },
+  { id: "passkey_register_verify",  endpoint: "POST /auth/v1/passkeys/register/verify",  cli: "auth:passkey-register-verify",  openclaw: "auth:passkey-register-verify" },
+  { id: "passkey_login_options",    endpoint: "POST /auth/v1/passkeys/login/options",    cli: "auth:passkey-login-options",    openclaw: "auth:passkey-login-options" },
+  { id: "passkey_login_verify",     endpoint: "POST /auth/v1/passkeys/login/verify",     cli: "auth:passkey-login-verify",     openclaw: "auth:passkey-login-verify" },
+  { id: "list_passkeys",            endpoint: "GET /auth/v1/passkeys",                   cli: "auth:passkeys",                 openclaw: "auth:passkeys" },
+  { id: "delete_passkey",           endpoint: "DELETE /auth/v1/passkeys/:id",             cli: "auth:delete-passkey",           openclaw: "auth:delete-passkey" },
+  { id: "auth_providers",    endpoint: "GET /auth/v1/providers",              cli: "auth:providers",     openclaw: "auth:providers" },
+  { id: "auth_scaffold_roles", endpoint: "(local)",                           cli: "auth:scaffold-roles", openclaw: "auth:scaffold-roles" },
 
   // ── Email organizations + org checkout ─────────────────────────────
-  { id: "create_email_organization", endpoint: "POST /orgs/v1/email",                   mcp: "create_email_organization", cli: "billing:create-email",   openclaw: "billing:create-email" },
-  { id: "link_wallet_to_organization",       endpoint: "POST /orgs/v1/:org_id/wallets",   mcp: "link_wallet_to_organization",       cli: "billing:link-wallet",    openclaw: "billing:link-wallet" },
-  { id: "set_auto_recharge",            endpoint: "PATCH /orgs/v1/:org_id/billing/auto-recharge",  mcp: "set_auto_recharge",            cli: "billing:auto-recharge",  openclaw: "billing:auto-recharge" },
-  { id: "billing_balance",              endpoint: "GET /orgs/v1/:org_id/billing",        mcp: null,                           cli: "billing:balance",        openclaw: "billing:balance" },
-  { id: "billing_history_cli",          endpoint: "GET /orgs/v1/:org_id/billing/history",        mcp: null,                           cli: "billing:history",        openclaw: "billing:history" },
+  { id: "create_email_organization", endpoint: "POST /orgs/v1/email",                   cli: "billing:create-email",   openclaw: "billing:create-email" },
+  { id: "link_wallet_to_organization",       endpoint: "POST /orgs/v1/:org_id/wallets",   cli: "billing:link-wallet",    openclaw: "billing:link-wallet" },
+  { id: "set_auto_recharge",            endpoint: "PATCH /orgs/v1/:org_id/billing/auto-recharge",  cli: "billing:auto-recharge",  openclaw: "billing:auto-recharge" },
+  { id: "billing_balance",              endpoint: "GET /orgs/v1/:org_id/billing",        cli: "billing:balance",        openclaw: "billing:balance" },
+  { id: "billing_history_cli",          endpoint: "GET /orgs/v1/:org_id/billing/history",        cli: "billing:history",        openclaw: "billing:history" },
 
   // ── Tier management ────────────────────────────────────────────────────
-  { id: "tier_status",       endpoint: "GET /tiers/v1/status",             mcp: "tier_status",      cli: "tier:status",      openclaw: "tier:status" },
+  { id: "tier_status",       endpoint: "GET /tiers/v1/status",             cli: "tier:status",      openclaw: "tier:status" },
 
   // ── Local wallet ───────────────────────────────────────────────────────
   // The Lightning wallet (mpp-lightning-over-nwc): one verb on every
   // surface; `init lightning` is the same mint through the existing `init`.
-  { id: "lightning_wallet",  endpoint: "/agent/v1/lightning-wallet",       mcp: "lightning_wallet", cli: "wallets:lightning", openclaw: "wallets:lightning" },
-  { id: "wallet_create",  endpoint: "(local)",                          mcp: "wallet_create", cli: null, openclaw: null },
-  { id: "wallet_export",  endpoint: "(local)",                          mcp: "wallet_export", cli: null, openclaw: null },
+  { id: "lightning_wallet",  endpoint: "/agent/v1/lightning-wallet",       cli: "wallets:lightning", openclaw: "wallets:lightning" },
+  { id: "wallet_create",  endpoint: "(local)",                          cli: null, openclaw: null },
+  { id: "wallet_export",  endpoint: "(local)",                          cli: null, openclaw: null },
 
   // ── Service status (public, unauthenticated) ───────────────────────────
-  { id: "service_status",    endpoint: "GET /status",                      mcp: "service_status",   cli: "service:status",   openclaw: "service:status" },
-  { id: "service_health",    endpoint: "GET /health",                      mcp: "service_health",   cli: "service:health",   openclaw: "service:health" },
+  { id: "service_status",    endpoint: "GET /status",                      cli: "service:status",   openclaw: "service:status" },
+  { id: "service_health",    endpoint: "GET /health",                      cli: "service:health",   openclaw: "service:health" },
 
   // ── KMS signers ─────────────────────────────────────────────────────────
-  { id: "provision_signer",          endpoint: "POST /contracts/v1/signers",                       mcp: "provision_signer",          cli: "contracts:provision-signer", openclaw: "contracts:provision-signer" },
-  { id: "get_signer",                endpoint: "GET /contracts/v1/signers/:id",                    mcp: "get_signer",                cli: "contracts:get-signer",       openclaw: "contracts:get-signer" },
-  { id: "list_signers",              endpoint: "GET /contracts/v1/signers",                        mcp: "list_signers",              cli: "contracts:list-signers",     openclaw: "contracts:list-signers" },
-  { id: "set_recovery_address",      endpoint: "POST /contracts/v1/signers/:id/recovery-address",  mcp: "set_recovery_address",      cli: "contracts:set-recovery",     openclaw: "contracts:set-recovery" },
-  { id: "set_low_balance_alert",     endpoint: "POST /contracts/v1/signers/:id/alert",             mcp: "set_low_balance_alert",     cli: "contracts:set-alert",        openclaw: "contracts:set-alert" },
-  { id: "contract_call",             endpoint: "POST /contracts/v1/call",                          mcp: "contract_call",             cli: "contracts:call",             openclaw: "contracts:call" },
-  { id: "contract_deploy",           endpoint: "POST /contracts/v1/deploy",                        mcp: "contract_deploy",           cli: "contracts:deploy",           openclaw: "contracts:deploy" },
-  { id: "contract_read",             endpoint: "POST /contracts/v1/read",                          mcp: "contract_read",             cli: "contracts:read",             openclaw: "contracts:read" },
-  { id: "get_contract_call_status",  endpoint: "GET /contracts/v1/calls/:id",                      mcp: "get_contract_call_status",  cli: "contracts:status",           openclaw: "contracts:status" },
-  { id: "drain_signer",              endpoint: "POST /contracts/v1/signers/:id/drain",             mcp: "drain_signer",              cli: "contracts:drain",            openclaw: "contracts:drain" },
-  { id: "delete_signer",             endpoint: "DELETE /contracts/v1/signers/:id",                 mcp: "delete_signer",             cli: "contracts:delete",           openclaw: "contracts:delete" },
+  { id: "provision_signer",          endpoint: "POST /contracts/v1/signers",                       cli: "contracts:provision-signer", openclaw: "contracts:provision-signer" },
+  { id: "get_signer",                endpoint: "GET /contracts/v1/signers/:id",                    cli: "contracts:get-signer",       openclaw: "contracts:get-signer" },
+  { id: "list_signers",              endpoint: "GET /contracts/v1/signers",                        cli: "contracts:list-signers",     openclaw: "contracts:list-signers" },
+  { id: "set_recovery_address",      endpoint: "POST /contracts/v1/signers/:id/recovery-address",  cli: "contracts:set-recovery",     openclaw: "contracts:set-recovery" },
+  { id: "set_low_balance_alert",     endpoint: "POST /contracts/v1/signers/:id/alert",             cli: "contracts:set-alert",        openclaw: "contracts:set-alert" },
+  { id: "contract_call",             endpoint: "POST /contracts/v1/call",                          cli: "contracts:call",             openclaw: "contracts:call" },
+  { id: "contract_deploy",           endpoint: "POST /contracts/v1/deploy",                        cli: "contracts:deploy",           openclaw: "contracts:deploy" },
+  { id: "contract_read",             endpoint: "POST /contracts/v1/read",                          cli: "contracts:read",             openclaw: "contracts:read" },
+  { id: "get_contract_call_status",  endpoint: "GET /contracts/v1/calls/:id",                      cli: "contracts:status",           openclaw: "contracts:status" },
+  { id: "drain_signer",              endpoint: "POST /contracts/v1/signers/:id/drain",             cli: "contracts:drain",            openclaw: "contracts:drain" },
+  { id: "delete_signer",             endpoint: "DELETE /contracts/v1/signers/:id",                 cli: "contracts:delete",           openclaw: "contracts:delete" },
 
   // ── repos (r402s/v0) — the host-blind encrypted git repo family ─────────
   // repo-surface-consolidation: the 19-command `vault`/`repos` sprawl
@@ -777,83 +766,70 @@ const SURFACE: Capability[] = [
   // COMMAND_REMOVED, tracked in RESERVED_SUBCOMMANDS, not here (a redirect
   // dispatches nothing, so it needs no capability row).
   //
-  // The READS are on MCP because "is my repo healthy / did the host serve me
-  // a rollback / what landed" is exactly the mid-session question an agent
-  // asks, and none of those responses carries key material. The three
-  // renamed tools (design D10 — one noun across every agent surface) are
-  // `repos_view`, `repos_list_heads`, `repos_fsck`.
-  //
-  // Every WRITE is CLI-only, deliberately. `snapshot` publishes an immutable
-  // generation from whatever is in the working tree at that instant;
-  // `create` mints key material and (on first allocation) a one-shot
-  // recovery receipt; `gc` holds a maintenance lease whose holder_token is
-  // returned exactly once (a dropped MCP session strands it until its
-  // deadline) and its submit half is destructive by contract; `policy`
-  // needs owner + step-up, which the MCP path does not carry; `mirror`
-  // writes local config or moves real bytes into a customer-owned bucket;
-  // `delete`/`rename` are irreversible or identity-changing. Each wants a
-  // human at a terminal, not an agent transcript.
-  { id: "repos_create", endpoint: "POST /projects/v1 (+ vault genesis admission)", mcp: null, cli: "repos:create", openclaw: "repos:create" },
+  // The reads carry no key material. The writes that mint key material or a
+  // one-shot receipt (`create`'s recovery receipt, `handoff`/`invite` keys)
+  // refuse on the sandbox surface (SECRET_REQUIRES_CLI); `gc` holds a
+  // maintenance lease whose holder_token is returned exactly once and whose
+  // submit half is destructive by contract; `policy` needs owner + step-up;
+  // `mirror` writes local config or moves real bytes into a customer-owned
+  // bucket; `delete`/`rename` are irreversible or identity-changing.
+  { id: "repos_create", endpoint: "POST /projects/v1 (+ vault genesis admission)", cli: "repos:create", openclaw: "repos:create" },
   // Bulk vaults-by-org read (task 2.4) with a graceful per-project fallback
   // when the gateway hasn't shipped the route yet (`err.status === 404` in
   // `cli/lib/repos.mjs`'s `list()`) — see `Repos.listByOrg`'s doc comment
   // for the FROZEN response shape this codes against.
-  { id: "repos_list",   endpoint: "GET /vaults/v1?org_id=<uuid> (404-graceful fallback: GET /projects/v1 + per-project GET /vaults/v1/:vault_id)", mcp: null, cli: "repos:list", openclaw: "repos:list" },
+  { id: "repos_list",   endpoint: "GET /vaults/v1?org_id=<uuid> (404-graceful fallback: GET /projects/v1 + per-project GET /vaults/v1/:vault_id)", cli: "repos:list", openclaw: "repos:list" },
   // Design D3: side-effect-free by construction — never passes `refs: true`,
   // so it never materializes or advances a local pin. That belongs to `fsck`.
-  { id: "repos_view",   endpoint: "GET /vaults/v1/:vault_id", mcp: "repos_view", cli: "repos:view", openclaw: "repos:view" },
-  { id: "repos_list_heads", endpoint: "GET /vaults/v1/:vault_id/heads", mcp: "repos_list_heads", cli: null, openclaw: null },
+  { id: "repos_view",   endpoint: "GET /vaults/v1/:vault_id", cli: "repos:view", openclaw: "repos:view" },
+  { id: "repos_list_heads", endpoint: "GET /vaults/v1/:vault_id/heads", cli: null, openclaw: null },
   // Absorbs the old `repos name` (repo-first-onramp D6) — same claim/rename
   // endpoint, `--repo`/`--project` addressing (`gh repo rename`, design D2).
-  { id: "repos_rename", endpoint: "POST /projects/v1/:id/repo-name", mcp: null, cli: "repos:rename", openclaw: "repos:rename" },
+  { id: "repos_rename", endpoint: "POST /projects/v1/:id/repo-name", cli: "repos:rename", openclaw: "repos:rename" },
   // Design D9: refuses PROJECT_HAS_NON_REPO_RESOURCES when the project holds
   // materialized database/functions/secrets/subdomains/mailbox — reads each
   // via the SAME service-key credential `projects.delete` itself requires.
-  { id: "repos_delete", endpoint: "DELETE /projects/v1/:id (+ reads: GET /projects/v1/:id, /admin/:id/schema, /admin/:id/functions, secrets, subdomains)", mcp: null, cli: "repos:delete", openclaw: "repos:delete" },
-  { id: "repos_capture", endpoint: "POST /vaults/v1/:vault_id/upload-sessions (+ admission)", mcp: null, cli: "repos:capture", openclaw: "repos:capture" },
+  { id: "repos_delete", endpoint: "DELETE /projects/v1/:id (+ reads: GET /projects/v1/:id, /admin/:id/schema, /admin/:id/functions, secrets, subdomains)", cli: "repos:delete", openclaw: "repos:delete" },
+  { id: "repos_capture", endpoint: "POST /vaults/v1/:vault_id/upload-sessions (+ admission)", cli: "repos:capture", openclaw: "repos:capture" },
   // kygit-handoff design D7/D10: a bearer secret is minted (`handoff`) and
   // membership + a working tree are mutated (`resume`) — the same law that
-  // keeps `repos create/delete` off MCP. `mcp: null` is pinned by the
-  // client-surface spec's own "No MCP tool exists for handoff or resume"
-  // requirement.
-  { id: "repos_handoff", endpoint: "POST /vaults/v1/:vault_id/handoffs", mcp: null, cli: "repos:handoff", openclaw: "repos:handoff" },
-  { id: "repos_resume", endpoint: "POST /vaults/v1/handoffs/:handoff_id/redeem", mcp: null, cli: "repos:resume", openclaw: "repos:resume" },
+  // makes `repos handoff/resume` refuse on the sandbox surface
+  // (SECRET_REQUIRES_CLI).
+  { id: "repos_handoff", endpoint: "POST /vaults/v1/:vault_id/handoffs", cli: "repos:handoff", openclaw: "repos:handoff" },
+  { id: "repos_resume", endpoint: "POST /vaults/v1/handoffs/:handoff_id/redeem", cli: "repos:resume", openclaw: "repos:resume" },
   // kygit-invite design D1/D9: the second claim kind, same law as
   // handoff/resume above — a bearer secret is minted (`invite`) and
-  // membership + a working tree are mutated (`join`), so `mcp: null` is
-  // pinned by the client-surface spec's own "No MCP tool exists for invite
-  // or join" requirement.
-  { id: "repos_invite", endpoint: "POST /vaults/v1/:vault_id/invites", mcp: null, cli: "repos:invite", openclaw: "repos:invite" },
-  { id: "repos_join", endpoint: "POST /vaults/v1/invites/:invite_id/redeem", mcp: null, cli: "repos:join", openclaw: "repos:join" },
+  // membership + a working tree are mutated (`join`), so both refuse on the
+  // sandbox surface (SECRET_REQUIRES_CLI).
+  { id: "repos_invite", endpoint: "POST /vaults/v1/:vault_id/invites", cli: "repos:invite", openclaw: "repos:invite" },
+  { id: "repos_join", endpoint: "POST /vaults/v1/invites/:invite_id/redeem", cli: "repos:join", openclaw: "repos:join" },
   // The gateway's own VAULT_CLIENT_UPGRADE_REQUIRED envelope names
   // `run402 repos policy grandfathered --reason <why>` as a next_action, so
   // the verb has to exist: without it a user can allocate themselves into a
   // blocked-deploy state and the platform's documented way out is a command
-  // that returns UNKNOWN_SUBCOMMAND. Owner + step-up keeps it off MCP.
-  { id: "repos_policy", endpoint: "PATCH /vaults/v1/:vault_id/policy", mcp: null, cli: "repos:policy", openclaw: "repos:policy" },
+  // that returns UNKNOWN_SUBCOMMAND.
+  { id: "repos_policy", endpoint: "PATCH /vaults/v1/:vault_id/policy", cli: "repos:policy", openclaw: "repos:policy" },
   // Design D4: ONE flag-driven verb replaces the old five-verb `mirror
   // set/remove/status/sync/verify` subtree — no-arg reads, `<destination>`
-  // upserts, `--off` removes config only, `--backfill` catches up. `mirror
-  // status`/`verify` were read-only and could have gotten MCP tools later,
-  // but the whole verb ships CLI-only, same as its predecessor.
-  { id: "repos_mirror", endpoint: "GET /vaults/v1/:vault_id/objects", mcp: null, cli: "repos:mirror", openclaw: "repos:mirror" },
+  // upserts, `--off` removes config only, `--backfill` catches up.
+  { id: "repos_mirror", endpoint: "GET /vaults/v1/:vault_id/objects", cli: "repos:mirror", openclaw: "repos:mirror" },
   // Design D2/D3: absorbs `verify` (chain walk + pin advance) AND
   // `status --refs`'s materialization (`--refs` itself is removed — that
   // side effect belongs here, not in `view`). `--mirror` absorbs
   // `mirror verify`'s keyless probe. `--no-write` is a genuine audit mode
   // (`Repos.fsck({write:false})` computes the same real answer without
   // persisting either local pin).
-  { id: "repos_fsck",   endpoint: "GET /vaults/v1/:vault_id/heads[/:generation]", mcp: "repos_fsck", cli: "repos:fsck", openclaw: "repos:fsck" },
+  { id: "repos_fsck",   endpoint: "GET /vaults/v1/:vault_id/heads[/:generation]", cli: "repos:fsck", openclaw: "repos:fsck" },
   // Design D2: `git gc`'s own two halves — checkpoint publication (compact)
   // and prune planning — in one verb, explicitly NOT described as "exactly
   // git gc" (the deletion ceremony is stricter). Plans by default; submits
   // only with both two-phase-protocol receipts (§7.3) — there is still no
   // purge verb.
-  { id: "repos_gc",     endpoint: "POST /vaults/v1/:vault_id/maintenance-leases + POST .../prune-intents", mcp: null, cli: "repos:gc", openclaw: "repos:gc" },
+  { id: "repos_gc",     endpoint: "POST /vaults/v1/:vault_id/maintenance-leases + POST .../prune-intents", cli: "repos:gc", openclaw: "repos:gc" },
   // vault-persistent-helper: the resident engine's inspect/retire verb —
-  // a bounded LOCAL socket probe, no gateway endpoint, no MCP surface (the
-  // daemon accelerates the git remote helper; MCP tools never spawn it).
-  { id: "repos_daemon", endpoint: "(local)", mcp: null, cli: "repos:daemon", openclaw: "repos:daemon" },
+  // a bounded LOCAL socket probe, no gateway endpoint (the daemon accelerates
+  // the git remote helper).
+  { id: "repos_daemon", endpoint: "(local)", cli: "repos:daemon", openclaw: "repos:daemon" },
   // Design D5/D7/D10: READ-ONLY successor to the removed `reconcile`
   // workaround (its own help text called itself a workaround — a newly-
   // wrapped member got the vault's ENTIRE history under one fixed epoch,
@@ -865,15 +841,15 @@ const SURFACE: Capability[] = [
   // share this SAME `repos:access` CLI dispatch, like `errors.watch`
   // shares `errors list` — see SDK_ONLY_METHODS below for their
   // SDK methods.
-  { id: "repos_access", endpoint: "GET /orgs/v1/:org_id/encryption-keys + GET /vaults/v1/:vault_id/envelope-recipients (+ GET /agent/v1/source-access/wrappers for the caller's own member_custody block, control-plane session only)", mcp: null, cli: "repos:access", openclaw: "repos:access" },
+  { id: "repos_access", endpoint: "GET /orgs/v1/:org_id/encryption-keys + GET /vaults/v1/:vault_id/envelope-recipients (+ GET /agent/v1/source-access/wrappers for the caller's own member_custody block, control-plane session only)", cli: "repos:access", openclaw: "repos:access" },
   // `r402s-recover`: offline, NO server call at all (design D4), the same
   // "(local)" shape as `expand_result` below. Name UNCHANGED per D10 —
   // `restore` collides with `git restore`'s different meaning (D2 rule 4).
-  { id: "repos_recover", endpoint: "(local)", mcp: null, cli: "repos:recover", openclaw: "repos:recover" },
+  { id: "repos_recover", endpoint: "(local)", cli: "repos:recover", openclaw: "repos:recover" },
 
   // ── recovery-bundle (vault-recovery-custody) — member key custody, read side ──
   // Enrollment/activation/revocation are BROWSER ceremonies (WebAuthn at
-  // console.run402.com/account) so they have no CLI/MCP spelling at all;
+  // console.run402.com/account) so they have no CLI or SDK spelling at all;
   // what the CLI carries is the export that makes the source recovery code
   // work offline — the artifact `repos recover --bundle` consumes, so it
   // lives in the repos family (the short-lived `source-access` family from
@@ -882,16 +858,12 @@ const SURFACE: Capability[] = [
   // its own — it rides `repos access` as its member_custody block. CLI-only
   // — the bundle is half of a recovery credential; same
   // "mutating-verbs-are-CLI-only"-adjacent caution the repos family applies.
-  { id: "repos_recovery_bundle", endpoint: "GET /agent/v1/source-access/recovery-bundle", mcp: null, cli: "repos:recovery-bundle", openclaw: "repos:recovery-bundle" },
+  { id: "repos_recovery_bundle", endpoint: "GET /agent/v1/source-access/recovery-bundle", cli: "repos:recovery-bundle", openclaw: "repos:recovery-bundle" },
 
-  // ── the lossy-surface expander ──────────────────────────────────────────
-  // MCP truncates; agent-response-design requires the full result to stay
-  // reachable under a `ref` with `shown`/`total`. This is that affordance.
-  { id: "expand_result",     endpoint: "(local)",                                                    mcp: "expand_result",        cli: null,                openclaw: null },
 ];
 
 // ─── SDK namespace mapping ──────────────────────────────────────────────────
-// Each SURFACE capability that has an MCP/CLI implementation should map to
+// Each SURFACE capability should map to
 // an SDK method path `"namespace.method"`. Capabilities that are intentionally
 // not on the SDK map to null.
 //
@@ -899,7 +871,7 @@ const SURFACE: Capability[] = [
 // add the id → path mapping here. The tests below enforce both sides.
 
 const SDK_BY_CAPABILITY: Record<string, string | null> = {
-  // Local-only compound flows — MCP handlers compose SDK calls internally.
+  // Local-only compound flows.
   up: "actions.up",
   // Local state (code-mode MCP section 2): the Node SDK's root methods.
   init: "init",
@@ -927,8 +899,8 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   buzz_notify_projects: "buzz.notifications.update",
   buzz_notify_scope: "buzz.notifications.update",
 
-  // repos (host-blind git repos) — all protocol logic is SDK-side; CLI/MCP
-  // are adapters (task 5.0). `repos` is porcelain over projects.provision +
+  // repos (host-blind git repos) — all protocol logic is SDK-side; the CLI
+  // is an adapter (task 5.0). `repos` is porcelain over projects.provision +
   // repos.init + projects.delete + repos.status for the compound
   // verbs — no single SDK method of its own, the same compound-flow shape
   // `up`/`init` already established.
@@ -970,8 +942,6 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   repos_access: "repos.access",
   repos_recover: "repos.recover",
   repos_recovery_bundle: "session.sourceAccessRecoveryBundle",
-  // The result store is MCP-local plumbing, not a gateway capability.
-  expand_result: null,
 
   // Named wallets and the organization context — local state owned by
   // `@run402/sdk/node` (NodeWallets, NodeOrgs).
@@ -993,7 +963,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   // `run402 doctor` is the Node SDK's root `doctor()`; `--buzz` rides it
   // (buzz.doctor is in SDK_ONLY_METHODS).
   doctor: "doctor",
-  // SSR Runtime DX (v1.52) — local/CLI-only; no MCP, no SDK
+  // SSR Runtime DX (v1.52) — local/CLI-only; no SDK
   dev: null,
   // `run402 logs` is the project-wide request-id search; the SDK owns the
   // cross-function fan-out (no gateway route exists for it).
@@ -1073,7 +1043,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   jobs_download_artifact: "jobs.downloadArtifact",
 
   // Sites / Subdomains
-  deploy_site: null, // MCP stages files to a temp dir and composes deployDir
+  deploy_site: null, // the CLI stages files to a temp dir and composes deployDir
   deploy_site_dir: "sites.deployDir", // Node-only SDK helper: walks fs + unified deploy primitive
   add_subdomain: "subdomains.add",
   delete_subdomain: "subdomains.delete",
@@ -1297,7 +1267,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   list_passkeys: "auth.listPasskeys",
   delete_passkey: "auth.deletePasskey",
   auth_providers: "auth.providers",
-  auth_scaffold_roles: null, // offline CLI/MCP generator — no SDK method
+  auth_scaffold_roles: null, // offline CLI generator — no SDK method
 
   // Vouchers
   redeem_voucher: "vouchers.redeem",
@@ -1426,10 +1396,12 @@ async function listSdkMethods(): Promise<string[]> {
 
 // ─── Derived expected sets ───────────────────────────────────────────────────
 
-const EXPECTED_MCP_TOOLS = SURFACE
-  .map(c => c.mcp)
-  .filter((t): t is string => t !== null)
-  .sort();
+/**
+ * The MCP server's whole tool set (code-mode MCP, decision 18 of 2026-09-22).
+ * `src/index.ts` registers exactly these; everything else is a `run` snippet
+ * against the SDK. There is no profile and no per-capability MCP tool.
+ */
+const MCP_TOOLS = ["up", "deploy", "status", "whoami", "doctor", "docs", "run", "expand_result"] as const;
 
 const EXPECTED_CLI_COMMANDS = SURFACE
   .map(c => c.cli)
@@ -1458,25 +1430,130 @@ const CLI_ALIAS_COMMANDS = [
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
-describe("MCP tool inventory", () => {
-  const actual = parseMcpTools();
-
-  it("has all expected tools", () => {
-    const missing = EXPECTED_MCP_TOOLS.filter(t => !actual.includes(t));
+describe("MCP tool set", () => {
+  it("src/index.ts registers exactly MCP_TOOLS", () => {
     assert.deepEqual(
-      missing,
-      [],
-      `MCP is missing tools. Either implement them in src/tools/ and register in src/index.ts, ` +
-        `or remove from SURFACE in sync.test.ts: ${missing.join(", ")}`,
+      parseMcpTools(),
+      [...MCP_TOOLS].sort(),
+      "src/index.ts must register exactly the tools in MCP_TOOLS (sync.test.ts): up, deploy, status, whoami, doctor, docs, run, expand_result. " +
+        "A capability is reached through `run`, never through a tool of its own.",
     );
   });
 
-  it("has no untracked tools", () => {
-    const unexpected = actual.filter(t => !EXPECTED_MCP_TOOLS.includes(t));
+  it("every MCP tool is documented in docs-site/src/content/docs/mcp/", () => {
+    const mcpDocs = markdownFiles(join(__dirname, "docs-site/src/content/docs/mcp"))
+      .map((f) => readFileSync(f, "utf-8"))
+      .join("\n");
+    const undocumented = MCP_TOOLS.filter((t) => !mcpDocs.includes(`\`${t}\``));
+    assert.deepEqual(undocumented, [], `MCP tools with no line in docs-site/src/content/docs/mcp/: ${undocumented.join(", ")}`);
+  });
+});
+
+/**
+ * How a document names an MCP tool. Each pattern captures the name; every
+ * captured name must be in MCP_TOOLS. The phrasings are the ones tool
+ * references are written in: "the `x` tool", "MCP `x`", "tool `x`", a list
+ * after "MCP tools …:", a call written `x({ … })`, `{ "tool": "x" }`, and in
+ * markdown, a table whose first column is headed "Tool". On an MCP reference
+ * page (docs-site/…/mcp/) a `### \`x\`` heading and a "- `x` — …" bullet name
+ * a tool too.
+ */
+const TOOL_REFERENCE_PATTERNS: RegExp[] = [
+  /\bMCP(?:\s+tools?)?\s+`([a-z][a-z0-9_]*)`/g, // MCP `x`, MCP tool `x`
+  /`([a-z][a-z0-9_]*)`\s+(?:MCP\s+)?tools?\b/g, // `x` tool, `x` MCP tool
+  /\btools?\s+`([a-z][a-z0-9_]*)`/g, // tool `x`
+  /"tool"\s*:\s*"([a-z][a-z0-9_]*)"/g, // { "tool": "x" }
+];
+/** `x({ … })`, excluding a method or a package factory (`r.x({`, `run402({`). */
+const TOOL_CALL_PATTERN = /(?<![\w.$])`([a-z][a-z0-9_]*)\(\{/g;
+const TOOL_LIST_PATTERN = /\bMCP tools?\b[^.:\n]*:((?:\s*,?\s*(?:and\s+|or\s+)?`[a-z][a-z0-9_]*`)+)/g;
+const MCP_PAGE_PATTERNS: RegExp[] = [
+  /^#{2,4} `([a-z][a-z0-9_]*)`/gm, // ### `x`
+  /^\s*[-*] `([a-z][a-z0-9_]*)` —/gm, // - `x` — what it does
+];
+const NOT_A_TOOL_CALL = new Set(["run402"]);
+
+export function toolReferences(text: string, opts: { mcpPage?: boolean } = {}): string[] {
+  const names = new Set<string>();
+  const patterns = opts.mcpPage ? [...TOOL_REFERENCE_PATTERNS, ...MCP_PAGE_PATTERNS] : TOOL_REFERENCE_PATTERNS;
+  for (const pattern of patterns) {
+    for (const m of text.matchAll(pattern)) names.add(m[1]!);
+  }
+  for (const m of text.matchAll(TOOL_CALL_PATTERN)) if (!NOT_A_TOOL_CALL.has(m[1]!)) names.add(m[1]!);
+  for (const m of text.matchAll(TOOL_LIST_PATTERN)) {
+    for (const n of m[1]!.matchAll(/`([a-z][a-z0-9_]*)`/g)) names.add(n[1]!);
+  }
+  // A markdown table whose first column is headed "Tool" lists tools.
+  let toolTable = false;
+  for (const line of text.split("\n")) {
+    if (!line.trimStart().startsWith("|")) {
+      toolTable = false;
+      continue;
+    }
+    const first = line.split("|")[1]?.trim() ?? "";
+    if (/^tools?$/i.test(first)) {
+      toolTable = true;
+      continue;
+    }
+    const cell = /^`([a-z][a-z0-9_]*)`$/.exec(first);
+    if (toolTable && cell) names.add(cell[1]!);
+  }
+  return [...names];
+}
+
+function markdownFiles(dir: string): string[] {
+  const out: string[] = [];
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, e.name);
+    if (e.isDirectory()) out.push(...markdownFiles(full));
+    else if (/\.mdx?$/.test(e.name)) out.push(full);
+  }
+  return out.sort();
+}
+
+function sourceFiles(dir: string): string[] {
+  const out: string[] = [];
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, e.name);
+    if (e.isDirectory()) out.push(...sourceFiles(full));
+    else if (e.name.endsWith(".ts") && !e.name.includes(".test.")) out.push(full);
+  }
+  return out.sort();
+}
+
+describe("MCP doc drift", () => {
+  it("recognizes a tool named in prose, in a list, in a table, and on an MCP page", () => {
+    assert.deepEqual(toolReferences("Use the `assets_put` MCP tool to upload."), ["assets_put"]);
+    assert.deepEqual(toolReferences("call MCP `tier_set` first"), ["tier_set"]);
+    assert.deepEqual(toolReferences("then `docs({ topic: \"assets\" })`"), ["docs"]);
+    assert.deepEqual(toolReferences("MCP tools mirror the same flow: `a_b`, `c_d`, and `e_f`."), ["a_b", "c_d", "e_f"]);
+    assert.deepEqual(toolReferences("| Tool | Description |\n|---|---|\n| `run_sql` | SQL |\n"), ["run_sql"]);
+    assert.deepEqual(toolReferences("### `get_usage`\n- `list_orgs` — lists", { mcpPage: true }), ["get_usage", "list_orgs"]);
+    assert.deepEqual(toolReferences("`project_id` is a field; `r.projects.list({ limit })` and `run402({ surface })` are SDK"), []);
+  });
+
+  it("no public surface or tool description names an MCP tool outside MCP_TOOLS", () => {
+    const surfaces = [
+      join(__dirname, "README.md"),
+      join(__dirname, "SKILL.md"),
+      join(__dirname, "openclaw/SKILL.md"),
+      ...markdownFiles(join(__dirname, "docs-site/src/content/docs")),
+      ...sourceFiles(join(__dirname, "src")),
+    ];
+    const allowed = new Set<string>(MCP_TOOLS);
+    const offenders: string[] = [];
+    const mcpPages = join(__dirname, "docs-site/src/content/docs/mcp");
+    for (const file of surfaces) {
+      const text = readFileSync(file, "utf-8");
+      for (const name of toolReferences(text, { mcpPage: file.startsWith(mcpPages) })) {
+        if (!allowed.has(name)) offenders.push(`${file.slice(__dirname.length + 1)}: \`${name}\``);
+      }
+    }
     assert.deepEqual(
-      unexpected,
+      offenders,
       [],
-      `MCP has tools not in SURFACE. Add them to sync.test.ts: ${unexpected.join(", ")}`,
+      "These surfaces name MCP tools that do not exist; the MCP server registers only MCP_TOOLS (sync.test.ts). " +
+        "Name the SDK method a `run` snippet calls, or the CLI command, instead.",
     );
   });
 });
@@ -1579,10 +1656,11 @@ describe("SDK surface alignment", () => {
   });
 
   it("every SDK method is referenced by some SURFACE mapping", async () => {
-    // SDK-internal helpers that don't have a corresponding MCP/CLI entry.
+    // SDK-internal helpers that don't have a corresponding CLI entry (MCP
+    // reaches every SDK method through `run`, so it adds no entry of its own).
     // Private in TypeScript but enumerable at runtime (TS `private` isn't
     // runtime-enforced), plus convenience methods consumers can compose
-    // without needing their own MCP tool.
+    // without needing a verb of their own.
     const SDK_ONLY_METHODS = new Set([
       // The organization resolver every org-scoped verb consumes (through
       // cli/lib/org-context.mjs) and its helpers: `projects use` stamps the
@@ -1592,8 +1670,7 @@ describe("SDK surface alignment", () => {
       "orgs.selected",
       "orgs.selectFromProject",
       "orgs.owningOrgOf",
-      // The MCP wallet_status tool's local wallet read; `wallets current` is
-      // wallets.current.
+      // The local wallet read behind `wallets current` (wallets.current).
       "wallets.status",
       // `run402 doctor --buzz` rides the doctor capability; the preflight
       // measures origins with diagnostics.probeOrigin.
@@ -1605,7 +1682,7 @@ describe("SDK surface alignment", () => {
       // tenant-live-changes: the reconnecting SSE subscription rides beside the
       // mapped held read (`live.changes`); the CLI verb `live` streams through it.
       "live.subscribe",
-      // lightning-cash-topup: the CLI's `--wait` loop; MCP callers poll `get_topup`.
+      // lightning-cash-topup: the CLI's `--wait` loop.
       "billing.waitForTopup",
       // mpp-lightning-over-nwc: one verb (`lightning_wallet` / `wallets lightning`)
       // covers mint, read, and revoke; the SDK exposes them separately.
@@ -1614,7 +1691,7 @@ describe("SDK surface alignment", () => {
       "agent.lightningWallet.waitForActive",
       // principal-display-name (first-deploy-agent-dx): `PATCH /agent/v1/me`
       // rides the whoami door on every surface (`whoami --set-name`,
-      // MCP `whoami` `set_display_name`), so it has no verb of its own.
+      // and `r.orgs.setDisplayName` from a `run` snippet), so it has no verb of its own.
       "orgs.setDisplayName",
       // Adopt challenge is the first step of the org adopt flow; the
       // `adopt_org` capability maps to the submit step, and the Node
@@ -1635,7 +1712,7 @@ describe("SDK surface alignment", () => {
       // compaction headroom grant internally (before staging the checkpoint,
       // closed once it publishes) — these standalone entry points exist for
       // tests and a future staff/diagnostic surface, not as a verb of
-      // their own; there is no CLI/MCP surface that opens or closes a grant
+      // their own; there is no CLI surface that opens or closes a grant
       // without also compacting.
       "repos.openCompactionGrant",
       "repos.closeCompactionGrant",
@@ -1653,7 +1730,7 @@ describe("SDK surface alignment", () => {
       // escalations: the capability rows above cover raise/get/list/ack/
       // resolve/contacts-list. These are the rest of the namespace.
       // addContact/removeContact ride the one `manage_escalation_contacts`
-      // capability (one CLI group, owner-gated, no MCP tool by design).
+      // capability (one CLI group, owner-gated).
       "escalations.addContact",
       "escalations.removeContact",
       // ackWithToken is the hosted one-tap page's call, not an agent verb —
@@ -1670,7 +1747,7 @@ describe("SDK surface alignment", () => {
       // billing.lookupOrganization resolves a wallet/email → org_id via
       // GET /orgs/v1/lookup?wallet=|?email=. It's an SDK primitive used by
       // getAccount/getHistory and exposed for consumers that only need the id;
-      // no dedicated MCP/CLI verb (the wallet/email-keyed balance/history
+      // no dedicated CLI verb (the wallet/email-keyed balance/history
       // commands resolve internally).
       "billing.lookupOrganization",
       "projects.active",       // returns active project id from the provider
@@ -1681,8 +1758,8 @@ describe("SDK surface alignment", () => {
       // ─── unified-apply (v1.48) ──────────────────────────────────────────
       // The hero is r.project(id).apply(spec). The engine lives at
       // r._applyEngine; the methods below are advanced primitives used by
-      // the hero implementation (and by tests). The deploy/deploy_resume
-      // MCP tools wrap r._applyEngine.apply / r._applyEngine.resume.
+      // the hero implementation (and by tests). The MCP `deploy` tool wraps
+      // r._applyEngine.apply.
       "_applyEngine.start",
       "_applyEngine.plan",
       "_applyEngine.upload",
@@ -1693,7 +1770,7 @@ describe("SDK surface alignment", () => {
       // ─── Epoch rotation (D193-D203, rev 42) ─────────────────────────────
       // confirmRecipient/repinRecipient issue the D197 confirmation receipt
       // a pin-manifest publish cites — owner+step-up ceremonies with no
-      // standalone CLI/MCP surface today (a future `repos access confirm`/
+      // standalone CLI surface today (a future `repos access confirm`/
       // `repin` CLI verb is the natural home; out of this change's scope).
       "repos.confirmRecipient",
       "repos.repinRecipient",
@@ -1712,7 +1789,7 @@ describe("SDK surface alignment", () => {
       // keystore issue, or a grant-key-authenticated caller that already
       // resolved its own principal_id some other way, since GET
       // /agent/v1/whoami — fsck's own auto-resolution path — does not
-      // accept a grant-key bearer); no dedicated CLI verb/MCP tool of its
+      // accept a grant-key bearer); no dedicated CLI verb of its
       // own, same "composable primitive" pattern as confirmRecipient/
       // repinRecipient/publishPinManifestUpdate above.
       "repos.submitProofOfOpen",
@@ -1732,19 +1809,18 @@ describe("SDK surface alignment", () => {
       // rotateEpochForMemberRemoval (vault-multi-writer D6): the
       // writer-capable reason:"member_removed" rotation `org member rm`
       // drives inline on every vault the caller can, and `push()` runs
-      // automatically on an outstanding removal — no dedicated CLI verb/MCP
-      // tool of its own.
+      // automatically on an outstanding removal — no dedicated CLI verb of
+      // its own.
       "repos.rotateEpochForMemberRemoval",
       "repos.declareEpochSecretExposed",
       "repos.declareRecipientKeyRevoked",
       "repos.acceptRecipientKeyChange",
       // vault-client-round-trips design D3 (task 4.2): the local
       // object-cache eviction sweep `repos gc` calls as a best-effort side
-      // effect — purely local housekeeping, no dedicated CLI verb/MCP tool.
+      // effect — purely local housekeeping, no dedicated CLI verb.
       "repos.sweepObjectCache",
       // ─── Project events feed — org-wide union ──────────────────────────
-      // Shares the `events list` CLI command (--org) and the list_project_events
-      // MCP tool (org_id param); no dedicated verb/tool of its own.
+      // Shares the `events list` CLI command (--org); no dedicated verb of its own.
       "events.listForOrg",
       // Agent messaging: join_room folds presence-listing + claim-listing into
       // the arrival call and read_room_messages folds get-one (message_id
@@ -1766,7 +1842,7 @@ describe("SDK surface alignment", () => {
       "cache.invalidateMany",
       // ─── Named-wallet server label sync (best-effort; private gateway companion) ─
       // Used internally by `run402 wallets new|rename|import` (gated) and by
-      // direct SDK consumers; no dedicated MCP/CLI verb.
+      // direct SDK consumers; no dedicated CLI verb.
       "wallets.getLabel",
       "wallets.setLabel",
       // ─── call-shape conventions (sdk-positional-arg-ergonomics) ───────────
@@ -1781,7 +1857,7 @@ describe("SDK surface alignment", () => {
       "admin._setLeasePerpetual",
       // notification-channel-routing-telegram: admin.rules.update (PATCH
       // .../rules/:rule_id) is SDK-typed for programmatic PATCH null-vs-absent
-      // semantics but has no dedicated CLI verb or MCP tool in v1 — the
+      // semantics but has no dedicated CLI verb in v1 — the
       // shipped surface is list/create(add)/delete(rm) only (create + delete
       // already cover the "toggle enabled" / "change binding" use cases via
       // rm-then-add for the CLI's flag-based UX).
@@ -1833,7 +1909,7 @@ describe("SDK surface alignment", () => {
       // never verbs of their own.
       "repos.degradedOpenFallback",
       "repos.postPublishCopies",
-      // Owner + step-up writes with no MCP tool by design; the CLI reaches
+      // Owner + step-up writes; the CLI reaches
       // them through the repo group's flags rather than dedicated verbs.
       // (`setPolicy` has its own `run402 repos policy` verb — see SURFACE.)
       "repos.completeOverride",
@@ -1892,7 +1968,7 @@ describe("SDK surface alignment", () => {
       // repo-surface-consolidation D5/D7: `verify` and
       // `reconcileEnvelopeRecipients` are still public SDK API (external
       // programmatic consumers may call either directly), but neither has a
-      // dedicated CLI/MCP capability anymore. `verify`'s CLI/MCP surface is
+      // dedicated CLI capability anymore. `verify`'s CLI surface is
       // superseded operationally by `fsck` (`Repos.fsck`, which walks the
       // chain a different way to get the explicit pin_before/pin_after
       // fields D2 clause 5 requires). `reconcileEnvelopeRecipients`'s
@@ -1904,7 +1980,7 @@ describe("SDK surface alignment", () => {
       "repos.reconcileEnvelopeRecipients",
       // vault-multi-writer (rev 47) task 5.7 — the writer-admission twin
       // of `reconcileEnvelopeRecipients` above, but UNLIKE that permanently
-      // CLI-less sibling this one is TEMPORARILY uncovered: its CLI/MCP
+      // CLI-less sibling this one is TEMPORARILY uncovered: its CLI
       // surface is task 6.x (openspec/changes/vault-multi-writer tasks.md
       // §6 — `org members add`'s writer+envelope reconcile and `repos access
       // sync`'s new tail are both planned to compose it, likely without a
@@ -1915,10 +1991,10 @@ describe("SDK surface alignment", () => {
       "repos.reconcile",
       // ─── function-runtime-rebuild (v1.69) — project-wide variant ──────────
       // `functions.rebuild` (single) is the canonical capability; `rebuildAll`
-      // shares the `run402 functions rebuild --all` CLI verb (and the
-      // name-less `functions_rebuild` MCP tool), so it has no dedicated leaf command.
+      // shares the `run402 functions rebuild --all` CLI verb, so it has no
+      // dedicated leaf command.
       "functions.rebuildAll",
-      // Durable runs expose waiting as an option on create/redrive in CLI+MCP,
+      // Durable runs expose waiting as an option on create/redrive in the CLI,
       // backed by the SDK polling helper rather than a separate surface noun.
       "functions.runs.wait",
       // Local idempotency-key helper used by agents/CLI; no gateway endpoint.
@@ -1929,8 +2005,7 @@ describe("SDK surface alignment", () => {
       "identityLinks.list",
       "identityLinks.getProof",
       "identityLinks.revoke",
-      // One goal-shaped CLI group owns the staged Buzz lifecycle. MCP is
-      // intentionally omitted because it has no safe Nostr signing boundary.
+      // One goal-shaped CLI group owns the staged Buzz lifecycle.
       "buzz.adopt",
       "buzz.enroll",
       "buzz.humanAdoptionOffers.create",
@@ -1956,13 +2031,13 @@ describe("SDK surface alignment", () => {
       // `buzz notifications test --wait` (the escalations.raiseAndWait precedent).
       "buzz.notifications.testAndWait",
       // Portable archive export uses `archives.export` as the happy path.
-      // create/wait are low-level operation primitives used by the CLI/MCP
+      // create/wait are low-level operation primitives used by the CLI
       // wrappers to surface progress and idempotent resume behavior.
       "archives.create",
       "archives.wait",
       // Snapshot restore is a two-step handshake. The SURFACE capability maps
       // to the mutating confirm call; restorePlan is the typed planning half
-      // used by CLI/MCP before confirming the same endpoint.
+      // used by the CLI before confirming the same endpoint.
       "snapshots.restorePlan",
       // ─── sign-in session ─────────────────────────────────────────────────
       // `run402 login` builds the authorize URL (mapped: exchangeCliToken);
@@ -1976,12 +2051,12 @@ describe("SDK surface alignment", () => {
       "writeApproval.exchangeClaimCode",
       // The account reads: `run402 orgs list` joins me.overview into the
       // membership list (`list_orgs` maps to orgs.list); `run402 doctor` and
-      // MCP `whoami` read me.status. Neither has a verb of its own.
+      // `whoami` read me.status. Neither has a verb of its own.
       "me.overview",
       "me.status",
       // `r.session.*` is also the browser/console sign-in client surface
       // (email magic link / passkey / OAuth / lifecycle / step-up / recovery /
-      // authenticators). Browser-interactive by design — no MCP tool and no
+      // authenticators). Browser-interactive by design — no
       // dedicated CLI verb (the CLI sign-in is the loopback ceremony above;
       // `whoami` is also called by `run402 login` and `run402 whoami`).
       "session.email",
@@ -2000,14 +2075,14 @@ describe("SDK surface alignment", () => {
       "session.listAuthenticators",
       "session.revokeAuthenticator",
       // Email-code verification is the second credential shape accepted by
-      // the existing auth:verify CLI/OpenClaw command and verify_magic_link
-      // MCP tool, whose canonical SURFACE mapping remains verifyMagicLink.
+      // the existing auth:verify CLI/OpenClaw command, whose canonical SURFACE
+      // mapping remains verifyMagicLink.
       "auth.verifyEmailCode",
       // SDK action runner exposes the generic dispatcher alongside the typed
       // `actions.up` convenience mapped to the CLI `up` capability.
       "actions.run",
       // App install state is the convergence ledger used by `run402 up`; it is
-      // intentionally not a separate user-facing CLI/MCP command surface.
+      // intentionally not a separate user-facing CLI command surface.
       "apps.upsertInstallState",
       "apps.getInstallState",
     ]);
@@ -2066,7 +2141,6 @@ const SHIM_SOURCES = [
   "cli/lib/remote-helper-session.mjs",
   "cli/lib/vault-daemon.mjs",
   "cli/lib/vault-daemon-run.mjs",
-  "src/tools/repos.ts",
 ];
 
 /**
@@ -2106,17 +2180,14 @@ describe("CLI/MCP SDK-boundary guard", () => {
   it("keeps production interface code from bypassing the SDK for gateway calls", () => {
     const allowlist = new Map<string, RegExp[]>([
       // The v2.1.0 unified-apply pipeline removed every presigned-PUT
-      // call in cli/lib/assets.mjs and src/tools/assets-put.ts — both now
-      // delegate to `sdk.assets.put` (which routes through the apply
-      // hero). Those allowlist entries are kept out so a regression that
-      // reintroduces raw HTTP from a tool file fails the guard.
+      // call in cli/lib/assets.mjs — it now delegates to `sdk.assets.put`
+      // (which routes through the apply hero). That allowlist entry is kept
+      // out so a regression that reintroduces raw HTTP fails the guard.
       ["cli/lib/wallets.mjs", [/\bfetch\(TEMPO_RPC\b/]], // Tempo faucet/RPC
       ["cli/lib/ci.mjs", [/\bfetch\(`https:\/\/api\.github\.com\/repos\//]], // GitHub repository lookup
-      ["src/tools/init.ts", [/\bfetch\(TEMPO_RPC\b/]], // Tempo faucet/RPC
       // These are the intentional SDK buyer calls added by GH-607. The guard's
       // lexical `fetch(` scan cannot distinguish `sdk.pay.fetch` from raw HTTP.
       ["cli/lib/pay.mjs", [/\.pay\.fetch\(/]],
-      ["src/tools/pay-url.ts", [/\.pay\.fetch\(/]],
       // doctor-source-scan.mjs documents the canonical fix string for
       // browser-bearer scans — the string itself contains "auth.fetch()"
       // as the recommended replacement, not a real fetch call.
@@ -2154,7 +2225,6 @@ describe("CLI/MCP SDK-boundary guard", () => {
   it("keeps server-capable custom-domain handlers from preflighting local project-key cache", () => {
     const serverCapableDomainHandlers = [
       "cli/lib/domains.mjs",
-      "src/tools/domains.ts",
     ];
     const forbiddenLookup = /\b(?:getProject|findProject|loadKeyStore|projectsFile|projectCredentialsFile)\s*\(/g;
     const violations: string[] = [];
@@ -2241,14 +2311,12 @@ describe("CLI/MCP SDK-boundary guard", () => {
 
 function productionInterfaceFiles(): string[] {
   const cliLib = join(__dirname, "cli/lib");
-  const srcTools = join(__dirname, "src/tools");
   return [
     ...readdirSync(cliLib)
       .filter((name) => name.endsWith(".mjs") && !name.endsWith(".test.mjs"))
       .map((name) => join(cliLib, name)),
-    ...readdirSync(srcTools)
-      .filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts"))
-      .map((name) => join(srcTools, name)),
+    // The whole MCP server: the eight tools, the sandbox, and the chain proxy.
+    ...sourceFiles(join(__dirname, "src")),
     // `git-remote-run402` is a production interface too, and it lives at the
     // CLI package root rather than under `cli/lib/`, so a directory scan alone
     // would leave the one binary git itself executes unguarded.
@@ -2261,12 +2329,6 @@ describe("SURFACE consistency", () => {
     const ids = SURFACE.map(c => c.id);
     const dupes = ids.filter((id, i) => ids.indexOf(id) !== i);
     assert.deepEqual(dupes, [], `Duplicate capability IDs: ${dupes.join(", ")}`);
-  });
-
-  it("has no duplicate MCP tool names", () => {
-    const tools = SURFACE.map(c => c.mcp).filter(Boolean);
-    const dupes = tools.filter((t, i) => tools.indexOf(t) !== i);
-    assert.deepEqual(dupes, [], `Duplicate MCP tool names: ${dupes.join(", ")}`);
   });
 
   it("has no duplicate CLI commands", () => {
@@ -2286,7 +2348,8 @@ describe("SURFACE consistency", () => {
   const SDK_ONLY_FOR_NOW: Record<string, string> = {};
 
   it("every capability is covered by at least one interface", () => {
-    const uncovered = SURFACE.filter(c => !c.mcp && !c.cli && !c.openclaw && !(c.id in SDK_ONLY_FOR_NOW));
+    // The SDK counts as an interface: MCP reaches every SDK method through `run`.
+    const uncovered = SURFACE.filter(c => !c.cli && !c.openclaw && !SDK_BY_CAPABILITY[c.id] && !(c.id in SDK_ONLY_FOR_NOW));
     assert.deepEqual(
       uncovered.map(c => c.id),
       [],
@@ -2350,7 +2413,7 @@ describe("deploy route surface alignment", () => {
       { file: "cli/llms-cli-full.txt", patterns: [/--route-scope/, /CI_ROUTE_SCOPE_DENIED/] },
       { file: "sdk/README.md", patterns: [/route_scopes/, /CI_ROUTE_SCOPE_DENIED/] },
       { file: "sdk/llms-sdk.txt", patterns: [/route_scopes/, /CI_ROUTE_SCOPE_DENIED/] },
-      { file: "llms-mcp.txt", patterns: [/ci_create_binding/, /route_scopes/, /CI_ROUTE_SCOPE_DENIED/] },
+      { file: "llms-mcp.txt", patterns: [/ci\.createBinding/, /route_scopes/, /CI_ROUTE_SCOPE_DENIED/] },
       { file: "SKILL.md", patterns: [/--route-scope/, /CI_ROUTE_SCOPE_DENIED/] },
       { file: "openclaw/SKILL.md", patterns: [/--route-scope/, /CI_ROUTE_SCOPE_DENIED/] },
       { file: "AGENTS.md", patterns: [/route_scopes/, /CI_ROUTE_SCOPE_DENIED/] },
@@ -2373,7 +2436,6 @@ describe("deploy route surface alignment", () => {
           [/\/events\.html.*not public|not public.*\/events\.html/, "explicit mode hides backing asset filename"],
           [/static_public_paths/, "static public path inventory"],
           [/reachability_authority/, "reachability authority field"],
-          [/deploy_resolve/, "MCP resolve tool"],
           [/run402 deploy resolve/, "CLI resolve command"],
           [/run402 up verify/, "app verify rerun command"],
           [/edge_propagation/, "edge propagation diagnostics"],
@@ -2414,7 +2476,7 @@ describe("deploy route surface alignment", () => {
           [/\/events\.html.*not public|not public.*\/events\.html/, "explicit mode hides backing asset filename"],
           [/static_public_paths/, "static public path inventory"],
           [/reachability_authority/, "reachability authority field"],
-          [/deploy_resolve/, "MCP resolve tool"],
+          [/apply\.resolve/, "resolve as a run snippet"],
           [/run402 up verify/, "app verify rerun command"],
           [/edge_propagation/, "edge propagation diagnostics"],
           [/propagation_pending/, "propagation pending app status"],
@@ -2549,7 +2611,6 @@ describe("deploy route surface alignment", () => {
           [/static_public_paths/, "static public path inventory"],
           [/reachability_authority/, "reachability authority field"],
           [/stable static asset identity \/ public URL diagnostics/, "documentation checklist row"],
-          [/deploy_resolve/, "MCP resolve tool"],
           [/run402 deploy resolve/, "CLI resolve command"],
           [/run402 up verify/, "app verify rerun command"],
           [/edge_propagation/, "edge propagation diagnostics"],
@@ -2601,7 +2662,7 @@ describe("deploy route surface alignment", () => {
     }
   });
 
-  it("keeps SDK route types and MCP route renderers in sync", () => {
+  it("keeps SDK route types and the MCP deploy tool in sync", () => {
     const deployTypes = readFileSync(join(__dirname, "sdk/src/namespaces/deploy.types.ts"), "utf-8");
     for (const name of [
       "RouteHttpMethod",
@@ -2632,11 +2693,6 @@ describe("deploy route surface alignment", () => {
     assert.match(mcpDeploy, /ROUTE_HTTP_METHODS/, "MCP deploy schema must share route method constants");
     assert.match(mcpDeploy, /Raw Deploy Result/, "MCP deploy success must include raw deploy result JSON");
 
-    const releaseTool = readFileSync(join(__dirname, "src/tools/deploy-releases.ts"), "utf-8");
-    assert.match(releaseTool, /\| routes \|/, "MCP release inventory summary must include route count");
-    assert.match(releaseTool, /routes_added_removed_changed/, "MCP release diff summary must include route buckets");
-    assert.match(releaseTool, /static_manifest_sha256/, "MCP release inventory summary must include static manifest digest");
-    assert.match(releaseTool, /static_assets_unchanged_changed_added_removed/, "MCP release diff summary must include static asset buckets");
   });
 });
 
@@ -2794,18 +2850,14 @@ describe("agent deploy-friction docs stay visible", () => {
 
 describe("coverage summary", () => {
   it("prints current coverage matrix", () => {
-    const mcpOnly = SURFACE.filter(c => c.mcp && !c.cli);
-    const cliOnly = SURFACE.filter(c => !c.mcp && c.cli);
-    const both = SURFACE.filter(c => c.mcp && c.cli);
+    const cli = SURFACE.filter(c => c.cli);
+    const sdkOnly = SURFACE.filter(c => !c.cli && SDK_BY_CAPABILITY[c.id]);
 
     const lines = [
-      `\n  Coverage: ${both.length} in both MCP+CLI, ${mcpOnly.length} MCP-only, ${cliOnly.length} CLI-only`,
+      `\n  Coverage: ${cli.length} with a CLI command, ${sdkOnly.length} SDK-only (reached from MCP through run)`,
       ``,
-      `  MCP-only (no CLI/OpenClaw equivalent):`,
-      ...mcpOnly.map(c => `    - ${c.mcp} (${c.endpoint})`),
-      ``,
-      `  CLI-only (no MCP equivalent):`,
-      ...cliOnly.map(c => `    - ${c.cli} (${c.endpoint})`),
+      `  SDK-only (no CLI/OpenClaw command):`,
+      ...sdkOnly.map(c => `    - ${SDK_BY_CAPABILITY[c.id]} (${c.endpoint})`),
     ];
 
     // This test always passes — it's purely informational
