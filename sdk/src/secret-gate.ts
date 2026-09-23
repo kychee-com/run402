@@ -195,6 +195,12 @@ export const SECRET_RETURNING_METHODS = {
   "agent.lightningWallet.get": { command: () => "run402 wallets lightning status", why: "The first read of an active Lightning wallet hands out its pairing secret." },
   "agent.lightningWallet.waitForActive": { command: () => "run402 init lightning", why: "The first read of an active Lightning wallet hands out its pairing secret." },
 
+  "init": {
+    when: (opts: unknown) => obj(opts).rail === "lightning",
+    command: () => "run402 init lightning",
+    why: "The Lightning wallet's pairing secret is returned once and stored beside the wallet key.",
+  },
+
   // ── actions that provision and hand back project keys ────────────────────
   "actions.run": {
     when: (input: unknown) => obj(input).type !== "tier.set",

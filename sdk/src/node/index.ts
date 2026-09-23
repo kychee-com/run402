@@ -60,6 +60,8 @@ import { NodeActions, type NodeActionTargetKind } from "./actions-node.js";
 import { NodeWallets } from "./wallets.js";
 import { NodeOrgs } from "./org-context.js";
 import { runDoctor, type DoctorOptions, type DoctorReport } from "./doctor.js";
+import { initApiTarget, runInit, type InitOptions, type InitSummary, type InitTargetSummary } from "./init.js";
+import { runStatus, type StatusResult } from "./status.js";
 
 export interface NodeRun402Options {
   /** Override the API base URL. Defaults to `getApiBase()` (env var or production URL). */
@@ -130,6 +132,15 @@ export type NodeRun402 = Omit<Run402, "sites" | "assets" | "archives" | "wallets
   orgs: NodeOrgs;
   /** Local health and configuration diagnostics: `{ ok, blocking[], warnings[], checks[] }`. */
   doctor(opts?: DoctorOptions): Promise<DoctorReport>;
+  /**
+   * Set up this machine: wallet on its rail, funding, voucher, Lightning,
+   * tier, projects, vault remote, orgs, next step. With `apiBase`, configure
+   * the API target instead and return.
+   */
+  init(opts: InitOptions & { apiBase: string }): Promise<InitTargetSummary>;
+  init(opts?: InitOptions): Promise<InitSummary>;
+  /** The organization's state as the active wallet sees it (the local view; never key material). */
+  status(): Promise<StatusResult>;
   actions: NodeActions;
   up: NodeActions["up"];
   /** Public address/source selected for automatic payment; never includes keys or signed proofs. */
@@ -217,6 +228,17 @@ export function run402(opts: NodeRun402Options = {}): NodeRun402 {
   (base as unknown as { actions: NodeActions }).actions = actions;
   (base as unknown as { up: NodeActions["up"] }).up = actions.up.bind(actions);
   (base as unknown as { doctor: NodeRun402["doctor"] }).doctor = (doctorOpts) => runDoctor(base, doctorOpts);
+  (base as unknown as { init: (o?: InitOptions) => Promise<InitSummary | InitTargetSummary> }).init = async (initOpts = {}) => {
+    if (initOpts.apiBase) {
+      return initApiTarget(
+        (o) => run402({ ...opts, credentials: undefined, paymentSigner: undefined, walletPath: undefined, ...o }),
+        initOpts.apiBase,
+        initOpts.onLine,
+      );
+    }
+    return runInit(base as unknown as NodeRun402, client, initOpts);
+  };
+  (base as unknown as { status: NodeRun402["status"] }).status = () => runStatus(base);
   (base as unknown as { paymentPayer: NodeRun402["paymentPayer"] }).paymentPayer = async () =>
     lazyPaidFetch?.getPayer() ?? null;
 
@@ -736,6 +758,18 @@ export {
   resolveWalletSelection,
   selectWallet,
 } from "./wallets.js";
+export { initApiTarget, resolveScaffoldProject, runInit } from "./init.js";
+export type { InitOptions, InitRail, InitSummary, InitTargetSummary, InitWalletSummary } from "./init.js";
+export { runStatus } from "./status.js";
+export type { LocalOnlyStatus, StatusResult, StatusTarget, WalletStatus } from "./status.js";
+export {
+  LIGHTNING_MINT_TIMEOUT_MS,
+  describeLightning,
+  ensureLightningWallet,
+  readLightningBalance,
+  revokeLightningWallet,
+} from "./lightning-wallet.js";
+export type { EnsureLightningResult, LightningBalance, LightningDescription, LightningOutcome } from "./lightning-wallet.js";
 export { DOCTOR_CHECK_NAMES, assertDoctorCheckNames, buildDoctorReport, runDoctor } from "./doctor.js";
 export type { DoctorCheck, DoctorCheckName, DoctorOptions, DoctorReport, DoctorReportCheck, DoctorSeverity } from "./doctor.js";
 export { repoOwnVaultTarget, resolveVaultTarget } from "./vault-target.js";

@@ -66,6 +66,7 @@ const SAMPLE_ARGS: Record<SecretReturningMethod, unknown[]> = {
   "agent.lightningWallet.mint": [{}],
   "agent.lightningWallet.get": [],
   "agent.lightningWallet.waitForActive": [{}],
+  "init": [{ rail: "lightning" }],
   "actions.run": [{ type: "up" }],
   "actions.up": [{}],
   "session.exchangeCliToken": [{ code: "c", codeVerifier: "v", redirectUri: "http://127.0.0.1:1/cb" }],
@@ -251,6 +252,7 @@ const NOT_SECRET_FIELD_NAMES = new Set([
  */
 const NOT_SECRET_PATHS: Record<string, string> = {
   "wallets.faucet out =>.token": "the token SYMBOL (\"USDC\") the faucet sent",
+  "status out =>.balances.on_chain_token": "the token SYMBOL (\"USDC\" or \"pathUSD\") the on-chain balance is in",
   "domains.testReceive out =>.receive_test.token": "the nonce an inbound test email carries to be matched, not a credential",
   "credentials.status out =>.legacy_key": "the retiring key's label (\"k0\"), never its value",
   "snapshots.restorePlan out =>.restore_plan.confirm.token": "a single-use confirmation handle for this restore plan, not a credential",
