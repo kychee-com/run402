@@ -11,7 +11,7 @@
 
 ## 0. Scope, trust boundary, threat properties
 
-**V0-A implements:** lazy six-stage crash-safe vault creation; deploy-implies-capture with push-gated activation bound by capture/activation receipts; encrypted WAL `pack_set`s + signed create-only heads with object receipts; ref transactions; `checkpoint_set` compaction with retention roots (≥90-day unreachable-history contract); two-phase attested prune; the creator's keystore envelope (the only envelope in V0); the recovery receipt; the remote helper; the control-plane API (allocation, sessions, admission, listing, policy management) with a normative authorization matrix and rate/count limits.
+**V0-A implements:** lazy six-stage crash-safe vault creation; deploy-implies-capture with vault-gated activation bound by capture/activation receipts; encrypted WAL `pack_set`s + signed create-only heads with object receipts; ref transactions; `checkpoint_set` compaction with retention roots (≥90-day unreachable-history contract); two-phase attested prune; the creator's keystore envelope (the only envelope in V0); the recovery receipt; the remote helper; the control-plane API (allocation, sessions, admission, listing, policy management) with a normative authorization matrix and rate/count limits.
 
 **Deferred (§13):** human envelopes/invite (change 3); epoch rotation + transfer (change 4); capsules (change B — **no namespace, prefix, or layout is reserved in V0**; change B chooses its own); selective purge (own change); runner delivery; mirrors; witness anchoring; periodic capture.
 
@@ -621,7 +621,7 @@ Round 24 found the standalone log started at D44 — D1–D43 lived only in git 
 - **D23** Checkpoint descriptor signed into the head; fresh `ref_state` at the checkpoint generation.
 - **D24** (capsule clause SUPERSEDED BY D41/D57) Upload sessions with lease + finalization receipts; the reaper ages from session expiry — GC roots do NOT include capsules (none exist in V0).
 - **D25** Presigned hardening: ≤10 min, checksum+length+condition signed, reservation-before-issuance, log redaction, S3-authoritative billing.
-- **D26** Push-gated activation + `--allow-unvaulted` override + capture-the-attempt + operation↔generation provenance.
+- **D26** Vault-gated activation + `--allow-unvaulted` override + capture-the-attempt + operation↔generation provenance.
 - **D27** Canonical ref allowlist; `refs/run402/*` protocol-owned; helper advertises, Git applies refspecs.
 - **D28** Strict I-JSON parsing profile; strict Ed25519.
 - **D29** Observer-matrix disclosure, including the deploy-lane plaintext boundary.

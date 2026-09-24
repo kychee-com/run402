@@ -651,7 +651,7 @@ describe("vault recovery engine (task 3.6)", () => {
   });
 });
 
-// ─── Group 2 — mirror writer / sync / dual-push (task 2.5) ────────────────────
+// ─── Group 2 — mirror writer / sync / mirror write (task 2.5) ────────────────────
 
 describe("vault mirror writer + sync engine (task 2.5)", () => {
   it("planMirrorWrite: every plain object precedes every admission/head; admissions/heads are strictly ascending with admission before its own head", () => {
@@ -909,9 +909,9 @@ describe("vault mirror sync — foreign-recipient key_envelope handling (task 5.
     assert.equal(await backend.get(foreignKey), null, "the mirror must not hold the foreign envelope's bytes");
     assert.ok(summary.objects_copied > 0, "everything else must still sync normally");
 
-    // The capture-time dual-push hook (design D6) must report `pushed`, not
+    // The capture-time mirror-write hook (design D6) must report `pushed`, not
     // `failed`, when the only "issue" was an expected foreign-recipient skip
-    // — this was exactly the live drill's regression (`mirror: dual-push
+    // — this was exactly the live drill's regression (`mirror: mirroring this capture
     // FAILED (deploy is unaffected)` on a perfectly healthy vault).
     const pushResult = await mirrorPushForGeneration(fakeClient, f.repoId, { keystore: f.keystore, backend });
     assert.equal(pushResult.outcome, "pushed");

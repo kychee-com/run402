@@ -20,7 +20,7 @@
  * to an already-BYO vault, `Repos.byoConfigSet`), keyed by `repo_id` —
  * `repo_id` only exists AFTER allocation, so this file's existence for a
  * given repo is itself the local "this machine can write this vault's
- * payload objects directly" fact `vault-mirror.ts`'s dual-push hook and
+ * payload objects directly" fact `vault-mirror.ts`'s mirror-write hook and
  * `vault-degraded-read.ts`'s fallback resolution both gate on.
  */
 import { existsSync, readdirSync, unlinkSync } from "node:fs";

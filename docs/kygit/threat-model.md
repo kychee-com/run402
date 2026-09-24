@@ -17,7 +17,7 @@ These three sentences are the entire approved claims vocabulary. Copy may shorte
 Read them as three separate promises with three separate strengths:
 
 1. **Confidentiality of the vault** is a *cryptographic* property against run402 itself. There is no key material server-side, so it is not a policy we follow; it is a capability we do not have.
-2. **Push-gated activation** is an *operational platform invariant*. It is enforced by the platform, auditable by the owner, and bypassable only by the owner's own explicit, step-up-authorized override — but it is not cryptographic against the platform.
+2. **Vault-gated activation** is an *operational platform invariant*. It is enforced by the platform, auditable by the owner, and bypassable only by the owner's own explicit, step-up-authorized override — but it is not cryptographic against the platform.
 3. **Retention** (≥90 days of unreachable history) is an *operational promise*. The host can delete bytes and controls the admission clock. We commit to it; we cannot make it impossible for ourselves to break.
 
 The asymmetry is the point. Conflating the three is exactly the failure mode the banned list (§8) exists to prevent.

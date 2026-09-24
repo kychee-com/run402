@@ -2746,7 +2746,7 @@ export class Repos {
       ...(options.checkpoint ? { checkpoint: true } : {}),
     };
     const result = await handle.vault.push(push).catch((e) => { throw this.#enrichEpochRotationRequired(e, handle.repo_id); });
-    // Capture-time dual-push hook: fires only when a
+    // Capture-time mirror-write hook: fires only when a
     // mirror is configured; NEVER throws, NEVER alters the vault outcome
     // above (already returned/committed) — a mirror failure is a named
     // pending finding reported BESIDE the vault result, on its own field.
@@ -4096,7 +4096,7 @@ export class Repos {
     };
   }
 
-  /** Best-effort dual-push: catches EVERYTHING, including the lazy module import itself, so a mirror problem can never surface as a `capture()` throw. */
+  /** Best-effort mirror write: catches EVERYTHING, including the lazy module import itself, so a mirror problem can never surface as a `capture()` throw. */
   /**
    * `EPOCH_ROTATION_REQUIRED` (D193) is left THROWN — never swallowed into a
    * silent auto-rotation — because this call site cannot legally decide the
@@ -4138,7 +4138,7 @@ export class Repos {
   /**
    * The capture-time copies a plain `git push` through the remote helper
    * owes exactly as {@link capture} and {@link deploy} do: the opt-in mirror
-   * dual-push and, on a BYO vault, the signed-chain copy into the customer
+   * mirror write and, on a BYO vault, the signed-chain copy into the customer
    * bucket (vault-byo-primary-bucket task 3.3). The helper publishes
    * through `Vault.push` directly, so it calls this right after a
    * generation lands. Same contract as the private hooks it composes:
@@ -5454,7 +5454,7 @@ export class Repos {
   }
 
   /**
-   * The push-gated deploy: both lanes under one fresh `capture_id`, resolving
+   * The vault-gated deploy: both lanes under one fresh `capture_id`, resolving
    * to exactly one of five outcomes — `DEPLOYED_AND_VAULTED`,
    * `DEPLOY_BLOCKED_PUSH_FAILED`, `DEPLOY_FAILED_VAULTED`,
    * `DEPLOY_FAILED_UNVAULTED`, `DEPLOYED_UNVAULTED_OVERRIDE`.
@@ -5465,7 +5465,7 @@ export class Repos {
    *
    * `run402 deploy` is design D5's PRIMARY envelope-recipient reconcile hook
    * ("the same 'one command every agent runs' argument that decided
-   * deploy-implies-capture") and design D6's primary dual-push mirror trigger
+   * deploy-implies-capture") and design D6's primary mirror-write trigger
    * — both fire HERE, not inside {@link runVaultDeploy} itself, mirroring
    * {@link capture}'s exact non-blocking contract: best-effort, NEVER throw,
    * NEVER alter the deploy outcome already resolved above, reported BESIDE it

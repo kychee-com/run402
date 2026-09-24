@@ -1,5 +1,5 @@
 /**
- * vault push-gated deploy (task 5.6) — the §6.5 machine: a fresh
+ * vault vault-gated deploy (task 5.6) — the §6.5 machine: a fresh
  * `capture_id` before both lanes, a deploy lane that collects artifacts from
  * the work tree with SNAPSHOT CORRESPONDENCE verified before any commit
  * (change `vault-deploy-lane`, D1–D3), a `capture_binding` whose plan digest
@@ -129,7 +129,7 @@ async function deployFixture(): Promise<VaultFixture> {
 
 // ─── The five outcomes ───────────────────────────────────────────────────────
 
-describe("§6.5 push-gated deploy — the closed five outcomes", () => {
+describe("§6.5 vault-gated deploy — the closed five outcomes", () => {
   it("the outcome enum is closed at five", () => {
     assert.deepEqual([...VAULT_DEPLOY_OUTCOMES], ["DEPLOYED_AND_VAULTED", "DEPLOY_BLOCKED_PUSH_FAILED", "DEPLOY_FAILED_VAULTED", "DEPLOY_FAILED_UNVAULTED", "DEPLOYED_UNVAULTED_OVERRIDE"]);
   });

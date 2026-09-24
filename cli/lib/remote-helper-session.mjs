@@ -1080,7 +1080,7 @@ async function main(argv, { onBackgroundWork } = {}) {
       sharedListSession = null;
       if (verbosity >= 1) note(`published generation ${published.generation} (${published.form})`);
       // The copies push()/deploy() make after a generation lands — the
-      // opt-in mirror dual-push and a BYO vault's signed-chain copy into the
+      // opt-in mirror write and a BYO vault's signed-chain copy into the
       // customer bucket. Best-effort: never alters the push above, one
       // stderr line per outcome worth knowing.
       const copies = await getCachedSdk().repos.postPublishCopies?.({ repo_id: vault.repoId, keystore: vault.keystore }).catch(() => null);

@@ -1868,7 +1868,7 @@ describe("SDK surface alignment", () => {
       // internally on `VAULT_UNRESOLVED` — it has no verb of its own,
       // the same way `open` and `init` already cover the explicit paths.
       "repos.openOrCreate",
-      // `deploy` is the push-gated deploy — it belongs to the deploy surface
+      // `deploy` is the vault-gated deploy — it belongs to the deploy surface
       // (`run402 deploy`), not to the repo verb group.
       "repos.deploy",
       // `drainOverrides` runs automatically on any later CLI invocation; it is
@@ -1886,7 +1886,7 @@ describe("SDK surface alignment", () => {
       "repos.withDegradedRead",
       // Same family, same composer: `degradedOpenFallback` is the open-time
       // half of the degraded read (the gateway was needed before any wrapped
-      // read), and `postPublishCopies` is the capture-time mirror dual-push +
+      // read), and `postPublishCopies` is the capture-time mirror write +
       // BYO chain copy `push()`/`deploy()` make, exposed so a plain `git push`
       // through the remote helper makes them too — recovery/copy machinery,
       // never verbs of their own.

@@ -1,6 +1,6 @@
 /**
  * vault-mirror-and-recover — the mirror writer + reconcile/sync engine +
- * capture-time dual-push hook (design D1/D6/D7, tasks 2.2–2.4).
+ * capture-time mirror-write hook (design D1/D6/D7, tasks 2.2–2.4).
  *
  * ADMISSION-ORDER WRITE DISCIPLINE (D1's whole point). The gateway's objects
  * listing (`GET /vaults/v1/:vault_id/objects`) is a flat, unordered
@@ -453,7 +453,7 @@ async function reconcileOne(client: Client, repoId: string, backend: VaultMirror
     }
     const put = await backend.putCreateOnly(entry.key, bytes);
     if (!put.created) {
-      // A concurrent writer (another sync, or the dual-push hook) won the
+      // A concurrent writer (another sync, or the mirror-write hook) won the
       // create-only race — benign; the mirror now holds SOME valid bytes at
       // this key, and re-checking their size closes the loop honestly.
       const after = await backend.head(entry.key);
@@ -547,7 +547,7 @@ function openBackendFromConfig(keystore: VaultKeystore, repoId: string): VaultMi
   return openVaultMirrorBackend(config.destination, repoId, config.credential);
 }
 
-// ─── Capture-time dual-push hook (task 2.4, design D6) ─────────────────────────
+// ─── Capture-time mirror-write hook (task 2.4, design D6) ─────────────────────────
 
 export interface VaultMirrorPushResult {
   attempted: boolean;
@@ -618,7 +618,7 @@ const VAULT_BYO_PAYLOAD_OBJECT_KINDS: ReadonlySet<string> = new Set([
 
 function openByoBackendFromConfig(keystore: VaultKeystore, repoId: string): VaultMirrorBackend {
   const config = readByoConfig(keystore, repoId);
-  if (!config) fail("VAULT_BYO_NOT_CONFIGURED", `no local BYO write config for ${repoId}`, "opening the vault BYO destination", { repo_id: repoId }, [{ action: "run402 repos create --byo <destination> allocated this vault; this machine needs the same destination + credential configured locally to write or dual-push its chain" }]);
+  if (!config) fail("VAULT_BYO_NOT_CONFIGURED", `no local BYO write config for ${repoId}`, "opening the vault BYO destination", { repo_id: repoId }, [{ action: "run402 repos create --byo <destination> allocated this vault; this machine needs the same destination + credential configured locally to write or mirror its chain" }]);
   if (config.destination.kind === "s3" && config.credential) {
     // Fail fast on a missing/misconfigured credential BEFORE any network
     // call, same discipline as `openBackendFromConfig` above.

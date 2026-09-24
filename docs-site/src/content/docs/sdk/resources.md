@@ -916,7 +916,7 @@ compact(opts?): Promise<VaultCompactResult>
 prune(opts?): Promise<VaultPruneResult>                              // plan; pass { submit } with both verifier receipts to submit
 verify(opts?: { persist? }): Promise<VaultVerifiedState>             // persist defaults true; false walks + verifies the same way but writes neither local pin
 fsck(opts?: { write?, mirror? }): Promise<VaultFsckResult>           // repo-surface-consolidation D2/D3: `repos fsck`'s primitive — verify + materialize + explicit pin_before/pin_after/local_state_changed; write:false is the `--no-write` audit mode (computes the real answer, persists nothing); mirror:true also runs mirrorVerify and folds its report in
-deploy(opts): Promise<VaultDeployResult>                             // the push-gated deploy (raw; takes an injected lane — see applyWithVault below)
+deploy(opts): Promise<VaultDeployResult>                             // the vault-gated deploy (raw; takes an injected lane — see applyWithVault below)
 restore({ target_dir, ... }): Promise<{ refs, generation }>             // the clone-back path git-remote-run402 fetch drives; index-packs objects and leaves ref creation to the caller
 scaffoldRemote({ repo_dir, org_id, project_id, remote_name?, remote_url? }): Promise<VaultScaffoldRemoteResult>  // { name, url, created_repository, already_present, existing_url, reason } — D1: claims `origin` when free, falls back to `run402` when taken, never touches an existing remote either way
 open(opts?): Promise<VaultHandle>                                    // the raw protocol object, for ref transactions or repair
@@ -1015,7 +1015,7 @@ if (plan.allocation_needed) {
 
 #### Deploying a vaulted project — `applyWithVault`
 
-`r.repos.deploy(...)` is the raw push-gated machine and takes an injected lane. `applyWithVault` (`@run402/sdk/node`) is the supplied one: it reads the project's `vault_policy`, and only a `required` project captures at all.
+`r.repos.deploy(...)` is the raw vault-gated machine and takes an injected lane. `applyWithVault` (`@run402/sdk/node`) is the supplied one: it reads the project's `vault_policy`, and only a `required` project captures at all.
 
 ```ts
 import { applyWithVault, run402 } from "@run402/sdk/node";

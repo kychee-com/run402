@@ -1,5 +1,5 @@
 /**
- * vault — push-gated deploy (protocol rev 41 §6.5; task 5.6, lane supplied
+ * vault — vault-gated deploy (protocol rev 41 §6.5; task 5.6, lane supplied
  * by change `vault-deploy-lane`).
  *
  * Every deploy has a commit, and the artifacts it ships CORRESPOND to it:
@@ -350,7 +350,7 @@ async function assertCapturedSetUnchanged(
 }
 
 /**
- * Run the push-gated deploy. Throws ONLY for refusals that precede any lane
+ * Run the vault-gated deploy. Throws ONLY for refusals that precede any lane
  * (snapshot refusals such as `SNAPSHOT_CONFLICTED_INDEX`, unsupported
  * repositories), for `SNAPSHOT_MOVED_DURING_DEPLOY` (the tree moved under the
  * capture; nothing is committed), and for `OVERRIDE_NOT_AUTHORIZED`; every
