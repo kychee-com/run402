@@ -4053,7 +4053,7 @@
             }
           },
           "409": {
-            "description": "VAULT_BYO_SINGLE_WRITER \u2014 this organization owns a bring-your-own-bucket vault, which admits exactly one writer in v1 (its key envelopes live only in the customer's bucket). A developer+ add is refused by name, naming the vault in details: { storage_profile: \"byo\", vault_id, org_id }; no membership row, target org-of-one, or audit row is written. A viewer/billing add is unaffected \u2014 those roles confer no writer eligibility.",
+            "description": "VAULT_BYO_SINGLE_WRITER — this organization owns a bring-your-own-bucket vault, which admits exactly one writer in v1 (its key envelopes live only in the customer's bucket). A developer+ add is refused by name, naming the vault in details: { storage_profile: \"byo\", vault_id, org_id }; no membership row, target org-of-one, or audit row is written. A viewer/billing add is unaffected — those roles confer no writer eligibility.",
             "content": {
               "application/json": {
                 "schema": {
@@ -8491,9 +8491,9 @@
         "tags": [
           "Admin"
         ],
-        "summary": "Run SQL migration",
+        "summary": "Run SQL (retiring for the service key; use POST /projects/v1/{project_id}/sql)",
         "operationId": "runSql",
-        "description": "Executes SQL (DDL/DML/SELECT) against the project's own schema with the project service key — the direct-SQL migration path behind MCP run_sql, `run402 projects sql`, and in-function adminDb().sql(). A pattern blocklist rejects platform-reaching statements. Platform-admin-key calls run inside a PostgreSQL read-only transaction (SET TRANSACTION READ ONLY): any write is refused by the database engine with 403 ADMIN_SQL_READ_ONLY, regardless of statement spelling. The structured migration alternative is POST /apply/v1/plans (spec.database). Lifecycle-gated for non-active projects.",
+        "description": "Retiring for service-key callers: use POST /projects/v1/{project_id}/sql, which takes the same key and body and returns the same shape. Service-key calls here are counted; once the route warns, responses carry Deprecation, Sunset, and Link (rel=successor-version) headers and a ROUTE_RETIRING warning, and once retired they answer 410 ROUTE_RETIRED with a use_successor next action. Platform-admin-key calls (staff diagnostics) keep this route: they run inside a PostgreSQL read-only transaction, and any write is refused with 403 ADMIN_SQL_READ_ONLY.",
         "security": [
           {
             "serviceKey": []
@@ -8556,7 +8556,81 @@
                       }
                     },
                     "row_count": {
-                      "type": "integer"
+                      "type": "integer",
+                      "description": "Rows returned or affected by the last statement: the statement whose rows and fields are returned."
+                    },
+                    "statements": {
+                      "type": "array",
+                      "description": "One entry per statement, in order. For a multi-statement batch, each statement's own command and count; their sum is the batch total.",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "command",
+                          "row_count"
+                        ],
+                        "properties": {
+                          "command": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "The statement's command tag, e.g. INSERT or SELECT."
+                          },
+                          "row_count": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "warnings": {
+                      "type": "array",
+                      "description": "Warnings that never change the result: ROUTE_RETIRING (the caller used a route being retired; next_actions names the successor or the upgrade), SCHEMA_CHANGE_OUTSIDE_MIGRATION (DDL on a project with a live release, which the release no longer describes; next_actions: create_migration), MULTI_STATEMENT_TEXT_BODY (several statements in one text body; use the batch route).",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "code",
+                          "message",
+                          "next_actions"
+                        ],
+                        "properties": {
+                          "code": {
+                            "type": "string",
+                            "enum": [
+                              "ROUTE_RETIRING",
+                              "SCHEMA_CHANGE_OUTSIDE_MIGRATION",
+                              "MULTI_STATEMENT_TEXT_BODY"
+                            ]
+                          },
+                          "severity": {
+                            "type": "string",
+                            "example": "warning"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "next_actions": {
+                            "type": "array",
+                            "items": {
+                              "type": "object"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "fields": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "type": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "description": "Result column descriptors of the last statement."
                     }
                   }
                 }
@@ -8575,8 +8649,19 @@
                 }
               }
             }
+          },
+          "410": {
+            "description": "ROUTE_RETIRED: the route is retired for this caller (or a brownout window is open); next_actions names the successor.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
-        }
+        },
+        "deprecated": true
       }
     },
     "/projects/v1/expose/validate": {
@@ -30897,7 +30982,7 @@
                       "type": "integer",
                       "description": "The organization's allowance AFTER the redemption."
                     },
-                    "organization_id": {
+                    "org_id": {
                       "type": "string",
                       "format": "uuid"
                     },
@@ -30943,7 +31028,7 @@
                       "type": "integer",
                       "description": "The organization's allowance AFTER the redemption."
                     },
-                    "organization_id": {
+                    "org_id": {
                       "type": "string",
                       "format": "uuid"
                     },
@@ -32510,7 +32595,7 @@
                         "byo_single_writer",
                         null
                       ],
-                      "description": "vault-byo-primary-bucket D11. Why pending_writers is EMPTY on a vault whose org has writer-eligible members waiting. \"byo_single_writer\" on a bring-your-own-bucket vault \u2014 it admits exactly one writer in v1, because its key envelopes live only in the customer's bucket, so a reconcile skips it rather than driving an add_writer_key the admission door refuses with 409 VAULT_BYO_SINGLE_WRITER. null whenever pending_writers means what it says."
+                      "description": "vault-byo-primary-bucket D11. Why pending_writers is EMPTY on a vault whose org has writer-eligible members waiting. \"byo_single_writer\" on a bring-your-own-bucket vault — it admits exactly one writer in v1, because its key envelopes live only in the customer's bucket, so a reconcile skips it rather than driving an add_writer_key the admission door refuses with 409 VAULT_BYO_SINGLE_WRITER. null whenever pending_writers means what it says."
                     },
                     "ineligible_members": {
                       "type": "array",
@@ -32813,7 +32898,7 @@
             }
           },
           "409": {
-            "description": "HANDOFF_ID_CONFLICT (the client-generated handoff_id already exists) or HANDOFF_OPEN_LIMIT (the vault already has 20 open handoffs). Or (vault-byo-primary-bucket D11) VAULT_BYO_SINGLE_WRITER \u2014 this vault's storage_profile is \"byo\": a bring-your-own-bucket vault admits exactly one writer in v1, because its key envelopes live only in the customer's bucket, so a second writer would gain writer authority without the bucket access it needs to read them. details: { storage_profile: \"byo\", vault_id }. Refused before any claim row, placeholder membership, or audit row is written.",
+            "description": "HANDOFF_ID_CONFLICT (the client-generated handoff_id already exists) or HANDOFF_OPEN_LIMIT (the vault already has 20 open handoffs). Or (vault-byo-primary-bucket D11) VAULT_BYO_SINGLE_WRITER — this vault's storage_profile is \"byo\": a bring-your-own-bucket vault admits exactly one writer in v1, because its key envelopes live only in the customer's bucket, so a second writer would gain writer authority without the bucket access it needs to read them. details: { storage_profile: \"byo\", vault_id }. Refused before any claim row, placeholder membership, or audit row is written.",
             "content": {
               "application/json": {
                 "schema": {
@@ -33531,7 +33616,7 @@
             }
           },
           "409": {
-            "description": "INVITE_ID_CONFLICT (the client-generated invite_id already exists) or INVITE_OPEN_LIMIT (this vault already has 20 open claims across BOTH kinds). Or (vault-byo-primary-bucket D11) VAULT_BYO_SINGLE_WRITER \u2014 this vault's storage_profile is \"byo\": a bring-your-own-bucket vault admits exactly one writer in v1, because its key envelopes live only in the customer's bucket, so a second writer would gain writer authority without the bucket access it needs to read them. details: { storage_profile: \"byo\", vault_id }. Refused before any claim row, placeholder membership, or audit row is written.",
+            "description": "INVITE_ID_CONFLICT (the client-generated invite_id already exists) or INVITE_OPEN_LIMIT (this vault already has 20 open claims across BOTH kinds). Or (vault-byo-primary-bucket D11) VAULT_BYO_SINGLE_WRITER — this vault's storage_profile is \"byo\": a bring-your-own-bucket vault admits exactly one writer in v1, because its key envelopes live only in the customer's bucket, so a second writer would gain writer authority without the bucket access it needs to read them. details: { storage_profile: \"byo\", vault_id }. Refused before any claim row, placeholder membership, or audit row is written.",
             "content": {
               "application/json": {
                 "schema": {
@@ -39964,6 +40049,622 @@
           }
         }
       }
+    },
+    "/projects/v1/{project_id}/sql": {
+      "post": {
+        "tags": [
+          "Projects"
+        ],
+        "summary": "Run SQL on the project schema",
+        "operationId": "runProjectSql",
+        "description": "Executes SQL (DDL/DML/SELECT) against the project's own schema with the project service key; the path's project must be the key's (403 otherwise). This is the route behind `run402 projects sql`, the SDK's `projects.sql`, and in-function `adminDb().sql()`. A pattern blocklist rejects platform-reaching statements. The structured migration path is POST /apply/v1/plans (spec.database): a schema change made here on a project with a live release carries warning SCHEMA_CHANGE_OUTSIDE_MIGRATION. Several statements in one text body run in one call and carry MULTI_STATEMENT_TEXT_BODY; POST /projects/v1/{project_id}/sql/batch states each statement's result and the transaction explicitly. Lifecycle-gated for non-active projects.",
+        "security": [
+          {
+            "serviceKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ProjectId"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "sql"
+                ],
+                "properties": {
+                  "sql": {
+                    "type": "string",
+                    "description": "SQL statement(s) to execute"
+                  }
+                }
+              }
+            },
+            "text/plain": {
+              "schema": {
+                "type": "string",
+                "description": "Raw SQL text"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "SQL executed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "ok"
+                    },
+                    "schema": {
+                      "type": "string"
+                    },
+                    "rows": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "row_count": {
+                      "type": "integer",
+                      "description": "Rows returned or affected by the last statement: the statement whose rows and fields are returned."
+                    },
+                    "statements": {
+                      "type": "array",
+                      "description": "One entry per statement, in order. For a multi-statement batch, each statement's own command and count; their sum is the batch total.",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "command",
+                          "row_count"
+                        ],
+                        "properties": {
+                          "command": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "The statement's command tag, e.g. INSERT or SELECT."
+                          },
+                          "row_count": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "warnings": {
+                      "type": "array",
+                      "description": "Warnings that never change the result: ROUTE_RETIRING (the caller used a route being retired; next_actions names the successor or the upgrade), SCHEMA_CHANGE_OUTSIDE_MIGRATION (DDL on a project with a live release, which the release no longer describes; next_actions: create_migration), MULTI_STATEMENT_TEXT_BODY (several statements in one text body; use the batch route).",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "code",
+                          "message",
+                          "next_actions"
+                        ],
+                        "properties": {
+                          "code": {
+                            "type": "string",
+                            "enum": [
+                              "ROUTE_RETIRING",
+                              "SCHEMA_CHANGE_OUTSIDE_MIGRATION",
+                              "MULTI_STATEMENT_TEXT_BODY"
+                            ]
+                          },
+                          "severity": {
+                            "type": "string",
+                            "example": "warning"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "next_actions": {
+                            "type": "array",
+                            "items": {
+                              "type": "object"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "fields": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "type": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "description": "Result column descriptors of the last statement."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Project is past_due/frozen/dormant — control-plane gated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/v1/{project_id}/sql/batch": {
+      "post": {
+        "tags": [
+          "Projects"
+        ],
+        "summary": "Run several SQL statements with an explicit transaction",
+        "operationId": "runProjectSqlBatch",
+        "description": "Runs up to 100 statements against the project's schema with the project service key. Each entry is exactly one statement. transaction \"all\" (default) runs them in one transaction: the first failure rolls back every statement and answers 400 SQL_BATCH_STATEMENT_FAILED naming its index. transaction \"each\" gives every statement its own transaction and reports each outcome, so later statements still run; status is \"partial\" when any failed.",
+        "security": [
+          {
+            "serviceKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ProjectId"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "statements"
+                ],
+                "properties": {
+                  "statements": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 100,
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "sql"
+                      ],
+                      "properties": {
+                        "sql": {
+                          "type": "string"
+                        },
+                        "params": {
+                          "type": "array",
+                          "items": {}
+                        }
+                      }
+                    }
+                  },
+                  "transaction": {
+                    "type": "string",
+                    "enum": [
+                      "all",
+                      "each"
+                    ],
+                    "default": "all"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The batch ran",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok",
+                        "partial"
+                      ]
+                    },
+                    "schema": {
+                      "type": "string"
+                    },
+                    "transaction": {
+                      "type": "string",
+                      "enum": [
+                        "all",
+                        "each"
+                      ]
+                    },
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "index",
+                          "status"
+                        ],
+                        "properties": {
+                          "index": {
+                            "type": "integer"
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "ok",
+                              "error"
+                            ]
+                          },
+                          "command": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "rows": {
+                            "type": "array",
+                            "items": {
+                              "type": "object"
+                            }
+                          },
+                          "row_count": {
+                            "type": "integer"
+                          },
+                          "fields": {
+                            "type": "array",
+                            "items": {
+                              "type": "object"
+                            }
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "warnings": {
+                      "type": "array",
+                      "description": "Warnings that never change the result: ROUTE_RETIRING (the caller used a route being retired; next_actions names the successor or the upgrade), SCHEMA_CHANGE_OUTSIDE_MIGRATION (DDL on a project with a live release, which the release no longer describes; next_actions: create_migration), MULTI_STATEMENT_TEXT_BODY (several statements in one text body; use the batch route).",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "code",
+                          "message",
+                          "next_actions"
+                        ],
+                        "properties": {
+                          "code": {
+                            "type": "string",
+                            "enum": [
+                              "ROUTE_RETIRING",
+                              "SCHEMA_CHANGE_OUTSIDE_MIGRATION",
+                              "MULTI_STATEMENT_TEXT_BODY"
+                            ]
+                          },
+                          "severity": {
+                            "type": "string",
+                            "example": "warning"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "next_actions": {
+                            "type": "array",
+                            "items": {
+                              "type": "object"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad body, or (transaction all) a statement failed and the batch rolled back: SQL_BATCH_STATEMENT_FAILED with details.index",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "A blocked statement pattern, another project's key, or a control-plane-gated project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/v1/{project_id}/rest/{path}": {
+      "get": {
+        "tags": [
+          "Projects"
+        ],
+        "summary": "PostgREST with the service key (GET, bypasses RLS)",
+        "operationId": "projectServiceRestGet",
+        "description": "The project-scoped PostgREST forwarder for server-side code holding the project service key (role service_role, bypasses row-level security): the route behind in-function adminDb().from(). The path's project must be the key's (403 PROJECT_MISMATCH otherwise). /rest/v1/* refuses the service key; end users and browsers use /rest/v1/* with the anon key. Replaces /admin/v1/rest/*, which is retiring.",
+        "security": [
+          {
+            "serviceKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ProjectId"
+            }
+          },
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "description": "The PostgREST path: a table or view name, or rpc/<function>.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "PostgREST's response, passed through",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "The key belongs to another project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Projects"
+        ],
+        "summary": "PostgREST with the service key (POST, bypasses RLS)",
+        "operationId": "projectServiceRestPost",
+        "description": "The project-scoped PostgREST forwarder for server-side code holding the project service key (role service_role, bypasses row-level security): the route behind in-function adminDb().from(). The path's project must be the key's (403 PROJECT_MISMATCH otherwise). /rest/v1/* refuses the service key; end users and browsers use /rest/v1/* with the anon key. Replaces /admin/v1/rest/*, which is retiring.",
+        "security": [
+          {
+            "serviceKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ProjectId"
+            }
+          },
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "description": "The PostgREST path: a table or view name, or rpc/<function>.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "PostgREST's response, passed through",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "The key belongs to another project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created (PostgREST)",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Projects"
+        ],
+        "summary": "PostgREST with the service key (PATCH, bypasses RLS)",
+        "operationId": "projectServiceRestPatch",
+        "description": "The project-scoped PostgREST forwarder for server-side code holding the project service key (role service_role, bypasses row-level security): the route behind in-function adminDb().from(). The path's project must be the key's (403 PROJECT_MISMATCH otherwise). /rest/v1/* refuses the service key; end users and browsers use /rest/v1/* with the anon key. Replaces /admin/v1/rest/*, which is retiring.",
+        "security": [
+          {
+            "serviceKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ProjectId"
+            }
+          },
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "description": "The PostgREST path: a table or view name, or rpc/<function>.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "PostgREST's response, passed through",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "The key belongs to another project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Projects"
+        ],
+        "summary": "PostgREST with the service key (DELETE, bypasses RLS)",
+        "operationId": "projectServiceRestDelete",
+        "description": "The project-scoped PostgREST forwarder for server-side code holding the project service key (role service_role, bypasses row-level security): the route behind in-function adminDb().from(). The path's project must be the key's (403 PROJECT_MISMATCH otherwise). /rest/v1/* refuses the service key; end users and browsers use /rest/v1/* with the anon key. Replaces /admin/v1/rest/*, which is retiring.",
+        "security": [
+          {
+            "serviceKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ProjectId"
+            }
+          },
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "description": "The PostgREST path: a table or view name, or rpc/<function>.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "PostgREST's response, passed through",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "The key belongs to another project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -43630,7 +44331,7 @@
           "kind": {
             "type": "string"
           },
-          "organization_id": {
+          "org_id": {
             "type": "string",
             "nullable": true
           },
@@ -45426,7 +46127,7 @@
               "project_name": {
                 "type": "string"
               },
-              "organization_id": {
+              "org_id": {
                 "type": "string",
                 "format": "uuid"
               },
@@ -55363,7 +56064,7 @@
       },
       "VaultCommitInput": {
         "type": "object",
-        "description": "Commit-time vault block. Supply EITHER `activation_token_id` (the push-gated path) OR `allow_unvaulted` + `override_reason` (the audited override). The override needs `gitvault.override_unvaulted` — owner + step-up, or a project grant carrying that power explicitly; deploy authority alone is refused `403 OVERRIDE_NOT_AUTHORIZED`.",
+        "description": "Commit-time vault block. Supply EITHER `activation_token_id` (the vault-gated path) OR `allow_unvaulted` + `override_reason` (the audited override). The override needs `gitvault.override_unvaulted` — owner + step-up, or a project grant carrying that power explicitly; deploy authority alone is refused `403 OVERRIDE_NOT_AUTHORIZED`.",
         "properties": {
           "activation_token_id": {
             "type": "string",

@@ -1,7 +1,7 @@
 {
   "repository": "kychee-com/run402-private",
   "source": "apps/marketing/openapi.json",
-  "revision": "0e1ed2059de5a222e71ec35eceb23504f9bfd631",
-  "sha256": "aa57d43b976f16fad2a6e129a3cd97cb7dd2f93d44a05168f4664519702ea44c",
+  "revision": "e8f1295bf56a1221237640d8edd0cad5c441a1e1",
+  "sha256": "3c6f0a5c6f05ce082d0981ce81caaee96de4c9687486f32abcb6114fb296e27b",
   "visibility": "Already-public marketing OpenAPI artifact; no implementation source included."
 }
