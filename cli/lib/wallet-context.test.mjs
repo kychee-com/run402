@@ -256,10 +256,10 @@ describe("enforceWalletExists — fail closed", () => {
     assert.doesNotThrow(() => enforceWalletExists({ name: "ghost", source: "flag" }, "wallets"));
     assert.doesNotThrow(() => enforceWalletExists({ name: "ghost", source: "flag" }, "init"));
   });
-  it("address-looking name hints at billing --wallet-address", () => {
+  it("address-looking name hints at the --address spelling", () => {
     const { envelope } = captureFail(() =>
       enforceWalletExists({ name: "0x" + "a".repeat(40), source: "flag" }, "deploy"));
-    assert.match(envelope.hint, /--wallet-address/);
+    assert.match(envelope.hint, /--address 0x/);
   });
 
   // A bare (no "0x" prefix) 64-char lowercase-hex private key satisfies the

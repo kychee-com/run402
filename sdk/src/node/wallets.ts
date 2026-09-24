@@ -198,9 +198,10 @@ export function assertWalletExists({ name, source }: Pick<WalletSelection, "name
   // A bare 64-hex private key satisfies the name charset, so this path can
   // still see key material: echo an address (public) or a short plain name,
   // redact anything else.
-  const shown = describeRejectedValue(name);
+  // An address is public, so it is echoed whole.
+  const shown = looksLikeAddress(name) ? name : describeRejectedValue(name);
   const hint = looksLikeAddress(name)
-    ? `'${name}' looks like an address. For billing use: run402 billing ... --wallet-address ${name}`
+    ? `'${name}' looks like a wallet address, not a local wallet name. --wallet selects a local wallet; commands that take an address spell it --address (run402 billing link-wallet --address ${name}, run402 orgs payout-wallet --address ${name}, run402 orgs members add --address ${name}).`
     : shown === name
       ? `Run 'run402 wallets list' to see wallets, or 'run402 wallets new ${name}' to create it.`
       : "Run 'run402 wallets list' to see wallets. This value was not shown because it looks like a secret rather than a wallet name — if a private key or other credential landed here, treat it as compromised.";

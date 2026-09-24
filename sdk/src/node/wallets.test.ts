@@ -161,7 +161,7 @@ describe("assertWalletExists — fail closed", () => {
       const e = err as WalletSelectionError;
       return e.code === "WALLET_NOT_FOUND" && /ghost/.test(e.message) && /wallets new ghost/.test(e.hint ?? "");
     });
-    assert.throws(() => assertWalletExists({ name: "0x" + "a".repeat(40), source: "flag" }), (err: unknown) => /--wallet-address/.test((err as WalletSelectionError).hint ?? ""));
+    assert.throws(() => assertWalletExists({ name: "0x" + "a".repeat(40), source: "flag" }), (err: unknown) => /--address 0x/.test((err as WalletSelectionError).hint ?? ""));
     const bareKey = "22a3f0".repeat(10) + "aabb";
     assert.throws(() => assertWalletExists({ name: bareKey, source: "binding" }), (err: unknown) => {
       const e = err as WalletSelectionError;

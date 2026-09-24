@@ -288,3 +288,44 @@ it("named-wallet recovery uses the created alias and rejects shell-sensitive nam
   }
   assert.deepEqual(jsonOut(run(["wallets", "list"])), before);
 });
+
+// GH-573/575/576: the global --wallet/--profile flag is stripped from argv
+// before dispatch, so a subcommand flag of the same name never reaches its
+// command. These run the real cli.mjs (the lib entry points cannot see the
+// bug). The API base is a closed local port: a NETWORK_ERROR proves argv
+// parsed and wallet selection passed; a wallet-selection code proves the
+// global flag ate the subcommand's own flag.
+describe("wallet flag at the cli.mjs edge (GH-573)", () => {
+  const ORG = "00000000-0000-0000-0000-000000000001";
+  const ADDR = "0x1111111111111111111111111111111111111111";
+  const offline = { RUN402_API_BASE: "http://127.0.0.1:9" };
+  const WALLET_CODES = new Set(["BAD_WALLET_NAME", "WALLET_NOT_FOUND", "WALLET_CONFLICT"]);
+
+  for (const args of [
+    ["billing", "link-wallet", ORG, "--address", ADDR],
+    ["orgs", "payout-wallet", ORG, "--address", ADDR],
+    ["orgs", "members", "add", ORG, "--address", ADDR],
+  ]) {
+    it(`${args.slice(0, -3).join(" ")} --address reaches the network`, () => {
+      const r = run(args, { env: offline });
+      assert.notEqual(r.status, 0);
+      const env = errEnvelope(r);
+      assert.ok(!WALLET_CODES.has(env.code), `wallet selection ate the flag: ${r.stderr}`);
+      assert.equal(env.code, "NETWORK_ERROR", r.stderr);
+    });
+  }
+
+  it("repos mirror --profile stays the AWS profile, not the wallet", () => {
+    const r = run(["repos", "mirror", "s3://bucket/x", "--profile", "acme"], { env: offline });
+    const env = errEnvelope(r);
+    assert.ok(!WALLET_CODES.has(env.code), `--profile was taken as a wallet: ${r.stderr}`);
+  });
+
+  it("--wallet <address> names the --address spelling, echoing the address", () => {
+    const r = run(["billing", "link-wallet", ORG, "--wallet", ADDR], { env: offline });
+    const env = errEnvelope(r);
+    assert.equal(env.code, "WALLET_NOT_FOUND");
+    assert.match(env.message, new RegExp(ADDR));
+    assert.match(env.hint, /billing link-wallet --address 0x/);
+  });
+});
