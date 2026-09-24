@@ -129,8 +129,8 @@ Notes:
     spend into the organization-wide pool that already includes every project
     on this organization.
   - The response includes a 'pool_implications' block on v1.46+ gateways:
-    tier, projects_in_pool_count, organization_api_calls_current,
-    organization_storage_bytes_current, tier_limits, over_limit. Inspect
+    tier, projects_in_pool_count, org_api_calls_current,
+    org_storage_bytes_current, tier_limits, over_limit. Inspect
     'over_limit' before linking a wallet whose existing usage might push
     the merged pool past the tier cap.
 

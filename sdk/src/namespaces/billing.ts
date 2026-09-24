@@ -125,8 +125,8 @@ export interface EmailOrganization {
 export interface LinkWalletPoolImplications {
   tier: ProjectTier | null;
   projects_in_pool_count: number;
-  organization_api_calls_current: number;
-  organization_storage_bytes_current: number;
+  org_api_calls_current: number;
+  org_storage_bytes_current: number;
   tier_limits: {
     api_calls: number;
     storage_bytes: number;

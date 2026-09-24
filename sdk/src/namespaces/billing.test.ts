@@ -503,8 +503,8 @@ describe("billing.linkWallet", () => {
         pool_implications: {
           tier: "hobby",
           projects_in_pool_count: 3,
-          organization_api_calls_current: 12345,
-          organization_storage_bytes_current: 314572800,
+          org_api_calls_current: 12345,
+          org_storage_bytes_current: 314572800,
           tier_limits: { api_calls: 5000000, storage_bytes: 5368709120 },
           over_limit: false,
         },
@@ -519,7 +519,7 @@ describe("billing.linkWallet", () => {
     assert.equal(result.wallet, WALLET_LOWER);
     assert.equal(result.pool_implications?.tier, "hobby");
     assert.equal(result.pool_implications?.projects_in_pool_count, 3);
-    assert.equal(result.pool_implications?.organization_api_calls_current, 12345);
+    assert.equal(result.pool_implications?.org_api_calls_current, 12345);
     assert.equal(result.pool_implications?.over_limit, false);
     assert.equal(result.pool_implications?.tier_limits.api_calls, 5000000);
     assert.equal(result.pool_implications?.tier_limits.storage_bytes, 5368709120);

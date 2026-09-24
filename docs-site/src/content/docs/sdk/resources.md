@@ -1282,7 +1282,7 @@ first, then reads `GET /orgs/v1/:org_id/billing/history`.
 
 `linkWallet` merges a wallet into an existing organization's pool. The response
 includes a `pool_implications` block (`tier`,
-`projects_in_pool_count`, `organization_api_calls_current`, `organization_storage_bytes_current`,
+`projects_in_pool_count`, `org_api_calls_current`, `org_storage_bytes_current`,
 `tier_limits.{api_calls,storage_bytes,storage}`, `over_limit`) so callers can warn before
 linking a wallet whose existing usage would push the merged pool past the tier cap.
 

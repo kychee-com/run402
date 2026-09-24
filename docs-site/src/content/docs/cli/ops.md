@@ -33,7 +33,7 @@ Machine email-code flow: request `--delivery both` → retain `challenge_id` →
 Email orgs + Stripe checkouts; pay by card or scale email beyond tier caps.
 
 - `run402 billing create-email <email>` — create an email-based organization (Stripe-only, no wallet). Sends a verification email. Idempotent.
-- `run402 billing link-wallet <org_id> <wallet>` — link a wallet to an email organization for hybrid Stripe + x402 access. Response includes a `pool_implications` block (organization `tier`, `projects_in_pool_count`, `organization_api_calls_current`, `organization_storage_bytes_current`, `tier_limits`, `over_limit`) — inspect `over_limit` before linking a wallet whose usage might push the merged pool past the tier cap.
+- `run402 billing link-wallet <org_id> <wallet>` — link a wallet to an email organization for hybrid Stripe + x402 access. Response includes a `pool_implications` block (organization `tier`, `projects_in_pool_count`, `org_api_calls_current`, `org_storage_bytes_current`, `tier_limits`, `over_limit`) — inspect `over_limit` before linking a wallet whose usage might push the merged pool past the tier cap.
 - `run402 billing checkout <org-id | wallet | email> --product tier --tier <prototype|hobby|team>` — start/renew/upgrade a tier lease via Stripe (hobby $5 / team $20; prototype is free on testnet — use `run402 tier set prototype`, not a Stripe charge). Returns a checkout URL.
 - `run402 billing checkout <org-id | wallet | email> --product email-pack` — buy a $5 email pack (10,000 emails, never expire). Returns a Stripe checkout URL.
 - `run402 billing checkout <org-id | wallet | email> --product balance-topup --amount <usd_micros>` — add allowance to the organization. Returns a Stripe checkout URL.
