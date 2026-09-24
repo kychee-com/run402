@@ -49,7 +49,7 @@ export interface GenerateImageOptions {
    *
    * When omitted and the gateway answers `ORGANIZATION_SELECTION_REQUIRED`,
    * the SDK retries ONCE with the one candidate from
-   * `details.organization_ids` that matches a local context — the
+   * `details.org_ids` that matches a local context — the
    * provider's active organization (`run402 orgs use`) or the active
    * project's cached owning org, else any locally stored project's owning
    * org. Zero or several matches surface the error with the candidate ids
@@ -62,12 +62,12 @@ export interface GenerateImageOptions {
 /** The gateway's answer when a multi-org principal names no paying org on the Lightning rail. */
 export const ORGANIZATION_SELECTION_REQUIRED = "ORGANIZATION_SELECTION_REQUIRED";
 
-/** `details.organization_ids` off an `ORGANIZATION_SELECTION_REQUIRED` error, else `[]`. */
+/** `details.org_ids` off an `ORGANIZATION_SELECTION_REQUIRED` error, else `[]`. */
 export function organizationCandidatesFromError(err: unknown): string[] {
   if (!isRun402Error(err) || err.code !== ORGANIZATION_SELECTION_REQUIRED) return [];
   const details = err.details;
   const ids = details && typeof details === "object" && !Array.isArray(details)
-    ? (details as { organization_ids?: unknown }).organization_ids
+    ? (details as { org_ids?: unknown }).org_ids
     : undefined;
   return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === "string" && id.length > 0) : [];
 }
@@ -250,7 +250,7 @@ function organizationSelectionError(err: Run402Error, candidates: string[], matc
     {
       type: "edit_request",
       command: "run402 image generate \"<prompt>\" --org <org_id>",
-      why: "Name the paying organization on this call (SDK: generateImage({ orgId })). Candidates are in details.organization_ids.",
+      why: "Name the paying organization on this call (SDK: generateImage({ orgId })). Candidates are in details.org_ids.",
     },
     {
       type: "edit_request",
@@ -266,7 +266,7 @@ function organizationSelectionError(err: Run402Error, candidates: string[], matc
       ...envelope,
       message,
       code: ORGANIZATION_SELECTION_REQUIRED,
-      details: { ...details, organization_ids: candidates, matched_organization_ids: matches },
+      details: { ...details, org_ids: candidates, matched_org_ids: matches },
       next_actions: nextActions,
     },
     "generating image",

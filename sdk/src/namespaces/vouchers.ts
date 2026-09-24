@@ -42,7 +42,7 @@ export interface RedeemVoucherResult {
   amount_usd_micros: number;
   /** The organization's allowance AFTER the redemption. */
   balance_usd_micros: number;
-  organization_id: string;
+  org_id: string;
   redeemed_at: string;
   /**
    * True when THIS organization had already redeemed this code. The original

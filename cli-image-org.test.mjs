@@ -62,7 +62,7 @@ function selectionRequired(ids) {
     message: "org_id is required for this principal",
     code: "ORGANIZATION_SELECTION_REQUIRED",
     category: "billing",
-    details: { organization_ids: ids, funds_moved: false },
+    details: { org_ids: ids, funds_moved: false },
     next_actions: [{ type: "edit_request", why: "Correct the request and retry before payment." }],
   }, 400);
 }
@@ -197,7 +197,7 @@ describe("image generate — the paying organization", () => {
     imageResponder = () => selectionRequired([ORG_A, ORG_B]);
     const envelope = await runImage(["a cat"]);
     assert.equal(envelope.code, "ORGANIZATION_SELECTION_REQUIRED");
-    assert.deepEqual(envelope.details.organization_ids, [ORG_A, ORG_B]);
+    assert.deepEqual(envelope.details.org_ids, [ORG_A, ORG_B]);
     assert.match(envelope.hint, /--org <org_id>/);
     assert.match(envelope.hint, new RegExp(ORG_A));
     assert.ok(envelope.next_actions.some((a) => /--org <org_id>/.test(a.command ?? "")), "next action names --org");

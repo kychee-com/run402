@@ -1379,7 +1379,7 @@ demoteUser(id, email): Promise<void>
 - `tier: "prototype" | "hobby" | "team" | null` — the organization's active tier.
 - `advisories?: [{ type, summary, next_actions[] }]` — org-level advisories (recovery-event-reachability); present only when at least one applies. `type: "owner_unreachable"` means the owning organization resolves to zero verified notification recipients — mandatory recovery/security notifications (e.g. a mailbox suspension) currently reach nobody. The remedy rides `next_actions[]`: register and verify a person contact via `POST /agent/v1/contact` (`r.admin.setAgentContact`). Reachability is also machine-checkable on `r.me.status().reachability` (`{ reachable, verified_recipient_count, sources[], skipped_last_90d }`).
 
-`r.projects.list(opts?)` reads the named, domain-aware inventory (`GET /projects/v1`, project-findability). Each `ProjectSummary` carries `id`, `name`, `tier`, `site_url` (first claimed run402.com subdomain → else first custom domain → else null), `custom_domains[]`, `status` / `effective_status`, `organization_lifecycle_state`, `lease_perpetual`, `organization_id` (the owning org), `created_by` (provisioning principal), and `created_at`. The response is `{ projects, has_more?, next_cursor?, scope? }`. Membership-scoped by default — org-owned control plane: a wallet *authenticates* (SIWX signed from the provider; mandatory server-side) but does not *own* — this lists projects owned by orgs the wallet's resolved principal is an active member of, ∪ projects with an active per-project grant. Options: `{ org }` filters to one org (`?org_id`; authorize-before-reveal — non-member/guessed id → 403, non-UUID → 400), `{ limit, cursor }` paginate (`?limit` default 50 max 200, `?after`), and `{ all: true }` reads every project the caller can reach across all its orgs (`GET /agent/v1/me/projects`) — pass `{ all: true, token }` (a sign-in session token) for the person's account, else `all` uses the credential provider (a SIWX wallet reads its own slice) and echoes `scope` (`"principal"` or `"wallet"`). `all` + `org` together throws `LocalError` (mutually exclusive). `api_calls` / `storage_bytes` remain optional on `ProjectSummary` for back-compat but the named inventory does not populate them — read `r.projects.getUsage(id)` for live usage.
+`r.projects.list(opts?)` reads the named, domain-aware inventory (`GET /projects/v1`, project-findability). Each `ProjectSummary` carries `id`, `name`, `tier`, `site_url` (first claimed run402.com subdomain → else first custom domain → else null), `custom_domains[]`, `status` / `effective_status`, `organization_lifecycle_state`, `lease_perpetual`, `org_id` (the owning org), `created_by` (provisioning principal), and `created_at`. The response is `{ projects, has_more?, next_cursor?, scope? }`. Membership-scoped by default — org-owned control plane: a wallet *authenticates* (SIWX signed from the provider; mandatory server-side) but does not *own* — this lists projects owned by orgs the wallet's resolved principal is an active member of, ∪ projects with an active per-project grant. Options: `{ org }` filters to one org (`?org_id`; authorize-before-reveal — non-member/guessed id → 403, non-UUID → 400), `{ limit, cursor }` paginate (`?limit` default 50 max 200, `?after`), and `{ all: true }` reads every project the caller can reach across all its orgs (`GET /agent/v1/me/projects`) — pass `{ all: true, token }` (a sign-in session token) for the person's account, else `all` uses the credential provider (a SIWX wallet reads its own slice) and echoes `scope` (`"principal"` or `"wallet"`). `all` + `org` together throws `LocalError` (mutually exclusive). `api_calls` / `storage_bytes` remain optional on `ProjectSummary` for back-compat but the named inventory does not populate them — read `r.projects.getUsage(id)` for live usage.
 
 `r.projects.get(id)` is the authoritative single-project read (`GET /projects/v1/:id`, gateway `project.read`) — a `ProjectDetail` superset of a list row: `project_id`, `public_id`, `name`, `org_id`, `tier`, `effective_status`, `organization_lifecycle_state`, `site_url` (`| null`), `custom_domains[]`, `last_deploy` (`{ release_id, activated_at } | null`), `mailbox[]` (active addresses), `usage` (`{ api_calls, storage_bytes, api_calls_limit, storage_bytes_limit, storage_limit }` — `storage_limit` is the byte limit as a human string, e.g. `"250 MB"`), and `created_at`. Caller-authed (SIWX/control-plane, no project keys) and works without the project in the local project-key cache. It returns NO secrets — authorize-before-reveal means an unauthorized/guessed id throws `Unauthorized` (403, or `NotAuthorizedError` for an org-membership denial), never a not-found oracle. Use `r.credentials.projectKeys.status(...)` / `export(...)` for explicit local cache inspection or secret export. Scoped form: `(await r.project(id)).projects.get()`.
 
@@ -2562,7 +2562,7 @@ createCheckout(organizationId, checkout: { product: "balance_topup", amountUsdMi
 setAutoRecharge(opts: { organizationId: string, enabled: boolean, threshold? }): Promise<void>
 checkBalance(identifier): Promise<OrganizationDetail>  // identifier = organization id (UUID) | wallet | email
 getOrganization(identifier): Promise<OrganizationDetail>
-lookupOrganization(identifier): Promise<OrganizationDetail>  // resolve wallet/email → organization (incl. organization_id)
+lookupOrganization(identifier): Promise<OrganizationDetail>  // resolve wallet/email → organization (incl. org_id)
 balance(identifier): Promise<OrganizationDetail> // alias of checkBalance
 history(identifier, limit?: number): Promise<BillingHistoryResult>
 getHistory(identifier, limit?: number): Promise<BillingHistoryResult>
@@ -2623,7 +2623,7 @@ generateImage(opts: { prompt, aspect?, orgId? }): Promise<GenerateImageResult> /
 
 `orgId` is the paying organization and is read only on the MPP Lightning
 rail: a principal that belongs to several organizations is refused
-`ORGANIZATION_SELECTION_REQUIRED` (HTTP 400, `details.organization_ids` lists
+`ORGANIZATION_SELECTION_REQUIRED` (HTTP 400, `details.org_ids` lists
 the candidates) unless the body names one; x402 and Tempo ignore it. When
 `orgId` is omitted and the gateway answers that code, `generateImage` retries
 **once** with the single candidate that matches a local context, most
@@ -2632,7 +2632,7 @@ deliberate first: the provider's current organization
 project's cached owning `org_id`; only when neither names a candidate, a single
 stored project's owning org. Zero or several matches re-throw the `ApiError`
 with the same `code` and status, the candidates in the message and
-`details.organization_ids` (plus `details.matched_organization_ids`), and
+`details.org_ids` (plus `details.matched_org_ids`), and
 `nextActions` naming `--org <org_id>` / `run402 orgs use <org_id>`. An `orgId`
 you passed is never second-guessed: the gateway's refusal is returned as-is.
 Nothing is inferred from membership count alone.
@@ -2697,7 +2697,7 @@ calls through the allowance rail — no on-chain payment.
   answer on purpose), `VOUCHER_EXPIRED` (410), `PROMO_LIMIT_REACHED` (403).
 
 `RedeemVoucherResult` carries `amount_usd_micros`, the post-credit
-`balance_usd_micros`, `organization_id`, `redeemed_at`, `already_redeemed`,
+`balance_usd_micros`, `org_id`, `redeemed_at`, `already_redeemed`,
 `promo_lifetime_ceiling_usd_micros` (the ceiling that applied — per issuer, so
 a launch voucher from the platform has its own), and `next_actions[]` (usually
 the tier the new balance now covers, with a ready-to-run `cli` string).

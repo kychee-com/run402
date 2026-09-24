@@ -145,14 +145,14 @@ function reportOrgSelectionError(err, org) {
   const code = err?.code;
   const details = err?.details && typeof err.details === "object" ? err.details : {};
   if (code === "ORGANIZATION_SELECTION_REQUIRED") {
-    const ids = Array.isArray(details.organization_ids) ? details.organization_ids : [];
+    const ids = Array.isArray(details.org_ids) ? details.org_ids : [];
     fail({
       code,
       message: err.message,
       hint:
         `Pass --org <org_id> (one of: ${ids.join(", ") || "run402 orgs list"}) or select a current organization with ` +
         "run402 orgs use <org_id>. Only the Lightning rail needs it; x402 ignores it.",
-      details: { ...details, organization_ids: ids, org_source: org?.source ?? null, org_source_detail: org?.sourceDetail ?? null },
+      details: { ...details, org_ids: ids, org_source: org?.source ?? null, org_source_detail: org?.sourceDetail ?? null },
       next_actions: err.nextActions ?? [
         nextAction("edit_request", { command: 'run402 image generate "<prompt>" --org <org_id>', why: "Name the paying organization on this call." }),
         nextAction("edit_request", { command: "run402 orgs use <org_id>", why: "Select a current organization for this profile." }),

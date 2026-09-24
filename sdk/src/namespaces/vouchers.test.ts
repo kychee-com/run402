@@ -46,7 +46,7 @@ const REDEEMED = {
   voucher_id: "11111111-1111-1111-1111-111111111111",
   amount_usd_micros: 1_000_000,
   balance_usd_micros: 1_000_000,
-  organization_id: "22222222-2222-2222-2222-222222222222",
+  org_id: "22222222-2222-2222-2222-222222222222",
   redeemed_at: "2026-08-09T20:00:00.000Z",
   already_redeemed: false,
   promo_lifetime_ceiling_usd_micros: 1_000_000,

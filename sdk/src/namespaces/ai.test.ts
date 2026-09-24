@@ -68,7 +68,7 @@ function selectionRequired(ids: string[]): Response {
     message: "org_id is required for this principal",
     code: "ORGANIZATION_SELECTION_REQUIRED",
     category: "billing",
-    details: { organization_ids: ids, funds_moved: false },
+    details: { org_ids: ids, funds_moved: false },
     next_actions: [{ type: "edit_request", why: "Correct the request and retry before payment." }],
   }), { status: 400, headers: { "content-type": "application/json" } });
 }
@@ -176,8 +176,8 @@ describe("ai.generateImage — ORGANIZATION_SELECTION_REQUIRED", () => {
     await assert.rejects(sdk.ai.generateImage({ prompt: "a logo" }), (err: any) => {
       assert.equal(err.code, "ORGANIZATION_SELECTION_REQUIRED");
       assert.equal(err.status, 400);
-      assert.deepEqual(err.details.organization_ids, [ORG_A, ORG_B]);
-      assert.deepEqual(err.details.matched_organization_ids, [ORG_A, ORG_B]);
+      assert.deepEqual(err.details.org_ids, [ORG_A, ORG_B]);
+      assert.deepEqual(err.details.matched_org_ids, [ORG_A, ORG_B]);
       assert.match(err.message, new RegExp(`${ORG_A}, ${ORG_B}`));
       assert.match(err.message, /--org <org_id>/);
       assert.ok(err.nextActions.some((a: any) => /--org <org_id>/.test(a.command ?? "")), "names --org");
@@ -195,8 +195,8 @@ describe("ai.generateImage — ORGANIZATION_SELECTION_REQUIRED", () => {
 
     await assert.rejects(sdk.ai.generateImage({ prompt: "a logo" }), (err: any) => {
       assert.equal(err.code, "ORGANIZATION_SELECTION_REQUIRED");
-      assert.deepEqual(err.details.organization_ids, [ORG_A, ORG_B]);
-      assert.deepEqual(err.details.matched_organization_ids, []);
+      assert.deepEqual(err.details.org_ids, [ORG_A, ORG_B]);
+      assert.deepEqual(err.details.matched_org_ids, []);
       assert.match(err.message, /none of them matches/);
       return true;
     });

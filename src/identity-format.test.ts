@@ -54,7 +54,7 @@ describe("identity and provenance formatting", () => {
       },
       authority: {
         kind: "grant_key",
-        organization_id: "org_1",
+        org_id: "org_1",
         project_id: "prj_1",
         grant_id: "grant_1",
         grant_key_id: "grant_key_1",
