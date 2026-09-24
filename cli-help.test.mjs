@@ -148,7 +148,6 @@ const MATRIX = {
   // RETIRED (legible-cli-surface): one help — the migration map — and no
   // per-subcommand help, because it has no subcommands any more. Its verbs
   // live in `deliveries`, `contacts` and `subscriptions`, each covered below.
-  notifications: { shared: [], specific: [] },
   deliveries: { shared: ["list", "get"], specific: [] },
   contacts: { shared: ["list", "add", "connect", "rm", "preferences", "test"], specific: [] },
   subscriptions: { shared: ["add", "list", "rm"], specific: [] },
@@ -197,18 +196,6 @@ const JOBS_ARTIFACTS = {
 // --help itself is covered via MATRIX.credentials.specific).
 const CREDENTIALS_PROJECT_KEYS = {
   shared: ["list", "status", "import", "export", "remove"],
-  specific: [],
-};
-
-// `run402 notifications channels|rules <action>` are nested groups dispatched
-// in lib/notifications.mjs; every action falls back to its GROUP's help (the
-// group --help itself is covered via MATRIX.notifications.specific).
-const NOTIFICATIONS_CHANNELS = {
-  shared: ["connect", "list", "revoke"],
-  specific: [],
-};
-const NOTIFICATIONS_RULES = {
-  shared: ["add", "list", "rm"],
   specific: [],
 };
 
