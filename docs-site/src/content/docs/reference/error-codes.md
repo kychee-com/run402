@@ -416,14 +416,6 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="CLIENT_VERSION_UNSUPPORTED"></a>
 [`CLIENT_VERSION_UNSUPPORTED`](/errors/gateway/#CLIENT_VERSION_UNSUPPORTED)
 
-<a id="command_moved"></a>
-<a id="COMMAND_MOVED"></a>
-[`COMMAND_MOVED`](/errors/client/#COMMAND_MOVED)
-
-<a id="command_removed"></a>
-<a id="COMMAND_REMOVED"></a>
-[`COMMAND_REMOVED`](/errors/client/#COMMAND_REMOVED)
-
 <a id="config_env_required"></a>
 <a id="CONFIG_ENV_REQUIRED"></a>
 [`CONFIG_ENV_REQUIRED`](/errors/client/#CONFIG_ENV_REQUIRED)

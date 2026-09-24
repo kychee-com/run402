@@ -653,31 +653,6 @@ async function current() {
   console.log(JSON.stringify(out, null, 2));
 }
 
-function commandMoved(name) {
-  fail({
-    code: "COMMAND_MOVED",
-    message: `run402 projects ${name} moved to the explicit local credential-cache surface.`,
-    hint: "Use `run402 credentials project-keys status/export --project <project_id>`.",
-    details: {
-      old_command: `projects ${name}`,
-      new_command: name === "keys" ? "credentials project-keys export --reveal" : "credentials project-keys status",
-      source: "local_cache",
-    },
-    next_actions: [
-      {
-        type: "run_command",
-        command: "run402 credentials project-keys status --project <project_id>",
-        why: "Inspect cached key presence without revealing secrets.",
-      },
-      {
-        type: "run_command",
-        command: "run402 credentials project-keys export --project <project_id> --reveal",
-        why: "Reveal cached project keys only when you explicitly need secret material.",
-      },
-    ],
-  });
-}
-
 async function sqlCmd(projectId, args = []) {
   let file = null;
   let query = null;
@@ -970,8 +945,6 @@ export async function run(sub, args) {
     case "rename":    { const { projectId, rest } = resolveProjectSelector(args, { rejectBareFirst: true, valueFlags: FLAGS_BY_SUB.rename.values }); await rename(projectId, rest); break; }
     case "tenant-payments": { const { projectId, rest } = resolveProjectSelector(args, { rejectBareFirst: true, valueFlags: FLAGS_BY_SUB["tenant-payments"].values }); await tenantPayments(projectId, rest); break; }
     case "get":       { const { projectId } = resolveProjectSelector(args, { rejectBareFirst: true }); await get(projectId); break; }
-    case "info":      commandMoved("info"); break;
-    case "keys":      commandMoved("keys"); break;
     case "sql":       { const { projectId, rest } = resolveProjectSelector(args, { maxBarePositionals: 1, valueFlags: FLAGS_BY_SUB.sql.values, rejectBareFirstWhenFlagPresent: ["--file"] }); await sqlCmd(projectId, rest); break; }
     case "rest":      { const { projectId, rest: restArgs } = resolveProjectSelector(args, { valueFlags: FLAGS_BY_SUB.rest.values }); await rest(projectId, restArgs); break; }
     case "usage":     { const { projectId } = resolveProjectSelector(args, { rejectBareFirst: true }); await usage(projectId); break; }

@@ -5,8 +5,8 @@
  * Why this exists: `run402 message` was renamed to `run402 feedback` in 4.30.0
  * — the dispatcher was updated, the command manifest was updated, the docs were
  * updated, and the hand-maintained listing in `--help` was not. For two
- * releases `--help` advertised a command that answers `COMMAND_REMOVED` and
- * omitted the one that works.
+ * releases `--help` advertised a command that no longer worked and omitted
+ * the one that works.
  *
  * Measuring that defect found a second one of the same shape pointing the other
  * way: `notifications` and `webhook-secret` DISPATCHED and appeared nowhere in
@@ -91,7 +91,7 @@ test("every command the CLI dispatches is listed, or declared hidden", () => {
   // decision someone made, not something that happened.
   const listed = listedNames(parseListing());
   const invisible = [...dispatchedCommands()].filter(
-    (n) => !listed.has(n) && !(n in HIDDEN_COMMANDS) && !isReserved(n),
+    (n) => !listed.has(n) && !(n in HIDDEN_COMMANDS),
   );
   assert.deepEqual(
     invisible,
@@ -109,34 +109,6 @@ test("every listed command sits in a family", () => {
     [],
     `these commands are listed above any family heading: ${orphans.join(", ")}. `
       + "The grouping is what makes the surface learnable; a command outside it is back in the flat list.",
-  );
-});
-
-/**
- * A spelling kept alive only to answer `COMMAND_REMOVED`.
- *
- * Two shapes: a top-level `case` that fails inline (`message`), and a family
- * whose whole module is a reservation (`notifications`, split into
- * deliveries/contacts/subscriptions). The second answers from its own file, so
- * the redirect is not visible in cli.mjs — consult the manifest's
- * SKIPPED_FAMILIES, which is where that decision is recorded.
- */
-function isReserved(name) {
-  if (new RegExp(`was: "${name}"`).test(source)) return true;
-  const manifest = readFileSync(join(here, "cli", "lib", "command-manifest.mjs"), "utf8");
-  const skipped = manifest.slice(manifest.indexOf("export const SKIPPED_FAMILIES"));
-  return new RegExp(`"${name}":`).test(skipped.slice(0, skipped.indexOf("};")));
-}
-
-test("a removed command is not still advertised", () => {
-  const removed = [...source.matchAll(/code: "COMMAND_REMOVED"[\s\S]{0,400}?was: "([a-z0-9-]+)"/g)]
-    .map((m) => m[1]);
-  const listed = listedNames(parseListing());
-  const advertised = removed.filter((n) => listed.has(n));
-  assert.deepEqual(
-    advertised,
-    [],
-    `--help still lists removed command(s): ${advertised.join(", ")}. Replace each with its successor.`,
   );
 });
 

@@ -1839,43 +1839,24 @@ describe("CLI e2e happy path", () => {
       `body_preview should include the HTML body, got: ${parsed.body_preview}`);
   });
 
-  // Legacy local-cache reads moved out of the projects command family.
-
-  it("projects info is a structured COMMAND_MOVED failure", async () => {
-    const { run } = await import("./cli/lib/projects.mjs");
-    const { setActiveProjectId } = await import("./cli/lib/config.mjs");
-    setActiveProjectId("prj_test123");
-    let threw = null;
-    captureStart();
-    try {
-      await run("info", []);
-    } catch (e) {
-      threw = e;
-    }
-    captureStop();
-    assert.equal(threw?.message, "process.exit(1)");
-    const parsed = JSON.parse(capturedStderr());
-    assert.equal(parsed.code, "COMMAND_MOVED");
-    assert.equal(capturedStdout(), "");
-  });
-
-  it("projects keys is a structured COMMAND_MOVED failure", async () => {
-    const { run } = await import("./cli/lib/projects.mjs");
-    const { setActiveProjectId } = await import("./cli/lib/config.mjs");
-    setActiveProjectId("prj_test123");
-    let threw = null;
-    captureStart();
-    try {
-      await run("keys", []);
-    } catch (e) {
-      threw = e;
-    }
-    captureStop();
-    assert.equal(threw?.message, "process.exit(1)");
-    const parsed = JSON.parse(capturedStderr());
-    assert.equal(parsed.code, "COMMAND_MOVED");
-    assert.equal(capturedStdout(), "");
-  });
+  // The old local-cache reads were deleted, not redirected (pre-launch rule).
+  for (const gone of ["info", "keys"]) {
+    it(`projects ${gone} is an unknown subcommand`, async () => {
+      const { run } = await import("./cli/lib/projects.mjs");
+      let threw = null;
+      captureStart();
+      try {
+        await run(gone, []);
+      } catch (e) {
+        threw = e;
+      }
+      captureStop();
+      assert.equal(threw?.message, "process.exit(1)");
+      const parsed = JSON.parse(capturedStderr());
+      assert.equal(parsed.code, "UNKNOWN_SUBCOMMAND");
+      assert.equal(capturedStdout(), "");
+    });
+  }
 
   it("projects usage defaults to active project (GH-102)", async () => {
     const { run } = await import("./cli/lib/projects.mjs");

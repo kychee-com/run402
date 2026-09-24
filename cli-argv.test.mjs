@@ -1596,12 +1596,11 @@ describe("numeric flag validation", () => {
 });
 
 describe("project-id heuristic", () => {
-  it("projects info is a moved local-cache command and does not inspect active project (GH-184)", async () => {
+  it("projects info is an unknown subcommand and never hits the network (GH-184)", async () => {
     const { run } = await import("./cli/lib/projects.mjs");
     const err = await expectExit1(() => run("info", ["proj-001"]));
 
-    assert.equal(err.code, "COMMAND_MOVED");
-    assert.match(err.hint, /credentials project-keys/);
+    assert.equal(err.code, "UNKNOWN_SUBCOMMAND");
     assert.equal(calls.length, 0);
   });
 

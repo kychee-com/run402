@@ -1413,30 +1413,6 @@
       "topic": "/errors/gateway/#CLIENT_VERSION_UNSUPPORTED"
     },
     {
-      "code": "COMMAND_MOVED",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "cli/lib/projects.mjs"
-        }
-      ],
-      "topic": "/errors/client/#COMMAND_MOVED"
-    },
-    {
-      "code": "COMMAND_REMOVED",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "cli/lib/escalations.mjs"
-        },
-        {
-          "owner": "public",
-          "source": "cli/lib/notifications.mjs"
-        }
-      ],
-      "topic": "/errors/client/#COMMAND_REMOVED"
-    },
-    {
       "code": "CONFIG_ENV_REQUIRED",
       "owners": [
         {

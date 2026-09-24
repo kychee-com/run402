@@ -484,28 +484,4 @@ export const COMMAND_MANIFEST = [
 // completeness check against cli.mjs's dispatch switch.
 export const SKIPPED_FAMILIES = {
   "dev": "interactive wrapper that spawns `astro dev`",
-  // RESERVED, not dispatched: every `run402 message …` fails with
-  // COMMAND_REMOVED pointing at `feedback send` / `messages send` /
-  // `escalations raise`. It has no subcommands to manifest because it takes
-  // none — the noun is being held for addressed agent/human messaging.
-  "message": "reserved noun; fails with COMMAND_REMOVED (renamed to `feedback`)",
-  // Split into `deliveries` / `contacts` / `subscriptions`; every subcommand
-  // answers COMMAND_REMOVED naming its successor.
-  "notifications": "reserved group; split by legible-cli-surface",
-};
-
-/**
- * SUBCOMMAND spellings kept alive only to answer `COMMAND_REMOVED`.
- *
- * A retired spelling still needs a `case` branch — that branch IS the redirect,
- * and without it a caller gets a generic "unknown subcommand" instead of being
- * told where the verb went. But it is not a command: it dispatches nothing and
- * belongs in no capability mapping, so the inventory gate must not demand one.
- *
- * The family-level equivalent is SKIPPED_FAMILIES above. This exists because
- * some spellings are retired INSIDE a family rather than as a whole family,
- * which the family list cannot express.
- */
-export const RESERVED_SUBCOMMANDS = {
-  "escalations:contacts": "merged into `contacts` — the ladder and Telegram channels are one question",
 };

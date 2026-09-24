@@ -245,18 +245,6 @@ Owner: `public:cli/lib/ci.mjs`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
-<h2 id="COMMAND_MOVED">COMMAND_MOVED</h2>
-
-Owner: `public:cli/lib/projects.mjs`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
-<h2 id="COMMAND_REMOVED">COMMAND_REMOVED</h2>
-
-Owner: `public:cli/lib/escalations.mjs`, `public:cli/lib/notifications.mjs`.
-
-The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
-
 <h2 id="CONFIG_ENV_REQUIRED">CONFIG_ENV_REQUIRED</h2>
 
 Owner: `public:sdk/src/node/deploy-manifest.ts`.

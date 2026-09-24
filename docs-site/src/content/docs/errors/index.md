@@ -330,12 +330,6 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="CLIENT_VERSION_UNSUPPORTED"></a>
 [`CLIENT_VERSION_UNSUPPORTED`](/errors/gateway/#CLIENT_VERSION_UNSUPPORTED)
 
-<a id="COMMAND_MOVED"></a>
-[`COMMAND_MOVED`](/errors/client/#COMMAND_MOVED)
-
-<a id="COMMAND_REMOVED"></a>
-[`COMMAND_REMOVED`](/errors/client/#COMMAND_REMOVED)
-
 <a id="CONFIG_ENV_REQUIRED"></a>
 [`CONFIG_ENV_REQUIRED`](/errors/client/#CONFIG_ENV_REQUIRED)
 

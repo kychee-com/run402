@@ -119,7 +119,7 @@ async function rulesRm(args) {
   const [ruleId] = requirePositionalCount(a, [], {
     min: 1,
     max: 1,
-    command: "run402 notifications rules rm <rule_id>",
+    command: "run402 subscriptions rm <subscription_id>",
     missing: "Missing <rule_id>.",
   });
   walletAuthHeaders("/agent/v1/notifications/rules");

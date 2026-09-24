@@ -90,7 +90,7 @@ Owner notifications (audit log, preferences) plus the self-serve Telegram push c
 - `run402 subscriptions list` — the person's routing rules.
 - `run402 subscriptions rm <rule_id>` — requires passkey assurance (`operator_passkey`).
 
-Full rule-model explanation: `run402 notifications channels --help` / `run402 subscriptions --help`.
+Full rule-model explanation: `run402 contacts --help` / `run402 subscriptions --help`.
 
 ### buzz notifications — route project events into a Buzz channel
 

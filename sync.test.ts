@@ -21,17 +21,6 @@ import { homedir } from "node:os";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-/**
- * Reserved SUBCOMMAND spellings, read from their single declaration in
- * cli/lib/command-manifest.mjs rather than restated here. Each has a `case`
- * branch (that branch IS the COMMAND_REMOVED redirect) but dispatches nothing,
- * so it is not a command the capability map should have to cover.
- */
-function reservedSubcommands(): Set<string> {
-  const src = readFileSync(join(__dirname, "cli/lib/command-manifest.mjs"), "utf8");
-  const block = src.slice(src.indexOf("export const RESERVED_SUBCOMMANDS"));
-  return new Set([...block.matchAll(/"([a-z-]+:[a-z-]+)":/g)].map((m) => m[1]));
-}
 const RELEASE_SPEC_SCHEMA_URL = "https://run402.com/schemas/release-spec.v1.json";
 const RELEASE_SPEC_SCHEMA_PATH = join(__dirname, "schemas/release-spec.v1.json");
 
@@ -103,10 +92,8 @@ function readCommandSource(filePath: string): string | null {
 /** Parse CLI commands as "module:subcommand" pairs */
 function parseCliCommands(): string[] {
   const cmds: string[] = [];
-  const reserved = reservedSubcommands();
   for (const mod of ["admin", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "feedback", "agent", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "orgs", "identity", "buzz", "grants", "deliveries", "contacts", "subscriptions", "webhook-secret", "archives", "rooms", "messages", "claims", "escalations", "repos", "events", "errors"]) {
     for (const sub of parseSubcommands(join(__dirname, "cli/lib", `${mod}.mjs`))) {
-      if (reserved.has(`${mod}:${sub}`)) continue;
       cmds.push(`${mod}:${sub}`);
     }
   }
@@ -123,8 +110,6 @@ function parseCliCommands(): string[] {
   }
   for (const action of parseOrgGroupActions("memberAction")) cmds.push(`orgs:members:${action}`);
   for (const action of parseOrgGroupActions("inviteAction")) cmds.push(`orgs:invite:${action}`);
-  for (const action of parseNotificationsGroupActions("channelsAction")) cmds.push(`notifications:channels:${action}`);
-  for (const action of parseNotificationsGroupActions("rulesAction")) cmds.push(`notifications:rules:${action}`);
   // Bare `run402 deploy` is the deploy itself (deploy.mjs dispatches anything
   // that is not a family word into it), so it is a top-level verb here.
   if (existsSync(join(__dirname, "cli/lib/deploy.mjs"))) cmds.push("deploy");
@@ -146,10 +131,8 @@ function parseCliCommands(): string[] {
 /** Parse OpenClaw commands as "module:subcommand" pairs */
 function parseOpenClawCommands(): string[] {
   const cmds: string[] = [];
-  const reserved = reservedSubcommands();
   for (const mod of ["admin", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "feedback", "agent", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "orgs", "identity", "buzz", "grants", "deliveries", "contacts", "subscriptions", "webhook-secret", "archives", "rooms", "messages", "claims", "escalations", "repos", "events", "errors"]) {
     for (const sub of parseSubcommands(join(__dirname, "openclaw/scripts", `${mod}.mjs`))) {
-      if (reserved.has(`${mod}:${sub}`)) continue;
       cmds.push(`${mod}:${sub}`);
     }
   }
@@ -166,8 +149,6 @@ function parseOpenClawCommands(): string[] {
   }
   for (const action of parseOrgGroupActions("memberAction")) cmds.push(`orgs:members:${action}`);
   for (const action of parseOrgGroupActions("inviteAction")) cmds.push(`orgs:invite:${action}`);
-  for (const action of parseNotificationsGroupActions("channelsAction")) cmds.push(`notifications:channels:${action}`);
-  for (const action of parseNotificationsGroupActions("rulesAction")) cmds.push(`notifications:rules:${action}`);
   if (existsSync(join(__dirname, "openclaw/scripts/deploy.mjs"))) cmds.push("deploy");
   if (existsSync(join(__dirname, "openclaw/scripts/init.mjs"))) cmds.push("init");
   if (existsSync(join(__dirname, "openclaw/scripts/pay.mjs"))) cmds.push("pay");
@@ -250,22 +231,6 @@ function parseCredentialsRootActions(relativePath: string): string[] {
  *  so parseSubcommands skips them; these surface their leaves instead. */
 function parseOrgGroupActions(varName: "memberAction" | "inviteAction"): string[] {
   const filePath = join(__dirname, "cli/lib/orgs.mjs");
-  if (!existsSync(filePath)) return [];
-  const src = readFileSync(filePath, "utf-8");
-  const actions: string[] = [];
-  const re = new RegExp(`${varName}\\s*===\\s*"([\\w-]+)"`, "g");
-  let m;
-  while ((m = re.exec(src))) actions.push(m[1]);
-  return [...new Set(actions)].filter((c) => c !== "help" && !c.startsWith("-")).sort();
-}
-
-/** Parse the nested `notifications channels <action>` / `notifications rules
- *  <action>` leaf actions from cli/lib/notifications.mjs (matched on
- *  `channelsAction === "..."` / `rulesAction === "..."`), mirroring `org
- *  member`/`org invite`. Both groups dispatch via `if (sub === ...)` so
- *  parseSubcommands skips them; these surface their leaves instead. */
-function parseNotificationsGroupActions(varName: "channelsAction" | "rulesAction"): string[] {
-  const filePath = join(__dirname, "cli/lib/notifications.mjs");
   if (!existsSync(filePath)) return [];
   const src = readFileSync(filePath, "utf-8");
   const actions: string[] = [];
@@ -778,9 +743,7 @@ const SURFACE: Capability[] = [
   // ── repos (r402s/v0) — the host-blind encrypted git repo family ─────────
   // repo-surface-consolidation: the 19-command `vault`/`repos` sprawl
   // collapsed to ONE noun, 12 verbs. `vault` itself retired from the CLI
-  // (design D7) — every old spelling now answers COMMAND_MOVED/
-  // COMMAND_REMOVED, tracked in RESERVED_SUBCOMMANDS, not here (a redirect
-  // dispatches nothing, so it needs no capability row).
+  // (design D7); old spellings are gone, not redirected.
   //
   // The reads carry no key material. The writes that mint key material or a
   // one-shot receipt (`create`'s recovery receipt, `handoff`/`invite` keys)
@@ -868,9 +831,7 @@ const SURFACE: Capability[] = [
   // console.run402.com/account) so they have no CLI or SDK spelling at all;
   // what the CLI carries is the export that makes the source recovery code
   // work offline — the artifact `repos recover --bundle` consumes, so it
-  // lives in the repos family (the short-lived `source-access` family from
-  // v4.54.0 answered COMMAND_MOVED here the same day: a gateway route
-  // namespace is not a CLI noun). The wrapper-states read has no verb of
+  // lives in the repos family (a gateway route namespace is not a CLI noun). The wrapper-states read has no verb of
   // its own — it rides `repos access` as its member_custody block. CLI-only
   // — the bundle is half of a recovery credential; same
   // "mutating-verbs-are-CLI-only"-adjacent caution the repos family applies.
@@ -1439,10 +1400,6 @@ const CLI_DISPATCH_COMMANDS = ["email:webhooks", "deploy:releases"];
 // Primary name is what appears in SURFACE; the alias is kept for backward compat.
 const CLI_ALIAS_COMMANDS = [
   "email:status", // alias of email:info
-  // Removed compatibility commands that intentionally fail with COMMAND_REMOVED.
-  "message:send", // RESERVED: renamed to feedback:send; `message` is kept free
-                  // for addressed agent/human messaging, so the old spelling
-                  // fails with COMMAND_REMOVED rather than aliasing.
 ];
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -1893,11 +1850,6 @@ describe("SDK surface alignment", () => {
       // already cover the "toggle enabled" / "change binding" use cases via
       // rm-then-add for the CLI's flag-based UX).
       "admin.rules.update",
-      // Removed ProjectDomain predecessor methods: kept only as local
-      // COMMAND_REMOVED shims so old callers get a replacement path.
-      "domains.add",
-      "domains.status",
-      "domains.remove",
       // ─── repos (r402s/v0, `r.repos` — the SDK keeps this name, design D1) ──
       // `get`/`forProject` are addressing sugar the verbs use internally
       // (`forProject` is the cold-restart lookup); `allHeads` is the paging

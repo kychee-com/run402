@@ -83,7 +83,7 @@ async function preferences(args) {
   }
 
   if (positionals[0] !== "set") {
-    fail({ code: "BAD_USAGE", message: "Usage: run402 notifications preferences [set <key>=<value> ...]" });
+    fail({ code: "BAD_USAGE", message: "Usage: run402 contacts preferences [set <key>=<value> ...]" });
   }
 
   // SET — parse remaining positional args as key=value
@@ -171,7 +171,7 @@ async function channelsConnect(args) {
   if (positionals.length === 0) {
     fail({
       code: "BAD_USAGE",
-      message: "Usage: run402 notifications channels connect telegram [--label <name>]",
+      message: "Usage: run402 contacts connect telegram [--label <name>]",
     });
   }
   if (positionals[0] !== "telegram") {
@@ -209,7 +209,7 @@ async function channelsConnect(args) {
     return;
   }
   console.error("Timed out waiting for you to tap the link — the connect code has expired.");
-  console.error("Run `run402 notifications channels connect telegram` again for a fresh link.");
+  console.error("Run `run402 contacts connect telegram` again for a fresh link.");
   console.log(JSON.stringify({ ...pending, connected: false, timed_out: true }, null, 2));
   process.exit(1);
 }
@@ -229,7 +229,7 @@ async function channelsRevoke(args) {
   const [bindingId] = requirePositionalCount(a, [], {
     min: 1,
     max: 1,
-    command: "run402 notifications channels revoke <binding_id>",
+    command: "run402 contacts rm <contact_id>",
     missing: "Missing <binding_id>.",
   });
   walletAuthHeaders("/agent/v1/notifications/channels/telegram");
@@ -264,8 +264,8 @@ async function runChannels(args) {
     await channelsRevoke(rest);
     return;
   }
-  failUnknownSubcommand("notifications channels", channelsAction, {
-    hint: "Run `run402 notifications channels --help` for usage.",
+  failUnknownSubcommand("contacts", channelsAction, {
+    hint: "Run `run402 contacts --help` for usage.",
   });
 }
 

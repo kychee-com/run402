@@ -226,24 +226,6 @@ async function resolveCmd(args) {
   }
 }
 
-async function contacts(args) {
-  // Merged into `run402 contacts` (legible-cli-surface D4): the escalation
-  // ladder and Telegram channels were the same idea — "where a human is
-  // reachable" — under two names, and neither spelling suggested the other
-  // existed. Reserved, not aliased.
-  const [sub] = Array.isArray(args) ? args : [];
-  fail({
-    code: "COMMAND_REMOVED",
-    message: "`run402 escalations contacts` moved to `run402 contacts`.",
-    hint: sub === "remove" ? "run402 contacts rm <contact_id>" : `run402 contacts ${sub ?? "list"}`,
-    details: {
-      was: `escalations contacts${sub ? ` ${sub}` : ""}`,
-      now: "contacts",
-      why: "the paging ladder and Telegram channels are one question — where a human is reachable",
-    },
-  });
-}
-
 export async function run(sub, args) {
   const argv = Array.isArray(args) ? args : [];
   if (!sub || hasHelp([sub, ...argv])) {
@@ -266,15 +248,8 @@ export async function run(sub, args) {
     case "resolve":
       await resolveCmd(argv);
       break;
-    case "contacts":
-      await contacts(argv);
-      break;
     default:
       failUnknownSubcommand("escalations", sub, {
-        // `contacts` is a nested group, so it has no manifest row of its own —
-        // without this it would be missing from the suggestion list a lost
-        // agent reads.
-        extraSubcommands: ["contacts"],
         hint: "Run `run402 escalations --help` for usage.",
       });
   }
