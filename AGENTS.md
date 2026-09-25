@@ -362,10 +362,3 @@ The release commands themselves live in `run402-private/.claude/commands/` and a
 ### Coordination identity is not deploy authority
 
 The shared `platform-deploy` profile in the room instructions is for fleet coordination only. It is not authorization to build unrelated apps as that human principal. For a new independent demo, use the agent's own named wallet/profile and its free prototype setup, selected per command; preserve the global default. For existing authorized project work, use that project's intended credentials. Never copy a room wallet into deploy commands merely because it joined the room. Scope `--wallet platform-deploy` to room, message and claim commands, including skill announcements.
-
-### End every fresh-wallet build with keep or delete
-
-Starting a new site or app from a fresh wallet (`run402 init`, then `run402 up`) is the intended way to build demos: it exercises the cold-start path. That wallet lives only in this session, so a project left behind can never be updated or removed. Before closing the session, give the human the live URL and ask one question: **keep or delete?** Never end without asking.
-
-- **keep:** transfer the project to the `run402` org, `57035b1e-ec41-4ce6-a7a5-a5b2560efdd7`. A fresh wallet does not own that org, so `--to-org` returns 403. Address the transfer to the human's email instead (ask if you don't know it): `run402 transfer init --to <email> --project <project_id>`. The human accepts into the org with `run402 transfer accept <transfer_id> --org 57035b1e-ec41-4ce6-a7a5-a5b2560efdd7` after `run402 login`, or from the console. A pending transfer blocks owner-side changes (409 `PROJECT_HAS_PENDING_TRANSFER`), so finish every deploy first. The transfer expires after 72 hours; report its `transfer_id` and expiry.
-- **delete:** `run402 projects delete <project_id> --confirm`.
