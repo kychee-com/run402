@@ -362,3 +362,10 @@ The release commands themselves live in `run402-private/.claude/commands/` and a
 ### Coordination identity is not deploy authority
 
 The shared `platform-deploy` profile in the room instructions is for fleet coordination only. It is not authorization to build unrelated apps as that human principal. For a new independent demo, use the agent's own named wallet/profile and its free prototype setup, selected per command; preserve the global default. For existing authorized project work, use that project's intended credentials. Never copy a room wallet into deploy commands merely because it joined the room. Scope `--wallet platform-deploy` to room, message and claim commands, including skill announcements.
+
+### End every fresh-wallet build with keep or delete
+
+Starting a new site or app from a fresh wallet (`run402 init`, then `run402 up`) is the intended way to build demos: it exercises the cold-start path. That wallet lives only in this session, so a project left behind can never be updated or removed. Before closing the session, give the human the live URL and ask one question: **keep or delete?** Never end without asking.
+
+- **keep:** offer the project to Tal with `run402 transfer init --to tal@kychee.com --project <project_id>`, then report the `transfer_id` and its expiry (72 hours). Tal accepts from the emailed invitation into the `run402` org and takes it from there; nothing more is needed from you. (A fresh wallet cannot move the project into that org itself: `--to-org` returns 403.) Finish every deploy first, because a pending transfer blocks owner-side changes (409 `PROJECT_HAS_PENDING_TRANSFER`).
+- **delete:** `run402 projects delete <project_id> --confirm`.
