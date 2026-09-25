@@ -1884,6 +1884,37 @@ export interface ReleaseFunctionEntry {
   memory_mb: number;
   schedule: string | null;
   triggers?: FunctionTriggerSpec[];
+  /** Present when the function's source exports a static `tool` declaration:
+   *  the app serves it as an MCP tool at `https://<host>/_run402/mcp`. */
+  tool?: ReleaseFunctionTool;
+}
+
+/** A function's MCP tool, as release reads report it. Declared in the
+ *  function's source as `export const tool = { description, input, title?,
+ *  annotations? }` (a literal; the gateway parses it at commit and never runs
+ *  the code). A tool call is a POST of the arguments to `route`. */
+export interface ReleaseFunctionTool {
+  /** The function name, which is the tool name. */
+  name: string;
+  description: string;
+  title?: string;
+  /** JSON Schema for the arguments; root `type` is `"object"`. */
+  input: Record<string, unknown>;
+  annotations?: {
+    readOnlyHint?: boolean;
+    destructiveHint?: boolean;
+    idempotentHint?: boolean;
+    openWorldHint?: boolean;
+  };
+  /** The one exact POST route the tool binds to. */
+  route: string | null;
+}
+
+/** MCP tools added, removed, or changed between two releases, by name. */
+export interface ToolsDiff {
+  added: string[];
+  removed: string[];
+  changed: string[];
 }
 
 export interface MigrationAppliedEntry {
@@ -2112,6 +2143,8 @@ export interface ReleaseToReleaseDiff {
   subdomains: SubdomainsDiff;
   routes: RoutesDiff;
   static_assets: StaticAssetsDiff;
+  /** MCP tools added, removed, or changed (absent from older gateways). */
+  tools?: ToolsDiff;
 }
 
 export type ReleaseDiffTarget = "empty" | "active" | (string & {});

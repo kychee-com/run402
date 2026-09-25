@@ -138,7 +138,7 @@ Deploy it (`run402 up` does any missing setup first and then runs this same depl
 run402 deploy --manifest app.json
 ```
 
-Stdout final result includes `release_id`, `operation_id`, `urls`, etc. Stderr streams JSON-line progress events. `--quiet` / `--final-only` silence stderr while preserving stdout.
+Stdout final result includes `release_id`, `operation_id`, `urls` (`site`, `console`, and `mcp` when a function exports a `tool`: the app's MCP connector URL), etc. Stderr streams JSON-line progress events. `--quiet` / `--final-only` silence stderr while preserving stdout.
 
 Recipe — static home page + SPA shell: a SPA site ships `index.html` as the shell serving every unmatched route (match `spa_fallback`), so by default `GET /` serves the shell too. To serve a real static home page at `/` — real bytes under curl and without JavaScript — while keeping the shell for app routes, ship `home.html` at the site root alongside `index.html`, add an exact root static route alias, and `run402 deploy --manifest app.json`:
 

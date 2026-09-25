@@ -157,6 +157,17 @@ The deploy result still includes an optional top-level `warnings: string[]` (sib
 
 Secrets available as `process.env` (see secrets below).
 
+#### Make a function an MCP tool
+Every app is an MCP server at `https://<host>/_run402/mcp`. Export a literal `tool` next to the handler and give the function exactly one exact route that accepts POST:
+```ts
+export const tool = {
+  description: "Cancel one of the caller's bookings.",
+  input: { type: "object", properties: { booking_id: { type: "string" } }, required: ["booking_id"] },
+};
+export default async (req: Request) => { /* req.json() is the tool arguments */ };
+```
+A tool call is a POST to that route (header `x-run402-trigger: mcp_tool`), so `requireAuth` / `requireRole`, route prices, and logs apply as for a browser. Tools behind `requireAuth` sign the person in through the app's own hosted sign-in and a consent page; the call then runs as them (`auth.user()`, `db(req)`). The export must be a literal (no variables or calls): the gateway parses it at commit and fails `MCP_TOOL_NOT_STATIC`, `MCP_TOOL_SCHEMA_INVALID`, `MCP_TOOL_ROUTE_MISSING`, `MCP_TOOL_ROUTE_AMBIGUOUS`, or `MCP_TOOL_NAME_INVALID` before any migration runs. After deploy, `urls.mcp` is the connector URL to hand the person.
+
 ### secrets
 Injected as `process.env` in functions. Values are write-only — `list` returns keys and timestamps only, never values or value-derived hashes. Prefer `--file` or `--stdin` for real values so they do not land in shell history. `--file -` and `--file /dev/stdin` read stdin too.
 
