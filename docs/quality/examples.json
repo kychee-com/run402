@@ -468,12 +468,12 @@
     "line": 162,
     "language": "ts",
     "kind": "application-or-sdk",
-    "sha256": "a59517e792067f38e42cfdf23fbb528f53a05ffc069cc9b7bc2992547b166b29",
+    "sha256": "427a22da24434cbd70cb5a408c599245ebde29378c60e65a5e43e105e736c5fd",
     "validation": "cli-help-output-sync"
   },
   {
     "file": "docs-site/src/content/docs//cli/functions.md",
-    "line": 190,
+    "line": 191,
     "language": "json",
     "kind": "configuration",
     "sha256": "8defc9faf6e1dc0800b18f8054342ac842b521168b09082b64dfc43e57fb1b5c",
