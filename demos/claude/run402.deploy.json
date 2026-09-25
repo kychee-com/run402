@@ -1,0 +1,112 @@
+{
+  "$schema": "https://run402.com/schemas/release-spec.v1.json",
+  "database": {
+    "migrations": [
+      {
+        "id": "001_notes",
+        "sql_file": "db/001_notes.sql"
+      }
+    ],
+    "expose": {
+      "version": "1",
+      "tables": [
+        {
+          "name": "notes",
+          "expose": true,
+          "policy": "public_read_authenticated_write",
+          "live": true
+        }
+      ]
+    }
+  },
+  "site": {
+    "replace": {
+      "index.html": {
+        "path": "site/index.html",
+        "content_type": "text/html; charset=utf-8"
+      },
+      "app.js": {
+        "path": "site/app.js",
+        "content_type": "text/javascript; charset=utf-8"
+      },
+      "song.js": {
+        "path": "site/song.js",
+        "content_type": "text/javascript; charset=utf-8"
+      },
+      "llms.txt": {
+        "path": "site/llms.txt",
+        "content_type": "text/plain; charset=utf-8"
+      },
+      "favicon.svg": {
+        "path": "site/favicon.svg",
+        "content_type": "image/svg+xml"
+      },
+      "og.png": {
+        "path": "site/og.png",
+        "content_type": "image/png"
+      }
+    },
+    "public_paths": {
+      "mode": "implicit"
+    }
+  },
+  "functions": {
+    "replace": {
+      "notes": {
+        "runtime": "node22",
+        "source": {
+          "path": "functions/notes.mjs",
+          "content_type": "application/javascript"
+        },
+        "config": {
+          "timeout_seconds": 10,
+          "memory_mb": 128
+        }
+      }
+    }
+  },
+  "routes": {
+    "replace": [
+      {
+        "pattern": "/api/notes",
+        "methods": [
+          "POST"
+        ],
+        "target": {
+          "type": "function",
+          "name": "notes"
+        }
+      }
+    ]
+  },
+  "subdomains": {
+    "set": [
+      "claude"
+    ]
+  },
+  "verify": {
+    "http": [
+      {
+        "id": "home",
+        "path": "/",
+        "expect": {
+          "status": 200
+        }
+      },
+      {
+        "id": "app",
+        "path": "/app.js",
+        "expect": {
+          "status": 200
+        }
+      },
+      {
+        "id": "llms",
+        "path": "/llms.txt",
+        "expect": {
+          "status": 200
+        }
+      }
+    ]
+  }
+}
