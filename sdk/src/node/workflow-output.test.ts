@@ -101,3 +101,9 @@ test("CLI and MCP projections retain the exact committed static continuity facts
     assert.deepEqual(mcp.result.deploy.static_continuity, continuity);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+test("the deploy summary keeps the app's MCP connector URL beside the site and console", () => {
+  const urls = { site: "https://app.run402.com", console: "https://console.run402.com/orgs/o/projects/p", mcp: "https://app.run402.app/_run402/mcp", deployment: "https://dpl-1.sites.run402.com", deployment_id: "dpl_1", subdomain: "https://app.run402.com" };
+  const view = prepareWorkflowOutput({ mode: "apply", result: { deploy: { release_id: "rel_1", urls } } }, "/unused", { storeDetails: () => ({ ref: "detail", next_action: { type: "expand_result" } }) }) as any;
+  assert.deepEqual(view.result.deploy.urls, { site: urls.site, console: urls.console, mcp: urls.mcp, deployment: urls.deployment, deployment_id: "dpl_1" });
+});

@@ -61,7 +61,7 @@ function verification(value: unknown): unknown {
 function deployment(value: unknown): unknown {
   if (!object(value)) return value;
   const summary = pick(value, [...OUTCOME, "release_id", "operation_id", "release_generation", "urls", "rehearsal", "static_continuity"]);
-  if (object(value.urls)) summary.urls = pick(value.urls, ["site", "console", "deployment", "deployment_id"]);
+  if (object(value.urls)) summary.urls = pick(value.urls, ["site", "console", "mcp", "deployment", "deployment_id"]);
   if (object(value.diff)) summary.diff = pick(value.diff, ["is_noop", "summary"]);
   return summary;
 }
