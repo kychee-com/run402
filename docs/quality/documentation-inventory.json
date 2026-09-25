@@ -90,7 +90,7 @@
       "purpose": "maintainer",
       "interface": "mixed",
       "exception": "Repository development and implementation instructions; product operations still prefer CLI.",
-      "sha256": "0c5d20a1b8a3b4a42b67d49369767f5020dfe7061c0e93d40c242c91e5c6f097",
+      "sha256": "303a1872947f73b7c06535fe698ae8f0697b67a64b206cf2679e39a0fd2fc9e3",
       "outputs": [],
       "url": null,
       "checks": [
