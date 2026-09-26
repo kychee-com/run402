@@ -83,7 +83,7 @@
     "acorn": "8.18.0",
     "ipaddr.js": "1.9.1",
     "json-canonicalize": "2.0.0",
-    "mppx": "^0.4.12",
+    "mppx": "^0.11.0",
     "quickjs-emscripten": "0.32.0",
     "undici": "^7.29.0",
     "viem": "^2.55.11",
