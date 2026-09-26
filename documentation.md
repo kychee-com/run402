@@ -89,7 +89,6 @@ Run `node scripts/documentation-inventory.mjs` to reject newly discovered unclas
 | public | [cli/lib/logout.mjs](cli/lib/logout.mjs) | guide / cli | pending | pending |
 | public | [cli/lib/logs.mjs](cli/lib/logs.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/messages.mjs](cli/lib/messages.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
-| public | [cli/lib/notifications.mjs](cli/lib/notifications.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | source published: 23751749; no separate hosted acceptance required |
 | public | [cli/lib/orgs.mjs](cli/lib/orgs.mjs) | guide / cli | pending | pending |
 | public | [cli/lib/pay.mjs](cli/lib/pay.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/projects.mjs](cli/lib/projects.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
