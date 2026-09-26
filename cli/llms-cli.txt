@@ -282,7 +282,7 @@ This file is the index: everything above is the whole first-deploy contract. The
 | Repos (encrypted git remotes) | https://docs.run402.com/llms-cli-repos.txt | repos: host-blind encrypted git remotes (create, capture, mirror, fsck, handoff, invite, join) | ~43 KB |
 | Orgs, events, rooms, escalations, errors | https://docs.run402.com/llms-cli-orgs.txt | org/grants, events, rooms/claims, escalations, error fingerprints | ~40 KB |
 | Functions, secrets, jobs | https://docs.run402.com/llms-cli-functions.txt | functions (deploy, invoke, runs, logs), secrets, jobs | ~21 KB |
-| Assets, sites, domains, email, AI | https://docs.run402.com/llms-cli-assets.txt | assets, sites, subdomains, domains, apps, image, ai, email | ~27 KB |
+| Assets, sites, domains, email, AI | https://docs.run402.com/llms-cli-assets.txt | assets, sites, subdomains, domains, apps, image, ai, email | ~28 KB |
 | Auth, billing, sign-in, doctor, logs | https://docs.run402.com/llms-cli-ops.txt | auth, billing, contracts, notifications, sign-in, service, cache, doctor, dev, logs | ~38 KB |
 | R402_* runtime error codes | https://docs.run402.com/llms-cli-errors.txt | R402_* SSR runtime and cache error codes | ~6 KB |
 | REST API and user auth for frontends | https://docs.run402.com/llms-cli-frontend.txt | REST API (PostgREST) and user auth for generated frontend code | ~15 KB |

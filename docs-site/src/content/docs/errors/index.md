@@ -1275,6 +1275,9 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="PROJECT_HAS_PENDING_TRANSFER"></a>
 [`PROJECT_HAS_PENDING_TRANSFER`](/errors/gateway/#PROJECT_HAS_PENDING_TRANSFER)
 
+<a id="PROJECT_MISMATCH"></a>
+[`PROJECT_MISMATCH`](/errors/gateway/#PROJECT_MISMATCH)
+
 <a id="project_not_found"></a>
 [`project_not_found`](/errors/core/#project_not_found)
 
@@ -1289,6 +1292,9 @@ The catalog records owning source locations and pinned external contributions. A
 
 <a id="PROJECT_REQUIRED"></a>
 [`PROJECT_REQUIRED`](/errors/client/#PROJECT_REQUIRED)
+
+<a id="PROJECT_SCOPE_MISMATCH"></a>
+[`PROJECT_SCOPE_MISMATCH`](/errors/gateway/#PROJECT_SCOPE_MISMATCH)
 
 <a id="PROMO_LIMIT_REACHED"></a>
 [`PROMO_LIMIT_REACHED`](/errors/gateway/#PROMO_LIMIT_REACHED)
@@ -1695,6 +1701,9 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="ROTATION_ID_MISMATCH"></a>
 [`ROTATION_ID_MISMATCH`](/errors/gateway/#ROTATION_ID_MISMATCH)
 
+<a id="ROUTE_RETIRED"></a>
+[`ROUTE_RETIRED`](/errors/gateway/#ROUTE_RETIRED)
+
 <a id="ROUTE_RETIRING"></a>
 [`ROUTE_RETIRING`](/errors/client/#ROUTE_RETIRING)
 
@@ -1815,6 +1824,9 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="SPEND_APPROVAL_REQUIRED"></a>
 [`SPEND_APPROVAL_REQUIRED`](/errors/client/#SPEND_APPROVAL_REQUIRED)
 
+<a id="SQL_BATCH_STATEMENT_FAILED"></a>
+[`SQL_BATCH_STATEMENT_FAILED`](/errors/gateway/#SQL_BATCH_STATEMENT_FAILED)
+
 <a id="STAGE_CANDIDATE_RESERVED"></a>
 [`STAGE_CANDIDATE_RESERVED`](/errors/gateway/#STAGE_CANDIDATE_RESERVED)
 
@@ -1841,6 +1853,9 @@ The catalog records owning source locations and pinned external contributions. A
 
 <a id="TEST_USER_LIMIT"></a>
 [`TEST_USER_LIMIT`](/errors/gateway/#TEST_USER_LIMIT)
+
+<a id="TIER_FEATURE_REQUIRED"></a>
+[`TIER_FEATURE_REQUIRED`](/errors/gateway/#TIER_FEATURE_REQUIRED)
 
 <a id="TIER_PAYMENT_IDENTITY_REQUIRED"></a>
 [`TIER_PAYMENT_IDENTITY_REQUIRED`](/errors/gateway/#TIER_PAYMENT_IDENTITY_REQUIRED)

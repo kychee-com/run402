@@ -113,7 +113,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/assets.md",
-    "line": 283,
+    "line": 285,
     "language": "js",
     "kind": "application-or-sdk",
     "sha256": "d8d46ae20c855fe088f4aa6738263aa0039dcbe8e499228ea49c1bf328616d01",

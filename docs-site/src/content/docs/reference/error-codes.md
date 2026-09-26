@@ -1668,6 +1668,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="PROJECT_HAS_PENDING_TRANSFER"></a>
 [`PROJECT_HAS_PENDING_TRANSFER`](/errors/gateway/#PROJECT_HAS_PENDING_TRANSFER)
 
+<a id="project_mismatch"></a>
+<a id="PROJECT_MISMATCH"></a>
+[`PROJECT_MISMATCH`](/errors/gateway/#PROJECT_MISMATCH)
+
 <a id="project_not_found"></a>
 [`project_not_found`](/errors/core/#project_not_found)
 
@@ -1686,6 +1690,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="project_required"></a>
 <a id="PROJECT_REQUIRED"></a>
 [`PROJECT_REQUIRED`](/errors/client/#PROJECT_REQUIRED)
+
+<a id="project_scope_mismatch"></a>
+<a id="PROJECT_SCOPE_MISMATCH"></a>
+[`PROJECT_SCOPE_MISMATCH`](/errors/gateway/#PROJECT_SCOPE_MISMATCH)
 
 <a id="promo_limit_reached"></a>
 <a id="PROMO_LIMIT_REACHED"></a>
@@ -2225,6 +2233,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="ROTATION_ID_MISMATCH"></a>
 [`ROTATION_ID_MISMATCH`](/errors/gateway/#ROTATION_ID_MISMATCH)
 
+<a id="route_retired"></a>
+<a id="ROUTE_RETIRED"></a>
+[`ROUTE_RETIRED`](/errors/gateway/#ROUTE_RETIRED)
+
 <a id="route_retiring"></a>
 <a id="ROUTE_RETIRING"></a>
 [`ROUTE_RETIRING`](/errors/client/#ROUTE_RETIRING)
@@ -2385,6 +2397,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="SPEND_APPROVAL_REQUIRED"></a>
 [`SPEND_APPROVAL_REQUIRED`](/errors/client/#SPEND_APPROVAL_REQUIRED)
 
+<a id="sql_batch_statement_failed"></a>
+<a id="SQL_BATCH_STATEMENT_FAILED"></a>
+[`SQL_BATCH_STATEMENT_FAILED`](/errors/gateway/#SQL_BATCH_STATEMENT_FAILED)
+
 <a id="stage_candidate_reserved"></a>
 <a id="STAGE_CANDIDATE_RESERVED"></a>
 [`STAGE_CANDIDATE_RESERVED`](/errors/gateway/#STAGE_CANDIDATE_RESERVED)
@@ -2420,6 +2436,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="test_user_limit"></a>
 <a id="TEST_USER_LIMIT"></a>
 [`TEST_USER_LIMIT`](/errors/gateway/#TEST_USER_LIMIT)
+
+<a id="tier_feature_required"></a>
+<a id="TIER_FEATURE_REQUIRED"></a>
+[`TIER_FEATURE_REQUIRED`](/errors/gateway/#TIER_FEATURE_REQUIRED)
 
 <a id="tier_payment_identity_required"></a>
 <a id="TIER_PAYMENT_IDENTITY_REQUIRED"></a>

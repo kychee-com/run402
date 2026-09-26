@@ -1709,6 +1709,12 @@ Owner: `public:sdk/src/errors.ts`, `public:sdk/src/namespaces/deploy.ts`, `gatew
 
 The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
 
+<h2 id="PROJECT_MISMATCH">PROJECT_MISMATCH</h2>
+
+Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
+
 <h2 id="PROJECT_NOT_FOUND">PROJECT_NOT_FOUND</h2>
 
 Owner: `public:src/errors.ts`, `public:src/structured.ts`, `public:cli/lib/sdk-errors.mjs`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
@@ -1722,6 +1728,12 @@ Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
 The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
 
 <h2 id="PROJECT_PAST_DUE">PROJECT_PAST_DUE</h2>
+
+Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
+
+<h2 id="PROJECT_SCOPE_MISMATCH">PROJECT_SCOPE_MISMATCH</h2>
 
 Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
 
@@ -1925,6 +1937,12 @@ Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
 
 The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
 
+<h2 id="ROUTE_RETIRED">ROUTE_RETIRED</h2>
+
+Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
+
 <h2 id="ROUTED_FUNCTION_INVOKE_FAILED">ROUTED_FUNCTION_INVOKE_FAILED</h2>
 
 Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
@@ -1985,6 +2003,12 @@ Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
 
 The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
 
+<h2 id="SQL_BATCH_STATEMENT_FAILED">SQL_BATCH_STATEMENT_FAILED</h2>
+
+Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
+
 <h2 id="STAGE_CANDIDATE_RESERVED">STAGE_CANDIDATE_RESERVED</h2>
 
 Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
@@ -2032,6 +2056,15 @@ The gateway rejected or could not complete the request. Its response carries the
 Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
 
 The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
+
+<h2 id="TIER_FEATURE_REQUIRED">TIER_FEATURE_REQUIRED</h2>
+
+Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+The organization's tier does not include the feature in `details.feature` (today `custom_domain`: connecting a custom domain the organization does not already hold needs hobby or team). `details.tier` is the current tier and `details.required_tier` the cheapest tier that includes it. Nothing was changed (`mutation_state: "not_started"`).
+
+**Suggested fix:** upgrade the tier, then retry the identical request. With a funded wallet follow the `renew_tier` next action (`run402 tier set hobby`); otherwise follow `create_checkout` (`POST /orgs/v1/:org_id/checkouts` with `{ product: "tier", tier: "hobby" }`) and hand the returned `checkout_url` to a person. Managed `*.run402.com` subdomains stay free, and domains already connected keep working on every tier.
+
 
 <h2 id="TIER_PAYMENT_IDENTITY_REQUIRED">TIER_PAYMENT_IDENTITY_REQUIRED</h2>
 

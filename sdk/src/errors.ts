@@ -795,6 +795,10 @@ export type NextActionType =
   | "authenticate"
   | "submit_payment"
   | "renew_tier"
+  // Card path beside `renew_tier`: POST /orgs/v1/:org_id/checkouts with the
+  // entry's `body` ({ product: "tier", tier }) returns a checkout_url for a
+  // person to pay (TIER_FEATURE_REQUIRED on a custom-domain connect).
+  | "create_checkout"
   | "check_usage"
   | "resume_deploy"
   | "edit_request"

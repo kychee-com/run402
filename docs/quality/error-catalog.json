@@ -2,8 +2,8 @@
   "version": 1,
   "contributions": {
     "gateway": {
-      "revision": "ee85310e1361494e0dee7677575d5fdc156362c4",
-      "sourceDigest": "5b690df1805232b11e450763196c33486e3b776fde2f76301d34497458fc9e42"
+      "revision": "1cdc29cce8116eecbc529bc22d7c05accbf0533f",
+      "sourceDigest": "317b07e1bc85ecd112038b6ac95429c1bf3cba6d4274eaab749392d5ec80fd68"
     },
     "core": {
       "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7"
@@ -4727,6 +4727,16 @@
       "topic": "/errors/gateway/#PROJECT_HAS_PENDING_TRANSFER"
     },
     {
+      "code": "PROJECT_MISMATCH",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#PROJECT_MISMATCH"
+    },
+    {
       "code": "project_not_found",
       "owners": [
         {
@@ -4791,6 +4801,16 @@
         }
       ],
       "topic": "/errors/client/#PROJECT_REQUIRED"
+    },
+    {
+      "code": "PROJECT_SCOPE_MISMATCH",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#PROJECT_SCOPE_MISMATCH"
     },
     {
       "code": "PROMO_LIMIT_REACHED",
@@ -6343,6 +6363,16 @@
       "topic": "/errors/gateway/#ROTATION_ID_MISMATCH"
     },
     {
+      "code": "ROUTE_RETIRED",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#ROUTE_RETIRED"
+    },
+    {
       "code": "ROUTE_RETIRING",
       "owners": [
         {
@@ -6763,6 +6793,16 @@
       "topic": "/errors/client/#SPEND_APPROVAL_REQUIRED"
     },
     {
+      "code": "SQL_BATCH_STATEMENT_FAILED",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#SQL_BATCH_STATEMENT_FAILED"
+    },
+    {
       "code": "STAGE_CANDIDATE_RESERVED",
       "owners": [
         {
@@ -6855,6 +6895,16 @@
         }
       ],
       "topic": "/errors/gateway/#TEST_USER_LIMIT"
+    },
+    {
+      "code": "TIER_FEATURE_REQUIRED",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#TIER_FEATURE_REQUIRED"
     },
     {
       "code": "TIER_PAYMENT_IDENTITY_REQUIRED",
