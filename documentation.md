@@ -233,6 +233,8 @@ Run `node scripts/documentation-inventory.mjs` to reject newly discovered unclas
 | public | [llms.txt](llms.txt) | generated / mixed | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [openclaw/README.md](openclaw/README.md) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [openclaw/SKILL.md](openclaw/SKILL.md) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
+| public | [plugins/run402/README.md](plugins/run402/README.md) | guide / cli | pending | pending |
+| public | [plugins/run402/skills/run402/SKILL.md](plugins/run402/skills/run402/SKILL.md) | guide / cli | pending | pending |
 | public | [r402s-verify/README.md](r402s-verify/README.md) | protocol / native | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [sdk/README.md](sdk/README.md) | reference / sdk | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [sdk/llms-sdk.txt](sdk/llms-sdk.txt) | generated / mixed | pending: source changed since editorial review | pending: source changed since publication evidence |

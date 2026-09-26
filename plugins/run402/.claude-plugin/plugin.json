@@ -1,0 +1,23 @@
+{
+  "name": "run402",
+  "displayName": "Run402",
+  "version": "4.105.1",
+  "description": "Build, deploy and operate full-stack apps from Claude: Postgres with REST and row-level security, auth, storage, serverless functions and static hosting, with a free prototype tier.",
+  "author": {
+    "name": "Kychee",
+    "url": "https://run402.com"
+  },
+  "homepage": "https://run402.com",
+  "repository": "https://github.com/kychee-com/run402",
+  "license": "MIT",
+  "keywords": [
+    "postgres",
+    "database",
+    "deploy",
+    "hosting",
+    "serverless",
+    "auth",
+    "storage",
+    "mcp"
+  ]
+}

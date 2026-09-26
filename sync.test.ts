@@ -18,6 +18,7 @@ import { createHash } from "node:crypto";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
+import { TOOL_ANNOTATIONS } from "./src/tool-annotations.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -1422,6 +1423,27 @@ describe("MCP tool set", () => {
       `Register these tools with server.registerTool and an outputSchema (src/structured.ts OUTPUT_SCHEMAS): ${missing.join(", ")}. ` +
         "Every tool returns structuredContent under a declared schema.",
     );
+  });
+
+  it("every MCP tool declares a title and complete annotations", () => {
+    assert.deepEqual(
+      Object.keys(TOOL_ANNOTATIONS).sort(),
+      [...MCP_TOOLS].sort(),
+      "src/tool-annotations.ts must have exactly one entry per tool in MCP_TOOLS",
+    );
+    for (const [name, a] of Object.entries(TOOL_ANNOTATIONS)) {
+      assert.ok(a.title.length > 0, `${name}: title`);
+      assert.equal(typeof a.readOnlyHint, "boolean", `${name}: readOnlyHint`);
+      assert.equal(typeof a.destructiveHint, "boolean", `${name}: destructiveHint`);
+      assert.ok(!(a.readOnlyHint && a.destructiveHint), `${name}: a read-only tool cannot be destructive`);
+    }
+    const src = readFileSync(join(__dirname, "src/index.ts"), "utf-8");
+    for (const name of MCP_TOOLS) {
+      assert.ok(
+        src.includes(`annotations: TOOL_ANNOTATIONS.${name},`),
+        `src/index.ts must register ${name} with annotations: TOOL_ANNOTATIONS.${name}`,
+      );
+    }
   });
 
   it("every MCP tool is documented in docs-site/src/content/docs/mcp/", () => {

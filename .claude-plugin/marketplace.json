@@ -1,0 +1,25 @@
+{
+  "name": "run402",
+  "owner": {
+    "name": "Kychee",
+    "url": "https://run402.com"
+  },
+  "metadata": {
+    "description": "The Run402 plugin for Claude.",
+    "version": "4.105.1"
+  },
+  "plugins": [
+    {
+      "name": "run402",
+      "source": "./plugins/run402",
+      "description": "Build, deploy and operate full-stack apps from Claude: Postgres with REST and row-level security, auth, storage, serverless functions and static hosting, with a free prototype tier.",
+      "version": "4.105.1",
+      "author": {
+        "name": "Kychee",
+        "url": "https://run402.com"
+      },
+      "homepage": "https://run402.com",
+      "license": "MIT"
+    }
+  ]
+}

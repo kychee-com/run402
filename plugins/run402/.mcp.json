@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "run402": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "run402-mcp@4.105.1"
+      ]
+    }
+  }
+}

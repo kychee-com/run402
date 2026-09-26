@@ -90,7 +90,7 @@
       "purpose": "maintainer",
       "interface": "mixed",
       "exception": "Repository development and implementation instructions; product operations still prefer CLI.",
-      "sha256": "303a1872947f73b7c06535fe698ae8f0697b67a64b206cf2679e39a0fd2fc9e3",
+      "sha256": "2c78ef4ddf5cd8675f249177e2d9ff19939103ad9defa7b2cc0f80ec40c23288",
       "outputs": [],
       "url": null,
       "checks": [
@@ -170,7 +170,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "204d1c1bacc47ff2b9dc06c6664eba80aadcb99c0abe6665c8571118e3896b20",
+      "sha256": "c2f0fb9d081f430576db6d78a5ff47b904bacc5175d25f5e161046f1df51f245",
       "outputs": [],
       "url": null,
       "checks": [
@@ -4304,6 +4304,46 @@
         "editorial": "pending: source changed since editorial review",
         "local": "see named check results",
         "publication": "pending: source changed since publication evidence"
+      }
+    },
+    {
+      "repository": "public",
+      "path": "plugins/run402/README.md",
+      "owner": "client-docs",
+      "audience": "developers and agents",
+      "purpose": "guide",
+      "interface": "cli",
+      "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
+      "sha256": "cb32f466bd04e6a1493d5f475e5111fe1486f8e9768b8c6ac35b83bb579a3692",
+      "outputs": [],
+      "url": null,
+      "checks": [
+        "inventory-policy"
+      ],
+      "evidence": {
+        "editorial": "pending",
+        "local": "see named check results",
+        "publication": "pending"
+      }
+    },
+    {
+      "repository": "public",
+      "path": "plugins/run402/skills/run402/SKILL.md",
+      "owner": "client-docs",
+      "audience": "developers and agents",
+      "purpose": "guide",
+      "interface": "cli",
+      "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
+      "sha256": "5ddccb9ae6ed42021ee60b3e55b64c68c1d160d5fdda51285e6e5c92d21cfee5",
+      "outputs": [],
+      "url": null,
+      "checks": [
+        "inventory-policy"
+      ],
+      "evidence": {
+        "editorial": "pending",
+        "local": "see named check results",
+        "publication": "pending"
       }
     },
     {

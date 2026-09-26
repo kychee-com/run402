@@ -594,6 +594,17 @@ Add to your Cline MCP settings:
 claude mcp add run402 -- npx -y run402-mcp
 ```
 
+### Claude plugin (Claude Code and Cowork)
+
+The [`run402` plugin](./plugins/run402/) bundles this MCP server (pinned to the release) with the Run402 skill. This repository is its marketplace:
+
+```bash
+claude plugin marketplace add kychee-com/run402
+claude plugin install run402@run402
+```
+
+In the Claude apps: **Customize > Plugins > Add > Add marketplace**, enter `kychee-com/run402`, then install `run402`.
+
 ## OpenClaw skill
 
 ```bash

@@ -161,6 +161,9 @@ jobs:
         # test.yml's `build-vault-surface.mjs --check` gate.
         run: node scripts/build-vault-surface.mjs
 
+      - name: Regenerate the Claude plugin (plugin version and run402-mcp pin track package.json)
+        run: node scripts/build-claude-plugin.mjs
+
       - name: Sync lockfile to reflect new versions
         run: npm install --package-lock-only
 
@@ -367,7 +370,8 @@ jobs:
             "
             npm install --package-lock-only >/dev/null
             node scripts/build-vault-surface.mjs >/dev/null
-            git add package.json cli/package.json sdk/package.json package-lock.json cli/vault-surface.json
+            node scripts/build-claude-plugin.mjs >/dev/null
+            git add package.json cli/package.json sdk/package.json package-lock.json cli/vault-surface.json .claude-plugin/marketplace.json plugins/run402
             if git diff --cached --quiet; then
               echo "main is already at v$NEW — nothing to commit."
               break
@@ -378,7 +382,7 @@ jobs:
               break
             fi
             if [ "$attempt" -eq 5 ]; then
-              echo "::error::Could not push the v$NEW bump to main after 5 attempts. All three packages ARE published; main needs a manual commit-back (set package.json + cli/package.json + sdk/package.json to $NEW + npm install --package-lock-only + node scripts/build-vault-surface.mjs)."
+              echo "::error::Could not push the v$NEW bump to main after 5 attempts. All three packages ARE published; main needs a manual commit-back (set package.json + cli/package.json + sdk/package.json to $NEW + npm install --package-lock-only + node scripts/build-vault-surface.mjs + node scripts/build-claude-plugin.mjs)."
               exit 1
             fi
             echo "Push rejected (main advanced); rebuilding on fresh main and retrying ($attempt/5)…"
