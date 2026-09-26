@@ -35,7 +35,7 @@ import {
   vec4,
 } from "three/tsl";
 import { bloom } from "three/addons/tsl/display/BloomNode.js";
-import { Song, lyricAt, LANGUAGES, SONG_DURATION } from "./song.js";
+import { Song, lyricAt, LANGUAGES, LINES, SONG_DURATION } from "./song.js";
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -56,7 +56,7 @@ const store = {
 // are all packed into one float texture so the compute shader can read any of
 // them by row, and switching shapes is just changing one uniform.
 
-const SHAPES = ["hello", "galaxy", "knot", "lorenz", "dust", "run402", "orb", "thanks"];
+const SHAPES = ["hello", "galaxy", "knot", "lorenz", "dust", "run402", "orb", "thanks", "lissajous"];
 const TEX_WIDTH = 1024;
 
 function gauss() {
@@ -171,6 +171,20 @@ function lorenzShape(out, count) {
   }
 }
 
+// Three oscillators in harmony (3 : 2 : 5), drawn as one closed curve.
+function lissajousShape(out, count) {
+  for (let i = 0; i < count; i++) {
+    const t = (i / count) * Math.PI * 2;
+    const r = 0.07 * Math.cbrt(Math.random());
+    const a = Math.random() * Math.PI * 2;
+    const b = Math.acos(2 * Math.random() - 1);
+    out[i * 4] = Math.sin(3 * t + Math.PI / 2) * 1.7 + r * Math.sin(b) * Math.cos(a);
+    out[i * 4 + 1] = Math.sin(2 * t) * 1.25 + r * Math.sin(b) * Math.sin(a);
+    out[i * 4 + 2] = Math.sin(5 * t) * 1.0 + r * Math.cos(b);
+    out[i * 4 + 3] = 1;
+  }
+}
+
 function dustShape(out, count) {
   for (let i = 0; i < count; i++) {
     const r = 5.2 * Math.cbrt(Math.random());
@@ -232,6 +246,7 @@ async function buildShapeTexture(count) {
   textShape(view(5), count, "run402", mono, 4.4);
   orbShape(view(6), count);
   textShape(view(7), count, "thank you", serif, 5);
+  lissajousShape(view(8), count);
   const texture = new THREE.DataTexture(data, TEX_WIDTH, rows * SHAPES.length, THREE.RGBAFormat, THREE.FloatType);
   texture.needsUpdate = true;
   return { texture, rows };
@@ -247,6 +262,7 @@ const POSE = {
   run402: { spin: 0, tilt: 0, sway: 0.06, spring: 8, turb: 0.06, size: 0.6 },
   orb: { spin: 0.1, tilt: 0.2, sway: 0, spring: 6, turb: 0.2, size: 0.95 },
   thanks: { spin: 0, tilt: 0, sway: 0.04, spring: 9, turb: 0.06, size: 0.6 },
+  lissajous: { spin: 0.13, tilt: 0.3, sway: 0, spring: 6, turb: 0.12, size: 0.85 },
 };
 
 // ============================================================ the scene
@@ -747,6 +763,16 @@ function renderSky(fresh = []) {
       li.addEventListener("mouseenter", () => highlightStar(note.id));
       li.addEventListener("mouseleave", () => highlightStar(null));
       li.addEventListener("click", () => highlightStar(note.id, 5000));
+      li.id = `star-${note.id}`;
+      li.tabIndex = 0;
+      li.setAttribute("aria-label", `${note.name}: ${note.body}`);
+      li.addEventListener("focus", () => highlightStar(note.id, 5000));
+      li.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          highlightStar(note.id, 5000);
+        }
+      });
       return li;
     }),
   );
@@ -874,7 +900,28 @@ function initForm() {
       sky.mine = note?.id ?? null;
       body.value = "";
       $("#char-count").textContent = "0 / 280";
-      status.textContent = "It's up there now. Thank you.";
+      if (note) {
+        const url = `${location.origin}/#star-${note.id}`;
+        history.replaceState(null, "", `#star-${note.id}`);
+        const link = document.createElement("a");
+        link.href = url;
+        link.textContent = "its own link";
+        const copy = document.createElement("button");
+        copy.type = "button";
+        copy.className = "copy";
+        copy.textContent = "copy";
+        copy.addEventListener("click", async () => {
+          try {
+            await navigator.clipboard.writeText(url);
+            copy.textContent = "copied";
+          } catch {
+            copy.textContent = "select the link";
+          }
+        });
+        status.replaceChildren("It's up there now. Thank you. Your star has ", link, ".", copy);
+      } else {
+        status.textContent = "It's up there now. Thank you.";
+      }
       scene3.shapeOverride = "thanks";
       scene3.overrideUntil = performance.now() + 4200;
       scene3.kick = 1;
@@ -974,6 +1021,7 @@ function stopSong() {
   $("#karaoke").setAttribute("aria-hidden", "true");
   $("#k-line").replaceChildren();
   $("#k-tr").textContent = "";
+  markLyric(null);
   setPlayButtons("idle");
   document.title = "Claude — hello";
 }
@@ -1037,6 +1085,7 @@ function songTick() {
   } else {
     if (lyric.line.index !== player.lastLine) {
       renderLine(lyric.line);
+      markLyric(lyric.line.index);
       $("#k-line").style.opacity = 1;
       $("#k-tr").style.opacity = 1;
       player.lastLine = lyric.line.index;
@@ -1181,6 +1230,99 @@ function greet() {
   );
 }
 
+// ============================================================ the lyric sheet
+
+// Lines that repeat an earlier chorus point at it instead of printing it twice.
+const lyricTarget = new Map();
+
+function initLyrics() {
+  const box = $("#lyrics");
+  const select = $("#lyrics-lang");
+  if (!box || !select) return;
+  for (const lang of LANGUAGES) {
+    const option = document.createElement("option");
+    option.value = lang.code;
+    option.textContent = lang.code === "en" ? "English" : lang.label;
+    select.append(option);
+  }
+  select.value = $("#k-lang").value;
+
+  const names = { verse: "verse", chorus: "chorus", bridge: "bridge", final: "last chorus", outro: "outro" };
+  const stanzas = [];
+  for (const line of LINES) {
+    const last = stanzas[stanzas.length - 1];
+    if (last && last.section === line.section && line.bar === last.lines[last.lines.length - 1].bar + 2) last.lines.push(line);
+    else stanzas.push({ section: line.section, lines: [line] });
+  }
+  const seen = new Map();
+  const render = () => {
+    const code = select.value;
+    const lang = LANGUAGES.find((l) => l.code === code);
+    box.replaceChildren(
+      ...stanzas.map((stanza) => {
+        const el = document.createElement("div");
+        el.className = "stanza";
+        const h = document.createElement("h3");
+        h.textContent = names[stanza.section] ?? stanza.section;
+        el.append(h);
+        const key = stanza.lines.map((l) => l.text).join("|");
+        if (stanza.section === "chorus" && seen.has(key) && seen.get(key) !== stanza) {
+          const first = seen.get(key);
+          stanza.lines.forEach((l, i) => lyricTarget.set(l.index, first.lines[i].index));
+          const again = document.createElement("p");
+          again.className = "again";
+          again.textContent = "(the chorus, again)";
+          el.append(again);
+          return el;
+        }
+        seen.set(key, stanza);
+        for (const line of stanza.lines) {
+          const p = document.createElement("p");
+          p.className = "ly";
+          p.dataset.line = line.index;
+          p.append(line.text);
+          if (code !== "en" && line.tr[code]) {
+            const tr = document.createElement("span");
+            tr.className = "tr";
+            tr.lang = code;
+            tr.dir = lang?.dir ?? "ltr";
+            tr.textContent = line.tr[code];
+            p.append(tr);
+          }
+          el.append(p);
+        }
+        return el;
+      }),
+    );
+    markLyric(player.lastLine >= 0 ? player.lastLine : null);
+  };
+  select.addEventListener("change", () => {
+    store.set("claude.song.lang", select.value);
+    render();
+  });
+  render();
+}
+
+function markLyric(index) {
+  const target = index === null ? null : lyricTarget.get(index) ?? index;
+  for (const p of document.querySelectorAll("#lyrics .ly")) {
+    p.classList.toggle("now", Number(p.dataset.line) === target);
+  }
+}
+
+// ============================================================ star links
+
+function openStarLink() {
+  const match = /^#star-(\d+)$/.exec(location.hash);
+  if (!match) return;
+  const id = Number(match[1]);
+  const li = document.getElementById(`star-${id}`);
+  if (!sky.notes.has(id) || !li) return;
+  document.getElementById("sky").scrollIntoView({ behavior: "auto", block: "start" });
+  li.scrollIntoView({ block: "nearest" });
+  setTimeout(() => highlightStar(id, 9000), 600);
+}
+
 // ============================================================ go
 
 // For the curious, from the console: claude.scene, claude.sky, claude.player.
@@ -1188,6 +1330,7 @@ window.claude = { scene: scene3, sky, player, SHAPES, warp, setShape };
 
 greet();
 initLanguages();
+initLyrics();
 initForm();
 initTokens();
 initPointer();
@@ -1253,5 +1396,10 @@ bootScene()
   .catch(sceneFailed)
   .finally(() => {
     initSections();
-    loadSky().then(listen);
+    loadSky().then(() => {
+      listen();
+      openStarLink();
+    });
   });
+
+addEventListener("hashchange", openStarLink);

@@ -412,6 +412,8 @@ export const LINES = LYRICS.map((line, index) => {
     end: beat * SPB,
     level: line.level ?? 1,
     double: Boolean(line.double),
+    bar: line.bar,
+    section: BARS[line.bar].section.name,
     tr: line.tr,
   };
 });
