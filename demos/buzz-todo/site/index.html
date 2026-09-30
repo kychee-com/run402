@@ -15,7 +15,9 @@
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 24px 16px; }
-  main { max-width: 520px; margin: 0 auto; }
+  main { max-width: 520px; margin: 0 auto; transition: padding-top .25s ease; }
+  /* Inside Buzz, keep room for the host's floating sign-in card so it covers nothing. */
+  body.buzz-bar main { padding-top: 64px; }
   h1 { font-size: 28px; margin: 12px 0 4px; }
   .sub { color: var(--muted); margin: 0 0 24px; }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px; }
@@ -98,6 +100,8 @@
   const $ = (id) => document.getElementById(id);
   const views = ["signed-out", "pending", "signed-in"];
   const show = (name) => views.forEach((v) => { $(v).hidden = v !== name; });
+  // Framed in Buzz: reserve the card's room from the first paint, so nothing jumps.
+  if (window.parent !== window) document.body.classList.add("buzz-bar");
   const channel = "BroadcastChannel" in window ? new BroadcastChannel("buzz-todo-auth") : null;
   let countdownTimer = null;
   // Framed inside Buzz Desktop the cookie is third-party and may be blocked, so the
@@ -145,6 +149,7 @@
         $("avatar").onerror = () => { $("avatar").hidden = true; };
         $("avatar").src = `/api/avatar?u=${encodeURIComponent(me.pubkey)}`;
       } else { $("avatar").hidden = true; $("avatar").removeAttribute("src"); }
+      document.body.classList.remove("buzz-bar");
       show("signed-in");
       await loadTasks();
     } catch {
@@ -181,6 +186,7 @@
   // Inside Buzz the page steps back while it asks: "connecting", then "bar" once
   // Buzz shows it; the button returns only if Buzz declines or never answers.
   function barUp(state) {
+    document.body.classList.toggle("buzz-bar", !!state);
     $("signin").hidden = !!state;
     $("in-buzz").hidden = !state;
     if (state) $("in-buzz").textContent = state === "bar" ? "Continue in the Buzz bar above ↑" : "Connecting to Buzz…";
@@ -209,6 +215,7 @@
   async function startSignIn(auto) {
     $("signin-error").hidden = true;
     stopAsk?.();
+    if (buzzHost) barUp("connecting");
     try {
       const c = await api("/api/buzz/start", { method: "POST", body: "{}" });
       pendingClaim = c.claim_token ? { challenge_id: c.challenge_id, claim_token: c.claim_token } : null;
