@@ -148,8 +148,8 @@
       show("signed-in");
       await loadTasks();
     } catch {
+      if (buzzHost && !isMobile && !askedOnLoad) { askedOnLoad = true; barUp("connecting"); startSignIn(true); }
       show("signed-out");
-      if (buzzHost && !isMobile && !askedOnLoad) { askedOnLoad = true; startSignIn(true); }
     }
   }
   let askedOnLoad = false;
@@ -178,14 +178,20 @@
     $("signin-error").textContent = message;
     $("signin-error").hidden = false;
   }
-  function barUp(up) { $("signin").hidden = up; $("in-buzz").hidden = !up; }
+  // Inside Buzz the page steps back while it asks: "connecting", then "bar" once
+  // Buzz shows it; the button returns only if Buzz declines or never answers.
+  function barUp(state) {
+    $("signin").hidden = !!state;
+    $("in-buzz").hidden = !state;
+    if (state) $("in-buzz").textContent = state === "bar" ? "Continue in the Buzz bar above ↑" : "Connecting to Buzz…";
+  }
   function askBuzz(c, auto) {
     const noHost = () => { stopAsk?.(); buzzHost = false; if (!auto) showCode(c); };
     const timer = setTimeout(noHost, 1500);
     const onMessage = async (ev) => {
       const d = ev.data;
       if (ev.source !== window.parent || d?.version !== 1 || d.challengeId !== c.challenge_id) return;
-      if (d.type === "buzz.nostr-bind.prompt") { clearTimeout(timer); return barUp(true); }
+      if (d.type === "buzz.nostr-bind.prompt") { clearTimeout(timer); return barUp("bar"); }
       if (d.type !== "buzz.nostr-bind.result") return;
       stopAsk();
       if (d.error === "declined") { pendingClaim = null; return show("signed-out"); }
@@ -208,6 +214,7 @@
       pendingClaim = c.claim_token ? { challenge_id: c.challenge_id, claim_token: c.claim_token } : null;
       if (buzzHost) askBuzz(c, auto); else if (!auto) showCode(c);
     } catch (e) {
+      barUp(false);
       if (auto) return;
       $("signin-error").textContent = `Could not start sign-in: ${e.message}`;
       $("signin-error").hidden = false;
