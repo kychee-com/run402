@@ -144,11 +144,8 @@
       $("who").title = me.npub;
       // Relay-hosted pictures need a Blossom token the browser cannot mint, so
       // every avatar goes through the app, which fetches or redirects as needed.
-      if (me.picture && /^https:\/\//.test(me.picture)) {
-        $("avatar").hidden = false;
-        $("avatar").onerror = () => { $("avatar").hidden = true; };
-        $("avatar").src = `/api/avatar?u=${encodeURIComponent(me.pubkey)}`;
-      } else { $("avatar").hidden = true; $("avatar").removeAttribute("src"); }
+      if (me.picture && /^https:\/\//.test(me.picture)) showAvatar(me);
+      else { $("avatar").hidden = true; $("avatar").removeAttribute("src"); }
       barUp(false); // signed in: clear any sign-in line so signing out starts clean
       show("signed-in");
       await loadTasks();
@@ -159,6 +156,26 @@
     }
   }
   let askedOnLoad = false;
+
+  // An <img> cannot carry the bearer session used inside Buzz (where the frame may
+  // block cookies), so fetch the avatar with it and show the bytes. A picture
+  // hosted elsewhere redirects off-site; if that fetch is refused, load it directly.
+  async function showAvatar(me) {
+    const img = $("avatar");
+    img.onerror = () => { img.hidden = true; };
+    let src = me.picture;
+    try {
+      const token = getToken();
+      const res = await fetch(`/api/avatar?u=${encodeURIComponent(me.pubkey)}`, {
+        credentials: "same-origin", headers: token ? { authorization: `Bearer ${token}` } : {},
+      });
+      if (res.ok) src = URL.createObjectURL(await res.blob());
+      else { img.hidden = true; return; }
+    } catch { /* cross-origin redirect: fall back to the picture URL */ }
+    if (img.src.startsWith("blob:")) URL.revokeObjectURL(img.src);
+    img.src = src;
+    img.hidden = false;
+  }
 
   function shortNpub(npub) { return `${npub.slice(0, 12)}…${npub.slice(-6)}`; }
 
