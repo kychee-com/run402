@@ -154,6 +154,7 @@
       await loadTasks();
     } catch {
       if (buzzHost && !isMobile && !askedOnLoad) { askedOnLoad = true; barUp("connecting"); startSignIn(true); }
+      else barUp(false);
       show("signed-out");
     }
   }
@@ -178,6 +179,7 @@
   let stopAsk = null;
   let buzzHost = window.parent !== window;
   function signInFailed(message) {
+    barUp(false);
     pendingClaim = null;
     show("signed-out");
     $("signin-error").textContent = message;
@@ -189,7 +191,7 @@
     document.body.classList.toggle("buzz-bar", !!state);
     $("signin").hidden = !!state;
     $("in-buzz").hidden = !state;
-    if (state) $("in-buzz").textContent = state === "bar" ? "Continue in the Buzz bar above ↑" : "Connecting to Buzz…";
+    if (state) $("in-buzz").textContent = { bar: "Continue in the Buzz bar above ↑", signing: "Signing you in…" }[state] || "Connecting to Buzz…";
   }
   function askBuzz(c, auto) {
     const noHost = () => { stopAsk?.(); buzzHost = false; if (!auto) showCode(c); };
@@ -203,9 +205,11 @@
       if (d.error === "declined") { pendingClaim = null; return show("signed-out"); }
       if (d.error === "expired") return signInFailed("Sign-in expired. Try again.");
       if (!d.event) return noHost();
+      barUp("signing"); // same tick as stopAsk: the button never repaints
       try { await api("/api/buzz/complete", { method: "POST", body: JSON.stringify({ event: d.event }) }); }
       catch (e) { return signInFailed(`Could not sign in: ${e.message}`); }
-      refreshIfSignedIn(); // claims the session with this tab's claim token
+      // Claims the session with this tab's claim token; never leave "Signing you in…" stuck.
+      if (!(await refreshIfSignedIn())) signInFailed("Could not finish signing in. Try again.");
     };
     stopAsk = () => { clearTimeout(timer); barUp(false); window.removeEventListener("message", onMessage); stopAsk = null; };
     window.addEventListener("message", onMessage);
@@ -270,7 +274,8 @@
       polling = false;
     }
     stopCountdown(); stopPolling();
-    boot();
+    await boot();
+    return true;
   }
 
   function startCountdown(expiresAt) {
