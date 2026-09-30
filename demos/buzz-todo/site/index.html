@@ -72,6 +72,14 @@
     <p class="hint">Expires in <span id="countdown">5:00</span>. When you approve, Buzz opens a new tab and this one signs in on its own.</p>
   </section>
 
+  <section id="in-buzz" class="card" hidden>
+    <p><b>Approve in Buzz</b> · Buzz is asking you to confirm, just above this page.</p>
+    <div class="row">
+      <button id="in-buzz-cancel" class="ghost" type="button">Cancel</button>
+    </div>
+    <p class="hint"><a id="in-buzz-code" href="#">Use a code instead</a></p>
+  </section>
+
   <section id="signed-in" class="card" hidden>
     <div class="row between">
       <div class="row">
@@ -95,7 +103,7 @@
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
-  const views = ["signed-out", "pending", "signed-in"];
+  const views = ["signed-out", "pending", "in-buzz", "signed-in"];
   const show = (name) => views.forEach((v) => { $(v).hidden = v !== name; });
   const channel = "BroadcastChannel" in window ? new BroadcastChannel("buzz-todo-auth") : null;
   let countdownTimer = null;
@@ -165,22 +173,31 @@
 
   // Framed in Buzz: ask the host to sign after the user approves there. The request
   // holds no secret (the claim token stays here); a result counts only from our
-  // parent for this challenge. No answer within 3s, or any error: the code flow.
+  // parent for this challenge. Wait for the host's answer: "Not now" returns to
+  // sign-in, a host that cannot sign falls back to the code flow, and "Use a code
+  // instead" covers hosts that never answer.
   let stopAsk = null;
+  function signInFailed(message) {
+    pendingClaim = null;
+    show("signed-out");
+    $("signin-error").textContent = message;
+    $("signin-error").hidden = false;
+  }
   function askBuzz(c) {
-    let shown = false;
-    const codeFlow = () => { if (!shown) { shown = true; showCode(c); } };
-    const timer = setTimeout(codeFlow, 3000);
     const onResult = async (ev) => {
       const d = ev.data;
       if (ev.source !== window.parent || d?.type !== "buzz.nostr-bind.result" || d.version !== 1 || d.challengeId !== c.challenge_id) return;
       stopAsk();
-      if (!d.event) return codeFlow();
+      if (d.error === "declined") { pendingClaim = null; return show("signed-out"); }
+      if (d.error === "expired") return signInFailed("Sign-in expired. Try again.");
+      if (!d.event) return showCode(c);
       try { await api("/api/buzz/complete", { method: "POST", body: JSON.stringify({ event: d.event }) }); }
-      catch { return codeFlow(); }
+      catch (e) { return signInFailed(`Could not sign in: ${e.message}`); }
       refreshIfSignedIn(); // claims the session with this tab's claim token
     };
-    stopAsk = () => { clearTimeout(timer); window.removeEventListener("message", onResult); stopAsk = null; };
+    $("in-buzz-code").onclick = (e) => { e.preventDefault(); stopAsk?.(); showCode(c); };
+    stopAsk = () => { window.removeEventListener("message", onResult); stopAsk = null; };
+    show("in-buzz");
     window.addEventListener("message", onResult);
     window.parent.postMessage({ type: "buzz.nostr-bind.request", version: 1, deepLink: c.deep_link }, "*");
   }
@@ -210,6 +227,7 @@
     }
   });
 
+  $("in-buzz-cancel").addEventListener("click", () => { stopAsk?.(); pendingClaim = null; show("signed-out"); });
   $("cancel").addEventListener("click", () => { stopAsk?.(); stopCountdown(); stopPolling(); pendingClaim = null; show("signed-out"); });
 
   // While the code is showing, keep checking whether the callback tab signed us in.
