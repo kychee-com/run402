@@ -49,6 +49,7 @@
     <p>Your tasks live on Run402 and are keyed to your Buzz identity. No password, no email.</p>
     <div id="desktop-only">
       <button id="signin">Sign in with Buzz</button>
+      <p id="in-buzz" class="hint" hidden>Continue in the Buzz bar above ↑</p>
     </div>
     <div id="mobile-gate" hidden>
       <p><b>Sign in with Buzz needs Buzz Desktop for now.</b></p>
@@ -177,13 +178,14 @@
     $("signin-error").textContent = message;
     $("signin-error").hidden = false;
   }
+  function barUp(up) { $("signin").hidden = up; $("in-buzz").hidden = !up; }
   function askBuzz(c, auto) {
     const noHost = () => { stopAsk?.(); buzzHost = false; if (!auto) showCode(c); };
     const timer = setTimeout(noHost, 1500);
     const onMessage = async (ev) => {
       const d = ev.data;
       if (ev.source !== window.parent || d?.version !== 1 || d.challengeId !== c.challenge_id) return;
-      if (d.type === "buzz.nostr-bind.prompt") return clearTimeout(timer);
+      if (d.type === "buzz.nostr-bind.prompt") { clearTimeout(timer); return barUp(true); }
       if (d.type !== "buzz.nostr-bind.result") return;
       stopAsk();
       if (d.error === "declined") { pendingClaim = null; return show("signed-out"); }
@@ -193,7 +195,7 @@
       catch (e) { return signInFailed(`Could not sign in: ${e.message}`); }
       refreshIfSignedIn(); // claims the session with this tab's claim token
     };
-    stopAsk = () => { clearTimeout(timer); window.removeEventListener("message", onMessage); stopAsk = null; };
+    stopAsk = () => { clearTimeout(timer); barUp(false); window.removeEventListener("message", onMessage); stopAsk = null; };
     window.addEventListener("message", onMessage);
     window.parent.postMessage({ type: "buzz.nostr-bind.request", version: 1, deepLink: c.deep_link }, "*");
   }
