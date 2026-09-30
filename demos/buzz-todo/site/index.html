@@ -72,14 +72,6 @@
     <p class="hint">Expires in <span id="countdown">5:00</span>. When you approve, Buzz opens a new tab and this one signs in on its own.</p>
   </section>
 
-  <section id="in-buzz" class="card" hidden>
-    <p><b>Approve in Buzz</b> · Buzz is asking you to confirm, just above this page.</p>
-    <div class="row">
-      <button id="in-buzz-cancel" class="ghost" type="button">Cancel</button>
-    </div>
-    <p class="hint"><a id="in-buzz-code" href="#">Use a code instead</a></p>
-  </section>
-
   <section id="signed-in" class="card" hidden>
     <div class="row between">
       <div class="row">
@@ -103,7 +95,7 @@
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
-  const views = ["signed-out", "pending", "in-buzz", "signed-in"];
+  const views = ["signed-out", "pending", "signed-in"];
   const show = (name) => views.forEach((v) => { $(v).hidden = v !== name; });
   const channel = "BroadcastChannel" in window ? new BroadcastChannel("buzz-todo-auth") : null;
   let countdownTimer = null;
@@ -156,8 +148,10 @@
       await loadTasks();
     } catch {
       show("signed-out");
+      if (buzzHost && !isMobile && !askedOnLoad) { askedOnLoad = true; startSignIn(true); }
     }
   }
+  let askedOnLoad = false;
 
   function shortNpub(npub) { return `${npub.slice(0, 12)}…${npub.slice(-6)}`; }
 
@@ -171,49 +165,54 @@
     // Step 2 is the user's click on "Open Buzz"; never leave the page on our own.
   }
 
-  // Framed in Buzz: ask the host to sign after the user approves there. The request
-  // holds no secret (the claim token stays here); a result counts only from our
-  // parent for this challenge. Wait for the host's answer: "Not now" returns to
-  // sign-in, a host that cannot sign falls back to the code flow, and "Use a code
-  // instead" covers hosts that never answer.
+  // Framed in Buzz: the host shows its own "Continue as …" bar and signs only
+  // when the user taps it. The request holds no secret (the claim token stays
+  // here); messages count only from our parent for this challenge. A "prompt"
+  // means the bar is up; no answer at all means no Buzz host, so use the code flow.
   let stopAsk = null;
+  let buzzHost = window.parent !== window;
   function signInFailed(message) {
     pendingClaim = null;
     show("signed-out");
     $("signin-error").textContent = message;
     $("signin-error").hidden = false;
   }
-  function askBuzz(c) {
-    const onResult = async (ev) => {
+  function askBuzz(c, auto) {
+    const noHost = () => { stopAsk?.(); buzzHost = false; if (!auto) showCode(c); };
+    const timer = setTimeout(noHost, 1500);
+    const onMessage = async (ev) => {
       const d = ev.data;
-      if (ev.source !== window.parent || d?.type !== "buzz.nostr-bind.result" || d.version !== 1 || d.challengeId !== c.challenge_id) return;
+      if (ev.source !== window.parent || d?.version !== 1 || d.challengeId !== c.challenge_id) return;
+      if (d.type === "buzz.nostr-bind.prompt") return clearTimeout(timer);
+      if (d.type !== "buzz.nostr-bind.result") return;
       stopAsk();
       if (d.error === "declined") { pendingClaim = null; return show("signed-out"); }
       if (d.error === "expired") return signInFailed("Sign-in expired. Try again.");
-      if (!d.event) return showCode(c);
+      if (!d.event) return noHost();
       try { await api("/api/buzz/complete", { method: "POST", body: JSON.stringify({ event: d.event }) }); }
       catch (e) { return signInFailed(`Could not sign in: ${e.message}`); }
       refreshIfSignedIn(); // claims the session with this tab's claim token
     };
-    $("in-buzz-code").onclick = (e) => { e.preventDefault(); stopAsk?.(); showCode(c); };
-    stopAsk = () => { window.removeEventListener("message", onResult); stopAsk = null; };
-    show("in-buzz");
-    window.addEventListener("message", onResult);
+    stopAsk = () => { clearTimeout(timer); window.removeEventListener("message", onMessage); stopAsk = null; };
+    window.addEventListener("message", onMessage);
     window.parent.postMessage({ type: "buzz.nostr-bind.request", version: 1, deepLink: c.deep_link }, "*");
   }
 
-  $("signin").addEventListener("click", async () => {
+  async function startSignIn(auto) {
     $("signin-error").hidden = true;
     stopAsk?.();
     try {
       const c = await api("/api/buzz/start", { method: "POST", body: "{}" });
       pendingClaim = c.claim_token ? { challenge_id: c.challenge_id, claim_token: c.claim_token } : null;
-      if (window.parent !== window) askBuzz(c); else showCode(c);
+      if (buzzHost) askBuzz(c, auto); else if (!auto) showCode(c);
     } catch (e) {
+      if (auto) return;
       $("signin-error").textContent = `Could not start sign-in: ${e.message}`;
       $("signin-error").hidden = false;
     }
-  });
+  }
+
+  $("signin").addEventListener("click", () => startSignIn(false));
 
   $("copy").addEventListener("click", async () => {
     const code = $("code").textContent;
@@ -227,7 +226,6 @@
     }
   });
 
-  $("in-buzz-cancel").addEventListener("click", () => { stopAsk?.(); pendingClaim = null; show("signed-out"); });
   $("cancel").addEventListener("click", () => { stopAsk?.(); stopCountdown(); stopPolling(); pendingClaim = null; show("signed-out"); });
 
   // While the code is showing, keep checking whether the callback tab signed us in.
