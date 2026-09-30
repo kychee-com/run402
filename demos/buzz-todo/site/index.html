@@ -153,18 +153,45 @@
 
   function shortNpub(npub) { return `${npub.slice(0, 12)}…${npub.slice(-6)}`; }
 
+  function showCode(c) {
+    $("code").textContent = c.verification_code;
+    $("open-buzz").href = c.deep_link;
+    $("copy").textContent = "Copy";
+    startCountdown(c.expires_at);
+    startPolling();
+    show("pending");
+    // Step 2 is the user's click on "Open Buzz"; never leave the page on our own.
+  }
+
+  // Framed in Buzz: ask the host to sign after the user approves there. The request
+  // holds no secret (the claim token stays here); a result counts only from our
+  // parent for this challenge. No answer within 3s, or any error: the code flow.
+  let stopAsk = null;
+  function askBuzz(c) {
+    let shown = false;
+    const codeFlow = () => { if (!shown) { shown = true; showCode(c); } };
+    const timer = setTimeout(codeFlow, 3000);
+    const onResult = async (ev) => {
+      const d = ev.data;
+      if (ev.source !== window.parent || d?.type !== "buzz.nostr-bind.result" || d.version !== 1 || d.challengeId !== c.challenge_id) return;
+      stopAsk();
+      if (!d.event) return codeFlow();
+      try { await api("/api/buzz/complete", { method: "POST", body: JSON.stringify({ event: d.event }) }); }
+      catch { return codeFlow(); }
+      refreshIfSignedIn(); // claims the session with this tab's claim token
+    };
+    stopAsk = () => { clearTimeout(timer); window.removeEventListener("message", onResult); stopAsk = null; };
+    window.addEventListener("message", onResult);
+    window.parent.postMessage({ type: "buzz.nostr-bind.request", version: 1, deepLink: c.deep_link }, "*");
+  }
+
   $("signin").addEventListener("click", async () => {
     $("signin-error").hidden = true;
+    stopAsk?.();
     try {
       const c = await api("/api/buzz/start", { method: "POST", body: "{}" });
       pendingClaim = c.claim_token ? { challenge_id: c.challenge_id, claim_token: c.claim_token } : null;
-      $("code").textContent = c.verification_code;
-      $("open-buzz").href = c.deep_link;
-      $("copy").textContent = "Copy";
-      startCountdown(c.expires_at);
-      startPolling();
-      show("pending");
-      // Step 2 is the user's click on "Open Buzz"; never leave the page on our own.
+      if (window.parent !== window) askBuzz(c); else showCode(c);
     } catch (e) {
       $("signin-error").textContent = `Could not start sign-in: ${e.message}`;
       $("signin-error").hidden = false;
@@ -183,7 +210,7 @@
     }
   });
 
-  $("cancel").addEventListener("click", () => { stopCountdown(); stopPolling(); pendingClaim = null; show("signed-out"); });
+  $("cancel").addEventListener("click", () => { stopAsk?.(); stopCountdown(); stopPolling(); pendingClaim = null; show("signed-out"); });
 
   // While the code is showing, keep checking whether the callback tab signed us in.
   // The callback may land in another tab of this browser (shared cookie) or, when
