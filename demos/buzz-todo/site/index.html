@@ -149,7 +149,7 @@
         $("avatar").onerror = () => { $("avatar").hidden = true; };
         $("avatar").src = `/api/avatar?u=${encodeURIComponent(me.pubkey)}`;
       } else { $("avatar").hidden = true; $("avatar").removeAttribute("src"); }
-      document.body.classList.remove("buzz-bar");
+      barUp(false); // signed in: clear any sign-in line so signing out starts clean
       show("signed-in");
       await loadTasks();
     } catch {
@@ -300,6 +300,8 @@
   $("signout").addEventListener("click", async () => {
     await api("/api/logout", { method: "POST", body: "{}" }).catch(() => {});
     setToken(null);
+    stopAsk?.();
+    barUp(false);
     show("signed-out");
   });
 
