@@ -4,7 +4,8 @@
     "migrations": [
       { "id": "001_buzz_todo", "sql_file": "db/001_buzz_todo.sql" },
       { "id": "002_buzz_profiles", "sql_file": "db/002_buzz_profiles.sql" },
-      { "id": "003_buzz_pane_claim", "sql_file": "db/003_buzz_pane_claim.sql" }
+      { "id": "003_buzz_pane_claim", "sql_file": "db/003_buzz_pane_claim.sql" },
+      { "id": "004_buzz_agent_auth", "sql_file": "db/004_buzz_agent_auth.sql" }
     ]
   },
   "secrets": {
@@ -75,6 +76,11 @@
       },
       {
         "pattern": "/api/logout",
+        "methods": ["POST"],
+        "target": { "type": "function", "name": "buzz-todo-api" }
+      },
+      {
+        "pattern": "/api/mcp",
         "methods": ["POST"],
         "target": { "type": "function", "name": "buzz-todo-api" }
       },

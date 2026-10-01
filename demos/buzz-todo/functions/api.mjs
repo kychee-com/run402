@@ -11,6 +11,9 @@
 //   GET  /api/me             → who am I (from the cookie or bearer token)
 //   POST /api/logout         → clear the cookie
 //   GET|POST|PATCH|DELETE /api/tasks → the signed-in user's tasks
+//   POST /api/mcp            → the same tasks as MCP tools, for Buzz agents; each
+//                              request is signed with NIP-98 (and, for an agent
+//                              acting for its owner, a NIP-OA attestation)
 //
 // The verifier mirrors what Buzz Desktop signs (desktop/src-tauri/src/nostr_bind.rs):
 // kind 24243, empty content, exactly nine tags in a fixed order, BIP-340 signature.
@@ -299,6 +302,253 @@ function sessionToken(request) {
   return cookieValue(request);
 }
 
+// ---------------------------------------------------------------------------
+// Agent entrance: NIP-98 HTTP auth, optionally with a NIP-OA owner attestation.
+// A Buzz agent signs each request with its own key; when the event carries a
+// valid `auth` tag from its owner, the agent works on the owner's list. The
+// event id is single-use (buzz_nostr_auth_seen), so a captured header cannot
+// be replayed even inside the freshness window.
+// ---------------------------------------------------------------------------
+
+const NIP98_SKEW_MS = 60 * 1000;
+const NIP98_MAX_HEADER = 16 * 1024;
+const NIP98_TAGS = new Set(["u", "method", "payload", "auth"]);
+const DECIMAL = /^(0|[1-9][0-9]*)$/;
+
+function authError(code, message) {
+  return new BuzzBindError(code, message, 401);
+}
+
+function verifySignature(sig, digestHex, pubkey) {
+  try {
+    return schnorr.verify(Buffer.from(sig, "hex"), Buffer.from(digestHex, "hex"), Buffer.from(pubkey, "hex"));
+  } catch {
+    return false;
+  }
+}
+
+/** NIP-OA conditions, evaluated exactly as the NIP defines them. */
+function attestationConditionsHold(conditions, event) {
+  if (conditions === "") return true;
+  if (!/^[\x21-\x7e]+$/.test(conditions)) return false;
+  for (const clause of conditions.split("&")) {
+    let match;
+    if ((match = /^kind=(.+)$/.exec(clause))) {
+      if (!DECIMAL.test(match[1]) || Number(match[1]) > 65535) return false;
+      if (event.kind !== Number(match[1])) return false;
+    } else if ((match = /^created_at([<>])(.+)$/.exec(clause))) {
+      if (!DECIMAL.test(match[2]) || Number(match[2]) > 4294967295) return false;
+      const t = Number(match[2]);
+      if (match[1] === "<" ? !(event.created_at < t) : !(event.created_at > t)) return false;
+    } else {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** The owner a NIP-OA `auth` tag names, or null when the event carries none. Throws when invalid. */
+export function verifyOwnerAttestation(event) {
+  const tags = event.tags.filter((t) => t[0] === "auth");
+  if (tags.length === 0) return null;
+  const [tag] = tags;
+  if (tags.length !== 1 || tag.length !== 4) throw authError("NOSTR_AUTH_ATTESTATION_INVALID", "exactly one four-element auth tag is allowed");
+  const [, owner, conditions, sig] = tag;
+  if (!HEX64.test(owner) || !HEX128.test(sig) || owner === event.pubkey) {
+    throw authError("NOSTR_AUTH_ATTESTATION_INVALID", "auth tag owner or signature is malformed");
+  }
+  const digest = createHash("sha256").update(`nostr:agent-auth:${event.pubkey}:${conditions}`, "utf8").digest("hex");
+  if (!verifySignature(sig, digest, owner)) throw authError("NOSTR_AUTH_ATTESTATION_INVALID", "auth tag is not signed by its owner");
+  if (!attestationConditionsHold(conditions, event)) throw authError("NOSTR_AUTH_ATTESTATION_INVALID", "auth tag conditions do not cover this request");
+  return owner;
+}
+
+/**
+ * Verify `Authorization: Nostr <base64 event>` for one request. Returns
+ * `{ event, actor, owner, user }`; `user` is whose list the request works on.
+ * Does not check replay; the caller records `event.id` as used.
+ */
+export function verifyNip98Request(header, { url, method, body, nowMs = Date.now() }) {
+  const match = /^Nostr\s+([A-Za-z0-9+/=]+)$/.exec(header ?? "");
+  if (!match || match[1].length > NIP98_MAX_HEADER) throw authError("NOSTR_AUTH_REQUIRED", "send Authorization: Nostr <base64 kind-27235 event>");
+  let event;
+  try {
+    event = JSON.parse(Buffer.from(match[1], "base64").toString("utf8"));
+  } catch {
+    throw authError("NOSTR_AUTH_INVALID", "authorization event is not base64 JSON");
+  }
+  if (!event || typeof event !== "object" || Array.isArray(event)
+      || Object.keys(event).sort().join(",") !== "content,created_at,id,kind,pubkey,sig,tags") {
+    throw authError("NOSTR_AUTH_INVALID", "authorization event must have exactly the seven NIP-01 fields");
+  }
+  if (!HEX64.test(event.id) || !HEX64.test(event.pubkey) || !HEX128.test(event.sig)
+      || !Number.isSafeInteger(event.created_at) || event.kind !== NIP98_KIND || event.content !== ""
+      || !Array.isArray(event.tags) || event.tags.some((t) => !Array.isArray(t) || t.length < 2 || t.some((p) => typeof p !== "string"))) {
+    throw authError("NOSTR_AUTH_INVALID", "authorization event is not a NIP-98 event");
+  }
+  const single = {};
+  for (const tag of event.tags) {
+    if (!NIP98_TAGS.has(tag[0])) throw authError("NOSTR_AUTH_INVALID", `unexpected ${tag[0]} tag`);
+    if (tag[0] === "auth") continue;
+    if (tag.length !== 2 || single[tag[0]] !== undefined) throw authError("NOSTR_AUTH_INVALID", `exactly one two-element ${tag[0]} tag is required`);
+    single[tag[0]] = tag[1];
+  }
+  if (Math.abs(event.created_at * 1000 - nowMs) > NIP98_SKEW_MS) throw authError("NOSTR_AUTH_STALE", "authorization event created_at is not within 60 seconds");
+  if (single.u !== url) throw authError("NOSTR_AUTH_MISMATCH", `u tag must be ${url}`);
+  if (single.method !== method) throw authError("NOSTR_AUTH_MISMATCH", `method tag must be ${method}`);
+  const payload = createHash("sha256").update(body, "utf8").digest("hex");
+  if (single.payload !== payload) throw authError("NOSTR_AUTH_MISMATCH", "payload tag must be the SHA-256 of the request body");
+  if (computeEventId(event) !== event.id) throw authError("NOSTR_AUTH_INVALID", "authorization event id does not match its contents");
+  if (!verifySignature(event.sig, event.id, event.pubkey)) throw authError("NOSTR_AUTH_INVALID", "authorization event signature is invalid");
+  const owner = verifyOwnerAttestation(event);
+  return { event, actor: event.pubkey, owner, user: owner ?? event.pubkey };
+}
+
+// ---------------------------------------------------------------------------
+// MCP (streamable HTTP, single JSON responses) over the same task store.
+// ---------------------------------------------------------------------------
+
+export const MCP_PROTOCOL_VERSIONS = Object.freeze(["2025-06-18", "2025-03-26", "2024-11-05"]);
+const TASK_ID = { type: "string", description: "Task id from list_tasks" };
+export const MCP_TOOLS = Object.freeze([
+  {
+    name: "list_tasks",
+    title: "List tasks",
+    description: "List the to-do items on the shared list, oldest first.",
+    inputSchema: { type: "object", properties: { include_done: { type: "boolean", description: "Include completed tasks (default true)" } }, additionalProperties: false },
+    annotations: { readOnlyHint: true },
+  },
+  {
+    name: "add_task",
+    title: "Add task",
+    description: "Add a to-do item to the shared list.",
+    inputSchema: { type: "object", properties: { title: { type: "string", minLength: 1, maxLength: 200 } }, required: ["title"], additionalProperties: false },
+  },
+  {
+    name: "complete_task",
+    title: "Mark task done",
+    description: "Mark a to-do item done, or not done with done=false.",
+    inputSchema: { type: "object", properties: { id: TASK_ID, done: { type: "boolean", description: "Default true" } }, required: ["id"], additionalProperties: false },
+    annotations: { idempotentHint: true },
+  },
+  {
+    name: "delete_task",
+    title: "Delete task",
+    description: "Delete a to-do item from the shared list.",
+    inputSchema: { type: "object", properties: { id: TASK_ID }, required: ["id"], additionalProperties: false },
+    annotations: { destructiveHint: true, idempotentHint: true },
+  },
+]);
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function rpcResult(id, result) {
+  return { jsonrpc: "2.0", id, result };
+}
+
+function rpcError(id, code, message) {
+  return { jsonrpc: "2.0", id, error: { code, message } };
+}
+
+function toolResult(value, isError = false) {
+  return { content: [{ type: "text", text: JSON.stringify(value) }], structuredContent: value, isError };
+}
+
+async function callTool(name, args, tasks) {
+  if (args === null || typeof args !== "object" || Array.isArray(args)) return toolResult({ error: "arguments must be an object" }, true);
+  const tool = MCP_TOOLS.find((t) => t.name === name);
+  const unknown = tool && Object.keys(args).find((k) => !(k in tool.inputSchema.properties));
+  if (unknown) return toolResult({ error: `unknown argument ${unknown}` }, true);
+  if (name === "list_tasks") {
+    if (args.include_done !== undefined && typeof args.include_done !== "boolean") return toolResult({ error: "include_done must be a boolean" }, true);
+    const all = await tasks.list();
+    return toolResult({ tasks: args.include_done === false ? all.filter((t) => !t.done) : all });
+  }
+  if (name === "add_task") {
+    const title = typeof args.title === "string" ? args.title.trim() : "";
+    if (!title || title.length > 200) return toolResult({ error: "title must be 1-200 characters" }, true);
+    return toolResult({ task: await tasks.add(title) });
+  }
+  if (name === "complete_task" || name === "delete_task") {
+    if (typeof args.id !== "string" || !UUID.test(args.id)) return toolResult({ error: "id must be a task id from list_tasks" }, true);
+    if (name === "delete_task") {
+      return (await tasks.remove(args.id)) ? toolResult({ deleted: args.id }) : toolResult({ error: "no such task" }, true);
+    }
+    if (args.done !== undefined && typeof args.done !== "boolean") return toolResult({ error: "done must be a boolean" }, true);
+    const task = await tasks.setDone(args.id, args.done ?? true);
+    return task ? toolResult({ task }) : toolResult({ error: "no such task" }, true);
+  }
+  return null;
+}
+
+/**
+ * One JSON-RPC message → one response object, or null for a notification.
+ * `tasks` is the task store already scoped to the authenticated user.
+ */
+export async function mcpDispatch(message, tasks) {
+  if (!message || typeof message !== "object" || Array.isArray(message) || message.jsonrpc !== "2.0" || typeof message.method !== "string") {
+    return rpcError(message?.id ?? null, -32600, "expected one JSON-RPC 2.0 request");
+  }
+  const { id, method, params } = message;
+  if (id === undefined) return null; // notifications/initialized and friends
+  if (method === "initialize") {
+    const asked = params?.protocolVersion;
+    return rpcResult(id, {
+      protocolVersion: MCP_PROTOCOL_VERSIONS.includes(asked) ? asked : MCP_PROTOCOL_VERSIONS[0],
+      capabilities: { tools: {} },
+      serverInfo: { name: "buzz-todo", title: "Buzz To-Do", version: "1.0.0" },
+      instructions: "A shared to-do list. An agent signed with its owner's attestation works on its owner's list.",
+    });
+  }
+  if (method === "ping") return rpcResult(id, {});
+  if (method === "tools/list") return rpcResult(id, { tools: MCP_TOOLS });
+  if (method === "tools/call") {
+    const result = await callTool(params?.name, params?.arguments ?? {}, tasks);
+    return result ? rpcResult(id, result) : rpcError(id, -32602, `unknown tool ${params?.name}`);
+  }
+  return rpcError(id, -32601, `method ${method} is not supported`);
+}
+
+function taskStore(db, pubkey) {
+  const columns = "id, title, done, created_at";
+  return {
+    list: async () => (await db.sql(`SELECT ${columns} FROM tasks WHERE pubkey = $1 ORDER BY created_at`, [pubkey])).rows,
+    add: async (title) => (await db.sql(`INSERT INTO tasks (pubkey, title) VALUES ($1, $2) RETURNING ${columns}`, [pubkey, title])).rows[0],
+    setDone: async (id, done) => (await db.sql(`UPDATE tasks SET done = $3 WHERE id = $1::uuid AND pubkey = $2 RETURNING ${columns}`, [id, pubkey, done])).rows[0] ?? null,
+    remove: async (id) => (await db.sql(`DELETE FROM tasks WHERE id = $1::uuid AND pubkey = $2 RETURNING id`, [id, pubkey])).rows.length === 1,
+  };
+}
+
+export async function serveMcp(request, ctx, db) {
+  const url = `${publicOrigin(request, ctx)}/api/mcp`;
+  const body = await request.text();
+  if (body.length > 64 * 1024) return fail("MCP_BODY_TOO_LARGE", "request body is too large", 413);
+  let auth;
+  try {
+    auth = verifyNip98Request(request.headers.get("authorization"), { url, method: "POST", body });
+  } catch (error) {
+    if (!(error instanceof BuzzBindError)) throw error;
+    return json({ ok: false, code: error.code, message: error.message }, 401, { "www-authenticate": "Nostr" });
+  }
+  const fresh = await db.sql(
+    `INSERT INTO buzz_nostr_auth_seen (event_id) VALUES ($1) ON CONFLICT (event_id) DO NOTHING RETURNING event_id`,
+    [auth.event.id],
+  );
+  if (fresh.rows.length !== 1) return json({ ok: false, code: "NOSTR_AUTH_REPLAYED", message: "this authorization event was already used" }, 401, { "www-authenticate": "Nostr" });
+  await db.sql(`DELETE FROM buzz_nostr_auth_seen WHERE seen_at < now() - interval '10 minutes'`);
+  let message;
+  try {
+    message = JSON.parse(body);
+  } catch {
+    return json(rpcError(null, -32700, "body is not JSON"));
+  }
+  await db.sql(
+    `INSERT INTO buzz_users (pubkey, npub) VALUES ($1, $2) ON CONFLICT (pubkey) DO NOTHING`,
+    [auth.user, npubFromHex(auth.user)],
+  );
+  const response = await mcpDispatch(message, taskStore(db, auth.user));
+  return response ? json(response) : new Response(null, { status: 202 });
+}
+
 function setCookie(token) {
   return `${COOKIE}=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${SESSION_TTL_S}`;
 }
@@ -476,6 +726,10 @@ export default async function handler(request) {
 
     if (path === "/api/logout" && request.method === "POST") {
       return json({ ok: true }, 200, { "set-cookie": clearCookie() });
+    }
+
+    if (path === "/api/mcp" && request.method === "POST") {
+      return await serveMcp(request, ctx, db);
     }
 
     // Everything below needs a session.

@@ -44,14 +44,38 @@ fixed order: `challenge_id`, `nonce`, `verification_code`, `audience`, `action`,
 id, verifies the Schnorr signature, and requires every tag to echo the stored
 challenge byte for byte before consuming it.
 
+## Agents: the same list over MCP
+
+`POST /api/mcp` serves the tasks as MCP tools (`list_tasks`, `add_task`,
+`complete_task`, `delete_task`) over streamable HTTP with single JSON
+responses. There is no sign-in step: every request carries
+`Authorization: Nostr <base64 event>`, a NIP-98 kind-27235 event the caller
+signs for that one request.
+
+- The `u`, `method` and `payload` tags must be this host's `/api/mcp` URL, `POST`
+  and the SHA-256 of the body. `created_at` must be within 60 seconds, and each
+  event id is accepted once (`buzz_nostr_auth_seen`).
+- With no `auth` tag, the signer works on its own list.
+- With a NIP-OA `auth` tag (`["auth", owner, conditions, sig]`, the attestation
+  a Buzz-managed agent already carries as `BUZZ_AUTH_TAG`), the owner's
+  signature and conditions are checked against this event, and the agent
+  works on its owner's list. You and the agents you own share one list.
+- An invalid `auth` tag is refused rather than ignored, so an agent never
+  lands on an empty list of its own by mistake.
+
+Buzz Foundation's agent app hub signs these requests with the agent's key and
+attestation when an agent connects to `https://buzz-todo.run402.com/api/mcp`.
+
 ## Layout
 
 | Path | What |
 | --- | --- |
-| `run402.deploy.json` | Release spec: three migrations, two pages, one function, seven routes, the `buzz-todo` subdomain, the Buzz embedding opt-in |
+| `run402.deploy.json` | Release spec: four migrations, two pages, one function, eight routes, the `buzz-todo` subdomain, the Buzz embedding opt-in |
 | `db/001_buzz_todo.sql` | `buzz_users`, `buzz_challenges`, `tasks` |
 | `db/003_buzz_pane_claim.sql` | claim-token columns on `buzz_challenges` for the in-pane pickup |
-| `functions/api.mjs` | Challenge mint, event verification, claim pickup, session cookie/bearer, tasks CRUD |
+| `db/004_buzz_agent_auth.sql` | `buzz_nostr_auth_seen`, single-use NIP-98 event ids |
+| `functions/api.mjs` | Challenge mint, event verification, claim pickup, session cookie/bearer, tasks CRUD, MCP with NIP-98/NIP-OA |
+| `functions/api.test.mjs` | `node --test` for the verifiers and MCP dispatch (needs the two deps installed) |
 | `site/index.html` | Sign-in button, six-digit code screen, task list |
 | `site/callback.html` | Reads the Buzz fragment once, scrubs it, completes sign-in |
 
@@ -69,6 +93,8 @@ run402 up --name "Buzz To-Do" --yes --verify
   It is not a Run402 tenant session; the Run402 tenant `auth.user()` helper does not know about it.
 - Verification runs inside the tenant function. The product version of this
   idea moves it into the gateway's proof-based session route.
-- There is no agent entrance: only Buzz Desktop's human consent flow is wired.
+- The agent entrance is the app's own `/api/mcp` route, not the platform's
+  `/_run402/mcp`: the platform endpoint authenticates with per-host OAuth only
+  and does not forward an app's own credentials to a tool.
 - A Buzz identity that is also linked to a Run402 principal is not enriched or
   recognised here. The app sees a pubkey and nothing else.

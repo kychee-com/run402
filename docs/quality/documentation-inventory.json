@@ -1930,7 +1930,7 @@
       "purpose": "example",
       "interface": "cli",
       "exception": "Application code, manifests and test probes remain native; capability gaps are explicit.",
-      "sha256": "a50343d8bc18975e9602214953e50ba913c818090c4725763532109611df0994",
+      "sha256": "3506212d6be27485d9e34858c50360ba78b1af1c20301993e845035eeece3899",
       "outputs": [],
       "url": null,
       "checks": [
@@ -1970,7 +1970,7 @@
       "purpose": "example",
       "interface": "cli",
       "exception": "Application code, manifests and test probes remain native; capability gaps are explicit.",
-      "sha256": "012fd749dbd635ca9d993943dd03b666983049f98bfb5c0e5a2fa75d072c9507",
+      "sha256": "c6834cf138d9124c51a3a943edf8d1ef14ea5f237ad59c6fec408fce4b3ea8bf",
       "outputs": [],
       "url": null,
       "checks": [
