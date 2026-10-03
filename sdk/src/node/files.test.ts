@@ -15,7 +15,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { fileSetFromDir, normalizeRelPath } from "./files.js";
+import { fileSetFromDir, fileSetFromDirSync, normalizeRelPath } from "./files.js";
 import { LocalError } from "../errors.js";
 
 function fresh(): string {
@@ -168,5 +168,48 @@ describe("fileSetFromDir", () => {
   it("normalizeRelPath converts to forward slashes", () => {
     // POSIX inputs pass through; backslash inputs would convert (Windows-only).
     assert.equal(normalizeRelPath("a/b/c.html"), "a/b/c.html");
+  });
+});
+
+describe("fileSetFromDirSync", () => {
+  it("collects exactly what fileSetFromDir collects, with the same ignore rules", async () => {
+    const root = fresh();
+    try {
+      mkdirSync(join(root, "assets", "img"), { recursive: true });
+      mkdirSync(join(root, "node_modules", "dep"), { recursive: true });
+      mkdirSync(join(root, ".git"));
+      writeFileSync(join(root, "index.html"), "<h1>hi</h1>");
+      writeFileSync(join(root, "assets", "style.css"), "body{}");
+      writeFileSync(join(root, "assets", "img", "logo.png"), "png");
+      writeFileSync(join(root, "node_modules", "dep", "index.js"), "x");
+      writeFileSync(join(root, ".git", "HEAD"), "ref");
+      writeFileSync(join(root, ".env.local"), "SECRET=1");
+      writeFileSync(join(root, "server.key"), "key");
+      writeFileSync(join(root, "skip-me.txt"), "x");
+
+      const opts = { ignore: ["skip-me.txt"] };
+      assert.deepEqual(fileSetFromDirSync(root, opts), await fileSetFromDir(root, opts));
+      assert.deepEqual(Object.keys(fileSetFromDirSync(root, opts)).sort(), ["assets/img/logo.png", "assets/style.css", "index.html"]);
+      assert.deepEqual(
+        Object.keys(fileSetFromDirSync(root, { ...opts, includeSensitive: true })).sort(),
+        Object.keys(await fileSetFromDir(root, { ...opts, includeSensitive: true })).sort(),
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses symlinks, non-directories and empty trees like the async walker", () => {
+    const root = fresh();
+    try {
+      assert.throws(() => fileSetFromDirSync(root), LocalError);
+      writeFileSync(join(root, "a.txt"), "a");
+      symlinkSync(join(root, "a.txt"), join(root, "link.txt"));
+      assert.throws(() => fileSetFromDirSync(root), /symlink found/);
+      assert.throws(() => fileSetFromDirSync(join(root, "a.txt")), /is not a directory/);
+      assert.throws(() => fileSetFromDirSync(join(root, "missing")), /cannot read directory/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

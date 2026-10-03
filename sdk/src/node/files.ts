@@ -8,6 +8,7 @@
  */
 
 import { readdir, lstat } from "node:fs/promises";
+import { readdirSync, lstatSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { LocalError } from "../errors.js";
 import type { FileSet, FsFileSource } from "../namespaces/deploy.types.js";
@@ -65,19 +66,60 @@ export async function fileSetFromDir(
   root: string,
   opts: FileSetFromDirOptions = {},
 ): Promise<FileSet> {
-  const ignore = new Set<string>(DEFAULT_IGNORE);
-  if (opts.ignore) for (const name of opts.ignore) ignore.add(name);
+  const ignore = ignoreSetFor(opts);
 
   let rootStat;
   try {
     rootStat = await lstat(root);
   } catch (err) {
-    throw new LocalError(
-      `cannot read directory ${root}: ${(err as Error).message}`,
-      CONTEXT,
-      err,
-    );
+    throw unreadableDir(root, err);
   }
+  assertWalkableRoot(root, rootStat);
+
+  const out: Record<string, FsFileSource> = {};
+  await walkInto(root, root, ignore, opts.includeSensitive === true, out);
+  return nonEmpty(root, out);
+}
+
+/**
+ * Synchronous twin of {@link fileSetFromDir}: the same ignore rules, symlink
+ * refusal, and errors. For local previews that must not go async, such as the
+ * `run402 up --check` site summary, so they count exactly what deploy uploads.
+ */
+export function fileSetFromDirSync(
+  root: string,
+  opts: FileSetFromDirOptions = {},
+): FileSet {
+  const ignore = ignoreSetFor(opts);
+
+  let rootStat;
+  try {
+    rootStat = lstatSync(root);
+  } catch (err) {
+    throw unreadableDir(root, err);
+  }
+  assertWalkableRoot(root, rootStat);
+
+  const out: Record<string, FsFileSource> = {};
+  walkIntoSync(root, root, ignore, opts.includeSensitive === true, out);
+  return nonEmpty(root, out);
+}
+
+function ignoreSetFor(opts: FileSetFromDirOptions): Set<string> {
+  const ignore = new Set<string>(DEFAULT_IGNORE);
+  if (opts.ignore) for (const name of opts.ignore) ignore.add(name);
+  return ignore;
+}
+
+function unreadableDir(path: string, err: unknown): LocalError {
+  return new LocalError(
+    `cannot read directory ${path}: ${(err as Error).message}`,
+    CONTEXT,
+    err,
+  );
+}
+
+function assertWalkableRoot(root: string, rootStat: { isSymbolicLink(): boolean; isDirectory(): boolean }): void {
   if (rootStat.isSymbolicLink()) {
     throw new LocalError(
       `symlink found at ${root} (following symlinks is not supported)`,
@@ -87,10 +129,9 @@ export async function fileSetFromDir(
   if (!rootStat.isDirectory()) {
     throw new LocalError(`path ${root} is not a directory`, CONTEXT);
   }
+}
 
-  const out: Record<string, FsFileSource> = {};
-  await walkInto(root, root, ignore, opts.includeSensitive === true, out);
-
+function nonEmpty(root: string, out: Record<string, FsFileSource>): FileSet {
   if (Object.keys(out).length === 0) {
     throw new LocalError(
       `directory ${root} contains no deployable files`,
@@ -98,6 +139,34 @@ export async function fileSetFromDir(
     );
   }
   return out;
+}
+
+interface DirEntryLike {
+  name: string;
+  isSymbolicLink(): boolean;
+  isDirectory(): boolean;
+  isFile(): boolean;
+}
+
+/** What one directory entry means for the walk; shared by both walkers. */
+function classifyEntry(
+  entry: DirEntryLike,
+  current: string,
+  ignore: Set<string>,
+  includeSensitive: boolean,
+): { kind: "skip" } | { kind: "dir" | "file"; fullPath: string } {
+  if (ignore.has(entry.name)) return { kind: "skip" };
+  if (!includeSensitive && isSensitiveIgnoredName(entry.name)) return { kind: "skip" };
+  const fullPath = join(current, entry.name);
+  if (entry.isSymbolicLink()) {
+    throw new LocalError(
+      `symlink found at ${fullPath} (following symlinks is not supported)`,
+      CONTEXT,
+    );
+  }
+  if (entry.isDirectory()) return { kind: "dir", fullPath };
+  if (entry.isFile()) return { kind: "file", fullPath };
+  return { kind: "skip" };
 }
 
 async function walkInto(
@@ -111,30 +180,32 @@ async function walkInto(
   try {
     entries = await readdir(current, { withFileTypes: true });
   } catch (err) {
-    throw new LocalError(
-      `cannot read directory ${current}: ${(err as Error).message}`,
-      CONTEXT,
-      err,
-    );
+    throw unreadableDir(current, err);
   }
   for (const entry of entries) {
-    if (ignore.has(entry.name)) continue;
-    if (!includeSensitive && isSensitiveIgnoredName(entry.name)) continue;
-    const fullPath = join(current, entry.name);
-    if (entry.isSymbolicLink()) {
-      throw new LocalError(
-        `symlink found at ${fullPath} (following symlinks is not supported)`,
-        CONTEXT,
-      );
-    }
-    if (entry.isDirectory()) {
-      await walkInto(root, fullPath, ignore, includeSensitive, out);
-      continue;
-    }
-    if (entry.isFile()) {
-      const rel = normalizeRelPath(relative(root, fullPath));
-      out[rel] = { __source: "fs-file", path: fullPath };
-    }
+    const found = classifyEntry(entry, current, ignore, includeSensitive);
+    if (found.kind === "dir") await walkInto(root, found.fullPath, ignore, includeSensitive, out);
+    else if (found.kind === "file") out[normalizeRelPath(relative(root, found.fullPath))] = { __source: "fs-file", path: found.fullPath };
+  }
+}
+
+function walkIntoSync(
+  root: string,
+  current: string,
+  ignore: Set<string>,
+  includeSensitive: boolean,
+  out: Record<string, FsFileSource>,
+): void {
+  let entries;
+  try {
+    entries = readdirSync(current, { withFileTypes: true });
+  } catch (err) {
+    throw unreadableDir(current, err);
+  }
+  for (const entry of entries) {
+    const found = classifyEntry(entry, current, ignore, includeSensitive);
+    if (found.kind === "dir") walkIntoSync(root, found.fullPath, ignore, includeSensitive, out);
+    else if (found.kind === "file") out[normalizeRelPath(relative(root, found.fullPath))] = { __source: "fs-file", path: found.fullPath };
   }
 }
 

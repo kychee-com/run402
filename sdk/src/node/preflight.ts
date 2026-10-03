@@ -2,6 +2,9 @@ import type { ContentSource, ReleaseSpec } from "../namespaces/deploy.types.js";
 import { guessContentType } from "../namespaces/deploy.js";
 import { collectLocalFileReferences, collectAuthoringFileReferences } from "./deploy-manifest.js";
 import { scanDeploymentSources } from "./source-scan.js";
+import { fileSetFromDirSync } from "./files.js";
+import { LocalError } from "../errors.js";
+import type { LocalDirRef } from "../namespaces/deploy.types.js";
 
 /**
  * The content type a site entry will ship with: an explicit `contentType`
@@ -16,13 +19,39 @@ function siteEntryContentType(path: string, source: ContentSource): string {
   return guessContentType(path);
 }
 
+function isLocalDirRef(value: unknown): value is LocalDirRef {
+  return typeof value === "object" && value !== null &&
+    (value as { __source?: unknown }).__source === "local-dir" &&
+    typeof (value as { path?: unknown }).path === "string";
+}
+
+/**
+ * The files a site slice will ship. A `local-dir` marker is walked with the
+ * same rules deploy uses, so the summary counts real files rather than the
+ * marker's own keys; a directory that cannot be walked counts as empty here
+ * (the file-reference check and deploy itself report why).
+ */
+function siteEntries(slice: unknown): Record<string, unknown> {
+  if (!isLocalDirRef(slice)) return (slice ?? {}) as Record<string, unknown>;
+  let files: Record<string, unknown>;
+  try {
+    files = fileSetFromDirSync(slice.path, { ignore: slice.ignore, includeSensitive: slice.includeSensitive });
+  } catch (err) {
+    if (err instanceof LocalError) return {};
+    throw err;
+  }
+  if (!slice.prefix) return files;
+  const sep = slice.prefix.endsWith("/") ? "" : "/";
+  return Object.fromEntries(Object.entries(files).map(([rel, source]) => [`${slice.prefix}${sep}${rel}`, source]));
+}
+
 /**
  * `summary.site` for `--check`: how many paths the site slice ships and a
  * per-content-type tally, so "can I ship a .webp?" is answered by the
  * preflight rather than by reading the SDK.
  */
 export function summarizeSiteInventory(spec: Partial<ReleaseSpec>): { paths: number; by_content_type: Record<string, number> } {
-  const entries = spec.site?.replace ?? spec.site?.patch?.put ?? {};
+  const entries = siteEntries(spec.site?.replace ?? spec.site?.patch?.put);
   const by_content_type: Record<string, number> = {};
   for (const [path, source] of Object.entries(entries)) {
     const type = siteEntryContentType(path, source as ContentSource);
