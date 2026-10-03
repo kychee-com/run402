@@ -100,6 +100,7 @@ function makeWiring(credentials: CredentialsProvider = defaultCreds()): FakeWiri
       return handler(recorded) as T;
     },
     getProject: (id: string) => credentials.getProject(id),
+    getProjectCredentials: (id: string) => credentials.getProject(id),
     credentials,
     fetch: (async (url: string | URL | Request, init?: RequestInit) => {
       const u = typeof url === "string" ? url : url.toString();
@@ -5640,8 +5641,8 @@ describe("Deploy.list", () => {
     const projectLookups: string[] = [];
     const wiringFor = (): FakeWiring => {
       const w = makeWiring();
-      const orig = w.client.getProject;
-      (w.client as { getProject: (id: string) => Promise<unknown> }).getProject = async (
+      const orig = w.client.getProjectCredentials;
+      (w.client as { getProjectCredentials: (id: string) => Promise<unknown> }).getProjectCredentials = async (
         id: string,
       ) => {
         projectLookups.push(id);

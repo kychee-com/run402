@@ -5137,7 +5137,7 @@ async function apikeyHeaders(
   // apikey beside a bearer mixes credential families on one request, which the
   // kernel explicitly forbids — so stand down and let the bearer carry it.
   if (isCiClient(client) || isGrantKeyClient(client)) return {};
-  const project = await client.getProject(projectId);
+  const project = await client.getProjectCredentials(projectId);
   if (project?.anon_key) return { apikey: project.anon_key };
   const minted = await mintedAnonToken(client, projectId);
   return minted ? { apikey: minted } : {};
@@ -5282,7 +5282,7 @@ async function sha256Base64(bytes: Uint8Array): Promise<string> {
 function base64FromHex(hex: string): string {
   const bytes = new Uint8Array(hex.length / 2);
   for (let i = 0; i < bytes.byteLength; i++) {
-    bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
+    bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
   }
   return base64FromBytes(bytes);
 }

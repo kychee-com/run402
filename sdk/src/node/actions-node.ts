@@ -581,7 +581,7 @@ export class NodeActions implements Run402Actions {
     const identity = run.executionMode === "plan"
       ? undefined
       : await this.#ensureIdentity(input, resolved.projectId, run);
-    const scoped = await this.sdk.project(resolved.projectId);
+    const scoped = this.sdk.project(resolved.projectId);
     const explicitDeployIdempotencyKey = input.idempotencyKey ?? normalized.idempotencyKey ?? manifest.idempotencyKey;
     if (run.executionMode === "plan") {
       const planned = await scoped.apply.plan(releaseSpec, {
@@ -840,7 +840,7 @@ export class NodeActions implements Run402Actions {
         // missing-origin diagnostic instead of failing silently.
       }
     }
-    const scoped = await this.sdk.project(resolved.projectId);
+    const scoped = this.sdk.project(resolved.projectId);
     const verification = await this.#verifyHttpChecks(checks, publicOrigin, run, {
       projectId: resolved.projectId,
       projectName: input.name ?? null,
@@ -1298,7 +1298,7 @@ export class NodeActions implements Run402Actions {
     const resolved = await this.#resolveProjectForVerify(input, manifest, workspaceDir, run);
     const projectKeys = await this.sdk.projects.keys(resolved.projectId);
     const publicOrigin = appPublicOrigin(input, manifest.appSpec) ?? projectKeys.site_url ?? null;
-    const scoped = await this.sdk.project(resolved.projectId);
+    const scoped = this.sdk.project(resolved.projectId);
     const verification = await this.#verifyHttpChecks(manifest.appSpec.verify?.http ?? [], publicOrigin, run, {
       projectId: resolved.projectId,
       projectName: input.name ?? manifest.appSpec.project.name ?? resolved.link?.name ?? null,
@@ -1533,7 +1533,7 @@ export class NodeActions implements Run402Actions {
         },
       });
       run.setState(deployStep, "running");
-      const scoped = await this.sdk.project(resolved.projectId);
+      const scoped = this.sdk.project(resolved.projectId);
       const deploy = await scoped.apply(normalized.spec, {
         idempotencyKey: input.idempotencyKey ?? normalized.idempotencyKey,
         allowWarnings: input.allowWarnings,

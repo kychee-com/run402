@@ -1596,6 +1596,8 @@ function isDeployResolveCasFailure(response: DeployResolveResponse): boolean {
     case "size_mismatch":
     case "unauthorized_cas_object":
       return true;
+    default:
+      break;
   }
   const cas = response.cas_object;
   if (!cas) return false;

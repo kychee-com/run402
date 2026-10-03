@@ -3590,7 +3590,7 @@ export class Repos {
       pending_writer_admission: { handoff_id: parsed.handoff_id, writer_admission_grant: grant, claimed_writer_key_id: myWriterKeyId },
     });
 
-    const targetDir = await resolveResumeTargetDir(options.to, vault.address, vault.vault_id);
+    const targetDir = resolveResumeTargetDir(options.to, vault.address, vault.vault_id);
     options.onLine?.(`resuming into ${targetDir}`);
     const remoteUrl = vaultRemoteUrl(vault.organization_id, vault.project_id);
     await cloneVaultRemote(remoteUrl, targetDir);
@@ -3896,7 +3896,7 @@ export class Repos {
       pending_writer_admission: { handoff_id: parsed.invite_id, writer_admission_grant: grant, claimed_writer_key_id: myWriterKeyId },
     });
 
-    const targetDir = await resolveResumeTargetDir(options.to, vault.address, vault.vault_id);
+    const targetDir = resolveResumeTargetDir(options.to, vault.address, vault.vault_id);
     options.onLine?.(`joining into ${targetDir}`);
     const remoteUrl = vaultRemoteUrl(vault.organization_id, vault.project_id);
     await cloneVaultRemote(remoteUrl, targetDir);

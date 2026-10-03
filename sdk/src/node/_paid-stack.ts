@@ -53,6 +53,7 @@ class LoadCollector {
     if (this.missing.size > 0) {
       throw new PaidStackUnavailable([...this.missing].sort());
     }
+    // eslint-disable-next-line @typescript-eslint/only-throw-error -- rethrows the import failure unchanged
     if (this.firstOtherError !== null) throw this.firstOtherError;
   }
 }

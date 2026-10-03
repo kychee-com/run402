@@ -1846,7 +1846,7 @@ function fakeSdk(opts: {
         opts.secrets?.push({ key, value: input.value });
       },
     },
-    async project(projectId: string) {
+    project(projectId: string) {
       opts.calls.push(`project:${projectId}`);
       return {
         apply: Object.assign(
@@ -2393,7 +2393,7 @@ test("workflow retains the original deploy recovery code and completed mutation 
  writeFileSync(join(dir,"run402.json"),JSON.stringify({database:{migrations:[{id:"001",sql:"CREATE TABLE notes(id int);"}]}}));
  const sdk:any=fakeSdk({calls:[],walletConfigured:true,tierActive:true,activeProject:null});
  const error=new Run402DeployError("Review access",{code:"PUBLIC_ACCESS_POLICY_APPLY",phase:"plan",context:"test",body:{next_actions:[{type:"review_warnings",warning_codes:["PUBLIC_ACCESS_POLICY_APPLY"]}]}});
- sdk.project=async()=>({apply:async()=>{throw error;}});
+ sdk.project=()=>({apply:async()=>{throw error;}});
  try {
   await assert.rejects(new NodeActions(sdk,{targetKind:"cloud",cwd:dir}).up({name:"recovery"},{approval:"yes"}), (caught:any)=>{
    assert.equal(caught,error);assert.equal(caught.code,"PUBLIC_ACCESS_POLICY_APPLY");assert.equal(caught.nextActions[0].type,"review_warnings");

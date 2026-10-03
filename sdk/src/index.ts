@@ -231,6 +231,7 @@ export class Run402 {
       typeof opts.credentials.getAuth !== "function" ||
       (
         typeof opts.credentials.getProjectCredentials !== "function" &&
+        // eslint-disable-next-line @typescript-eslint/no-deprecated -- older custom providers implement only getProject
         typeof opts.credentials.getProject !== "function"
       )
     ) {

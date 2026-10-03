@@ -262,6 +262,7 @@ export class Errors {
         );
       }
       // Reached only if the window elapsed with zero successful polls.
+      // eslint-disable-next-line @typescript-eslint/only-throw-error -- rethrows the last poll failure unchanged
       if (lastError !== undefined) throw lastError;
       throw new LocalError("errors.watch produced no result", "watching release errors");
     }

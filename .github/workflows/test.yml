@@ -38,6 +38,8 @@ jobs:
       # non-major fix available (see scripts/audit-gate.mjs for the policy).
       - run: node scripts/audit-gate.mjs
       - run: npm run build
+      # Type-aware ESLint (bug rules only). After the build: sdk/src/node imports core-dist.
+      - run: npm run lint
       - run: npm run test:skill
       - run: npm run test:sync
       # Single-source gate: the committed flat agent files (llms-*.txt) must

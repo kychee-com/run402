@@ -42,6 +42,7 @@ npm run build:core         # tsc -p core/tsconfig.json → core/dist/
 npm run build:sdk          # tsc -p sdk/tsconfig.json  → sdk/dist/
 npm run build              # build:core + build:sdk + tsc → dist/ (also stages dist copies under cli/)
 npm run start              # node dist/index.js (stdio MCP transport)
+npm run lint               # type-aware ESLint bug rules on src, sdk/src, core/src, astro/src (run after build)
 
 npm run test:skill         # validates SKILL.md and openclaw/SKILL.md (49 tests across both)
 npm run test:sync          # checks MCP/CLI/OpenClaw/SDK stay in sync

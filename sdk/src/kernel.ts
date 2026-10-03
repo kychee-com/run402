@@ -509,6 +509,7 @@ export function buildClient(kernel: KernelConfig): Client {
   const getProjectCredentials = (id: string) =>
     kernel.credentials.getProjectCredentials
       ? kernel.credentials.getProjectCredentials(id)
+      // eslint-disable-next-line @typescript-eslint/no-deprecated -- older custom providers implement only getProject
       : kernel.credentials.getProject?.(id) ?? Promise.resolve(null);
   const capabilities = Object.freeze(resolveClientCapabilities(kernel.capabilities));
   return {
