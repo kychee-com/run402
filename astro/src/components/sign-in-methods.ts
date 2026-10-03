@@ -406,6 +406,8 @@ export const AUTH_ERROR_MESSAGES: Record<string, string> = {
     "An account with this email already exists. Sign in with your original method, then link Google from your account settings.",
   identity_already_linked:
     "This Google account is already linked to a different account.",
+  signup_not_allowed:
+    "New accounts on this site are by invitation only. Ask the site owner for an invite, or sign in with an account you already have.",
 };
 
 const GENERIC_AUTH_ERROR = "Sign-in could not be completed. Please try again.";

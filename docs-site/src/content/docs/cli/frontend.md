@@ -266,6 +266,7 @@ const refreshed = await fetch(API + '/auth/v1/token?grant_type=refresh_token', {
 - New Google user → new project user created (null password, Google name + avatar stored)
 - Returning Google user -> signed in to existing user
 - Same email as existing password user → returns `account_exists_requires_link` error (no auto-merge for security)
+- New Google user on a project whose `public_signup` is `known_email` or `invite_only` → returns `signup_not_allowed` error (no user created; existing users still sign in)
 - Social-only users cannot use password login (helpful error message returned)
 
 ### Useful endpoints

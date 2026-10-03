@@ -417,7 +417,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/frontend.md",
-    "line": 282,
+    "line": 283,
     "language": "html",
     "kind": "application-or-sdk",
     "sha256": "5e00f0ec3564c6acc55c4f93b16501cd537c7399687c048a1a9bff5812515922",

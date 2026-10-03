@@ -560,6 +560,12 @@ describe("sign-in-methods — messageForAuthError (hosted-auth-signin-error-ssr)
     assert.match(messageForAuthError("identity_already_linked")!, /already linked/);
   });
 
+  it("explains a closed sign-up instead of inviting a retry (run402-private#782)", () => {
+    const msg = messageForAuthError("signup_not_allowed")!;
+    assert.match(msg, /invite/i);
+    assert.doesNotMatch(msg, /try again/i);
+  });
+
   it("falls back to a generic message for infra/unknown codes", () => {
     const generic = /could not be completed/;
     assert.match(messageForAuthError("token_exchange_failed")!, generic);
