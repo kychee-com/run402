@@ -1073,7 +1073,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/identity.md",
-    "line": 204,
+    "line": 210,
     "language": "ts",
     "kind": "application-or-sdk",
     "sha256": "7abf4fffeeb879dd350526a2c0309a29b0a1b3a74c62db962c8795f34e4d7813",
@@ -1081,7 +1081,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/identity.md",
-    "line": 222,
+    "line": 228,
     "language": "ts",
     "kind": "application-or-sdk",
     "sha256": "2aa741bb3a80838077c5b22e9c41f90f9310376c2ba49263fe371cf5677d489a",
@@ -1089,7 +1089,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/identity.md",
-    "line": 241,
+    "line": 247,
     "language": "ts",
     "kind": "application-or-sdk",
     "sha256": "09664317303198e18ccd8ce2f9ef111a8604f6debd174eee00959840bb6d3863",
@@ -1097,7 +1097,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/identity.md",
-    "line": 255,
+    "line": 261,
     "language": "ts",
     "kind": "application-or-sdk",
     "sha256": "5e177a01fa81302667d5f785c3d403e0f59e49a5afefd068fdff7fa896df4b4b",

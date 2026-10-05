@@ -252,6 +252,12 @@ lifetime/key-reuse codes, or `PAYMENT_SETTLEMENT_FAILED`. The error preserves
 `fundsMoved`, `paymentId`, intent/delivery events, and canonical `nextActions`.
 Successful results preserve `paymentId`, `deduplicated`, `fundsMoved`,
 `delivery`, `settledAt`, and `intentState` when supplied.
+A seller may settle and then deliberately answer a non-2xx (for example a
+400 refusing the paid action). When that response carries a valid standard
+`PAYMENT-RESPONSE` receipt for the accepted challenge, `r.pay.fetch` returns a
+settled result with `fundsMoved: true`, `delivery.status: "failed"`, the
+non-2xx `response` (its body is the seller's explanation), and a completed
+journal record. A non-2xx without a valid receipt remains ambiguous.
 
 Required policy fails before signing with `MERCHANT_RECEIPT_REQUIRED` when no
 eligible offer remains. A post-settlement evidence failure throws

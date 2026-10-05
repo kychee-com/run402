@@ -1164,6 +1164,11 @@ interface BuyerCallContext {
   replayedProof: boolean;
   alreadySettled: boolean;
   requireReceipt: boolean;
+  /**
+   * The paid response was non-2xx but carried a valid settlement receipt for
+   * the accepted challenge: funds moved, delivery failed (GH-594).
+   */
+  settledWithFailedDelivery?: boolean;
 }
 
 /**
@@ -1240,6 +1245,15 @@ export function createX402BuyerFetch(
             gatewayPaymentBuyerError(response, envelope)) {
           return "failed";
         }
+        // A seller may settle the payment and then deliberately answer a
+        // well-formed non-2xx (the paid action was refused on its merits). A
+        // valid standard settlement receipt for the accepted challenge proves
+        // the funds moved, so this is a completed payment whose delivery
+        // failed, not an ambiguous outcome (GH-594).
+        if (call?.proof && hasValidSettlementReceipt(response, call.proof.accepted)) {
+          call.settledWithFailedDelivery = true;
+          return "completed";
+        }
         const failure = await upstreamFailure(response);
         if (call?.replayedProof && isAlreadyUsedFailure(failure)) {
           call.alreadySettled = true;
@@ -1289,7 +1303,7 @@ export function createX402BuyerFetch(
           ...payResponseMetadata(response),
         };
       }
-      if (!response.ok) {
+      if (!response.ok && !call.settledWithFailedDelivery) {
         const envelope = await readPaymentErrorEnvelope(response);
         if (envelope && trustedRun402ResponseOrigin(url, response)) {
           const gatewayError = gatewayPaymentBuyerError(response, envelope);
@@ -1663,6 +1677,32 @@ function isPaymentRequired(value: unknown): value is X402PaymentRequired {
       typeof accept.amount === "string" &&
       typeof accept.payTo === "string",
     ));
+}
+
+/**
+ * True when the response carries a standard x402 settlement receipt that
+ * proves a successful on-chain settlement of the accepted challenge: the same
+ * structural checks `receiptFromResponse` enforces before reporting a receipt.
+ */
+function hasValidSettlementReceipt(
+  response: Response,
+  accepted: X402PaymentRequirements,
+): boolean {
+  const header = response.headers.get("PAYMENT-RESPONSE") ?? response.headers.get("X-PAYMENT-RESPONSE");
+  if (!header) return false;
+  let record: Record<string, unknown>;
+  try {
+    record = asRecord(decodeBase64Json(header));
+  } catch {
+    return false;
+  }
+  return (
+    record.success === true &&
+    typeof record.transaction === "string" &&
+    record.transaction !== "" &&
+    record.network === accepted.network &&
+    atomicAmount(accepted.amount) !== null
+  );
 }
 
 async function receiptFromResponse(

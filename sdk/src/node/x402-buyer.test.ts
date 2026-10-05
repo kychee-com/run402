@@ -1038,6 +1038,120 @@ describe("createX402BuyerFetch", () => {
     assert.doesNotMatch(serialized, new RegExp(key));
     assert.doesNotMatch(serialized, /payment-signature|authorization|proof|\/tribute\/1c/i);
   });
+  // GH-594: a third-party seller settles the payment and then deliberately
+  // answers a well-formed non-2xx (the paid action was rejected on its merits),
+  // carrying a valid standard PAYMENT-RESPONSE receipt. Funds provably moved and
+  // the seller's body explains why delivery failed, so the buyer must report a
+  // settled payment with failed delivery, not an ambiguous outcome.
+  for (const [status, sellerBody] of [
+    [400, { effect: "rejected", error: "message_too_long" }],
+    [403, { effect: "banned", error: "wallet_banned" }],
+    [410, { effect: "none", error: "ad_dropped" }],
+  ] as const) {
+    it(`reports a settled ${status} with a valid PAYMENT-RESPONSE as delivery failed, not ambiguous`, async () => {
+      const sellerUrl = "https://swarm402.com/api/moneytalks/coin/1c";
+      const records = new Map<string, PaymentAttemptRecord>();
+      const store: PaymentAttemptStore = {
+        claim(record) {
+          if (records.has(record.payment_attempt_id)) return false;
+          records.set(record.payment_attempt_id, structuredClone(record));
+          return true;
+        },
+        write(record) {
+          records.set(record.payment_attempt_id, structuredClone(record));
+        },
+        read(id) {
+          return records.get(id) ?? null;
+        },
+      };
+      const buyer = createX402BuyerFetch(fakeClient(), {
+        supportedNetworks: ["eip155:8453"],
+        store,
+        createAttemptId: () => "pat_59459459459459459459459459459459",
+        now: () => "2026-07-22T12:00:00.000Z",
+        fetch: async (_input, init) => {
+          if (!new Headers(init?.headers).has("payment-signature")) {
+            return challenge("10000", "eip155:8453", { resourceUrl: sellerUrl });
+          }
+          return responseAt(sellerUrl, JSON.stringify(sellerBody), {
+            status,
+            headers: { "content-type": "application/json", "PAYMENT-RESPONSE": settlement() },
+          });
+        },
+      });
+
+      const result = await buyer(sellerUrl, { method: "POST", body: "{}" }, { maxUsdMicros: 10_000 });
+
+      assert.equal(result.outcome, "settled");
+      assert.equal(result.response.status, status);
+      assert.equal(result.payment?.fundsMoved, true);
+      assert.equal(result.payment?.transaction, "0xtransaction");
+      assert.equal(result.payment?.settlement.status, "verified");
+      assert.deepEqual(result.payment?.delivery, { status: "failed", replay: false });
+      assert.deepEqual(await result.response.json(), sellerBody, "the seller's body is surfaced");
+
+      const record = records.get("pat_59459459459459459459459459459459")!;
+      assert.equal(record.state, "completed");
+      assert.equal(record.mutation_state, "completed");
+      assert.equal(record.response_status, status);
+    });
+  }
+
+  it("keeps a settled-looking non-2xx without a PAYMENT-RESPONSE receipt ambiguous", async () => {
+    const sellerUrl = "https://swarm402.com/api/moneytalks/coin/1c";
+    const buyer = createX402BuyerFetch(fakeClient(), {
+      supportedNetworks: ["eip155:8453"],
+      ...attemptOptions(),
+      fetch: async (_input, init) => {
+        if (!new Headers(init?.headers).has("payment-signature")) {
+          return challenge("10000", "eip155:8453", { resourceUrl: sellerUrl });
+        }
+        return responseAt(sellerUrl, JSON.stringify({ effect: "rejected", error: "message_too_long" }), {
+          status: 400,
+          headers: { "content-type": "application/json" },
+        });
+      },
+    });
+
+    await assert.rejects(buyer(sellerUrl, { method: "POST", body: "{}" }, {}), (error: unknown) => {
+      assert.ok(error instanceof PaymentBuyerError);
+      assert.equal(error.code, "PAYMENT_SETTLEMENT_FAILED");
+      assert.equal(error.fundsMoved, "unknown");
+      assert.equal((error.details as Record<string, unknown>).upstream_code, "X402_PAYMENT_OUTCOME_AMBIGUOUS");
+      return true;
+    });
+  });
+
+  it("keeps a non-2xx with an invalid (wrong-network or unsuccessful) receipt ambiguous", async () => {
+    const sellerUrl = "https://swarm402.com/api/moneytalks/coin/1c";
+    for (const receipt of [
+      settlement("eip155:84532"),
+      encode({ success: false, transaction: "", network: "eip155:8453" }),
+      "not-base64-json",
+    ]) {
+      const buyer = createX402BuyerFetch(fakeClient(), {
+        supportedNetworks: ["eip155:8453"],
+        ...attemptOptions(),
+        fetch: async (_input, init) => {
+          if (!new Headers(init?.headers).has("payment-signature")) {
+            return challenge("10000", "eip155:8453", { resourceUrl: sellerUrl });
+          }
+          return responseAt(sellerUrl, JSON.stringify({ effect: "rejected" }), {
+            status: 400,
+            headers: { "content-type": "application/json", "PAYMENT-RESPONSE": receipt },
+          });
+        },
+      });
+
+      await assert.rejects(buyer(sellerUrl, { method: "POST", body: "{}" }, {}), (error: unknown) => {
+        assert.ok(error instanceof PaymentBuyerError);
+        assert.equal(error.fundsMoved, "unknown");
+        assert.equal((error.details as Record<string, unknown>).upstream_code, "X402_PAYMENT_OUTCOME_AMBIGUOUS");
+        return true;
+      });
+    }
+  });
+
 });
 
 function responseAt(url: string, body: BodyInit | null, init: ResponseInit): Response {
