@@ -260,85 +260,32 @@ jobs:
           (cd "$SMOKE/sdk/package" && node -e "import('./dist/node/index.js').then(m => { if (typeof m.run402 !== 'function') { console.error('node run402 export is not a function'); process.exit(1); } for (const key of ['inspectArchive', 'verifyArchive', 'importArchiveToCore']) { if (typeof m[key] !== 'function') { console.error(key + ' export is not a function'); process.exit(1); } } console.log('SDK /node smoke OK'); }).catch(e => { console.error('Import failed:', e.message); process.exit(1); })")
           (cd "$SMOKE/sdk/package" && node -e "import('./dist/index.js').then(m => { if (typeof m.Run402 !== 'function') { console.error('iso Run402 export is not a function'); process.exit(1); } console.log('SDK iso smoke OK'); }).catch(e => { console.error('Import failed:', e.message); process.exit(1); })")
 
-      # Idempotent + transient-tolerant publish. --provenance is optional under
-      # OIDC (provenance is generated implicitly) but makes intent explicit and
-      # fails loudly if OIDC isn't wired. The helper:
+      # Idempotent + transient-tolerant publish, one shared helper for all
+      # three packages so the copies cannot drift (GH-555). --provenance is
+      # optional under OIDC (provenance is generated implicitly) but makes
+      # intent explicit and fails loudly if OIDC isn't wired. The helper asks
+      # the REGISTRY, never npm's output text (npm has printed nothing at all
+      # for an already-published version):
+      #   - skips when <name>@<version> already resolves, so a re-run after a
+      #     partial publish completes the remaining packages and reaches a
+      #     consistent lockstep version;
+      #   - after a claimed success, polls the registry (up to ~10 min) until
+      #     the exact version resolves; a lagging read never re-publishes;
       #   - retries transient provenance/network errors (sigstore rekor TLOG
-      #     timeouts, ECONNRESET) up to 3x — these stranded a lockstep publish
-      #     mid-flight once (run402-mcp published, run402 hit a rekor abort);
-      #   - treats "already published at this version" as success, so a re-run
-      #     after a partial publish completes the remaining packages and reaches
-      #     a consistent lockstep version instead of 409-ing on the one that
-      #     already landed;
-      #   - fails loudly on any other error.
+      #     timeouts, ECONNRESET) and empty/unrecognized failures a bounded
+      #     number of times, re-checking the registry before each retry;
+      #   - fails loudly otherwise.
       - name: Publish run402-mcp to npm
         if: ${{ !inputs.dry_run }}
-        run: |
-          publish_idempotent() {
-            local label="$1"; local attempt=0 out
-            while [ "$attempt" -lt 3 ]; do
-              attempt=$((attempt + 1))
-              if out=$(npm publish --access public --provenance 2>&1); then
-                echo "$out"; echo "[$label] published (attempt $attempt)"; return 0
-              fi
-              echo "$out"
-              if echo "$out" | grep -qiE "cannot publish over|previously published|EPUBLISHCONFLICT"; then
-                echo "[$label] already published at this version — idempotent skip."; return 0
-              fi
-              if echo "$out" | grep -qiE "TLOG_CREATE_ENTRY_ERROR|rekor\.sigstore\.dev|tlog entry|ETIMEDOUT|ECONNRESET|socket hang up|aborted"; then
-                echo "[$label] transient provenance/network error — retry $attempt/3"; sleep 10; continue
-              fi
-              echo "[$label] non-retryable publish error."; return 1
-            done
-            echo "[$label] exhausted retries."; return 1
-          }
-          publish_idempotent run402-mcp
+        run: ./scripts/publish-idempotent.sh run402-mcp .
 
       - name: Publish run402 to npm
         if: ${{ !inputs.dry_run }}
-        run: |
-          publish_idempotent() {
-            local label="$1"; local attempt=0 out
-            while [ "$attempt" -lt 3 ]; do
-              attempt=$((attempt + 1))
-              if out=$( (cd cli && npm publish --access public --provenance) 2>&1); then
-                echo "$out"; echo "[$label] published (attempt $attempt)"; return 0
-              fi
-              echo "$out"
-              if echo "$out" | grep -qiE "cannot publish over|previously published|EPUBLISHCONFLICT"; then
-                echo "[$label] already published at this version — idempotent skip."; return 0
-              fi
-              if echo "$out" | grep -qiE "TLOG_CREATE_ENTRY_ERROR|rekor\.sigstore\.dev|tlog entry|ETIMEDOUT|ECONNRESET|socket hang up|aborted"; then
-                echo "[$label] transient provenance/network error — retry $attempt/3"; sleep 10; continue
-              fi
-              echo "[$label] non-retryable publish error."; return 1
-            done
-            echo "[$label] exhausted retries."; return 1
-          }
-          publish_idempotent run402
+        run: ./scripts/publish-idempotent.sh run402 cli
 
       - name: Publish @run402/sdk to npm
         if: ${{ !inputs.dry_run }}
-        run: |
-          publish_idempotent() {
-            local label="$1"; local attempt=0 out
-            while [ "$attempt" -lt 3 ]; do
-              attempt=$((attempt + 1))
-              if out=$( (cd sdk && npm publish --access public --provenance) 2>&1); then
-                echo "$out"; echo "[$label] published (attempt $attempt)"; return 0
-              fi
-              echo "$out"
-              if echo "$out" | grep -qiE "cannot publish over|previously published|EPUBLISHCONFLICT"; then
-                echo "[$label] already published at this version — idempotent skip."; return 0
-              fi
-              if echo "$out" | grep -qiE "TLOG_CREATE_ENTRY_ERROR|rekor\.sigstore\.dev|tlog entry|ETIMEDOUT|ECONNRESET|socket hang up|aborted"; then
-                echo "[$label] transient provenance/network error — retry $attempt/3"; sleep 10; continue
-              fi
-              echo "[$label] non-retryable publish error."; return 1
-            done
-            echo "[$label] exhausted retries."; return 1
-          }
-          publish_idempotent "@run402/sdk"
+        run: ./scripts/publish-idempotent.sh "@run402/sdk" sdk
 
       - name: Commit version bump (rebase-safe — retries against a moving main)
         if: ${{ !inputs.dry_run }}
