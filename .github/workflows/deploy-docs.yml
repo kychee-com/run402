@@ -12,6 +12,7 @@ on:
       - "sdk/llms-sdk.txt"
       - "llms-mcp.txt"
       - "SKILL.md"
+      - "docs/quality/documentation-inventory.json"
       - ".github/workflows/deploy-docs.yml"
   workflow_dispatch:
 
