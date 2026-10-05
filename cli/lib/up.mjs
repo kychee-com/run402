@@ -65,7 +65,8 @@ Options:
                       commits directly, and a plan whose migrations are all
                       already applied with an identical checksum is not
                       rehearsed either (result.deploy.rehearsal says which:
-                      no_live_release / migrations_unchanged / no_migrations).
+                      no_live_release / migrations_unchanged / no_migrations /
+                      ci_session_unsupported).
   --repo-only         Provision + scaffold the run402 remote + first push,
                       and stop there — no deploy. The vault-only track
                       (D8), composed through up instead of run402 repos

@@ -1687,12 +1687,14 @@ export interface PlanRehearsalEnvelope {
   rehearse_url: string | null;
   /** Why rehearsal is not offered: `no_migrations` (nothing to rehearse),
    *  `no_live_release` (a first deploy has nothing to branch from — commit
-   *  directly), or `migrations_unchanged` (every declared migration is a
+   *  directly), `migrations_unchanged` (every declared migration is a
    *  checksum-identical noop already applied to the live project — nothing
-   *  would run on the branch). `null` when available. */
-  reason: null | "no_migrations" | "no_live_release" | "migrations_unchanged";
-  /** Present with `reason: "no_live_release"` / `"migrations_unchanged"`: one
-   *  `commit_plan` entry. */
+   *  would run on the branch), or `ci_session_unsupported` (the plan was made
+   *  by a CI session, which the rehearse route refuses — commit directly).
+   *  `null` when available. */
+  reason: null | "no_migrations" | "no_live_release" | "migrations_unchanged" | "ci_session_unsupported";
+  /** Present with `reason: "no_live_release"` / `"migrations_unchanged"` /
+   *  `"ci_session_unsupported"`: one `commit_plan` entry. */
   next_actions?: Array<{ type: string; command?: string; why: string }>;
 }
 
@@ -1703,10 +1705,11 @@ export interface DeployRehearsalBlock {
    *  `no_migrations`: nothing to rehearse; `migrations_unchanged`: every
    *  declared migration is a checksum-identical noop already applied (the
    *  plan's `migrations.new` bucket is empty), so a rehearsal would run
-   *  nothing; `disabled`: `noRehearse`; `reviewed_plan`: a `requiredPlan`
+   *  nothing; `ci_session_unsupported`: a CI session's plan, which the
+   *  gateway does not rehearse; `disabled`: `noRehearse`; `reviewed_plan`: a `requiredPlan`
    *  was supplied (already reviewed); `unsupported`: the target (Core) has
    *  no branches. */
-  reason?: "no_migrations" | "no_live_release" | "migrations_unchanged" | "disabled" | "reviewed_plan" | "unsupported";
+  reason?: "no_migrations" | "no_live_release" | "migrations_unchanged" | "ci_session_unsupported" | "disabled" | "reviewed_plan" | "unsupported";
   /** The gateway's rehearsal report when a rehearsal ran. */
   report?: ApplyRehearsalReport;
   operation_id?: string;

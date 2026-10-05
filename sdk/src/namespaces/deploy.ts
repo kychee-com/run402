@@ -831,11 +831,9 @@ async function rehearseBeforeCommit(
   if (!envelope || !envelope.available) {
     const reason = envelope?.reason ?? "no_migrations";
     return skip(
-      reason === "no_live_release"
-        ? "no_live_release"
-        : reason === "migrations_unchanged"
-          ? "migrations_unchanged"
-          : "no_migrations",
+      reason === "no_live_release" || reason === "migrations_unchanged" || reason === "ci_session_unsupported"
+        ? reason
+        : "no_migrations",
     );
   }
   // Named migrations that are all checksum-identical noops (already applied

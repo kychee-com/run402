@@ -1612,6 +1612,25 @@ describe("Deploy.apply (rehearsal decision)", () => {
     assert.deepEqual(result.rehearsal, { status: "skipped", reason: "migrations_unchanged" });
   });
 
+  it("reports a gateway-supplied ci_session_unsupported reason and commits without rehearsing", async () => {
+    const { w, events, result } = await applyWith(migrationPlan(
+      { new: [{ id: "003_more", checksum_hex: "c".repeat(64), transaction: "default" }], noop: [] },
+      {
+        available: false,
+        rehearse_url: null,
+        reason: "ci_session_unsupported",
+        next_actions: [{ type: "commit_plan", command: "POST /apply/v1/plans/plan_rh/commit", why: "CI sessions cannot rehearse apply plans, so commit directly." }],
+      },
+    ));
+    assert.equal(countRequests(w, "/apply/v1/plans/plan_rh/rehearse"), 0, "a CI session never calls the rehearse route");
+    assert.equal(countRequests(w, "/apply/v1/plans/plan_rh/commit"), 1);
+    assert.deepEqual(result.rehearsal, { status: "skipped", reason: "ci_session_unsupported" });
+    assert.deepEqual(
+      events.filter((e) => e.type.startsWith("rehearsal.")),
+      [{ type: "rehearsal.skipped", reason: "ci_session_unsupported" }],
+    );
+  });
+
   it("still rehearses when the plan carries at least one new migration", async () => {
     const { w, events, result } = await applyWith(migrationPlan(
       { new: [{ id: "003_more", checksum_hex: "c".repeat(64), transaction: "default" }], noop: [{ id: "001_init", checksum_hex: "a".repeat(64) }] },
