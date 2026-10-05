@@ -191,32 +191,14 @@ jobs:
           grep -q "buildPictureHtml" "$SMOKE/extract/package/dist/Image.astro" \
             || (echo "Image.astro missing expected import" && exit 1)
 
+      # Shared idempotent publish helper (GH-555), the same one publish.yml
+      # uses. It asks the REGISTRY whether @run402/astro@<version> exists
+      # (before publishing, on any failure, and by polling after a claimed
+      # success), never npm's output text, and retries transient or
+      # empty/unrecognized failures a bounded number of times.
       - name: Publish to npm
         if: ${{ !inputs.dry_run }}
-        run: |
-          publish_idempotent() {
-            local label="$1"; local attempt=0 out
-            while [ "$attempt" -lt 3 ]; do
-              attempt=$((attempt + 1))
-              # --provenance is optional under OIDC (provenance is generated
-              # implicitly), but the flag makes the intent explicit and fails
-              # loudly if OIDC is not wired. --access public is redundant for
-              # an existing public package, but harmless and self-documenting.
-              if out=$( (cd astro && npm publish --access public --provenance) 2>&1); then
-                echo "$out"; echo "[$label] published (attempt $attempt)"; return 0
-              fi
-              echo "$out"
-              if echo "$out" | grep -qiE "cannot publish over|previously published|EPUBLISHCONFLICT"; then
-                echo "[$label] already published at this version — idempotent skip."; return 0
-              fi
-              if echo "$out" | grep -qiE "TLOG_CREATE_ENTRY_ERROR|rekor\.sigstore\.dev|tlog entry|ETIMEDOUT|ECONNRESET|socket hang up|aborted"; then
-                echo "[$label] transient provenance/network error — retry $attempt/3"; sleep 10; continue
-              fi
-              echo "[$label] non-retryable publish error."; return 1
-            done
-            echo "[$label] exhausted retries."; return 1
-          }
-          publish_idempotent "@run402/astro"
+        run: ./scripts/publish-idempotent.sh "@run402/astro" astro
 
       - name: Commit version bump (rebase-safe — retries against a moving main)
         if: ${{ !inputs.dry_run }}
