@@ -69,7 +69,7 @@
     "node": ">=18"
   },
   "peerDependencies": {
-    "@run402/functions": "^3.0.0",
+    "@run402/functions": "^3.0.0 || ^4.0.0",
     "@run402/sdk": ">=2.18.0",
     "astro": ">=6 <8",
     "react": ">=18.0.0",
