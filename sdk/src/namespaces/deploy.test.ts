@@ -1199,6 +1199,96 @@ describe("Deploy.apply (happy path)", () => {
   });
 });
 
+describe("Deploy.apply (content commit transient failures)", () => {
+  const ALB_502_BODY = "<html>\r\n<head><title>502 Bad Gateway</title></head>\r\n</html>\r\n";
+
+  function wireUpload(w: FakeWiring, onContentCommit: (attempt: number) => unknown): () => number {
+    const html = "<html><body>retry</body></html>";
+    const sha = shaHex(html);
+    let commits = 0;
+    w.setHandler((req) => {
+      if (req.path === "/apply/v1/plans") {
+        return { ...noContentPlan("plan_r", "op_r"), missing_content: [{ sha256: sha, size: html.length, present: false }] };
+      }
+      if (req.path === "/content/v1/plans") {
+        return {
+          plan_id: "cplan_r",
+          expires_at: new Date(Date.now() + 3600_000).toISOString(),
+          missing: [{
+            sha256: sha,
+            mode: "single",
+            parts: [{ part_number: 1, url: "https://s3.example/r", byte_start: 0, byte_end: html.length - 1 }],
+            part_size_bytes: html.length,
+            part_count: 1,
+            upload_id: "u_r",
+            staging_key: "_staging/u_r/" + sha,
+            expires_at: new Date(Date.now() + 3600_000).toISOString(),
+          }],
+          entries: [{ sha256: sha, missing: true }],
+        };
+      }
+      if (req.path === "/content/v1/plans/cplan_r/commit") return onContentCommit(++commits);
+      if (req.path === "/apply/v1/plans/plan_r/commit") return readyCommit("op_r", "rel_r");
+      throw new Error(`unexpected path ${req.path}`);
+    });
+    return () => commits;
+  }
+
+  async function applyRetrySite(w: FakeWiring) {
+    return new Deploy(w.client).apply({
+      project_id: "prj_test",
+      site: { replace: { "index.html": "<html><body>retry</body></html>" } },
+    });
+  }
+
+  it("retries a content commit that the load balancer answered 502", async () => {
+    const w = makeWiring();
+    const commits = wireUpload(w, (attempt) => {
+      if (attempt === 1) throw new ApiError("API error", 502, ALB_502_BODY, "committing content upload");
+      return {};
+    });
+    const result = await applyRetrySite(w);
+    assert.equal(result.release_id, "rel_r");
+    assert.equal(commits(), 2);
+  });
+
+  it("treats PLAN_ALREADY_COMMITTED on the retry as success (the lost attempt had committed)", async () => {
+    const w = makeWiring();
+    const commits = wireUpload(w, (attempt) => {
+      if (attempt === 1) throw new NetworkError("socket hang up", null, "committing content upload");
+      throw new ApiError("plan already committed", 409, { code: "PLAN_ALREADY_COMMITTED" }, "committing content upload");
+    });
+    const result = await applyRetrySite(w);
+    assert.equal(result.release_id, "rel_r");
+    assert.equal(commits(), 2);
+  });
+
+  it("does not retry a refusal, and does not swallow PLAN_ALREADY_COMMITTED on the first attempt", async () => {
+    const refused = makeWiring();
+    const refusedCommits = wireUpload(refused, () => {
+      throw new ApiError("plan expired", 409, { code: "PLAN_EXPIRED" }, "committing content upload");
+    });
+    await assert.rejects(applyRetrySite(refused), (err: ApiError) => err.status === 409);
+    assert.equal(refusedCommits(), 1);
+
+    const first = makeWiring();
+    const firstCommits = wireUpload(first, () => {
+      throw new ApiError("plan already committed", 409, { code: "PLAN_ALREADY_COMMITTED" }, "committing content upload");
+    });
+    await assert.rejects(applyRetrySite(first), (err: ApiError) => err.status === 409);
+    assert.equal(firstCommits(), 1);
+  });
+
+  it("gives up after three 502s and surfaces the last one", async () => {
+    const w = makeWiring();
+    const commits = wireUpload(w, () => {
+      throw new ApiError("API error", 502, ALB_502_BODY, "committing content upload");
+    });
+    await assert.rejects(applyRetrySite(w), (err: ApiError) => err.status === 502);
+    assert.equal(commits(), 3);
+  });
+});
+
 describe("Deploy.apply (tier function preflight)", () => {
   it("rejects timeout caps before deploy planning with structured BAD_FIELD details", async () => {
     const w = makeWiring();
