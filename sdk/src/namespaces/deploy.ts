@@ -116,6 +116,8 @@ const APPLY_RETRY_BASE_DELAY_MS = 250;
 const APPLY_RETRY_MAX_DELAY_MS = 2_000;
 const APPLY_RETRY_JITTER_MS = 100;
 const CONTENT_COMMIT_MAX_ATTEMPTS = 3;
+const DEPLOY_COMMIT_MAX_ATTEMPTS = 3;
+const DEPLOY_COMMIT_RETRY_BASE_DELAY_MS = 1_000;
 const CONTENT_COMMIT_RETRY_BASE_DELAY_MS = 500;
 const URL_REFRESH_AT_MS = 50 * 60 * 1000;
 const SECRET_KEY_RE = /^[A-Z_][A-Z0-9_]{0,127}$/;
@@ -1012,7 +1014,7 @@ async function applyOnce(
       })
     : undefined;
   const commit = requireCloudCommitResponse(
-    await commitInternal(client, planId, opts.idempotencyKey, spec.project_id, requiredPlan, vaultCommit),
+    await commitInternal(client, planId, opts.idempotencyKey, spec.project_id, requiredPlan, vaultCommit, operationId),
     "applying deploy",
   );
   const result = await pollUntilReady(client, commit, plan.diff, plan.warnings, emit, spec.project_id, sliceKinds);
@@ -2076,13 +2078,14 @@ async function commitInternal(
   project?: string,
   requiredPlan?: { planId: string; planFingerprint?: string },
   vault?: VaultCommitDeclaration,
+  operationId?: string,
 ): Promise<CommitResponse | CoreCommitResponse> {
   try {
     const body: Record<string, unknown> = {};
     if (idempotencyKey) body.idempotency_key = idempotencyKey;
     if (requiredPlan) body.required_plan = requiredPlanToWire(requiredPlan);
     if (vault) body.vault = vault;
-    return await client.request<CommitResponse>(
+    const send = () => client.request<CommitResponse>(
       `/apply/v1/plans/${encodeURIComponent(planId)}/commit`,
       {
         method: "POST",
@@ -2100,8 +2103,46 @@ async function commitInternal(
         context: "committing deploy",
       },
     );
+    return await sendCommitRecoveringLostResponse(client, send, operationId, project);
   } catch (err) {
     throw translateDeployError(err, "commit", planId, null);
+  }
+}
+
+/**
+ * Send a deploy commit, recovering when a 502/503/504 or a dropped connection
+ * loses the response. The commit may still have reached the gateway (a long
+ * commit can outlive the connection that carried it), and a second commit
+ * while the first is running would drive the state machine twice. So read the
+ * operation first: once it has left `planning`/`uploading` the commit landed,
+ * and the caller follows the operation; otherwise the commit never arrived and
+ * is sent again. Without an operation id to read, the failure surfaces as is.
+ */
+async function sendCommitRecoveringLostResponse(
+  client: Client,
+  send: () => Promise<CommitResponse>,
+  operationId: string | undefined,
+  projectId: string | undefined,
+): Promise<CommitResponse> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await send();
+    } catch (err) {
+      if (!operationId || !projectId || !isTransientGatewayFailure(err) || attempt >= DEPLOY_COMMIT_MAX_ATTEMPTS) throw err;
+      await sleep(DEPLOY_COMMIT_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1));
+      let snapshot: OperationSnapshot;
+      try {
+        snapshot = await client.request<OperationSnapshot>(
+          `/apply/v1/operations/${encodeURIComponent(operationId)}`,
+          { headers: await apikeyHeaders(client, projectId), context: "fetching deploy operation" },
+        );
+      } catch {
+        throw err;
+      }
+      if (snapshot.status !== "planning" && snapshot.status !== "uploading") {
+        return { operation_id: operationId, status: "running" };
+      }
+    }
   }
 }
 
@@ -2788,9 +2829,9 @@ async function startInternal(
       status: "started",
       ...(sliceKinds.length > 0 ? { slice_kinds: sliceKinds } : {}),
     });
-    const { planId } = requirePersistedPlan(plan, "starting deploy");
+    const { planId, operationId } = requirePersistedPlan(plan, "starting deploy");
     const commit = requireCloudCommitResponse(
-      await commitInternal(client, planId, opts.idempotencyKey, spec.project_id, opts.requiredPlan),
+      await commitInternal(client, planId, opts.idempotencyKey, spec.project_id, opts.requiredPlan, undefined, operationId),
       "starting deploy",
     );
     return await pollUntilReady(client, commit, plan.diff, plan.warnings, emit, spec.project_id, sliceKinds);

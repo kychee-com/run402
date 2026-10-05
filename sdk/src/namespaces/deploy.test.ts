@@ -1289,6 +1289,73 @@ describe("Deploy.apply (content commit transient failures)", () => {
   });
 });
 
+describe("Deploy.apply (deploy commit lost to a transient failure)", () => {
+  function snapshot(status: OperationSnapshot["status"]): OperationSnapshot {
+    const ready = status === "ready";
+    return {
+      operation_id: "op_lost",
+      project_id: "prj_test",
+      plan_id: "plan_lost",
+      status,
+      base_release_id: null,
+      target_release_id: "rel_lost",
+      release_id: ready ? "rel_lost" : null,
+      urls: ready ? { site: "https://prj.run402.test" } : null,
+      payment_required: null,
+      error: null,
+      activate_attempts: 0,
+      last_activate_attempt_at: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+  }
+
+  function wire(w: FakeWiring, onCommit: (attempt: number) => unknown, statuses: OperationSnapshot["status"][]) {
+    let commits = 0;
+    let reads = 0;
+    w.setHandler((req) => {
+      if (req.path === "/apply/v1/plans") return noContentPlan("plan_lost", "op_lost");
+      if (req.path === "/apply/v1/plans/plan_lost/commit") return onCommit(++commits);
+      if (req.path === "/apply/v1/operations/op_lost") return snapshot(statuses[Math.min(reads++, statuses.length - 1)]);
+      if (req.path === "/apply/v1/operations/op_lost/events") return { events: [] };
+      throw new Error(`unexpected path ${req.path}`);
+    });
+    return { commits: () => commits };
+  }
+
+  const apply = (w: FakeWiring) =>
+    new Deploy(w.client).apply({ project_id: "prj_test", site: { replace: { "index.html": "<p>lost</p>" } } });
+  const alb502 = () => new ApiError("API error", 502, "<html>502 Bad Gateway</html>", "committing deploy");
+
+  it("follows the operation instead of committing twice when the lost commit had landed", async () => {
+    const w = makeWiring();
+    const calls = wire(w, () => { throw alb502(); }, ["committing", "ready"]);
+    const result = await apply(w);
+    assert.equal(result.release_id, "rel_lost");
+    assert.equal(calls.commits(), 1);
+  });
+
+  it("re-sends the commit when the operation shows it never arrived", async () => {
+    const w = makeWiring();
+    const calls = wire(w, (attempt) => {
+      if (attempt === 1) throw new NetworkError("socket hang up", null, "committing deploy");
+      return readyCommit("op_lost", "rel_lost");
+    }, ["uploading"]);
+    const result = await apply(w);
+    assert.equal(result.release_id, "rel_lost");
+    assert.equal(calls.commits(), 2);
+  });
+
+  it("does not retry a commit the gateway refused", async () => {
+    const w = makeWiring();
+    const calls = wire(w, () => {
+      throw new ApiError("bad", 400, { code: "INVALID_SPEC", message: "bad" }, "committing deploy");
+    }, ["uploading"]);
+    await assert.rejects(apply(w));
+    assert.equal(calls.commits(), 1);
+  });
+});
+
 describe("Deploy.apply (tier function preflight)", () => {
   it("rejects timeout caps before deploy planning with structured BAD_FIELD details", async () => {
     const w = makeWiring();
