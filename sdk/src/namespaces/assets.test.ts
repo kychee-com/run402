@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 import { Run402 } from "../index.js";
 import { ProjectCredentialNotFound, ApiError, LocalError } from "../errors.js";
 import type { CredentialsProvider } from "../credentials.js";
+import { guessContentType } from "./deploy.js";
 
 interface FetchCall {
   url: string;
@@ -324,6 +325,34 @@ describe("assets.put (v2.1.0 — routes through apply hero)", () => {
     const planBody = JSON.parse(planCall!.body as string);
     assert.equal(planBody.spec.assets.put[0].size_bytes, 5);
     assert.equal(result.key, "raw.bin");
+  });
+
+  it("infers image/heic, image/heif, and image/avif so the gateway encodes them", async () => {
+    for (const [key, contentType] of [
+      ["photo.heic", "image/heic"],
+      ["photo.HEIF", "image/heif"],
+      ["art.avif", "image/avif"],
+    ] as const) {
+      let outerCalls: FetchCall[] = [];
+      const shas = new Map<string, string>();
+      const entries: ApplyAssetEntry[] = [
+        { key, size_bytes: 5, content_type: contentType, visibility: "public", immutable: true, missing: true },
+      ];
+      const { fetch, calls } = mockFetch((call) => installApplyHandler({ calls: outerCalls }, entries, shas)(call));
+      outerCalls = calls;
+      const sdk = makeSdk(fetch);
+
+      await sdk.assets.put("prj_known", key, new Uint8Array([1, 2, 3, 4, 5]));
+      const planCall = calls.find((c) => c.url.endsWith("/apply/v1/plans"));
+      const planBody = JSON.parse(planCall!.body as string);
+      assert.equal(planBody.spec.assets.put[0].content_type, contentType, key);
+    }
+  });
+
+  it("deploy's content-type guess covers the same encodable image types", () => {
+    assert.equal(guessContentType("site/photo.heic"), "image/heic");
+    assert.equal(guessContentType("site/photo.heif"), "image/heif");
+    assert.equal(guessContentType("site/art.AVIF"), "image/avif");
   });
 
   it("rejects a string source for an inferred binary MIME before any HTTP call (GH-520)", async () => {

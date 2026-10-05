@@ -590,7 +590,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "a83a5c6c9d287e74d73e7fc2d5bff08555fe00f455367cb58969d149188c99c3",
+      "sha256": "3caab3e603ddc5a1187a30c364fef7d280fa6f0884e19a90cd46e94d37994155",
       "outputs": [],
       "url": null,
       "checks": [

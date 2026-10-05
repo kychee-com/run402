@@ -640,6 +640,7 @@ function guessContentType(key) {
   const map = {
     png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif",
     svg: "image/svg+xml", webp: "image/webp",
+    avif: "image/avif", heic: "image/heic", heif: "image/heif",
     html: "text/html", css: "text/css", js: "text/javascript", json: "application/json",
     txt: "text/plain", md: "text/markdown", pdf: "application/pdf",
     mp4: "video/mp4", webm: "video/webm", mov: "video/quicktime",
