@@ -36,7 +36,7 @@ Run `node scripts/documentation-inventory.mjs` to reject newly discovered unclas
 | public | [README.md](README.md) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [SECURITY.md](SECURITY.md) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [SKILL.md](SKILL.md) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
-| public | [astro/CHANGELOG.md](astro/CHANGELOG.md) | history / historical | excluded from rewrite: dated history; current release note/banner reviewed | source published: 23751749; no separate hosted acceptance required |
+| public | [astro/CHANGELOG.md](astro/CHANGELOG.md) | history / historical | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [astro/README.md](astro/README.md) | runtime / application | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [astro/test/fixtures/minimal-site/README.md](astro/test/fixtures/minimal-site/README.md) | runtime / application | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | source published: 23751749; no separate hosted acceptance required |
 | public | [buzz/README.md](buzz/README.md) | integration / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
