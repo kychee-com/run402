@@ -377,6 +377,18 @@ Owner: `public:cli/lib/deploy-v2.mjs`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
+<h2 id="HANDOFF_CHECKPOINT_FETCH_FAILED">HANDOFF_CHECKPOINT_FETCH_FAILED</h2>
+
+Owner: `public:sdk/src/node/vault-restore.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="HANDOFF_CHECKPOINT_MISSING">HANDOFF_CHECKPOINT_MISSING</h2>
+
+Owner: `public:sdk/src/node/vault-restore.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
 <h2 id="HANDOFF_CLONE_FAILED">HANDOFF_CLONE_FAILED</h2>
 
 Owner: `public:sdk/src/node/vault-restore.ts`.

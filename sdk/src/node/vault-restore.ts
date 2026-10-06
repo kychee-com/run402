@@ -49,7 +49,8 @@ function cloneHooksDir(): string {
  * Run one protocol-permitting git command (hooks and terminal prompts still
  * neutralized) and reject with `code` on failure.
  */
-function networkGit(argv: string[], cwd: string, context: string, code: string, details: Record<string, unknown>): Promise<void> {
+function networkGit(argv: string[], cwd: string, failure: { code: string; context: string; details: Record<string, unknown> }): Promise<void> {
+  const { code, context, details } = failure;
   return new Promise((resolvePromise, reject) => {
     execFile(
       "git",
@@ -80,7 +81,7 @@ function networkGit(argv: string[], cwd: string, context: string, code: string, 
  * already exist (git's own clone precondition).
  */
 export function cloneVaultRemote(remoteUrl: string, targetDir: string): Promise<void> {
-  return networkGit(["clone", "--no-checkout", "--", remoteUrl, targetDir], tmpdir(), "cloning the vault for resume", "HANDOFF_CLONE_FAILED", { remote_url: remoteUrl, target_dir: targetDir });
+  return networkGit(["clone", "--no-checkout", "--", remoteUrl, targetDir], tmpdir(), { code: "HANDOFF_CLONE_FAILED", context: "cloning the vault for resume", details: { remote_url: remoteUrl, target_dir: targetDir } });
 }
 
 /**
@@ -93,9 +94,9 @@ export function cloneVaultRemote(remoteUrl: string, targetDir: string): Promise<
 export async function ensureCheckpointObjects(dir: string, oid: string): Promise<void> {
   const present = async () => (await hardenedGit(dir, ["cat-file", "-e", `${oid}^{commit}`], { okStatuses: [1, 128] })).status === 0;
   if (await present()) return;
-  await networkGit(["fetch", "--no-tags", "origin", "+refs/run402/*:refs/run402/*"], dir, "fetching the handoff checkpoint", "HANDOFF_CHECKPOINT_FETCH_FAILED", { dir, stash_oid: oid });
+  await networkGit(["fetch", "--no-tags", "origin", "+refs/run402/*:refs/run402/*"], dir, { code: "HANDOFF_CHECKPOINT_FETCH_FAILED", context: "fetching the handoff checkpoint", details: { dir, stash_oid: oid } });
   if (!(await present())) {
-    fail("HANDOFF_CHECKPOINT_MISSING", `the checkpoint commit ${oid} is not in the vault's retained objects`, "fetching the handoff checkpoint", { stash_oid: oid });
+    throw new LocalError(`the checkpoint commit ${oid} is not in the vault's retained objects`, "fetching the handoff checkpoint", { code: "HANDOFF_CHECKPOINT_MISSING", details: { stash_oid: oid } });
   }
 }
 

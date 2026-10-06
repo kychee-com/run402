@@ -2169,6 +2169,26 @@
       "topic": "/errors/gateway/#GRANT_NOT_FOUND"
     },
     {
+      "code": "HANDOFF_CHECKPOINT_FETCH_FAILED",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/node/vault-restore.ts"
+        }
+      ],
+      "topic": "/errors/client/#HANDOFF_CHECKPOINT_FETCH_FAILED"
+    },
+    {
+      "code": "HANDOFF_CHECKPOINT_MISSING",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/node/vault-restore.ts"
+        }
+      ],
+      "topic": "/errors/client/#HANDOFF_CHECKPOINT_MISSING"
+    },
+    {
       "code": "HANDOFF_CLONE_FAILED",
       "owners": [
         {

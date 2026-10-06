@@ -691,6 +691,14 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="GRANT_NOT_FOUND"></a>
 [`GRANT_NOT_FOUND`](/errors/gateway/#GRANT_NOT_FOUND)
 
+<a id="handoff_checkpoint_fetch_failed"></a>
+<a id="HANDOFF_CHECKPOINT_FETCH_FAILED"></a>
+[`HANDOFF_CHECKPOINT_FETCH_FAILED`](/errors/client/#HANDOFF_CHECKPOINT_FETCH_FAILED)
+
+<a id="handoff_checkpoint_missing"></a>
+<a id="HANDOFF_CHECKPOINT_MISSING"></a>
+[`HANDOFF_CHECKPOINT_MISSING`](/errors/client/#HANDOFF_CHECKPOINT_MISSING)
+
 <a id="handoff_clone_failed"></a>
 <a id="HANDOFF_CLONE_FAILED"></a>
 [`HANDOFF_CLONE_FAILED`](/errors/client/#HANDOFF_CLONE_FAILED)
