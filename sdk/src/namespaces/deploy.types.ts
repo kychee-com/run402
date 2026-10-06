@@ -491,12 +491,18 @@ export interface SiteEmbeddingSpec {
  * back to the hosted page. The gateway validates it (single leading "/", at
  * most 512 chars, no query/fragment, not under `/_run402/` or `/auth/`). */
 
+/* site.noindex: `true` makes every response of the host carry
+ * `X-Robots-Tag: noindex, nofollow, nosnippet`. Omitted on a later apply
+ * carries the base release's value forward; `false` or `null` clears it back
+ * to indexable (the default). Anything else is gateway `INVALID_SPEC`. */
+
 export type SiteSpec =
-  | { replace: FileSet | LocalDirRef; patch?: never; public_paths?: SitePublicPathsSpec; embedding?: SiteEmbeddingSpec | null; sign_in_path?: string | null }
-  | { patch: { put?: FileSet | LocalDirRef; delete?: string[] }; replace?: never; public_paths?: SitePublicPathsSpec; embedding?: SiteEmbeddingSpec | null; sign_in_path?: string | null }
-  | { public_paths: SitePublicPathsSpec; replace?: never; patch?: never; embedding?: SiteEmbeddingSpec | null; sign_in_path?: string | null }
-  | { embedding: SiteEmbeddingSpec | null; replace?: never; patch?: never; public_paths?: never; sign_in_path?: string | null }
-  | { sign_in_path: string | null; replace?: never; patch?: never; public_paths?: never; embedding?: never };
+  | { replace: FileSet | LocalDirRef; patch?: never; public_paths?: SitePublicPathsSpec; embedding?: SiteEmbeddingSpec | null; sign_in_path?: string | null; noindex?: boolean | null }
+  | { patch: { put?: FileSet | LocalDirRef; delete?: string[] }; replace?: never; public_paths?: SitePublicPathsSpec; embedding?: SiteEmbeddingSpec | null; sign_in_path?: string | null; noindex?: boolean | null }
+  | { public_paths: SitePublicPathsSpec; replace?: never; patch?: never; embedding?: SiteEmbeddingSpec | null; sign_in_path?: string | null; noindex?: boolean | null }
+  | { embedding: SiteEmbeddingSpec | null; replace?: never; patch?: never; public_paths?: never; sign_in_path?: string | null; noindex?: boolean | null }
+  | { sign_in_path: string | null; replace?: never; patch?: never; public_paths?: never; embedding?: never; noindex?: boolean | null }
+  | { noindex: boolean | null; replace?: never; patch?: never; public_paths?: never; embedding?: never; sign_in_path?: never };
 
 export interface SubdomainsSpec {
   /** The exact desired set. Currently limited to one element per project —
@@ -827,6 +833,8 @@ export interface DeployResolveResponse {
   /** tenant-site-embedding: the framing opt-in of the release this host serves
    *  (catalog keys) or `null`; absent on an older gateway. */
   embedding?: SiteEmbeddingSpec | null;
+  /** site.noindex of the release this host serves; absent on an older gateway. */
+  noindex?: boolean;
   normalized_path?: string | null;
   match: DeployResolveMatch;
   route?: DeployResolveRouteMatch | null;
@@ -2030,6 +2038,10 @@ export interface ReleaseInventoryBase<
   /** site.sign_in_path: the app's own sign-in page for MCP authorization, or
    *  `null` (the hosted `/auth/sign-in`). Absent on an older gateway = unknown. */
   sign_in_path?: string | null;
+  /** site.noindex: `true` when every response of the host carries
+   *  `X-Robots-Tag: noindex, nofollow, nosnippet`. Absent on an older gateway
+   *  = unknown. */
+  noindex?: boolean;
   functions: ReleaseFunctionEntry[];
   secrets: { keys: string[] };
   subdomains: { names: string[] };
@@ -2670,11 +2682,12 @@ export interface NormalizedFunctionSpec {
 }
 
 export type NormalizedSiteSpec =
-  | { replace: Record<string, ContentRef>; patch?: never; public_paths?: SitePublicPathsSpec; embedding?: SiteEmbeddingSpec | null; sign_in_path?: string | null }
-  | { patch: { put?: Record<string, ContentRef>; delete?: string[] }; replace?: never; public_paths?: SitePublicPathsSpec; embedding?: SiteEmbeddingSpec | null; sign_in_path?: string | null }
-  | { public_paths: SitePublicPathsSpec; replace?: never; patch?: never; embedding?: SiteEmbeddingSpec | null; sign_in_path?: string | null }
-  | { embedding: SiteEmbeddingSpec | null; replace?: never; patch?: never; public_paths?: never; sign_in_path?: string | null }
-  | { sign_in_path: string | null; replace?: never; patch?: never; public_paths?: never; embedding?: never };
+  | { replace: Record<string, ContentRef>; patch?: never; public_paths?: SitePublicPathsSpec; embedding?: SiteEmbeddingSpec | null; sign_in_path?: string | null; noindex?: boolean | null }
+  | { patch: { put?: Record<string, ContentRef>; delete?: string[] }; replace?: never; public_paths?: SitePublicPathsSpec; embedding?: SiteEmbeddingSpec | null; sign_in_path?: string | null; noindex?: boolean | null }
+  | { public_paths: SitePublicPathsSpec; replace?: never; patch?: never; embedding?: SiteEmbeddingSpec | null; sign_in_path?: string | null; noindex?: boolean | null }
+  | { embedding: SiteEmbeddingSpec | null; replace?: never; patch?: never; public_paths?: never; sign_in_path?: string | null; noindex?: boolean | null }
+  | { sign_in_path: string | null; replace?: never; patch?: never; public_paths?: never; embedding?: never; noindex?: boolean | null }
+  | { noindex: boolean | null; replace?: never; patch?: never; public_paths?: never; embedding?: never; sign_in_path?: never };
 
 // ─── Events + result ─────────────────────────────────────────────────────────
 

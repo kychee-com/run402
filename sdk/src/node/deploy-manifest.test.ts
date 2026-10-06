@@ -594,6 +594,36 @@ describe("Node deploy manifest helpers", () => {
     );
   });
 
+  it("accepts site.noindex alone as true, false, or null, and beside other site keys", async () => {
+    for (const value of [true, false, null]) {
+      const only = await normalizeDeployManifest({
+        project_id: "prj_manifest",
+        site: { noindex: value },
+      });
+      assert.deepEqual(only.spec.site, { noindex: value });
+    }
+
+    const both = await normalizeDeployManifest({
+      project_id: "prj_manifest",
+      site: { public_paths: { mode: "implicit" }, sign_in_path: "/join", noindex: true },
+    });
+    assert.deepEqual(both.spec.site, {
+      public_paths: { mode: "implicit" },
+      sign_in_path: "/join",
+      noindex: true,
+    });
+
+    for (const bad of ["true", 1]) {
+      await assert.rejects(
+        () => normalizeDeployManifest({
+          project_id: "prj_manifest",
+          site: { noindex: bad },
+        } as unknown as Parameters<typeof normalizeDeployManifest>[0]),
+        /site\.noindex/,
+      );
+    }
+  });
+
   it("loads manifest files relative to their directory", async () => {
     const root = mkdtempSync(join(tmpdir(), "run402-deploy-manifest-test-"));
     try {

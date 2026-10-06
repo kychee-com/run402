@@ -131,6 +131,15 @@ void _SiteSignInPathOnlySpec;
 void _SiteSignInPathCleared;
 void _SiteSignInPathWithEmbedding;
 void (null as unknown as _InventorySignInPath);
+type _InventoryNoindex = Assert<Equal<ActiveReleaseInventory["noindex"], boolean | undefined>>;
+type _SiteNoindexOnly = Extract<NonNullable<ReleaseSpec["site"]>, { noindex: boolean | null }>;
+const _SiteNoindexOnlySpec: _SiteNoindexOnly = { noindex: true };
+const _SiteNoindexCleared: _SiteNoindexOnly = { noindex: null };
+const _SiteNoindexWithSignInPath: NonNullable<ReleaseSpec["site"]> = { sign_in_path: "/join", noindex: false };
+void _SiteNoindexOnlySpec;
+void _SiteNoindexCleared;
+void _SiteNoindexWithSignInPath;
+void (null as unknown as _InventoryNoindex);
 type _StaticReachabilityAuthority = StaticPublicPathInventoryEntry["reachability_authority"] & StaticReachabilityAuthority;
 
 const _ExplicitPublicPathTable: _ExplicitPublicPaths = {

@@ -169,6 +169,9 @@ Use `run402 up --check` for local validation and `run402 up --plan` for gateway 
         },
         "sign_in_path": {
           "$ref": "#/$defs/siteSignInPath"
+        },
+        "noindex": {
+          "$ref": "#/$defs/siteNoindex"
         }
       }
     },
@@ -209,6 +212,9 @@ Use `run402 up --check` for local validation and `run402 up --plan` for gateway 
         },
         "sign_in_path": {
           "$ref": "#/$defs/siteSignInPath"
+        },
+        "noindex": {
+          "$ref": "#/$defs/siteNoindex"
         }
       }
     },
@@ -224,6 +230,9 @@ Use `run402 up --check` for local validation and `run402 up --plan` for gateway 
         },
         "sign_in_path": {
           "$ref": "#/$defs/siteSignInPath"
+        },
+        "noindex": {
+          "$ref": "#/$defs/siteNoindex"
         }
       },
       "anyOf": [
@@ -240,6 +249,11 @@ Use `run402 up --check` for local validation and `run402 up --plan` for gateway 
         {
           "required": [
             "sign_in_path"
+          ]
+        },
+        {
+          "required": [
+            "noindex"
           ]
         }
       ]
@@ -513,6 +527,18 @@ Use `run402 up --check` for local validation and `run402 up --plan` for gateway 
       "maxLength": 512,
       "pattern": "^/(?!/)(?!_run402(?:/|$))(?!auth/)(?!.*://)[^?#\\\\\\s\\u0000-\\u001f\\u007f]*$"
     }
+  ]
+}
+```
+
+<h3 id="release-siteNoindex">siteNoindex</h3>
+
+```json
+{
+  "description": "true adds X-Robots-Tag: noindex, nofollow, nosnippet to every response of the host. false or null resets to indexable (the default); omission carries prior state.",
+  "type": [
+    "boolean",
+    "null"
   ]
 }
 ```

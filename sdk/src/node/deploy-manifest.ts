@@ -349,7 +349,7 @@ const MANIFEST_REQUIRE_ROLE_FIELDS = new Set([
   "signInPath",
   "sign_in_path",
 ]);
-const MANIFEST_SITE_FIELDS = new Set(["replace", "patch", "public_paths", "embedding", "sign_in_path"]);
+const MANIFEST_SITE_FIELDS = new Set(["replace", "patch", "public_paths", "embedding", "sign_in_path", "noindex"]);
 const MANIFEST_SITE_PATCH_FIELDS = new Set(["put", "delete"]);
 const MANIFEST_SITE_PUBLIC_PATHS_FIELDS = new Set(["mode", "replace"]);
 const MANIFEST_PUBLIC_STATIC_PATH_FIELDS = new Set(["asset", "cache_class"]);
@@ -457,11 +457,12 @@ export interface DeployManifestFunctionsSpec {
 }
 
 export type DeployManifestSiteSpec =
-  | { replace: DeployManifestFileSet | LocalDirRef; patch?: never; public_paths?: SitePublicPathsSpec; embedding?: SiteEmbeddingSpec | null; sign_in_path?: string | null }
-  | { patch: { put?: DeployManifestFileSet | LocalDirRef; delete?: string[] }; replace?: never; public_paths?: SitePublicPathsSpec; embedding?: SiteEmbeddingSpec | null; sign_in_path?: string | null }
-  | { public_paths: SitePublicPathsSpec; replace?: never; patch?: never; embedding?: SiteEmbeddingSpec | null; sign_in_path?: string | null }
-  | { embedding: SiteEmbeddingSpec | null; replace?: never; patch?: never; public_paths?: never; sign_in_path?: string | null }
-  | { sign_in_path: string | null; replace?: never; patch?: never; public_paths?: never; embedding?: never };
+  | { replace: DeployManifestFileSet | LocalDirRef; patch?: never; public_paths?: SitePublicPathsSpec; embedding?: SiteEmbeddingSpec | null; sign_in_path?: string | null; noindex?: boolean | null }
+  | { patch: { put?: DeployManifestFileSet | LocalDirRef; delete?: string[] }; replace?: never; public_paths?: SitePublicPathsSpec; embedding?: SiteEmbeddingSpec | null; sign_in_path?: string | null; noindex?: boolean | null }
+  | { public_paths: SitePublicPathsSpec; replace?: never; patch?: never; embedding?: SiteEmbeddingSpec | null; sign_in_path?: string | null; noindex?: boolean | null }
+  | { embedding: SiteEmbeddingSpec | null; replace?: never; patch?: never; public_paths?: never; sign_in_path?: string | null; noindex?: boolean | null }
+  | { sign_in_path: string | null; replace?: never; patch?: never; public_paths?: never; embedding?: never; noindex?: boolean | null }
+  | { noindex: boolean | null; replace?: never; patch?: never; public_paths?: never; embedding?: never; sign_in_path?: never };
 
 export interface DeployManifestAssetPutEntry {
   key: string;
@@ -1421,6 +1422,10 @@ function mapSite(
   const signInPath = Object.prototype.hasOwnProperty.call(raw, "sign_in_path")
     ? { sign_in_path: mapSiteSignInPath(raw.sign_in_path) }
     : {};
+  // site.noindex: same presence rule (`false` or `null` clears to indexable).
+  const noindex = Object.prototype.hasOwnProperty.call(raw, "noindex")
+    ? { noindex: mapSiteNoindex(raw.noindex) }
+    : {};
   if (Object.prototype.hasOwnProperty.call(raw, "replace")) {
     if (raw.replace === undefined) {
       throw new LocalError("Deploy manifest site.replace is undefined", CONTEXT);
@@ -1432,6 +1437,7 @@ function mapSite(
       ...(publicPaths ? { public_paths: publicPaths } : {}),
       ...embedding,
       ...signInPath,
+      ...noindex,
     };
   }
   if (Object.prototype.hasOwnProperty.call(raw, "patch")) {
@@ -1458,17 +1464,19 @@ function mapSite(
       ...(publicPaths ? { public_paths: publicPaths } : {}),
       ...embedding,
       ...signInPath,
+      ...noindex,
     };
   }
-  if (publicPaths || "embedding" in embedding || "sign_in_path" in signInPath) {
+  if (publicPaths || "embedding" in embedding || "sign_in_path" in signInPath || "noindex" in noindex) {
     return {
       ...(publicPaths ? { public_paths: publicPaths } : {}),
       ...embedding,
       ...signInPath,
+      ...noindex,
     } as NonNullable<ReleaseSpec["site"]>;
   }
   throw new LocalError(
-    "Deploy manifest site must include replace, patch, public_paths, embedding, or sign_in_path",
+    "Deploy manifest site must include replace, patch, public_paths, embedding, sign_in_path, or noindex",
     CONTEXT,
   );
 }
@@ -2072,4 +2080,13 @@ function mapSiteSignInPath(value: unknown): string | null {
     );
   }
   return value;
+}
+
+/** site.noindex. true, false, or null; anything else is refused here. */
+function mapSiteNoindex(value: unknown): boolean | null {
+  if (value === null || typeof value === "boolean") return value;
+  throw new LocalError(
+    "Deploy manifest site.noindex must be true, false, or null; set true to add X-Robots-Tag: noindex, nofollow, nosnippet to every response of the host, false or null to make it indexable again, or omit it to carry the previous value forward",
+    CONTEXT,
+  );
 }

@@ -336,6 +336,7 @@ describe("Deploy.apply (happy path)", () => {
           const site = body.spec.site as { replace: Record<string, Record<string, unknown>> };
           assert.equal(site.replace["index.html"].contentType, "text/html");
           assert.equal("content_type" in site.replace["index.html"], false, "Core content refs use contentType");
+          assert.equal("noindex" in site, false, "site.noindex is gateway-only and never reaches core");
           return {
             plan_id: "plan_core",
             operation_id: null,
@@ -384,7 +385,7 @@ describe("Deploy.apply (happy path)", () => {
             },
           },
         },
-        site: { replace: { "index.html": { data: html, contentType: "text/html" } } },
+        site: { replace: { "index.html": { data: html, contentType: "text/html" } }, noindex: true },
       }, {
         target: "core",
         onEvent: (event) => events.push(event),
@@ -6710,6 +6711,50 @@ describe("deploy.apply — site.embedding wire carry", () => {
           site: { sign_in_path: bad as unknown as string },
         }),
         /site\.sign_in_path/,
+      );
+      assert.equal(w.requests.length, 0);
+    });
+  }
+
+  // site.noindex: the same presence rule (false or null clears back to
+  // indexable; omitted carries forward and is never sent).
+  it("site.noindex: a noindex-only site is content and carries true", async () => {
+    const w = wiring();
+    await new Deploy(w.client).apply({ project_id: "prj_test", site: { noindex: true } });
+    assert.deepEqual(planSite(w), { noindex: true });
+  });
+
+  for (const cleared of [false, null]) {
+    it(`site.noindex: ${String(cleared)} is carried as-is, alone and beside other site keys`, async () => {
+      const w = wiring();
+      await new Deploy(w.client).apply({ project_id: "prj_test", site: { noindex: cleared } });
+      assert.deepEqual(planSite(w), { noindex: cleared });
+
+      const w2 = wiring();
+      await new Deploy(w2.client).apply({
+        project_id: "prj_test",
+        site: { patch: { delete: ["old.html"] }, sign_in_path: "/join", noindex: cleared },
+      });
+      assert.deepEqual(planSite(w2), { patch: { delete: ["old.html"] }, sign_in_path: "/join", noindex: cleared });
+    });
+  }
+
+  it("site.noindex: omitted is not sent", async () => {
+    const w = wiring();
+    await new Deploy(w.client).apply({ project_id: "prj_test", site: { public_paths: { mode: "implicit" } } });
+    const site = planSite(w) as Record<string, unknown>;
+    assert.equal("noindex" in site, false);
+  });
+
+  for (const bad of ["true", 1, 0, {}]) {
+    it(`site.noindex: refuses ${JSON.stringify(bad)} before any request`, async () => {
+      const w = wiring();
+      await assert.rejects(
+        () => new Deploy(w.client).apply({
+          project_id: "prj_test",
+          site: { noindex: bad as unknown as boolean },
+        }),
+        /site\.noindex/,
       );
       assert.equal(w.requests.length, 0);
     });

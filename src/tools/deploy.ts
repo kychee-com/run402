@@ -75,6 +75,10 @@ const siteSignInPath = z
   .string()
   .nullable()
   .describe("The app's own same-origin sign-in page (e.g. \"/join\") that MCP authorization (/_run402/oauth/authorize) sends a signed-out user to, with returnTo appended, instead of the hosted /auth/sign-in. Single leading /, at most 512 chars, no query/fragment, not under /_run402/ or /auth/ (the gateway refuses with INVALID_SPEC on site.sign_in_path). Omit to carry the previous release's value forward; null returns to the hosted page.");
+const siteNoindex = z
+  .boolean()
+  .nullable()
+  .describe("true adds `X-Robots-Tag: noindex, nofollow, nosnippet` to every response of the host (gateway INVALID_SPEC on site.noindex for anything but a boolean or null). Omit to carry the previous release's value forward; false or null makes the host indexable again (the default).");
 const sitePublicPaths = z.union([
   z
     .object({
@@ -262,6 +266,7 @@ export const deploySchema = {
           public_paths: sitePublicPaths.optional(),
           embedding: siteEmbedding.optional(),
           sign_in_path: siteSignInPath.optional(),
+          noindex: siteNoindex.optional(),
         })
         .strict(),
       z
@@ -275,11 +280,13 @@ export const deploySchema = {
           public_paths: sitePublicPaths.optional(),
           embedding: siteEmbedding.optional(),
           sign_in_path: siteSignInPath.optional(),
+          noindex: siteNoindex.optional(),
         })
         .strict(),
-      z.object({ public_paths: sitePublicPaths, embedding: siteEmbedding.optional(), sign_in_path: siteSignInPath.optional() }).strict(),
-      z.object({ embedding: siteEmbedding, sign_in_path: siteSignInPath.optional() }).strict(),
-      z.object({ sign_in_path: siteSignInPath }).strict(),
+      z.object({ public_paths: sitePublicPaths, embedding: siteEmbedding.optional(), sign_in_path: siteSignInPath.optional(), noindex: siteNoindex.optional() }).strict(),
+      z.object({ embedding: siteEmbedding, sign_in_path: siteSignInPath.optional(), noindex: siteNoindex.optional() }).strict(),
+      z.object({ sign_in_path: siteSignInPath, noindex: siteNoindex.optional() }).strict(),
+      z.object({ noindex: siteNoindex }).strict(),
     ])
     .optional(),
   assets: z
@@ -422,11 +429,12 @@ type DeployArgs = {
     };
   };
   site?:
-    | { replace: FileMapInput; public_paths?: SitePublicPathsSpec; embedding?: SiteEmbeddingSpec | null; sign_in_path?: string | null }
-    | { patch: { put?: FileMapInput; delete?: string[] }; public_paths?: SitePublicPathsSpec; embedding?: SiteEmbeddingSpec | null; sign_in_path?: string | null }
-    | { public_paths: SitePublicPathsSpec; embedding?: SiteEmbeddingSpec | null; sign_in_path?: string | null }
-    | { embedding: SiteEmbeddingSpec | null; sign_in_path?: string | null }
-    | { sign_in_path: string | null };
+    | { replace: FileMapInput; public_paths?: SitePublicPathsSpec; embedding?: SiteEmbeddingSpec | null; sign_in_path?: string | null; noindex?: boolean | null }
+    | { patch: { put?: FileMapInput; delete?: string[] }; public_paths?: SitePublicPathsSpec; embedding?: SiteEmbeddingSpec | null; sign_in_path?: string | null; noindex?: boolean | null }
+    | { public_paths: SitePublicPathsSpec; embedding?: SiteEmbeddingSpec | null; sign_in_path?: string | null; noindex?: boolean | null }
+    | { embedding: SiteEmbeddingSpec | null; sign_in_path?: string | null; noindex?: boolean | null }
+    | { sign_in_path: string | null; noindex?: boolean | null }
+    | { noindex: boolean | null };
   assets?: {
     put?: Array<{
       key: string;

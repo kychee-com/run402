@@ -510,6 +510,24 @@ describe("handleDeploy deploy error formatting", () => {
     assert.equal(notAString.isError, true, "a non-string value is refused client-side");
   });
 
+  it("passes site.noindex through the SDK manifest adapter, including false and null", async () => {
+    const declared = await handleDeploy({
+      project_id: "prj_xxx",
+      site: { replace: { "index.html": "<h1>app</h1>" }, noindex: true },
+    });
+    assert.equal(declared.isError, undefined, JSON.stringify(declared));
+    assert.equal((lastApplySpec as { site?: { noindex?: unknown } }).site?.noindex, true);
+
+    for (const cleared of [false, null]) {
+      const result = await handleDeploy({ project_id: "prj_xxx", site: { noindex: cleared } });
+      assert.equal(result.isError, undefined, JSON.stringify(result));
+      assert.deepEqual((lastApplySpec as { site?: unknown }).site, { noindex: cleared });
+    }
+
+    const notABoolean = await handleDeploy({ project_id: "prj_xxx", site: { noindex: "true" as unknown as boolean } });
+    assert.equal(notABoolean.isError, true, "a non-boolean value is refused client-side");
+  });
+
   it("passes site.public_paths through the SDK manifest adapter", async () => {
     const result = await handleDeploy({
       project_id: "prj_xxx",

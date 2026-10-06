@@ -1402,23 +1402,27 @@ function siteToCoreSpec(site: NormalizedSiteSpec): Record<string, unknown> {
       ...(site.public_paths ? { public_paths: site.public_paths } : {}),
     };
   }
-  // tenant-site-embedding and site.sign_in_path never reach core: both are
-  // gateway-owned and core validates site keys against its own list.
+  // tenant-site-embedding, site.sign_in_path, and site.noindex never reach
+  // core: all three are gateway-owned and core validates site keys against
+  // its own list.
   return site.public_paths ? { public_paths: site.public_paths } : {};
 }
 
 function siteToWire(site: NormalizedSiteSpec): Record<string, unknown> {
   // tenant-site-embedding: `null` is a meaningful value on the wire (clear), so
   // it is carried whenever the key is present, unlike public_paths.
-  // site.sign_in_path follows the same rule (`null` clears back to the hosted page).
+  // site.sign_in_path follows the same rule (`null` clears back to the hosted page),
+  // and so does site.noindex (`false` or `null` clears back to indexable).
   const embedding = "embedding" in site && site.embedding !== undefined ? { embedding: site.embedding } : {};
   const signInPath = "sign_in_path" in site && site.sign_in_path !== undefined ? { sign_in_path: site.sign_in_path } : {};
+  const noindex = "noindex" in site && site.noindex !== undefined ? { noindex: site.noindex } : {};
   if ("replace" in site && site.replace) {
     return {
       replace: fileSetToWire(site.replace),
       ...(site.public_paths ? { public_paths: site.public_paths } : {}),
       ...embedding,
       ...signInPath,
+      ...noindex,
     };
   }
   if ("patch" in site && site.patch) {
@@ -1430,12 +1434,14 @@ function siteToWire(site: NormalizedSiteSpec): Record<string, unknown> {
       ...(site.public_paths ? { public_paths: site.public_paths } : {}),
       ...embedding,
       ...signInPath,
+      ...noindex,
     };
   }
   return {
     ...(site.public_paths ? { public_paths: site.public_paths } : {}),
     ...embedding,
     ...signInPath,
+    ...noindex,
   };
 }
 
@@ -3069,7 +3075,7 @@ const FUNCTION_SPEC_FIELDS = new Set([
 const FUNCTION_CONFIG_FIELDS = new Set(["timeoutSeconds", "memoryMb"]);
 const FUNCTION_TRIGGER_FIELDS = new Set(["id", "type", "cron", "timezone", "misfire_policy", "overlap_policy", "mailbox", "events", "run"]);
 const FUNCTION_TRIGGER_RUN_FIELDS = new Set(["event_type", "payload", "retry", "expires_after_seconds"]);
-const SITE_SPEC_FIELDS = new Set(["replace", "patch", "public_paths", "embedding", "sign_in_path"]);
+const SITE_SPEC_FIELDS = new Set(["replace", "patch", "public_paths", "embedding", "sign_in_path", "noindex"]);
 const SITE_PATCH_FIELDS = new Set(["put", "delete"]);
 const SITE_PUBLIC_PATHS_FIELDS = new Set(["mode", "replace"]);
 const PUBLIC_STATIC_PATH_FIELDS = new Set(["asset", "cache_class"]);
@@ -3450,6 +3456,20 @@ function validateSiteSpec(site: unknown): void {
   if (obj.sign_in_path !== undefined) {
     validateSiteSignInPath(obj.sign_in_path, "site.sign_in_path");
   }
+  if (obj.noindex !== undefined) {
+    validateSiteNoindex(obj.noindex, "site.noindex");
+  }
+}
+
+/** site.noindex. `true` = every response of the host carries
+ *  `X-Robots-Tag: noindex, nofollow, nosnippet`; `false` or `null` clears back
+ *  to indexable; omitted carries forward. */
+function validateSiteNoindex(value: unknown, resource: string): void {
+  if (value === null || typeof value === "boolean") return;
+  throw invalidSpec(
+    `ReleaseSpec.${resource} must be true, false, or null; send true to add X-Robots-Tag: noindex, nofollow, nosnippet to every response of the host, false or null to make it indexable again, or omit ${resource} to carry the previous value forward`,
+    resource,
+  );
 }
 
 /** site.sign_in_path. Structural check only (the gateway is authoritative on
@@ -3969,6 +3989,10 @@ function hasSiteContent(site: unknown): boolean {
   }
   // site.sign_in_path: same rule, a value or an explicit null is content.
   if (site && typeof site === "object" && "sign_in_path" in site && (site as { sign_in_path?: unknown }).sign_in_path !== undefined) {
+    return true;
+  }
+  // site.noindex: same rule, true/false/null is content.
+  if (site && typeof site === "object" && "noindex" in site && (site as { noindex?: unknown }).noindex !== undefined) {
     return true;
   }
   if (!isRecord(site)) return false;
@@ -4508,6 +4532,10 @@ async function normalizeReleaseSpec(
     const signInPath = "sign_in_path" in spec.site && spec.site.sign_in_path !== undefined
       ? { sign_in_path: spec.site.sign_in_path }
       : {};
+    // site.noindex: present (boolean or null) travels as-is.
+    const noindex = "noindex" in spec.site && spec.site.noindex !== undefined
+      ? { noindex: spec.site.noindex }
+      : {};
     if ("replace" in spec.site && spec.site.replace) {
       const map = await normalizeFileSet(spec.site.replace, rememberRelease);
       // Re-check post-expansion so `dir("dist")` (a LocalDirRef whose keys are
@@ -4518,6 +4546,7 @@ async function normalizeReleaseSpec(
         ...(publicPaths ? { public_paths: publicPaths } : {}),
         ...embedding,
         ...signInPath,
+        ...noindex,
       } as NormalizedSiteSpec;
     } else if ("patch" in spec.site && spec.site.patch) {
       const patch: { put?: Record<string, ContentRef>; delete?: string[] } = {};
@@ -4531,12 +4560,14 @@ async function normalizeReleaseSpec(
         ...(publicPaths ? { public_paths: publicPaths } : {}),
         ...embedding,
         ...signInPath,
+        ...noindex,
       } as NormalizedSiteSpec;
-    } else if (publicPaths || "embedding" in embedding || "sign_in_path" in signInPath) {
+    } else if (publicPaths || "embedding" in embedding || "sign_in_path" in signInPath || "noindex" in noindex) {
       normalized.site = {
         ...(publicPaths ? { public_paths: publicPaths } : {}),
         ...embedding,
         ...signInPath,
+        ...noindex,
       } as NormalizedSiteSpec;
     }
   }
