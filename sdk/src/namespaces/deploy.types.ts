@@ -484,11 +484,19 @@ export interface SiteEmbeddingSpec {
   frame_ancestors: EmbeddingKey[];
 }
 
+/* site.sign_in_path: the app's own same-origin sign-in page (e.g. "/join")
+ * that MCP authorization (`/_run402/oauth/authorize`) sends a signed-out user
+ * to, with `returnTo` appended, instead of the hosted `/auth/sign-in`. Omitted
+ * on a later apply carries the base release's value forward; `null` clears it
+ * back to the hosted page. The gateway validates it (single leading "/", at
+ * most 512 chars, no query/fragment, not under `/_run402/` or `/auth/`). */
+
 export type SiteSpec =
-  | { replace: FileSet | LocalDirRef; patch?: never; public_paths?: SitePublicPathsSpec; embedding?: SiteEmbeddingSpec | null }
-  | { patch: { put?: FileSet | LocalDirRef; delete?: string[] }; replace?: never; public_paths?: SitePublicPathsSpec; embedding?: SiteEmbeddingSpec | null }
-  | { public_paths: SitePublicPathsSpec; replace?: never; patch?: never; embedding?: SiteEmbeddingSpec | null }
-  | { embedding: SiteEmbeddingSpec | null; replace?: never; patch?: never; public_paths?: never };
+  | { replace: FileSet | LocalDirRef; patch?: never; public_paths?: SitePublicPathsSpec; embedding?: SiteEmbeddingSpec | null; sign_in_path?: string | null }
+  | { patch: { put?: FileSet | LocalDirRef; delete?: string[] }; replace?: never; public_paths?: SitePublicPathsSpec; embedding?: SiteEmbeddingSpec | null; sign_in_path?: string | null }
+  | { public_paths: SitePublicPathsSpec; replace?: never; patch?: never; embedding?: SiteEmbeddingSpec | null; sign_in_path?: string | null }
+  | { embedding: SiteEmbeddingSpec | null; replace?: never; patch?: never; public_paths?: never; sign_in_path?: string | null }
+  | { sign_in_path: string | null; replace?: never; patch?: never; public_paths?: never; embedding?: never };
 
 export interface SubdomainsSpec {
   /** The exact desired set. Currently limited to one element per project —
@@ -2023,6 +2031,9 @@ export interface ReleaseInventoryBase<
   /** tenant-site-embedding: the release's framing opt-in as catalog keys, or
    *  `null` (deny). Absent on an older gateway = unknown, not null. */
   embedding?: SiteEmbeddingSpec | null;
+  /** site.sign_in_path: the app's own sign-in page for MCP authorization, or
+   *  `null` (the hosted `/auth/sign-in`). Absent on an older gateway = unknown. */
+  sign_in_path?: string | null;
   functions: ReleaseFunctionEntry[];
   secrets: { keys: string[] };
   subdomains: { names: string[] };
@@ -2663,10 +2674,11 @@ export interface NormalizedFunctionSpec {
 }
 
 export type NormalizedSiteSpec =
-  | { replace: Record<string, ContentRef>; patch?: never; public_paths?: SitePublicPathsSpec; embedding?: SiteEmbeddingSpec | null }
-  | { patch: { put?: Record<string, ContentRef>; delete?: string[] }; replace?: never; public_paths?: SitePublicPathsSpec; embedding?: SiteEmbeddingSpec | null }
-  | { public_paths: SitePublicPathsSpec; replace?: never; patch?: never; embedding?: SiteEmbeddingSpec | null }
-  | { embedding: SiteEmbeddingSpec | null; replace?: never; patch?: never; public_paths?: never };
+  | { replace: Record<string, ContentRef>; patch?: never; public_paths?: SitePublicPathsSpec; embedding?: SiteEmbeddingSpec | null; sign_in_path?: string | null }
+  | { patch: { put?: Record<string, ContentRef>; delete?: string[] }; replace?: never; public_paths?: SitePublicPathsSpec; embedding?: SiteEmbeddingSpec | null; sign_in_path?: string | null }
+  | { public_paths: SitePublicPathsSpec; replace?: never; patch?: never; embedding?: SiteEmbeddingSpec | null; sign_in_path?: string | null }
+  | { embedding: SiteEmbeddingSpec | null; replace?: never; patch?: never; public_paths?: never; sign_in_path?: string | null }
+  | { sign_in_path: string | null; replace?: never; patch?: never; public_paths?: never; embedding?: never };
 
 // ─── Events + result ─────────────────────────────────────────────────────────
 

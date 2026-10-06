@@ -589,6 +589,38 @@ describe("Node deploy manifest helpers", () => {
     });
   });
 
+  it("accepts site.sign_in_path alone, as null, and beside embedding", async () => {
+    const only = await normalizeDeployManifest({
+      project_id: "prj_manifest",
+      site: { sign_in_path: "/join" },
+    });
+    assert.deepEqual(only.spec.site, { sign_in_path: "/join" });
+
+    const cleared = await normalizeDeployManifest({
+      project_id: "prj_manifest",
+      site: { sign_in_path: null },
+    });
+    assert.deepEqual(cleared.spec.site, { sign_in_path: null });
+
+    const both = await normalizeDeployManifest({
+      project_id: "prj_manifest",
+      site: { public_paths: { mode: "implicit" }, embedding: { frame_ancestors: ["localhost"] }, sign_in_path: "/join" },
+    });
+    assert.deepEqual(both.spec.site, {
+      public_paths: { mode: "implicit" },
+      embedding: { frame_ancestors: ["localhost"] },
+      sign_in_path: "/join",
+    });
+
+    await assert.rejects(
+      () => normalizeDeployManifest({
+        project_id: "prj_manifest",
+        site: { sign_in_path: 42 },
+      } as unknown as Parameters<typeof normalizeDeployManifest>[0]),
+      /site\.sign_in_path/,
+    );
+  });
+
   it("loads manifest files relative to their directory", async () => {
     const root = mkdtempSync(join(tmpdir(), "run402-deploy-manifest-test-"));
     try {

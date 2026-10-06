@@ -415,6 +415,9 @@
             },
             "embedding": {
               "$ref": "#/$defs/siteEmbedding"
+            },
+            "sign_in_path": {
+              "$ref": "#/$defs/siteSignInPath"
             }
           }
         },
@@ -452,6 +455,9 @@
             },
             "embedding": {
               "$ref": "#/$defs/siteEmbedding"
+            },
+            "sign_in_path": {
+              "$ref": "#/$defs/siteSignInPath"
             }
           }
         },
@@ -464,6 +470,9 @@
             },
             "embedding": {
               "$ref": "#/$defs/siteEmbedding"
+            },
+            "sign_in_path": {
+              "$ref": "#/$defs/siteSignInPath"
             }
           },
           "anyOf": [
@@ -475,6 +484,11 @@
             {
               "required": [
                 "embedding"
+              ]
+            },
+            {
+              "required": [
+                "sign_in_path"
               ]
             }
           ]
@@ -1056,6 +1070,19 @@
               ]
             }
           ]
+        }
+      ]
+    },
+    "siteSignInPath": {
+      "description": "The app's own same-origin sign-in page (e.g. \"/join\") that MCP authorization sends a signed-out user to, with returnTo appended, instead of the hosted /auth/sign-in. Not under /_run402/ or /auth/; no query or fragment. Remote validation is authoritative. Null resets to the hosted page; omission carries prior state.",
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "string",
+          "maxLength": 512,
+          "pattern": "^/(?!/)(?!_run402(?:/|$))(?!auth/)(?!.*://)[^?#\\\\\\s\\u0000-\\u001f\\u007f]*$"
         }
       ]
     },

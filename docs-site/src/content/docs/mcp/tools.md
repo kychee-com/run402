@@ -34,7 +34,7 @@ Typed `run402.deploy.ts` configs are executable local code: use `run402 up --man
 
 ### `deploy`
 
-Applies a `ReleaseSpec` to a project with `r.project(id).apply`: replace-vs-patch semantics per resource, value-free `secrets.require` / `secrets.delete`, functions, `site` (with `site.public_paths` and `site.embedding`), an `assets` slice (`{ put: [...], sync?: { prefix, prune, confirm? } }`), `subdomains`, `routes.replace`, and `i18n`. All bytes ride through CAS. Returns the `DeployResult`: release id, URLs, warnings, and a structured progress-event log. Secret values are set first (`await r.secrets.set(projectId, key, { value })` in a `run` snippet, or `run402 secrets set`), never placed in a spec.
+Applies a `ReleaseSpec` to a project with `r.project(id).apply`: replace-vs-patch semantics per resource, value-free `secrets.require` / `secrets.delete`, functions, `site` (with `site.public_paths`, `site.embedding`, and `site.sign_in_path`), an `assets` slice (`{ put: [...], sync?: { prefix, prune, confirm? } }`), `subdomains`, `routes.replace`, and `i18n`. All bytes ride through CAS. Returns the `DeployResult`: release id, URLs, warnings, and a structured progress-event log. Secret values are set first (`await r.secrets.set(projectId, key, { value })` in a `run` snippet, or `run402 secrets set`), never placed in a spec.
 
 | Param | Meaning |
 |---|---|

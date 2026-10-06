@@ -349,7 +349,7 @@ const MANIFEST_REQUIRE_ROLE_FIELDS = new Set([
   "signInPath",
   "sign_in_path",
 ]);
-const MANIFEST_SITE_FIELDS = new Set(["replace", "patch", "public_paths", "embedding"]);
+const MANIFEST_SITE_FIELDS = new Set(["replace", "patch", "public_paths", "embedding", "sign_in_path"]);
 const MANIFEST_SITE_PATCH_FIELDS = new Set(["put", "delete"]);
 const MANIFEST_SITE_PUBLIC_PATHS_FIELDS = new Set(["mode", "replace"]);
 const MANIFEST_PUBLIC_STATIC_PATH_FIELDS = new Set(["asset", "cache_class"]);
@@ -457,10 +457,11 @@ export interface DeployManifestFunctionsSpec {
 }
 
 export type DeployManifestSiteSpec =
-  | { replace: DeployManifestFileSet | LocalDirRef; patch?: never; public_paths?: SitePublicPathsSpec; embedding?: SiteEmbeddingSpec | null }
-  | { patch: { put?: DeployManifestFileSet | LocalDirRef; delete?: string[] }; replace?: never; public_paths?: SitePublicPathsSpec; embedding?: SiteEmbeddingSpec | null }
-  | { public_paths: SitePublicPathsSpec; replace?: never; patch?: never; embedding?: SiteEmbeddingSpec | null }
-  | { embedding: SiteEmbeddingSpec | null; replace?: never; patch?: never; public_paths?: never };
+  | { replace: DeployManifestFileSet | LocalDirRef; patch?: never; public_paths?: SitePublicPathsSpec; embedding?: SiteEmbeddingSpec | null; sign_in_path?: string | null }
+  | { patch: { put?: DeployManifestFileSet | LocalDirRef; delete?: string[] }; replace?: never; public_paths?: SitePublicPathsSpec; embedding?: SiteEmbeddingSpec | null; sign_in_path?: string | null }
+  | { public_paths: SitePublicPathsSpec; replace?: never; patch?: never; embedding?: SiteEmbeddingSpec | null; sign_in_path?: string | null }
+  | { embedding: SiteEmbeddingSpec | null; replace?: never; patch?: never; public_paths?: never; sign_in_path?: string | null }
+  | { sign_in_path: string | null; replace?: never; patch?: never; public_paths?: never; embedding?: never };
 
 export interface DeployManifestAssetPutEntry {
   key: string;
@@ -1416,6 +1417,10 @@ function mapSite(
   const embedding = Object.prototype.hasOwnProperty.call(raw, "embedding")
     ? { embedding: mapSiteEmbedding(raw.embedding) }
     : {};
+  // site.sign_in_path: same presence rule (`null` clears to the hosted page).
+  const signInPath = Object.prototype.hasOwnProperty.call(raw, "sign_in_path")
+    ? { sign_in_path: mapSiteSignInPath(raw.sign_in_path) }
+    : {};
   if (Object.prototype.hasOwnProperty.call(raw, "replace")) {
     if (raw.replace === undefined) {
       throw new LocalError("Deploy manifest site.replace is undefined", CONTEXT);
@@ -1426,6 +1431,7 @@ function mapSite(
         : mapFileSet(raw.replace as DeployManifestFileSet, opts),
       ...(publicPaths ? { public_paths: publicPaths } : {}),
       ...embedding,
+      ...signInPath,
     };
   }
   if (Object.prototype.hasOwnProperty.call(raw, "patch")) {
@@ -1451,16 +1457,18 @@ function mapSite(
       patch,
       ...(publicPaths ? { public_paths: publicPaths } : {}),
       ...embedding,
+      ...signInPath,
     };
   }
-  if (publicPaths || "embedding" in embedding) {
+  if (publicPaths || "embedding" in embedding || "sign_in_path" in signInPath) {
     return {
       ...(publicPaths ? { public_paths: publicPaths } : {}),
       ...embedding,
+      ...signInPath,
     } as NonNullable<ReleaseSpec["site"]>;
   }
   throw new LocalError(
-    "Deploy manifest site must include replace, patch, public_paths, or embedding",
+    "Deploy manifest site must include replace, patch, public_paths, embedding, or sign_in_path",
     CONTEXT,
   );
 }
@@ -2083,4 +2091,17 @@ function mapSiteEmbedding(value: unknown): SiteEmbeddingSpec | null {
     );
   }
   return { frame_ancestors: keys as SiteEmbeddingSpec["frame_ancestors"] };
+}
+
+/** site.sign_in_path. Shape only (string or null); the SDK's spec validation
+ *  and the gateway check the path itself. */
+function mapSiteSignInPath(value: unknown): string | null {
+  if (value === null) return null;
+  if (typeof value !== "string") {
+    throw new LocalError(
+      'Deploy manifest site.sign_in_path must be a same-origin path string (e.g. "/join") or null; omit it to carry the previous value forward or set it to null to use the hosted sign-in page',
+      CONTEXT,
+    );
+  }
+  return value;
 }

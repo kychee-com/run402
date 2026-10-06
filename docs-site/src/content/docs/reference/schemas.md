@@ -166,6 +166,9 @@ Use `run402 up --check` for local validation and `run402 up --plan` for gateway 
         },
         "embedding": {
           "$ref": "#/$defs/siteEmbedding"
+        },
+        "sign_in_path": {
+          "$ref": "#/$defs/siteSignInPath"
         }
       }
     },
@@ -203,6 +206,9 @@ Use `run402 up --check` for local validation and `run402 up --plan` for gateway 
         },
         "embedding": {
           "$ref": "#/$defs/siteEmbedding"
+        },
+        "sign_in_path": {
+          "$ref": "#/$defs/siteSignInPath"
         }
       }
     },
@@ -215,6 +221,9 @@ Use `run402 up --check` for local validation and `run402 up --plan` for gateway 
         },
         "embedding": {
           "$ref": "#/$defs/siteEmbedding"
+        },
+        "sign_in_path": {
+          "$ref": "#/$defs/siteSignInPath"
         }
       },
       "anyOf": [
@@ -226,6 +235,11 @@ Use `run402 up --check` for local validation and `run402 up --plan` for gateway 
         {
           "required": [
             "embedding"
+          ]
+        },
+        {
+          "required": [
+            "sign_in_path"
           ]
         }
       ]
@@ -485,6 +499,24 @@ Use `run402 up --check` for local validation and `run402 up --plan` for gateway 
 | `expect` | `object` | no | See the downloadable schema for constraints. |
 | `expected_status` | `integer` | no | Snake-case alias for expect.status. |
 | `retries` | `integer` | no | See the downloadable schema for constraints. |
+
+<h3 id="release-siteSignInPath">siteSignInPath</h3>
+
+```json
+{
+  "description": "The app's own same-origin sign-in page (e.g. \"/join\") that MCP authorization sends a signed-out user to, with returnTo appended, instead of the hosted /auth/sign-in. Not under /_run402/ or /auth/; no query or fragment. Remote validation is authoritative. Null resets to the hosted page; omission carries prior state.",
+  "oneOf": [
+    {
+      "type": "null"
+    },
+    {
+      "type": "string",
+      "maxLength": 512,
+      "pattern": "^/(?!/)(?!_run402(?:/|$))(?!auth/)(?!.*://)[^?#\\\\\\s\\u0000-\\u001f\\u007f]*$"
+    }
+  ]
+}
+```
 
 <h3 id="release-siteEmbedding">siteEmbedding</h3>
 

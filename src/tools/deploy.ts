@@ -71,6 +71,10 @@ const siteEmbedding = z
   .strict()
   .nullable()
   .describe("tenant-site-embedding: who may put the site in an iframe. The gateway then sends `Content-Security-Policy: frame-ancestors <expanded origins>` and drops X-Frame-Options on every response of the host. Omit to carry the previous release's declaration forward; null returns to the default deny.");
+const siteSignInPath = z
+  .string()
+  .nullable()
+  .describe("The app's own same-origin sign-in page (e.g. \"/join\") that MCP authorization (/_run402/oauth/authorize) sends a signed-out user to, with returnTo appended, instead of the hosted /auth/sign-in. Single leading /, at most 512 chars, no query/fragment, not under /_run402/ or /auth/ (the gateway refuses with INVALID_SPEC on site.sign_in_path). Omit to carry the previous release's value forward; null returns to the hosted page.");
 const sitePublicPaths = z.union([
   z
     .object({
@@ -261,6 +265,7 @@ export const deploySchema = {
           replace: fileMap,
           public_paths: sitePublicPaths.optional(),
           embedding: siteEmbedding.optional(),
+          sign_in_path: siteSignInPath.optional(),
         })
         .strict(),
       z
@@ -273,10 +278,12 @@ export const deploySchema = {
             .strict(),
           public_paths: sitePublicPaths.optional(),
           embedding: siteEmbedding.optional(),
+          sign_in_path: siteSignInPath.optional(),
         })
         .strict(),
-      z.object({ public_paths: sitePublicPaths, embedding: siteEmbedding.optional() }).strict(),
-      z.object({ embedding: siteEmbedding }).strict(),
+      z.object({ public_paths: sitePublicPaths, embedding: siteEmbedding.optional(), sign_in_path: siteSignInPath.optional() }).strict(),
+      z.object({ embedding: siteEmbedding, sign_in_path: siteSignInPath.optional() }).strict(),
+      z.object({ sign_in_path: siteSignInPath }).strict(),
     ])
     .optional(),
   assets: z
@@ -419,10 +426,11 @@ type DeployArgs = {
     };
   };
   site?:
-    | { replace: FileMapInput; public_paths?: SitePublicPathsSpec; embedding?: SiteEmbeddingSpec | null }
-    | { patch: { put?: FileMapInput; delete?: string[] }; public_paths?: SitePublicPathsSpec; embedding?: SiteEmbeddingSpec | null }
-    | { public_paths: SitePublicPathsSpec; embedding?: SiteEmbeddingSpec | null }
-    | { embedding: SiteEmbeddingSpec | null };
+    | { replace: FileMapInput; public_paths?: SitePublicPathsSpec; embedding?: SiteEmbeddingSpec | null; sign_in_path?: string | null }
+    | { patch: { put?: FileMapInput; delete?: string[] }; public_paths?: SitePublicPathsSpec; embedding?: SiteEmbeddingSpec | null; sign_in_path?: string | null }
+    | { public_paths: SitePublicPathsSpec; embedding?: SiteEmbeddingSpec | null; sign_in_path?: string | null }
+    | { embedding: SiteEmbeddingSpec | null; sign_in_path?: string | null }
+    | { sign_in_path: string | null };
   assets?: {
     put?: Array<{
       key: string;

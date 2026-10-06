@@ -1372,20 +1372,23 @@ function siteToCoreSpec(site: NormalizedSiteSpec): Record<string, unknown> {
       ...(site.public_paths ? { public_paths: site.public_paths } : {}),
     };
   }
-  // tenant-site-embedding never reaches core: the catalog is gateway-owned and
-  // core validates site keys against its own list.
+  // tenant-site-embedding and site.sign_in_path never reach core: both are
+  // gateway-owned and core validates site keys against its own list.
   return site.public_paths ? { public_paths: site.public_paths } : {};
 }
 
 function siteToWire(site: NormalizedSiteSpec): Record<string, unknown> {
   // tenant-site-embedding: `null` is a meaningful value on the wire (clear), so
   // it is carried whenever the key is present, unlike public_paths.
+  // site.sign_in_path follows the same rule (`null` clears back to the hosted page).
   const embedding = "embedding" in site && site.embedding !== undefined ? { embedding: site.embedding } : {};
+  const signInPath = "sign_in_path" in site && site.sign_in_path !== undefined ? { sign_in_path: site.sign_in_path } : {};
   if ("replace" in site && site.replace) {
     return {
       replace: fileSetToWire(site.replace),
       ...(site.public_paths ? { public_paths: site.public_paths } : {}),
       ...embedding,
+      ...signInPath,
     };
   }
   if ("patch" in site && site.patch) {
@@ -1396,11 +1399,13 @@ function siteToWire(site: NormalizedSiteSpec): Record<string, unknown> {
       },
       ...(site.public_paths ? { public_paths: site.public_paths } : {}),
       ...embedding,
+      ...signInPath,
     };
   }
   return {
     ...(site.public_paths ? { public_paths: site.public_paths } : {}),
     ...embedding,
+    ...signInPath,
   };
 }
 
@@ -3007,7 +3012,7 @@ const FUNCTION_SPEC_FIELDS = new Set([
 const FUNCTION_CONFIG_FIELDS = new Set(["timeoutSeconds", "memoryMb"]);
 const FUNCTION_TRIGGER_FIELDS = new Set(["id", "type", "cron", "timezone", "misfire_policy", "overlap_policy", "mailbox", "events", "run"]);
 const FUNCTION_TRIGGER_RUN_FIELDS = new Set(["event_type", "payload", "retry", "expires_after_seconds"]);
-const SITE_SPEC_FIELDS = new Set(["replace", "patch", "public_paths", "embedding"]);
+const SITE_SPEC_FIELDS = new Set(["replace", "patch", "public_paths", "embedding", "sign_in_path"]);
 const SITE_PATCH_FIELDS = new Set(["put", "delete"]);
 const SITE_PUBLIC_PATHS_FIELDS = new Set(["mode", "replace"]);
 const PUBLIC_STATIC_PATH_FIELDS = new Set(["asset", "cache_class"]);
@@ -3384,6 +3389,33 @@ function validateSiteSpec(site: unknown): void {
   }
   if (obj.embedding !== undefined) {
     validateSiteEmbeddingSpec(obj.embedding, "site.embedding");
+  }
+  if (obj.sign_in_path !== undefined) {
+    validateSiteSignInPath(obj.sign_in_path, "site.sign_in_path");
+  }
+}
+
+/** site.sign_in_path. Structural check only (the gateway is authoritative on
+ *  the reserved prefixes and the full rule set): a same-origin absolute path
+ *  like "/join", or `null` to clear back to the hosted sign-in page. Omitted
+ *  carries forward. */
+function validateSiteSignInPath(value: unknown, resource: string): void {
+  if (value === null) return;
+  const hint = `omit ${resource} to carry the previous value forward or send null to use the hosted sign-in page`;
+  if (typeof value !== "string") {
+    throw invalidSpec(`ReleaseSpec.${resource} must be a same-origin path string (e.g. "/join") or null; ${hint}`, resource);
+  }
+  if (
+    !value.startsWith("/") ||
+    value.startsWith("//") ||
+    value.length > 512 ||
+    value.includes("://") ||
+    /[?#\\\s\u0000-\u001f\u007f]/.test(value)
+  ) {
+    throw invalidSpec(
+      `ReleaseSpec.${resource} must be a same-origin path starting with a single "/" (e.g. "/join"), at most 512 characters, with no query, fragment, whitespace, backslash, or scheme; ${hint}`,
+      resource,
+    );
   }
 }
 
@@ -3902,6 +3934,10 @@ function hasSiteContent(site: unknown): boolean {
   // tenant-site-embedding: a declaration (or an explicit null that clears one)
   // is deploy content on its own, like a public_paths-only site.
   if (site && typeof site === "object" && "embedding" in site && (site as { embedding?: unknown }).embedding !== undefined) {
+    return true;
+  }
+  // site.sign_in_path: same rule, a value or an explicit null is content.
+  if (site && typeof site === "object" && "sign_in_path" in site && (site as { sign_in_path?: unknown }).sign_in_path !== undefined) {
     return true;
   }
   if (!isRecord(site)) return false;
@@ -4438,6 +4474,10 @@ async function normalizeReleaseSpec(
     const embedding = "embedding" in spec.site && spec.site.embedding !== undefined
       ? { embedding: spec.site.embedding }
       : {};
+    // site.sign_in_path: present (string or null) travels as-is.
+    const signInPath = "sign_in_path" in spec.site && spec.site.sign_in_path !== undefined
+      ? { sign_in_path: spec.site.sign_in_path }
+      : {};
     if ("replace" in spec.site && spec.site.replace) {
       const map = await normalizeFileSet(spec.site.replace, rememberRelease);
       // Re-check post-expansion so `dir("dist")` (a LocalDirRef whose keys are
@@ -4447,6 +4487,7 @@ async function normalizeReleaseSpec(
         replace: map,
         ...(publicPaths ? { public_paths: publicPaths } : {}),
         ...embedding,
+        ...signInPath,
       } as NormalizedSiteSpec;
     } else if ("patch" in spec.site && spec.site.patch) {
       const patch: { put?: Record<string, ContentRef>; delete?: string[] } = {};
@@ -4459,11 +4500,13 @@ async function normalizeReleaseSpec(
         patch,
         ...(publicPaths ? { public_paths: publicPaths } : {}),
         ...embedding,
+        ...signInPath,
       } as NormalizedSiteSpec;
-    } else if (publicPaths || "embedding" in embedding) {
+    } else if (publicPaths || "embedding" in embedding || "sign_in_path" in signInPath) {
       normalized.site = {
         ...(publicPaths ? { public_paths: publicPaths } : {}),
         ...embedding,
+        ...signInPath,
       } as NormalizedSiteSpec;
     }
   }

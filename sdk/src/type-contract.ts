@@ -122,6 +122,15 @@ const _SiteEmbeddingCleared: _SiteEmbeddingOnly = { embedding: null };
 void _SiteEmbeddingOnlySpec;
 void _SiteEmbeddingCleared;
 void (null as unknown as _InventoryEmbedding);
+type _InventorySignInPath = Assert<Equal<ActiveReleaseInventory["sign_in_path"], string | null | undefined>>;
+type _SiteSignInPathOnly = Extract<NonNullable<ReleaseSpec["site"]>, { sign_in_path: string | null }>;
+const _SiteSignInPathOnlySpec: _SiteSignInPathOnly = { sign_in_path: "/join" };
+const _SiteSignInPathCleared: _SiteSignInPathOnly = { sign_in_path: null };
+const _SiteSignInPathWithEmbedding: NonNullable<ReleaseSpec["site"]> = { embedding: null, sign_in_path: "/join" };
+void _SiteSignInPathOnlySpec;
+void _SiteSignInPathCleared;
+void _SiteSignInPathWithEmbedding;
+void (null as unknown as _InventorySignInPath);
 type _StaticReachabilityAuthority = StaticPublicPathInventoryEntry["reachability_authority"] & StaticReachabilityAuthority;
 
 const _ExplicitPublicPathTable: _ExplicitPublicPaths = {

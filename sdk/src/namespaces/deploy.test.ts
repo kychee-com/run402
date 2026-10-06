@@ -6670,6 +6670,52 @@ describe("deploy.apply — site.embedding wire carry", () => {
     );
     assert.equal(w.requests.length, 0);
   });
+
+  // site.sign_in_path: the same presence rule as embedding (null clears to the
+  // hosted sign-in page; omitted carries forward and is never sent).
+  it("site.sign_in_path: a sign_in_path-only site is content and carries the string", async () => {
+    const w = wiring();
+    await new Deploy(w.client).apply({ project_id: "prj_test", site: { sign_in_path: "/join" } });
+    assert.deepEqual(planSite(w), { sign_in_path: "/join" });
+  });
+
+  it("site.sign_in_path: an explicit null is carried beside other site keys", async () => {
+    const w = wiring();
+    await new Deploy(w.client).apply({
+      project_id: "prj_test",
+      site: { patch: { delete: ["old.html"] }, embedding: { frame_ancestors: ["localhost"] }, sign_in_path: null },
+    });
+    assert.deepEqual(planSite(w), {
+      patch: { delete: ["old.html"] },
+      embedding: { frame_ancestors: ["localhost"] },
+      sign_in_path: null,
+    });
+
+    const w2 = wiring();
+    await new Deploy(w2.client).apply({ project_id: "prj_test", site: { sign_in_path: null } });
+    assert.deepEqual(planSite(w2), { sign_in_path: null });
+  });
+
+  it("site.sign_in_path: omitted is not sent", async () => {
+    const w = wiring();
+    await new Deploy(w.client).apply({ project_id: "prj_test", site: { public_paths: { mode: "implicit" } } });
+    const site = planSite(w) as Record<string, unknown>;
+    assert.equal("sign_in_path" in site, false);
+  });
+
+  for (const bad of [42, "join", "//evil.example/join", "/join?x=1", "/join#top", "/a b", "/x/https://evil.example"]) {
+    it(`site.sign_in_path: refuses ${JSON.stringify(bad)} before any request`, async () => {
+      const w = wiring();
+      await assert.rejects(
+        () => new Deploy(w.client).apply({
+          project_id: "prj_test",
+          site: { sign_in_path: bad as unknown as string },
+        }),
+        /site\.sign_in_path/,
+      );
+      assert.equal(w.requests.length, 0);
+    });
+  }
 });
 
 

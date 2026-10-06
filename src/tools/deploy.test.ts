@@ -494,6 +494,22 @@ describe("handleDeploy deploy error formatting", () => {
     assert.equal(origin.isError, true, "an empty list is refused client-side with the carry-forward / null hint");
   });
 
+  it("passes site.sign_in_path through the SDK manifest adapter, including an explicit null", async () => {
+    const declared = await handleDeploy({
+      project_id: "prj_xxx",
+      site: { replace: { "index.html": "<h1>app</h1>" }, sign_in_path: "/join" },
+    });
+    assert.equal(declared.isError, undefined, JSON.stringify(declared));
+    assert.equal((lastApplySpec as { site?: { sign_in_path?: unknown } }).site?.sign_in_path, "/join");
+
+    const cleared = await handleDeploy({ project_id: "prj_xxx", site: { sign_in_path: null } });
+    assert.equal(cleared.isError, undefined, JSON.stringify(cleared));
+    assert.deepEqual((lastApplySpec as { site?: unknown }).site, { sign_in_path: null });
+
+    const notAString = await handleDeploy({ project_id: "prj_xxx", site: { sign_in_path: 42 as unknown as string } });
+    assert.equal(notAString.isError, true, "a non-string value is refused client-side");
+  });
+
   it("passes site.public_paths through the SDK manifest adapter", async () => {
     const result = await handleDeploy({
       project_id: "prj_xxx",
