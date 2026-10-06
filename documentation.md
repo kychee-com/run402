@@ -31,7 +31,7 @@ Run `node scripts/documentation-inventory.mjs` to reject newly discovered unclas
 | public | [.github/ISSUE_TEMPLATE/feature_request.md](.github/ISSUE_TEMPLATE/feature_request.md) | guide / cli | reviewed contributor instructions: source ownership and native build/test commands retained; product CLI policy applies | source published: 23751749; no separate hosted acceptance required |
 | public | [AGENTS.md](AGENTS.md) | maintainer / mixed | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [CHANGELOG.md](CHANGELOG.md) | history / historical | pending: source changed since editorial review | pending: source changed since publication evidence |
-| public | [CLAUDE.md](CLAUDE.md) | maintainer / mixed | reviewed contributor instructions: source ownership and native build/test commands retained; product CLI policy applies | source published: 23751749; no separate hosted acceptance required |
+| public | [CLAUDE.md](CLAUDE.md) | maintainer / mixed | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [CONTRIBUTING.md](CONTRIBUTING.md) | maintainer / mixed | reviewed contributor instructions: source ownership and native build/test commands retained; product CLI policy applies | source published: 23751749; no separate hosted acceptance required |
 | public | [README.md](README.md) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [SECURITY.md](SECURITY.md) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
