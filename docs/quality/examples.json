@@ -425,7 +425,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/functions.md",
-    "line": 46,
+    "line": 47,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "f3a19795dc9d970e2a4b54f376f4fa54415767c88d322157ba7d4e318faad0d6",
@@ -433,7 +433,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/functions.md",
-    "line": 59,
+    "line": 60,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "1f77b5666e24f417ed423995f5032644929fc8784f92886fb3e10eff14a6899d",
@@ -441,7 +441,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/functions.md",
-    "line": 72,
+    "line": 73,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "bf1e027a00ba7eec11bf6f9d4fe0b5b5bbe9027001ebd5f25a74cef49bab88ce",
@@ -449,7 +449,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/functions.md",
-    "line": 89,
+    "line": 90,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "d3354bc83361a6acf81926c31d3bf4b8b33f84a5f3b5faf11eb44d08af7d1a07",
@@ -457,7 +457,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/functions.md",
-    "line": 102,
+    "line": 103,
     "language": "javascript",
     "kind": "output-or-pseudocode",
     "sha256": "8b325cb7437f6e538b06c6ce7aa6e9ee5287e937f42c498721b20a1a3b292df1",
@@ -465,7 +465,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/functions.md",
-    "line": 163,
+    "line": 164,
     "language": "ts",
     "kind": "application-or-sdk",
     "sha256": "427a22da24434cbd70cb5a408c599245ebde29378c60e65a5e43e105e736c5fd",
@@ -473,7 +473,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/functions.md",
-    "line": 192,
+    "line": 193,
     "language": "json",
     "kind": "configuration",
     "sha256": "8defc9faf6e1dc0800b18f8054342ac842b521168b09082b64dfc43e57fb1b5c",
