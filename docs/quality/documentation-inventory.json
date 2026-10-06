@@ -90,7 +90,7 @@
       "purpose": "maintainer",
       "interface": "mixed",
       "exception": "Repository development and implementation instructions; product operations still prefer CLI.",
-      "sha256": "3d5e74c2cc22c693cfeaa5d1b653041fa374da1c243376e888286946a52789be",
+      "sha256": "1d88ebc79a5ce829687780aa1aa8769fea392e4ff4bb93cc4e809ef91c21901f",
       "outputs": [],
       "url": null,
       "checks": [
@@ -130,16 +130,16 @@
       "purpose": "maintainer",
       "interface": "mixed",
       "exception": "Repository development and implementation instructions; product operations still prefer CLI.",
-      "sha256": "1565155937271e46ccad4a288dd43e254ae2de314b884e2ce81fc6344cf7b65b",
+      "sha256": "63144c1d60af3c53129419ba794eb1eb7e635acbad9322a38e43de70357f4b3a",
       "outputs": [],
       "url": null,
       "checks": [
         "inventory-policy"
       ],
       "evidence": {
-        "editorial": "reviewed contributor instructions: source ownership and native build/test commands retained; product CLI policy applies",
+        "editorial": "pending: source changed since editorial review",
         "local": "see named check results",
-        "publication": "source published: 23751749; no separate hosted acceptance required"
+        "publication": "pending: source changed since publication evidence"
       }
     },
     {
