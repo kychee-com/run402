@@ -2145,7 +2145,7 @@ async function commitInternal(
         context: "committing deploy",
       },
     );
-    return await sendCommitRecoveringLostResponse(client, send, operationId, project, tries);
+    return await sendCommitWithRetry(send, tries);
   } catch (err) {
     const translated = translateDeployError(err, "commit", planId, operationId ?? null);
     // Retries were spent on a lost response: say how many and on what, so a
@@ -2158,43 +2158,31 @@ async function commitInternal(
 }
 
 /**
- * Send a deploy commit, recovering when a 502/503/504 or a dropped connection
- * loses the response. The commit may still have reached the gateway (a long
- * commit can outlive the connection that carried it), and a second commit
- * while the first is running would drive the state machine twice. So read the
- * operation first: once it has left `planning`/`uploading` the commit landed,
- * and the caller follows the operation; otherwise the commit never arrived and
- * is sent again. Without an operation id to read, the failure surfaces as is.
- * `tries.attempts` counts the commits sent, for the error's retry metadata.
+ * Send a deploy commit, re-sending when a 502/503/504 or a dropped connection
+ * loses the response. Re-sending is safe because a plan commits once: the
+ * gateway answers a commit of a plan whose operation is already running with
+ * `status: "running"` (the caller follows the operation) and a finished one
+ * with its stored result, and Run402 Core answers `commit_in_progress` while
+ * the first commit runs, which is re-sent the same way. `tries.attempts`
+ * counts the commits sent, for the error's retry metadata.
  */
-async function sendCommitRecoveringLostResponse(
-  client: Client,
-  send: () => Promise<CommitResponse>,
-  operationId: string | undefined,
-  projectId: string | undefined,
-  tries: { attempts: number },
-): Promise<CommitResponse> {
+async function sendCommitWithRetry<T>(send: () => Promise<T>, tries: { attempts: number }): Promise<T> {
   for (let attempt = 1; ; attempt++) {
     tries.attempts = attempt;
     try {
       return await send();
     } catch (err) {
-      if (!operationId || !projectId || !isTransientGatewayFailure(err) || attempt >= DEPLOY_COMMIT_MAX_ATTEMPTS) throw err;
+      if (!isRetryableCommitFailure(err) || attempt >= DEPLOY_COMMIT_MAX_ATTEMPTS) throw err;
       await sleep(DEPLOY_COMMIT_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1));
-      let snapshot: OperationSnapshot;
-      try {
-        snapshot = await client.request<OperationSnapshot>(
-          `/apply/v1/operations/${encodeURIComponent(operationId)}`,
-          { headers: await apikeyHeaders(client, projectId), context: "fetching deploy operation" },
-        );
-      } catch {
-        throw err;
-      }
-      if (snapshot.status !== "planning" && snapshot.status !== "uploading") {
-        return { operation_id: operationId, status: "running" };
-      }
     }
   }
+}
+
+function isRetryableCommitFailure(err: unknown): boolean {
+  if (isTransientGatewayFailure(err)) return true;
+  // Run402 Core: another commit of this plan is still running.
+  return isRun402Error(err) && err.status === 409 &&
+    (err.body as { error?: unknown } | null | undefined)?.error === "commit_in_progress";
 }
 
 async function uploadMissing(

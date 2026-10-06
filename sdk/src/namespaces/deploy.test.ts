@@ -1328,15 +1328,20 @@ describe("Deploy.apply (deploy commit lost to a transient failure)", () => {
     new Deploy(w.client).apply({ project_id: "prj_test", site: { replace: { "index.html": "<p>lost</p>" } } });
   const alb502 = () => new ApiError("API error", 502, "<html>502 Bad Gateway</html>", "committing deploy");
 
-  it("follows the operation instead of committing twice when the lost commit had landed", async () => {
+  it("re-sends a lost commit and follows the operation the gateway reports running (kychee-com/run402#615)", async () => {
     const w = makeWiring();
-    const calls = wire(w, () => { throw alb502(); }, ["committing", "ready"]);
+    const calls = wire(w, (attempt) => {
+      if (attempt === 1) throw alb502();
+      // The first commit landed and is still running: the gateway attaches the
+      // re-send to that operation instead of committing twice.
+      return { operation_id: "op_lost", status: "running" } satisfies CommitResponse;
+    }, ["committing", "ready"]);
     const result = await apply(w);
     assert.equal(result.release_id, "rel_lost");
-    assert.equal(calls.commits(), 1);
+    assert.equal(calls.commits(), 2);
   });
 
-  it("re-sends the commit when the operation shows it never arrived", async () => {
+  it("re-sends the commit after a dropped connection", async () => {
     const w = makeWiring();
     const calls = wire(w, (attempt) => {
       if (attempt === 1) throw new NetworkError("socket hang up", null, "committing deploy");
@@ -1347,7 +1352,7 @@ describe("Deploy.apply (deploy commit lost to a transient failure)", () => {
     assert.equal(calls.commits(), 2);
   });
 
-  it("re-sends a commit answered 502 when the operation shows it never arrived (kychee-com/run402#615)", async () => {
+  it("re-sends a commit answered 502 (kychee-com/run402#615)", async () => {
     const w = makeWiring();
     const calls = wire(w, (attempt) => {
       if (attempt === 1) throw alb502();
@@ -1374,6 +1379,51 @@ describe("Deploy.apply (deploy commit lost to a transient failure)", () => {
       return true;
     });
     assert.equal(calls.commits(), 3);
+  });
+
+  it("re-sends a low-level commit(planId) answered 502, with no operation id to read (kychee-com/run402#615)", async () => {
+    const w = makeWiring();
+    const calls = wire(w, (attempt) => {
+      if (attempt === 1) throw alb502();
+      return readyCommit("op_lost", "rel_lost");
+    }, ["ready"]);
+    const result = await new Deploy(w.client).commit("plan_lost", { project: "prj_test" });
+    assert.equal(result.release_id, "rel_lost");
+    assert.equal(calls.commits(), 2);
+    assert.equal(w.requests.filter((req) => req.path === "/apply/v1/operations/op_lost").length, 0,
+      "the retry does not read the operation first");
+  });
+
+  it("re-sends a Core commit answered 502, then commit_in_progress, until the stored result (kychee-com/run402#615)", async () => {
+    const w = makeWiring();
+    (w.client as { apiBase: string }).apiBase = "http://core.example:4020";
+    let commits = 0;
+    w.setHandler((req) => {
+      if (req.path === "/apply/v1/plans") {
+        return { plan_id: "plan_core", operation_id: null, base_release_id: null, manifest_digest: "core-digest" };
+      }
+      if (req.path === "/projects/v1/prj_test/content") {
+        return { staged: true, sha256: (req.body as { sha256: string }).sha256 };
+      }
+      if (req.path === "/apply/v1/plans/plan_core/commit") {
+        commits++;
+        if (commits === 1) throw new ApiError("API error", 502, "<html>502 Bad Gateway</html>", "committing deploy");
+        if (commits === 2) {
+          throw new ApiError("conflict", 409, { error: "commit_in_progress", message: "Another commit is running" }, "committing deploy");
+        }
+        return { plan_id: "plan_core", project_id: "prj_test", release_id: "rel_core", release_digest: "sha256:core", status: "committed" };
+      }
+      if (req.path === "/projects/v1/prj_test") {
+        return { endpoints: { static_base_url: "http://core.example:4020/projects/v1/prj_test/static" } };
+      }
+      throw new Error(`unexpected path ${req.path}`);
+    });
+    const result = await new Deploy(w.client).apply(
+      { project_id: "prj_test", site: { replace: { "index.html": "<p>core</p>" } } },
+      { target: "core" },
+    );
+    assert.equal(result.release_id, "rel_core");
+    assert.equal(commits, 3);
   });
 
   it("does not retry a commit the gateway refused", async () => {
