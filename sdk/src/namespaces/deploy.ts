@@ -2115,6 +2115,7 @@ async function commitInternal(
   vault?: VaultCommitDeclaration,
   operationId?: string,
 ): Promise<CommitResponse | CoreCommitResponse> {
+  const tries = { attempts: 0 };
   try {
     const body: Record<string, unknown> = {};
     if (idempotencyKey) body.idempotency_key = idempotencyKey;
@@ -2138,9 +2139,15 @@ async function commitInternal(
         context: "committing deploy",
       },
     );
-    return await sendCommitRecoveringLostResponse(client, send, operationId, project);
+    return await sendCommitRecoveringLostResponse(client, send, operationId, project, tries);
   } catch (err) {
-    throw translateDeployError(err, "commit", planId, null);
+    const translated = translateDeployError(err, "commit", planId, operationId ?? null);
+    // Retries were spent on a lost response: say how many and on what, so a
+    // caller can tell "the SDK already tried" from "the first attempt failed".
+    if (tries.attempts > 1) {
+      throw withDeployRetryMetadata(translated, tries.attempts, DEPLOY_COMMIT_MAX_ATTEMPTS - 1, translated.code);
+    }
+    throw translated;
   }
 }
 
@@ -2152,14 +2159,17 @@ async function commitInternal(
  * operation first: once it has left `planning`/`uploading` the commit landed,
  * and the caller follows the operation; otherwise the commit never arrived and
  * is sent again. Without an operation id to read, the failure surfaces as is.
+ * `tries.attempts` counts the commits sent, for the error's retry metadata.
  */
 async function sendCommitRecoveringLostResponse(
   client: Client,
   send: () => Promise<CommitResponse>,
   operationId: string | undefined,
   projectId: string | undefined,
+  tries: { attempts: number },
 ): Promise<CommitResponse> {
   for (let attempt = 1; ; attempt++) {
+    tries.attempts = attempt;
     try {
       return await send();
     } catch (err) {

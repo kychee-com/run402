@@ -1346,12 +1346,46 @@ describe("Deploy.apply (deploy commit lost to a transient failure)", () => {
     assert.equal(calls.commits(), 2);
   });
 
+  it("re-sends a commit answered 502 when the operation shows it never arrived (kychee-com/run402#615)", async () => {
+    const w = makeWiring();
+    const calls = wire(w, (attempt) => {
+      if (attempt === 1) throw alb502();
+      return readyCommit("op_lost", "rel_lost");
+    }, ["uploading"]);
+    const result = await apply(w);
+    assert.equal(result.release_id, "rel_lost");
+    assert.equal(calls.commits(), 2);
+  });
+
+  it("gives up after three 502s and reports attempts and lastRetryCode (kychee-com/run402#615)", async () => {
+    const w = makeWiring();
+    const calls = wire(w, () => { throw alb502(); }, ["uploading"]);
+    await assert.rejects(apply(w), (err: unknown) => {
+      assert.ok(err instanceof Run402DeployError);
+      assert.equal(err.phase, "commit");
+      assert.equal(err.status, 502);
+      assert.equal(err.retryable, true);
+      assert.equal(err.planId, "plan_lost");
+      assert.equal(err.operationId, "op_lost");
+      assert.equal(err.attempts, 3);
+      assert.equal(err.maxRetries, 2);
+      assert.equal(err.lastRetryCode, err.code);
+      return true;
+    });
+    assert.equal(calls.commits(), 3);
+  });
+
   it("does not retry a commit the gateway refused", async () => {
     const w = makeWiring();
     const calls = wire(w, () => {
       throw new ApiError("bad", 400, { code: "INVALID_SPEC", message: "bad" }, "committing deploy");
     }, ["uploading"]);
-    await assert.rejects(apply(w));
+    await assert.rejects(apply(w), (err: unknown) => {
+      assert.ok(err instanceof Run402DeployError);
+      assert.equal(err.attempts, undefined);
+      assert.equal(err.lastRetryCode, undefined);
+      return true;
+    });
     assert.equal(calls.commits(), 1);
   });
 });
