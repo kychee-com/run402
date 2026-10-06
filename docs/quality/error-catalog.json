@@ -641,6 +641,10 @@
         },
         {
           "owner": "public",
+          "source": "cli/lib/snapshots.mjs"
+        },
+        {
+          "owner": "public",
           "source": "cli/lib/transfer.mjs"
         },
         {

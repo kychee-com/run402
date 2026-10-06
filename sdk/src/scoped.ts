@@ -201,12 +201,16 @@ import type {
   ProjectArchiveWaitOptions,
 } from "./namespaces/archives.types.js";
 import type {
+  ProjectSnapshotCreateOptions,
   ProjectSnapshotDto,
   ProjectSnapshotsListOptions,
   ProjectSnapshotsListResult,
+  SnapshotRestoreConfirmOptions,
+  SnapshotRestoreHandle,
   SnapshotRestoreOptions,
   SnapshotRestorePlanEnvelope,
   SnapshotRestoreResult,
+  SnapshotRestoreStatus,
 } from "./namespaces/snapshots.types.js";
 import type {
   ProjectBranchCreateOptions,
@@ -468,8 +472,8 @@ class ScopedArchives {
 class ScopedSnapshots {
   constructor(private readonly parent: Run402, private readonly projectId: string) {}
 
-  create(): Promise<ProjectSnapshotDto> {
-    return this.parent.snapshots.create(this.projectId);
+  create(opts?: ProjectSnapshotCreateOptions): Promise<ProjectSnapshotDto> {
+    return this.parent.snapshots.create(this.projectId, opts);
   }
   list(opts?: ProjectSnapshotsListOptions): Promise<ProjectSnapshotsListResult> {
     return this.parent.snapshots.list(this.projectId, opts);
@@ -483,8 +487,17 @@ class ScopedSnapshots {
   restorePlan(snapshotId: string, opts?: SnapshotRestoreOptions): Promise<SnapshotRestorePlanEnvelope> {
     return this.parent.snapshots.restorePlan(this.projectId, snapshotId, opts);
   }
-  restore(snapshotId: string, confirm: string, opts?: SnapshotRestoreOptions): Promise<SnapshotRestoreResult> {
+  restore(snapshotId: string, confirm: string, opts: SnapshotRestoreConfirmOptions & { wait: false }): Promise<SnapshotRestoreHandle>;
+  restore(snapshotId: string, confirm: string, opts?: SnapshotRestoreConfirmOptions): Promise<SnapshotRestoreResult>;
+  restore(
+    snapshotId: string,
+    confirm: string,
+    opts?: SnapshotRestoreConfirmOptions,
+  ): Promise<SnapshotRestoreResult | SnapshotRestoreHandle> {
     return this.parent.snapshots.restore(this.projectId, snapshotId, confirm, opts);
+  }
+  getRestore(snapshotId: string, restoreId: string): Promise<SnapshotRestoreStatus> {
+    return this.parent.snapshots.getRestore(this.projectId, snapshotId, restoreId);
   }
 }
 

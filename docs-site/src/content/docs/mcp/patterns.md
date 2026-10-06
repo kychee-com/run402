@@ -181,6 +181,20 @@ const diff = await p.apply.diff({ from: "empty", to: "active" });
 
 `p.apply.getRelease(releaseId)` and `p.apply.getActiveRelease()` return the release inventory: release metadata, site paths, `static_public_paths` browser reachability entries, functions, secret keys, subdomains, materialized routes, applied migrations, `release_generation`, `static_manifest_sha256`, nullable `static_manifest_metadata` (`file_count`, `total_bytes`, `cache_classes`, `cache_class_sources`, `spa_fallback`), and warnings when returned. `p.apply.diff({ from, to })` takes `from` as `empty`, `active`, or a release id and `to` as `active` or a release id; it returns `migrations.applied_between_releases`, secret and subdomain diffs as `added` / `removed`, route diffs as `added` / `removed` / `changed`, and `static_assets` with unchanged/changed/added/removed counts, newly uploaded and reused CAS bytes, and `legacy_immutable_warnings`, `previous_immutable_failures`, and `cas_authorization_failures`.
 
+### Restore points
+
+Take a named restore point before a risky change, and roll the site back to it if the change goes wrong:
+
+```ts
+const p = r.project("prj_…");
+const point = await p.snapshots.create({ label: "before agent run", metadata: { task: "re-import" } });
+// … the risky change …
+const { restore_plan } = await p.snapshots.restorePlan(point.snapshot_id, { release: "snapshot" });
+({ loss: restore_plan.data_loss_statement, release: restore_plan.release, token: restore_plan.confirm.token })
+```
+
+Show the plan to the human, then confirm in a second snippet with `await p.snapshots.restore(snapshotId, token, { release: "snapshot" })`; pass the same `release` you planned with. The restore runs in the background on the gateway and the SDK polls it to the end, so keep the `run` deadline generous, or pass `{ wait: false }` and read it later with `p.snapshots.getRestore(snapshotId, restoreId)`. `release: "snapshot"` re-activates the release that was live at capture together with the data; functions keep their current code, and `restore_plan.release.warnings` names them. Labels and metadata live outside the project's database, so `p.snapshots.list()` still shows every restore point after a restore.
+
 ### GitHub Actions OIDC deploys
 
 Link a repository with `run402 ci link github`: it signs the canonical delegation locally, binds the GitHub repository id, and writes a workflow that runs `run402 deploy`. From a snippet, `r.ci.listBindings({ project: projectId })`, `r.ci.getBinding(bindingId)`, and `r.ci.revokeBinding(bindingId)` read and revoke bindings, and `r.ci.createBinding(...)` takes a delegation the CLI (or `signCiDelegation` in `@run402/sdk/node`) has signed; the signed delegation is the authority boundary. A binding's `route_scopes` are exact paths like `/admin` or final wildcard prefixes like `/api/*`; no `route_scopes` means no CI route-declaration authority. Gateway deploy planning returns `CI_ROUTE_SCOPE_DENIED` when CI tries to ship a route outside the delegated scopes; re-create the binding with covering scopes or run the route-changing deploy locally.

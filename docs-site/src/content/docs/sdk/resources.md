@@ -154,17 +154,19 @@ useful for inspecting an apply after the event, not for live streaming.
 Project snapshots are internal restore points, not portable archives.
 
 ```
-create(projectId): Promise<ProjectSnapshotDto>
+create(projectId, opts?: { label?, metadata? }): Promise<ProjectSnapshotDto>
 list(projectId, opts?: { kind?, limit?, after? }): Promise<ProjectSnapshotsListResult>
 get(projectId, snapshotId): Promise<ProjectSnapshotDto>
 delete(projectId, snapshotId): Promise<void>
-restorePlan(projectId, snapshotId, opts?: { includeAuth? }): Promise<SnapshotRestorePlanEnvelope>
-restore(projectId, snapshotId, confirm, opts?: { includeAuth? }): Promise<SnapshotRestoreResult>
+restorePlan(projectId, snapshotId, opts?: { includeAuth?, release? }): Promise<SnapshotRestorePlanEnvelope>
+restore(projectId, snapshotId, confirm, opts?: { includeAuth?, release?, wait?, timeoutMs?, pollIntervalMs? }): Promise<SnapshotRestoreResult>
+restore(projectId, snapshotId, confirm, opts: { ..., wait: false }): Promise<SnapshotRestoreHandle>
+getRestore(projectId, snapshotId, restoreId): Promise<SnapshotRestoreStatus>
 ```
 
-`ProjectSnapshotDto` preserves gateway snake_case: `snapshot_id`, `operation_id`, `project_id`, `kind` (`manual` / `pre_migration` / `pre_restore` / `scheduled`), `profile`, `status`, `manifest_sha256`, `size_bytes`, `live_release_id`, `captured_at`, `expires_at`, `error`, `created_at`, `updated_at`, and `next_actions`.
+`ProjectSnapshotDto` preserves gateway snake_case: `snapshot_id`, `operation_id`, `project_id`, `kind` (`manual` / `pre_migration` / `pre_restore` / `scheduled`), `profile`, `status`, `manifest_sha256`, `size_bytes`, `live_release_id`, `captured_at`, `expires_at`, `error`, `created_at`, `updated_at`, `label`, `metadata`, `created_by: { credential_kind, principal_id }`, `restore_of: { snapshot_id, restore_id } | null`, and `next_actions`. `label` and `metadata` are immutable and stored outside the project's database, so a restore never rewinds them; the list is a ledger of restore points that survives restores. `metadata` is a flat object of string / number / boolean / string[] values up to 4 KB, readable by anyone who can read the project's snapshots, so never put secrets in it.
 
-`restorePlan()` returns `{ restore_plan }` with `data_loss_statement`, auth counts/mode, capture-time/current releases, target slot behavior, `confirm.token`, `confirm.expires_at`, and next actions. `restore()` requires that token and returns `operation_id`, `pre_restore_snapshot_id`, old/new schema slots, restored migration registry row count, status, and next actions. Scoped form: `(await r.project(id)).snapshots.*`.
+`restorePlan()` returns `{ restore_plan }` with `data_loss_statement`, auth counts/mode, capture-time/current releases, target slot behavior, `confirm.token`, `confirm.expires_at`, and next actions. `restore_plan.release` carries `mode`, `restorable`, `reason`, and `warnings`. `restore()` requires that token, with the same `release` and `includeAuth` the plan used. It starts the restore in the background on the gateway and polls `getRestore()` until it finishes, so a long restore never hits an HTTP timeout, then resolves with `operation_id` / `restore_id`, `pre_restore_snapshot_id`, old/new schema slots, restored migration registry row count, `invalidated_plan_count`, `release_mode`, `live_release_id`, `edge` (when a release was re-activated), status, and next actions. A failed restore rejects with the gateway's code (for example `RESTORE_INTERRUPTED`); a restore still running when `timeoutMs` (default 15 minutes) runs out rejects with `SNAPSHOT_RESTORE_WAIT_TIMEOUT` and keeps going server-side. `{ wait: false }` resolves at once with the `202` handle. With `release: "snapshot"` the capture-time release is re-activated in the same transaction as the data flip (live release pointer, static site, routes, subdomains); function code is not versioned per release and keeps running its current code, which the plan lists as `FUNCTION_VERSION_MISMATCH`. Scoped form: `(await r.project(id)).snapshots.*`.
 
 ### `r.branches`
 
