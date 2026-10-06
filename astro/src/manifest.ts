@@ -35,7 +35,12 @@ export interface AssetManifest {
   project_id: string;
   /** The asset prefix used when uploading (key under blobs). */
   asset_prefix: string;
-  /** ISO 8601 timestamp of when the manifest was written. */
+  /**
+   * ISO 8601 build timestamp. Deterministic: `SOURCE_DATE_EPOCH` when set,
+   * otherwise the Unix epoch (`1970-01-01T00:00:00.000Z`) — never the wall
+   * clock, because the manifest is baked into the SSR bundle and a
+   * changing timestamp would redeploy the SSR function on every build.
+   */
   generated_at: string;
   /**
    * Map from relative-to-assetsDir path → full AssetRef. The AssetRef

@@ -230,16 +230,16 @@
       "purpose": "history",
       "interface": "historical",
       "exception": "Dated release records; add current entries without rewriting history.",
-      "sha256": "16c50e7c4492b8fd062c01880facc4215e78c7f80b4542c19a8090ef288db16c",
+      "sha256": "1b184493d7950dfcf13995921a036acca1310356b700174454fd6cdf63290849",
       "outputs": [],
       "url": null,
       "checks": [
         "inventory-policy"
       ],
       "evidence": {
-        "editorial": "excluded from rewrite: dated history; current release note/banner reviewed",
+        "editorial": "pending: source changed since editorial review",
         "local": "see named check results",
-        "publication": "source published: 23751749; no separate hosted acceptance required"
+        "publication": "pending: source changed since publication evidence"
       }
     },
     {
@@ -250,7 +250,7 @@
       "purpose": "runtime",
       "interface": "application",
       "exception": "Native runtime/Astro code remains; infrastructure operating examples use CLI.",
-      "sha256": "a2530151240ee89112defebbbd2becaa4ace6cee6ef537ca2dfb4bd112b51ac3",
+      "sha256": "d87a04ef36df7740cd98630fd65c268e071bd30bc62cd936f6f99f9dd6aca9b9",
       "outputs": [],
       "url": null,
       "checks": [

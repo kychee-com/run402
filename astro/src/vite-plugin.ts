@@ -57,7 +57,8 @@ export interface VitePluginState {
   publicDirRefs: Set<string>;
   /**
    * AssetRef-by-absolute-path map serialized into the
-   * `virtual:run402-assetmap` virtual module. Populated alongside the
+   * `virtual:run402-assetmap` virtual module (re-keyed by `assetMapKey`
+   * at serialization time, so no absolute path reaches the bundle). Populated alongside the
    * uploader's run; consumed by the virtual-module `load` hook to ferry
    * the data into every SSR/static-render realm Vite spawns. A
    * module-level singleton in registry.ts alone is insufficient: each
@@ -216,7 +217,7 @@ export function createVitePlugin(state: VitePluginState): MinimalVitePlugin {
         // Module-level singleton — used by `astro dev` where build and
         // render share the same realm. Insufficient on its own for
         // `astro build`; see virtualEntries below for the bridge.
-        setAssetRef(absPath, result.assetRef);
+        setAssetRef(assetMapKey(state.projectRoot, absPath), result.assetRef);
         // Realm-portable copy that the `virtual:run402-assetmap` load
         // hook serializes into every SSR / static-render bundle. The
         // bundler bakes the JSON literal into each output, so every
@@ -270,9 +271,9 @@ export function createVitePlugin(state: VitePluginState): MinimalVitePlugin {
       // JS array so Vite bundles them into every realm's output.
       //
       // Two exports:
-      //   - default: Map<absolutePath, AssetRef> — used by Image.astro at
-      //     SSR-render time, keyed by the absolute file path the source-
-      //     rewrite step substituted.
+      //   - default: Map<projectRelativePath, AssetRef> — used by
+      //     Image.astro at SSR-render time, keyed by the project-root-
+      //     relative path the source-rewrite step substituted.
       //   - manifest: AssetManifest | null — same shape as the
       //     file emitted at closeBundle, keyed by path relative to
       //     `assetsDir`. Used by `@run402/astro/build-manifest`'s
@@ -286,9 +287,20 @@ export function createVitePlugin(state: VitePluginState): MinimalVitePlugin {
         // bad value can't break the whole bundle. AssetRef is pure
         // JSON (strings/numbers/booleans/nested plain objects), so
         // JSON.stringify is sufficient.
+        //
+        // Keys are project-root-relative (see `assetMapKey`) and sorted,
+        // so the emitted source -- which Vite bakes into the SSR server
+        // bundle -- is byte-identical across rebuilds of the same commit
+        // and across checkout paths. Upload completion order and the
+        // absolute checkout path must never reach the bundle, or the SSR
+        // function's code hash changes on every deploy.
         const tuples: string[] = [];
-        for (const [absPath, ref] of state.virtualEntries) {
-          tuples.push(`[${JSON.stringify(absPath)}, ${JSON.stringify(ref)}]`);
+        const entries = Array.from(state.virtualEntries, ([absPath, ref]) => ({
+          key: assetMapKey(state.projectRoot, absPath),
+          ref,
+        })).sort((a, b) => compareStrings(a.key, b.key));
+        for (const { key, ref } of entries) {
+          tuples.push(`[${JSON.stringify(key)}, ${JSON.stringify(ref)}]`);
         }
         const manifestLiteral =
           state.manifestKeyByAbsPath.size > 0
@@ -319,7 +331,13 @@ export function createVitePlugin(state: VitePluginState): MinimalVitePlugin {
       let modified = source;
       let didChange = false;
       for (const { reference, absolutePath } of fileRefs) {
-        const next = rewriteImageSrc(modified, reference.src, absolutePath);
+        // Rewrite to the project-root-relative key, not the absolute
+        // path: the rewritten literal is compiled into the SSR bundle.
+        const next = rewriteImageSrc(
+          modified,
+          reference.src,
+          assetMapKey(state.projectRoot, absolutePath),
+        );
         if (next !== modified) {
           modified = next;
           didChange = true;
@@ -386,18 +404,58 @@ export function createVitePlugin(state: VitePluginState): MinimalVitePlugin {
  * that actually resolved make it into the manifest.
  */
 function buildManifest(state: VitePluginState): import("./manifest.js").AssetManifest {
-  const assets: { [key: string]: import("./types.js").AssetRef } = {};
+  const found: [string, import("./types.js").AssetRef][] = [];
   for (const [absPath, key] of state.manifestKeyByAbsPath) {
     const ref = state.virtualEntries.get(absPath);
-    if (ref) assets[key] = ref;
+    if (ref) found.push([key, ref]);
   }
+  found.sort((a, b) => compareStrings(a[0], b[0]));
+  const assets: { [key: string]: import("./types.js").AssetRef } = {};
+  for (const [key, ref] of found) assets[key] = ref;
   return {
     version: 1,
     project_id: state.projectId,
     asset_prefix: state.prefix,
-    generated_at: new Date().toISOString(),
+    generated_at: manifestGeneratedAt(),
     assets,
   };
+}
+
+/**
+ * `generated_at` for the asset manifest. Deterministic by design: the
+ * manifest is baked into the SSR server bundle via
+ * `virtual:run402-assetmap`, so a wall-clock timestamp would change the
+ * SSR function's code hash on every build and redeploy it even when no
+ * source changed. Honors `SOURCE_DATE_EPOCH` (reproducible-builds.org)
+ * when set to a valid integer; otherwise the Unix epoch. Because the
+ * value depends only on the environment, the bundled copy and the
+ * on-disk `_assets-manifest.json` written at `closeBundle` always agree.
+ */
+export function manifestGeneratedAt(env: NodeJS.ProcessEnv = process.env): string {
+  const raw = env.SOURCE_DATE_EPOCH?.trim();
+  if (raw && /^\d+$/.test(raw)) {
+    const ms = Number(raw) * 1000;
+    if (Number.isSafeInteger(ms)) {
+      const date = new Date(ms);
+      if (!Number.isNaN(date.getTime())) return date.toISOString();
+    }
+  }
+  return new Date(0).toISOString();
+}
+
+/**
+ * The key an `<Image>` source is registered and looked up under: its
+ * path relative to the project root, with `/` separators. Absolute
+ * paths would leak the checkout location into the SSR bundle (both the
+ * `virtual:run402-assetmap` literal and the rewritten `src` props), so
+ * two checkouts of the same commit would bundle different bytes.
+ */
+export function assetMapKey(projectRoot: string, absolutePath: string): string {
+  return relative(projectRoot, absolutePath).split(sep).join("/");
+}
+
+function compareStrings(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
 }
 
 function refKey(importingFile: string, src: string): string {

@@ -690,7 +690,7 @@ export default defineConfig({
   "version": 1,
   "project_id": "prj_...",
   "asset_prefix": "astro/",
-  "generated_at": "2026-05-20T13:30:00.000Z",
+  "generated_at": "1970-01-01T00:00:00.000Z",
   "assets": {
     "hero.jpg": {
       "key": "astro/hero.jpg",
@@ -711,6 +711,8 @@ export default defineConfig({
 ```
 
 Keys are paths relative to the `assetsDir` (preserving nesting: `avatars/01.jpg` → `"avatars/01.jpg"`).
+
+The manifest is deterministic: keys are sorted and `generated_at` is `SOURCE_DATE_EPOCH` when set, otherwise the Unix epoch, so rebuilding the same commit produces a byte-identical manifest and SSR bundle (the manifest is also bundled into the SSR function, and a changing timestamp would redeploy it on every build).
 
 **Render-time consumption:**
 

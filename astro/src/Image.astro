@@ -17,9 +17,11 @@
  * ```
  *
  * The `src` prop is a string path relative to THIS .astro file. The Vite
- * plugin rewrites it to an absolute filesystem path during the `load(id)`
- * hook on `.astro` files (BEFORE Astro's compiler runs), so this component
- * sees an absolute path at render time. Users do not see the rewrite;
+ * plugin rewrites it to the file's project-root-relative path during the
+ * `load(id)` hook on `.astro` files (BEFORE Astro's compiler runs), so this
+ * component sees that path at render time. (Never an absolute path: the
+ * rewritten prop is compiled into the SSR bundle, which must not depend on
+ * where the project is checked out.) Users do not see the rewrite;
  * their source remains the relative-path form.
  *
  * REGISTRY: TWO LAYERS, by design.
@@ -40,7 +42,7 @@
  * The component reads from BOTH:
  *   1. virtualEntries — production-build path, baked-in literal Map
  *      from the bundled virtual module.
- *   2. getAssetRef(absPath) — dev-mode path, the module-level singleton
+ *   2. getAssetRef(key) — dev-mode path, the module-level singleton
  *      populated in-realm by the Vite plugin's buildStart hook (which
  *      runs once at dev-server start in the SAME realm as renders).
  *
