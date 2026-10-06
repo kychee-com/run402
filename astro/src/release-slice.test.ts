@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
 
 import {
@@ -49,6 +49,12 @@ function writeFixture(
   }
 
   return { distDir, entryAbs };
+}
+
+function writeClientFile(distDir: string, rel: string, body: string): void {
+  const abs = join(distDir, "run402", "client", rel);
+  mkdirSync(dirname(abs), { recursive: true });
+  writeFileSync(abs, body);
 }
 
 describe("loadAstroAdapterManifest", () => {
@@ -269,15 +275,47 @@ describe("buildAstroReleaseSlice — explicit cacheClass option", () => {
         { pattern: "/[slug]", prerender: false, type: "page" },
       ],
     });
+    writeClientFile(distDir, "about/index.html", "<h1>about</h1>");
     const slice = await buildAstroReleaseSlice(distDir, { cacheClass: "revalidating_asset" });
     const publicPaths = (slice.site as { public_paths?: unknown }).public_paths as {
       mode: string;
       replace: Record<string, { asset: string; cache_class?: string }>;
     };
     assert.equal(publicPaths.mode, "explicit");
+    const about = { asset: "about/index.html", cache_class: "revalidating_asset" };
     assert.deepEqual(publicPaths.replace, {
-      "/about": { asset: "about/index.html", cache_class: "revalidating_asset" },
+      "/": { asset: "index.html" },
+      "/index.html": { asset: "index.html" },
+      "/about": about,
+      "/about/": about,
+      "/about/index.html": about,
     });
+  });
+
+  it("keeps every uploaded client file reachable in explicit mode (CSS/JS, public/ files)", async () => {
+    const { distDir } = writeFixture(root, {
+      routes: [
+        { pattern: "/", prerender: false, type: "page" },
+        { pattern: "/about", pathname: "about/", prerender: true, type: "page" },
+      ],
+    });
+    writeClientFile(distDir, "about/index.html", "<h1>about</h1>");
+    writeClientFile(distDir, "_astro/index.B1x2.css", "body{}");
+    writeClientFile(distDir, "_astro/client.C3y4.js", "export{}");
+    writeClientFile(distDir, "favicon.svg", "<svg/>");
+    writeClientFile(distDir, ".DS_Store", "skipped by the SDK walker");
+    const slice = await buildAstroReleaseSlice(distDir, { cacheClass: "html" });
+    const { replace } = (slice.site as { public_paths?: unknown }).public_paths as {
+      replace: Record<string, { asset: string; cache_class?: string }>;
+    };
+    assert.deepEqual(replace["/_astro/index.B1x2.css"], { asset: "_astro/index.B1x2.css" });
+    assert.deepEqual(replace["/_astro/client.C3y4.js"], { asset: "_astro/client.C3y4.js" });
+    assert.deepEqual(replace["/favicon.svg"], { asset: "favicon.svg" });
+    assert.deepEqual(replace["/about/"], { asset: "about/index.html", cache_class: "html" });
+    // The SSR-rendered `/` is not prerendered, so its stale client index.html
+    // keeps the gateway-inferred class rather than `cacheClass`.
+    assert.deepEqual(replace["/"], { asset: "index.html" });
+    assert.equal(replace["/.DS_Store"], undefined, "a file the SDK does not upload must not be declared");
   });
 
   it("defaults to public_paths { mode: 'implicit' } so the release opts out of inherited explicit paths", async () => {
@@ -301,17 +339,16 @@ describe("buildAstroReleaseSlice — explicit cacheClass option", () => {
     );
   });
 
-  it("maps a prerendered endpoint to its own asset path, not <path>/index.html", async () => {
+  it("declares a prerendered endpoint at its own path without cacheClass (it is not HTML)", async () => {
     const { distDir } = writeFixture(root, {
       routes: [{ pattern: "/rss.xml", pathname: "rss.xml", prerender: true, type: "endpoint" }],
     });
+    writeClientFile(distDir, "rss.xml", "<rss/>");
     const slice = await buildAstroReleaseSlice(distDir, { cacheClass: "html" });
-    const publicPaths = (slice.site as { public_paths?: unknown }).public_paths as {
+    const { replace } = (slice.site as { public_paths?: unknown }).public_paths as {
       replace: Record<string, { asset: string; cache_class?: string }>;
     };
-    assert.deepEqual(publicPaths.replace, {
-      "/rss.xml": { asset: "rss.xml", cache_class: "html" },
-    });
+    assert.deepEqual(replace["/rss.xml"], { asset: "rss.xml" });
   });
 
   it("normalizes Astro's empty-string root pathname to / in explicit public_paths", async () => {
@@ -325,6 +362,7 @@ describe("buildAstroReleaseSlice — explicit cacheClass option", () => {
     };
     assert.deepEqual(publicPaths.replace, {
       "/": { asset: "index.html", cache_class: "html" },
+      "/index.html": { asset: "index.html", cache_class: "html" },
     });
   });
 });

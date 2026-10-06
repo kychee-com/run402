@@ -182,7 +182,10 @@ export interface BuildAstroReleaseSliceOptions {
    * Static `cache_class` applied to prerendered HTML aliases. Defaults to
    * `"html"`. Set to a different known class
    * (`"immutable_versioned" | "revalidating_asset"`) or a future literal to
-   * tune CDN cache behavior for a specific build.
+   * tune CDN cache behavior for a specific build. Setting it switches
+   * `site.public_paths` to explicit mode with every uploaded client file
+   * declared at its implicit path, so CSS/JS and `public/` files stay
+   * reachable; only prerendered pages carry this class.
    */
   cacheClass?: StaticCacheClass;
   /**
@@ -423,25 +426,41 @@ export async function buildAstroReleaseSlice(
   // keeps the slice safe to submit from a CI OIDC session without route scopes.
   // Callers who need explicit routes declare them on top of the slice.
 
-  // `cacheClass` is plumbed into `site.public_paths` for prerendered routes
-  // when a caller cares about overriding the default html cache class. The
-  // default mode is implicit (filename-derived); when a custom class is
-  // supplied we emit an explicit `public_paths.replace` map for the
-  // prerendered set.
+  // `cacheClass` overrides the cache class of prerendered HTML. Explicit
+  // mode cannot be mixed with implicit reachability, and only declared
+  // paths are public in it, so the map declares every file the deploy
+  // uploads from the client dir at the paths implicit mode would give it
+  // (`/<file>`, plus `/<dir>/` for an `index.html`) — otherwise `/_astro/*`
+  // CSS/JS and `public/` files would 404. Only the prerendered routes'
+  // pages carry `cacheClass`; the gateway infers every other class.
   if (opts.cacheClass !== undefined) {
-    const replace: Record<string, { asset: string; cache_class?: StaticCacheClass }> = {};
+    const { fileSetFromDir } = await import("@run402/sdk/node");
+    const files = Object.keys(await fileSetFromDir(clientDirAbs)).sort();
+    const uploaded = new Set(files);
+
+    const prerendered = new Map<string, string>();
     for (const r of manifest.routes ?? []) {
-      if (r.type && r.type !== "page" && r.type !== "endpoint") continue;
+      // Pages only: a prerendered endpoint (`/rss.xml`) is not HTML, so it
+      // is declared by the file walk below with an inferred class.
+      if (r.type && r.type !== "page") continue;
       if (!r.prerender) continue;
       const raw = r.pathname ?? r.pattern;
       if (raw === undefined || raw === null) continue;
       const pattern = raw === "" ? "/" : raw.startsWith("/") ? raw : `/${raw}`;
-      replace[pattern] = {
-        // A prerendered endpoint (`/rss.xml`) is emitted at its own path,
-        // not as `<path>/index.html`.
-        asset: r.type === "endpoint" ? pattern.replace(/^\/+/, "") : prerenderedHtmlPath(pattern),
-        cache_class: cacheClass,
-      };
+      const asset = prerenderedHtmlPath(pattern);
+      if (uploaded.has(asset)) prerendered.set(pattern, asset);
+    }
+    const prerenderedAssets = new Set(prerendered.values());
+
+    const replace: Record<string, { asset: string; cache_class?: StaticCacheClass }> = {};
+    for (const file of files) {
+      const entry = prerenderedAssets.has(file) ? { asset: file, cache_class: cacheClass } : { asset: file };
+      replace[`/${file}`] = entry;
+      if (file === "index.html") replace["/"] = entry;
+      else if (file.endsWith("/index.html")) replace[`/${file.slice(0, -"index.html".length)}`] = entry;
+    }
+    for (const [pattern, asset] of prerendered) {
+      replace[pattern] = { asset, cache_class: cacheClass };
     }
     (site as { public_paths?: unknown }).public_paths = {
       mode: "explicit",
