@@ -81,6 +81,20 @@ Three options if your SSR route needs request-time config:
 
 The Run402 anon key + service key + project ID + JWT secret + API base ARE auto-injected at deploy time (you'll see `RUN402_ANON_KEY`, `RUN402_SERVICE_KEY`, `RUN402_PROJECT_ID`, `RUN402_JWT_SECRET`, `RUN402_API_BASE` in `process.env` from inside the SSR runtime — those are the platform-managed channel).
 
+### Set a stable `ASTRO_KEY` for every build
+
+Astro encrypts server-island props and action payloads with a key it bakes into the SSR bundle. When `ASTRO_KEY` is unset, it mints a random key on every build, so the `ssr` function's code changes every time and is redeployed on every deploy, even when no source changed. The adapter logs a warning (`ASTRO_KEY is not set: ...`) when an SSR build runs without one.
+
+Generate a key once and export it for every build:
+
+```bash
+npx astro create-key
+```
+
+Store the printed value as a CI secret (for GitHub Actions, a repository secret mapped with `env: ASTRO_KEY: ${{ secrets.ASTRO_KEY }}` on the build step), and set the same value for local deploys. Keep it secret: it protects the encrypted props. Rotating it is safe but redeploys `ssr` once.
+
+The adapter also sorts the asset list in Astro's serialized server manifest (Astro collects it with an unordered glob), so with a stable `ASTRO_KEY` two builds of the same commit in the same checkout path produce a byte-identical SSR bundle. Builds from different checkout paths still differ: Astro's compiler bakes absolute source paths into the server bundle.
+
 ### Rendering-mode pattern matrix
 
 Astro supports four rendering modes; `auth.*` calls have different semantics in each. Pick the right mode per page and the rest follows.

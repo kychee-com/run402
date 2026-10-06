@@ -11,6 +11,10 @@
  *   3. Emits `dist/run402/adapter.json` in `astro:build:done` —
  *      a manifest the Run402 CLI's `run402 deploy` consumes to
  *      assemble the multi-slice ReleaseSpec (site + functions + routes).
+ *   4. Keeps the SSR server output deterministic in `astro:build:done`:
+ *      sorts Astro's racy manifest `assets` list and warns when
+ *      `ASTRO_KEY` is unset (see ssr-determinism.ts), so an unchanged
+ *      commit does not redeploy the ssr function.
  *
  * The adapter declares itself as supporting:
  *   - `staticOutput: 'stable'`
@@ -21,6 +25,7 @@
  * @see the astro-ssr-runtime OpenSpec change
  */
 
+import { existsSync } from "node:fs";
 import { writeFile, mkdir } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -29,6 +34,7 @@ import { fileURLToPath } from "node:url";
 import type { AstroIntegration } from "astro";
 
 import { detectDynamicImage, detectServerIslands, detectSessionsApi } from "./ssr-detectors.js";
+import { astroKeyWarning, normalizeServerOutput } from "./ssr-determinism.js";
 
 export interface CreateRun402AdapterOptions {
   /** Project id override (normally read from `RUN402_PROJECT_ID`). */
@@ -183,6 +189,7 @@ export function createRun402Adapter(options: CreateRun402AdapterOptions = {}): A
       },
 
       "astro:build:done": async (args: {
+        logger?: { warn(message: string): void };
         pages: Array<{ pathname: string }>;
         routes?: Array<{
           route?: string;
@@ -191,7 +198,7 @@ export function createRun402Adapter(options: CreateRun402AdapterOptions = {}): A
           type?: string;
         }>;
       }) => {
-        const { pages, routes } = args;
+        const { pages, routes, logger } = args;
         manifest.serverEntrypoint = path.join(serverDir, "entry.mjs");
         manifest.clientDir = path.join(buildOutputDir, "run402/client/");
 
@@ -222,6 +229,15 @@ export function createRun402Adapter(options: CreateRun402AdapterOptions = {}): A
             type: "page" as const,
           }));
         }
+        // Determinism: only matters when an SSR function ships, i.e.
+        // when Astro emitted a server entry. (Not keyed off `routes`:
+        // Astro 6+ no longer passes them to this hook.)
+        if (existsSync(manifest.serverEntrypoint)) {
+          await normalizeServerOutput(serverDir);
+          const keyWarning = astroKeyWarning();
+          if (keyWarning) logger?.warn(keyWarning);
+        }
+
         manifest.features = {
           middleware: true,
           serverIslands: false,
