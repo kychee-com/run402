@@ -29,9 +29,10 @@
  */
 
 import { createElement, Fragment, version as REACT_VERSION, type FC, type ReactElement } from "react";
+import * as ReactDOM from "react-dom";
 
 import { buildRun402ImageRenderTree } from "./core.js";
-import { renderToReact } from "./render-react.js";
+import { preloadViaReactDom, renderToReact, type ReactDomPreload } from "./render-react.js";
 import {
   Run402ImageError,
   type ReactComponent,
@@ -74,6 +75,14 @@ function cloneWithKey(el: ReactElement, key: string): ReactElement {
 function detectIsSSR(): boolean {
   return typeof globalThis.document === "undefined";
 }
+
+/**
+ * `ReactDOM.preload` on React 19+, `undefined` on React 18 (read off the
+ * namespace so a missing export is `undefined`, not a link error). React
+ * 18 has no automatic `<img>` preload either, so it gets the `<link>`
+ * element instead.
+ */
+const reactDomPreload = (ReactDOM as { preload?: ReactDomPreload }).preload;
 
 /**
  * Internal-test-only prop. The React adapter doesn't expose a way for
@@ -131,10 +140,17 @@ const Run402ImageInner: FC<Run402ImageProps & InternalTestProps> = (props) => {
     context,
   );
   const rootEl = renderToReact(root);
+  if (preload?.kind === "link" && typeof reactDomPreload === "function") {
+    // React owns the preload: one <link>, deduped against its automatic
+    // <img> preload and hoisted out of the component's markup.
+    preloadViaReactDom(preload.attrs, reactDomPreload);
+    return rootEl;
+  }
   if (preload) {
-    // Wrap both in a React Fragment so the consumer's tree carries one
-    // returned element. Fragment children stay anonymous in
-    // `renderToStaticMarkup` output (no extra DOM).
+    // React 18: render the preload as an element. Wrap both in a React
+    // Fragment so the consumer's tree carries one returned element.
+    // Fragment children stay anonymous in `renderToStaticMarkup` output
+    // (no extra DOM).
     return createElement(
       Fragment,
       null,

@@ -934,6 +934,14 @@ function maybePreload(input: RenderTreeInputs): RenderTreeNode | undefined {
   // applies for single-source heroes).
   const fetchpriority: "high" | "low" | "auto" =
     props.fetchpriority ?? "high"; // priority=true defaults to high; caller can override
+  // The preload carries the <img>'s CORS mode and referrer policy: the
+  // browser only hands a preloaded response to a request made in the same
+  // CORS mode, so a no-CORS preload for a `crossorigin` image is fetched
+  // twice and reported as an unused preload.
+  const requestAttrs = {
+    ...(props.crossorigin !== undefined ? { crossorigin: props.crossorigin } : {}),
+    ...(props.referrerpolicy !== undefined ? { referrerpolicy: props.referrerpolicy } : {}),
+  };
 
   if (variants.length === 0) {
     const href = resolveImgSrc(props.asset);
@@ -943,6 +951,7 @@ function maybePreload(input: RenderTreeInputs): RenderTreeNode | undefined {
       href,
       ...(props.asset.content_type ? { type: props.asset.content_type } : {}),
       fetchpriority,
+      ...requestAttrs,
     };
     if (input.context.registerPreload) {
       input.context.registerPreload(linkToPreloadAttrs(link));
@@ -962,6 +971,7 @@ function maybePreload(input: RenderTreeInputs): RenderTreeNode | undefined {
     imagesizes: props.sizes,
     type: variants[0]!.format === "webp" ? "image/webp" : "image/jpeg",
     fetchpriority,
+    ...requestAttrs,
   };
   if (input.context.registerPreload) {
     input.context.registerPreload(linkToPreloadAttrs(link));
@@ -980,6 +990,8 @@ function linkToPreloadAttrs(link: LinkAttrs): PreloadAttrs {
   if (link.href !== undefined) out.href = link.href;
   if (link.type !== undefined) out.type = link.type;
   if (link.fetchpriority !== undefined) out.fetchpriority = link.fetchpriority;
+  if (link.crossorigin !== undefined) out.crossorigin = link.crossorigin;
+  if (link.referrerpolicy !== undefined) out.referrerpolicy = link.referrerpolicy;
   return out;
 }
 

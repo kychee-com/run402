@@ -28,6 +28,7 @@
 
 import { createElement, type ReactElement, type ReactNode } from "react";
 
+import { preloadCrossOrigin } from "./render-html.js";
 import type {
   ImgAttrs,
   LinkAttrs,
@@ -136,16 +137,64 @@ function renderImg(attrs: ImgAttrs): ReactElement {
 }
 
 function renderLink(attrs: LinkAttrs): ReactElement {
-  const props: Record<string, unknown> = {
-    rel: attrs.rel,
-    as: attrs.as,
-  };
-  if (attrs.imagesrcset !== undefined) props.imageSrcSet = attrs.imagesrcset;
-  if (attrs.imagesizes !== undefined) props.imageSizes = attrs.imagesizes;
+  // Only reached on React 18, which has no `ReactDOM.preload()` (see
+  // `preloadViaReactDom`). Same order and `crossorigin` spelling as
+  // `render-html.ts`'s serializeLink, which follows `ReactDOM.preload()`.
+  const props: Record<string, unknown> = { rel: attrs.rel };
   if (attrs.href !== undefined) props.href = attrs.href;
+  props.as = attrs.as;
+  if (attrs.crossorigin !== undefined) props.crossOrigin = preloadCrossOrigin(attrs.crossorigin);
   if (attrs.type !== undefined) props.type = attrs.type;
   if (attrs.fetchpriority !== undefined) props.fetchPriority = attrs.fetchpriority;
+  if (attrs.referrerpolicy !== undefined) props.referrerPolicy = attrs.referrerpolicy;
+  if (attrs.imagesrcset !== undefined) props.imageSrcSet = attrs.imagesrcset;
+  if (attrs.imagesizes !== undefined) props.imageSizes = attrs.imagesizes;
   return createElement("link", props);
+}
+
+/** `ReactDOM.preload` (React 19+), as far as this adapter calls it. */
+export type ReactDomPreload = (
+  href: string,
+  options: {
+    as: "image";
+    crossOrigin?: string;
+    type?: string;
+    fetchPriority?: "high" | "low" | "auto";
+    referrerPolicy?: ReferrerPolicy;
+    imageSrcSet?: string;
+    imageSizes?: string;
+  },
+) => void;
+
+/**
+ * Hand the preload to React instead of rendering a `<link>` element.
+ *
+ * React 19's server renderer preloads every non-lazy `<img>` outside
+ * `<picture>` on its own, and does not dedupe that against a rendered
+ * `<link rel="preload">` element, so the bare-`<img>` path used to emit
+ * two preloads for one URL. `ReactDOM.preload()` registers the resource
+ * under the key React's automatic image preload uses (the `src`, or
+ * `imagesrcset` + `imagesizes`), so React writes exactly one `<link>`,
+ * hoisted into the document head (or the preamble of a fragment render).
+ *
+ * `href` is required by `ReactDOM.preload()`; React drops it from the
+ * output when `imageSrcSet` is present, so the srcset form passes its
+ * first candidate URL.
+ */
+export function preloadViaReactDom(attrs: LinkAttrs, preload: ReactDomPreload): void {
+  const href = attrs.href ?? attrs.imagesrcset?.split(" ")[0];
+  if (!href) return;
+  preload(href, {
+    as: attrs.as,
+    ...(attrs.crossorigin !== undefined ? { crossOrigin: attrs.crossorigin } : {}),
+    ...(attrs.type !== undefined ? { type: attrs.type } : {}),
+    ...(attrs.fetchpriority !== undefined ? { fetchPriority: attrs.fetchpriority } : {}),
+    ...(attrs.referrerpolicy !== undefined
+      ? { referrerPolicy: attrs.referrerpolicy as ReferrerPolicy }
+      : {}),
+    ...(attrs.imagesrcset !== undefined ? { imageSrcSet: attrs.imagesrcset } : {}),
+    ...(attrs.imagesizes !== undefined ? { imageSizes: attrs.imagesizes } : {}),
+  });
 }
 
 // =============================================================================

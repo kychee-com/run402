@@ -17,6 +17,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
+import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { AssetRef } from "@run402/functions";
 
@@ -108,8 +109,10 @@ function makeFullAssetRef(overrides: Partial<AssetRef> = {}): AssetRef {
 function renderReactToHtml(
   props: Run402ImageProps & { _forceIsSSR?: boolean },
 ): string {
+  // Rendered as an element, not called as a function: the preload goes
+  // through ReactDOM.preload(), which needs a live React render.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return renderToStaticMarkup(Run402Image(props) as any);
+  return renderToStaticMarkup(createElement(Run402Image as any, props));
 }
 
 /** Render via the shared core + HTML serializer (the Astro path's

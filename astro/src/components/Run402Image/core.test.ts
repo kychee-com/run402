@@ -27,6 +27,7 @@ import {
   type DegradationEntry,
   type ImgAttrs,
   type PictureAttrs,
+  type PreloadAttrs,
   type RenderContext,
   type RenderTreeNode,
   type Run402ImageProps,
@@ -691,6 +692,30 @@ describe("preload — priority + SSR", () => {
     );
     assert.equal(calls.length, 1);
     assert.equal(result.preload, undefined);
+  });
+  it("the preload carries the <img>'s crossorigin + referrerpolicy, both shapes (run402-private#823)", () => {
+    const cors = { priority: true, crossorigin: "anonymous", referrerpolicy: "no-referrer" } as const;
+    const multi = build(cors, { isSSR: true });
+    const bare = build(
+      { ...cors, asset: makeFullAssetRef({ variants: undefined }), sizes: undefined },
+      { isSSR: true },
+    );
+    for (const result of [multi, bare]) {
+      assert.equal(result.preload?.kind, "link");
+      if (result.preload?.kind !== "link") return;
+      assert.equal(result.preload.attrs.crossorigin, "anonymous");
+      assert.equal(result.preload.attrs.referrerpolicy, "no-referrer");
+    }
+    const calls: PreloadAttrs[] = [];
+    build(cors, { isSSR: true, registerPreload: (link) => calls.push(link) });
+    assert.equal(calls[0]?.crossorigin, "anonymous");
+    assert.equal(calls[0]?.referrerpolicy, "no-referrer");
+  });
+  it("no crossorigin / referrerpolicy on the preload when the <img> has none", () => {
+    const result = build({ priority: true }, { isSSR: true });
+    if (result.preload?.kind !== "link") return assert.fail("expected a preload link");
+    assert.equal("crossorigin" in result.preload.attrs, false);
+    assert.equal("referrerpolicy" in result.preload.attrs, false);
   });
 });
 

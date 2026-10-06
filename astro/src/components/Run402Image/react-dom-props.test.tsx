@@ -1,5 +1,5 @@
 /**
- * Regression test for kychee-com/run402-private#796.
+ * Regression test for kychee-com/run402-private#796 and #823.
  *
  * `render-react.tsx` used to hand React the lowercase HTML attribute
  * names (`class`, `srcset`, `fetchpriority`, `crossorigin`,
@@ -11,6 +11,12 @@
  * name), so these renders must be the first React renders in the
  * process. Keep this in its own file: `node --test` runs each file in a
  * separate process.
+ *
+ * #823: on React 19 the bare-`<img>` path used to carry two image
+ * preloads (React's automatic `<img>` preload plus the component's own
+ * `<link>`), and the component's preload dropped `crossorigin` /
+ * `referrerpolicy`. Every case below must carry exactly one preload, in
+ * the image's CORS mode, byte-matching the HTML renderer.
  */
 
 import { describe, it } from "node:test";
@@ -24,7 +30,8 @@ import { lowercaseAttributeNames } from "./attr-case.test-helper.js";
 import { Run402Image } from "./react.js";
 import { buildRun402ImageRenderTree } from "./core.js";
 import { serializeRenderTree } from "./render-html.js";
-import type { Run402ImageProps } from "./types.js";
+import { renderToReact } from "./render-react.js";
+import type { LinkAttrs, Run402ImageProps } from "./types.js";
 
 function variant(kind: "thumb" | "medium" | "large", width: number) {
   const url = `https://pr-abc.run402.com/_blob/${kind}`;
@@ -124,11 +131,20 @@ const CASES: Array<{ name: string; props: Run402ImageProps; compareWithHtml: boo
       crossorigin: "use-credentials",
       referrerpolicy: "origin",
     },
-    // Not compared with the HTML renderer: React 19's SSR adds its own
-    // preload <link> for a non-lazy <img> outside <picture>, so this
-    // render carries two preloads where the HTML path has one. That
-    // predates #796 and is tracked separately.
-    compareWithHtml: false,
+    compareWithHtml: true,
+  },
+  {
+    name: "bare <img> (no variants) with priority, anonymous crossorigin, fetchpriority=auto",
+    props: {
+      asset: makeAssetRef({ variants: undefined }),
+      alt: "Bare hero",
+      priority: true,
+      fetchpriority: "auto",
+      class: "bare-hero",
+      crossorigin: "anonymous",
+      referrerpolicy: "no-referrer",
+    },
+    compareWithHtml: true,
   },
 ];
 
@@ -159,5 +175,46 @@ describe("<Run402Image> passes React DOM prop names (run402-private#796)", () =>
         `React and HTML renderers diverged for "${name}"`,
       );
     });
+
+    it(`renderToString carries exactly one preload, in the image's CORS mode: ${name}`, () => {
+      const { html } = renderCapturingConsoleErrors(props);
+      const links = html.match(/<link [^>]*>/g) ?? [];
+      assert.equal(links.length, 1, `expected one preload link, got:\n${html}`);
+      assert.match(links[0]!, /crossorigin=/);
+      assert.match(links[0]!, /referrerpolicy=/i);
+    });
   }
+
+  it("the React 18 <link> element fallback matches the HTML renderer", () => {
+    // React 18 has no ReactDOM.preload(), so the adapter renders the
+    // preload as an element there; it must serialize like render-html.ts.
+    const shapes: LinkAttrs[] = [
+      {
+        rel: "preload",
+        as: "image",
+        href: "https://pr-abc.run402.com/_blob/images/hero.jpg",
+        type: "image/jpeg",
+        fetchpriority: "high",
+        crossorigin: "anonymous",
+        referrerpolicy: "origin",
+      },
+      {
+        rel: "preload",
+        as: "image",
+        imagesrcset: "https://pr-abc.run402.com/_blob/thumb 320w, https://pr-abc.run402.com/_blob/large 1920w",
+        imagesizes: "100vw",
+        type: "image/webp",
+        fetchpriority: "high",
+        crossorigin: "use-credentials",
+        referrerpolicy: "no-referrer",
+      },
+    ];
+    for (const attrs of shapes) {
+      const node = { kind: "link", attrs } as const;
+      assert.equal(
+        lowercaseAttributeNames(renderToString(renderToReact(node))),
+        lowercaseAttributeNames(serializeRenderTree(node)),
+      );
+    }
+  });
 });

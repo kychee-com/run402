@@ -348,6 +348,11 @@ export interface PreloadAttrs {
   href?: string;
   type?: string;
   fetchpriority?: "high" | "low" | "auto";
+  /** Copied from the `<img>` so the browser can reuse the preloaded
+   *  response: a preload is only consumed by a request in the same CORS
+   *  mode. */
+  crossorigin?: "anonymous" | "use-credentials";
+  referrerpolicy?: string;
 }
 
 // =============================================================================
@@ -427,6 +432,10 @@ export interface LinkAttrs {
   href?: string;
   type?: string;
   fetchpriority?: "high" | "low" | "auto";
+  /** The `<img>`'s CORS mode and referrer policy, so the preloaded
+   *  response is reusable by the image request. */
+  crossorigin?: "anonymous" | "use-credentials";
+  referrerpolicy?: string;
 }
 
 // =============================================================================

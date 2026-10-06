@@ -148,20 +148,39 @@ function serializeImg(attrs: ImgAttrs): string {
 }
 
 function serializeLink(attrs: LinkAttrs): string {
-  // <link rel="preload" as="image" ...> — order: rel, as, then conditional
-  // payload attrs in spec order.
-  const parts: string[] = [
-    attr("rel", attrs.rel),
-    attr("as", attrs.as),
-  ];
-  if (attrs.imagesrcset !== undefined) parts.push(attr("imagesrcset", attrs.imagesrcset));
-  if (attrs.imagesizes !== undefined) parts.push(attr("imagesizes", attrs.imagesizes));
+  // On React 19 the React adapter hands the preload to `ReactDOM.preload()`
+  // rather than rendering a <link>, so this serializer follows the order
+  // and spelling React writes for that call: rel, href, as, crossorigin,
+  // type, fetchpriority, referrerpolicy, imagesrcset, imagesizes (`href`
+  // and `imagesrcset` are mutually exclusive). React spells the anonymous
+  // CORS mode as `crossorigin=""`, an equivalent HTML value.
+  const parts: string[] = [attr("rel", attrs.rel)];
   if (attrs.href !== undefined) parts.push(attr("href", attrs.href));
+  parts.push(attr("as", attrs.as));
+  if (attrs.crossorigin !== undefined) {
+    parts.push(attr("crossorigin", preloadCrossOrigin(attrs.crossorigin)));
+  }
   if (attrs.type !== undefined) parts.push(attr("type", attrs.type));
   if (attrs.fetchpriority !== undefined) {
     parts.push(attr("fetchpriority", attrs.fetchpriority));
   }
+  if (attrs.referrerpolicy !== undefined) {
+    parts.push(attr("referrerpolicy", attrs.referrerpolicy));
+  }
+  if (attrs.imagesrcset !== undefined) parts.push(attr("imagesrcset", attrs.imagesrcset));
+  if (attrs.imagesizes !== undefined) parts.push(attr("imagesizes", attrs.imagesizes));
   return `<link${joinAttrs(parts)}/>`;
+}
+
+/**
+ * The `crossorigin` value written on a preload `<link>`: `""` for the
+ * anonymous mode (`ReactDOM.preload()`'s spelling; an empty value is the
+ * anonymous state in HTML), `use-credentials` verbatim.
+ */
+export function preloadCrossOrigin(
+  value: NonNullable<LinkAttrs["crossorigin"]>,
+): "" | "use-credentials" {
+  return value === "use-credentials" ? value : "";
 }
 
 // =============================================================================
