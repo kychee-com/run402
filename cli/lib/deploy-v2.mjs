@@ -1526,9 +1526,12 @@ function enhanceDeployWarningError(err) {
   if (!warnings && code !== "MISSING_REQUIRED_SECRET" && !routeGuidance) return err;
 
   const enhanced = Object.assign(new Error(err?.message || existingBody.message || String(code)), err);
-  const affected = warnings
-    ? warnings.flatMap((w) => Array.isArray(w?.affected) ? w.affected : [])
+  const missingSecrets = warnings
+    ? warnings
+      .filter((w) => w?.code === "MISSING_REQUIRED_SECRET")
+      .flatMap((w) => Array.isArray(w?.affected) ? w.affected : [])
     : [];
+  const siteRemoval = siteRemovalGuidance(warnings);
   const unacknowledgedCodes = Array.isArray(existingBody.unacknowledged_warning_codes)
     ? existingBody.unacknowledged_warning_codes
     : warnings
@@ -1549,8 +1552,11 @@ function enhanceDeployWarningError(err) {
       : "Retry only after reviewing the warning code.",
   );
   const defaultNextActions = [
-    ...(affected.length > 0
-      ? [editRequestAction("run402 secrets set <project> <KEY> --stdin", `Set or inspect affected secrets: ${Array.from(new Set(affected)).join(", ")}`)]
+    ...(missingSecrets.length > 0
+      ? [editRequestAction("run402 secrets set <project> <KEY> --stdin", `Set or inspect affected secrets: ${Array.from(new Set(missingSecrets)).join(", ")}`)]
+      : []),
+    ...(siteRemoval
+      ? [editRequestAction("run402 deploy releases active", "Compare the live release's static paths with the removed paths in warnings[].affected.")]
       : []),
     retryAction("run402 deploy", "Retry after resolving warnings."),
     allowWarningAction,
@@ -1561,16 +1567,51 @@ function enhanceDeployWarningError(err) {
     code: code || "DEPLOY_WARNING_REQUIRES_CONFIRMATION",
     message: existingBody.message || err?.message || "Deploy plan returned warnings that require confirmation.",
     hint: existingBody.hint ||
+      (code === SITE_BULK_REMOVAL_CODE ? siteRemoval?.hint : null) ||
       routeGuidance?.hint ||
+      siteRemoval?.hint ||
       (code === "MISSING_REQUIRED_SECRET"
         ? "Set the missing secret values with `run402 secrets set <project> <KEY> --stdin` or `--file <path>`, then retry the deploy."
-        : "Review the plan warnings, then retry with --allow-warning <code> for reviewed warnings if you intentionally accept them."),
+        // reportSdkError adds the exact --allow-warning retry when the SDK
+        // names the unacknowledged codes.
+        : Array.isArray(existingBody.unacknowledged_warning_codes)
+          ? undefined
+          : "Review the plan warnings, then retry with --allow-warning <code> for reviewed warnings if you intentionally accept them."),
     next_actions: Array.isArray(existingBody.next_actions) && existingBody.next_actions.length > 0
       ? existingBody.next_actions
       : (routeGuidance?.next_actions ?? defaultNextActions),
     ...(warnings ? { warnings } : {}),
   };
   return enhanced;
+}
+
+const SITE_BULK_REMOVAL_CODE = "DESTRUCTIVE_SITE_BULK_REMOVAL";
+
+/**
+ * Reads the SDK's `details.removed_paths_summary` on a bulk site-removal
+ * warning and says whether the removal drops pages or only renames
+ * content-hashed build bundles (the routine framework-rebuild case).
+ */
+function siteRemovalGuidance(warnings) {
+  const warning = warnings?.find((w) => w?.code === SITE_BULK_REMOVAL_CODE);
+  if (!warning) return null;
+  const summary = warning.details?.removed_paths_summary;
+  const where = "Per-path detail is in warnings[].affected and warnings[].details.removed_paths_summary.";
+  if (!summary || typeof summary.total !== "number") {
+    return { hint: `This deploy removes more than ten percent of the live site's paths. ${where} Acknowledge ${SITE_BULK_REMOVAL_CODE} only if those removals are intended.` };
+  }
+  if (summary.only_content_hashed_build_assets) {
+    const example = Array.isArray(warning.affected) && warning.affected[0] ? ` (e.g. ${warning.affected[0]})` : "";
+    return {
+      hint: `All ${summary.total} removed site paths are content-hashed build assets${example}, which a rebuild renames; no HTML pages are removed. If this deploy is a rebuild of the same site, acknowledging ${SITE_BULK_REMOVAL_CODE} is safe. ${where}`,
+    };
+  }
+  const pageList = Array.isArray(summary.page_paths) && summary.page_paths.length > 0
+    ? ` (${summary.page_paths.slice(0, 5).join(", ")}${summary.pages > 5 ? ", …" : ""})`
+    : "";
+  return {
+    hint: `This deploy removes ${summary.total} site paths: ${summary.pages} HTML page${summary.pages === 1 ? "" : "s"}${pageList}, ${summary.content_hashed_build_assets} content-hashed build asset${summary.content_hashed_build_assets === 1 ? "" : "s"}, ${summary.other} other file${summary.other === 1 ? "" : "s"}. ${where} Acknowledge ${SITE_BULK_REMOVAL_CODE} only if those removals are intended.`,
+  };
 }
 
 const ROUTE_WARNING_GUIDANCE = {

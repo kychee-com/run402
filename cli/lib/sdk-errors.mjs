@@ -202,7 +202,14 @@ export function reportSdkError(err) {
 
   if (Array.isArray(payload.unacknowledged_warning_codes)) {
     const codes = payload.unacknowledged_warning_codes.filter(code => typeof code === "string" && /^[A-Z][A-Z0-9_]*$/.test(code));
-    if (codes.length) payload.hint = "After reviewing the warnings, retry the same command with " + codes.map(code => "--allow-warning " + code).join(" ") + ".";
+    if (codes.length) {
+      // Keep a warning-specific hint (e.g. the bulk site-removal breakdown
+      // from deploy-v2.mjs) ahead of the generic retry sentence.
+      const retry = "After reviewing the warnings, retry the same command with " + codes.map(code => "--allow-warning " + code).join(" ") + ".";
+      payload.hint = typeof payload.hint === "string" && payload.hint.length > 0 && !payload.hint.includes(retry)
+        ? `${payload.hint} ${retry}`
+        : retry;
+    }
   }
 
   // Keep `status: "error"` as the outer envelope even if the response body

@@ -555,6 +555,8 @@ Route warning guidance:
 | `STATIC_ALIAS_DUPLICATE_CANONICAL_URL` / `STATIC_ALIAS_EXTENSIONLESS_NON_HTML` | Route-only static alias may duplicate another direct public path or expose extensionless non-HTML. | Use one canonical public path per page and reserve exact static route targets for method-aware aliases. |
 | `STATIC_ALIAS_TABLE_NEAR_LIMIT` | Static route targets are near route-table limits. | Avoid one-static-route-target-per-page tables; consolidate. |
 
+`DESTRUCTIVE_SITE_BULK_REMOVAL` (removes more than ten percent of the live site's paths) lists the removed paths in `affected`; the SDK adds `details.removed_paths_summary` (`total`, `pages`, `page_paths`, `content_hashed_build_assets`, `other`, `other_paths`, `only_content_hashed_build_assets`, `by_top_level_dir`; heuristic) and the error hint says whether HTML pages disappear. When `only_content_hashed_build_assets` is true, the removal is renamed build bundles (e.g. `_astro/Foo.<hash>.js` after a rebuild) and `--allow-warning DESTRUCTIVE_SITE_BULK_REMOVAL` is safe for a rebuild of the same site.
+
 Runtime route failure codes: `ROUTE_MANIFEST_LOAD_FAILED` (manifest/propagation), `ROUTED_INVOKE_WORKER_SECRET_MISSING` (custom-domain Worker secret), `ROUTED_INVOKE_AUTH_FAILED` (internal invoke signature), `ROUTED_ROUTE_STALE` (release revalidation failed), `ROUTE_METHOD_NOT_ALLOWED`, `ROUTED_RESPONSE_TOO_LARGE` (>6 MiB).
 
 **Routed functions: locale awareness.** `spec.i18n` negotiates locale per routed-function request and exposes `x-run402-locale` / `x-run402-default-locale` headers (omitted when active release lacks `i18n`). Carry-forward rules are simpler than routes; no `{ replace }` envelope:

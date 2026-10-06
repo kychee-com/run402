@@ -3021,6 +3021,81 @@ describe("CLI e2e happy path", () => {
     assert.equal(body.warnings[0]?.code, "WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS");
   });
 
+  async function deployWithPlanWarnings(warnings, args = []) {
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+      const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
+      if (url.endsWith("/apply/v1/plans") && method === "POST") {
+        return new Response(JSON.stringify({
+          plan_id: "plan_v2_test",
+          operation_id: "op_v2_test",
+          base_release_id: "rel_prev",
+          manifest_digest: "deadbeef".repeat(8),
+          missing_content: [],
+          warnings,
+          diff: { resources: { site: { unchanged: false } } },
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      return prevFetch(input, init);
+    };
+    try {
+      return await deployApplyAndCapture(["--spec", nonEmptyDeploySpec(), "--project", "prj_test123", ...args]);
+    } finally {
+      globalThis.fetch = prevFetch;
+    }
+  }
+
+  function bulkRemovalWarning(affected) {
+    return {
+      code: "DESTRUCTIVE_SITE_BULK_REMOVAL",
+      severity: "high",
+      requires_confirmation: true,
+      message: "This plan removes more than ten percent of current site paths.",
+      affected,
+    };
+  }
+
+  it("deploy explains a bulk site removal made only of renamed build bundles (kychee-com/run402#614)", async () => {
+    const affected = ["_astro/Foo.Ds5BwtTY.js", "_astro/Bar.BT3mQ2xa.js", "_astro/index.CzEebLVq.css"];
+    const { threw, stderr } = await deployWithPlanWarnings([bulkRemovalWarning(affected)]);
+
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message), `should block, got: ${threw && threw.message}`);
+    const parsed = parseStderrEnvelope(stderr);
+    assert.equal(parsed.code, "DESTRUCTIVE_SITE_BULK_REMOVAL");
+    assert.deepEqual(parsed.warnings[0].affected, affected, "removed paths stay listed");
+    const summary = parsed.warnings[0].details.removed_paths_summary;
+    assert.equal(summary.total, 3);
+    assert.equal(summary.content_hashed_build_assets, 3);
+    assert.equal(summary.pages, 0);
+    assert.equal(summary.only_content_hashed_build_assets, true);
+    assert.deepEqual(summary.by_top_level_dir, { _astro: 3 });
+    assert.match(parsed.hint, /All 3 removed site paths are content-hashed build assets/);
+    assert.match(parsed.hint, /no HTML pages are removed/);
+    assert.match(parsed.hint, /--allow-warning DESTRUCTIVE_SITE_BULK_REMOVAL/);
+    assert.doesNotMatch(JSON.stringify(parsed.next_actions), /secrets/, "site paths are not secrets");
+  });
+
+  it("deploy names removed pages in a bulk site removal hint (kychee-com/run402#614)", async () => {
+    const { stderr } = await deployWithPlanWarnings([bulkRemovalWarning([
+      "events/index.html",
+      "_astro/Foo.Ds5BwtTY.js",
+      "images/old-banner.png",
+    ])]);
+    const parsed = parseStderrEnvelope(stderr);
+    assert.match(parsed.hint, /removes 3 site paths: 1 HTML page \(events\/index\.html\), 1 content-hashed build asset, 1 other file/);
+    assert.equal(parsed.warnings[0].details.removed_paths_summary.only_content_hashed_build_assets, false);
+  });
+
+  it("deploy --allow-warning DESTRUCTIVE_SITE_BULK_REMOVAL proceeds past the warning", async () => {
+    const { threw, stderr, stdout } = await deployWithPlanWarnings(
+      [bulkRemovalWarning(["_astro/Foo.Ds5BwtTY.js"])],
+      ["--allow-warning", "DESTRUCTIVE_SITE_BULK_REMOVAL"],
+    );
+    assert.equal(threw, null, stderr);
+    assert.equal(JSON.parse(stdout).release_id, "rel_v2_test");
+  });
+
   it("deploy --final-only suppresses progress events but keeps the result envelope", async () => {
     const { threw, stdout, stderr } = await deployApplyAndCapture(
       ["--spec", nonEmptyDeploySpec(), "--project", "prj_test123", "--final-only"],

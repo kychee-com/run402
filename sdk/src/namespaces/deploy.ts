@@ -103,6 +103,7 @@ import {
   assertExifPolicy,
 } from "./assets-validation.js";
 import type { TierStatusResult } from "./tier.js";
+import { withSiteRemovalSummaries } from "./site-removal-summary.js";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -4001,7 +4002,7 @@ function invalidRouteSpec(message: string, resource: string): Run402DeployError 
 
 function normalizePlanResponse(plan: PlanResponse): PlanResponse {
   const raw = plan as PlanResponse & { warnings?: unknown };
-  const warnings = Array.isArray(raw.warnings) ? raw.warnings : [];
+  const warnings = withSiteRemovalSummaries(Array.isArray(raw.warnings) ? raw.warnings : []);
   const missingContent = Array.isArray(raw.missing_content) ? raw.missing_content : [];
   if (raw.kind === "plan_response") {
     const diff: DeployDiff = {
