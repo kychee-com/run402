@@ -52,6 +52,8 @@ All notable changes to `@run402/astro`.
 
 ### Fixed
 
+- **`<Run402Image>` wrote numbers in an object `style` without a unit, so browsers ignored them.** `style={{ width: 100, marginTop: 8 }}` rendered `width:100;margin-top:8` from both the Astro and React entries. React on its own adds `px`, but the component handed React an already-serialized string, so React never saw the numbers. Numbers now follow React's rule: `px` is appended unless the value is `0`, the property takes unitless numbers (`lineHeight`, `zIndex`, `opacity`, `flexGrow`, and the rest of react-dom 19's list), or the property is custom (`--gap`). String values are unchanged.
+
 - **`<Run402Image>`'s Astro and React entries wrote different `style` attributes, and the React one could render differently.** React only takes object styles, so the React entry turned the merged style string into an object and React printed it again. That dropped spaces inside declarations, so `color: red` became `color:red`. A repeated property kept its first position with its last value, and the HTML entry kept both declarations. That reordering could put a caller's `background-size` in front of the caller's own later `background` shorthand, which then reset it. Custom properties were mangled, so `--brand-color` printed as `-BrandColor`. Both entries now write one canonical form, for string and object `style` alike:
   - each property appears once, at the position of its winning declaration, which leaves the rendered result unchanged;
   - a normal declaration does not displace an earlier `!important` one;

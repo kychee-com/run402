@@ -39,6 +39,7 @@ import { lowercaseAttributeNames } from "./attr-case.test-helper.js";
 import { Run402Image } from "./react.js";
 import { buildRun402ImageRenderTree } from "./core.js";
 import { serializeRenderTree } from "./render-html.js";
+import { UNITLESS_NUMBER_KEYS } from "./style-declarations.js";
 import type { RenderContext, Run402ImageProps } from "./types.js";
 
 // =============================================================================
@@ -388,6 +389,15 @@ const FIXTURES: Fixture[] = [
       },
     },
   },
+  {
+    name: "23: caller object-style with numeric values",
+    props: {
+      asset: makeFullV154AssetRef(),
+      alt: "Numeric",
+      sizes: "100vw",
+      style: { width: 100, marginTop: -8, padding: 0, lineHeight: 1.5, zIndex: 2, "--gap": 4 },
+    },
+  },
 ];
 
 // =============================================================================
@@ -411,6 +421,26 @@ describe("byte-identity fixture sweep — Astro ↔ React", () => {
       }
     });
   }
+
+  it("numeric object-style values match React's own serialization", () => {
+    // React is the oracle: a plain `<img style>` render, which sees the
+    // numbers themselves, must print what the component prints.
+    const keys = [
+      ...[...UNITLESS_NUMBER_KEYS].filter((k) => k !== "WebkitBoxFlexGroup"),
+      "width", "marginTop", "fontSize", "borderWidth", "WebkitTransitionDuration", "msTransform",
+    ];
+    for (const value of [2, 0, -1.5]) {
+      for (const key of keys) {
+        const style = { [key]: value };
+        const expected = /style="([^"]*)"/.exec(
+          renderToStaticMarkup(createElement("img", { alt: "", style })),
+        )?.[1];
+        const props = { asset: makeFullV154AssetRef({ blurhash_data_url: undefined }), alt: "", sizes: "100vw", style };
+        const actual = /style="([^"]*)"/.exec(renderHtml(props))?.[1];
+        assert.equal(actual, expected, `${key}: ${value}`);
+      }
+    }
+  });
 
   it(`sweep covers ${FIXTURES.length} fixtures — meets the §8 task budget of ~15`, () => {
     assert.ok(FIXTURES.length >= 15, `expected >= 15 fixtures, got ${FIXTURES.length}`);

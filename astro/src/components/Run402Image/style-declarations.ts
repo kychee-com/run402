@@ -97,3 +97,49 @@ export function serializeDeclarations(decls: Map<string, string>): string {
 function isImportant(value: string): boolean {
   return /!\s*important$/i.test(value);
 }
+
+/**
+ * The React style key for a CSS property name: `background-image` →
+ * `backgroundImage`, `-webkit-line-clamp` → `WebkitLineClamp`,
+ * `-ms-transform` → `msTransform` (React's spelling of the `-ms-` prefix).
+ * Custom properties pass through verbatim.
+ */
+export function reactStyleKey(cssName: string): string {
+  if (cssName.startsWith("--")) return cssName;
+  return cssName.replace(/^-ms-/, "ms-").replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
+}
+
+/**
+ * React keys whose numeric values React writes without a unit: react-dom
+ * 19's `unitlessNumbers`, except that its `WebKitBoxFlexGroup` is spelled
+ * `WebkitBoxFlexGroup` here, the key React's own camelCase produces.
+ */
+export const UNITLESS_NUMBER_KEYS: ReadonlySet<string> = new Set(
+  (
+    "animationIterationCount aspectRatio borderImageOutset borderImageSlice borderImageWidth " +
+    "boxFlex boxFlexGroup boxOrdinalGroup columnCount columns flex flexGrow flexPositive " +
+    "flexShrink flexNegative flexOrder gridArea gridRow gridRowEnd gridRowSpan gridRowStart " +
+    "gridColumn gridColumnEnd gridColumnSpan gridColumnStart fontWeight lineClamp lineHeight " +
+    "opacity order orphans scale tabSize widows zIndex zoom fillOpacity floodOpacity " +
+    "stopOpacity strokeDasharray strokeDashoffset strokeMiterlimit strokeOpacity strokeWidth " +
+    "MozAnimationIterationCount MozBoxFlex MozBoxFlexGroup MozLineClamp " +
+    "msAnimationIterationCount msFlex msZoom msFlexGrow msFlexNegative msFlexOrder " +
+    "msFlexPositive msFlexShrink msGridColumn msGridColumnSpan msGridRow msGridRowSpan " +
+    "WebkitAnimationIterationCount WebkitBoxFlex WebkitBoxFlexGroup WebkitBoxOrdinalGroup " +
+    "WebkitColumnCount WebkitColumns WebkitFlex WebkitFlexGrow WebkitFlexPositive " +
+    "WebkitFlexShrink WebkitLineClamp"
+  ).split(" "),
+);
+
+/**
+ * Format an object-form style value the way React's style writer does: a
+ * number gets `px` unless it is `0`, the property takes unitless numbers,
+ * or the property is custom. Strings are only trimmed.
+ */
+export function formatObjectStyleValue(cssName: string, value: string | number): string {
+  if (typeof value === "string") return value.trim();
+  if (value === 0 || cssName.startsWith("--") || UNITLESS_NUMBER_KEYS.has(reactStyleKey(cssName))) {
+    return String(value);
+  }
+  return `${value}px`;
+}

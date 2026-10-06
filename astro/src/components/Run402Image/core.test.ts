@@ -694,6 +694,31 @@ describe("style merge — object form canonicalization", () => {
     const asset = makeFullAssetRef({ blurhash_data_url: undefined });
     assert.equal(imgAttrs(build({ asset, style: { color: "", fontSize: "14px" } }).root).style, "font-size:14px");
   });
+  it("numbers get px unless zero, unitless, or a custom property", () => {
+    const asset = makeFullAssetRef({ blurhash_data_url: undefined });
+    const style = imgAttrs(
+      build({
+        asset,
+        style: {
+          width: 100,
+          "margin-top": -8,
+          fontSize: 1.5,
+          padding: 0,
+          lineHeight: 1.5,
+          zIndex: 2,
+          WebkitLineClamp: 3,
+          msFlex: 1,
+          "--gap": 4,
+          height: "100",
+        },
+      }).root,
+    ).style;
+    assert.equal(
+      style,
+      "width:100px;margin-top:-8px;font-size:1.5px;padding:0;line-height:1.5;z-index:2;" +
+        "-webkit-line-clamp:3;-ms-flex:1;--gap:4;height:100",
+    );
+  });
 });
 
 // =============================================================================

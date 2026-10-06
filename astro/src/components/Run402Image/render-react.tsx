@@ -29,7 +29,7 @@
 import { createElement, type ReactElement, type ReactNode } from "react";
 
 import { preloadCrossOrigin } from "./render-html.js";
-import { foldDeclarations, parseDeclarations } from "./style-declarations.js";
+import { foldDeclarations, parseDeclarations, reactStyleKey } from "./style-declarations.js";
 import type {
   ImgAttrs,
   LinkAttrs,
@@ -231,15 +231,6 @@ function parseStyleString(s: string): Record<string, string> {
     out[reactStyleKey(name)] = value;
   }
   return out;
-}
-
-function reactStyleKey(cssName: string): string {
-  // React passes custom properties through verbatim; camel-casing
-  // `--brand-color` would print `-BrandColor`.
-  if (cssName.startsWith("--")) return cssName;
-  // CSS `background-image` → React `backgroundImage`. React hyphenates it
-  // back on output (`-webkit-mask` → `WebkitMask` → `-webkit-mask`).
-  return cssName.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
 }
 
 /**

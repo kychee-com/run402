@@ -52,6 +52,7 @@ import {
 import {
   canonicalPropertyName,
   foldDeclarations,
+  formatObjectStyleValue,
   parseDeclarations,
   serializeDeclarations,
 } from "./style-declarations.js";
@@ -659,11 +660,14 @@ function mergeStyles(
   } else if (callerStyle !== undefined && callerStyle !== null) {
     // `callerStyle` may be `React.CSSProperties`, whose values are typed as
     // `string | number | undefined | …`. Skip anything that is not a string
-    // or number so we never serialize `object-fit:undefined`.
+    // or number so we never serialize `object-fit:undefined`. Numbers get
+    // `px` where React would add it: core hands React a string, so React
+    // never sees the number itself.
     for (const [k, v] of Object.entries(callerStyle as Record<string, unknown>)) {
       if (typeof v !== "string" && typeof v !== "number") continue;
-      const value = String(v).trim();
-      if (value !== "") decls.push([objectStyleKeyToCss(k), value]);
+      const name = objectStyleKeyToCss(k);
+      const value = formatObjectStyleValue(name, v);
+      if (value !== "") decls.push([name, value]);
     }
   }
   const out = serializeDeclarations(foldDeclarations(decls));
