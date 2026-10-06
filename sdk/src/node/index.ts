@@ -713,7 +713,7 @@ export type {
 // `git stash apply --index <oid>`. `Repos.resume`/`.join` delegate to
 // this. kygit-invite (design D3/D5) adds the `.git/info/exclude` write both
 // verbs share.
-export { applyHandoffCheckpoint, cloneVaultRemote, excludeMessagingCacheFromGit, isMessagingCacheExcludedFromGit, readGitCommitMessage, resolveResumeTargetDir } from "./vault-restore.js";
+export { applyHandoffCheckpoint, cloneVaultRemote, ensureCheckpointObjects, excludeMessagingCacheFromGit, isMessagingCacheExcludedFromGit, readGitCommitMessage, resolveResumeTargetDir } from "./vault-restore.js";
 export type { VaultHandoffRestoreOptions, VaultHandoffRestoreResult } from "./vault-restore.js";
 // vault D2 (repo-first-onramp task 2.2) — lazy allocation on first push;
 // the orchestration `Repos.openOrCreate` delegates to.

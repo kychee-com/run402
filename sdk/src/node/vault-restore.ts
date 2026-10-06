@@ -4,25 +4,29 @@
  * Restore is porcelain git, in two stages that deliberately run through
  * DIFFERENT runners:
  *
- *   1. `git clone <remote-url> <dir>` — a REAL network operation (the vault
- *      is reached through the `git-remote-run402` remote
- *      helper), so it must NOT run under `hardenedGit`'s
+ *   1. `git clone <remote-url> <dir>` and, when needed, one
+ *      `git fetch origin '+refs/run402/*:refs/run402/*'` — REAL network
+ *      operations (the vault is reached through the `git-remote-run402`
+ *      remote helper), so they must NOT run under `hardenedGit`'s
  *      `-c protocol.allow=never` (that flag exists to keep LOCAL plumbing
  *      calls — hash-object, commit-tree, write-tree — from ever touching
- *      the network by accident; a clone is the one call in this whole
- *      module that is SUPPOSED to). `--no-checkout` so nothing in the
- *      target directory's initial default-branch checkout can fire a
+ *      the network by accident; these are the only calls in this module
+ *      that are SUPPOSED to). `--no-checkout` so nothing in the target
+ *      directory's initial default-branch checkout can fire a
  *      template-installed hook before step 2 neutralizes hooks.
  *   2. Every LOCAL-only step after that (checkout the base, apply the
  *      stash-shaped commit) runs through {@link hardenedGit} exactly like
  *      every other vault plumbing call — hooks, fsmonitor, and replace
  *      refs all disabled, argv-only, no shell.
  *
- * The handoff commit ITSELF needs no separate fetch: it is a `retention
- * root` (design D6), and `restoreObjectsInto` — what the remote helper's
- * `fetch` verb runs on every clone — materializes the vault's FULL
- * retained object set, not just ref-reachable history. By the time step 1
- * finishes, `<oid>` is already a loose object in the fresh clone's ODB.
+ * The handoff commit is a `retention root` (design D6), and
+ * `restoreObjectsInto` — what the remote helper's `fetch` verb runs —
+ * materializes the vault's FULL retained object set, not just
+ * ref-reachable history. But `git clone` fetches only `refs/heads/*` and
+ * tags: on a vault whose history lives only on `refs/run402/deploys/latest`
+ * (populated by `run402 up`, no branch ever pushed) clone never calls the
+ * helper's `fetch` verb and the clone is empty. {@link ensureCheckpointObjects}
+ * closes that gap with one fetch of the protocol refs.
  */
 import { execFile } from "node:child_process";
 import { mkdtempSync, existsSync, readFileSync, appendFileSync, mkdirSync } from "node:fs";
@@ -42,36 +46,57 @@ function cloneHooksDir(): string {
 }
 
 /**
- * `git clone --no-checkout <remoteUrl> <targetDir>` — protocol-permitting
- * (this is the one vault git invocation allowed to touch the network),
- * hooks and terminal prompts still neutralized. `targetDir` must not
- * already exist (git's own clone precondition).
+ * Run one protocol-permitting git command (hooks and terminal prompts still
+ * neutralized) and reject with `code` on failure.
  */
-export function cloneVaultRemote(remoteUrl: string, targetDir: string): Promise<void> {
+function networkGit(argv: string[], cwd: string, context: string, code: string, details: Record<string, unknown>): Promise<void> {
   return new Promise((resolvePromise, reject) => {
-    const argv = ["--no-replace-objects", "-c", `core.hooksPath=${cloneHooksDir()}`, "clone", "--no-checkout", "--", remoteUrl, targetDir];
     execFile(
       "git",
-      argv,
-      // The remote helper this clone spawns authenticates as THIS session: pass
+      ["--no-replace-objects", "-c", `core.hooksPath=${cloneHooksDir()}`, ...argv],
+      // The remote helper this command spawns authenticates as THIS session: pass
       // the RUN402_* selection through (config dir, wallet, api base, trace).
-      // In-process helper, never the resident daemon: the keystore this clone
+      // In-process helper, never the resident daemon: the keystore it
       // must read was written moments ago by the same resume, and a daemon
       // that predates that write serves the vault from what it loaded then
       // (live: a post-rotation resume opened only the newest epoch and died
-      // VAULT_EPOCH_NOT_OPENABLE at generation 1). One clone gains nothing
+      // VAULT_EPOCH_NOT_OPENABLE at generation 1). A restore gains nothing
       // from a daemon; every later fetch/push in the restored checkout does.
-      { cwd: tmpdir(), env: { ...hardenedGitEnv(run402PassthroughEnv()), RUN402_DAEMON: "0" }, encoding: "buffer", maxBuffer: 1024 * 1024 * 1024, windowsHide: true },
+      { cwd, env: { ...hardenedGitEnv(run402PassthroughEnv()), RUN402_DAEMON: "0" }, encoding: "buffer", maxBuffer: 1024 * 1024 * 1024, windowsHide: true },
       (error, _stdout, stderr) => {
         if (error) {
           const stderrText = Buffer.from(stderr as Buffer).toString("utf8");
-          reject(new LocalError(`git clone ${remoteUrl} failed: ${stderrText.trim().slice(0, 1000) || (error as Error).message}`, "cloning the vault for resume", { code: "HANDOFF_CLONE_FAILED", details: { remote_url: remoteUrl, target_dir: targetDir, stderr: stderrText.slice(0, 2000) } }));
+          reject(new LocalError(`git ${argv.filter((a) => a !== "--").join(" ")} failed: ${stderrText.trim().slice(0, 1000) || (error as Error).message}`, context, { code, details: { ...details, stderr: stderrText.slice(0, 2000) } }));
           return;
         }
         resolvePromise();
       },
     );
   });
+}
+
+/**
+ * `git clone --no-checkout <remoteUrl> <targetDir>`. `targetDir` must not
+ * already exist (git's own clone precondition).
+ */
+export function cloneVaultRemote(remoteUrl: string, targetDir: string): Promise<void> {
+  return networkGit(["clone", "--no-checkout", "--", remoteUrl, targetDir], tmpdir(), "cloning the vault for resume", "HANDOFF_CLONE_FAILED", { remote_url: remoteUrl, target_dir: targetDir });
+}
+
+/**
+ * Make sure the checkpoint commit `oid` is in `dir`'s object database. A
+ * vault with no branch heads clones empty (see the module comment), so when
+ * the commit is absent this fetches the protocol refs from `origin` — the
+ * helper's `fetch` verb restores the full retained set, checkpoint and its
+ * parents included. No-op when the commit is already present.
+ */
+export async function ensureCheckpointObjects(dir: string, oid: string): Promise<void> {
+  const present = async () => (await hardenedGit(dir, ["cat-file", "-e", `${oid}^{commit}`], { okStatuses: [1, 128] })).status === 0;
+  if (await present()) return;
+  await networkGit(["fetch", "--no-tags", "origin", "+refs/run402/*:refs/run402/*"], dir, "fetching the handoff checkpoint", "HANDOFF_CHECKPOINT_FETCH_FAILED", { dir, stash_oid: oid });
+  if (!(await present())) {
+    fail("HANDOFF_CHECKPOINT_MISSING", `the checkpoint commit ${oid} is not in the vault's retained objects`, "fetching the handoff checkpoint", { stash_oid: oid });
+  }
 }
 
 export interface VaultHandoffRestoreOptions {
@@ -120,9 +145,13 @@ export async function applyHandoffCheckpoint(options: VaultHandoffRestoreOptions
   }
   let branch = sanitizeBranchName(options.branch_hint);
   if (!branch) {
+    // The clone's HEAD symref names the vault's default branch only when it
+    // exists. An empty clone points HEAD at the unborn `init.defaultBranch`
+    // (often `master`), which says nothing about the vault.
     try {
-      const symref = (await hardenedGit(dir, ["symbolic-ref", "-q", "--short", "HEAD"], { okStatuses: [1] })).text().trim();
-      branch = sanitizeBranchName(symref);
+      const symref = sanitizeBranchName((await hardenedGit(dir, ["symbolic-ref", "-q", "--short", "HEAD"], { okStatuses: [1] })).text().trim());
+      const born = symref ? (await hardenedGit(dir, ["rev-parse", "-q", "--verify", `refs/heads/${symref}`], { okStatuses: [1] })).status === 0 : false;
+      branch = born ? symref : null;
     } catch {
       branch = null;
     }

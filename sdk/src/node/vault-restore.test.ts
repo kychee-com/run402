@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { captureHandoffSnapshot, globMatchesGitPath, isHandoffSensitivePath, VAULT_HANDOFF_SENSITIVE_DENYLIST } from "./vault-snapshot.js";
-import { applyHandoffCheckpoint, resolveResumeTargetDir, readGitCommitMessage, excludeMessagingCacheFromGit, isMessagingCacheExcludedFromGit } from "./vault-restore.js";
+import { applyHandoffCheckpoint, ensureCheckpointObjects, resolveResumeTargetDir, readGitCommitMessage, excludeMessagingCacheFromGit, isMessagingCacheExcludedFromGit } from "./vault-restore.js";
 import { git, makeRepo, commitFile } from "./vault-memory-transport.test.js";
 
 let root: string;
@@ -185,6 +185,64 @@ describe("captureHandoffSnapshot + applyHandoffCheckpoint — the acceptance ske
       captureHandoffSnapshot({ dir, message: "no base yet" }),
       (e: unknown) => (e as { code?: string }).code === "HANDOFF_NO_BASE_COMMIT",
     );
+  });
+});
+
+describe("restore from a vault with no branch heads (run402#622)", () => {
+  // A vault populated only by `run402 up` holds `refs/run402/deploys/latest`
+  // and no `refs/heads/*`. `git clone` fetches heads and tags only, so it
+  // never calls the helper's `fetch` verb: the clone is empty, the checkpoint
+  // is absent, and HEAD is the unborn default branch.
+  async function deployOnlyVault(name: string) {
+    const source = await makeRepo(root, `${name}-source`);
+    await commitFile(source, "app.js", "console.log(1)\n", "deployed");
+    const deployed = await git(source, ["rev-parse", "HEAD"]);
+    const snap = await captureHandoffSnapshot({ dir: source, message: "invite" });
+    const vault = join(root, `${name}-vault.git`);
+    execFileSync("git", ["init", "-q", "--bare", vault], { stdio: "pipe" });
+    execFileSync("git", ["-C", source, "push", "-q", vault, `${snap.oid}:refs/run402/deploys/latest`], { stdio: "pipe" });
+    const target = join(root, `${name}-target`);
+    execFileSync("git", ["-c", "init.defaultBranch=master", "clone", "-q", "--no-local", "--no-checkout", vault, target], { stdio: "pipe" });
+    return { deployed, snap, target };
+  }
+
+  it("fetches the checkpoint the clone left behind, then lands on main at the deployed commit with a clean tree", async () => {
+    const { deployed, snap, target } = await deployOnlyVault("deploy-only");
+    await assert.rejects(git(target, ["cat-file", "-e", `${snap.oid}^{commit}`]), "precondition: the plain clone did not bring the checkpoint");
+
+    await ensureCheckpointObjects(target, snap.oid);
+    const restored = await applyHandoffCheckpoint({ dir: target, stash_oid: snap.oid });
+
+    assert.equal(restored.branch, "main", "an unborn clone default (master) must not win over main");
+    assert.equal(restored.base_head_oid, deployed);
+    assert.equal(await git(target, ["rev-parse", "HEAD"]), deployed);
+    assert.equal(await git(target, ["symbolic-ref", "--short", "HEAD"]), "main");
+    assert.equal(await git(target, ["status", "--porcelain=v1"]), "");
+    assert.equal(readFileSync(join(target, "app.js"), "utf8"), "console.log(1)\n");
+  });
+
+  it("the captured branch (branch_hint) wins over the default", async () => {
+    const { snap, target } = await deployOnlyVault("hinted");
+    await ensureCheckpointObjects(target, snap.oid);
+    const restored = await applyHandoffCheckpoint({ dir: target, stash_oid: snap.oid, branch_hint: "trunk" });
+    assert.equal(restored.branch, "trunk");
+  });
+
+  it("ensureCheckpointObjects is a no-op when the commit is already present", async () => {
+    const dir = await makeRepo(root, "present");
+    const snap = await captureHandoffSnapshot({ dir, message: "present" });
+    await ensureCheckpointObjects(dir, snap.oid);
+  });
+
+  it("refuses HANDOFF_CHECKPOINT_MISSING when no protocol ref brings the commit", async () => {
+    const source = await makeRepo(root, "orphan-source");
+    const snap = await captureHandoffSnapshot({ dir: source, message: "orphan" });
+    const vault = join(root, "orphan-vault.git");
+    execFileSync("git", ["init", "-q", "--bare", vault], { stdio: "pipe" });
+    execFileSync("git", ["-C", source, "push", "-q", vault, "main:refs/heads/main"], { stdio: "pipe" });
+    const target = join(root, "orphan-target");
+    execFileSync("git", ["clone", "-q", "--no-local", "--no-checkout", vault, target], { stdio: "pipe" });
+    await assert.rejects(ensureCheckpointObjects(target, snap.oid), (e: unknown) => (e as { code?: string }).code === "HANDOFF_CHECKPOINT_MISSING");
   });
 });
 

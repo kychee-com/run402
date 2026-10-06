@@ -3446,7 +3446,7 @@ export class Repos {
     gateSecret(this.#client, "repos.resume", options);
     const [ho, { VaultKeystore }, restore] = await Promise.all([this.#handoff(), this.#keystore(), this.#restore()]);
     const { parseHandoffKey, deriveHandoffSecrets, deriveWriterAdmissionSeed, buildWriterAcceptance, openHandoffEnvelopeV2 } = ho;
-    const { cloneVaultRemote, applyHandoffCheckpoint, resolveResumeTargetDir, readGitCommitMessage, excludeMessagingCacheFromGit } = restore;
+    const { cloneVaultRemote, ensureCheckpointObjects, applyHandoffCheckpoint, resolveResumeTargetDir, readGitCommitMessage, excludeMessagingCacheFromGit } = restore;
 
     // parse
     const parsed = parseHandoffKey(options.key);
@@ -3614,6 +3614,9 @@ export class Repos {
     options.onLine?.(`resuming into ${targetDir}`);
     const remoteUrl = vaultRemoteUrl(vault.organization_id, vault.project_id);
     await cloneVaultRemote(remoteUrl, targetDir);
+    // A vault with no branch heads clones empty; bring the checkpoint in now,
+    // before anything is activated, so a missing commit fails cleanly.
+    await ensureCheckpointObjects(targetDir, payload.checkpoint.commit_oid);
 
     // Local-only pins (design D10) — never a worktree file, never the
     // global active project. Reuses the SAME pin-writer every other
@@ -3683,7 +3686,15 @@ export class Repos {
     // apply the checkpoint — LAST (D5): a failure anywhere above this line
     // leaves the working tree untouched (freshly cloned, nothing stashed),
     // the cleanest possible state to retry `resume()` from.
-    const restored = await applyHandoffCheckpoint({ dir: targetDir, stash_oid: payload.checkpoint.commit_oid });
+    let note: import("../node/vault-handoff.js").KygitHandoffNote | null = null;
+    let noteRaw: string | null = null;
+    try {
+      noteRaw = (await readGitCommitMessage(targetDir, payload.checkpoint.commit_oid)) ?? null;
+      if (noteRaw) note = JSON.parse(noteRaw) as import("../node/vault-handoff.js").KygitHandoffNote;
+    } catch {
+      note = null;
+    }
+    const restored = await applyHandoffCheckpoint({ dir: targetDir, stash_oid: payload.checkpoint.commit_oid, branch_hint: note?.capture?.branch ?? null });
 
     const senderIsOwner = redeem.membership.role === "owner";
     const nextActions: NextAction[] = [...(redeem.next_actions ?? [])];
@@ -3696,16 +3707,7 @@ export class Repos {
       });
     }
     if (!nextActions.some((a) => a.type === "push_repo")) {
-      nextActions.push({ type: "push_repo", command: "git push origin main", why: "Publish continued work back to the vault." });
-    }
-
-    let note: import("../node/vault-handoff.js").KygitHandoffNote | null = null;
-    let noteRaw: string | null = null;
-    try {
-      noteRaw = (await readGitCommitMessage(targetDir, payload.checkpoint.commit_oid)) ?? null;
-      if (noteRaw) note = JSON.parse(noteRaw) as import("../node/vault-handoff.js").KygitHandoffNote;
-    } catch {
-      note = null;
+      nextActions.push({ type: "push_repo", command: `git push origin ${restored.branch}`, why: "Publish continued work back to the vault." });
     }
 
     return {
@@ -3763,7 +3765,7 @@ export class Repos {
     ]);
     const restore = await nodeOnly(() => import("../node/vault-restore.js"), "join");
     const { parseInviteKey, deriveInviteSecrets, deriveInviteWriterAdmissionSeed, buildWriterAcceptance, openInviteEnvelope } = ho;
-    const { cloneVaultRemote, applyHandoffCheckpoint, resolveResumeTargetDir, readGitCommitMessage, excludeMessagingCacheFromGit } = restore;
+    const { cloneVaultRemote, ensureCheckpointObjects, applyHandoffCheckpoint, resolveResumeTargetDir, readGitCommitMessage, excludeMessagingCacheFromGit } = restore;
 
     const parsed = parseInviteKey(options.key);
     const secrets = deriveInviteSecrets(parsed.invite_id_bytes, parsed.master_secret);
@@ -3920,6 +3922,9 @@ export class Repos {
     options.onLine?.(`joining into ${targetDir}`);
     const remoteUrl = vaultRemoteUrl(vault.organization_id, vault.project_id);
     await cloneVaultRemote(remoteUrl, targetDir);
+    // A vault with no branch heads clones empty; bring the checkpoint in now,
+    // before anything is activated, so a missing commit fails cleanly.
+    await ensureCheckpointObjects(targetDir, payload.checkpoint.commit_oid);
 
     // The ROW's room key — a named room, or the project id when the mint
     // omitted one — is what makes `messages wait` in the joined checkout
@@ -4003,7 +4008,15 @@ export class Repos {
     // apply the checkpoint — LAST (design D5): a failure anywhere above
     // this line leaves the working tree untouched (freshly cloned, nothing
     // stashed), the cleanest possible state to retry `join()` from.
-    const restored = await applyHandoffCheckpoint({ dir: targetDir, stash_oid: payload.checkpoint.commit_oid });
+    let note: import("../node/vault-handoff.js").KygitInviteNote | null = null;
+    let noteRaw: string | null = null;
+    try {
+      noteRaw = (await readGitCommitMessage(targetDir, payload.checkpoint.commit_oid)) ?? null;
+      if (noteRaw) note = JSON.parse(noteRaw) as import("../node/vault-handoff.js").KygitInviteNote;
+    } catch {
+      note = null;
+    }
+    const restored = await applyHandoffCheckpoint({ dir: targetDir, stash_oid: payload.checkpoint.commit_oid, branch_hint: note?.capture?.branch ?? null });
 
     // design D5: register THIS session's presence, then post the ONE
     // arrival fact — both best-effort, neither ever throws `join()`.
@@ -4064,7 +4077,7 @@ export class Repos {
 
     const nextActions: NextAction[] = [...(redeem.next_actions ?? [])];
     if (!nextActions.some((a) => a.type === "push_repo")) {
-      nextActions.push({ type: "push_repo", command: "git push origin main", why: "Publish continued work back to the vault." });
+      nextActions.push({ type: "push_repo", command: `git push origin ${restored.branch}`, why: "Publish continued work back to the vault." });
     }
     if (!nextActions.some((a) => a.type === "wait_room")) {
       nextActions.push({ type: "wait_room", command: "run402 messages wait", why: "Block until the inviter (or anyone else) speaks; silence returns who is still here." });
@@ -4082,15 +4095,6 @@ export class Repos {
         command: "run402 repos access sync",
         why: `This key is a pending writer of the vault (${writerActivation.reason}); ask any live writer to run this — or push once — and the first push from here will land.`,
       });
-    }
-
-    let note: import("../node/vault-handoff.js").KygitInviteNote | null = null;
-    let noteRaw: string | null = null;
-    try {
-      noteRaw = (await readGitCommitMessage(targetDir, payload.checkpoint.commit_oid)) ?? null;
-      if (noteRaw) note = JSON.parse(noteRaw) as import("../node/vault-handoff.js").KygitInviteNote;
-    } catch {
-      note = null;
     }
 
     return {
