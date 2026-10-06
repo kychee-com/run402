@@ -18,6 +18,7 @@ Usage:
   run402 transfer preview <transfer_id>
   run402 transfer list [--incoming | --outgoing] [--limit N] [--after <cursor>]
   run402 transfer accept <transfer_id> [--org <org_id>] [--accept-retained-member]
+  run402 transfer handover <transfer_id>
   run402 transfer cancel <transfer_id> [--reason <text>]
 
 Subcommands:
@@ -28,7 +29,10 @@ Subcommands:
   list        List pending transfers (incoming default, or --outgoing) — pending rows unioned
   accept      Accept an incoming transfer, whatever its address (wallet: your wallet must be
               the to_wallet; email: your verified email must match; --org <org_id> picks the
-              receiving org, omit = new org)
+              receiving org, omit = new org). For a project with a vault, accept first
+              names you as the recipient of its source and waits for the sender's handover
+  handover    Sender: hand the project's vault to the recipient they named (admit their key
+              as a writer and wrap the source key for them), so they can accept
   cancel      Cancel a pending transfer of any kind
 
 Notes:
@@ -38,6 +42,10 @@ Notes:
   - --to-org is same-actor only in the first gateway release: you must own both orgs.
   - Secret VALUES are inherited by the recipient on completion; rotation is advised.
   - GitHub repo ownership is NOT transferred — handle that out of band.
+  - A project's KyGit vault moves with it. The recipient cannot accept until the sender
+    runs 'transfer handover'; afterwards the new owner retires the previous owner's
+    writers with 'run402 repos access retire-previous-owner' when ready.
+  - A project whose vault stores its source in your own bucket (BYO) is not transferable.
 `;
 
 const SUB_HELP = {
@@ -101,10 +109,27 @@ owner's CI bindings on the project, enqueues notifications to both parties,
 stamps a 'secrets_rotation_advised' advisory on the project, and returns the
 project keys (saved to your keystore).
 
+For a project with a KyGit vault, the source is handed over before accept: on
+the first run accept publishes this machine's keystore identity, names you as the
+principal that receives the source, and stops with TRANSFER_VAULT_HANDOVER_PENDING
+until the sender runs 'run402 transfer handover <transfer_id>'. Run accept again
+once 'transfer preview' shows vault_handover.state = complete.
+
 Options:
   --org <org_id>           Email-addressed only: the org to receive the project (omit = new org).
   --accept-retained-member Email-addressed only: accept the sender's retained-developer-membership
                            offer (see 'transfer preview' retain_member). Omit = full severance.
+`,
+  handover: `run402 transfer handover — Hand a transferred project's vault to the recipient
+
+Usage:
+  run402 transfer handover <transfer_id>
+
+The sender's step. Reads the principal the recipient named (they run 'transfer
+accept' first), admits that principal's own published signing key as a writer of
+the project's vault, and wraps the vault's current key for it. Your key must be a
+writer of the vault. Safe to re-run: a step already done is reported as such.
+The recipient can accept once vault_handover.state is complete.
 `,
   cancel: `run402 transfer cancel — Cancel a pending transfer
 
@@ -307,12 +332,57 @@ async function accept(args) {
   const acceptRetain = parsedArgs.includes("--accept-retained-member");
   walletAuthHeaders(`/agent/v1/transfers/${transferId}/accept`);
 
+  const sdk = getSdk();
+  const doAccept = () => sdk.admin.transfers.accept(transferId, {
+    orgId: orgId ?? undefined,
+    acceptRetainedMember: acceptRetain || undefined,
+  });
   try {
-    const data = await getSdk().admin.transfers.accept(transferId, {
-      orgId: orgId ?? undefined,
-      acceptRetainedMember: acceptRetain || undefined,
-    });
+    const data = await doAccept();
     console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    // A project with a vault waits on its handover. When no recipient has
+    // been named yet, name this principal (publishing its keystore identity
+    // first) so the sender's 'transfer handover' has a key to hand over to.
+    const handoverState = err?.code === "TRANSFER_VAULT_HANDOVER_PENDING" ? err?.details?.vault_handover?.state : null;
+    if (handoverState !== "awaiting_recipient") {
+      reportSdkError(err);
+      return;
+    }
+    try {
+      await sdk.repos.publishKeystoreIdentity();
+      const nominated = await sdk.admin.transfers.nominateVaultRecipient(transferId);
+      if (nominated.vault_handover?.state === "complete") {
+        console.log(JSON.stringify(await doAccept(), null, 2));
+        return;
+      }
+      fail({
+        code: "TRANSFER_VAULT_HANDOVER_PENDING",
+        message: "You are named as the recipient of this project's source. The sender must run 'run402 transfer handover " + transferId + "' (they have been notified); then run this accept again.",
+        details: { transfer_id: transferId, vault_handover: nominated.vault_handover },
+        next_actions: nominated.next_actions,
+        retryable: true,
+      });
+    } catch (inner) {
+      reportSdkError(inner);
+    }
+  }
+}
+
+async function handover(args) {
+  const parsedArgs = normalizeArgv(args);
+  assertKnownFlags(parsedArgs, ["--help", "-h"], []);
+  const positionals = positionalArgs(parsedArgs, []);
+  if (positionals.length !== 1) {
+    fail({ code: "BAD_USAGE", message: "Usage: run402 transfer handover <transfer_id>" });
+  }
+  const transferId = positionals[0];
+  try {
+    const data = await getSdk().repos.completeTransferHandover(transferId);
+    console.log(JSON.stringify(data, null, 2));
+    if (data.vault_handover?.state === "complete") {
+      console.error(`handed over: the recipient can now run 'run402 transfer accept ${transferId}'.`);
+    }
   } catch (err) {
     reportSdkError(err);
   }
@@ -360,6 +430,9 @@ export async function run(sub, args) {
       return;
     case "accept":
       await accept(args);
+      return;
+    case "handover":
+      await handover(args);
       return;
     case "cancel":
       await cancel(args);

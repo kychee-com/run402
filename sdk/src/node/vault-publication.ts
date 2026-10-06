@@ -4298,98 +4298,132 @@ export class Vault {
         skipped.push({ principal_id: entry.principal_id, ek_fingerprint: entry.ek_fingerprint, reason: "pinned_key_mismatch", details: { pinned_fingerprint: pinned, directory_fingerprint: entry.ek_fingerprint } });
         continue;
       }
-      if (typeof entry.public_key !== "string" || entry.public_key.length === 0) {
-        skipped.push({ principal_id: entry.principal_id, ek_fingerprint: entry.ek_fingerprint, reason: "missing_public_key" });
+      const wrapOutcome = await this.#wrapEnvelopeRecipient(entry, epoch, signer);
+      if (wrapOutcome.outcome === "skipped") {
+        skipped.push(wrapOutcome.skipped);
         continue;
       }
-      let recipientPublicKey: Uint8Array;
-      try {
-        recipientPublicKey = fromBase64url(entry.public_key, "public_key");
-      } catch {
-        skipped.push({ principal_id: entry.principal_id, ek_fingerprint: entry.ek_fingerprint, reason: "invalid_public_key" });
-        continue;
-      }
-      // Defense in depth: a directory row whose printed fingerprint does not
-      // derive from its own public_key is corrupt data, not a valid
-      // recipient — fail loud here rather than let `sealKeyEnvelope` (which
-      // derives the fingerprint itself and never trusts a caller-supplied
-      // one) silently seal under a fingerprint that disagrees with the one
-      // the directory printed.
-      const derived = ekFingerprint(recipientPublicKey);
-      if (derived !== entry.ek_fingerprint) {
-        skipped.push({ principal_id: entry.principal_id, ek_fingerprint: entry.ek_fingerprint, reason: "invalid_public_key", details: { derived_fingerprint: derived } });
-        continue;
-      }
-      const sealed = await sealKeyEnvelope({
-        k_repo: this.kRepo(),
-        repo_id: this.repoId,
-        epoch,
-        recipient_public_key: recipientPublicKey,
-        signer,
-        created_at: formatVaultTimestamp(this.now()),
-      });
-      try {
-        const byo = await this.resolveByoWriteTarget();
-        await this.transport.putObject({
-          repo_id: this.repoId,
-          path: vaultPaths.envelope(epoch, sealed.receipt.recipient_fingerprint),
-          bytes: sealed.stored_bytes,
-          expected_sha256: sealed.stored_bytes_sha256,
-          expected_size_bytes: sealed.size_bytes,
-          ...(byo ? { byo } : {}),
-        });
-        wrapped.push({ principal_id: entry.principal_id, ek_fingerprint: entry.ek_fingerprint });
-      } catch (e) {
-        // A concurrent reconcile (another machine/session) may have wrapped
-        // the SAME recipient first — HPKE seal is randomized, so two valid
-        // wraps of the same K_repo to the same recipient produce DIFFERENT
-        // ciphertext bytes, and the create-only path's read-and-compare
-        // reports that as `VAULT_OBJECT_EXISTS_DIFFERENT` even though the
-        // recipient is now genuinely covered. Treat exactly that code as a
-        // benign race, not a failure; anything else propagates.
-        if (isRun402Error(e) && (e as { code?: string }).code === "VAULT_OBJECT_EXISTS_DIFFERENT") {
-          // vault-agent-envelopes (consult 7.6): a benign race is only
-          // benign once the WINNING envelope has been read back and verified
-          // — same repo, same epoch, this recipient, signed by the vault's
-          // registered writer. Anything else is recorded as skipped, never as
-          // coverage, and never pinned.
-          const winnerPath = vaultPaths.envelope(epoch, sealed.receipt.recipient_fingerprint);
-          const winnerBytes = await this.transport.getObject({ repo_id: this.repoId, path: winnerPath }).catch(() => null);
-          let winnerOk = false;
-          if (winnerBytes) {
-            try {
-              const winner = parseVaultStrict(new TextDecoder().decode(winnerBytes)) as VaultKeyEnvelope;
-              const g = (await this.genesis()).genesis;
-              winnerOk = winner.repo_id === this.repoId && winner.epoch === epoch && winner.recipient_fingerprint === entry.ek_fingerprint
-                && winner.created_by === g.writer_key_id
-                && verifyVaultObject(winner as unknown as VaultSignedObject, g.creator_signing_pubkey);
-            } catch {
-              winnerOk = false;
-            }
-          }
-          if (!winnerOk) {
-            // Consult round 2 §7: a conflicting IMMUTABLE object whose stored
-            // winner does not verify is evidence of tampering, equivocation,
-            // or broken object identity — categorically different from a
-            // stale recipient. FATAL, never an ordinary skip.
-            fail(
-              "VAULT_ENVELOPE_ALTERED",
-              `a conflicting key_envelope already stored at ${winnerPath} does not verify as this vault's writer-signed envelope for this recipient — refusing to treat the conflict as a benign race`,
-              "reconciling vault envelope recipients",
-              { repo_id: this.repoId, path: winnerPath, epoch, recipient_fingerprint: entry.ek_fingerprint },
-            );
-          }
-          alreadyCovered.push(entry.ek_fingerprint);
-        } else {
-          throw e;
-        }
-      }
+      if (wrapOutcome.outcome === "wrapped") wrapped.push({ principal_id: entry.principal_id, ek_fingerprint: entry.ek_fingerprint });
+      else alreadyCovered.push(entry.ek_fingerprint);
       pins[entry.principal_id] = entry.ek_fingerprint;
       pinsChanged = true;
     }
 
     if (pinsChanged) this.keystore.updateRepo(this.repoId, { envelope_recipient_pins: pins });
     return { repo_id: this.repoId, org_id: repo.org_id, epoch, wrapped, already_covered: alreadyCovered, skipped };
+  }
+
+  /**
+   * Seal and store ONE recipient's `key_envelope` for the current epoch:
+   * the per-recipient step of {@link reconcileEnvelopeRecipients}, also used
+   * by {@link wrapEnvelopeForRecipient}. A recipient whose public key is
+   * missing or does not derive its printed fingerprint is skipped, never
+   * sealed; a concurrent wrap of the same recipient counts as covered only
+   * once the stored winner verifies.
+   */
+  async #wrapEnvelopeRecipient(
+    entry: { principal_id: string; ek_fingerprint: string; public_key?: string | null },
+    epoch: string,
+    signer: ReturnType<Vault["signingKeypair"]>,
+  ): Promise<{ outcome: "wrapped" } | { outcome: "already_covered" } | { outcome: "skipped"; skipped: VaultReconcileEnvelopeRecipientsSkipped }> {
+    if (typeof entry.public_key !== "string" || entry.public_key.length === 0) {
+      return { outcome: "skipped", skipped: { principal_id: entry.principal_id, ek_fingerprint: entry.ek_fingerprint, reason: "missing_public_key" } };
+    }
+    let recipientPublicKey: Uint8Array;
+    try {
+      recipientPublicKey = fromBase64url(entry.public_key, "public_key");
+    } catch {
+      return { outcome: "skipped", skipped: { principal_id: entry.principal_id, ek_fingerprint: entry.ek_fingerprint, reason: "invalid_public_key" } };
+    }
+    // Defense in depth: a directory row whose printed fingerprint does not
+    // derive from its own public_key is corrupt data, not a valid
+    // recipient — fail loud here rather than let `sealKeyEnvelope` (which
+    // derives the fingerprint itself and never trusts a caller-supplied
+    // one) silently seal under a fingerprint that disagrees with the one
+    // the directory printed.
+    const derived = ekFingerprint(recipientPublicKey);
+    if (derived !== entry.ek_fingerprint) {
+      return { outcome: "skipped", skipped: { principal_id: entry.principal_id, ek_fingerprint: entry.ek_fingerprint, reason: "invalid_public_key", details: { derived_fingerprint: derived } } };
+    }
+    const sealed = await sealKeyEnvelope({
+      k_repo: this.kRepo(),
+      repo_id: this.repoId,
+      epoch,
+      recipient_public_key: recipientPublicKey,
+      signer,
+      created_at: formatVaultTimestamp(this.now()),
+    });
+    try {
+      const byo = await this.resolveByoWriteTarget();
+      await this.transport.putObject({
+        repo_id: this.repoId,
+        path: vaultPaths.envelope(epoch, sealed.receipt.recipient_fingerprint),
+        bytes: sealed.stored_bytes,
+        expected_sha256: sealed.stored_bytes_sha256,
+        expected_size_bytes: sealed.size_bytes,
+        ...(byo ? { byo } : {}),
+      });
+      return { outcome: "wrapped" };
+    } catch (e) {
+      // A concurrent reconcile (another machine/session) may have wrapped
+      // the SAME recipient first — HPKE seal is randomized, so two valid
+      // wraps of the same K_repo to the same recipient produce DIFFERENT
+      // ciphertext bytes, and the create-only path's read-and-compare
+      // reports that as `VAULT_OBJECT_EXISTS_DIFFERENT` even though the
+      // recipient is now genuinely covered. Treat exactly that code as a
+      // benign race, not a failure; anything else propagates.
+      if (isRun402Error(e) && (e as { code?: string }).code === "VAULT_OBJECT_EXISTS_DIFFERENT") {
+        // vault-agent-envelopes (consult 7.6): a benign race is only
+        // benign once the WINNING envelope has been read back and verified
+        // — same repo, same epoch, this recipient, signed by the vault's
+        // registered writer. Anything else is recorded as skipped, never as
+        // coverage, and never pinned.
+        const winnerPath = vaultPaths.envelope(epoch, sealed.receipt.recipient_fingerprint);
+        const winnerBytes = await this.transport.getObject({ repo_id: this.repoId, path: winnerPath }).catch(() => null);
+        let winnerOk = false;
+        if (winnerBytes) {
+          try {
+            const winner = parseVaultStrict(new TextDecoder().decode(winnerBytes)) as VaultKeyEnvelope;
+            const g = (await this.genesis()).genesis;
+            winnerOk = winner.repo_id === this.repoId && winner.epoch === epoch && winner.recipient_fingerprint === entry.ek_fingerprint
+              && winner.created_by === g.writer_key_id
+              && verifyVaultObject(winner as unknown as VaultSignedObject, g.creator_signing_pubkey);
+          } catch {
+            winnerOk = false;
+          }
+        }
+        if (!winnerOk) {
+          // Consult round 2 §7: a conflicting IMMUTABLE object whose stored
+          // winner does not verify is evidence of tampering, equivocation,
+          // or broken object identity — categorically different from a
+          // stale recipient. FATAL, never an ordinary skip.
+          fail(
+            "VAULT_ENVELOPE_ALTERED",
+            `a conflicting key_envelope already stored at ${winnerPath} does not verify as this vault's writer-signed envelope for this recipient — refusing to treat the conflict as a benign race`,
+            "reconciling vault envelope recipients",
+            { repo_id: this.repoId, path: winnerPath, epoch, recipient_fingerprint: entry.ek_fingerprint },
+          );
+        }
+        return { outcome: "already_covered" };
+      } else {
+        throw e;
+      }
+    }
+  }
+
+  /**
+   * Wrap the current epoch's key for ONE named recipient that is not in the
+   * vault organization's key directory: the nominated recipient of a pending
+   * project transfer (project-transfer-vault-handover). The caller passes the
+   * recipient's public keys as the transfer read reports them; the gateway
+   * accepts the envelope only for that transfer's nominee.
+   */
+  async wrapEnvelopeForRecipient(recipient: { principal_id: string; ek_fingerprint: string; public_key: string }): Promise<{ outcome: "wrapped" | "already_covered" }> {
+    const outcome = await this.#wrapEnvelopeRecipient(recipient, this.epoch(), this.signingKeypair());
+    if (outcome.outcome === "skipped") {
+      fail("VAULT_ENVELOPE_RECIPIENT_INVALID", `the transfer recipient's published key cannot be wrapped to (${outcome.skipped.reason})`, "wrapping the source key for the transfer recipient", { principal_id: recipient.principal_id, ek_fingerprint: recipient.ek_fingerprint });
+    }
+    return outcome;
   }
 
   // ── object building ──
@@ -5856,6 +5890,27 @@ export class Vault {
       );
     }
     return this.rotateEpoch({ reason: "member_removed", recipient_state_version: state, recipient_revocation_version: revocation, client_idempotency_key: options.client_idempotency_key });
+  }
+
+  /**
+   * The rotation that completes a retirement of a previous owner's writers
+   * after a project transfer (`reason:"writer_key_revoked"`, owner + step-up):
+   * the gateway already blocked the keys outside the vault's organization;
+   * this removes exactly that set. Counters come off the envelope-recipients
+   * read, as for a member removal.
+   */
+  async rotateEpochForWriterRetirement(options: { client_idempotency_key?: string } = {}): Promise<VaultRotationResult> {
+    const recipients = await this.transport.listEnvelopeRecipients({ repo_id: this.repoId });
+    const state = recipients.recipient_state_version;
+    const revocation = recipients.recipient_revocation_version;
+    if (typeof state !== "string" || typeof revocation !== "string") {
+      fail(
+        "VAULT_ROTATION_COUNTERS_UNAVAILABLE",
+        "the gateway did not report the org's rotation counters on the envelope-recipients read — the retirement rotation cannot be fenced without them",
+        "reading the rotation counters",
+      );
+    }
+    return this.rotateEpoch({ reason: "writer_key_revoked", recipient_state_version: state, recipient_revocation_version: revocation, client_idempotency_key: options.client_idempotency_key });
   }
 
   /**

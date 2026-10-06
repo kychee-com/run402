@@ -32,6 +32,7 @@
 import { gateSecret } from "../secret-gate.js";
 import type { Client } from "../kernel.js";
 import { LocalError, isRun402Error , isNetworkError } from "../errors.js";
+import type { TransferVaultHandover } from "./transfers.js";
 import {
   VAULT_BYO_NO_PAYLOAD_COPY_STATEMENT,
   VAULT_BYO_UNMIRRORED_REMEDY_STATEMENT,
@@ -498,6 +499,25 @@ export interface VaultPruneResult {
 }
 
 /** Options shared by every Node-only verb. */
+/** Result of {@link Repos.completeTransferHandover}. */
+export interface TransferHandoverResult {
+  transfer_id: string;
+  repo_id: string;
+  writer: "activated" | "already_admitted";
+  envelope: "wrapped" | "already_covered";
+  vault_handover: TransferVaultHandover;
+}
+
+/** Result of {@link Repos.retirePreviousOwnerWriters}. */
+export interface RetirePreviousOwnerWritersResult {
+  repo_id: string;
+  retired: { writer_key_id: string; principal_id: string | null }[];
+  rotation_required: boolean;
+  note: string;
+  /** The rotation that removed the retired keys; null when there was nothing to retire. */
+  rotation: import("../node/vault-publication.js").VaultRotationResult | null;
+}
+
 export interface VaultHandleOptions {
   /** The vault to act on. Resolved from `project_id` when omitted. */
   repo_id?: string;
@@ -5222,6 +5242,73 @@ export class Repos {
   async rotateEpochForKeyRevocation(principalId: string, options: VaultHandleOptions & { client_idempotency_key?: string } = {}): Promise<import("../node/vault-publication.js").VaultRotationResult> {
     const handle = await this.open(options);
     return handle.vault.rotateEpochForKeyRevocation(principalId, options);
+  }
+
+  /**
+   * Publish this machine's keystore identity (both halves) for the active
+   * credential's principal, minting the identity when there is none — the
+   * enrollment every vault operation runs on the way in, as its own step.
+   * A transfer recipient runs it before naming itself as the vault recipient.
+   */
+  async publishKeystoreIdentity(options: { keystore_root?: string } = {}): Promise<VaultEnrollmentOutcome> {
+    const { VaultKeystore } = await this.#keystore();
+    const keystore = new VaultKeystore(options.keystore_root !== undefined ? { rootDir: options.keystore_root } : {});
+    return this.#ensureEnrolled(keystore);
+  }
+
+  /**
+   * The sender's step of a project transfer's vault handover
+   * (project-transfer-vault-handover): read the transfer's nominated
+   * recipient, admit its own published signing key as a writer (a ref-neutral
+   * `add_writer_key` head), and wrap the current epoch's key for it. The
+   * caller's key must be a writer of the vault. Idempotent: a step already
+   * done is reported as such. The recipient can accept once
+   * `vault_handover.state` is `complete`.
+   */
+  async completeTransferHandover(transferId: string, options: Omit<VaultHandleOptions, "repo_id" | "project_id"> = {}): Promise<TransferHandoverResult> {
+    const read = () => this.#client.request<{ project_id: string; vault_handover?: TransferVaultHandover | null }>(
+      `/agent/v1/transfers/${encodeURIComponent(transferId)}`,
+      { context: "reading the transfer's vault handover" },
+    );
+    const before = await read();
+    const h = before.vault_handover ?? null;
+    if (!h) {
+      throw new LocalError("this transfer's project has no vault, so there is nothing to hand over", "handing over the transfer's vault", { code: "TRANSFER_HAS_NO_VAULT", details: { transfer_id: transferId } });
+    }
+    if (!h.recipient) {
+      throw new LocalError(
+        "the recipient has not named the principal that receives the source yet; they do that by running `run402 transfer accept`",
+        "handing over the transfer's vault",
+        { code: "TRANSFER_VAULT_RECIPIENT_NOT_NOMINATED", details: { transfer_id: transferId, state: h.state } },
+      );
+    }
+    const recipient = h.recipient;
+    const handle = await this.open({ ...options, repo_id: h.repo_id });
+    const writer = h.writer_admitted
+      ? "already_admitted"
+      : (await handle.vault.admitPendingWriter({ addedWriterKeyId: recipient.writer_key_id, addedSigningPubkeyB64u: recipient.signing_pubkey, addedPrincipalId: recipient.principal_id })).outcome;
+    const envelope = h.envelope_current_epoch ? "already_covered" : (await handle.vault.wrapEnvelopeForRecipient(recipient)).outcome;
+    const after = (await read()).vault_handover ?? h;
+    return { transfer_id: transferId, repo_id: h.repo_id, writer, envelope, vault_handover: after };
+  }
+
+  /**
+   * After a project transfer, retire the previous owner's writers: the
+   * gateway blocks every writer key whose principal is not a developer+
+   * member of the vault's organization (owner + step-up), then this commits
+   * the `writer_key_revoked` rotation that removes them. Protects only what
+   * is written afterwards. Idempotent; nothing to retire means no rotation.
+   */
+  async retirePreviousOwnerWriters(options: VaultHandleOptions & { client_idempotency_key?: string } = {}): Promise<RetirePreviousOwnerWritersResult> {
+    const repoId = await this.#resolveRepoId(options);
+    const retired = await this.#client.request<{ repo_id: string; retired: { writer_key_id: string; principal_id: string | null }[]; rotation_required: boolean; note: string }>(
+      `/vaults/v1/${encodeURIComponent(repoId)}/writers/retire-previous-owner`,
+      { method: "POST", body: {}, context: "retiring the previous owner's vault writers" },
+    );
+    if (!retired.rotation_required) return { ...retired, rotation: null };
+    const handle = await this.open({ ...options, repo_id: repoId });
+    const rotation = await handle.vault.rotateEpochForWriterRetirement(options.client_idempotency_key !== undefined ? { client_idempotency_key: options.client_idempotency_key } : {});
+    return { ...retired, rotation };
   }
 
   /**

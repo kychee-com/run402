@@ -19,6 +19,7 @@
  *                                                  email: a principal whose verified email matches,
  *                                                  body { org_id?, accept_retained_member? })
  *   POST /agent/v1/transfers/:transfer_id/cancel — cancel (kind-agnostic)
+ *   POST /agent/v1/transfers/:transfer_id/vault-handover — the recipient names the principal that receives the project's vault
  *
  * Owner-side mutations against a project with a pending transfer return
  * 409 `PROJECT_HAS_PENDING_TRANSFER`. The SDK kernel surfaces that as
@@ -181,6 +182,50 @@ export interface InitiateOrgTransferResult {
   [key: string]: unknown;
 }
 
+/**
+ * The vault handover a transfer requires (project-transfer-vault-handover).
+ * A transfer moves the project's KyGit vault, and the gateway never holds its
+ * key: the recipient names the principal that receives the source
+ * ({@link Transfers.nominateVaultRecipient}), the sender's writer admits that
+ * principal's key and wraps the source key for it (`r.repos.completeTransferHandover`),
+ * and only then does accept succeed. `null` when the project has no vault.
+ */
+export interface TransferVaultHandover {
+  repo_id: string;
+  state: "awaiting_recipient" | "awaiting_sender" | "complete";
+  recipient_principal_id: string | null;
+  /** The nominee's published keystore identity — public keys only. */
+  recipient: { principal_id: string; writer_key_id: string; signing_pubkey: string; ek_fingerprint: string; public_key: string } | null;
+  /** The vault's current epoch (16 lowercase hex). */
+  current_epoch: string;
+  writer_admitted: boolean;
+  envelope_current_epoch: boolean;
+}
+
+/** The project's vault and its footprint in the recipient's pool (preview). */
+export interface TransferVaultPreview {
+  repo_id: string;
+  storage_profile: "managed" | "byo";
+  source_bytes: number;
+  source: string;
+  recipient_vault_usage_after_accept: { source_bytes: number; source: string; source_bytes_limit: number | null; source_limit: string | null };
+  over_limit: boolean;
+}
+
+/** Present on an accept result when the project had a vault: it moved with the project. */
+export interface TransferVaultMoved {
+  repo_id: string;
+  /** The previous owner's writers keep their key until `r.repos.retirePreviousOwnerWriters` runs. */
+  previous_owner_writers_retained: true;
+}
+
+/** Result of {@link Transfers.nominateVaultRecipient}. */
+export interface NominateVaultRecipientResult {
+  transfer_id: string;
+  vault_handover: TransferVaultHandover;
+  next_actions: Array<{ type: string; method?: string; path?: string; command?: string; why?: string }>;
+}
+
 /** Result of accepting a WALLET-addressed transfer. */
 export interface AcceptWalletTransferResult {
   project_id: string;
@@ -198,6 +243,9 @@ export interface AcceptWalletTransferResult {
   secrets_count_inherited: number;
   /** Verbatim reminder that GitHub repo ownership is NOT part of the transfer. */
   github_repo_note: string;
+  /** Present when the project had a vault. */
+  vault?: TransferVaultMoved;
+  next_actions?: Array<{ type: string; method?: string; path?: string; command?: string; why?: string }>;
 }
 
 /**
@@ -223,6 +271,9 @@ export interface AcceptEmailTransferResult {
   anon_key: string;
   /** New owner's project service key (stateless `project_id`-derived JWT). Full project access; persisted on accept. */
   service_key: string;
+  /** Present when the project had a vault. */
+  vault?: TransferVaultMoved;
+  next_actions?: Array<{ type: string; method?: string; path?: string; command?: string; why?: string }>;
 }
 
 /** Result of {@link Transfers.accept} — the row's recipient kind decides which shape comes back. */
@@ -269,6 +320,8 @@ export interface TransferSummary {
   initiated_by?: OperationActorSnapshot | null;
   source_organization?: { org_id: string } | null;
   destination_organization?: { org_id: string } | null;
+  /** The vault handover this transfer requires; `null` when it carries no vault. */
+  vault_handover?: TransferVaultHandover | null;
 }
 
 export interface ListTransfersOptions {
@@ -420,6 +473,10 @@ export interface ProjectTransferPreview {
   source_organization?: { org_id: string } | null;
   destination_organization?: { org_id: string } | null;
   recipient_principal?: PrincipalRepresentation | null;
+  /** The project's vault and its footprint in the recipient's pool; `null` when the project has no vault. */
+  vault?: TransferVaultPreview | null;
+  /** The vault handover this transfer requires; `null` when it carries no vault. */
+  vault_handover?: TransferVaultHandover | null;
 }
 
 // ─── Accept options ─────────────────────────────────────────────────────────
@@ -552,6 +609,21 @@ export class Transfers {
     );
     await persistProjectKeys(this.client, result);
     return result;
+  }
+
+  /**
+   * Name the caller as the principal that receives a transferred project's
+   * vault (project-transfer-vault-handover). Authorized like accept for the
+   * row's kind. The caller must have a published keystore identity
+   * (`r.repos.publishKeystoreIdentity()`); the CLI's `run402 transfer accept`
+   * does both. Idempotent for the same principal. The sender then runs
+   * `r.repos.completeTransferHandover(transferId)`, and accept succeeds.
+   */
+  async nominateVaultRecipient(transferId: string): Promise<NominateVaultRecipientResult> {
+    return this.client.request<NominateVaultRecipientResult>(
+      `/agent/v1/transfers/${encodeURIComponent(transferId)}/vault-handover`,
+      { method: "POST", body: {}, context: "naming the transfer's vault recipient" },
+    );
   }
 
   /**

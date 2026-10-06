@@ -230,3 +230,30 @@ describe("Vault.reconcileEnvelopeRecipients — vault-human-envelopes task 4.1",
     assert.equal(v.transport.calls.filter((c) => c === "org-encryption-keys" || c === "envelope-recipients").length, 0);
   });
 });
+
+describe("Vault.wrapEnvelopeForRecipient — project-transfer-vault-handover", () => {
+  it("wraps the current epoch's key for a recipient outside the org directory; the envelope opens to the vault's K_repo", async () => {
+    const v = await makeVault();
+    v.keystore.ensureIdentity();
+    v.transport.orgEncryptionKeys.set("org_1", []); // the transfer recipient is not in the vault org's directory
+    const r = generateEncryptionKeypair();
+    const rFp = ekFingerprint(r.public_key);
+    const out = await v.vault.wrapEnvelopeForRecipient({ principal_id: "principal_recipient", ek_fingerprint: rFp, public_key: toBase64url(r.public_key) });
+    assert.deepEqual(out, { outcome: "wrapped" });
+    const bytes = await v.transport.getObject({ repo_id: v.repoId, path: vaultPaths.envelope(VAULT_GENESIS_EPOCH, rFp) });
+    const envelope = parseVaultStrict(new TextDecoder().decode(bytes!)) as VaultKeyEnvelope;
+    const genesis = (await v.vault.genesis()).genesis;
+    const kRepo = await openKeyEnvelope({ envelope, recipient: r, signer_public_key: genesis.creator_signing_pubkey });
+    assert.equal(bytesToHex(kRepo), v.keystore.readRepo(v.repoId)!.k_repo_hex);
+  });
+
+  it("refuses VAULT_ENVELOPE_RECIPIENT_INVALID when the printed fingerprint does not derive from the key, sealing nothing", async () => {
+    const v = await makeVault();
+    v.keystore.ensureIdentity();
+    const r = generateEncryptionKeypair();
+    await rejectsCode(
+      v.vault.wrapEnvelopeForRecipient({ principal_id: "principal_recipient", ek_fingerprint: `ek_${"e".repeat(32)}`, public_key: toBase64url(r.public_key) }),
+      "VAULT_ENVELOPE_RECIPIENT_INVALID",
+    );
+  });
+});

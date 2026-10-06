@@ -206,6 +206,7 @@ export const COMMAND_MANIFEST = [
   { path: ["transfer", "preview"], positionals: [p("transfer_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["tr_gate1"] },
   { path: ["transfer", "list"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
   { path: ["transfer", "accept"], positionals: [p("transfer_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["tr_gate1"] },
+  { path: ["transfer", "handover"], positionals: [p("transfer_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["tr_gate1"] },
   { path: ["transfer", "cancel"], positionals: [p("transfer_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["tr_gate1"] },
 
   // ── orgs ──────────────────────────────────────────────────────────────────
@@ -310,6 +311,7 @@ export const COMMAND_MANIFEST = [
   { path: ["repos", "access"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "reads the live org encryption-key directory + vault envelope recipients" },
   { path: ["repos", "access", "repair"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["--recipient-state-version", "0", "--recipient-revocation-version", "0"], runStyle: "sub", skipBehavioral: "owner+step-up-gated epoch rotation (D193-D203, rev 42) — samples a fresh epoch key and re-seals a live vault's recipients" },
   { path: ["repos", "access", "revoke-key"], positionals: [p("principal_id")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["prin_00000000000000000000000000000000"], runStyle: "sub", skipBehavioral: "owner+step-up-gated: declares a recipient's key revoked (org-scoped watermark) and drives a real epoch rotation off it" },
+  { path: ["repos", "access", "retire-previous-owner"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "owner+step-up-gated: blocks the previous owner's writer keys after a project transfer and drives a real epoch rotation" },
   { path: ["repos", "access", "declare-exposure"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "owner+step-up-gated: declares this vault's epoch secret exposed, forcing every subsequent ordinary push to refuse until a rotation lands" },
   { path: ["repos", "access", "sync"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "vault-multi-writer (rev 47): on-demand writer-admission reconcile — resolves pending candidates' signing keys via the live org encryption-key directory and publishes a real add_writer_key head per candidate" },
   { path: ["repos", "recover"], positionals: [p("source")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["s3://example-mirror-bucket", "--out", "__SCRATCH_DIR__/recover-out"], runStyle: "sub", skipBehavioral: "materializes a git repository from a mirror source, offline, with no server call" },

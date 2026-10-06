@@ -640,6 +640,9 @@ const SURFACE: Capability[] = [
   { id: "preview_project_transfer",  endpoint: "GET /agent/v1/transfers/:transfer_id",          cli: "transfer:preview", openclaw: "transfer:preview" },
   { id: "accept_project_transfer",   endpoint: "POST /agent/v1/transfers/:transfer_id/accept",  cli: "transfer:accept",  openclaw: "transfer:accept" },
   { id: "cancel_project_transfer",   endpoint: "POST /agent/v1/transfers/:transfer_id/cancel",  cli: "transfer:cancel",  openclaw: "transfer:cancel" },
+  // The sender's step of a transfer's vault handover: admit the nominated
+  // recipient's key (an add_writer_key head) and wrap the source key for it.
+  { id: "complete_transfer_vault_handover", endpoint: "(compound local+gateway action)", cli: "transfer:handover", openclaw: "transfer:handover" },
   { id: "list_incoming_transfers",   endpoint: "GET /agent/v1/transfers/incoming",              cli: "transfer:list",    openclaw: "transfer:list" },
   { id: "list_outgoing_transfers",   endpoint: "GET /agent/v1/transfers/outgoing",              cli: null,               openclaw: null },
 
@@ -1199,6 +1202,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   preview_project_transfer: "admin.transfers.preview",
   accept_project_transfer: "admin.transfers.accept",
   cancel_project_transfer: "admin.transfers.cancel",
+  complete_transfer_vault_handover: "repos.completeTransferHandover",
   list_incoming_transfers: "admin.transfers.listIncoming",
   list_outgoing_transfers: "admin.transfers.listOutgoing",
 
@@ -1794,6 +1798,14 @@ describe("SDK surface alignment", () => {
       // accepts a recipient's changed key.
       "repos.rotateEpoch",
       "repos.rotateEpochForKeyRevocation",
+      // project-transfer-vault-handover: retirePreviousOwnerWriters shares the
+      // same `repos:access` dispatch (`access retire-previous-owner`).
+      // nominateVaultRecipient and publishKeystoreIdentity ride
+      // `transfer accept`, which publishes this machine's keystore identity
+      // and names it as the vault recipient when the handover is waiting on one.
+      "repos.retirePreviousOwnerWriters",
+      "repos.publishKeystoreIdentity",
+      "admin.transfers.nominateVaultRecipient",
       // rotateEpochForMemberRemoval (vault-multi-writer D6): the
       // writer-capable reason:"member_removed" rotation `org member rm`
       // drives inline on every vault the caller can, and `push()` runs

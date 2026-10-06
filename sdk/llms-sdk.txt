@@ -2894,7 +2894,12 @@ preview(transferId: string): Promise<ProjectTransferPreview>
   // { transfer_id, project_id, status, recipient_kind, from_wallet_display, to_wallet_display, to_email?, to_org_id?,
   //   billing_policy, message, initiated_at, expires_at, terms_sha256, custom_domains[], subdomains[],
   //   functions[], secret_names[] (NEVER values), mailbox_summary, ci_bindings_to_be_revoked[], signers[],
-  //   github_repo_note, billing_implications, retain_member? }
+  //   github_repo_note, billing_implications, retain_member?,
+  //   vault?: { repo_id, storage_profile, source_bytes, source, recipient_vault_usage_after_accept, over_limit } | null,
+  //   vault_handover?: TransferVaultHandover | null }
+nominateVaultRecipient(transferId: string): Promise<NominateVaultRecipientResult>
+  // the recipient names itself as the principal that receives the project's vault (publish first:
+  // r.repos.publishKeystoreIdentity()) → { transfer_id, vault_handover, next_actions }
 accept(transferId, { orgId?, acceptRetainedMember? }): Promise<AcceptTransferResult>   // the ONE completion
   // wallet-addressed row → AcceptWalletTransferResult:
   //   { project_id, from_wallet, to_wallet, new_org_id, completed_at,
@@ -2906,6 +2911,9 @@ accept(transferId, { orgId?, acceptRetainedMember? }): Promise<AcceptTransferRes
   // Both persist the new owner's keys via saveProject + setActiveProject (when the provider supports
   // them), mirroring provision. The email path's auth is principal-based (a sign-in session OR a
   // verified-email SIWX match) — don't assume a wallet is present.
+  // A project with a vault: both results also carry vault: { repo_id, previous_owner_writers_retained: true }
+  // and a retire_previous_owner_writers next action; until the handover completes, accept throws
+  // TRANSFER_VAULT_HANDOVER_PENDING (err.details.vault_handover).
 cancel(transferId: string, reason?: string): Promise<CancelTransferResult>   // kind-agnostic
   // { transfer_id, status: "cancelled", cancelled_by, cancellation_reason, cancelled_at }
 listIncoming(opts?: { limit?, offset? }): Promise<TransferSummary[]>   // pending rows, unioned (recipient_kind-tagged)
@@ -2943,6 +2951,25 @@ Data-plane traffic (`/rest/v1/*`, `/storage/v1/*`, function invocation, mailbox 
 After `accept`, the project carries a persistent `secrets_rotation_advised` advisory — visible on `r.tier.status()` as `projects[].secrets_rotation_advised: { advised_at, reason }`. Use `r.secrets.set(...)` to rotate every name in `secret_names_inherited`; the advisory clears once every previously-inherited name has been re-written.
 
 `r.tier.status()` also surfaces `incoming_transfers[]` at the top level (each entry includes `preview_path` and the full pending summary) so a single status call shows pending offers without a separate `listIncoming` fetch.
+
+**The project's KyGit vault moves with it, and the source is handed over first.** The gateway never holds the vault's key, so a transfer of a project with a vault carries a `vault_handover` (`TransferVaultHandover`: `{ repo_id, state: "awaiting_recipient" | "awaiting_sender" | "complete", recipient_principal_id, recipient, current_epoch, writer_admitted, envelope_current_epoch }`) on every read. Three calls complete it:
+
+```ts
+// Recipient: publish this machine's keystore identity, then name it as the vault recipient.
+await r.repos.publishKeystoreIdentity();
+await r.admin.transfers.nominateVaultRecipient(transferId);
+
+// Sender (a writer of the vault): admit the recipient's key and wrap the source key for it.
+await r.repos.completeTransferHandover(transferId);   // { transfer_id, repo_id, writer, envelope, vault_handover }
+
+// Recipient: accept moves the vault with the project.
+await r.admin.transfers.accept(transferId);
+
+// New owner, when ready: retire the previous owner's writers (owner + step-up), then rotate them out.
+await r.repos.retirePreviousOwnerWriters({ project_id: projectId });   // { retired[], rotation_required, note, rotation }
+```
+
+Accept never blocks a writer or forces a rotation; retiring protects only what is written afterwards. A project whose vault keeps its source in the owner's own bucket (BYO) is not transferable (`TRANSFER_VAULT_BYO_UNSUPPORTED`).
 
 What does NOT transfer: tier lease (stays with the original owner's organization; no Phase 1A proration), KMS signers (`r.contracts.*` — wallet-scoped), GitHub repo ownership (handle out of band), on-chain balance on any wallet.
 

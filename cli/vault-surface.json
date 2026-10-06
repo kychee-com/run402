@@ -18,6 +18,7 @@
     "repos access",
     "repos access repair",
     "repos access revoke-key",
+    "repos access retire-previous-owner",
     "repos access declare-exposure",
     "repos access sync",
     "repos recover",

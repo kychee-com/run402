@@ -751,3 +751,42 @@ describe("TransferFreezeError", () => {
     }
   });
 });
+
+describe("admin.transfers.nominateVaultRecipient", () => {
+  it("POSTs the vault-handover route for the transfer id and returns the handover", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({
+        transfer_id: "t-1",
+        vault_handover: { repo_id: "src_1", state: "awaiting_sender", recipient_principal_id: "p-1", recipient: null, current_epoch: "0000000000000001", writer_admitted: false, envelope_current_epoch: false },
+        next_actions: [{ type: "complete_vault_handover", command: "run402 transfer handover t-1" }],
+      }),
+    );
+    const r = await makeSdk(fetch).admin.transfers.nominateVaultRecipient("t-1");
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]!.method, "POST");
+    assert.equal(calls[0]!.url, "https://api.example.test/agent/v1/transfers/t-1/vault-handover");
+    assert.equal(r.vault_handover.state, "awaiting_sender");
+    assert.equal(r.next_actions[0]!.type, "complete_vault_handover");
+  });
+});
+
+describe("repos.completeTransferHandover — guards before any vault work", () => {
+  it("refuses TRANSFER_HAS_NO_VAULT when the transfer carries no vault", async () => {
+    const { fetch } = mockFetch(() => jsonResponse({ project_id: "prj_1", vault_handover: null }));
+    await assert.rejects(
+      makeSdk(fetch).repos.completeTransferHandover("t-1"),
+      (err: unknown) => (err as { code?: string }).code === "TRANSFER_HAS_NO_VAULT",
+    );
+  });
+
+  it("refuses TRANSFER_VAULT_RECIPIENT_NOT_NOMINATED until the recipient names itself", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({ project_id: "prj_1", vault_handover: { repo_id: "src_1", state: "awaiting_recipient", recipient_principal_id: null, recipient: null, current_epoch: "0000000000000001", writer_admitted: false, envelope_current_epoch: false } }),
+    );
+    await assert.rejects(
+      makeSdk(fetch).repos.completeTransferHandover("t-1"),
+      (err: unknown) => (err as { code?: string }).code === "TRANSFER_VAULT_RECIPIENT_NOT_NOMINATED",
+    );
+    assert.equal(calls.length, 1, "only the transfer read; no vault is opened");
+  });
+});

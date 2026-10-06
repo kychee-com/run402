@@ -107,6 +107,7 @@ Maintenance:
   run402 repos access [--project <project_id>] [--repo <repo_id>] [--human]
   run402 repos access repair [--project <project_id>] [--repo <repo_id>] --recipient-state-version <n> --recipient-revocation-version <n>
   run402 repos access revoke-key <principal_id> [--project <project_id>] [--repo <repo_id>]
+  run402 repos access retire-previous-owner [--project <project_id>] [--repo <repo_id>]
   run402 repos access declare-exposure [--project <project_id>] [--repo <repo_id>]
   run402 repos access repin   [--project <project_id>] [--repo <repo_id>] --principal <principal_id> --fingerprint <ek_fingerprint>
   run402 repos policy <required|grandfathered> [--project <project_id>] [--repo <repo_id>] [--reason <why>]
@@ -358,6 +359,13 @@ Subcommands:
            that declaration's OWN returned counters — no flags needed.
            Owner + step-up. The rekey remedy for "this specific principal's
            key should no longer be trusted."
+  access retire-previous-owner
+           After a project transfer: blocks every writer key whose principal
+           is not a developer+ member of the vault's organization (the
+           previous owner's writers) and commits the writer_key_revoked
+           rotation that removes them. A transfer never does this on its own.
+           Protects only what is written afterwards. Owner + step-up. Safe to
+           re-run; nothing to retire means no rotation.
   access declare-exposure
            Declares reason:"epoch_secret_exposed" for THIS vault
            (vault-scoped, not org-wide) — the rekey remedy for a leaked
@@ -2941,6 +2949,30 @@ async function accessRevokeKey(args) {
  * fingerprint (the out-of-band verification point) and moves the local pin.
  * Adapter only: `sdk.repos.acceptRecipientKeyChange`.
  */
+async function accessRetirePreviousOwner(args) {
+  const a = normalizeArgv(args);
+  assertKnownFlags(a, [...COMMON_VALUE_FLAGS, "--idempotency-key", "-v", "--verbose", "--help", "-h"], [...COMMON_VALUE_FLAGS, "--idempotency-key"]);
+  requirePositionalCount(a, [...COMMON_VALUE_FLAGS, "--idempotency-key"], { min: 0, max: 0, command: "run402 repos access retire-previous-owner", missing: "" });
+  const sdk = getSdk();
+  const target = await vaultTarget(a);
+  try {
+    const result = await sdk.repos.retirePreviousOwnerWriters({
+      ...target,
+      ...(flagValue(a, "--idempotency-key") != null ? { client_idempotency_key: flagValue(a, "--idempotency-key") } : {}),
+    });
+    printJson(sdk, result);
+    if (result.retired.length === 0) {
+      console.error("no writer outside this vault's organization — nothing to retire.");
+    } else {
+      console.error(`retired ${result.retired.length} writer key(s) from outside the organization and rotated to epoch ${result.rotation?.new_epoch} at generation ${result.rotation?.generation}.`);
+    }
+    console.error(result.note);
+    printVerboseStats(a, sdk);
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
 async function accessRepin(args) {
   const a = normalizeArgv(args);
   assertKnownFlags(a, [...COMMON_VALUE_FLAGS, "--principal", "--fingerprint", "--help", "-h"], [...COMMON_VALUE_FLAGS, "--principal", "--fingerprint"]);
@@ -3019,6 +3051,7 @@ async function access(args) {
   const a = normalizeArgv(args);
   if (a[0] === "repair") return accessRepair(a.slice(1));
   if (a[0] === "revoke-key") return accessRevokeKey(a.slice(1));
+  if (a[0] === "retire-previous-owner") return accessRetirePreviousOwner(a.slice(1));
   if (a[0] === "declare-exposure") return accessDeclareExposure(a.slice(1));
   if (a[0] === "repin") return accessRepin(a.slice(1));
   if (a[0] === "sync") return accessSync(a.slice(1));
