@@ -627,10 +627,6 @@ export interface RouteSpec {
   target: RouteTarget;
   /** Fixed-price tenant x402 policy for function routes. Static routes cannot be priced. */
   pricing?: RoutePricingSpec;
-  /** Durable acknowledgement for intentional read-only wildcard function routes.
-   *  Valid only with final-wildcard function routes whose methods are limited
-   *  to GET/HEAD. */
-  acknowledge_readonly?: true;
 }
 
 /** Top-level release route resource. Omit or pass null to carry routes forward. */

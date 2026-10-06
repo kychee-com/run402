@@ -1621,8 +1621,7 @@ const ROUTE_WARNING_GUIDANCE = {
     next_actions: [
       nextAction("edit_request", { why: "Add the mutation methods the routed function supports, such as POST." }),
       nextAction("edit_request", { why: "Omit methods to allow every supported method when the route is an API surface." }),
-      nextAction("edit_request", { why: "Set acknowledge_readonly: true on an intentionally read-only GET/HEAD wildcard function route." }),
-      retryAction("run402 deploy --allow-warning WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS", "Use only as a reviewed CLI escape hatch."),
+      retryAction("run402 deploy --allow-warning WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS", "Acknowledge when the GET/HEAD wildcard function route is intentionally read-only."),
     ],
   },
   ROUTE_TABLE_NEAR_LIMIT: {

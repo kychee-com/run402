@@ -45,7 +45,7 @@ Applies a `ReleaseSpec` to a project with `r.project(id).apply`: replace-vs-patc
 | `allow_warning_codes` | Continue past these reviewed plan warning codes. |
 | `allow_warnings` | Continue past every warning that requires confirmation (last resort). |
 
-`deploy` stops before upload and commit on a warning the gateway marks `requires_confirmation: true` unless every blocking code is in `allow_warning_codes` (or `allow_warnings` is set). A read-only `GET`/`HEAD` final-wildcard function route may set `acknowledge_readonly: true` on the route itself. Rehearsal is automatic for a migration-bearing plan against a project with a live release; the result's `rehearsal` block says `passed` or why it was `skipped`.
+`deploy` stops before upload and commit on a warning the gateway marks `requires_confirmation: true` unless every blocking code is in `allow_warning_codes` (or `allow_warnings` is set). An intentionally read-only `GET`/`HEAD` final-wildcard function route is acknowledged with `allow_warning_codes: ["WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS"]`. Rehearsal is automatic for a migration-bearing plan against a project with a live release; the result's `rehearsal` block says `passed` or why it was `skipped`.
 
 ### `status`
 

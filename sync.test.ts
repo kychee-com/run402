@@ -2764,7 +2764,7 @@ describe("agent deploy-friction docs stay visible", () => {
         [/Each scheduled tick creates a durable function run/s, "schedule trigger durable run behavior"],
         [/allowWarningCodes/, "SDK warning-code acknowledgement"],
         [/Run402-Client/, "SDK client metadata header"],
-        [/acknowledge_readonly/, "route-level readonly acknowledgement"],
+        [/WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS/, "read-only wildcard route acknowledgement via allowWarningCodes"],
         [/function_limits/, "tier status function caps"],
         [/BAD_FIELD/, "structured tier preflight errors"],
         [/ai\.generateImage/, "runtime image helper"],
@@ -2774,7 +2774,7 @@ describe("agent deploy-friction docs stay visible", () => {
       file: "llms-mcp.txt",
       patterns: [
         [/allow_warning_codes/, "MCP warning-code acknowledgement"],
-        [/acknowledge_readonly/, "MCP readonly route acknowledgement"],
+        [/WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS/, "MCP read-only wildcard route acknowledgement via allow_warning_codes"],
         [/function authoring caps|Function timeout/s, "tier caps"],
         [/ai\.generateImage/, "runtime image helper"],
       ],
@@ -2783,7 +2783,7 @@ describe("agent deploy-friction docs stay visible", () => {
       file: "SKILL.md",
       patterns: [
         [/--allow-warning/, "CLI skill warning-code acknowledgement"],
-        [/acknowledge_readonly/, "MCP skill readonly route acknowledgement"],
+        [/WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS/, "skill read-only wildcard route acknowledgement via --allow-warning"],
         [/Function timeout/, "tier caps"],
         [/ai\.generateImage/, "runtime image helper"],
       ],
@@ -2793,7 +2793,7 @@ describe("agent deploy-friction docs stay visible", () => {
       patterns: [
         [/--allow-warning/, "OpenClaw warning-code acknowledgement"],
         [/--final-only/, "OpenClaw final-only output"],
-        [/acknowledge_readonly/, "OpenClaw readonly route acknowledgement"],
+        [/WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS/, "OpenClaw read-only wildcard route acknowledgement via --allow-warning"],
         [/BAD_FIELD/, "tier preflight structured error"],
         [/ai\.generateImage/, "runtime image helper"],
       ],
@@ -2815,12 +2815,14 @@ describe("agent deploy-friction docs stay visible", () => {
       for (const [pattern, label] of patterns) {
         assert.match(text, pattern, `${file} must document ${label}`);
       }
+      // The release validator refuses the retired route field; no surface may teach it.
+      assert.doesNotMatch(text, /acknowledge_readonly/, `${file} must not teach the removed route-level acknowledge_readonly field`);
     });
   }
 
   it("ReleaseSpec schema and SDK types expose acknowledgement/tier surfaces", () => {
     const schemaText = readFileSync(RELEASE_SPEC_SCHEMA_PATH, "utf-8");
-    assert.match(schemaText, /acknowledge_readonly/, "schema must document readonly route acknowledgement");
+    assert.doesNotMatch(schemaText, /acknowledge_readonly/, "schema must not accept the removed acknowledge_readonly route field");
     assert.match(schemaText, /schedule/, "schema must document function schedules");
     assert.match(schemaText, /capabilities/, "schema must document function capabilities");
     assert.match(schemaText, /require_auth/, "schema must document function auth gates");
@@ -2828,7 +2830,7 @@ describe("agent deploy-friction docs stay visible", () => {
 
     const deployTypes = readFileSync(join(__dirname, "sdk/src/namespaces/deploy.types.ts"), "utf-8");
     assert.match(deployTypes, /allowWarningCodes/, "ApplyOptions must expose allowWarningCodes");
-    assert.match(deployTypes, /acknowledge_readonly/, "RouteSpec must expose acknowledge_readonly");
+    assert.doesNotMatch(deployTypes, /acknowledge_readonly/, "RouteSpec must not expose the removed acknowledge_readonly field");
 
     const tierTypes = readFileSync(join(__dirname, "sdk/src/namespaces/tier.ts"), "utf-8");
     for (const field of [

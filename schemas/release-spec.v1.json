@@ -628,10 +628,6 @@
         },
         "pricing": {
           "$ref": "#/$defs/routePricing"
-        },
-        "acknowledge_readonly": {
-          "const": true,
-          "description": "Durable acknowledgement for intentional read-only final-wildcard function routes. Valid only when target.type is function, pattern ends in /*, and methods are limited to GET/HEAD."
         }
       },
       "allOf": [

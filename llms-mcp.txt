@@ -364,7 +364,7 @@ Route warning recovery:
 | `ROUTE_TARGET_CARRIED_FORWARD` | Carried-forward route still targets a base-release function. | Inspect `r.project(id).apply.getActiveRelease()` and deploy a replacement route table if needed. |
 | `ROUTE_SHADOWS_STATIC_PATH` / `WILDCARD_ROUTE_SHADOWS_STATIC_PATHS` | Dynamic route shadows direct public static content. | Inspect warning details, active routes, `static_public_paths`, and resolve diagnostics; confirm only when intentional. |
 | `METHOD_SPECIFIC_ROUTE_ALLOWS_GET_STATIC_FALLBACK` | Unmatched methods can serve static content. | Confirm fallback is intended or add method coverage. |
-| `WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS` | Wildcard function route only allows `GET`/`HEAD`. | Add mutation methods e.g. `POST`, omit methods for an API prefix, or set `acknowledge_readonly: true` on an intentionally read-only GET/HEAD final-wildcard function route. Use `allow_warning_codes` as a reviewed escape hatch; broad `allow_warnings` is last resort. |
+| `WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS` | Wildcard function route only allows `GET`/`HEAD`. | Add mutation methods e.g. `POST`, omit methods for an API prefix, or, when the GET/HEAD final-wildcard function route is intentionally read-only, acknowledge with `allow_warning_codes: ["WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS"]`; broad `allow_warnings` is last resort. |
 | `ROUTE_TABLE_NEAR_LIMIT` | Route table is near a limit. | Consolidate or remove routes. |
 | `ROUTES_NOT_ENABLED` | Routes are disabled for the project/environment. | Deploy without `routes` or request enablement; direct function invoke is not a browser-route substitute. |
 | `STATIC_ALIAS_SHADOWS_STATIC_PATH` / `STATIC_ALIAS_RELATIVE_ASSET_RISK` | Route-only static alias conflicts with a direct public static path or has relative-asset risk. | Inspect active routes, `static_public_paths`, and the backing `asset_path`; prefer `site.public_paths` for ordinary clean URLs and confirm only when intentional. |
@@ -567,7 +567,7 @@ Applies a `ReleaseSpec` to a project with `r.project(id).apply`: replace-vs-patc
 | `allow_warning_codes` | Continue past these reviewed plan warning codes. |
 | `allow_warnings` | Continue past every warning that requires confirmation (last resort). |
 
-`deploy` stops before upload and commit on a warning the gateway marks `requires_confirmation: true` unless every blocking code is in `allow_warning_codes` (or `allow_warnings` is set). A read-only `GET`/`HEAD` final-wildcard function route may set `acknowledge_readonly: true` on the route itself. Rehearsal is automatic for a migration-bearing plan against a project with a live release; the result's `rehearsal` block says `passed` or why it was `skipped`.
+`deploy` stops before upload and commit on a warning the gateway marks `requires_confirmation: true` unless every blocking code is in `allow_warning_codes` (or `allow_warnings` is set). An intentionally read-only `GET`/`HEAD` final-wildcard function route is acknowledged with `allow_warning_codes: ["WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS"]`. Rehearsal is automatic for a migration-bearing plan against a project with a live release; the result's `rehearsal` block says `passed` or why it was `skipped`.
 
 ### `status`
 

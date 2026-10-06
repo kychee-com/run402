@@ -326,7 +326,6 @@ Use `run402 up --check` for local validation and `run402 up --plan` for gateway 
 | `methods` | `array` | no | See the downloadable schema for constraints. |
 | `target` | `oneOf` | yes | See the downloadable schema for constraints. |
 | `pricing` | `#/$defs/routePricing` | no | See the downloadable schema for constraints. |
-| `acknowledge_readonly` | `schema` | no | Durable acknowledgement for intentional read-only final-wildcard function routes. Valid only when target.type is function, pattern ends in /*, and methods are limited to GET/HEAD. |
 
 <h3 id="release-routePricing">routePricing</h3>
 

@@ -370,7 +370,7 @@ const MANIFEST_ASSETS_SYNC_CONFIRM_FIELDS = new Set([
   "expected_delete_count",
 ]);
 const MANIFEST_ROUTES_FIELDS = new Set(["replace"]);
-const MANIFEST_ROUTE_ENTRY_FIELDS = new Set(["pattern", "methods", "target", "pricing", "acknowledge_readonly"]);
+const MANIFEST_ROUTE_ENTRY_FIELDS = new Set(["pattern", "methods", "target", "pricing"]);
 const MANIFEST_FUNCTION_ROUTE_TARGET_FIELDS = new Set(["type", "name"]);
 const MANIFEST_STATIC_ROUTE_TARGET_FIELDS = new Set(["type", "file"]);
 const ROUTE_METHOD_SET = new Set<string>(ROUTE_HTTP_METHODS);
@@ -1771,39 +1771,7 @@ function validateManifestRouteEntry(route: unknown, index: number): void {
     }
   }
   const targetType = validateManifestRouteTarget(route.target, `${label}.target`);
-  validateManifestRouteReadOnlyAcknowledgement(route, targetType, label);
   if (targetType === "static") validateManifestStaticRouteEntry(route, label);
-}
-
-function validateManifestRouteReadOnlyAcknowledgement(
-  route: Record<string, unknown>,
-  targetType: "function" | "static",
-  label: string,
-): void {
-  if (route.acknowledge_readonly === undefined) return;
-  if (route.acknowledge_readonly !== true) {
-    throw new LocalError(`${label}.acknowledge_readonly must be true when present`, CONTEXT);
-  }
-  if (
-    targetType !== "function" ||
-    typeof route.pattern !== "string" ||
-    !isFinalWildcardRoutePattern(route.pattern) ||
-    !isReadOnlyRouteMethods(route.methods)
-  ) {
-    throw new LocalError(
-      `${label}.acknowledge_readonly applies only to GET/HEAD final-wildcard function routes`,
-      CONTEXT,
-    );
-  }
-}
-
-function isFinalWildcardRoutePattern(pattern: string): boolean {
-  return pattern.endsWith("/*");
-}
-
-function isReadOnlyRouteMethods(methods: unknown): boolean {
-  if (!Array.isArray(methods) || methods.length === 0) return false;
-  return methods.every((method) => method === "GET" || method === "HEAD");
 }
 
 function validateManifestRouteTarget(target: unknown, label: string): "function" | "static" {

@@ -3018,7 +3018,7 @@ const SITE_PUBLIC_PATHS_FIELDS = new Set(["mode", "replace"]);
 const PUBLIC_STATIC_PATH_FIELDS = new Set(["asset", "cache_class"]);
 const SUBDOMAINS_SPEC_FIELDS = new Set(["set", "add", "remove"]);
 const ROUTES_SPEC_FIELDS = new Set(["replace"]);
-const ROUTE_ENTRY_FIELDS = new Set(["pattern", "methods", "target", "pricing", "acknowledge_readonly"]);
+const ROUTE_ENTRY_FIELDS = new Set(["pattern", "methods", "target", "pricing"]);
 const FUNCTION_ROUTE_TARGET_FIELDS = new Set(["type", "name"]);
 const STATIC_ROUTE_TARGET_FIELDS = new Set(["type", "file"]);
 const ROUTE_METHOD_SET = new Set<string>(ROUTE_HTTP_METHODS);
@@ -3561,7 +3561,6 @@ function validateRouteEntry(route: unknown, resource: string): void {
   }
   const targetType = validateRouteTarget(entry.target, `${resource}.target`);
   validateRoutePricing(entry.pricing, resource, targetType);
-  validateRouteReadOnlyAcknowledgement(entry, targetType, resource);
   if (targetType === "static") {
     validateStaticRouteEntry(entry, resource);
   }
@@ -3636,31 +3635,6 @@ function validateRoutePricing(
       );
     }
     seen.add(network);
-  }
-}
-
-function validateRouteReadOnlyAcknowledgement(
-  entry: Record<string, unknown>,
-  targetType: "function" | "static",
-  resource: string,
-): void {
-  if (entry.acknowledge_readonly === undefined) return;
-  if (entry.acknowledge_readonly !== true) {
-    throw invalidRouteSpec(
-      `ReleaseSpec.${resource}.acknowledge_readonly must be true when present`,
-      `${resource}.acknowledge_readonly`,
-    );
-  }
-  if (
-    targetType !== "function" ||
-    typeof entry.pattern !== "string" ||
-    !isFinalWildcardRoutePattern(entry.pattern) ||
-    !isReadOnlyRouteMethods(entry.methods)
-  ) {
-    throw invalidRouteSpec(
-      `ReleaseSpec.${resource}.acknowledge_readonly applies only to GET/HEAD final-wildcard function routes`,
-      `${resource}.acknowledge_readonly`,
-    );
   }
 }
 
@@ -4219,7 +4193,6 @@ function clientRoutePlanWarnings(spec: NormalizedReleaseSpec): WarningEntry[] {
       if (route.target.type !== "function") return false;
       if (!isFinalWildcardRoutePattern(route.pattern)) return false;
       if (!route.methods) return false;
-      if (route.acknowledge_readonly === true) return false;
       return isReadOnlyRouteMethods(route.methods);
     })
     .map((route) => route.pattern)

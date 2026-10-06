@@ -480,33 +480,6 @@ describe("Node deploy manifest helpers", () => {
     });
   });
 
-  it("preserves read-only wildcard route acknowledgement through manifest normalization", async () => {
-    const normalized = await normalizeDeployManifest({
-      project_id: "prj_manifest",
-      routes: {
-        replace: [
-          {
-            pattern: "/share/*",
-            methods: ["GET", "HEAD"],
-            target: { type: "function", name: "share" },
-            acknowledge_readonly: true,
-          },
-        ],
-      },
-    });
-
-    assert.deepEqual(normalized.spec.routes, {
-      replace: [
-        {
-          pattern: "/share/*",
-          methods: ["GET", "HEAD"],
-          target: { type: "function", name: "share" },
-          acknowledge_readonly: true,
-        },
-      ],
-    });
-  });
-
   it("preserves a full i18n slice through manifest normalization", async () => {
     const normalized = await normalizeDeployManifest({
       project_id: "prj_manifest",
@@ -904,23 +877,9 @@ describe("Node deploy manifest helpers", () => {
       [
         {
           project_id: "prj_manifest",
-          routes: { replace: [{ pattern: "/share", methods: ["GET"], target: { type: "function", name: "share" }, acknowledge_readonly: true }] },
+          routes: { replace: [{ pattern: "/share/*", methods: ["GET"], target: { type: "function", name: "share" }, acknowledge_readonly: true }] },
         },
-        /GET\/HEAD final-wildcard function routes/,
-      ],
-      [
-        {
-          project_id: "prj_manifest",
-          routes: { replace: [{ pattern: "/share/*", methods: ["GET", "POST"], target: { type: "function", name: "share" }, acknowledge_readonly: true }] },
-        },
-        /GET\/HEAD final-wildcard function routes/,
-      ],
-      [
-        {
-          project_id: "prj_manifest",
-          routes: { replace: [{ pattern: "/share/*", methods: ["GET"], target: { type: "function", name: "share" }, acknowledge_readonly: false }] },
-        },
-        /must be true/,
+        /Unknown .*field: acknowledge_readonly/,
       ],
     ] as const) {
       await assert.rejects(

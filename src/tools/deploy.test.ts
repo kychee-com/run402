@@ -754,7 +754,6 @@ describe("deploySchema fileEntry parsing", () => {
             pattern: "/share/*",
             methods: ["GET"],
             target: { type: "function", name: "share" },
-            acknowledge_readonly: true,
           },
         ],
       },
@@ -774,6 +773,17 @@ describe("deploySchema fileEntry parsing", () => {
     });
     assert.equal(staticRoute.success, true, staticRoute.success ? "" : JSON.stringify(staticRoute.error.issues));
 
+    assert.equal(
+      routesSchema.safeParse({
+        routes: {
+          replace: [
+            { pattern: "/share/*", methods: ["GET"], target: { type: "function", name: "share" }, acknowledge_readonly: true },
+          ],
+        },
+      }).success,
+      false,
+      "the removed acknowledge_readonly route field is refused by the strict route schema",
+    );
     assert.equal(routesSchema.safeParse({ routes: { replace: [] } }).success, true);
     assert.equal(routesSchema.safeParse({ routes: null }).success, true);
     assert.equal(routesSchema.safeParse({ routes: { "/api/*": { function: "api" } } }).success, false);

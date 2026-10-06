@@ -1543,51 +1543,6 @@ describe("Deploy.plan", () => {
     assert.deepEqual(plan.warnings[0]?.affected, ["/admin/*"]);
   });
 
-  it("suppresses only acknowledged read-only wildcard route warnings", async () => {
-    const w = makeWiring();
-    w.setHandler((req) => {
-      if (req.path === "/apply/v1/plans?dry_run=true") {
-        return {
-          plan_id: null,
-          operation_id: null,
-          base_release_id: "rel_base",
-          manifest_digest: "route-lint-ack",
-          missing_content: [],
-          diff: {},
-          warnings: [],
-        } satisfies PlanResponse;
-      }
-      throw new Error(`unexpected ${req.path}`);
-    });
-
-    const deploy = new Deploy(w.client);
-    const { plan } = await deploy.plan(
-      {
-        project_id: "prj_test",
-        routes: {
-          replace: [
-            {
-              pattern: "/share/*",
-              methods: ["GET"],
-              target: { type: "function", name: "share" },
-              acknowledge_readonly: true,
-            },
-            {
-              pattern: "/admin/*",
-              methods: ["GET", "HEAD"],
-              target: { type: "function", name: "admin" },
-            },
-          ],
-        },
-      },
-      { dryRun: true },
-    );
-
-    assert.equal(plan.warnings.length, 1);
-    assert.equal(plan.warnings[0]?.code, "WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS");
-    assert.deepEqual(plan.warnings[0]?.affected, ["/admin/*"]);
-  });
-
   it("normalizes site file bytes while preserving explicit public paths", async () => {
     const w = makeWiring();
     const html = "<h1>events</h1>";
@@ -2554,24 +2509,9 @@ describe("Deploy.apply (validation)", () => {
         /only supported on function route targets/,
       ],
       [
-        { replace: [{ pattern: "/share", methods: ["GET"], target: { type: "function", name: "share" }, acknowledge_readonly: true }] },
+        { replace: [{ pattern: "/share/*", methods: ["GET"], target: { type: "function", name: "share" }, acknowledge_readonly: true }] },
         "routes.replace.0.acknowledge_readonly",
-        /GET\/HEAD final-wildcard function routes/,
-      ],
-      [
-        { replace: [{ pattern: "/share/*", methods: ["GET"], target: { type: "static", file: "share.html" }, acknowledge_readonly: true }] },
-        "routes.replace.0.acknowledge_readonly",
-        /GET\/HEAD final-wildcard function routes/,
-      ],
-      [
-        { replace: [{ pattern: "/share/*", methods: ["GET", "POST"], target: { type: "function", name: "share" }, acknowledge_readonly: true }] },
-        "routes.replace.0.acknowledge_readonly",
-        /GET\/HEAD final-wildcard function routes/,
-      ],
-      [
-        { replace: [{ pattern: "/share/*", methods: ["GET"], target: { type: "function", name: "share" }, acknowledge_readonly: false }] },
-        "routes.replace.0.acknowledge_readonly",
-        /must be true/,
+        /Unknown ReleaseSpec field/,
       ],
       [
         { replace: [{ pattern: "/docs/*", methods: ["GET"], target: { type: "static", file: "docs/index.html" } }] },
@@ -3343,6 +3283,30 @@ describe("Deploy.apply (plan warnings)", () => {
     const warningEvent = events.find((event) => event.type === "plan.warnings");
     assert.ok(warningEvent && warningEvent.type === "plan.warnings");
     assert.equal(warningEvent.warnings[0]?.code, "WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS");
+  });
+
+  it("commits a client-detected read-only wildcard route once its code is in allowWarningCodes", async () => {
+    const w = makeWiring();
+    w.setHandler((req) => {
+      if (req.path === "/apply/v1/plans") return noContentPlan("plan_route_ack", "op_route_ack");
+      if (req.path === "/apply/v1/plans/plan_route_ack/commit") return readyCommit("op_route_ack", "rel_route_ack");
+      throw new Error(`unexpected ${req.path}`);
+    });
+
+    const result = await new Deploy(w.client).apply(
+      {
+        project_id: "prj_test",
+        routes: {
+          replace: [{ pattern: "/share/*", methods: ["GET", "HEAD"], target: { type: "function", name: "share" } }],
+        },
+      },
+      { allowWarningCodes: ["WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS"] },
+    );
+
+    assert.equal(result.release_id, "rel_route_ack");
+    assert.deepEqual(w.requests.map((r) => r.path).slice(0, 2), ["/apply/v1/plans", "/apply/v1/plans/plan_route_ack/commit"]);
+    assert.equal(result.warnings?.[0]?.code, "WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS");
+    assert.deepEqual(result.warnings?.[0]?.affected, ["/share/*"]);
   });
 
   it("emits warnings and aborts before upload or commit by default", async () => {

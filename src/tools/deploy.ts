@@ -195,10 +195,6 @@ const routeEntry = z
       .optional()
       .describe("Optional method allowlist. Omit to allow all supported methods; do not pass an empty array."),
     target: routeTarget,
-    acknowledge_readonly: z
-      .literal(true)
-      .optional()
-      .describe("Durable acknowledgement for intentional GET/HEAD final-wildcard function routes such as /share/*."),
   })
   .strict();
 
@@ -688,7 +684,7 @@ const ROUTE_WARNING_GUIDANCE: Record<string, { meaning: string; recovery: string
   },
   WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS: {
     meaning: "A wildcard function route only allows GET/HEAD.",
-    recovery: "Add the mutation methods the function supports, omit methods for an API prefix that should accept all supported methods, set acknowledge_readonly: true when the prefix is intentionally read-only, or use allow_warning_codes as a reviewed escape hatch.",
+    recovery: "Add the mutation methods the function supports, omit methods for an API prefix that should accept all supported methods, or, when the prefix is intentionally read-only, acknowledge with allow_warning_codes: ['WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS'].",
   },
   ROUTE_TABLE_NEAR_LIMIT: {
     meaning: "The route table is close to the project or gateway limit.",
