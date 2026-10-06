@@ -29,6 +29,7 @@
 import { createElement, type ReactElement, type ReactNode } from "react";
 
 import { preloadCrossOrigin } from "./render-html.js";
+import { foldDeclarations, parseDeclarations } from "./style-declarations.js";
 import type {
   ImgAttrs,
   LinkAttrs,
@@ -216,78 +217,29 @@ function appendDataAttrs(
 }
 
 /**
- * Convert the serializer's string-form CSS style into React's object
- * form (which `renderToStaticMarkup` requires). React 19 serializes the
- * object back to a compact form `key:value;key:value` (no spaces) —
- * matching `render-html.ts`'s output format. The HTML serializer's
- * placeholder block is built WITHOUT spaces between key:value:; pairs
- * specifically to round-trip cleanly through this parser without
- * format drift.
- *
- * Style keys arrive in CSS kebab-case (`background-image`); React
- * requires camelCase (`backgroundImage`). The roundtrip preserves
- * insertion order, so the React output lays properties down in the
- * same order the HTML serializer emits them.
+ * Convert the serializer's string-form CSS style into React's object form
+ * (which `renderToStaticMarkup` requires). React 19 serializes the object
+ * back as `name:value;name:value`. Core already emits the canonical form
+ * from style-declarations.ts, so parsing and folding it again is a no-op
+ * there, and React writes the same bytes the HTML serializer does: same
+ * properties, same order. Keys are rebuilt from insertion order, so a
+ * property sits where its winning declaration was.
  */
 function parseStyleString(s: string): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const decl of splitDeclarations(s)) {
-    const trimmed = decl.trim();
-    if (trimmed === "") continue;
-    const colon = trimmed.indexOf(":");
-    if (colon < 0) continue;
-    const k = trimmed.slice(0, colon).trim();
-    const v = trimmed.slice(colon + 1).trim();
-    if (k) out[reactStyleKey(k)] = v;
+  for (const [name, value] of foldDeclarations(parseDeclarations(s))) {
+    out[reactStyleKey(name)] = value;
   }
   return out;
 }
 
-/**
- * Split a CSS-declarations string on `;`, BUT only at top-level depth
- * (outside of `url(...)`, `calc(...)`, etc).
- *
- * The default `string.split(";")` fails for data URLs:
- *
- *   background-image:url(data:image/png;base64,iVBORw...);background-size:cover
- *
- * `;base64` looks like a property separator but is part of the URL.
- * This depth-aware splitter tracks `(` / `)` and only splits at depth 0.
- *
- * Also handles quoted strings (`url("...")`, `content:"..."`) so a `;`
- * inside a quoted value doesn't trigger a split. Both `"` and `'` quote
- * forms are accepted; the active quote char remains escaped until the
- * matching closer.
- */
-function splitDeclarations(s: string): string[] {
-  const out: string[] = [];
-  let depth = 0;
-  let quote: string | null = null;
-  let start = 0;
-  for (let i = 0; i < s.length; i++) {
-    const c = s[i];
-    if (quote) {
-      if (c === quote && s[i - 1] !== "\\") quote = null;
-      continue;
-    }
-    if (c === '"' || c === "'") {
-      quote = c;
-      continue;
-    }
-    if (c === "(") depth += 1;
-    else if (c === ")") depth = Math.max(0, depth - 1);
-    else if (c === ";" && depth === 0) {
-      out.push(s.slice(start, i));
-      start = i + 1;
-    }
-  }
-  if (start < s.length) out.push(s.slice(start));
-  return out;
-}
-
-function reactStyleKey(cssKey: string): string {
-  // CSS `background-image` → React `backgroundImage`.
-  return cssKey.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
+function reactStyleKey(cssName: string): string {
+  // React passes custom properties through verbatim; camel-casing
+  // `--brand-color` would print `-BrandColor`.
+  if (cssName.startsWith("--")) return cssName;
+  // CSS `background-image` → React `backgroundImage`. React hyphenates it
+  // back on output (`-webkit-mask` → `WebkitMask` → `-webkit-mask`).
+  return cssName.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
 }
 
 /**

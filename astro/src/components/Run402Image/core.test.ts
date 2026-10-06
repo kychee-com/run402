@@ -610,31 +610,35 @@ describe("style merge — object form", () => {
 });
 
 describe("style merge — string form", () => {
-  it("caller string appended AFTER component string", () => {
-    const { root } = build({
-      style: "color: red; background-size: contain",
-    });
-    const attrs = imgAttrs(root);
-    const style = attrs.style ?? "";
-    // Component's `background-size:cover` (no spaces, React-style) appears
-    // first, then the caller's verbatim string.
-    const componentIdx = style.indexOf("background-size:cover");
-    const callerIdx = style.indexOf("background-size: contain");
-    assert.ok(componentIdx >= 0 && callerIdx > componentIdx);
+  const placeholder =
+    "background-image:url(data:image/png;base64,iVBORw0KGgo...);" +
+    "background-size:cover;background-position:center";
+  function styleOf(style: Run402ImageProps["style"]): string | undefined {
+    return imgAttrs(build({ style }).root).style;
+  }
+
+  it("caller declarations follow the component's; caller wins on overlap", () => {
+    // The overridden property moves to the caller's position, so it still
+    // follows any shorthand the caller declared before it.
+    assert.equal(
+      styleOf("color: red; background-size: contain"),
+      "background-image:url(data:image/png;base64,iVBORw0KGgo...);" +
+        "background-position:center;color:red;background-size:contain",
+    );
   });
   it("background shorthand wipes the placeholder (documented pitfall)", () => {
-    const { root } = build({ style: "background: blue" });
-    const attrs = imgAttrs(root);
-    // Component's longhand is still emitted (we don't strip), then caller's
-    // shorthand. At render time the browser applies the cascade.
-    const style = attrs.style ?? "";
-    assert.match(style, /background-image:\s*url/);
-    assert.ok(style.endsWith("background: blue"));
+    // Component's longhands are still emitted (we don't strip), then the
+    // caller's shorthand. At render time the browser applies the cascade.
+    assert.equal(styleOf("background: blue"), `${placeholder};background:blue`);
+  });
+  it("a longhand after a shorthand keeps its place after the shorthand", () => {
+    assert.equal(
+      styleOf("background:red;background-size:contain"),
+      "background-image:url(data:image/png;base64,iVBORw0KGgo...);" +
+        "background-position:center;background:red;background-size:contain",
+    );
   });
   it("joins component and caller with exactly one `;`", () => {
-    const placeholder =
-      "background-image:url(data:image/png;base64,iVBORw0KGgo...);" +
-      "background-size:cover;background-position:center";
     const cases: Array<[string, string | undefined]> = [
       ["color:red;font-size:14px", `${placeholder};color:red;font-size:14px`],
       [";color:red;", `${placeholder};color:red`],
@@ -643,13 +647,52 @@ describe("style merge — string form", () => {
       [" ; ", placeholder],
     ];
     for (const [style, expected] of cases) {
-      assert.equal(imgAttrs(build({ style }).root).style, expected, `style=${JSON.stringify(style)}`);
+      assert.equal(styleOf(style), expected, `style=${JSON.stringify(style)}`);
     }
+  });
+  it("canonicalizes whitespace, name case, repeats and empty values", () => {
+    const cases: Array<[string, string]> = [
+      ["color : red ;  font-size:  14px", "color:red;font-size:14px"],
+      ["COLOR:red", "color:red"],
+      ["color:red;color:blue", "color:blue"],
+      ["color:;font-size:14px", "font-size:14px"],
+      ["color", ""],
+    ];
+    for (const [style, expected] of cases) {
+      assert.equal(styleOf(style), [placeholder, expected].filter(Boolean).join(";"), `style=${JSON.stringify(style)}`);
+    }
+  });
+  it("a normal declaration does not displace an earlier !important one", () => {
+    assert.equal(styleOf("color:red !important;color:blue"), `${placeholder};color:red !important`);
+    assert.equal(styleOf("color:red !important;color:blue!important"), `${placeholder};color:blue!important`);
+  });
+  it("custom properties keep their case and spelling", () => {
+    assert.equal(
+      styleOf("--Brand-Color:#f00;color:var(--Brand-Color)"),
+      `${placeholder};--Brand-Color:#f00;color:var(--Brand-Color)`,
+    );
   });
   it("caller string alone (no placeholder) is emitted without edge `;`", () => {
     const asset = makeFullAssetRef({ blurhash_data_url: undefined });
     assert.equal(imgAttrs(build({ asset, style: "color:red;" }).root).style, "color:red");
     assert.equal(imgAttrs(build({ asset, style: " ; " }).root).style, undefined);
+  });
+});
+
+describe("style merge — object form canonicalization", () => {
+  it("vendor-prefixed and custom-property keys map to their CSS names", () => {
+    const asset = makeFullAssetRef({ blurhash_data_url: undefined });
+    const style = imgAttrs(
+      build({
+        asset,
+        style: { WebkitLineClamp: 2, msTransform: "none", "--brand-color": "#f00", objectFit: " cover " },
+      }).root,
+    ).style;
+    assert.equal(style, "-webkit-line-clamp:2;-ms-transform:none;--brand-color:#f00;object-fit:cover");
+  });
+  it("empty-string values are dropped, like React drops them", () => {
+    const asset = makeFullAssetRef({ blurhash_data_url: undefined });
+    assert.equal(imgAttrs(build({ asset, style: { color: "", fontSize: "14px" } }).root).style, "font-size:14px");
   });
 });
 

@@ -336,6 +336,58 @@ const FIXTURES: Fixture[] = [
       style: " ;color:red;font-size:14px; ",
     },
   },
+  {
+    name: "18: caller string-style with spaces inside declarations",
+    props: {
+      asset: makeFullV154AssetRef(),
+      alt: "Spaced",
+      sizes: "100vw",
+      style: "color: red;  font-size : 14px",
+    },
+  },
+  {
+    name: "19: caller string-style overrides a placeholder property",
+    props: {
+      asset: makeFullV154AssetRef(),
+      alt: "Override",
+      sizes: "100vw",
+      style: "background-size:contain;color:red;color:blue",
+    },
+  },
+  {
+    name: "20: caller shorthand then longhand over the placeholder",
+    props: {
+      asset: makeFullV154AssetRef(),
+      alt: "Shorthand",
+      sizes: "100vw",
+      style: "background:red;background-size:contain",
+    },
+  },
+  {
+    name: "21: custom properties, upper-case names, empty values, !important",
+    props: {
+      asset: makeFullV154AssetRef(),
+      alt: "Custom",
+      sizes: "100vw",
+      style: "--Brand-Color:#f00;COLOR:var(--Brand-Color);margin:;color:blue !important;color:green",
+    },
+  },
+  {
+    name: "22: caller object-style with vendor, custom and shorthand keys",
+    props: {
+      asset: makeFullV154AssetRef(),
+      alt: "Object",
+      sizes: "100vw",
+      style: {
+        background: "red",
+        backgroundSize: "contain",
+        WebkitLineClamp: 2,
+        msTransform: "none",
+        "--brand-color": "#f00",
+        color: "",
+      },
+    },
+  },
 ];
 
 // =============================================================================

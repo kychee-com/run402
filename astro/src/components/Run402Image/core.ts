@@ -49,6 +49,12 @@ import {
   type Run402ImageProps,
   type SourceAttrs,
 } from "./types.js";
+import {
+  canonicalPropertyName,
+  foldDeclarations,
+  parseDeclarations,
+  serializeDeclarations,
+} from "./style-declarations.js";
 
 // `<Run402Image>` declares what it consumes, not the broader SDK
 // `AssetRef`. `Run402ImageAsset` (in types.ts) is a structural supertype of
@@ -642,110 +648,39 @@ function mergeStyles(
   componentStyle: string,
   callerStyle: Run402ImageProps["style"],
 ): string | undefined {
-  // Per spec §"Style merge semantics":
-  //   - object form → `{...component, ...caller}` (caller wins on overlap)
-  //   - string form → component-then-caller append (CSS cascade: later wins)
-  // The placeholder style is built as a CSS string by buildPlaceholderStyle,
-  // so the merge always treats `componentStyle` as a string.
-
-  if (callerStyle === undefined || callerStyle === null) {
-    return componentStyle === "" ? undefined : componentStyle;
-  }
-
+  // Per spec §"Style merge semantics": the caller's declarations follow the
+  // component's, and the caller wins on overlap, for string and object form
+  // alike. The result is the canonical form from style-declarations.ts,
+  // which is what React's object-style round trip in render-react.tsx
+  // produces, so the Astro and React adapters emit byte-identical HTML.
+  const decls = parseDeclarations(componentStyle);
   if (typeof callerStyle === "string") {
-    // The component string carries no trailing `;` (React parity), so the
-    // join supplies exactly one. Edge `;`/whitespace on the caller would
-    // otherwise yield `;;` or a dangling `;` that React's round-trip drops.
-    const caller = callerStyle.replace(/^[\s;]+|[\s;]+$/g, "");
-    const merged = [componentStyle, caller].filter((s) => s !== "").join(";");
-    return merged === "" ? undefined : merged;
+    decls.push(...parseDeclarations(callerStyle));
+  } else if (callerStyle !== undefined && callerStyle !== null) {
+    // `callerStyle` may be `React.CSSProperties`, whose values are typed as
+    // `string | number | undefined | …`. Skip anything that is not a string
+    // or number so we never serialize `object-fit:undefined`.
+    for (const [k, v] of Object.entries(callerStyle as Record<string, unknown>)) {
+      if (typeof v !== "string" && typeof v !== "number") continue;
+      const value = String(v).trim();
+      if (value !== "") decls.push([objectStyleKeyToCss(k), value]);
+    }
   }
-
-  // Object form. Convert component-string to property map (just splits on
-  // ";" + ":"), spread caller object on top, serialize back. The output
-  // format matches React's `renderToStaticMarkup` object-style serialization
-  // — `key:value;key:value` (NO spaces, NO trailing semicolon) — so the
-  // Astro adapter and React adapter produce byte-identical HTML.
-  //
-  // v1.0.3 — `callerStyle` may be `React.CSSProperties`, whose values are
-  // typed as `string | number | undefined | …`. Skip undefined/null values
-  // so we never serialize `object-fit:undefined`; the merge result is
-  // byte-identical to the pre-widening behavior for plain `Record<string,
-  // string | number>` inputs.
-  const componentProps = parseInlineStyle(componentStyle);
-  const callerProps: Record<string, string | number> = {};
-  for (const [k, v] of Object.entries(callerStyle as Record<string, unknown>)) {
-    if (v === undefined || v === null) continue;
-    if (typeof v !== "string" && typeof v !== "number") continue;
-    callerProps[normalizeStyleKey(k)] = v;
-  }
-  const merged = { ...componentProps, ...callerProps };
-  const out = Object.entries(merged)
-    .map(([k, v]) => `${k}:${v}`)
-    .join(";");
+  const out = serializeDeclarations(foldDeclarations(decls));
   return out === "" ? undefined : out;
 }
 
-function parseInlineStyle(s: string): Record<string, string> {
-  if (s === "") return {};
-  const out: Record<string, string> = {};
-  for (const decl of splitDeclarations(s)) {
-    const trimmed = decl.trim();
-    if (trimmed === "") continue;
-    const colon = trimmed.indexOf(":");
-    if (colon < 0) continue;
-    const k = trimmed.slice(0, colon).trim();
-    const v = trimmed.slice(colon + 1).trim();
-    if (k) out[k] = v;
-  }
-  return out;
-}
-
 /**
- * Split a CSS-declarations string on `;`, but only at top-level depth
- * (outside of `url(...)`, `calc(...)`, and quoted strings). Required
- * because data URLs contain a `;` (between the MIME and the payload —
- * `data:image/png;base64,...`) that would otherwise be misread as a
- * property separator. See render-react.tsx's matching helper for the
- * full rationale.
+ * Convert an object-form style key to its CSS property name. Accepts
+ * React's camelCase (`backgroundColor`, `WebkitLineClamp`, `msTransform`)
+ * and Astro's kebab-case (`background-color`); custom properties
+ * (`--brand-color`) pass through unchanged.
  */
-function splitDeclarations(s: string): string[] {
-  const out: string[] = [];
-  let depth = 0;
-  let quote: string | null = null;
-  let start = 0;
-  for (let i = 0; i < s.length; i++) {
-    const c = s[i];
-    if (quote) {
-      if (c === quote && s[i - 1] !== "\\") quote = null;
-      continue;
-    }
-    if (c === '"' || c === "'") {
-      quote = c;
-      continue;
-    }
-    if (c === "(") depth += 1;
-    else if (c === ")") depth = Math.max(0, depth - 1);
-    else if (c === ";" && depth === 0) {
-      out.push(s.slice(start, i));
-      start = i + 1;
-    }
-  }
-  if (start < s.length) out.push(s.slice(start));
-  return out;
-}
-
-/**
- * Convert a JS camelCase style key to its CSS kebab-case form when
- * needed. React's `style` prop convention is `backgroundColor`, while
- * Astro's is `background-color`. Both work in `<img style="...">` HTML,
- * but the byte-identity guarantee requires we normalize to one form.
- */
-function normalizeStyleKey(k: string): string {
-  // If the key already has a dash, treat as-is (Astro form).
-  if (k.includes("-")) return k;
-  // camelCase → kebab-case. `backgroundColor` → `background-color`.
-  return k.replace(/[A-Z]/g, (m) => "-" + m.toLowerCase());
+function objectStyleKeyToCss(k: string): string {
+  if (k.includes("-")) return canonicalPropertyName(k);
+  // camelCase → kebab-case. `backgroundColor` → `background-color`;
+  // React spells the `-ms-` vendor prefix with a lowercase `ms`.
+  return k.replace(/[A-Z]/g, (m) => "-" + m.toLowerCase()).replace(/^ms-/, "-ms-");
 }
 
 // =============================================================================
