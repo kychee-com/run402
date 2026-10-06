@@ -6947,6 +6947,16 @@
       "topic": "/errors/gateway/#TOO_MANY_ENCODES_QUEUED"
     },
     {
+      "code": "TRANSFER_HAS_NO_VAULT",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/namespaces/repos.ts"
+        }
+      ],
+      "topic": "/errors/client/#TRANSFER_HAS_NO_VAULT"
+    },
+    {
       "code": "TRANSFER_NOT_FOUND",
       "owners": [
         {
@@ -6955,6 +6965,26 @@
         }
       ],
       "topic": "/errors/gateway/#TRANSFER_NOT_FOUND"
+    },
+    {
+      "code": "TRANSFER_VAULT_HANDOVER_PENDING",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "cli/lib/transfer.mjs"
+        }
+      ],
+      "topic": "/errors/client/#TRANSFER_VAULT_HANDOVER_PENDING"
+    },
+    {
+      "code": "TRANSFER_VAULT_RECIPIENT_NOT_NOMINATED",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/namespaces/repos.ts"
+        }
+      ],
+      "topic": "/errors/client/#TRANSFER_VAULT_RECIPIENT_NOT_NOMINATED"
     },
     {
       "code": "TRANSITION_NOT_ACTIVE",

@@ -1647,6 +1647,8 @@ After `accept`, the project carries a persistent `secrets_rotation_advised` advi
 **The project's KyGit vault moves with it, and the source is handed over first.** The gateway never holds the vault's key, so a transfer of a project with a vault carries a `vault_handover` (`TransferVaultHandover`: `{ repo_id, state: "awaiting_recipient" | "awaiting_sender" | "complete", recipient_principal_id, recipient, current_epoch, writer_admitted, envelope_current_epoch }`) on every read. Three calls complete it:
 
 ```ts
+const transferId = "00000000-0000-4000-8000-000000000000"; // from r.admin.transfers.listIncoming()
+
 // Recipient: publish this machine's keystore identity, then name it as the vault recipient.
 await r.repos.publishKeystoreIdentity();
 await r.admin.transfers.nominateVaultRecipient(transferId);

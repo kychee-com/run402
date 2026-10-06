@@ -657,7 +657,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/repos.md",
-    "line": 61,
+    "line": 62,
     "language": "bash",
     "kind": "commands",
     "sha256": "1ffdec2d826e2c0c2046a4e6fd2c47b74d12f06e514bf9e2153138abf27d2113",
@@ -1828,15 +1828,23 @@
     "line": 1575,
     "language": "",
     "kind": "output-or-pseudocode",
-    "sha256": "0eac250cfbb4f027c2d3471db7e240f9740d98c4fb5ae1694198620b0f2bb57e",
+    "sha256": "e7f1e6945612933cd5402665d5a6cac63be455a2f12e8c853b94d0b29c794ebc",
     "validation": "sdk-snippets"
   },
   {
     "file": "docs-site/src/content/docs//sdk/resources.md",
-    "line": 1613,
+    "line": 1621,
     "language": "ts",
     "kind": "application-or-sdk",
     "sha256": "1273a5d793c6fbbcab7e20b2ac7abad4437e58cef386f59fae923147b7fe8fe2",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/resources.md",
+    "line": 1649,
+    "language": "ts",
+    "kind": "application-or-sdk",
+    "sha256": "ca7fd3f24786f8f9c22980d078dbd1f42da835c6eb0c5e4b41b5ae9d7fe3219e",
     "validation": "sdk-snippets"
   },
   {

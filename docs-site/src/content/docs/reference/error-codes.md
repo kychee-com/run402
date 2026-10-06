@@ -2457,9 +2457,21 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="TOO_MANY_ENCODES_QUEUED"></a>
 [`TOO_MANY_ENCODES_QUEUED`](/errors/gateway/#TOO_MANY_ENCODES_QUEUED)
 
+<a id="transfer_has_no_vault"></a>
+<a id="TRANSFER_HAS_NO_VAULT"></a>
+[`TRANSFER_HAS_NO_VAULT`](/errors/client/#TRANSFER_HAS_NO_VAULT)
+
 <a id="transfer_not_found"></a>
 <a id="TRANSFER_NOT_FOUND"></a>
 [`TRANSFER_NOT_FOUND`](/errors/gateway/#TRANSFER_NOT_FOUND)
+
+<a id="transfer_vault_handover_pending"></a>
+<a id="TRANSFER_VAULT_HANDOVER_PENDING"></a>
+[`TRANSFER_VAULT_HANDOVER_PENDING`](/errors/client/#TRANSFER_VAULT_HANDOVER_PENDING)
+
+<a id="transfer_vault_recipient_not_nominated"></a>
+<a id="TRANSFER_VAULT_RECIPIENT_NOT_NOMINATED"></a>
+[`TRANSFER_VAULT_RECIPIENT_NOT_NOMINATED`](/errors/client/#TRANSFER_VAULT_RECIPIENT_NOT_NOMINATED)
 
 <a id="transition_not_active"></a>
 <a id="TRANSITION_NOT_ACTIVE"></a>

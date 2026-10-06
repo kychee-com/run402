@@ -1013,6 +1013,24 @@ Owner: `public:sdk/src/namespaces/deploy.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
+<h2 id="TRANSFER_HAS_NO_VAULT">TRANSFER_HAS_NO_VAULT</h2>
+
+Owner: `public:sdk/src/namespaces/repos.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="TRANSFER_VAULT_HANDOVER_PENDING">TRANSFER_VAULT_HANDOVER_PENDING</h2>
+
+Owner: `public:cli/lib/transfer.mjs`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="TRANSFER_VAULT_RECIPIENT_NOT_NOMINATED">TRANSFER_VAULT_RECIPIENT_NOT_NOMINATED</h2>
+
+Owner: `public:sdk/src/namespaces/repos.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
 <h2 id="TYPESCRIPT_FUNCTION_REQUIRES_BUNDLE">TYPESCRIPT_FUNCTION_REQUIRES_BUNDLE</h2>
 
 Owner: `public:sdk/src/node/deploy-manifest.ts`.
