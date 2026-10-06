@@ -9,6 +9,11 @@
  * summary lets a reviewer tell the two cases apart without diffing
  * releases by hand. It is a heuristic and never changes whether the
  * warning blocks; the gateway stays authoritative.
+ *
+ * Current gateways already leave out removed fingerprinted bundles that
+ * the build replaces in the same directory (`details.replaced_fingerprinted`),
+ * so `affected` holds only the removals still counted; this summary then
+ * splits those into pages and other files.
  */
 
 import type { WarningEntry } from "./deploy.types.js";
@@ -29,8 +34,11 @@ export interface SiteRemovalSummary {
   other: number;
   /** True when every removed path is a content-hashed build asset. */
   only_content_hashed_build_assets: boolean;
-  /** Removed path count per top-level directory (`"."` for root files). */
-  by_top_level_dir: Record<string, number>;
+  /**
+   * Removed path count per top-level directory (`"."` for root files).
+   * Omitted when the gateway already sends `details.counted_removed_by_dir`.
+   */
+  by_top_level_dir?: Record<string, number>;
   /** Up to 20 removed page paths. */
   page_paths: string[];
   /** Up to 20 removed paths that are neither pages nor hashed assets. */
@@ -67,7 +75,10 @@ function topLevelDir(path: string): string {
   return slash === -1 ? "." : trimmed.slice(0, slash);
 }
 
-export function summarizeSiteRemoval(paths: readonly string[]): SiteRemovalSummary {
+export function summarizeSiteRemoval(
+  paths: readonly string[],
+  opts: { includeByTopLevelDir?: boolean } = {},
+): SiteRemovalSummary {
   const byDir: Record<string, number> = {};
   const pagePaths: string[] = [];
   const otherPaths: string[] = [];
@@ -93,7 +104,7 @@ export function summarizeSiteRemoval(paths: readonly string[]): SiteRemovalSumma
     content_hashed_build_assets: hashed,
     other,
     only_content_hashed_build_assets: paths.length > 0 && hashed === paths.length,
-    by_top_level_dir: byDir,
+    ...(opts.includeByTopLevelDir === false ? {} : { by_top_level_dir: byDir }),
     page_paths: pagePaths,
     other_paths: otherPaths,
     confidence: "heuristic",
@@ -116,7 +127,10 @@ export function withSiteRemovalSummaries(warnings: WarningEntry[]): WarningEntry
       ...warning,
       details: {
         ...(warning.details ?? {}),
-        removed_paths_summary: summarizeSiteRemoval(warning.affected.filter((p): p is string => typeof p === "string")),
+        removed_paths_summary: summarizeSiteRemoval(
+          warning.affected.filter((p): p is string => typeof p === "string"),
+          { includeByTopLevelDir: !(warning.details && "counted_removed_by_dir" in warning.details) },
+        ),
       },
     } as WarningEntry;
   });

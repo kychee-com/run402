@@ -87,6 +87,18 @@ describe("withSiteRemovalSummaries", () => {
     assert.equal(out!.requires_confirmation, true, "never changes whether the warning blocks");
   });
 
+  it("omits by_top_level_dir when the gateway sends counted_removed_by_dir", () => {
+    const gatewayShaped = {
+      ...bulk,
+      details: { base_paths: 120, removed: 34, replaced_fingerprinted: 33, counted_removed: 1, threshold: 0.1, counted_removed_by_dir: { _astro: 1 } },
+    };
+    const [out] = withSiteRemovalSummaries([gatewayShaped]);
+    const summary = out!.details?.removed_paths_summary as Record<string, unknown>;
+    assert.equal(summary.total, 1);
+    assert.equal("by_top_level_dir" in summary, false);
+    assert.deepEqual(out!.details?.counted_removed_by_dir, { _astro: 1 }, "gateway details kept");
+  });
+
   it("keeps a gateway-supplied summary and other warnings untouched", () => {
     const gatewaySummary = { ...bulk, details: { removed_paths_summary: { total: 1 } } };
     const other: WarningEntry = { code: "DESTRUCTIVE_FUNCTION_REMOVAL", severity: "high", requires_confirmation: true, message: "x", affected: ["api"] };

@@ -1589,21 +1589,29 @@ const SITE_BULK_REMOVAL_CODE = "DESTRUCTIVE_SITE_BULK_REMOVAL";
 
 /**
  * Reads the SDK's `details.removed_paths_summary` on a bulk site-removal
- * warning and says whether the removal drops pages or only renames
- * content-hashed build bundles (the routine framework-rebuild case).
+ * warning and says whether the counted removals drop pages or are only
+ * content-hashed build bundles.
+ *
+ * A gateway that sends `details.replaced_fingerprinted` has already left
+ * out bundles the build replaces in the same directory (renames), so any
+ * hashed bundle still counted has no replacement there. An older gateway
+ * or a Core target counts renames too.
  */
 function siteRemovalGuidance(warnings) {
   const warning = warnings?.find((w) => w?.code === SITE_BULK_REMOVAL_CODE);
   if (!warning) return null;
   const summary = warning.details?.removed_paths_summary;
-  const where = "Per-path detail is in warnings[].affected and warnings[].details.removed_paths_summary.";
+  const where = "Per-path detail is in warnings[].affected and warnings[].details.";
   if (!summary || typeof summary.total !== "number") {
     return { hint: `This deploy removes more than ten percent of the live site's paths. ${where} Acknowledge ${SITE_BULK_REMOVAL_CODE} only if those removals are intended.` };
   }
   if (summary.only_content_hashed_build_assets) {
     const example = Array.isArray(warning.affected) && warning.affected[0] ? ` (e.g. ${warning.affected[0]})` : "";
+    const gatewayPairsRenames = typeof warning.details?.replaced_fingerprinted === "number";
     return {
-      hint: `All ${summary.total} removed site paths are content-hashed build assets${example}, which a rebuild renames; no HTML pages are removed. If this deploy is a rebuild of the same site, acknowledging ${SITE_BULK_REMOVAL_CODE} is safe. ${where}`,
+      hint: gatewayPairsRenames
+        ? `All ${summary.total} counted removals are content-hashed build assets${example} that this build does not replace in the same directory; no HTML pages are removed. That is usually a rebuild that merged or dropped bundles. Acknowledge ${SITE_BULK_REMOVAL_CODE} once nothing outside this build still loads them. ${where}`
+        : `All ${summary.total} removed site paths are content-hashed build assets${example}, which a rebuild renames or merges; no HTML pages are removed. If this deploy is a rebuild of the same site, acknowledging ${SITE_BULK_REMOVAL_CODE} is safe. ${where}`,
     };
   }
   const pageList = Array.isArray(summary.page_paths) && summary.page_paths.length > 0

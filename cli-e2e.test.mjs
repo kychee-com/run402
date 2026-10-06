@@ -3076,6 +3076,20 @@ describe("CLI e2e happy path", () => {
     assert.doesNotMatch(JSON.stringify(parsed.next_actions), /secrets/, "site paths are not secrets");
   });
 
+  it("deploy hint for hashed bundles a current gateway still counts says they have no replacement (kychee-com/run402#614)", async () => {
+    const affected = ["_astro/Old.Ds5BwtTY.js", "_astro/Gone.BT3mQ2xa.js"];
+    const { stderr } = await deployWithPlanWarnings([{
+      ...bulkRemovalWarning(affected),
+      details: { base_paths: 12, removed: 5, replaced_fingerprinted: 3, counted_removed: 2, threshold: 0.1, counted_removed_by_dir: { _astro: 2 } },
+    }]);
+    const parsed = parseStderrEnvelope(stderr);
+    assert.match(parsed.hint, /All 2 counted removals are content-hashed build assets .* that this build does not replace in the same directory/);
+    assert.doesNotMatch(parsed.hint, /renames/);
+    const details = parsed.warnings[0].details;
+    assert.deepEqual(details.counted_removed_by_dir, { _astro: 2 });
+    assert.equal("by_top_level_dir" in details.removed_paths_summary, false, "no duplicate per-directory breakdown");
+  });
+
   it("deploy names removed pages in a bulk site removal hint (kychee-com/run402#614)", async () => {
     const { stderr } = await deployWithPlanWarnings([bulkRemovalWarning([
       "events/index.html",
