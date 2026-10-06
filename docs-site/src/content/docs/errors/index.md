@@ -507,6 +507,9 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="FUNCTION_RUN_ROUTE_NOT_FOUND"></a>
 [`FUNCTION_RUN_ROUTE_NOT_FOUND`](/errors/gateway/#FUNCTION_RUN_ROUTE_NOT_FOUND)
 
+<a id="FUNCTION_SOURCE_NOT_FOUND"></a>
+[`FUNCTION_SOURCE_NOT_FOUND`](/errors/client/#FUNCTION_SOURCE_NOT_FOUND)
+
 <a id="GC_EPOCH_STALE"></a>
 [`GC_EPOCH_STALE`](/errors/gateway/#GC_EPOCH_STALE)
 

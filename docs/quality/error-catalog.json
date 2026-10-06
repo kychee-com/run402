@@ -2063,6 +2063,16 @@
       "topic": "/errors/gateway/#FUNCTION_RUN_ROUTE_NOT_FOUND"
     },
     {
+      "code": "FUNCTION_SOURCE_NOT_FOUND",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/namespaces/deploy.types.ts"
+        }
+      ],
+      "topic": "/errors/client/#FUNCTION_SOURCE_NOT_FOUND"
+    },
+    {
       "code": "GC_EPOCH_STALE",
       "owners": [
         {

@@ -647,6 +647,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="FUNCTION_RUN_ROUTE_NOT_FOUND"></a>
 [`FUNCTION_RUN_ROUTE_NOT_FOUND`](/errors/gateway/#FUNCTION_RUN_ROUTE_NOT_FOUND)
 
+<a id="function_source_not_found"></a>
+<a id="FUNCTION_SOURCE_NOT_FOUND"></a>
+[`FUNCTION_SOURCE_NOT_FOUND`](/errors/client/#FUNCTION_SOURCE_NOT_FOUND)
+
 <a id="gc_epoch_stale"></a>
 <a id="GC_EPOCH_STALE"></a>
 [`GC_EPOCH_STALE`](/errors/gateway/#GC_EPOCH_STALE)

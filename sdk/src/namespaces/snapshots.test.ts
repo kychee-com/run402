@@ -143,6 +143,21 @@ describe("snapshots.restore", () => {
     assert.equal(calls[1].url, `${BASE}/snap_1/restores/rst_1`);
   });
 
+  it("keeps polling while functions are still being re-deployed", async () => {
+    let reads = 0;
+    const { fetch } = mockFetch((call) => {
+      if (call.method === "POST") return jsonResponse({ ...HANDLE, retry_after_seconds: 1 }, 202);
+      reads += 1;
+      const functions = reads === 1
+        ? { redeployed: [], failed: [], pending: ["api"] }
+        : { redeployed: ["api"], failed: [], pending: [] };
+      return jsonResponse(statusRow({ status: "ready", result: { ...RESULT, functions } }));
+    });
+    const result = await makeSdk(fetch).snapshots.restore("prj_1", "snap_1", "tok", { release: "snapshot" });
+    assert.equal(reads, 2);
+    assert.deepEqual(result.functions, { redeployed: ["api"], failed: [], pending: [] });
+  });
+
   it("returns the 202 handle with wait:false", async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse(HANDLE, 202));
     const handle = await makeSdk(fetch).snapshots.restore("prj_1", "snap_1", "tok", { wait: false });

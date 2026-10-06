@@ -420,7 +420,7 @@ const { restore_plan } = await p.snapshots.restorePlan(point.snapshot_id, { rele
 ({ loss: restore_plan.data_loss_statement, release: restore_plan.release, token: restore_plan.confirm.token })
 ```
 
-Show the plan to the human, then confirm in a second snippet with `await p.snapshots.restore(snapshotId, token, { release: "snapshot" })`; pass the same `release` you planned with. The restore runs in the background on the gateway and the SDK polls it to the end, so keep the `run` deadline generous, or pass `{ wait: false }` and read it later with `p.snapshots.getRestore(snapshotId, restoreId)`. `release: "snapshot"` re-activates the release that was live at capture together with the data; functions keep their current code, and `restore_plan.release.warnings` names them. Labels and metadata live outside the project's database, so `p.snapshots.list()` still shows every restore point after a restore.
+Show the plan to the human, then confirm in a second snippet with `await p.snapshots.restore(snapshotId, token, { release: "snapshot" })`; pass the same `release` you planned with. The restore runs in the background on the gateway and the SDK polls it to the end, so keep the `run` deadline generous, or pass `{ wait: false }` and read it later with `p.snapshots.getRestore(snapshotId, restoreId)`. `release: "snapshot"` re-activates the release that was live at capture together with the data, then re-deploys every function that differs to its capture-time code (`restore_plan.release.functions_to_redeploy` lists them; the result reports `functions`). Labels and metadata live outside the project's database, so `p.snapshots.list()` still shows every restore point after a restore.
 
 ### GitHub Actions OIDC deploys
 

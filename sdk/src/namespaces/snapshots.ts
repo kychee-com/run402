@@ -166,7 +166,9 @@ export class Snapshots {
     const pollMs = Math.max(opts.pollIntervalMs ?? (handle.retry_after_seconds ?? 5) * 1000, 1000);
     const waited = await waitFor(
       () => this.getRestore(projectId, snapshotId, handle.restore_id),
-      (status) => status.status !== "running",
+      // `ready` can precede the function re-deploy (the flip commits first);
+      // the result is final once nothing is `pending`.
+      (status) => status.status !== "running" && !(status.result?.functions?.pending?.length),
       { pollMs, timeoutMs: opts.timeoutMs ?? DEFAULT_RESTORE_WAIT_MS },
     );
     const status = waited.state;

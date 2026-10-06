@@ -78,8 +78,9 @@ export interface ProjectSnapshotsListResult {
  * `keep` (default) restores data only. `snapshot` also re-activates the
  * snapshot's capture-time release in the same transaction as the data flip:
  * live release pointer, static site, routes, and subdomains move back.
- * Function code does not: functions are not versioned per release, so the
- * plan lists any that differ in `release.warnings` (`FUNCTION_VERSION_MISMATCH`).
+ * Functions that differ are then re-deployed to their capture-time code
+ * (`release.functions_to_redeploy`); one whose capture-time source is no longer
+ * stored is named in `release.warnings` (`FUNCTION_VERSION_MISMATCH`).
  */
 export type SnapshotRestoreReleaseMode = "keep" | "snapshot";
 
@@ -142,7 +143,10 @@ export interface SnapshotRestorePlan {
     /** Whether `release: "snapshot"` can re-activate the capture-time release. */
     restorable: boolean;
     reason: SnapshotRestoreReleaseReason | (string & {});
+    /** `FUNCTION_VERSION_MISMATCH` names functions whose capture-time source is no longer stored; they keep their current code. */
     warnings: SnapshotRestoreWarning[];
+    /** Functions re-deployed to the capture-time code right after the flip. Absent from older gateways. */
+    functions_to_redeploy?: string[];
     message: string;
   };
   target: {
@@ -171,6 +175,14 @@ export interface SnapshotRestoreResult {
   live_release_id: string | null;
   /** Edge propagation for a re-activated release; absent when the release was kept. */
   edge?: Record<string, unknown>;
+  /**
+   * Functions re-deployed to the capture-time code (`release: "snapshot"`).
+   * `pending` lists functions still being re-deployed: the data and release
+   * flip commit first, so a restore can read `ready` while it is non-empty.
+   */
+  functions?: { redeployed: string[]; failed: Array<{ name: string; code: string; message: string }>; pending: string[] };
+  /** Non-blocking issues found after the flip, e.g. `FUNCTION_REDEPLOY_FAILED`. */
+  warnings?: SnapshotRestoreWarning[];
   message: string;
   status: "ready" | (string & {});
   next_actions: SnapshotNextAction[];

@@ -3001,6 +3001,18 @@ export interface PromoteResult {
   diff: PromoteDiff;
   /** Any structured warnings produced — including ones the caller acked. */
   warnings: WarningEntry[];
+  /**
+   * Functions re-deployed to the target release's code after the pointer
+   * swap (functions are not versioned per release). `failed` entries keep the
+   * code they had and also appear as a `FUNCTION_REDEPLOY_FAILED` warning.
+   * Absent from gateways that predate function rollback.
+   */
+  functions?: FunctionRollbackOutcome;
+}
+
+export interface FunctionRollbackOutcome {
+  redeployed: string[];
+  failed: Array<{ name: string; code: "FUNCTION_SOURCE_NOT_FOUND" | "FUNCTION_REDEPLOY_FAILED" | (string & {}); message: string }>;
 }
 
 export interface PromoteDiff {
