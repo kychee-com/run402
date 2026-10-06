@@ -653,7 +653,11 @@ function mergeStyles(
   }
 
   if (typeof callerStyle === "string") {
-    const merged = componentStyle + callerStyle;
+    // The component string carries no trailing `;` (React parity), so the
+    // join supplies exactly one. Edge `;`/whitespace on the caller would
+    // otherwise yield `;;` or a dangling `;` that React's round-trip drops.
+    const caller = callerStyle.replace(/^[\s;]+|[\s;]+$/g, "");
+    const merged = [componentStyle, caller].filter((s) => s !== "").join(";");
     return merged === "" ? undefined : merged;
   }
 

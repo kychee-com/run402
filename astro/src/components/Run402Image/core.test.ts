@@ -630,6 +630,26 @@ describe("style merge — string form", () => {
     assert.match(style, /background-image:\s*url/);
     assert.ok(style.endsWith("background: blue"));
   });
+  it("joins component and caller with exactly one `;`", () => {
+    const placeholder =
+      "background-image:url(data:image/png;base64,iVBORw0KGgo...);" +
+      "background-size:cover;background-position:center";
+    const cases: Array<[string, string | undefined]> = [
+      ["color:red;font-size:14px", `${placeholder};color:red;font-size:14px`],
+      [";color:red;", `${placeholder};color:red`],
+      ["  ;; color:red ;  ", `${placeholder};color:red`],
+      ["", placeholder],
+      [" ; ", placeholder],
+    ];
+    for (const [style, expected] of cases) {
+      assert.equal(imgAttrs(build({ style }).root).style, expected, `style=${JSON.stringify(style)}`);
+    }
+  });
+  it("caller string alone (no placeholder) is emitted without edge `;`", () => {
+    const asset = makeFullAssetRef({ blurhash_data_url: undefined });
+    assert.equal(imgAttrs(build({ asset, style: "color:red;" }).root).style, "color:red");
+    assert.equal(imgAttrs(build({ asset, style: " ; " }).root).style, undefined);
+  });
 });
 
 // =============================================================================

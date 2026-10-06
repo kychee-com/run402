@@ -324,6 +324,15 @@ const FIXTURES: Fixture[] = [
       style: "color:red;font-size:14px",
     },
   },
+  {
+    name: "17: caller string-style with edge `;` and whitespace",
+    props: {
+      asset: makeFullV154AssetRef(),
+      alt: "String-styled edges",
+      sizes: "100vw",
+      style: " ;color:red;font-size:14px; ",
+    },
+  },
 ];
 
 // =============================================================================
