@@ -485,7 +485,10 @@ async function invoke(projectId, name, args) {
   }
   const invokeOpts = { method: opts.method };
   if (requestBody !== undefined && opts.method !== "GET" && opts.method !== "HEAD") {
+    // The body was validated as JSON above. Sent as a raw string it would go
+    // out as text/plain (run402-private#817), so say what it is.
     invokeOpts.body = requestBody;
+    invokeOpts.headers = { "content-type": "application/json" };
   }
   if (opts.idempotencyKey !== undefined) invokeOpts.idempotencyKey = opts.idempotencyKey;
   if (opts.wait) invokeOpts.wait = waitOpts;

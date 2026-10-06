@@ -33,6 +33,8 @@ const originalLog = console.log;
 const originalError = console.error;
 const originalExit = process.exit;
 let output = [];
+/** The most recent direct function invoke the mock saw (#817). */
+let lastFunctionInvoke = null;
 let stdoutLines = [];
 let stderrLines = [];
 
@@ -399,6 +401,10 @@ async function mockFetch(input, init) {
     return Promise.resolve(json({ logs: [{ timestamp: "2026-03-15T12:00:00Z", message: "hello world" }] }));
   }
   if (path.startsWith("/functions/v1/") && method === "POST") {
+    lastFunctionInvoke = {
+      contentType: new Headers(init?.headers || (input instanceof Request ? input.headers : undefined)).get("content-type"),
+      body: rawBody,
+    };
     return Promise.resolve(json({ hello: "world" }));
   }
 
@@ -3266,6 +3272,16 @@ describe("CLI e2e happy path", () => {
     await run("invoke", ["prj_test123", "hello"]);
     captureStop();
     assert.ok(captured().includes("world"), "should return function response");
+  });
+
+  it("functions invoke --body sends its JSON as application/json (#817)", async () => {
+    const { run } = await import("./cli/lib/functions.mjs");
+    lastFunctionInvoke = null;
+    captureStart();
+    await run("invoke", ["hello", "--project", "prj_test123", "--body", '{"op":"version"}']);
+    captureStop();
+    assert.equal(lastFunctionInvoke?.contentType, "application/json");
+    assert.equal(String(lastFunctionInvoke?.body), '{"op":"version"}');
   });
 
   it("functions logs", async () => {

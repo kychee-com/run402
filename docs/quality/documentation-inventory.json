@@ -110,7 +110,7 @@
       "purpose": "history",
       "interface": "historical",
       "exception": "Dated release records; add current entries without rewriting history.",
-      "sha256": "1f9fa75780c1e96659b7eb580eae87e754c564cf61e3022548af15487b188c41",
+      "sha256": "9da96da68d152078fafc68887bb32f2cbd5452a3fa5f66a94c9bd023b542337d",
       "outputs": [],
       "url": null,
       "checks": [
@@ -1050,7 +1050,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "9dc192ff718e91eaa0b942ec5b3af5fed95c39f9e6c871d686164a303bbdd012",
+      "sha256": "a86e6d9a80a5248cd832cdd4f9402fd575d1579dbaec7728ff3882baa3cf45a1",
       "outputs": [],
       "url": null,
       "checks": [
