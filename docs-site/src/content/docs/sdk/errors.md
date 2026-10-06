@@ -65,7 +65,7 @@ try {
 }
 ```
 
-`Run402DeployError.code` is one of `MIGRATION_FAILED`, `MIGRATION_CHECKSUM_MISMATCH`, `BASE_RELEASE_CONFLICT`, `PAYMENT_REQUIRED`, `SCHEMA_SETTLE_TIMEOUT`, `ACTIVATION_FAILED`, `STORAGE_UNAVAILABLE`, `SITE_STAGE_FAILED`, `FUNCTION_BUILD_FAILED`, `CONTENT_UPLOAD_FAILED`, `INVALID_SPEC`, `MANIFEST_EMPTY`, `OPERATION_NOT_FOUND`, `MIGRATE_GATE_ACTIVE`, `INTERNAL_ERROR`, `NETWORK_ERROR`, `PROJECT_NOT_FOUND` (or any other string the gateway emits — consumers SHALL treat unknown codes as opaque). Pair it with the structured `nextActions` advisory array carried in the error body.
+`Run402DeployError.code` is one of `MIGRATION_FAILED`, `MIGRATION_CHECKSUM_MISMATCH`, `BASE_RELEASE_CONFLICT`, `PAYMENT_REQUIRED`, `SCHEMA_SETTLE_TIMEOUT`, `ACTIVATION_FAILED`, `STORAGE_UNAVAILABLE`, `SITE_STAGE_FAILED`, `FUNCTION_BUILD_FAILED`, `CONTENT_UPLOAD_FAILED`, `INVALID_SPEC`, `MANIFEST_EMPTY`, `OPERATION_NOT_FOUND`, `MIGRATE_GATE_ACTIVE`, `INTERNAL_ERROR`, `NETWORK_ERROR`, `PROJECT_NOT_FOUND`, `OPERATION_INTERRUPTED`, `IMAGE_ENCODE_TIMEOUT`, `TOO_MANY_ENCODES_QUEUED`, `EXPORT_CONSISTENCY_UNAVAILABLE` (or any other string the gateway emits — consumers SHALL treat unknown codes as opaque). Pair it with the structured `nextActions` advisory array carried in the error body.
 
 ### Type guards and the canonical retry policy
 
@@ -87,7 +87,7 @@ The SDK exports identity-free guards plus a single canonical "should I retry thi
 
 Do not wrap lifecycle-gated writes, auth token exchanges, or passkey verification in blind retry loops because an error says `safeToRetry: true`. Use a custom `retryIf` when a caller-specific recovery action makes a retry meaningful.
 
-For `r.project(id).apply()`, do not hand-roll the `BASE_RELEASE_CONFLICT` loop: the deploy namespace already re-plans and retries omitted/current-base specs when the gateway returns `safe_to_retry: true`. Default deploy budget is 2 retries after the initial attempt, `maxRetries: 0` opts out, each retry emits `deploy.retry`, and exhausted retries surface `attempts` / `maxRetries` / `lastRetryCode` on `Run402DeployError`.
+For `r.project(id).apply()`, do not hand-roll the `BASE_RELEASE_CONFLICT` loop: the deploy namespace already re-plans and retries omitted/current-base specs when the gateway returns `safe_to_retry: true`, and does the same for any spec on the transient codes `OPERATION_INTERRUPTED`, `IMAGE_ENCODE_TIMEOUT`, `TOO_MANY_ENCODES_QUEUED`, and `EXPORT_CONSISTENCY_UNAVAILABLE` when they carry `safe_to_retry: true`. Default deploy budget is 2 retries after the initial attempt, `maxRetries: 0` opts out, each retry emits `deploy.retry`, and exhausted retries surface `attempts` / `maxRetries` / `lastRetryCode` on `Run402DeployError`.
 
 `RetryOptions`: `attempts?: number`, `baseDelayMs?: number`, `maxDelayMs?: number`, `retryIf?: (error, attempt) => boolean`, `onRetry?: (error, attempt, delayMs) => void`.
 

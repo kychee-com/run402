@@ -6709,3 +6709,236 @@ describe("Deploy.promote wire body", () => {
     assert.deepEqual(w.requests[0].body, { project_id: "prj_test", allow_warning_codes: ["MIGRATIONS_NOT_REVERSIBLE"] });
   });
 });
+
+describe("Deploy.apply (transient platform conditions, kychee-com/run402#628)", () => {
+  function failedSnapshot(opId: string, planId: string, error: Record<string, unknown>): OperationSnapshot {
+    return {
+      operation_id: opId,
+      project_id: "prj_test",
+      plan_id: planId,
+      status: "failed",
+      base_release_id: null,
+      target_release_id: `rel_${opId}`,
+      release_id: null,
+      urls: null,
+      payment_required: null,
+      error: error as OperationSnapshot["error"],
+      activate_attempts: 0,
+      last_activate_attempt_at: null,
+      created_at: "2026-10-06T16:13:50.000Z",
+      updated_at: "2026-10-06T16:16:20.000Z",
+    };
+  }
+
+  const site = { project_id: "prj_test", site: { replace: { "index.html": "<p>batch</p>" } } };
+
+  it("re-plans and re-applies when a gateway rollout interrupted the operation", async () => {
+    const w = makeWiring();
+    const events: DeployEvent[] = [];
+    let planCalls = 0;
+    w.setHandler((req) => {
+      if (req.path === "/apply/v1/plans") {
+        planCalls += 1;
+        return planCalls === 1 ? noContentPlan("plan_cut", "op_cut") : noContentPlan("plan_again", "op_again");
+      }
+      // The task running the commit was replaced: the commit's response was
+      // lost, the SDK follows the operation, and the draining task marked it.
+      if (req.path === "/apply/v1/plans/plan_cut/commit") {
+        return { operation_id: "op_cut", status: "activating" } satisfies CommitResponse;
+      }
+      if (req.path === "/apply/v1/operations/op_cut") {
+        return failedSnapshot("op_cut", "plan_cut", {
+          code: "OPERATION_INTERRUPTED",
+          message: "The gateway task running this deploy was replaced before the deploy finished. Nothing was activated; re-plan and apply the same spec.",
+          retryable: true,
+          safe_to_retry: true,
+          operation_id: "op_cut",
+        });
+      }
+      if (req.path === "/apply/v1/operations/op_cut/events") return { events: [] };
+      if (req.path === "/apply/v1/plans/plan_again/commit") return readyCommit("op_again", "rel_again");
+      throw new Error(`unexpected path ${req.path}`);
+    });
+
+    const result = await new Deploy(w.client).apply(site, { onEvent: (event) => events.push(event) });
+
+    assert.equal(result.release_id, "rel_again");
+    assert.equal(planCalls, 2);
+    const retry = events.find((event) => event.type === "deploy.retry");
+    assert.ok(retry && retry.type === "deploy.retry");
+    assert.equal(retry.code, "OPERATION_INTERRUPTED");
+    assert.equal(retry.operationId, "op_cut");
+    assert.ok(retry.delayMs >= 2_000, "a capacity retry backs off longer than a release-race replan");
+  });
+
+  it("retries an activation that failed IMAGE_ENCODE_TIMEOUT marked safe to retry", async () => {
+    const w = makeWiring();
+    let planCalls = 0;
+    w.setHandler((req) => {
+      if (req.path === "/apply/v1/plans") {
+        planCalls += 1;
+        return noContentPlan(`plan_${planCalls}`, `op_${planCalls}`);
+      }
+      if (req.path === "/apply/v1/plans/plan_1/commit") {
+        return {
+          operation_id: "op_1",
+          status: "failed",
+          error: {
+            code: "IMAGE_ENCODE_TIMEOUT",
+            message: "Variant 'large' encode exceeded 10000ms timeout",
+            retryable: true,
+            safe_to_retry: true,
+            operation_id: "op_1",
+            plan_id: "plan_1",
+          },
+        } satisfies CommitResponse;
+      }
+      if (req.path === "/apply/v1/plans/plan_2/commit") return readyCommit("op_2", "rel_2");
+      throw new Error(`unexpected path ${req.path}`);
+    });
+
+    const result = await new Deploy(w.client).apply(site);
+    assert.equal(result.release_id, "rel_2");
+    assert.equal(planCalls, 2);
+  });
+
+  it("does not retry a transient code the gateway did not mark safe to retry (an older gateway)", async () => {
+    const w = makeWiring();
+    let planCalls = 0;
+    w.setHandler((req) => {
+      if (req.path === "/apply/v1/plans") {
+        planCalls += 1;
+        return noContentPlan("plan_old", "op_old");
+      }
+      if (req.path === "/apply/v1/plans/plan_old/commit") {
+        return {
+          operation_id: "op_old",
+          status: "failed",
+          error: { code: "IMAGE_ENCODE_TIMEOUT", message: "Variant 'large' encode exceeded 10000ms timeout", operation_id: "op_old" },
+        } satisfies CommitResponse;
+      }
+      throw new Error(`unexpected path ${req.path}`);
+    });
+
+    await assert.rejects(
+      new Deploy(w.client).apply(site),
+      (err: unknown) => err instanceof Run402DeployError && err.code === "IMAGE_ENCODE_TIMEOUT",
+    );
+    assert.equal(planCalls, 1);
+  });
+
+  it("retries a whole apply whose content plan hit an archive-export write pause (kychee-com/run402#616)", async () => {
+    const w = makeWiring();
+    const html = "<p>paused</p>";
+    const sha = shaHex(html);
+    let planCalls = 0;
+    let contentPlans = 0;
+    w.setHandler((req) => {
+      if (req.path === "/apply/v1/plans") {
+        planCalls += 1;
+        return { ...noContentPlan(`plan_${planCalls}`, `op_${planCalls}`), missing_content: [{ sha256: sha, size: html.length, present: false }] };
+      }
+      if (req.path === "/content/v1/plans") {
+        contentPlans += 1;
+        if (contentPlans === 1) {
+          throw new ApiError(
+            "Project mutations are temporarily paused while a portable archive export captures a consistent slice",
+            409,
+            { code: "EXPORT_CONSISTENCY_UNAVAILABLE", retryable: true, safe_to_retry: true, mutation_state: "not_started" },
+            "planning content upload",
+          );
+        }
+        return {
+          plan_id: "cplan_ok",
+          expires_at: new Date(Date.now() + 3600_000).toISOString(),
+          missing: [{
+            sha256: sha,
+            mode: "single",
+            parts: [{ part_number: 1, url: "https://s3.example/p", byte_start: 0, byte_end: html.length - 1 }],
+            part_size_bytes: html.length,
+            part_count: 1,
+            upload_id: "u_p",
+            staging_key: "_staging/u_p/" + sha,
+            expires_at: new Date(Date.now() + 3600_000).toISOString(),
+          }],
+          entries: [{ sha256: sha, missing: true }],
+        };
+      }
+      if (req.path === "/content/v1/plans/cplan_ok/commit") return {};
+      if (req.path === "/apply/v1/plans/plan_2/commit") return readyCommit("op_2", "rel_2");
+      throw new Error(`unexpected path ${req.path}`);
+    });
+
+    const result = await new Deploy(w.client).apply({ project_id: "prj_test", site: { replace: { "index.html": html } } });
+    assert.equal(result.release_id, "rel_2");
+    assert.equal(planCalls, 2);
+    assert.equal(contentPlans, 2);
+  });
+
+  it("repeats a content plan lost to a 503 instead of failing the apply", async () => {
+    const w = makeWiring();
+    const html = "<p>lost plan</p>";
+    const sha = shaHex(html);
+    let contentPlans = 0;
+    w.setHandler((req) => {
+      if (req.path === "/apply/v1/plans") {
+        return { ...noContentPlan("plan_c", "op_c"), missing_content: [{ sha256: sha, size: html.length, present: false }] };
+      }
+      if (req.path === "/content/v1/plans") {
+        contentPlans += 1;
+        if (contentPlans === 1) {
+          throw new ApiError("Project lookup temporarily unavailable", 503, { code: "UPSTREAM_UNAVAILABLE", retryable: true, safe_to_retry: true }, "planning content upload");
+        }
+        return {
+          plan_id: "cplan_c",
+          expires_at: new Date(Date.now() + 3600_000).toISOString(),
+          missing: [],
+          entries: [{ sha256: sha, missing: false }],
+        };
+      }
+      if (req.path === "/content/v1/plans/cplan_c/commit") return {};
+      if (req.path === "/apply/v1/plans/plan_c/commit") return readyCommit("op_c", "rel_c");
+      throw new Error(`unexpected path ${req.path}`);
+    });
+
+    const result = await new Deploy(w.client).apply({ project_id: "prj_test", site: { replace: { "index.html": html } } });
+    assert.equal(result.release_id, "rel_c");
+    assert.equal(contentPlans, 2);
+  });
+
+  it("keeps polling an operation through a 502 on the poll itself", async () => {
+    const w = makeWiring();
+    let reads = 0;
+    w.setHandler((req) => {
+      if (req.path === "/apply/v1/plans") return noContentPlan("plan_p", "op_p");
+      if (req.path === "/apply/v1/plans/plan_p/commit") return { operation_id: "op_p", status: "activating" } satisfies CommitResponse;
+      if (req.path === "/apply/v1/operations/op_p/events") return { events: [] };
+      if (req.path === "/apply/v1/operations/op_p") {
+        reads += 1;
+        if (reads === 2) throw new ApiError("API error", 502, "<html>502 Bad Gateway</html>", "polling deploy operation");
+        const ready = reads >= 3;
+        return {
+          operation_id: "op_p",
+          project_id: "prj_test",
+          plan_id: "plan_p",
+          status: ready ? "ready" : "activating",
+          base_release_id: null,
+          target_release_id: "rel_p",
+          release_id: ready ? "rel_p" : null,
+          urls: ready ? { site: "https://prj.run402.test" } : null,
+          payment_required: null,
+          error: null,
+          activate_attempts: 0,
+          last_activate_attempt_at: null,
+          created_at: "2026-10-06T16:13:50.000Z",
+          updated_at: "2026-10-06T16:13:51.000Z",
+        } satisfies OperationSnapshot;
+      }
+      throw new Error(`unexpected path ${req.path}`);
+    });
+
+    const result = await new Deploy(w.client).apply(site);
+    assert.equal(result.release_id, "rel_p");
+    assert.equal(reads, 3);
+  });
+});

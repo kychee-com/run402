@@ -646,6 +646,10 @@ export type Run402DeployErrorCode =
   | "INTERNAL_ERROR"
   | "NETWORK_ERROR"
   | "PROJECT_NOT_FOUND"
+  | "OPERATION_INTERRUPTED"
+  | "IMAGE_ENCODE_TIMEOUT"
+  | "TOO_MANY_ENCODES_QUEUED"
+  | "EXPORT_CONSISTENCY_UNAVAILABLE"
   | (string & {});
 
 export interface Run402DeployErrorFix {

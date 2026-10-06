@@ -41,6 +41,7 @@ import {
   isRun402Error,
   isTransferFreezeError,
   type Run402DeployErrorCode,
+  type Run402Error,
   type Run402DeployErrorFix,
 } from "../errors.js";
 import type {
@@ -125,6 +126,25 @@ const SECRET_KEY_RE = /^[A-Z_][A-Z0-9_]{0,127}$/;
 const APPLY_SAFE_RETRY_CODES = new Set<Run402DeployErrorCode>([
   "BASE_RELEASE_CONFLICT",
 ]);
+/**
+ * Transient platform conditions the gateway marks `safe_to_retry: true`: the
+ * task running the deploy was replaced mid-commit, an image encode ran out of
+ * wall clock or queue under load, or an archive export briefly paused writes.
+ * Nothing was activated, so the whole apply re-plans and runs again — content
+ * is addressed by hash, so already-uploaded bytes are not sent twice
+ * (kychee-com/run402#628, #616). These wait longer than a release-race replan.
+ */
+const APPLY_TRANSIENT_RETRY_CODES = new Set<string>([
+  "OPERATION_INTERRUPTED",
+  "IMAGE_ENCODE_TIMEOUT",
+  "TOO_MANY_ENCODES_QUEUED",
+  "EXPORT_CONSISTENCY_UNAVAILABLE",
+]);
+const APPLY_TRANSIENT_RETRY_BASE_DELAY_MS = 2_000;
+const APPLY_TRANSIENT_RETRY_MAX_DELAY_MS = 15_000;
+/** A read or an idempotent request lost to a 502/503/504 or a dropped connection. */
+const TRANSIENT_REQUEST_MAX_ATTEMPTS = 3;
+const TRANSIENT_REQUEST_RETRY_BASE_DELAY_MS = 500;
 const EMAIL_TRIGGER_EVENTS = new Set(["reply_received", "delivery", "bounced", "complained", "mailbox_suspended"]);
 const STATIC_ACTIVATION_FAILURE_CODES = new Set<string>([
   "BAD_FIELD",
@@ -205,27 +225,29 @@ export class Deploy {
       try {
         return await applyOnce(this.client, spec, opts, emit);
       } catch (err) {
-        if (!(err instanceof Run402DeployError)) throw err;
+        if (!isRun402Error(err)) throw err;
         const safeToRetry = isSafeDeployApplyRetry(err, spec);
         if (!safeToRetry) throw err;
         if (attempt === maxAttempts) {
-          if (maxRetries > 0) {
+          if (maxRetries > 0 && err instanceof Run402DeployError) {
             throw withDeployRetryMetadata(err, attempt, maxRetries, err.code);
           }
           throw err;
         }
-        const delayMs = deployApplyRetryDelayMs(attempt);
+        const code = err.code ?? "UNKNOWN";
+        const delayMs = deployApplyRetryDelayMs(attempt, code);
+        const deployErr = err instanceof Run402DeployError ? err : null;
         emit({
           type: "deploy.retry",
           attempt,
           nextAttempt: attempt + 1,
           maxAttempts,
           delayMs,
-          code: err.code,
-          phase: err.phase,
-          resource: err.resource,
-          operationId: err.operationId,
-          planId: err.planId,
+          code,
+          phase: deployErr?.phase ?? null,
+          resource: deployErr?.resource ?? null,
+          operationId: deployErr?.operationId ?? null,
+          planId: deployErr?.planId ?? null,
           message: err.message,
         });
         await sleep(delayMs);
@@ -1117,9 +1139,14 @@ function normalizeApplyMaxRetries(value: number | undefined): number {
   return value;
 }
 
-function isSafeDeployApplyRetry(err: Run402DeployError, spec: ReleaseSpec): boolean {
+function isSafeDeployApplyRetry(err: Run402Error, spec: ReleaseSpec): boolean {
+  if (err.safeToRetry !== true || typeof err.code !== "string") return false;
+  // Transient codes reach here from the deploy state machine (a failed
+  // operation) or as a plain API error from an upload-phase request. Nothing
+  // was activated either way, so the spec's base still holds.
+  if (APPLY_TRANSIENT_RETRY_CODES.has(err.code)) return true;
   return (
-    err.safeToRetry === true &&
+    err instanceof Run402DeployError &&
     APPLY_SAFE_RETRY_CODES.has(err.code) &&
     isAutoRebasableSpec(spec)
   );
@@ -1130,9 +1157,11 @@ function isAutoRebasableSpec(spec: ReleaseSpec): boolean {
   return "release" in spec.base && spec.base.release === "current";
 }
 
-function deployApplyRetryDelayMs(attempt: number): number {
-  const exponential = APPLY_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1);
-  const capped = Math.min(exponential, APPLY_RETRY_MAX_DELAY_MS);
+function deployApplyRetryDelayMs(attempt: number, code: string): number {
+  const transient = APPLY_TRANSIENT_RETRY_CODES.has(code);
+  const base = transient ? APPLY_TRANSIENT_RETRY_BASE_DELAY_MS : APPLY_RETRY_BASE_DELAY_MS;
+  const max = transient ? APPLY_TRANSIENT_RETRY_MAX_DELAY_MS : APPLY_RETRY_MAX_DELAY_MS;
+  const capped = Math.min(base * 2 ** (attempt - 1), max);
   return capped + Math.floor(Math.random() * (APPLY_RETRY_JITTER_MS + 1));
 }
 
@@ -2194,7 +2223,9 @@ async function uploadMissing(
     };
   });
 
-  const planRes = await client.request<ContentPlanResponse>(
+  // A lost content plan is safe to repeat: it only opens upload sessions, and
+  // an abandoned one expires unused.
+  const planRes = await requestWithTransientRetry(() => client.request<ContentPlanResponse>(
     "/content/v1/plans",
     {
       method: "POST",
@@ -2204,7 +2235,7 @@ async function uploadMissing(
         : { content: contentRequest },
       context: "planning content upload",
     },
-  );
+  ));
 
   const total = planRes.missing.length;
   let done = 0;
@@ -2317,6 +2348,18 @@ async function commitContentPlanWithRetry(
       if (attempt > 1 && isRun402Error(err) && err.status === 409 && err.code === "PLAN_ALREADY_COMMITTED") return;
       if (!isTransientGatewayFailure(err) || attempt >= CONTENT_COMMIT_MAX_ATTEMPTS) throw err;
       await sleep(CONTENT_COMMIT_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1));
+    }
+  }
+}
+
+/** Repeat a read or an idempotent request lost to a 502/503/504 or a dropped connection. */
+async function requestWithTransientRetry<T>(send: () => Promise<T>): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await send();
+    } catch (err) {
+      if (!isTransientGatewayFailure(err) || attempt >= TRANSIENT_REQUEST_MAX_ATTEMPTS) throw err;
+      await sleep(TRANSIENT_REQUEST_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1));
     }
   }
 }
@@ -2705,10 +2748,13 @@ async function pollSnapshotUntilReady(
       interval = Math.min(Math.floor(interval * 1.5), COMMIT_POLL_MAX_MS);
     }
 
-    snapshot = await client.request<OperationSnapshot>(
-      `/apply/v1/operations/${encodeURIComponent(snapshot.operation_id)}`,
+    // A poll lost to a 502/503/504 (a gateway rollout) says nothing about the
+    // operation; read it again rather than abandon a deploy that is running.
+    const operationId = snapshot.operation_id;
+    snapshot = await requestWithTransientRetry(() => client.request<OperationSnapshot>(
+      `/apply/v1/operations/${encodeURIComponent(operationId)}`,
       { headers: opHeaders, context: "polling deploy operation" },
-    );
+    ));
   }
 }
 
@@ -5172,14 +5218,14 @@ async function uploadInlineCas(
 ): Promise<ContentRef> {
   const sha256 = await sha256Hex(bytes);
   const headers = await apikeyHeaders(client, projectId);
-  const planRes = await client.request<ContentPlanResponse>("/content/v1/plans", {
+  const planRes = await requestWithTransientRetry(() => client.request<ContentPlanResponse>("/content/v1/plans", {
     method: "POST",
     headers,
     body: {
       content: [{ sha256, size: bytes.byteLength, content_type: contentType }],
     },
     context: "planning content upload",
-  });
+  }));
   if (planRes.missing.length > 0) {
     const session = planRes.missing[0];
     await uploadOne(client.fetch, session, bytes);
