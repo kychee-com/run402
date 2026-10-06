@@ -1706,8 +1706,8 @@ directory helpers.
 // Isomorphic — single asset:
 put(projectId, key, source, opts?: BlobPutOptions): Promise<AssetRef>
 get(projectId, key): Promise<Response>
-ls(projectId, opts?: { prefix?, limit?, cursor? }): Promise<BlobLsResult>
-rm(projectId, key): Promise<void>
+ls(projectId, opts?: { prefix?, limit?, cursor?, sort?, filter? }): Promise<BlobLsResult>  // rows carry url, immutable_url, cdn_url, cdn_immutable_url, variants
+rm(projectId, key): Promise<BlobRmResult>  // { deleted, key, revoked_immutable_refs, cache_invalidation }
 sign(projectId, key, opts?: { ttl_seconds? }): Promise<BlobSignResult>
 diagnoseUrl(projectId, url): Promise<BlobDiagnoseEnvelope>
 waitFresh(projectId, opts: { url, sha256, timeoutMs? }): Promise<BlobWaitFreshResult>

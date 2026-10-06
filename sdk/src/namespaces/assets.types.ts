@@ -648,6 +648,58 @@ export interface BlobSummary {
   height_px?: number;
   /** v1.49+: LQIP blurhash when known. */
   blurhash?: string;
+
+  // URL fields, built by the gateway with the same rule as the AssetRef
+  // `put` returns. Public URL fields are `null` for private keys.
+
+  /** `true` when the key has a content-hashed immutable URL. */
+  immutable?: boolean;
+  url?: string | null;
+  immutable_url?: string | null;
+  cdn_url?: string | null;
+  cdn_immutable_url?: string | null;
+  /** Present for image sources with encoded variants. */
+  variant_spec_version?: string;
+  /** Browser-renderable URL (the JPEG transcode for HEIC sources). */
+  display_url?: string | null;
+  display_immutable_url?: string | null;
+  /** Encoded image variants keyed by kind. Absent for non-images. */
+  variants?: {
+    thumb?: BlobListVariant;
+    medium?: BlobListVariant;
+    large?: BlobListVariant;
+    display_jpeg?: BlobListVariant;
+  };
+  blurhash_data_url?: string | null;
+  asset_schema?: "v1.49" | "v1.50" | "v1.54" | null;
+}
+
+/** One encoded image variant on a `BlobSummary` row. URLs are `null` for
+ *  private keys. */
+export interface BlobListVariant {
+  kind: "thumb" | "medium" | "large" | "display_jpeg";
+  format: "webp" | "jpeg";
+  width_px: number;
+  height_px: number;
+  sha256: string;
+  url: string | null;
+  immutable_url: string | null;
+  cdn_url: string | null;
+  cdn_immutable_url: string | null;
+}
+
+/** Result of `assets.rm`. */
+export interface BlobRmResult {
+  deleted: boolean;
+  key: string;
+  /** Immutable URLs revoked: the source's plus each image variant's. */
+  revoked_immutable_refs: number;
+  /** CDN invalidation of the mutable URL; `null` for a private key. */
+  cache_invalidation: {
+    status: "submitted" | "queued";
+    paths: string[];
+    invalidation_id: string | null;
+  } | null;
 }
 
 export interface BlobLsResult {

@@ -17,6 +17,7 @@ import type {
   BlobDiagnoseEnvelope,
   BlobLsOptions,
   BlobLsResult,
+  BlobRmResult,
   BlobPutOptions,
   BlobPutResult,
   BlobPutSource,
@@ -862,11 +863,13 @@ export class Assets {
     });
   }
 
-  /** Delete a blob and decrement the project's storage_bytes. */
-  async rm(projectId: string, key: string): Promise<void> {
+  /** Delete a blob and decrement the project's storage_bytes. Revokes the
+   *  key's immutable URLs (including image variants) and queues a CDN
+   *  invalidation for a public key. */
+  async rm(projectId: string, key: string): Promise<BlobRmResult> {
     const project = await requireProjectCredentials(this.client, projectId, "deleting blob");
 
-    await this.client.request<unknown>(`/storage/v1/blob/${encodeKey(key)}`, {
+    return this.client.request<BlobRmResult>(`/storage/v1/blob/${encodeKey(key)}`, {
       method: "DELETE",
       headers: {
         apikey: project.service_key,

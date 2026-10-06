@@ -91,6 +91,7 @@ import type {
   BlobDiagnoseEnvelope,
   BlobLsOptions,
   BlobLsResult,
+  BlobRmResult,
   BlobPutOptions,
   BlobPutResult,
   BlobPutSource,
@@ -589,7 +590,7 @@ class ScopedAssets {
   ls(opts?: BlobLsOptions): Promise<BlobLsResult> {
     return this.parent.assets.ls(this.projectId, opts);
   }
-  rm(key: string): Promise<void> {
+  rm(key: string): Promise<BlobRmResult> {
     return this.parent.assets.rm(this.projectId, key);
   }
   sign(key: string, opts?: BlobSignOptions): Promise<BlobSignResult> {

@@ -553,8 +553,8 @@ async function rm(argv) {
   const key = opts.positional[0];
 
   try {
-    await getSdk().assets.rm(resolvedId, key);
-    console.log(JSON.stringify({ key, project_id: resolvedId, deleted: true }));
+    const result = await getSdk().assets.rm(resolvedId, key);
+    console.log(JSON.stringify({ project_id: resolvedId, ...result }));
   } catch (err) {
     reportSdkError(err);
   }
