@@ -301,6 +301,19 @@ describe("buildAstroReleaseSlice — explicit cacheClass option", () => {
     );
   });
 
+  it("maps a prerendered endpoint to its own asset path, not <path>/index.html", async () => {
+    const { distDir } = writeFixture(root, {
+      routes: [{ pattern: "/rss.xml", pathname: "rss.xml", prerender: true, type: "endpoint" }],
+    });
+    const slice = await buildAstroReleaseSlice(distDir, { cacheClass: "html" });
+    const publicPaths = (slice.site as { public_paths?: unknown }).public_paths as {
+      replace: Record<string, { asset: string; cache_class?: string }>;
+    };
+    assert.deepEqual(publicPaths.replace, {
+      "/rss.xml": { asset: "rss.xml", cache_class: "html" },
+    });
+  });
+
   it("normalizes Astro's empty-string root pathname to / in explicit public_paths", async () => {
     const { distDir } = writeFixture(root, {
       routes: [{ pattern: "", pathname: "", prerender: true, type: "page" }],

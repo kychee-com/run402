@@ -100,6 +100,7 @@ function resolveAstroVersion(): string {
 
 export function createRun402Adapter(options: CreateRun402AdapterOptions = {}): AstroIntegration {
   let manifest: Partial<Run402AdapterManifest> = {};
+  let resolvedRoutes: ResolvedRoute[] | undefined;
   let buildOutputDir = "";
   let serverDir = "";
   const runtimeServerEntrypoint = fileURLToPath(new URL("./runtime/server.js", import.meta.url));
@@ -188,6 +189,19 @@ export function createRun402Adapter(options: CreateRun402AdapterOptions = {}): A
         }
       },
 
+      "astro:routes:resolved": ({ routes }: { routes: ResolvedRouteLike[] }) => {
+        // Astro 5+ replacement for the `routes` param `astro:build:done`
+        // no longer receives (gone entirely by Astro 6/7). Fires before
+        // the build; keep the latest snapshot for `astro:build:done`.
+        resolvedRoutes = routes.map((r) => ({
+          pattern: r.pattern,
+          prerender: r.isPrerendered === true,
+          pathname: r.pathname,
+          type: r.type,
+          origin: r.origin,
+        }));
+      },
+
       "astro:build:done": async (args: {
         logger?: { warn(message: string): void };
         pages: Array<{ pathname: string }>;
@@ -201,37 +215,10 @@ export function createRun402Adapter(options: CreateRun402AdapterOptions = {}): A
         const { pages, routes, logger } = args;
         manifest.serverEntrypoint = path.join(serverDir, "entry.mjs");
         manifest.clientDir = path.join(buildOutputDir, "run402/client/");
-
-        if (Array.isArray(routes) && routes.length > 0) {
-          // Astro 5+ — routes carry per-entry `prerender` truth.
-          manifest.routes = routes
-            .filter((r) => r.type === undefined || r.type === "page" || r.type === "endpoint")
-            .map((r) => {
-              const entry: Run402AdapterManifest["routes"][number] = {
-                pattern: r.route ?? r.pathname ?? "/",
-                prerender: r.prerender === true,
-              };
-              if (r.pathname) entry.pathname = r.pathname;
-              if (r.type === "page" || r.type === "endpoint" || r.type === "redirect" || r.type === "fallback") {
-                entry.type = r.type;
-              }
-              return entry;
-            });
-        } else {
-          // Older Astro shape — `pages[]` only. Every entry in `pages`
-          // is a materialized prerendered page (Astro doesn't emit
-          // pages[] entries for SSR-only routes), so prerender:true
-          // here is correct for this code path.
-          manifest.routes = pages.map((p) => ({
-            pattern: p.pathname,
-            prerender: true,
-            pathname: p.pathname,
-            type: "page" as const,
-          }));
-        }
+        manifest.routes = adapterManifestRoutes({ pages, routes, resolvedRoutes });
         // Determinism: only matters when an SSR function ships, i.e.
         // when Astro emitted a server entry. (Not keyed off `routes`:
-        // Astro 6+ no longer passes them to this hook.)
+        // a fully-prerendered site can still emit one.)
         if (existsSync(manifest.serverEntrypoint)) {
           await normalizeServerOutput(serverDir);
           const keyWarning = astroKeyWarning();
@@ -256,6 +243,122 @@ export function createRun402Adapter(options: CreateRun402AdapterOptions = {}): A
       },
     },
   };
+}
+
+/** The subset of Astro's `IntegrationResolvedRoute` the adapter reads. */
+interface ResolvedRouteLike {
+  pattern: string;
+  isPrerendered?: boolean;
+  pathname?: string;
+  type?: string;
+  origin?: string;
+}
+
+interface ResolvedRoute {
+  pattern: string;
+  prerender: boolean;
+  pathname?: string;
+  type?: string;
+  origin?: string;
+}
+
+type ManifestRoute = Run402AdapterManifest["routes"][number];
+
+const MANIFEST_ROUTE_TYPES = new Set(["page", "endpoint", "redirect", "fallback"]);
+
+function manifestRouteType(type: string | undefined): ManifestRoute["type"] | undefined {
+  return type && MANIFEST_ROUTE_TYPES.has(type) ? (type as ManifestRoute["type"]) : undefined;
+}
+
+function isServableRouteType(type: string | undefined): boolean {
+  return type === undefined || type === "page" || type === "endpoint";
+}
+
+/** `/about/`, `about/`, `about` → `about`; `/`, `""` → `""`. */
+function pathKey(pathname: string): string {
+  return pathname.replace(/^\/+/, "").replace(/\/+$/, "");
+}
+
+/**
+ * Build `adapter.json`'s `routes[]`, newest Astro shape first:
+ *
+ * 1. `astro:routes:resolved` (Astro 5+): SSR routes come from the resolved
+ *    RouteData (`prerender: false`); prerendered routes come from
+ *    `pages[]`, the build's concrete output (a dynamic prerendered route
+ *    like `/blog/[slug]` has no pathname of its own), typed by the
+ *    resolved route that produced each page.
+ * 2. `routes` on `astro:build:done` (Astro 4, deprecated in 5).
+ * 3. `pages[]` only: every entry is a materialized prerendered page.
+ */
+function adapterManifestRoutes(input: {
+  pages: Array<{ pathname: string }>;
+  routes?: Array<{ route?: string; pathname?: string; prerender?: boolean; type?: string }>;
+  resolvedRoutes?: ResolvedRoute[];
+}): ManifestRoute[] {
+  const { pages, routes, resolvedRoutes } = input;
+
+  if (resolvedRoutes && resolvedRoutes.length > 0) {
+    const userRoutes = resolvedRoutes.filter(
+      (r) => r.origin !== "internal" && isServableRouteType(r.type),
+    );
+    const out: ManifestRoute[] = [];
+    for (const r of userRoutes) {
+      if (r.prerender) continue;
+      const entry: ManifestRoute = { pattern: r.pattern, prerender: false };
+      const type = manifestRouteType(r.type);
+      if (type) entry.type = type;
+      out.push(entry);
+    }
+    const prerenderedByPath = new Map<string, ResolvedRoute>();
+    for (const r of userRoutes) {
+      if (r.prerender && r.pathname !== undefined) prerenderedByPath.set(pathKey(r.pathname), r);
+    }
+    const emitted = new Set<string>();
+    for (const p of pages) {
+      const source = prerenderedByPath.get(pathKey(p.pathname));
+      emitted.add(pathKey(p.pathname));
+      out.push({
+        pattern: source?.pattern ?? p.pathname,
+        prerender: true,
+        pathname: p.pathname,
+        type: source?.type === "endpoint" ? "endpoint" : "page",
+      });
+    }
+    // Astro 7 leaves prerendered endpoints (`/rss.xml`) out of `pages[]`
+    // even though it emits them; a static route's own pathname covers it.
+    for (const [key, r] of prerenderedByPath) {
+      if (emitted.has(key)) continue;
+      out.push({
+        pattern: r.pattern,
+        prerender: true,
+        pathname: r.pathname,
+        type: r.type === "endpoint" ? "endpoint" : "page",
+      });
+    }
+    return out;
+  }
+
+  if (Array.isArray(routes) && routes.length > 0) {
+    return routes
+      .filter((r) => isServableRouteType(r.type))
+      .map((r) => {
+        const entry: ManifestRoute = {
+          pattern: r.route ?? r.pathname ?? "/",
+          prerender: r.prerender === true,
+        };
+        if (r.pathname) entry.pathname = r.pathname;
+        const type = manifestRouteType(r.type);
+        if (type) entry.type = type;
+        return entry;
+      });
+  }
+
+  return pages.map((p) => ({
+    pattern: p.pathname,
+    prerender: true,
+    pathname: p.pathname,
+    type: "page" as const,
+  }));
 }
 
 function toEnvelope(err: unknown): { code: string; message: string; file?: string; line?: number } {

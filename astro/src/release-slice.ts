@@ -437,7 +437,9 @@ export async function buildAstroReleaseSlice(
       if (raw === undefined || raw === null) continue;
       const pattern = raw === "" ? "/" : raw.startsWith("/") ? raw : `/${raw}`;
       replace[pattern] = {
-        asset: prerenderedHtmlPath(pattern),
+        // A prerendered endpoint (`/rss.xml`) is emitted at its own path,
+        // not as `<path>/index.html`.
+        asset: r.type === "endpoint" ? pattern.replace(/^\/+/, "") : prerenderedHtmlPath(pattern),
         cache_class: cacheClass,
       };
     }
