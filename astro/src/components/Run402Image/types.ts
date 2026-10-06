@@ -22,7 +22,9 @@
  *     RenderTreeNode to React.createElement(...).
  *
  * The shared core means byte-identical HTML output across both adapters for
- * any valid AssetRef + props — protected by the byte-identity test suite
+ * any valid AssetRef + props, up to attribute-name case (React emits
+ * `srcSet=` where the HTML path emits `srcset=`) — protected by the
+ * byte-identity test suite
  * in §8. See spec §"Component output is framework-shaped Astro markup,
  * not stringified HTML" for the rationale.
  */

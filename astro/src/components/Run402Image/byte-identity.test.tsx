@@ -3,7 +3,14 @@
  *
  * For each fixture: render through BOTH the React adapter
  * (`renderToStaticMarkup`) AND the HTML serializer directly. Assert
- * the two outputs are byte-identical.
+ * the two outputs are byte-identical once attribute NAMES are
+ * ASCII-lowercased: React 19 emits `srcSet=` / `fetchPriority=` /
+ * `imageSrcSet=` where the HTML serializer emits `srcset=` etc. HTML
+ * attribute names are case-insensitive, and passing React the lowercase
+ * spelling makes it log "Invalid DOM property"
+ * (kychee-com/run402-private#796). Values, ordering, quoting and
+ * escaping still have to match byte for byte. See
+ * `attr-case.test-helper.ts`.
  *
  * The byte-identity guarantee is what makes the Astro and React entry
  * points interchangeable — a consumer can move a page from Astro to
@@ -27,6 +34,7 @@ import assert from "node:assert/strict";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { AssetRef } from "@run402/functions";
 
+import { lowercaseAttributeNames } from "./attr-case.test-helper.js";
 import { Run402Image } from "./react.js";
 import { buildRun402ImageRenderTree } from "./core.js";
 import { serializeRenderTree } from "./render-html.js";
@@ -327,7 +335,7 @@ describe("byte-identity fixture sweep — Astro ↔ React", () => {
     it(`byte-identical: ${fixture.name}`, () => {
       const reactHtml = renderReact(fixture.props);
       const stringHtml = renderHtml(fixture.props);
-      if (reactHtml !== stringHtml) {
+      if (lowercaseAttributeNames(reactHtml) !== lowercaseAttributeNames(stringHtml)) {
         // Show a side-by-side diff. The byte-level mismatch tells the
         // future maintainer exactly which attribute or value drifted.
         assert.fail(

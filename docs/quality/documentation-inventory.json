@@ -230,7 +230,7 @@
       "purpose": "history",
       "interface": "historical",
       "exception": "Dated release records; add current entries without rewriting history.",
-      "sha256": "83e7315aa9950229e0385b77b497a993c6e5e93546713f9e3ab5a24c9ab125f9",
+      "sha256": "8ed0217dc9e7f70bf7dda9fa777e902e3c46a3231fa16bbb1d5c0b1b280751ea",
       "outputs": [],
       "url": null,
       "checks": [
@@ -250,7 +250,7 @@
       "purpose": "runtime",
       "interface": "application",
       "exception": "Native runtime/Astro code remains; infrastructure operating examples use CLI.",
-      "sha256": "0f3a46b5f346d87a35c9fcbc2c5303a7cd8ccb384f79185f75a85da3826d5530",
+      "sha256": "a172b255f451f224e155c7d7fbe3552cb6fc08044518ff9aa349db4f83eba976",
       "outputs": [],
       "url": null,
       "checks": [

@@ -4,7 +4,9 @@
  * Covers §5 of the impl change plus an early sliver of §8 byte-identity:
  * each test renders the React FC via `renderToStaticMarkup` AND the
  * shared core's RenderTreeNode via the HTML serializer, then asserts
- * the two output strings are byte-identical.
+ * the two output strings are byte-identical once attribute names are
+ * ASCII-lowercased (React 19 emits `srcSet=` where the HTML serializer
+ * emits `srcset=`; see `attr-case.test-helper.ts`).
  *
  * The byte-identity guarantee is the contract that makes the Astro and
  * React adapters interchangeable. If a regression breaks it, this test
@@ -18,6 +20,7 @@ import assert from "node:assert/strict";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { AssetRef } from "@run402/functions";
 
+import { lowercaseAttributeNames } from "./attr-case.test-helper.js";
 import { Run402Image } from "./react.js";
 import { buildRun402ImageRenderTree } from "./core.js";
 import { serializeRenderTree } from "./render-html.js";
@@ -246,7 +249,7 @@ describe("byte-identity — React renderToStaticMarkup vs HTML serializer", () =
     it(`byte-identical: ${fixture.name}`, () => {
       const reactHtml = renderReactToHtml(fixture.props);
       const stringHtml = renderHtmlPath(fixture.props, fixture.contextForHtml);
-      if (reactHtml !== stringHtml) {
+      if (lowercaseAttributeNames(reactHtml) !== lowercaseAttributeNames(stringHtml)) {
         // Verbose diff for debugging — the test name above identifies the
         // fixture; the assertion message points at the byte-level diff.
         assert.fail(

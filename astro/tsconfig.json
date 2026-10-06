@@ -16,5 +16,5 @@
     "jsx": "react"
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],
-  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "dist", "node_modules", "test/fixtures"]
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/**/*.test-helper.ts", "dist", "node_modules", "test/fixtures"]
 }

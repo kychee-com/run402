@@ -8,9 +8,12 @@
  * **Byte-identity guarantee** (spec §"Same AssetRef, two consumption
  * paths, byte-identical output"): the rendered HTML through this React
  * path (via `renderToStaticMarkup` or `renderToString`) MUST byte-match
- * the output of the HTML path against the same RenderTreeNode. This is
- * tested in `core.test.ts` and again at the byte-identity-suite level
- * in §8.
+ * the output of the HTML path against the same RenderTreeNode, with one
+ * exception: attribute NAME case. React 19 emits `srcSet`,
+ * `fetchPriority`, `referrerPolicy`, `imageSrcSet` and `imageSizes`
+ * verbatim where the HTML path emits the lowercase spelling (HTML
+ * attribute names are case-insensitive). This is tested in
+ * `react.test.tsx` and again at the byte-identity-suite level in §8.
  *
  * **Attribute ordering** — see the file header of `render-html.ts` for
  * the canonical contract. React's `createElement` builds props as an
@@ -56,15 +59,15 @@ export function renderToReact(node: RenderTreeNode): ReactElement {
 
 function renderPicture(attrs: PictureAttrs, children: RenderTreeNode[]): ReactElement {
   // Construct props in the same key order as render-html.ts (header
-  // contract: data-run402-image → id → class → caller data-*). HTML
-  // attribute names (lowercase) — see renderSource for byte-identity
+  // contract: data-run402-image → id → class → caller data-*). React
+  // DOM prop names (`className`) — see renderSource for byte-identity
   // rationale.
   const props: Record<string, unknown> = {};
   if (attrs["data-run402-image"] !== undefined) {
     props["data-run402-image"] = attrs["data-run402-image"];
   }
   if (attrs.id !== undefined) props.id = attrs.id;
-  if (attrs.class !== undefined) props.class = attrs.class;
+  if (attrs.class !== undefined) props.className = attrs.class;
   appendDataAttrs(props, attrs.dataAttrs);
 
   const reactChildren: ReactNode[] = children.map((c, i) => {
@@ -80,45 +83,46 @@ function renderPicture(attrs: PictureAttrs, children: RenderTreeNode[]): ReactEl
 }
 
 function renderSource(attrs: SourceAttrs): ReactElement {
-  // React 19's renderToStaticMarkup preserves attribute names verbatim
-  // when they don't match a known DOM IDL property. To keep byte-identity
-  // with `render-html.ts`'s lowercase HTML-attribute serialization, we
-  // pass the HTML-attribute names (`srcset`, not `srcSet`). React still
-  // renders them correctly — the camelCase form is a JSX convention, not
-  // a runtime requirement.
+  // Props use React's DOM property names (`srcSet`, `className`,
+  // `fetchPriority`, `crossOrigin`, `referrerPolicy`, `imageSrcSet`,
+  // `imageSizes`), never the lowercase HTML attribute names: React logs
+  // "Invalid DOM property" for the HTML spelling
+  // (kychee-com/run402-private#796). React serializes each camelCase prop
+  // back to its lowercase HTML attribute, so `renderToStaticMarkup`
+  // output still byte-matches `render-html.ts`.
   //
   // `sizes` is omitted when undefined (single-variant case — see
   // SourceAttrs JSDoc).
-  const props: Record<string, unknown> = { srcset: attrs.srcset };
+  const props: Record<string, unknown> = { srcSet: attrs.srcset };
   if (attrs.sizes !== undefined) props.sizes = attrs.sizes;
   props.type = attrs.type;
   return createElement("source", props);
 }
 
 function renderImg(attrs: ImgAttrs): ReactElement {
-  // Key order matches render-html.ts exactly. Attribute names match the
-  // HTML form (lowercase) NOT React's JSX camelCase — see renderSource
-  // above for the byte-identity rationale.
+  // Key order matches render-html.ts exactly. Prop names are React's
+  // camelCase DOM properties, not the HTML attribute names — see
+  // renderSource above for the byte-identity rationale.
   const props: Record<string, unknown> = {};
   if (attrs["data-run402-image"] !== undefined) {
     props["data-run402-image"] = attrs["data-run402-image"];
   }
   if (attrs.id !== undefined) props.id = attrs.id;
-  if (attrs.class !== undefined) props.class = attrs.class;
+  if (attrs.class !== undefined) props.className = attrs.class;
 
   props.src = attrs.src;
-  if (attrs.srcset !== undefined) props.srcset = attrs.srcset;
+  if (attrs.srcset !== undefined) props.srcSet = attrs.srcset;
   if (attrs.sizes !== undefined) props.sizes = attrs.sizes;
   if (attrs.width !== undefined) props.width = attrs.width;
   if (attrs.height !== undefined) props.height = attrs.height;
   if (attrs.loading !== undefined) props.loading = attrs.loading;
   if (attrs.decoding !== undefined) props.decoding = attrs.decoding;
-  if (attrs.fetchpriority !== undefined) props.fetchpriority = attrs.fetchpriority;
+  if (attrs.fetchpriority !== undefined) props.fetchPriority = attrs.fetchpriority;
 
   props.alt = attrs.alt;
 
-  if (attrs.crossorigin !== undefined) props.crossorigin = attrs.crossorigin;
-  if (attrs.referrerpolicy !== undefined) props.referrerpolicy = attrs.referrerpolicy;
+  if (attrs.crossorigin !== undefined) props.crossOrigin = attrs.crossorigin;
+  if (attrs.referrerpolicy !== undefined) props.referrerPolicy = attrs.referrerpolicy;
   // React refuses string-form style props at runtime. Parse the
   // serializer's string form into the object form React expects. The
   // HTML serializer's output format must match React's
@@ -136,11 +140,11 @@ function renderLink(attrs: LinkAttrs): ReactElement {
     rel: attrs.rel,
     as: attrs.as,
   };
-  if (attrs.imagesrcset !== undefined) props.imagesrcset = attrs.imagesrcset;
-  if (attrs.imagesizes !== undefined) props.imagesizes = attrs.imagesizes;
+  if (attrs.imagesrcset !== undefined) props.imageSrcSet = attrs.imagesrcset;
+  if (attrs.imagesizes !== undefined) props.imageSizes = attrs.imagesizes;
   if (attrs.href !== undefined) props.href = attrs.href;
   if (attrs.type !== undefined) props.type = attrs.type;
-  if (attrs.fetchpriority !== undefined) props.fetchpriority = attrs.fetchpriority;
+  if (attrs.fetchpriority !== undefined) props.fetchPriority = attrs.fetchpriority;
   return createElement("link", props);
 }
 

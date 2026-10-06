@@ -354,7 +354,7 @@ For static template-literal images (e.g., `<Image src="./hero.jpg">`), use the b
 
 1. **Pre-decoded blurhash placeholder.** The gateway pipeline pre-computes the blurhash → PNG data URL at upload time and stamps it on `AssetRef.blurhash_data_url`. `<Run402Image>` emits it as the `<img>` element's `background-image` so the placeholder is visible during fetch with zero client-side decode + zero SSR-render CPU cost.
 2. **Strict mode.** `imageDefaults: { strict: { onSchema: ">=v1.49" } }` makes the component hard-fail when an AssetRef would render below that schema target — catches the "28 of 30 assets render correctly and 2 silently degrade" failure mode at build time rather than at user-visible time. The schema-filter form skips AssetRefs below the target, so mixed-vintage CMS projects can adopt safely.
-3. **React entry point.** Same component shape, importable from `@run402/astro/react` for React islands or React-only consumers. Byte-identical HTML output to the Astro path.
+3. **React entry point.** Same component shape, importable from `@run402/astro/react` for React islands or React-only consumers. Byte-identical HTML output to the Astro path, except that React writes some attribute names in camelCase (`srcSet=`, `fetchPriority=`, `referrerPolicy=`, `imageSrcSet=`, `imageSizes=`). HTML attribute names are case-insensitive, so browsers parse both the same way.
 
 ### Quick start
 
