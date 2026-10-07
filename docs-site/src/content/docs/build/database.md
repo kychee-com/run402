@@ -12,6 +12,8 @@ run402 up --project prj_example
 run402 projects sql prj_example "SELECT id, title FROM items LIMIT 10"
 ```
 
+`projects sql`, `projects schema` and `projects rest` work for any member of the project's organization without the project's service key: a viewer reads (PostgreSQL refuses any write), developers and above can also write, and `--read-only` keeps a query read-only for anyone. Every such query is recorded under who ran it.
+
 A migration ID identifies a particular SQL body. Reusing the ID with a different checksum fails; add a new migration. Inspect destructive changes and rehearsal results before applying them to a live database.
 
 Tables are dark until exposed. `TABLE_NOT_EXPOSED` means the exposure declaration needs attention; it does not mean “add an RLS policy” blindly. On an exposed table, native PostgREST permission errors can still occur. `REST_PERMISSION_DENIED` diagnostics do not prove a particular RLS cause.

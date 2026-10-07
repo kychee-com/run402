@@ -414,6 +414,13 @@ export interface SqlField {
   type: string;
 }
 
+/** Options for {@link Projects.sql}. */
+export interface SqlOptions {
+  /** Run read-only, enforced by PostgreSQL (one statement; a write answers
+   *  DATABASE_READ_ONLY). Honored for every caller, service key included. */
+  readOnly?: boolean;
+}
+
 /** The result of {@link Projects.sql}, in the wire shape. */
 export interface SqlResult {
   status: string;
@@ -467,7 +474,9 @@ export interface ProjectRestOptions {
   query?: string | Record<string, string>;
   /** JSON body for POST/PATCH/DELETE requests. */
   body?: unknown;
-  /** Key used for apikey + bearer auth. Default: "anon". */
+  /** Key used for apikey + bearer auth. Default: "anon", or, when this
+   *  machine has no cached key for the project, your own authority on the
+   *  project REST route (database authority, like "service"). */
   keyType?: ProjectRestKeyType;
 }
 

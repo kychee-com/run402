@@ -22,6 +22,7 @@ import type {
   SqlBatchOptions,
   SqlBatchResult,
   SqlBatchStatement,
+  SqlOptions,
   SqlResult,
   ExposeManifestValidationInput,
   ExposeManifestValidationIssue,
@@ -310,19 +311,27 @@ export class Projects {
 
   /**
    * Introspect the project's database schema — tables, columns, types,
-   * constraints, and RLS policies.
+   * constraints, and RLS policies. Uses the cached service key when this
+   * machine has one, otherwise your own authority (`project.database.read`:
+   * org role viewer or higher, or a `database:read` grant).
    */
   async getSchema(id: string): Promise<SchemaReport> {
-    const keys = await requireProjectCredentials(this.client, id, "fetching schema");
+    const keys = await this.client.getProjectCredentials(id);
 
     return this.client.request<SchemaReport>(`/projects/v1/admin/${id}/schema`, {
-      headers: { Authorization: `Bearer ${keys.service_key}` },
+      ...(keys ? { headers: { Authorization: `Bearer ${keys.service_key}` } } : {}),
       context: "fetching schema",
     });
   }
 
-  /** Run SQL against the project's database using the service key
-   *  (`POST /projects/v1/:project_id/sql`). Returns the gateway envelope
+  /** Run SQL against the project's database (`POST /projects/v1/:project_id/sql`).
+   *  Uses the cached service key when this machine has one; otherwise the
+   *  request goes as you (wallet, sign-in session, or grant key) and the
+   *  gateway authorizes it by your role: `project.database.read` (viewer or
+   *  higher, or `database:read`) runs read-only, enforced by PostgreSQL;
+   *  `project.database.write` (developer or higher, or `database:write`) can
+   *  write. `{ readOnly: true }` runs the call read-only for any caller (one
+   *  statement, a write answers `DATABASE_READ_ONLY`). Returns the gateway envelope
    *  verbatim: `{ status, schema, rows, row_count, fields, statements,
    *  warnings }`. `rows` and `fields` come from the last statement and
    *  `row_count` is that statement's count; `statements[]` carries each
@@ -330,18 +339,20 @@ export class Projects {
    *  `warnings[]` never changes the result: `SCHEMA_CHANGE_OUTSIDE_MIGRATION`
    *  means a schema change on a released project belongs in a migration, and
    *  `MULTI_STATEMENT_TEXT_BODY` points at {@link sqlBatch}. */
-  async sql(id: string, sql: string, params?: unknown[]): Promise<SqlResult> {
-    const keys = await requireProjectCredentials(this.client, id, "running SQL");
+  async sql(id: string, sql: string, params?: unknown[], opts: SqlOptions = {}): Promise<SqlResult> {
+    const keys = await this.client.getProjectCredentials(id);
 
     const useParams = Array.isArray(params) && params.length > 0;
+    const readOnly = opts.readOnly === true;
+    const json = useParams || readOnly;
     return this.client.request<SqlResult>(`/projects/v1/${id}/sql`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${keys.service_key}`,
-        "Content-Type": useParams ? "application/json" : "text/plain",
+        ...(keys ? { Authorization: `Bearer ${keys.service_key}` } : {}),
+        "Content-Type": json ? "application/json" : "text/plain",
       },
-      body: useParams ? { sql, params } : undefined,
-      rawBody: useParams ? undefined : sql,
+      body: json ? { sql, ...(useParams ? { params } : {}), ...(readOnly ? { read_only: true } : {}) } : undefined,
+      rawBody: json ? undefined : sql,
       context: "running SQL",
     });
   }
@@ -377,17 +388,24 @@ export class Projects {
     table: string,
     options?: ProjectRestOptions,
   ): Promise<ProjectRestResponse<T>> {
-    const keys = await requireProjectCredentials(this.client, id, "querying REST");
-
     const opts: ProjectRestOptions = options ?? {};
     const method = opts.method ?? "GET";
-    const useService = opts.keyType === "service";
-    const key = useService ? keys.service_key : keys.anon_key;
     const query = formatRestQuery(opts.query);
-    const headers: Record<string, string> = {
-      apikey: key,
-      Authorization: `Bearer ${key}`,
-    };
+    const keys = await this.client.getProjectCredentials(id);
+    // No cached key and no explicit anon request: go as yourself on the
+    // project REST route, authorized by your role (GET needs
+    // project.database.read, other methods project.database.write) with
+    // database authority, like keyType "service". An explicit anon read
+    // needs the anon key.
+    const asPrincipal = !keys && opts.keyType !== "anon";
+    const resolved = keys ?? (asPrincipal ? null : await requireProjectCredentials(this.client, id, "querying REST"));
+    const useService = asPrincipal || opts.keyType === "service";
+    const headers: Record<string, string> = {};
+    if (resolved) {
+      const key = useService ? resolved.service_key : resolved.anon_key;
+      headers.apikey = key;
+      headers.Authorization = `Bearer ${key}`;
+    }
     if (method !== "GET") headers.Prefer = "return=representation";
 
     // The gateway rejects the service_role on the public PostgREST path
@@ -400,7 +418,7 @@ export class Projects {
 
     try {
       return await this.client.requestWithResponse<T>(path, {
-        method, headers, body: opts.body, context: "querying REST", withAuth: false,
+        method, headers, body: opts.body, context: "querying REST", withAuth: asPrincipal,
       });
     } catch (error) {
       throw restDiagnostic(error, method, table);

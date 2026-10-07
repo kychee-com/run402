@@ -11,7 +11,7 @@ After `r.projects.provision(...)`, the result has `project_id`, `anon_key`, `ser
 - `anon_key` — read-only by default; safe in browser HTML. RLS policies apply.
 - `service_key` — server-side admin. Never embed in browser code.
 
-Neither key expires. Lease enforcement happens server-side. Server project reads such as `r.projects.list()`, `r.projects.get(id)`, and `r.projects.use(id)` authorize with the current principal and do not require local cache membership.
+Neither key expires. Lease enforcement happens server-side. Server project reads such as `r.projects.list()`, `r.projects.get(id)`, and `r.projects.use(id)` authorize with the current principal and do not require local cache membership. `r.projects.sql`, `getSchema` and `rest` use the cached service key when present and otherwise go as the current principal: an org member with the viewer role (or a `database:read` grant) reads, read-only and enforced by PostgreSQL; developer and above (or `database:write`) can also write. A machine that never held the project's key can read a project its org owns, with nothing to import.
 
 ### Rotatable project credentials — the replacement for the derived pair
 

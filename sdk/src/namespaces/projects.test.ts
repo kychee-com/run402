@@ -1009,3 +1009,105 @@ describe("projects.info / .keys / .use / .active (local)", () => {
     assert.equal(await sdk.projects.active(), "prj_known");
   });
 });
+
+describe("projects database reads without a cached key (run402-private#827)", () => {
+  const wireBody = {
+    status: "ok",
+    schema: "p0042",
+    rows: [{ pages: "12" }],
+    row_count: 1,
+    fields: [{ name: "pages", type: "int8" }],
+    statements: [{ command: "SELECT", row_count: 1 }],
+    warnings: [],
+  };
+
+  it("sql goes as the caller's principal on the same route when no key is cached", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse(wireBody));
+    const sdk = makeSdk(makeCreds(), fetch);
+    const result = await sdk.projects.sql("prj_unknown", "SELECT count(*) AS pages FROM pages");
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]!.url, "https://api.example.test/projects/v1/prj_unknown/sql");
+    assert.equal(calls[0]!.method, "POST");
+    assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "test-siwx", "provider auth applies");
+    assert.equal(calls[0]!.headers["Authorization"], undefined, "no project key is sent");
+    assert.equal(calls[0]!.body, "SELECT count(*) AS pages FROM pages");
+    assert.deepEqual(result, wireBody);
+  });
+
+  it("a cached key still wins (service-key path unchanged)", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse(wireBody));
+    const sdk = makeSdk(makeCreds(), fetch);
+    await sdk.projects.sql("prj_known", "SELECT 1");
+    assert.equal(calls[0]!.headers["Authorization"], "Bearer service_xxx");
+    assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], undefined);
+  });
+
+  it("readOnly sends read_only: true as JSON, for either path", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse(wireBody));
+    const sdk = makeSdk(makeCreds(), fetch);
+    await sdk.projects.sql("prj_unknown", "SELECT 1", undefined, { readOnly: true });
+    await sdk.projects.sql("prj_known", "SELECT $1::int", [1], { readOnly: true });
+    await sdk.project("prj_known").projects.sql("SELECT 2", undefined, { readOnly: true });
+    assert.equal(calls[0]!.headers["Content-Type"], "application/json");
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), { sql: "SELECT 1", read_only: true });
+    assert.deepEqual(JSON.parse(calls[1]!.body as string), { sql: "SELECT $1::int", params: [1], read_only: true });
+    assert.deepEqual(JSON.parse(calls[2]!.body as string), { sql: "SELECT 2", read_only: true });
+  });
+
+  it("a principal denial surfaces the gateway's recovery next_actions", async () => {
+    const denial = {
+      message: "Not authorized for this project action",
+      code: "FORBIDDEN",
+      details: { action: "project.database.read", required_role: "viewer" },
+      next_actions: [{ type: "request_access", why: "Ask an owner or admin for the viewer role" }],
+    };
+    const { fetch } = mockFetch(() => jsonResponse(denial, 403));
+    const sdk = makeSdk(makeCreds(), fetch);
+    await assert.rejects(sdk.projects.sql("prj_unknown", "SELECT 1"), (err: unknown) => {
+      assert.ok(err instanceof Run402Error);
+      assert.ok(!(err instanceof ProjectCredentialNotFound), "never a local cache miss");
+      assert.equal((err as Run402Error).code, "FORBIDDEN");
+      assert.equal((err as Run402Error).nextActions?.[0]?.type, "request_access");
+      return true;
+    });
+  });
+
+  it("getSchema goes as the caller's principal when no key is cached", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({ schema: "p0042", tables: [] }));
+    const sdk = makeSdk(makeCreds(), fetch);
+    const result = await sdk.projects.getSchema("prj_unknown");
+    assert.equal(calls[0]!.url, "https://api.example.test/projects/v1/admin/prj_unknown/schema");
+    assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "test-siwx");
+    assert.equal(calls[0]!.headers["Authorization"], undefined);
+    assert.deepEqual(result, { schema: "p0042", tables: [] });
+  });
+
+  it("rest goes as the caller's principal on the project REST route when no key is cached", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse([{ id: 1 }]));
+    const sdk = makeSdk(makeCreds(), fetch);
+    const rows = await sdk.projects.rest("prj_unknown", "kychon_install", { query: "select=import_source" });
+    assert.equal(calls[0]!.url, "https://api.example.test/projects/v1/prj_unknown/rest/kychon_install?select=import_source");
+    assert.equal(calls[0]!.method, "GET");
+    assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "test-siwx");
+    assert.equal(calls[0]!.headers["apikey"], undefined);
+    assert.equal(calls[0]!.headers["Authorization"], undefined);
+    assert.deepEqual(rows, [{ id: 1 }]);
+  });
+
+  it("rest with a cached key keeps the anon default on /rest/v1", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse([]));
+    const sdk = makeSdk(makeCreds(), fetch);
+    await sdk.projects.rest("prj_known", "pages");
+    assert.equal(calls[0]!.url, "https://api.example.test/rest/v1/pages");
+    assert.equal(calls[0]!.headers["apikey"], "anon_xxx");
+    assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], undefined);
+  });
+
+  it("an explicit anon read with no cached key is still a local miss", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse([]));
+    const sdk = makeSdk(makeCreds(), fetch);
+    await assert.rejects(sdk.projects.rest("prj_unknown", "pages", { keyType: "anon" }), ProjectCredentialNotFound);
+    assert.equal(calls.length, 0);
+  });
+});

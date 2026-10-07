@@ -20,7 +20,7 @@ Subcommands:
   tenant-payments [project_id] [--status <s>]  List redacted tenant x402 payments for priced routes
   get   [project_id]                      Authoritative server read: status, org, tier, active deploy, mailbox, usage vs limits (live; no keys)
   current                                 Show the active project pointer and validation status
-  sql   "<query>" [--project <project_id>] [--file <path>] [--params '<json>']  Run a SQL query (supports parameterized queries)
+  sql   "<query>" [--project <project_id>] [--file <path>] [--params '<json>'] [--read-only]  Run a SQL query (supports parameterized queries)
   rest  <table> [--query "<params>"] [--project <project_id>]  Query a table via the REST API (PostgREST)
   usage [project_id]              Show compute/storage usage for a project
   costs [project_id] [--window <w>]       Show admin-only per-project revenue/cost/margin
@@ -64,6 +64,9 @@ Global options (any command):
                     'run402 wallets use' default > 'default'. See 'run402 wallets'.
 
 Notes:
+  - sql, schema and rest use this machine's cached service key when it has one,
+    and otherwise your own authority: any org member with the viewer role (or a
+    database:read grant) reads, read-only; developer and above can also write.
   - <project_id> is the project_id shown in 'run402 projects list' (prefix: 'prj_')
   - Most commands that take <project_id> default to the active project when omitted
     (set it with 'run402 projects use <project_id>'). Project IDs start with 'prj_';
@@ -221,11 +224,18 @@ Options:
                       prj_... positional is also still accepted)
   --file <path>       Read SQL from a file instead of an inline query
   --params '<json>'   JSON array of parameters for a parameterized query
+  --read-only         Run read-only, enforced by PostgreSQL (one statement; a
+                      write is refused with DATABASE_READ_ONLY)
   --batch <path>      Run several statements from a JSON file: an array of
                       { "sql": "...", "params": [...] } (one statement each)
   --transaction <all|each>
                       With --batch: "all" (default) rolls back every statement
                       on the first failure; "each" commits each on its own
+
+Auth: the project's cached service key when this machine has one; otherwise
+your own authority (wallet or sign-in session). An org member with the viewer
+role (or a database:read grant) reads, read-only; developer and above (or
+database:write) can also write. No key to import.
 
 Result: { rows, row_count, fields, statements, warnings }. warnings[] never
 changes the result: SCHEMA_CHANGE_OUTSIDE_MIGRATION means a schema change on
@@ -234,6 +244,7 @@ a released project belongs in spec.database.migrations.
 Examples:
   run402 projects sql "SELECT * FROM users LIMIT 5" --project prj_abc123
   run402 projects sql "SELECT * FROM users WHERE id = $1" --params '[42]'
+  run402 projects sql "SELECT count(*) FROM pages" --read-only --project prj_abc123
   run402 projects sql --file setup.sql --project prj_abc123
   run402 projects sql --batch seed.json --transaction all --project prj_abc123
 `,
@@ -659,12 +670,17 @@ async function sqlCmd(projectId, args = []) {
   let paramsRaw = null;
   let batchFile = null;
   let transaction = null;
+  let readOnly = false;
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--file" && args[i + 1]) { file = args[++i]; }
+    if (args[i] === "--read-only") { readOnly = true; }
+    else if (args[i] === "--file" && args[i + 1]) { file = args[++i]; }
     else if (args[i] === "--params" && args[i + 1]) { paramsRaw = args[++i]; }
     else if (args[i] === "--batch" && args[i + 1]) { batchFile = args[++i]; }
     else if (args[i] === "--transaction" && args[i + 1]) { transaction = args[++i]; }
     else if (!query && !args[i].startsWith("--")) { query = args[i]; }
+  }
+  if (batchFile && readOnly) {
+    fail({ code: "BAD_USAGE", message: "--read-only runs one statement; it does not apply with --batch." });
   }
   if (batchFile) return sqlBatchCmd(projectId, batchFile, transaction, { query, file, paramsRaw });
   if (transaction) {
@@ -690,7 +706,7 @@ async function sqlCmd(projectId, args = []) {
     }
   }
   try {
-    const data = await getSdk().projects.sql(projectId, sql, params);
+    const data = await getSdk().projects.sql(projectId, sql, params, readOnly ? { readOnly: true } : undefined);
     console.log(JSON.stringify(toCliSqlResult(data), null, 2));
   } catch (err) {
     reportSdkError(err);
@@ -901,7 +917,7 @@ const FLAGS_BY_SUB = {
   "get-expose": { known: ["--project"], values: ["--project"] },
   "promote-user": { known: ["--project"], values: ["--project"] },
   "demote-user": { known: ["--project"], values: ["--project"] },
-  sql: { known: ["--project", "--file", "--params", "--batch", "--transaction"], values: ["--project", "--file", "--params", "--batch", "--transaction"] },
+  sql: { known: ["--project", "--file", "--params", "--batch", "--transaction", "--read-only"], values: ["--project", "--file", "--params", "--batch", "--transaction"] },
   costs: { known: ["--project", "--window"], values: ["--project", "--window"] },
   "apply-expose": { known: ["--project", "--file"], values: ["--project", "--file"] },
   "validate-expose": {

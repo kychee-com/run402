@@ -45,6 +45,7 @@ import type {
   SqlBatchOptions,
   SqlBatchResult,
   SqlBatchStatement,
+  SqlOptions,
   SqlResult,
 } from "./namespaces/projects.types.js";
 import type {
@@ -269,8 +270,8 @@ class ScopedProjects {
   getSchema(): Promise<SchemaReport> {
     return this.parent.projects.getSchema(this.projectId);
   }
-  sql(sql: string, params?: unknown[]): Promise<SqlResult> {
-    return this.parent.projects.sql(this.projectId, sql, params);
+  sql(sql: string, params?: unknown[], opts?: SqlOptions): Promise<SqlResult> {
+    return this.parent.projects.sql(this.projectId, sql, params, opts);
   }
   sqlBatch(statements: SqlBatchStatement[], opts?: SqlBatchOptions): Promise<SqlBatchResult> {
     return this.parent.projects.sqlBatch(this.projectId, statements, opts);

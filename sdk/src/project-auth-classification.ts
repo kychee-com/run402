@@ -55,24 +55,35 @@ export const PROJECT_OPERATION_AUTH_CLASSIFICATIONS = [
     mayUseLocalCredentialCache: true,
     localCredentialMissCode: "PROJECT_CREDENTIAL_NOT_FOUND",
   },
+  // A cached service key is used when present; otherwise the call goes as
+  // the caller's principal (project.database.read / project.database.write).
   {
     operation: "projects.sql",
     scope: "project",
     plane: "data",
-    authModes: ["service_key"],
+    authModes: ["service_key", "principal", "grant_key"],
     defaultAuthMode: "project_credential",
     requiresProjectId: true,
     mayUseLocalCredentialCache: true,
-    localCredentialMissCode: "PROJECT_CREDENTIAL_NOT_FOUND",
+  },
+  {
+    operation: "projects.getSchema",
+    scope: "project",
+    plane: "data",
+    authModes: ["service_key", "principal", "grant_key"],
+    defaultAuthMode: "project_credential",
+    requiresProjectId: true,
+    mayUseLocalCredentialCache: true,
   },
   {
     operation: "projects.rest",
     scope: "project",
     plane: "data",
-    authModes: ["anon_key", "service_key"],
+    authModes: ["anon_key", "service_key", "principal", "grant_key"],
     defaultAuthMode: "project_credential",
     requiresProjectId: true,
     mayUseLocalCredentialCache: true,
+    // Only an explicit keyType "anon" with no cached key misses locally.
     localCredentialMissCode: "PROJECT_CREDENTIAL_NOT_FOUND",
   },
   {
