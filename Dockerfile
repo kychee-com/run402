@@ -9,6 +9,7 @@ COPY tsconfig.json ./
 COPY core/ core/
 COPY sdk/ sdk/
 COPY src/ src/
+COPY docs-site/src/content/docs/mcp/run.md docs-site/src/content/docs/mcp/run.md
 RUN npm run build
 
 FROM node:22-slim
