@@ -609,6 +609,32 @@ export interface RoutePricingSpec {
   networks?: readonly RoutePricingNetwork[];
   /** Ask the function to declare committed fulfillment for a signed merchant receipt. */
   receipt?: "on_fulfillment";
+  /**
+   * Opt in to the x402 Bazaar: the 402 challenge carries this metadata and the
+   * first paid call lists the route. Exact routes with one method only.
+   */
+  discovery?: RoutePricingDiscovery;
+}
+
+export interface RoutePricingDiscovery {
+  /** At most 500 characters, used verbatim. */
+  description: string;
+  /** Default `application/json`. */
+  mime_type?: string;
+  /** 1-32 printable ASCII characters. */
+  service_name?: string;
+  /** At most 4, each 1-32 printable ASCII; Run402 appends `run402`. */
+  tags?: readonly string[];
+  /** Absolute https URL on a public host name. */
+  icon_url?: string;
+  /** Query parameters for GET/HEAD/DELETE, a body (`body_type` required) for POST/PUT/PATCH. */
+  input?: {
+    query_params_schema?: Record<string, unknown>;
+    body_type?: "json" | "form-data" | "text";
+    body_schema?: Record<string, unknown>;
+    example?: unknown;
+  };
+  output?: { example?: unknown; schema?: Record<string, unknown> };
 }
 
 export interface FunctionRouteTarget {

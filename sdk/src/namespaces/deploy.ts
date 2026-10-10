@@ -3079,6 +3079,7 @@ const ROUTE_PRICING_FIELDS = new Set([
   "pay_to",
   "networks",
   "receipt",
+  "discovery",
 ]);
 const ROUTE_PRICING_NETWORK_SET = new Set<string>(ROUTE_PRICING_NETWORKS);
 const I18N_SPEC_FIELDS = new Set(["defaultLocale", "locales", "detect", "unknownLocalePolicy"]);
@@ -3671,6 +3672,17 @@ function validateRoutePricing(
       `ReleaseSpec.${resource}.pricing.receipt must be "on_fulfillment"`,
       `${resource}.pricing.receipt`,
     );
+  }
+  if (obj.discovery !== undefined) {
+    // Shape only: the gateway owns the Bazaar limits and names the exact field
+    // it refuses (description length, tags, icon_url, schema refs, size).
+    const discovery = requireObject(obj.discovery, `${resource}.pricing.discovery`);
+    if (typeof discovery.description !== "string" || discovery.description.trim() === "") {
+      throw invalidRouteSpec(
+        `ReleaseSpec.${resource}.pricing.discovery.description must be a non-empty string`,
+        `${resource}.pricing.discovery.description`,
+      );
+    }
   }
   if (obj.networks === undefined) return;
   if (!Array.isArray(obj.networks)) {

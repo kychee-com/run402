@@ -945,7 +945,7 @@
   },
   {
     "file": "docs-site/src/content/docs//reference/schemas.md",
-    "line": 369,
+    "line": 382,
     "language": "json",
     "kind": "configuration",
     "sha256": "5a6db1802d7f3515060678f77906368420e16f002dc760d59e62c5a6d8aac23c",
@@ -953,7 +953,7 @@
   },
   {
     "file": "docs-site/src/content/docs//reference/schemas.md",
-    "line": 387,
+    "line": 400,
     "language": "json",
     "kind": "configuration",
     "sha256": "79af3ac651e297ec7a7247116881112c223f14f516eb6a8923e22aaec942236d",
@@ -961,7 +961,7 @@
   },
   {
     "file": "docs-site/src/content/docs//reference/schemas.md",
-    "line": 405,
+    "line": 418,
     "language": "json",
     "kind": "configuration",
     "sha256": "94399ddf4fa32174975fe479c695448ed5e55d944da096e370771772d9c4bc8b",
@@ -969,7 +969,7 @@
   },
   {
     "file": "docs-site/src/content/docs//reference/schemas.md",
-    "line": 518,
+    "line": 531,
     "language": "json",
     "kind": "configuration",
     "sha256": "60f5e702647adf06b78253a01842425dfebe78872a67e3c784ec8d6a2fe164f4",
@@ -977,7 +977,7 @@
   },
   {
     "file": "docs-site/src/content/docs//reference/schemas.md",
-    "line": 536,
+    "line": 549,
     "language": "json",
     "kind": "configuration",
     "sha256": "18cb3833cbe02fb9a9c33b0116c6cc9b01ad32ef467b29d584e004099d2065e5",
@@ -985,7 +985,7 @@
   },
   {
     "file": "docs-site/src/content/docs//reference/schemas.md",
-    "line": 548,
+    "line": 561,
     "language": "json",
     "kind": "configuration",
     "sha256": "eb190162b9c2f404d8e65a63818172e1fd89375911c72639c0dfb552851850f7",
@@ -993,7 +993,7 @@
   },
   {
     "file": "docs-site/src/content/docs//reference/schemas.md",
-    "line": 597,
+    "line": 610,
     "language": "json",
     "kind": "configuration",
     "sha256": "655c5363a5f74b82f43f030d86204c401cc0d7875a9d8365c9eb3109684e8aa2",
@@ -1001,7 +1001,7 @@
   },
   {
     "file": "docs-site/src/content/docs//reference/schemas.md",
-    "line": 695,
+    "line": 708,
     "language": "json",
     "kind": "configuration",
     "sha256": "8faa0bfff828ba6ffd53bdfd0ed7216ffa40c8f33f9d878b12b23e6d45122459",
@@ -1009,7 +1009,7 @@
   },
   {
     "file": "docs-site/src/content/docs//reference/schemas.md",
-    "line": 705,
+    "line": 718,
     "language": "json",
     "kind": "configuration",
     "sha256": "83d3c55db53f03b579b2e8efd4cd46698f75cafdcd1c17a335b464357535403a",
@@ -1017,7 +1017,7 @@
   },
   {
     "file": "docs-site/src/content/docs//reference/schemas.md",
-    "line": 715,
+    "line": 728,
     "language": "json",
     "kind": "configuration",
     "sha256": "8c422682f3394306e42c5abc0b5dc7ca39247e6ac86bd4ab349fd4b94eeddd5b",

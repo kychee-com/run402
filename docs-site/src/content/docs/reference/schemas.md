@@ -341,10 +341,23 @@ Use `run402 up --check` for local validation and `run402 up --plan` for gateway 
 | `target` | `oneOf` | yes | See the downloadable schema for constraints. |
 | `pricing` | `#/$defs/routePricing` | no | See the downloadable schema for constraints. |
 
+<h3 id="release-routePricingDiscovery">routePricingDiscovery</h3>
+
+| Property | Shape | Required | Description |
+|---|---|---|---|
+| `description` | `string` | yes | What the endpoint does and when to call it; used verbatim. |
+| `mime_type` | `string` | no | Response media type. Default application/json. |
+| `service_name` | `string` | no | See the downloadable schema for constraints. |
+| `tags` | `array` | no | At most 4; the Bazaar keeps five and Run402 appends run402. |
+| `icon_url` | `string` | no | Absolute https URL on a public host name, without credentials. |
+| `input` | `object` | no | GET/HEAD/DELETE: query_params_schema and an object example. POST/PUT/PATCH: body_type (required), body_schema, example. Schemas may reference only local # fragments. |
+| `output` | `object` | no | See the downloadable schema for constraints. |
+
 <h3 id="release-routePricing">routePricing</h3>
 
 | Property | Shape | Required | Description |
 |---|---|---|---|
+| `discovery` | `#/$defs/routePricingDiscovery` | no | See the downloadable schema for constraints. |
 | `mode` | `schema` | yes | See the downloadable schema for constraints. |
 | `amount_usd_micros` | `integer` | yes | See the downloadable schema for constraints. |
 | `pay_to` | `schema` | yes | See the downloadable schema for constraints. |

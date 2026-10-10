@@ -674,6 +674,44 @@
         }
       ]
     },
+    "routePricingDiscovery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["description"],
+      "description": "Opt-in x402 Bazaar listing for this priced route. Exact route with exactly one method (GET may include HEAD); at most 4096 bytes of canonical JSON. The 402 challenge carries it plus the run402 tag and accepts[].extra.hosted_by.",
+      "properties": {
+        "description": { "type": "string", "minLength": 1, "maxLength": 500, "description": "What the endpoint does and when to call it; used verbatim." },
+        "mime_type": { "type": "string", "description": "Response media type. Default application/json." },
+        "service_name": { "type": "string", "minLength": 1, "maxLength": 32, "pattern": "^[\\x20-\\x7e]+$" },
+        "tags": {
+          "type": "array",
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 32, "pattern": "^[\\x20-\\x7e]+$" },
+          "description": "At most 4; the Bazaar keeps five and Run402 appends run402."
+        },
+        "icon_url": { "type": "string", "format": "uri", "pattern": "^https://", "maxLength": 2048, "description": "Absolute https URL on a public host name, without credentials." },
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "GET/HEAD/DELETE: query_params_schema and an object example. POST/PUT/PATCH: body_type (required), body_schema, example. Schemas may reference only local # fragments.",
+          "properties": {
+            "query_params_schema": { "type": "object" },
+            "body_type": { "enum": ["json", "form-data", "text"] },
+            "body_schema": { "type": "object" },
+            "example": {}
+          }
+        },
+        "output": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "example": {},
+            "schema": { "type": "object" }
+          }
+        }
+      }
+    },
     "routePricing": {
       "type": "object",
       "additionalProperties": false,
@@ -683,6 +721,7 @@
         "pay_to"
       ],
       "properties": {
+        "discovery": { "$ref": "#/$defs/routePricingDiscovery" },
         "mode": {
           "const": "always"
         },

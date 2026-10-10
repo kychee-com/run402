@@ -2347,6 +2347,17 @@ describe("Deploy.apply (validation)", () => {
                 networks: ["testnet"],
               },
             },
+            {
+              pattern: "/check",
+              methods: ["GET"],
+              target: { type: "function", name: "api" },
+              pricing: {
+                mode: "always",
+                amount_usd_micros: 20000,
+                pay_to: "org_default_payout",
+                discovery: { description: "Score an address", tags: ["wallets"], input: { example: { address: "0x0" } } },
+              },
+            },
           ],
         },
       },
@@ -2376,6 +2387,17 @@ describe("Deploy.apply (validation)", () => {
               amount_usd_micros: 250000,
               pay_to: "org_default_payout",
               networks: ["testnet"],
+            },
+          },
+          {
+            pattern: "/check",
+            methods: ["GET"],
+            target: { type: "function", name: "api" },
+            pricing: {
+              mode: "always",
+              amount_usd_micros: 20000,
+              pay_to: "org_default_payout",
+              discovery: { description: "Score an address", tags: ["wallets"], input: { example: { address: "0x0" } } },
             },
           },
         ],
@@ -2587,6 +2609,16 @@ describe("Deploy.apply (validation)", () => {
         { replace: [{ pattern: "/api/credits", methods: ["POST"], target: { type: "function", name: "api" }, pricing: { mode: "always", amount_usd_micros: 250000, pay_to: "org_default_payout", extra: true } }] },
         "routes.replace.0.pricing.extra",
         /Unknown ReleaseSpec field/,
+      ],
+      [
+        { replace: [{ pattern: "/api/credits", methods: ["POST"], target: { type: "function", name: "api" }, pricing: { mode: "always", amount_usd_micros: 250000, pay_to: "org_default_payout", discovery: { description: "" } } }] },
+        "routes.replace.0.pricing.discovery.description",
+        /non-empty string/,
+      ],
+      [
+        { replace: [{ pattern: "/api/credits", methods: ["POST"], target: { type: "function", name: "api" }, pricing: { mode: "always", amount_usd_micros: 250000, pay_to: "org_default_payout", discovery: "listed" } }] },
+        "routes.replace.0.pricing.discovery",
+        /./,
       ],
       [
         { replace: [{ pattern: "/events", methods: ["GET"], target: { type: "static", file: "events.html" }, pricing: { mode: "always", amount_usd_micros: 250000, pay_to: "org_default_payout" } }] },

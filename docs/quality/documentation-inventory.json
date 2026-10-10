@@ -3321,7 +3321,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "dea6e74d0dd51409df89a24d06a10d1bb793b3ccb087e601e20738cbfafb1612",
+      "sha256": "22f09dd735fc87d0bb7caf6533a1c4c5932fe1d985fb5ad49d671679e90e0543",
       "outputs": [],
       "url": "https://docs.run402.com/reference/schemas/",
       "checks": [
@@ -4334,7 +4334,7 @@
       "purpose": "reference",
       "interface": "sdk",
       "exception": "Native typed scripting and SDK reference examples.",
-      "sha256": "2b47bda02a64cfde0e264d470b9985f15c04588b56dd97e99e58e6449d694461",
+      "sha256": "3ab586e2352f9a6aab475c54f80a4d9ee1fee8e309dc562c0768bce73b269de2",
       "outputs": [],
       "url": null,
       "checks": [
