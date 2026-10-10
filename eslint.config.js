@@ -5,7 +5,7 @@ import tsPlugin from "@typescript-eslint/eslint-plugin";
 // plain JavaScript and stays out of scope until it has type information.
 export default [
   {
-    ignores: ["**/dist/**", "**/node_modules/**", "cli/core-dist/**", ".claude/worktrees/**"],
+    ignores: ["**/dist/**", "**/node_modules/**", "cli/core-dist/**", ".claude/worktrees/**", "sdk/src/node/vendor/**"],
   },
   {
     files: ["src/**/*.ts", "sdk/src/**/*.ts", "core/src/**/*.ts", "astro/src/**/*.ts"],

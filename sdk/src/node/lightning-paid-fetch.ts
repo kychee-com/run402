@@ -1,6 +1,7 @@
 /**
- * The Lightning rail's buyer: a `fetch` that selects Run402's MPP Lightning
- * safety profile on every request, pays the one fixed BOLT11 challenge a 402
+ * The Lightning rail's buyer. Where the seller offers the x402 `exact` scheme
+ * on Lightning (`lightning-x402-lnbtc.ts`) it pays that; otherwise it is a
+ * `fetch` that selects Run402's MPP Lightning safety profile on every request, pays the one fixed BOLT11 challenge a 402
  * carries from the agent's own wallet (the budgeted sub-wallet on Run402's
  * Hub, over NWC), presents the preimage as the credential on a byte-identical
  * retry, and falls back to the x402 buyer when the seller offers no Lightning
@@ -21,6 +22,12 @@
 import { createHash } from "node:crypto";
 
 import { loadLightningStack, type LightningStack } from "./_paid-stack.js";
+import {
+  explicitRequestHeaders,
+  isX402LightningCandidate,
+  payX402Lightning,
+  readX402LightningOffer,
+} from "./lightning-x402-lnbtc.js";
 import { NwcError, NwcWallet } from "./nwc.js";
 
 type FetchFn = typeof globalThis.fetch;
@@ -109,6 +116,8 @@ export interface LightningFetchOptions {
   onPaid?: (paymentHash: string) => void;
   /** The wait between post-settlement retries; tests pass an instant one. */
   sleep?: (ms: number) => Promise<void>;
+  /** Unix seconds for x402 Lightning invoice checks; tests pin it. */
+  clock?: () => number;
 }
 
 export class LightningPaymentError extends Error {
@@ -195,6 +204,22 @@ function defaultIdempotencyKey(input: RequestInfo | URL, init: RequestInit | und
   return `lnc_${digest.slice(0, 32)}`;
 }
 
+/**
+ * The all-in debit cap, shared by both Lightning protocols: the charge plus
+ * routing-fee headroom must fit the rail's ceiling and the wallet's remaining
+ * budget. Throws before anything is paid.
+ */
+async function checkLightningCaps(wallet: LightningWalletLike, amountSats: number): Promise<void> {
+  const allIn = amountSats + FEE_HEADROOM_SATS;
+  if (allIn > LIGHTNING_MAX_DEBIT_SATS) {
+    throw new LightningPaymentError("LIGHTNING_DEBIT_ABOVE_CAP", `A Lightning charge of ${amountSats} sats exceeds the ${LIGHTNING_MAX_DEBIT_SATS}-sat ceiling.`, { amount_sats: amountSats, cap_sats: LIGHTNING_MAX_DEBIT_SATS, next_action: "pay over x402 (run402 init --switch-rail)" });
+  }
+  const budget = await wallet.getBudgetSats().catch(() => null);
+  if (budget && budget.totalSats !== null && budget.totalSats - budget.usedSats < allIn) {
+    throw new LightningPaymentError("LIGHTNING_BUDGET_EXHAUSTED", `The Lightning wallet's remaining budget (${budget.totalSats - budget.usedSats} sats) cannot cover ${allIn} sats.`, { remaining_sats: budget.totalSats - budget.usedSats, required_sats: allIn, next_action: "pay over x402 (run402 init --switch-rail), or ask the platform for a new wallet" });
+  }
+}
+
 export function createLightningFetch(options: LightningFetchOptions): FetchFn {
   const baseFetch: FetchFn = options.baseFetch ?? ((input, init) => globalThis.fetch(input, init));
   const wallet: LightningWalletLike = options.wallet ?? new NwcWallet(options.pairingUri);
@@ -212,6 +237,29 @@ export function createLightningFetch(options: LightningFetchOptions): FetchFn {
       // Not a Lightning surface: the x402 buyer (or the plain fetch) owns it.
       const other = (await fallback()) ?? baseFetch;
       return other(input, init);
+    }
+    // x402 `exact` on Lightning first where the seller offers it: a request
+    // without the MPP profile reaches the seller's x402 paywall, whose 402
+    // names an `lnbtc` entry while its Hub can issue. No entry (the Hub is
+    // paused, or this surface has none) falls through to MPP Lightning.
+    if (isX402LightningCandidate(input, init)) {
+      const probe = await baseFetch(input, { ...init, headers: explicitRequestHeaders(init) });
+      if (probe.status !== 402) return probe;
+      const offer = readX402LightningOffer(probe);
+      await probe.body?.cancel().catch(() => undefined);
+      if (offer) {
+        return payX402Lightning({
+          input,
+          init,
+          offer,
+          wallet,
+          baseFetch,
+          fail: (code, message, details) => new LightningPaymentError(code, message, details),
+          checkCaps: (amountSats) => checkLightningCaps(wallet, amountSats),
+          onPaid: options.onPaid,
+          ...(options.clock ? { clock: options.clock } : {}),
+        });
+      }
     }
     // Deterministic over the request bytes: a retry of the identical call
     // (after a crash, a timeout, or a gateway hiccup between payment and
@@ -233,14 +281,7 @@ export function createLightningFetch(options: LightningFetchOptions): FetchFn {
     }
     await first.body?.cancel().catch(() => undefined);
 
-    const allIn = challenge.amountSats + FEE_HEADROOM_SATS;
-    if (allIn > LIGHTNING_MAX_DEBIT_SATS) {
-      throw new LightningPaymentError("LIGHTNING_DEBIT_ABOVE_CAP", `A Lightning charge of ${challenge.amountSats} sats exceeds the ${LIGHTNING_MAX_DEBIT_SATS}-sat ceiling.`, { amount_sats: challenge.amountSats, cap_sats: LIGHTNING_MAX_DEBIT_SATS, next_action: "pay over x402 (run402 init --switch-rail)" });
-    }
-    const budget = await wallet.getBudgetSats().catch(() => null);
-    if (budget && budget.totalSats !== null && budget.totalSats - budget.usedSats < allIn) {
-      throw new LightningPaymentError("LIGHTNING_BUDGET_EXHAUSTED", `The Lightning wallet's remaining budget (${budget.totalSats - budget.usedSats} sats) cannot cover ${allIn} sats.`, { remaining_sats: budget.totalSats - budget.usedSats, required_sats: allIn, next_action: "pay over x402 (run402 init --switch-rail), or ask the platform for a new wallet" });
-    }
+    await checkLightningCaps(wallet, challenge.amountSats);
 
     let preimage: string;
     try {

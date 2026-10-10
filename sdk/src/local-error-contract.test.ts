@@ -121,6 +121,11 @@ async function assertLocalError(
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const path = join(dir, entry.name);
+    // `vendor/` holds third-party code kept as published upstream (each
+    // directory's VENDORED.md lists its only local edits). Its errors are not
+    // the SDK's contract: the Run402 module that calls it maps them at the
+    // boundary (`node/lightning-x402-lnbtc.ts` → `LightningPaymentError`).
+    if (entry.isDirectory() && entry.name === "vendor") return [];
     if (entry.isDirectory()) return sourceFiles(path);
     // `*.test-helper.ts` is test-only support code: excluded from
     // `sdk/tsconfig.json` and therefore never compiled into `dist`, so it is

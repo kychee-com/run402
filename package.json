@@ -25,7 +25,7 @@
   ],
   "scripts": {
     "build:core": "rm -rf core/dist && tsc -p core/tsconfig.json",
-    "build:sdk": "rm -rf sdk/dist sdk/core-dist && mkdir -p sdk/core-dist && cp core/dist/*.js sdk/core-dist/ && cp core/dist/*.d.ts sdk/core-dist/ && tsc -p sdk/tsconfig.json",
+    "build:sdk": "rm -rf sdk/dist sdk/core-dist && mkdir -p sdk/core-dist && cp core/dist/*.js sdk/core-dist/ && cp core/dist/*.d.ts sdk/core-dist/ && tsc -p sdk/tsconfig.json && cp sdk/src/node/vendor/x402-lnbtc/LICENSE sdk/src/node/vendor/x402-lnbtc/VENDORED.md sdk/dist/node/vendor/x402-lnbtc/",
     "build": "rm -rf dist cli/core-dist cli/sdk/dist cli/sdk/core-dist && npm run build:core && npm run build:sdk && tsc && mkdir -p cli/core-dist cli/sdk/dist cli/sdk/core-dist && cp core/dist/*.js cli/core-dist/ && cp -R sdk/dist/. cli/sdk/dist/ && cp sdk/core-dist/*.js cli/sdk/core-dist/ && mkdir -p dist/docs && cp sdk/llms-sdk.txt docs-site/src/content/docs/mcp/run.md dist/docs/",
     "lint": "eslint",
     "start": "node dist/index.js",

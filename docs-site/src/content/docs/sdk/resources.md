@@ -1326,8 +1326,14 @@ usage(projectId): Promise<AiUsageResult>
 generateImage(opts: { prompt, aspect?, orgId? }): Promise<GenerateImageResult> // $0.03 via x402 / MPP, no projectId
 ```
 
-`orgId` is the paying organization and is read only on the MPP Lightning
-rail: a principal that belongs to several organizations is refused
+On the `lightning` rail, `generateImage` pays the x402 `exact` scheme on
+Bitcoin Lightning when the gateway offers it (an `lnbtc:` entry in the 402,
+its invoice bound to this exact request), and MPP Lightning otherwise; the
+result's `payment` reports the `lnbtc:` network and the payment hash as
+`transaction`. A Lightning invoice bound to a different request is refused
+before paying (`LIGHTNING_REQUEST_BINDING_MISMATCH`).
+
+`orgId` is the paying organization and is read only by MPP Lightning: a principal that belongs to several organizations is refused
 `ORGANIZATION_SELECTION_REQUIRED` (HTTP 400, `details.org_ids` lists
 the candidates) unless the body names one; x402 and Tempo ignore it. When
 `orgId` is omitted and the gateway answers that code, `generateImage` retries

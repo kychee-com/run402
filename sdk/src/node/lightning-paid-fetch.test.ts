@@ -79,7 +79,7 @@ describe("createLightningFetch", () => {
     const s = seller([() => paid402, () => ok]);
     const w = wallet();
     const fetch = createLightningFetch({ pairingUri: URI, baseFetch: s.fetch, wallet: w, stack: async () => stack, fallback: async () => { throw new Error("no fallback expected"); } });
-    const response = await fetch("https://api.example/generate-image/v1", { method: "POST", body: "{\"prompt\":\"a fox\"}", headers: { "content-type": "application/json" } });
+    const response = await fetch("https://api.example/tiers/v1/prototype", { method: "POST", body: "{\"prompt\":\"a fox\"}", headers: { "content-type": "application/json" } });
     assert.equal(response.status, 200);
     assert.equal(s.calls.length, 2);
     assert.equal(s.calls[0]!.headers.get("run402-payment-profile"), RUN402_MPP_LIGHTNING_PROFILE);
@@ -165,7 +165,7 @@ describe("createLightningFetch", () => {
     const w = wallet();
     const sleeps: number[] = [];
     const fetch = createLightningFetch({ pairingUri: URI, baseFetch: s.fetch, wallet: w, stack: async () => stack, fallback: async () => null, sleep: async (ms) => { sleeps.push(ms); } });
-    const response = await fetch("https://api.example/generate-image/v1", { method: "POST", body: "{\"prompt\":\"a fox\"}", headers: { "content-type": "application/json" } });
+    const response = await fetch("https://api.example/tiers/v1/prototype", { method: "POST", body: "{\"prompt\":\"a fox\"}", headers: { "content-type": "application/json" } });
     assert.equal(response.status, 200);
     assert.equal(s.calls.length, 4);
     assert.deepEqual(w.paid, ["lnbc1fixture"], "one payment, however many fulfilment waits");
@@ -185,7 +185,7 @@ describe("createLightningFetch", () => {
     const w = wallet();
     const sleeps: number[] = [];
     const fetch = createLightningFetch({ pairingUri: URI, baseFetch: s.fetch, wallet: w, stack: async () => stack, fallback: async () => null, sleep: async (ms) => { sleeps.push(ms); } });
-    const response = await fetch("https://api.example/generate-image/v1", { method: "POST", body: "{}" });
+    const response = await fetch("https://api.example/tiers/v1/prototype", { method: "POST", body: "{}" });
     assert.equal(response.status, 409);
     assert.equal(((await response.json()) as { code: string }).code, "PAYMENT_RECOVERY_PENDING");
     assert.equal(s.calls.length, 2 + POST_SETTLEMENT_RETRY_LIMIT);
