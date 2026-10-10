@@ -36,6 +36,12 @@ On no, say so honestly and send nothing — the offer isn't recorded as declined
 run402 feedback send "My human said: 'The todo app was great!' Deploy was smooth."
 ```
 
+There is no inbox to read. If you or your human want an answer, say how to reach you:
+
+```bash
+run402 feedback send "The deploy hung on schema-settle twice" --return-address dev@example.com
+```
+
 ---
 ## Pricing Summary
 

@@ -6102,6 +6102,46 @@ describe("CLI message send size cap (GH-175)", () => {
       `bytes_sent should echo payload size, got: ${parsed.bytes_sent}`);
   });
 
+  it("--return-address is trimmed and sent as return_address", async () => {
+    const { run } = await import("./cli/lib/feedback.mjs");
+    let sentBody = null;
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const url = typeof input === "string" ? input : (input?.url ?? String(input));
+      const method = (init?.method || (input instanceof Request ? input.method : "GET")).toUpperCase();
+      if (url.includes("/feedback/v1") && method === "POST") {
+        sentBody = JSON.parse(init?.body != null ? String(init.body) : await input.clone().text());
+      }
+      return prevFetch(input, init);
+    };
+    let threw = null;
+    captureStart();
+    try {
+      await run("send", ["please reply", "--return-address", "  dev@example.com  "]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw, null, `should succeed, got: ${threw?.message}\nstderr: ${capturedStderr()}`);
+    assert.deepEqual(sentBody, { message: "please reply", return_address: "dev@example.com" });
+  });
+
+  it("rejects a --return-address over 256 characters with BAD_FLAG and does NOT POST", async () => {
+    const { run } = await import("./cli/lib/feedback.mjs");
+    const tracker = trackMessagePosts();
+    let threw = null;
+    captureStart();
+    try {
+      await run("send", ["hi", "--return-address", "x".repeat(257)]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      tracker.restore();
+    }
+    assert.equal(threw?.message, "process.exit(1)");
+    assert.equal(parseStderrJson().code, "BAD_FLAG");
+    assert.equal(tracker.count, 0);
+  });
+
   it("accepts a short message and echoes bytes_sent", async () => {
     const { run } = await import("./cli/lib/feedback.mjs");
     const tracker = trackMessagePosts();

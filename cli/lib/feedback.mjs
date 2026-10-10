@@ -6,11 +6,12 @@ import { assertKnownFlags, normalizeArgv, failUnknownSubcommand, flagValue, posi
 const HELP = `run402 feedback — Send feedback to the Run402 developers
 
 Usage:
-  run402 feedback send <text> [--project <project_id>] [--handle <handle>]
+  run402 feedback send <text> [--project <project_id>] [--handle <handle>] [--return-address <how to reach you>]
 
 Notes:
-  - WRITE-ONLY: there is no inbox to read and no reply path. If you need an
-    answer from a human, raise an escalation instead:
+  - WRITE-ONLY: there is no inbox to read. Add --return-address (an email,
+    a handle, a URL) so the Run402 team can contact you back. If you need an
+    answer from a human to continue, raise an escalation instead:
     run402 escalations raise "<what you need>" --severity high
   - Requires an active tier (run402 tier set <tier>)
   - Requires a wallet (run402 init)
@@ -35,6 +36,7 @@ Finishing a deploy — the promotion consent flow:
 
 Examples:
   run402 feedback send "Hello from my agent!"
+  run402 feedback send "The deploy hung on schema-settle" --return-address dev@example.com
   run402 feedback send "promote: yes" --project prj_abc123 --handle @hobo_hi
 `;
 
@@ -44,12 +46,14 @@ Examples:
 // call. UTF-8 bytes (not characters) — emoji and accented chars count as
 // multiple bytes.
 const MESSAGE_MAX_BYTES = 8192;
+// Mirrors the gateway's bound on return_address.
+const RETURN_ADDRESS_MAX_CHARS = 256;
 
 const SUB_HELP = {
   send: `run402 feedback send — Send feedback to the Run402 developers
 
 Usage:
-  run402 feedback send <text> [--project <project_id>] [--handle <handle>]
+  run402 feedback send <text> [--project <project_id>] [--handle <handle>] [--return-address <how to reach you>]
 
 Arguments:
   <text>              Message body (quote it; remaining positional words are
@@ -64,12 +68,20 @@ Flags:
   --handle <handle>   Your human's X/Twitter handle, at most 64 characters.
                       Only used with --project; delivered as-is, stored
                       nowhere else.
+  --return-address <how to reach you>
+                      How the Run402 team can contact you (or your human)
+                      back: an email, a handle, a URL. Free-form, at most
+                      256 characters. Delivered with the message as a
+                      "Reply to:" line, stored nowhere else. Works with or
+                      without --project.
 
 Notes:
   - Requires an active tier (run402 tier set <tier>)
   - Requires a wallet (run402 init)
   - Messages are capped at 8 KB (8192 bytes UTF-8) to keep the developer
     inbox useful and prevent payload-dump misuse.
+  - There is no inbox to read; without --return-address the team has no way
+    to answer you.
   - Finishing a deploy: when a commit/promote response carries a
     hand_to_member next action, show your human urls.site and
     urls.console, relay that Run402 would like to promote what they built
@@ -79,12 +91,13 @@ Notes:
 
 Examples:
   run402 feedback send "Hello from my agent!"
+  run402 feedback send "The deploy hung on schema-settle" --return-address dev@example.com
   run402 feedback send "promote: yes" --project prj_abc123 --handle @hobo_hi
 `,
 };
 
 async function send(args) {
-  const valueFlags = ["--project", "--handle"];
+  const valueFlags = ["--project", "--handle", "--return-address"];
   assertKnownFlags(args, [...valueFlags, "--help", "-h"], valueFlags);
   const text = positionalArgs(args, valueFlags).join(" ");
   if (!text) {
@@ -111,12 +124,21 @@ async function send(args) {
       details: { flag: "--handle", length: handle.length, max: 64 },
     });
   }
+  const returnAddress = flagValue(args, "--return-address")?.trim();
+  if (returnAddress && returnAddress.length > RETURN_ADDRESS_MAX_CHARS) {
+    fail({
+      code: "BAD_FLAG",
+      message: `--return-address must be at most ${RETURN_ADDRESS_MAX_CHARS} characters, got ${returnAddress.length}.`,
+      details: { flag: "--return-address", length: returnAddress.length, max: RETURN_ADDRESS_MAX_CHARS },
+    });
+  }
   // Preserve the aggressive early exit when no local wallet is configured.
   walletAuthHeaders("/feedback/v1");
 
   const opts = {};
   if (projectId) opts.project_id = projectId;
   if (handle) opts.handle = handle;
+  if (returnAddress) opts.return_address = returnAddress;
 
   try {
     await getSdk().admin.sendFeedback(text, opts);

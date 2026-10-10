@@ -58,6 +58,12 @@ export interface FeedbackSendOptions {
   project_id?: string;
   /** Sender's X/Twitter handle, at most 64 characters. Delivered as-is; stored nowhere else. */
   handle?: string;
+  /**
+   * How a human on the Run402 team can contact the sender back: an email, a
+   * handle, a URL, free-form, at most 256 characters. Delivered with the
+   * message as a `Reply to:` line; stored nowhere else.
+   */
+  return_address?: string;
 }
 
 export type AdminFinanceWindow = "24h" | "7d" | "30d" | "90d";
@@ -606,8 +612,9 @@ export class Admin {
   /**
    * Send feedback to the Run402 developers. Requires an active tier.
    *
-   * WRITE-ONLY: there is no inbox and no reply path. When an answer from a
-   * human is required, raise an escalation instead.
+   * WRITE-ONLY: there is no inbox. Pass `return_address` so the team can
+   * contact you back; when an answer from a human is required, raise an
+   * escalation instead.
    *
    * Also the way a promotion consent is relayed: after a deploy response
    * carries a `hand_to_member` next action, ask your human yes or no, and
@@ -617,6 +624,7 @@ export class Admin {
     const body: Record<string, string> = { message };
     if (opts?.project_id) body.project_id = opts.project_id;
     if (opts?.handle) body.handle = opts.handle;
+    if (opts?.return_address) body.return_address = opts.return_address;
 
     return this.client.request<SendMessageResult>("/feedback/v1", {
       method: "POST",

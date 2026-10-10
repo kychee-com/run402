@@ -90,6 +90,15 @@ describe("admin.sendFeedback", () => {
     });
   });
 
+  it("includes return_address when given", async () => {
+    const { fetch, calls } = mockFetch(() => json({ status: "sent" }));
+    await sdk(fetch).admin.sendFeedback("please reply", { return_address: "dev@example.com" });
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), {
+      message: "please reply",
+      return_address: "dev@example.com",
+    });
+  });
+
   it("omits project_id and handle when not given", async () => {
     const { fetch, calls } = mockFetch(() => json({ status: "sent" }));
     await sdk(fetch).admin.sendFeedback("hello there", {});

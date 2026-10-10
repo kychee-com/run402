@@ -62,7 +62,7 @@ KMS signers — provision AWS KMS-backed Ethereum signers per project for signin
 - `run402 contracts delete <signer_id> --confirm` — schedule the KMS key for deletion (7-day window). Refused if balance ≥ dust — drain first.
 
 ### message
-- `run402 feedback send "<text>" [--project <project_id>] [--handle <handle>]` — `--project` + `message: "promote: yes"` relays a deploy's promotion consent (see "Finish a deploy: hand your human two links" above); `--handle` is the human's X/Twitter handle (≤64 chars), delivered as-is.
+- `run402 feedback send "<text>" [--project <project_id>] [--handle <handle>] [--return-address <how to reach you>]` — `--project` + `message: "promote: yes"` relays a deploy's promotion consent (see "Finish a deploy: hand your human two links" above); `--handle` is the human's X/Twitter handle; `--return-address` (an email, a handle, a URL; at most 256 characters) tells the Run402 team how to contact you back, since there is no inbox to read (≤64 chars), delivered as-is.
 
 ### agent
 - `run402 agent contact --name <name> [--email <email>] [--webhook <url>]`

@@ -521,7 +521,15 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/platform.md",
-    "line": 65,
+    "line": 41,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "e1f1831045f746f1c391013c59b61d75b02049ba2a362922a1b2e1fa14985aaa",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/platform.md",
+    "line": 71,
     "language": "bash",
     "kind": "commands",
     "sha256": "95eeff917f57c634e4470e34819bfe2c166c6e524306c119db106d0551ff48be",
@@ -529,7 +537,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/platform.md",
-    "line": 81,
+    "line": 87,
     "language": "bash",
     "kind": "commands",
     "sha256": "1c34cfcd8e39e6ef4dfad7e43983a71392cacc8e8a3c375bcf1761ee202dda42",
@@ -537,7 +545,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/platform.md",
-    "line": 108,
+    "line": 114,
     "language": "json",
     "kind": "configuration",
     "sha256": "e67af1b0b5dd5e6779963b16cf0451246c67411d9bffef49bbfeed55b5d0d4a1",
@@ -545,7 +553,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/platform.md",
-    "line": 131,
+    "line": 137,
     "language": "bash",
     "kind": "commands",
     "sha256": "ecfa6c88f9084099caa7633f6c469d6974a534df35e5109cdc5005a9c7ab6577",
@@ -553,7 +561,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/platform.md",
-    "line": 150,
+    "line": 156,
     "language": "sh",
     "kind": "commands",
     "sha256": "03faaf7af2b5dc6d2444bf8c8a8b63ceb8b53d46d9dcd2597f32f9d5bc3bde31",
