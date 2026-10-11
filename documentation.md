@@ -236,6 +236,7 @@ Run `node scripts/documentation-inventory.mjs` to reject newly discovered unclas
 | public | [r402s-verify/README.md](r402s-verify/README.md) | protocol / native | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [sdk/README.md](sdk/README.md) | reference / sdk | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [sdk/llms-sdk.txt](sdk/llms-sdk.txt) | generated / mixed | pending: source changed since editorial review | pending: source changed since publication evidence |
+| public | [sdk/src/node/vendor/x402-lnbtc/VENDORED.md](sdk/src/node/vendor/x402-lnbtc/VENDORED.md) | reference / sdk | pending | pending |
 | public | [test-vectors/r402s-v0/README.md](test-vectors/r402s-v0/README.md) | fixture / native | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [test-vectors/r402s-v0/hpke-interop/INTEROP.md](test-vectors/r402s-v0/hpke-interop/INTEROP.md) | fixture / native | reviewed classification: application/UI or conformance data, not a general operating tutorial | source published: 23751749; no separate hosted acceptance required |
 | private | `apps/kygit/404.html` | reference / cli | reviewed classification: application/UI or conformance data, not a general operating tutorial | source published: 610b2e05d; native metadata/legal/asset purpose retained |
