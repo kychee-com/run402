@@ -614,7 +614,7 @@ function nodeRepair() {
 function run402InstallRepair() {
   return shellAction({
     type: "install_run402_cli",
-    argv: ["npm", "install", "-g", "run402@latest"],
+    argv: [...GLOBAL_UPGRADE_ARGV],
     why: "Install Run402 in the user-global npm context used by the Buzz setup helper.",
     safeToAutoExecute: true,
     requiresApproval: false,
@@ -641,15 +641,30 @@ function run402RepairForInstall(install: any, cwd: any) {
   });
 }
 
+const GLOBAL_UPGRADE_ARGV = ["npm", "install", "-g", "run402@latest"];
+
+/**
+ * A newer release for a user-global npm install is the agent's own toolchain:
+ * the managed Buzz agent applies it unasked (at most once a day, bounded by
+ * the CLI's 24-hour update cache). A project-local or ambiguous install stays
+ * advisory, because upgrading it changes files the human owns.
+ */
 function normalizeUpgradeAction(rawAction: any, install: any, cwd: any) {
   const argv = Array.isArray(rawAction?.argv) && rawAction.argv.every((item: unknown) => typeof item === "string")
     ? rawAction.argv
     : run402RepairForInstall(install, cwd).argv;
+  const globalUpgrade = install?.kind === "global_npm"
+    && argv.length === GLOBAL_UPGRADE_ARGV.length
+    && argv.every((part: string, index: number) => part === GLOBAL_UPGRADE_ARGV[index]);
   return shellAction({
     type: "upgrade_run402_cli",
     argv,
     cwd: rawAction?.cwd ?? cwd,
-    why: "Upgrade guidance is advisory because the executing Run402 CLI remains compatible.",
+    why: globalUpgrade
+      ? "A newer Run402 CLI is available for the user-global npm install this agent runs; apply it and continue."
+      : "Upgrade guidance is advisory because the executing Run402 CLI remains compatible.",
+    safeToAutoExecute: globalUpgrade,
+    requiresApproval: !globalUpgrade,
   });
 }
 

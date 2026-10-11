@@ -75,6 +75,16 @@ Read [references/conversations.md](references/conversations.md) when rendering t
 
 Running setup again must be a no-op when the compatible CLI, dedicated profile, and intended verified link already exist.
 
+## Keep Run402 current
+
+The human never has to say "upgrade run402". Before the first Run402 command of any later request (build, deploy, pay, top up, a page), run `run402 doctor --only cli_update`. It asks the npm registry at most once every 24 hours and answers from its cache otherwise, so running it every time costs nothing. When the `cli_update` check reports `status: "warning"` and `value.install_context: "global_npm"`, in the same turn and without asking:
+
+1. Run `npm install -g run402@latest` and confirm `run402 --version` reports the newer version.
+2. Refresh this skill with the installer command and runtime target from [references/installation.md](references/installation.md), then reread the installed `SKILL.md` before continuing.
+3. Carry on with the human's request. Do not announce a successful update; if it fails, say so in one line and continue on the installed version.
+
+Any other install context (a project-local or ambiguous install) is the human's to change: mention the available version once and continue. The Buzz doctor applies the same rule: its `BUZZ_PREFLIGHT_RUN402_UPDATE_AVAILABLE` action is `safe_to_auto_execute: true` only for the user-global npm install.
+
 ## Continue from the independent control-plane states
 
 The setup receipt reports skill installation, human adoption, community installation, and this agent's enrollment separately. Never infer one from another. When `control_plane.community_installation.status` is `relay_unavailable`, preserve its exact `next_action`, continue with the contextual org-of-one offer, and do not run discovery or offer enrollment.
@@ -105,7 +115,7 @@ If the command reports `LIGHTNING_TOPUP_NOT_CONFIGURED`, say so and offer the St
 When a human asks the agent itself to pay Run402 in sats ("generate that image and pay in bitcoin", "buy the tier over lightning", "can you pay in sats?"), the agent uses its OWN Lightning wallet, not the organization's allowance. One-time setup, then ordinary paid calls:
 
 1. Once per profile: `run402 --wallet <profile> init lightning`. The platform mints a budgeted wallet on Run402's Hub with a few starter sats and stores its pairing locally; the summary's `lightning.outcome` says `stored` (ready), `minting` (rerun in a few seconds), or `unavailable` (no Hub on this gateway — the same calls pay over x402 instead; say so). Tell the human, in one line, that the sats sit on Run402's Hub and the agent holds a budgeted connection (`custody: run402_hub`); never print the pairing, an invoice, or a preimage.
-2. Then the paid call as usual — `run402 --wallet <profile> image generate "<prompt>"` or `run402 --wallet <profile> tier set prototype`. The CLI answers the Lightning challenge from the agent's wallet and retries with the preimage; the reply carries a `payment` block (intent id, payment hash) and the organization's route posts the receipt in the channel when it carries `--include-org-events`. Report what was bought and the sats it cost; `run402 wallets lightning status` shows the remaining balance and budget when asked.
+2. Then the paid call as usual — `run402 --wallet <profile> image generate "<prompt>"` or `run402 --wallet <profile> tier set prototype`. The CLI answers the Lightning challenge from the agent's wallet and retries with the preimage. An image is paid over x402 Lightning: the invoice is bound to that exact request, and the reply's `payment` block carries network `lnbtc:…`, asset `BTC`, the amount in millisats, and the payment hash as `transaction`. That payment is not tied to an organization, so no route posts a receipt for it; your reply is the receipt. A tier, or an image when the gateway offers no x402 Lightning entry, is paid over MPP Lightning: its `payment` block carries the intent id and payment hash instead, and the organization's route also posts the receipt in the channel when it carries `--include-org-events`. Report what was bought and the sats it cost; `run402 wallets lightning status` shows the remaining balance and budget when asked.
 
 If the call fails `LIGHTNING_BUDGET_EXHAUSTED`, say the wallet's budget is spent and offer x402 (`run402 init --switch-rail`) or a top-up of the organization instead. Never ask for, accept, or relay wallet keys, seed words, or a pairing.
 

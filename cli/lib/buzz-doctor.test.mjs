@@ -215,6 +215,31 @@ describe("Buzz doctor bounded zero-mutation runner", () => {
     assert.equal(report.ok, true);
   });
 
+  it("lets the agent apply a newer release to a user-global npm install unasked, and keeps a project-local upgrade advisory", async () => {
+    const stale = (argv) => async () => ({ name: "cli_update", status: "warning", value: { next_actions: [{ argv, cwd: "/tmp" }] } });
+    const hooks = (kind, argv) => ({
+      currentVersion: () => "9.0.0",
+      detectInstall: () => ({ kind, confidence: "high", package_manager: "npm" }),
+      updateCheck: stale(argv),
+    });
+
+    let report = await buildBuzzDoctorReport(healthyDependencies({ run402Cli: hooks("global_npm", ["npm", "install", "-g", "run402@latest"]) }));
+    let action = report.checks.find((entry) => entry.name === "run402_cli").next_actions[0];
+    assert.equal(action.type, "upgrade_run402_cli");
+    assert.equal(action.safe_to_auto_execute, true);
+    assert.equal(action.requires_approval, false);
+    assert.equal(report.ok, true);
+
+    report = await buildBuzzDoctorReport(healthyDependencies({ run402Cli: hooks("local_project", ["npm", "install", "-D", "run402@latest"]) }));
+    action = report.checks.find((entry) => entry.name === "run402_cli").next_actions[0];
+    assert.equal(action.safe_to_auto_execute, false);
+    assert.equal(action.requires_approval, true);
+
+    report = await buildBuzzDoctorReport(healthyDependencies({ run402Cli: hooks("global_npm", ["npx", "-y", "run402@latest"]) }));
+    action = report.checks.find((entry) => entry.name === "run402_cli").next_actions[0];
+    assert.equal(action.safe_to_auto_execute, false, "only the exact global npm upgrade is auto-executable");
+  });
+
   it("keeps founder setup usable when a public relay hostname fails TLS and returns an operator repair", async () => {
     const tlsError = Object.assign(new Error("write EPROTO ssl3 alert handshake failure"), { code: "EPROTO" });
     const dependencies = healthyDependencies({

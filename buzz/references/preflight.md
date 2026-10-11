@@ -70,7 +70,7 @@ Missing Node uses the same shape with check `node_runtime`, code `BUZZ_PREFLIGHT
 
 Use `BUZZ_PREFLIGHT_NODE_INCOMPATIBLE` instead when the exact executable reports a major below 22.
 
-Missing Run402 after Node/npm pass uses check `run402_cli`, code `BUZZ_PREFLIGHT_RUN402_UNAVAILABLE`, and the shell action below. An installed version below 4.95.0 uses `BUZZ_PREFLIGHT_RUN402_INCOMPATIBLE` with the same command and action type `upgrade_run402_cli`. The agent or setup helper auto-executes it once because the setup request already authorized the necessary user-global CLI convergence; the human is not asked to paste it.
+Missing Run402 after Node/npm pass uses check `run402_cli`, code `BUZZ_PREFLIGHT_RUN402_UNAVAILABLE`, and the shell action below. An installed version below 4.95.0 uses `BUZZ_PREFLIGHT_RUN402_INCOMPATIBLE` with the same command and action type `upgrade_run402_cli`. The agent or setup helper auto-executes it once because the setup request already authorized the necessary user-global CLI convergence; the human is not asked to paste it. A compatible but older user-global install reports the warning `BUZZ_PREFLIGHT_RUN402_UPDATE_AVAILABLE` with the same `npm install -g run402@latest` command, also marked `safe_to_auto_execute: true`, and the agent applies it the same way; for a project-local or ambiguous install that warning's action stays advisory (`requires_approval: true`).
 
 ```json
 {

@@ -310,7 +310,7 @@
       "purpose": "integration",
       "interface": "cli",
       "exception": "Managed Buzz installation/consent contract remains independently owned.",
-      "sha256": "ed9fa71bcdfdb8156d78f01d726412459ef277eb728cf7891bc62408d8e8b9de",
+      "sha256": "2e1a5139d37736e70a2f8dbb5f1b9a4114ecc3ad6b3e1776cdffafee13209896",
       "outputs": [],
       "url": null,
       "checks": [
@@ -410,7 +410,7 @@
       "purpose": "integration",
       "interface": "cli",
       "exception": "Managed Buzz installation/consent contract remains independently owned.",
-      "sha256": "4e42a496ea1ddab03ecc358cf4ada433abbd8493a254e8f1dae80ffc941cb800",
+      "sha256": "08906a41aaaf97d0140952bedd1d6f7b4ba669e78fc4cf6de3e3172027caa382",
       "outputs": [],
       "url": null,
       "checks": [
