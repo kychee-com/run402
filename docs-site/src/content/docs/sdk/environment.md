@@ -101,7 +101,7 @@ Action options:
 - `mode: { kind: "applyReviewed", planId, planFingerprint? }` applies only when the reviewed plan still matches. The SDK verifies before upload and commit.
 - `approval: "never" | "yes" | { mode: "interactive"; approve(request) }` gates recursive prerequisites and local link writes. SDK default is `"never"`; CLI maps `-y/--yes` to `"yes"` and TTY prompts to interactive approval. If wallet/tier/project/link are already configured, `r.up()` can run the requested deploy without approval.
 - `autoPrerequisites` defaults to `true` for `up` and `false` for direct actions.
-- `idempotencyKey` supplies a root key; recursive gateway mutations derive child keys from it.
+- `idempotencyKey` supplies a root key; recursive gateway mutations (the faucet drip, the tier purchase) derive child keys from it. Without one they send no key: a key names one payment or creation intent, so a deliberate re-purchase is never answered with an earlier receipt.
 
 Legacy `dryRun: true` remains an action-graph compatibility mode.
 For typed deploy config, use `mode: "check"` for local validation and `mode: "plan"` for gateway review.

@@ -357,6 +357,97 @@ test("up project creation preserves explicit idempotency keys", async () => {
   }
 });
 
+// A key derived from up's inputs alone is the same for every wallet running a
+// default `up`, and it answers a wallet's deliberate re-purchase with its own
+// earlier cached receipt. The tier purchase and the faucet drip are keyed only
+// when the caller names the intent.
+test("up bootstrap sends no idempotency key for the faucet or tier purchase without a caller root key", async () => {
+  const dir = mkdtempSync(join(process.cwd(), ".tmp-run402-app-up-bootstrap-unkeyed-"));
+  writeFileSync(join(dir, "run402.json"), JSON.stringify(appManifest({
+    build: {
+      mode: "local",
+      commands: [],
+    },
+  })));
+  const previous = process.env.KYSIGNED_ALLOWED_CREATORS;
+  process.env.KYSIGNED_ALLOWED_CREATORS = "*@example.com";
+  const calls: string[] = [];
+  const sdk = fakeSdk({
+    calls,
+    walletConfigured: false,
+    tierActive: false,
+    activeProject: null,
+  });
+
+  try {
+    const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
+    const result = await actions.up({ name: "kysigned5" }, { approval: "yes" });
+
+    assert.ok(calls.includes("wallets.faucet:"), "the faucet drip must carry no derived key");
+    assert.ok(calls.includes("tier.set:"), "the tier purchase must carry no derived key");
+    assert.ok(!calls.some((call) => /^(wallets\.faucet|tier\.set):./.test(call)));
+    const faucetStep = result.steps.find((step) => step.action === "wallets.faucet" && step.state === "succeeded");
+    const tierStep = result.steps.find((step) => step.action === Run402Action.TierSet && step.state === "succeeded");
+    assert.equal(faucetStep?.details?.idempotency_key, null);
+    assert.equal(tierStep?.details?.idempotency_key, null);
+  } finally {
+    if (previous === undefined) delete process.env.KYSIGNED_ALLOWED_CREATORS;
+    else process.env.KYSIGNED_ALLOWED_CREATORS = previous;
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("up bootstrap scopes the faucet and tier keys under a caller-supplied root key", async () => {
+  const dir = mkdtempSync(join(process.cwd(), ".tmp-run402-app-up-bootstrap-keyed-"));
+  writeFileSync(join(dir, "run402.json"), JSON.stringify(appManifest({
+    build: {
+      mode: "local",
+      commands: [],
+    },
+  })));
+  const previous = process.env.KYSIGNED_ALLOWED_CREATORS;
+  process.env.KYSIGNED_ALLOWED_CREATORS = "*@example.com";
+  const calls: string[] = [];
+  const sdk = fakeSdk({
+    calls,
+    walletConfigured: false,
+    tierActive: false,
+    activeProject: null,
+  });
+
+  try {
+    const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
+    await actions.up({ name: "kysigned5", idempotencyKey: "user-up-key" }, { approval: "yes" });
+
+    assert.ok(calls.includes("wallets.faucet:action:user-up-key:wallets.faucet"));
+    assert.ok(calls.includes("tier.set:action:user-up-key:tier.set"));
+  } finally {
+    if (previous === undefined) delete process.env.KYSIGNED_ALLOWED_CREATORS;
+    else process.env.KYSIGNED_ALLOWED_CREATORS = previous;
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("up dry-run plans the tier purchase without a key when the caller supplied none", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "run402-up-dry-run-unkeyed-"));
+  writeFileSync(join(dir, "run402.deploy.json"), JSON.stringify({
+    site: { replace: { "index.html": { data: "<h1>hello</h1>" } } },
+  }));
+  const sdk = fakeSdk({ calls: [], walletConfigured: false, tierActive: false, activeProject: null });
+
+  try {
+    const result = await new NodeActions(sdk, { targetKind: "cloud", cwd: dir }).run(
+      { type: Run402Action.Up, name: "my-app" },
+      { dryRun: true },
+    );
+    const tierStep = result.steps.find((step) => step.action === Run402Action.TierSet);
+    assert.equal(tierStep?.state, "planned");
+    assert.equal(tierStep?.details?.idempotency_key, null);
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
 test("up app apply blocks remote build with explicit unsupported next action", async () => {
   const dir = mkdtempSync(join(tmpdir(), "run402-app-up-remote-build-"));
   writeFileSync(join(dir, "run402.json"), JSON.stringify(appManifest()));
@@ -1436,6 +1527,34 @@ test("projects provision can run SDK-owned recursive prerequisites when explicit
   ]);
   assert.ok(result.steps.some((step) => step.action === "wallets.faucet" && step.details?.idempotency_key === "action:provision-root:wallets.faucet"));
   assert.ok(result.steps.some((step) => step.action === Run402Action.TierSet && step.details?.idempotency_key === "action:provision-root:tier.set"));
+});
+
+test("projects provision prerequisites derive no faucet or tier key from the project name", async () => {
+  const calls: string[] = [];
+  const sdk = fakeSdk({
+    calls,
+    walletConfigured: false,
+    tierActive: false,
+    activeProject: null,
+  });
+
+  await new NodeActions(sdk, { targetKind: "cloud" }).run({
+    type: Run402Action.ProjectsProvision,
+    name: "my-app",
+  }, {
+    autoPrerequisites: true,
+    approval: "yes",
+  });
+
+  assert.deepEqual(calls, [
+    "wallets.status",
+    "wallets.create",
+    "tier.status",
+    "wallets.status",
+    "wallets.faucet:",
+    "tier.set:",
+    "projects.provision:",
+  ]);
 });
 
 test("up runs deploy-manifest verify.http checks after apply and surfaces verification.http[]", async (t) => {

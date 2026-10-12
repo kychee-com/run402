@@ -2176,12 +2176,13 @@ export class NodeActions implements Run402Actions {
       if (!opts.fund) return false;
     }
 
+    const faucetKey = run.childKey("wallets.faucet");
     const faucetStep = run.addStep({
       action: "wallets.faucet",
       description: "Request testnet faucet funds for wallet",
       mutation: true,
       auto: true,
-      details: { idempotency_key: run.childKey("wallets.faucet") },
+      details: { idempotency_key: faucetKey ?? null },
     });
     await run.approve(faucetStep, ["wallets.faucet"], "Request testnet USDC for the local wallet.");
     if (run.dryRun) {
@@ -2189,9 +2190,7 @@ export class NodeActions implements Run402Actions {
       return false;
     }
     run.setState(faucetStep, "running");
-    const faucet = await this.sdk.wallets.faucet({
-      idempotencyKey: run.childKey("wallets.faucet"),
-    });
+    const faucet = await this.sdk.wallets.faucet(faucetKey ? { idempotencyKey: faucetKey } : {});
     run.setState(faucetStep, "succeeded", {
       transaction_hash: faucet.transactionHash,
       amount: faucet.amount,
@@ -2218,7 +2217,7 @@ export class NodeActions implements Run402Actions {
         auto: true,
         details: {
           tier: desiredTier,
-          idempotency_key: run.childKey("tier.set"),
+          idempotency_key: run.childKey("tier.set") ?? null,
           reason: "dry_run",
         },
       });
@@ -2266,12 +2265,12 @@ export class NodeActions implements Run402Actions {
         tier: desiredTier,
         current_tier: current ?? null,
         active: status?.active ?? null,
-        idempotency_key: idempotencyKey,
+        idempotency_key: idempotencyKey ?? null,
       },
     });
     await run.approve(step, ["tier.set"], `Set the ${desiredTier} tier (start, renew, or upgrade).`);
     run.setState(step, "running");
-    const pay = () => this.sdk.tier.set(desiredTier, { idempotencyKey });
+    const pay = () => this.sdk.tier.set(desiredTier, idempotencyKey ? { idempotencyKey } : {});
     const result = await (justFunded ? afterFaucet(pay) : pay());
     run.setState(step, "succeeded", { tier: result.tier, action: result.action });
   }
@@ -2584,16 +2583,15 @@ class ActionRun {
     return this.input.idempotencyKey ?? this.options.idempotencyKey;
   }
 
-  childKey(scope: string): string {
-    const root = this.rootIdempotencyKey ?? deriveStableRootKey(this.input);
-    if (!root) {
-      throw this.error(
-        `Cannot derive an idempotency key for recursive mutation ${scope}.`,
-        "RUN402_IDEMPOTENCY_REQUIRED",
-        { scope, action: this.input.type },
-      );
-    }
-    return `action:${root}:${scope}`;
+  /**
+   * A recursive mutation's key exists only under a caller-supplied root. A key
+   * marks one payment or creation intent, a boundary only the caller knows: a
+   * key derived from the inputs alone would answer a deliberate second
+   * purchase with the first one's cached receipt.
+   */
+  childKey(scope: string): string | undefined {
+    const root = this.rootIdempotencyKey;
+    return root ? `action:${root}:${scope}` : undefined;
   }
 
   addStep(init: {
@@ -3540,25 +3538,6 @@ function workspaceLinkConflict(
         link_path: linkPath,
       },
     };
-  }
-  return null;
-}
-
-function deriveStableRootKey(input: Run402ActionInput): string | null {
-  if (input.type === Run402Action.ProjectsProvision && input.name) {
-    return `projects.provision:${input.name}`;
-  }
-  if (input.type === Run402Action.Up) {
-    const stable = JSON.stringify({
-      type: input.type,
-      dir: input.dir ?? ".",
-      manifest: input.manifest ?? null,
-      projectId: input.projectId ?? null,
-      name: input.name ?? null,
-      tier: input.tier ?? DEFAULT_BOOTSTRAP_TIER,
-      orgId: input.orgId ?? null,
-    });
-    return `up:${createHash("sha256").update(stable).digest("hex").slice(0, 24)}`;
   }
   return null;
 }
