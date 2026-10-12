@@ -2606,6 +2606,21 @@ describe("Deploy.apply (validation)", () => {
         /duplicate network/,
       ],
       [
+        { replace: [{ pattern: "/api/sell-sats", methods: ["POST"], target: { type: "function", name: "sell" }, pricing: { mode: "always", amount_usd_micros: 20000000, amount_msat: 100000000, pay_to: "org_default_payout" } }] },
+        "routes.replace.0.pricing.amount_msat",
+        /requires a Lightning network/,
+      ],
+      [
+        { replace: [{ pattern: "/api/sell-sats", methods: ["POST"], target: { type: "function", name: "sell" }, pricing: { mode: "always", amount_usd_micros: 20000000, amount_msat: 0, pay_to: "org_default_payout", networks: ["lightning"] } }] },
+        "routes.replace.0.pricing.amount_msat",
+        /positive safe JSON integer/,
+      ],
+      [
+        { replace: [{ pattern: "/api/sell-sats", methods: ["POST"], target: { type: "function", name: "sell" }, pricing: { mode: "always", amount_usd_micros: 20000000, pay_to: "org_default_payout", networks: ["lightning"], receipt: "on_fulfillment" } }] },
+        "routes.replace.0.pricing.receipt",
+        /EVM entries only/,
+      ],
+      [
         { replace: [{ pattern: "/api/credits", methods: ["POST"], target: { type: "function", name: "api" }, pricing: { mode: "always", amount_usd_micros: 250000, pay_to: "org_default_payout", extra: true } }] },
         "routes.replace.0.pricing.extra",
         /Unknown ReleaseSpec field/,

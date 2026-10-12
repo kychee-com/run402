@@ -360,8 +360,9 @@ Use `run402 up --check` for local validation and `run402 up --plan` for gateway 
 | `discovery` | `#/$defs/routePricingDiscovery` | no | See the downloadable schema for constraints. |
 | `mode` | `schema` | yes | See the downloadable schema for constraints. |
 | `amount_usd_micros` | `integer` | yes | See the downloadable schema for constraints. |
+| `amount_msat` | `integer` | no | Pins the Lightning price in millisatoshis for `lightning` / `lightning-testnet` entries; needs a Lightning network. Absent, each challenge quotes `amount_usd_micros` into whole satoshis. |
 | `pay_to` | `schema` | yes | See the downloadable schema for constraints. |
-| `networks` | `array` | no | Omit to accept production mainnet only. Include testnet explicitly for testnet payments. |
+| `networks` | `array` | no | Omit to accept production mainnet only. Include testnet explicitly for testnet payments. `lightning` / `lightning-testnet` sell for sats over x402 `exact` on `lnbtc`, settled to the org's Lightning receiver (`run402 orgs lightning-receiver set`); `receipt` cannot be combined with them. |
 
 <h3 id="release-functionRouteTarget">functionRouteTarget</h3>
 

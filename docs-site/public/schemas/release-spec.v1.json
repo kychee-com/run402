@@ -730,6 +730,12 @@
           "minimum": 1,
           "maximum": 9007199254740991
         },
+        "amount_msat": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991,
+          "description": "Pins the Lightning price in millisatoshis for `lightning` / `lightning-testnet` entries; needs a Lightning network. Absent, each challenge quotes `amount_usd_micros` into whole satoshis."
+        },
         "pay_to": {
           "const": "org_default_payout"
         },
@@ -743,10 +749,12 @@
           "items": {
             "enum": [
               "mainnet",
-              "testnet"
+              "testnet",
+              "lightning",
+              "lightning-testnet"
             ]
           },
-          "description": "Omit to accept production mainnet only. Include testnet explicitly for testnet payments."
+          "description": "Omit to accept production mainnet only. Include testnet explicitly for testnet payments. `lightning` / `lightning-testnet` sell for sats over x402 `exact` on `lnbtc`, settled to the org's Lightning receiver (`run402 orgs lightning-receiver set`); `receipt` cannot be combined with them."
         }
       }
     },

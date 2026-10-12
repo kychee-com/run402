@@ -110,6 +110,7 @@ function parseCliCommands(): string[] {
   }
   for (const action of parseOrgGroupActions("memberAction")) cmds.push(`orgs:members:${action}`);
   for (const action of parseOrgGroupActions("inviteAction")) cmds.push(`orgs:invite:${action}`);
+  for (const action of parseOrgGroupActions("lightningReceiverAction")) cmds.push(`orgs:lightning-receiver:${action}`);
   // Bare `run402 deploy` is the deploy itself (deploy.mjs dispatches anything
   // that is not a family word into it), so it is a top-level verb here.
   if (existsSync(join(__dirname, "cli/lib/deploy.mjs"))) cmds.push("deploy");
@@ -149,6 +150,7 @@ function parseOpenClawCommands(): string[] {
   }
   for (const action of parseOrgGroupActions("memberAction")) cmds.push(`orgs:members:${action}`);
   for (const action of parseOrgGroupActions("inviteAction")) cmds.push(`orgs:invite:${action}`);
+  for (const action of parseOrgGroupActions("lightningReceiverAction")) cmds.push(`orgs:lightning-receiver:${action}`);
   if (existsSync(join(__dirname, "openclaw/scripts/deploy.mjs"))) cmds.push("deploy");
   if (existsSync(join(__dirname, "openclaw/scripts/init.mjs"))) cmds.push("init");
   if (existsSync(join(__dirname, "openclaw/scripts/pay.mjs"))) cmds.push("pay");
@@ -229,7 +231,7 @@ function parseCredentialsRootActions(relativePath: string): string[] {
  *  from cli/lib/orgs.mjs (matched on `memberAction === "..."` / `inviteAction ===
  *  "..."`), mirroring `jobs artifacts`. The groups dispatch via `if (sub === ...)`
  *  so parseSubcommands skips them; these surface their leaves instead. */
-function parseOrgGroupActions(varName: "memberAction" | "inviteAction"): string[] {
+function parseOrgGroupActions(varName: "memberAction" | "inviteAction" | "lightningReceiverAction"): string[] {
   const filePath = join(__dirname, "cli/lib/orgs.mjs");
   if (!existsSync(filePath)) return [];
   const src = readFileSync(filePath, "utf-8");
@@ -652,6 +654,11 @@ const SURFACE: Capability[] = [
   { id: "get_org",             endpoint: "GET /orgs/v1/:org_id",                          cli: "orgs:get",           openclaw: "orgs:get" },
   { id: "rename_org",          endpoint: "PATCH /orgs/v1/:org_id",                        cli: "orgs:rename",        openclaw: "orgs:rename" },
   { id: "set_org_payout_wallet", endpoint: "PATCH /orgs/v1/:org_id/payout-wallet",         cli: "orgs:payout-wallet", openclaw: "orgs:payout-wallet" },
+  // tenant-lnbtc-priced-routes: the org's receive-only Lightning receiver. `set`
+  // consumes a bearer secret (the NWC pairing), so it is CLI-only on MCP.
+  { id: "set_org_lightning_receiver",    endpoint: "POST /orgs/v1/:org_id/lightning-receiver",   cli: "orgs:lightning-receiver:set",    openclaw: "orgs:lightning-receiver:set" },
+  { id: "get_org_lightning_receiver",    endpoint: "GET /orgs/v1/:org_id/lightning-receiver",    cli: "orgs:lightning-receiver:status", openclaw: "orgs:lightning-receiver:status" },
+  { id: "remove_org_lightning_receiver", endpoint: "DELETE /orgs/v1/:org_id/lightning-receiver", cli: "orgs:lightning-receiver:remove", openclaw: "orgs:lightning-receiver:remove" },
   // repo-first-onramp task 4 (design D6): the slug CLAIM spends money and is
   // a permanent handle: a paid, side-effecting, hard-to-undo mutation belongs
   // to a command the caller typed.
@@ -1213,6 +1220,9 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   get_org: "org.get",
   rename_org: "org.rename",
   set_org_payout_wallet: "org.setPayoutWallet",
+  set_org_lightning_receiver: "orgs.lightningReceiver.set",
+  get_org_lightning_receiver: "orgs.lightningReceiver.get",
+  remove_org_lightning_receiver: "orgs.lightningReceiver.remove",
   org_slug: "org.setSlug",
   whoami: "orgs.whoami",
   list_orgs: "orgs.list",

@@ -3076,6 +3076,7 @@ const ROUTE_METHOD_SET = new Set<string>(ROUTE_HTTP_METHODS);
 const ROUTE_PRICING_FIELDS = new Set([
   "mode",
   "amount_usd_micros",
+  "amount_msat",
   "pay_to",
   "networks",
   "receipt",
@@ -3684,21 +3685,47 @@ function validateRoutePricing(
       );
     }
   }
-  if (obj.networks === undefined) return;
-  if (!Array.isArray(obj.networks)) {
+  const networks = validateRoutePricingNetworks(obj.networks, resource);
+  const hasLightning = networks.some((network) => network === "lightning" || network === "lightning-testnet");
+  if (obj.amount_msat !== undefined) {
+    if (typeof obj.amount_msat !== "number" || !Number.isSafeInteger(obj.amount_msat) || obj.amount_msat <= 0) {
+      throw invalidRouteSpec(
+        `ReleaseSpec.${resource}.pricing.amount_msat must be a positive safe JSON integer`,
+        `${resource}.pricing.amount_msat`,
+      );
+    }
+    if (!hasLightning) {
+      throw invalidRouteSpec(
+        `ReleaseSpec.${resource}.pricing.amount_msat requires a Lightning network ("lightning" or "lightning-testnet") in pricing.networks`,
+        `${resource}.pricing.amount_msat`,
+      );
+    }
+  }
+  if (obj.receipt === "on_fulfillment" && hasLightning) {
+    throw invalidRouteSpec(
+      `ReleaseSpec.${resource}.pricing.receipt covers EVM entries only; merchant evidence is not issued for Lightning networks`,
+      `${resource}.pricing.receipt`,
+    );
+  }
+}
+
+/** The declared pricing networks, validated; `["mainnet"]` when omitted. */
+function validateRoutePricingNetworks(networks: unknown, resource: string): string[] {
+  if (networks === undefined) return ["mainnet"];
+  if (!Array.isArray(networks)) {
     throw invalidRouteSpec(
       `ReleaseSpec.${resource}.pricing.networks must be an array`,
       `${resource}.pricing.networks`,
     );
   }
-  if (obj.networks.length === 0) {
+  if (networks.length === 0) {
     throw invalidRouteSpec(
       `ReleaseSpec.${resource}.pricing.networks must not be empty; omit networks for production mainnet only`,
       `${resource}.pricing.networks`,
     );
   }
   const seen = new Set<string>();
-  for (const network of obj.networks) {
+  for (const network of networks) {
     if (typeof network !== "string" || !ROUTE_PRICING_NETWORK_SET.has(network)) {
       throw invalidRouteSpec(
         `Unsupported route pricing network ${JSON.stringify(network)} at ReleaseSpec.${resource}.pricing.networks. Supported networks: ${ROUTE_PRICING_NETWORKS.join(", ")}`,
@@ -3713,6 +3740,7 @@ function validateRoutePricing(
     }
     seen.add(network);
   }
+  return [...seen];
 }
 
 function validateRouteTarget(target: unknown, resource: string): "function" | "static" {

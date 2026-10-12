@@ -233,6 +233,12 @@ export const COMMAND_MANIFEST = [
   { path: ["orgs", "invite", "list"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG] },
   { path: ["orgs", "invite", "create"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG, "--email", "gate@example.com"] },
   { path: ["orgs", "invite", "rm"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG, "--principal", "prn_gate1"] },
+  // tenant-lnbtc-priced-routes: the org's receive-only Lightning receiver. `set`
+  // takes the pairing (a bearer secret) positionally or on stdin and is never
+  // run against a live node by the gate.
+  { path: ["orgs", "lightning-receiver", "set"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG, "--uri", "nostr+walletconnect://" + "ab".repeat(32) + "?relay=wss://relay.example.test&secret=" + "cd".repeat(32)] },
+  { path: ["orgs", "lightning-receiver", "status"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG] },
+  { path: ["orgs", "lightning-receiver", "remove"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG] },
 
   // ── grants ───────────────────────────────────────────────────────────────
   { path: ["grants", "create"], positionals: [p("wallet")], projectScoped: true, legacyPositionalProject: true, minimalArgs: ["0x1111111111111111111111111111111111111111", "--capability", "deploy"] },

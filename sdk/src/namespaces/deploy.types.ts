@@ -597,15 +597,33 @@ export type RouteHttpMethod = (typeof ROUTE_HTTP_METHODS)[number];
 export const ROUTE_PRICING_NETWORKS = [
   "mainnet",
   "testnet",
+  // tenant-lnbtc-priced-routes: the x402 `exact` scheme on Bitcoin Lightning
+  // (`lnbtc`), settled to the organization's own Lightning receiver.
+  "lightning",
+  "lightning-testnet",
 ] as const;
+
+export const LIGHTNING_ROUTE_PRICING_NETWORKS: readonly RoutePricingNetwork[] = ["lightning", "lightning-testnet"];
 
 export type RoutePricingNetwork = (typeof ROUTE_PRICING_NETWORKS)[number];
 
 export interface RoutePricingSpec {
   mode: "always";
   amount_usd_micros: number;
+  /**
+   * Pins the Lightning price in millisatoshis for the route's `lightning` /
+   * `lightning-testnet` entries; needs a Lightning network. Absent, each
+   * challenge quotes `amount_usd_micros` into whole satoshis.
+   */
+  amount_msat?: number;
   pay_to: "org_default_payout";
-  /** Omit to accept production mainnet only. Add `"testnet"` explicitly for testnet acceptance. */
+  /**
+   * Omit to accept production mainnet only. Add `"testnet"` explicitly for
+   * testnet acceptance. `"lightning"` / `"lightning-testnet"` sell for sats
+   * over x402 `exact` on `lnbtc`, settled to the organization's Lightning
+   * receiver (`run402 orgs lightning-receiver set`); a Lightning-only route
+   * needs no EVM payout wallet.
+   */
   networks?: readonly RoutePricingNetwork[];
   /** Ask the function to declare committed fulfillment for a signed merchant receipt. */
   receipt?: "on_fulfillment";

@@ -92,6 +92,7 @@ const SAMPLE_ARGS: Record<SecretReturningMethod, unknown[]> = {
   "me.status": [SESSION],
   "orgs.adopt.challenge": [{ wallet: WALLET, token: "cp_session_token_secret" }],
   "orgs.adopt.submit": [{ siwx: "siwx", token: "cp_session_token_secret" }],
+  "orgs.lightningReceiver.set": [{ orgId: ORG, nwcUri: `nostr+walletconnect://${"ab".repeat(32)}?relay=wss://relay.example.test&secret=${"cd".repeat(32)}` }],
   "admin.channels.connectTelegram": [{}, PROOFS],
   "admin.channels.revokeTelegram": ["tgb_1", PROOFS],
   "admin.rules.create": [{ telegramBindingId: "tgb_1" }, PROOFS],

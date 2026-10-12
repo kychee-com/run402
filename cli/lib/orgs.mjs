@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail, failLocal } from "./sdk-errors.mjs";
 import { resolveOrg, takeOrgPositional, requireRest } from "./org-context.mjs";
@@ -21,6 +22,9 @@ Usage:
   run402 orgs get    [<org_id>]
   run402 orgs rename [<org_id>] --name <display_name>   (or: --clear to remove the label)
   run402 orgs payout-wallet [<org_id>] <wallet_address>  (or: --clear to remove the explicit default)
+  run402 orgs lightning-receiver set    [<org_id>] <nwc-uri | ->   (receive-only NWC pairing; - reads it from stdin)
+  run402 orgs lightning-receiver status [<org_id>]
+  run402 orgs lightning-receiver remove [<org_id>]
   run402 orgs slug   <slug> [--org <org_id>]
   run402 orgs adopt  [--org <org_id>] [--name <label>]
   run402 orgs use     <org_id>
@@ -59,6 +63,8 @@ Subcommands:
   bind        Write this checkout's org (+room) into .run402.json — commit it
   unbind      Remove the org/room keys from .run402.json
   payout-wallet  Set or clear the tenant route payout wallet (admin+)
+  lightning-receiver  The org's receive-only Lightning receiver for routes priced on
+              lightning (set / status / remove; set and remove are admin+ + step-up)
   members     Manage members (list, add, role, rm) — mutations require owner
   invite      Manage email invites (list, create, rm) — mutations require owner
   audit       Control-plane audit trail for an org (admin+)
@@ -66,7 +72,7 @@ Subcommands:
 Notes:
   - A wallet AUTHENTICATES; an org owns projects. Membership/role authorizes.
   - Roles: ${ROLE_LIST}. Member/invite changes need an active owner.
-  - create/rename/payout-wallet/member/invite are step-up gated for control-plane sessions.
+  - create/rename/payout-wallet/lightning-receiver/member/invite are step-up gated for control-plane sessions.
   - Removing/demoting the org's only active owner fails with 409 LAST_OWNER.
   - JSON in, JSON out.
 
@@ -167,6 +173,31 @@ explicit default; a single active org wallet may still resolve automatically.
 
 The JSON response includes recovery.status, active_wallet_count, and
 next_actions for PAYOUT_WALLET_REQUIRED / PAYOUT_WALLET_AMBIGUOUS setup.
+`,
+  "lightning-receiver": `run402 orgs lightning-receiver — the org's receive-only Lightning receiver
+
+Usage:
+  run402 orgs lightning-receiver set    [<org_id>] <nwc-uri | ->
+  run402 orgs lightning-receiver status [<org_id>]
+  run402 orgs lightning-receiver remove [<org_id>]
+
+A route priced on "lightning" / "lightning-testnet" sells for sats over the
+x402 exact scheme on Bitcoin Lightning, settled to YOUR node: Run402 never
+holds the sats, a pairing that can spend, or a preimage. Register a
+nostr+walletconnect:// pairing (Nostr Wallet Connect) on a node you control
+that permits get_info and make_invoice and no payment method; pass "-" to read
+it from stdin so it never lands in a shell history. The gateway probes it
+before storing it (encrypted): a pairing that can pay_invoice is refused, and a
+one-satoshi test invoice must commit to the description hash the gateway
+supplies and be signed by the reported node — a failed check answers 422
+LIGHTNING_RECEIVER_PROBE_FAILED naming it in details.check. No read ever
+returns the pairing; the pairing is never printed here either.
+
+set and remove are admin/owner + step-up gated. status is any member: the node
+public key, network, permitted methods, last_probe_status (ok | failing) and
+last_error, custody: "organization". remove warns about active releases still
+priced on Lightning; those routes answer 503 LIGHTNING_RECEIVER_UNAVAILABLE
+until a receiver is registered again.
 `,
   members: `run402 orgs members — manage org members
 
@@ -832,6 +863,74 @@ async function runInvite(args) {
   fail({ code: "BAD_USAGE", message: `Unknown 'orgs invite' action: ${inviteAction}. Try list | create | rm.` });
 }
 
+/**
+ * `run402 orgs lightning-receiver set|status|remove` — the org's receive-only
+ * Lightning receiver (tenant-lnbtc-priced-routes). The pairing is a bearer
+ * secret for the org's node: read from the argument or stdin, sent once,
+ * never printed.
+ */
+async function runLightningReceiver(args) {
+  const [lightningReceiverAction, ...rest] = args;
+  if (!lightningReceiverAction || lightningReceiverAction === "--help" || lightningReceiverAction === "-h" || rest.includes("--help") || rest.includes("-h")) {
+    console.log(SUB_HELP["lightning-receiver"]);
+    process.exit(0);
+  }
+
+  if (lightningReceiverAction === "set") {
+    const a = normalizeArgv(rest);
+    assertKnownFlags(a, ["--org", "--uri", "--help", "-h"], ["--org", "--uri"]);
+    const uriFlag = flagValue(a, "--uri");
+    const { orgId: org, rest: pos } = await takeOrgPositional(a, ["--org", "--uri"], { cmd: "orgs" });
+    requireRest(pos, {
+      min: uriFlag !== null ? 0 : 1,
+      max: uriFlag !== null ? 0 : 1,
+      command: "run402 orgs lightning-receiver set [<org_id>] <nwc-uri | ->",
+      missing: "Missing <nwc-uri> (pass the pairing, --uri <nwc-uri>, or - to read it from stdin).",
+    });
+    const raw = uriFlag ?? pos[0];
+    let nwcUri;
+    try {
+      nwcUri = (raw === "-" ? readFileSync(0, "utf8") : raw).trim();
+    } catch (e) {
+      fail({ code: "BAD_USAGE", message: `Could not read the pairing from stdin: ${e?.message}` });
+    }
+    try {
+      console.log(JSON.stringify(await getSdk().orgs.lightningReceiver.set({ orgId: org, nwcUri }), null, 2));
+    } catch (err) {
+      reportSdkError(err);
+    }
+    return;
+  }
+
+  if (lightningReceiverAction === "status") {
+    const a = normalizeArgv(rest);
+    assertKnownFlags(a, ["--org", "--help", "-h"], ["--org"]);
+    const { orgId: org, rest: pos } = await takeOrgPositional(a, ["--org"], { cmd: "orgs" });
+    requireRest(pos, { max: 0, command: "run402 orgs lightning-receiver status [<org_id>]" });
+    try {
+      console.log(JSON.stringify(await getSdk().orgs.lightningReceiver.get({ orgId: org }), null, 2));
+    } catch (err) {
+      reportSdkError(err);
+    }
+    return;
+  }
+
+  if (lightningReceiverAction === "remove") {
+    const a = normalizeArgv(rest);
+    assertKnownFlags(a, ["--org", "--help", "-h"], ["--org"]);
+    const { orgId: org, rest: pos } = await takeOrgPositional(a, ["--org"], { cmd: "orgs" });
+    requireRest(pos, { max: 0, command: "run402 orgs lightning-receiver remove [<org_id>]" });
+    try {
+      console.log(JSON.stringify(await getSdk().orgs.lightningReceiver.remove({ orgId: org }), null, 2));
+    } catch (err) {
+      reportSdkError(err);
+    }
+    return;
+  }
+
+  fail({ code: "BAD_USAGE", message: `Unknown 'orgs lightning-receiver' action: ${lightningReceiverAction}. Try set | status | remove.` });
+}
+
 export async function run(sub, args) {
   if (!sub || sub === "--help" || sub === "-h") {
     console.log(HELP);
@@ -845,6 +944,10 @@ export async function run(sub, args) {
   }
   if (sub === "invite") {
     await runInvite(args ?? []);
+    return;
+  }
+  if (sub === "lightning-receiver") {
+    await runLightningReceiver(args ?? []);
     return;
   }
   if (Array.isArray(args) && (args.includes("--help") || args.includes("-h")) && SUB_HELP[sub]) {

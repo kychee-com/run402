@@ -372,6 +372,14 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="BUZZ_SECRET_INPUT_FORBIDDEN"></a>
 [`BUZZ_SECRET_INPUT_FORBIDDEN`](/errors/gateway/#BUZZ_SECRET_INPUT_FORBIDDEN)
 
+<a id="call_returned_no_data"></a>
+<a id="CALL_RETURNED_NO_DATA"></a>
+[`CALL_RETURNED_NO_DATA`](/errors/gateway/#CALL_RETURNED_NO_DATA)
+
+<a id="call_reverted"></a>
+<a id="CALL_REVERTED"></a>
+[`CALL_REVERTED`](/errors/gateway/#CALL_REVERTED)
+
 <a id="cannot_rebuild_unlocked_deps"></a>
 <a id="CANNOT_REBUILD_UNLOCKED_DEPS"></a>
 [`CANNOT_REBUILD_UNLOCKED_DEPS`](/errors/client/#CANNOT_REBUILD_UNLOCKED_DEPS)
@@ -467,6 +475,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="cycle_replacement_pending"></a>
 <a id="CYCLE_REPLACEMENT_PENDING"></a>
 [`CYCLE_REPLACEMENT_PENDING`](/errors/gateway/#CYCLE_REPLACEMENT_PENDING)
+
+<a id="database_read_only"></a>
+<a id="DATABASE_READ_ONLY"></a>
+[`DATABASE_READ_ONLY`](/errors/gateway/#DATABASE_READ_ONLY)
 
 <a id="default_mailbox_invalid"></a>
 <a id="DEFAULT_MAILBOX_INVALID"></a>
@@ -947,6 +959,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="INTERNAL_ERROR"></a>
 [`INTERNAL_ERROR`](/errors/gateway/#INTERNAL_ERROR)
 
+<a id="invalid_args"></a>
+<a id="INVALID_ARGS"></a>
+[`INVALID_ARGS`](/errors/gateway/#INVALID_ARGS)
+
 <a id="invalid_arguments"></a>
 <a id="INVALID_ARGUMENTS"></a>
 [`INVALID_ARGUMENTS`](/errors/client/#INVALID_ARGUMENTS)
@@ -1162,6 +1178,26 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="lightning_bearer_ineligible"></a>
 <a id="LIGHTNING_BEARER_INELIGIBLE"></a>
 [`LIGHTNING_BEARER_INELIGIBLE`](/errors/gateway/#LIGHTNING_BEARER_INELIGIBLE)
+
+<a id="lightning_receiver_not_found"></a>
+<a id="LIGHTNING_RECEIVER_NOT_FOUND"></a>
+[`LIGHTNING_RECEIVER_NOT_FOUND`](/errors/gateway/#LIGHTNING_RECEIVER_NOT_FOUND)
+
+<a id="lightning_receiver_probe_failed"></a>
+<a id="LIGHTNING_RECEIVER_PROBE_FAILED"></a>
+[`LIGHTNING_RECEIVER_PROBE_FAILED`](/errors/gateway/#LIGHTNING_RECEIVER_PROBE_FAILED)
+
+<a id="lightning_receiver_required"></a>
+<a id="LIGHTNING_RECEIVER_REQUIRED"></a>
+[`LIGHTNING_RECEIVER_REQUIRED`](/errors/gateway/#LIGHTNING_RECEIVER_REQUIRED)
+
+<a id="lightning_receiver_unavailable"></a>
+<a id="LIGHTNING_RECEIVER_UNAVAILABLE"></a>
+[`LIGHTNING_RECEIVER_UNAVAILABLE`](/errors/gateway/#LIGHTNING_RECEIVER_UNAVAILABLE)
+
+<a id="lightning_routes_still_active"></a>
+<a id="LIGHTNING_ROUTES_STILL_ACTIVE"></a>
+[`LIGHTNING_ROUTES_STILL_ACTIVE`](/errors/client/#LIGHTNING_ROUTES_STILL_ACTIVE)
 
 <a id="lightning_topup_amount_out_of_bounds"></a>
 <a id="LIGHTNING_TOPUP_AMOUNT_OUT_OF_BOUNDS"></a>
@@ -1396,6 +1432,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="operation_cursor_not_found"></a>
 <a id="OPERATION_CURSOR_NOT_FOUND"></a>
 [`OPERATION_CURSOR_NOT_FOUND`](/errors/gateway/#OPERATION_CURSOR_NOT_FOUND)
+
+<a id="operation_interrupted"></a>
+<a id="OPERATION_INTERRUPTED"></a>
+[`OPERATION_INTERRUPTED`](/errors/gateway/#OPERATION_INTERRUPTED)
 
 <a id="operation_not_found"></a>
 <a id="OPERATION_NOT_FOUND"></a>
@@ -2087,6 +2127,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="RECENT_SIGN_IN_REQUIRED"></a>
 [`RECENT_SIGN_IN_REQUIRED`](/errors/gateway/#RECENT_SIGN_IN_REQUIRED)
 
+<a id="recipient_lightning_receiver_required"></a>
+<a id="RECIPIENT_LIGHTNING_RECEIVER_REQUIRED"></a>
+[`RECIPIENT_LIGHTNING_RECEIVER_REQUIRED`](/errors/gateway/#RECIPIENT_LIGHTNING_RECEIVER_REQUIRED)
+
 <a id="recipient_set_mismatch"></a>
 <a id="RECIPIENT_SET_MISMATCH"></a>
 [`RECIPIENT_SET_MISMATCH`](/errors/gateway/#RECIPIENT_SET_MISMATCH)
@@ -2253,6 +2297,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="ROUTE_RETIRING"></a>
 [`ROUTE_RETIRING`](/errors/client/#ROUTE_RETIRING)
 
+<a id="routed_call_depth_exceeded"></a>
+<a id="ROUTED_CALL_DEPTH_EXCEEDED"></a>
+[`ROUTED_CALL_DEPTH_EXCEEDED`](/errors/gateway/#ROUTED_CALL_DEPTH_EXCEEDED)
+
 <a id="routed_function_invoke_failed"></a>
 <a id="ROUTED_FUNCTION_INVOKE_FAILED"></a>
 [`ROUTED_FUNCTION_INVOKE_FAILED`](/errors/gateway/#ROUTED_FUNCTION_INVOKE_FAILED)
@@ -2401,9 +2449,17 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="SLUG_TAKEN"></a>
 [`SLUG_TAKEN`](/errors/gateway/#SLUG_TAKEN)
 
+<a id="snapshot_auth_restore_requires_principal"></a>
+<a id="SNAPSHOT_AUTH_RESTORE_REQUIRES_PRINCIPAL"></a>
+[`SNAPSHOT_AUTH_RESTORE_REQUIRES_PRINCIPAL`](/errors/gateway/#SNAPSHOT_AUTH_RESTORE_REQUIRES_PRINCIPAL)
+
 <a id="snapshot_conflicted_index"></a>
 <a id="SNAPSHOT_CONFLICTED_INDEX"></a>
 [`SNAPSHOT_CONFLICTED_INDEX`](/errors/gateway/#SNAPSHOT_CONFLICTED_INDEX)
+
+<a id="snapshot_kind_not_deletable_by_service_key"></a>
+<a id="SNAPSHOT_KIND_NOT_DELETABLE_BY_SERVICE_KEY"></a>
+[`SNAPSHOT_KIND_NOT_DELETABLE_BY_SERVICE_KEY`](/errors/gateway/#SNAPSHOT_KIND_NOT_DELETABLE_BY_SERVICE_KEY)
 
 <a id="spend_approval_required"></a>
 <a id="SPEND_APPROVAL_REQUIRED"></a>
@@ -2412,6 +2468,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="sql_batch_statement_failed"></a>
 <a id="SQL_BATCH_STATEMENT_FAILED"></a>
 [`SQL_BATCH_STATEMENT_FAILED`](/errors/gateway/#SQL_BATCH_STATEMENT_FAILED)
+
+<a id="sql_result_too_large"></a>
+<a id="SQL_RESULT_TOO_LARGE"></a>
+[`SQL_RESULT_TOO_LARGE`](/errors/gateway/#SQL_RESULT_TOO_LARGE)
 
 <a id="stage_candidate_reserved"></a>
 <a id="STAGE_CANDIDATE_RESERVED"></a>
@@ -2469,6 +2529,14 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="TOO_MANY_ENCODES_QUEUED"></a>
 [`TOO_MANY_ENCODES_QUEUED`](/errors/gateway/#TOO_MANY_ENCODES_QUEUED)
 
+<a id="transfer_already_processed"></a>
+<a id="TRANSFER_ALREADY_PROCESSED"></a>
+[`TRANSFER_ALREADY_PROCESSED`](/errors/gateway/#TRANSFER_ALREADY_PROCESSED)
+
+<a id="transfer_expired"></a>
+<a id="TRANSFER_EXPIRED"></a>
+[`TRANSFER_EXPIRED`](/errors/gateway/#TRANSFER_EXPIRED)
+
 <a id="transfer_has_no_vault"></a>
 <a id="TRANSFER_HAS_NO_VAULT"></a>
 [`TRANSFER_HAS_NO_VAULT`](/errors/client/#TRANSFER_HAS_NO_VAULT)
@@ -2477,9 +2545,21 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="TRANSFER_NOT_FOUND"></a>
 [`TRANSFER_NOT_FOUND`](/errors/gateway/#TRANSFER_NOT_FOUND)
 
+<a id="transfer_vault_busy"></a>
+<a id="TRANSFER_VAULT_BUSY"></a>
+[`TRANSFER_VAULT_BUSY`](/errors/gateway/#TRANSFER_VAULT_BUSY)
+
+<a id="transfer_vault_byo_unsupported"></a>
+<a id="TRANSFER_VAULT_BYO_UNSUPPORTED"></a>
+[`TRANSFER_VAULT_BYO_UNSUPPORTED`](/errors/gateway/#TRANSFER_VAULT_BYO_UNSUPPORTED)
+
 <a id="transfer_vault_handover_pending"></a>
 <a id="TRANSFER_VAULT_HANDOVER_PENDING"></a>
-[`TRANSFER_VAULT_HANDOVER_PENDING`](/errors/client/#TRANSFER_VAULT_HANDOVER_PENDING)
+[`TRANSFER_VAULT_HANDOVER_PENDING`](/errors/gateway/#TRANSFER_VAULT_HANDOVER_PENDING)
+
+<a id="transfer_vault_handover_principal_mismatch"></a>
+<a id="TRANSFER_VAULT_HANDOVER_PRINCIPAL_MISMATCH"></a>
+[`TRANSFER_VAULT_HANDOVER_PRINCIPAL_MISMATCH`](/errors/gateway/#TRANSFER_VAULT_HANDOVER_PRINCIPAL_MISMATCH)
 
 <a id="transfer_vault_recipient_not_nominated"></a>
 <a id="TRANSFER_VAULT_RECIPIENT_NOT_NOMINATED"></a>
@@ -2751,6 +2831,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="vault_unsupported_target"></a>
 <a id="VAULT_UNSUPPORTED_TARGET"></a>
 [`VAULT_UNSUPPORTED_TARGET`](/errors/client/#VAULT_UNSUPPORTED_TARGET)
+
+<a id="vault_writer_key_unpublished"></a>
+<a id="VAULT_WRITER_KEY_UNPUBLISHED"></a>
+[`VAULT_WRITER_KEY_UNPUBLISHED`](/errors/gateway/#VAULT_WRITER_KEY_UNPUBLISHED)
 
 <a id="vault_writer_not_admitted"></a>
 <a id="VAULT_WRITER_NOT_ADMITTED"></a>

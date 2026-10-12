@@ -340,6 +340,58 @@ describe("r.org(id).setPayoutWallet", () => {
   });
 });
 
+describe("r.orgs.lightningReceiver", () => {
+  const receiver = {
+    org_id: "org_abc",
+    receiver_id: "7d1f2020-4444-4555-8666-777788889999",
+    node_pubkey: "02" + "ab".repeat(32),
+    network: "lnbtc:000000000019d6689c085ae165831e93",
+    methods: ["get_info", "make_invoice"],
+    probed_at: "2026-10-12T10:00:00.000Z",
+    last_probe_status: "ok",
+    last_error: null,
+    custody: "organization",
+    created_at: "2026-10-12T10:00:00.000Z",
+    updated_at: "2026-10-12T10:00:00.000Z",
+  };
+  const PAIRING = `nostr+walletconnect://${"ab".repeat(32)}?relay=wss://relay.example.test&secret=${"cd".repeat(32)}`;
+
+  it("POSTs /orgs/v1/:org_id/lightning-receiver with nwc_uri and returns the non-secret receiver", async () => {
+    const { fetch, calls } = mockFetch((call) => {
+      assert.equal(call.method, "POST");
+      assert.equal(call.url, "https://api.example.test/orgs/v1/org_abc/lightning-receiver");
+      assert.deepEqual(parseBody(call.body), { nwc_uri: PAIRING });
+      return jsonResponse(receiver, 201);
+    });
+    const result = await makeSdk(fetch).orgs.lightningReceiver.set({ orgId: "org_abc", nwcUri: PAIRING });
+    assert.equal(result.node_pubkey, receiver.node_pubkey);
+    assert.equal(result.custody, "organization");
+    assert.equal(JSON.stringify(result).includes("cd".repeat(32)), false);
+    assert.equal(calls.length, 1);
+  });
+
+  it("GETs and DELETEs the receiver", async () => {
+    const { fetch, calls } = mockFetch((call) => {
+      if (call.method === "GET") return jsonResponse(receiver);
+      assert.equal(call.method, "DELETE");
+      return jsonResponse({ status: "removed", org_id: "org_abc", receiver_id: receiver.receiver_id, node_pubkey: receiver.node_pubkey, network: receiver.network, warnings: [] });
+    });
+    const sdk = makeSdk(fetch);
+    assert.equal((await sdk.orgs.lightningReceiver.get({ orgId: "org_abc" })).last_probe_status, "ok");
+    assert.equal((await sdk.orgs.lightningReceiver.remove({ orgId: "org_abc" })).status, "removed");
+    assert.equal(calls.length, 2);
+  });
+
+  it("refuses a pairing that is not a nostr+walletconnect:// URI before any request", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({}));
+    await assert.rejects(
+      () => makeSdk(fetch).orgs.lightningReceiver.set({ orgId: "org_abc", nwcUri: "https://not-a-pairing.example" }),
+      isLocalError,
+    );
+    assert.equal(calls.length, 0);
+  });
+});
+
 describe("r.org(id) — id binding", () => {
   it("throws a LocalError when constructed without an org id", () => {
     const { fetch } = mockFetch(() => jsonResponse({}));

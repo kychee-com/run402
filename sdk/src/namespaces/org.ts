@@ -416,6 +416,96 @@ export class OrgAdopt {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Lightning receiver (tenant-lnbtc-priced-routes)
+// ---------------------------------------------------------------------------
+
+/** The organization's receive-only Lightning receiver, as the gateway reports it (never the pairing). */
+export interface LightningReceiver {
+  org_id: string;
+  receiver_id: string;
+  /** The node's compressed public key (hex): every Lightning entry's `payTo`. */
+  node_pubkey: string;
+  /** `lnbtc:000000000019d6689c085ae165831e93` (mainnet) or `lnbtc:000000000933ea01ad0ee984209779ba` (testnet). */
+  network: string;
+  methods: string[];
+  probed_at: string;
+  last_probe_status: "ok" | "failing";
+  last_error: string | null;
+  custody: "organization";
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SetLightningReceiverInput {
+  orgId: string;
+  /** A `nostr+walletconnect://` pairing permitting `get_info` and `make_invoice` and no spending method. */
+  nwcUri: string;
+}
+
+export interface LightningReceiverRemoved {
+  status: "removed";
+  org_id: string;
+  receiver_id: string;
+  node_pubkey: string;
+  network: string;
+  warnings: Array<{
+    code: "LIGHTNING_ROUTES_STILL_ACTIVE";
+    project_id: string;
+    release_id: string;
+    route_patterns: string[];
+    message: string;
+  }>;
+}
+
+/**
+ * `r.orgs.lightningReceiver.*`: the organization's bring-your-own, receive-only
+ * Lightning receiver for routes priced on `lightning` / `lightning-testnet`.
+ * The sats land on the organization's own node; Run402 holds a pairing that
+ * can only mint invoices, never a preimage. `set` consumes a secret and is
+ * CLI-only on the MCP surface (`run402 orgs lightning-receiver set`).
+ */
+export class OrgLightningReceiver {
+  constructor(private readonly client: Client) {}
+
+  /**
+   * Register or replace the receiver (`POST /orgs/v1/:org_id/lightning-receiver`).
+   * Org admin/owner plus step-up. The gateway probes the pairing before storing
+   * it: a pairing that can spend, or whose test invoice does not honor a
+   * description hash, is refused with `LIGHTNING_RECEIVER_PROBE_FAILED` and
+   * `details.check`. A replacement rotates `receiver_id`.
+   */
+  async set(input: SetLightningReceiverInput): Promise<LightningReceiver> {
+    gateSecret(this.client, "orgs.lightningReceiver.set", input);
+    if (!input?.orgId) throw new LocalError("orgs.lightningReceiver.set requires { orgId, nwcUri }", "registering org Lightning receiver");
+    if (typeof input.nwcUri !== "string" || !input.nwcUri.startsWith("nostr+walletconnect://")) {
+      throw new LocalError("orgs.lightningReceiver.set requires nwcUri, a nostr+walletconnect:// pairing", "registering org Lightning receiver");
+    }
+    return this.client.request<LightningReceiver>(`/orgs/v1/${encodeURIComponent(input.orgId)}/lightning-receiver`, {
+      method: "POST",
+      body: { nwc_uri: input.nwcUri },
+      context: "registering org Lightning receiver",
+    });
+  }
+
+  /** The receiver's non-secret facts and health (`GET …/lightning-receiver`); any active member. */
+  async get(input: { orgId: string }): Promise<LightningReceiver> {
+    if (!input?.orgId) throw new LocalError("orgs.lightningReceiver.get requires { orgId }", "reading org Lightning receiver");
+    return this.client.request<LightningReceiver>(`/orgs/v1/${encodeURIComponent(input.orgId)}/lightning-receiver`, {
+      context: "reading org Lightning receiver",
+    });
+  }
+
+  /** Remove the receiver (`DELETE …/lightning-receiver`); admin/owner plus step-up. Warns about releases still priced on Lightning. */
+  async remove(input: { orgId: string }): Promise<LightningReceiverRemoved> {
+    if (!input?.orgId) throw new LocalError("orgs.lightningReceiver.remove requires { orgId }", "removing org Lightning receiver");
+    return this.client.request<LightningReceiverRemoved>(`/orgs/v1/${encodeURIComponent(input.orgId)}/lightning-receiver`, {
+      method: "DELETE",
+      context: "removing org Lightning receiver",
+    });
+  }
+}
+
 export class Orgs {
   /**
    * Adopt the org your wallet's agent owns: `r.orgs.adopt.challenge()` +
@@ -423,9 +513,12 @@ export class Orgs {
    * `@run402/sdk/node` runs the full dance.
    */
   readonly adopt: OrgAdopt;
+  /** The organization's receive-only Lightning receiver for routes priced on Lightning: `r.orgs.lightningReceiver.set/get/remove`. */
+  readonly lightningReceiver: OrgLightningReceiver;
 
   constructor(private readonly client: Client) {
     this.adopt = new OrgAdopt(client);
+    this.lightningReceiver = new OrgLightningReceiver(client);
   }
 
   /**

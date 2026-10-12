@@ -231,6 +231,11 @@ export const SECRET_RETURNING_METHODS = {
   "writeApproval.exchangeClaimCode": { command: () => "run402 approve", why: "A write approval is a person's passkey-signed credential." },
   "me.overview": { when: hasToken, command: () => "run402 orgs list", why: SIGN_IN_WHY },
   "me.status": { when: hasToken, command: () => "run402 whoami", why: SIGN_IN_WHY },
+  // ── orgs: the Lightning receiver pairing is a secret the caller hands in ──
+  "orgs.lightningReceiver.set": {
+    command: (input: unknown) => `run402 orgs lightning-receiver set${orgFlag(obj(input).orgId)} <nwc-uri | ->`,
+    why: "The NWC pairing is a bearer secret for the organization's node; hand it to the CLI (or on stdin), never to a snippet.",
+  },
   "orgs.adopt.challenge": { when: hasToken, command: () => "run402 orgs adopt", why: SIGN_IN_WHY },
   "orgs.adopt.submit": { when: hasToken, command: () => "run402 orgs adopt", why: SIGN_IN_WHY },
   "admin.channels.connectTelegram": { when: (_opts: unknown, proofs: unknown) => hasToken(proofs), command: () => "run402 contacts connect telegram", why: SIGN_IN_WHY },
