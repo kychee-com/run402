@@ -69,6 +69,8 @@ export interface ProjectEvent {
   event_type: string;
   /** Event class stamped at write time (drives retention: mandatory classes keep 365 days, others 90). */
   class: string;
+  /** How significant the event is — see {@link EventSeverity}. */
+  severity: EventSeverity;
   occurred_at: string;
   /** Compact fact: resource ids + verdict fields. Oversize payloads carry `payload_truncated: true` + `dropped_keys[]`. */
   payload: Record<string, unknown>;
@@ -76,6 +78,16 @@ export interface ProjectEvent {
   next_actions: ProjectEventNextAction[];
   [key: string]: unknown;
 }
+
+/**
+ * How significant an event is, in ascending order: `info` routine (happened as
+ * designed), `notice` unusual but not known to be wrong, `warn` probably wrong
+ * (look soon), `critical` wrong now. Stamped at write and never updated: an
+ * app event carries what its emitter declared (`info` when it declared
+ * nothing — never inferred), a platform event the level registered for its
+ * type. The platform never computes a severity from counts or rates.
+ */
+export type EventSeverity = "info" | "notice" | "warn" | "critical";
 
 /** Options for {@link Events.list} / {@link Events.listForOrg}. */
 export interface ListEventsOptions {
@@ -108,6 +120,14 @@ export interface ListEventsOptions {
    * comma-joined `event_type` query param (`event_type=a,b`).
    */
   eventType?: string | string[];
+  /**
+   * Only events at or above this severity (`info` < `notice` < `warn` <
+   * `critical`) — `"warn"` catches up on what matters. Serializes to
+   * `min_severity`. Like `source` and `eventType` it joins the cursor's
+   * projection: a cursor from a filtered read resets on a read with other
+   * filters. `"info"` filters nothing and keeps the unfiltered cursor.
+   */
+  minSeverity?: EventSeverity;
 }
 
 /** One page of the events feed, oldest-first. */

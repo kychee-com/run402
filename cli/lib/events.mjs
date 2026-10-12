@@ -20,13 +20,16 @@ import { assertAllowedValue, assertKnownFlags, flagValue, normalizeArgv, positio
 /** Wire `source` vocabulary (mirrors the gateway's app/platform dichotomy). */
 export const SOURCES = ["app", "platform"];
 
+/** Event severity, ascending (event-attention-rules). */
+export const SEVERITIES = ["info", "notice", "warn", "critical"];
+
 const HELP = `run402 events — what happened to your project since you last looked
 
 Usage:
   run402 events list [--project <project_id>] [--cursor <cursor>] [--limit <n>]
-                     [--source <app|platform>] [--type <name[,name]>]
+                     [--source <app|platform>] [--type <name[,name]>] [--min-severity <level>]
   run402 events list --org <org_id> [--cursor <cursor>] [--limit <n>]
-                     [--source <app|platform>] [--type <name[,name]>]
+                     [--source <app|platform>] [--type <name[,name]>] [--min-severity <level>]
 
 Options:
   --project <project_id>  Project to read (defaults to the active project)
@@ -39,6 +42,17 @@ Options:
   --source <s>      Restrict to one source: ${SOURCES.join(" | ")}
   --type <names>    Restrict to one or more event types, comma-separated
                      (e.g. signature_completed,booking_created)
+  --min-severity <level>  Only events at or above: ${SEVERITIES.join(" < ")}.
+                    "warn" catches up on what matters. The response cursor
+                    belongs to that filtered view: replaying it with other
+                    filters resets.
+
+Severity:
+  Every event carries "severity". An app event has what its emitter declared
+  (info when it declared nothing — never inferred); a platform event has the
+  level registered for its type (mailbox_suspended is warn,
+  verification_succeeded is notice). info is routine, notice unusual but not
+  known to be wrong, warn probably wrong, critical wrong now.
 
 App events vs platform events:
   Every row is source-discriminated. "platform" is the platform's own
@@ -131,7 +145,7 @@ export async function run(sub, args) {
 
 async function list(args) {
   const a = normalizeArgv(args);
-  const valueFlags = ["--project", "--org", "--cursor", "--limit", "--source", "--type"];
+  const valueFlags = ["--project", "--org", "--cursor", "--limit", "--source", "--type", "--min-severity"];
   assertKnownFlags(a, [...valueFlags, "--help", "-h"], valueFlags);
   const extra = positionalArgs(a, valueFlags);
   if (extra.length > 0) {
@@ -164,6 +178,11 @@ async function list(args) {
     opts.source = source;
   }
   if (type != null) opts.eventType = type;
+  const minSeverity = flagValue(a, "--min-severity");
+  if (minSeverity != null) {
+    assertAllowedValue(minSeverity, SEVERITIES, "--min-severity");
+    opts.minSeverity = minSeverity;
+  }
 
   try {
     const page = org

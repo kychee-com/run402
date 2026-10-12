@@ -197,3 +197,13 @@ describe("events.listForOrg", () => {
     });
   });
 });
+
+describe("events.list — minSeverity (event-attention-rules)", () => {
+  it("serializes minSeverity to min_severity, composing with the other filters", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({ events: [], cursor: "evc_0.ab12cd", has_more: false, reset: false }));
+    await makeSdk(fetch).events.list("prj_1", { source: "app", minSeverity: "warn" });
+    const url = new URL(calls[0]!.url);
+    assert.equal(url.searchParams.get("min_severity"), "warn");
+    assert.equal(url.searchParams.get("source"), "app");
+  });
+});

@@ -47,7 +47,7 @@ Usage:
   run402 contacts rm <contact_id>
   run402 contacts preferences
   run402 contacts preferences set <key>=<value> [<key>=<value> ...]
-  run402 contacts test [--source app|platform] [--type <event_type>]
+  run402 contacts test [--source app|platform] [--type <event_type>] [--severity <level>]
 
 Two kinds, one question:
   escalation   an email in the paging LADDER — \`add\`, with a --level that
@@ -271,7 +271,7 @@ async function runChannels(args) {
 
 async function test(args) {
   const parsedArgs = normalizeArgv(args);
-  const valueFlags = ["--source", "--type"];
+  const valueFlags = ["--source", "--type", "--severity"];
   assertKnownFlags(parsedArgs, [...valueFlags, "--help", "-h"], valueFlags);
   const extra = positionalArgs(parsedArgs, valueFlags);
   if (extra.length > 0) {
@@ -284,6 +284,11 @@ async function test(args) {
   const opts = {};
   if (source) opts.source = source;
   if (eventType) opts.eventType = eventType;
+  const severity = flagValue(parsedArgs, "--severity");
+  if (severity !== null) {
+    assertAllowedValue(severity, ["info", "notice", "warn", "critical"], "--severity");
+    opts.severity = severity;
+  }
   try {
     const data = await getSdk().admin.testNotification(opts);
     console.log(JSON.stringify(data, null, 2));

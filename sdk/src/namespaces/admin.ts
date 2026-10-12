@@ -187,7 +187,18 @@ export interface TestNotificationOptions {
    * sample event when omitted.
    */
   eventType?: string;
+  /**
+   * The synthetic event's severity (default `notice` on the gateway), so a
+   * rule filtered at `warn` can be exercised with `"warn"`.
+   */
+  severity?: RoutingRuleSeverity;
 }
+
+/** A rule that did not send for the synthetic test event, and why. */
+export type TestNotificationSkippedRule =
+  | { rule_id: string; reason: "below_min_severity"; min_severity: RoutingRuleSeverity }
+  | { rule_id: string; reason: "deferred_to_window"; next_window_closes_at: string }
+  | { rule_id: string; reason: "escalation_not_exercised"; escalation_level: number | null };
 
 /** One Telegram destination's outcome from a `testNotification()` call —
  *  present only when the caller has a routing rule matching the synthetic
@@ -216,7 +227,11 @@ export interface TestNotificationResult {
   /** Telegram delivery report for the synthetic event, routed through the
    *  caller's normal rules — the full binding + rule + render + send
    *  chain, not just email/webhook. */
-  telegram: { destinations: TestNotificationDestination[] };
+  telegram: {
+    destinations: TestNotificationDestination[];
+    /** Rules the synthetic event did not send through: below their min_severity, held for a window, or escalation rules (a test never pages the ladder). */
+    skipped_rules?: TestNotificationSkippedRule[];
+  };
   note: string;
 }
 
@@ -328,6 +343,12 @@ export interface RevokeTelegramResult {
  */
 export type RoutingRuleSource = "app" | "platform";
 
+/** `telegram` sends to a binding; `escalation` raises on the organization's escalation ladder. */
+export type RoutingRuleChannel = "telegram" | "escalation";
+
+/** Severity levels a rule filters on — the same vocabulary events carry. */
+export type RoutingRuleSeverity = "info" | "notice" | "warn" | "critical";
+
 /**
  * Wire-shaped routing rule. Every match dimension (`project_id`, `source`,
  * `event_types`, `classes`) is ANDed; `null` is a wildcard for that
@@ -345,8 +366,28 @@ export interface RoutingRule {
   source: RoutingRuleSource | null;
   event_types: string[] | null;
   classes: string[] | null;
-  channel: "telegram";
-  telegram_binding_id: string;
+  /**
+   * Only events at or above this severity match. Never null: a rule created
+   * without one stores `notice` when it names no event types and `info` when
+   * it names some (naming a type opts in to it).
+   */
+  min_severity: RoutingRuleSeverity;
+  /** Top-level payload keys a windowed rule groups by, or null. */
+  group_by: string[] | null;
+  /** Reduction window in seconds (60-86400): ONE message per closed window, a line per group. Null = per event. */
+  window_seconds: number | null;
+  channel: RoutingRuleChannel;
+  /** Set exactly for a telegram rule. */
+  telegram_binding_id: string | null;
+  /** Set exactly for an escalation rule: the ladder level a match raises at. */
+  escalation_level: number | null;
+  /** Escalation rules: raises the bounds refused, and when the last was. */
+  escalation_refused_count: number;
+  last_escalation_refused_at: string | null;
+  /** Windowed rules: when the current window closes — the earliest a message can arrive. */
+  next_window_closes_at?: string;
+  /** Advisory reachability notes; never blocks. */
+  warnings?: string[];
   enabled: boolean;
   created_at: string;
   updated_at: string;
@@ -359,11 +400,22 @@ export interface RoutingRule {
  * legal.
  */
 export interface CreateRoutingRuleInput {
-  telegramBindingId: string;
+  /** Required for a telegram rule (the default channel); refused for an escalation rule. */
+  telegramBindingId?: string;
   projectId?: string | null;
   source?: RoutingRuleSource | null;
   eventTypes?: string[] | null;
   classes?: string[] | null;
+  /** Omitted: `notice` without eventTypes, `info` with them. */
+  minSeverity?: RoutingRuleSeverity | null;
+  /** 1-3 top-level payload keys; needs windowSeconds. */
+  groupBy?: string[] | null;
+  /** 60-86400: one message per closed window instead of one per event. */
+  windowSeconds?: number | null;
+  /** Defaults to `telegram`. `escalation` needs projectId, escalationLevel, and owner authority on the project's organization. */
+  channel?: RoutingRuleChannel;
+  /** Escalation rules only (1-10). */
+  escalationLevel?: number | null;
 }
 
 /**
@@ -378,6 +430,11 @@ export interface UpdateRoutingRulePatch {
   source?: RoutingRuleSource | null;
   eventTypes?: string[] | null;
   classes?: string[] | null;
+  minSeverity?: RoutingRuleSeverity;
+  groupBy?: string[] | null;
+  windowSeconds?: number | null;
+  /** Escalation rules only. A rule keeps its channel. */
+  escalationLevel?: number;
   telegramBindingId?: string;
   enabled?: boolean;
 }
@@ -479,11 +536,17 @@ export class Rules {
    */
   async create(input: CreateRoutingRuleInput, proofs?: SessionProofs): Promise<CreateRoutingRuleResult> {
     gateSecret(this.client, "admin.rules.create", input, proofs);
-    const body: Record<string, unknown> = { telegram_binding_id: input.telegramBindingId };
+    const body: Record<string, unknown> = {};
+    if (input.telegramBindingId !== undefined) body.telegram_binding_id = input.telegramBindingId;
     if (input.projectId !== undefined) body.project_id = input.projectId;
     if (input.source !== undefined) body.source = input.source;
     if (input.eventTypes !== undefined) body.event_types = input.eventTypes;
     if (input.classes !== undefined) body.classes = input.classes;
+    if (input.minSeverity !== undefined) body.min_severity = input.minSeverity;
+    if (input.groupBy !== undefined) body.group_by = input.groupBy;
+    if (input.windowSeconds !== undefined) body.window_seconds = input.windowSeconds;
+    if (input.channel !== undefined) body.channel = input.channel;
+    if (input.escalationLevel !== undefined) body.escalation_level = input.escalationLevel;
     return this.client.request<CreateRoutingRuleResult>(
       "/agent/v1/notifications/rules",
       { method: "POST", body, context: "creating a notification routing rule", ...sessionProofRequest(proofs) },
@@ -503,6 +566,10 @@ export class Rules {
     if ("source" in patch) body.source = patch.source;
     if ("eventTypes" in patch) body.event_types = patch.eventTypes;
     if ("classes" in patch) body.classes = patch.classes;
+    if ("minSeverity" in patch) body.min_severity = patch.minSeverity;
+    if ("groupBy" in patch) body.group_by = patch.groupBy;
+    if ("windowSeconds" in patch) body.window_seconds = patch.windowSeconds;
+    if ("escalationLevel" in patch) body.escalation_level = patch.escalationLevel;
     if ("telegramBindingId" in patch) body.telegram_binding_id = patch.telegramBindingId;
     if ("enabled" in patch) body.enabled = patch.enabled;
     return this.client.request<RoutingRule>(
@@ -747,6 +814,7 @@ export class Admin {
     const body: Record<string, unknown> = {};
     if (opts.source !== undefined) body.source = opts.source;
     if (opts.eventType !== undefined) body.event_type = opts.eventType;
+    if (opts.severity !== undefined) body.severity = opts.severity;
     return this.client.request<TestNotificationResult>(
       "/agent/v1/notifications/test",
       { method: "POST", body, context: "triggering test notification" },

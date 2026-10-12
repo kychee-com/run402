@@ -1096,9 +1096,12 @@ run402 events list --cursor evc_1a2b   # everything since last time
 run402 events list --org <org_id>      # org-wide union across all the org's projects
 run402 events list --source app        # just this project's own emitted business events
 run402 events list --source app --type signature_completed,booking_created
+run402 events list --cursor <stored> --min-severity warn   # only what matters since last time
 ```
 
 Store the response's `cursor` (a file in the repo works) and pass it back as `--cursor` next session — one call returns everything you missed. Cursors are opaque; never parse them. An expired cursor returns `reset: true` + `earliest_cursor` to restart from, never a bare error. Every successful apply/promote response also hands you a poll entry positioned at your own `deploy_activated` event. The feed is read-only and works even on frozen projects. `--source app|platform` and `--type <name[,name]>` filter the feed; consumers should key on the (source, event_type) pair since app-chosen type names are free-form per app.
+
+**Declare, subscribe, catch up.** Every event carries `severity` (`info` < `notice` < `warn` < `critical`). It is the emitter's judgement: in a function, `events.emit("payment_failed", { order_id }, { severity: "critical" })` (omitted is `info`, never inferred); platform events carry the level registered for their type. A person's alert rule filters on it instead of on code you write: `run402 subscriptions add --binding <id> --project <id> --type mcp_tool_called --min-severity notice --group-by tool --window 3600` sends one Telegram line per tool per hour with a count, and `--escalate-to-level 1 --min-severity critical` pages the escalation ladder instead (owner only; a repeat while it is open joins it). Never build your own throttling or "is this worth a page" branch: declare the severity and let the rule decide. Catch up with `--min-severity warn`; that cursor belongs to the filtered view.
 
 ## Working alongside other agents — coordination rooms
 

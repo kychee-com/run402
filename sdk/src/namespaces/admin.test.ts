@@ -569,6 +569,57 @@ describe("admin.rules.create", () => {
   });
 });
 
+describe("admin.rules — attention dimensions (event-attention-rules)", () => {
+  const rule = (over: Record<string, unknown> = {}) => ({
+    id: "rule_3", recipient_email: "ops@example.com", project_id: "prj_abc", source: null,
+    event_types: ["mcp_tool_called"], classes: null, min_severity: "notice", group_by: ["tool"], window_seconds: 3600,
+    channel: "telegram", telegram_binding_id: "bnd_1", escalation_level: null, escalation_refused_count: 0,
+    last_escalation_refused_at: null, next_window_closes_at: "2026-10-12T13:00:00.000Z", enabled: true,
+    created_at: "2026-10-12T12:04:00.000Z", updated_at: "2026-10-12T12:04:00.000Z", next_actions: [],
+    ...over,
+  });
+
+  it("create maps minSeverity, groupBy, and windowSeconds to the wire", async () => {
+    const { fetch, calls } = mockFetch(() => json(rule(), 201));
+    const result = await sdk(fetch).admin.rules.create({
+      telegramBindingId: "bnd_1",
+      projectId: "prj_abc",
+      eventTypes: ["mcp_tool_called"],
+      minSeverity: "notice",
+      groupBy: ["tool"],
+      windowSeconds: 3600,
+    });
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), {
+      telegram_binding_id: "bnd_1",
+      project_id: "prj_abc",
+      event_types: ["mcp_tool_called"],
+      min_severity: "notice",
+      group_by: ["tool"],
+      window_seconds: 3600,
+    });
+    assert.equal(result.next_window_closes_at, "2026-10-12T13:00:00.000Z");
+  });
+
+  it("an escalation rule sends channel and escalationLevel and no binding", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      json(rule({ channel: "escalation", telegram_binding_id: null, escalation_level: 1, min_severity: "critical", group_by: null, window_seconds: null }), 201),
+    );
+    await sdk(fetch).admin.rules.create({ channel: "escalation", escalationLevel: 1, projectId: "prj_abc", minSeverity: "critical" });
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), {
+      project_id: "prj_abc",
+      min_severity: "critical",
+      channel: "escalation",
+      escalation_level: 1,
+    });
+  });
+
+  it("update forwards the attention fields only when present", async () => {
+    const { fetch, calls } = mockFetch(() => json(rule()));
+    await sdk(fetch).admin.rules.update("rule_3", { minSeverity: "warn", windowSeconds: null, groupBy: null });
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), { min_severity: "warn", window_seconds: null, group_by: null });
+  });
+});
+
 describe("admin.rules.update — PATCH null-vs-absent semantics", () => {
   it("omits a field entirely from the wire body when not present in the patch", async () => {
     const { fetch, calls } = mockFetch(() =>

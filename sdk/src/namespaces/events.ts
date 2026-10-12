@@ -34,6 +34,7 @@ function feedQuery(opts: ListEventsOptions = {}): string {
   if (opts.eventType !== undefined) {
     params.set("event_type", Array.isArray(opts.eventType) ? opts.eventType.join(",") : opts.eventType);
   }
+  if (opts.minSeverity !== undefined) params.set("min_severity", opts.minSeverity);
   const qs = params.toString();
   return qs ? `?${qs}` : "";
 }

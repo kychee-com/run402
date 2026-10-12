@@ -8,8 +8,16 @@
 
 /** Who raised it. An escalation is always attributed — that is the point. */
 export interface EscalationRaisedBy {
+  /**
+   * `"rule"` when a routing rule with `channel: "escalation"` raised it
+   * (then `principal_id` is null and `rule_id` / `rule_owner_email` name
+   * the rule and who set it; `rule_id` reads null once that rule is deleted).
+   */
+  kind: "principal" | "rule";
+  rule_id?: string | null;
+  rule_owner_email?: string | null;
   /** The control-plane principal the judgement belongs to. */
-  principal_id: string;
+  principal_id: string | null;
   /** Set when the raiser held a grant key rather than a membership. */
   grant_key_id: string | null;
   /** The coordination-room presence name, when the agent supplied one. */
@@ -84,6 +92,9 @@ export interface Escalation {
    * the same thing as "handled".
    */
   repage_count: number;
+  /** Further matches of the raising rule that joined this open escalation instead of paging again (0 for an agent raise). */
+  attached_count: number;
+  last_attached_at: string | null;
   /** Only when the read passed `include: "delivery"`. */
   delivery_attempts?: EscalationDeliveryAttempt[];
 }

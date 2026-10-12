@@ -36,6 +36,8 @@ const HELP = `run402 subscriptions — which events go where
 
 Usage:
   run402 subscriptions add --binding <binding_id> [--project <project_id>] [--source app|platform] [--type a,b] [--class a,b]
+                           [--min-severity info|notice|warn|critical] [--group-by key[,key]] [--window <seconds>]
+  run402 subscriptions add --escalate-to-level <n> --project <project_id> [--min-severity critical] [...filters]
   run402 subscriptions list
   run402 subscriptions rm <subscription_id>
 
@@ -43,6 +45,16 @@ Notes:
   - <binding_id> is the id of an ACTIVE telegram row in \`run402 contacts list\`.
     \`--contact <binding_id>\` is accepted as an alias of \`--binding\`.
   - Absent dimensions are wildcards; an explicit empty list matches NOTHING.
+  - Severity is the emitter's to declare (info < notice < warn < critical);
+    the rule only filters on it. Without --min-severity a rule carries notice
+    and above when it names no --type, and everything of the types it names.
+  - --window <seconds> (60-86400) sends ONE message per closed window instead of
+    one per event: the total and a line per --group-by value with its count.
+    --group-by needs --window. The feed still holds every event.
+  - --escalate-to-level <n> pages your escalation ladder instead of a chat
+    (mandatory delivery, one-tap ack, climb); a repeat while it is open joins
+    it. It needs --project and owner authority on that project's org.
+  - There is no count or rate condition: a rule never decides what is wrong.
   - A subscription naming a platform-emitted event type cannot match today —
     the delivery pipeline carries app and agent-messaging sources only. The
     gateway says so when you create one.
@@ -66,9 +78,23 @@ function splitCsv(value) {
  *  takes — the v4.82.0 split rewrote HELP to `--contact` while the parser
  *  kept `--binding`, and nothing caught the drift. `--contact` stays as an
  *  alias for anyone who learned it from that help text. */
-export const SUBSCRIPTIONS_ADD_VALUE_FLAGS = ["--binding", "--contact", "--project", "--source", "--type", "--class"];
+export const SUBSCRIPTIONS_ADD_VALUE_FLAGS = [
+  "--binding", "--contact", "--project", "--source", "--type", "--class",
+  "--min-severity", "--group-by", "--window", "--escalate-to-level",
+];
 export const SUBSCRIPTIONS_ADD_USAGE =
-  "run402 subscriptions add --binding <binding_id> [--project <project_id>] [--source app|platform] [--type a,b] [--class a,b]";
+  "run402 subscriptions add (--binding <binding_id> | --escalate-to-level <n> --project <project_id>) [--project <project_id>] [--source app|platform] [--type a,b] [--class a,b] [--min-severity <level>] [--group-by a,b] [--window <seconds>]";
+
+const SEVERITY_LEVELS = ["info", "notice", "warn", "critical"];
+
+/** A positive integer flag, or a BAD_USAGE exit naming the flag. Range checks
+ *  are the gateway's (it owns the bounds and says them in its 400). */
+function integerFlag(raw, flag) {
+  if (!/^\d+$/.test(raw)) {
+    fail({ code: "BAD_USAGE", message: `${flag} must be a whole number (got ${raw})` });
+  }
+  return Number(raw);
+}
 export { HELP as SUBSCRIPTIONS_HELP };
 
 async function rulesAdd(args) {
@@ -81,7 +107,9 @@ async function rulesAdd(args) {
   }
 
   const bindingId = flagValue(a, "--binding") ?? flagValue(a, "--contact");
-  if (!bindingId) {
+  const levelRaw = flagValue(a, "--escalate-to-level");
+  if (!bindingId === (levelRaw === null)) {
+    // Exactly one destination: a chat binding, or the escalation ladder.
     fail({ code: "BAD_USAGE", message: `Usage: ${SUBSCRIPTIONS_ADD_USAGE}` });
   }
   const projectId = flagValue(a, "--project");
@@ -90,7 +118,17 @@ async function rulesAdd(args) {
   const typeRaw = flagValue(a, "--type");
   const classRaw = flagValue(a, "--class");
 
-  const input = { telegramBindingId: bindingId };
+  const minSeverity = flagValue(a, "--min-severity");
+  if (minSeverity !== null) assertAllowedValue(minSeverity, SEVERITY_LEVELS, "--min-severity");
+  const groupByRaw = flagValue(a, "--group-by");
+  const windowRaw = flagValue(a, "--window");
+
+  const input = levelRaw === null
+    ? { telegramBindingId: bindingId }
+    : { channel: "escalation", escalationLevel: integerFlag(levelRaw, "--escalate-to-level") };
+  if (minSeverity !== null) input.minSeverity = minSeverity;
+  if (groupByRaw !== null) input.groupBy = splitCsv(groupByRaw);
+  if (windowRaw !== null) input.windowSeconds = integerFlag(windowRaw, "--window");
   if (projectId) input.projectId = projectId;
   if (source) input.source = source;
   if (typeRaw !== null) input.eventTypes = splitCsv(typeRaw);
