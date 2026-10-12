@@ -124,9 +124,9 @@ export async function run(sub, args) {
     if (opts.output) {
       const buf = Buffer.from(data.image, "base64");
       writeFileSync(opts.output, buf);
-      console.log(JSON.stringify({ file: opts.output, size: buf.length, aspect: data.aspect }));
+      console.log(JSON.stringify({ file: opts.output, size: buf.length, aspect: data.aspect, payment: data.payment ?? null }));
     } else {
-      console.log(JSON.stringify({ aspect: data.aspect, content_type: data.content_type, image: data.image }));
+      console.log(JSON.stringify({ aspect: data.aspect, content_type: data.content_type, image: data.image, payment: data.payment ?? null }));
     }
   } catch (err) {
     reportOrgSelectionError(err, org);

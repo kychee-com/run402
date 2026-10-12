@@ -65,6 +65,13 @@ function json(data, status = 200) {
   });
 }
 
+// The settlement receipt an x402 Lightning image purchase carries.
+const IMAGE_RECEIPT = {
+  success: true,
+  network: "lnbtc:000000000019d6689c085ae165831e93",
+  transaction: "388ecbe5".padEnd(64, "0"),
+};
+
 function noContent() {
   return new Response(null, { status: 204 });
 }
@@ -810,7 +817,9 @@ async function mockFetch(input, init) {
 
   // Image
   if (path === "/generate-image/v1" && method === "POST") {
-    return Promise.resolve(json({ image: "iVBORw0KGgo=", content_type: "image/png", aspect: "square" }));
+    const res = json({ image: "iVBORw0KGgo=", content_type: "image/png", aspect: "square" });
+    res.headers.set("PAYMENT-RESPONSE", Buffer.from(JSON.stringify(IMAGE_RECEIPT)).toString("base64"));
+    return Promise.resolve(res);
   }
 
   // Message
@@ -3744,8 +3753,20 @@ describe("CLI e2e happy path", () => {
     captureStart();
     await run("generate", ["a cat in a hat"]);
     captureStop();
-    const out = captured();
-    assert.ok(out.includes("image") || out.includes("iVBOR") || out.includes("ok"), "should return image data");
+    const out = JSON.parse(captured());
+    assert.equal(out.image, "iVBORw0KGgo=");
+    assert.deepEqual(out.payment, { ...IMAGE_RECEIPT, payer: null });
+  });
+
+  it("image generate --output keeps the payment receipt", async () => {
+    const { run } = await import("./cli/lib/image.mjs");
+    const file = join(tempDir, "e2e-image.png");
+    captureStart();
+    await run("generate", ["a cat in a hat", "--output", file]);
+    captureStop();
+    const out = JSON.parse(captured());
+    assert.equal(out.file, file);
+    assert.deepEqual(out.payment, { ...IMAGE_RECEIPT, payer: null });
   });
 
   // ── Message ─────────────────────────────────────────────────────────────
