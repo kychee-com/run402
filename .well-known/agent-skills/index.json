@@ -11,9 +11,9 @@
     {
       "name": "run402-buzz",
       "type": "archive",
-      "description": "Complete Run402 onboarding for a managed Buzz agent with a dedicated wallet/public identity link, report independent human-adoption and community-installation state, offer bounded per-agent enrollment before provisioning, and stop only at a real approval or repair boundary. Use when a managed Buzz user says \"install the run402.com skill\" or otherwise asks to install, initialize, set up, or connect Run402; asks to adopt a human, install a community, or enroll another agent; or later asks the linked agent to build, deploy, update, verify, or operate through Run402.",
-      "url": "https://run402.com/skills/run402-buzz/0fce9ab3260ae2af4d1c1e9e1671ffda15a3ee775dd5daf64719092f2862c390/run402-buzz.tgz",
-      "digest": "sha256:0fce9ab3260ae2af4d1c1e9e1671ffda15a3ee775dd5daf64719092f2862c390"
+      "description": "Complete Run402 onboarding for a managed Buzz agent with a dedicated wallet/public identity link, report independent human-adoption and community-installation state, offer bounded per-agent enrollment before provisioning, and stop only at a real approval or repair boundary. Use when a managed Buzz user says \"install the run402.com skill\" or otherwise asks to install, initialize, set up, or connect Run402; asks to adopt a human, install a community, or enroll another agent; or later asks the linked agent to build, deploy, update, verify, or operate through Run402, generate an image, pay in sats or bitcoin over Lightning, or top up a balance.",
+      "url": "https://run402.com/skills/run402-buzz/f8b76d7072df20c2f3daf528e8c8ba3edd3607b7ebcceaed31e0e4e02add7356/run402-buzz.tgz",
+      "digest": "sha256:f8b76d7072df20c2f3daf528e8c8ba3edd3607b7ebcceaed31e0e4e02add7356"
     }
   ]
 }
