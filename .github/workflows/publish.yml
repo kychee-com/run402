@@ -348,6 +348,30 @@ jobs:
           generate_release_notes: true
           target_commitish: main
 
+      # Redeploy run402.com so the apex serves this release's skills index and
+      # wayfinder: kychee-com/run402-private's deploy-site.yml listens for the
+      # public-docs-updated repository dispatch. GITHUB_TOKEN cannot reach
+      # another repository, so the secret is a fine-grained token scoped to
+      # run402-private alone (Contents: read and write). Without it, or if the
+      # call fails, the step warns and the release still stands.
+      - name: Redeploy run402.com
+        if: ${{ !inputs.dry_run }}
+        env:
+          DISPATCH_TOKEN: ${{ secrets.RUN402_PRIVATE_DISPATCH_TOKEN }}
+          NEW_VERSION: ${{ steps.bump.outputs.new }}
+        run: |
+          if [ -z "$DISPATCH_TOKEN" ]; then
+            echo "::warning::RUN402_PRIVATE_DISPATCH_TOKEN is not set; run deploy-site.yml in kychee-com/run402-private by hand."
+            exit 0
+          fi
+          curl -fsS -X POST \
+            -H "Authorization: Bearer $DISPATCH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/kychee-com/run402-private/dispatches \
+            -d "{\"event_type\":\"public-docs-updated\",\"client_payload\":{\"version\":\"$NEW_VERSION\"}}" \
+            && echo "Dispatched the run402.com redeploy for v$NEW_VERSION." \
+            || echo "::warning::Could not dispatch the run402.com redeploy; run deploy-site.yml in kychee-com/run402-private by hand."
+
       - name: Summary
         run: |
           NEW="${{ steps.bump.outputs.new }}"
