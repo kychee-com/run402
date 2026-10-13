@@ -243,7 +243,8 @@ export function positionalArgs(args = [], flagsWithValues = []) {
       i += 1;
       continue;
     }
-    if (typeof arg === "string" && arg.startsWith("-")) continue;
+    // A bare "-" is the stdin marker, a positional, never a flag.
+    if (typeof arg === "string" && arg.startsWith("-") && arg !== "-") continue;
     out.push(arg);
   }
   return out;

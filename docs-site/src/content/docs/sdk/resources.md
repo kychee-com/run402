@@ -1335,6 +1335,17 @@ result's `payment` reports the `lnbtc:` network and the payment hash as
 `transaction`. A Lightning invoice bound to a different request is refused
 before paying (`LIGHTNING_REQUEST_BINDING_MISMATCH`).
 
+The same buyer is exported for any Lightning-priced URL, such as a tenant
+route priced on `lightning` or `lightning-testnet`: `@run402/sdk/node`
+exports `readX402LightningOffer(response)`, which reads the `lnbtc:` entry
+of a 402, `payX402Lightning({ input, init, offer, wallet, baseFetch, fail, checkCaps })`,
+which pays it and sends the paid retry, and `NwcWallet(pairingUri)`, a
+Nostr Wallet Connect wallet that satisfies the `wallet` argument with any
+`pay_invoice`-capable pairing, on mainnet or on a testnet node. `checkCaps`
+receives the all-in sats and throws to refuse; `onPaid` reports the payment
+hash. The client refuses a mismatched binding before paying, exactly as
+`generateImage` does.
+
 `orgId` is the paying organization and is read only by MPP Lightning: a principal that belongs to several organizations is refused
 `ORGANIZATION_SELECTION_REQUIRED` (HTTP 400, `details.org_ids` lists
 the candidates) unless the body names one; x402 and Tempo ignore it. When

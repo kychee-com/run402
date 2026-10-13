@@ -806,6 +806,14 @@ export {
   revokeLightningWallet,
 } from "./lightning-wallet.js";
 export type { EnsureLightningResult, LightningBalance, LightningDescription, LightningOutcome } from "./lightning-wallet.js";
+export { payX402Lightning, readX402LightningOffer } from "./lightning-x402-lnbtc.js";
+export type {
+  PayX402LightningOptions,
+  X402LnbtcErrorFactory,
+  X402LnbtcOffer,
+  X402LnbtcRequirements,
+  X402LnbtcWallet,
+} from "./lightning-x402-lnbtc.js";
 export { DOCTOR_CHECK_NAMES, assertDoctorCheckNames, buildDoctorReport, runDoctor } from "./doctor.js";
 export type { DoctorCheck, DoctorCheckName, DoctorOptions, DoctorReport, DoctorReportCheck, DoctorSeverity } from "./doctor.js";
 export { repoOwnVaultTarget, resolveVaultTarget } from "./vault-target.js";
