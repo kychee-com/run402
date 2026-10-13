@@ -476,7 +476,7 @@ const SURFACE: Capability[] = [
   { id: "project_key_cache_status", endpoint: "(local credential cache)",            cli: "credentials:project-keys:status", openclaw: "credentials:project-keys:status" },
   { id: "project_key_cache_import", endpoint: "(local credential cache)",            cli: "credentials:project-keys:import", openclaw: "credentials:project-keys:import" },
   { id: "project_key_cache_export", endpoint: "(local credential cache)",            cli: "credentials:project-keys:export", openclaw: "credentials:project-keys:export" },
-  { id: "project_key_cache_remove", endpoint: "(local credential cache)",            cli: "credentials:project-keys:remove", openclaw: "credentials:project-keys:remove" },
+  { id: "project_key_cache_delete", endpoint: "(local credential cache)",            cli: "credentials:project-keys:delete", openclaw: "credentials:project-keys:delete" },
 
   // ── Image generation ─────────────────────────────────────────────────────
   { id: "generate_image",    endpoint: "POST /generate-image/v1",           cli: "image:generate",   openclaw: "image:generate" },
@@ -658,7 +658,7 @@ const SURFACE: Capability[] = [
   // consumes a bearer secret (the NWC pairing), so it is CLI-only on MCP.
   { id: "set_org_lightning_receiver",    endpoint: "POST /orgs/v1/:org_id/lightning-receiver",   cli: "orgs:lightning-receiver:set",    openclaw: "orgs:lightning-receiver:set" },
   { id: "get_org_lightning_receiver",    endpoint: "GET /orgs/v1/:org_id/lightning-receiver",    cli: "orgs:lightning-receiver:status", openclaw: "orgs:lightning-receiver:status" },
-  { id: "remove_org_lightning_receiver", endpoint: "DELETE /orgs/v1/:org_id/lightning-receiver", cli: "orgs:lightning-receiver:remove", openclaw: "orgs:lightning-receiver:remove" },
+  { id: "delete_org_lightning_receiver", endpoint: "DELETE /orgs/v1/:org_id/lightning-receiver", cli: "orgs:lightning-receiver:delete", openclaw: "orgs:lightning-receiver:delete" },
   // repo-first-onramp task 4 (design D6): the slug CLAIM spends money and is
   // a permanent handle: a paid, side-effecting, hard-to-undo mutation belongs
   // to a command the caller typed.
@@ -1096,7 +1096,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   project_key_cache_status: "credentials.projectKeys.status",
   project_key_cache_import: "credentials.projectKeys.import",
   project_key_cache_export: "credentials.projectKeys.export",
-  project_key_cache_remove: "credentials.projectKeys.remove",
+  project_key_cache_delete: "credentials.projectKeys.delete",
   create_checkout: "billing.createCheckout",
   create_lightning_topup: "billing.createLightningTopup",
   lightning_wallet: "agent.lightningWallet.mint",
@@ -1222,7 +1222,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   set_org_payout_wallet: "org.setPayoutWallet",
   set_org_lightning_receiver: "orgs.lightningReceiver.set",
   get_org_lightning_receiver: "orgs.lightningReceiver.get",
-  remove_org_lightning_receiver: "orgs.lightningReceiver.remove",
+  delete_org_lightning_receiver: "orgs.lightningReceiver.delete",
   org_slug: "org.setSlug",
   whoami: "orgs.whoami",
   list_orgs: "orgs.list",

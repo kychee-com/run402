@@ -284,7 +284,7 @@ const status = await r.credentials.projectKeys.status(projectId); // redacted
 const serviceKey = process.env.RUN402_SERVICE_KEY!;
 await r.credentials.projectKeys.import(projectId, { serviceKey });
 const keys = await r.credentials.projectKeys.export(projectId, { reveal: true });
-await r.credentials.projectKeys.remove(projectId);
+await r.credentials.projectKeys.delete(projectId);
 ```
 
 `status`/`list` report `source: "local_cache"`, profile/cache-path provenance, key presence, prefixes, and fingerprints without full secrets. `export(..., { reveal: true })` is the only SDK helper that emits cached secret key material.
@@ -314,7 +314,7 @@ The `CredentialsProvider` interface has two required methods (`getAuth`, `getPro
 | `projects` | `provision`, `delete`, `list`, `get`, `use`, `active`, `sql`, `rest`, `validateExpose`, `applyExpose`, `getExpose`, `getUsage`, `getSchema`, `info`, `keys`, `pin`, `getQuote`. `list`/`get`/`use` are server-authoritative; local key reads are moving to `credentials.projectKeys`. |
 | `snapshots` | Internal project restore points: `create`, `list`, `get`, `restorePlan`, `restore`, `delete`. Restore is a two-step plan/confirm handshake. |
 | `branches` | Contained project data branches: `create`, `list`, `renew`, `delete`. Branches default to expiring, noindex, sandboxed-email copies. |
-| `credentials` | `projectKeys.list`, `projectKeys.status`, `projectKeys.import`, `projectKeys.export`, `projectKeys.remove` for explicit local project-key cache management. |
+| `credentials` | `projectKeys.list`, `projectKeys.status`, `projectKeys.import`, `projectKeys.export`, `projectKeys.delete` for explicit local project-key cache management. |
 | `r.project(id).apply` | **The unified apply primitive.** Resolve `const project = await r.project(id)`, then use `project.apply(spec)` for staged multi-resource writes (release slices + assets slice). Sub-methods: `.plan`, `.start`, `.resume`, `.upload`, `.commit`, `.rehearse`, `.status`, `.list`, `.events`, `.resolve`, `.getRelease`, `.getActiveRelease`, `.diff`. Underlying engine routes to `/apply/v1/*`. |
 | `ci` | GitHub Actions OIDC federation over `/ci/v1/*`: `createBinding`, `listBindings`, `getBinding`, `revokeBinding`, `exchangeToken`; plus canonical delegation helpers. `createBinding` accepts `asset_key_scopes` for per-key CI write authorization. |
 | `r.project(id).sites` | `deployDir` — Node entry only (`@run402/sdk/node`); thin wrapper over `r.project(id).apply({ site: dir(...) })` |

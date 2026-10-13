@@ -73,7 +73,7 @@ Subcommands:
   import --project <project_id> --service-key-env <env>
   import --project <project_id> --anon-key-env <env>   Rotate only the anon key
   export --project <project_id> --reveal       Print cached keys, including secrets
-  remove --project <project_id>                Remove one cached key entry
+  delete --project <project_id>                Delete one cached key entry
 
 Notes:
   - This is a LOCAL CACHE surface. It is not project inventory.
@@ -359,12 +359,12 @@ async function exportKey(args) {
   console.log(JSON.stringify({ project_id: id, ...entry, ...provenance(), revealed: true }, null, 2));
 }
 
-async function remove(args) {
+async function deleteProjectKeys(args) {
   const { projectId, rest } = parseProjectKeyFlags(args);
   if (rest.length > 0) {
-    fail({ code: "BAD_USAGE", message: `Unexpected argument for project-keys remove: ${rest[0]}` });
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for project-keys delete: ${rest[0]}` });
   }
-  const id = requireProjectFlag(projectId, "run402 credentials project-keys remove --project <project_id>");
+  const id = requireProjectFlag(projectId, "run402 credentials project-keys delete --project <project_id>");
   const existed = Boolean(getProject(id));
   removeProject(id, projectCredentialsFile());
   console.log(JSON.stringify({ project_id: id, removed: existed, ...provenance() }, null, 2));
@@ -384,7 +384,7 @@ async function runProjectKeys(sub, args) {
     case "status": await status(args); break;
     case "import": await importKey(args); break;
     case "export": await exportKey(args); break;
-    case "remove": await remove(args); break;
+    case "delete": await deleteProjectKeys(args); break;
     default:
       failUnknownSubcommand("credentials project-keys", sub);
   }

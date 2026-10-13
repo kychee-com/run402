@@ -24,7 +24,7 @@ Usage:
   run402 orgs payout-wallet [<org_id>] <wallet_address>  (or: --clear to remove the explicit default)
   run402 orgs lightning-receiver set    [<org_id>] <nwc-uri | ->   (receive-only NWC pairing; - reads it from stdin)
   run402 orgs lightning-receiver status [<org_id>]
-  run402 orgs lightning-receiver remove [<org_id>]
+  run402 orgs lightning-receiver delete [<org_id>]
   run402 orgs slug   <slug> [--org <org_id>]
   run402 orgs adopt  [--org <org_id>] [--name <label>]
   run402 orgs use     <org_id>
@@ -64,7 +64,7 @@ Subcommands:
   unbind      Remove the org/room keys from .run402.json
   payout-wallet  Set or clear the tenant route payout wallet (admin+)
   lightning-receiver  The org's receive-only Lightning receiver for routes priced on
-              lightning (set / status / remove; set and remove are admin+ + step-up)
+              lightning (set / status / delete; set and delete are admin+ + step-up)
   members     Manage members (list, add, role, rm) — mutations require owner
   invite      Manage email invites (list, create, rm) — mutations require owner
   audit       Control-plane audit trail for an org (admin+)
@@ -179,7 +179,7 @@ next_actions for PAYOUT_WALLET_REQUIRED / PAYOUT_WALLET_AMBIGUOUS setup.
 Usage:
   run402 orgs lightning-receiver set    [<org_id>] <nwc-uri | ->
   run402 orgs lightning-receiver status [<org_id>]
-  run402 orgs lightning-receiver remove [<org_id>]
+  run402 orgs lightning-receiver delete [<org_id>]
 
 A route priced on "lightning" / "lightning-testnet" sells for sats over the
 x402 exact scheme on Bitcoin Lightning, settled to YOUR node: Run402 never
@@ -864,7 +864,7 @@ async function runInvite(args) {
 }
 
 /**
- * `run402 orgs lightning-receiver set|status|remove` — the org's receive-only
+ * `run402 orgs lightning-receiver set|status|delete` — the org's receive-only
  * Lightning receiver (tenant-lnbtc-priced-routes). The pairing is a bearer
  * secret for the org's node: read from the argument or stdin, sent once,
  * never printed.
@@ -915,20 +915,20 @@ async function runLightningReceiver(args) {
     return;
   }
 
-  if (lightningReceiverAction === "remove") {
+  if (lightningReceiverAction === "delete") {
     const a = normalizeArgv(rest);
     assertKnownFlags(a, ["--org", "--help", "-h"], ["--org"]);
     const { orgId: org, rest: pos } = await takeOrgPositional(a, ["--org"], { cmd: "orgs" });
-    requireRest(pos, { max: 0, command: "run402 orgs lightning-receiver remove [<org_id>]" });
+    requireRest(pos, { max: 0, command: "run402 orgs lightning-receiver delete [<org_id>]" });
     try {
-      console.log(JSON.stringify(await getSdk().orgs.lightningReceiver.remove({ orgId: org }), null, 2));
+      console.log(JSON.stringify(await getSdk().orgs.lightningReceiver.delete({ orgId: org }), null, 2));
     } catch (err) {
       reportSdkError(err);
     }
     return;
   }
 
-  fail({ code: "BAD_USAGE", message: `Unknown 'orgs lightning-receiver' action: ${lightningReceiverAction}. Try set | status | remove.` });
+  fail({ code: "BAD_USAGE", message: `Unknown 'orgs lightning-receiver' action: ${lightningReceiverAction}. Try set | status | delete.` });
 }
 
 export async function run(sub, args) {

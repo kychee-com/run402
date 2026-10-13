@@ -496,9 +496,9 @@ export class OrgLightningReceiver {
     });
   }
 
-  /** Remove the receiver (`DELETE …/lightning-receiver`); admin/owner plus step-up. Warns about releases still priced on Lightning. */
-  async remove(input: { orgId: string }): Promise<LightningReceiverRemoved> {
-    if (!input?.orgId) throw new LocalError("orgs.lightningReceiver.remove requires { orgId }", "removing org Lightning receiver");
+  /** Delete the receiver (`DELETE …/lightning-receiver`); admin/owner plus step-up. Warns about releases still priced on Lightning. */
+  async delete(input: { orgId: string }): Promise<LightningReceiverRemoved> {
+    if (!input?.orgId) throw new LocalError("orgs.lightningReceiver.delete requires { orgId }", "deleting org Lightning receiver");
     return this.client.request<LightningReceiverRemoved>(`/orgs/v1/${encodeURIComponent(input.orgId)}/lightning-receiver`, {
       method: "DELETE",
       context: "removing org Lightning receiver",

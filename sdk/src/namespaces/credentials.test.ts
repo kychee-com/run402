@@ -94,7 +94,7 @@ describe("credentials.projectKeys", () => {
     assert.equal(imported.imported, true);
     assert.equal(imported.configured, true);
 
-    const removed = await client.credentials.projectKeys.remove("prj_new");
+    const removed = await client.credentials.projectKeys.delete("prj_new");
     assert.equal(removed.removed, true);
     assert.equal(removed.configured, false);
   });

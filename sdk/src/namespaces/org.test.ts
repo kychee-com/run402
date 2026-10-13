@@ -378,7 +378,7 @@ describe("r.orgs.lightningReceiver", () => {
     });
     const sdk = makeSdk(fetch);
     assert.equal((await sdk.orgs.lightningReceiver.get({ orgId: "org_abc" })).last_probe_status, "ok");
-    assert.equal((await sdk.orgs.lightningReceiver.remove({ orgId: "org_abc" })).status, "removed");
+    assert.equal((await sdk.orgs.lightningReceiver.delete({ orgId: "org_abc" })).status, "removed");
     assert.equal(calls.length, 2);
   });
 

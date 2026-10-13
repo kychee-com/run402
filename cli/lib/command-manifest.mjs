@@ -124,7 +124,7 @@ export const COMMAND_MANIFEST = [
   { path: ["credentials", "project-keys", "status"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [] },
   { path: ["credentials", "project-keys", "import"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["--service-key-env", "RUN402_GATE_FAKE_SERVICE_KEY"] },
   { path: ["credentials", "project-keys", "export"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["--reveal"] },
-  { path: ["credentials", "project-keys", "remove"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [] },
+  { path: ["credentials", "project-keys", "delete"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [] },
 
 
   // ── tier ─────────────────────────────────────────────────────────────────
@@ -238,7 +238,7 @@ export const COMMAND_MANIFEST = [
   // run against a live node by the gate.
   { path: ["orgs", "lightning-receiver", "set"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG, "--uri", "nostr+walletconnect://" + "ab".repeat(32) + "?relay=wss://relay.example.test&secret=" + "cd".repeat(32)] },
   { path: ["orgs", "lightning-receiver", "status"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG] },
-  { path: ["orgs", "lightning-receiver", "remove"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG] },
+  { path: ["orgs", "lightning-receiver", "delete"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG] },
 
   // ── grants ───────────────────────────────────────────────────────────────
   { path: ["grants", "create"], positionals: [p("wallet")], projectScoped: true, legacyPositionalProject: true, minimalArgs: ["0x1111111111111111111111111111111111111111", "--capability", "deploy"] },

@@ -429,7 +429,7 @@ describe("every orgScoped command resolves its organization through the shared c
 
 describe("conflicting project selectors", () => {
   // Earlier behavioral runs may have mutated the local credential cache (e.g.
-  // `credentials project-keys remove`) — reseed before asserting.
+  // `credentials project-keys delete`) — reseed before asserting.
   before(async () => {
     const { saveProject, setActiveProjectId } = await import("./cli/core-dist/keystore.js");
     saveProject("prj_test123", { anon_key: "anon_test_key", service_key: "svc_test_key" });

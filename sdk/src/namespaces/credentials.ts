@@ -303,7 +303,7 @@ export class ProjectKeysCache {
     };
   }
 
-  async remove(projectId: string): Promise<ProjectKeyCacheMutationResult> {
+  async delete(projectId: string): Promise<ProjectKeyCacheMutationResult> {
     if (!this.client.credentials.removeProject) {
       throw unsupported("removing local project keys", "removeProject");
     }

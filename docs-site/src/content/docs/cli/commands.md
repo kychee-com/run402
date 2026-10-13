@@ -76,7 +76,7 @@ Authority split: `issue`/`rotate`/`revoke` require owner membership on the proje
 - `run402 credentials project-keys import --project <project_id> --service-key-env <env>` — import a service key from an environment variable. Do not pass service keys as argv values.
 - `run402 credentials project-keys import --project <project_id> --anon-key-env <env>` — anon-only rotation. Import writes the whole cache entry, so the FIRST import for a project must supply a service key; once an entry exists, `--anon-key-env` alone rotates the anon key and keeps the cached service key. Rotating the anon key therefore never requires exporting the service key with `--reveal` and passing it back through a shell. Passing `--anon-key-env` with no cached service key fails with `BAD_USAGE` naming that flag.
 - `run402 credentials project-keys export --project <project_id> --reveal` — print cached secret key material. Requires `--reveal`.
-- `run402 credentials project-keys remove --project <project_id>` — remove one local cache entry without deleting or changing the server project.
+- `run402 credentials project-keys delete --project <project_id>` — delete one local cache entry without deleting or changing the server project.
 
 ### projects
 - `run402 projects quote`
