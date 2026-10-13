@@ -1,7 +1,7 @@
-import { describe, it } from "node:test";
+import { describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 
-import { parseUsdMicros, run, strayArgumentHint } from "./pay.mjs";
+import { parseMaxSats, parseUsdMicros, readLightningPairing, run, strayArgumentHint } from "./pay.mjs";
 
 describe("run402 pay", () => {
   it("converts decimal USD to micros without floating-point rounding", () => {
@@ -159,5 +159,62 @@ describe("run402 pay", () => {
       replay: false,
       next_actions: [],
     });
+  });
+});
+
+describe("run402 pay — Lightning flags (lightning-buyer-any-route)", () => {
+  const PAIRING = `nostr+walletconnect://${"ab".repeat(32)}?relay=wss%3A%2F%2Frelay.example&secret=${"cd".repeat(32)}`;
+
+  it("reads the pairing from stdin with - and never from the command line", async () => {
+    let captured;
+    const output = [];
+    await run([
+      "https://kychange.com/api/usdc/10k", "--method", "POST", "--body", '{"destination":"0xdead"}',
+      "--max-sats", "10500", "--lightning-pairing", "-",
+    ], {
+      readStdin: () => PAIRING + "\n",
+      getSdk: () => ({ pay: { async fetch(url, init, options) { captured = { url, init, options }; return { response: new Response("{}", { status: 202, headers: { "content-type": "application/json" } }), payment: null, outcome: "not_required", replay: false }; } } }),
+      write: (value) => output.push(value),
+    });
+    assert.equal(captured.options.lightningPairing, PAIRING);
+    assert.equal(captured.options.maxSats, 10500);
+    assert.equal(captured.options.maxUsdMicros, undefined);
+    assert.ok(!output.join("\n").includes("nostr+walletconnect"), "the pairing never reaches stdout");
+  });
+
+  /** fail() prints the envelope and exits; capture both instead of dying. */
+  function captureFail(fn) {
+    const logs = [];
+    const log = mock.method(console, "log", (value) => { logs.push(String(value)); });
+    const error = mock.method(console, "error", (value) => { logs.push(String(value)); });
+    const exit = mock.method(process, "exit", () => { throw new Error("__exit__"); });
+    try {
+      fn();
+      throw new Error("did not fail");
+    } catch (caught) {
+      if (caught.message !== "__exit__") throw caught;
+    } finally {
+      log.mock.restore(); error.mock.restore(); exit.mock.restore();
+    }
+    return JSON.parse(logs.at(-1));
+  }
+
+  it("refuses the pairing itself as the flag value", () => {
+    const envelope = captureFail(() => readLightningPairing(PAIRING));
+    assert.equal(envelope.code, "BAD_USAGE");
+    assert.match(envelope.message, /file path or -/);
+    assert.ok(!JSON.stringify(envelope).includes("secret="), "the refusal never echoes the pairing");
+  });
+
+  it("refuses a file that does not hold a pairing", () => {
+    const envelope = captureFail(() => readLightningPairing("-", { readStdin: () => "not a pairing" }));
+    assert.equal(envelope.code, "BAD_USAGE");
+    assert.match(envelope.message, /nostr\+walletconnect/);
+  });
+
+  it("parses --max-sats as a positive whole number", () => {
+    assert.equal(parseMaxSats("10500"), 10500);
+    assert.equal(captureFail(() => parseMaxSats("0")).code, "BAD_FLAG");
+    assert.equal(captureFail(() => parseMaxSats("1.5")).code, "BAD_FLAG");
   });
 });

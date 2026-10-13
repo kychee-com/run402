@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 import { payFetchResultToJson } from "../sdk/dist/index.js";
@@ -19,6 +21,13 @@ Options:
   --body <json-or-text>     Request body — the ONLY way to send a payload
                             (not valid with GET/HEAD)
   --max-usd <amount>        Maximum payment in USD (default: 0.10)
+  --max-sats <n>            Lightning only: refuse an lnbtc payment above this
+                            many sats (invoice plus routing headroom)
+  --lightning-pairing <file|->
+                            Lightning only: pay the lnbtc entry with this NWC
+                            pairing (a nostr+walletconnect:// URI read from the
+                            file, or from stdin with -), on its node's network;
+                            never printed. Without it the active wallet pays
   --idempotency-key <key>   Forward a stable Idempotency-Key to the seller
   --require-receipt         Require verified merchant evidence
   --json                    No-op; pay always prints JSON. Takes no value —
@@ -29,14 +38,19 @@ Examples:
   run402 pay https://seller.example/weather
   run402 pay https://seller.example/translate --method POST \
     --body '{"text":"hello"}' --max-usd 0.05 --idempotency-key translation:1
+  run402 pay https://kychange.com/api/usdc/10k --method POST \
+    --body '{"destination":"0x…"}' --max-sats 10500 --lightning-pairing -
 
-The command uses the same wallet and bounded x402 buyer as the SDK.
+The command uses the same wallet and bounded buyer as the SDK. On the lightning
+rail a 402 naming an lnbtc entry on the wallet's network is paid in sats; one on
+another network is refused (LIGHTNING_NETWORK_MISMATCH) unless
+--lightning-pairing names a pairing on that network.
 An unpriced URL is passed through with payment: null.
 On trusted Run402 PAYMENT_INTENT_PENDING, wait for Retry-After and repeat this
 identical command with the same payer and --idempotency-key. Never change the key.
 `;
 
-const VALUE_FLAGS = ["--method", "--body", "--max-usd", "--idempotency-key"];
+const VALUE_FLAGS = ["--method", "--body", "--max-usd", "--max-sats", "--lightning-pairing", "--idempotency-key"];
 
 export async function run(args = [], deps = {}) {
   if (hasHelp(args)) {
@@ -72,10 +86,14 @@ export async function run(args = [], deps = {}) {
   }
 
   const maxUsd = flagValue(parsed, "--max-usd");
+  const maxSats = flagValue(parsed, "--max-sats");
+  const pairingSource = flagValue(parsed, "--lightning-pairing");
   const idempotencyKey = flagValue(parsed, "--idempotency-key");
   const init = requestInit(method, body);
   const options = {
     ...(maxUsd !== null ? { maxUsdMicros: parseUsdMicros(maxUsd) } : {}),
+    ...(maxSats !== null ? { maxSats: parseMaxSats(maxSats) } : {}),
+    ...(pairingSource !== null ? { lightningPairing: readLightningPairing(pairingSource, deps) } : {}),
     ...(idempotencyKey !== null ? { idempotencyKey } : {}),
     ...(parsed.includes("--require-receipt")
       ? { requireReceipt: true }
@@ -114,6 +132,51 @@ export function parseUsdMicros(value) {
     });
   }
   return micros;
+}
+
+export function parseMaxSats(value) {
+  const raw = String(value);
+  if (!/^[1-9]\d{0,9}$/.test(raw)) {
+    fail({
+      code: "BAD_FLAG",
+      message: `--max-sats must be a positive whole number of sats, got: ${raw}`,
+      details: { flag: "--max-sats", value: raw },
+    });
+  }
+  return Number(raw);
+}
+
+/**
+ * The pairing comes from a file or stdin, never the command line: a pasted
+ * URI would land in the shell history and in every process listing.
+ */
+export function readLightningPairing(source, deps = {}) {
+  if (typeof source === "string" && source.startsWith("nostr+walletconnect://")) {
+    fail({
+      code: "BAD_USAGE",
+      message: "--lightning-pairing takes a file path or - (stdin), never the pairing itself.",
+      hint: "printf %s \"$NWC\" | run402 pay <url> --lightning-pairing -",
+    });
+  }
+  let raw;
+  try {
+    raw = source === "-" ? (deps.readStdin ?? (() => readFileSync(0, "utf8")))() : readFileSync(source, "utf8");
+  } catch (error) {
+    fail({
+      code: "BAD_USAGE",
+      message: `Could not read the Lightning pairing from ${source === "-" ? "stdin" : "the file"}: ${error?.message ?? error}`,
+      details: { flag: "--lightning-pairing" },
+    });
+  }
+  const pairing = String(raw).trim();
+  if (!pairing.startsWith("nostr+walletconnect://")) {
+    fail({
+      code: "BAD_USAGE",
+      message: "The Lightning pairing must be a nostr+walletconnect:// URI.",
+      details: { flag: "--lightning-pairing" },
+    });
+  }
+  return pairing;
 }
 
 const USAGE_HINT = "run402 pay <url> [--method POST] [--body <value>] [--max-usd 0.10]";

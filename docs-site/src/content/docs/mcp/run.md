@@ -64,7 +64,7 @@ A timeout waits for an SDK call already in flight to settle before it answers, s
 
 ## One-time secrets stay in the CLI
 
-The snippet's client is built with the `sandbox` surface. Every SDK method whose result carries a one-time secret, or whose input is one (minting or rotating a grant key, a Handoff or Invite Key, a Room Invite Key, provisioning a project or rotating its credentials, minting a project token, creating, importing, or exporting a wallet, the Lightning wallet's pairing, redeeming any of those keys), refuses before any request with `SECRET_REQUIRES_CLI` and one next action naming the command for the same operation:
+The snippet's client is built with the `sandbox` surface. Every SDK method whose result carries a one-time secret, or whose input is one (minting or rotating a grant key, a Handoff or Invite Key, a Room Invite Key, provisioning a project or rotating its credentials, minting a project token, creating, importing, or exporting a wallet, the Lightning wallet's pairing, paying with a bring-your-own Lightning pairing, redeeming any of those keys), refuses before any request with `SECRET_REQUIRES_CLI` and one next action naming the command for the same operation:
 
 ```json
 { "code": "SECRET_REQUIRES_CLI",

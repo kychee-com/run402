@@ -310,6 +310,16 @@ export class NwcWallet {
     return nwcRequest<T>(this.connection, method, params, this.options);
   }
 
+  /** The node behind the pairing: its network name, pubkey, and permitted methods. */
+  async getInfo(): Promise<{ network: string | null; pubkey: string | null; methods: string[] }> {
+    const result = await this.call<{ network?: string; pubkey?: string; methods?: unknown }>("get_info", {});
+    return {
+      network: typeof result.network === "string" ? result.network.toLowerCase() : null,
+      pubkey: typeof result.pubkey === "string" ? result.pubkey.toLowerCase() : null,
+      methods: Array.isArray(result.methods) ? result.methods.map(String) : [],
+    };
+  }
+
   async getBalanceSats(): Promise<number> {
     const result = await this.call<{ balance?: number }>("get_balance", {});
     return Math.floor(Number(result.balance ?? 0) / 1_000);

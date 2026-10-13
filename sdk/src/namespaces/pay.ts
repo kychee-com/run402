@@ -1,5 +1,6 @@
 import type { Client } from "../kernel.js";
 import { Run402Error, type NextAction } from "../errors.js";
+import { gateSecret } from "../secret-gate.js";
 
 export const DEFAULT_PAYMENT_MAX_USD_MICROS = 100_000;
 export const X402_COMMERCE_RESULT_SCHEMA_VERSION =
@@ -30,6 +31,18 @@ export interface PayFetchOptions {
    * payment and a matching verified receipt after settlement.
    */
   requireReceipt?: boolean;
+  /**
+   * Lightning only: refuse an `lnbtc` payment whose invoice plus routing
+   * headroom exceeds this many sats. Absent, the rail's per-call ceiling applies.
+   */
+  maxSats?: number;
+  /**
+   * Lightning only: pay the `lnbtc` entry with this Nostr Wallet Connect
+   * pairing instead of the configured wallet, on whichever network its node
+   * is on. A bearer secret: the CLI reads it from a file or stdin, and the MCP
+   * sandbox refuses it (`SECRET_REQUIRES_CLI`).
+   */
+  lightningPairing?: string;
 }
 
 export const X402_EVIDENCE_STATUSES = [
@@ -60,6 +73,8 @@ export interface PaymentReceipt {
   network: string;
   paymentId: string | null;
   amountUsdMicros: number;
+  /** Lightning only: the invoice amount in millisatoshis (the USD amount is the seller's, not reported). */
+  amountMsat?: number;
   asset: string;
   payer: string | null;
   payTo: string;
@@ -389,7 +404,7 @@ export type PayExecutor = (
   options: Required<
     Pick<PayFetchOptions, "maxUsdMicros" | "requireReceipt">
   > &
-    Pick<PayFetchOptions, "idempotencyKey">,
+    Pick<PayFetchOptions, "idempotencyKey" | "maxSats" | "lightningPairing">,
 ) => Promise<PayFetchResult>;
 
 /** Arbitrary-URL buyer namespace. Node supplies the x402 executor; isomorphic callers may inject one. */
@@ -405,13 +420,17 @@ export class Pay {
     options: PayFetchOptions = {},
   ): Promise<PayFetchResult> {
     const normalizedUrl = normalizePayUrl(url);
+    gateSecret(this.client, "pay.fetch", normalizedUrl, init, options);
     const maxUsdMicros = normalizeMax(options.maxUsdMicros);
+    const maxSats = normalizeMaxSats(options.maxSats);
     const nextInit = withIdempotencyKey(init, options.idempotencyKey);
     if (this.executor) {
       return this.executor(normalizedUrl, nextInit, {
         maxUsdMicros,
         requireReceipt: options.requireReceipt === true,
         ...(options.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : {}),
+        ...(maxSats !== undefined ? { maxSats } : {}),
+        ...(options.lightningPairing ? { lightningPairing: options.lightningPairing } : {}),
       });
     }
 
@@ -747,6 +766,20 @@ function normalizePayUrl(input: string | URL): string {
     });
   }
   return url.toString();
+}
+
+function normalizeMaxSats(value: number | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new PaymentBuyerError({
+      code: "PAYMENT_SETTLEMENT_FAILED",
+      message: "maxSats must be a positive safe integer.",
+      fundsMoved: false,
+      details: { field: "maxSats", value },
+      nextActions: [{ type: "edit_request", field: "maxSats", why: "Pass a whole number of sats." }],
+    });
+  }
+  return value;
 }
 
 function normalizeMax(value: number | undefined): number {

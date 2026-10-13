@@ -260,14 +260,19 @@ describe("createLightningFetch — request selection", () => {
     assert.equal(w.paid.length, 0);
   });
 
-  it("hands a non-charged request to the x402 buyer when one exists", async () => {
+  it("sends a non-charged request as-is and hands a 402 with no Lightning entry to the x402 buyer", async () => {
     const fallbackCalls: string[] = [];
+    const s = seller([() => new Response("{\"code\":\"PAYMENT_REQUIRED\"}", { status: 402, headers: { "content-type": "application/json" } })]);
+    const w = wallet();
     const fetch = createLightningFetch({
-      pairingUri: URI, baseFetch: async () => { throw new Error("base fetch must not be used"); }, wallet: wallet(), stack: async () => stack,
+      pairingUri: URI, baseFetch: s.fetch, wallet: w, stack: async () => stack,
       fallback: async () => async (input) => { fallbackCalls.push(String(input)); return new Response("ok", { status: 200 }); },
     });
-    await fetch("https://api.example/contracts/v1/call", { method: "POST" });
+    const response = await fetch("https://api.example/contracts/v1/call", { method: "POST" });
+    assert.equal(response.status, 200);
+    assert.equal(s.calls.length, 1, "the request is sent once before the x402 buyer takes over");
     assert.deepEqual(fallbackCalls, ["https://api.example/contracts/v1/call"]);
+    assert.deepEqual(w.paid, []);
   });
 
   it("classifies charged surfaces", () => {

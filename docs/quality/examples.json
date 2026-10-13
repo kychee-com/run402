@@ -128,6 +128,14 @@
     "validation": "cli-help-output-sync"
   },
   {
+    "file": "docs-site/src/content/docs//cli/commands.md",
+    "line": 34,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "e4d5a69b6f9aec564ba3d6d461f998fe6acb7220d830b38faaa4401ee62d6ea4",
+    "validation": "cli-help-output-sync"
+  },
+  {
     "file": "docs-site/src/content/docs//cli/deploy.md",
     "line": 25,
     "language": "json",
@@ -1097,7 +1105,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/identity.md",
-    "line": 122,
+    "line": 130,
     "language": "ts",
     "kind": "application-or-sdk",
     "sha256": "a38a06a233a747bb4d0fa95f7b3fef48b3164652d9b0e0acc4c7c25f9368aca0",
@@ -1105,7 +1113,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/identity.md",
-    "line": 210,
+    "line": 218,
     "language": "ts",
     "kind": "application-or-sdk",
     "sha256": "7abf4fffeeb879dd350526a2c0309a29b0a1b3a74c62db962c8795f34e4d7813",
@@ -1113,7 +1121,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/identity.md",
-    "line": 228,
+    "line": 236,
     "language": "ts",
     "kind": "application-or-sdk",
     "sha256": "2aa741bb3a80838077c5b22e9c41f90f9310376c2ba49263fe371cf5677d489a",
@@ -1121,7 +1129,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/identity.md",
-    "line": 247,
+    "line": 255,
     "language": "ts",
     "kind": "application-or-sdk",
     "sha256": "09664317303198e18ccd8ce2f9ef111a8604f6debd174eee00959840bb6d3863",
@@ -1129,7 +1137,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/identity.md",
-    "line": 261,
+    "line": 269,
     "language": "ts",
     "kind": "application-or-sdk",
     "sha256": "5e177a01fa81302667d5f785c3d403e0f59e49a5afefd068fdff7fa896df4b4b",
@@ -1364,7 +1372,7 @@
     "line": 18,
     "language": "",
     "kind": "output-or-pseudocode",
-    "sha256": "1a8511e0d7b515f9475ac77d15a821094f44a3f264ce6104bd74a99de273766f",
+    "sha256": "f46572e2708e6b519d28aa6a1288cc7ecb4e692c19c1a2066d5c1d9b1762fbc7",
     "validation": "sdk-snippets"
   },
   {

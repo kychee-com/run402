@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
-import { createLightningFetch, LightningPaymentError, RUN402_MPP_LIGHTNING_PROFILE, type LightningWalletLike } from "./lightning-paid-fetch.js";
+import { LNBTC_MAINNET, LNBTC_TESTNET, createLightningFetch, createLightningPayExecutor, LightningPaymentError, RUN402_MPP_LIGHTNING_PROFILE, type LightningWalletLike } from "./lightning-paid-fetch.js";
 import {
   explicitRequestHeaders,
   isX402LightningCandidate,
@@ -199,5 +199,106 @@ describe("createLightningFetch on the image route", () => {
     assert.equal(response.status, 200);
     assert.equal(s.calls.length, 1);
     assert.deepEqual(w.paid, []);
+  });
+});
+
+describe("createLightningFetch on any URL (lightning-buyer-any-route)", () => {
+  const stack = {
+    Challenge: { deserialize: (value: string) => JSON.parse(value.replace(/^Payment /, "")), serialize: (c: unknown) => `Payment ${JSON.stringify(c)}` },
+    Credential: { from: (p: unknown) => p, serialize: (c: unknown) => `Payment ${Buffer.from(JSON.stringify(c)).toString("base64")}` },
+  } as unknown as LightningStack;
+  const { method, url } = BASE.intended_request.http;
+  const paidResponse = () => new Response("{\"ok\":true}", {
+    status: 200,
+    headers: { "payment-response": Buffer.from(JSON.stringify({ success: true, transaction: BASE.payer_result.payment_hash, network: LNBTC_MAINNET })).toString("base64") },
+  });
+  const testnetChallenge = { ...BASE.payment_required, accepts: [{ ...BASE.payment_required.accepts[0]!, network: LNBTC_TESTNET }] };
+
+  it("pays the lnbtc entry of a 402 on a URL that is not a Run402 surface", async () => {
+    const s = seller([() => challengeResponse(), paidResponse]);
+    const w = wallet();
+    const paid: string[] = [];
+    const fetch = createLightningFetch({ pairingUri: URI, baseFetch: s.fetch, wallet: w, stack: async () => stack, fallback: async () => null, clock: () => NOW, onPaid: (hash) => paid.push(hash) });
+    const response = await fetch(url, { method });
+    assert.equal(response.status, 200);
+    assert.deepEqual(w.paid, [BASE.payer_result.invoice]);
+    assert.deepEqual(paid, [BASE.payer_result.payment_hash]);
+    assert.equal(s.calls.length, 2);
+    assert.ok(s.calls[1]!.headers.get("payment-signature"), "the paid retry carries the proof");
+  });
+
+  it("refuses, by name and without paying, an lnbtc entry on another network than the wallet's", async () => {
+    const s = seller([() => challengeResponse(testnetChallenge)]);
+    const w = wallet();
+    const fetch = createLightningFetch({ pairingUri: URI, baseFetch: s.fetch, wallet: w, stack: async () => stack, fallback: async () => { throw new Error("must not fall through"); }, clock: () => NOW });
+    await assert.rejects(
+      () => fetch(url, { method }),
+      (error: unknown) => error instanceof LightningPaymentError && error.code === "LIGHTNING_NETWORK_MISMATCH" &&
+        JSON.stringify(error.details.offered_networks) === JSON.stringify([LNBTC_TESTNET]) && error.details.wallet_network === LNBTC_MAINNET &&
+        String(error.details.next_action).includes("--lightning-pairing"),
+    );
+    assert.deepEqual(w.paid, []);
+    assert.equal(s.calls.length, 1);
+  });
+
+  it("probes a bring-your-own pairing's network once and judges the 402 by it", async () => {
+    let probes = 0;
+    const testnetWallet = wallet({ async getInfo() { probes += 1; return { network: "testnet", pubkey: null, methods: ["pay_invoice"] }; } });
+    const s = seller([() => challengeResponse()]);
+    const fetch = createLightningFetch({ pairingUri: URI, baseFetch: s.fetch, wallet: testnetWallet, stack: async () => stack, fallback: async () => null, walletNetwork: "probe", clock: () => NOW });
+    await assert.rejects(
+      () => fetch(url, { method }),
+      (error: unknown) => error instanceof LightningPaymentError && error.code === "LIGHTNING_NETWORK_MISMATCH" && error.details.wallet_network === LNBTC_TESTNET,
+    );
+    await assert.rejects(() => fetch(url, { method }), (error: unknown) => error instanceof LightningPaymentError && error.code === "LIGHTNING_NETWORK_MISMATCH");
+    assert.equal(probes, 1, "the node is asked once per buyer");
+    assert.deepEqual(testnetWallet.paid, []);
+  });
+
+  it("applies a per-call sats cap before paying", async () => {
+    const s = seller([() => challengeResponse()]);
+    const w = wallet();
+    const fetch = createLightningFetch({ pairingUri: URI, baseFetch: s.fetch, wallet: w, stack: async () => stack, fallback: async () => null, clock: () => NOW, perCall: () => ({ maxSats: 10 }) });
+    await assert.rejects(
+      () => fetch(url, { method }),
+      (error: unknown) => error instanceof LightningPaymentError && error.code === "LIGHTNING_DEBIT_ABOVE_CAP" && error.details.cap_source === "max_sats" && error.details.cap_sats === 10,
+    );
+    assert.deepEqual(w.paid, []);
+  });
+
+  it("refuses a Lightning entry when a merchant receipt was demanded", async () => {
+    const s = seller([() => challengeResponse()]);
+    const w = wallet();
+    const fetch = createLightningFetch({ pairingUri: URI, baseFetch: s.fetch, wallet: w, stack: async () => stack, fallback: async () => null, clock: () => NOW, perCall: () => ({ requireReceipt: true }) });
+    await assert.rejects(() => fetch(url, { method }), (error: unknown) => error instanceof LightningPaymentError && error.code === "LIGHTNING_RECEIPT_UNAVAILABLE");
+    assert.deepEqual(w.paid, []);
+  });
+
+  it("hands a 402 with only USDC entries to the x402 buyer", async () => {
+    const usdcOnly = { ...BASE.payment_required, accepts: [{ ...BASE.payment_required.accepts[0]!, network: "eip155:8453" }] };
+    const fallbackCalls: string[] = [];
+    const s = seller([() => challengeResponse(usdcOnly)]);
+    const w = wallet();
+    const fetch = createLightningFetch({ pairingUri: URI, baseFetch: s.fetch, wallet: w, stack: async () => stack, fallback: async () => async (input) => { fallbackCalls.push(String(input)); return new Response("ok", { status: 200 }); } });
+    const response = await fetch(url, { method });
+    assert.equal(response.status, 200);
+    assert.deepEqual(fallbackCalls, [url]);
+    assert.deepEqual(w.paid, []);
+  });
+
+  it("pay.fetch's executor reports the lnbtc payment it made", async () => {
+    const s = seller([() => challengeResponse(), paidResponse]);
+    const w = wallet();
+    const pay = createLightningPayExecutor({ pairingUri: URI, baseFetch: s.fetch, wallet: w, stack: async () => stack, fallback: async () => null, clock: () => NOW });
+    const result = await pay(url, { method }, { maxUsdMicros: 0, requireReceipt: false, maxSats: 100 });
+    assert.equal(result.outcome, "settled");
+    assert.equal(result.payment?.network, LNBTC_MAINNET);
+    assert.equal(result.payment?.transaction, BASE.payer_result.payment_hash);
+    assert.equal(result.payment?.amountMsat, 25_000);
+    assert.equal(result.payment?.payer, null);
+    assert.equal(result.payment?.settlement.status, "verified");
+    assert.deepEqual(w.paid, [BASE.payer_result.invoice]);
+    const unpaid = await pay(url, { method }, { maxUsdMicros: 0, requireReceipt: false });
+    assert.equal(unpaid.outcome, "not_required", "a second call sees the seller's 200 straight away (the seller stub repeats its last reply)");
   });
 });

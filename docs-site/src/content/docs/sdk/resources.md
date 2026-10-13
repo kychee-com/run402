@@ -16,7 +16,7 @@ The `Run402` class exposes focused namespaces. Click into the SDK source for ful
 ### `r.pay`
 
 ```
-r.pay.fetch(url, init?, { maxUsdMicros?, idempotencyKey?, requireReceipt? }): Promise<PayFetchResult>
+r.pay.fetch(url, init?, { maxUsdMicros?, idempotencyKey?, requireReceipt?, maxSats?, lightningPairing? }): Promise<PayFetchResult>
 ```
 
 Node automatically supplies the configured wallet/signer. Isomorphic hosts

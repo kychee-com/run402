@@ -232,6 +232,15 @@ export const SECRET_RETURNING_METHODS = {
   "me.overview": { when: hasToken, command: () => "run402 orgs list", why: SIGN_IN_WHY },
   "me.status": { when: hasToken, command: () => "run402 whoami", why: SIGN_IN_WHY },
   // ── orgs: the Lightning receiver pairing is a secret the caller hands in ──
+  // ── pay: a bring-your-own Lightning pairing is a bearer secret ───────────
+  "pay.fetch": {
+    when: (_url: unknown, _init: unknown, options: unknown) => Boolean(str(obj(options).lightningPairing)),
+    command: (url: unknown, init: unknown) => {
+      const method = str(obj(init).method)?.toUpperCase();
+      return `run402 pay ${arg(url, "<url>")}${method && method !== "GET" ? ` --method ${method}` : ""} --lightning-pairing <file|->`;
+    },
+    why: "An NWC pairing that can pay is a bearer secret for its node; hand it to the CLI from a file or stdin, never to a snippet.",
+  },
   "orgs.lightningReceiver.set": {
     command: (input: unknown) => `run402 orgs lightning-receiver set${orgFlag(obj(input).orgId)} <nwc-uri | ->`,
     why: "The NWC pairing is a bearer secret for the organization's node; hand it to the CLI (or on stdin), never to a snippet.",

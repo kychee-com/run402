@@ -117,7 +117,15 @@ custom `fetch` owns payment, or the selected source is not currently available.
 `r.pay.fetch(url, init?, options?)` is the canonical buyer surface for an
 arbitrary x402-priced HTTP endpoint. It passes unpriced endpoints through,
 defaults `maxUsdMicros` to `100_000` ($0.10), forwards an optional
-`Idempotency-Key`, and returns the response together with a faithful receipt:
+`Idempotency-Key`, and returns the response together with a faithful receipt.
+On the `lightning` rail it pays a 402's `lnbtc` entry on the wallet's network
+from the Lightning wallet, bounded by `maxSats` (invoice plus routing headroom)
+or the rail's ceiling, and refuses an entry on another network with
+`LIGHTNING_NETWORK_MISMATCH` before paying; `lightningPairing` (a
+`nostr+walletconnect://` URI, a bearer secret the MCP sandbox refuses with
+`SECRET_REQUIRES_CLI`) pays with that pairing on its node's network instead.
+The receipt of a Lightning payment reports the `lnbtc:` network, the payment
+hash as `transaction`, `amountMsat`, and no payer:
 
 ```ts
 import { run402 } from "@run402/sdk/node";

@@ -29,7 +29,7 @@ import {
   type PaymentAttemptPhase,
 } from "../errors.js";
 import { PaidStackUnavailable, loadMppStack, loadX402Stack } from "./_paid-stack.js";
-import { createLightningFetch } from "./lightning-paid-fetch.js";
+import { createLightningFetch, createLightningPayExecutor } from "./lightning-paid-fetch.js";
 import type { MppStack, X402Stack } from "./_paid-stack.js";
 import {
   DEFAULT_PAYMENT_MAX_USD_MICROS,
@@ -734,16 +734,28 @@ export async function setupPaidFetch(options: PaidFetchOptions = {}): Promise<Co
       // agent's budgeted wallet on Run402's Hub; fall back to the x402 buyer
       // built from the same wallet when no Lightning challenge is offered.
       const lightning = localWallet.lightning;
+      const fallback = async () => setupPaidFetch({ ...options, railOverride: "x402" });
       const fetchFn = createLightningFetch({
         pairingUri: lightning.nwc,
         baseFetch: sdkFetch,
-        fallback: async () => setupPaidFetch({ ...options, railOverride: "x402" }),
+        fallback,
       });
+      // `pay.fetch` on this rail: the same buyer, reporting the `lnbtc`
+      // payment it made; a 402 with no Lightning entry is the x402 buyer's.
+      const pay: PayExecutor = async (url, init, payOptions) => {
+        const executor = createLightningPayExecutor({ pairingUri: lightning.nwc, baseFetch: sdkFetch, fallback: async () => null });
+        const result = await executor(url, init, payOptions);
+        if (result.payment || result.response.status !== 402) return result;
+        await result.response.body?.cancel().catch(() => undefined);
+        const x402 = await fallback();
+        if (!x402?.pay) return result;
+        return x402.pay(url, init, payOptions);
+      };
       return withPayer(fetchFn, {
         source: resolvedWallet!.source,
         rail: "lightning",
         payers: [{ address: lightning.lightning_address ?? lightning.wallet_id }],
-      });
+      }, undefined, pay);
     }
     if (rail === "mpp" && localWallet) {
       const stack = await stackLoaders.mpp();
@@ -1013,6 +1025,20 @@ export function createLazyPaidFetch(options: PaidFetchOptions = {}): LazyPaidFet
       payOptions: Parameters<PayExecutor>[2],
     ): Promise<PayFetchResult> {
       const configured = await initialize();
+      if (payOptions.lightningPairing) {
+        // A bring-your-own pairing pays the `lnbtc` entry on its node's
+        // network; a 402 without one falls to the configured buyer, if any.
+        const executor = createLightningPayExecutor({
+          pairingUri: payOptions.lightningPairing,
+          baseFetch: sdkFetch,
+          fallback: async () => null,
+          walletNetwork: "probe",
+        });
+        const result = await executor(url, init, payOptions);
+        if (result.payment || result.response.status !== 402 || !configured?.pay) return result;
+        await result.response.body?.cancel().catch(() => undefined);
+        return configured.pay(url, init, payOptions);
+      }
       if (configured?.pay) return configured.pay(url, init, payOptions);
 
       const response = await sdkFetch(url, init);

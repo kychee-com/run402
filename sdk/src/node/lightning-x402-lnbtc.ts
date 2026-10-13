@@ -73,7 +73,14 @@ export function isX402LightningCandidate(input: RequestInfo | URL, init: Request
 }
 
 /** The x402 v2 challenge's `exact` entry on an `lnbtc:` network with an invoice, or null. */
-export function readX402LightningOffer(response: Response): X402LnbtcOffer | null {
+/** The x402 network ids of every payable `lnbtc` entry in a 402 (empty when there is none). */
+export function x402LightningNetworks(response: Response): string[] {
+  const paymentRequired = decodePaymentRequired(response);
+  if (!paymentRequired) return [];
+  return [...new Set(paymentRequired.accepts.filter(isPayableLnbtcEntry).map((entry) => entry.network))];
+}
+
+function decodePaymentRequired(response: Response): X402LnbtcOffer["paymentRequired"] | null {
   if (response.status !== 402) return null;
   const header = response.headers.get("payment-required");
   if (!header) return null;
@@ -85,11 +92,23 @@ export function readX402LightningOffer(response: Response): X402LnbtcOffer | nul
   }
   const paymentRequired = decoded as X402LnbtcOffer["paymentRequired"] | null;
   if (!paymentRequired || paymentRequired.x402Version !== 2 || !Array.isArray(paymentRequired.accepts)) return null;
-  const requirements = paymentRequired.accepts.find((entry) =>
-    entry?.scheme === "exact" &&
-    typeof entry.network === "string" && entry.network.startsWith("lnbtc:") &&
-    typeof entry.extra?.invoice === "string" && entry.extra.invoice.length > 0,
-  );
+  return paymentRequired;
+}
+
+function isPayableLnbtcEntry(entry: X402LnbtcRequirements | null | undefined): entry is X402LnbtcRequirements {
+  return Boolean(entry) && entry!.scheme === "exact" &&
+    typeof entry!.network === "string" && entry!.network.startsWith("lnbtc:") &&
+    typeof entry!.extra?.invoice === "string" && entry!.extra.invoice.length > 0;
+}
+
+/**
+ * The payable `lnbtc` entry of a 402: on `network` when one is named (the
+ * wallet's), else the first one. Null when the 402 carries none.
+ */
+export function readX402LightningOffer(response: Response, network?: string): X402LnbtcOffer | null {
+  const paymentRequired = decodePaymentRequired(response);
+  if (!paymentRequired) return null;
+  const requirements = paymentRequired.accepts.find((entry) => isPayableLnbtcEntry(entry) && (network === undefined || entry.network === network));
   return requirements ? { paymentRequired, requirements } : null;
 }
 
@@ -115,6 +134,14 @@ export function explicitRequestHeaders(init: RequestInit | undefined): Headers {
   return headers;
 }
 
+/** What `onPaid` learns about a payment: the entry it paid, never the preimage. */
+export interface X402LnbtcPaid {
+  network: string;
+  amountMsat: number;
+  payTo: string;
+  resourceUrl: string;
+}
+
 export interface PayX402LightningOptions {
   input: RequestInfo | URL;
   init: RequestInit | undefined;
@@ -124,7 +151,7 @@ export interface PayX402LightningOptions {
   fail: X402LnbtcErrorFactory;
   /** Checks the all-in cost (sats) against the rail's ceiling and the wallet's budget; throws to refuse. */
   checkCaps: (amountSats: number) => Promise<void>;
-  onPaid?: (paymentHash: string) => void;
+  onPaid?: (paymentHash: string, paid: X402LnbtcPaid) => void;
   /** Unix seconds; the invoice checks' clock. Tests pin it; production uses the system clock. */
   clock?: () => number;
 }
@@ -208,7 +235,12 @@ export async function payX402Lightning(options: PayX402LightningOptions): Promis
   }
 
   const paymentHash = decodeInvoice(String(offer.requirements.extra.invoice)).paymentHash;
-  options.onPaid?.(paymentHash);
+  options.onPaid?.(paymentHash, {
+    network: offer.requirements.network,
+    amountMsat: Number(offer.requirements.amount),
+    payTo: offer.requirements.payTo,
+    resourceUrl: url,
+  });
   const signature = Buffer.from(JSON.stringify({
     x402Version: 2,
     resource: offer.paymentRequired.resource,
