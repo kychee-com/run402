@@ -7,7 +7,7 @@ import { randomBytes } from "node:crypto";
 import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { keccak_256 } from "@noble/hashes/sha3.js";
 import { bytesToHex } from "@noble/hashes/utils.js";
-import { readWallet } from "./wallet.js";
+import { isSignerWallet, readWallet } from "./wallet.js";
 import { getApiBase } from "./config.js";
 import type { WalletData } from "./wallet.js";
 
@@ -87,6 +87,47 @@ export interface SIWxAuthOptions extends SIWEMessageOpts {
   type?: "eip191";
 }
 
+/** Signs an EIP-191 personal message for `address`; resolves to a 65-byte 0x hex signature. */
+export type PersonalMessageSigner = (message: string) => Promise<string>;
+
+/**
+ * A SIWX header waiting for its signature: `message` is the exact EIP-4361
+ * text to sign (EIP-191), `finish` turns the signature into the header. This
+ * is how a signer-backed wallet, whose signature is asynchronous, signs in.
+ */
+export interface PreparedSIWx {
+  message: string;
+  finish(signature: string): SIWxAuthHeaders;
+}
+
+export function prepareSIWx(opts: SIWEMessageOpts & { address: string; type?: "eip191" }): PreparedSIWx {
+  const message = formatSIWEMessage(opts, opts.address);
+  return {
+    message,
+    finish(signature: string): SIWxAuthHeaders {
+      const payload: Record<string, unknown> = {
+        domain: opts.domain,
+        address: toChecksumAddress(opts.address),
+        statement: opts.statement,
+        uri: opts.uri,
+        version: opts.version ?? "1",
+        chainId: payloadChainId(opts.chainId),
+        type: opts.type ?? "eip191",
+        nonce: opts.nonce,
+        issuedAt: opts.issuedAt,
+        expirationTime: opts.expirationTime,
+        signature,
+      };
+      if (opts.resources !== undefined) {
+        payload.resources = opts.resources;
+      }
+      return {
+        "SIGN-IN-WITH-X": Buffer.from(JSON.stringify(payload)).toString("base64"),
+      };
+    },
+  };
+}
+
 /**
  * Format an EIP-4361 (SIWE) message. Must be byte-for-byte compatible
  * with the `siwe` library's message format used server-side for verification.
@@ -115,30 +156,58 @@ export function formatSIWEMessage(opts: SIWEMessageOpts, address: string): strin
   return lines.join("\n");
 }
 
+/** SIWX headers signed with a local private key (synchronous). */
 export function buildSIWxAuthHeaders(opts: SIWxAuthOptions): SIWxAuthHeaders {
-  const message = formatSIWEMessage(opts, opts.wallet.address);
-  const signature = personalSign(opts.wallet.privateKey, opts.wallet.address, message);
-
-  const payload: Record<string, unknown> = {
-    domain: opts.domain,
-    address: toChecksumAddress(opts.wallet.address),
-    statement: opts.statement,
-    uri: opts.uri,
-    version: opts.version ?? "1",
-    chainId: payloadChainId(opts.chainId),
-    type: opts.type ?? "eip191",
-    nonce: opts.nonce,
-    issuedAt: opts.issuedAt,
-    expirationTime: opts.expirationTime,
-    signature,
-  };
-  if (opts.resources !== undefined) {
-    payload.resources = opts.resources;
+  if (!opts.wallet.privateKey) {
+    throw new SignerWalletError();
   }
+  const prepared = prepareSIWx({ ...opts, address: opts.wallet.address });
+  return prepared.finish(personalSign(opts.wallet.privateKey, opts.wallet.address, prepared.message));
+}
 
+/**
+ * Thrown where a synchronous signature is required but the wallet signs
+ * through a signer (`wallet.json` `signer`). Callers that can wait use
+ * `getWalletAuthHeadersAsync` with the SDK's signer instead.
+ */
+export class SignerWalletError extends Error {
+  readonly code = "SIGNER_WALLET_ASYNC";
+  constructor() {
+    super("This wallet signs through a signer (wallet.json 'signer'), which this synchronous path cannot use.");
+    this.name = "SignerWalletError";
+  }
+}
+
+function walletSIWxOptions(path: string): SIWEMessageOpts {
+  const apiBase = getApiBase();
+  const url = new URL(apiBase);
+  const now = new Date();
   return {
-    "SIGN-IN-WITH-X": Buffer.from(JSON.stringify(payload)).toString("base64"),
+    domain: url.hostname,
+    uri: `${apiBase}${path}`,
+    statement: "Sign in to Run402",
+    chainId: "eip155:84532",
+    nonce: randomBytes(16).toString("hex"),
+    issuedAt: now.toISOString(),
+    expirationTime: new Date(now.getTime() + 5 * 60 * 1000).toISOString(),
   };
+}
+
+/**
+ * SIWX headers for any wallet: a key-backed wallet signs locally; a
+ * signer-backed one through `signerFor(wallet)`. Null when no wallet exists.
+ */
+export async function getWalletAuthHeadersAsync(
+  path: string,
+  walletPath: string | undefined,
+  signerFor: (wallet: WalletData) => Promise<PersonalMessageSigner>,
+): Promise<SIWxAuthHeaders | null> {
+  const localWallet = readWallet(walletPath);
+  if (!localWallet || !localWallet.address) return null;
+  if (!isSignerWallet(localWallet)) return getWalletAuthHeaders(path, walletPath);
+  const prepared = prepareSIWx({ ...walletSIWxOptions(path), address: localWallet.address });
+  const sign = await signerFor(localWallet);
+  return prepared.finish(await sign(prepared.message));
 }
 
 /**
@@ -154,27 +223,10 @@ export function getWalletAuthHeaders(path: string, walletPath?: string): SIWxAut
   // this helper returns SIWxAuthHeaders | null. Re-throw so callers above
   // the CLI's wrapper (e.g. SDK paid-fetch) can decide whether to swallow it.
   const localWallet = readWallet(walletPath);
-  if (!localWallet || !localWallet.address || !localWallet.privateKey) return null;
-
-  const apiBase = getApiBase();
-  const url = new URL(apiBase);
-  const domain = url.hostname;
-  const uri = `${apiBase}${path}`;
-  const nonce = randomBytes(16).toString("hex");
-  const now = new Date();
-  const issuedAt = now.toISOString();
-  const expirationTime = new Date(now.getTime() + 5 * 60 * 1000).toISOString();
-
-  return buildSIWxAuthHeaders({
-    wallet: localWallet,
-    domain,
-    uri,
-    statement: "Sign in to Run402",
-    chainId: "eip155:84532",
-    nonce,
-    issuedAt,
-    expirationTime,
-  });
+  if (!localWallet || !localWallet.address) return null;
+  if (isSignerWallet(localWallet)) throw new SignerWalletError();
+  if (!localWallet.privateKey) return null;
+  return buildSIWxAuthHeaders({ wallet: localWallet, ...walletSIWxOptions(path) });
 }
 
 function messageChainId(chainId: number | string): string {

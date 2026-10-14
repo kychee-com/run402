@@ -20,7 +20,7 @@ import { ALL_ON_CHAIN_BALANCE_KEYS, readOnChainBalances, TEMPO_MODERATO } from "
 const HELP = `run402 wallets — manage named wallets (profiles)
 
 Usage:
-  run402 wallets list                 List all wallets (local_label, server_label, address, rail, active)
+  run402 wallets list                 List all wallets (local_label, server_label, address, rail, signer, active)
   run402 wallets current              Show the active wallet: how it was selected, address, rail, file path, faucet use
   run402 wallets fund                 Request testnet funds from the faucet into the active wallet (Base Sepolia or Tempo)
   run402 wallets balance              The active wallet's on-chain balances, plus its organization's allowance
@@ -30,6 +30,11 @@ Usage:
   run402 wallets bind [<name>]        Write ./.run402.json binding this directory to a wallet
   run402 wallets unbind               Remove ./.run402.json
   run402 wallets import <name> --key <path|->   Adopt an existing private key as a named wallet
+  run402 wallets import <name> --kms <key-arn> [--aws-profile <p>]
+                                      Adopt an AWS KMS key by reference (no secret on disk)
+  run402 wallets send <amount> --to <address> [--from <smart-account>] [--network <n>] [--confirm]
+                                      Send USDC (base, base-sepolia) or pathUSD (tempo, tempo-moderato)
+                                      from the active wallet; previews without --confirm
   run402 wallets rm <name> --yes      Delete a wallet and its keys (requires --yes)
   run402 wallets lightning status     The active wallet's Lightning wallet (balance, budget, custody)
   run402 wallets lightning mint       Mint the Lightning wallet for the active wallet (same as init lightning)
@@ -43,6 +48,12 @@ Options:
   --rail <rail>   (new) x402 (default), mpp, or lightning; a lightning wallet
                   is minted on the platform by: run402 --wallet <name> init lightning
   --key <path|->  (import) read the private key from a file, or '-' for stdin
+  --kms <arn>     (import) a KMS key ARN (ECC_SECG_P256K1, SIGN_VERIFY); the key never leaves KMS
+  --aws-profile <p>  (import) the AWS profile the key is reached through (e.g. an SSO profile)
+  --to <address>  (send) the recipient
+  --from <addr>   (send) a CoinbaseSmartWallet the wallet owns, to send from (Base only)
+  --network <n>   (send) base (default), base-sepolia, tempo, or tempo-moderato
+  --confirm       (send) sign and send; without it, print the checked preview only
   --yes           (rm) confirm deletion
 
 Notes:
@@ -97,6 +108,14 @@ const cmdBind = (args) => call((w) => w.bind(firstPositional(args)));
 const cmdUnbind = () => call((w) => w.unbind());
 
 function cmdImport(args) {
+  const kms = flagVal(args, "--kms");
+  if (kms) {
+    if (args.includes("--key")) {
+      fail({ code: "BAD_USAGE", message: "Pass either --key or --kms, not both." });
+    }
+    const awsProfile = flagVal(args, "--aws-profile") ?? undefined;
+    return call((w) => w.import(firstPositional(args), { kms: { keyId: kms, awsProfile } }));
+  }
   // The key is read only after the SDK has accepted the name.
   return call((w) => w.import(firstPositional(args), () => {
     const keyArg = flagVal(args, "--key");
@@ -112,6 +131,26 @@ function cmdImport(args) {
 }
 
 const cmdRm = (args) => call((w) => w.remove(firstPositional(args), { confirm: args.includes("--yes") }));
+
+function cmdSend(args) {
+  const valueFlags = new Set(["--to", "--from", "--network"]);
+  const amount = args.find((a, i) => a && !a.startsWith("-") && !valueFlags.has(args[i - 1]));
+  const to = flagVal(args, "--to");
+  if (!amount || !to) {
+    fail({ code: "BAD_USAGE", message: "Usage: run402 wallets send <amount> --to <address> [--from <smart-account>] [--network <n>] [--confirm]" });
+  }
+  const opts = {
+    amount,
+    to,
+    from: flagVal(args, "--from") ?? undefined,
+    network: flagVal(args, "--network") ?? undefined,
+    confirm: args.includes("--confirm"),
+  };
+  return call(async (w) => {
+    const result = await w.send(opts);
+    return result.preview ? { ...result, hint: "Nothing was signed. Re-run with --confirm to sign and send." } : result;
+  });
+}
 
 export async function run(sub, args = []) {
   const rest = Array.isArray(args) ? args : [];
@@ -129,6 +168,7 @@ export async function run(sub, args = []) {
     case "unbind": return cmdUnbind();
     case "import": return cmdImport(rest);
     case "rm": return cmdRm(rest);
+    case "send": return cmdSend(rest);
     case "fund": return cmdFund();
     case "balance": return cmdBalance();
     case "lightning": return cmdLightning(rest);

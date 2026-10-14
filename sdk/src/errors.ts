@@ -578,6 +578,34 @@ export class ProjectCredentialNotFound extends LocalError {
  * `run_cli_command` next action naming the CLI command that performs the
  * same operation, where the secret prints once to a person's terminal.
  */
+/**
+ * `VALUE_TRANSFER_REQUIRES_CLI` — a method that moves money out of a wallet
+ * (`wallets.send`) was called on a client whose `capabilities.returnSecrets`
+ * is false: the `sandbox` surface an MCP `run` snippet executes on. Thrown
+ * before any signature is requested. Paying a priced route from the sandbox is
+ * unaffected (it is bounded by the client's spend controls); a transfer to an
+ * arbitrary address is not, so it belongs to a person at the CLI. Carries one
+ * `run_cli_command` next action naming the equivalent command.
+ */
+export class ValueTransferRequiresCliError extends LocalError {
+  /** The exact CLI command line for the same transfer. */
+  readonly command: string;
+
+  constructor(command: string) {
+    super(
+      `Sending money from a wallet is refused on this client. Run it from the CLI: ${command}`,
+      "checking value-transfer capability",
+      {
+        code: "VALUE_TRANSFER_REQUIRES_CLI",
+        details: { command },
+        next_actions: [{ type: "run_cli_command", command, why: "A transfer to an arbitrary address is confirmed by a person at the CLI." }],
+      },
+    );
+    this.name = "ValueTransferRequiresCliError";
+    this.command = command;
+  }
+}
+
 export class SecretRequiresCliError extends LocalError {
   /** The exact CLI command line for the same operation. */
   readonly command: string;

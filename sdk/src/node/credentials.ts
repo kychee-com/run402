@@ -20,7 +20,8 @@ import {
   getActiveProjectId,
   setActiveProjectId,
 } from "../../core-dist/profile-state.js";
-import { getWalletAuthHeaders } from "../../core-dist/wallet-auth.js";
+import { getWalletAuthHeadersAsync } from "../../core-dist/wallet-auth.js";
+import { personalMessageSignerFor, resolveWalletAccount } from "./signers/index.js";
 import { readWallet as coreReadWallet, saveWallet as coreSaveWallet } from "../../core-dist/wallet.js";
 import {
   getWalletPath as coreGetWalletPath,
@@ -117,7 +118,8 @@ export class NodeCredentialsProvider implements CredentialsProvider {
     if (grantKey) return { Authorization: `Bearer ${grantKey}` };
     if (mode === "grant_key") return null;
 
-    const wallet = getWalletAuthHeaders(path, this.options.walletPath);
+    // A key-backed wallet signs locally; a signer-backed one (KMS) through its signer.
+    const wallet = await getWalletAuthHeadersAsync(path, this.options.walletPath, (w) => personalMessageSignerFor(w));
     if (mode === "wallet") return wallet ? { ...wallet } : null;
     if (mode === "auto" && wallet) return { ...wallet };
 
@@ -209,8 +211,7 @@ export class NodeCredentialsProvider implements CredentialsProvider {
         { code: "IDENTITY_LINK_EOA_SIGNER_REQUIRED" },
       );
     }
-    const { privateKeyToAccount } = await import("viem/accounts");
-    const account = privateKeyToAccount(localWallet.privateKey as `0x${string}`);
+    const account = await resolveWalletAccount(localWallet);
     const signature = await account.signMessage({ message });
     return { address: account.address, signature };
   }

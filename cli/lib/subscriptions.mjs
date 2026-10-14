@@ -136,7 +136,7 @@ async function rulesAdd(args) {
 
   walletAuthHeaders("/agent/v1/notifications/rules");
   try {
-    console.log(JSON.stringify(await getSdk().admin.rules.create(input, sessionProofs("/agent/v1/notifications/rules")), null, 2));
+    console.log(JSON.stringify(await getSdk().admin.rules.create(input, await sessionProofs("/agent/v1/notifications/rules")), null, 2));
   } catch (err) {
     reportSdkError(err);
   }
@@ -162,7 +162,7 @@ async function rulesRm(args) {
   });
   walletAuthHeaders("/agent/v1/notifications/rules");
   try {
-    console.log(JSON.stringify(await getSdk().admin.rules.delete(ruleId, sessionProofs("/agent/v1/notifications/rules")), null, 2));
+    console.log(JSON.stringify(await getSdk().admin.rules.delete(ruleId, await sessionProofs("/agent/v1/notifications/rules")), null, 2));
   } catch (err) {
     reportSdkError(err);
   }

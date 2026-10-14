@@ -174,3 +174,38 @@ export async function loadMppStack(): Promise<MppStack> {
     tempo: mppx!.tempo,
   };
 }
+
+/** What a KMS-backed wallet needs: the KMS client and viem's hashing, serializing, and account helpers. */
+export interface KmsStack {
+  KMSClient: new (config: { region: string; profile?: string }) => { send(command: unknown): Promise<unknown> };
+  SignCommand: new (input: Record<string, unknown>) => unknown;
+  GetPublicKeyCommand: new (input: Record<string, unknown>) => unknown;
+  viem: typeof import("viem");
+  toAccount: typeof import("viem/accounts").toAccount;
+}
+
+/**
+ * Load the KMS signer stack. `@aws-sdk/client-kms` is an optional peer loaded
+ * only when a wallet signs through KMS; users with no KMS wallet never need it.
+ */
+export async function loadKmsStack(): Promise<KmsStack> {
+  const c = new LoadCollector();
+  const kmsSpecifier = "@aws-sdk/client-kms";
+  const kms = await c.load("@aws-sdk/client-kms", () =>
+    import(/* webpackIgnore: true */ kmsSpecifier) as Promise<{
+      KMSClient: KmsStack["KMSClient"];
+      SignCommand: KmsStack["SignCommand"];
+      GetPublicKeyCommand: KmsStack["GetPublicKeyCommand"];
+    }>,
+  );
+  const viem = await c.load("viem", () => import("viem"));
+  const accounts = await c.load("viem", () => import("viem/accounts"));
+  c.throwIfFailed();
+  return {
+    KMSClient: kms!.KMSClient,
+    SignCommand: kms!.SignCommand,
+    GetPublicKeyCommand: kms!.GetPublicKeyCommand,
+    viem: viem!,
+    toAccount: accounts!.toAccount,
+  };
+}

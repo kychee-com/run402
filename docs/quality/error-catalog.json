@@ -697,6 +697,16 @@
       "topic": "/errors/client/#BAD_JSON_FLAG"
     },
     {
+      "code": "BAD_KMS_KEY_ARN",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/node/wallets.ts"
+        }
+      ],
+      "topic": "/errors/client/#BAD_KMS_KEY_ARN"
+    },
+    {
       "code": "BAD_ORG_ID",
       "owners": [
         {
@@ -1003,6 +1013,10 @@
     {
       "code": "BAD_WALLET_FILE",
       "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/node/signers/index.ts"
+        },
         {
           "owner": "public",
           "source": "sdk/src/node/wallets.ts"
@@ -3417,6 +3431,46 @@
       "topic": "/errors/gateway/#KEYSTORE_MISSING"
     },
     {
+      "code": "KMS_ACCESS_DENIED",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/node/signers/kms.ts"
+        }
+      ],
+      "topic": "/errors/client/#KMS_ACCESS_DENIED"
+    },
+    {
+      "code": "KMS_KEY_UNSUITABLE",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/node/signers/kms.ts"
+        }
+      ],
+      "topic": "/errors/client/#KMS_KEY_UNSUITABLE"
+    },
+    {
+      "code": "KMS_SIGNATURE_MALFORMED",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/node/signers/kms.ts"
+        }
+      ],
+      "topic": "/errors/client/#KMS_SIGNATURE_MALFORMED"
+    },
+    {
+      "code": "KMS_SIGNER_UNAVAILABLE",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/node/signers/kms.ts"
+        }
+      ],
+      "topic": "/errors/client/#KMS_SIGNER_UNAVAILABLE"
+    },
+    {
       "code": "LAST_OWNER",
       "owners": [
         {
@@ -3987,6 +4041,10 @@
     {
       "code": "NO_WALLET",
       "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/node/wallets.ts"
+        },
         {
           "owner": "public",
           "source": "cli/lib/ci.mjs"
@@ -6863,6 +6921,26 @@
       "topic": "/errors/client/#SECRET_REQUIRES_CLI"
     },
     {
+      "code": "SEND_INSUFFICIENT_BALANCE",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/node/wallets-send.ts"
+        }
+      ],
+      "topic": "/errors/client/#SEND_INSUFFICIENT_BALANCE"
+    },
+    {
+      "code": "SEND_REVERTED",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/node/wallets-send.ts"
+        }
+      ],
+      "topic": "/errors/client/#SEND_REVERTED"
+    },
+    {
       "code": "SERVICE_KEY_IN_USER_REQUEST",
       "owners": [
         {
@@ -6917,6 +6995,26 @@
       "topic": "/errors/gateway/#SESSION_READ_ONLY"
     },
     {
+      "code": "SIGNER_ADDRESS_MISMATCH",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/node/signers/kms.ts"
+        }
+      ],
+      "topic": "/errors/client/#SIGNER_ADDRESS_MISMATCH"
+    },
+    {
+      "code": "SIGNER_WALLET_ASYNC",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "core/src/wallet-auth.ts"
+        }
+      ],
+      "topic": "/errors/client/#SIGNER_WALLET_ASYNC"
+    },
+    {
       "code": "SLUG_PROTECTED",
       "owners": [
         {
@@ -6955,6 +7053,16 @@
         }
       ],
       "topic": "/errors/gateway/#SLUG_TAKEN"
+    },
+    {
+      "code": "SMART_ACCOUNT_NOT_OWNER",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/node/wallets-send.ts"
+        }
+      ],
+      "topic": "/errors/client/#SMART_ACCOUNT_NOT_OWNER"
     },
     {
       "code": "SNAPSHOT_AUTH_RESTORE_REQUIRES_PRINCIPAL",
@@ -7525,6 +7633,16 @@
         }
       ],
       "topic": "/errors/gateway/#VALIDATION_FAILED"
+    },
+    {
+      "code": "VALUE_TRANSFER_REQUIRES_CLI",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/errors.ts"
+        }
+      ],
+      "topic": "/errors/client/#VALUE_TRANSFER_REQUIRES_CLI"
     },
     {
       "code": "VAULT_ACCESS_DENIED",

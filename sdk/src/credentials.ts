@@ -34,9 +34,23 @@ export interface ProjectCredentialCacheInfo {
   profile?: string;
 }
 
+/**
+ * A wallet is backed by exactly one of: a local private key (`privateKey`),
+ * or a signer reference (`signer`) naming where the key lives (an AWS KMS
+ * key). A signer reference holds no secret.
+ */
 export interface WalletData {
   address: string;
-  privateKey: string;
+  /** Local signing key. Absent on a signer-backed wallet. */
+  privateKey?: string;
+  /** Where a signer-backed wallet's key lives. Absent on a key-backed wallet. */
+  signer?: {
+    kind: "aws_kms";
+    key_arn: string;
+    region: string;
+    /** The AWS profile the key is reached through; the default credential chain when absent. */
+    aws_profile?: string;
+  };
   created?: string;
   funded?: boolean;
   lastFaucet?: string;

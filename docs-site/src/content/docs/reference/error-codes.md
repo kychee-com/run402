@@ -232,6 +232,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="BAD_JSON_FLAG"></a>
 [`BAD_JSON_FLAG`](/errors/client/#BAD_JSON_FLAG)
 
+<a id="bad_kms_key_arn"></a>
+<a id="BAD_KMS_KEY_ARN"></a>
+[`BAD_KMS_KEY_ARN`](/errors/client/#BAD_KMS_KEY_ARN)
+
 <a id="bad_org_id"></a>
 <a id="BAD_ORG_ID"></a>
 [`BAD_ORG_ID`](/errors/client/#BAD_ORG_ID)
@@ -1170,6 +1174,22 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="keystore_missing"></a>
 <a id="KEYSTORE_MISSING"></a>
 [`KEYSTORE_MISSING`](/errors/gateway/#KEYSTORE_MISSING)
+
+<a id="kms_access_denied"></a>
+<a id="KMS_ACCESS_DENIED"></a>
+[`KMS_ACCESS_DENIED`](/errors/client/#KMS_ACCESS_DENIED)
+
+<a id="kms_key_unsuitable"></a>
+<a id="KMS_KEY_UNSUITABLE"></a>
+[`KMS_KEY_UNSUITABLE`](/errors/client/#KMS_KEY_UNSUITABLE)
+
+<a id="kms_signature_malformed"></a>
+<a id="KMS_SIGNATURE_MALFORMED"></a>
+[`KMS_SIGNATURE_MALFORMED`](/errors/client/#KMS_SIGNATURE_MALFORMED)
+
+<a id="kms_signer_unavailable"></a>
+<a id="KMS_SIGNER_UNAVAILABLE"></a>
+[`KMS_SIGNER_UNAVAILABLE`](/errors/client/#KMS_SIGNER_UNAVAILABLE)
 
 <a id="last_owner"></a>
 <a id="LAST_OWNER"></a>
@@ -2425,6 +2445,14 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="SECRET_REQUIRES_CLI"></a>
 [`SECRET_REQUIRES_CLI`](/errors/client/#SECRET_REQUIRES_CLI)
 
+<a id="send_insufficient_balance"></a>
+<a id="SEND_INSUFFICIENT_BALANCE"></a>
+[`SEND_INSUFFICIENT_BALANCE`](/errors/client/#SEND_INSUFFICIENT_BALANCE)
+
+<a id="send_reverted"></a>
+<a id="SEND_REVERTED"></a>
+[`SEND_REVERTED`](/errors/client/#SEND_REVERTED)
+
 <a id="service_key_in_user_request"></a>
 <a id="SERVICE_KEY_IN_USER_REQUEST"></a>
 [`SERVICE_KEY_IN_USER_REQUEST`](/errors/client/#SERVICE_KEY_IN_USER_REQUEST)
@@ -2445,6 +2473,14 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="SESSION_READ_ONLY"></a>
 [`SESSION_READ_ONLY`](/errors/gateway/#SESSION_READ_ONLY)
 
+<a id="signer_address_mismatch"></a>
+<a id="SIGNER_ADDRESS_MISMATCH"></a>
+[`SIGNER_ADDRESS_MISMATCH`](/errors/client/#SIGNER_ADDRESS_MISMATCH)
+
+<a id="signer_wallet_async"></a>
+<a id="SIGNER_WALLET_ASYNC"></a>
+[`SIGNER_WALLET_ASYNC`](/errors/client/#SIGNER_WALLET_ASYNC)
+
 <a id="slug_protected"></a>
 <a id="SLUG_PROTECTED"></a>
 [`SLUG_PROTECTED`](/errors/gateway/#SLUG_PROTECTED)
@@ -2460,6 +2496,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="slug_taken"></a>
 <a id="SLUG_TAKEN"></a>
 [`SLUG_TAKEN`](/errors/gateway/#SLUG_TAKEN)
+
+<a id="smart_account_not_owner"></a>
+<a id="SMART_ACCOUNT_NOT_OWNER"></a>
+[`SMART_ACCOUNT_NOT_OWNER`](/errors/client/#SMART_ACCOUNT_NOT_OWNER)
 
 <a id="snapshot_auth_restore_requires_principal"></a>
 <a id="SNAPSHOT_AUTH_RESTORE_REQUIRES_PRINCIPAL"></a>
@@ -2679,6 +2719,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="validation_failed"></a>
 <a id="VALIDATION_FAILED"></a>
 [`VALIDATION_FAILED`](/errors/gateway/#VALIDATION_FAILED)
+
+<a id="value_transfer_requires_cli"></a>
+<a id="VALUE_TRANSFER_REQUIRES_CLI"></a>
+[`VALUE_TRANSFER_REQUIRES_CLI`](/errors/client/#VALUE_TRANSFER_REQUIRES_CLI)
 
 <a id="vault_access_denied"></a>
 <a id="VAULT_ACCESS_DENIED"></a>

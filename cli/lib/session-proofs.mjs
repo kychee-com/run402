@@ -9,13 +9,17 @@
  * signed in once is never asked to enroll a second passkey. With no live cached
  * session this returns `undefined` and the verb uses wallet auth alone.
  */
-import { walletAuthHeaders } from "./config.mjs";
+import { walletAuthHeaders, walletFile } from "./config.mjs";
 import { loadLiveControlPlaneSession } from "../core-dist/control-plane-session.js";
+import { getWalletAuthHeadersAsync } from "../core-dist/wallet-auth.js";
+import { personalMessageSignerFor } from "#sdk/node";
 
 /** `{ siwx, token }` for `path`, or `undefined` when no live sign-in session is cached. */
-export function sessionProofs(path) {
-  const siwx = walletAuthHeaders(path)["SIGN-IN-WITH-X"];
+export async function sessionProofs(path) {
+  walletAuthHeaders(path); // NO_WALLET when none is configured
   const live = loadLiveControlPlaneSession();
   if (!live || !live.control_plane_session_token) return undefined;
-  return { siwx, token: live.control_plane_session_token };
+  // A key-backed wallet signs locally; a signer-backed one (KMS) through its signer.
+  const headers = await getWalletAuthHeadersAsync(path, walletFile(), (w) => personalMessageSignerFor(w));
+  return { siwx: headers["SIGN-IN-WITH-X"], token: live.control_plane_session_token };
 }

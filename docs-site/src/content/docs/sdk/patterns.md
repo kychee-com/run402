@@ -360,7 +360,7 @@ const r = run402({ disablePaidFetch: true });
 await r.ci.createBinding({
   ...values,
   provider: CI_GITHUB_ACTIONS_PROVIDER,
-  signed_delegation: signCiDelegation(values),
+  signed_delegation: await signCiDelegation(values),
 });
 ```
 

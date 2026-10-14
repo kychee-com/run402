@@ -52,6 +52,7 @@
     "undici": "^7.29.0"
   },
   "peerDependencies": {
+    "@aws-sdk/client-kms": "^3.1147.0",
     "@x402/evm": "2.28.0",
     "@x402/extensions": "2.28.0",
     "@x402/fetch": "2.28.0",
@@ -59,6 +60,9 @@
     "viem": "^2.57.1"
   },
   "peerDependenciesMeta": {
+    "@aws-sdk/client-kms": {
+      "optional": true
+    },
     "@x402/evm": {
       "optional": true
     },

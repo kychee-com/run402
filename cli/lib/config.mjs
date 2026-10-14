@@ -81,7 +81,15 @@ export function saveWallet(data) {
   coreSaveWallet(data);
 }
 
+/**
+ * The wallet's SIWX headers for `path`, or the NO_WALLET failure. Most
+ * callers use this only as a "a wallet is configured" check before handing
+ * the request to the SDK. A signer-backed wallet (KMS) signs asynchronously
+ * inside the SDK, so here it only proves the wallet exists and returns no
+ * headers; callers that need its signature use the SDK.
+ */
 export function walletAuthHeaders(path) {
+  if (readWallet()?.signer) return {};
   const headers = coreGetWalletAuthHeaders(path);
   if (!headers) {
     fail({

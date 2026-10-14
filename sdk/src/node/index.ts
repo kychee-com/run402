@@ -32,6 +32,16 @@ export {
   type OnChainBalances,
 } from "./onchain-balances.js";
 export { PATH_USD, TEMPO_MAINNET, TEMPO_MODERATO, type TempoChain } from "./tempo.js";
+export {
+  adoptKmsKey,
+  personalMessageSignerFor,
+  resolveWalletAccount,
+  walletCanSign,
+  walletSignerKind,
+  type AdoptedKmsKey,
+  type ResolveWalletAccountOptions,
+  type WalletSignerKind,
+} from "./signers/index.js";
 import {
   DEFAULT_API_BASE,
   getApiBase,
@@ -916,6 +926,7 @@ export {
   X402_RECOVERY_ACTIONS,
   LocalError,
   SecretRequiresCliError,
+  ValueTransferRequiresCliError,
   Run402DeployError,
   EMPTY_STATIC_MANIFEST_METADATA,
   ROUTE_HTTP_METHODS,

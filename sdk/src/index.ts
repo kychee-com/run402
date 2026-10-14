@@ -506,6 +506,7 @@ export {
   PaymentAttemptError,
   LocalError,
   SecretRequiresCliError,
+  ValueTransferRequiresCliError,
   Run402DeployError,
   TransferFreezeError,
   StepUpRequiredError,

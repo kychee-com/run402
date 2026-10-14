@@ -34,7 +34,7 @@ await r.wallets.unbind();
 await r.wallets.remove("ci-deploy", { confirm: true });
 ```
 
-`r.wallets.import(name, privateKey)` adopts an existing key; `privateKey` may be a function, called only after the name checks pass. `resolveWalletSelection()`, `assertWalletExists()`, and `selectWallet()` (which also publishes the selection to the environment for the rest of the process) are exported for programs that choose a wallet before building a client.
+`r.wallets.import(name, privateKey)` adopts an existing key; `privateKey` may be a function, called only after the name checks pass. `r.wallets.import(name, { kms: { keyId, awsProfile? } })` adopts an AWS KMS key by reference (`keyId` is the key ARN; read-only `GetPublicKey`): the profile's `wallet.json` holds `signer: { kind: "aws_kms", key_arn, region, aws_profile? }` and no secret, and every signature (SIWX, x402, MPP, transactions) is made by KMS. `@aws-sdk/client-kms` is an optional peer loaded only for such a wallet. `r.wallets.list()` / `current()` report `signer: "local" | "aws_kms"`. `r.wallets.send({ amount, to, from?, network?, confirm? })` sends USDC on `base` / `base-sepolia` (optionally `from` an owned CoinbaseSmartWallet) or pathUSD on `tempo` / `tempo-moderato`; without `confirm: true` it returns the checked preview. On the sandbox surface `import` refuses with `SECRET_REQUIRES_CLI` and `send` with `VALUE_TRANSFER_REQUIRES_CLI`. `resolveWalletSelection()`, `assertWalletExists()`, and `selectWallet()` (which also publishes the selection to the environment for the rest of the process) are exported for programs that choose a wallet before building a client.
 
 ### Organization context
 

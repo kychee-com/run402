@@ -42,10 +42,10 @@ afterEach(() => {
 });
 
 describe("signCiDelegation", () => {
-  it("signs the canonical CI delegation with one Resource URI", () => {
+  it("signs the canonical CI delegation with one Resource URI", async () => {
     saveWallet({ address: TEST_ADDRESS, privateKey: TEST_PRIVATE_KEY }, walletPath);
 
-    const signed = signCiDelegation(CANONICAL, {
+    const signed = await signCiDelegation(CANONICAL, {
       walletPath,
       apiBase: "https://api.run402.com",
       issuedAt: "2026-05-03T00:00:00.000Z",
@@ -61,11 +61,11 @@ describe("signCiDelegation", () => {
     assert.equal(decoded.signature.startsWith("0x"), true);
   });
 
-  it("signs scoped route delegations with the scoped canonical bytes", () => {
+  it("signs scoped route delegations with the scoped canonical bytes", async () => {
     saveWallet({ address: TEST_ADDRESS, privateKey: TEST_PRIVATE_KEY }, walletPath);
     const values = { ...CANONICAL, route_scopes: ["/admin/*", "/admin"] };
 
-    const signed = signCiDelegation(values, {
+    const signed = await signCiDelegation(values, {
       walletPath,
       apiBase: "https://api.run402.com",
       issuedAt: "2026-05-03T00:00:00.000Z",
@@ -78,8 +78,8 @@ describe("signCiDelegation", () => {
     assert.match(decoded.statement, /^Route scopes: \/admin,\/admin\/\*$/m);
   });
 
-  it("fails actionably when no local wallet exists", () => {
-    assert.throws(
+  it("fails actionably when no local wallet exists", async () => {
+    await assert.rejects(
       () => signCiDelegation(CANONICAL, { walletPath }),
       (err: unknown) =>
         err instanceof LocalError &&

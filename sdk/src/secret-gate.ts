@@ -188,8 +188,13 @@ export const SECRET_RETURNING_METHODS = {
     why: "Creating a wallet writes a private key; the CLI creates wallets for a person.",
   },
   "wallets.import": {
-    command: (name: unknown) => `run402 wallets import ${walletName(name)} --key <path|->`,
-    why: "Importing a wallet hands over a private key; read it from a file or stdin in the CLI, never from a snippet.",
+    command: (name: unknown, source: unknown) => {
+      const kms = obj(obj(source).kms);
+      return Object.keys(kms).length > 0
+        ? `run402 wallets import ${walletName(name)} --kms ${arg(kms.keyId, "<key-arn>")}${str(kms.awsProfile) ? ` --aws-profile ${word(str(kms.awsProfile)!)}` : ""}`
+        : `run402 wallets import ${walletName(name)} --key <path|->`;
+    },
+    why: "Importing a wallet adopts a signing authority (a private key, or a KMS key); do it in the CLI, never from a snippet.",
   },
   "agent.lightningWallet.mint": { command: () => "run402 init lightning", why: "The Lightning wallet's pairing secret is returned once." },
   "agent.lightningWallet.get": { command: () => "run402 wallets lightning status", why: "The first read of an active Lightning wallet hands out its pairing secret." },

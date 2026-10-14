@@ -48,6 +48,8 @@ export interface ProfileMeta {
   label?: string | null;
   rail?: "x402" | "mpp";
   created?: string;
+  /** How the wallet signs: a local key, or a signer reference (an AWS KMS key). Absent means local. */
+  signer?: "local" | "aws_kms";
 }
 
 function atomicWrite(p: string, content: string, mode: number): void {

@@ -3,15 +3,32 @@ import { dirname, join } from "node:path";
 import { randomBytes } from "node:crypto";
 import { getWalletPath } from "./config.js";
 
+/**
+ * A wallet is backed by exactly one of: a local private key (`privateKey`),
+ * or a signer reference (`signer`) naming where the key lives. A signer
+ * reference holds no secret.
+ */
 export interface WalletData {
   address: string;
-  privateKey: string;
+  /** Local signing key. Absent on a signer-backed wallet. */
+  privateKey?: string;
+  /** Where a signer-backed wallet's key lives. Absent on a key-backed wallet. */
+  signer?: WalletSigner;
   created?: string;
   funded?: boolean;
   lastFaucet?: string;
   rail?: "x402" | "mpp" | "lightning";
   /** The Lightning wallet (`run402 init lightning`): a budgeted wallet on Run402's Hub. `nwc` is the pairing secret. */
   lightning?: WalletLightning;
+}
+
+/** An AWS KMS `ECC_SECG_P256K1` / `SIGN_VERIFY` key, adopted by reference. */
+export interface WalletSigner {
+  kind: "aws_kms";
+  key_arn: string;
+  region: string;
+  /** The AWS profile used to reach the key (an SSO profile); default credential chain when absent. */
+  aws_profile?: string;
 }
 
 export interface WalletLightning {
@@ -28,6 +45,13 @@ export interface WalletLightning {
 const ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/;
 // 0x-prefixed 64-hex secp256k1 private key (32 bytes).
 const PRIVATE_KEY_RE = /^0x[a-fA-F0-9]{64}$/;
+// arn:aws:kms:<region>:<account>:key/<id>
+export const KMS_KEY_ARN_RE = /^arn:aws[a-z-]*:kms:([a-z0-9-]+):\d{12}:key\/[A-Za-z0-9-]+$/;
+
+/** True when the wallet signs through a signer instead of a local key. */
+export function isSignerWallet(wallet: Pick<WalletData, "signer">): wallet is WalletData & { signer: WalletSigner } {
+  return wallet.signer !== undefined;
+}
 
 /**
  * Load the agent wallet from disk.
@@ -104,6 +128,27 @@ export function readWallet(path?: string): WalletData | null {
       "wallet.json missing valid 'address' (expected 0x-prefixed 40-hex string). " +
         "Back up the file and run 'run402 init' to recreate it.",
     );
+  }
+  if (data.privateKey !== undefined && data.signer !== undefined) {
+    throw new Error(
+      `${p} has both 'privateKey' and 'signer'; a wallet is backed by exactly one. ` +
+        "Remove the one that does not belong to this wallet.",
+    );
+  }
+  if (data.signer !== undefined) {
+    const signer = data.signer as Partial<WalletSigner> | null;
+    if (
+      !signer || typeof signer !== "object" || signer.kind !== "aws_kms" ||
+      typeof signer.key_arn !== "string" || !KMS_KEY_ARN_RE.test(signer.key_arn) ||
+      typeof signer.region !== "string" || signer.region.length === 0 ||
+      (signer.aws_profile !== undefined && (typeof signer.aws_profile !== "string" || signer.aws_profile.length === 0))
+    ) {
+      throw new Error(
+        `${p} has a malformed 'signer' (expected { kind: "aws_kms", key_arn, region, aws_profile? }). ` +
+          "Re-import the wallet with 'run402 wallets import <name> --kms <key-arn>'.",
+      );
+    }
+    return data as WalletData;
   }
   if (typeof data.privateKey !== "string" || !PRIVATE_KEY_RE.test(data.privateKey)) {
     throw new Error(

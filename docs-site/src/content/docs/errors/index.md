@@ -192,6 +192,9 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="BAD_JSON_FLAG"></a>
 [`BAD_JSON_FLAG`](/errors/client/#BAD_JSON_FLAG)
 
+<a id="BAD_KMS_KEY_ARN"></a>
+[`BAD_KMS_KEY_ARN`](/errors/client/#BAD_KMS_KEY_ARN)
+
 <a id="BAD_ORG_ID"></a>
 [`BAD_ORG_ID`](/errors/client/#BAD_ORG_ID)
 
@@ -899,6 +902,18 @@ The catalog records owning source locations and pinned external contributions. A
 
 <a id="KEYSTORE_MISSING"></a>
 [`KEYSTORE_MISSING`](/errors/gateway/#KEYSTORE_MISSING)
+
+<a id="KMS_ACCESS_DENIED"></a>
+[`KMS_ACCESS_DENIED`](/errors/client/#KMS_ACCESS_DENIED)
+
+<a id="KMS_KEY_UNSUITABLE"></a>
+[`KMS_KEY_UNSUITABLE`](/errors/client/#KMS_KEY_UNSUITABLE)
+
+<a id="KMS_SIGNATURE_MALFORMED"></a>
+[`KMS_SIGNATURE_MALFORMED`](/errors/client/#KMS_SIGNATURE_MALFORMED)
+
+<a id="KMS_SIGNER_UNAVAILABLE"></a>
+[`KMS_SIGNER_UNAVAILABLE`](/errors/client/#KMS_SIGNER_UNAVAILABLE)
 
 <a id="LAST_OWNER"></a>
 [`LAST_OWNER`](/errors/gateway/#LAST_OWNER)
@@ -1845,6 +1860,12 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="SECRET_REQUIRES_CLI"></a>
 [`SECRET_REQUIRES_CLI`](/errors/client/#SECRET_REQUIRES_CLI)
 
+<a id="SEND_INSUFFICIENT_BALANCE"></a>
+[`SEND_INSUFFICIENT_BALANCE`](/errors/client/#SEND_INSUFFICIENT_BALANCE)
+
+<a id="SEND_REVERTED"></a>
+[`SEND_REVERTED`](/errors/client/#SEND_REVERTED)
+
 <a id="SERVICE_KEY_IN_USER_REQUEST"></a>
 [`SERVICE_KEY_IN_USER_REQUEST`](/errors/client/#SERVICE_KEY_IN_USER_REQUEST)
 
@@ -1860,6 +1881,12 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="SESSION_READ_ONLY"></a>
 [`SESSION_READ_ONLY`](/errors/gateway/#SESSION_READ_ONLY)
 
+<a id="SIGNER_ADDRESS_MISMATCH"></a>
+[`SIGNER_ADDRESS_MISMATCH`](/errors/client/#SIGNER_ADDRESS_MISMATCH)
+
+<a id="SIGNER_WALLET_ASYNC"></a>
+[`SIGNER_WALLET_ASYNC`](/errors/client/#SIGNER_WALLET_ASYNC)
+
 <a id="SLUG_PROTECTED"></a>
 [`SLUG_PROTECTED`](/errors/gateway/#SLUG_PROTECTED)
 
@@ -1871,6 +1898,9 @@ The catalog records owning source locations and pinned external contributions. A
 
 <a id="SLUG_TAKEN"></a>
 [`SLUG_TAKEN`](/errors/gateway/#SLUG_TAKEN)
+
+<a id="SMART_ACCOUNT_NOT_OWNER"></a>
+[`SMART_ACCOUNT_NOT_OWNER`](/errors/client/#SMART_ACCOUNT_NOT_OWNER)
 
 <a id="SNAPSHOT_AUTH_RESTORE_REQUIRES_PRINCIPAL"></a>
 [`SNAPSHOT_AUTH_RESTORE_REQUIRES_PRINCIPAL`](/errors/gateway/#SNAPSHOT_AUTH_RESTORE_REQUIRES_PRINCIPAL)
@@ -2036,6 +2066,9 @@ The catalog records owning source locations and pinned external contributions. A
 
 <a id="VALIDATION_FAILED"></a>
 [`VALIDATION_FAILED`](/errors/gateway/#VALIDATION_FAILED)
+
+<a id="VALUE_TRANSFER_REQUIRES_CLI"></a>
+[`VALUE_TRANSFER_REQUIRES_CLI`](/errors/client/#VALUE_TRANSFER_REQUIRES_CLI)
 
 <a id="VAULT_ACCESS_DENIED"></a>
 [`VAULT_ACCESS_DENIED`](/errors/gateway/#VAULT_ACCESS_DENIED)

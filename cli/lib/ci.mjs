@@ -325,7 +325,7 @@ async function linkGithub(args) {
 
   let signedDelegation;
   try {
-    signedDelegation = signCiDelegation(values, { apiBase: API });
+    signedDelegation = await signCiDelegation(values, { apiBase: API });
   } catch (err) {
     fail({
       code: "NO_WALLET",

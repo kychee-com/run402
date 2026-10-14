@@ -64,6 +64,7 @@ import {
 } from "./payment-attempts.js";
 
 import { sdkFetch } from "./http-dispatcher.js";
+import { resolveWalletAccount } from "./signers/index.js";
 import { PATH_USD, TEMPO_FEE_HEADROOM_USD_MICROS, tempoChainById, type TempoChain } from "./tempo.js";
 
 type FetchFn = typeof globalThis.fetch;
@@ -875,7 +876,7 @@ export async function setupPaidFetch(options: PaidFetchOptions = {}): Promise<Co
     }
     if (rail === "mpp" && localWallet) {
       const stack = await stackLoaders.mpp();
-      const account = stack.privateKeyToAccount(localWallet.privateKey as `0x${string}`);
+      const account = await resolveWalletAccount(localWallet, { privateKeyToAccount: stack.privateKeyToAccount });
       const readBalance = await tempoBalanceReader(localWallet.address);
       const mppx = stack.Mppx.create({
         polyfill: false,
@@ -903,7 +904,7 @@ export async function setupPaidFetch(options: PaidFetchOptions = {}): Promise<Co
           options.paymentSigner.getSigner({ network: "eip155:8453", publicClient: mainnetClients[0] }),
           options.paymentSigner.getSigner({ network: "eip155:84532", publicClient: sepoliaClients[0] }),
         ])
-      : localWalletSigners(stack, localWallet!, mainnetClients[0], sepoliaClients[0]);
+      : await localWalletSigners(stack, localWallet!, mainnetClients[0], sepoliaClients[0]);
 
     if (!mainnetSigner && !sepoliaSigner) return null;
 
@@ -1240,13 +1241,14 @@ function withPayer(
   return Object.assign(fetchFn, { payer, refreshBalances, ...(pay ? { pay } : {}) });
 }
 
-function localWalletSigners(
+async function localWalletSigners(
   stack: X402Stack,
   localWallet: WalletData,
   mainnetClient: PaymentPublicClient,
   sepoliaClient: PaymentPublicClient,
-): [EvmPaymentSigner, EvmPaymentSigner] {
-  const account = stack.privateKeyToAccount(localWallet.privateKey as `0x${string}`);
+): Promise<[EvmPaymentSigner, EvmPaymentSigner]> {
+  // A key-backed wallet or a signer-backed (KMS) one: the same x402 signer either way.
+  const account = await resolveWalletAccount(localWallet, { privateKeyToAccount: stack.privateKeyToAccount });
   return [
     stack.toClientEvmSigner(account, mainnetClient) as EvmPaymentSigner,
     stack.toClientEvmSigner(account, sepoliaClient) as EvmPaymentSigner,

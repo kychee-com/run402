@@ -39,7 +39,7 @@ export async function run(sub, args = []) {
   }
   const parsedArgs = normalizeArgv(args);
   assertKnownFlags(parsedArgs, ["--help", "-h"]);
-  const proofs = sessionProofs("/agent/v1/webhook-secret/rotate");
+  const proofs = await sessionProofs("/agent/v1/webhook-secret/rotate");
   try {
     const data = await getSdk().admin.rotateWebhookSecret(proofs);
     console.log(JSON.stringify(data, null, 2));

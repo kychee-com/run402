@@ -338,6 +338,7 @@ const SURFACE: Capability[] = [
   { id: "wallets_unbind",    endpoint: "(local)",                              cli: "wallets:unbind",   openclaw: "wallets:unbind" },
   { id: "wallets_import",    endpoint: "(local)",                              cli: "wallets:import",   openclaw: "wallets:import" },
   { id: "wallets_rm",        endpoint: "(local)",                              cli: "wallets:rm",       openclaw: "wallets:rm" },
+  { id: "wallets_send",      endpoint: "(local)",                              cli: "wallets:send",     openclaw: "wallets:send" },
 
   // ── SSR Runtime DX (v1.52, local-only / CLI-only) ──────────────────────
   // doctor / dev / logs are agent-DX shortcuts: CLI parity with OpenClaw.
@@ -963,6 +964,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   wallets_bind: "wallets.bind",
   wallets_unbind: "wallets.unbind",
   wallets_import: "wallets.import",
+  wallets_send: "wallets.send",
   wallets_rm: "wallets.remove",
 
   // `run402 doctor` is the Node SDK's root `doctor()`; `--buzz` rides it

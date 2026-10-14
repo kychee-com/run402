@@ -1,7 +1,8 @@
 /** Node-only helpers to adopt the org your wallet's agent owns. */
 
 import { readWallet } from "../../core-dist/wallet.js";
-import { buildSIWxAuthHeaders } from "../../core-dist/wallet-auth.js";
+import { prepareSIWx } from "../../core-dist/wallet-auth.js";
+import { personalMessageSignerFor, walletCanSign } from "./signers/index.js";
 import { getApiBase } from "../../core-dist/config.js";
 import { loadLiveControlPlaneSession } from "../../core-dist/control-plane-session.js";
 import { LocalError } from "../errors.js";
@@ -23,12 +24,12 @@ export interface SignOrgAdoptOptions {
  * The gateway binds the action/wallet/org/expiry server-side via the nonce, so
  * there is no canonical statement to match (simpler than `signCiDelegation`).
  */
-export function signOrgAdopt(nonce: string, opts: SignOrgAdoptOptions = {}): string {
+export async function signOrgAdopt(nonce: string, opts: SignOrgAdoptOptions = {}): Promise<string> {
   if (!nonce || typeof nonce !== "string") {
     throw new LocalError("signOrgAdopt requires the challenge nonce", "signing org adopt");
   }
   const localWallet = readWallet(opts.walletPath);
-  if (!localWallet || !localWallet.address || !localWallet.privateKey) {
+  if (!localWallet || !localWallet.address || !walletCanSign(localWallet)) {
     throw new LocalError(
       "No local wallet configured. Run `run402 init` before adopting an org.",
       "signing org adopt",
@@ -37,8 +38,8 @@ export function signOrgAdopt(nonce: string, opts: SignOrgAdoptOptions = {}): str
   const apiBase = opts.apiBase ?? getApiBase();
   const url = new URL("/orgs/v1/adopt", apiBase);
   const now = new Date();
-  const headers = buildSIWxAuthHeaders({
-    wallet: localWallet,
+  const prepared = prepareSIWx({
+    address: localWallet.address,
     domain: url.hostname,
     uri: url.toString(),
     statement: "Adopt wallet-owned org",
@@ -47,7 +48,8 @@ export function signOrgAdopt(nonce: string, opts: SignOrgAdoptOptions = {}): str
     issuedAt: opts.issuedAt ?? now.toISOString(),
     expirationTime: opts.expirationTime ?? new Date(now.getTime() + 5 * 60 * 1000).toISOString(),
   });
-  return headers["SIGN-IN-WITH-X"];
+  const sign = await personalMessageSignerFor(localWallet);
+  return prepared.finish(await sign(prepared.message))["SIGN-IN-WITH-X"];
 }
 
 export interface AdoptOrgOptions {
@@ -106,7 +108,7 @@ export async function adoptOrg(r: Run402, opts: AdoptOrgOptions = {}): Promise<A
   }
 
   const challenge = await r.orgs.adopt.challenge({ wallet, token });
-  const siwx = signOrgAdopt(challenge.nonce, {
+  const siwx = await signOrgAdopt(challenge.nonce, {
     apiBase: opts.apiBase,
     walletPath: opts.walletPath,
     chainId: opts.chainId,

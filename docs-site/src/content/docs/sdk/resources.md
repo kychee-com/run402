@@ -276,7 +276,7 @@ Node-only CI exports from `@run402/sdk/node`:
 ```
 signCiDelegation(values, opts?: {
   apiBase?, walletPath?, chainId?, issuedAt?, expirationTime?, nonce?
-}): string
+}): Promise<string>
 
 createCiSessionCredentials({
   projectId, accessToken?, getAccessToken?

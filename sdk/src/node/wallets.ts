@@ -46,14 +46,17 @@ import {
   setDefaultWallet,
   writeMeta,
 } from "../../core-dist/profiles.js";
-import { readWallet, saveWallet, type WalletData } from "../../core-dist/wallet.js";
+import { KMS_KEY_ARN_RE, readWallet, saveWallet, type WalletData } from "../../core-dist/wallet.js";
 import { describeRejectedValue } from "../../core-dist/redact.js";
 import { findBindingKey, readBindingFile, updateBindingFile } from "../../core-dist/binding-file.js";
-import { LocalError, type NextAction } from "../errors.js";
+import { LocalError, ValueTransferRequiresCliError, type NextAction } from "../errors.js";
 import type { Client } from "../kernel.js";
 import { Wallets, type WalletCreateResult } from "../namespaces/wallets.js";
 import { gateSecret } from "../secret-gate.js";
 import { initializeWalletAction } from "./local-actions.js";
+import { adoptKmsKey, type KmsAccountOptions } from "./signers/kms.js";
+import { resolveWalletAccount } from "./signers/index.js";
+import { sendCommand, sendFromWallet, type SendDeps, type SendOptions, type SendPreview, type SendResult } from "./wallets-send.js";
 
 /**
  * The active profile's wallet, or null when there is none. A file that exists
@@ -277,6 +280,8 @@ export interface WalletDescriptor {
   address: string | null;
   address_short: string | null;
   rail: string | null;
+  /** How the wallet signs: `local` (a key in wallet.json) or `aws_kms`; null when unknown. */
+  signer: "local" | "aws_kms" | null;
   active: boolean;
 }
 
@@ -295,6 +300,8 @@ export interface CurrentWalletResult {
   configured: boolean;
   created: string | null;
   rail: string | null;
+  /** How the wallet signs: `local` or `aws_kms`; null with no wallet. */
+  signer: "local" | "aws_kms" | null;
   faucet_used: boolean;
   path: string;
   next_actions?: NextAction[];
@@ -370,17 +377,20 @@ function walletInfo(name: string, active: string): WalletDescriptor {
   const meta = readMeta(name);
   let address = meta?.address ?? null;
   let rail: string | null = meta?.rail ?? null;
+  // meta.json records the signer; a profile written before it was recorded is key-backed.
+  let signer: WalletDescriptor["signer"] = meta ? meta.signer ?? "local" : null;
   const label = meta?.label ?? null;
-  if (!address) {
+  if (!address || !signer) {
     try {
       const w = readWallet(profileWalletPath(name));
-      address = w?.address ?? null;
+      address = address ?? w?.address ?? null;
       rail = rail ?? w?.rail ?? null;
+      signer = signer ?? (w ? (w.signer ? w.signer.kind : "local") : null);
     } catch {
       /* best-effort */
     }
   }
-  return { local_label: name, server_label: label, address, address_short: shortAddr(address), rail, active: name === active };
+  return { local_label: name, server_label: label, address, address_short: shortAddr(address), rail, signer, active: name === active };
 }
 
 /**
@@ -444,6 +454,7 @@ export class NodeWallets extends Wallets {
       configured: !!local?.configured,
       created: local?.created ?? null,
       rail: local?.configured ? local.rail ?? "x402" : info.rail,
+      signer: local?.configured ? info.signer ?? "local" : null,
       faucet_used: !!local?.faucet_used,
       path: local?.path ?? getWalletPath(),
       ...(local?.configured ? {} : { next_actions: [initializeWalletAction()] }),
@@ -558,13 +569,22 @@ export class NodeWallets extends Wallets {
   }
 
   /**
-   * Adopt an existing private key as a new named wallet. `privateKey` may be a
-   * function, called only after the name checks pass, so a caller reading the
-   * key from a file or stdin reads nothing for a refused name. Refused on the
-   * sandbox surface: its input is a private key.
+   * Adopt an existing signing authority as a new named wallet: a private key,
+   * or an AWS KMS key by reference (`{ kms: { keyId, awsProfile? } }`).
+   *
+   * A private key may be a function, called only after the name checks pass,
+   * so a caller reading the key from a file or stdin reads nothing for a
+   * refused name. A KMS key is adopted read-only: its public key and spec are
+   * read (`GetPublicKey`), nothing on the key is created, changed, or granted,
+   * and the profile holds the key's ARN, never a secret. Refused on the sandbox
+   * surface: it adopts a signing authority.
    */
-  async import(name: string, privateKey: string | (() => string)): Promise<{ local_label: string; address: string; imported: true }> {
-    gateSecret(this.#client, "wallets.import", name);
+  async import(name: string, source: string | (() => string) | { kms: { keyId: string; awsProfile?: string } }, opts: KmsAccountOptions = {}): Promise<{ local_label: string; address: string; imported: true; signer: "local" | "aws_kms"; key_arn?: string }> {
+    gateSecret(this.#client, "wallets.import", name, source);
+    if (typeof source === "object" && source !== null && "kms" in source) {
+      return this.#importKms(name, source.kms, opts);
+    }
+    const privateKey = source;
     const label = requireName(name);
     if (label === DEFAULT) {
       throw new LocalError("'default' is reserved.", CONTEXT, { code: "BAD_WALLET_NAME", details: { name: label } });
@@ -588,7 +608,59 @@ export class NodeWallets extends Wallets {
     saveWallet({ address, privateKey: key, created, funded: false, rail: "x402" }, profileWalletPath(label));
     writeMeta(label, { name: label, address, label, rail: "x402", created });
     await this.#pushLabel(label, label, address);
-    return { local_label: label, address, imported: true };
+    return { local_label: label, address, imported: true, signer: "local" };
+  }
+
+  async #importKms(name: string, kms: { keyId: string; awsProfile?: string }, opts: KmsAccountOptions): Promise<{ local_label: string; address: string; imported: true; signer: "aws_kms"; key_arn: string }> {
+    const label = requireName(name);
+    if (label === DEFAULT) {
+      throw new LocalError("'default' is reserved.", CONTEXT, { code: "BAD_WALLET_NAME", details: { name: label } });
+    }
+    if (profileExists(label)) {
+      throw new LocalError(`A wallet named '${label}' already exists.`, CONTEXT, { code: "WALLET_EXISTS", details: { name: label } });
+    }
+    const keyArn = typeof kms?.keyId === "string" ? kms.keyId.trim() : "";
+    const region = KMS_KEY_ARN_RE.exec(keyArn)?.[1];
+    if (!region) {
+      throw new LocalError("--kms takes a KMS key ARN (arn:aws:kms:<region>:<account>:key/<id>).", CONTEXT, {
+        code: "BAD_KMS_KEY_ARN",
+        details: { name: label },
+        next_actions: [{ type: "edit_request", why: "Pass the key's full ARN, as `aws kms describe-key` or the key's console page shows it." }],
+      });
+    }
+    const awsProfile = typeof kms.awsProfile === "string" && kms.awsProfile.trim() ? kms.awsProfile.trim() : undefined;
+    const signer = { kind: "aws_kms" as const, key_arn: keyArn, region, ...(awsProfile ? { aws_profile: awsProfile } : {}) };
+    const { address } = await adoptKmsKey(signer, opts);
+    const created = new Date().toISOString();
+    ensureProfileDir(label);
+    saveWallet({ address, signer, created, funded: false, rail: "x402" }, profileWalletPath(label));
+    writeMeta(label, { name: label, address, label, rail: "x402", created, signer: "aws_kms" });
+    await this.#pushLabel(label, label, address);
+    return { local_label: label, address, imported: true, signer: "aws_kms", key_arn: keyArn };
+  }
+
+  /**
+   * Send a stablecoin from the selected wallet (key-backed or KMS-backed):
+   * USDC on `base` (default) / `base-sepolia`, optionally `from` a
+   * CoinbaseSmartWallet the wallet owns; pathUSD on `tempo` /
+   * `tempo-moderato`. Without `confirm: true` it runs every check and returns
+   * a preview without signing. Refused on the sandbox surface with
+   * `VALUE_TRANSFER_REQUIRES_CLI`: a transfer to an arbitrary address is a
+   * person's decision at the CLI.
+   */
+  async send(opts: SendOptions, deps: SendDeps & KmsAccountOptions = {}): Promise<SendPreview | SendResult> {
+    if (this.#client.capabilities?.returnSecrets === false) {
+      throw new ValueTransferRequiresCliError(sendCommand(opts ?? {}));
+    }
+    const wallet = await this.#client.credentials.readWallet?.();
+    if (!wallet) {
+      throw new LocalError("No local wallet to send from.", CONTEXT, {
+        code: "NO_WALLET",
+        next_actions: [initializeWalletAction()],
+      });
+    }
+    const account = await resolveWalletAccount(wallet, deps);
+    return sendFromWallet(account, opts, deps);
   }
 
   /** Delete a named wallet and its keys. Requires `{ confirm: true }`; `default` is protected. */

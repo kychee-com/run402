@@ -155,6 +155,12 @@ Owner: `public:cli/lib/sdk-errors.mjs`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
+<h2 id="BAD_KMS_KEY_ARN">BAD_KMS_KEY_ARN</h2>
+
+Owner: `public:sdk/src/node/wallets.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
 <h2 id="BAD_ORG_ID">BAD_ORG_ID</h2>
 
 Owner: `public:sdk/src/node/org-context.ts`.
@@ -193,7 +199,7 @@ The client could not complete this operation. Inspect its typed error kind, mess
 
 <h2 id="BAD_WALLET_FILE">BAD_WALLET_FILE</h2>
 
-Owner: `public:sdk/src/node/wallets.ts`, `public:cli/lib/config.mjs`.
+Owner: `public:sdk/src/node/signers/index.ts`, `public:sdk/src/node/wallets.ts`, `public:cli/lib/config.mjs`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
@@ -527,6 +533,30 @@ Owner: `public:sdk/src/namespaces/repos.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
+<h2 id="KMS_ACCESS_DENIED">KMS_ACCESS_DENIED</h2>
+
+Owner: `public:sdk/src/node/signers/kms.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="KMS_KEY_UNSUITABLE">KMS_KEY_UNSUITABLE</h2>
+
+Owner: `public:sdk/src/node/signers/kms.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="KMS_SIGNATURE_MALFORMED">KMS_SIGNATURE_MALFORMED</h2>
+
+Owner: `public:sdk/src/node/signers/kms.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="KMS_SIGNER_UNAVAILABLE">KMS_SIGNER_UNAVAILABLE</h2>
+
+Owner: `public:sdk/src/node/signers/kms.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
 <h2 id="LIGHTNING_ROUTES_STILL_ACTIVE">LIGHTNING_ROUTES_STILL_ACTIVE</h2>
 
 Owner: `public:sdk/src/namespaces/org.ts`.
@@ -679,7 +709,7 @@ The client could not complete this operation. Inspect its typed error kind, mess
 
 <h2 id="NO_WALLET">NO_WALLET</h2>
 
-Owner: `public:cli/lib/ci.mjs`, `public:cli/lib/config.mjs`, `public:cli/lib/wallets.mjs`.
+Owner: `public:sdk/src/node/wallets.ts`, `public:cli/lib/ci.mjs`, `public:cli/lib/config.mjs`, `public:cli/lib/wallets.mjs`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
@@ -1013,6 +1043,18 @@ Owner: `public:sdk/src/errors.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
+<h2 id="SEND_INSUFFICIENT_BALANCE">SEND_INSUFFICIENT_BALANCE</h2>
+
+Owner: `public:sdk/src/node/wallets-send.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="SEND_REVERTED">SEND_REVERTED</h2>
+
+Owner: `public:sdk/src/node/wallets-send.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
 <h2 id="SERVICE_KEY_IN_USER_REQUEST">SERVICE_KEY_IN_USER_REQUEST</h2>
 
 Owner: `public:sdk/src/node/source-scan.ts`.
@@ -1022,6 +1064,24 @@ The client could not complete this operation. Inspect its typed error kind, mess
 <h2 id="SESSION_INVALID">SESSION_INVALID</h2>
 
 Owner: `public:cli/lib/whoami.mjs`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="SIGNER_ADDRESS_MISMATCH">SIGNER_ADDRESS_MISMATCH</h2>
+
+Owner: `public:sdk/src/node/signers/kms.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="SIGNER_WALLET_ASYNC">SIGNER_WALLET_ASYNC</h2>
+
+Owner: `public:core/src/wallet-auth.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="SMART_ACCOUNT_NOT_OWNER">SMART_ACCOUNT_NOT_OWNER</h2>
+
+Owner: `public:sdk/src/node/wallets-send.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
@@ -1124,6 +1184,12 @@ The client could not complete this operation. Inspect its typed error kind, mess
 <h2 id="VALIDATION_ERROR">VALIDATION_ERROR</h2>
 
 Owner: `public:sdk/src/namespaces/transfers.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="VALUE_TRANSFER_REQUIRES_CLI">VALUE_TRANSFER_REQUIRES_CLI</h2>
+
+Owner: `public:sdk/src/errors.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 

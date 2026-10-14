@@ -3,6 +3,7 @@
  */
 
 import { getWalletAuthHeaders as _getWalletAuthHeaders, type SIWxAuthHeaders } from "../core/dist/wallet-auth.js";
+import { readWallet } from "../core/dist/wallet.js";
 
 import { errorResult, type ToolResult } from "./structured.js";
 
@@ -11,13 +12,16 @@ export type { SIWxAuthHeaders };
 export const getWalletAuthHeaders = _getWalletAuthHeaders;
 
 /**
- * Get SIWX auth headers or return an MCP error result.
+ * Check a wallet is configured (and, for a key-backed wallet, return its SIWX
+ * headers), or return an MCP error result. A signer-backed wallet (KMS) signs
+ * asynchronously inside the SDK, so it returns no headers here.
  */
 export function requireWalletAuth(path: string): {
-  headers: SIWxAuthHeaders;
+  headers: SIWxAuthHeaders | null;
 } | {
   error: ToolResult;
 } {
+  if (readWallet()?.signer) return { headers: null };
   const headers = getWalletAuthHeaders(path);
   if (!headers) {
     // Creating a wallet writes a private key, which only the CLI hands to a

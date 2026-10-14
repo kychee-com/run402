@@ -1,7 +1,8 @@
 /** Node-only CI/OIDC helpers. */
 
 import { readWallet } from "../../core-dist/wallet.js";
-import { buildSIWxAuthHeaders } from "../../core-dist/wallet-auth.js";
+import { prepareSIWx } from "../../core-dist/wallet-auth.js";
+import { personalMessageSignerFor, walletCanSign } from "./signers/index.js";
 import { getApiBase } from "../../core-dist/config.js";
 import { LocalError } from "../errors.js";
 import {
@@ -23,12 +24,12 @@ export interface SignCiDelegationOptions {
   nonce?: string;
 }
 
-export function signCiDelegation(
+export async function signCiDelegation(
   values: CiDelegationValues,
   opts: SignCiDelegationOptions = {},
-): string {
+): Promise<string> {
   const localWallet = readWallet(opts.walletPath);
-  if (!localWallet || !localWallet.address || !localWallet.privateKey) {
+  if (!localWallet || !localWallet.address || !walletCanSign(localWallet)) {
     throw new LocalError(
       "No local wallet configured. Run `run402 init` before linking CI.",
       "signing CI delegation",
@@ -39,8 +40,8 @@ export function signCiDelegation(
   const apiBase = opts.apiBase ?? getApiBase();
   const bindingUrl = new URL("/ci/v1/bindings", apiBase);
   const now = new Date();
-  const headers = buildSIWxAuthHeaders({
-    wallet: localWallet,
+  const prepared = prepareSIWx({
+    address: localWallet.address,
     domain: bindingUrl.hostname,
     uri: bindingUrl.toString(),
     statement: buildCiDelegationStatement(canonical),
@@ -51,5 +52,6 @@ export function signCiDelegation(
       opts.expirationTime ?? new Date(now.getTime() + 5 * 60 * 1000).toISOString(),
     resources: [buildCiDelegationResourceUri(canonical)],
   });
-  return headers["SIGN-IN-WITH-X"];
+  const sign = await personalMessageSignerFor(localWallet);
+  return prepared.finish(await sign(prepared.message))["SIGN-IN-WITH-X"];
 }
