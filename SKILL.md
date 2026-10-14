@@ -963,14 +963,19 @@ Domain commands use project-scoped control-plane auth (wallet, sign-in session, 
 
 Subdomain auto-reassignment: add once. Every subsequent `run402 sites deploy-dir` to the same project automatically points the subdomain at the new release. The deploy response includes `subdomain_urls` showing what got reassigned. No re-claim needed.
 
-## On-chain — KMS signers
+## On-chain — signers (your app's wallet)
 
-For agents that need to sign Ethereum transactions. Private keys never leave AWS KMS — there is no export, ever. $0.04/day rental + $0.000005/call. Signer creation requires $1.20 in allowance (30 days prepaid). Non-custodial — see <https://run402.com/humans/terms.html#non-custodial-kms-wallets>.
+A signer is an Ethereum wallet Run402 keeps for your project: its key is created in and never leaves the platform's key custody, so an app sends money and signs contract calls without holding a private key. $0.04/day wallet rent + $0.000005 signing fee per signature. Signer creation requires $1.20 in allowance (30 days of rent). Non-custodial — see <https://run402.com/humans/terms.html#non-custodial-kms-wallets>. A signer sends USDC with no ETH on it (`transfers create`: the platform's facilitator settles the signed authorization and pays the gas), and an org can make a signer its payout address (`run402 orgs payout-wallet --signer <signer_id>`) so what priced routes earn is what the app pays out from.
 
 ```bash
 run402 contracts provision-signer --chain base-mainnet [--recovery-address 0x…]
 run402 contracts list-signers
 run402 contracts get-signer <signer_id>          # metadata + live balance + USD value
+
+run402 contracts transfers create <signer_id> --to 0x… --amount 100000 \
+  [--asset usdc] [--chain base-mainnet] [--idempotency-key payout:<id>]   # gasless USDC out, one signing fee
+run402 contracts transfers get <signer_id> --transfer <transfer_id>
+run402 contracts transfers list <signer_id>
 
 run402 contracts call <project_id> <signer_id> --to 0x… \
   --abi @abi.json --fn transfer --args '["0x…", "1000000"]' \
@@ -981,7 +986,7 @@ run402 contracts read --chain base-mainnet \
 
 run402 contracts status <call_id>
 run402 contracts drain  <signer_id> --to 0x… --confirm     # safety valve (works on suspended)
-run402 contracts delete <signer_id> --confirm              # 7-day KMS deletion window
+run402 contracts delete <signer_id> --confirm              # 7-day key deletion window
 ```
 
 ## Tier and billing

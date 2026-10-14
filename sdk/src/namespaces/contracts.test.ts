@@ -58,6 +58,37 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+describe("contracts.transfer (app-wallet)", () => {
+  it("POSTs the gasless transfer to the signer's transfer route with the service key and the idempotency key", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({ transfer_id: "txf_1", signer_id: "cwlt_1", status: "settled", tx_hash: "0x" + "ab".repeat(32), chain: "base-sepolia", network: "eip155:84532", asset: "usdc", asset_address: "0x036CbD53842c5426634e7929541eC2318f3dCF7e", to: "0x4444444444444444444444444444444444444444", amount: "100000", nonce: "0x" + "cd".repeat(32), failed_phase: null, facilitator_reason: null, created_at: "2026-10-14T00:00:00.000Z", updated_at: "2026-10-14T00:00:00.000Z" }),
+    );
+    const result = await makeSdk(fetch).contracts.transfer("prj_known", {
+      signerId: "cwlt_1", chain: "base-sepolia", to: "0x4444444444444444444444444444444444444444", amount: "100000", idempotencyKey: "payout:swp_1",
+    });
+    assert.equal(result.status, "settled");
+    assert.equal(calls[0]!.url, "https://api.example.test/contracts/v1/signers/cwlt_1/transfers");
+    assert.equal(calls[0]!.method, "POST");
+    assert.equal(calls[0]!.headers.Authorization, "Bearer service_xxx");
+    assert.equal(calls[0]!.headers["Idempotency-Key"], "payout:swp_1");
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), { chain: "base-sepolia", asset: "usdc", to: "0x4444444444444444444444444444444444444444", amount: "100000" });
+  });
+
+  it("refuses a bad amount, address, or chain before any fetch, and reads transfers back", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({ transfers: [] }));
+    const sdk = makeSdk(fetch);
+    await assert.rejects(sdk.contracts.transfer("prj_known", { signerId: "cwlt_1", chain: "base-sepolia", to: "0x4444444444444444444444444444444444444444", amount: "1.5" }), LocalError);
+    await assert.rejects(sdk.contracts.transfer("prj_known", { signerId: "cwlt_1", chain: "base-sepolia", to: "nope", amount: "1" }), LocalError);
+    await assert.rejects(sdk.contracts.transfer("prj_known", { signerId: "cwlt_1", chain: "polygon" as never, to: "0x4444444444444444444444444444444444444444", amount: "1" }), LocalError);
+    assert.equal(calls.length, 0);
+    await sdk.contracts.listTransfers("prj_known", "cwlt_1");
+    assert.equal(calls[0]!.url, "https://api.example.test/contracts/v1/signers/cwlt_1/transfers");
+    assert.equal(calls[0]!.method, "GET");
+    await sdk.contracts.transferStatus("prj_known", "cwlt_1", "txf_1");
+    assert.equal(calls[1]!.url, "https://api.example.test/contracts/v1/signers/cwlt_1/transfers/txf_1");
+  });
+});
+
 describe("contracts.listSigners", () => {
   it("returns a typed signers array with the documented fields", async () => {
     const signers = [

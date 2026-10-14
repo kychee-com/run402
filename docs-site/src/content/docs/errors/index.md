@@ -69,6 +69,9 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="ALLOCATION_SUPERSEDED"></a>
 [`ALLOCATION_SUPERSEDED`](/errors/gateway/#ALLOCATION_SUPERSEDED)
 
+<a id="ALLOWANCE_INSUFFICIENT"></a>
+[`ALLOWANCE_INSUFFICIENT`](/errors/gateway/#ALLOWANCE_INSUFFICIENT)
+
 <a id="AMBIGUOUS_EXTERNAL_SELECTION"></a>
 [`AMBIGUOUS_EXTERNAL_SELECTION`](/errors/gateway/#AMBIGUOUS_EXTERNAL_SELECTION)
 
@@ -1248,6 +1251,12 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="PAYMENT_WALLET_UNFUNDED"></a>
 [`PAYMENT_WALLET_UNFUNDED`](/errors/client/#PAYMENT_WALLET_UNFUNDED)
 
+<a id="PAYOUT_SIGNER_IN_USE"></a>
+[`PAYOUT_SIGNER_IN_USE`](/errors/gateway/#PAYOUT_SIGNER_IN_USE)
+
+<a id="PAYOUT_SIGNER_NOT_ELIGIBLE"></a>
+[`PAYOUT_SIGNER_NOT_ELIGIBLE`](/errors/gateway/#PAYOUT_SIGNER_NOT_ELIGIBLE)
+
 <a id="PIN_CHANGE_UNCONFIRMED"></a>
 [`PIN_CHANGE_UNCONFIRMED`](/errors/gateway/#PIN_CHANGE_UNCONFIRMED)
 
@@ -1926,11 +1935,23 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="TRANSFER_ALREADY_PROCESSED"></a>
 [`TRANSFER_ALREADY_PROCESSED`](/errors/gateway/#TRANSFER_ALREADY_PROCESSED)
 
+<a id="TRANSFER_ASSET_UNSUPPORTED"></a>
+[`TRANSFER_ASSET_UNSUPPORTED`](/errors/gateway/#TRANSFER_ASSET_UNSUPPORTED)
+
 <a id="TRANSFER_EXPIRED"></a>
 [`TRANSFER_EXPIRED`](/errors/gateway/#TRANSFER_EXPIRED)
 
+<a id="TRANSFER_FACILITATOR_UNAVAILABLE"></a>
+[`TRANSFER_FACILITATOR_UNAVAILABLE`](/errors/gateway/#TRANSFER_FACILITATOR_UNAVAILABLE)
+
+<a id="TRANSFER_FAILED"></a>
+[`TRANSFER_FAILED`](/errors/gateway/#TRANSFER_FAILED)
+
 <a id="TRANSFER_HAS_NO_VAULT"></a>
 [`TRANSFER_HAS_NO_VAULT`](/errors/client/#TRANSFER_HAS_NO_VAULT)
+
+<a id="TRANSFER_INSUFFICIENT_BALANCE"></a>
+[`TRANSFER_INSUFFICIENT_BALANCE`](/errors/gateway/#TRANSFER_INSUFFICIENT_BALANCE)
 
 <a id="TRANSFER_NOT_FOUND"></a>
 [`TRANSFER_NOT_FOUND`](/errors/gateway/#TRANSFER_NOT_FOUND)

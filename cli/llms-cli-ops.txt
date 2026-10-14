@@ -43,19 +43,22 @@ Auth: `balance`/`history` require SIWX from linked wallet or admin; wallet looku
 Email packs only activate when the tier daily limit is exhausted AND the project has a ProjectDomain with verified custom email sending (spam protection for Run402-managed mail reputation).
 
 ### contracts
-KMS signers — provision AWS KMS-backed Ethereum signers per project for signing and broadcasting smart-contract transactions. Private keys never leave KMS. **Pricing: $0.04/day rental + $0.000005 per call**. Signer creation requires $1.20 in allowance (30 days of rent). Non-custodial — see https://run402.com/humans/terms.html#non-custodial-kms-wallets.
+Signers — an Ethereum wallet Run402 keeps for your project, for sending money and signing smart-contract transactions. Its key is created in and never leaves the platform's key custody. **Pricing: $0.04/day rental + $0.000005 per call**. Signer creation requires $1.20 in allowance (30 days of rent). Non-custodial — see https://run402.com/humans/terms.html#non-custodial-kms-wallets.
 
-- `run402 contracts provision-signer --chain <base-mainnet|base-sepolia> [--recovery-address 0x...]` — provision a KMS signer ($0.04/day rental, requires $1.20 in allowance at creation). Prompts for confirmation if the project already has ≥1 active signer.
+- `run402 contracts provision-signer --chain <base-mainnet|base-sepolia> [--recovery-address 0x...]` — provision a signer ($0.04/day wallet rent, requires $1.20 in allowance at creation). Prompts for confirmation if the project already has ≥1 active signer.
 - `run402 contracts get-signer <signer_id>` — get signer metadata + live native balance + USD value (free)
 - `run402 contracts list-signers` — list all signers owned by the project, including deleted ones (free)
 - `run402 contracts set-recovery <signer_id> [--address 0x... | --clear]` — set/clear the optional recovery address used for auto-drain on day-90 deletion (free)
+- `run402 contracts transfers create <signer_id> --to 0x... --amount <base units> [--asset usdc] [--chain <base-mainnet|base-sepolia>] [--idempotency-key <k>]` — send a token from the signer with no gas on it: Run402 signs the EIP-3009 authorization with the signer's key and its facilitator settles it and pays the gas (one signing fee, no gas). `--idempotency-key` works as on `call`; a transfer that failed before settlement re-executes under its key, one that died in settlement never does; `status: "unknown"` is finished by the reconciler, poll it.
+- `run402 contracts transfers get <signer_id> --transfer <transfer_id>` — one transfer (status, tx hash, nonce, failure phase)
+- `run402 contracts transfers list <signer_id>` — the signer's transfers, newest first
 - `run402 contracts set-alert <signer_id> --threshold-wei <n>` — set the low-balance alert threshold (free; alerts billed via existing email infra)
-- `run402 contracts call <project_id> <signer_id> --to 0x... --abi <json> --fn <name> --args <json> [--value-wei <n>] [--idempotency-key <k>]` — submit a contract write call (gas at-cost + $0.000005 KMS sign fee). Returns `{ call_id, tx_hash, status }`.
-- `run402 contracts deploy <project_id> <signer_id> --bytecode 0x... [--chain <base-mainnet|base-sepolia>] [--value-wei <n>] [--idempotency-key <k>]` — deploy a contract from the KMS signer (gas at-cost + $0.000005 KMS sign fee). `--bytecode` is the full creation calldata (creation bytecode + ABI-encoded constructor args, concatenated client-side via viem/ethers; ≤ 128 KB). Returns `{ call_id, tx_hash, status, contract_address }` — the deterministic CREATE address is known synchronously. run402 does NOT compile Solidity.
+- `run402 contracts call <project_id> <signer_id> --to 0x... --abi <json> --fn <name> --args <json> [--value-wei <n>] [--idempotency-key <k>]` — submit a contract write call (gas at-cost + $0.000005 signing fee). Returns `{ call_id, tx_hash, status }`.
+- `run402 contracts deploy <project_id> <signer_id> --bytecode 0x... [--chain <base-mainnet|base-sepolia>] [--value-wei <n>] [--idempotency-key <k>]` — deploy a contract from the signer (gas at-cost + $0.000005 signing fee). `--bytecode` is the full creation calldata (creation bytecode + ABI-encoded constructor args, concatenated client-side via viem/ethers; ≤ 128 KB). Returns `{ call_id, tx_hash, status, contract_address }` — the deterministic CREATE address is known synchronously. run402 does NOT compile Solidity.
 - `run402 contracts read --chain <chain> --to 0x... --abi <json> --fn <name> --args <json>` — read-only contract call (free, no signing, no billing)
 - `run402 contracts status <call_id>` — get call status, gas used, gas cost USD-micros, receipt, error (free)
-- `run402 contracts drain <signer_id> --to 0x... --confirm` — drain native balance to a destination address (gas at-cost + $0.000005 KMS sign fee). Works on suspended signers — the safety valve.
-- `run402 contracts delete <signer_id> --confirm` — schedule the KMS key for deletion (7-day window). Refused if balance ≥ dust — drain first.
+- `run402 contracts drain <signer_id> --to 0x... --confirm` — drain native balance to a destination address (gas at-cost + $0.000005 signing fee). Works on suspended signers — the safety valve.
+- `run402 contracts delete <signer_id> --confirm` — schedule the signer's key for deletion (7-day window). Refused if balance ≥ dust — drain first.
 
 ### message
 - `run402 feedback send "<text>" [--project <project_id>] [--handle <handle>] [--return-address <how to reach you>]` — `--project` + `message: "promote: yes"` relays a deploy's promotion consent (see "Finish a deploy: hand your human two links" above); `--handle` is the human's X/Twitter handle; `--return-address` (an email, a handle, a URL; at most 256 characters) tells the Run402 team how to contact you back, since there is no inbox to read (≤64 chars), delivered as-is.
@@ -159,7 +162,7 @@ Astro dev wrapper. Loads `.env.local`, verifies `RUN402_PROJECT_ID` + `RUN402_SE
 
 - `run402 dev [--port <n>] [--host <h>] [--project <project_id>]`
 
-SDK calls (`db`, `auth.user`, `cache.invalidate`, `assets.put`) hit the LIVE Run402 project at `https://api.run402.com` — no local DB/S3/KMS setup required. This is shape-parity with production. Offline emulator mode is deferred to v1.5.
+SDK calls (`db`, `auth.user`, `cache.invalidate`, `assets.put`) hit the LIVE Run402 project at `https://api.run402.com` — no local database, storage, or key-custody setup required. This is shape-parity with production. Offline emulator mode is deferred to v1.5.
 
 ### init astro
 Project scaffolder. Subroute of `init` (alongside `init` rail setup).

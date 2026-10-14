@@ -21,7 +21,7 @@ Usage:
   run402 orgs list
   run402 orgs get    [<org_id>]
   run402 orgs rename [<org_id>] --name <display_name>   (or: --clear to remove the label)
-  run402 orgs payout-wallet [<org_id>] <wallet_address>  (or: --clear to remove the explicit default)
+  run402 orgs payout-wallet [<org_id>] <wallet_address>  (or: --signer <signer_id>; --clear removes the explicit default)
   run402 orgs lightning-receiver set    [<org_id>] <nwc-uri | ->   (receive-only NWC pairing; - reads it from stdin)
   run402 orgs lightning-receiver status [<org_id>]
   run402 orgs lightning-receiver delete [<org_id>]
@@ -161,6 +161,7 @@ call after a dropped response can never double-bill.
 
 Usage:
   run402 orgs payout-wallet [<org_id>] <wallet_address>
+  run402 orgs payout-wallet [<org_id>] --signer <signer_id>
   run402 orgs payout-wallet [<org_id>] --clear
 
 Legacy (still supported):
@@ -170,6 +171,11 @@ Admin/owner-only + step-up gated. The wallet must already be active and linked
 to the same org. This wallet receives x402 settlement for function web routes
 that declare pricing.pay_to = "org_default_payout". Pass --clear to remove the
 explicit default; a single active org wallet may still resolve automatically.
+Pass --signer <signer_id> to make one of the org's own signers (your app's
+wallet, run402 contracts provision-signer) the payout address instead, so what
+your priced routes earn is what your app pays out from. The signer must be
+active and owned by a project of this org; while it is selected, that project
+cannot be transferred out.
 
 The JSON response includes recovery.status, active_wallet_count, and
 next_actions for PAYOUT_WALLET_REQUIRED / PAYOUT_WALLET_AMBIGUOUS setup.
@@ -478,20 +484,24 @@ async function rename(args) {
 
 async function payoutWallet(args) {
   const a = normalizeArgv(args);
-  assertKnownFlags(a, ["--org", "--address", "--clear", "--help", "-h"], ["--org", "--address"]);
+  assertKnownFlags(a, ["--org", "--address", "--signer", "--clear", "--help", "-h"], ["--org", "--address", "--signer"]);
   const clear = a.includes("--clear");
   const walletFlag = flagValue(a, "--address");
-  const single = clear || walletFlag !== null;
-  const { orgId: org, rest: pos } = await takeOrgPositional(a, ["--org", "--address"], { cmd: "orgs" });
+  const signerFlag = flagValue(a, "--signer");
+  if (signerFlag !== null && (clear || walletFlag !== null)) {
+    fail({ code: "BAD_USAGE", message: "--signer cannot be combined with --address or --clear." });
+  }
+  const single = clear || walletFlag !== null || signerFlag !== null;
+  const { orgId: org, rest: pos } = await takeOrgPositional(a, ["--org", "--address", "--signer"], { cmd: "orgs" });
   requireRest(pos, {
     min: single ? 0 : 1,
     max: single ? 0 : 1,
-    command: "run402 orgs payout-wallet [<org_id>] --address <wallet_address>",
-    missing: "Missing <wallet_address> (use --address, or pass --clear).",
+    command: "run402 orgs payout-wallet [<org_id>] --address <wallet_address> | --signer <signer_id> | --clear",
+    missing: "Missing <wallet_address> (use --address, --signer <signer_id>, or --clear).",
   });
-  const walletAddress = clear ? null : (walletFlag ?? pos[0]);
+  const input = signerFlag !== null ? { signerId: signerFlag } : { walletAddress: clear ? null : (walletFlag ?? pos[0]) };
   try {
-    console.log(JSON.stringify(await getSdk().org(org).setPayoutWallet({ walletAddress }), null, 2));
+    console.log(JSON.stringify(await getSdk().org(org).setPayoutWallet(input), null, 2));
   } catch (err) {
     reportSdkError(err);
   }

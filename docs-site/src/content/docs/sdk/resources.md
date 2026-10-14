@@ -1305,6 +1305,9 @@ setRecovery(projectId, signerId, recoveryAddress: string | null): Promise<void>
 setLowBalanceAlert(projectId, signerId, thresholdWei: string): Promise<void>
 
 call(projectId, opts: { signerId, chain, contractAddress?, to?, abiFragment?, abi?, functionName?, fn?, args, value?, idempotencyKey? }): Promise<ContractCallResult>
+transfer(projectId, opts: { signerId, chain, to, amount, asset?, idempotencyKey? }): Promise<SignerTransfer> // gasless EIP-3009 transfer settled by the facilitator; amount in base units
+transferStatus(projectId, signerId, transferId): Promise<SignerTransfer>
+listTransfers(projectId, signerId): Promise<ListSignerTransfersResult>
 deploy(projectId, opts: { signerId, chain, bytecode, value?, idempotencyKey? }): Promise<ContractDeployResult> // bytecode = full creation calldata (creation bytecode + ABI-encoded ctor args concatenated by caller); ≤ 128 KB. Returns deterministic CREATE address synchronously in `contract_address`.
 read(opts: { chain, contractAddress?, to?, abiFragment?, abi?, functionName?, fn?, args }): Promise<ContractReadResult>
 callStatus(projectId, callId): Promise<ContractCallResult>

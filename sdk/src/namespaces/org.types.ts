@@ -154,11 +154,10 @@ export interface SetOrgSlugResult {
 
 /** Input to {@link ScopedOrg.setPayoutWallet}. */
 export interface SetPayoutWalletInput {
-  /**
-   * Active wallet linked to the same org, or `null` to clear the explicit
-   * default. The gateway may still resolve a single active org wallet.
-   */
-  walletAddress: string | null;
+  /** An active wallet linked to the organization, or null to clear the explicit default. */
+  walletAddress?: string | null;
+  /** app-wallet: a signer owned by one of the organization's projects; its address becomes the payout address. Exclusive with walletAddress. */
+  signerId?: string;
 }
 
 export interface PayoutWalletNextAction {
@@ -175,7 +174,7 @@ export interface PayoutWalletRecovery {
   active_wallet_count: number;
   next_actions: PayoutWalletNextAction[];
   /** Present when status is ready. */
-  mode?: "default" | "single_active_wallet";
+  mode?: "default" | "single_active_wallet" | "signer";
   /** Present when status is ready. */
   wallet_address?: string;
   /** Present when setup needs recovery, e.g. PAYOUT_WALLET_REQUIRED. */

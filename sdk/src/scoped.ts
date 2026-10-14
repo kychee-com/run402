@@ -111,6 +111,7 @@ import type {
   ContractDeployOptions,
   ContractReadOptions,
   ProvisionSignerOptions,
+  SignerTransferOptions,
 } from "./namespaces/contracts.js";
 import type {
   ProjectDomain,
@@ -625,6 +626,15 @@ class ScopedContracts {
   }
   callStatus(callId: string): Promise<unknown> {
     return this.parent.contracts.callStatus(this.projectId, callId);
+  }
+  transfer(opts: SignerTransferOptions): Promise<unknown> {
+    return this.parent.contracts.transfer(this.projectId, opts);
+  }
+  transferStatus(signerId: string, transferId: string): Promise<unknown> {
+    return this.parent.contracts.transferStatus(this.projectId, signerId, transferId);
+  }
+  listTransfers(signerId: string): Promise<unknown> {
+    return this.parent.contracts.listTransfers(this.projectId, signerId);
   }
   drain(signerId: string, destinationAddress: string): Promise<unknown> {
     return this.parent.contracts.drain(this.projectId, signerId, destinationAddress);

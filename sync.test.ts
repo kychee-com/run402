@@ -111,6 +111,7 @@ function parseCliCommands(): string[] {
   for (const action of parseOrgGroupActions("memberAction")) cmds.push(`orgs:members:${action}`);
   for (const action of parseOrgGroupActions("inviteAction")) cmds.push(`orgs:invite:${action}`);
   for (const action of parseOrgGroupActions("lightningReceiverAction")) cmds.push(`orgs:lightning-receiver:${action}`);
+  for (const action of parseContractsTransferActions()) cmds.push(`contracts:transfers:${action}`);
   // Bare `run402 deploy` is the deploy itself (deploy.mjs dispatches anything
   // that is not a family word into it), so it is a top-level verb here.
   if (existsSync(join(__dirname, "cli/lib/deploy.mjs"))) cmds.push("deploy");
@@ -151,6 +152,7 @@ function parseOpenClawCommands(): string[] {
   for (const action of parseOrgGroupActions("memberAction")) cmds.push(`orgs:members:${action}`);
   for (const action of parseOrgGroupActions("inviteAction")) cmds.push(`orgs:invite:${action}`);
   for (const action of parseOrgGroupActions("lightningReceiverAction")) cmds.push(`orgs:lightning-receiver:${action}`);
+  for (const action of parseContractsTransferActions()) cmds.push(`contracts:transfers:${action}`);
   if (existsSync(join(__dirname, "openclaw/scripts/deploy.mjs"))) cmds.push("deploy");
   if (existsSync(join(__dirname, "openclaw/scripts/init.mjs"))) cmds.push("init");
   if (existsSync(join(__dirname, "openclaw/scripts/pay.mjs"))) cmds.push("pay");
@@ -231,6 +233,18 @@ function parseCredentialsRootActions(relativePath: string): string[] {
  *  from cli/lib/orgs.mjs (matched on `memberAction === "..."` / `inviteAction ===
  *  "..."`), mirroring `jobs artifacts`. The groups dispatch via `if (sub === ...)`
  *  so parseSubcommands skips them; these surface their leaves instead. */
+/** `contracts transfers <action>`: the verbs `transfers()` in cli/lib/contracts.mjs compares `transferAction` against. */
+function parseContractsTransferActions(): string[] {
+  const filePath = join(__dirname, "cli/lib/contracts.mjs");
+  if (!existsSync(filePath)) return [];
+  const src = readFileSync(filePath, "utf-8");
+  const actions: string[] = [];
+  const re = /transferAction\s*===\s*"([\w-]+)"/g;
+  let m;
+  while ((m = re.exec(src))) actions.push(m[1]);
+  return [...new Set(actions)].sort();
+}
+
 function parseOrgGroupActions(varName: "memberAction" | "inviteAction" | "lightningReceiverAction"): string[] {
   const filePath = join(__dirname, "cli/lib/orgs.mjs");
   if (!existsSync(filePath)) return [];
@@ -746,6 +760,9 @@ const SURFACE: Capability[] = [
   { id: "set_low_balance_alert",     endpoint: "POST /contracts/v1/signers/:id/alert",             cli: "contracts:set-alert",        openclaw: "contracts:set-alert" },
   { id: "contract_call",             endpoint: "POST /contracts/v1/call",                          cli: "contracts:call",             openclaw: "contracts:call" },
   { id: "contract_deploy",           endpoint: "POST /contracts/v1/deploy",                        cli: "contracts:deploy",           openclaw: "contracts:deploy" },
+  { id: "signer_transfer",           endpoint: "POST /contracts/v1/signers/:id/transfers",         cli: "contracts:transfers:create", openclaw: "contracts:transfers:create" },
+  { id: "get_signer_transfer",       endpoint: "GET /contracts/v1/signers/:id/transfers/:id",      cli: "contracts:transfers:get",    openclaw: "contracts:transfers:get" },
+  { id: "list_signer_transfers",     endpoint: "GET /contracts/v1/signers/:id/transfers",          cli: "contracts:transfers:list",   openclaw: "contracts:transfers:list" },
   { id: "contract_read",             endpoint: "POST /contracts/v1/read",                          cli: "contracts:read",             openclaw: "contracts:read" },
   { id: "get_contract_call_status",  endpoint: "GET /contracts/v1/calls/:id",                      cli: "contracts:status",           openclaw: "contracts:status" },
   { id: "drain_signer",              endpoint: "POST /contracts/v1/signers/:id/drain",             cli: "contracts:drain",            openclaw: "contracts:drain" },
@@ -1285,6 +1302,9 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   set_low_balance_alert: "contracts.setLowBalanceAlert",
   contract_call: "contracts.call",
   contract_deploy: "contracts.deploy",
+  signer_transfer: "contracts.transfer",
+  get_signer_transfer: "contracts.transferStatus",
+  list_signer_transfers: "contracts.listTransfers",
   contract_read: "contracts.read",
   get_contract_call_status: "contracts.callStatus",
   drain_signer: "contracts.drain",

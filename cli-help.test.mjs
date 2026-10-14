@@ -133,7 +133,7 @@ const MATRIX = {
     shared: [],
     specific: [
       "provision-signer", "set-recovery", "set-alert", "call", "read", "drain", "delete",
-      "get-signer", "list-signers", "status",
+      "get-signer", "list-signers", "status", "transfers",
     ],
   },
   agent: { shared: [], specific: ["contact"] },

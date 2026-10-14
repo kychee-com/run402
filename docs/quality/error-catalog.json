@@ -2,8 +2,8 @@
   "version": 1,
   "contributions": {
     "gateway": {
-      "revision": "3d2b5a6a7ee02bfabb7cece6228d3d2461711aeb",
-      "sourceDigest": "a305bcaee778c009a0af0767b33332253f490216a95a521d76865c66e096bc4c"
+      "revision": "2865b027540efbe5704c99e03ee66268417aa3b3",
+      "sourceDigest": "1d188fa4a920bf623c21be5d0a9495cc8e3af6f864617949f041c56c78ffc58d"
     },
     "core": {
       "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7"
@@ -169,6 +169,16 @@
         }
       ],
       "topic": "/errors/gateway/#ALLOCATION_SUPERSEDED"
+    },
+    {
+      "code": "ALLOWANCE_INSUFFICIENT",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#ALLOWANCE_INSUFFICIENT"
     },
     {
       "code": "AMBIGUOUS_EXTERNAL_SELECTION",
@@ -4605,6 +4615,26 @@
       "topic": "/errors/client/#PAYMENT_WALLET_UNFUNDED"
     },
     {
+      "code": "PAYOUT_SIGNER_IN_USE",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#PAYOUT_SIGNER_IN_USE"
+    },
+    {
+      "code": "PAYOUT_SIGNER_NOT_ELIGIBLE",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#PAYOUT_SIGNER_NOT_ELIGIBLE"
+    },
+    {
       "code": "PIN_CHANGE_UNCONFIRMED",
       "owners": [
         {
@@ -7141,6 +7171,16 @@
       "topic": "/errors/gateway/#TRANSFER_ALREADY_PROCESSED"
     },
     {
+      "code": "TRANSFER_ASSET_UNSUPPORTED",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#TRANSFER_ASSET_UNSUPPORTED"
+    },
+    {
       "code": "TRANSFER_EXPIRED",
       "owners": [
         {
@@ -7151,6 +7191,26 @@
       "topic": "/errors/gateway/#TRANSFER_EXPIRED"
     },
     {
+      "code": "TRANSFER_FACILITATOR_UNAVAILABLE",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#TRANSFER_FACILITATOR_UNAVAILABLE"
+    },
+    {
+      "code": "TRANSFER_FAILED",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#TRANSFER_FAILED"
+    },
+    {
       "code": "TRANSFER_HAS_NO_VAULT",
       "owners": [
         {
@@ -7159,6 +7219,16 @@
         }
       ],
       "topic": "/errors/client/#TRANSFER_HAS_NO_VAULT"
+    },
+    {
+      "code": "TRANSFER_INSUFFICIENT_BALANCE",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#TRANSFER_INSUFFICIENT_BALANCE"
     },
     {
       "code": "TRANSFER_NOT_FOUND",

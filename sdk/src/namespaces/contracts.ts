@@ -60,6 +60,43 @@ export interface ContractReadResult {
   result: unknown;
 }
 
+/** app-wallet: a gasless token transfer from a signer, settled through the platform's facilitator. */
+export type SignerTransferStatus = "pending" | "settled" | "failed" | "unknown";
+export type SignerTransferPhase = "precheck" | "sign" | "verify" | "settle";
+
+export interface SignerTransfer {
+  transfer_id: string;
+  signer_id: string;
+  status: SignerTransferStatus;
+  tx_hash: string | null;
+  chain: EvmChain;
+  network: string;
+  asset: string;
+  asset_address: string;
+  to: string;
+  amount: string;
+  nonce: string | null;
+  failed_phase: SignerTransferPhase | null;
+  facilitator_reason: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ListSignerTransfersResult {
+  transfers: SignerTransfer[];
+}
+
+export interface SignerTransferOptions {
+  signerId: string;
+  chain: EvmChain;
+  /** The token to send; `usdc` (the default) today. */
+  asset?: string;
+  to: string;
+  /** The amount in the asset's base units (USDC: 6 decimals), as a decimal string. */
+  amount: string;
+  idempotencyKey?: string;
+}
+
 export interface DrainResult {
   call_id: string;
   status: ContractCallStatus;
@@ -340,6 +377,53 @@ export class Contracts {
   }
 
   /** Look up a previously submitted call by id. */
+  /**
+   * Transfers a token from a signer with no gas on the signer: the gateway
+   * signs the token's EIP-3009 authorization with the signer's key and the
+   * platform's facilitator settles it and pays the gas. One signing fee, no
+   * gas. Idempotent on `idempotencyKey` like `call`: a transfer that failed
+   * before settlement re-executes under its key; one that died in settlement
+   * never does. `status: "unknown"` means the settle outcome never came back;
+   * poll `transferStatus` until the reconciler finishes it.
+   */
+  async transfer(projectId: string, opts: SignerTransferOptions): Promise<SignerTransfer> {
+    assertStringInSet(opts.chain, EVM_CHAINS, "chain", "transferring from signer");
+    assertEvmAddress(opts.to, "to", "transferring from signer");
+    if (typeof opts.amount !== "string" || !/^[1-9][0-9]*$/.test(opts.amount)) {
+      throw new LocalError("contracts.transfer requires amount as a positive integer string in the asset's base units", "transferring from signer");
+    }
+    const project = await requireProjectCredentials(this.client, projectId, "transferring from signer");
+    const headers: Record<string, string> = { Authorization: `Bearer ${project.service_key}` };
+    if (opts.idempotencyKey) headers["Idempotency-Key"] = opts.idempotencyKey;
+    return this.client.request<SignerTransfer>(
+      `/contracts/v1/signers/${encodeURIComponent(opts.signerId)}/transfers`,
+      {
+        method: "POST",
+        headers,
+        body: { chain: opts.chain, asset: opts.asset ?? "usdc", to: opts.to, amount: opts.amount },
+        context: "transferring from signer",
+      },
+    );
+  }
+
+  /** One transfer by id. */
+  async transferStatus(projectId: string, signerId: string, transferId: string): Promise<SignerTransfer> {
+    const project = await requireProjectCredentials(this.client, projectId, "fetching transfer status");
+    return this.client.request<SignerTransfer>(
+      `/contracts/v1/signers/${encodeURIComponent(signerId)}/transfers/${encodeURIComponent(transferId)}`,
+      { headers: { Authorization: `Bearer ${project.service_key}` }, context: "fetching transfer status" },
+    );
+  }
+
+  /** The signer's transfers, newest first. */
+  async listTransfers(projectId: string, signerId: string): Promise<ListSignerTransfersResult> {
+    const project = await requireProjectCredentials(this.client, projectId, "listing signer transfers");
+    return this.client.request<ListSignerTransfersResult>(
+      `/contracts/v1/signers/${encodeURIComponent(signerId)}/transfers`,
+      { headers: { Authorization: `Bearer ${project.service_key}` }, context: "listing signer transfers" },
+    );
+  }
+
   async callStatus(projectId: string, callId: string): Promise<ContractCallResult> {
     const project = await requireProjectCredentials(this.client, projectId, "fetching call status");
     return this.client.request<ContractCallResult>(

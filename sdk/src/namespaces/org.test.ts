@@ -273,6 +273,22 @@ describe("r.org(id).setSlug", () => {
 });
 
 describe("r.org(id).setPayoutWallet", () => {
+  it("PATCHes { signer_id } when a signer is selected, and refuses both or neither (app-wallet)", async () => {
+    const { fetch } = mockFetch((call) => {
+      assert.equal(call.method, "PATCH");
+      assert.deepEqual(parseBody(call.body), { signer_id: "cwlt_e84851c19e9d431da7be48cc" });
+      return jsonResponse({
+        status: "set", org_id: "org_abc", default_payout_wallet: "0x8acf0d190f77878dcc8531480bfeefd3d6793a73", previous_default_payout_wallet: null,
+        recovery: { status: "ready", mode: "signer", wallet_address: "0x8acf0d190f77878dcc8531480bfeefd3d6793a73", active_wallet_count: 1, next_actions: [] },
+      });
+    });
+    const result = await makeSdk(fetch).org("org_abc").setPayoutWallet({ signerId: "cwlt_e84851c19e9d431da7be48cc" });
+    assert.equal(result.recovery.mode, "signer");
+    await assert.rejects(() => makeSdk(fetch).org("org_abc").setPayoutWallet({ signerId: "cwlt_x", walletAddress: null }), /exactly one/);
+    await assert.rejects(() => makeSdk(fetch).org("org_abc").setPayoutWallet({} as never), /exactly one/);
+  });
+
+
   it("PATCHes /orgs/v1/:org_id/payout-wallet with wallet_address", async () => {
     const { fetch, calls } = mockFetch((call) => {
       assert.equal(call.method, "PATCH");

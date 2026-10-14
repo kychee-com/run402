@@ -11,7 +11,7 @@ import {
   failUnknownSubcommand,
 } from "./argparse.mjs";
 
-const HELP = `run402 contracts — KMS-backed Ethereum signers for smart-contract calls
+const HELP = `run402 contracts — signers, your app's wallet, for smart-contract calls
 
   Pricing: $0.04/day per signer ($1.20/month) plus $0.000005 per contract call.
   Signer creation requires $1.20 of allowance (30 days of rent).
@@ -22,19 +22,25 @@ Usage:
 
 Subcommands:
   provision-signer <project_id> --chain <base-mainnet|base-sepolia> [--recovery 0x...]
-    Provision a KMS signer ($0.04/day, requires $1.20 prepay).
+    Provision a signer ($0.04/day wallet rent, requires $1.20 prepay).
   get-signer <project_id> <signer_id>
     Get signer metadata + live native balance.
   list-signers <project_id>
-    List all KMS signers for the project (includes deleted).
+    List all signers for the project (includes deleted).
+  transfers create <signer_id> --to 0x... --amount <base units> [--asset usdc] [--chain <base-mainnet|base-sepolia>] [--idempotency-key <k>]
+    Send a token from the signer with no gas on it: the platform's facilitator settles the signed EIP-3009 authorization and pays the gas. One signing fee.
+  transfers get <signer_id> --transfer <transfer_id>
+    Read one transfer (status, tx hash, nonce, failure phase).
+  transfers list <signer_id>
+    The signer's transfers, newest first.
   set-recovery <project_id> <signer_id> [--address 0x... | --clear]
     Set/clear the optional recovery address.
   set-alert <project_id> <signer_id> --threshold-wei <n>
     Set the low-balance alert threshold (in wei).
   call <project_id> <signer_id> --to 0x... --abi <json> --fn <name> --args <json> [--value-wei <n>] [--idempotency-key <k>]
-    Submit a contract write call (chain gas + $0.000005 KMS sign fee).
+    Submit a contract write call (gas from the signer's balance, topped up at cost when short, + $0.000005 signing fee).
   deploy <project_id> <signer_id> --bytecode 0x... [--chain <base-mainnet|base-sepolia>] [--value-wei <n>] [--idempotency-key <k>]
-    Deploy a contract (chain gas + $0.000005 KMS sign fee). Returns deterministic CREATE address synchronously.
+    Deploy a contract (gas from the signer's balance + $0.000005 signing fee). Returns deterministic CREATE address synchronously.
   read --chain <chain> --to 0x... --abi <json> --fn <name> --args <json>
     Read-only contract call (free).
   status <project_id> <call_id>
@@ -42,7 +48,7 @@ Subcommands:
   drain <project_id> <signer_id> --to 0x... --confirm
     Drain native balance to a destination address. Works on suspended signers.
   delete <project_id> <signer_id> --confirm
-    Schedule the KMS key for deletion (refused if balance >= dust).
+    Schedule the signing key for deletion (refused if balance >= dust).
 
 Examples:
   run402 contracts provision-signer proj_abc --chain base-mainnet
@@ -50,7 +56,22 @@ Examples:
 `;
 
 const SUB_HELP = {
-  "provision-signer": `run402 contracts provision-signer — Provision a KMS-backed signer
+  transfers: `run402 contracts transfers — Send a token from a signer with no gas on it
+
+Usage:
+  run402 contracts transfers create <signer_id> --to 0x... --amount <base units> [--asset usdc] [--chain <base-mainnet|base-sepolia>] [--idempotency-key <k>] [--project <project_id>]
+  run402 contracts transfers get <signer_id> --transfer <transfer_id> [--project <project_id>]
+  run402 contracts transfers list <signer_id> [--project <project_id>]
+
+The signer is the payer of an x402 payment: Run402 signs the token's EIP-3009
+authorization with the signer's key and its facilitator settles it and pays the
+gas. One $0.000005 signing fee, no gas, no ETH on the signer. --amount is in the
+asset's base units (USDC: 6 decimals; 100000 is $0.10). An idempotency key
+makes a repeat return the transfer already made; a transfer that failed before
+settlement re-executes under its key, one that died in settlement never does.
+A "unknown" status means the settle outcome never came back: poll it with get.
+`,
+  "provision-signer": `run402 contracts provision-signer — Provision a signer
 
 Usage:
   run402 contracts provision-signer --chain <chain> [--project <project_id>] [options]
@@ -91,11 +112,11 @@ Legacy (still supported):
   run402 contracts call <project_id> <signer_id> --to 0x... --abi <json>
     --fn <name> --args <json> [options]
 `,
-  deploy: `run402 contracts deploy — Deploy a smart contract from a KMS signer
+  deploy: `run402 contracts deploy — Deploy a smart contract from a signer
 
-KMS-signs a contract-creation transaction (to: null + data: bytecode) and broadcasts.
+the platform's key custody-signs a contract-creation transaction (to: null + data: bytecode) and broadcasts.
 Returns the deterministic CREATE address synchronously — known from (signer, nonce)
-before the tx confirms. Cost: chain gas at-cost + $0.000005 KMS sign fee.
+before the tx confirms. Cost: chain gas at-cost + $0.000005 signing fee.
 
 Usage:
   run402 contracts deploy <signer_id> --bytecode 0x... [--project <project_id>] [options]
@@ -130,7 +151,7 @@ Usage:
 Legacy (still supported):
   run402 contracts drain <project_id> <signer_id> --to 0x... --confirm
 `,
-  delete: `run402 contracts delete — Schedule the KMS key for deletion
+  delete: `run402 contracts delete — Schedule the signing key for deletion
 
 Usage:
   run402 contracts delete <signer_id> --confirm [--project <project_id>]
@@ -153,7 +174,7 @@ Arguments:
 Examples:
   run402 contracts get-signer prj_abc123 cwlt_abc123
 `,
-  "list-signers": `run402 contracts list-signers — List all KMS signers for a project
+  "list-signers": `run402 contracts list-signers — List all signers for a project
 
 Usage:
   run402 contracts list-signers [--project <project_id>]
@@ -344,7 +365,7 @@ async function call(projectId, signerId, args) {
     fail({
       code: "BAD_USAGE",
       message: "Required flags: --to, --abi, --fn, --args.",
-      hint: "Cost: chain gas + $0.000005 KMS sign fee.",
+      hint: "Cost: chain gas + $0.000005 signing fee.",
     });
   }
   assertAllowedValue(chain, ["base-mainnet", "base-sepolia"], "--chain");
@@ -369,6 +390,89 @@ async function call(projectId, signerId, args) {
   }
 }
 
+/**
+ * `run402 contracts transfers create|get|list` — a signer sends a token with
+ * no gas on it: the gateway signs the EIP-3009 authorization with the
+ * signer's key and the platform's facilitator settles it and pays the gas.
+ */
+async function transfers(projectId, args) {
+  const [transferAction, ...rest] = Array.isArray(args) ? args : [];
+  if (transferAction === "create") return transfersCreate(projectId, rest[0], rest.slice(1));
+  if (transferAction === "get") return transfersGet(projectId, rest[0], rest.slice(1));
+  if (transferAction === "list") return transfersList(projectId, rest[0], rest.slice(1));
+  return fail({
+    code: "BAD_USAGE",
+    message: `Unknown contracts transfers verb: ${transferAction ?? "(none)"}`,
+    hint: "Verbs: create <signer_id> --to 0x… --amount <base units> [--asset usdc] [--chain …] [--idempotency-key <k>]; get <signer_id> --transfer <transfer_id>; list <signer_id>.",
+  });
+}
+
+async function transfersCreate(projectId, signerId, args) {
+  const parsedArgs = normalizeArgv(args);
+  const valueFlags = ["--to", "--amount", "--asset", "--chain", "--idempotency-key"];
+  assertKnownFlags(parsedArgs, [...valueFlags, "--help", "-h"], valueFlags);
+  const extra = positionalArgs(parsedArgs, valueFlags);
+  if (!signerId || !/^[a-z]+_[A-Za-z0-9]{8,}$/.test(signerId)) {
+    fail({ code: "BAD_USAGE", message: "Missing <signer_id>.", hint: "run402 contracts transfers create <signer_id> --to 0x… --amount <base units>" });
+  }
+  if (extra.length > 0) {
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for contracts transfers create: ${extra[0]}` });
+  }
+  const to = flagValue(parsedArgs, "--to");
+  const amount = flagValue(parsedArgs, "--amount");
+  const asset = flagValue(parsedArgs, "--asset") || "usdc";
+  const chain = flagValue(parsedArgs, "--chain") || "base-mainnet";
+  const idempotency = flagValue(parsedArgs, "--idempotency-key");
+  if (!to || !amount) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Required flags: --to, --amount.",
+      hint: "--amount is in the asset's base units as a decimal string (USDC: 6 decimals, so 100000 is $0.10). Cost: one $0.000005 signing fee, no gas.",
+    });
+  }
+  assertAllowedValue(chain, ["base-mainnet", "base-sepolia"], "--chain");
+  validateEvmAddress(to, "--to");
+  if (!/^[1-9][0-9]*$/.test(amount)) {
+    fail({ code: "BAD_USAGE", message: "--amount must be a positive integer in the asset's base units." });
+  }
+  try {
+    const data = await getSdk().contracts.transfer(projectId, {
+      signerId, chain, asset, to, amount, idempotencyKey: idempotency ?? undefined,
+    });
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+async function transfersGet(projectId, signerId, args) {
+  const parsedArgs = normalizeArgv(args);
+  assertKnownFlags(parsedArgs, ["--transfer", "--help", "-h"], ["--transfer"]);
+  const extra = positionalArgs(parsedArgs, ["--transfer"]);
+  const transferId = flagValue(parsedArgs, "--transfer");
+  if (!signerId || !transferId || extra.length > 0) {
+    fail({ code: "BAD_USAGE", message: "Usage: run402 contracts transfers get <signer_id> --transfer <transfer_id>" });
+  }
+  try {
+    console.log(JSON.stringify(await getSdk().contracts.transferStatus(projectId, signerId, transferId), null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+async function transfersList(projectId, signerId, args) {
+  const parsedArgs = normalizeArgv(args);
+  assertKnownFlags(parsedArgs, ["--help", "-h"], []);
+  if (!signerId) {
+    fail({ code: "BAD_USAGE", message: "Usage: run402 contracts transfers list <signer_id>" });
+  }
+  try {
+    console.log(JSON.stringify(await getSdk().contracts.listTransfers(projectId, signerId), null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
 async function deploy(projectId, signerId, args) {
   const parsedArgs = normalizeArgv(args);
   const valueFlags = ["--bytecode", "--value-wei", "--chain", "--idempotency-key"];
@@ -385,7 +489,7 @@ async function deploy(projectId, signerId, args) {
     fail({
       code: "BAD_USAGE",
       message: "Required flag: --bytecode (0x-prefixed hex; full creation calldata = creation bytecode + ABI-encoded constructor args, concatenated client-side).",
-      hint: "Cost: chain gas + $0.000005 KMS sign fee. Returns deterministic CREATE address synchronously.",
+      hint: "Cost: chain gas + $0.000005 signing fee. Returns deterministic CREATE address synchronously.",
     });
   }
   assertAllowedValue(chain, ["base-mainnet", "base-sepolia"], "--chain");
@@ -469,7 +573,7 @@ async function drain(projectId, signerId, args) {
     fail({
       code: "BAD_USAGE",
       message: "Required: --to 0x... and --confirm.",
-      hint: "Cost: chain gas + $0.000005 KMS sign fee.",
+      hint: "Cost: chain gas + $0.000005 signing fee.",
     });
   }
   validateEvmAddress(to, "--to");
@@ -508,6 +612,13 @@ export async function run(sub, args) {
   // unknown subcommands (and the anonymous `read`) never trip project
   // resolution.
   const select = () => resolveProjectSelector(normalizeArgv(Array.isArray(args) ? args : []));
+  // The transfers group dispatches with `if` (not `case`) so the sync test
+  // inventories its leaf actions through parseContractsTransferActions.
+  if (sub === "transfers") {
+    const { projectId, rest } = select();
+    await transfers(projectId, rest);
+    return;
+  }
   switch (sub) {
     case "provision-signer": { const { projectId, rest } = select(); await provisionSigner(projectId, rest); break; }
     case "get-signer":       { const { projectId, rest } = select(); await getSigner(projectId, rest[0], rest.slice(1)); break; }

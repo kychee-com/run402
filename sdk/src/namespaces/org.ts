@@ -241,9 +241,11 @@ export class ScopedOrg {
    * linked to this org; pass `null` to clear the explicit default.
    */
   async setPayoutWallet(input: SetPayoutWalletInput): Promise<SetPayoutWalletResult> {
-    if (!input || !("walletAddress" in input)) {
+    const hasWallet = Boolean(input) && "walletAddress" in input;
+    const hasSigner = Boolean(input) && typeof input.signerId === "string" && input.signerId.length > 0;
+    if (hasWallet === hasSigner) {
       throw new LocalError(
-        "org.setPayoutWallet requires { walletAddress } (use null to clear)",
+        "org.setPayoutWallet requires exactly one of { walletAddress } (null clears) or { signerId }",
         "setting org payout wallet",
       );
     }
@@ -251,7 +253,7 @@ export class ScopedOrg {
       `/orgs/v1/${encodeURIComponent(this.orgId)}/payout-wallet`,
       {
         method: "PATCH",
-        body: { wallet_address: input.walletAddress },
+        body: hasSigner ? { signer_id: input.signerId } : { wallet_address: input.walletAddress ?? null },
         context: "setting org payout wallet",
       },
     );

@@ -101,6 +101,12 @@ Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
 
 The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
 
+<h2 id="ALLOWANCE_INSUFFICIENT">ALLOWANCE_INSUFFICIENT</h2>
+
+Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
+
 <h2 id="AMBIGUOUS_EXTERNAL_SELECTION">AMBIGUOUS_EXTERNAL_SELECTION</h2>
 
 Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
@@ -1655,6 +1661,18 @@ Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
 
 The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
 
+<h2 id="PAYOUT_SIGNER_IN_USE">PAYOUT_SIGNER_IN_USE</h2>
+
+Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
+
+<h2 id="PAYOUT_SIGNER_NOT_ELIGIBLE">PAYOUT_SIGNER_NOT_ELIGIBLE</h2>
+
+Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
+
 <h2 id="PIN_CHANGE_UNCONFIRMED">PIN_CHANGE_UNCONFIRMED</h2>
 
 Owner: `public:sdk/src/namespaces/repos.ts`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
@@ -2180,7 +2198,31 @@ Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
 
 The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
 
+<h2 id="TRANSFER_ASSET_UNSUPPORTED">TRANSFER_ASSET_UNSUPPORTED</h2>
+
+Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
+
 <h2 id="TRANSFER_EXPIRED">TRANSFER_EXPIRED</h2>
+
+Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
+
+<h2 id="TRANSFER_FACILITATOR_UNAVAILABLE">TRANSFER_FACILITATOR_UNAVAILABLE</h2>
+
+Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
+
+<h2 id="TRANSFER_FAILED">TRANSFER_FAILED</h2>
+
+Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
+
+<h2 id="TRANSFER_INSUFFICIENT_BALANCE">TRANSFER_INSUFFICIENT_BALANCE</h2>
 
 Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
 

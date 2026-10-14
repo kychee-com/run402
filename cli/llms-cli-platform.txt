@@ -52,9 +52,9 @@ run402 feedback send "The deploy hung on schema-settle twice" --return-address d
 | Subdomain | Free with tier | -- |
 | App fork | Free with tier | -- |
 | Image generation | $0.03 | Per image |
-| KMS signer rental | $0.04/day ($1.20/month) | Per signer; $1.20 prepay required |
-| Contract call (gas) | at-cost | Per call, 0% markup on chain gas. |
-| Contract call (KMS sign fee) | $0.000005 | Per call; only run402 contract-call markup |
+| Signer (your app's wallet) rent | $0.04/day ($1.20/month) | Per signer; $1.20 prepay required |
+| Contract call (gas) | from the signer's balance | Paid once, from the signer's own native balance; topped up at cost from Run402 when short. A gasless transfer (`contracts transfers create`) pays no gas at all. |
+| Signing fee | $0.000005 | Per signature (call, deploy, drain, transfer); the only run402 markup |
 | Functions | Free with tier | -- |
 | Secrets | Free with tier | -- |
 | Storage | Free with tier | -- |
