@@ -32,7 +32,7 @@ Commands, grouped by when you reach for them:
 
 SET UP — get an agent funded and entitled
   init        Set up the local wallet, funding, and check tier status (x402 default)
-  init mpp    Set up with MPP payment rail (Tempo Moderato testnet)
+  init mpp    Set up with MPP payment rail (pathUSD on Tempo; faucet-funded on Moderato)
   wallets     Manage local wallets (list, current, new, use, fund, balance, import)
   tier        Manage your tier and its lease (status, set)
   redeem      Redeem a promo code into your organization's allowance
@@ -128,7 +128,7 @@ Examples:
 
 Getting started:
   run402 init               Set up with x402 (Base Sepolia)
-  run402 init mpp           Set up with MPP (Tempo Moderato)
+  run402 init mpp           Set up with MPP (pathUSD on Tempo)
   run402 tier set prototype  Set a tier (prototype is free)
   run402 up --name my-app -y  Create and deploy this app (explicit destination)
   run402 ci link github --project prj_... --manifest run402.deploy.json

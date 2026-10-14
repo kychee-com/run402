@@ -22,6 +22,16 @@
 
 import { readFileSync } from "node:fs";
 export { fundingRecovery, fundingBlocksBootstrap, type FundingRecovery } from "./funding-recovery.js";
+export {
+  ALL_ON_CHAIN_BALANCE_KEYS,
+  railBalanceKeys,
+  readOnChainBalances,
+  sumOnChainBalances,
+  type BalanceReader,
+  type OnChainBalanceKey,
+  type OnChainBalances,
+} from "./onchain-balances.js";
+export { PATH_USD, TEMPO_MAINNET, TEMPO_MODERATO, type TempoChain } from "./tempo.js";
 import {
   DEFAULT_API_BASE,
   getApiBase,

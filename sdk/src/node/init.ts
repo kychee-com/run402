@@ -28,11 +28,11 @@ import { fundingBlocksBootstrap, fundingRecovery, type FundingRecovery } from ".
 import { deployAction, upDeployAction } from "./local-actions.js";
 import { describeLightning, ensureLightningWallet, readLightningBalance } from "./lightning-wallet.js";
 import { hardenedGit } from "./vault-snapshot.js";
+import { railBalanceKeys, readOnChainBalances, sumOnChainBalances, type OnChainBalances } from "./onchain-balances.js";
+import { PATH_USD, TEMPO_MODERATO } from "./tempo.js";
 
 const USDC_ABI = [{ name: "balanceOf", type: "function", stateMutability: "view", inputs: [{ name: "account", type: "address" }], outputs: [{ name: "", type: "uint256" }] }] as const;
 const USDC_SEPOLIA = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
-const PATH_USD = "0x20c0000000000000000000000000000000000000";
-const TEMPO_RPC = "https://rpc.moderato.tempo.xyz/";
 
 export type InitRail = "x402" | "mpp" | "lightning";
 
@@ -73,7 +73,9 @@ export interface InitSummary {
   rail: InitRail | null;
   network: string | null;
   balances: {
+    /** The rail's token summed over the networks it pays on, as `status` reports it. */
     on_chain_usd_micros: number;
+    on_chain_by_network: Partial<OnChainBalances>;
     on_chain_token: "USDC" | "pathUSD";
     allowance_usd_micros: number | null;
     held_usd_micros: number | null;
@@ -286,7 +288,7 @@ export async function runInit(r: InitSdk, client: Client, opts: InitOptions = {}
   summary.network = isLightning ? "bitcoin-mainnet" : isMpp ? "tempo-moderato" : "base-sepolia";
   summary.rail = requestedRail;
 
-  line("Network", isLightning ? "Bitcoin mainnet (Lightning) + Base Sepolia fallback" : isMpp ? "Tempo Moderato (testnet)" : "Base Sepolia (testnet)");
+  line("Network", isLightning ? "Bitcoin mainnet (Lightning) + Base Sepolia fallback" : isMpp ? "Tempo Moderato (testnet) — test money; pathUSD on Tempo mainnet pays for real" : "Base Sepolia (testnet)");
   line("Rail", requestedRail);
 
   // 3. Balance — read on-chain, faucet if zero.
@@ -297,10 +299,10 @@ export async function runInit(r: InitSdk, client: Client, opts: InitOptions = {}
   if (isMpp) {
     const { createPublicClient, http, defineChain } = await import("viem");
     const tempoModerato = defineChain({
-      id: 42431,
-      name: "Tempo Moderato",
+      id: TEMPO_MODERATO.id,
+      name: TEMPO_MODERATO.name,
       nativeCurrency: { name: "pathUSD", symbol: "pathUSD", decimals: 6 },
-      rpcUrls: { default: { http: [TEMPO_RPC] } },
+      rpcUrls: { default: { http: [TEMPO_MODERATO.rpcUrl] } },
     });
     const chain = createPublicClient({ chain: tempoModerato, transport: http() }) as unknown as { readContract(args: unknown): Promise<unknown> };
     try { balance = await readTokenBalance(chain, PATH_USD, localWallet.address); } catch { /* unreadable → 0 */ }
@@ -308,7 +310,7 @@ export async function runInit(r: InitSdk, client: Client, opts: InitOptions = {}
     if (balance === 0) {
       line("Balance", "0 pathUSD — requesting Tempo faucet...");
       try {
-        const res = await fetch(TEMPO_RPC, {
+        const res = await fetch(TEMPO_MODERATO.rpcUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ jsonrpc: "2.0", method: "tempo_fundAddress", params: [localWallet.address], id: 1 }),
@@ -415,8 +417,11 @@ export async function runInit(r: InitSdk, client: Client, opts: InitOptions = {}
     exists?: boolean; allowance_usd_micros?: number; held_usd_micros?: number;
   } | null;
   const hasBilling = billing && billing.exists !== false;
+  const balanceKeys = railBalanceKeys(requestedRail);
+  const onChainByNetwork = await readOnChainBalances(localWallet.address, balanceKeys);
   summary.balances = {
-    on_chain_usd_micros: balance,
+    on_chain_usd_micros: sumOnChainBalances(onChainByNetwork, balanceKeys) ?? balance,
+    on_chain_by_network: onChainByNetwork,
     on_chain_token: isMpp ? "pathUSD" : "USDC",
     allowance_usd_micros: hasBilling ? billing!.allowance_usd_micros ?? null : null,
     held_usd_micros: hasBilling ? (billing!.held_usd_micros ?? 0) : null,

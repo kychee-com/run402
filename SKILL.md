@@ -1358,7 +1358,7 @@ run402 functions deploy $PROJECT my-fn --file fn.ts
 Three payment rails, one 402 handshake:
 
 - x402 (default): USDC on Base. Prototype = Base Sepolia testnet (free from faucet). Hobby/Team = Base mainnet.
-- MPP on Tempo: pathUSD on Tempo Moderato. Prototype = testnet (instant faucet, no rate limit). Hobby/Team = Tempo mainnet. Same wallet key as x402.
+- MPP on Tempo: pathUSD on Tempo. Each 402 (and `/.well-known/x402`) lists the Tempo chains a purchase accepts, in order of preference; the CLI pays the first one the wallet holds enough pathUSD on. `run402 wallets fund` funds the Moderato testnet (instant faucet, no rate limit); `run402 wallets balance` shows pathUSD on Tempo mainnet and Moderato apart. Same wallet key as x402.
 - MPP on Bitcoin Lightning: sats, mainnet. `run402 init lightning` asks Run402 to mint the agent a budgeted wallet on its own Hub; tiers and image generation are then paid in sats and x402 stays the fallback. `run402 billing topup <org_id> --sats <n>` mints an invoice any wallet can pay to top up the organization instead.
 
 Switch rails via `run402 init mpp` or `run402 init lightning` instead of `run402 init`.

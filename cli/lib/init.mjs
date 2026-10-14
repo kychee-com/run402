@@ -17,7 +17,7 @@ Usage:
   run402 init --api-base <url>
                              Configure a Run402 Core/API target for the active
                              profile without setting up Cloud payment.
-  run402 init mpp            Set up with MPP (Tempo Moderato)
+  run402 init mpp            Set up with MPP (pathUSD on Tempo)
   run402 init lightning      Set up the Lightning wallet: a budgeted wallet
                              minted on Run402's Hub (custody: Run402), plus the
                              Base wallet as the x402 fallback. Lightning

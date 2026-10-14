@@ -93,7 +93,10 @@ describe("r.init", () => {
     assert.equal(summary.wallet?.server_label, null);
     assert.equal(summary.rail, "x402");
     assert.equal(summary.network, "base-sepolia");
-    assert.equal(summary.balances?.on_chain_usd_micros, 250_000);
+    // Like `status`: the rail's token over both networks it pays on (the RPC
+    // mock answers 250,000 on each), with each network beside the sum.
+    assert.deepEqual(summary.balances?.on_chain_by_network, { base_mainnet_usd_micros: 250_000, base_sepolia_usd_micros: 250_000 });
+    assert.equal(summary.balances?.on_chain_usd_micros, 500_000);
     assert.equal(summary.balances?.on_chain_token, "USDC");
     assert.equal(summary.tier, null);
     assert.equal(summary.projects_saved, 0);
@@ -114,7 +117,7 @@ describe("r.init", () => {
     const summary = (await sdk().init({ cwd: workDir, env: {}, onLine: (l) => lines.push(l) })) as InitSummary;
     assert.equal(faucetCalls, 1);
     assert.equal(readWallet()?.funded, true);
-    assert.equal(summary.balances?.on_chain_usd_micros, 250_000);
+    assert.equal(summary.balances?.on_chain_by_network.base_sepolia_usd_micros, 250_000);
     assert.equal(summary.funding, null);
     assert.ok(lines.includes("  Balance    0.25 USDC (funded)"));
   });
@@ -184,10 +187,32 @@ describe("r.status", () => {
     assert.equal(status.rail, "x402");
     assert.equal(status.balances.on_chain_token, "USDC");
     assert.equal(status.balances.on_chain_usd_micros, 500_000, "mainnet + sepolia USDC summed");
+    assert.deepEqual(status.balances.on_chain_by_network, { base_mainnet_usd_micros: 250_000, base_sepolia_usd_micros: 250_000 });
     assert.equal(status.balances.allowance_usd_micros, 5_000_000);
     assert.deepEqual(status.tier, { name: "prototype", status: "active", expires: "2099-01-01T00:00:00.000Z" });
     assert.equal(status.projects_source, "remote");
     assert.deepEqual(status.projects, [{ project_id: "prj_1", name: "one", site_url: "https://one.test" }]);
     assert.equal(JSON.stringify(status).includes("privateKey"), false);
+  });
+
+  it("on the mpp rail, reports pathUSD on Tempo mainnet and Moderato apart, and their sum", async () => {
+    saveWallet({ address: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8", privateKey: "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d", rail: "mpp" });
+    const rpcHosts = new Set<string>();
+    const inner = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (url.includes("tempo.xyz")) rpcHosts.add(new URL(url).host);
+      return inner(input, init);
+    }) as typeof globalThis.fetch;
+    try {
+      const status = (await sdk().status()) as WalletStatus;
+      assert.equal(status.rail, "mpp");
+      assert.equal(status.balances.on_chain_token, "pathUSD");
+      assert.deepEqual(status.balances.on_chain_by_network, { tempo_mainnet_pathusd_micros: 250_000, tempo_moderato_pathusd_micros: 250_000 });
+      assert.equal(status.balances.on_chain_usd_micros, 500_000);
+      assert.deepEqual([...rpcHosts].sort(), ["rpc.moderato.tempo.xyz", "rpc.tempo.xyz"]);
+    } finally {
+      globalThis.fetch = inner;
+    }
   });
 });

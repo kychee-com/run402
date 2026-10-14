@@ -15,6 +15,7 @@ import { failUnknownSubcommand } from "./argparse.mjs";
 import { fail, reportLocalOrSdkError, reportSdkError } from "./sdk-errors.mjs";
 import { readWallet as readActiveWallet, saveWallet as saveActiveWallet } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
+import { ALL_ON_CHAIN_BALANCE_KEYS, readOnChainBalances, TEMPO_MODERATO } from "#sdk/node";
 
 const HELP = `run402 wallets — manage named wallets (profiles)
 
@@ -175,25 +176,11 @@ async function cmdLightning(args) {
 }
 
 // ── fund / balance (the ACTIVE wallet) ─────────────────────────────────────
-
-const USDC_ABI = [{ name: "balanceOf", type: "function", stateMutability: "view", inputs: [{ name: "account", type: "address" }], outputs: [{ name: "", type: "uint256" }] }];
-const USDC_MAINNET = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
-const USDC_SEPOLIA = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
-const PATH_USD = "0x20c0000000000000000000000000000000000000";
-const TEMPO_RPC = "https://rpc.moderato.tempo.xyz/";
-
-async function loadDeps() {
-  const { generatePrivateKey, privateKeyToAccount } = await import("viem/accounts");
-  const { createPublicClient, http, defineChain } = await import("viem");
-  const { base, baseSepolia } = await import("viem/chains");
-  const tempoModerato = defineChain({
-    id: 42431,
-    name: "Tempo Moderato",
-    nativeCurrency: { name: "pathUSD", symbol: "pathUSD", decimals: 6 },
-    rpcUrls: { default: { http: [TEMPO_RPC] } },
-  });
-  return { generatePrivateKey, privateKeyToAccount, createPublicClient, http, base, baseSepolia, tempoModerato };
-}
+//
+// Balances come from the SDK's one reader, under the snake_case keys
+// `run402 status` and `run402 init` share (spec status-account-balances):
+// base_mainnet_usd_micros, base_sepolia_usd_micros,
+// tempo_mainnet_pathusd_micros, tempo_moderato_pathusd_micros.
 
 async function cmdFund() {
   const w = readActiveWallet();
@@ -206,12 +193,9 @@ async function cmdFund() {
   }
 
   if (w.rail === "mpp") {
-    // Tempo Moderato faucet — instant, no polling needed
-    const { createPublicClient, http, tempoModerato } = await loadDeps();
-    const client = createPublicClient({ chain: tempoModerato, transport: http() });
-    const before = await readUsdcBalance(client, PATH_USD, w.address).catch(() => 0);
-
-    const res = await fetch(TEMPO_RPC, {
+    // Tempo Moderato faucet (test pathUSD) — instant, no polling needed.
+    // Paid tiers and images prefer pathUSD on Tempo mainnet, which no faucet gives.
+    const res = await fetch(TEMPO_MODERATO.rpcUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ jsonrpc: "2.0", method: "tempo_fundAddress", params: [w.address], id: 1 }),
@@ -225,23 +209,16 @@ async function cmdFund() {
       });
     }
 
-    // Re-read balance once (instant confirmation)
-    const now = await readUsdcBalance(client, PATH_USD, w.address).catch(() => before);
+    const onchain = await readOnChainBalances(w.address, ["tempo_moderato_pathusd_micros"]);
     saveActiveWallet({ ...w, funded: true, lastFaucet: new Date().toISOString() });
-    console.log(JSON.stringify({
-      address: w.address,
-      rail: "mpp",
-      onchain: {
-        "tempo-moderato_pathusd_micros": now,
-      },
-    }, null, 2));
+    console.log(JSON.stringify({ address: w.address, rail: "mpp", onchain }, null, 2));
     return;
   }
 
-  // Default: Base Sepolia faucet (existing behavior)
-  const { createPublicClient, http, baseSepolia } = await loadDeps();
-  const client = createPublicClient({ chain: baseSepolia, transport: http() });
-  const before = await readUsdcBalance(client, USDC_SEPOLIA, w.address).catch(() => 0);
+  // Default: Base Sepolia faucet
+  const readSepolia = async () =>
+    (await readOnChainBalances(w.address, ["base_sepolia_usd_micros"])).base_sepolia_usd_micros;
+  const before = (await readSepolia()) ?? 0;
 
   let data;
   try {
@@ -253,15 +230,13 @@ async function cmdFund() {
   const MAX_WAIT = 30;
   for (let i = 0; i < MAX_WAIT; i++) {
     await new Promise(r => setTimeout(r, 1000));
-    const now = await readUsdcBalance(client, USDC_SEPOLIA, w.address).catch(() => before);
+    const now = (await readSepolia()) ?? before;
     if (now > before) {
       saveActiveWallet({ ...w, funded: true, lastFaucet: new Date().toISOString() });
       console.log(JSON.stringify({
         address: w.address,
         rail: w.rail || "x402",
-        onchain: {
-          "base-sepolia_usd_micros": now,
-        },
+        onchain: { base_sepolia_usd_micros: now },
       }, null, 2));
       return;
     }
@@ -269,11 +244,6 @@ async function cmdFund() {
 
   saveActiveWallet({ ...w, funded: true, lastFaucet: new Date().toISOString() });
   console.log(JSON.stringify({ ...data, balance_confirmed: false, hint: "Faucet request sent but on-chain balance not yet confirmed" }));
-}
-
-async function readUsdcBalance(client, usdc, address) {
-  const raw = await client.readContract({ address: usdc, abi: USDC_ABI, functionName: "balanceOf", args: [address] });
-  return Number(raw);
 }
 
 async function cmdBalance() {
@@ -286,26 +256,15 @@ async function cmdBalance() {
     });
   }
 
-  const { createPublicClient, http, base, baseSepolia, tempoModerato } = await loadDeps();
-  const mainnetClient = createPublicClient({ chain: base, transport: http() });
-  const sepoliaClient = createPublicClient({ chain: baseSepolia, transport: http() });
-  const tempoClient = createPublicClient({ chain: tempoModerato, transport: http() });
-
-  const [mainnetUsdc, sepoliaUsdc, tempoPathUsd, billingRes] = await Promise.all([
-    readUsdcBalance(mainnetClient, USDC_MAINNET, w.address).catch(() => null),
-    readUsdcBalance(sepoliaClient, USDC_SEPOLIA, w.address).catch(() => null),
-    readUsdcBalance(tempoClient, PATH_USD, w.address).catch(() => null),
+  const [onchain, billingRes] = await Promise.all([
+    readOnChainBalances(w.address, ALL_ON_CHAIN_BALANCE_KEYS),
     getSdk().billing.checkBalance(w.address).catch(() => null),
   ]);
 
   console.log(JSON.stringify({
     address: w.address,
     rail: w.rail || "x402",
-    onchain: {
-      "base-mainnet_usd_micros": mainnetUsdc,
-      "base-sepolia_usd_micros": sepoliaUsdc,
-      "tempo-moderato_pathusd_micros": tempoPathUsd,
-    },
+    onchain,
     allowance_usd_micros: billingRes ? billingRes.allowance_usd_micros : null,
   }, null, 2));
 }

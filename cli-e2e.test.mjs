@@ -80,7 +80,7 @@ function noContent() {
 const USDC_BALANCE_HEX = "0x" + "0".repeat(58) + "03d090";
 // pathUSD balance as ABI-encoded uint256 (1000000 = 1.00 pathUSD)
 const PATHUSD_BALANCE_HEX = "0x" + "0".repeat(59) + "f4240";
-const TEMPO_RPC_URL = "https://rpc.moderato.tempo.xyz/";
+const TEMPO_MODERATO_RPC_ORIGIN = "https://rpc.moderato.tempo.xyz";
 let rpcCallCount = 0;
 let tempoRpcCallCount = 0;
 
@@ -108,7 +108,7 @@ async function mockFetch(input, init) {
   }
 
   // ── Tempo Moderato RPC (pathUSD balance, faucet) ──
-  if (url === TEMPO_RPC_URL && body?.jsonrpc === "2.0") {
+  if (url.startsWith(TEMPO_MODERATO_RPC_ORIGIN) && body?.jsonrpc === "2.0") {
     tempoRpcCallCount++;
     if (body.method === "tempo_fundAddress") {
       return Promise.resolve(json({ jsonrpc: "2.0", result: ["0xtx1", "0xtx2", "0xtx3", "0xtx4"], id: body.id }));
@@ -1243,7 +1243,7 @@ describe("CLI e2e happy path", () => {
     await run("fund", []);
     captureStop();
     // Fund polls for balance — mock returns positive immediately
-    assert.ok(captured().includes("base-sepolia"), "should show balance or faucet result");
+    assert.ok(captured().includes("base_sepolia_usd_micros"), "should show the funded Base Sepolia balance");
   });
 
   it("wallets balance", async () => {
@@ -1251,7 +1251,7 @@ describe("CLI e2e happy path", () => {
     captureStart();
     await run("balance", []);
     captureStop();
-    assert.ok(captured().includes("base-sepolia_usd_micros"), "should show balance");
+    assert.ok(captured().includes("base_sepolia_usd_micros"), "should show balance");
     assert.ok(captured().includes("allowance_usd_micros"), "should show the organization's allowance");
   });
 
@@ -4650,7 +4650,9 @@ describe("CLI e2e happy path", () => {
     await run("balance", []);
     captureStop();
     const out = captured();
-    assert.ok(out.includes("tempo-moderato_pathusd_micros"), "should show Tempo balance");
+    assert.ok(out.includes("tempo_moderato_pathusd_micros"), "should show the Moderato balance");
+    assert.ok(out.includes("tempo_mainnet_pathusd_micros"), "should show the Tempo mainnet balance");
+    assert.ok(!/"[a-z_]*-[a-z_-]*_micros"/.test(out), "balance keys are snake_case");
     assert.ok(out.includes("mpp"), "should show mpp rail");
   });
 
@@ -4661,7 +4663,7 @@ describe("CLI e2e happy path", () => {
     await run("fund", []);
     captureStop();
     const out = captured();
-    assert.ok(out.includes("tempo-moderato_pathusd_micros"), "should show Tempo fund result");
+    assert.ok(out.includes("tempo_moderato_pathusd_micros"), "should show Tempo fund result");
     assert.ok(out.includes("mpp"), "should show mpp rail");
   });
 

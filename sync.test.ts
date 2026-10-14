@@ -2190,7 +2190,7 @@ describe("CLI/MCP SDK-boundary guard", () => {
       // call in cli/lib/assets.mjs — it now delegates to `sdk.assets.put`
       // (which routes through the apply hero). That allowlist entry is kept
       // out so a regression that reintroduces raw HTTP fails the guard.
-      ["cli/lib/wallets.mjs", [/\bfetch\(TEMPO_RPC\b/]], // Tempo faucet/RPC
+      ["cli/lib/wallets.mjs", [/\bfetch\(TEMPO_MODERATO\.rpcUrl\b/]], // Tempo Moderato faucet RPC
       ["cli/lib/ci.mjs", [/\bfetch\(`https:\/\/api\.github\.com\/repos\//]], // GitHub repository lookup
       // These are the intentional SDK buyer calls added by GH-607. The guard's
       // lexical `fetch(` scan cannot distinguish `sdk.pay.fetch` from raw HTTP.

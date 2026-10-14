@@ -64,6 +64,7 @@ import {
 } from "./payment-attempts.js";
 
 import { sdkFetch } from "./http-dispatcher.js";
+import { PATH_USD, TEMPO_FEE_HEADROOM_USD_MICROS, tempoChainById, type TempoChain } from "./tempo.js";
 
 type FetchFn = typeof globalThis.fetch;
 type RpcFailureReason = "timeout" | "rate_limited" | "network" | "rpc_error";
@@ -83,6 +84,8 @@ interface BalanceRetryOptions {
   baseDelayMs?: number;
   sleep?: (milliseconds: number) => Promise<void>;
   random?: () => number;
+  /** What the balance is of, for messages: "x402 USDC" unless set. */
+  balanceLabel?: string;
 }
 
 interface PaymentRequirementLike {
@@ -265,6 +268,7 @@ export class X402BalanceError extends Run402Error {
     details: Record<string, unknown>,
     cause?: unknown,
     nextActions?: import("../errors.js").NextAction[],
+    context = "checking x402 USDC balance",
   ) {
     const rpcFailure = code !== "X402_INSUFFICIENT_FUNDS";
     super(
@@ -298,7 +302,7 @@ export class X402BalanceError extends Run402Error {
               },
             ]),
       },
-      "checking x402 USDC balance",
+      context,
     );
     this.code = code;
     if (cause !== undefined) this.cause = cause;
@@ -562,7 +566,7 @@ export async function checkBalanceAcrossProviders(
   const code = exhaustedRpcCode(failures);
   throw new X402BalanceError(
     code,
-    `Unable to confirm the x402 USDC balance on ${network}; no zero balance was assumed.`,
+    `Unable to confirm the ${options.balanceLabel ?? "x402 USDC"} balance on ${network}; no zero balance was assumed.`,
     {
       network,
       balance_status: "unknown",
@@ -571,6 +575,8 @@ export async function checkBalanceAcrossProviders(
       attempts: failures,
     },
     lastCause,
+    undefined,
+    options.balanceLabel ? `checking ${options.balanceLabel} balance` : undefined,
   );
 }
 
@@ -695,6 +701,116 @@ async function balanceState(
   }
 }
 
+/** One mppx challenge candidate; only the challenge's own fields are read. */
+interface MppChallengeCandidate {
+  challenge: { method: string; intent: string; request: unknown };
+}
+
+/**
+ * MPP on Tempo: keep the Tempo challenges the wallet can cover, in the order
+ * the server offered them (spec `mpp-tempo-client-surface`). Run402 offers
+ * both Tempo chains on every SKU, mainnet first on paid SKUs and Moderato
+ * first on the free tier; mppx pays the first candidate it is handed, so
+ * dropping the chains this wallet cannot pay lets a faucet-funded wallet pay
+ * Moderato and a mainnet-funded wallet pay mainnet with no chain setting.
+ *
+ * "Cover" is the amount plus the sender's Tempo fee headroom. When nothing is
+ * covered this raises the same balance-preflight errors as x402: an RPC
+ * failure when a read failed, else `X402_INSUFFICIENT_FUNDS` naming every
+ * offered chain, before anything is signed.
+ */
+export async function orderTempoCandidates<C extends MppChallengeCandidate>(
+  candidates: readonly C[],
+  address: string,
+  readBalance: (chain: TempoChain) => Promise<bigint>,
+): Promise<C[]> {
+  const offers = candidates.flatMap((candidate) => {
+    const { method, intent, request } = candidate.challenge;
+    if (method !== "tempo" || intent !== "charge") return [];
+    const req = (request ?? {}) as { amount?: unknown; methodDetails?: { chainId?: unknown } };
+    const chain = tempoChainById(req.methodDetails?.chainId);
+    const amount = bigintAmount(req.amount);
+    return chain && amount !== null ? [{ candidate, chain, amount }] : [];
+  });
+  if (offers.length === 0) return [...candidates];
+
+  const chains = [...new Set(offers.map((offer) => offer.chain))];
+  const states = new Map<TempoChain, BalanceState>(await Promise.all(chains.map(async (chain) => {
+    try {
+      return [chain, { status: "known", balance: await readBalance(chain) }] as const;
+    } catch (err) {
+      const error = err instanceof X402BalanceError
+        ? err
+        : new X402BalanceError(
+            "X402_RPC_UNAVAILABLE",
+            `Could not read the wallet's pathUSD balance on ${chain.name}.`,
+            { network: chain.network },
+            err,
+            undefined,
+            "checking MPP pathUSD balance",
+          );
+      return [chain, { status: "unknown", error }] as const;
+    }
+  })));
+
+  const covered = new Set(offers
+    .filter(({ chain, amount }) => {
+      const state = states.get(chain);
+      return state?.status === "known" && state.balance >= amount + TEMPO_FEE_HEADROOM_USD_MICROS;
+    })
+    .map((offer) => offer.candidate));
+  if (covered.size > 0) {
+    const tempo = new Set(offers.map((offer) => offer.candidate));
+    return candidates.filter((candidate) => !tempo.has(candidate) || covered.has(candidate));
+  }
+
+  const unknown = offers.map(({ chain }) => states.get(chain)).find((state): state is UnknownBalance => state?.status === "unknown");
+  if (unknown) throw unknown.error;
+
+  const first = offers[0]!.chain;
+  const moderatoOffered = offers.some(({ chain }) => chain.testnet);
+  const nextActions: import("../errors.js").NextAction[] = first.testnet
+    ? [{ type: "fund_wallet", command: "run402 wallets fund", why: `Request Moderato test pathUSD for ${address}, then retry.` }]
+    : [
+        { type: "fund_wallet", why: `Fund ${address} with pathUSD on ${first.name} (${first.network}), then retry.` },
+        ...(moderatoOffered
+          ? [{ type: "fund_wallet", command: "run402 wallets fund", why: "Or request Moderato test pathUSD, which this purchase also accepts, then retry." }]
+          : []),
+      ];
+  throw new X402BalanceError(
+    "X402_INSUFFICIENT_FUNDS",
+    "The configured wallet has insufficient confirmed pathUSD on every Tempo chain this payment accepts.",
+    {
+      token: "pathUSD",
+      asset: PATH_USD,
+      fee_headroom_usd_micros: Number(TEMPO_FEE_HEADROOM_USD_MICROS),
+      requirements: offers.map(({ chain, amount }) => ({ network: chain.network, amount: amount.toString() })),
+      balances: Object.fromEntries(chains.map((chain) => [chain.network, (states.get(chain) as KnownBalance).balance.toString()])),
+      payers: Object.fromEntries(chains.map((chain) => [chain.network, address])),
+    },
+    undefined,
+    nextActions,
+    "checking MPP pathUSD balance",
+  );
+}
+
+/** Reads pathUSD on one Tempo chain through its RPC, with the x402 retry policy. */
+async function tempoBalanceReader(address: string): Promise<(chain: TempoChain) => Promise<bigint>> {
+  const { createPublicClient, defineChain, http } = await import("viem");
+  return (chain) => {
+    const client = createPublicClient({
+      chain: defineChain({
+        id: chain.id,
+        name: chain.name,
+        nativeCurrency: { name: "pathUSD", symbol: "pathUSD", decimals: 6 },
+        rpcUrls: { default: { http: [chain.rpcUrl] } },
+      }),
+      transport: http(chain.rpcUrl),
+    }) as unknown as RpcClient;
+    return checkBalanceAcrossProviders([client], PATH_USD, address, chain.network, { balanceLabel: "MPP pathUSD" });
+  };
+}
+
 /**
  * True when `response` genuinely came back from `configuredApiBase`'s
  * origin — never redirected, and never merely a matching string (an actual
@@ -760,9 +876,13 @@ export async function setupPaidFetch(options: PaidFetchOptions = {}): Promise<Co
     if (rail === "mpp" && localWallet) {
       const stack = await stackLoaders.mpp();
       const account = stack.privateKeyToAccount(localWallet.privateKey as `0x${string}`);
+      const readBalance = await tempoBalanceReader(localWallet.address);
       const mppx = stack.Mppx.create({
         polyfill: false,
         methods: [stack.tempo({ account })],
+        // Pay the first offered Tempo chain this wallet can cover.
+        orderChallenges: (candidates: readonly MppChallengeCandidate[]) =>
+          orderTempoCandidates(candidates, localWallet.address, readBalance),
       });
       return withPayer(mppx.fetch, {
         source: resolvedWallet!.source,

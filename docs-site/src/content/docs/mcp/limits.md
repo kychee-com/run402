@@ -66,7 +66,7 @@ The SQL endpoint blocks: `CREATE EXTENSION`, `COPY ... PROGRAM`, `ALTER SYSTEM`,
 Three payment rails, one 402 handshake:
 
 - x402 (default): USDC on Base. Prototype = Base Sepolia testnet (free from faucet). Hobby/team = Base mainnet.
-- MPP on Tempo: pathUSD on Tempo Moderato (testnet) / Tempo (mainnet). Same wallet key as x402. Switch rails via `run402 init mpp` in the user's shell.
+- MPP on Tempo: pathUSD on Tempo. Each 402 lists the Tempo chains a purchase accepts (mainnet, the Moderato testnet, or both) in order of preference, and the SDK pays the first one the wallet can cover. Same wallet key as x402. Switch rails via `run402 init mpp` in the user's shell.
 - MPP on Bitcoin Lightning: sats, mainnet. `run402 init lightning` asks Run402 to mint the agent a budgeted wallet on its own Hub (its pairing is a one-time secret, so it is a CLI step); tiers and image generation are then paid in sats and x402 on Base stays the fallback. Image generation uses the standard x402 `exact` scheme on Lightning when Run402 offers it, MPP Lightning otherwise. `r.billing.createLightningTopup(...)` mints an invoice any wallet can pay to top up the organization instead.
 
 The MCP server handles all signing automatically. When a paid call cannot be covered, the `run` result is the SDK's `PaymentRequired` error with its `next_actions` — guide the user through funding, then run the same snippet again.

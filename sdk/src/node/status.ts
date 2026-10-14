@@ -23,12 +23,7 @@ import { getActiveProjectId, loadKeyStore } from "../../core-dist/keystore.js";
 import { readMeta } from "../../core-dist/profiles.js";
 import type { Run402 } from "../index.js";
 import { readRemoteStatus } from "./remote-status.js";
-
-const USDC_ABI = [{ name: "balanceOf", type: "function", stateMutability: "view", inputs: [{ name: "account", type: "address" }], outputs: [{ name: "", type: "uint256" }] }] as const;
-const USDC_MAINNET = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
-const USDC_SEPOLIA = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
-const PATH_USD = "0x20c0000000000000000000000000000000000000";
-const TEMPO_RPC = "https://rpc.moderato.tempo.xyz/";
+import { railBalanceKeys, readOnChainBalances, sumOnChainBalances, type OnChainBalances } from "./onchain-balances.js";
 
 export interface StatusTarget {
   api_base: string;
@@ -53,7 +48,10 @@ export interface WalletStatus {
   next_actions: unknown;
   projects_source: "remote" | "local_cache";
   balances: {
+    /** The rail's token summed over the networks it pays on (`on_chain_by_network`). */
     on_chain_usd_micros: number | null;
+    /** Each of those networks, test money and real money apart; null where a read failed. */
+    on_chain_by_network: Partial<OnChainBalances>;
     on_chain_token: "USDC" | "pathUSD";
     allowance_usd_micros: number | null;
     held_usd_micros: number | null;
@@ -67,43 +65,6 @@ export interface WalletStatus {
 }
 
 export type StatusResult = LocalOnlyStatus | WalletStatus;
-
-/**
- * The wallet's on-chain balance in USD micros for its rail: USDC on Base
- * mainnet plus Base Sepolia (x402), or pathUSD on Tempo Moderato (mpp).
- * Null when every read fails.
- */
-async function readWalletBalanceUsdMicros(rail: string, address: string): Promise<number | null> {
-  try {
-    const { createPublicClient, http, defineChain } = await import("viem");
-    if (rail === "mpp") {
-      const tempoModerato = defineChain({
-        id: 42431,
-        name: "Tempo Moderato",
-        nativeCurrency: { name: "pathUSD", symbol: "pathUSD", decimals: 6 },
-        rpcUrls: { default: { http: [TEMPO_RPC] } },
-      });
-      const client = createPublicClient({ chain: tempoModerato, transport: http() });
-      try {
-        const raw = await client.readContract({ address: PATH_USD, abi: USDC_ABI, functionName: "balanceOf", args: [address as `0x${string}`] });
-        return Number(raw);
-      } catch {
-        return null;
-      }
-    }
-    const { base, baseSepolia } = await import("viem/chains");
-    const mainnetClient = createPublicClient({ chain: base, transport: http() });
-    const sepoliaClient = createPublicClient({ chain: baseSepolia, transport: http() });
-    const [mainnet, sepolia] = await Promise.all([
-      mainnetClient.readContract({ address: USDC_MAINNET, abi: USDC_ABI, functionName: "balanceOf", args: [address as `0x${string}`] }).then(Number).catch(() => null),
-      sepoliaClient.readContract({ address: USDC_SEPOLIA, abi: USDC_ABI, functionName: "balanceOf", args: [address as `0x${string}`] }).then(Number).catch(() => null),
-    ]);
-    if (mainnet === null && sepolia === null) return null;
-    return (mainnet || 0) + (sepolia || 0);
-  } catch {
-    return null;
-  }
-}
 
 /** Always expose `project_id` (the remote listing keys entries as `id`), never both. */
 function normalizeProject(raw: Record<string, unknown>): Record<string, unknown> & { project_id: string } {
@@ -136,9 +97,10 @@ export async function runStatus(r: Run402): Promise<StatusResult> {
 
   // Tier, allowance, and the membership-scoped project inventory, beside the
   // on-chain balance, all best-effort.
-  const [status, walletBalance] = await Promise.all([
+  const balanceKeys = railBalanceKeys(rail);
+  const [status, onChainByNetwork] = await Promise.all([
     readRemoteStatus(r, wallet),
-    readWalletBalanceUsdMicros(rail, localWallet.address),
+    readOnChainBalances(localWallet.address, balanceKeys),
   ]);
   const { tier, billing, remote } = status as unknown as {
     tier: Record<string, any> | null;
@@ -168,7 +130,8 @@ export async function runStatus(r: Run402): Promise<StatusResult> {
     next_actions: (status as { next_actions: unknown }).next_actions,
     projects_source: remote ? "remote" : "local_cache",
     balances: {
-      on_chain_usd_micros: walletBalance,
+      on_chain_usd_micros: sumOnChainBalances(onChainByNetwork, balanceKeys),
+      on_chain_by_network: onChainByNetwork,
       on_chain_token: rail === "mpp" ? "pathUSD" : "USDC",
       allowance_usd_micros: hasBilling ? billing!.allowance_usd_micros : null,
       held_usd_micros: hasBilling ? (billing!.held_usd_micros ?? 0) : null,

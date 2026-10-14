@@ -169,7 +169,7 @@ describe("CLI integration (live API, no mocks)", { timeout: 180_000 }, () => {
     await run("balance", []);
     captureStop();
     const out = captured();
-    assert.ok(out.includes("base-sepolia_usd_micros") || out.includes("USDC"), `Expected balance info in: ${out}`);
+    assert.ok(out.includes("base_sepolia_usd_micros") || out.includes("USDC"), `Expected balance info in: ${out}`);
   });
 
   // ── Tier ──────────────────────────────────────────────────────────────
