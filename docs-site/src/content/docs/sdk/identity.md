@@ -125,7 +125,31 @@ or the rail's ceiling, and refuses an entry on another network with
 `nostr+walletconnect://` URI, a bearer secret the MCP sandbox refuses with
 `SECRET_REQUIRES_CLI`) pays with that pairing on its node's network instead.
 The receipt of a Lightning payment reports the `lnbtc:` network, the payment
-hash as `transaction`, `amountMsat`, and no payer:
+hash as `transaction`, `amountMsat`, and no payer.
+
+On the `mpp` rail it pays a 402 that carries an MPP Tempo charge
+(`WWW-Authenticate: Payment`, method `tempo`, intent `charge`) in pathUSD on
+the first offered Tempo chain the wallet covers (price plus fee headroom),
+applying `maxUsdMicros` to the selected challenge before anything is signed,
+then retries the identical request with `Authorization: Payment`. Its receipt
+reports `protocol: "mpp"`, `method: "tempo"`, the `eip155:4217` /
+`eip155:42431` network, pathUSD as `asset`, the Tempo transaction hash as
+`transaction`, and the seller's decoded `Payment-Receipt` as
+`evidence.protocolReceipt`; `offer.status` and `merchantReceipt.status` are
+`"unavailable"` (MPP carries no wallet-rooted merchant evidence, so
+`requireReceipt` fails `MERCHANT_RECEIPT_REQUIRED` before signing). An x402
+receipt reports `protocol: "x402"`, `method: "exact"`. Over MPP a payment's
+identity is its credential, not the caller key: `idempotencyKey` is forwarded
+for correlation only, and an ambiguous or pending outcome is resolved by
+repeating the identical request on the same SDK instance, which re-presents
+the same credential; the seller resolves it to the original payment
+(`deduplicated: true`, `fundsMoved: false`) and never charges twice.
+
+When the wallet's rail cannot pay anything the 402 offers, the buyer fails
+`PAYMENT_NETWORK_UNSUPPORTED` before signing, with `details.offers[]` listing
+every offer it saw (`{ protocol, method, intent?, network }`, x402 entries and
+MPP challenges alike) and a `run402 init <rail> --switch-rail` next action
+naming the rail that pays the first offer:
 
 ```ts
 import { run402 } from "@run402/sdk/node";
@@ -157,7 +181,8 @@ validity, settlement, payer, transaction, and signer relationship. Branch on
 lifetime/key-reuse codes, or `PAYMENT_SETTLEMENT_FAILED`. The error preserves
 `fundsMoved`, `paymentId`, intent/delivery events, and canonical `nextActions`.
 Successful results preserve `paymentId`, `deduplicated`, `fundsMoved`,
-`delivery`, `settledAt`, and `intentState` when supplied.
+`delivery`, `settledAt`, and `intentState` when supplied. Every receipt names
+the `protocol` (`x402` | `mpp`) and `method` (`exact` | `tempo`) that paid.
 A seller may settle and then deliberately answer a non-2xx (for example a
 400 refusing the paid action). When that response carries a valid standard
 `PAYMENT-RESPONSE` receipt for the accepted challenge, `r.pay.fetch` returns a

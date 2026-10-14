@@ -67,9 +67,17 @@ export interface PaymentRawEvidence {
   offer: unknown | null;
   merchantReceipt: unknown | null;
   signerAuthorization: unknown | null;
+  /** MPP only: the seller's decoded `Payment-Receipt` (`{ method, reference, status, timestamp }`). */
+  protocolReceipt?: unknown | null;
 }
 
+/** The payment protocol that paid, and its scheme or method. */
+export type PaymentProtocol = "x402" | "mpp";
+
 export interface PaymentReceipt {
+  protocol: PaymentProtocol;
+  /** x402 scheme (`exact`) or MPP method (`tempo`). */
+  method: "exact" | "tempo";
   network: string;
   paymentId: string | null;
   amountUsdMicros: number;
@@ -144,6 +152,8 @@ export function payFetchResultToJson(
     body,
     payment: payment
       ? {
+          protocol: payment.protocol,
+          method: payment.method,
           payment_id: payment.paymentId,
           amount_usd_micros: payment.amountUsdMicros,
           asset: payment.asset,
@@ -181,6 +191,9 @@ export function payFetchResultToJson(
             offer: payment.evidence.offer,
             merchant_receipt: payment.evidence.merchantReceipt,
             signer_authorization: payment.evidence.signerAuthorization,
+            ...(payment.evidence.protocolReceipt !== undefined
+              ? { protocol_receipt: payment.evidence.protocolReceipt }
+              : {}),
           },
         }
       : null,

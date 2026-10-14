@@ -19,7 +19,10 @@ The `Run402` class exposes focused namespaces. Click into the SDK source for ful
 r.pay.fetch(url, init?, { maxUsdMicros?, idempotencyKey?, requireReceipt?, maxSats?, lightningPairing? }): Promise<PayFetchResult>
 ```
 
-Node automatically supplies the configured wallet/signer. Isomorphic hosts
+Node automatically supplies the configured wallet/signer and pays on its rail:
+x402 `exact` on Base, Lightning on the `lightning` rail, and an MPP Tempo charge
+in pathUSD on the `mpp` rail. The receipt names `protocol` (`x402` | `mpp`) and
+`method` (`exact` | `tempo`). Isomorphic hosts
 may inject `payExecutor` in `Run402Options`; without one, unpriced URLs pass
 through and a 402 fails locally with `PAYMENT_WALLET_UNFUNDED`.
 

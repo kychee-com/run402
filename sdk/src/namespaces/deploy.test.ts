@@ -2344,7 +2344,7 @@ describe("Deploy.apply (validation)", () => {
                 mode: "always",
                 amount_usd_micros: 250000,
                 pay_to: "org_default_payout",
-                networks: ["testnet"],
+                networks: ["testnet", "tempo-testnet"],
               },
             },
             {
@@ -2386,7 +2386,7 @@ describe("Deploy.apply (validation)", () => {
               mode: "always",
               amount_usd_micros: 250000,
               pay_to: "org_default_payout",
-              networks: ["testnet"],
+              networks: ["testnet", "tempo-testnet"],
             },
           },
           {
@@ -2619,6 +2619,16 @@ describe("Deploy.apply (validation)", () => {
         { replace: [{ pattern: "/api/sell-sats", methods: ["POST"], target: { type: "function", name: "sell" }, pricing: { mode: "always", amount_usd_micros: 20000000, pay_to: "org_default_payout", networks: ["lightning"], receipt: "on_fulfillment" } }] },
         "routes.replace.0.pricing.receipt",
         /EVM entries only/,
+      ],
+      [
+        { replace: [{ pattern: "/api/report", methods: ["POST"], target: { type: "function", name: "api" }, pricing: { mode: "always", amount_usd_micros: 20000, pay_to: "org_default_payout", networks: ["mainnet", "tempo"], receipt: "on_fulfillment" } }] },
+        "routes.replace.0.pricing.receipt",
+        /not issued for Tempo/,
+      ],
+      [
+        { replace: [{ pattern: "/api/report", methods: ["POST"], target: { type: "function", name: "api" }, pricing: { mode: "always", amount_usd_micros: 20000, amount_msat: 100000, pay_to: "org_default_payout", networks: ["tempo-testnet"] } }] },
+        "routes.replace.0.pricing.amount_msat",
+        /requires a Lightning network/,
       ],
       [
         { replace: [{ pattern: "/api/credits", methods: ["POST"], target: { type: "function", name: "api" }, pricing: { mode: "always", amount_usd_micros: 250000, pay_to: "org_default_payout", extra: true } }] },

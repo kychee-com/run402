@@ -455,6 +455,8 @@ export function createLightningPayExecutor(options: Omit<LightningFetchOptions, 
     // A Lightning entry carries no merchant receipt and no signer authorization, so these instants are absent.
     const noInstant: string | null = null;
     const payment: PaymentReceipt = {
+      protocol: "x402",
+      method: "exact",
       network: call.paid.network,
       paymentId: null,
       amountUsdMicros: 0,

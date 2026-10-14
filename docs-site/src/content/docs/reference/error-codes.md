@@ -1385,6 +1385,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="MISSING_SECRET"></a>
 [`MISSING_SECRET`](/errors/client/#MISSING_SECRET)
 
+<a id="mpp_attempt_id_collision"></a>
+<a id="MPP_ATTEMPT_ID_COLLISION"></a>
+[`MPP_ATTEMPT_ID_COLLISION`](/errors/client/#MPP_ATTEMPT_ID_COLLISION)
+
 <a id="mpp_lightning_unavailable"></a>
 <a id="MPP_LIGHTNING_UNAVAILABLE"></a>
 [`MPP_LIGHTNING_UNAVAILABLE`](/errors/gateway/#MPP_LIGHTNING_UNAVAILABLE)

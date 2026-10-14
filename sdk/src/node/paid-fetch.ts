@@ -64,8 +64,10 @@ import {
 } from "./payment-attempts.js";
 
 import { sdkFetch } from "./http-dispatcher.js";
+import { paymentOffers, switchRailFor, type PaymentOffer, type PaymentRail } from "./payment-offers.js";
 import { resolveWalletAccount } from "./signers/index.js";
-import { PATH_USD, TEMPO_FEE_HEADROOM_USD_MICROS, tempoChainById, type TempoChain } from "./tempo.js";
+import { PATH_USD, TEMPO_CHAINS, TEMPO_FEE_HEADROOM_USD_MICROS, tempoChainById, type TempoChain } from "./tempo.js";
+import { createMppPayExecutor } from "./mpp-pay-executor.js";
 
 type FetchFn = typeof globalThis.fetch;
 type RpcFailureReason = "timeout" | "rate_limited" | "network" | "rpc_error";
@@ -885,11 +887,26 @@ export async function setupPaidFetch(options: PaidFetchOptions = {}): Promise<Co
         orderChallenges: (candidates: readonly MppChallengeCandidate[]) =>
           orderTempoCandidates(candidates, localWallet.address, readBalance),
       });
+      // `pay.fetch` on this rail: the same selection, with the spend guard
+      // applied to the chosen challenge before mppx signs it.
+      const pay = createMppPayExecutor({
+        prepare: (response, request) => mppx.preparePayment(response, { request }),
+        payer: localWallet.address,
+        baseFetch: sdkFetch,
+        fingerprint: paymentRequestFingerprint,
+        unsupported: (offers) => paymentNetworkUnsupportedError(
+          offerNetworks(offers),
+          TEMPO_CHAINS.map((chain) => chain.network),
+          {},
+          offers,
+          "mpp",
+        ),
+      });
       return withPayer(mppx.fetch, {
         source: resolvedWallet!.source,
         rail: "mpp",
         payers: [{ address: localWallet.address }],
-      });
+      }, undefined, pay);
     }
 
     // Default: x402 on Base + Base Sepolia. Each chain has its own independent
@@ -1173,10 +1190,13 @@ export function createLazyPaidFetch(options: PaidFetchOptions = {}): LazyPaidFet
         };
       }
       if (configured?.payer.rail === "mpp" || configured?.payer.rail === "lightning") {
+        const offers = paymentOffers(response);
         throw paymentNetworkUnsupportedError(
-          challengeNetworks(response),
+          offerNetworks(offers),
           configured.payer.payers.flatMap((payer) => payer.network ? [payer.network] : []),
-          { configured_rail: configured.payer.rail },
+          {},
+          offers,
+          configured.payer.rail,
         );
       }
       if (missingPaidStackPackages !== null) {
@@ -1350,6 +1370,11 @@ export function createX402BuyerFetch(
       const firstResponse = await baseFetch(request);
       if (firstResponse.status !== 402) return firstResponse;
 
+      const offers = paymentOffers(firstResponse);
+      if (!firstResponse.headers.get("PAYMENT-REQUIRED") && offers.length > 0) {
+        // An MPP-only 402: name what it offers and the rail that pays it.
+        throw paymentNetworkUnsupportedError(offerNetworks(offers), [...options.supportedNetworks], {}, offers, "x402");
+      }
       const required = await decodePaymentRequired(firstResponse);
       const guarded = await guardPaymentRequired(
         required,
@@ -1359,6 +1384,7 @@ export function createX402BuyerFetch(
         call.requireReceipt,
         options.offerReceipt,
         options.verifyAtSeconds?.() ?? Math.floor(Date.now() / 1000),
+        offers,
       );
       let pending = creatingProofs.get(call.fingerprint);
       if (!pending) {
@@ -1590,6 +1616,7 @@ async function guardPaymentRequired(
   requireReceipt: boolean,
   offerReceipt: X402OfferReceiptRuntime | undefined,
   verifyAtSeconds: number,
+  offers: readonly PaymentOffer[] = [],
 ): Promise<GuardedPaymentRequired> {
   let challengeUrl: string;
   try {
@@ -1615,8 +1642,11 @@ async function guardPaymentRequired(
   );
   if (supportedByNetwork.length === 0) {
     throw paymentNetworkUnsupportedError(
-      [...new Set(required.accepts.map((accept) => accept.network))],
+      [...new Set([...required.accepts.map((accept) => accept.network), ...offerNetworks(offers)])],
       [...supportedNetworks],
+      {},
+      offers,
+      "x402",
     );
   }
   const supported = supportedByNetwork.filter((accept) =>
@@ -1968,6 +1998,8 @@ async function receiptFromResponse(
     amountUsdMicros: amount,
     asset: accepted.asset,
     payer: settlementPayer,
+    protocol: "x402",
+    method: "exact",
     payTo: accepted.payTo,
     transaction: record.transaction,
     resourceUrl: url,
@@ -2123,17 +2155,31 @@ export function paymentNetworkUnsupportedError(
   challengeNetworkValues: string[],
   walletNetworkValues: string[],
   extra: Record<string, unknown> = {},
+  offers: readonly PaymentOffer[] = [],
+  configuredRail?: PaymentRail,
 ): PaymentBuyerError {
+  const switchTo = switchRailFor(offers, configuredRail);
   return new PaymentBuyerError({
     code: "PAYMENT_NETWORK_UNSUPPORTED",
-    message: "The x402 challenge does not offer an exact-scheme network and asset supported by this wallet.",
+    message: switchTo
+      ? `The 402 offers no payment this wallet's ${configuredRail ?? "configured"} rail can make; the ${switchTo} rail can pay it.`
+      : "The x402 challenge does not offer an exact-scheme network and asset supported by this wallet.",
     fundsMoved: false,
     details: {
       challenge_networks: challengeNetworkValues,
       wallet_networks: walletNetworkValues,
+      ...(offers.length > 0 ? { offers } : {}),
+      ...(configuredRail ? { configured_rail: configuredRail } : {}),
       ...extra,
     },
     nextActions: [
+      ...(switchTo
+        ? [{
+            type: "run_command",
+            command: `run402 init ${switchTo} --switch-rail`,
+            why: `Switch this wallet to the ${switchTo} rail, which pays the seller's first offer, then retry.`,
+          }]
+        : []),
       {
         type: "edit_request",
         why: "Use a priced endpoint on one of the wallet networks, or configure a signer for a challenge network.",
@@ -2177,17 +2223,13 @@ function settlementError(
   });
 }
 
+/** Every network a 402 offers, x402 entries and MPP challenges alike. */
 function challengeNetworks(response: Response): string[] {
-  const header = response.headers.get("PAYMENT-REQUIRED");
-  if (!header) return [];
-  try {
-    const decoded = decodeBase64Json(header) as { accepts?: Array<{ network?: unknown }> };
-    return [...new Set((decoded.accepts ?? []).flatMap((accept) =>
-      typeof accept.network === "string" ? [accept.network] : [],
-    ))];
-  } catch {
-    return [];
-  }
+  return offerNetworks(paymentOffers(response));
+}
+
+function offerNetworks(offers: readonly PaymentOffer[]): string[] {
+  return [...new Set(offers.flatMap((offer) => offer.network ? [offer.network] : []))];
 }
 
 async function paymentRequestFingerprint(

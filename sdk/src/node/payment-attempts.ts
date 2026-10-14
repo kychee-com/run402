@@ -1,5 +1,5 @@
 /**
- * Sanitized local journal for automatic x402 payment attempts.
+ * Sanitized local journal for automatic x402 and MPP payment attempts.
  *
  * Each attempt is a separate mode-0600 file. Separate files avoid lost
  * updates when multiple SDK processes pay concurrently. Records intentionally
@@ -41,7 +41,7 @@ export type PaymentAttemptJournalState =
 export interface PaymentAttemptRecord {
   version: 1;
   payment_attempt_id: string;
-  rail: "x402";
+  rail: "x402" | "mpp";
   state: PaymentAttemptJournalState;
   mutation_state: "not_started" | "in_progress" | "completed" | "ambiguous";
   method: string;
@@ -292,7 +292,7 @@ function isPaymentAttemptRecord(value: unknown): value is PaymentAttemptRecord {
     record.version === 1 &&
     typeof record.payment_attempt_id === "string" &&
     PAYMENT_ATTEMPT_ID_PATTERN.test(record.payment_attempt_id) &&
-    record.rail === "x402" &&
+    (record.rail === "x402" || record.rail === "mpp") &&
     ["intent", "submitting", "response_received", "intent_pending", "completed", "failed", "ambiguous"]
       .includes(record.state ?? "") &&
     ["not_started", "in_progress", "completed", "ambiguous"].includes(record.mutation_state ?? "") &&

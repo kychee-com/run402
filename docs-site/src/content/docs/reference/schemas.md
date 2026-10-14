@@ -362,7 +362,7 @@ Use `run402 up --check` for local validation and `run402 up --plan` for gateway 
 | `amount_usd_micros` | `integer` | yes | See the downloadable schema for constraints. |
 | `amount_msat` | `integer` | no | Pins the Lightning price in millisatoshis for `lightning` / `lightning-testnet` entries; needs a Lightning network. Absent, each challenge quotes `amount_usd_micros` into whole satoshis. |
 | `pay_to` | `schema` | yes | See the downloadable schema for constraints. |
-| `networks` | `array` | no | Omit to accept production mainnet only. Include testnet explicitly for testnet payments. `lightning` / `lightning-testnet` sell for sats over x402 `exact` on `lnbtc`, settled to the org's Lightning receiver (`run402 orgs lightning-receiver set`); `receipt` cannot be combined with them. |
+| `networks` | `array` | no | Omit to accept production mainnet only. Include testnet explicitly for testnet payments. `lightning` / `lightning-testnet` sell for sats over x402 `exact` on `lnbtc`, settled to the org's Lightning receiver (`run402 orgs lightning-receiver set`). `tempo` / `tempo-testnet` also take an MPP Tempo charge in pathUSD on Tempo mainnet (chain 4217) / Moderato (42431), paid to the org's payout address. `receipt` cannot be combined with Lightning or Tempo networks. |
 
 <h3 id="release-functionRouteTarget">functionRouteTarget</h3>
 

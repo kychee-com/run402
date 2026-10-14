@@ -3707,6 +3707,12 @@ function validateRoutePricing(
       `${resource}.pricing.receipt`,
     );
   }
+  if (obj.receipt === "on_fulfillment" && networks.some((network) => network === "tempo" || network === "tempo-testnet")) {
+    throw invalidRouteSpec(
+      `ReleaseSpec.${resource}.pricing.receipt covers x402 EVM entries only; merchant evidence is not issued for Tempo`,
+      `${resource}.pricing.receipt`,
+    );
+  }
 }
 
 /** The declared pricing networks, validated; `["mainnet"]` when omitted. */

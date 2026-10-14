@@ -92,9 +92,15 @@ export interface X402Stack {
   };
 }
 
+/** An mppx client: the payment-aware fetch, and selection without signing (for `pay.fetch`'s spend guard). */
+export interface MppClient {
+  fetch: FetchFn;
+  preparePayment: (response: Response, options?: { request?: RequestInit }) => Promise<import("./mpp-pay-executor.js").PreparedMppPayment>;
+}
+
 export interface MppStack {
   privateKeyToAccount: (pk: `0x${string}`) => unknown;
-  Mppx: { create: (opts: unknown) => { fetch: FetchFn } };
+  Mppx: { create: (opts: unknown) => MppClient };
   tempo: (opts: unknown) => unknown;
 }
 
@@ -162,7 +168,7 @@ export async function loadMppStack(): Promise<MppStack> {
   const mppxSpecifier = "mppx/client";
   const mppx = await c.load("mppx", () =>
     import(/* webpackIgnore: true */ mppxSpecifier) as Promise<{
-      Mppx: { create: (opts: unknown) => { fetch: FetchFn } };
+      Mppx: MppStack["Mppx"];
       tempo: (opts: unknown) => unknown;
     }>,
   );

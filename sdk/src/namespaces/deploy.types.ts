@@ -601,6 +601,10 @@ export const ROUTE_PRICING_NETWORKS = [
   // (`lnbtc`), settled to the organization's own Lightning receiver.
   "lightning",
   "lightning-testnet",
+  // tenant-mpp-priced-routes: an MPP Tempo charge in pathUSD on Tempo mainnet
+  // (chain 4217) / Moderato (42431), paid to the organization's payout address.
+  "tempo",
+  "tempo-testnet",
 ] as const;
 
 export const LIGHTNING_ROUTE_PRICING_NETWORKS: readonly RoutePricingNetwork[] = ["lightning", "lightning-testnet"];
@@ -622,7 +626,9 @@ export interface RoutePricingSpec {
    * testnet acceptance. `"lightning"` / `"lightning-testnet"` sell for sats
    * over x402 `exact` on `lnbtc`, settled to the organization's Lightning
    * receiver (`run402 orgs lightning-receiver set`); a Lightning-only route
-   * needs no EVM payout wallet.
+   * needs no EVM payout wallet. `"tempo"` / `"tempo-testnet"` also take an
+   * MPP Tempo charge in pathUSD (`WWW-Authenticate: Payment`), paid to the
+   * organization's payout address on Tempo mainnet / Moderato.
    */
   networks?: readonly RoutePricingNetwork[];
   /** Ask the function to declare committed fulfillment for a signed merchant receipt. */

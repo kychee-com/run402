@@ -1062,6 +1062,9 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="MISSING_SECRET"></a>
 [`MISSING_SECRET`](/errors/client/#MISSING_SECRET)
 
+<a id="MPP_ATTEMPT_ID_COLLISION"></a>
+[`MPP_ATTEMPT_ID_COLLISION`](/errors/client/#MPP_ATTEMPT_ID_COLLISION)
+
 <a id="MPP_LIGHTNING_UNAVAILABLE"></a>
 [`MPP_LIGHTNING_UNAVAILABLE`](/errors/gateway/#MPP_LIGHTNING_UNAVAILABLE)
 

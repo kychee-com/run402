@@ -499,9 +499,37 @@ describe("createX402BuyerFetch", () => {
       assert.equal(error.fundsMoved, false);
       assert.deepEqual(error.details, {
         challenge_networks: ["solana:mainnet"],
+        configured_rail: "x402",
         funds_moved: false,
+        offers: [{ protocol: "x402", method: "exact", network: "solana:mainnet" }],
         wallet_networks: ["eip155:8453"],
       });
+      return true;
+    });
+    assert.equal(creates, 0);
+  });
+
+  it("names an MPP-only 402's offer and the mpp rail switch before signing", async () => {
+    let creates = 0;
+    const tempo = `Payment id="ch_1", realm="seller.run402.app", method="tempo", intent="charge", request="${Buffer.from(JSON.stringify({ amount: "20000", currency: "0x20c0000000000000000000000000000000000000", recipient: "0xfeed000000000000000000000000000000000000", methodDetails: { chainId: 4217 } })).toString("base64url")}"`;
+    const buyer = createX402BuyerFetch(fakeClient(() => { creates += 1; }), {
+      supportedNetworks: ["eip155:8453"],
+      ...attemptOptions(),
+      fetch: async () => new Response(JSON.stringify({ code: "PAYMENT_REQUIRED" }), {
+        status: 402,
+        headers: { "content-type": "application/json", "WWW-Authenticate": tempo },
+      }),
+    });
+
+    await assert.rejects(buyer(PAID_URL, undefined, {}), (error: unknown) => {
+      assert.ok(error instanceof PaymentBuyerError);
+      assert.equal(error.code, "PAYMENT_NETWORK_UNSUPPORTED");
+      assert.equal(error.fundsMoved, false);
+      const details = error.details as Record<string, unknown>;
+      assert.deepEqual(details.offers, [{ protocol: "mpp", method: "tempo", intent: "charge", network: "eip155:4217" }]);
+      assert.equal(details.configured_rail, "x402");
+      const body = error.body as { next_actions: Array<{ command?: string }> };
+      assert.equal(body.next_actions[0]!.command, "run402 init mpp --switch-rail");
       return true;
     });
     assert.equal(creates, 0);

@@ -11,7 +11,7 @@ import {
   positionalArgs,
 } from "./argparse.mjs";
 
-const HELP = `run402 pay — Call an x402-priced URL
+const HELP = `run402 pay — Call an x402- or MPP-priced URL
 
 Usage:
   run402 pay <url> [options]
@@ -45,6 +45,14 @@ The command uses the same wallet and bounded buyer as the SDK. On the lightning
 rail a 402 naming an lnbtc entry on the wallet's network is paid in sats; one on
 another network is refused (LIGHTNING_NETWORK_MISMATCH) unless
 --lightning-pairing names a pairing on that network.
+On the mpp rail a 402 carrying an MPP Tempo charge (WWW-Authenticate: Payment)
+is paid in pathUSD on the first offered Tempo chain the wallet covers; the
+result carries payment.protocol "mpp" and payment.method "tempo". A 402 that
+offers nothing the wallet's rail pays fails PAYMENT_NETWORK_UNSUPPORTED with
+details.offers and the "run402 init <rail> --switch-rail" that would pay it.
+Over MPP the --idempotency-key is correlation only: an unknown outcome is
+resolved by repeating this identical command from the same client, which
+re-presents the same credential and is never charged twice.
 An unpriced URL is passed through with payment: null.
 On trusted Run402 PAYMENT_INTENT_PENDING, wait for Retry-After and repeat this
 identical command with the same payer and --idempotency-key. Never change the key.

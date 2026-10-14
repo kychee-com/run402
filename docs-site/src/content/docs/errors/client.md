@@ -683,6 +683,12 @@ Owner: `public:sdk/src/node/actions-node.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
+<h2 id="MPP_ATTEMPT_ID_COLLISION">MPP_ATTEMPT_ID_COLLISION</h2>
+
+Owner: `public:sdk/src/node/mpp-pay-executor.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
 <h2 id="NETWORK_ERROR">NETWORK_ERROR</h2>
 
 Owner: `public:sdk/src/namespaces/deploy.ts`.
@@ -769,13 +775,13 @@ The client could not complete this operation. Inspect its typed error kind, mess
 
 <h2 id="PAYMENT_NETWORK_UNSUPPORTED">PAYMENT_NETWORK_UNSUPPORTED</h2>
 
-Owner: `public:sdk/src/node/paid-fetch.ts`.
+Owner: `public:sdk/src/node/mpp-pay-executor.ts`, `public:sdk/src/node/paid-fetch.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
 <h2 id="PAYMENT_SETTLEMENT_FAILED">PAYMENT_SETTLEMENT_FAILED</h2>
 
-Owner: `public:sdk/src/namespaces/pay.ts`, `public:sdk/src/node/paid-fetch.ts`.
+Owner: `public:sdk/src/namespaces/pay.ts`, `public:sdk/src/node/mpp-pay-executor.ts`, `public:sdk/src/node/paid-fetch.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 

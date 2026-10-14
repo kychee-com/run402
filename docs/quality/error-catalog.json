@@ -3969,6 +3969,16 @@
       "topic": "/errors/client/#MISSING_SECRET"
     },
     {
+      "code": "MPP_ATTEMPT_ID_COLLISION",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/node/mpp-pay-executor.ts"
+        }
+      ],
+      "topic": "/errors/client/#MPP_ATTEMPT_ID_COLLISION"
+    },
+    {
       "code": "MPP_LIGHTNING_UNAVAILABLE",
       "owners": [
         {
@@ -4519,6 +4529,10 @@
       "owners": [
         {
           "owner": "public",
+          "source": "sdk/src/node/mpp-pay-executor.ts"
+        },
+        {
+          "owner": "public",
           "source": "sdk/src/node/paid-fetch.ts"
         }
       ],
@@ -4630,6 +4644,10 @@
         {
           "owner": "public",
           "source": "sdk/src/namespaces/pay.ts"
+        },
+        {
+          "owner": "public",
+          "source": "sdk/src/node/mpp-pay-executor.ts"
         },
         {
           "owner": "public",
