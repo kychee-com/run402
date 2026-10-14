@@ -1091,7 +1091,7 @@ If you have automation parsing CLI output:
 
 ## 2.4.0 — unreleased
 
-Surfaces the v1.56 gateway verification-no-silent-fail bundle ([parent change: `verification-no-silent-fail` in run402-private](https://github.com/kychee-com/run402-private/tree/main/openspec/changes/verification-no-silent-fail)). Closes a class of UX bugs where SES auth-verdict rejections silently failed operator email verification with no signal to the operator. Additive — old clients silently ignore the new fields.
+Surfaces the v1.56 gateway verification-no-silent-fail bundle (parent change: `verification-no-silent-fail` in the Run402 platform). Closes a class of UX bugs where SES auth-verdict rejections silently failed operator email verification with no signal to the operator. Additive — old clients silently ignore the new fields.
 
 ### Added
 
@@ -1119,7 +1119,7 @@ Surfaces the v1.56 gateway verification-no-silent-fail bundle ([parent change: `
 
 ## 2.3.0 — unreleased
 
-Surfaces the v1.49 gateway image-variant pipeline ([run402#392](https://github.com/kychee-com/run402/issues/392), parent change: [`asset-image-variants` in run402-private](https://github.com/kychee-com/run402-private/tree/main/openspec/changes/asset-image-variants)). Additive, non-breaking — old clients silently ignore the new fields.
+Surfaces the v1.49 gateway image-variant pipeline ([run402#392](https://github.com/kychee-com/run402/issues/392), parent change: `asset-image-variants` in the Run402 platform). Additive, non-breaking — old clients silently ignore the new fields.
 
 ### Added
 

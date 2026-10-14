@@ -2010,7 +2010,7 @@ describe("SDK surface alignment", () => {
       // vault-multi-writer (rev 47) task 5.7 — the writer-admission twin
       // of `reconcileEnvelopeRecipients` above, but UNLIKE that permanently
       // CLI-less sibling this one is TEMPORARILY uncovered: its CLI
-      // surface is task 6.x (openspec/changes/vault-multi-writer tasks.md
+      // surface is task 6.x (the vault-multi-writer task ledger
       // §6 — `org members add`'s writer+envelope reconcile and `repos access
       // sync`'s new tail are both planned to compose it, likely without a
       // standalone verb of its own, mirroring how `repos.compactHeadroom`
@@ -2157,7 +2157,7 @@ describe("SDK surface alignment", () => {
 const SHIM_SOURCES = [
   "cli/lib/vault-scaffold.mjs",
   "cli/lib/vault-target.mjs",
-  // Pure data ledger (openspec/changes/kygit-page-truth-gate design D1) —
+  // Pure data ledger (kygit-page-truth-gate design D1) —
   // no imports, no gateway calls, nothing for FORBIDDEN_SHIM_IMPORTS/CALLS
   // to catch. Listed here only to satisfy SHIM_DISCOVERY_DIRS' name-based
   // sweep; it is not a request/response shim.

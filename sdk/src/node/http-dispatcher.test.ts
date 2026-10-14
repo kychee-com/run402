@@ -74,7 +74,7 @@ describe("sdkFetch — test-override deference (design D4)", () => {
 
 /**
  * vault-first-op-premium task 1.1 — H1 attribution note. A live probe
- * (recorded in openspec/changes/vault-first-op-premium/tasks.md — three
+ * (recorded in the vault-first-op-premium task ledger — three
  * consecutive daemon-forwarded sessions against the real gateway, dial count
  * read via `_apiDialCount()`) found the owned dispatcher's API-origin
  * connection was ALREADY reused correctly: exactly one dial total, zero

@@ -2,7 +2,7 @@
 /**
  * build-vault-surface.mjs — generates `cli/vault-surface.json` from
  * the single source `sync.test.ts` already enforces for the CLI surface
- * (openspec/changes/kygit-page-truth-gate, design D1).
+ * (kygit-page-truth-gate, design D1).
  *
  * The surface file is what run402-private's page-truth gate reads after
  * resolving the PUBLISHED `run402` package: the live `repos` family verbs,

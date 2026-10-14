@@ -1,6 +1,6 @@
 /**
  * vault-capabilities.mjs — the capability ledger for the KyGit
- * marketing surface (openspec/changes/kygit-page-truth-gate, design D1).
+ * marketing surface (kygit-page-truth-gate, design D1).
  *
  * THIS FILE IS MARKETING-CLAIM GROUND TRUTH. run402-private's page-truth
  * gate (`scripts/check-kygit-page-truth.mjs`) resolves the PUBLISHED

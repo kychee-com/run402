@@ -110,7 +110,7 @@
       "purpose": "history",
       "interface": "historical",
       "exception": "Dated release records; add current entries without rewriting history.",
-      "sha256": "b0b88e282d6736e56b7c30eb73c419e3f675b6b871aeca8acd25e98505b048d1",
+      "sha256": "ccedbb7296a7944b031584f7a4220733c0355ab952b330959af8c911073f3a47",
       "outputs": [],
       "url": null,
       "checks": [
@@ -230,7 +230,7 @@
       "purpose": "history",
       "interface": "historical",
       "exception": "Dated release records; add current entries without rewriting history.",
-      "sha256": "91dd9c15d849f0db24aac7b7f862eee34686650094d88b03e84cd47f5217aae0",
+      "sha256": "98239fafebd4aae43e4f22cc5598332c379ffa06c46162ec53f64f39de2afa45",
       "outputs": [],
       "url": null,
       "checks": [
@@ -3714,7 +3714,7 @@
       "purpose": "protocol",
       "interface": "native",
       "exception": "Normative wire/security documentation; preserve exact claims and mirrors.",
-      "sha256": "da6a9021a1bf413643bf1097bb2d61837ba671e4cfb504f545d11ab2edcba401",
+      "sha256": "9511dfee047791dda512843b600f7959fa799417812c29d7c49f82f053d566c9",
       "outputs": [],
       "url": null,
       "checks": [
@@ -3734,7 +3734,7 @@
       "purpose": "protocol",
       "interface": "native",
       "exception": "Normative wire/security documentation; preserve exact claims and mirrors.",
-      "sha256": "8287e97edaabb5f9dbaf73c66d8b919bfbfd90338c80f17e507960a596f32337",
+      "sha256": "b9ade45b1b0dc627b44b9ded9f744341ce90cc10541922762492ec9790dd0aec",
       "outputs": [],
       "url": null,
       "checks": [
@@ -3794,7 +3794,7 @@
       "purpose": "maintainer",
       "interface": "mixed",
       "exception": "Repository development and implementation instructions; product operations still prefer CLI.",
-      "sha256": "56439bddd659cb3594a4ca3a199df1bf69cca3dbb5e41ea059a62f72e9b77b9e",
+      "sha256": "a74cc379535f8062a97bf582a87c7137a62641accd6e67332b76d82e50fa0b70",
       "outputs": [],
       "url": null,
       "checks": [

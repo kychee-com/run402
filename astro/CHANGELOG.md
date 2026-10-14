@@ -155,7 +155,7 @@ returns a complete `AstroUserConfig` composing the image integration AND the SSR
 
 ## 0.3.0-alpha.1 — superseded by 1.0.0-alpha.1
 
-Capability `astro-ssr-runtime` ([openspec change in run402-private](https://github.com/kychee-com/run402-private/tree/main/openspec/changes/astro-ssr-runtime)). Adds the SSR adapter primitives alongside the existing v0.2.x image integration. Additive — `integrations: [run402()]` users see zero breaking changes.
+Capability `astro-ssr-runtime` (a Run402 platform change). Adds the SSR adapter primitives alongside the existing v0.2.x image integration. Additive — `integrations: [run402()]` users see zero breaking changes.
 
 ### Added
 
@@ -192,7 +192,7 @@ v0.3.x ships the building blocks so adopters can start using SSR while the prese
 ### Out of scope (deferred)
 
 - v1.0 default-export preset shape (collapsing adapter + integration into one factory)
-- Lambda response streaming through ECS Express (deferred to v1.5 — see `astro-ssr-runtime/specs/ssr-isr-cache/spec.md`)
+- Lambda response streaming through ECS Express (deferred to v1.5, per the `astro-ssr-runtime` ISR cache spec)
 - SWR via background revalidate (deferred to v1.5 — needs proper worker capture path)
 - Runtime `/_image` endpoint (deferred — use the `<Run402Picture asset>` recipe for CMS images)
 

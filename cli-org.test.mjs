@@ -305,9 +305,17 @@ describe("run402 orgs", () => {
   });
 
   it("members without an arg fails locally (no network call)", async () => {
+    // Run from a directory with no .run402.json above it: a checkout's own
+    // binding would otherwise name an org.
+    const cwd = process.cwd();
+    process.chdir(tempDir);
     capture();
-    await assert.rejects(runOrg("members", ["list"]), (e) => /process\.exit\(1\)/.test(e.message));
-    uncapture();
+    try {
+      await assert.rejects(runOrg("members", ["list"]), (e) => /process\.exit\(1\)/.test(e.message));
+    } finally {
+      uncapture();
+      process.chdir(cwd);
+    }
     assert.equal(calls.length, 0);
   });
 

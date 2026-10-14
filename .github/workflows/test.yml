@@ -50,7 +50,7 @@ jobs:
       # retired spellings, capability ledger) must match what
       # command-manifest.mjs + vault-capabilities.mjs regenerate — the
       # file run402-private's page-truth gate resolves against the
-      # published package (openspec/changes/kygit-page-truth-gate).
+      # published package (kygit-page-truth-gate).
       - run: node scripts/build-vault-surface.mjs --check
       # Quote the globs so Node handles expansion natively. Node's --test
       # glob matching recurses into nested dirs AND matches depth-0 files,

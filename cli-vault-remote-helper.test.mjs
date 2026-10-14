@@ -1110,8 +1110,8 @@ describe("buildAutoGcCompactionTarget — the repo_dir regression (2026-08-31)",
 
 // ─── vault-first-op-premium: the per-session SDK construction cache ──────
 //
-// Attribution (2026-08-31, recorded in openspec/changes/vault-first-op-
-// premium/tasks.md): `getSdk()` builds a fresh SDK instance on every call —
+// Attribution (2026-08-31, recorded in the vault-first-op-premium
+// change's task ledger): `getSdk()` builds a fresh SDK instance on every call —
 // fine for a traditional one-process-per-invocation CLI, but this module is
 // ALSO the resident daemon's per-session engine, where `openVault` calls it
 // fresh exactly once per forwarded session. A live daemon probe found that a
