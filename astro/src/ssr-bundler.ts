@@ -19,10 +19,18 @@
  *     `@run402/functions` (the gateway aliases this at runtime to its
  *     installed public Core package via esbuild's `alias`; bundling our
  *     own copy would shadow that contract).
- *   - minify: false — Astro server bundles are not user-facing; readable
- *     output makes runtime errors traceable.
+ *   - define `process.env.NODE_ENV` as the build's own `NODE_ENV`
+ *     (recorded in `adapter.json` by the adapter). CommonJS packages
+ *     such as react and react-dom choose their development or
+ *     production build on that value; defining it lets esbuild drop the
+ *     unused branch, so a production build ships only production code.
+ *     It must match the build: a development build compiles JSX against
+ *     `react/jsx-dev-runtime`, whose production module has no `jsxDEV`.
+ *   - minify: true by default — the function's source counts against
+ *     the tier's code-size cap, and parsing less code shortens cold
+ *     start. `minify: false` keeps the output readable for debugging.
  *   - keepNames: true — preserves component / handler names in stack
- *     traces.
+ *     traces, minified or not.
  *   - banner: createRequire shim — esbuild's ESM wrapper can still
  *     contain CommonJS dependency code that calls require("util") or
  *     another Node builtin. Node ESM has no ambient require, so provide
@@ -107,15 +115,23 @@ export interface BundleSsrOptions {
   entrypoint: string;
   /** Optional extra externals (passed to esbuild verbatim). */
   externalAdditions?: readonly string[];
+  /**
+   * `NODE_ENV` the Astro build ran under (`adapter.json`'s `nodeEnv`).
+   * When set, `process.env.NODE_ENV` is defined as this value in the
+   * bundle. When absent (a manifest from an adapter that did not record
+   * it), the bundle reads `NODE_ENV` at runtime.
+   */
+  nodeEnv?: string;
+  /** Minify the bundle. Defaults to `true`. */
+  minify?: boolean;
 }
 
 export interface BundleSsrResult {
   /** The bundled ESM source as a UTF-8 string. Ready to ship as
    *  `FunctionSpec.source` — `ContentSource` accepts string directly. */
   code: string;
-  /** Lowercase hex SHA-256 of `code` — useful for cache keys / digest
-   *  reporting. The SDK will compute its own at upload time, so this is
-   *  not required to use the bundle. */
+  /** UTF-8 byte length of `code`: the size the gateway checks against
+   *  the tier's per-function code-size cap. */
   byteLength: number;
   /** esbuild warnings, if any. Surfaced to callers who want to log. */
   warnings: { text: string; location?: { file?: string; line?: number } | null }[];
@@ -149,8 +165,11 @@ export async function bundleSsrEntry(
     platform: "node",
     external: externals,
     write: false,
-    minify: false,
+    minify: opts.minify ?? true,
     keepNames: true,
+    ...(opts.nodeEnv !== undefined
+      ? { define: { "process.env.NODE_ENV": JSON.stringify(opts.nodeEnv) } }
+      : {}),
     banner: {
       js: NODE_ESM_REQUIRE_SHIM,
     },

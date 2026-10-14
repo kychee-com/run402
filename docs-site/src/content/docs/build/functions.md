@@ -20,6 +20,8 @@ run402 functions invoke hello --project prj_example --method GET
 run402 functions logs hello --project prj_example
 ```
 
+Each tier caps a function's code size: `run402 projects quote` names it as the tier's max function bundle. The cap applies to the uncompressed bytes of the source you deploy, before the platform bundles it with `@run402/functions` and any `--deps`. A function over the cap is refused when the plan is created, with `TIER_LIMIT_EXCEEDED` naming the cap and the size. Bundle and minify large sources yourself before deploying.
+
 The example assumes the function is named `hello` in the manifest. Direct function invocation and a public routed URL are different access paths. Declaring a route does not make every invocation endpoint anonymous. Configure route/function auth intentionally; do not mistake a public reachability warning for an authorization policy.
 
 Schedules and event triggers can create durable function runs. Inspect `fnrun_` and attempt handles, use stable idempotency keys where required, and distinguish queued work from a completed response. The [function command reference](/cli/functions/) covers list, logs, cancel and redrive. The [function-runs example](https://github.com/kychee-com/run402/tree/main/examples/kysigned-function-runs) shows a complete fixture.

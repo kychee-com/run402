@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { describe, it } from "node:test";
-import { createRun402Adapter } from "./ssr-adapter.js";
+import { createRun402Adapter, nodeEnvWarning } from "./ssr-adapter.js";
 
 type CapturedAdapter = {
   name?: string;
@@ -180,5 +180,44 @@ describe("createRun402Adapter — adapter.json routes", () => {
   it("falls back to pages[] when neither routes source is available", async () => {
     const routes = await buildAdapterJson({ pages: [{ pathname: "about/" }] });
     assert.deepEqual(routes, [{ pattern: "about/", prerender: true, pathname: "about/", type: "page" }]);
+  });
+});
+
+describe("createRun402Adapter — adapter.json nodeEnv (kychee-com/run402-private#838)", () => {
+  async function buildManifestUnder(nodeEnv: string | undefined): Promise<Record<string, unknown>> {
+    const root = mkdtempSync(path.join(tmpdir(), "r402-adapter-nodeenv-"));
+    const saved = process.env.NODE_ENV;
+    try {
+      if (nodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = nodeEnv;
+      const integration = createRun402Adapter();
+      const hooks = integration.hooks as Record<string, ((params: unknown) => unknown) | undefined>;
+      await hooks["astro:config:done"]!({
+        setAdapter() {},
+        config: { outDir: pathToFileURL(root + "/") },
+        logger: { info() {}, warn() {}, error() {} },
+      });
+      await hooks["astro:build:done"]!({ pages: [], logger: { warn() {} } });
+      return JSON.parse(readFileSync(path.join(root, "run402", "adapter.json"), "utf-8"));
+    } finally {
+      if (saved === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = saved;
+      rmSync(root, { recursive: true, force: true });
+    }
+  }
+
+  it("records the NODE_ENV the build ran under", async () => {
+    assert.equal((await buildManifestUnder("production")).nodeEnv, "production");
+    assert.equal((await buildManifestUnder("development")).nodeEnv, "development");
+  });
+
+  it("omits nodeEnv when the build had none", async () => {
+    assert.equal("nodeEnv" in (await buildManifestUnder(undefined)), false);
+  });
+
+  it("warns only for a build that is not production", () => {
+    assert.equal(nodeEnvWarning("production"), null);
+    assert.equal(nodeEnvWarning(undefined), null);
+    assert.match(nodeEnvWarning("development") ?? "", /NODE_ENV is "development"/);
   });
 });

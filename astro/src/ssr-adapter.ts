@@ -78,6 +78,13 @@ export interface Run402AdapterManifest {
     pathname?: string;
     type?: "page" | "endpoint" | "redirect" | "fallback";
   }>;
+  /** `process.env.NODE_ENV` while Astro built the project. Astro sets
+   *  `production` unless the environment already set a value; Vite
+   *  compiles JSX for production only when it is `production`. The
+   *  release-slice helper defines the SSR bundle's
+   *  `process.env.NODE_ENV` as this value. Absent in manifests from
+   *  adapters that did not record it. */
+  nodeEnv?: string;
   /** Astro feature support assessment captured at build time. */
   features: {
     middleware: boolean;
@@ -216,6 +223,11 @@ export function createRun402Adapter(options: CreateRun402AdapterOptions = {}): A
         manifest.serverEntrypoint = path.join(serverDir, "entry.mjs");
         manifest.clientDir = path.join(buildOutputDir, "run402/client/");
         manifest.routes = adapterManifestRoutes({ pages, routes, resolvedRoutes });
+        // Astro has already settled NODE_ENV for this build (it fills
+        // `production` when unset), and Vite compiled the server code
+        // under it.
+        const nodeEnv = process.env.NODE_ENV;
+        if (nodeEnv !== undefined) manifest.nodeEnv = nodeEnv;
         // Determinism: only matters when an SSR function ships, i.e.
         // when Astro emitted a server entry. (Not keyed off `routes`:
         // a fully-prerendered site can still emit one.)
@@ -223,6 +235,8 @@ export function createRun402Adapter(options: CreateRun402AdapterOptions = {}): A
           await normalizeServerOutput(serverDir);
           const keyWarning = astroKeyWarning();
           if (keyWarning) logger?.warn(keyWarning);
+          const envWarning = nodeEnvWarning(nodeEnv);
+          if (envWarning) logger?.warn(envWarning);
         }
 
         manifest.features = {
@@ -243,6 +257,21 @@ export function createRun402Adapter(options: CreateRun402AdapterOptions = {}): A
       },
     },
   };
+}
+
+/**
+ * Warning for an SSR build that did not run as `production`. The `ssr`
+ * function then ships the development builds of React and other
+ * packages that branch on `NODE_ENV`: larger, slower, and possibly over
+ * the tier's code-size cap. Returns null for a production build.
+ */
+export function nodeEnvWarning(nodeEnv: string | undefined): string | null {
+  if (nodeEnv === undefined || nodeEnv === "production") return null;
+  return (
+    `NODE_ENV is "${nodeEnv}" for this build, so the ssr function ships development builds ` +
+    `of React and other packages that check NODE_ENV. Deploy a build made with NODE_ENV unset ` +
+    `or set to "production".`
+  );
 }
 
 /** The subset of Astro's `IntegrationResolvedRoute` the adapter reads. */

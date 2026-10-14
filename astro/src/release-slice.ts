@@ -201,6 +201,12 @@ export interface BuildAstroReleaseSliceOptions {
    * 403 before invoking the function body.
    */
   requireRole?: RequireRoleSpec | null;
+  /**
+   * Minify the bundled SSR source. Defaults to `true`: the source counts
+   * against the tier's per-function code-size cap and is parsed on every
+   * cold start. Pass `false` for readable stack traces while debugging.
+   */
+  minify?: boolean;
 }
 
 /**
@@ -400,6 +406,8 @@ export async function buildAstroReleaseSlice(
   const bundle = await bundleSsrEntry({
     serverDir: serverDirAbs,
     entrypoint,
+    ...(typeof manifest.nodeEnv === "string" ? { nodeEnv: manifest.nodeEnv } : {}),
+    ...(opts.minify !== undefined ? { minify: opts.minify } : {}),
   });
 
   const functionSpec: FunctionSpec = {

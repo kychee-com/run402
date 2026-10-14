@@ -230,7 +230,7 @@
       "purpose": "history",
       "interface": "historical",
       "exception": "Dated release records; add current entries without rewriting history.",
-      "sha256": "a53723e073fb2350c7ed035a4b3db9bf77fc24e0cd433f1965c0d357cfe1adbe",
+      "sha256": "91dd9c15d849f0db24aac7b7f862eee34686650094d88b03e84cd47f5217aae0",
       "outputs": [],
       "url": null,
       "checks": [
@@ -250,7 +250,7 @@
       "purpose": "runtime",
       "interface": "application",
       "exception": "Native runtime/Astro code remains; infrastructure operating examples use CLI.",
-      "sha256": "a172b255f451f224e155c7d7fbe3552cb6fc08044518ff9aa349db4f83eba976",
+      "sha256": "355f0dc217cc1a24c91c203ae825a6c244f3f89b63ae4cad4c1d99b1ab2f0c8f",
       "outputs": [],
       "url": null,
       "checks": [
@@ -2403,7 +2403,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "0cd0a2a112134cef4059727e2f271593ea7bf9bfa088ddf6d2aafde92c31d637",
+      "sha256": "308d82dfd9f7985a9ab04e218a66f5d028718ce6104f7bf78fd4c4f1f8c1b4a9",
       "outputs": [],
       "url": "https://docs.run402.com/build/functions/",
       "checks": [

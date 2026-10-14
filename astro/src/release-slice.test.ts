@@ -228,6 +228,88 @@ describe("buildAstroReleaseSlice — happy path", () => {
     assert.equal(await response.text(), "ok:util");
   });
 
+  // A CommonJS package that picks its build on NODE_ENV, the way react and
+  // react-dom do (kychee-com/run402-private#838).
+  function writeEnvBranchingDep(distDir: string, entryAbs: string): void {
+    const pkgDir = join(distDir, "run402", "server", "node_modules", "envpick");
+    mkdirSync(pkgDir, { recursive: true });
+    writeFileSync(join(pkgDir, "package.json"), JSON.stringify({ name: "envpick", main: "index.js" }));
+    writeFileSync(
+      join(pkgDir, "index.js"),
+      "if (process.env.NODE_ENV === 'production') module.exports = require('./prod.js');\n" +
+        "else module.exports = require('./dev.js');\n",
+    );
+    writeFileSync(join(pkgDir, "prod.js"), "module.exports = 'PROD_BUILD_MARKER';\n");
+    writeFileSync(join(pkgDir, "dev.js"), "module.exports = 'DEV_BUILD_MARKER';\n");
+    writeFileSync(
+      entryAbs,
+      "import which from 'envpick';\n" +
+        "export const handler = async () => new Response(which);\n" +
+        "export default handler;\n",
+    );
+  }
+
+  async function runBundled(source: string): Promise<string> {
+    const bundledPath = join(root, `bundled-${Date.now()}-${Math.random()}.mjs`);
+    writeFileSync(bundledPath, source);
+    const mod = await import(`file://${bundledPath}`);
+    return (await (mod.default as () => Promise<Response>)()).text();
+  }
+
+  it("bundles only the production build of NODE_ENV-branching deps for a production build", async () => {
+    const { distDir, entryAbs } = writeFixture(root, { routes: [], nodeEnv: "production" });
+    writeEnvBranchingDep(distDir, entryAbs);
+
+    const source = (await buildAstroReleaseSlice(distDir)).functions.replace.ssr.source as string;
+
+    assert.ok(source.includes("PROD_BUILD_MARKER"));
+    assert.ok(!source.includes("DEV_BUILD_MARKER"), "the development build must not be bundled");
+    assert.equal(await runBundled(source), "PROD_BUILD_MARKER");
+  });
+
+  it("keeps a development build in development mode instead of forcing production", async () => {
+    const { distDir, entryAbs } = writeFixture(root, { routes: [], nodeEnv: "development" });
+    writeEnvBranchingDep(distDir, entryAbs);
+
+    const source = (await buildAstroReleaseSlice(distDir)).functions.replace.ssr.source as string;
+
+    assert.ok(!source.includes("PROD_BUILD_MARKER"));
+    assert.equal(await runBundled(source), "DEV_BUILD_MARKER");
+  });
+
+  it("leaves NODE_ENV to the runtime when the manifest does not record it", async () => {
+    const { distDir, entryAbs } = writeFixture(root, { routes: [] });
+    writeEnvBranchingDep(distDir, entryAbs);
+
+    const source = (await buildAstroReleaseSlice(distDir)).functions.replace.ssr.source as string;
+
+    assert.ok(source.includes("PROD_BUILD_MARKER"));
+    assert.ok(source.includes("DEV_BUILD_MARKER"));
+  });
+
+  it("minifies the SSR bundle by default and keeps it readable with minify: false", async () => {
+    const { distDir, entryAbs } = writeFixture(root, { routes: [], nodeEnv: "production" });
+    writeFileSync(
+      entryAbs,
+      "function renderGreeting(personName) {\n" +
+        "  const greetingPrefix = 'hello ';\n" +
+        "  return greetingPrefix + personName;\n" +
+        "}\n" +
+        "export const handler = async () => new Response(renderGreeting('world'));\n" +
+        "export default handler;\n",
+    );
+
+    const minified = (await buildAstroReleaseSlice(distDir)).functions.replace.ssr.source as string;
+    const readable = (await buildAstroReleaseSlice(distDir, { minify: false })).functions.replace.ssr
+      .source as string;
+
+    assert.ok(!minified.includes("greetingPrefix"), "local identifiers are renamed when minified");
+    assert.ok(minified.includes('"renderGreeting"'), "keepNames preserves function names for stack traces");
+    assert.ok(readable.includes("greetingPrefix"));
+    assert.ok(minified.length < readable.length);
+    assert.equal(await runBundled(minified), "hello world");
+  });
+
   it("functionName option flows through to functions key", async () => {
     const { distDir } = writeFixture(root, { routes: [] });
     const slice = await buildAstroReleaseSlice(distDir, { functionName: "render" });

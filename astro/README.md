@@ -95,6 +95,15 @@ Store the printed value as a CI secret (for GitHub Actions, a repository secret 
 
 The adapter also sorts the asset list in Astro's serialized server manifest (Astro collects it with an unordered glob), so with a stable `ASTRO_KEY` two builds of the same commit in the same checkout path produce a byte-identical SSR bundle. Builds from different checkout paths still differ: Astro's compiler bakes absolute source paths into the server bundle.
 
+### The SSR bundle is production code, minified
+
+`buildAstroReleaseSlice` (and `run402 up` / `run402 deploy --dir`) bundles Astro's server output into the single source of the `ssr` function. That source counts against your tier's per-function code-size cap, measured in uncompressed bytes before the platform bundles it, and it is parsed on every cold start.
+
+- **`NODE_ENV` follows the build.** The adapter records the `NODE_ENV` that `astro build` ran under in `dist/run402/adapter.json` (`nodeEnv`). The bundler defines `process.env.NODE_ENV` as that value, so packages that pick a build on it, such as react and react-dom, ship only the production build. Astro builds as `production` unless your environment sets `NODE_ENV`. Any other value compiles JSX for React's development runtime; the adapter logs a warning, and the bundle keeps the development builds to match.
+- **The bundle is minified.** Function and class names are kept, so stack traces still name your components. Pass `buildAstroReleaseSlice(dist, { minify: false })` when you need readable output while debugging.
+
+A deploy whose `ssr` source exceeds the cap is refused when the plan is created, with `TIER_LIMIT_EXCEEDED` naming the cap and the size.
+
 ### Rendering-mode pattern matrix
 
 Astro supports four rendering modes; `auth.*` calls have different semantics in each. Pick the right mode per page and the rest follows.
