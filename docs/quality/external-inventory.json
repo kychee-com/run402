@@ -1121,44 +1121,6 @@
   },
   {
     "repository": "core",
-    "path": ".claude/commands/publish-core.md",
-    "revision": "4f95b27b02aada541797e124087e00b795253d94",
-    "sourceState": "working-tree snapshot; revision is baseline",
-    "sha256": "dc9f694bbfa01ed83474dde6d95b2c8766e2a688ad77f57afcd46e2350f1a95d",
-    "owner": "core",
-    "purpose": "reference",
-    "interface": "runtime",
-    "exception": "Native runtime/provider contract and self-hosting references; normal operations prefer CLI.",
-    "checks": [
-      "core-applicability"
-    ],
-    "evidence": {
-      "editorial": "reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned",
-      "local": "See coordinated implementation evidence for named check results.",
-      "publication": "source published: 4f95b27; Core CI passed; no package release required"
-    }
-  },
-  {
-    "repository": "core",
-    "path": ".claude/skills/publish-run402-core/SKILL.md",
-    "revision": "4f95b27b02aada541797e124087e00b795253d94",
-    "sourceState": "working-tree snapshot; revision is baseline",
-    "sha256": "46146c65f2cc8e8e8d6bdfc591754eab99df95488f1675940bfa92c8af38bd6a",
-    "owner": "core",
-    "purpose": "reference",
-    "interface": "runtime",
-    "exception": "Native runtime/provider contract and self-hosting references; normal operations prefer CLI.",
-    "checks": [
-      "core-applicability"
-    ],
-    "evidence": {
-      "editorial": "reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned",
-      "local": "See coordinated implementation evidence for named check results.",
-      "publication": "source published: 4f95b27; Core CI passed; no package release required"
-    }
-  },
-  {
-    "repository": "core",
     "path": "AGENTS.md",
     "revision": "4f95b27b02aada541797e124087e00b795253d94",
     "sourceState": "working-tree snapshot; revision is baseline",

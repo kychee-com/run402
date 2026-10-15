@@ -26,15 +26,14 @@ Workspace layout: `package.json` declares `cli`, `sdk`, and `astro` as npm works
 
 The three packages in this repo (`run402-mcp`, `run402`, `@run402/sdk`) release in lockstep via the `/publish` skill at the same version (the skill also supports per-package selection for off-cycle patches). MCP, CLI, OpenClaw, and the Node SDK all share the request kernel via `@run402/sdk`. `@run402/astro` is a sibling integration on its own release cadence via the `/publish-astro` skill — not part of the kernel lockstep. `@run402/functions` is published separately from `run402-core`, but ships at the same npm name. `core/` holds filesystem primitives (keystore, wallet, SIWE signing) that the Node SDK provider wraps.
 
-## Git workflow — worktrees, never branches, never stash
+## Where this code is edited
 
-Multiple agent sessions work locally in parallel. Isolation is by git worktree, not by branching or stashing:
+This repository is a published mirror: its `main` is generated from the `public/run402/` directory of Kychee's private platform monorepo and only ever fast-forwards. Maintainers and agents edit the code there, never in a clone of this repository.
 
-- **ALWAYS worktree.** Do work inside a dedicated worktree. Never edit, branch-switch, or otherwise disturb a shared checkout another session may be using — add a worktree instead.
-- **Worktrees live under their repo's own `.claude/worktrees/<name>`.** `git -C <repo> worktree add <repo>/.claude/worktrees/<name> origin/main --detach` — never `../<repo>-wt-*` or anywhere else in `~/Developer`. This holds when a session working in one repo needs to fix another (run402-private ↔ run402-public ↔ run402-core): the worktree goes under the TARGET repo, and is removed once its commits are on `main`.
-- **NEVER `git stash`.**
-- **NEVER create branches.** No feature-branch or PR ceremony on your own initiative. A worktree's auto-created backing branch is plumbing, not workflow.
-- **Small changes commit directly to `main`, no ceremony.**
+- **Working inside the monorepo** (where this directory is `public/run402/`): follow the monorepo's root `AGENTS.md`. Make a worktree of the monorepo, never a worktree inside this directory; never `git stash`; never create local branches.
+- **Contributing from outside:** open a pull request here as usual. A maintainer merges it on GitHub and pulls it back into the monorepo, and the next mirror run carries it forward.
+- **Commit messages are public.** A change to this directory becomes this repository's history with its message unchanged, so keep messages free of private details.
+
 
 ## Build & Test Commands
 

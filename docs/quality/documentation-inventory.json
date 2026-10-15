@@ -50,7 +50,7 @@
       "purpose": "maintainer",
       "interface": "mixed",
       "exception": "Repository development and implementation instructions; product operations still prefer CLI.",
-      "sha256": "878b1cde6391de1a305dca88ddd4e89567e5e4d9a7f21db0e82d1f47b25b15b0",
+      "sha256": "26b337878b3faa0d6567a74b5df3b1fcbbef2a21decdc8cd8391926422ffcf18",
       "outputs": [],
       "url": null,
       "checks": [
@@ -90,7 +90,7 @@
       "purpose": "maintainer",
       "interface": "mixed",
       "exception": "Repository development and implementation instructions; product operations still prefer CLI.",
-      "sha256": "63144c1d60af3c53129419ba794eb1eb7e635acbad9322a38e43de70357f4b3a",
+      "sha256": "336cc4fbf19beaada7ccf9986414fa91851a8d7a07dfb3ccbe800a69eed0ab49",
       "outputs": [],
       "url": null,
       "checks": [
@@ -5508,44 +5508,6 @@
         "editorial": "reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained",
         "local": "See coordinated implementation evidence for named check results.",
         "publication": "hosted verified: 2026-09-17; site 610b2e05d"
-      }
-    },
-    {
-      "repository": "core",
-      "path": ".claude/commands/publish-core.md",
-      "revision": "4f95b27b02aada541797e124087e00b795253d94",
-      "sourceState": "working-tree snapshot; revision is baseline",
-      "sha256": "dc9f694bbfa01ed83474dde6d95b2c8766e2a688ad77f57afcd46e2350f1a95d",
-      "owner": "core",
-      "purpose": "reference",
-      "interface": "runtime",
-      "exception": "Native runtime/provider contract and self-hosting references; normal operations prefer CLI.",
-      "checks": [
-        "core-applicability"
-      ],
-      "evidence": {
-        "editorial": "reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned",
-        "local": "See coordinated implementation evidence for named check results.",
-        "publication": "source published: 4f95b27; Core CI passed; no package release required"
-      }
-    },
-    {
-      "repository": "core",
-      "path": ".claude/skills/publish-run402-core/SKILL.md",
-      "revision": "4f95b27b02aada541797e124087e00b795253d94",
-      "sourceState": "working-tree snapshot; revision is baseline",
-      "sha256": "46146c65f2cc8e8e8d6bdfc591754eab99df95488f1675940bfa92c8af38bd6a",
-      "owner": "core",
-      "purpose": "reference",
-      "interface": "runtime",
-      "exception": "Native runtime/provider contract and self-hosting references; normal operations prefer CLI.",
-      "checks": [
-        "core-applicability"
-      ],
-      "evidence": {
-        "editorial": "reviewed Core/Cloud boundary and native runtime/provider purpose; CLI operations and shipped archive path reconciled; infrastructure not provisioned",
-        "local": "See coordinated implementation evidence for named check results.",
-        "publication": "source published: 4f95b27; Core CI passed; no package release required"
       }
     },
     {

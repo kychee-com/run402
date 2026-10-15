@@ -1210,14 +1210,6 @@
       "sha256": "edb5355b16992dcd15217d85cab2d5db1505b900ade65c388437354f26a5ea93",
       "publication": "hosted verified: 2026-09-17; site 610b2e05d"
     },
-    "core:.claude/commands/publish-core.md": {
-      "sha256": "dc9f694bbfa01ed83474dde6d95b2c8766e2a688ad77f57afcd46e2350f1a95d",
-      "publication": "source published: 4f95b27; Core CI passed; no package release required"
-    },
-    "core:.claude/skills/publish-run402-core/SKILL.md": {
-      "sha256": "46146c65f2cc8e8e8d6bdfc591754eab99df95488f1675940bfa92c8af38bd6a",
-      "publication": "source published: 4f95b27; Core CI passed; no package release required"
-    },
     "core:AGENTS.md": {
       "sha256": "2407657e0df156709815955a8b00e7779c4c16f76c30cfc432b4a695942ebaee",
       "publication": "source published: 4f95b27; Core CI passed; no package release required"
