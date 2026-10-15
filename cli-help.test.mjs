@@ -67,7 +67,7 @@ const MATRIX = {
   },
   admin: {
     shared: [],
-    specific: ["lease-perpetual", "archive", "reactivate"],
+    specific: ["lease-perpetual", "set-tier", "archive", "reactivate"],
   },
   deploy: { shared: [], specific: ["apply", "resume", "list", "events", "diagnose", "resolve", "release"] },
   ci: { shared: [], specific: ["link", "list", "revoke"] },

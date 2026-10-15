@@ -1440,6 +1440,7 @@ getProjectFinance(id: string, opts?: {
 
 // operator-only org + project actions — canonical via scope handles
 r.admin.org(orgId).pinLease() / .unpinLease(): Promise<SetLeasePerpetualResult>
+r.admin.org(orgId).setTier(tier: "prototype" | "hobby" | "team", opts?: { idempotencyKey?: string }): Promise<SetTierResult>
 r.admin.project(projectId).archive(opts?: { reason?: string }): Promise<ArchiveProjectResult>
 r.admin.project(projectId).reactivate(): Promise<ReactivateProjectResult>
 r.admin.project(projectId).finance(opts?): Promise<AdminProjectFinanceResult>
@@ -1458,6 +1459,7 @@ scripts, use an admin allowance wallet or pass
 **v1.57 — operator-only project + organization actions.** Gateway v1.57 moved the lifecycle state machine from `internal.projects` to `internal.organizations` and dropped the per-project `pin` / `unpin` endpoints. The replacements:
 
 - `r.admin.org(orgId).pinLease()` / `.unpinLease()` — toggle the organization-level escape hatch (canonical; replaces the deprecated boolean `admin.setLeasePerpetual(orgId, perpetual)`). When `lease_perpetual` is `true`, the organization never advances past `active` regardless of lease expiry; every project on the organization is pinned. Pinning a grace-state organization (`past_due` / `frozen` / `dormant`) reactivates inline — the response carries `reactivated: true`. This also replaces the v1.56 `projects.pin(id)` method (removed in v2.x SDK).
+- `r.admin.org(orgId).setTier(tier, { idempotencyKey? })` — admin tier override: set an organization's tier directly, bypassing the x402 payment flow (operator overrides, test wallets, same-tier renewals during incident response). The gateway auto-detects the transition and returns it as `action` (`subscribe` / `renew` / `upgrade` / `downgrade`) alongside `previous_tier`, `lease_started_at`, and `lease_expires_at`; the zero-amount `tier_subscribe` ledger entry is preserved for the audit trail. Distinct from `r.tier.set(tier)`, the public x402-paid flow for the caller's own organization.
 - `archiveProject(projectId, { reason? })` — operator moderation. Sets `projects.archived_at = NOW()` on a single project; sibling projects on the same organization keep serving. No-op when already archived (returns `note: "already archived"`).
 - `r.admin.project(projectId).reactivate()` — un-archive a project (flips `archived_at` back to NULL; replaces the deprecated flat `admin.reactivateProject(projectId)`). In v1.57 this was narrowed: it does NOT touch organization-level lifecycle. To reactivate a grace-state organization, either call `r.tier.set(tier)` (the tier flow runs the lifecycle advance inline) or `r.admin.org(org_id).pinLease()`.
 

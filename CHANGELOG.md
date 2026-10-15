@@ -11,6 +11,14 @@ Codifies one call-shape rule — at most one leading id/handle positional; no sa
 - **Options-object reshapes.** `domains.add(projectId, { domain, subdomainName })`, `subdomains.claim({ name, deploymentId, ...opts })`, `secrets.set(projectId, key, { value })`, `org.members.setRole(principalId, { role })`, `admin.transfers.cancel(transferId, { reason })`, and `projects.rest(table, { query })` (the bare-string query is deprecated). Each new form is byte-identical on the wire to its deprecated positional form.
 - **First-party canonical-only.** All CLI (`cli/lib/*`) and MCP (`src/tools/*`) callers use the new shapes; a `sync.test.ts` source guard fails the build if a fully-deprecated method reappears in first-party code.
 
+## Unreleased — admin tier override (operator escape hatch)
+
+Adds the public client surface for the gateway admin tier-override route `POST /orgs/v1/admin/:org_id/set-tier` (platform-admin only; bypasses x402). Previously only its sibling `lease-perpetual` was exposed; setting an org's tier as an operator meant hand-rolling a raw `X-Admin-Mode` request.
+
+- **SDK:** `r.admin.org(orgId).setTier(tier, { idempotencyKey? })` — the canonical scope-handle form (a flat `admin.setTier(orgId, tier)` would be a same-type org/tier positional pair, so there is no flat surface); backed by the internal `_setTier` impl, the same handle-via-internal pattern as `deploy`. Returns `SetTierResult` (`status`, `org_id`, `tier`, `action`, `previous_tier`, `lease_started_at`, `lease_expires_at`). The gateway auto-detects subscribe / renew / upgrade / downgrade. Distinct from `r.tier.set(tier)`, the public x402-paid flow for the caller's own org.
+- **CLI/MCP:** `run402 admin set-tier <org_id> --tier <prototype|hobby|team> [--idempotency-key <k>]` and MCP `admin_set_tier { org_id, tier, idempotency_key? }` route through the handle.
+- **Docs/tests:** OpenClaw inherits the CLI re-export; SDK, CLI, MCP, and skill surfaces document the override and its distinction from the public tier flow; `admin.test.ts` pins the wire shape.
+
 ## Unreleased — project transfer to owned org
 
 Adds the public client surface for gateway issue `project-transfer-to-owned-org` / run402#469.

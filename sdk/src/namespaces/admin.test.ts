@@ -258,6 +258,60 @@ describe("admin.setLeasePerpetual (v1.57)", () => {
   });
 });
 
+describe("r.admin.org(id).setTier (admin tier override)", () => {
+  function setTierEnvelope(overrides: Record<string, unknown> = {}) {
+    return {
+      status: "set",
+      org_id: "org_known",
+      tier: "hobby",
+      action: "upgrade",
+      previous_tier: "prototype",
+      lease_started_at: "2026-06-20T00:00:00.000Z",
+      lease_expires_at: "2026-07-20T00:00:00.000Z",
+      ...overrides,
+    };
+  }
+
+  it("POSTs to /orgs/v1/admin/:org_id/set-tier with admin headers + tier body", async () => {
+    const { fetch, calls } = mockFetch(() => json(setTierEnvelope()));
+    const result = await sdk(fetch).admin.org("org_known").setTier("hobby");
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]!.method, "POST");
+    assert.equal(calls[0]!.url, "https://api.test/orgs/v1/admin/org_known/set-tier");
+    assert.equal(calls[0]!.headers["X-Admin-Mode"], "1");
+    assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "t");
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), { tier: "hobby" });
+    assert.equal(result.tier, "hobby");
+    assert.equal(result.action, "upgrade");
+    assert.equal(result.previous_tier, "prototype");
+  });
+
+  it("includes idempotency_key when provided", async () => {
+    const { fetch, calls } = mockFetch(() => json(setTierEnvelope({ tier: "team", action: "upgrade" })));
+    await sdk(fetch).admin.org("org_known").setTier("team", { idempotencyKey: "fix-1" });
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), {
+      tier: "team",
+      idempotency_key: "fix-1",
+    });
+  });
+
+  it("omits idempotency_key when not provided", async () => {
+    const { fetch, calls } = mockFetch(() => json(setTierEnvelope()));
+    await sdk(fetch).admin.org("org_known").setTier("hobby");
+    assert.equal("idempotency_key" in JSON.parse(calls[0]!.body as string), false);
+  });
+
+  it("URI-encodes the organization id", async () => {
+    const { fetch, calls } = mockFetch(() => json(setTierEnvelope({ org_id: "org/has space" })));
+    await sdk(fetch).admin.org("org/has space").setTier("hobby");
+    assert.equal(
+      calls[0]!.url,
+      "https://api.test/orgs/v1/admin/org%2Fhas%20space/set-tier",
+    );
+  });
+});
+
 describe("admin.archiveProject (v1.57)", () => {
   it("POSTs to /projects/v1/admin/:id/archive and forwards the reason", async () => {
     const { fetch, calls } = mockFetch(() =>

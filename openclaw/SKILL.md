@@ -897,6 +897,8 @@ Gateway v1.57 moved the lifecycle state machine from `internal.projects` to `int
 - `organization_lifecycle_state` — the raw per-organization state. Identical across every project on the same organization.
 - `lease_perpetual` — operator escape hatch flag. When `true`, the organization never advances past `active`. Replaces the v1.56 per-project `pinned`. Toggle via `run402 admin lease-perpetual <org_id> --enable | --disable` (platform-admin only).
 
+Operator tier override (platform-admin only): `run402 admin set-tier <org_id> --tier <prototype|hobby|team> [--idempotency-key <k>]` sets an organization's tier directly, bypassing the x402 payment flow — for operator overrides, test wallets, and same-tier renewals during incident response. Backed by the `r.admin.org(org_id).setTier()` SDK handle. Distinct from `run402 tier set <tier>`, the public x402-paid flow for the caller's own organization.
+
 Operator moderation actions (independent of lifecycle): `run402 admin archive <project_id> [--reason "..."]` sets `archived_at`; `run402 admin reactivate <project_id>` flips it back. Both are scoped to a single project — siblings on the same organization keep serving.
 
 ## Project transfer (unified noun, owned-org recipient v1.96+)

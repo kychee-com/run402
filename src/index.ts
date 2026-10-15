@@ -95,6 +95,10 @@ import {
   handleAdminSetLeasePerpetual,
 } from "./tools/admin-set-lease-perpetual.js";
 import {
+  adminSetTierSchema,
+  handleAdminSetTier,
+} from "./tools/admin-set-tier.js";
+import {
   adminArchiveProjectSchema,
   handleAdminArchiveProject,
 } from "./tools/admin-archive-project.js";
@@ -736,6 +740,13 @@ server.tool(
   "Toggle an organization's `lease_perpetual` escape hatch (v1.57+). When `lease_perpetual: true`, the organization never advances past `active` regardless of lease expiry; every project in the organization inherits the pinned state. Enabling on a grace-state organization (past_due / frozen / dormant) reactivates inline and returns `reactivated: true`. Platform-admin only — uses the configured allowance wallet for admin auth. Replaces the v1.56 `pin_project` (gateway endpoint /projects/v1/admin/:id/pin was removed in v1.57). Calls POST /orgs/v1/admin/:org_id/lease-perpetual.",
   adminSetLeasePerpetualSchema,
   async (args) => handleAdminSetLeasePerpetual(args),
+);
+
+server.tool(
+  "admin_set_tier",
+  "Override an organization's tier directly, bypassing the x402 payment flow (admin escape hatch). For operator overrides, test wallets, and same-tier renewals during incident response. The gateway auto-detects subscribe / renew / upgrade / downgrade from the org's current state and returns it as `action`; the zero-amount tier_subscribe ledger entry is preserved for the audit trail. Distinct from `set_tier`, which is the public x402-paid flow for the caller's own organization. Platform-admin only — uses the configured allowance wallet for admin auth. Calls POST /orgs/v1/admin/:org_id/set-tier.",
+  adminSetTierSchema,
+  async (args) => handleAdminSetTier(args),
 );
 
 server.tool(

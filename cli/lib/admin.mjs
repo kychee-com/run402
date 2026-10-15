@@ -1,6 +1,8 @@
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
-import { assertKnownFlags, hasHelp, normalizeArgv } from "./argparse.mjs";
+import { assertKnownFlags, hasHelp, normalizeArgv, positionalArgs, flagValue, assertAllowedValue } from "./argparse.mjs";
+
+const VALID_TIERS = ["prototype", "hobby", "team"];
 
 const HELP = `run402 admin — Platform-admin operations (v1.57+)
 
@@ -16,6 +18,15 @@ Subcommands:
                                          state, enabling reactivates it inline
                                          (\`reactivated: true\` in the response).
                                          Replaces the v1.56 per-project pin.
+
+  set-tier <org_id> --tier <name> [--idempotency-key <k>]
+                                         Override an organization's tier directly,
+                                         bypassing the x402 payment flow. <name> is
+                                         one of prototype | hobby | team. The gateway
+                                         auto-detects subscribe / renew / upgrade /
+                                         downgrade (surfaced as \`action\`). For
+                                         operator overrides, test wallets, and
+                                         same-tier renewals during incident response.
 
   archive <project_id> [--reason "..."]  Moderate-archive a single project. Sets
                                          projects.archived_at = NOW(). Independent
@@ -38,6 +49,7 @@ Notes:
 Examples:
   run402 admin lease-perpetual org_abc123 --enable
   run402 admin lease-perpetual org_abc123 --disable
+  run402 admin set-tier org_abc123 --tier hobby
   run402 admin archive prj_abuse --reason "ToS violation"
   run402 admin reactivate prj_abuse
 `;
@@ -61,6 +73,27 @@ Notes:
 Examples:
   run402 admin lease-perpetual org_abc123 --enable
   run402 admin lease-perpetual org_abc123 --disable
+`,
+  "set-tier": `run402 admin set-tier — Override an organization's tier (bypasses payment)
+
+Usage:
+  run402 admin set-tier <org_id> --tier <prototype|hobby|team> [--idempotency-key <k>]
+
+Options:
+  --tier <name>            Target tier — one of prototype | hobby | team.
+  --idempotency-key <k>    Optional idempotency key for safe retries.
+
+Notes:
+  - Sets the organization's tier directly, bypassing the x402 payment flow.
+    For operator overrides, test wallets, and same-tier renewals during
+    incident response. Backed by the r.admin.org(org_id).setTier() SDK handle.
+  - The gateway auto-detects the transition (subscribe / renew / upgrade /
+    downgrade) and returns it as \`action\`. The zero-amount tier_subscribe
+    ledger entry is preserved so the audit trail still shows the change.
+
+Examples:
+  run402 admin set-tier org_abc123 --tier hobby
+  run402 admin set-tier org_abc123 --tier team --idempotency-key fix-2026-06-20
 `,
   archive: `run402 admin archive — Moderate-archive a single project
 
@@ -100,6 +133,7 @@ Examples:
 
 const FLAGS_BY_SUB = {
   "lease-perpetual": { known: ["--enable", "--disable"], values: [] },
+  "set-tier": { known: ["--tier", "--idempotency-key"], values: ["--tier", "--idempotency-key"] },
   archive: { known: ["--reason"], values: ["--reason"] },
   reactivate: { known: [], values: [] },
 };
@@ -130,6 +164,35 @@ async function leasePerpetual(args) {
   try {
     const adminOrg = getSdk().admin.org(organizationId);
     const data = enable ? await adminOrg.pinLease() : await adminOrg.unpinLease();
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+async function setTier(args) {
+  const [organizationId] = positionalArgs(args, ["--tier", "--idempotency-key"]);
+  if (!organizationId) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing <org_id>.",
+      hint: "run402 admin set-tier <org_id> --tier <prototype|hobby|team> [--idempotency-key <k>]",
+    });
+  }
+  const tier = flagValue(args, "--tier");
+  if (!tier) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing --tier.",
+      hint: "run402 admin set-tier <org_id> --tier <prototype|hobby|team> [--idempotency-key <k>]",
+    });
+  }
+  assertAllowedValue(tier, VALID_TIERS, "--tier");
+  const idempotencyKey = flagValue(args, "--idempotency-key");
+  try {
+    const data = await getSdk()
+      .admin.org(organizationId)
+      .setTier(tier, idempotencyKey ? { idempotencyKey } : {});
     console.log(JSON.stringify(data, null, 2));
   } catch (err) {
     reportSdkError(err);
@@ -189,6 +252,7 @@ export async function run(sub, args) {
   validateFlags(sub, args);
   switch (sub) {
     case "lease-perpetual": await leasePerpetual(args); break;
+    case "set-tier":        await setTier(args); break;
     case "archive":         await archive(args); break;
     case "reactivate":      await reactivate(args); break;
     default:

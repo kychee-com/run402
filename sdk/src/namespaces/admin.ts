@@ -10,6 +10,7 @@ import type { Client } from "../kernel.js";
 import { LocalError } from "../errors.js";
 import { Transfers } from "./transfers.js";
 import { deprecatePositional } from "../deprecate.js";
+import type { TierName } from "./tier.js";
 
 export interface AgentContact {
   name: string;
@@ -184,6 +185,31 @@ export interface SetLeasePerpetualResult {
    * toggle disabled perpetual).
    */
   reactivated: boolean;
+}
+
+/**
+ * Result of `r.admin.org(orgId).setTier()` — the admin tier override. The
+ * gateway's underlying setter auto-detects the transition and surfaces it as
+ * `action`, preserving the zero-amount `tier_subscribe` ledger entry for the
+ * audit trail.
+ */
+export interface SetTierResult {
+  status: "set";
+  org_id: string;
+  /** The tier the organization now holds. */
+  tier: TierName;
+  /**
+   * Transition the gateway auto-detected from the organization's prior state:
+   * `subscribe` (no active lease), `renew` (same tier), `upgrade`, or
+   * `downgrade`.
+   */
+  action: "subscribe" | "renew" | "upgrade" | "downgrade";
+  /** The tier held before this override; `null` when the org had no prior tier. */
+  previous_tier: TierName | null;
+  /** ISO-8601 lease start; `null` when the resulting tier carries no lease. */
+  lease_started_at: string | null;
+  /** ISO-8601 lease expiry; `null` when the resulting tier carries no lease. */
+  lease_expires_at: string | null;
 }
 
 export interface ArchiveProjectOptions {
@@ -492,6 +518,36 @@ export class Admin {
   }
 
   /**
+   * Shared, non-deprecated implementation behind the
+   * `r.admin.org(id).setTier()` handle. Admin tier override: set an org's tier
+   * directly, bypassing the x402 payment flow (operator overrides, test
+   * wallets, same-tier renewals during incident response). The gateway
+   * auto-detects subscribe / renew / upgrade / downgrade (surfaced as `action`)
+   * and preserves the zero-amount `tier_subscribe` ledger entry for the audit
+   * trail. Public callers reach this through the scope handle, never
+   * positionally (two same-type ids would be a swap trap). Platform-admin only.
+   * Calls `POST /orgs/v1/admin/:org_id/set-tier`.
+   * @internal
+   */
+  _setTier(
+    organizationId: string,
+    tier: TierName,
+    opts: { idempotencyKey?: string } = {},
+  ): Promise<SetTierResult> {
+    const body: Record<string, string> = { tier };
+    if (opts.idempotencyKey !== undefined) body.idempotency_key = opts.idempotencyKey;
+    return this.client.request<SetTierResult>(
+      `/orgs/v1/admin/${encodeURIComponent(organizationId)}/set-tier`,
+      {
+        method: "POST",
+        headers: { "X-Admin-Mode": "1" },
+        body,
+        context: "setting organization tier",
+      },
+    );
+  }
+
+  /**
    * Operator moderation action — archive a single project (ToS / abuse).
    * Sets `projects.archived_at` to NOW(). Independent of organization-level
    * lifecycle; the rest of the organization's projects continue serving.
@@ -552,6 +608,17 @@ export class ScopedAdminOrg {
   /** Unpin the org's lease (`lease_perpetual = false`). */
   unpinLease(): Promise<SetLeasePerpetualResult> {
     return this.admin._setLeasePerpetual(this.orgId, false);
+  }
+
+  /**
+   * Override the org's tier directly, bypassing the x402 payment flow (operator
+   * override / test wallet / same-tier renewal during incident response). The
+   * gateway auto-detects the transition and returns it as `action` (subscribe /
+   * renew / upgrade / downgrade). Distinct from the public x402-paid
+   * `r.tier.set(tier)`, which acts on the caller's own org.
+   */
+  setTier(tier: TierName, opts: { idempotencyKey?: string } = {}): Promise<SetTierResult> {
+    return this.admin._setTier(this.orgId, tier, opts);
   }
 }
 

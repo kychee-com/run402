@@ -374,6 +374,7 @@ const SURFACE: Capability[] = [
   // organization-level escape hatch (admin_set_lease_perpetual). archive and
   // reactivate are operator moderation actions, scoped to a single project.
   { id: "admin_set_lease_perpetual", endpoint: "POST /orgs/v1/admin/:org_id/lease-perpetual", mcp: "admin_set_lease_perpetual", cli: "admin:lease-perpetual", openclaw: "admin:lease-perpetual" },
+  { id: "admin_set_tier",            endpoint: "POST /orgs/v1/admin/:org_id/set-tier",                mcp: "admin_set_tier",            cli: "admin:set-tier",         openclaw: "admin:set-tier" },
   { id: "admin_archive_project",     endpoint: "POST /projects/v1/admin/:id/archive",                 mcp: "admin_archive_project",     cli: "admin:archive",          openclaw: "admin:archive" },
   { id: "admin_reactivate_project",  endpoint: "POST /projects/v1/admin/:id/reactivate",              mcp: "admin_reactivate_project",  cli: "admin:reactivate",       openclaw: "admin:reactivate" },
   { id: "promote_user",    endpoint: "POST /projects/v1/admin/:id/promote-user", mcp: "promote_user", cli: "projects:promote-user", openclaw: "projects:promote-user" },
@@ -659,6 +660,11 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
 
   // Admin (v1.57)
   admin_set_lease_perpetual: "admin.setLeasePerpetual",
+  // The org-tier override has no flat public method (two same-type org/tier
+  // positionals would be a swap trap); its only public surface is the
+  // `r.admin.org(id).setTier()` handle, backed by the internal `_setTier`
+  // impl — the same handle-via-internal pattern as `deploy → _applyEngine.apply`.
+  admin_set_tier: "admin._setTier",
   admin_archive_project: "admin.archiveProject",
   admin_reactivate_project: "admin.reactivateProject",
   promote_user: "auth.promote",
