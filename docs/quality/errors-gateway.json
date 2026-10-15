@@ -1,9 +1,9 @@
 {
   "owner": "gateway",
   "repository": "kychee-com/run402-private",
-  "revision": "e8ac14fffbbca40e6d1a4629dc9ea3e498c69731",
+  "revision": "fddf965f7f135635add7d336c496ae78d889321e",
   "source": "packages/gateway/src/utils/error-envelope.ts",
-  "sourceDigest": "532b343fbc6b27e6a6f05f52e782d7475731e007b142b9011b7b3ef75a17e267",
+  "sourceDigest": "deceb95513fb08e6029a1f3e190968f55c04b3f052a897e148b8aa65e9a00c8a",
   "codes": [
     "VALIDATION_FAILED",
     "AUTH_REQUIRED",
@@ -138,7 +138,6 @@
     "FAUCET_CONFIRMATION_PENDING",
     "FAUCET_TRANSFER_REVERTED",
     "QUOTA_EXCEEDED",
-    "INSUFFICIENT_BALANCE",
     "PROJECT_HAS_NO_ORGANIZATION",
     "PROJECT_NOT_FOUND",
     "PRINCIPAL_NOT_FOUND",

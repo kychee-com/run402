@@ -2,8 +2,8 @@
   "version": 1,
   "contributions": {
     "gateway": {
-      "revision": "e8ac14fffbbca40e6d1a4629dc9ea3e498c69731",
-      "sourceDigest": "532b343fbc6b27e6a6f05f52e782d7475731e007b142b9011b7b3ef75a17e267"
+      "revision": "fddf965f7f135635add7d336c496ae78d889321e",
+      "sourceDigest": "deceb95513fb08e6029a1f3e190968f55c04b3f052a897e148b8aa65e9a00c8a"
     },
     "core": {
       "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7"
@@ -2893,16 +2893,6 @@
         }
       ],
       "topic": "/errors/gateway/#INBOUND_DOMAIN_ALREADY_ENABLED"
-    },
-    {
-      "code": "INSUFFICIENT_BALANCE",
-      "owners": [
-        {
-          "owner": "gateway",
-          "source": "packages/gateway/src/utils/error-envelope.ts"
-        }
-      ],
-      "topic": "/errors/gateway/#INSUFFICIENT_BALANCE"
     },
     {
       "code": "INTERNAL_ERROR",

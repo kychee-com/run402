@@ -747,9 +747,6 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="INBOUND_DOMAIN_ALREADY_ENABLED"></a>
 [`INBOUND_DOMAIN_ALREADY_ENABLED`](/errors/gateway/#INBOUND_DOMAIN_ALREADY_ENABLED)
 
-<a id="INSUFFICIENT_BALANCE"></a>
-[`INSUFFICIENT_BALANCE`](/errors/gateway/#INSUFFICIENT_BALANCE)
-
 <a id="INTERNAL_ERROR"></a>
 [`INTERNAL_ERROR`](/errors/gateway/#INTERNAL_ERROR)
 

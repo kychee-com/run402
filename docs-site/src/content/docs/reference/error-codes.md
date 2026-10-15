@@ -967,10 +967,6 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="INBOUND_DOMAIN_ALREADY_ENABLED"></a>
 [`INBOUND_DOMAIN_ALREADY_ENABLED`](/errors/gateway/#INBOUND_DOMAIN_ALREADY_ENABLED)
 
-<a id="insufficient_balance"></a>
-<a id="INSUFFICIENT_BALANCE"></a>
-[`INSUFFICIENT_BALANCE`](/errors/gateway/#INSUFFICIENT_BALANCE)
-
 <a id="internal_error"></a>
 <a id="INTERNAL_ERROR"></a>
 [`INTERNAL_ERROR`](/errors/gateway/#INTERNAL_ERROR)
