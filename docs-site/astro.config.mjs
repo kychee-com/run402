@@ -19,8 +19,12 @@ export default defineConfig({
       // Agents fetch the flat llms-*.txt; humans navigate here.
       sidebar: [
         {
-          label: "Start here",
-          items: [{ label: "Getting started", slug: "getting-started" }],
+          label: "Start",
+          items: [
+            { label: "Build your first app", slug: "start/first-app" },
+            { label: "Choose a coding harness", slug: "start/choose-a-coding-harness" },
+            { label: "The deploy model", slug: "getting-started" },
+          ],
         },
         {
           label: "References (rendered from the agent docs)",
