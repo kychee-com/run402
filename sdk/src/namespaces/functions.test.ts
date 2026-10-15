@@ -290,7 +290,6 @@ describe("functions.invoke", () => {
 
   it("passes idempotencyKey and preserves a paid facade 202 run handle", async () => {
     const { fetch, calls } = mockFetch(() => json({
-      code: "idempotency_in_progress",
       state: "in_progress",
       run_id: "fnrun_paid",
       operation_id: "fnrun_paid",
@@ -312,7 +311,6 @@ describe("functions.invoke", () => {
     const { fetch, calls } = mockFetch((call) => {
       if (call.method === "POST" && call.url.endsWith("/functions/v1/paid") && calls.length === 1) {
         return json({
-          code: "idempotency_in_progress",
           state: "in_progress",
           run_id: "fnrun_paid",
           operation_id: "fnrun_paid",
