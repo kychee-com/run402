@@ -1850,6 +1850,168 @@ describe("Deploy.apply (rehearsal decision)", () => {
   });
 });
 
+describe("Deploy rehearsal runs as an operation the SDK polls", () => {
+  const rehearsalPlan = (): PlanResponse => ({
+    ...noContentPlan("plan_rh", "op_rh"),
+    rehearsal: { available: true, rehearse_url: "/apply/v1/plans/plan_rh/rehearse", reason: null },
+  });
+
+  function report(status: "passed" | "failed"): Record<string, unknown> {
+    return {
+      kind: "rehearsal_report",
+      status,
+      operation_id: "op_rh_rehearsal",
+      source_project_id: "prj_test",
+      plan_id: "plan_rh",
+      branch_project_id: "prj_branch",
+      branch_url: null,
+      branch_plan_id: null,
+      branch_operation_id: null,
+      snapshot_id: null,
+      started_at: "2026-10-14T08:06:51.000Z",
+      completed_at: "2026-10-14T08:10:10.000Z",
+      duration_ms: 199_000,
+      migrations: [],
+      checks: [],
+      teardown: { policy: "on_pass", action: "deleted" },
+      next_actions: status === "passed"
+        ? [{ type: "commit_plan", why: "commit", body: { required_plan: { plan_id: "plan_rh", plan_fingerprint: "pfp_rh" } } }]
+        : [],
+    };
+  }
+
+  const accepted = {
+    operation_id: "op_rh_rehearsal",
+    status: "planning",
+    poll_url: "/apply/v1/operations/op_rh_rehearsal",
+    report: null,
+    next_actions: [{ type: "poll", method: "GET", path: "/apply/v1/operations/op_rh_rehearsal", why: "poll" }],
+  };
+
+  function snapshot(status: string, extra: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      operation_id: "op_rh_rehearsal",
+      project_id: "prj_test",
+      plan_id: "plan_rh",
+      status,
+      base_release_id: null,
+      target_release_id: null,
+      release_id: null,
+      urls: null,
+      payment_required: null,
+      error: null,
+      activate_attempts: 0,
+      last_activate_attempt_at: null,
+      created_at: "2026-10-14T08:06:51.000Z",
+      updated_at: "2026-10-14T08:06:51.000Z",
+      ...extra,
+    };
+  }
+
+  async function applyAgainst(polled: Array<Record<string, unknown>>) {
+    const w = makeWiring();
+    const queue = [...polled];
+    w.setHandler((req) => {
+      if (req.path === "/apply/v1/plans") return rehearsalPlan();
+      if (req.path === "/apply/v1/plans/plan_rh/rehearse") return accepted;
+      if (req.path === "/apply/v1/operations/op_rh_rehearsal") return queue.shift() ?? polled[polled.length - 1];
+      if (req.path === "/apply/v1/plans/plan_rh/commit") return readyCommit("op_rh", "rel_rh");
+      throw new Error(`unexpected path ${req.path}`);
+    });
+    const deploy = new Deploy(w.client);
+    const run = deploy.apply({
+      project_id: "prj_test",
+      site: { replace: { "index.html": "<h1>hi</h1>" } },
+      database: { migrations: [{ id: "001_init", sql: "select 1" }] },
+    });
+    return { w, run };
+  }
+
+  it("asks for the asynchronous shape, polls the operation for the report, then commits bound", async () => {
+    const { w, run } = await applyAgainst([
+      snapshot("migrating"),
+      snapshot("ready", { rehearsal_report: report("passed") }),
+    ]);
+    const result = await run;
+
+    const rehearse = w.requests.find((r) => r.path === "/apply/v1/plans/plan_rh/rehearse");
+    assert.equal(rehearse?.headers.Prefer, "respond-async");
+    assert.equal(countRequests(w, "/apply/v1/operations/op_rh_rehearsal"), 2);
+    assert.equal(result.rehearsal?.status, "passed");
+    assert.equal(result.rehearsal?.operation_id, "op_rh_rehearsal");
+    const commitReq = w.requests.find((r) => r.path === "/apply/v1/plans/plan_rh/commit");
+    assert.deepEqual((commitReq?.body as { required_plan?: unknown }).required_plan, { plan_id: "plan_rh", plan_fingerprint: "pfp_rh" });
+  });
+
+  it("names the rehearsal operation when the gateway task running it stopped", async () => {
+    const { w, run } = await applyAgainst([
+      snapshot("failed", {
+        error: {
+          code: "OPERATION_INTERRUPTED",
+          phase: "rehearsal",
+          message: "The gateway task running this rehearsal stopped before it finished.",
+          retryable: true,
+          operation_id: "op_rh_rehearsal",
+          details: { branch_project_id: "prj_branch" },
+        },
+      }),
+    ]);
+
+    await assert.rejects(run, (err: unknown) => {
+      assert(err instanceof Run402DeployError);
+      assert.equal(err.code, "OPERATION_INTERRUPTED");
+      assert.equal(err.operationId, "op_rh_rehearsal");
+      assert.equal(err.retryable, true);
+      return true;
+    });
+    assert.equal(countRequests(w, "/apply/v1/plans/plan_rh/commit"), 0, "nothing is committed after a rehearsal that did not pass");
+  });
+
+  it("refuses to commit after a polled failed report", async () => {
+    const { w, run } = await applyAgainst([
+      snapshot("failed", { rehearsal_report: report("failed"), error: { code: "REHEARSAL_FAILED", message: "Rehearsal failed" } }),
+    ]);
+
+    await assert.rejects(run, (err: unknown) => {
+      assert(err instanceof Run402DeployError);
+      assert.equal(err.code, "REHEARSAL_FAILED");
+      assert.equal(err.operationId, "op_rh_rehearsal");
+      return true;
+    });
+    assert.equal(countRequests(w, "/apply/v1/plans/plan_rh/commit"), 0);
+  });
+
+  it("uses an inline report as is (a gateway that answers synchronously)", async () => {
+    const w = makeWiring();
+    w.setHandler((req) => {
+      if (req.path === "/apply/v1/plans/plan_rh/rehearse") {
+        return { operation_id: "op_rh_rehearsal", status: "ready", poll_url: "/apply/v1/operations/op_rh_rehearsal", report: report("passed") };
+      }
+      throw new Error(`unexpected path ${req.path}`);
+    });
+    const deploy = new Deploy(w.client);
+    const result = await deploy.rehearse("plan_rh", { project: "prj_test" });
+
+    assert.equal(result.report.status, "passed");
+    assert.equal(countRequests(w, "/apply/v1/operations/op_rh_rehearsal"), 0);
+  });
+
+  it("waits for the report in the request when it has no project to poll as", async () => {
+    const w = makeWiring();
+    w.setHandler((req) => {
+      if (req.path === "/apply/v1/plans/plan_rh/rehearse") {
+        return { operation_id: "op_rh_rehearsal", status: "ready", poll_url: "/apply/v1/operations/op_rh_rehearsal", report: report("passed") };
+      }
+      throw new Error(`unexpected path ${req.path}`);
+    });
+    const deploy = new Deploy(w.client);
+    await deploy.rehearse("plan_rh");
+
+    const rehearse = w.requests.find((r) => r.path === "/apply/v1/plans/plan_rh/rehearse");
+    assert.equal(rehearse?.headers.Prefer, undefined);
+  });
+});
+
 describe("Deploy.apply (validation)", () => {
   it("rejects multi-element subdomains.set with SUBDOMAIN_MULTI_NOT_SUPPORTED", async () => {
     const w = makeWiring();

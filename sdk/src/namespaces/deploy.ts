@@ -113,6 +113,9 @@ const COMMIT_POLL_INITIAL_MS = 1_000;
 const COMMIT_POLL_MAX_MS = 30_000;
 const COMMIT_POLL_BACKOFF_AFTER_MS = 30_000;
 const COMMIT_POLL_TIMEOUT_MS = 10 * 60 * 1000;
+const REHEARSAL_POLL_INITIAL_MS = 1_000;
+const REHEARSAL_POLL_MAX_MS = 10_000;
+const REHEARSAL_POLL_TIMEOUT_MS = 30 * 60 * 1000;
 const APPLY_RETRY_DEFAULT_MAX_RETRIES = 2;
 const APPLY_RETRY_BASE_DELAY_MS = 250;
 const APPLY_RETRY_MAX_DELAY_MS = 2_000;
@@ -358,27 +361,7 @@ export class Deploy {
     }
     const body: Record<string, unknown> = {};
     if (opts.teardown !== undefined) body.teardown = opts.teardown;
-    try {
-      return await this.client.request<RehearsePlanResult>(
-        `/apply/v1/plans/${encodeURIComponent(planId)}/rehearse`,
-        {
-          method: "POST",
-          body,
-          ...(opts.project
-            ? {
-                authMeta: {
-                  method: "deploy.rehearse",
-                  capability: "project.deploy" as const,
-                  target: { project_id: opts.project },
-                },
-              }
-            : {}),
-          context: "rehearsing deploy plan",
-        },
-      );
-    } catch (err) {
-      throw translateDeployError(err, "rehearsal", planId, null);
-    }
+    return await requestRehearsal(this.client, planId, body, opts.project);
   }
 
   /**
@@ -875,20 +858,7 @@ async function rehearseBeforeCommit(
   const unchanged = migrationsUnchangedReason(plan);
   if (unchanged) return skip(unchanged);
   emit({ type: "rehearsal.started", planId });
-  let rehearsed: RehearsePlanResult;
-  try {
-    rehearsed = await client.request<RehearsePlanResult>(
-      `/apply/v1/plans/${encodeURIComponent(planId)}/rehearse`,
-      {
-        method: "POST",
-        body: {},
-        authMeta: { method: "deploy.rehearse", capability: "project.deploy" as const, target: { project_id: project } },
-        context: "rehearsing deploy plan",
-      },
-    );
-  } catch (err) {
-    throw translateDeployError(err, "rehearsal", planId, null);
-  }
+  const rehearsed = await requestRehearsal(client, planId, {}, project, emit);
   const report = rehearsed.report;
   emit({
     type: "rehearsal.finished",
@@ -922,6 +892,105 @@ async function rehearseBeforeCommit(
     },
     ...(bound ? { requiredPlan: { planId: bound.plan_id, planFingerprint: bound.plan_fingerprint } } : {}),
   };
+}
+
+/**
+ * Start a rehearsal and return its report. The gateway runs a rehearsal as an
+ * operation, detached from the request (a snapshot can take minutes). With a
+ * project to poll as, the request asks for the asynchronous shape
+ * (`Prefer: respond-async`), gets the operation at once, and polls it until
+ * the report is there, relaying its recorded `rehearsal.phase` events; every
+ * failure from then on carries the rehearsal's operation id. A gateway that
+ * answers with the report inline is used as is, and without a project the
+ * response waits for the report.
+ */
+async function requestRehearsal(
+  client: Client,
+  planId: string,
+  body: Record<string, unknown>,
+  project: string | undefined,
+  emit?: (event: DeployEvent) => void,
+): Promise<RehearsePlanResult> {
+  let started: Omit<RehearsePlanResult, "report"> & { report: RehearsePlanResult["report"] | null };
+  try {
+    started = await client.request<typeof started>(
+      `/apply/v1/plans/${encodeURIComponent(planId)}/rehearse`,
+      {
+        method: "POST",
+        body,
+        ...(project
+          ? {
+              headers: { Prefer: "respond-async" },
+              authMeta: {
+                method: "deploy.rehearse",
+                capability: "project.deploy" as const,
+                target: { project_id: project },
+              },
+            }
+          : {}),
+        context: "rehearsing deploy plan",
+      },
+    );
+  } catch (err) {
+    throw translateDeployError(err, "rehearsal", planId, null);
+  }
+  if (started.report || !project) return started as RehearsePlanResult;
+  return await pollRehearsal(client, planId, started.operation_id, project, emit);
+}
+
+async function pollRehearsal(
+  client: Client,
+  planId: string,
+  operationId: string,
+  project: string,
+  emit?: (event: DeployEvent) => void,
+): Promise<RehearsePlanResult> {
+  const pollUrl = `/apply/v1/operations/${encodeURIComponent(operationId)}`;
+  const headers = await apikeyHeaders(client, project);
+  const start = Date.now();
+  let interval = REHEARSAL_POLL_INITIAL_MS;
+  let eventCursor: string | null = null;
+  let eventsSupported = Boolean(emit);
+  for (;;) {
+    await sleep(interval);
+    let snapshot: OperationSnapshot;
+    try {
+      // A poll lost to a 502/503/504 (a gateway rollout) says nothing about
+      // the rehearsal, which keeps running on the gateway; read it again.
+      snapshot = await requestWithTransientRetry(() => client.request<OperationSnapshot>(
+        pollUrl,
+        { headers, context: "polling rehearsal operation" },
+      ));
+    } catch (err) {
+      throw translateDeployError(err, "rehearsal", planId, operationId);
+    }
+    if (emit && eventsSupported) {
+      const recorded = await emitRecordedOperationEvents(client, operationId, headers, eventCursor, emit);
+      eventsSupported = recorded.supported;
+      eventCursor = recorded.cursor;
+    }
+    if (TERMINAL_STATUSES.includes(snapshot.status)) {
+      if (snapshot.rehearsal_report) {
+        return { operation_id: operationId, status: snapshot.status, poll_url: pollUrl, report: snapshot.rehearsal_report };
+      }
+      throw translateGatewayError(snapshot.error, "rehearsal", planId, operationId);
+    }
+    if (Date.now() - start > REHEARSAL_POLL_TIMEOUT_MS) {
+      throw new Run402DeployError(
+        `Timed out waiting for rehearsal operation ${operationId} to finish`,
+        {
+          code: "INTERNAL_ERROR",
+          phase: "rehearsal",
+          retryable: true,
+          operationId,
+          planId,
+          status: 504,
+          context: "polling rehearsal",
+        },
+      );
+    }
+    interval = Math.min(Math.floor(interval * 1.5), REHEARSAL_POLL_MAX_MS);
+  }
 }
 
 /**
