@@ -25,8 +25,6 @@ Run `node scripts/documentation-inventory.mjs` to reject newly discovered unclas
 
 | Repo | Source | Purpose / interface | Editorial | Publication |
 |---|---|---|---|---|
-| public | [.agents/skills/bugs/SKILL.md](.agents/skills/bugs/SKILL.md) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
-| public | [.claude/skills/bugs/SKILL.md](.claude/skills/bugs/SKILL.md) | maintainer / mixed | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [.github/ISSUE_TEMPLATE/bug_report.md](.github/ISSUE_TEMPLATE/bug_report.md) | guide / cli | reviewed contributor instructions: source ownership and native build/test commands retained; product CLI policy applies | source published: 23751749; no separate hosted acceptance required |
 | public | [.github/ISSUE_TEMPLATE/feature_request.md](.github/ISSUE_TEMPLATE/feature_request.md) | guide / cli | reviewed contributor instructions: source ownership and native build/test commands retained; product CLI policy applies | source published: 23751749; no separate hosted acceptance required |
 | public | [AGENTS.md](AGENTS.md) | maintainer / mixed | pending: source changed since editorial review | pending: source changed since publication evidence |

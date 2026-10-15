@@ -4,46 +4,6 @@
   "entries": [
     {
       "repository": "public",
-      "path": ".agents/skills/bugs/SKILL.md",
-      "owner": "client-docs",
-      "audience": "developers and agents",
-      "purpose": "guide",
-      "interface": "cli",
-      "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "3d37ac5adb2babe2345d8b1c001b26c9723598692c6bacc17b6cb33ef623abaa",
-      "outputs": [],
-      "url": null,
-      "checks": [
-        "inventory-policy"
-      ],
-      "evidence": {
-        "editorial": "pending: source changed since editorial review",
-        "local": "see named check results",
-        "publication": "pending: source changed since publication evidence"
-      }
-    },
-    {
-      "repository": "public",
-      "path": ".claude/skills/bugs/SKILL.md",
-      "owner": "client-docs",
-      "audience": "contributors",
-      "purpose": "maintainer",
-      "interface": "mixed",
-      "exception": "Repository development and implementation instructions; product operations still prefer CLI.",
-      "sha256": "ddbec7c01d4afbc00aca2df072af7437c0cce35867d4167de734ed6c792a4ca5",
-      "outputs": [],
-      "url": null,
-      "checks": [
-        "inventory-policy"
-      ],
-      "evidence": {
-        "editorial": "pending: source changed since editorial review",
-        "local": "see named check results",
-        "publication": "pending: source changed since publication evidence"
-      }
-    },
-    {
-      "repository": "public",
       "path": ".github/ISSUE_TEMPLATE/bug_report.md",
       "owner": "client-docs",
       "audience": "developers and agents",

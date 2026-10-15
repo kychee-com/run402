@@ -3,14 +3,6 @@
   "reviewer": "Codex",
   "scope": "Per-entry CLI-first editorial audit: recommendation, example purpose, interface boundaries and current operational claims. Native protocol/security/legal/history/fixture exclusions are explicit; this is not a legal review, cryptographic audit, exhaustive API conformance proof or live deployment result. Executable and publication evidence is separate. Unlisted or changed sources remain pending.",
   "entries": {
-    "public:.agents/skills/bugs/SKILL.md": {
-      "sha256": "3af3fbb5e34b7aab67ade62fc69c6ef5ec9141c46df165e57a742cafff75010b",
-      "review": "reviewed contributor instructions: source ownership and native build/test commands retained; product CLI policy applies"
-    },
-    "public:.claude/skills/bugs/SKILL.md": {
-      "sha256": "cc991a23249a891609588e0523a6ae7ed8233d215aea8341e263b872a7059015",
-      "review": "reviewed contributor instructions: source ownership and native build/test commands retained; product CLI policy applies"
-    },
     "public:.github/ISSUE_TEMPLATE/bug_report.md": {
       "sha256": "fb03c2cdba80bbcbd829c6f4a379e7ef6907076e3194fdf3cd0592b109e9e1f5",
       "review": "reviewed contributor instructions: source ownership and native build/test commands retained; product CLI policy applies"
