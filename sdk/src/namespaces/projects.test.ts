@@ -18,6 +18,7 @@ import {
   Unauthorized,
 } from "../errors.js";
 import type { CredentialsProvider } from "../credentials.js";
+import type { UsageReport } from "./projects.types.js";
 
 interface FetchCall {
   url: string;
@@ -618,32 +619,49 @@ describe("projects.listTenantPayments", () => {
 
 describe("projects.getUsage", () => {
   it("GETs /projects/v1/admin/:id/usage with service key", async () => {
-    // Mirrors the live gateway shape — `lease_expires_at` is intentionally
-    // absent because the endpoint doesn't compute it. v1.57:
-    // effective_status / organization_lifecycle_state replace the legacy `status`.
-    const { fetch, calls } = mockFetch(() =>
-      jsonResponse({
-        project_id: "prj_known",
-        tier: "prototype",
-        api_calls: 10,
-        api_calls_limit: 1000,
-        storage_bytes: 1024,
-        storage_limit_bytes: 1048576,
-        effective_status: "active",
-        organization_lifecycle_state: "active",
-      }),
-    );
+    // Mirrors the live gateway shape for a leased organization.
+    const wire: UsageReport = {
+      project_id: "prj_known",
+      tier: "hobby",
+      org_id: "org_known",
+      api_calls: 10,
+      api_calls_limit: 1000,
+      storage_bytes: 1024,
+      storage_limit_bytes: 1048576,
+      storage_limit: "1 MB",
+      status: "active",
+      lease_expires_at: "2026-11-14T00:00:00.000Z",
+      lease_perpetual: false,
+    };
+    const { fetch, calls } = mockFetch(() => jsonResponse(wire));
     const sdk = makeSdk(makeCreds(), fetch);
     const result = await sdk.projects.getUsage("prj_known");
 
     assert.equal(calls[0]!.url, "https://api.example.test/projects/v1/admin/prj_known/usage");
     assert.equal(calls[0]!.headers["Authorization"], "Bearer service_xxx");
-    assert.equal(result.tier, "prototype");
-    assert.equal(result.api_calls, 10);
-    assert.equal(result.effective_status, "active");
-    assert.equal(result.organization_lifecycle_state, "active");
-    assert.equal(result.lease_expires_at, undefined,
-      "gateway omits lease_expires_at; type is optional so callers don't read a non-existent string");
+    assert.deepEqual(result, wire);
+  });
+
+  it("reports a perpetual lease as lease_perpetual: true with lease_expires_at: null", async () => {
+    const wire: UsageReport = {
+      project_id: "prj_known",
+      tier: "prototype",
+      org_id: "org_known",
+      api_calls: 0,
+      api_calls_limit: 500000,
+      storage_bytes: 0,
+      storage_limit_bytes: 250000000,
+      storage_limit: "250 MB",
+      status: "active",
+      lease_expires_at: null,
+      lease_perpetual: true,
+    };
+    const { fetch } = mockFetch(() => jsonResponse(wire));
+    const sdk = makeSdk(makeCreds(), fetch);
+    const result = await sdk.projects.getUsage("prj_known");
+
+    assert.equal(result.lease_perpetual, true);
+    assert.equal(result.lease_expires_at, null);
   });
 
   it("throws ProjectCredentialNotFound for missing local credentials before hitting the network", async () => {

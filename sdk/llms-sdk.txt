@@ -1434,7 +1434,7 @@ demoteUser(id, email): Promise<void>
 
 `r.projects.setRepoName(projectId, name)` sets or renames the project's per-org-unique, ADDRESS-form name (`POST /projects/v1/:id/repo-name`, repo-first-onramp design D6, task 4.2) — the `<name>` half of `run402::<org-slug>/<name>` — and returns `{ project_id, repo_name, previous_repo_name }`. Distinct from `rename` above (the free-text display name, unchanged): the address-form name is charset-restricted (`[a-z0-9-]`, ≤63 chars) and per-org-unique. No fee, unlike the org-slug claim. Same authority as `rename`. Scoped form: `r.project(id).setRepoName(name)`.
 
-`r.projects.getUsage(id)` still surfaces `effective_status` and `organization_lifecycle_state` because that endpoint scopes to a single project and the derivation collapses per-project `archived_at` / `deleted_at` together with the organization's lifecycle.
+`r.projects.getUsage(id)` (`GET /projects/v1/admin/:project_id/usage`, service key) returns a `UsageReport`: `project_id`, `tier`, `org_id` (`| null`), `api_calls`, `api_calls_limit`, `storage_bytes`, `storage_limit_bytes`, `storage_limit` (human string, e.g. `"250 MB"`), `status` (the derived effective status), `lease_expires_at`, and `lease_perpetual`. `lease_expires_at` is the owning organization's ISO-8601 lease expiry, and `null` when the lease is perpetual (`lease_perpetual: true`) or the project has no organization; `lease_perpetual` is `false` otherwise. The lease fields match `r.tier.status()`.
 
 ### `r.project(id).apply`
 

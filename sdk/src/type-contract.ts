@@ -31,6 +31,7 @@ import type {
   SiteEmbeddingSpec,
 } from "./namespaces/deploy.types.js";
 import type { SecretSummary } from "./namespaces/secrets.js";
+import type { EffectiveProjectStatus, UsageReport } from "./namespaces/projects.types.js";
 
 type DeploySecrets = NonNullable<ReleaseSpec["secrets"]>;
 type Equal<A, B> =
@@ -49,6 +50,18 @@ type _NoDeploySecretsSet = DeploySecrets["set"];
 type _NoDeploySecretsReplaceAll = DeploySecrets["replace_all"];
 // @ts-expect-error secret listings must not expose value-derived hashes
 type _NoSecretValueHash = SecretSummary["value_hash"];
+
+// GET /projects/v1/admin/:project_id/usage always answers lease_expires_at
+// (null for a perpetual lease or a project with no organization) and
+// lease_perpetual, beside org_id and the derived status.
+type _UsageLeaseExpiresAt = Assert<Equal<UsageReport["lease_expires_at"], string | null>>;
+type _UsageLeasePerpetual = Assert<Equal<UsageReport["lease_perpetual"], boolean>>;
+type _UsageOrgId = Assert<Equal<UsageReport["org_id"], string | null>>;
+type _UsageStatus = Assert<Equal<UsageReport["status"], EffectiveProjectStatus>>;
+// @ts-expect-error the usage route does not answer effective_status
+type _NoUsageEffectiveStatus = UsageReport["effective_status"];
+// @ts-expect-error the usage route does not answer organization_lifecycle_state
+type _NoUsageLifecycleState = UsageReport["organization_lifecycle_state"];
 
 type _ActiveInventoryIsCurrentLive = Assert<
   Equal<ActiveReleaseInventory["state_kind"], "current_live">

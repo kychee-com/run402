@@ -333,22 +333,28 @@ export interface ProjectDetail {
 export interface UsageReport {
   project_id: string;
   tier: string;
+  /** Owning organization id, or `null` for a project with no organization. */
+  org_id: string | null;
   api_calls: number;
   api_calls_limit: number;
   storage_bytes: number;
   storage_limit_bytes: number;
   /** `storage_limit_bytes` as a human string ("250 MB"), derived from the tier constant. */
   storage_limit: string;
-  /**
-   * Optional: the `/projects/v1/admin/:id/usage` endpoint does not currently
-   * include the lease expiry. Read it from `tier.status()` if you need it.
-   * `null` is reserved for unleased accounts.
-   */
-  lease_expires_at?: string | null;
   /** Derived effective status — see {@link EffectiveProjectStatus}. */
-  effective_status: EffectiveProjectStatus;
-  /** Owning organization's lifecycle state. */
-  organization_lifecycle_state: OrganizationLifecycleState;
+  status: EffectiveProjectStatus;
+  /**
+   * ISO-8601 expiry of the owning organization's tier lease. `null` when the
+   * lease is perpetual (`lease_perpetual: true`) or the project has no
+   * organization.
+   */
+  lease_expires_at: string | null;
+  /**
+   * `true` when the owning organization's lease never expires
+   * (`lease_expires_at` is then `null`); `false` otherwise, including a
+   * project with no organization. Matches `tier.status()`.
+   */
+  lease_perpetual: boolean;
 }
 
 // ─── schema ─────────────────────────────────────────────────────────────
