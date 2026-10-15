@@ -259,10 +259,12 @@ const extraMethodsHtml = buildExtraMethodsHtml(resolved, returnTo, hasPassword, 
   }
 </style>
 
+{/* Extra method chrome. is:global because the method markup is spliced via
+     set:html and therefore carries no scoped-style attribute; these rules
+     target the .r402-* method classes the same way the consumer would. An
+     expression comment, not an HTML one: Astro 7's compiler rejects markup
+     comments inside an expression. */}
 {!defaultOnly && (
-  <!-- Extra method chrome. is:global because the method markup is spliced via
-       set:html and therefore carries no scoped-style attribute; these rules
-       target the .r402-* method classes the same way the consumer would. -->
   <style is:global set:html={`
   .r402-sign-in-methods {
     display: flex;
