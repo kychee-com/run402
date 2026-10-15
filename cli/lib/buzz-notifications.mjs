@@ -7,7 +7,18 @@
  */
 import { getSdk } from "./sdk.mjs";
 import { fail, reportSdkError } from "./sdk-errors.mjs";
-import { resolveOrgId } from "./org-context.mjs";
+import { resolveOrg, failBindingSourcedOrg } from "./org-context.mjs";
+
+async function resolveAuthorityOrgId(a) {
+  const resolved = await resolveOrg(a, { cmd: "buzz" });
+  // configure creates a standing egress route — authority-expanding, so the
+  // repository's own binding cannot be the sole org selector (round 3 §10).
+  if (resolved.source === "binding") failBindingSourcedOrg(resolved);
+  return resolved.orgId;
+}
+async function resolveOrgIdAmbient(a) {
+  return (await resolveOrg(a, { cmd: "buzz" })).orgId;
+}
 import {
   normalizeArgv,
   hasHelp,
@@ -130,7 +141,7 @@ async function configure(args) {
   const eventTypes = flagValues(a, "--event-type");
   const eventClasses = flagValues(a, "--event-class");
   try {
-    const created = await getSdk().buzz.notifications.createRoute(await resolveOrgId(a, { cmd: "buzz" }), {
+    const created = await getSdk().buzz.notifications.createRoute(await resolveAuthorityOrgId(a), {
       installationId: requiredFlag(a, "--installation"),
       routeName: requiredFlag(a, "--name"),
       buzzChannelId: requiredFlag(a, "--channel"),
@@ -162,7 +173,7 @@ async function status(args) {
       out(await sdk.buzz.notifications.get(positionals[0]));
       return;
     }
-    const routes = await sdk.buzz.notifications.list(await resolveOrgId(a, { cmd: "buzz" }));
+    const routes = await sdk.buzz.notifications.list(await resolveOrgIdAmbient(a));
     out({ buzz_project_event_routes: routes });
   } catch (err) {
     reportSdkError(err);

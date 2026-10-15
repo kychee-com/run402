@@ -306,7 +306,10 @@ export async function takeOrgPositional(a, valueFlags = [], opts = {}) {
     return { orgId: first, rest: positionals.slice(1), source: "positional", sourceDetail: "<org_id>" };
   }
   const resolved = await resolveOrg(a, { ...opts, optional: true });
-  if (resolved) return { orgId: resolved.orgId, rest: positionals, source: resolved.source, sourceDetail: resolved.sourceDetail };
+  if (resolved) {
+    if (opts.authorityExpanding && resolved.source === "binding") failBindingSourcedOrg(resolved);
+    return { orgId: resolved.orgId, rest: positionals, source: resolved.source, sourceDetail: resolved.sourceDetail };
+  }
   fail({
     code: "ORG_REQUIRED",
     message: typeof first === "string"
@@ -317,6 +320,31 @@ export async function takeOrgPositional(a, valueFlags = [], opts = {}) {
     next_actions: orgRequiredActions(),
   });
   return null; // unreachable — fail() exits
+}
+
+/**
+ * Consult round 3 (gitvault-agent-envelopes review, §10): for AUTHORITY-
+ * EXPANDING or destructive org mutations (member add/role/rm/revoke-key,
+ * invites, payout-wallet, billing link-wallet/auto-recharge, buzz
+ * adopt/install), repository state may PROPOSE an org but may never be the
+ * SOLE authority selecting it — a hostile checkout's committed .run402.json
+ * plus copied commands is a textbook confused deputy, and `AMBIGUOUS_ORG`
+ * only fires when a second source disagrees. The accepted sources are the
+ * caller's own: a positional/--org, the orchestrator's RUN402_ORG, or the
+ * profile-level `org use` selection (stored outside the repository).
+ * Read-only verbs keep the full chain, binding included.
+ */
+export function failBindingSourcedOrg(resolved) {
+  fail({
+    code: "ORG_CONFIRMATION_REQUIRED",
+    message: `This mutation would act on organization ${resolved.orgId} selected by the repository's own ${resolved.sourceDetail} — a committed file is not enough authority for an org-level mutation.`,
+    hint: `Name the org yourself: pass --org ${resolved.orgId} (or the leading <org_id> positional), export RUN402_ORG, or select it once with: run402 org use ${resolved.orgId}`,
+    details: { org_id: resolved.orgId, source: resolved.source, source_detail: resolved.sourceDetail },
+    next_actions: [
+      nextAction("edit_request", { command: `run402 <command> --org ${resolved.orgId}`, why: "Confirm the target org on this one call." }),
+      nextAction("edit_request", { command: `run402 org use ${resolved.orgId}`, why: "Trust this org from your own profile (outside the repository) for every later call." }),
+    ],
+  });
 }
 
 /**

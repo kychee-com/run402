@@ -212,6 +212,17 @@ export interface MemberRevokeEncryptionKeyResult {
   status: "revoked" | "no_key";
   principal_id: string;
   ek_fingerprint: string | null;
+  /** The exact replacement fingerprint the owner approved in the same transaction, when `replacement_fingerprint` was passed (round 3 blocker 1). */
+  approved_replacement_fingerprint?: string | null;
+  next_actions?: Array<{ type: string; method?: string; path?: string; why?: string }>;
+  [key: string]: unknown;
+}
+
+/** Result of {@link OrgMembers.approveEncryptionKey} — the single-use exact-fingerprint rotation approval. */
+export interface MemberApproveEncryptionKeyResult {
+  approval_id: string;
+  principal_id: string;
+  approved_fingerprint: string;
   next_actions?: Array<{ type: string; method?: string; path?: string; why?: string }>;
   [key: string]: unknown;
 }

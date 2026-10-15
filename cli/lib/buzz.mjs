@@ -1,7 +1,21 @@
 import { readFileSync } from "node:fs";
 import { getSdk } from "./sdk.mjs";
 import { fail, reportSdkError } from "./sdk-errors.mjs";
-import { resolveOrgId } from "./org-context.mjs";
+import { resolveOrg, failBindingSourcedOrg } from "./org-context.mjs";
+
+// Authority-expanding buzz ops (adopt/install) never take their org from the
+// repository's own binding file — consult round 3 §10 (same rule as org
+// member/invite/payout mutations). Reads (adopt list / install list) keep the
+// full ambient chain.
+async function resolveAuthorityOrgId(a) {
+  const resolved = await resolveOrg(a, { cmd: "buzz" });
+  if (resolved.source === "binding") failBindingSourcedOrg(resolved);
+  return resolved.orgId;
+}
+async function resolveOrgIdAmbient(a) {
+  const resolved = await resolveOrg(a, { cmd: "buzz" });
+  return resolved.orgId;
+}
 import {
   assertKnownFlags,
   failUnknownSubcommand,
@@ -131,7 +145,7 @@ async function adopt(args) {
     const a = normalizeArgv(rest);
     assertKnownFlags(a, ["--org"], ["--org"]);
     requirePositionalCount(a, ["--org"], { min: 0, max: 0, command: "run402 buzz adopt list --org <org_id>" });
-    const orgId = await resolveOrgId(a, { cmd: "buzz" });
+    const orgId = await resolveOrgIdAmbient(a);
     return invoke(() => getSdk().buzz.humanAdoptions.list(orgId));
   }
   if (operation === "show") {
@@ -146,7 +160,7 @@ async function adopt(args) {
   const values = ["--org", "--identity-link", "--idempotency-key"];
   assertKnownFlags(a, values, values);
   requirePositionalCount(a, values, { min: 0, max: 0, command: "run402 buzz adopt direct [--org <org_id>] --identity-link <idlnk_id>" });
-  const organizationId = await resolveOrgId(a, { cmd: "buzz" });
+  const organizationId = await resolveAuthorityOrgId(a);
   return invoke(() => getSdk({ authMode: "wallet" }).buzz.adopt({
     organizationId,
     identityLinkId: requiredFlag(a, "--identity-link"),
@@ -174,7 +188,7 @@ async function adoptionOffer(args) {
   assertKnownFlags(a, values, values);
   requirePositionalCount(a, values, { min: 0, max: 0, command: "run402 buzz adopt offer [--org <org_id>] --identity-link <idlnk_id>" });
   const deploymentPath = flagValue(a, "--deployment-context-file");
-  const organizationId = await resolveOrgId(a, { cmd: "buzz" });
+  const organizationId = await resolveAuthorityOrgId(a);
   return invoke(async () => {
     const client = getSdk({ authMode: "wallet" });
     const status = await client.buzz.status();
@@ -231,7 +245,7 @@ async function install(args) {
     const a = normalizeArgv(rest);
     assertKnownFlags(a, ["--org"], ["--org"]);
     requirePositionalCount(a, ["--org"], { min: 0, max: 0, command: "run402 buzz install list --org <org_id>" });
-    const orgId = await resolveOrgId(a, { cmd: "buzz" });
+    const orgId = await resolveOrgIdAmbient(a);
     return invoke(() => getSdk().buzz.communityInstallations.list(orgId));
   }
   if (operation === "discover") {
@@ -254,7 +268,7 @@ async function install(args) {
   assertKnownFlags(a, values, values);
   requirePositionalCount(a, values, { min: 0, max: 0, command: "run402 buzz install [--org <org_id>] --community <subject> --authority <hex>" });
   const policyFile = flagValue(a, "--policy-file");
-  const organizationId = await resolveOrgId(a, { cmd: "buzz" });
+  const organizationId = await resolveAuthorityOrgId(a);
   return invoke(() => getSdk().buzz.install({
     organizationId,
     buzzCommunitySubject: requiredFlag(a, "--community"),

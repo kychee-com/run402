@@ -44,7 +44,8 @@ Usage:
   run402 org member add  [<org_id>] <wallet_address> [--role <role>]
   run402 org member role [<org_id>] --principal <principal_id> --role <role>
   run402 org member rm   [<org_id>] --principal <principal_id>
-  run402 org member revoke-key [<org_id>] --principal <principal_id> [--reason <why>]   (owner + step-up; revokes the member's gitvault encryption key — its next gitvault operation enrolls afresh)
+  run402 org member revoke-key [<org_id>] --principal <principal_id> [--replacement-fingerprint <ek_…>] [--reason <why>]   (owner + step-up; revokes the member's gitvault encryption key — pass the replacement fingerprint to approve it in the same call)
+  run402 org member approve-key [<org_id>] --principal <principal_id> --fingerprint <ek_…>   (owner + step-up; approves the EXACT replacement fingerprint after a revoke — any other stays refused)
   run402 org invite list   [<org_id>]
   run402 org invite create [<org_id>] --email <email> [--role <role>] [--ttl-hours N]
   run402 org invite rm     [<org_id>] --principal <principal_id>
@@ -186,7 +187,8 @@ Usage:
   run402 org member add  [<org_id>] <wallet_address> [--role <role>]
   run402 org member role [<org_id>] --principal <principal_id> --role <role>
   run402 org member rm   [<org_id>] --principal <principal_id>
-  run402 org member revoke-key [<org_id>] --principal <principal_id> [--reason <why>]   (owner + step-up; revokes the member's gitvault encryption key — its next gitvault operation enrolls afresh)
+  run402 org member revoke-key [<org_id>] --principal <principal_id> [--replacement-fingerprint <ek_…>] [--reason <why>]   (owner + step-up)
+  run402 org member approve-key [<org_id>] --principal <principal_id> --fingerprint <ek_…>   (owner + step-up; the EXACT replacement fingerprint)
 
 Roles: ${ROLE_LIST} (add defaults to developer). Mutations require an active owner.
 Demoting/removing the org's only active owner fails with 409 LAST_OWNER.
@@ -433,7 +435,7 @@ async function payoutWallet(args) {
   const clear = a.includes("--clear");
   const walletFlag = flagValue(a, "--address");
   const single = clear || walletFlag !== null;
-  const { orgId: org, rest: pos } = await takeOrgPositional(a, ["--org", "--address"], { cmd: "org" });
+  const { orgId: org, rest: pos } = await takeOrgPositional(a, ["--org", "--address"], { cmd: "org", authorityExpanding: true });
   requireRest(pos, {
     min: single ? 0 : 1,
     max: single ? 0 : 1,
@@ -548,7 +550,7 @@ async function runMember(args) {
     const role = flagValue(a, "--role");
     const walletFlag = flagValue(a, "--address");
     const count = walletFlag ? 0 : 1;
-    const { orgId: org, rest: pos } = await takeOrgPositional(a, ["--org", "--role", "--address"], { cmd: "org" });
+    const { orgId: org, rest: pos } = await takeOrgPositional(a, ["--org", "--role", "--address"], { cmd: "org", authorityExpanding: true });
     requireRest(pos, {
       min: count, max: count, command: "run402 org member add [<org_id>] <wallet_address> [--role <role>]",
       missing: "Missing <wallet_address> (positional, or --address).",
@@ -569,18 +571,50 @@ async function runMember(args) {
     // an org with another custodian (a lost/rebuilt keystore fails
     // GITVAULT_KEY_ROTATION_REQUIRED and points here). Adapter only.
     const a = normalizeArgv(rest);
-    assertKnownFlags(a, ["--org", "--principal", "--reason", "--help", "-h"], ["--org", "--principal", "--reason"]);
+    const valueFlags = ["--org", "--principal", "--reason", "--replacement-fingerprint"];
+    assertKnownFlags(a, [...valueFlags, "--help", "-h"], valueFlags);
     const principalFlag = flagValue(a, "--principal");
     const reason = flagValue(a, "--reason");
+    const replacement = flagValue(a, "--replacement-fingerprint");
     const count = principalFlag ? 0 : 1;
-    const { orgId: org, rest: pos } = await takeOrgPositional(a, ["--org", "--principal", "--reason"], { cmd: "org" });
+    const { orgId: org, rest: pos } = await takeOrgPositional(a, valueFlags, { cmd: "org", authorityExpanding: true });
     requireRest(pos, {
-      min: count, max: count, command: "run402 org member revoke-key [<org_id>] --principal <principal_id> [--reason <why>]",
+      min: count, max: count, command: "run402 org member revoke-key [<org_id>] --principal <principal_id> [--replacement-fingerprint <ek_…>] [--reason <why>]",
       missing: "Missing <principal_id> (--principal).",
     });
     const principalId = principalFlag ?? pos[0];
     try {
-      console.log(JSON.stringify(await getSdk().org(org).members.revokeEncryptionKey(principalId, reason ? { reason } : {}), null, 2));
+      console.log(JSON.stringify(await getSdk().org(org).members.revokeEncryptionKey(principalId, {
+        ...(reason ? { reason } : {}),
+        ...(replacement ? { replacement_fingerprint: replacement } : {}),
+      }), null, 2));
+    } catch (err) {
+      reportSdkError(err);
+    }
+    return;
+  }
+
+  if (memberAction === "approve-key") {
+    // Round 3 blocker 1: after a revoke WITHOUT a named replacement, an org
+    // owner approves the member's freshly-minted fingerprint here — the
+    // member's next gitvault operation enrolls exactly that key; any other
+    // fingerprint stays KEY_ROTATION_REQUIRES_OWNER_APPROVAL.
+    const a = normalizeArgv(rest);
+    const valueFlags = ["--org", "--principal", "--fingerprint", "--reason"];
+    assertKnownFlags(a, [...valueFlags, "--help", "-h"], valueFlags);
+    const principalFlag = flagValue(a, "--principal");
+    const fingerprintFlag = flagValue(a, "--fingerprint");
+    const count = (principalFlag ? 0 : 1) + (fingerprintFlag ? 0 : 1);
+    const { orgId: org, rest: pos } = await takeOrgPositional(a, valueFlags, { cmd: "org", authorityExpanding: true });
+    requireRest(pos, {
+      min: count, max: count, command: "run402 org member approve-key [<org_id>] --principal <principal_id> --fingerprint <ek_…> [--reason <why>]",
+      missing: "Missing <principal_id> (--principal) and/or <fingerprint> (--fingerprint).",
+    });
+    const principalId = principalFlag ?? pos[0];
+    const fingerprint = fingerprintFlag ?? (principalFlag ? pos[0] : pos[1]);
+    const reason = flagValue(a, "--reason");
+    try {
+      console.log(JSON.stringify(await getSdk().org(org).members.approveEncryptionKey(principalId, { fingerprint, ...(reason ? { reason } : {}) }), null, 2));
     } catch (err) {
       reportSdkError(err);
     }
@@ -593,7 +627,7 @@ async function runMember(args) {
     const principalFlag = flagValue(a, "--principal");
     const roleFlag = flagValue(a, "--role");
     const count = 2 - (principalFlag ? 1 : 0) - (roleFlag ? 1 : 0);
-    const { orgId: org, rest: pos } = await takeOrgPositional(a, ["--org", "--principal", "--role"], { cmd: "org" });
+    const { orgId: org, rest: pos } = await takeOrgPositional(a, ["--org", "--principal", "--role"], { cmd: "org", authorityExpanding: true });
     requireRest(pos, {
       min: count, max: count, command: "run402 org member role [<org_id>] --principal <principal_id> --role <role>",
       missing: "Missing <principal_id> (--principal) and/or <role> (--role).",
@@ -613,7 +647,7 @@ async function runMember(args) {
     assertKnownFlags(a, ["--org", "--principal", "--help", "-h"], ["--org", "--principal"]);
     const principalFlag = flagValue(a, "--principal");
     const count = principalFlag ? 0 : 1;
-    const { orgId: org, rest: pos } = await takeOrgPositional(a, ["--org", "--principal"], { cmd: "org" });
+    const { orgId: org, rest: pos } = await takeOrgPositional(a, ["--org", "--principal"], { cmd: "org", authorityExpanding: true });
     requireRest(pos, {
       min: count, max: count, command: "run402 org member rm [<org_id>] --principal <principal_id>",
       missing: "Missing <principal_id> (use --principal).",
@@ -627,7 +661,7 @@ async function runMember(args) {
     return;
   }
 
-  fail({ code: "BAD_USAGE", message: `Unknown 'org member' action: ${memberAction}. Try list | add | role | rm.` });
+  fail({ code: "BAD_USAGE", message: `Unknown 'org member' action: ${memberAction}. Try list | add | role | rm | revoke-key | approve-key.` });
 }
 
 // ── Invite group ─────────────────────────────────────────────────────────────────
@@ -665,7 +699,7 @@ async function runInvite(args) {
     const ttlFlag = flagValue(a, "--ttl-hours");
     const emailFlag = flagValue(a, "--email");
     const count = emailFlag ? 0 : 1;
-    const { orgId: org, rest: pos } = await takeOrgPositional(a, valueFlags, { cmd: "org" });
+    const { orgId: org, rest: pos } = await takeOrgPositional(a, valueFlags, { cmd: "org", authorityExpanding: true });
     requireRest(pos, {
       min: count, max: count, command: "run402 org invite create [<org_id>] --email <email> [--role <role>]",
       missing: "Missing <email> (use --email).",
@@ -686,7 +720,7 @@ async function runInvite(args) {
     assertKnownFlags(a, ["--org", "--principal", "--help", "-h"], ["--org", "--principal"]);
     const principalFlag = flagValue(a, "--principal");
     const count = principalFlag ? 0 : 1;
-    const { orgId: org, rest: pos } = await takeOrgPositional(a, ["--org", "--principal"], { cmd: "org" });
+    const { orgId: org, rest: pos } = await takeOrgPositional(a, ["--org", "--principal"], { cmd: "org", authorityExpanding: true });
     requireRest(pos, {
       min: count, max: count, command: "run402 org invite rm [<org_id>] --principal <principal_id>",
       missing: "Missing <principal_id> (use --principal).",

@@ -25,6 +25,7 @@ import type {
   MemberMutationResult,
   MemberRevokeResult,
   MemberRevokeEncryptionKeyResult,
+  MemberApproveEncryptionKeyResult,
   OrgDetail,
   OrgInvite,
   OrgInviteRevokeResult,
@@ -115,11 +116,31 @@ export class OrgMembers {
    * operation wraps each vault to it. Audited, org-feed row + mandatory
    * security notification (`gitvault_encryption_key_revoked`).
    */
-  async revokeEncryptionKey(principalId: string, input: { reason?: string } = {}): Promise<MemberRevokeEncryptionKeyResult> {
+  async revokeEncryptionKey(principalId: string, input: { reason?: string; replacement_fingerprint?: string } = {}): Promise<MemberRevokeEncryptionKeyResult> {
     if (!principalId) throw new LocalError("org members.revokeEncryptionKey requires a principalId", "revoking a member's encryption key");
+    const body: Record<string, string> = {};
+    if (input.reason) body.reason = input.reason;
+    if (input.replacement_fingerprint) body.replacement_fingerprint = input.replacement_fingerprint;
     return this.client.request<MemberRevokeEncryptionKeyResult>(
       `/orgs/v1/${encodeURIComponent(this.orgId)}/members/${encodeURIComponent(principalId)}/encryption-key`,
-      { method: "DELETE", body: input.reason ? { reason: input.reason } : undefined, context: "revoking a member's encryption key" },
+      { method: "DELETE", body: Object.keys(body).length > 0 ? body : undefined, context: "revoking a member's encryption key" },
+    );
+  }
+
+  /**
+   * Approve the EXACT replacement encryption-key fingerprint for a member
+   * whose key was revoked (owner + step-up; consult round 3 blocker 1) —
+   * `POST /orgs/v1/:org_id/members/:principal_id/encryption-key-approvals`.
+   * Single-use; the member's publish of that fingerprint consumes it. The
+   * revoke call's `replacement_fingerprint` does revoke+approve in one
+   * transaction when the new fingerprint is already known.
+   */
+  async approveEncryptionKey(principalId: string, input: { fingerprint: string; reason?: string }): Promise<MemberApproveEncryptionKeyResult> {
+    if (!principalId) throw new LocalError("org members.approveEncryptionKey requires a principalId", "approving a member's replacement encryption key");
+    if (!input.fingerprint) throw new LocalError("org members.approveEncryptionKey requires the exact ek_ fingerprint", "approving a member's replacement encryption key");
+    return this.client.request<MemberApproveEncryptionKeyResult>(
+      `/orgs/v1/${encodeURIComponent(this.orgId)}/members/${encodeURIComponent(principalId)}/encryption-key-approvals`,
+      { method: "POST", body: { fingerprint: input.fingerprint, ...(input.reason ? { reason: input.reason } : {}) }, context: "approving a member's replacement encryption key" },
     );
   }
 }
