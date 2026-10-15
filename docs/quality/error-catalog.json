@@ -2,8 +2,8 @@
   "version": 1,
   "contributions": {
     "gateway": {
-      "revision": "2865b027540efbe5704c99e03ee66268417aa3b3",
-      "sourceDigest": "1d188fa4a920bf623c21be5d0a9495cc8e3af6f864617949f041c56c78ffc58d"
+      "revision": "21e27bb1cbf0eb0c03a3dc1f71b124ab6967b50d",
+      "sourceDigest": "8e554e78b652684c7dbb51181038314e1de9800d706b0ba75beb551986c1cc4f"
     },
     "core": {
       "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7"
@@ -1415,6 +1415,16 @@
       "topic": "/errors/client/#CI_PROJECT_REQUIRED"
     },
     {
+      "code": "CI_ROUTE_SCOPE_DENIED",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#CI_ROUTE_SCOPE_DENIED"
+    },
+    {
       "code": "CI_SUBJECT_REQUIRED",
       "owners": [
         {
@@ -2357,6 +2367,16 @@
         }
       ],
       "topic": "/errors/gateway/#IDEMPOTENCY_KEY_DUPLICATE"
+    },
+    {
+      "code": "IDEMPOTENCY_KEY_IN_PROGRESS",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#IDEMPOTENCY_KEY_IN_PROGRESS"
     },
     {
       "code": "IDEMPOTENCY_KEY_INVALID",
@@ -3997,6 +4017,16 @@
       "topic": "/errors/gateway/#MPP_LIGHTNING_UNAVAILABLE"
     },
     {
+      "code": "MPP_TEMPO_UNAVAILABLE",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#MPP_TEMPO_UNAVAILABLE"
+    },
+    {
       "code": "NETWORK_ERROR",
       "owners": [
         {
@@ -4413,6 +4443,16 @@
       "topic": "/errors/gateway/#PAYMENT_CREDENTIAL_INVALID"
     },
     {
+      "code": "PAYMENT_CREDENTIALS_AMBIGUOUS",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#PAYMENT_CREDENTIALS_AMBIGUOUS"
+    },
+    {
       "code": "PAYMENT_CREDITED",
       "owners": [
         {
@@ -4717,6 +4757,26 @@
         }
       ],
       "topic": "/errors/gateway/#PAYOUT_SIGNER_NOT_ELIGIBLE"
+    },
+    {
+      "code": "PAYOUT_WALLET_TEMPO_REFUSED",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#PAYOUT_WALLET_TEMPO_REFUSED"
+    },
+    {
+      "code": "PAYOUT_WALLET_TEMPO_UNVERIFIED",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#PAYOUT_WALLET_TEMPO_UNVERIFIED"
     },
     {
       "code": "PIN_CHANGE_UNCONFIRMED",
@@ -6209,6 +6269,16 @@
       "topic": "/errors/gateway/#RECIPIENT_LIGHTNING_RECEIVER_REQUIRED"
     },
     {
+      "code": "RECIPIENT_PAYOUT_WALLET_TEMPO_REFUSED",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#RECIPIENT_PAYOUT_WALLET_TEMPO_REFUSED"
+    },
+    {
       "code": "RECIPIENT_SET_MISMATCH",
       "owners": [
         {
@@ -6301,6 +6371,16 @@
         }
       ],
       "topic": "/errors/gateway/#RELINK_SOURCE_ORG_NOT_EMPTY"
+    },
+    {
+      "code": "RELINK_SOURCE_PAYOUT_WALLET_SELECTED",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#RELINK_SOURCE_PAYOUT_WALLET_SELECTED"
     },
     {
       "code": "REMOTE_BUILD_UNSUPPORTED",
@@ -7131,6 +7211,26 @@
       "topic": "/errors/client/#SPEND_APPROVAL_REQUIRED"
     },
     {
+      "code": "SPEND_CAP_EXCEEDED",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#SPEND_CAP_EXCEEDED"
+    },
+    {
+      "code": "SPEND_CAP_PER_TX_EXCEEDED",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#SPEND_CAP_PER_TX_EXCEEDED"
+    },
+    {
       "code": "SQL_BATCH_STATEMENT_FAILED",
       "owners": [
         {
@@ -7185,6 +7285,86 @@
       "topic": "/errors/gateway/#STORAGE_UNAVAILABLE"
     },
     {
+      "code": "STRIPE_ACCOUNT_NOT_FOUND",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#STRIPE_ACCOUNT_NOT_FOUND"
+    },
+    {
+      "code": "STRIPE_ACCOUNT_ONBOARDING_INCOMPLETE",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#STRIPE_ACCOUNT_ONBOARDING_INCOMPLETE"
+    },
+    {
+      "code": "STRIPE_ACCOUNT_REQUIRED",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#STRIPE_ACCOUNT_REQUIRED"
+    },
+    {
+      "code": "STRIPE_ACCOUNT_RESTRICTED",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#STRIPE_ACCOUNT_RESTRICTED"
+    },
+    {
+      "code": "STRIPE_CHECKOUT_SESSION_NOT_FOUND",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#STRIPE_CHECKOUT_SESSION_NOT_FOUND"
+    },
+    {
+      "code": "STRIPE_CONNECT_UNAVAILABLE",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#STRIPE_CONNECT_UNAVAILABLE"
+    },
+    {
+      "code": "STRIPE_RETURN_URL_NOT_ALLOWED",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#STRIPE_RETURN_URL_NOT_ALLOWED"
+    },
+    {
+      "code": "STRIPE_UPSTREAM_ERROR",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#STRIPE_UPSTREAM_ERROR"
+    },
+    {
       "code": "SUBDOMAIN_MULTI_NOT_SUPPORTED",
       "owners": [
         {
@@ -7225,6 +7405,56 @@
       "topic": "/errors/gateway/#TABLE_NOT_LIVE"
     },
     {
+      "code": "TENANT_MPP_PAYMENT_INVALID",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#TENANT_MPP_PAYMENT_INVALID"
+    },
+    {
+      "code": "TENANT_MPP_PAYMENT_REFUSED",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#TENANT_MPP_PAYMENT_REFUSED"
+    },
+    {
+      "code": "TENANT_MPP_SETTLEMENT_UNCERTAIN",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#TENANT_MPP_SETTLEMENT_UNCERTAIN"
+    },
+    {
+      "code": "TENANT_X402_PAYMENT_INVALID",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#TENANT_X402_PAYMENT_INVALID"
+    },
+    {
+      "code": "TENANT_X402_PAYMENT_MISSING",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#TENANT_X402_PAYMENT_MISSING"
+    },
+    {
       "code": "TEST_MODE_DISABLED",
       "owners": [
         {
@@ -7255,6 +7485,16 @@
       "topic": "/errors/gateway/#TIER_FEATURE_REQUIRED"
     },
     {
+      "code": "TIER_LIMIT_EXCEEDED",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#TIER_LIMIT_EXCEEDED"
+    },
+    {
       "code": "TIER_PAYMENT_IDENTITY_REQUIRED",
       "owners": [
         {
@@ -7283,6 +7523,16 @@
         }
       ],
       "topic": "/errors/gateway/#TIER_PAYMENT_INTENT_MISMATCH"
+    },
+    {
+      "code": "TIER_REQUIRED",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#TIER_REQUIRED"
     },
     {
       "code": "TOO_MANY_ENCODES_QUEUED",
@@ -8301,6 +8551,26 @@
       "topic": "/errors/client/#WALLET_NOT_FOUND"
     },
     {
+      "code": "WALLET_PROOF_DOMAIN",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#WALLET_PROOF_DOMAIN"
+    },
+    {
+      "code": "WALLET_PROOF_EXPIRED",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#WALLET_PROOF_EXPIRED"
+    },
+    {
       "code": "WALLET_PROOF_INVALID",
       "owners": [
         {
@@ -8309,6 +8579,26 @@
         }
       ],
       "topic": "/errors/gateway/#WALLET_PROOF_INVALID"
+    },
+    {
+      "code": "WALLET_PROOF_MISSING",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#WALLET_PROOF_MISSING"
+    },
+    {
+      "code": "WALLET_PROOF_STALE",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#WALLET_PROOF_STALE"
     },
     {
       "code": "WALLET_PROTECTED",
@@ -8349,6 +8639,16 @@
         }
       ],
       "topic": "/errors/gateway/#WALLET_SIGNER_MISMATCH"
+    },
+    {
+      "code": "WEBHOOK_SIGNATURE_INVALID",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#WEBHOOK_SIGNATURE_INVALID"
     },
     {
       "code": "WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS",

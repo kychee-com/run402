@@ -327,6 +327,9 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="CI_PROJECT_REQUIRED"></a>
 [`CI_PROJECT_REQUIRED`](/errors/client/#CI_PROJECT_REQUIRED)
 
+<a id="CI_ROUTE_SCOPE_DENIED"></a>
+[`CI_ROUTE_SCOPE_DENIED`](/errors/gateway/#CI_ROUTE_SCOPE_DENIED)
+
 <a id="CI_SUBJECT_REQUIRED"></a>
 [`CI_SUBJECT_REQUIRED`](/errors/client/#CI_SUBJECT_REQUIRED)
 
@@ -590,6 +593,9 @@ The catalog records owning source locations and pinned external contributions. A
 
 <a id="IDEMPOTENCY_KEY_DUPLICATE"></a>
 [`IDEMPOTENCY_KEY_DUPLICATE`](/errors/gateway/#IDEMPOTENCY_KEY_DUPLICATE)
+
+<a id="IDEMPOTENCY_KEY_IN_PROGRESS"></a>
+[`IDEMPOTENCY_KEY_IN_PROGRESS`](/errors/gateway/#IDEMPOTENCY_KEY_IN_PROGRESS)
 
 <a id="IDEMPOTENCY_KEY_INVALID"></a>
 [`IDEMPOTENCY_KEY_INVALID`](/errors/gateway/#IDEMPOTENCY_KEY_INVALID)
@@ -1068,6 +1074,9 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="MPP_LIGHTNING_UNAVAILABLE"></a>
 [`MPP_LIGHTNING_UNAVAILABLE`](/errors/gateway/#MPP_LIGHTNING_UNAVAILABLE)
 
+<a id="MPP_TEMPO_UNAVAILABLE"></a>
+[`MPP_TEMPO_UNAVAILABLE`](/errors/gateway/#MPP_TEMPO_UNAVAILABLE)
+
 <a id="NETWORK_ERROR"></a>
 [`NETWORK_ERROR`](/errors/client/#NETWORK_ERROR)
 
@@ -1188,6 +1197,9 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="PAYMENT_CREDENTIAL_INVALID"></a>
 [`PAYMENT_CREDENTIAL_INVALID`](/errors/gateway/#PAYMENT_CREDENTIAL_INVALID)
 
+<a id="PAYMENT_CREDENTIALS_AMBIGUOUS"></a>
+[`PAYMENT_CREDENTIALS_AMBIGUOUS`](/errors/gateway/#PAYMENT_CREDENTIALS_AMBIGUOUS)
+
 <a id="PAYMENT_CREDITED"></a>
 [`PAYMENT_CREDITED`](/errors/gateway/#PAYMENT_CREDITED)
 
@@ -1274,6 +1286,12 @@ The catalog records owning source locations and pinned external contributions. A
 
 <a id="PAYOUT_SIGNER_NOT_ELIGIBLE"></a>
 [`PAYOUT_SIGNER_NOT_ELIGIBLE`](/errors/gateway/#PAYOUT_SIGNER_NOT_ELIGIBLE)
+
+<a id="PAYOUT_WALLET_TEMPO_REFUSED"></a>
+[`PAYOUT_WALLET_TEMPO_REFUSED`](/errors/gateway/#PAYOUT_WALLET_TEMPO_REFUSED)
+
+<a id="PAYOUT_WALLET_TEMPO_UNVERIFIED"></a>
+[`PAYOUT_WALLET_TEMPO_UNVERIFIED`](/errors/gateway/#PAYOUT_WALLET_TEMPO_UNVERIFIED)
 
 <a id="PIN_CHANGE_UNCONFIRMED"></a>
 [`PIN_CHANGE_UNCONFIRMED`](/errors/gateway/#PIN_CHANGE_UNCONFIRMED)
@@ -1650,6 +1668,9 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="RECIPIENT_LIGHTNING_RECEIVER_REQUIRED"></a>
 [`RECIPIENT_LIGHTNING_RECEIVER_REQUIRED`](/errors/gateway/#RECIPIENT_LIGHTNING_RECEIVER_REQUIRED)
 
+<a id="RECIPIENT_PAYOUT_WALLET_TEMPO_REFUSED"></a>
+[`RECIPIENT_PAYOUT_WALLET_TEMPO_REFUSED`](/errors/gateway/#RECIPIENT_PAYOUT_WALLET_TEMPO_REFUSED)
+
 <a id="RECIPIENT_SET_MISMATCH"></a>
 [`RECIPIENT_SET_MISMATCH`](/errors/gateway/#RECIPIENT_SET_MISMATCH)
 
@@ -1676,6 +1697,9 @@ The catalog records owning source locations and pinned external contributions. A
 
 <a id="RELINK_SOURCE_ORG_NOT_EMPTY"></a>
 [`RELINK_SOURCE_ORG_NOT_EMPTY`](/errors/gateway/#RELINK_SOURCE_ORG_NOT_EMPTY)
+
+<a id="RELINK_SOURCE_PAYOUT_WALLET_SELECTED"></a>
+[`RELINK_SOURCE_PAYOUT_WALLET_SELECTED`](/errors/gateway/#RELINK_SOURCE_PAYOUT_WALLET_SELECTED)
 
 <a id="REMOTE_BUILD_UNSUPPORTED"></a>
 [`REMOTE_BUILD_UNSUPPORTED`](/errors/client/#REMOTE_BUILD_UNSUPPORTED)
@@ -1917,6 +1941,12 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="SPEND_APPROVAL_REQUIRED"></a>
 [`SPEND_APPROVAL_REQUIRED`](/errors/client/#SPEND_APPROVAL_REQUIRED)
 
+<a id="SPEND_CAP_EXCEEDED"></a>
+[`SPEND_CAP_EXCEEDED`](/errors/gateway/#SPEND_CAP_EXCEEDED)
+
+<a id="SPEND_CAP_PER_TX_EXCEEDED"></a>
+[`SPEND_CAP_PER_TX_EXCEEDED`](/errors/gateway/#SPEND_CAP_PER_TX_EXCEEDED)
+
 <a id="SQL_BATCH_STATEMENT_FAILED"></a>
 [`SQL_BATCH_STATEMENT_FAILED`](/errors/gateway/#SQL_BATCH_STATEMENT_FAILED)
 
@@ -1932,6 +1962,30 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="STORAGE_UNAVAILABLE"></a>
 [`STORAGE_UNAVAILABLE`](/errors/gateway/#STORAGE_UNAVAILABLE)
 
+<a id="STRIPE_ACCOUNT_NOT_FOUND"></a>
+[`STRIPE_ACCOUNT_NOT_FOUND`](/errors/gateway/#STRIPE_ACCOUNT_NOT_FOUND)
+
+<a id="STRIPE_ACCOUNT_ONBOARDING_INCOMPLETE"></a>
+[`STRIPE_ACCOUNT_ONBOARDING_INCOMPLETE`](/errors/gateway/#STRIPE_ACCOUNT_ONBOARDING_INCOMPLETE)
+
+<a id="STRIPE_ACCOUNT_REQUIRED"></a>
+[`STRIPE_ACCOUNT_REQUIRED`](/errors/gateway/#STRIPE_ACCOUNT_REQUIRED)
+
+<a id="STRIPE_ACCOUNT_RESTRICTED"></a>
+[`STRIPE_ACCOUNT_RESTRICTED`](/errors/gateway/#STRIPE_ACCOUNT_RESTRICTED)
+
+<a id="STRIPE_CHECKOUT_SESSION_NOT_FOUND"></a>
+[`STRIPE_CHECKOUT_SESSION_NOT_FOUND`](/errors/gateway/#STRIPE_CHECKOUT_SESSION_NOT_FOUND)
+
+<a id="STRIPE_CONNECT_UNAVAILABLE"></a>
+[`STRIPE_CONNECT_UNAVAILABLE`](/errors/gateway/#STRIPE_CONNECT_UNAVAILABLE)
+
+<a id="STRIPE_RETURN_URL_NOT_ALLOWED"></a>
+[`STRIPE_RETURN_URL_NOT_ALLOWED`](/errors/gateway/#STRIPE_RETURN_URL_NOT_ALLOWED)
+
+<a id="STRIPE_UPSTREAM_ERROR"></a>
+[`STRIPE_UPSTREAM_ERROR`](/errors/gateway/#STRIPE_UPSTREAM_ERROR)
+
 <a id="SUBDOMAIN_MULTI_NOT_SUPPORTED"></a>
 [`SUBDOMAIN_MULTI_NOT_SUPPORTED`](/errors/client/#SUBDOMAIN_MULTI_NOT_SUPPORTED)
 
@@ -1944,6 +1998,21 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="TABLE_NOT_LIVE"></a>
 [`TABLE_NOT_LIVE`](/errors/gateway/#TABLE_NOT_LIVE)
 
+<a id="TENANT_MPP_PAYMENT_INVALID"></a>
+[`TENANT_MPP_PAYMENT_INVALID`](/errors/gateway/#TENANT_MPP_PAYMENT_INVALID)
+
+<a id="TENANT_MPP_PAYMENT_REFUSED"></a>
+[`TENANT_MPP_PAYMENT_REFUSED`](/errors/gateway/#TENANT_MPP_PAYMENT_REFUSED)
+
+<a id="TENANT_MPP_SETTLEMENT_UNCERTAIN"></a>
+[`TENANT_MPP_SETTLEMENT_UNCERTAIN`](/errors/gateway/#TENANT_MPP_SETTLEMENT_UNCERTAIN)
+
+<a id="TENANT_X402_PAYMENT_INVALID"></a>
+[`TENANT_X402_PAYMENT_INVALID`](/errors/gateway/#TENANT_X402_PAYMENT_INVALID)
+
+<a id="TENANT_X402_PAYMENT_MISSING"></a>
+[`TENANT_X402_PAYMENT_MISSING`](/errors/gateway/#TENANT_X402_PAYMENT_MISSING)
+
 <a id="TEST_MODE_DISABLED"></a>
 [`TEST_MODE_DISABLED`](/errors/gateway/#TEST_MODE_DISABLED)
 
@@ -1953,6 +2022,9 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="TIER_FEATURE_REQUIRED"></a>
 [`TIER_FEATURE_REQUIRED`](/errors/gateway/#TIER_FEATURE_REQUIRED)
 
+<a id="TIER_LIMIT_EXCEEDED"></a>
+[`TIER_LIMIT_EXCEEDED`](/errors/gateway/#TIER_LIMIT_EXCEEDED)
+
 <a id="TIER_PAYMENT_IDENTITY_REQUIRED"></a>
 [`TIER_PAYMENT_IDENTITY_REQUIRED`](/errors/gateway/#TIER_PAYMENT_IDENTITY_REQUIRED)
 
@@ -1961,6 +2033,9 @@ The catalog records owning source locations and pinned external contributions. A
 
 <a id="TIER_PAYMENT_INTENT_MISMATCH"></a>
 [`TIER_PAYMENT_INTENT_MISMATCH`](/errors/gateway/#TIER_PAYMENT_INTENT_MISMATCH)
+
+<a id="TIER_REQUIRED"></a>
+[`TIER_REQUIRED`](/errors/gateway/#TIER_REQUIRED)
 
 <a id="TOO_MANY_ENCODES_QUEUED"></a>
 [`TOO_MANY_ENCODES_QUEUED`](/errors/gateway/#TOO_MANY_ENCODES_QUEUED)
@@ -2250,8 +2325,20 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="WALLET_NOT_FOUND"></a>
 [`WALLET_NOT_FOUND`](/errors/client/#WALLET_NOT_FOUND)
 
+<a id="WALLET_PROOF_DOMAIN"></a>
+[`WALLET_PROOF_DOMAIN`](/errors/gateway/#WALLET_PROOF_DOMAIN)
+
+<a id="WALLET_PROOF_EXPIRED"></a>
+[`WALLET_PROOF_EXPIRED`](/errors/gateway/#WALLET_PROOF_EXPIRED)
+
 <a id="WALLET_PROOF_INVALID"></a>
 [`WALLET_PROOF_INVALID`](/errors/gateway/#WALLET_PROOF_INVALID)
+
+<a id="WALLET_PROOF_MISSING"></a>
+[`WALLET_PROOF_MISSING`](/errors/gateway/#WALLET_PROOF_MISSING)
+
+<a id="WALLET_PROOF_STALE"></a>
+[`WALLET_PROOF_STALE`](/errors/gateway/#WALLET_PROOF_STALE)
 
 <a id="WALLET_PROTECTED"></a>
 [`WALLET_PROTECTED`](/errors/client/#WALLET_PROTECTED)
@@ -2264,6 +2351,9 @@ The catalog records owning source locations and pinned external contributions. A
 
 <a id="WALLET_SIGNER_MISMATCH"></a>
 [`WALLET_SIGNER_MISMATCH`](/errors/gateway/#WALLET_SIGNER_MISMATCH)
+
+<a id="WEBHOOK_SIGNATURE_INVALID"></a>
+[`WEBHOOK_SIGNATURE_INVALID`](/errors/gateway/#WEBHOOK_SIGNATURE_INVALID)
 
 <a id="WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS"></a>
 [`WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS`](/errors/client/#WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS)

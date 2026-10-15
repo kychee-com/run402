@@ -412,6 +412,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="CI_PROJECT_REQUIRED"></a>
 [`CI_PROJECT_REQUIRED`](/errors/client/#CI_PROJECT_REQUIRED)
 
+<a id="ci_route_scope_denied"></a>
+<a id="CI_ROUTE_SCOPE_DENIED"></a>
+[`CI_ROUTE_SCOPE_DENIED`](/errors/gateway/#CI_ROUTE_SCOPE_DENIED)
+
 <a id="ci_subject_required"></a>
 <a id="CI_SUBJECT_REQUIRED"></a>
 [`CI_SUBJECT_REQUIRED`](/errors/client/#CI_SUBJECT_REQUIRED)
@@ -758,6 +762,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="idempotency_key_duplicate"></a>
 <a id="IDEMPOTENCY_KEY_DUPLICATE"></a>
 [`IDEMPOTENCY_KEY_DUPLICATE`](/errors/gateway/#IDEMPOTENCY_KEY_DUPLICATE)
+
+<a id="idempotency_key_in_progress"></a>
+<a id="IDEMPOTENCY_KEY_IN_PROGRESS"></a>
+[`IDEMPOTENCY_KEY_IN_PROGRESS`](/errors/gateway/#IDEMPOTENCY_KEY_IN_PROGRESS)
 
 <a id="idempotency_key_invalid"></a>
 <a id="IDEMPOTENCY_KEY_INVALID"></a>
@@ -1393,6 +1401,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="MPP_LIGHTNING_UNAVAILABLE"></a>
 [`MPP_LIGHTNING_UNAVAILABLE`](/errors/gateway/#MPP_LIGHTNING_UNAVAILABLE)
 
+<a id="mpp_tempo_unavailable"></a>
+<a id="MPP_TEMPO_UNAVAILABLE"></a>
+[`MPP_TEMPO_UNAVAILABLE`](/errors/gateway/#MPP_TEMPO_UNAVAILABLE)
+
 <a id="network_error"></a>
 <a id="NETWORK_ERROR"></a>
 [`NETWORK_ERROR`](/errors/client/#NETWORK_ERROR)
@@ -1553,6 +1565,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="PAYMENT_CREDENTIAL_INVALID"></a>
 [`PAYMENT_CREDENTIAL_INVALID`](/errors/gateway/#PAYMENT_CREDENTIAL_INVALID)
 
+<a id="payment_credentials_ambiguous"></a>
+<a id="PAYMENT_CREDENTIALS_AMBIGUOUS"></a>
+[`PAYMENT_CREDENTIALS_AMBIGUOUS`](/errors/gateway/#PAYMENT_CREDENTIALS_AMBIGUOUS)
+
 <a id="payment_credited"></a>
 <a id="PAYMENT_CREDITED"></a>
 [`PAYMENT_CREDITED`](/errors/gateway/#PAYMENT_CREDITED)
@@ -1667,6 +1683,14 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="payout_signer_not_eligible"></a>
 <a id="PAYOUT_SIGNER_NOT_ELIGIBLE"></a>
 [`PAYOUT_SIGNER_NOT_ELIGIBLE`](/errors/gateway/#PAYOUT_SIGNER_NOT_ELIGIBLE)
+
+<a id="payout_wallet_tempo_refused"></a>
+<a id="PAYOUT_WALLET_TEMPO_REFUSED"></a>
+[`PAYOUT_WALLET_TEMPO_REFUSED`](/errors/gateway/#PAYOUT_WALLET_TEMPO_REFUSED)
+
+<a id="payout_wallet_tempo_unverified"></a>
+<a id="PAYOUT_WALLET_TEMPO_UNVERIFIED"></a>
+[`PAYOUT_WALLET_TEMPO_UNVERIFIED`](/errors/gateway/#PAYOUT_WALLET_TEMPO_UNVERIFIED)
 
 <a id="pin_change_unconfirmed"></a>
 <a id="PIN_CHANGE_UNCONFIRMED"></a>
@@ -2167,6 +2191,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="RECIPIENT_LIGHTNING_RECEIVER_REQUIRED"></a>
 [`RECIPIENT_LIGHTNING_RECEIVER_REQUIRED`](/errors/gateway/#RECIPIENT_LIGHTNING_RECEIVER_REQUIRED)
 
+<a id="recipient_payout_wallet_tempo_refused"></a>
+<a id="RECIPIENT_PAYOUT_WALLET_TEMPO_REFUSED"></a>
+[`RECIPIENT_PAYOUT_WALLET_TEMPO_REFUSED`](/errors/gateway/#RECIPIENT_PAYOUT_WALLET_TEMPO_REFUSED)
+
 <a id="recipient_set_mismatch"></a>
 <a id="RECIPIENT_SET_MISMATCH"></a>
 [`RECIPIENT_SET_MISMATCH`](/errors/gateway/#RECIPIENT_SET_MISMATCH)
@@ -2202,6 +2230,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="relink_source_org_not_empty"></a>
 <a id="RELINK_SOURCE_ORG_NOT_EMPTY"></a>
 [`RELINK_SOURCE_ORG_NOT_EMPTY`](/errors/gateway/#RELINK_SOURCE_ORG_NOT_EMPTY)
+
+<a id="relink_source_payout_wallet_selected"></a>
+<a id="RELINK_SOURCE_PAYOUT_WALLET_SELECTED"></a>
+[`RELINK_SOURCE_PAYOUT_WALLET_SELECTED`](/errors/gateway/#RELINK_SOURCE_PAYOUT_WALLET_SELECTED)
 
 <a id="remote_build_unsupported"></a>
 <a id="REMOTE_BUILD_UNSUPPORTED"></a>
@@ -2521,6 +2553,14 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="SPEND_APPROVAL_REQUIRED"></a>
 [`SPEND_APPROVAL_REQUIRED`](/errors/client/#SPEND_APPROVAL_REQUIRED)
 
+<a id="spend_cap_exceeded"></a>
+<a id="SPEND_CAP_EXCEEDED"></a>
+[`SPEND_CAP_EXCEEDED`](/errors/gateway/#SPEND_CAP_EXCEEDED)
+
+<a id="spend_cap_per_tx_exceeded"></a>
+<a id="SPEND_CAP_PER_TX_EXCEEDED"></a>
+[`SPEND_CAP_PER_TX_EXCEEDED`](/errors/gateway/#SPEND_CAP_PER_TX_EXCEEDED)
+
 <a id="sql_batch_statement_failed"></a>
 <a id="SQL_BATCH_STATEMENT_FAILED"></a>
 [`SQL_BATCH_STATEMENT_FAILED`](/errors/gateway/#SQL_BATCH_STATEMENT_FAILED)
@@ -2541,6 +2581,38 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="STORAGE_UNAVAILABLE"></a>
 [`STORAGE_UNAVAILABLE`](/errors/gateway/#STORAGE_UNAVAILABLE)
 
+<a id="stripe_account_not_found"></a>
+<a id="STRIPE_ACCOUNT_NOT_FOUND"></a>
+[`STRIPE_ACCOUNT_NOT_FOUND`](/errors/gateway/#STRIPE_ACCOUNT_NOT_FOUND)
+
+<a id="stripe_account_onboarding_incomplete"></a>
+<a id="STRIPE_ACCOUNT_ONBOARDING_INCOMPLETE"></a>
+[`STRIPE_ACCOUNT_ONBOARDING_INCOMPLETE`](/errors/gateway/#STRIPE_ACCOUNT_ONBOARDING_INCOMPLETE)
+
+<a id="stripe_account_required"></a>
+<a id="STRIPE_ACCOUNT_REQUIRED"></a>
+[`STRIPE_ACCOUNT_REQUIRED`](/errors/gateway/#STRIPE_ACCOUNT_REQUIRED)
+
+<a id="stripe_account_restricted"></a>
+<a id="STRIPE_ACCOUNT_RESTRICTED"></a>
+[`STRIPE_ACCOUNT_RESTRICTED`](/errors/gateway/#STRIPE_ACCOUNT_RESTRICTED)
+
+<a id="stripe_checkout_session_not_found"></a>
+<a id="STRIPE_CHECKOUT_SESSION_NOT_FOUND"></a>
+[`STRIPE_CHECKOUT_SESSION_NOT_FOUND`](/errors/gateway/#STRIPE_CHECKOUT_SESSION_NOT_FOUND)
+
+<a id="stripe_connect_unavailable"></a>
+<a id="STRIPE_CONNECT_UNAVAILABLE"></a>
+[`STRIPE_CONNECT_UNAVAILABLE`](/errors/gateway/#STRIPE_CONNECT_UNAVAILABLE)
+
+<a id="stripe_return_url_not_allowed"></a>
+<a id="STRIPE_RETURN_URL_NOT_ALLOWED"></a>
+[`STRIPE_RETURN_URL_NOT_ALLOWED`](/errors/gateway/#STRIPE_RETURN_URL_NOT_ALLOWED)
+
+<a id="stripe_upstream_error"></a>
+<a id="STRIPE_UPSTREAM_ERROR"></a>
+[`STRIPE_UPSTREAM_ERROR`](/errors/gateway/#STRIPE_UPSTREAM_ERROR)
+
 <a id="subdomain_multi_not_supported"></a>
 <a id="SUBDOMAIN_MULTI_NOT_SUPPORTED"></a>
 [`SUBDOMAIN_MULTI_NOT_SUPPORTED`](/errors/client/#SUBDOMAIN_MULTI_NOT_SUPPORTED)
@@ -2557,6 +2629,26 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="TABLE_NOT_LIVE"></a>
 [`TABLE_NOT_LIVE`](/errors/gateway/#TABLE_NOT_LIVE)
 
+<a id="tenant_mpp_payment_invalid"></a>
+<a id="TENANT_MPP_PAYMENT_INVALID"></a>
+[`TENANT_MPP_PAYMENT_INVALID`](/errors/gateway/#TENANT_MPP_PAYMENT_INVALID)
+
+<a id="tenant_mpp_payment_refused"></a>
+<a id="TENANT_MPP_PAYMENT_REFUSED"></a>
+[`TENANT_MPP_PAYMENT_REFUSED`](/errors/gateway/#TENANT_MPP_PAYMENT_REFUSED)
+
+<a id="tenant_mpp_settlement_uncertain"></a>
+<a id="TENANT_MPP_SETTLEMENT_UNCERTAIN"></a>
+[`TENANT_MPP_SETTLEMENT_UNCERTAIN`](/errors/gateway/#TENANT_MPP_SETTLEMENT_UNCERTAIN)
+
+<a id="tenant_x402_payment_invalid"></a>
+<a id="TENANT_X402_PAYMENT_INVALID"></a>
+[`TENANT_X402_PAYMENT_INVALID`](/errors/gateway/#TENANT_X402_PAYMENT_INVALID)
+
+<a id="tenant_x402_payment_missing"></a>
+<a id="TENANT_X402_PAYMENT_MISSING"></a>
+[`TENANT_X402_PAYMENT_MISSING`](/errors/gateway/#TENANT_X402_PAYMENT_MISSING)
+
 <a id="test_mode_disabled"></a>
 <a id="TEST_MODE_DISABLED"></a>
 [`TEST_MODE_DISABLED`](/errors/gateway/#TEST_MODE_DISABLED)
@@ -2569,6 +2661,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="TIER_FEATURE_REQUIRED"></a>
 [`TIER_FEATURE_REQUIRED`](/errors/gateway/#TIER_FEATURE_REQUIRED)
 
+<a id="tier_limit_exceeded"></a>
+<a id="TIER_LIMIT_EXCEEDED"></a>
+[`TIER_LIMIT_EXCEEDED`](/errors/gateway/#TIER_LIMIT_EXCEEDED)
+
 <a id="tier_payment_identity_required"></a>
 <a id="TIER_PAYMENT_IDENTITY_REQUIRED"></a>
 [`TIER_PAYMENT_IDENTITY_REQUIRED`](/errors/gateway/#TIER_PAYMENT_IDENTITY_REQUIRED)
@@ -2580,6 +2676,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="tier_payment_intent_mismatch"></a>
 <a id="TIER_PAYMENT_INTENT_MISMATCH"></a>
 [`TIER_PAYMENT_INTENT_MISMATCH`](/errors/gateway/#TIER_PAYMENT_INTENT_MISMATCH)
+
+<a id="tier_required"></a>
+<a id="TIER_REQUIRED"></a>
+[`TIER_REQUIRED`](/errors/gateway/#TIER_REQUIRED)
 
 <a id="too_many_encodes_queued"></a>
 <a id="TOO_MANY_ENCODES_QUEUED"></a>
@@ -2964,9 +3064,25 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="WALLET_NOT_FOUND"></a>
 [`WALLET_NOT_FOUND`](/errors/client/#WALLET_NOT_FOUND)
 
+<a id="wallet_proof_domain"></a>
+<a id="WALLET_PROOF_DOMAIN"></a>
+[`WALLET_PROOF_DOMAIN`](/errors/gateway/#WALLET_PROOF_DOMAIN)
+
+<a id="wallet_proof_expired"></a>
+<a id="WALLET_PROOF_EXPIRED"></a>
+[`WALLET_PROOF_EXPIRED`](/errors/gateway/#WALLET_PROOF_EXPIRED)
+
 <a id="wallet_proof_invalid"></a>
 <a id="WALLET_PROOF_INVALID"></a>
 [`WALLET_PROOF_INVALID`](/errors/gateway/#WALLET_PROOF_INVALID)
+
+<a id="wallet_proof_missing"></a>
+<a id="WALLET_PROOF_MISSING"></a>
+[`WALLET_PROOF_MISSING`](/errors/gateway/#WALLET_PROOF_MISSING)
+
+<a id="wallet_proof_stale"></a>
+<a id="WALLET_PROOF_STALE"></a>
+[`WALLET_PROOF_STALE`](/errors/gateway/#WALLET_PROOF_STALE)
 
 <a id="wallet_protected"></a>
 <a id="WALLET_PROTECTED"></a>
@@ -2983,6 +3099,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="wallet_signer_mismatch"></a>
 <a id="WALLET_SIGNER_MISMATCH"></a>
 [`WALLET_SIGNER_MISMATCH`](/errors/gateway/#WALLET_SIGNER_MISMATCH)
+
+<a id="webhook_signature_invalid"></a>
+<a id="WEBHOOK_SIGNATURE_INVALID"></a>
+[`WEBHOOK_SIGNATURE_INVALID`](/errors/gateway/#WEBHOOK_SIGNATURE_INVALID)
 
 <a id="wildcard_route_excludes_mutation_methods"></a>
 <a id="WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS"></a>
