@@ -25,6 +25,7 @@ import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fail } from "./sdk-errors.mjs";
+import { apiBase } from "./config.mjs";
 
 const HELP = `run402 dev — Run Astro dev with Run402 context
 
@@ -100,7 +101,7 @@ export async function run(sub, args = []) {
 
   console.log(`run402 dev — Astro on http://${host}:${port}`);
   console.log(`  project:  ${projectId}`);
-  console.log(`  api_base: ${process.env.RUN402_API_BASE ?? "https://api.run402.com"}`);
+  console.log(`  api_base: ${apiBase()}`);
   console.log(`  env: .env.local ${existsSync(envFile) ? "loaded" : "not present (using process env)"}`);
   console.log("");
 

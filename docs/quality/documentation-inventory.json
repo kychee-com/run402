@@ -50,7 +50,7 @@
       "purpose": "maintainer",
       "interface": "mixed",
       "exception": "Repository development and implementation instructions; product operations still prefer CLI.",
-      "sha256": "4d030f4ad825d3535b7e1cf509311a3d785df5dbc7fcee72f253472066645a25",
+      "sha256": "638aef3ecc09b1896ce842c118c9e495fbca0afc3ec095563b6c6e7bf355f2f9",
       "outputs": [],
       "url": null,
       "checks": [
@@ -850,7 +850,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "e68f6a7f4ee4696d1bf17be52a1462a932d2ac251b2b32977369a785c6316d5a",
+      "sha256": "654e21bb7894f28b4a4af227dd56142b79d72090f2a77e0cb72d62e422c1bfb6",
       "outputs": [],
       "url": null,
       "checks": [
@@ -1590,7 +1590,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "443ad9fa643e503c8c32597acaf80f43eab9f7a395c4b3cdaf8971e3b71c9fa0",
+      "sha256": "42896057d28a022fe26719f655c54a064a627a44460b79a914d84e60f581e7b6",
       "outputs": [],
       "url": null,
       "checks": [

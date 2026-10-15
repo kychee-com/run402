@@ -29,7 +29,7 @@ import { deployAction, upDeployAction } from "./local-actions.js";
 import { describeLightning, ensureLightningWallet, readLightningBalance } from "./lightning-wallet.js";
 import { hardenedGit } from "./vault-snapshot.js";
 import { railBalanceKeys, readOnChainBalances, sumOnChainBalances, type OnChainBalances } from "./onchain-balances.js";
-import { PATH_USD, TEMPO_MODERATO } from "./tempo.js";
+import { PATH_USD, TEMPO_MODERATO, requestTempoFaucet } from "./tempo.js";
 
 const USDC_ABI = [{ name: "balanceOf", type: "function", stateMutability: "view", inputs: [{ name: "account", type: "address" }], outputs: [{ name: "", type: "uint256" }] }] as const;
 const USDC_SEPOLIA = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
@@ -310,13 +310,8 @@ export async function runInit(r: InitSdk, client: Client, opts: InitOptions = {}
     if (balance === 0) {
       line("Balance", "0 pathUSD — requesting Tempo faucet...");
       try {
-        const res = await fetch(TEMPO_MODERATO.rpcUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ jsonrpc: "2.0", method: "tempo_fundAddress", params: [localWallet.address], id: 1 }),
-        });
-        const data = (await res.json()) as { result?: unknown; error?: { message?: string } };
-        if (data.result) {
+        const faucet = await requestTempoFaucet(localWallet.address);
+        if (faucet.funded) {
           // The faucet settles on-chain before the RPC read sees it: poll up to 30 s.
           for (let i = 0; i < 30; i++) {
             await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -333,8 +328,8 @@ export async function runInit(r: InitSdk, client: Client, opts: InitOptions = {}
             line("Balance", "faucet sent — not yet confirmed on-chain");
           }
         } else {
-          fundingError = data.error ?? { message: "Faucet failed" };
-          line("Balance", `faucet failed: ${data.error?.message || "unknown error"}`);
+          fundingError = { message: faucet.message };
+          line("Balance", `faucet failed: ${faucet.message}`);
         }
       } catch (err) {
         fundingError = err;

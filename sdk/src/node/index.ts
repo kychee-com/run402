@@ -31,7 +31,7 @@ export {
   type OnChainBalanceKey,
   type OnChainBalances,
 } from "./onchain-balances.js";
-export { PATH_USD, TEMPO_MAINNET, TEMPO_MODERATO, type TempoChain } from "./tempo.js";
+export { PATH_USD, TEMPO_MAINNET, TEMPO_MODERATO, requestTempoFaucet, type TempoChain, type TempoFaucetOutcome } from "./tempo.js";
 export {
   adoptKmsKey,
   personalMessageSignerFor,

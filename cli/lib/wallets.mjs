@@ -15,7 +15,7 @@ import { failUnknownSubcommand } from "./argparse.mjs";
 import { fail, reportLocalOrSdkError, reportSdkError } from "./sdk-errors.mjs";
 import { readWallet as readActiveWallet, saveWallet as saveActiveWallet } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
-import { ALL_ON_CHAIN_BALANCE_KEYS, readOnChainBalances, TEMPO_MODERATO } from "#sdk/node";
+import { ALL_ON_CHAIN_BALANCE_KEYS, readOnChainBalances, requestTempoFaucet } from "#sdk/node";
 
 const HELP = `run402 wallets — manage named wallets (profiles)
 
@@ -235,16 +235,16 @@ async function cmdFund() {
   if (w.rail === "mpp") {
     // Tempo Moderato faucet (test pathUSD) — instant, no polling needed.
     // Paid tiers and images prefer pathUSD on Tempo mainnet, which no faucet gives.
-    const res = await fetch(TEMPO_MODERATO.rpcUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jsonrpc: "2.0", method: "tempo_fundAddress", params: [w.address], id: 1 }),
-    });
-    const data = await res.json();
-    if (data.error) {
+    let faucet;
+    try {
+      faucet = await requestTempoFaucet(w.address);
+    } catch (err) {
+      reportSdkError(err);
+    }
+    if (!faucet.funded) {
       fail({
         code: "FAUCET_FAILED",
-        message: data.error.message || "Tempo faucet failed",
+        message: faucet.message,
         details: { rail: "mpp" },
       });
     }

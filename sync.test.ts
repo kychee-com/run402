@@ -2185,6 +2185,11 @@ describe("SDK surface alignment", () => {
 
 // ─── CLI/MCP SDK-boundary guard (add-vault task 5.0) ──────────────────────
 //
+// The general rule — no CLI or MCP source calls `fetch`, imports an HTTP
+// client, or spells the API host itself — is sdk-boundary-gate.test.mjs
+// (vision principle 13). This block is the vault-specific half: the shims
+// listed below may not grow crypto, git, or HTTP of their own either.
+//
 // "The SDK owns ALL the smarts; the CLI is a thin shim." The client-surface
 // spec makes that architectural law: every piece of vault protocol behaviour —
 // crypto core, keystore, creation journal, snapshot + capture, publication
@@ -2258,51 +2263,6 @@ const FORBIDDEN_SHIM_CALLS: Array<{ pattern: RegExp; why: string }> = [
 ];
 
 describe("CLI/MCP SDK-boundary guard", () => {
-  it("keeps production interface code from bypassing the SDK for gateway calls", () => {
-    const allowlist = new Map<string, RegExp[]>([
-      // The v2.1.0 unified-apply pipeline removed every presigned-PUT
-      // call in cli/lib/assets.mjs — it now delegates to `sdk.assets.put`
-      // (which routes through the apply hero). That allowlist entry is kept
-      // out so a regression that reintroduces raw HTTP fails the guard.
-      ["cli/lib/wallets.mjs", [/\bfetch\(TEMPO_MODERATO\.rpcUrl\b/]], // Tempo Moderato faucet RPC
-      ["cli/lib/ci.mjs", [/\bfetch\(`https:\/\/api\.github\.com\/repos\//]], // GitHub repository lookup
-      // These are the intentional SDK buyer calls added by GH-607. The guard's
-      // lexical `fetch(` scan cannot distinguish `sdk.pay.fetch` from raw HTTP.
-      ["cli/lib/pay.mjs", [/\.pay\.fetch\(/]],
-      // doctor-source-scan.mjs documents the canonical fix string for
-      // browser-bearer scans — the string itself contains "auth.fetch()"
-      // as the recommended replacement, not a real fetch call.
-      ["cli/lib/doctor-source-scan.mjs", [/Use auth\.fetch\(\) for same-origin/]],
-      // init-astro.mjs emits scaffold *strings* that get written into the
-      // user's generated project. `auth.fetch("/api/internal")` is the
-      // recommended SDK pattern shown in the template — it is template
-      // text, not a CLI-runtime fetch.
-      ["cli/lib/init-astro.mjs", [/auth\.fetch\("\/api\/internal"\)/, /Cross-origin-safe fetch/]],
-    ]);
-
-    const violations: string[] = [];
-    for (const file of productionInterfaceFiles()) {
-      const rel = file.slice(__dirname.length + 1);
-      const allowed = allowlist.get(rel) ?? [];
-      const lines = readFileSync(file, "utf8").split(/\r?\n/);
-      lines.forEach((line, index) => {
-        if (/\bapiRequest\s*\(/.test(line)) {
-          violations.push(`${rel}:${index + 1}: apiRequest()`);
-        }
-        if (/\bfetch\s*\(/.test(line) && !allowed.some((pattern) => pattern.test(line))) {
-          violations.push(`${rel}:${index + 1}: ${line.trim()}`);
-        }
-      });
-    }
-
-    assert.deepEqual(
-      violations,
-      [],
-      "Production CLI/MCP handlers must call Run402 through @run402/sdk. " +
-        "Only presigned storage PUTs and non-Run402 external RPC/API calls may be allowlisted.",
-    );
-  });
-
   it("keeps server-capable custom-domain handlers from preflighting local project-key cache", () => {
     const serverCapableDomainHandlers = [
       "cli/lib/domains.mjs",
@@ -2389,21 +2349,6 @@ describe("CLI/MCP SDK-boundary guard", () => {
     );
   });
 });
-
-function productionInterfaceFiles(): string[] {
-  const cliLib = join(__dirname, "cli/lib");
-  return [
-    ...readdirSync(cliLib)
-      .filter((name) => name.endsWith(".mjs") && !name.endsWith(".test.mjs"))
-      .map((name) => join(cliLib, name)),
-    // The whole MCP server: the eight tools, the sandbox, and the chain proxy.
-    ...sourceFiles(join(__dirname, "src")),
-    // `git-remote-run402` is a production interface too, and it lives at the
-    // CLI package root rather than under `cli/lib/`, so a directory scan alone
-    // would leave the one binary git itself executes unguarded.
-    ...(existsSync(join(__dirname, "cli/git-remote-run402.mjs")) ? [join(__dirname, "cli/git-remote-run402.mjs")] : []),
-  ].sort();
-}
 
 describe("SURFACE consistency", () => {
   it("has no duplicate capability IDs", () => {

@@ -78,7 +78,7 @@ Tests are excluded from the build (`tsconfig.json`, `core/tsconfig.json`, and fr
 - OpenClaw commands in `openclaw/scripts/*.mjs` match the expected set (follows re-exports to CLI)
 - CLI and OpenClaw have identical command sets (parity)
 - Every SURFACE capability maps to an SDK method (or explicit `null` in `SDK_BY_CAPABILITY`); every SDK method is referenced by SURFACE (orphan check)
-- The CLI/MCP SDK-boundary guard: no production interface file (`cli/lib/**`, `src/**`) calls the gateway except through the SDK
+- The vault shim half of the CLI/MCP SDK-boundary guard: the vault shims under `cli/lib/**` and `cli/git-remote-run402.mjs` grow no crypto, git, or HTTP of their own (the general rule is `sdk-boundary-gate.test.mjs`, below)
 
 When adding a new command, add it to the `SURFACE` array **and** `SDK_BY_CAPABILITY` in `sync.test.ts`. A new SDK method needs no MCP work: `run` reaches it.
 
@@ -112,7 +112,7 @@ core/      ← Node-only primitives (keystore, wallet, SIWE signing, config path
               run402-core, then bump the Cloud gateway dependency and redeploy.
 ```
 
-The SDK is the canonical kernel — a single typed client with a `CredentialsProvider` interface for credential access and a pluggable `fetch` (for x402 wrapping in Node, session tokens in sandboxes). MCP handlers and CLI commands are thin shims: argv/schema parsing + SDK call + output formatting. They must not call Run402 gateway endpoints directly; add missing SDK methods first. The only direct `fetch()` calls allowed at those edges are non-Run402 external services (Tempo RPC, GitHub API) and presigned storage part URLs returned by the SDK. `sync.test.ts` enforces this boundary. MCP's `run` does not load the SDK into its sandbox: `r` inside the sandbox is a recorder whose chains replay on the host against the real Node SDK client, so the snippet sees the SDK's typed surface and nothing else.
+The SDK is the canonical kernel — a single typed client with a `CredentialsProvider` interface for credential access and a pluggable `fetch` (for x402 wrapping in Node, session tokens in sandboxes). MCP handlers and CLI commands are thin shims: argv/schema parsing + SDK call + output formatting. They must not call Run402 gateway endpoints directly; add missing SDK methods first. The only direct `fetch()` calls allowed at those edges target services that are not Run402's (GitHub's API; a chain RPC that the SDK does not already own), each named with a reason in the `ALLOWLIST` of `sdk-boundary-gate.test.mjs`, which scans every production source under `cli/` and `src/` for a bare `fetch(`, an import of `node:http` / `node:https` / `undici`, or the API host spelled as a URL literal, and fails naming the file, the line, vision principle 13, and the two ways out (move the call into the SDK as a typed method, or allowlist a non-Run402 host). The Tempo testnet faucet is the SDK's `requestTempoFaucet`, shared by `r.init()` and `run402 wallets fund`. MCP's `run` does not load the SDK into its sandbox: `r` inside the sandbox is a recorder whose chains replay on the host against the real Node SDK client, so the snippet sees the SDK's typed surface and nothing else.
 
 ### SDK (`sdk/src/`)
 
