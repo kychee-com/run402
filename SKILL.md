@@ -546,7 +546,7 @@ run402 assets rm images/old.png
 run402 assets sign secrets/report.pdf --ttl 3600    # presigned URL for private blobs
 ```
 
-`--sort` takes `key:asc` (default), `createdAt:asc`, or `createdAt:desc`. Cursors are sort-pinned — cross-sort reuse returns `INVALID_CURSOR_FOR_SORT`. `--filter k=v` is repeatable; allowed keys: `uploaded_by`, `tag`, `format`, `is_image`, `min_width`/`max_width`/`min_height`/`max_height`. Unknown keys are rejected client-side with `INVALID_FILTER_KEY`.
+`--sort` takes `key:asc` (default), `createdAt:asc`, or `createdAt:desc`. Cursors are sort-pinned — a cursor reused under another sort returns the first page with `"reset": true`; each page carries `has_more`. `--filter k=v` is repeatable; allowed keys: `uploaded_by`, `tag`, `format`, `is_image`, `min_width`/`max_width`/`min_height`/`max_height`. Unknown keys are rejected client-side with `INVALID_FILTER_KEY`.
 
 ### Diagnose a stale CDN
 

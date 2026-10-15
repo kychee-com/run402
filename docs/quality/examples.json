@@ -113,7 +113,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/assets.md",
-    "line": 147,
+    "line": 146,
     "language": "javascript",
     "kind": "output-or-pseudocode",
     "sha256": "d9d43933429c2eb1bef214d59faeefffc5c11b76dac5d67a420d3e1349047092",
@@ -121,7 +121,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/assets.md",
-    "line": 285,
+    "line": 284,
     "language": "js",
     "kind": "application-or-sdk",
     "sha256": "d8d46ae20c855fe088f4aa6738263aa0039dcbe8e499228ea49c1bf328616d01",

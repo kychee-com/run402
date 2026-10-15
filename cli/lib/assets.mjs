@@ -139,8 +139,8 @@ Options:
   --prefix <p>        Only list keys starting with this prefix
   --limit <n>         Max results (default 100, max 1000)
   --sort <key>        v1.50: key:asc (default) | createdAt:asc | createdAt:desc.
-                      Cursor is sort-pinned — reusing a 'createdAt:*' cursor with 'key:asc'
-                      (or vice versa) returns 400 INVALID_CURSOR_FOR_SORT.
+                      Cursor is sort-pinned — a cursor reused under another sort returns
+                      the first page with "reset": true.
   --filter <k=v>      v1.50: media-picker filter (repeatable). Allowed keys:
                         - uploaded_by, tag, format (exact string match)
                         - is_image (true|false)

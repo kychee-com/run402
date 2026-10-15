@@ -553,9 +553,9 @@ export interface BlobWaitFreshResult {
 }
 
 /**
- * v1.50: sort key for {@link BlobLsOptions.sort}. Cursor semantics differ
- * per sort — the gateway returns a sort-pinned cursor that cannot be reused
- * with a different `sort` value (HTTP 400 `INVALID_CURSOR_FOR_SORT`).
+ * v1.50: sort key for {@link BlobLsOptions.sort}. The gateway returns a
+ * sort-pinned cursor; one reused under a different `sort` answers the first
+ * page with `reset: true` (see {@link BlobLsResult.reset}).
  */
 export type AssetSortKey = "key:asc" | "createdAt:asc" | "createdAt:desc";
 
@@ -607,9 +607,10 @@ export interface BlobLsOptions {
   prefix?: string;
   /** Max results. Server default 100, max 1000. */
   limit?: number;
-  /** Pagination cursor from a previous response's `next_cursor`. Cursor
-   *  is sort-pinned (v1.50): reusing a `createdAt:*` cursor with `key:asc`
-   *  (or vice versa) returns HTTP 400 `INVALID_CURSOR_FOR_SORT`. */
+  /** Pagination cursor from a previous response's `next_cursor`, echoed
+   *  with the same `sort`, `prefix` and `filter`. A cursor unusable under
+   *  this request (another sort, malformed) answers the first page with
+   *  `reset: true`, never an error. */
   cursor?: string;
   /** v1.50: sort key. Default `"key:asc"` (legacy bare-key cursor). The
    *  `createdAt:*` variants use a base64url JSON cursor `{s, ts, key}`.
@@ -704,7 +705,14 @@ export interface BlobRmResult {
 
 export interface BlobLsResult {
   blobs: BlobSummary[];
+  /** Opaque cursor for the next page; `null` on the last page. */
   next_cursor: string | null;
+  /** True when rows remain past this page. */
+  has_more: boolean;
+  /** True when the request's `cursor` was unusable under its sort (issued
+   *  for another sort, or malformed) and this is the listing's first page
+   *  instead. A caller walking pages restarts here and dedupes by `key`. */
+  reset: boolean;
 }
 
 export interface BlobSignOptions {

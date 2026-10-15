@@ -2,8 +2,8 @@
   "version": 1,
   "contributions": {
     "gateway": {
-      "revision": "21e27bb1cbf0eb0c03a3dc1f71b124ab6967b50d",
-      "sourceDigest": "8e554e78b652684c7dbb51181038314e1de9800d706b0ba75beb551986c1cc4f"
+      "revision": "e6a26f7c39b0d99ce7e4b3becb41bacf28a5e76f",
+      "sourceDigest": "56390125827cbefd87f317d8fb8af1108eec18b0a618cc4f110fd88ce8ef8115"
     },
     "core": {
       "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7"
@@ -3001,16 +3001,6 @@
         }
       ],
       "topic": "/errors/gateway/#INVALID_CURSOR"
-    },
-    {
-      "code": "INVALID_CURSOR_FOR_SORT",
-      "owners": [
-        {
-          "owner": "gateway",
-          "source": "packages/gateway/src/utils/error-envelope.ts"
-        }
-      ],
-      "topic": "/errors/gateway/#INVALID_CURSOR_FOR_SORT"
     },
     {
       "code": "INVALID_DIFF_TARGET",

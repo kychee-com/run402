@@ -1,9 +1,9 @@
 {
   "owner": "gateway",
   "repository": "kychee-com/run402-private",
-  "revision": "21e27bb1cbf0eb0c03a3dc1f71b124ab6967b50d",
+  "revision": "e6a26f7c39b0d99ce7e4b3becb41bacf28a5e76f",
   "source": "packages/gateway/src/utils/error-envelope.ts",
-  "sourceDigest": "8e554e78b652684c7dbb51181038314e1de9800d706b0ba75beb551986c1cc4f",
+  "sourceDigest": "56390125827cbefd87f317d8fb8af1108eec18b0a618cc4f110fd88ce8ef8115",
   "codes": [
     "VALIDATION_FAILED",
     "AUTH_REQUIRED",
@@ -286,7 +286,6 @@
     "INVALID_ASSET_KEY",
     "INVALID_CONTENT",
     "INVALID_CURSOR",
-    "INVALID_CURSOR_FOR_SORT",
     "INVALID_DIFF_TARGET",
     "INVALID_FILTER_KEY",
     "INVALID_FILTER_VALUE",

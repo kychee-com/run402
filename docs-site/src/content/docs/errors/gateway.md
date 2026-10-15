@@ -1001,12 +1001,6 @@ Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
 
 The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
 
-<h2 id="INVALID_CURSOR_FOR_SORT">INVALID_CURSOR_FOR_SORT</h2>
-
-Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
-
-The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
-
 <h2 id="INVALID_DIFF_TARGET">INVALID_DIFF_TARGET</h2>
 
 Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.

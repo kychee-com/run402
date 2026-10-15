@@ -777,9 +777,6 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="INVALID_CURSOR"></a>
 [`INVALID_CURSOR`](/errors/gateway/#INVALID_CURSOR)
 
-<a id="INVALID_CURSOR_FOR_SORT"></a>
-[`INVALID_CURSOR_FOR_SORT`](/errors/gateway/#INVALID_CURSOR_FOR_SORT)
-
 <a id="INVALID_DIFF_TARGET"></a>
 [`INVALID_DIFF_TARGET`](/errors/gateway/#INVALID_DIFF_TARGET)
 

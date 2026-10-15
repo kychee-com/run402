@@ -1007,10 +1007,6 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="INVALID_CURSOR"></a>
 [`INVALID_CURSOR`](/errors/gateway/#INVALID_CURSOR)
 
-<a id="invalid_cursor_for_sort"></a>
-<a id="INVALID_CURSOR_FOR_SORT"></a>
-[`INVALID_CURSOR_FOR_SORT`](/errors/gateway/#INVALID_CURSOR_FOR_SORT)
-
 <a id="invalid_diff_target"></a>
 <a id="INVALID_DIFF_TARGET"></a>
 [`INVALID_DIFF_TARGET`](/errors/gateway/#INVALID_DIFF_TARGET)
