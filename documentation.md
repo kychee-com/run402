@@ -111,7 +111,7 @@ Run `node scripts/documentation-inventory.mjs` to reject newly discovered unclas
 | public | [cli/llms-cli-assets.txt](cli/llms-cli-assets.txt) | generated / mixed | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/llms-cli-commands.txt](cli/llms-cli-commands.txt) | generated / mixed | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/llms-cli-deploy.txt](cli/llms-cli-deploy.txt) | generated / mixed | pending: source changed since editorial review | pending: source changed since publication evidence |
-| public | [cli/llms-cli-errors.txt](cli/llms-cli-errors.txt) | generated / mixed | reviewed generated contract: owning sources, distinct error envelopes, stable links; regeneration/link gates apply | hosted digest verified: 2026-09-17; portal/apex 23751749 |
+| public | [cli/llms-cli-errors.txt](cli/llms-cli-errors.txt) | generated / mixed | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/llms-cli-frontend.txt](cli/llms-cli-frontend.txt) | generated / mixed | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/llms-cli-full.txt](cli/llms-cli-full.txt) | generated / mixed | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/llms-cli-functions.txt](cli/llms-cli-functions.txt) | generated / mixed | pending: source changed since editorial review | pending: source changed since publication evidence |
@@ -150,7 +150,7 @@ Run `node scripts/documentation-inventory.mjs` to reject newly discovered unclas
 | public | [docs-site/src/content/docs/cli/assets.md](docs-site/src/content/docs/cli/assets.md) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [docs-site/src/content/docs/cli/commands.md](docs-site/src/content/docs/cli/commands.md) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [docs-site/src/content/docs/cli/deploy.md](docs-site/src/content/docs/cli/deploy.md) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
-| public | [docs-site/src/content/docs/cli/errors.md](docs-site/src/content/docs/cli/errors.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | hosted verified: 2026-09-17; portal 23751749 |
+| public | [docs-site/src/content/docs/cli/errors.md](docs-site/src/content/docs/cli/errors.md) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [docs-site/src/content/docs/cli/frontend.md](docs-site/src/content/docs/cli/frontend.md) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [docs-site/src/content/docs/cli/functions.md](docs-site/src/content/docs/cli/functions.md) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [docs-site/src/content/docs/cli/ops.md](docs-site/src/content/docs/cli/ops.md) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
