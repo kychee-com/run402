@@ -337,36 +337,3 @@ The root `SKILL.md` is the generic CLI-first installation artifact. `openclaw/SK
 | `RUN402_GRANT_KEY` | (unset) | A grant-key bearer (`run402 grants create --key`). When set it is the only credential sent; see `sdk/src/grant-key-credentials.ts` |
 
 **Named wallets (profiles).** Hold multiple wallets on one machine via `run402 wallets` (`list`, `current`, `new <name>`, `use <name>`, `rename`, `bind`/`unbind`, `import` (a key, or `--kms <arn>`), `send`, `rm`, `fund`, `balance`, `lightning`; `wallets new default` creates the root wallet, `fund`/`balance` act on the active wallet). The SDK's `r.wallets` carries the same local wallet (`status`, `create`, `export`, `faucet`). Selection precedence: `--wallet <name>` flag > `RUN402_WALLET` env > nearest `.run402.json`/`.run402.local.json` directory binding > global `wallets use` default > `default`. A `--wallet`/binding that conflicts with `RUN402_WALLET` is a hard error (pass `--wallet`, unset the env, or `wallets unbind`). The binding file holds only a wallet *name* (no key) and is safe to commit. Each wallet has its own `wallet.json`, `projects.json`, and non-secret `meta.json` under `profiles/<name>/`; a `wallet.json` holds either a `privateKey` or a `signer` reference (an AWS KMS key ARN, no secret), and every signing site resolves its signer through `sdk/src/node/signers/` (`resolveWalletAccount`; a source-scan test keeps it the only door); the human-readable name surfaces in `run402 status`, `r.whoami()` (SDK), the MCP `status` tool, and — via a signed server-side label (`r.wallets.setLabel`/`getLabel`, gateway endpoint `/wallets/v1/:address/label`) — the console (WEB). The label push is on by default (`RUN402_WALLET_LABEL_SYNC=0` opts out). Core path resolution lives in `core/src/config.ts` (`getConfigBaseDir`/`getActiveProfile`/`getConfigDir`) + `core/src/profiles.ts`; the selection chain and the `wallets` verbs are `r.wallets` on `@run402/sdk/node` (`sdk/src/node/wallets.ts`), and `cli/lib/wallet-context.mjs` only reads `--wallet` off argv and reports a refusal.
-
-## Fleet coordination room — join at session start
-
-Agent sessions working on the run402 codebases (this repo, run402-private, run402-core) share the coordination room `run402-dev` on org `57035b1e-ec41-4ce6-a7a5-a5b2560efdd7`. Arrive:
-
-```
-export RUN402_ROOM=57035b1e-ec41-4ce6-a7a5-a5b2560efdd7/run402-dev
-run402 --wallet platform-deploy rooms join --name <pick-your-own> --task "<what you're doing>"
-run402 --wallet platform-deploy messages list --unread
-```
-
-`run402 messages wait` is the room's EAR, not just its catch-up read: block on it (default timeout 120s, max 600s — a coding harness's own shell-call ceiling) instead of polling `messages list` in a loop, and it holds on the gateway's own held read when available, degrading to bounded polling against an older one with the SAME output shape either way. Silence is a normal, exit-0 answer — `settled: false` plus `live_presences[]` naming who is still in the room, never an error.
-
-Use `--wallet platform-deploy` only on coordination commands; never export it as the session-wide wallet. Pick your own presence name — collisions get an honest suffix (Opus → Opus-2), unless you also pass `--task`, in which case a collision qualifies your name from it first (`Opus` taken + `--task "mpp triage"` → `Opus-mpp-triage`, not `Opus-2`), and the output says why. A quiet session's presence resumes automatically across an idle gap or a lost `.run402/` cache: every room call derives a stable session identity (Claude Code's own session id, Codex's own thread id, or a locally generated key persisted for this checkout — see `cli/lib/harness-context.mjs`) and the gateway revives the same presence under the same name no matter how long the ~1h TTL decayed. Two genuinely concurrent sessions never resume each other's presence. Override with `RUN402_SESSION_KEY`; `RUN402_PRESENCE_ID=<prs_…>` pins an exact known presence when a session spans repos. Omit `--task` and the CLI best-effort fills it from your harness's own thread title — set `RUN402_NO_TASK_FROM_TITLE=1` to opt out. Claim shared areas before editing (`run402 claims create repo:<area>/** --note "why"` — advisory, never blocks; release when done). End with a done / hot / next message. Use `--ack --to <observed participant>` only when a known recipient is available; otherwise broadcast without `--ack`. Tool friction goes to `--thread dx`. Need a human? Send with `--importance high` — asking is always in-policy. The `.run402/` cache dir this creates is per-checkout and never committed.
-
-**Skills announce shared-state work.** A workflow that mutates something other sessions share — production, npm, the specs — claims it before and reports it after, both best-effort (`|| true`, so a wedged room can never fail a release):
-
-```
-run402 messages send "published run402 / @run402/sdk / run402-mcp <version>: <what changed>" || true
-```
-
-The release commands themselves live in `run402-private/.claude/commands/` and are already wired. Anything you add follows the same bar: wire it only if a *second agent could be hurt by not knowing*. Reading and thinking skills (explore, recall, consult, are-we-there-yet) are deliberately not wired — announcing them is the noise that makes agents stop reading the room.
-
-### Coordination identity is not deploy authority
-
-The shared `platform-deploy` profile in the room instructions is for fleet coordination only. It is not authorization to build unrelated apps as that human principal. For a new independent demo, use the agent's own named wallet/profile and its free prototype setup, selected per command; preserve the global default. For existing authorized project work, use that project's intended credentials. Never copy a room wallet into deploy commands merely because it joined the room. Scope `--wallet platform-deploy` to room, message and claim commands, including skill announcements.
-
-### End every fresh-wallet build with keep or delete
-
-Starting a new site or app from a fresh wallet (`run402 init`, then `run402 up`) is the intended way to build demos: it exercises the cold-start path. That wallet lives only in this session, so a project left behind can never be updated or removed. Before closing the session, give the human the live URL and ask one question: **keep or delete?** Never end without asking.
-
-- **keep:** offer the project to Tal with `run402 transfer init --to tal@kychee.com --project <project_id>`, then report the `transfer_id` and its expiry (72 hours). Tal accepts from the emailed invitation into the `run402` org and takes it from there; nothing more is needed from you. (A fresh wallet cannot move the project into that org itself: `--to-org` returns 403.) Finish every deploy first, because a pending transfer blocks owner-side changes (409 `PROJECT_HAS_PENDING_TRANSFER`).
-- **delete:** `run402 projects delete <project_id> --confirm`.
