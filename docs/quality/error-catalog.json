@@ -2,8 +2,8 @@
   "version": 1,
   "contributions": {
     "gateway": {
-      "revision": "fddf965f7f135635add7d336c496ae78d889321e",
-      "sourceDigest": "deceb95513fb08e6029a1f3e190968f55c04b3f052a897e148b8aa65e9a00c8a"
+      "revision": "3340dfb0aed07dd0502b5fa25b50526a07c85f29",
+      "sourceDigest": "bbdb6b9405395d90eac78d4c88940beafaafafe3bd8046005a84fbe3fc3c67c9"
     },
     "core": {
       "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7"
@@ -1237,16 +1237,6 @@
       "topic": "/errors/gateway/#BUZZ_ENROLLMENT_SCOPE_UNSUPPORTED"
     },
     {
-      "code": "BUZZ_IDEMPOTENCY_CONFLICT",
-      "owners": [
-        {
-          "owner": "gateway",
-          "source": "packages/gateway/src/utils/error-envelope.ts"
-        }
-      ],
-      "topic": "/errors/gateway/#BUZZ_IDEMPOTENCY_CONFLICT"
-    },
-    {
       "code": "BUZZ_IDENTITY_DRIFT",
       "owners": [
         {
@@ -2369,6 +2359,16 @@
       "topic": "/errors/gateway/#IDEMPOTENCY_KEY_DUPLICATE"
     },
     {
+      "code": "IDEMPOTENCY_KEY_EXPIRED",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#IDEMPOTENCY_KEY_EXPIRED"
+    },
+    {
       "code": "IDEMPOTENCY_KEY_IN_PROGRESS",
       "owners": [
         {
@@ -2417,6 +2417,26 @@
         }
       ],
       "topic": "/errors/gateway/#IDEMPOTENCY_KEY_REUSED"
+    },
+    {
+      "code": "IDEMPOTENCY_OUTCOME_UNKNOWN",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#IDEMPOTENCY_OUTCOME_UNKNOWN"
+    },
+    {
+      "code": "IDEMPOTENCY_RESPONSE_EXPIRED",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#IDEMPOTENCY_RESPONSE_EXPIRED"
     },
     {
       "code": "IDENTITY_LINK_AGENT_REQUIRED",
@@ -2591,16 +2611,6 @@
         }
       ],
       "topic": "/errors/gateway/#IDENTITY_LINK_EVENT_TAGS_NOT_ALLOWED"
-    },
-    {
-      "code": "IDENTITY_LINK_IDEMPOTENCY_CONFLICT",
-      "owners": [
-        {
-          "owner": "gateway",
-          "source": "packages/gateway/src/utils/error-envelope.ts"
-        }
-      ],
-      "topic": "/errors/gateway/#IDENTITY_LINK_IDEMPOTENCY_CONFLICT"
     },
     {
       "code": "IDENTITY_LINK_INVALID_CURSOR",
@@ -3085,16 +3095,6 @@
         }
       ],
       "topic": "/errors/gateway/#INVALID_GRANT"
-    },
-    {
-      "code": "INVALID_IDEMPOTENCY_KEY",
-      "owners": [
-        {
-          "owner": "gateway",
-          "source": "packages/gateway/src/utils/error-envelope.ts"
-        }
-      ],
-      "topic": "/errors/gateway/#INVALID_IDEMPOTENCY_KEY"
     },
     {
       "code": "INVALID_ISSUER",
@@ -4311,6 +4311,16 @@
         }
       ],
       "topic": "/errors/gateway/#OVERRIDE_NOT_AUTHORIZED"
+    },
+    {
+      "code": "PAID_FUNCTION_FAILED",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#PAID_FUNCTION_FAILED"
     },
     {
       "code": "PASSKEY_ENROLLMENT_REQUIRED",

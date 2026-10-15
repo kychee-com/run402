@@ -276,9 +276,6 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="BUZZ_ENROLLMENT_SCOPE_UNSUPPORTED"></a>
 [`BUZZ_ENROLLMENT_SCOPE_UNSUPPORTED`](/errors/gateway/#BUZZ_ENROLLMENT_SCOPE_UNSUPPORTED)
 
-<a id="BUZZ_IDEMPOTENCY_CONFLICT"></a>
-[`BUZZ_IDEMPOTENCY_CONFLICT`](/errors/gateway/#BUZZ_IDEMPOTENCY_CONFLICT)
-
 <a id="BUZZ_IDENTITY_DRIFT"></a>
 [`BUZZ_IDENTITY_DRIFT`](/errors/gateway/#BUZZ_IDENTITY_DRIFT)
 
@@ -594,6 +591,9 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="IDEMPOTENCY_KEY_DUPLICATE"></a>
 [`IDEMPOTENCY_KEY_DUPLICATE`](/errors/gateway/#IDEMPOTENCY_KEY_DUPLICATE)
 
+<a id="IDEMPOTENCY_KEY_EXPIRED"></a>
+[`IDEMPOTENCY_KEY_EXPIRED`](/errors/gateway/#IDEMPOTENCY_KEY_EXPIRED)
+
 <a id="IDEMPOTENCY_KEY_IN_PROGRESS"></a>
 [`IDEMPOTENCY_KEY_IN_PROGRESS`](/errors/gateway/#IDEMPOTENCY_KEY_IN_PROGRESS)
 
@@ -608,6 +608,12 @@ The catalog records owning source locations and pinned external contributions. A
 
 <a id="IDEMPOTENCY_KEY_REUSED"></a>
 [`IDEMPOTENCY_KEY_REUSED`](/errors/gateway/#IDEMPOTENCY_KEY_REUSED)
+
+<a id="IDEMPOTENCY_OUTCOME_UNKNOWN"></a>
+[`IDEMPOTENCY_OUTCOME_UNKNOWN`](/errors/gateway/#IDEMPOTENCY_OUTCOME_UNKNOWN)
+
+<a id="IDEMPOTENCY_RESPONSE_EXPIRED"></a>
+[`IDEMPOTENCY_RESPONSE_EXPIRED`](/errors/gateway/#IDEMPOTENCY_RESPONSE_EXPIRED)
 
 <a id="IDENTITY_LINK_AGENT_REQUIRED"></a>
 [`IDENTITY_LINK_AGENT_REQUIRED`](/errors/gateway/#IDENTITY_LINK_AGENT_REQUIRED)
@@ -659,9 +665,6 @@ The catalog records owning source locations and pinned external contributions. A
 
 <a id="IDENTITY_LINK_EVENT_TAGS_NOT_ALLOWED"></a>
 [`IDENTITY_LINK_EVENT_TAGS_NOT_ALLOWED`](/errors/gateway/#IDENTITY_LINK_EVENT_TAGS_NOT_ALLOWED)
-
-<a id="IDENTITY_LINK_IDEMPOTENCY_CONFLICT"></a>
-[`IDENTITY_LINK_IDEMPOTENCY_CONFLICT`](/errors/gateway/#IDENTITY_LINK_IDEMPOTENCY_CONFLICT)
 
 <a id="IDENTITY_LINK_INVALID_CURSOR"></a>
 [`IDENTITY_LINK_INVALID_CURSOR`](/errors/gateway/#IDENTITY_LINK_INVALID_CURSOR)
@@ -800,9 +803,6 @@ The catalog records owning source locations and pinned external contributions. A
 
 <a id="INVALID_GRANT"></a>
 [`INVALID_GRANT`](/errors/gateway/#INVALID_GRANT)
-
-<a id="INVALID_IDEMPOTENCY_KEY"></a>
-[`INVALID_IDEMPOTENCY_KEY`](/errors/gateway/#INVALID_IDEMPOTENCY_KEY)
 
 <a id="INVALID_ISSUER"></a>
 [`INVALID_ISSUER`](/errors/gateway/#INVALID_ISSUER)
@@ -1157,6 +1157,9 @@ The catalog records owning source locations and pinned external contributions. A
 
 <a id="OVERRIDE_NOT_AUTHORIZED"></a>
 [`OVERRIDE_NOT_AUTHORIZED`](/errors/gateway/#OVERRIDE_NOT_AUTHORIZED)
+
+<a id="PAID_FUNCTION_FAILED"></a>
+[`PAID_FUNCTION_FAILED`](/errors/gateway/#PAID_FUNCTION_FAILED)
 
 <a id="PASSKEY_ENROLLMENT_REQUIRED"></a>
 [`PASSKEY_ENROLLMENT_REQUIRED`](/errors/gateway/#PASSKEY_ENROLLMENT_REQUIRED)

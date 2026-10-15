@@ -344,10 +344,6 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="BUZZ_ENROLLMENT_SCOPE_UNSUPPORTED"></a>
 [`BUZZ_ENROLLMENT_SCOPE_UNSUPPORTED`](/errors/gateway/#BUZZ_ENROLLMENT_SCOPE_UNSUPPORTED)
 
-<a id="buzz_idempotency_conflict"></a>
-<a id="BUZZ_IDEMPOTENCY_CONFLICT"></a>
-[`BUZZ_IDEMPOTENCY_CONFLICT`](/errors/gateway/#BUZZ_IDEMPOTENCY_CONFLICT)
-
 <a id="buzz_identity_drift"></a>
 <a id="BUZZ_IDENTITY_DRIFT"></a>
 [`BUZZ_IDENTITY_DRIFT`](/errors/gateway/#BUZZ_IDENTITY_DRIFT)
@@ -763,6 +759,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="IDEMPOTENCY_KEY_DUPLICATE"></a>
 [`IDEMPOTENCY_KEY_DUPLICATE`](/errors/gateway/#IDEMPOTENCY_KEY_DUPLICATE)
 
+<a id="idempotency_key_expired"></a>
+<a id="IDEMPOTENCY_KEY_EXPIRED"></a>
+[`IDEMPOTENCY_KEY_EXPIRED`](/errors/gateway/#IDEMPOTENCY_KEY_EXPIRED)
+
 <a id="idempotency_key_in_progress"></a>
 <a id="IDEMPOTENCY_KEY_IN_PROGRESS"></a>
 [`IDEMPOTENCY_KEY_IN_PROGRESS`](/errors/gateway/#IDEMPOTENCY_KEY_IN_PROGRESS)
@@ -782,6 +782,14 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="idempotency_key_reused"></a>
 <a id="IDEMPOTENCY_KEY_REUSED"></a>
 [`IDEMPOTENCY_KEY_REUSED`](/errors/gateway/#IDEMPOTENCY_KEY_REUSED)
+
+<a id="idempotency_outcome_unknown"></a>
+<a id="IDEMPOTENCY_OUTCOME_UNKNOWN"></a>
+[`IDEMPOTENCY_OUTCOME_UNKNOWN`](/errors/gateway/#IDEMPOTENCY_OUTCOME_UNKNOWN)
+
+<a id="idempotency_response_expired"></a>
+<a id="IDEMPOTENCY_RESPONSE_EXPIRED"></a>
+[`IDEMPOTENCY_RESPONSE_EXPIRED`](/errors/gateway/#IDEMPOTENCY_RESPONSE_EXPIRED)
 
 <a id="identity_link_agent_required"></a>
 <a id="IDENTITY_LINK_AGENT_REQUIRED"></a>
@@ -850,10 +858,6 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="identity_link_event_tags_not_allowed"></a>
 <a id="IDENTITY_LINK_EVENT_TAGS_NOT_ALLOWED"></a>
 [`IDENTITY_LINK_EVENT_TAGS_NOT_ALLOWED`](/errors/gateway/#IDENTITY_LINK_EVENT_TAGS_NOT_ALLOWED)
-
-<a id="identity_link_idempotency_conflict"></a>
-<a id="IDENTITY_LINK_IDEMPOTENCY_CONFLICT"></a>
-[`IDENTITY_LINK_IDEMPOTENCY_CONFLICT`](/errors/gateway/#IDENTITY_LINK_IDEMPOTENCY_CONFLICT)
 
 <a id="identity_link_invalid_cursor"></a>
 <a id="IDENTITY_LINK_INVALID_CURSOR"></a>
@@ -1038,10 +1042,6 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="invalid_grant"></a>
 <a id="INVALID_GRANT"></a>
 [`INVALID_GRANT`](/errors/gateway/#INVALID_GRANT)
-
-<a id="invalid_idempotency_key"></a>
-<a id="INVALID_IDEMPOTENCY_KEY"></a>
-[`INVALID_IDEMPOTENCY_KEY`](/errors/gateway/#INVALID_IDEMPOTENCY_KEY)
 
 <a id="invalid_issuer"></a>
 <a id="INVALID_ISSUER"></a>
@@ -1512,6 +1512,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="override_not_authorized"></a>
 <a id="OVERRIDE_NOT_AUTHORIZED"></a>
 [`OVERRIDE_NOT_AUTHORIZED`](/errors/gateway/#OVERRIDE_NOT_AUTHORIZED)
+
+<a id="paid_function_failed"></a>
+<a id="PAID_FUNCTION_FAILED"></a>
+[`PAID_FUNCTION_FAILED`](/errors/gateway/#PAID_FUNCTION_FAILED)
 
 <a id="passkey_enrollment_required"></a>
 <a id="PASSKEY_ENROLLMENT_REQUIRED"></a>
