@@ -2047,6 +2047,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="R402_AUTH_SESSION_INVALID"></a>
 [`R402_AUTH_SESSION_INVALID`](/errors/auth/#R402_AUTH_SESSION_INVALID)
 
+<a id="r402_auth_signup_closed"></a>
+<a id="R402_AUTH_SIGNUP_CLOSED"></a>
+[`R402_AUTH_SIGNUP_CLOSED`](/errors/auth/#R402_AUTH_SIGNUP_CLOSED)
+
 <a id="r402_auth_source_scan_error"></a>
 <a id="R402_AUTH_SOURCE_SCAN_ERROR"></a>
 [`R402_AUTH_SOURCE_SCAN_ERROR`](/errors/auth/#R402_AUTH_SOURCE_SCAN_ERROR)

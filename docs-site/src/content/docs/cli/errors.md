@@ -48,6 +48,7 @@ Stable error codes for the Astro SSR runtime. Each carries `code`, `message`, `s
 - `R402_AUTH_PRERENDERED` — 500. `auth.*` called from a prerendered page. Convert to SSR or use a server island.
 - `R402_AUTH_FETCH_ABSOLUTE_URL` — 500. `auth.fetch` rejected a cross-origin / embedded-creds / javascript:/data: / protocol-relative / subdomain-spoof / port-mismatch URL.
 - `R402_AUTH_RETURN_TO_INVALID` — 400. Hosted-auth route got a `returnTo` that's not path-relative or same-origin absolute.
+- `R402_AUTH_SIGNUP_CLOSED` — 403. Hosted sign-up on a project whose `public_signup` is not `open`. Sign in with an existing account or get an invitation.
 - `R402_AUTH_IDENTITY_LINK_CONFLICT` — 409. `(project_id, provider, subject)` already linked to another user.
 - `R402_AUTH_SESSION_BRIDGE_UNVERIFIED` — 401. Custom identity proof failed verification, OR consumer accessed the internal-only session-creation primitive.
 - `R402_AUTH_UNKNOWN_IDENTITY` — 401. `createResponseFromIdentity` couldn't resolve identity AND `createUser: true` not set.

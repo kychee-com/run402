@@ -1,9 +1,9 @@
 {
   "owner": "gateway",
   "repository": "kychee-com/run402-private",
-  "revision": "e6a26f7c39b0d99ce7e4b3becb41bacf28a5e76f",
+  "revision": "e8ac14fffbbca40e6d1a4629dc9ea3e498c69731",
   "source": "packages/gateway/src/utils/error-envelope.ts",
-  "sourceDigest": "56390125827cbefd87f317d8fb8af1108eec18b0a618cc4f110fd88ce8ef8115",
+  "sourceDigest": "532b343fbc6b27e6a6f05f52e782d7475731e007b142b9011b7b3ef75a17e267",
   "codes": [
     "VALIDATION_FAILED",
     "AUTH_REQUIRED",
@@ -204,6 +204,7 @@
     "R402_AUTH_INVALID_BEARER",
     "R402_AUTH_ACTOR_HEADER_SPOOF",
     "R402_AUTH_RETURN_TO_INVALID",
+    "R402_AUTH_SIGNUP_CLOSED",
     "R402_AUTH_STATE_CHANGING_GET",
     "R402_AUTH_OAUTH_BRIDGE_INVALID",
     "R402_AUTH_IDENTITY_LINK_CONFLICT",

@@ -1560,6 +1560,9 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="R402_AUTH_SESSION_INVALID"></a>
 [`R402_AUTH_SESSION_INVALID`](/errors/auth/#R402_AUTH_SESSION_INVALID)
 
+<a id="R402_AUTH_SIGNUP_CLOSED"></a>
+[`R402_AUTH_SIGNUP_CLOSED`](/errors/auth/#R402_AUTH_SIGNUP_CLOSED)
+
 <a id="R402_AUTH_SOURCE_SCAN_ERROR"></a>
 [`R402_AUTH_SOURCE_SCAN_ERROR`](/errors/auth/#R402_AUTH_SOURCE_SCAN_ERROR)
 

@@ -191,6 +191,12 @@ Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
 
 The application authentication contract rejected or could not establish the requested actor context. Follow the returned message and suggested fix. Use supported auth helpers in request context; do not manufacture actor headers or bypass role/freshness gates.
 
+<h2 id="R402_AUTH_SIGNUP_CLOSED">R402_AUTH_SIGNUP_CLOSED</h2>
+
+Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+The application authentication contract rejected or could not establish the requested actor context. Follow the returned message and suggested fix. Use supported auth helpers in request context; do not manufacture actor headers or bypass role/freshness gates.
+
 <h2 id="R402_AUTH_SOURCE_SCAN_ERROR">R402_AUTH_SOURCE_SCAN_ERROR</h2>
 
 Owner: `public:sdk/src/node/source-scan.ts`.

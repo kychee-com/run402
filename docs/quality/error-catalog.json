@@ -2,8 +2,8 @@
   "version": 1,
   "contributions": {
     "gateway": {
-      "revision": "e6a26f7c39b0d99ce7e4b3becb41bacf28a5e76f",
-      "sourceDigest": "56390125827cbefd87f317d8fb8af1108eec18b0a618cc4f110fd88ce8ef8115"
+      "revision": "e8ac14fffbbca40e6d1a4629dc9ea3e498c69731",
+      "sourceDigest": "532b343fbc6b27e6a6f05f52e782d7475731e007b142b9011b7b3ef75a17e267"
     },
     "core": {
       "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7"
@@ -5855,6 +5855,16 @@
         }
       ],
       "topic": "/errors/auth/#R402_AUTH_SESSION_INVALID"
+    },
+    {
+      "code": "R402_AUTH_SIGNUP_CLOSED",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/auth/#R402_AUTH_SIGNUP_CLOSED"
     },
     {
       "code": "R402_AUTH_SOURCE_SCAN_ERROR",
