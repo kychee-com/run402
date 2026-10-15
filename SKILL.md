@@ -439,7 +439,7 @@ The gateway provisions SnapStart and reverse-validates the published version bef
 - `r.cache.invalidatePrefix({ host, prefix })` — path prefix on a host
 - `r.cache.invalidateAll({ host })` — all rows for a host
 - `r.cache.invalidateMany(urls)` — multiple URLs in one round-trip
-- `r.cache.inspect(url)` — returns `{ status: 'HIT' | 'MISS', cachedAt, expiresAt, contentSha256, writtenUnderGeneration }`
+- `r.cache.inspect(url)` — returns `{ status: 'HIT' | 'MISS', cached_at, expires_at, content_sha256, written_under_generation }`
 
 Host ownership is server-validated — cross-project invalidation throws `R402_CACHE_INVALIDATION_HOST_FORBIDDEN` (403). Writes are generation-guarded: an in-flight MISS render started before an invalidate cannot overwrite the freshly-cleared state.
 
