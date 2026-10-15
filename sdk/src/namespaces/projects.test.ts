@@ -276,6 +276,35 @@ describe("projects.list", () => {
     assert.equal(readAllowanceCalls, 0);
     assert.deepEqual(result, { wallet: "0xother", projects: [] });
   });
+
+  it("accepts items where lease_expires_at is missing (gateway omits it; type is optional)", async () => {
+    // Mirrors the live gateway shape — list items don't include lease_expires_at.
+    const { fetch } = mockFetch(() =>
+      jsonResponse({
+        wallet: "0xabc",
+        projects: [
+          {
+            id: "prj_1777563179844_1095",
+            name: "kychon-port-olddominionboatclub-com",
+            tier: "prototype",
+            status: "active",
+            api_calls: 212,
+            storage_bytes: 12376062,
+            created_at: "2026-04-30T15:32:59.891Z",
+          },
+        ],
+      }),
+    );
+    const sdk = makeSdk(makeCreds(), fetch);
+    const result = await sdk.projects.list("0xabc");
+
+    assert.equal(result.projects.length, 1);
+    const item = result.projects[0]!;
+    assert.equal(item.id, "prj_1777563179844_1095");
+    assert.equal(item.tier, "prototype");
+    assert.equal(item.lease_expires_at, undefined,
+      "gateway omits lease_expires_at on list items; type is optional");
+  });
 });
 
 describe("projects.getUsage", () => {
@@ -359,7 +388,7 @@ describe("projects.getQuote", () => {
     const { fetch, calls } = mockFetch(() =>
       jsonResponse({
         tiers: {
-          prototype: { price: "0", lease_days: 7, storage_mb: 100, api_calls: 10000 },
+          prototype: { price: "0", lease_days: 7, storage_mb: 100, api_calls: 10000, max_functions: 15, description: "test" },
         },
       }),
     );
@@ -369,6 +398,36 @@ describe("projects.getQuote", () => {
     assert.equal(calls[0]!.url, "https://api.example.test/tiers/v1");
     assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], undefined);
     assert.ok(result.tiers.prototype);
+  });
+
+  it("exposes auth field on result and max_functions/description on tier items", async () => {
+    // Mirrors the live gateway shape — quote includes per-tier max_functions
+    // and description, plus a top-level auth block of opaque shape.
+    const { fetch } = mockFetch(() =>
+      jsonResponse({
+        tiers: {
+          prototype: {
+            price: "$0.10",
+            lease_days: 7,
+            storage_mb: 250,
+            api_calls: 500000,
+            max_functions: 15,
+            description: "Prototype tier (FREE) — 7-day lease, 250MB storage, 500k API calls.",
+          },
+        },
+        auth: { challenge: "test-challenge", expires_at: "2026-05-01T00:00:00Z" },
+      }),
+    );
+    const sdk = makeSdk(makeCreds(), fetch);
+    const result = await sdk.projects.getQuote();
+
+    assert.equal(result.tiers.prototype!.max_functions, 15);
+    assert.equal(
+      result.tiers.prototype!.description,
+      "Prototype tier (FREE) — 7-day lease, 250MB storage, 500k API calls.",
+    );
+    assert.ok(result.auth, "auth field is exposed on the result");
+    assert.equal((result.auth as Record<string, unknown>).challenge, "test-challenge");
   });
 });
 
