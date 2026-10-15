@@ -98,11 +98,11 @@
   "devDependencies": {
     "@astrojs/compiler": "^4.0.0",
     "@types/node": "^22.0.0",
-    "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3",
-    "astro": "^7.0.0",
-    "react": "^19.2.6",
-    "react-dom": "^19.2.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "astro": "^7.3.7",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
     "tsx": "^4.20.0",
     "typescript": "^6.0.3"
   },

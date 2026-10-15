@@ -8,13 +8,13 @@
     "test": "tsc --noEmit false --outDir .test-dist --allowImportingTsExtensions false && node --experimental-test-module-mocks --test test.mjs"
   },
   "dependencies": {
-    "@run402/astro": "2.5.0",
+    "@run402/astro": "2.5.10",
     "@run402/functions": "3.7.0",
-    "@run402/sdk": "4.87.0",
-    "astro": "7.3.2"
+    "@run402/sdk": "4.111.0",
+    "astro": "7.3.7"
   },
   "devDependencies": {
-    "@types/node": "22.19.15",
+    "@types/node": "22.20.5",
     "typescript": "6.0.3"
   },
   "overrides": {
