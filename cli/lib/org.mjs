@@ -41,6 +41,10 @@ Notes:
   - A wallet AUTHENTICATES; an org owns projects. Membership/role authorizes.
   - Roles: ${ROLE_LIST}. Member/invite changes need an active owner.
   - create/rename/member/invite are step-up gated for control-plane sessions.
+  - Owner-only mutations must run as the human operator. With a wallet active,
+    pass --operator (or RUN402_AUTH_MODE=operator) so the request uses your
+    control-plane session, not the wallet — otherwise the wallet's principal is
+    used and the gateway returns 403. Run 'run402 operator login --loopback' first.
   - Removing/demoting the org's only active owner fails with 409 LAST_OWNER.
   - JSON in, JSON out.
 
@@ -50,8 +54,8 @@ Examples:
   run402 org get org_abc
   run402 org rename org_abc "New Name"
   run402 org rename org_abc --clear
-  run402 org member add org_abc 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 --role admin
-  run402 org invite create org_abc dev@example.com --role developer
+  run402 org member add org_abc 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 --role admin --operator
+  run402 org invite create org_abc dev@example.com --role developer --operator
   run402 org audit org_abc --limit 50
 `;
 
@@ -107,6 +111,8 @@ Usage:
   run402 org member rm   <org> <principal_id>
 
 Roles: ${ROLE_LIST} (add defaults to developer). Mutations require an active owner.
+With a wallet active, pass --operator (or RUN402_AUTH_MODE=operator) so the request
+uses your human control-plane session instead of the wallet principal (else 403).
 Demoting/removing the org's only active owner fails with 409 LAST_OWNER.
 `,
   invite: `run402 org invite — manage email invites
@@ -117,7 +123,9 @@ Usage:
   run402 org invite rm     <org> <principal_id>
 
 An invite is claimed at the recipient's first login. Mutations require an active owner
-(plus step-up when driven by a control-plane session).
+(plus step-up when driven by a control-plane session). With a wallet active, pass
+--operator (or RUN402_AUTH_MODE=operator) so the request uses your control-plane
+session instead of the wallet principal (else 403).
 `,
   audit: `run402 org audit — control-plane audit trail
 

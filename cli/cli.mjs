@@ -60,6 +60,10 @@ Commands:
 Global options (any command):
   --wallet <name>   Select a named wallet for this command (see 'run402 wallets')
                     Also: RUN402_WALLET env, or a ./.run402.json directory binding.
+  --operator        Authenticate as the human operator (control-plane session)
+                    instead of the active wallet — required for owner-only
+                    control-plane ops (e.g. 'org member add'). Alias: --as-operator.
+                    Also: RUN402_AUTH_MODE=operator. Run 'run402 operator login --loopback' first.
 
 Run 'run402 <command> --help' for detailed usage of each command.
 
@@ -94,12 +98,20 @@ if (first === undefined || first === '--help' || first === '-h') {
   process.exit(0);
 }
 
+// Strip the global --operator/--as-operator flag and translate it into
+// RUN402_AUTH_MODE=operator BEFORE wallet resolution + dispatch, so getSdk()
+// (the credential chokepoint) forces the control-plane Bearer for owner-only
+// control-plane ops. Runs before splitWalletFlag so the cleaned argv carries
+// neither global flag into subcommand parsing.
+const { applyAuthModeSelection } = await import("./lib/auth-mode.mjs");
+const { argv: afterOperator } = applyAuthModeSelection({ rawArgv, env: process.env });
+
 // Resolve the active wallet/profile from the global --wallet/--profile flag,
 // env, and any per-directory .run402.json binding BEFORE dispatch loads a
 // subcommand (whose config.mjs snapshots credential paths). splitWalletFlag
 // also strips the global flag so subcommands never see it.
 const { splitWalletFlag, applyWalletSelection } = await import("./lib/wallet-context.mjs");
-const { argv, walletFlag } = splitWalletFlag(rawArgv);
+const { argv, walletFlag } = splitWalletFlag(afterOperator);
 const [cmd, sub, ...rest] = argv;
 
 try {
