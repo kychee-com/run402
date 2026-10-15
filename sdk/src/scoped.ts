@@ -144,6 +144,19 @@ import type {
   WebhookDeliveriesResult,
 } from "./namespaces/email.js";
 import type {
+  StripeAccountConnectInput,
+  StripeAccountConnectResult,
+  StripeAccountDisconnectResult,
+  StripeAccountState,
+  StripeCheckoutSession,
+  StripeCheckoutSessionCreateInput,
+  StripeCheckoutSessionOutcome,
+  StripeOnboardingLink,
+  StripeOnboardingLinkInput,
+  StripePortalSession,
+  StripePortalSessionCreateInput,
+} from "./namespaces/stripe.js";
+import type {
   DeleteFunctionResult,
   FunctionDeployOptions,
   FunctionDeployResult,
@@ -259,8 +272,68 @@ import type {
 } from "./namespaces/deploy.types.js";
 import type { ByteReader } from "./namespaces/deploy.js";
 
-class ScopedProjects {
+class ScopedProjectStripeAccount {
   constructor(private readonly parent: Run402, private readonly projectId: string) {}
+
+  connect(input?: StripeAccountConnectInput): Promise<StripeAccountConnectResult> {
+    return this.parent.projects.stripe.account.connect(this.projectId, input);
+  }
+  get(): Promise<StripeAccountState> {
+    return this.parent.projects.stripe.account.get(this.projectId);
+  }
+  disconnect(): Promise<StripeAccountDisconnectResult> {
+    return this.parent.projects.stripe.account.disconnect(this.projectId);
+  }
+}
+
+class ScopedProjectStripeOnboardingLinks {
+  constructor(private readonly parent: Run402, private readonly projectId: string) {}
+
+  create(input?: StripeOnboardingLinkInput): Promise<StripeOnboardingLink> {
+    return this.parent.projects.stripe.onboardingLinks.create(this.projectId, input);
+  }
+}
+
+class ScopedProjectStripeCheckoutSessions {
+  constructor(private readonly parent: Run402, private readonly projectId: string) {}
+
+  create(input: StripeCheckoutSessionCreateInput): Promise<StripeCheckoutSession> {
+    return this.parent.projects.stripe.checkoutSessions.create(this.projectId, input);
+  }
+  get(checkoutSessionId: string): Promise<StripeCheckoutSessionOutcome> {
+    return this.parent.projects.stripe.checkoutSessions.get(this.projectId, checkoutSessionId);
+  }
+}
+
+class ScopedProjectStripePortalSessions {
+  constructor(private readonly parent: Run402, private readonly projectId: string) {}
+
+  create(input: StripePortalSessionCreateInput): Promise<StripePortalSession> {
+    return this.parent.projects.stripe.portalSessions.create(this.projectId, input);
+  }
+}
+
+/** `r.project(id).stripe` — the organization's Stripe account and sessions, project pre-bound. */
+class ScopedProjectStripe {
+  readonly account: ScopedProjectStripeAccount;
+  readonly onboardingLinks: ScopedProjectStripeOnboardingLinks;
+  readonly checkoutSessions: ScopedProjectStripeCheckoutSessions;
+  readonly portalSessions: ScopedProjectStripePortalSessions;
+
+  constructor(parent: Run402, projectId: string) {
+    this.account = new ScopedProjectStripeAccount(parent, projectId);
+    this.onboardingLinks = new ScopedProjectStripeOnboardingLinks(parent, projectId);
+    this.checkoutSessions = new ScopedProjectStripeCheckoutSessions(parent, projectId);
+    this.portalSessions = new ScopedProjectStripePortalSessions(parent, projectId);
+  }
+}
+
+class ScopedProjects {
+  readonly stripe: ScopedProjectStripe;
+
+  constructor(private readonly parent: Run402, private readonly projectId: string) {
+    this.stripe = new ScopedProjectStripe(parent, projectId);
+  }
 
   delete(): Promise<void> {
     return this.parent.projects.delete(this.projectId);

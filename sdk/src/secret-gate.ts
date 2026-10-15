@@ -91,6 +91,15 @@ export const SECRET_RETURNING_METHODS = {
     command: (projectId: unknown) => `run402 grants create <wallet> --capability <capability> --key${projectFlag(projectId)}`,
     why: "A grant key's bearer is returned once; the CLI mints keys by issuing the grant with --key.",
   },
+  // ── projects.stripe: a one-time Stripe onboarding link for the account holder ──
+  "projects.stripe.account.connect": {
+    command: (projectId: unknown) => `run402 stripe account connect${projectFlag(projectId)}`,
+    why: "Connecting hands out a one-time Stripe onboarding link for the account holder; the CLI prints it once to the person who will pass it on.",
+  },
+  "projects.stripe.onboardingLinks.create": {
+    command: (projectId: unknown) => `run402 stripe account onboarding-link${projectFlag(projectId)}`,
+    why: "A Stripe onboarding link is one-time and meant for the account holder; the CLI prints it once to the person who will pass it on.",
+  },
   "grants.rotateKey": {
     command: (projectId: unknown, keyId: unknown) => `run402 grants rotate-key ${arg(keyId, "<key_id>")}${projectFlag(projectId)}`,
     why: "The rotated grant key's bearer is returned once; the CLI prints it to the person who will hand it on.",

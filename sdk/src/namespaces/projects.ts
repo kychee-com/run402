@@ -12,6 +12,7 @@
  */
 
 import { gateSecret } from "../secret-gate.js";
+import { ProjectStripe } from "./stripe.js";
 import { restDiagnostic } from "../rest-diagnostics.js";
 import type { Client } from "../kernel.js";
 import type { ProjectKeys } from "../credentials.js";
@@ -87,8 +88,11 @@ export class Projects {
   readonly quote: () => Promise<QuoteResult>;
   readonly promoteUser: (id: string, email: string) => Promise<void>;
   readonly demoteUser: (id: string, email: string) => Promise<void>;
+  /** The organization's Stripe account and Checkout / portal sessions for a project's app. */
+  readonly stripe: ProjectStripe;
 
   constructor(private readonly client: Client) {
+    this.stripe = new ProjectStripe(client);
     this.schema = this.getSchema.bind(this);
     this.usage = this.getUsage.bind(this);
     this.quote = this.getQuote.bind(this);

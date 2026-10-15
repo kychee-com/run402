@@ -387,6 +387,13 @@ export const COMMAND_MANIFEST = [
   { path: ["domains", "wait"], positionals: [p("domain")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["example.com", "--timeout-ms", "1", "--interval-ms", "1"] },
   { path: ["domains", "activate"], positionals: [p("domain")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["example.com"] },
   { path: ["domains", "disconnect"], positionals: [p("domain")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["example.com", "--confirm"] },
+  { path: ["stripe", "account", "connect"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [] },
+  { path: ["stripe", "account", "status"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [] },
+  { path: ["stripe", "account", "onboarding-link"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [] },
+  { path: ["stripe", "account", "disconnect"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["--confirm"] },
+  { path: ["stripe", "checkout", "create"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["--mode", "payment", "--price", "price_gate1", "--success-url", "https://app.example.test/ok", "--cancel-url", "https://app.example.test/no"] },
+  { path: ["stripe", "checkout", "get"], positionals: [p("checkout_session_id")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["cs_test_gate1"] },
+  { path: ["stripe", "portal", "create"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["--customer", "cus_gate1", "--return-url", "https://app.example.test/account"] },
 
   // ── apps ─────────────────────────────────────────────────────────────────
   { path: ["apps", "browse"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },

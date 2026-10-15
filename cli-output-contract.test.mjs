@@ -61,6 +61,7 @@ const GROUPED_COMMANDS = [
   "secrets",
   "service",
   "sites",
+  "stripe",
   "subdomains",
   "tier",
   "transfer",

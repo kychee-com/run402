@@ -963,6 +963,22 @@ Domain commands use project-scoped control-plane auth (wallet, sign-in session, 
 
 Subdomain auto-reassignment: add once. Every subsequent `run402 sites deploy-dir` to the same project automatically points the subdomain at the new release. The deploy response includes `subdomain_urls` showing what got reassigned. No re-claim needed.
 
+## Stripe payments for your app
+
+The organization that owns the project connects its OWN Stripe account once; your app then takes card and SEPA Direct Debit payments (one-off or recurring) through Checkout Sessions on it. Run402 charges nothing on the account, never holds the money, and your app never holds a Stripe key.
+
+```bash
+run402 stripe account connect --country DE --business-type non_profit   # prints a one-time onboarding.url ONCE; hand it to the account holder
+run402 stripe account status                                            # status: onboarding | active | restricted; never prints a link
+run402 stripe account onboarding-link --return-url https://club.run402.app/admin   # another one-time link when the first was used or expired
+run402 stripe checkout create --mode subscription --price-data '{"currency":"eur","unit_amount":12000,"product_name":"Annual dues","recurring":{"interval":"year"}}' --success-url https://club.run402.app/join/done --cancel-url https://club.run402.app/join --client-reference-id member:42 --idempotency-key member:42:2026
+run402 stripe checkout get cs_test_123                                  # status, payment_status, subscription_id, client_reference_id
+run402 stripe portal create --customer cus_123 --return-url https://club.run402.app/account
+run402 stripe account disconnect --confirm                              # the Stripe account itself is unaffected
+```
+
+Send the payer to the session `url`. Then react to the project's events feed, not the redirect: `stripe_checkout_completed`, `stripe_invoice_paid`, `stripe_invoice_payment_failed`, `stripe_subscription_updated`, `stripe_subscription_deleted` carry your `client_reference_id`; route them to a function with a notification rule (`channel: webhook`) or poll `run402 events list`. Before onboarding completes, a checkout request answers `403 STRIPE_ACCOUNT_ONBOARDING_INCOMPLETE` with `details.requirements` and a `complete_onboarding` next action. URLs must be HTTPS on one of the project's own hosts or the console. From MCP, `account.connect` and `onboardingLinks.create` are CLI-only (`SECRET_REQUIRES_CLI`); checkout and portal sessions run everywhere.
+
 ## On-chain — signers (your app's wallet)
 
 A signer is an Ethereum wallet Run402 keeps for your project: its key is created in and never leaves the platform's key custody, so an app sends money and signs contract calls without holding a private key. $0.04/day wallet rent + $0.000005 signing fee per signature. Signer creation requires $1.20 in allowance (30 days of rent). Non-custodial — see <https://run402.com/humans/terms.html#non-custodial-kms-wallets>. A signer sends USDC with no ETH on it (`transfers create`: the platform's facilitator settles the signed authorization and pays the gas), and an org can make a signer its payout address (`run402 orgs payout-wallet --signer <signer_id>`) so what priced routes earn is what the app pays out from.

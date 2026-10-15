@@ -1436,6 +1436,48 @@ demoteUser(id, email): Promise<void>
 
 `r.projects.getUsage(id)` (`GET /projects/v1/admin/:project_id/usage`, service key) returns a `UsageReport`: `project_id`, `tier`, `org_id` (`| null`), `api_calls`, `api_calls_limit`, `storage_bytes`, `storage_limit_bytes`, `storage_limit` (human string, e.g. `"250 MB"`), `status` (the derived effective status), `lease_expires_at`, and `lease_perpetual`. `lease_expires_at` is the owning organization's ISO-8601 lease expiry, and `null` when the lease is perpetual (`lease_perpetual: true`) or the project has no organization; `lease_perpetual` is `false` otherwise. The lease fields match `r.tier.status()`.
 
+### `r.projects.stripe`
+
+Stripe payments for your app, on the organization's OWN Stripe account. The organization that owns the project connects its account to Run402's platform once; your app then takes card and SEPA Direct Debit payments (one-off or recurring) through Checkout Sessions on that account, and reacts to `stripe_*` project events. Run402 charges nothing on the account (`platform_fee_bps: 0`), never holds the money (`custody: "organization"`), and your app never holds a Stripe key. Scoped form: `r.project(id).projects.stripe.*` without the project id.
+
+```
+account.connect(projectId, { country?, businessType?, businessName?, supportEmail?, statementDescriptor?, email? }): Promise<StripeAccountConnectResult>
+  // POST /projects/v1/:project_id/stripe/account — 201 new / 200 the organization's existing account (idempotent per organization);
+  // while onboarding is incomplete the result carries a one-time `onboarding: { url, expires_at, kind }` for the account holder
+account.get(projectId): Promise<StripeAccountState>                      // GET …/stripe/account — read fresh from Stripe; never a link
+account.disconnect(projectId): Promise<StripeAccountDisconnectResult>    // DELETE …/stripe/account — { disconnected: true, stripe_account_unaffected: true }
+onboardingLinks.create(projectId, { returnUrl?, refreshUrl? }): Promise<StripeOnboardingLink>   // POST …/stripe/onboarding-links — one-time, minutes-long
+checkoutSessions.create(projectId, { mode, lineItems, successUrl, cancelUrl, customer?, customerEmail?, clientReferenceId?, metadata?, automaticTax?, subscription?, locale?, allowPromotionCodes?, expiresAt?, idempotencyKey? }): Promise<StripeCheckoutSession>
+  // POST …/stripe/checkout-sessions — { checkout_session_id, url, deduplicated }; idempotencyKey → Idempotency-Key (same key + same body → the original session; different body → 409 IDEMPOTENCY_KEY_REUSED)
+checkoutSessions.get(projectId, checkoutSessionId): Promise<StripeCheckoutSessionOutcome>     // GET …/stripe/checkout-sessions/:id — { status, payment_status, customer_id, subscription_id, client_reference_id, metadata }
+portalSessions.create(projectId, { customer, returnUrl }): Promise<StripePortalSession>        // POST …/stripe/portal-sessions — { url } to the customer portal
+```
+
+`StripeAccountState.status` is `creating | onboarding | active | restricted | disconnected`, with `charges_enabled`, `payouts_enabled`, `details_submitted`, `requirements` (`currently_due[]`, `past_due[]`, `disabled_reason`), `capabilities` (`card_payments`, `sepa_debit_payments`), and `next_actions[]`. `lineItems[]` entries are in the wire's shape: `{ price, quantity? }` for an existing price, or `{ price_data: { currency, unit_amount, product_name, recurring? }, quantity? }` (`recurring` is required in mode `subscription`, refused in mode `payment`; SEPA needs `currency: "eur"`). Every URL must be HTTPS on one of the project's own hosts (managed subdomains, verified custom domains) or the console; anything else is `422 STRIPE_RETURN_URL_NOT_ALLOWED` with `details.field` and `details.allowed_hosts[]`.
+
+```ts
+// 1. Connect once (the organization's admin page does this). Hand the link to the account holder.
+const account = await r.projects.stripe.account.connect(projectId, { country: "DE", businessType: "non_profit" });
+if (account.onboarding) console.log("complete onboarding at", account.onboarding.url);
+
+// 2. Take annual dues by card or SEPA Direct Debit.
+const checkout = await r.projects.stripe.checkoutSessions.create(projectId, {
+  mode: "subscription",
+  lineItems: [{ price_data: { currency: "eur", unit_amount: 12000, product_name: "Annual dues", recurring: { interval: "year" } } }],
+  successUrl: "https://club.run402.app/join/done?session_id={CHECKOUT_SESSION_ID}",
+  cancelUrl: "https://club.run402.app/join",
+  clientReferenceId: "member:42",
+  idempotencyKey: "member:42:2026",
+});
+// send the member to checkout.url; on the success page read the outcome:
+const outcome = await r.projects.stripe.checkoutSessions.get(projectId, checkout.checkout_session_id);
+console.log(outcome.payment_status, outcome.subscription_id, outcome.client_reference_id);
+```
+
+Account-state refusals are 403 with `next_actions`: `STRIPE_ACCOUNT_REQUIRED` (`connect_stripe_account`), `STRIPE_ACCOUNT_ONBOARDING_INCOMPLETE` (`details.requirements`, `complete_onboarding`), `STRIPE_ACCOUNT_RESTRICTED` (`details.disabled_reason`). A Stripe refusal the caller can act on is `502 STRIPE_UPSTREAM_ERROR` with Stripe's `code` and `param` in `details`; Stripe unreachable is 503 with `Retry-After`; the platform not configured is `503 STRIPE_CONNECT_UNAVAILABLE`. The money events (`stripe_checkout_completed`, `stripe_invoice_paid`, `stripe_invoice_payment_failed`, `stripe_subscription_updated`, `stripe_subscription_deleted`, and the account's `stripe_account_updated` / `stripe_account_disconnected`) land on the project's events feed (`r.events`) carrying your `client_reference_id` and metadata; route them to your function with a notification rule (`channel: webhook`) or poll the feed.
+
+On the MCP `run` sandbox, `account.connect` and `onboardingLinks.create` refuse with `SECRET_REQUIRES_CLI` naming `run402 stripe account connect` / `run402 stripe account onboarding-link`, because an onboarding link is a one-time credential for the account holder; `checkoutSessions.create` and `portalSessions.create` run everywhere, since their URLs are meant for a payer. No surface caches a URL.
+
 ### `r.project(id).apply`
 
 The unified apply primitive. **There is no public `r.deploy` surface** — the

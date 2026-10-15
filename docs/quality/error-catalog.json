@@ -977,6 +977,10 @@
         },
         {
           "owner": "public",
+          "source": "cli/lib/stripe.mjs"
+        },
+        {
+          "owner": "public",
           "source": "cli/lib/subdomains.mjs"
         },
         {
@@ -1496,6 +1500,10 @@
         {
           "owner": "public",
           "source": "cli/lib/repos.mjs"
+        },
+        {
+          "owner": "public",
+          "source": "cli/lib/stripe.mjs"
         },
         {
           "owner": "public",

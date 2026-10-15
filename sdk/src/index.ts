@@ -702,6 +702,7 @@ export type * from "./namespaces/secrets.js";
 export type * from "./namespaces/service.js";
 export type * from "./namespaces/sites.js";
 export type * from "./namespaces/subdomains.js";
+export type * from "./namespaces/stripe.js";
 export type * from "./namespaces/tier.js";
 export { ScopedWallet } from "./namespaces/wallets.js";
 export type * from "./namespaces/wallets.js";

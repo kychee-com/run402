@@ -5,8 +5,8 @@
       "name": "run402",
       "type": "skill-md",
       "description": "Build, deploy and operate full-stack applications with the Run402 CLI. Postgres, auth, storage, functions and hosting with a free prototype tier and an explicit spending allowance. Use for web apps, database-backed sites, APIs and deploy.",
-      "url": "https://run402.com/skills/run402/31c85a964f682bdf7b4500a44d1a7c5cdef418ce8c348a7fe80bb608bdbdedb5/SKILL.md",
-      "digest": "sha256:31c85a964f682bdf7b4500a44d1a7c5cdef418ce8c348a7fe80bb608bdbdedb5"
+      "url": "https://run402.com/skills/run402/9c30ed9b43abbb0cce0f0bd6282eb340e4a170fdb90e8fb51841849c458684bc/SKILL.md",
+      "digest": "sha256:9c30ed9b43abbb0cce0f0bd6282eb340e4a170fdb90e8fb51841849c458684bc"
     },
     {
       "name": "run402-buzz",

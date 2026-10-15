@@ -98,6 +98,7 @@ Run `node scripts/documentation-inventory.mjs` to reject newly discovered unclas
 | public | [cli/lib/sites.mjs](cli/lib/sites.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/snapshots.mjs](cli/lib/snapshots.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/status.mjs](cli/lib/status.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
+| public | [cli/lib/stripe.mjs](cli/lib/stripe.mjs) | guide / cli | pending | pending |
 | public | [cli/lib/subdomains.mjs](cli/lib/subdomains.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/subscriptions.mjs](cli/lib/subscriptions.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/tier.mjs](cli/lib/tier.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
@@ -144,6 +145,7 @@ Run `node scripts/documentation-inventory.mjs` to reject newly discovered unclas
 | public | [docs-site/src/content/docs/build/email.md](docs-site/src/content/docs/build/email.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | hosted verified: 2026-09-17; portal 23751749 |
 | public | [docs-site/src/content/docs/build/functions.md](docs-site/src/content/docs/build/functions.md) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [docs-site/src/content/docs/build/storage.md](docs-site/src/content/docs/build/storage.md) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
+| public | [docs-site/src/content/docs/build/stripe.md](docs-site/src/content/docs/build/stripe.md) | guide / cli | pending | pending |
 | public | [docs-site/src/content/docs/cache/concepts.md](docs-site/src/content/docs/cache/concepts.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | hosted verified: 2026-09-17; portal 23751749 |
 | public | [docs-site/src/content/docs/cli/assets.md](docs-site/src/content/docs/cli/assets.md) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [docs-site/src/content/docs/cli/commands.md](docs-site/src/content/docs/cli/commands.md) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |

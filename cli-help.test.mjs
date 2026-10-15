@@ -98,6 +98,7 @@ const MATRIX = {
   cdn: { shared: [], specific: ["wait-fresh"] },
   sites: { shared: ["status"], specific: ["deploy", "deploy-dir"] },
   subdomains: { shared: [], specific: ["add", "list", "delete"] },
+  stripe: { shared: [], specific: ["account", "checkout", "portal"] },
   domains: {
     shared: [],
     specific: [
@@ -183,6 +184,13 @@ const EMAIL_WEBHOOKS = {
 const DEPLOY_RELEASES = {
   shared: [],
   specific: ["get", "active", "diff"],
+};
+
+// `run402 stripe <group> <action>`: three nested groups in lib/stripe.mjs.
+const STRIPE_GROUPS = {
+  account: ["connect", "status", "onboarding-link", "disconnect"],
+  checkout: ["create", "get"],
+  portal: ["create"],
 };
 
 // `run402 jobs artifacts <action>` is a nested group dispatched in lib/jobs.mjs.
@@ -453,6 +461,23 @@ describe("CLI --help contract", () => {
           `run402 email webhooks ${action} --help`,
           { expectHeadingStartsWith: `run402 email webhooks ${action}` });
       });
+    }
+  });
+
+  describe("run402 stripe <group> (nested)", () => {
+    for (const [group, actions] of Object.entries(STRIPE_GROUPS)) {
+      it(`stripe ${group} --help prints usage without side effects`, async () => {
+        assertHelp(await runCli(["stripe", group, "--help"]),
+          `run402 stripe ${group} --help`,
+          { expectHeadingStartsWith: `run402 stripe ${group}` });
+      });
+      for (const action of actions) {
+        it(`stripe ${group} ${action} --help prints PER-SUBCOMMAND help`, async () => {
+          assertHelp(await runCli(["stripe", group, action, "--help"]),
+            `run402 stripe ${group} ${action} --help`,
+            { expectHeadingStartsWith: `run402 stripe ${group} ${action}` });
+        });
+      }
     }
   });
 

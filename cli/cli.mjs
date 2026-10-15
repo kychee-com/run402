@@ -49,6 +49,7 @@ BUILD & SHIP — the app and everything it serves
   assets      Direct-to-S3 asset storage (put, get, ls, rm, sign, diagnose) — up to 5 TiB
   domains     Manage ProjectDomain lifecycle (connect, check, repair, wait)
   subdomains  Manage custom subdomains (claim, list, delete)
+  stripe      Stripe payments on the organization's own account (account, checkout, portal)
 
 OPERATE — what happened, and is it healthy
   events      What happened to your project since you last looked (cursored feed)
@@ -356,6 +357,11 @@ switch (cmd) {
   }
   case "domains": {
     const { run } = await import("./lib/domains.mjs");
+    await run(sub, rest);
+    break;
+  }
+  case "stripe": {
+    const { run } = await import("./lib/stripe.mjs");
     await run(sub, rest);
     break;
   }

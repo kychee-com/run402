@@ -92,7 +92,7 @@ function readCommandSource(filePath: string): string | null {
 /** Parse CLI commands as "module:subcommand" pairs */
 function parseCliCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["admin", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "feedback", "agent", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "orgs", "identity", "buzz", "grants", "deliveries", "contacts", "subscriptions", "webhook-secret", "archives", "rooms", "messages", "claims", "escalations", "repos", "events", "errors"]) {
+  for (const mod of ["admin", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "stripe", "apps", "email", "feedback", "agent", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "orgs", "identity", "buzz", "grants", "deliveries", "contacts", "subscriptions", "webhook-secret", "archives", "rooms", "messages", "claims", "escalations", "repos", "events", "errors"]) {
     for (const sub of parseSubcommands(join(__dirname, "cli/lib", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -112,6 +112,9 @@ function parseCliCommands(): string[] {
   for (const action of parseOrgGroupActions("inviteAction")) cmds.push(`orgs:invite:${action}`);
   for (const action of parseOrgGroupActions("lightningReceiverAction")) cmds.push(`orgs:lightning-receiver:${action}`);
   for (const action of parseContractsTransferActions()) cmds.push(`contracts:transfers:${action}`);
+  for (const [group, varName] of STRIPE_GROUPS) {
+    for (const action of parseStripeGroupActions(varName)) cmds.push(`stripe:${group}:${action}`);
+  }
   // Bare `run402 deploy` is the deploy itself (deploy.mjs dispatches anything
   // that is not a family word into it), so it is a top-level verb here.
   if (existsSync(join(__dirname, "cli/lib/deploy.mjs"))) cmds.push("deploy");
@@ -133,7 +136,7 @@ function parseCliCommands(): string[] {
 /** Parse OpenClaw commands as "module:subcommand" pairs */
 function parseOpenClawCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["admin", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "feedback", "agent", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "orgs", "identity", "buzz", "grants", "deliveries", "contacts", "subscriptions", "webhook-secret", "archives", "rooms", "messages", "claims", "escalations", "repos", "events", "errors"]) {
+  for (const mod of ["admin", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "stripe", "apps", "email", "feedback", "agent", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "orgs", "identity", "buzz", "grants", "deliveries", "contacts", "subscriptions", "webhook-secret", "archives", "rooms", "messages", "claims", "escalations", "repos", "events", "errors"]) {
     for (const sub of parseSubcommands(join(__dirname, "openclaw/scripts", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -153,6 +156,9 @@ function parseOpenClawCommands(): string[] {
   for (const action of parseOrgGroupActions("inviteAction")) cmds.push(`orgs:invite:${action}`);
   for (const action of parseOrgGroupActions("lightningReceiverAction")) cmds.push(`orgs:lightning-receiver:${action}`);
   for (const action of parseContractsTransferActions()) cmds.push(`contracts:transfers:${action}`);
+  for (const [group, varName] of STRIPE_GROUPS) {
+    for (const action of parseStripeGroupActions(varName)) cmds.push(`stripe:${group}:${action}`);
+  }
   if (existsSync(join(__dirname, "openclaw/scripts/deploy.mjs"))) cmds.push("deploy");
   if (existsSync(join(__dirname, "openclaw/scripts/init.mjs"))) cmds.push("init");
   if (existsSync(join(__dirname, "openclaw/scripts/pay.mjs"))) cmds.push("pay");
@@ -240,6 +246,25 @@ function parseContractsTransferActions(): string[] {
   const src = readFileSync(filePath, "utf-8");
   const actions: string[] = [];
   const re = /transferAction\s*===\s*"([\w-]+)"/g;
+  let m;
+  while ((m = re.exec(src))) actions.push(m[1]);
+  return [...new Set(actions)].sort();
+}
+
+// `stripe account|checkout|portal` dispatch with `if` (not `case`) inside
+// cli/lib/stripe.mjs; the leaves surface through `<group>Action === "..."`.
+const STRIPE_GROUPS: Array<[string, string]> = [
+  ["account", "accountAction"],
+  ["checkout", "checkoutAction"],
+  ["portal", "portalAction"],
+];
+
+function parseStripeGroupActions(varName: string): string[] {
+  const filePath = join(__dirname, "cli/lib/stripe.mjs");
+  if (!existsSync(filePath)) return [];
+  const src = readFileSync(filePath, "utf-8");
+  const actions: string[] = [];
+  const re = new RegExp(`${varName}\\s*===\\s*"([\\w-]+)"`, "g");
   let m;
   while ((m = re.exec(src))) actions.push(m[1]);
   return [...new Set(actions)].sort();
@@ -449,6 +474,14 @@ const SURFACE: Capability[] = [
   { id: "domains_wait",         endpoint: "POST /projects/v1/:project_id/domains/:domain/actions/check (poll)", cli: "domains:wait", openclaw: "domains:wait" },
   { id: "domains_activate",     endpoint: "POST /projects/v1/:project_id/domains/:domain/actions/activate_mailbox_addresses", cli: "domains:activate", openclaw: "domains:activate" },
   { id: "domains_disconnect",   endpoint: "DELETE /projects/v1/:project_id/domains/:domain",    cli: "domains:disconnect",   openclaw: "domains:disconnect" },
+  // Stripe for tenant apps: the organization's own connected account, zero platform fee.
+  { id: "stripe_account_connect",         endpoint: "POST /projects/v1/:project_id/stripe/account",                        cli: "stripe:account:connect",         openclaw: "stripe:account:connect" },
+  { id: "stripe_account_get",             endpoint: "GET /projects/v1/:project_id/stripe/account",                         cli: "stripe:account:status",          openclaw: "stripe:account:status" },
+  { id: "stripe_account_disconnect",      endpoint: "DELETE /projects/v1/:project_id/stripe/account",                      cli: "stripe:account:disconnect",      openclaw: "stripe:account:disconnect" },
+  { id: "stripe_onboarding_link_create",  endpoint: "POST /projects/v1/:project_id/stripe/onboarding-links",               cli: "stripe:account:onboarding-link", openclaw: "stripe:account:onboarding-link" },
+  { id: "stripe_checkout_session_create", endpoint: "POST /projects/v1/:project_id/stripe/checkout-sessions",              cli: "stripe:checkout:create",         openclaw: "stripe:checkout:create" },
+  { id: "stripe_checkout_session_get",    endpoint: "GET /projects/v1/:project_id/stripe/checkout-sessions/:checkout_session_id", cli: "stripe:checkout:get", openclaw: "stripe:checkout:get" },
+  { id: "stripe_portal_session_create",   endpoint: "POST /projects/v1/:project_id/stripe/portal-sessions",                cli: "stripe:portal:create",           openclaw: "stripe:portal:create" },
 
   // ── Unified apply ────────────────────────────────────────────────────────
   { id: "deploy",            endpoint: "POST /apply/v1/plans",                            cli: "deploy",            openclaw: "deploy" },
@@ -1070,6 +1103,13 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   domains_wait: "domains.wait",
   domains_activate: "domains.activate",
   domains_disconnect: "domains.disconnect",
+  stripe_account_connect: "projects.stripe.account.connect",
+  stripe_account_get: "projects.stripe.account.get",
+  stripe_account_disconnect: "projects.stripe.account.disconnect",
+  stripe_onboarding_link_create: "projects.stripe.onboardingLinks.create",
+  stripe_checkout_session_create: "projects.stripe.checkoutSessions.create",
+  stripe_checkout_session_get: "projects.stripe.checkoutSessions.get",
+  stripe_portal_session_create: "projects.stripe.portalSessions.create",
 
   // Unified apply. The engine lives
   // at r._applyEngine internally; the public hero is r.project(id).apply.
@@ -1360,6 +1400,18 @@ async function listSdkMethods(): Promise<string[]> {
         if (name === "constructor") continue;
         if (typeof innerProto[name] !== "function") continue;
         methods.push(`${ns}.${inner}.${name}`);
+      }
+      // One level further (e.g. projects.stripe.account), same rule.
+      for (const leaf of Object.keys(innerObj)) {
+        const leafObj = innerObj[leaf];
+        if (!leafObj || typeof leafObj !== "object") continue;
+        const leafProto = Object.getPrototypeOf(leafObj);
+        if (!leafProto || leafProto === Object.prototype) continue;
+        for (const name of Object.getOwnPropertyNames(leafProto)) {
+          if (name === "constructor") continue;
+          if (typeof leafProto[name] !== "function") continue;
+          methods.push(`${ns}.${inner}.${leaf}.${name}`);
+        }
       }
     }
   }
