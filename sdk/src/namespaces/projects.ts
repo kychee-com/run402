@@ -17,6 +17,7 @@ import type { Client } from "../kernel.js";
 import type { ProjectKeys } from "../credentials.js";
 import { LocalError } from "../errors.js";
 import { requireProjectCredentials } from "../project-credentials.js";
+import { usableProjectKeys, withPrincipalFallback } from "../stale-project-key.js";
 import type { ExposeManifest } from "./deploy.types.js";
 import type {
   SqlBatchOptions,
@@ -313,15 +314,17 @@ export class Projects {
    * Introspect the project's database schema — tables, columns, types,
    * constraints, and RLS policies. Uses the cached service key when this
    * machine has one, otherwise your own authority (`project.database.read`:
-   * org role viewer or higher, or a `database:read` grant).
+   * org role viewer or higher, or a `database:read` grant). A cached key the
+   * gateway refuses is retried once as you, like {@link sql}.
    */
   async getSchema(id: string): Promise<SchemaReport> {
-    const keys = await this.client.getProjectCredentials(id);
+    const keys = await usableProjectKeys(this.client, id);
 
-    return this.client.request<SchemaReport>(`/projects/v1/admin/${id}/schema`, {
-      ...(keys ? { headers: { Authorization: `Bearer ${keys.service_key}` } } : {}),
-      context: "fetching schema",
-    });
+    return withPrincipalFallback(this.client, id, keys, (k) =>
+      this.client.request<SchemaReport>(`/projects/v1/admin/${id}/schema`, {
+        ...(k ? { headers: { Authorization: `Bearer ${k.service_key}` } } : {}),
+        context: "fetching schema",
+      }));
   }
 
   /** Run SQL against the project's database (`POST /projects/v1/:project_id/sql`).
@@ -330,7 +333,10 @@ export class Projects {
    *  gateway authorizes it by your role: `project.database.read` (viewer or
    *  higher, or `database:read`) runs read-only, enforced by PostgreSQL;
    *  `project.database.write` (developer or higher, or `database:write`) can
-   *  write. `{ readOnly: true }` runs the call read-only for any caller (one
+   *  write. A cached key the gateway refuses (expired, revoked, unknown) is
+   *  retried once as you; with no principal to retry as, the refusal names
+   *  `run402 credentials project-keys delete --project <id>` as its first next
+   *  action. `{ readOnly: true }` runs the call read-only for any caller (one
    *  statement, a write answers `DATABASE_READ_ONLY`). Returns the gateway envelope
    *  verbatim: `{ status, schema, rows, row_count, fields, statements,
    *  warnings }`. `rows` and `fields` come from the last statement and
@@ -340,21 +346,22 @@ export class Projects {
    *  means a schema change on a released project belongs in a migration, and
    *  `MULTI_STATEMENT_TEXT_BODY` points at {@link sqlBatch}. */
   async sql(id: string, sql: string, params?: unknown[], opts: SqlOptions = {}): Promise<SqlResult> {
-    const keys = await this.client.getProjectCredentials(id);
+    const keys = await usableProjectKeys(this.client, id);
 
     const useParams = Array.isArray(params) && params.length > 0;
     const readOnly = opts.readOnly === true;
     const json = useParams || readOnly;
-    return this.client.request<SqlResult>(`/projects/v1/${id}/sql`, {
-      method: "POST",
-      headers: {
-        ...(keys ? { Authorization: `Bearer ${keys.service_key}` } : {}),
-        "Content-Type": json ? "application/json" : "text/plain",
-      },
-      body: json ? { sql, ...(useParams ? { params } : {}), ...(readOnly ? { read_only: true } : {}) } : undefined,
-      rawBody: json ? undefined : sql,
-      context: "running SQL",
-    });
+    return withPrincipalFallback(this.client, id, keys, (k) =>
+      this.client.request<SqlResult>(`/projects/v1/${id}/sql`, {
+        method: "POST",
+        headers: {
+          ...(k ? { Authorization: `Bearer ${k.service_key}` } : {}),
+          "Content-Type": json ? "application/json" : "text/plain",
+        },
+        body: json ? { sql, ...(useParams ? { params } : {}), ...(readOnly ? { read_only: true } : {}) } : undefined,
+        rawBody: json ? undefined : sql,
+        context: "running SQL",
+      }));
   }
 
   /** Run several statements (1 to 100, one statement each) with an explicit
@@ -391,35 +398,46 @@ export class Projects {
     const opts: ProjectRestOptions = options ?? {};
     const method = opts.method ?? "GET";
     const query = formatRestQuery(opts.query);
-    const keys = await this.client.getProjectCredentials(id);
+    const serviceRequested = opts.keyType === "service";
+    const keys = serviceRequested
+      ? await usableProjectKeys(this.client, id)
+      : await this.client.getProjectCredentials(id);
     // No cached key and no explicit anon request: go as yourself on the
     // project REST route, authorized by your role (GET needs
     // project.database.read, other methods project.database.write) with
     // database authority, like keyType "service". An explicit anon read
     // needs the anon key.
-    const asPrincipal = !keys && opts.keyType !== "anon";
-    const resolved = keys ?? (asPrincipal ? null : await requireProjectCredentials(this.client, id, "querying REST"));
-    const useService = asPrincipal || opts.keyType === "service";
-    const headers: Record<string, string> = {};
-    if (resolved) {
-      const key = useService ? resolved.service_key : resolved.anon_key;
-      headers.apikey = key;
-      headers.Authorization = `Bearer ${key}`;
-    }
-    if (method !== "GET") headers.Prefer = "return=representation";
+    const resolved = keys ?? (opts.keyType !== "anon" ? null : await requireProjectCredentials(this.client, id, "querying REST"));
 
-    // The gateway rejects the service_role on the public PostgREST path
-    // (/rest/v1/*), so service-key REST is routed through the project's
-    // service REST route (/projects/v1/:project_id/rest/*). Anon keys use the
-    // public path.
-    const path = useService
-      ? `/projects/v1/${id}/rest/${encodeURIComponent(table)}${query}`
-      : `/rest/v1/${encodeURIComponent(table)}${query}`;
+    const send = (k: ProjectKeys | null) => {
+      const asPrincipal = !k && opts.keyType !== "anon";
+      const useService = asPrincipal || serviceRequested;
+      const headers: Record<string, string> = {};
+      if (k) {
+        const key = useService ? k.service_key : k.anon_key;
+        headers.apikey = key;
+        headers.Authorization = `Bearer ${key}`;
+      }
+      if (method !== "GET") headers.Prefer = "return=representation";
 
-    try {
-      return await this.client.requestWithResponse<T>(path, {
+      // The gateway rejects the service_role on the public PostgREST path
+      // (/rest/v1/*), so service-key REST is routed through the project's
+      // service REST route (/projects/v1/:project_id/rest/*). Anon keys use the
+      // public path.
+      const path = useService
+        ? `/projects/v1/${id}/rest/${encodeURIComponent(table)}${query}`
+        : `/rest/v1/${encodeURIComponent(table)}${query}`;
+      return this.client.requestWithResponse<T>(path, {
         method, headers, body: opts.body, context: "querying REST", withAuth: asPrincipal,
       });
+    };
+
+    try {
+      // A refused cached service key falls back to your principal on the same
+      // project REST route; an anon read has no principal equivalent.
+      return serviceRequested && resolved
+        ? await withPrincipalFallback(this.client, id, resolved, send)
+        : await send(resolved);
     } catch (error) {
       throw restDiagnostic(error, method, table);
     }

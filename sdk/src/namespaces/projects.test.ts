@@ -1111,3 +1111,92 @@ describe("projects database reads without a cached key (run402-private#827)", ()
     assert.equal(calls.length, 0);
   });
 });
+
+describe("projects database calls with a stale cached service key", () => {
+  const wireBody = {
+    status: "ok",
+    schema: "p0042",
+    rows: [{ one: 1 }],
+    row_count: 1,
+    fields: [{ name: "one", type: "int4" }],
+    statements: [{ command: "SELECT", row_count: 1 }],
+    warnings: [],
+  };
+  const revoked = {
+    status: "error",
+    error: "Credential expired",
+    message: "Credential expired",
+    code: "CREDENTIAL_REVOKED",
+    category: "auth",
+    next_actions: [{ type: "mint_token", method: "POST", path: "/projects/v1/:project_id/tokens" }],
+  };
+  const presentsCachedKey = (call: FetchCall) => call.headers["Authorization"] === "Bearer service_xxx";
+
+  it("sql retries once as the caller's principal when the cached key is rejected", async () => {
+    const { fetch, calls } = mockFetch((call) => presentsCachedKey(call) ? jsonResponse(revoked, 401) : jsonResponse(wireBody));
+    const sdk = makeSdk(makeCreds(), fetch);
+    const result = await sdk.projects.sql("prj_known", "SELECT 1", undefined, { readOnly: true });
+
+    assert.equal(calls.length, 2);
+    assert.equal(calls[1]!.url, "https://api.example.test/projects/v1/prj_known/sql");
+    assert.equal(calls[1]!.headers["Authorization"], undefined, "the rejected key is not resent");
+    assert.equal(calls[1]!.headers["SIGN-IN-WITH-X"], "test-siwx", "the principal carries the retry");
+    assert.deepEqual(JSON.parse(calls[1]!.body as string), { sql: "SELECT 1", read_only: true });
+    assert.deepEqual(result, wireBody);
+  });
+
+  it("the rejected key is skipped for the rest of the client's life", async () => {
+    const { fetch, calls } = mockFetch((call) => presentsCachedKey(call) ? jsonResponse(revoked, 401) : jsonResponse(wireBody));
+    const sdk = makeSdk(makeCreds(), fetch);
+    await sdk.projects.sql("prj_known", "SELECT 1");
+    await sdk.projects.sql("prj_known", "SELECT 2");
+    assert.equal(calls.length, 3, "one rejection, then principal calls only");
+    assert.equal(calls[2]!.headers["Authorization"], undefined);
+  });
+
+  it("getSchema retries as the caller's principal", async () => {
+    const { fetch, calls } = mockFetch((call) => presentsCachedKey(call) ? jsonResponse(revoked, 401) : jsonResponse({ schema: "p0042", tables: [] }));
+    const sdk = makeSdk(makeCreds(), fetch);
+    const result = await sdk.projects.getSchema("prj_known");
+    assert.equal(calls.length, 2);
+    assert.equal(calls[1]!.headers["Authorization"], undefined);
+    assert.equal(calls[1]!.headers["SIGN-IN-WITH-X"], "test-siwx");
+    assert.deepEqual(result, { schema: "p0042", tables: [] });
+  });
+
+  it("service REST retries as the caller's principal on the project REST route", async () => {
+    const { fetch, calls } = mockFetch((call) => presentsCachedKey(call) ? jsonResponse(revoked, 401) : jsonResponse([{ id: 1 }]));
+    const sdk = makeSdk(makeCreds(), fetch);
+    const rows = await sdk.projects.rest("prj_known", "pages", { keyType: "service" });
+    assert.equal(calls.length, 2);
+    assert.equal(calls[1]!.url, "https://api.example.test/projects/v1/prj_known/rest/pages");
+    assert.equal(calls[1]!.headers["Authorization"], undefined);
+    assert.equal(calls[1]!.headers["apikey"], undefined);
+    assert.equal(calls[1]!.headers["SIGN-IN-WITH-X"], "test-siwx");
+    assert.deepEqual(rows, [{ id: 1 }]);
+  });
+
+  it("with no usable principal, the error names the stale cache entry", async () => {
+    const { fetch, calls } = mockFetch((call) => presentsCachedKey(call)
+      ? jsonResponse(revoked, 401)
+      : jsonResponse({ message: "Missing auth", code: "AUTH_REQUIRED", category: "auth" }, 401));
+    const sdk = makeSdk(makeCreds({ async getAuth() { return null; } }), fetch);
+    await assert.rejects(sdk.projects.sql("prj_known", "SELECT 1"), (err: unknown) => {
+      assert.ok(err instanceof Unauthorized);
+      assert.equal(err.code, "CREDENTIAL_REVOKED");
+      const first = err.nextActions?.[0] as { type?: string; command?: string } | undefined;
+      assert.equal(first?.type, "run_cli_command");
+      assert.equal(first?.command, "run402 credentials project-keys delete --project prj_known");
+      return true;
+    });
+    assert.equal(calls.length, 2);
+  });
+
+  it("a denial that is not a stale key is not retried", async () => {
+    const forbidden = { message: "Requires a service credential", code: "FORBIDDEN", category: "auth" };
+    const { fetch, calls } = mockFetch(() => jsonResponse(forbidden, 403));
+    const sdk = makeSdk(makeCreds(), fetch);
+    await assert.rejects(sdk.projects.sql("prj_known", "SELECT 1"), Unauthorized);
+    assert.equal(calls.length, 1);
+  });
+});
