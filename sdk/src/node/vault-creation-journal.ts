@@ -251,7 +251,7 @@ export interface VaultCreationTransport {
   /**
    * Read an object back (`null` when absent) — the read-and-compare primitive.
    *
-   * `expected_sha256` (vault-small-object-inline design D3) is OPTIONAL,
+   * `expected_sha256` (D-vault-client-surface-1) is OPTIONAL,
    * client-internal plumbing: an `object-reads`-backed implementation MAY
    * use it to verify a gateway-supplied `inline` reply before trusting it,
    * falling back to the ordinary fetch on a mismatch — never a NEW

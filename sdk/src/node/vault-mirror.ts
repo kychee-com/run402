@@ -221,7 +221,7 @@ export async function readVaultObjectBytes(client: Client, repoId: string, entry
   // consumers get — see `fetchVaultObjectBytes` (`vault-edge-fetch.ts`)
   // for the prefer-edge/silent-fallback policy shared across both.
   //
-  // `inline` (vault-small-object-inline design D1/D2) is the same
+  // `inline` (D-vault-5/D-vault-6) is the same
   // optional, same-bytes small-object offer those consumers get too — see
   // `vault-publication.ts`'s `resolveObjectReadTarget` for the sibling
   // logic, DUPLICATED here (not imported) for the reason this module's own

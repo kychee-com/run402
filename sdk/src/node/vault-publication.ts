@@ -1004,7 +1004,7 @@ export interface VaultTransport extends VaultCreationTransport {
    * {@link VaultCreationTransport.getObject} — this is for the plural
    * case only, so a single-object caller never pays a batch's overhead.
    *
-   * `expected` (vault-small-object-inline design D3), when supplied, is
+   * `expected` (D-vault-client-surface-1), when supplied, is
    * INDEX-ALIGNED with `paths`: `expected[i]`, if present, is the sha256 hex
    * the caller will itself check `paths[i]`'s bytes against. An
    * `object-reads`-backed implementation MAY use it to verify a
@@ -1024,7 +1024,7 @@ export interface VaultTransport extends VaultCreationTransport {
    * bytes land, so a consumer can decrypt/verify/apply object i while later
    * objects are still downloading. Order and absence semantics match
    * `getObjects` (index-aligned; `null` for absent), including `expected`
-   * (vault-small-object-inline design D3 — see {@link getObjects}'s doc
+   * (D-vault-client-surface-1 — see {@link getObjects}'s doc
    * comment). Every returned promise is pre-marked handled, so an abandoned
    * tail after a mid-batch failure never surfaces as an unhandled
    * rejection. A transport without this method degrades to the
@@ -1579,7 +1579,7 @@ interface ObjectReadsResponse {
    * prefer-edge/silent-fallback policy; this type never implies a
    * verification difference between the two arms.
    *
-   * `inline` (vault-small-object-inline design D1/D2) is the object's
+   * `inline` (D-vault-5/D-vault-6) is the object's
    * EXACT stored bytes, base64url, present only when the gateway judged the
    * object small enough (a per-object cap) and the response's total inline
    * budget was not yet spent — `url`/`edge_url` remain present and
@@ -6522,7 +6522,7 @@ export class Vault {
     // without the method reproduces today's serial-after-barrier behavior
     // exactly (each per-index promise settles when the whole batch does).
     //
-    // `expected` (vault-small-object-inline design D3) is index-aligned
+    // `expected` (D-vault-client-surface-1) is index-aligned
     // with `paths` — every caller below already knows each object's
     // receipted ciphertext hash BEFORE fetching it, so it rides along here
     // to let an `object-reads`-backed transport verify (and, on a lying

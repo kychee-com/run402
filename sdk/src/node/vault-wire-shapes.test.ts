@@ -1064,14 +1064,14 @@ describe("createVaultHttpTransport — onObjectStoreOriginObserved (vault-object
   });
 });
 
-// ─── vault-small-object-inline design D1/D2/D3: `inline` on object-reads ──
+// ─── D-vault-5/D-vault-6/D-vault-client-surface-1: `inline` on object-reads ──
 //
 // `inline` sits beside `url`/`edge_url` on the SAME wire response the
 // edge_url describe block above already pins — these tests pin the new
 // member and the client's consumption of it: use `inline` when present and
 // (no expectation, or the expectation matches), else fall through to the
 // unchanged `url`/`edge_url` fetch exactly as if `inline` had been absent.
-describe("createVaultHttpTransport — inline object-reads bytes (vault-small-object-inline)", () => {
+describe("createVaultHttpTransport — inline object-reads bytes (D-vault-5)", () => {
   const REPO = `r402s_${"b".repeat(32)}`;
   const CCS_ID = `ccs_${"9".repeat(32)}`;
   const WAL_ID = `wal_${"8".repeat(32)}`;

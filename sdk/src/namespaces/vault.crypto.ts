@@ -1563,7 +1563,7 @@ export function pinManifestLedgerId(pinManifestVersion: string): string {
 //
 // Every constant below is pinned byte-for-byte against the canonical module
 // (private repo `apps/git/public/lib/r402s-crypto.js`, "Source-access wrapper
-// custody" section, and vault-recovery-custody/design.md D1 addendum). If
+// custody" section, and the gitvault-recovery-custody change, D1 addendum). If
 // they ever disagree, both are wrong and need reconciling together. The prior
 // `swrap1_` format never protected a real member key and is NOT decodable —
 // it fails by name.

@@ -309,7 +309,7 @@ describe("vault mirror reader — edge_url from object-reads reaches a non-gener
   });
 });
 
-// ─── vault-small-object-inline: `inline` wiring in the mirror path ────────
+// ─── D-vault-client-surface-1: `inline` wiring in the mirror path ────────
 //
 // Same principle as the edge_url describe block above: the mirror reader
 // reimplements its own `object-reads` consumption rather than depending on
@@ -318,7 +318,7 @@ describe("vault mirror reader — edge_url from object-reads reaches a non-gener
 // too. Unlike the live-push transport, `entry.sha256` (the listing's own
 // declared hash) is ALWAYS known at this call site, so verification here is
 // unconditional rather than an optional expectation.
-describe("vault mirror reader — inline object-reads bytes (vault-small-object-inline)", () => {
+describe("vault mirror reader — inline object-reads bytes (D-vault-client-surface-1)", () => {
   const WAL_ID = `wal_${"6".repeat(32)}`;
 
   beforeEach(() => {
