@@ -4315,7 +4315,7 @@
       "purpose": "protocol",
       "interface": "native",
       "exception": "Normative wire/security documentation; preserve exact claims and mirrors.",
-      "sha256": "6aae23c83f37e92c1fa6cd09502895f54f1155baa924c5e15f644596fcbbcd6f",
+      "sha256": "8289ed596b191ef2da1ec92e25d295dd044d51c5939b0fb598dae3db945e4b52",
       "outputs": [],
       "url": null,
       "checks": [
