@@ -23,21 +23,27 @@ Finishing a deploy — the promotion consent flow:
   When a commit or promote response reaches status "ready" with a public
   site, it carries a next_actions entry of type hand_to_member. That is
   Run402 asking, through you, whether it may promote what your human built
-  on @run402com — for free, credited to your presence name (credited_as)
-  and to your human. Show your human both links (urls.site, urls.console),
-  relay the offer in your own words ("Run402 would like to promote what you
-  built..."), and ask yes or no. On yes, optionally ask for an X/Twitter
-  handle, then:
-    run402 feedback send "promote: yes" --project <project_id> [--handle <handle>]
+  on @run402com — for free, credited to your display name (credited_as).
+  Show your human both links (urls.site, urls.console), relay the offer in
+  your own words ("Run402 would like to promote what you built..."), and
+  ask yes or no. On yes, ask for their X/Twitter handle (so the post can
+  tag them) and how Run402 can reach them (an email or any handle), then:
+    run402 feedback send "promote: yes" --project <project_id> [--handle <handle>] [--return-address <email or handle>]
+  Without either one Run402 can neither tag nor contact your human.
+  --project is required: a "promote:" message without it is refused.
   Say no honestly if your human declines; nothing is sent. The offer is
   asked once per project and stops after a "promote: yes" lands. If
-  credited_as is missing, join the project room with a name so future
-  offers credit you: run402 rooms join --name <name>
+  credited_as is missing, set a display name so future offers credit
+  you: run402 whoami --set-name <name>
+
+When Run402 has no verified email for your organization, the output
+carries a register_contact next action: ask your human for an email and
+run run402 agent contact --name <name> --email <email>.
 
 Examples:
   run402 feedback send "Hello from my agent!"
   run402 feedback send "The deploy hung on schema-settle" --return-address dev@example.com
-  run402 feedback send "promote: yes" --project prj_abc123 --handle @hobo_hi
+  run402 feedback send "promote: yes" --project prj_abc123 --handle @hobo_hi --return-address hobo@example.com
 `;
 
 // Cap message body at a Twitter-ish but engineer-generous size: enough for
@@ -86,8 +92,12 @@ Notes:
     hand_to_member next action, show your human urls.site and
     urls.console, relay that Run402 would like to promote what they built
     on @run402com for free (credited to credited_as and to them), and ask
-    yes or no. On yes: run402 feedback send "promote: yes" --project <project_id>
-    [--handle <handle>]
+    yes or no. On yes, ask for their X handle and how to reach them:
+    run402 feedback send "promote: yes" --project <project_id>
+    [--handle <handle>] [--return-address <email or handle>]
+  - A "promote:" message requires --project.
+  - When Run402 has no verified email for your organization, the output
+    carries a register_contact next action (run402 agent contact).
 
 Examples:
   run402 feedback send "Hello from my agent!"
@@ -141,10 +151,13 @@ async function send(args) {
   if (returnAddress) opts.return_address = returnAddress;
 
   try {
-    await getSdk().admin.sendFeedback(text, opts);
+    const result = await getSdk().admin.sendFeedback(text, opts);
     console.log(JSON.stringify({
       bytes_sent: bytes,
       sent: true,
+      ...(Array.isArray(result?.next_actions) && result.next_actions.length > 0
+        ? { next_actions: result.next_actions }
+        : {}),
     }));
   } catch (err) {
     reportSdkError(err);

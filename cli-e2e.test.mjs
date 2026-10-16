@@ -6149,6 +6149,34 @@ describe("CLI message send size cap (GH-175)", () => {
     assert.deepEqual(sentBody, { message: "please reply", return_address: "dev@example.com" });
   });
 
+  it("prints the gateway's next_actions (register_contact) beside the receipt", async () => {
+    const { run } = await import("./cli/lib/feedback.mjs");
+    const registerContact = { type: "register_contact", method: "POST", path: "/agent/v1/contact" };
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const url = typeof input === "string" ? input : (input?.url ?? String(input));
+      const method = (init?.method || (input instanceof Request ? input.method : "GET")).toUpperCase();
+      if (url.includes("/feedback/v1") && method === "POST") {
+        return new Response(JSON.stringify({ status: "sent", next_actions: [registerContact] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return prevFetch(input, init);
+    };
+    let threw = null;
+    captureStart();
+    try {
+      await run("send", ["promote: yes", "--project", "prj_abc123"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw, null, `should succeed, got: ${threw?.message}\nstderr: ${capturedStderr()}`);
+    const line = capturedStdout().split("\n").map(s => s.trim()).find(s => s.startsWith("{"));
+    assert.deepEqual(JSON.parse(line).next_actions, [registerContact]);
+  });
+
   it("rejects a --return-address over 256 characters with BAD_FLAG and does NOT POST", async () => {
     const { run } = await import("./cli/lib/feedback.mjs");
     const tracker = trackMessagePosts();

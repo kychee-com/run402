@@ -1938,7 +1938,7 @@ Stripe payments for your app, on the organization's OWN Stripe account: the orga
 Account-state refusals are 403 with `next_actions`: `STRIPE_ACCOUNT_REQUIRED` (`connect_stripe_account`), `STRIPE_ACCOUNT_ONBOARDING_INCOMPLETE` (`details.requirements`, `complete_onboarding`), `STRIPE_ACCOUNT_RESTRICTED` (`details.disabled_reason`). A Stripe refusal the caller can act on is `502 STRIPE_UPSTREAM_ERROR` (`details.code`, `details.param`); Stripe unreachable is 503 with `Retry-After`; the platform not configured is `503 STRIPE_CONNECT_UNAVAILABLE`. The money events (`stripe_checkout_completed`, `stripe_invoice_paid`, `stripe_invoice_payment_failed`, `stripe_subscription_updated`, `stripe_subscription_deleted`) and the account events (`stripe_account_updated`, `stripe_account_disconnected`) ride the project's events feed (`run402 events list`); route them to a function with a notification rule (`channel: webhook`) or poll the feed.
 
 ### message
-- `run402 feedback send "<text>" [--project <project_id>] [--handle <handle>] [--return-address <how to reach you>]` — `--project` + `message: "promote: yes"` relays a deploy's promotion consent (see "Finish a deploy: hand your human two links" above); `--handle` is the human's X/Twitter handle; `--return-address` (an email, a handle, a URL; at most 256 characters) tells the Run402 team how to contact you back, since there is no inbox to read (≤64 chars), delivered as-is.
+- `run402 feedback send "<text>" [--project <project_id>] [--handle <handle>] [--return-address <how to reach you>]` — `--project` + `message: "promote: yes"` relays a deploy's promotion consent (see "Finish a deploy: hand your human two links" above), and a `promote:` message without `--project` is refused `VALIDATION_FAILED`; `--handle` is the human's X/Twitter handle (≤64 chars), delivered as-is; `--return-address` (an email, a handle, a URL; at most 256 characters) tells the Run402 team how to contact you back, since there is no inbox to read. The output carries `next_actions` with `register_contact` when Run402 holds no verified email for your organization (`run402 agent contact --name <name> --email <email>`).
 
 ### agent
 - `run402 agent contact --name <name> [--email <email>] [--webhook <url>]`
@@ -2421,13 +2421,17 @@ The same response's `next_actions` carries one `hand_to_member` entry — unless
 
 Relay the doctrine in your own words: show the site and console links, say that Run402 would like to promote what they built on `@run402com`, for free, credited to `credited_as` and to them, and ask yes or no. It's an offer ("would like to promote"), never a claim that the build was reviewed or liked.
 
-On yes, optionally ask for an X/Twitter handle, then send the consent:
+On yes, ask for their X/Twitter handle (so the post can tag them) and how Run402 can reach them (an email or any handle), then send the consent, leaving out what they did not give:
 
 ```bash
-run402 feedback send "promote: yes" --project prj_abc123 --handle @hobo_hi
+run402 feedback send "promote: yes" --project prj_abc123 --handle @hobo_hi --return-address hobo@example.com
 ```
 
-On no, say so honestly and send nothing — the offer isn't recorded as declined, so a later activation asks again. If `credited_as` came back `null`, join the project room with a name so the next offer credits you: `run402 rooms join --name <name>`.
+Without either one Run402 can neither tag nor contact your human. Keep `--project`: a `promote:` message without it is refused `VALIDATION_FAILED` (`field: "project_id"`), because the consent could not be recorded and the offer would come back on every deploy.
+
+When Run402 holds no verified email for your organization, a `register_contact` entry follows the offer, and the feedback response carries one too. Ask your human for an email and register it with `run402 agent contact --name <name> --email <email>`; they then answer the verification email. Without it Run402 cannot reach them, not even with recovery or security notices.
+
+On no, say so honestly and send nothing — the offer isn't recorded as declined, so a later activation asks again. If `credited_as` came back `null`, set a display name so the next offer credits you: `run402 whoami --set-name <name>`.
 
 ### After you build: send us feedback
 

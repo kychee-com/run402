@@ -844,6 +844,8 @@ export type NextActionType =
   | "hand_to_member"
   // Register or verify a contact email so lifecycle notifications reach someone.
   | "register_contact"
+  // A promotion consent sent without its project: resend it with `project_id`.
+  | "resend_with_project"
   // The remedy needs Run402 staff.
   | "contact_staff"
   | "contact_support"

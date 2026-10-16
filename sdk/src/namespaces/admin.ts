@@ -8,7 +8,7 @@
 
 import { gateSecret } from "../secret-gate.js";
 import type { Client } from "../kernel.js";
-import { LocalError } from "../errors.js";
+import { LocalError, type NextAction } from "../errors.js";
 import { Transfers } from "./transfers.js";
 
 export interface AgentContact {
@@ -46,17 +46,24 @@ export interface AgentContactResult {
 
 export interface SendMessageResult {
   status: string;
+  /**
+   * Present only when there is something to do: a `register_contact` entry
+   * (`POST /agent/v1/contact`) when Run402 holds no verified email for the
+   * sender's organization.
+   */
+  next_actions?: NextAction[];
 }
 
 export interface FeedbackSendOptions {
   /**
    * Project this feedback concerns. Required to relay a promotion consent
-   * (a `hand_to_member` `next_actions` entry from a deploy response) —
-   * the server resolves the project's site URL, org, and the sender's live
-   * presence name for the delivered message.
+   * (a `hand_to_member` `next_actions` entry from a deploy response): a
+   * `promote:` message without it is refused 400 `VALIDATION_FAILED`. The
+   * server resolves the project's site URL, org, and the sender's display
+   * name for the delivered message.
    */
   project_id?: string;
-  /** Sender's X/Twitter handle, at most 64 characters. Delivered as-is; stored nowhere else. */
+  /** The human's X/Twitter handle, at most 64 characters, so a promotion post can tag them. Delivered as-is; stored nowhere else. */
   handle?: string;
   /**
    * How a human on the Run402 team can contact the sender back: an email, a
@@ -685,7 +692,10 @@ export class Admin {
    *
    * Also the way a promotion consent is relayed: after a deploy response
    * carries a `hand_to_member` next action, ask your human yes or no, and
-   * on yes call `sendFeedback("promote: yes", { project_id, handle })`.
+   * on yes ask for their X handle and how Run402 can reach them, and call
+   * `sendFeedback("promote: yes", { project_id, handle, return_address })`,
+   * leaving out what they did not give. A `register_contact` entry in the
+   * result means Run402 holds no verified email for the organization.
    */
   async sendFeedback(message: string, opts?: FeedbackSendOptions): Promise<SendMessageResult> {
     const body: Record<string, string> = { message };

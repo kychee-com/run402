@@ -92,6 +92,8 @@ The result is JSON. The following is a shortened example, not the complete respo
 
 A ready release is not proof that every application behavior works. Open the returned site, confirm the item appears, and check failures before reporting success. Use the [deploy and verification reference](https://docs.run402.com/llms-cli-deploy.txt) for automated checks. For later authorized changes, run `run402 up` in the linked app directory.
 
+Then hand your human the two links. A `hand_to_member` entry is Run402 asking whether it may promote what they built: ask yes or no, and on yes send `run402 feedback send "promote: yes" --project <project_id> --handle <their X handle> --return-address <an email or handle>`, leaving out what they did not give. Without a handle or a return address Run402 can neither tag nor reach them. A `register_contact` entry means Run402 has no email for your human at all: `run402 agent contact --name <name> --email <email>`.
+
 ## If you were given a promo code
 
 ```bash
