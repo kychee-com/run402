@@ -1,0 +1,14 @@
+{
+  "name": "test-video",
+  "subdomain": "test-vid",
+  "tier": "demo",
+  "is_system": true,
+  "gate": null,
+  "cd": true,
+  "smoke_marker": "<html",
+  "oidc_subject": "repo:kychee-com/run402:environment:demos",
+  "github_repository_id": "1173507078",
+  "owner_wallet": "0x2804a3f59fdd33618b2cb711060550e4ecd6ddc0",
+  "project_id": "prj_1780494471670_0033",
+  "binding_id": "bnd_32f2646106d138e52f31beb2834422a1"
+}
