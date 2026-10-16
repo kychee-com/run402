@@ -1,7 +1,7 @@
 # r402s-verify
 
 The **independent-lineage verifier** for the vault `r402s/v0` protocol
-(openspec `add-vault`, task 5.9). It exists so that nothing the SDK/CLI
+(task 5.9 of the `add-vault` change). It exists so that nothing the SDK/CLI
 says about a vault has to be taken on the SDK/CLI's word:
 
 - **Never imports the SDK.** Rust, RustCrypto primitives, a hand-written
