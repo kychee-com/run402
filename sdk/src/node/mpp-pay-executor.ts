@@ -1,7 +1,7 @@
 /**
  * `pay.fetch` on the `mpp` rail: buy an arbitrary URL whose 402 carries an
  * MPP Tempo charge challenge (spec `tenant-x402-payment-client-surface`,
- * design D9 of `tenant-mpp-priced-routes`).
+ * decision D-tenant-mpp-priced-routes-9).
  *
  * Send the request; on 402 select the first offered Tempo chain the wallet
  * covers (`orderTempoCandidates`, through mppx's own selection), apply the USD
