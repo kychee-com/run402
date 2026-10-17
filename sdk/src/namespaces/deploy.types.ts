@@ -763,7 +763,9 @@ export type KnownDeployResolveMatch =
   | "spa_fallback_missing"
   | "route_function"
   | "route_static_alias"
-  | "route_method_miss";
+  | "route_method_miss"
+  | "deployment_host"
+  | "deployment_retired";
 
 export type DeployResolveMatch = LiteralUnion<KnownDeployResolveMatch>;
 
@@ -909,6 +911,20 @@ export interface DeployResolveResponse {
   legacy_immutable_risk?: Array<Record<string, unknown>>;
   emergency_fallback?: Record<string, unknown> | null;
   edge_propagation?: EdgePropagationDiagnostics | null;
+  /** `deployment` when the host is a deployment host (`dpl-*.sites.run402.com`). */
+  host_kind?: LiteralUnion<"deployment"> | null;
+  /** Deployment hosts: the `dpl_` deployment the host serves. */
+  deployment_id?: string | null;
+  /** Deployment hosts: `live` (the active release or a subdomain serves it),
+   *  `retained` (replaced; serves until `origin_available_until`), or
+   *  `retired` (no longer served). */
+  deployment_status?: LiteralUnion<"live" | "retained" | "retired"> | null;
+  /** Deployment hosts: when a replaced deployment stops (or stopped) serving; null while live. */
+  origin_available_until?: string | null;
+  /** Deployment hosts: how long a replaced deployment keeps serving. */
+  origin_retention_seconds?: number | null;
+  /** `false` for deployment hosts: the host is reported, not the path. */
+  path_evaluated?: boolean;
   /** Diagnostic body status. This is not necessarily the HTTP response status. */
   result: number;
   [key: string]: unknown;
@@ -1383,6 +1399,7 @@ function deployResolveCategory(response: DeployResolveResponse): string {
   }
   if (isDeployResolveStaticHit(response)) return "static";
   if (response.match === "host_missing") return "host";
+  if (response.match === "deployment_host" || response.match === "deployment_retired") return "deployment";
   if (response.match === "manifest_missing") return "manifest";
   if (response.match === "path_error") return "path";
   if (response.match === "spa_fallback_missing") return "fallback";
@@ -1415,6 +1432,15 @@ function deployResolveSummaryText(
   }
   if (response.match === "manifest_missing") {
     return `${url} reached the host, but no active static manifest is available for diagnostics.`;
+  }
+  if (response.match === "deployment_host") {
+    const deployment = response.deployment_id ?? "its deployment";
+    return response.deployment_status === "retained" && response.origin_available_until
+      ? `${url} is a deployment host for ${deployment}, which was replaced; it serves the whole deployment until ${response.origin_available_until}, then stops. The path itself is not evaluated.`
+      : `${url} is a deployment host serving ${deployment}. The path itself is not evaluated.`;
+  }
+  if (response.match === "deployment_retired") {
+    return `${url} is a deployment host for ${response.deployment_id ?? "a deployment"} that was replaced and is no longer served.`;
   }
   if (response.match === "active_release_missing") {
     return `${url} reached the host, but no active release is available for diagnostics.`;
@@ -1557,6 +1583,17 @@ function deployResolveNextSteps(
         {
           code: "check_credentials",
           message: "Check that the selected local project credentials can inspect this host.",
+        },
+      ];
+    case "deployment_retired":
+      return [
+        {
+          code: "use_project_host",
+          message: "Use the project's subdomain or custom domain, which serves the live release.",
+        },
+        {
+          code: "promote_release",
+          message: "Promote this deployment's release (`run402 deploy promote <release_id>`) only if it should be live again.",
         },
       ];
     case "manifest_missing":

@@ -3071,6 +3071,45 @@ describe("Deploy.apply (validation)", () => {
     assert.equal(summary.next_steps[0]?.code, "redeploy_static_asset");
   });
 
+  it("summarizes deployment hosts by their serving state", () => {
+    const request = normalizeDeployResolveRequest({ project: "prj_test", url: "https://dpl-mvazld8t-d2beaf.sites.run402.com/heritage/people.json" });
+    const base = {
+      hostname: "dpl-mvazld8t-d2beaf.sites.run402.com",
+      host_kind: "deployment",
+      project_id: "prj_test",
+      deployment_id: "dpl_mvazld8t_d2beaf",
+      release_id: "rel_old",
+      origin_retention_seconds: 3600,
+      path_evaluated: false,
+      fallback_state: "not_used",
+    } as const;
+
+    const retained = buildDeployResolveSummary({
+      ...base,
+      result: 200,
+      match: "deployment_host",
+      authorized: true,
+      deployment_status: "retained",
+      origin_available_until: "2026-10-16T14:40:00.000Z",
+    } satisfies DeployResolveResponse, request);
+    assert.equal(retained.would_serve, true);
+    assert.equal(retained.category, "deployment");
+    assert.match(retained.summary, /was replaced; it serves the whole deployment until 2026-10-16T14:40:00.000Z, then stops/);
+
+    const retired = buildDeployResolveSummary({
+      ...base,
+      result: 404,
+      match: "deployment_retired",
+      authorized: false,
+      deployment_status: "retired",
+      origin_available_until: "2026-10-16T14:40:00.000Z",
+    } satisfies DeployResolveResponse, request);
+    assert.equal(retired.would_serve, false);
+    assert.equal(retired.category, "deployment");
+    assert.match(retired.summary, /no longer served/);
+    assert.deepEqual(retired.next_steps.map((step) => step.code), ["use_project_host", "promote_release"]);
+  });
+
   it("summarizes non-settled edge propagation as retryable", () => {
     const response = {
       hostname: "fresh.run402.com",
