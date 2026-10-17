@@ -265,7 +265,8 @@ const refreshed = await fetch(API + '/auth/v1/token?grant_type=refresh_token', {
 
 - New Google user → new project user created (null password, Google name + avatar stored)
 - Returning Google user -> signed in to existing user
-- Same email as existing password user → returns `account_exists_requires_link` error (no auto-merge for security)
+- Same email as a user created with `run402 auth create-user` (or invited) who has never signed in and has no password, passkey or linked identity, and Google says the email is verified → Google is linked to that user and they are signed in (how invited users of a `known_email` / `invite_only` project sign in with Google the first time)
+- Same email as a user already in use (password, passkey, another identity, or any past sign-in) → returns `account_exists_requires_link` error (no auto-merge for security); the user signs in their usual way, then links Google with `?intent=link`
 - New Google user on a project whose `public_signup` is `known_email` or `invite_only` → returns `signup_not_allowed` error (no user created; existing users still sign in)
 - Social-only users cannot use password login (helpful error message returned)
 
