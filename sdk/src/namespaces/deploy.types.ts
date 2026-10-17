@@ -923,8 +923,13 @@ export interface DeployResolveResponse {
   origin_available_until?: string | null;
   /** Deployment hosts: how long a replaced deployment keeps serving. */
   origin_retention_seconds?: number | null;
-  /** `false` for deployment hosts: the host is reported, not the path. */
+  /** Deployment hosts: `true` when the path was resolved against the deployment's
+   *  release (its static manifest and public paths); `false` for a retired host or
+   *  a deployment no release names, which is reported per host. */
   path_evaluated?: boolean;
+  /** Deployment hosts: `false` once the deployment was replaced; its routes no
+   *  longer run there, and a matched route reports result 404. */
+  routes_active?: boolean;
   /** Diagnostic body status. This is not necessarily the HTTP response status. */
   result: number;
   [key: string]: unknown;
@@ -1095,7 +1100,7 @@ export function buildDeployResolveSummary(
   const method = request.method ?? "GET";
   const url = `${method} ${request.original_url ? displayResolveUrl(request) : `https://${request.host}${request.path}`}`;
   const category = deployResolveCategory(response);
-  const summary = deployResolveSummaryText(response, url);
+  const summary = withDeploymentHostNote(deployResolveSummaryText(response, url), response);
   return {
     would_serve,
     diagnostic_status: response.result,
@@ -1405,6 +1410,19 @@ function deployResolveCategory(response: DeployResolveResponse): string {
   if (response.match === "spa_fallback_missing") return "fallback";
   if (response.match === "none") return "miss";
   return "unknown";
+}
+
+function withDeploymentHostNote(summary: string, response: DeployResolveResponse): string {
+  if (
+    response.host_kind !== "deployment" ||
+    response.path_evaluated !== true ||
+    response.deployment_status !== "retained" ||
+    !response.origin_available_until
+  ) {
+    return summary;
+  }
+  const routes = response.routes_active === false ? " Its routes no longer run." : "";
+  return `${summary} This deployment host was replaced and serves until ${response.origin_available_until}, then stops.${routes}`;
 }
 
 function deployResolveSummaryText(

@@ -3096,6 +3096,19 @@ describe("Deploy.apply (validation)", () => {
     assert.equal(retained.category, "deployment");
     assert.match(retained.summary, /was replaced; it serves the whole deployment until 2026-10-16T14:40:00.000Z, then stops/);
 
+    const evaluated = buildDeployResolveSummary({
+      ...base,
+      result: 200,
+      match: "static_exact",
+      authorized: true,
+      deployment_status: "retained",
+      origin_available_until: "2026-10-16T14:40:00.000Z",
+      path_evaluated: true,
+      routes_active: false,
+    } satisfies DeployResolveResponse, request);
+    assert.equal(evaluated.would_serve, true);
+    assert.match(evaluated.summary, /would serve an exact static file\. This deployment host was replaced and serves until 2026-10-16T14:40:00.000Z, then stops\. Its routes no longer run\./);
+
     const retired = buildDeployResolveSummary({
       ...base,
       result: 404,
