@@ -3123,6 +3123,27 @@ describe("Deploy.apply (validation)", () => {
     assert.deepEqual(retired.next_steps.map((step) => step.code), ["use_project_host", "promote_release"]);
   });
 
+  it("summarizes a matched function route as served, naming its gates", () => {
+    const request = normalizeDeployResolveRequest({ project: "prj_test", url: "https://app.run402.com/api/hello" });
+    const base = {
+      hostname: "app.run402.com",
+      result: 200,
+      match: "route_function",
+      authorized: true,
+      authorization_result: "authorized",
+      fallback_state: "not_used",
+      target_type: "function",
+      target_name: "api",
+    } as const;
+    const open = buildDeployResolveSummary({ ...base, route_gates: [] } satisfies DeployResolveResponse, request);
+    assert.equal(open.would_serve, true);
+    assert.equal(open.summary, "GET https://app.run402.com/api/hello matched a deploy function route.");
+
+    const gated = buildDeployResolveSummary({ ...base, route_gates: ["require_auth", "priced"] } satisfies DeployResolveResponse, request);
+    assert.equal(gated.would_serve, true);
+    assert.match(gated.summary, /the function answers only a signed-in user and a paid request\.$/);
+  });
+
   it("summarizes non-settled edge propagation as retryable", () => {
     const response = {
       hostname: "fresh.run402.com",

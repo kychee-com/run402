@@ -905,6 +905,10 @@ export interface DeployResolveResponse {
   target_type?: LiteralUnion<"function" | "static"> | null;
   target_name?: string | null;
   target_file?: string | null;
+  /** Function routes: what stands before the function's response (`require_auth`,
+   *  `require_role`, `priced`); empty when anyone reaches it. `authorized: true`
+   *  on a function route means the host dispatches the request to it. */
+  route_gates?: Array<LiteralUnion<"require_auth" | "require_role" | "priced">>;
   authorized: boolean;
   fallback_state: DeployResolveFallbackState;
   error_code?: string | null;
@@ -1425,6 +1429,18 @@ function withDeploymentHostNote(summary: string, response: DeployResolveResponse
   return `${summary} This deployment host was replaced and serves until ${response.origin_available_until}, then stops.${routes}`;
 }
 
+function routeGateText(gates: DeployResolveResponse["route_gates"]): string | null {
+  if (!gates || gates.length === 0) return null;
+  const words: string[] = [];
+  if (gates.includes("require_auth")) words.push("a signed-in user");
+  if (gates.includes("require_role")) words.push("a caller with an allowed role");
+  if (gates.includes("priced")) words.push("a paid request");
+  for (const gate of gates) {
+    if (gate !== "require_auth" && gate !== "require_role" && gate !== "priced") words.push(`callers passing ${gate}`);
+  }
+  return words.join(" and ");
+}
+
 function deployResolveSummaryText(
   response: DeployResolveResponse,
   url: string,
@@ -1494,7 +1510,10 @@ function deployResolveSummaryText(
     return `${url} would serve an exact static file.`;
   }
   if (response.match === "route_function") {
-    return `${url} matched a deploy function route.`;
+    const gates = routeGateText(response.route_gates);
+    return gates
+      ? `${url} matched a deploy function route; the function answers only ${gates}.`
+      : `${url} matched a deploy function route.`;
   }
   if (response.match === "route_static_alias") {
     return `${url} matched a deploy static route alias.`;
