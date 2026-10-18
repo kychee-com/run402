@@ -3144,6 +3144,29 @@ describe("Deploy.apply (validation)", () => {
     assert.match(gated.summary, /the function answers only a signed-in user and a paid request\.$/);
   });
 
+  it("summarizes a route a replaced deployment host no longer runs", () => {
+    const request = normalizeDeployResolveRequest({ project: "prj_test", url: "https://dpl-a.sites.run402.com/api/hello" });
+    const summary = buildDeployResolveSummary({
+      hostname: "dpl-a.sites.run402.com",
+      host_kind: "deployment",
+      deployment_status: "retained",
+      origin_available_until: "2026-10-18T05:00:00.000Z",
+      routes_active: false,
+      path_evaluated: true,
+      result: 404,
+      match: "route_function",
+      authorized: false,
+      authorization_result: "route_inactive",
+      route_gates: ["require_auth", "priced"],
+      fallback_state: "not_used",
+    } satisfies DeployResolveResponse, request);
+    assert.equal(summary.would_serve, false);
+    assert.equal(
+      summary.summary,
+      "GET https://dpl-a.sites.run402.com/api/hello matched a function route that this replaced deployment host no longer runs; it answers 404. This deployment host was replaced and serves until 2026-10-18T05:00:00.000Z, then stops.",
+    );
+  });
+
   it("summarizes non-settled edge propagation as retryable", () => {
     const response = {
       hostname: "fresh.run402.com",

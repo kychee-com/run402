@@ -781,7 +781,9 @@ export type KnownDeployResolveAuthorizationResult =
   | "missing_cas_object"
   | "unfinalized_or_deleting_cas_object"
   | "size_mismatch"
-  | "unauthorized_cas_object";
+  | "unauthorized_cas_object"
+  /** A function route of a replaced deployment: the host no longer runs it (result 404). */
+  | "route_inactive";
 
 export type DeployResolveAuthorizationResult =
   LiteralUnion<KnownDeployResolveAuthorizationResult>;
@@ -1425,7 +1427,7 @@ function withDeploymentHostNote(summary: string, response: DeployResolveResponse
   ) {
     return summary;
   }
-  const routes = response.routes_active === false ? " Its routes no longer run." : "";
+  const routes = response.routes_active === false && response.match !== "route_function" ? " Its routes no longer run." : "";
   return `${summary} This deployment host was replaced and serves until ${response.origin_available_until}, then stops.${routes}`;
 }
 
@@ -1508,6 +1510,9 @@ function deployResolveSummaryText(
   }
   if (response.match === "static_exact") {
     return `${url} would serve an exact static file.`;
+  }
+  if (response.match === "route_function" && (response.authorization_result === "route_inactive" || response.routes_active === false)) {
+    return `${url} matched a function route that this replaced deployment host no longer runs; it answers 404.`;
   }
   if (response.match === "route_function") {
     const gates = routeGateText(response.route_gates);
