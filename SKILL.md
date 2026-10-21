@@ -979,6 +979,17 @@ run402 stripe account disconnect --confirm                              # the St
 
 Send the payer to the session `url`. Then react to the project's events feed, not the redirect: `stripe_checkout_completed`, `stripe_invoice_paid`, `stripe_invoice_payment_failed`, `stripe_subscription_updated`, `stripe_subscription_deleted` carry your `client_reference_id`; route them to a function with a notification rule (`channel: webhook`) or poll `run402 events list`. Before onboarding completes, a checkout request answers `403 STRIPE_ACCOUNT_ONBOARDING_INCOMPLETE` with `details.requirements` and a `complete_onboarding` next action. URLs must be HTTPS on one of the project's own hosts or the console. From MCP, `account.connect` and `onboardingLinks.create` are CLI-only (`SECRET_REQUIRES_CLI`); checkout and portal sessions run everywhere.
 
+## Push notifications for your app
+
+The phone shows the notification (a web standard); Run402 keeps each signed-in user's phones, encrypts and delivers every message, and drops phones the push service says are gone. The server decides when: a function (often on a schedule trigger) notices a condition and calls `push.send({ title, body?, url?, tag?, to? })` from `@run402/functions` (omit `to` for every phone, or `{ user_id }` for one user's). In the page, `<script src="/_run402/push.js"></script>` and `Run402Push.subscribe({ accessToken })` from a "Notify me" tap, then again at start-up for a signed-in user; only signed-in users can sign a phone up (10 per user). On iPhone (iOS 16.4+) push works only from the Home Screen app, never a Safari tab.
+
+```bash
+run402 push status                       # phones by user, today's deliveries vs the daily cap, the latest 10 messages
+run402 push status --message pmsg_123    # one message's per-phone deliveries: accepted | retrying | failed | removed
+```
+
+The cap counts deliveries per organization per UTC day (100 prototype, 1,000 hobby, 10,000 team); a message that does not fit is refused whole: `403 QUOTA_EXCEEDED` with an upgrade next action, or on team (no higher tier) `429 RATE_LIMITED` with `Retry-After` until the UTC day resets. Push needs Run402 Cloud (`PUSH_UNSUPPORTED` on Core). Guide: <https://docs.run402.com/build/push/>.
+
 ## On-chain — signers (your app's wallet)
 
 A signer is an Ethereum wallet Run402 keeps for your project: its key is created in and never leaves the platform's key custody, so an app sends money and signs contract calls without holding a private key. $0.04/day wallet rent + $0.000005 signing fee per signature. Signer creation requires $1.20 in allowance (30 days of rent). Non-custodial — see <https://run402.com/humans/terms.html#non-custodial-kms-wallets>. A signer sends USDC with no ETH on it (`transfers create`: the platform's facilitator settles the signed authorization and pays the gas), and an org can make a signer its payout address (`run402 orgs payout-wallet --signer <signer_id>`) so what priced routes earn is what the app pays out from.

@@ -250,6 +250,8 @@ export const COMMAND_MANIFEST = [
   // ── events / live ────────────────────────────────────────────────────────
   { path: ["events", "list"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
   { path: ["live"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["--tables", "cells", "--once"], runStyle: "merged" },
+  // ── push ─────────────────────────────────────────────────────────────────
+  { path: ["push", "status"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
   { path: ["deliveries", "list"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
   { path: ["deliveries", "get"], positionals: [p("notification_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["n_1"], runStyle: "sub" },
   { path: ["contacts", "list"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },

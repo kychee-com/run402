@@ -92,7 +92,7 @@ function readCommandSource(filePath: string): string | null {
 /** Parse CLI commands as "module:subcommand" pairs */
 function parseCliCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["admin", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "stripe", "apps", "email", "feedback", "agent", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "orgs", "identity", "buzz", "grants", "deliveries", "contacts", "subscriptions", "webhook-secret", "archives", "rooms", "messages", "claims", "escalations", "repos", "events", "errors"]) {
+  for (const mod of ["admin", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "stripe", "apps", "email", "feedback", "agent", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "orgs", "identity", "buzz", "grants", "deliveries", "contacts", "subscriptions", "webhook-secret", "archives", "rooms", "messages", "claims", "escalations", "repos", "events", "errors", "push"]) {
     for (const sub of parseSubcommands(join(__dirname, "cli/lib", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -136,7 +136,7 @@ function parseCliCommands(): string[] {
 /** Parse OpenClaw commands as "module:subcommand" pairs */
 function parseOpenClawCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["admin", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "stripe", "apps", "email", "feedback", "agent", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "orgs", "identity", "buzz", "grants", "deliveries", "contacts", "subscriptions", "webhook-secret", "archives", "rooms", "messages", "claims", "escalations", "repos", "events", "errors"]) {
+  for (const mod of ["admin", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "stripe", "apps", "email", "feedback", "agent", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "orgs", "identity", "buzz", "grants", "deliveries", "contacts", "subscriptions", "webhook-secret", "archives", "rooms", "messages", "claims", "escalations", "repos", "events", "errors", "push"]) {
     for (const sub of parseSubcommands(join(__dirname, "openclaw/scripts", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -594,6 +594,10 @@ const SURFACE: Capability[] = [
   // tenant-live-changes: a long-lived stream has no verb of its own (see the
   // change design); the held read is the polling-friendly shape.
   { id: "live_changes",                 endpoint: "GET /live/v1 + GET /live/v1/changes (+ /_run402/live* on tenant hosts)", cli: "live", openclaw: "live" },
+  // tenant web push: the agent-side check. One CLI command covers both reads:
+  // `push status --message <id>` is the per-message read; the SDK's
+  // push.getMessage is tracked in SDK_ONLY_METHODS.
+  { id: "push_status",                  endpoint: "GET /projects/v1/:project_id/push (+ /push/messages/:message_id)", cli: "push:status", openclaw: "push:status" },
 
   // ── Agent messaging — coordination rooms (add-agent-messaging) ──────────
   // One CLI family per resource: `rooms` (the room itself: list/get/join/
@@ -1207,6 +1211,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   // tenant-live-changes: the CLI verb streams via `live.subscribe`; the held
   // read `live.changes` is the polling-friendly shape and the mapped method.
   live_changes: "live.changes",
+  push_status: "push.status",
   join_room: "rooms.registerPresence",
   send_room_message: "rooms.sendMessage",
   read_room_messages: "rooms.listMessages",
@@ -1908,6 +1913,9 @@ describe("SDK surface alignment", () => {
       // ─── Project events feed — org-wide union ──────────────────────────
       // Shares the `events list` CLI command (--org); no dedicated verb of its own.
       "events.listForOrg",
+      // ─── Web push — one message's deliveries ───────────────────────────
+      // Shares the `push status` CLI command (--message); no dedicated verb of its own.
+      "push.getMessage",
       // Agent messaging: join_room folds presence-listing + claim-listing into
       // the arrival call and read_room_messages folds get-one (message_id
       // param); scoped()/forProject() are addressing sugar the CLI uses

@@ -1,14 +1,14 @@
 ---
-title: "Functions, secrets, jobs"
-description: "Command reference for serverless functions, secrets, and managed jobs."
+title: "Functions, secrets, jobs, push"
+description: "Command reference for serverless functions, secrets, managed jobs, and web push notification status."
 order: 6
 slice: functions
-summary: "functions (deploy, invoke, runs, logs), secrets, jobs"
+summary: "functions (deploy, invoke, runs, logs), secrets, jobs, push"
 ---
 
 ### functions
 Node 22 runtime. Must export `default async (req: Request) => Response`.
-Built-in helper: `import { auth, db, adminDb, email, ai, assets, getRoutedPaymentContext } from '@run402/functions'`
+Built-in helper: `import { auth, db, adminDb, email, ai, assets, push, getRoutedPaymentContext } from '@run402/functions'`
 - `auth.user()` — `Actor | null`; taints cache bypass. `Actor` = `{ id, projectId, sessionId, email, emailVerified, authTime, amr, amrTimes }`; `id`, not `userId`. Hallucinated names (`getUser`, `getSession`, `currentUser`, `getServerSession`, `auth.protect`, `auth.signIn`, `auth.logout`, …) throw `R402_AUTH_UNKNOWN_EXPORT` and fail `run402 doctor` deploy scan.
 - `auth.requireUser()` — `Actor`. 303 → `/auth/sign-in?returnTo=` (HTML) or 401 envelope (JSON) on anonymous. Don't catch — the platform handles redirect-vs-envelope automatically.
 - `auth.requireRole<const R>(role: R)` / `auth.requireMembership<const M>(m: M)` — gate helpers; imply `requireUser`; return `{ user, role }` / `{ user, membership }`. Always read fresh server-side grant state (no positive cache, so revocation is instant across tasks).
@@ -29,10 +29,11 @@ Built-in helper: `import { auth, db, adminDb, email, ai, assets, getRoutedPaymen
 - `assets.list(opts?)` — page through the project's blobs (`prefix`, `limit`, `cursor`, `sort`, `filter`). Each row carries the URL fields `put` returned (`url`, `cdn_url`, `immutable_url`, `cdn_immutable_url`, and for encoded images `display_url` and `variants.{thumb,medium,large}`), so a function can render a media grid; public URLs are `null` for private keys. Returns `{ blobs, next_cursor }`.
 - `assets.delete(key)` — remove a key with the service key; revokes its immutable and variant URLs and queues a CDN invalidation for a public key. Returns `{ deleted, key, revoked_immutable_refs, cache_invalidation }`; a missing key throws (404). Needs `@run402/functions` 4.8.
 - `assets.fromRef(raw)` — local rehydrate stored AssetRef JSONB into typed shape with camelCase aliases + variants. Store full `AssetRef` from `r.assets.put` in JSONB; variant SHAs/immutable URLs cannot be re-derived from `(source_sha,key)`. Tolerates partial legacy inputs; throws only on null/undefined/non-object.
+- `push.send({ title, body?, url?, tag?, to? })` — queue a web push notification to the phones signed up to the project (`to: { user_id }` for one user's phones; omit to reach every phone). `title` 1–100 characters, `body` ≤ 1000, `tag` ≤ 64 (a newer message with the same tag replaces the older one on the phone), `url` a path on the app (default `/`). Returns `{ message_id, status: "queued" | "no_subscribers", devices }` (202 / 200). Throws `Run402PushError` with the gateway `code`: `VALIDATION_FAILED`, `QUOTA_EXCEEDED` (403, the organization's daily delivery cap: `details.resource: "push_deliveries_per_day"`, `used`, `limit`, `resets_at`), `RATE_LIMITED` (429), and `PUSH_UNSUPPORTED` on Run402 Core. Phones sign up from the app's page through `/_run402/push.js` (see [Push notifications](https://docs.run402.com/build/push/)); check delivery with `run402 push status`.
 - `snapshots.*` (`@run402/functions` 4.5+) — the function's OWN project's restore points, authorized by its service key (no project id or credential argument). `snapshots.create({ label?, metadata? })`, `snapshots.list({ limit?, after?, kind? })`, `snapshots.get(id)`, `snapshots.delete(id)` (manual snapshots only), `snapshots.restorePlan(id, { release? })`, `snapshots.restore(id, confirm, { release? })`, `snapshots.getRestore(snapshotId, restoreId)`. Labels and metadata live outside the project's database, so `list()` stays a complete ledger after a restore. `restore` always returns the `202` handle (`restore_id`, `status: "running"`) instead of waiting, because a restore can outlast a function's timeout; poll `getRestore`. It restores app data only: restoring auth identities (`include:["auth"]`) and deleting platform snapshots stay with org admins (`403 SNAPSHOT_AUTH_RESTORE_REQUIRES_PRINCIPAL`, `403 SNAPSHOT_KIND_NOT_DELETABLE_BY_SERVICE_KEY`). `release: "snapshot"` re-activates the capture-time release with the data and re-deploys differing functions to their capture-time code (the plan lists them in `release.functions_to_redeploy`). Errors are `R402SnapshotsError` with the gateway `code` and `next_actions`; a host without snapshots (Run402 Core) throws `SNAPSHOTS_UNSUPPORTED`. A restore is destructive: decide in your app who may call it, and never put secrets in metadata.
 - `getRun402Context(req)` — reads `x-run402-*` context headers across `Request`/`Headers`/plain objects. Returns `{ requestId, projectId, releaseId, host, locale, defaultLocale }` (`string|null`), same as `Astro.locals.run402`; never throws.
 
-TypeScript types: `npm install @run402/functions@^4` to get full autocomplete for the `auth.*` namespace, `db(req?)`, `adminDb()`, `getRun402Context()`, `getRoutedPaymentContext()`, `email.send()`, `ai.translate()`, `ai.generateImage()`, `assets.put()`, `assets.list()`, `assets.delete()`, and `assets.fromRef()`. Works in any Node.js/TypeScript project (Astro, Next.js, plain TS). For static site generation, use `adminDb().from()` at build time with `RUN402_SERVICE_KEY` + `RUN402_PROJECT_ID` in your `.env`.
+TypeScript types: `npm install @run402/functions@^4` to get full autocomplete for the `auth.*` namespace, `db(req?)`, `adminDb()`, `getRun402Context()`, `getRoutedPaymentContext()`, `email.send()`, `ai.translate()`, `ai.generateImage()`, `assets.put()`, `assets.list()`, `assets.delete()`, `assets.fromRef()`, and `push.send()`. Works in any Node.js/TypeScript project (Astro, Next.js, plain TS). For static site generation, use `adminDb().from()` at build time with `RUN402_SERVICE_KEY` + `RUN402_PROJECT_ID` in your `.env`.
 
 #### db(req).from(table) — caller-context, RLS applies
 
@@ -210,3 +211,11 @@ filenames from the `artifacts` map; a 404 means the job has not completed or
 the filename was not recorded for that run.
 
 Due durable runs wait automatically while project concurrency slots are occupied. Waiting does not consume an execution attempt or retry budget. Keep the original run ID and inspect its status; do not cancel and recreate work merely because capacity is busy. Lifecycle and exhausted-quota blocks still require recovery.
+
+### push
+Web push notifications: a deployed function sends with `push.send(...)` (above); a signed-in user signs a phone up from the app's page (`<script src="/_run402/push.js">`, then `Run402Push.subscribe({ accessToken })`). These reads are the agent-side check. Auth: the project's service_key, your wallet, a sign-in session, or a grant key with `project.read`. Guide: [Push notifications](https://docs.run402.com/build/push/).
+
+- `run402 push status [--project <project_id>]` — `{ project_id, subscriptions: { total, users: [{ user_id, phones: [{ subscription_id, push_service, created_at, last_confirmed_at, last_accepted_at }] }], users_shown, users_total, has_more }, usage: { deliveries_today, limit, resets_at, scope: "organization", org_id }, messages }`. `messages` is the latest 10, each `{ message_id, created_at, status, devices, outcomes: { queued, retrying, accepted, removed, failed } }`; a message's `status` is `no_subscribers | queued | sending | completed`. `--project` defaults to the active project.
+- `run402 push status --message <message_id> [--project <project_id>]` — one message: `title`, `body`, `url`, `tag`, `to` (`{ user_id }` or `null` for everyone), `status`, `devices`, `outcomes`, and `deliveries[]` (`{ subscription_id, user_id, push_service, status, attempts, last_status, last_error, updated_at }`, `deliveries_shown`, `has_more`). A delivery's `status` is `queued | retrying | accepted | removed | failed`; `removed` means the push service said the phone is gone and the platform deleted its subscription. An unknown message id, or another project's, is a 404.
+
+The daily cap counts deliveries per organization per UTC day: 100 on prototype, 1,000 on hobby, 10,000 on team. A message that does not fit is refused whole: `403 QUOTA_EXCEEDED` with an upgrade next action, or on team, which has no higher tier, `429 RATE_LIMITED` with `Retry-After` until the UTC day resets. Push needs Run402 Cloud (`PUSH_UNSUPPORTED` on Run402 Core).

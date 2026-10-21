@@ -778,6 +778,40 @@ sub.close(); await sub.done;
 
 `LiveEvent` is `ready` (`cursor`, `tables`), `change`, `resync` (`tables`, `reason`), `reconnect` (the server closed at its 300 s lifetime; the loop resumes from the last cursor) or `disconnected` (a retryable failure; `retry_in_ms`). Audience: `{ as: "anon" }` (default; the project anon key, public-policy tables), `{ as: "user", accessToken }` (adds a user Bearer; receives that user's `user_owns_rows` hints), `{ as: "service" }` (service key; every hint). A non-retryable refusal (`TABLE_NOT_LIVE`, `AUTH_REQUIRED`, `VALIDATION_FAILED`) rejects `done` with the gateway's error envelope; `LIVE_CONNECTION_LIMIT` and 5xx back off and retry. The tenant-host stream (`/_run402/live`) needs no SDK at all: `new EventSource("/_run402/live?tables=cells")`.
 
+### `r.push`
+
+Web push notifications, the agent-side check. A deployed function sends with `push.send({ title, body?, url?, tag?, to? })` from `@run402/functions`; a signed-in user signs a phone up from the app's page through `/_run402/push.js` (`Run402Push.subscribe({ accessToken })`). These two reads show who is signed up, how much of the organization's daily delivery cap is used, and what happened to each message. Also project-scoped as `r.project(id).push.status()` / `.getMessage(messageId)`.
+
+```
+status(projectId): Promise<PushStatus>                          // GET /projects/v1/:project_id/push
+// PushStatus = { project_id,
+//   subscriptions: { total, users: [{ user_id, phones: PushPhone[] }], users_shown, users_total, has_more },
+//   usage: { deliveries_today, limit, resets_at, scope: "organization", org_id },
+//   messages: PushMessageSummary[] }      ← the latest 10
+// PushPhone = { subscription_id, push_service, created_at, last_confirmed_at, last_accepted_at: string | null }
+// PushMessageSummary = { message_id, created_at, status: "no_subscribers" | "queued" | "sending" | "completed",
+//   devices, outcomes: { queued, retrying, accepted, removed, failed } }
+getMessage(projectId, messageId): Promise<PushMessage>           // GET …/push/messages/:message_id
+// PushMessage = PushMessageSummary & { project_id, title, body, url, tag, to: { user_id } | null,
+//   deliveries: PushDelivery[], deliveries_shown, has_more }
+// PushDelivery = { subscription_id, user_id, push_service, status: "queued" | "retrying" | "accepted" | "removed" | "failed",
+//   attempts, last_status: number | null, last_error: string | null, updated_at }
+```
+
+```ts
+const p = r.project(projectId);
+const { usage, messages } = await p.push.status();
+if (usage.deliveries_today >= usage.limit) console.log(`cap reached until ${usage.resets_at}`);
+const latest = messages[0];
+if (latest) {
+  const message = await p.push.getMessage(latest.message_id);
+  const failed = message.deliveries.filter((d) => d.status === "failed");
+  console.log(failed.map((d) => `${d.push_service}: ${d.last_status} ${d.last_error ?? ""}`));
+}
+```
+
+`removed` means the push service said the phone is gone and the platform deleted its subscription. Accepted credentials: the project's service_key, a wallet/control-plane principal with `project.read`, or a grant key. An unknown message id, or another project's, is a 404 `ApiError` carrying the gateway's `code`. Neither read carries a subscription's endpoint or keys, so both run on the MCP `run` sandbox. The daily cap counts deliveries per organization per UTC day (100 / 1,000 / 10,000 on prototype / hobby / team); `push.send` refuses a message that does not fit whole with `403 QUOTA_EXCEEDED`. Push needs Run402 Cloud.
+
 ### `r.rooms`
 
 Org-scoped agent coordination rooms — session presence ("who's here, doing what"), durable room-visible messages, and advisory work claims for the agents working on the same project. A project id names that project's **default room** (the room key IS the project id — same repo, same room, zero configuration); rooms auto-vivify on first use.

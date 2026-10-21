@@ -90,6 +90,7 @@ Run `node scripts/documentation-inventory.mjs` to reject newly discovered unclas
 | public | [cli/lib/orgs.mjs](cli/lib/orgs.mjs) | guide / cli | pending | pending |
 | public | [cli/lib/pay.mjs](cli/lib/pay.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/projects.mjs](cli/lib/projects.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
+| public | [cli/lib/push.mjs](cli/lib/push.mjs) | guide / cli | pending | pending |
 | public | [cli/lib/redeem.mjs](cli/lib/redeem.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/repos.mjs](cli/lib/repos.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/rooms.mjs](cli/lib/rooms.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
@@ -144,6 +145,7 @@ Run `node scripts/documentation-inventory.mjs` to reject newly discovered unclas
 | public | [docs-site/src/content/docs/build/domains.md](docs-site/src/content/docs/build/domains.md) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [docs-site/src/content/docs/build/email.md](docs-site/src/content/docs/build/email.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | hosted verified: 2026-09-17; portal 23751749 |
 | public | [docs-site/src/content/docs/build/functions.md](docs-site/src/content/docs/build/functions.md) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
+| public | [docs-site/src/content/docs/build/push.md](docs-site/src/content/docs/build/push.md) | guide / cli | pending | pending |
 | public | [docs-site/src/content/docs/build/storage.md](docs-site/src/content/docs/build/storage.md) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [docs-site/src/content/docs/build/stripe.md](docs-site/src/content/docs/build/stripe.md) | guide / cli | pending | pending |
 | public | [docs-site/src/content/docs/cache/concepts.md](docs-site/src/content/docs/cache/concepts.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | hosted verified: 2026-09-17; portal 23751749 |

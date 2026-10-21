@@ -58,6 +58,7 @@ const GROUPED_COMMANDS = [
   "subscriptions",
   "orgs",
   "projects",
+  "push",
   "secrets",
   "service",
   "sites",

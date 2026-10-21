@@ -518,6 +518,7 @@ describe("ScopedRun402 drift protection", () => {
     secrets: new Set(),
     subdomains: new Set(),
     grants: new Set(),
+    push: new Set(),
   };
 
   // Namespaces that exist on Run402 but are NOT exposed on ScopedRun402:
@@ -572,6 +573,7 @@ describe("ScopedRun402 drift protection", () => {
       "secrets",
       "subdomains",
       "grants",
+      "push",
     ];
 
     const missing: string[] = [];

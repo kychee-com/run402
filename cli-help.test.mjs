@@ -157,6 +157,7 @@ const MATRIX = {
   grants: { shared: [], specific: ["create", "list", "revoke", "revoke-key", "rotate-key"] },
   events: { shared: ["list"], specific: [] },
   live: { shared: [], specific: [] },
+  push: { shared: ["status"], specific: [] },
   rooms: { shared: [], specific: [] },
   claims: { shared: [], specific: [] },
   // Every `repos` subcommand falls back to the module-level help (no

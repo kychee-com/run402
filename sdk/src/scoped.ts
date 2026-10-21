@@ -201,6 +201,7 @@ import type {
   ListEventsOptions,
   ProjectEventFeedPage,
 } from "./namespaces/events.types.js";
+import type { PushMessage, PushStatus } from "./namespaces/push.types.js";
 import type {
   ErrorFingerprintDetail,
   ErrorsPage,
@@ -505,6 +506,19 @@ class ScopedLive {
   /** Reconnecting SSE subscription; handle `resync` by refetching. */
   subscribe(opts: LiveSubscribeOptions, onEvent: (event: LiveEvent) => void): LiveSubscription {
     return this.parent.live.subscribe(this.projectId, opts, onEvent);
+  }
+}
+
+class ScopedPush {
+  constructor(private readonly parent: Run402, private readonly projectId: string) {}
+
+  /** Subscriptions by user, today's deliveries against the daily cap, and the latest 10 messages. */
+  status(): Promise<PushStatus> {
+    return this.parent.push.status(this.projectId);
+  }
+  /** One message: what was sent, to whom, and each delivery's state. */
+  getMessage(messageId: string): Promise<PushMessage> {
+    return this.parent.push.getMessage(this.projectId, messageId);
   }
 }
 
@@ -1143,6 +1157,8 @@ export class ScopedRun402 {
   /** Cursored project events feed, project-id pre-bound. */
   readonly events: ScopedEvents;
   readonly live: ScopedLive;
+  /** Web push notification status and per-message delivery outcomes, project-id pre-bound. */
+  readonly push: ScopedPush;
   /** Release-error-rollup query surface (list / get / watch), project-id pre-bound. */
   readonly errors: ScopedErrors;
   readonly archives: ScopedArchives;
@@ -1167,6 +1183,7 @@ export class ScopedRun402 {
     this.grants = new ScopedGrants(parent, projectId);
     this.events = new ScopedEvents(parent, projectId);
     this.live = new ScopedLive(parent, projectId);
+    this.push = new ScopedPush(parent, projectId);
     this.errors = new ScopedErrors(parent, projectId);
     this.archives = new ScopedArchives(parent, projectId);
     this.snapshots = new ScopedSnapshots(parent, projectId);
