@@ -6819,6 +6819,16 @@
       "topic": "/errors/client/#RUN_TIMEOUT"
     },
     {
+      "code": "RUN_TYPE_ERROR",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "src/tools/run.ts"
+        }
+      ],
+      "topic": "/errors/client/#RUN_TYPE_ERROR"
+    },
+    {
       "code": "RUN_UNKNOWN_MEMBER",
       "owners": [
         {

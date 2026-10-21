@@ -12,11 +12,19 @@ order: 15
 { "code": "const { projects } = await r.projects.list();\nprojects.filter((p) => !p.site_url).map((p) => ({ id: p.id, name: p.name }))" }
 ```
 
-The source is the body of an `async` function: top-level `await` works, and the value of an explicit `return`, or else of the last expression statement, is the result. Types are stripped, not compiled, so `enum`, parameter properties, and namespaces are syntax errors. `timeout_seconds` is optional: 60 by default, at most 300.
+The source is the body of an `async` function: top-level `await` works, and the value of an explicit `return`, or else of the last expression statement, is the result. The snippet is type-checked against the SDK before anything runs (below), then its types are stripped, so `enum`, parameter properties, and namespaces are syntax errors. `timeout_seconds` is optional: 60 by default, at most 300.
 
 Await every `r` chain. `r.project("prj_…").functions.list()` is recorded in the sandbox and replayed on the host only when awaited (a chain returned as the last expression is awaited for you). A result that is JSON data comes back as data. A result that is not (a scoped client from `await r.project()`, a deploy operation from `apply.start`) comes back as a handle you keep chaining from inside the same run: `const p = await r.project(); await p.functions.list()`. Read a handle's fields with `await` too.
 
 Arguments to `r` must be data: JSON values, `undefined`, `Date`, `Uint8Array`, `Map`, `Set`, `BigInt`, or a handle. A function, a class instance, or an un-awaited chain is refused before any request (`RUN_ARGUMENT_NOT_CLONEABLE`).
+
+## The type check
+
+Before any call, the snippet is type-checked against the SDK's own declarations (the `@run402/sdk/node` client `r` replays against, packaged with this server), with only the sandbox's bindings declared: `r`, `console`, and the builtins, and no DOM or Node types. The check is `strict` with implicit `any` allowed, so an untyped helper parameter is fine. A snippet that does not type-check makes no call: a misspelled method, a misspelled field of a result (`p.siteUrl` for `p.site_url`), a wrong argument shape, or a missing `await` comes back as an error naming the line, with `calls` empty, so nothing the snippet wrote before the mistake has happened.
+
+The check refuses only what the sandbox cannot run as written. `typeof require` and similar probes run, and so does an un-awaited chain the replay resolves (`await r.project().functions.list()`); declaring a value `any` passes it through to the replay's own checks. If the checker cannot start on a machine, the snippet runs unchecked, as it would without it, and the result says so: `type_check: { status: "skipped", reason }`.
+
+## The sandbox
 
 The sandbox is QuickJS compiled to WebAssembly. It has no filesystem, no `process`, no `require` or `import()`, no `fetch`, and no timers; nothing is denied because none of it exists. Its globals are `r`, `console` (captured), the ECMAScript builtins, `URL`, `TextEncoder`, `TextDecoder`, `structuredClone`, and `crypto.randomUUID`. A snippet that waits uses the SDK's own bounded waiters (`r.rooms.waitForMessages`, `r.assets.waitFresh`, the deploy's own polling).
 
@@ -45,7 +53,7 @@ The sandbox is QuickJS compiled to WebAssembly. It has no filesystem, no `proces
 
 ## Errors
 
-On failure `status` is `"error"` and `error` is `{ code, message, next_actions }`, with `line` and `column` for a syntax error. An SDK error (a payment required, an authorization denial, a deploy error) arrives with the SDK's own `code`, `message`, and `next_actions`, unchanged, and its call is marked in `calls`. The sandbox's own codes each carry exactly one next action:
+On failure `status` is `"error"` and `error` is `{ code, message, next_actions }`, with `line` and `column` for a syntax or type error, and for a type error `diagnostics[]` of `{ line, column, code, message }` (TypeScript's own code and message): the first 10, and when there are more, `diagnostics_total` and a `diagnostics_ref` that `expand_result` pages. An SDK error (a payment required, an authorization denial, a deploy error) arrives with the SDK's own `code`, `message`, and `next_actions`, unchanged, and its call is marked in `calls`. The sandbox's own codes each carry exactly one next action:
 
 | code | when | next action |
 |---|---|---|
@@ -55,7 +63,8 @@ On failure `status` is `"error"` and `error` is `{ code, message, next_actions }
 | `RUN_VALUE_NOT_SERIALIZABLE` | the result is not JSON (a handle, a function, a BigInt, a cycle) | `edit_request` |
 | `RUN_VALUE_TOO_LARGE` | the result is over 4 MB | `edit_request`: select less in the snippet |
 | `RUN_ARGUMENT_NOT_CLONEABLE` | an argument to `r` is not data | `edit_request` |
-| `RUN_UNKNOWN_MEMBER` | the snippet reached an `r.` path the SDK does not have | `edit_request` with `path` and `did_you_mean`: the closest public members, or, when the parent has nothing close, where that member does live (`r.project(…).sql` suggests `r.project(…).projects.sql` and `r.projects.sql`) |
+| `RUN_TYPE_ERROR` | the snippet does not type-check against the SDK; nothing ran | `edit_request` with the first diagnostic's `line`, `column` |
+| `RUN_UNKNOWN_MEMBER` | the snippet reaches a member an SDK object does not have; the type check finds it before any call, or the replay does when the check was skipped | `edit_request` with `path` and `did_you_mean`: the closest public members, or, when the parent has nothing close, where that member does live (`r.project(…).sql` suggests `r.project(…).projects.sql` and `r.projects.sql`) |
 | `RUN_EXCEPTION` | the snippet threw | `edit_request` |
 | `RUN_BUSY` | four runs are already in flight on this server | `retry` |
 | `SECRET_REQUIRES_CLI` | an SDK method refused because it returns or consumes a one-time secret | `run_cli_command` with the exact `command` |

@@ -1827,6 +1827,9 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="RUN_TIMEOUT"></a>
 [`RUN_TIMEOUT`](/errors/client/#RUN_TIMEOUT)
 
+<a id="RUN_TYPE_ERROR"></a>
+[`RUN_TYPE_ERROR`](/errors/client/#RUN_TYPE_ERROR)
+
 <a id="RUN_UNKNOWN_MEMBER"></a>
 [`RUN_UNKNOWN_MEMBER`](/errors/client/#RUN_UNKNOWN_MEMBER)
 

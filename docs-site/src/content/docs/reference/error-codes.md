@@ -2401,6 +2401,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="RUN_TIMEOUT"></a>
 [`RUN_TIMEOUT`](/errors/client/#RUN_TIMEOUT)
 
+<a id="run_type_error"></a>
+<a id="RUN_TYPE_ERROR"></a>
+[`RUN_TYPE_ERROR`](/errors/client/#RUN_TYPE_ERROR)
+
 <a id="run_unknown_member"></a>
 <a id="RUN_UNKNOWN_MEMBER"></a>
 [`RUN_UNKNOWN_MEMBER`](/errors/client/#RUN_UNKNOWN_MEMBER)

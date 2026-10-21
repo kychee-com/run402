@@ -1,11 +1,12 @@
-import { afterEach, beforeEach, describe, it } from "node:test";
+import { after, afterEach, beforeEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { handleRun, RUN_MAX_CONCURRENT, type RunResult } from "./run.js";
+import { handleRun, RUN_DIAGNOSTICS_WINDOW, RUN_MAX_CONCURRENT, type RunResult } from "./run.js";
 import { _resetResultStore, expandResult } from "../result-store.js";
 import { _resetSdk } from "../sdk.js";
+import { _setSnippetCheckerStart, closeSnippetChecker } from "../snippet-check.js";
 import { runOutputSchema, toolErrorSchema } from "../structured.js";
 
 const originalFetch = globalThis.fetch;
@@ -75,6 +76,10 @@ beforeEach(() => {
   mockGateway();
 });
 
+after(async () => {
+  await closeSnippetChecker();
+});
+
 afterEach(() => {
   globalThis.fetch = originalFetch;
   console.error = originalConsoleError;
@@ -140,22 +145,91 @@ describe("run tool", () => {
     assert.equal(run.total, 3);
   });
 
-  it("names the closest members when a snippet reaches a path the SDK does not have", async () => {
+  it("names the closest members when a snippet reaches a path the SDK does not have, before any call", async () => {
     const run = envelope(await handleRun({ code: "await r.projects.lst()" }));
     assert.equal(run.status, "error");
     assert.equal(run.error?.code, "RUN_UNKNOWN_MEMBER");
     assert.match(run.error!.message, /Did you mean r\.projects\.list/);
+    assert.equal(run.error?.next_actions.length, 1);
     const next = run.error!.next_actions[0]!;
     assert.equal(next.type, "edit_request");
     assert.equal(next.path, "r.projects.lst");
     assert.ok((next.did_you_mean as string[]).includes("r.projects.list"));
-    assert.equal(run.calls[0]?.path, "projects.lst");
-    assert.equal(run.calls[0]?.code, "RUN_UNKNOWN_MEMBER");
+    assert.deepEqual(run.calls, []);
+    assert.equal(requests.length, 0);
+  });
+
+  it("stops a write that comes before a mistake", async () => {
+    const run = envelope(await handleRun({ code: 'await r.rooms.sendMessage("org_1", "dev", { body: "starting cleanup" });\nconst { projects } = await r.projects.lst();\nprojects.length' }));
+    assert.equal(run.error?.code, "RUN_UNKNOWN_MEMBER");
+    assert.ok((run.error!.next_actions[0]!.did_you_mean as string[]).includes("r.projects.list"));
+    assert.equal(run.error?.line, 2);
+    assert.deepEqual(run.calls, []);
+    assert.equal(requests.length, 0, "the message was not sent");
+  });
+
+  it("refuses a misspelled result field instead of answering wrongly", async () => {
+    const run = envelope(await handleRun({ code: "const { projects } = await r.projects.list();\nprojects.filter((p) => !p.siteUrl).map((p) => p.id)" }));
+    assert.equal(run.error?.code, "RUN_TYPE_ERROR");
+    assert.match(run.error!.message, /nothing ran\. Line 2, column \d+: .*Did you mean 'site_url'\?/);
+    assert.deepEqual(run.error?.diagnostics?.map((d) => [d.line, d.code]), [[2, "TS2551"]]);
+    assert.equal(run.error?.diagnostics_ref, undefined, "one diagnostic needs no ref");
+    assert.equal(run.type_check, undefined, "a checked run says nothing about the check");
+    assert.deepEqual(run.error?.next_actions.map((a) => [a.type, a.line]), [["edit_request", 2]]);
+    assert.deepEqual(run.calls, []);
+    assert.equal(requests.length, 0);
+  });
+
+  it("shows the first diagnostics and pages the rest by ref", async () => {
+    const code = Array.from({ length: 13 }, (_, i) => `const v${i}: number = "x";`).join("\n");
+    const result = await handleRun({ code });
+    const run = envelope(result);
+    assert.equal(run.error?.code, "RUN_TYPE_ERROR");
+    assert.match(run.error!.message, /\(13 errors\)/);
+    assert.equal(run.error?.diagnostics?.length, RUN_DIAGNOSTICS_WINDOW);
+    assert.equal(run.error?.diagnostics_total, 13);
+    assert.match(result.content[0]!.text, new RegExp(`diagnostics — ${RUN_DIAGNOSTICS_WINDOW} of 13 shown below; expand_result with ref res_`));
+    const rest = expandResult(run.error!.diagnostics_ref!, { offset: RUN_DIAGNOSTICS_WINDOW });
+    assert.deepEqual((rest!.items as Array<{ line: number }>).map((d) => d.line), [11, 12, 13]);
+    assert.equal(run.error?.next_actions.length, 1);
+  });
+
+  it("names a wrong argument shape and a missing await as type errors", async () => {
+    const shape = envelope(await handleRun({ code: 'await r.rooms.sendMessage("org_1", "dev", { text: "hi" })' }));
+    assert.equal(shape.error?.code, "RUN_TYPE_ERROR");
+    assert.match(shape.error!.diagnostics![0]!.message, /'text' does not exist/);
+    const noAwait = envelope(await handleRun({ code: "const { projects } = r.projects.list();\nprojects.map((p) => p.id)" }));
+    assert.equal(noAwait.error?.code, "RUN_TYPE_ERROR");
+    assert.match(noAwait.error!.diagnostics![0]!.message, /Promise<ListProjectsResult>/);
+    assert.equal(requests.length, 0);
+  });
+
+  it("still runs what the sandbox runs: typeof probes and un-awaited r chains", async () => {
+    const probe = envelope(await handleRun({ code: "[typeof require, typeof process, typeof fetch, typeof setTimeout]" }));
+    assert.deepEqual(probe.value, ["undefined", "undefined", "undefined", "undefined"]);
+    const chained = envelope(await handleRun({ code: '(await r.project("prj_1").functions.list().functions).map((f) => f.name)' }));
+    assert.deepEqual(chained.value, ["hello", "cron"]);
+  });
+
+  it("runs the snippet unchecked when the checker cannot start, and says so on stderr", async () => {
+    await _setSnippetCheckerStart(() => Promise.reject(new Error("no checker binary for this platform")));
+    try {
+      const run = envelope(await handleRun({ code: "const n: number = 'x' as unknown as number;\nn" }));
+      assert.equal(run.status, "ok");
+      assert.equal(run.value, "x");
+      assert.deepEqual(run.type_check, { status: "skipped", reason: "no checker binary for this platform" });
+      assert.match((await handleRun({ code: "1" })).content[0]!.text, /type check skipped \(no checker binary for this platform\): the snippet ran unchecked\./);
+      assert.match(stderr.find((l) => l.startsWith("run402-mcp run ")) ?? "", / check=skipped$/);
+      assert.ok(stderr.some((l) => l.includes("type check skipped, the snippet runs unchecked: no checker binary for this platform")));
+    } finally {
+      await _setSnippetCheckerStart(null);
+    }
   });
 
   it("points a member reached from the wrong parent at where it lives", async () => {
     const run = envelope(await handleRun({ code: 'await r.project("prj_1").sql("select 1")' }));
     assert.equal(run.error?.code, "RUN_UNKNOWN_MEMBER");
+    assert.deepEqual(run.calls, []);
     const next = run.error!.next_actions[0]!;
     assert.equal(next.path, "r.project(…).sql");
     const suggestions = next.did_you_mean as string[];
@@ -182,7 +256,7 @@ describe("run tool", () => {
 
   it("refuses a secret-returning call with the CLI command, before any request", async () => {
     const result = await handleRun({
-      code: "await r.project('prj_1').grants.create({ wallet: '0x1111111111111111111111111111111111111111', capability: 'deploy', key: true })",
+      code: "await r.project('prj_1').grants.create({ wallet: '0x1111111111111111111111111111111111111111', capability: 'deploy', key: {} })",
     });
     assert.equal(result.isError, true);
     const run = envelope(result);
@@ -213,7 +287,8 @@ describe("run tool", () => {
   });
 
   it("refuses a non-cloneable argument before any request", async () => {
-    const run = envelope(await handleRun({ code: "await r.project('prj_1').functions.list({ cb: () => 1 })" }));
+    // Typed as any, so the type check lets it through to the replay's own guard.
+    const run = envelope(await handleRun({ code: "await (r.project('prj_1').functions.list as any)({ cb: () => 1 })" }));
     assert.equal(run.error?.code, "RUN_ARGUMENT_NOT_CLONEABLE");
     assert.equal(requests.length, 0);
   });
@@ -240,7 +315,7 @@ describe("run tool", () => {
     await handleRun({ code: "const secretish = 'do-not-log';\nsecretish" });
     const lines = stderr.filter((l) => l.startsWith("run402-mcp run "));
     assert.equal(lines.length, 1);
-    assert.match(lines[0]!, /^run402-mcp run run_[0-9a-f]{12} duration_ms=\d+ calls=0 outcome=ok$/);
+    assert.match(lines[0]!, /^run402-mcp run run_[0-9a-f]{12} duration_ms=\d+ calls=0 outcome=ok check=passed$/);
     assert.ok(!stderr.join("\n").includes("do-not-log"));
   });
 });

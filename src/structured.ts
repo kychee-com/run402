@@ -83,6 +83,9 @@ export const toolErrorSchema = z
     details: z.unknown().optional(),
     line: z.number().int().optional(),
     column: z.number().int().optional(),
+    diagnostics: z.array(z.object({ line: z.number().int(), column: z.number().int(), code: z.string(), message: z.string() }).passthrough()).optional(),
+    diagnostics_total: z.number().int().optional(),
+    diagnostics_ref: z.string().optional(),
     phase: z.string().optional(),
     resource: z.string().optional(),
     operation_id: z.string().optional(),
@@ -227,6 +230,7 @@ export const runOutputSchema = envelope({
   calls_dropped: z.number().int().optional(),
   duration_ms: z.number().optional(),
   wallet: open({ local_label: z.string(), address: z.string().nullable() }).optional(),
+  type_check: open({ status: z.literal("skipped"), reason: z.string() }).optional(),
 });
 
 export const upOutputSchema = envelope({

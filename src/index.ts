@@ -26,6 +26,7 @@ import { runSchema, handleRun } from "./tools/run.js";
 import { expandResultSchema, handleExpandResult } from "./tools/expand-result.js";
 import { OUTPUT_SCHEMAS } from "./structured.js";
 import { guardToolArguments, strictInput } from "./input-guard.js";
+import { closeSnippetChecker } from "./snippet-check.js";
 
 function currentPackageVersion(): string {
   const raw = readFileSync(new URL("../package.json", import.meta.url), "utf8");
@@ -129,7 +130,7 @@ server.registerTool(
 server.registerTool(
   "run",
   {
-    description: "Run a TypeScript snippet against the SDK in a sandbox. `r` is the Node SDK client (@run402/sdk/node); call `docs` for its reference. The code is the body of an async function: await r chains, and the value of the last expression (or a return) is the result, e.g. `(await r.projects.list()).projects.map((p) => p.id)`. No filesystem, process, fetch, timers, or imports; console is captured. Returns { status, value, value_ref, shown, total, logs, logs_ref, calls, duration_ms, wallet, error? }; a large value is stored whole and expand_result pages it. Operations that return or consume a one-time secret (grant keys, Handoff and Invite Keys, project credentials, wallet keys) refuse with SECRET_REQUIRES_CLI naming the exact CLI command to hand the person. Any other operation is a run snippet against r.",
+    description: "Run a TypeScript snippet against the SDK in a sandbox. `r` is the Node SDK client (@run402/sdk/node); call `docs` for its reference. The code is the body of an async function: await r chains, and the value of the last expression (or a return) is the result, e.g. `(await r.projects.list()).projects.map((p) => p.id)`. It is type-checked against the SDK before anything runs: a type error comes back with its line and TypeScript's message, and makes no call. No filesystem, process, fetch, timers, or imports; console is captured. Returns { status, value, value_ref, shown, total, logs, logs_ref, calls, duration_ms, wallet, error? }; a large value is stored whole and expand_result pages it. Operations that return or consume a one-time secret (grant keys, Handoff and Invite Keys, project credentials, wallet keys) refuse with SECRET_REQUIRES_CLI naming the exact CLI command to hand the person. Any other operation is a run snippet against r.",
     inputSchema: INPUT_SCHEMAS.run,
     outputSchema: OUTPUT_SCHEMAS.run,
   },
@@ -149,3 +150,5 @@ server.registerTool(
 const transport = new StdioServerTransport();
 await server.connect(transport);
 guardToolArguments(transport, INPUT_SCHEMAS);
+// The type checker is a child process; stop it when the host goes away, so it never keeps this server alive.
+process.stdin.once("end", () => void closeSnippetChecker());

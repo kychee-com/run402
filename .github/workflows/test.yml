@@ -23,6 +23,25 @@ jobs:
       - run: npm run build
       - run: node --test cli-vault-daemon.test.mjs
 
+  # The MCP `run` type check spawns TypeScript 7's native binary, one per
+  # platform: prove it starts, checks, and maps positions on Windows and macOS,
+  # not only on the Linux runner below.
+  snippet-check-platforms:
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - run: npm ci
+      - if: runner.os == 'Windows'
+        run: npm config set script-shell "C:\\Program Files\\Git\\bin\\bash.exe"
+      - run: npm run build
+      - run: node --test --import tsx src/snippet-check.test.ts src/tools/run.test.ts
+
   test:
     runs-on: ubuntu-latest
     strategy:

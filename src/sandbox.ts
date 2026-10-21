@@ -50,8 +50,8 @@ export const SANDBOX_MAX_LOG_LINE_CHARS = 2048;
 /** The file name QuickJS reports in stack traces. */
 const SNIPPET_FILE = "snippet.ts";
 /** The wrapper's head sits on line 1, so line numbers match the source and only line 1's columns shift. */
-const WRAP_HEAD = "(async function () {";
-const WRAP_TAIL = "\n})";
+export const WRAP_HEAD = "(async function () {";
+export const WRAP_TAIL = "\n})";
 
 /**
  * The snippet's global inventory, sorted. `r` is present when the chain proxy
@@ -204,7 +204,8 @@ interface AcornProgram {
   }>;
 }
 
-function shiftColumn(line: number, column: number): number {
+/** A column in the wrapped source, as a column in the snippet. */
+export function shiftColumn(line: number, column: number): number {
   return line === 1 ? Math.max(1, column - WRAP_HEAD.length) : column;
 }
 
