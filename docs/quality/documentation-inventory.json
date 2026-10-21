@@ -2424,7 +2424,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "1ec2efe2cbd21be4e4b0d0c25bc69277ac0c9f9ecb5b156819d76765426fedeb",
+      "sha256": "48892a54206da081cf907e3fd939346a1b15d9cfb40b7fcf6f73446f2e8f6993",
       "outputs": [],
       "url": "https://docs.run402.com/build/push/",
       "checks": [

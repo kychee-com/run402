@@ -26,12 +26,12 @@ Every app host serves the browser helper at `/_run402/push.js`, which defines `w
 </script>
 ```
 
-- `Run402Push.subscribe({ accessToken })` asks for permission the first time, subscribes this browser and records it for the signed-in user. Call it from a "Notify me" tap the first time, then again at start-up for a signed-in user: it never prompts again and re-confirms the subscription with the server. An app on the hosted sign-in cookie can omit `accessToken`.
+- `Run402Push.subscribe({ accessToken })` asks for permission the first time, subscribes this browser and records it for the signed-in user. Call it from a "Notify me" tap the first time, then again at start-up for a signed-in user: it never prompts again and re-confirms the subscription with the server at most once a day. A call from a tap always re-confirms. An app on the hosted sign-in cookie can omit `accessToken`.
 - `Run402Push.status()` resolves without prompting to `unsupported`, `needs_install` (an iPhone outside its Home Screen app), `default` (not asked yet), `denied`, or `subscribed`. Show the button only for `default`, and an "add to Home Screen" hint for `needs_install`.
 - `Run402Push.unsubscribe({ accessToken })` removes this browser's subscription.
 - The helper registers its own service worker, `/_run402/push-sw.js`. If the app already has a service worker at its root, add `importScripts("/_run402/push-sw.js");` to it instead; `subscribe` rejects with `worker_missing_snippet` until you do.
 
-Only a signed-in user can sign a phone up. Each user keeps up to 10 phones; signing up an 11th replaces the one whose app re-confirmed longest ago.
+Only a signed-in user can sign a phone up. Each user keeps up to 10 phones; signing up an 11th replaces the one whose app re-confirmed longest ago. A replaced phone signs back up when its user taps "Notify me", or by itself at the first start-up a day after its last re-confirmation.
 
 **iPhone and iPad** (iOS/iPadOS 16.4 and later): push works only from the app added to the Home Screen, never from a Safari tab, and the permission prompt appears only after a tap. A "Don't Allow" is undone only by removing the Home Screen icon and adding it again. iOS 18.4 and later show Apple's Declarative Web Push format, which every message uses. **Android** works in a Chrome tab and in the installed app.
 
