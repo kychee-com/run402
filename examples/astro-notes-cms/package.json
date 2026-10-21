@@ -15,7 +15,7 @@
   },
   "devDependencies": {
     "@types/node": "22.20.5",
-    "typescript": "6.0.3"
+    "typescript": "7.0.2"
   },
   "overrides": {
     "esbuild": "0.28.1"
