@@ -100,7 +100,8 @@ describe("snippet type check", () => {
   });
 
   it("passes every example the run reference teaches", async () => {
-    const doc = readFileSync(fileURLToPath(new URL("../docs-site/src/content/docs/mcp/run.md", import.meta.url)), "utf8");
+    // A Windows checkout has CRLF line endings; the fences are matched on LF.
+    const doc = readFileSync(fileURLToPath(new URL("../docs-site/src/content/docs/mcp/run.md", import.meta.url)), "utf8").replace(/\r\n/g, "\n");
     const examples = [...doc.matchAll(/```ts\n([\s\S]*?)\n```/g)].map((m) => m[1]!);
     // A run input is a JSON block whose only key is `code`; the error examples are outputs.
     for (const m of doc.matchAll(/```json\n([\s\S]*?)\n```/g)) {
