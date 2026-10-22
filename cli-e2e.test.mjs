@@ -181,7 +181,8 @@ async function mockFetch(input, init) {
     ]}));
   }
   if (path === "/tiers/v1/status" && method === "GET") {
-    return Promise.resolve(json({ tier: "prototype", status: "active", lease_expires_at: "2026-03-22T00:00:00.000Z" }));
+    // The gateway's shape: `active`, no `status` field.
+    return Promise.resolve(json({ tier: "prototype", active: true, lease_expires_at: "2026-03-22T00:00:00.000Z" }));
   }
   if (path.match(/^\/wallets\/v1\/[^/]+\/projects$/) && method === "GET") {
     return Promise.resolve(json({ wallet: "0xtest", projects: [{ id: "prj_test123", name: "test", tier: "prototype", status: "active", lease_expires_at: "2026-03-22T00:00:00.000Z" }] }));
