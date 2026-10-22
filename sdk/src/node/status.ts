@@ -56,7 +56,8 @@ export interface WalletStatus {
     allowance_usd_micros: number | null;
     held_usd_micros: number | null;
   };
-  tier: { name: string; status: string; expires: string | null } | null;
+  /** `status` is derived from the gateway's `active` flag; `GET /tiers/v1/status` carries no `status` field. */
+  tier: { name: string; status: "active" | "inactive"; expires: string | null } | null;
   organization_lifecycle_state: string | null;
   lease_perpetual: boolean | null;
   projects: Array<Record<string, unknown> & { project_id: string }>;
@@ -137,7 +138,7 @@ export async function runStatus(r: Run402): Promise<StatusResult> {
       held_usd_micros: hasBilling ? (billing!.held_usd_micros ?? 0) : null,
     },
     tier: tier && tier.tier
-      ? { name: tier.tier, status: tier.status, expires: tier.lease_perpetual === true ? null : tier.lease_expires_at }
+      ? { name: tier.tier, status: tier.active === true ? "active" : "inactive", expires: tier.lease_perpetual === true ? null : tier.lease_expires_at }
       : null,
     // Lifecycle and the perpetual flag live on the organization; surfaced at the top.
     organization_lifecycle_state: tier?.organization_lifecycle_state ?? null,

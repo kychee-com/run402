@@ -178,7 +178,8 @@ describe("r.status", () => {
   it("with a wallet, groups balances, names the wallet, and keys projects by project_id", async () => {
     saveWallet({ address: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8", privateKey: "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d", rail: "x402" });
     routes = {
-      "/tiers/v1/status": { tier: "prototype", status: "active", active: true, lease_expires_at: "2099-01-01T00:00:00.000Z", organization_lifecycle_state: "active", lease_perpetual: false },
+      // The gateway's shape: `active`, no `status` field.
+      "/tiers/v1/status": { tier: "prototype", active: true, lease_expires_at: "2099-01-01T00:00:00.000Z", organization_lifecycle_state: "active", lease_perpetual: false },
       "/orgs/v1/lookup": { exists: true, allowance_usd_micros: 5_000_000, held_usd_micros: 0 },
       "/projects/v1": { projects: [{ id: "prj_1", name: "one", site_url: "https://one.test" }] },
     };

@@ -72,7 +72,8 @@ describe("status tool", () => {
     writeWallet({ address: TEST_ADDR, privateKey: TEST_PK, created: "2026-01-01T00:00:00Z", funded: true, rail: "x402" });
     writeKeystore({ active_project_id: "proj-1", projects: { "proj-1": { anon_key: "ak1", service_key: "sk1" } } });
     mockApis({
-      tier: { tier: "prototype", status: "active", lease_expires_at: "2026-04-01T00:00:00Z" },
+      // What GET /tiers/v1/status returns for a prototype org: `active`, no `status` field.
+      tier: { tier: "prototype", active: true, lease_expires_at: null, lease_perpetual: true, organization_lifecycle_state: "active" },
       billing: { org_id: "00000000-0000-4000-8000-000000000001", allowance_usd_micros: 250000, held_usd_micros: 0 },
       projects: { projects: [{ id: "proj-1" }] },
     });
@@ -85,10 +86,25 @@ describe("status tool", () => {
     assert.equal(status.wallet.local_label, "default");
     assert.equal(status.wallet.address.toLowerCase(), TEST_ADDR);
     assert.equal(status.balances.allowance_usd_micros, 250000);
-    assert.equal(status.tier.name, "prototype");
+    assert.deepEqual(status.tier, { name: "prototype", status: "active", expires: null });
+    assert.match(text, /- tier: prototype \(active\)/);
     assert.ok(!/privateKey|private_key|sk1/.test(text), "never key material");
     assertStructured(result);
     assert.ok(!/privateKey|private_key|sk1/.test(JSON.stringify(result.structuredContent)), "never key material in the structured channel");
+  });
+
+  it("reports a lapsed lease as inactive and still satisfies its output schema", async () => {
+    writeWallet({ address: TEST_ADDR, privateKey: TEST_PK, created: "2026-01-01T00:00:00Z", funded: true, rail: "x402" });
+    mockApis({
+      tier: { tier: "hobby", active: false, lease_expires_at: "2026-04-01T00:00:00.000Z", lease_perpetual: false, organization_lifecycle_state: "past_due" },
+      billing: { org_id: "00000000-0000-4000-8000-000000000001", allowance_usd_micros: 0, held_usd_micros: 0 },
+      projects: { projects: [] },
+    });
+
+    const result = await handleStatus();
+    assert.equal(result.isError, undefined);
+    assert.deepEqual(envelope(result.content[0]!.text).tier, { name: "hobby", status: "inactive", expires: "2026-04-01T00:00:00.000Z" });
+    assertStructured(result);
   });
 
   it("names the next command when there is no local wallet", async () => {
