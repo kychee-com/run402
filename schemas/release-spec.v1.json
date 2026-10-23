@@ -842,6 +842,12 @@
     },
     "fileSet": {
       "type": "object",
+      "description": "Map from release file path to its bytes. A `__source` key marks an authoring reference such as localDirRef, never a file.",
+      "not": {
+        "required": [
+          "__source"
+        ]
+      },
       "additionalProperties": {
         "$ref": "#/$defs/fileEntry"
       }

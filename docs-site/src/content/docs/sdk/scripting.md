@@ -16,7 +16,7 @@ For Node, import `@run402/sdk/node`. It uses the local profile and configured ta
 
 ## Bootstrap and deploy
 
-Prepare the same complete manifest and referenced files as [Your first deploy](/start/first-deploy/). This native SDK example explicitly approves prerequisites for a requested new release:
+Prepare the same complete manifest and referenced files as [Your first deploy](/start/first-deploy/). The `run402.json` format, with a complete static-site example (a local directory, a subdomain, `noindex`, public paths), is the [run402.json manifest](/sdk/manifest/) page (MCP: `docs({ topic: "manifest" })`). This native SDK example explicitly approves prerequisites for a requested new release:
 
 ```ts
 import { run402 } from "@run402/sdk/node";

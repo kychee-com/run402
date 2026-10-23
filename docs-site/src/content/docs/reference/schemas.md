@@ -401,6 +401,12 @@ Use `run402 up --check` for local validation and `run402 up --plan` for gateway 
 ```json
 {
   "type": "object",
+  "description": "Map from release file path to its bytes. A `__source` key marks an authoring reference such as localDirRef, never a file.",
+  "not": {
+    "required": [
+      "__source"
+    ]
+  },
   "additionalProperties": {
     "$ref": "#/$defs/fileEntry"
   }

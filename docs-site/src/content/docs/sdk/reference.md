@@ -49,4 +49,4 @@ const result = await r.up(
 console.log(result); // Inspect deployment and verification evidence separately.
 ```
 
-The shared workflow resolves credentials and prerequisites, then deploys the manifest. See the [complete first-deploy files](https://docs.run402.com/start/first-deploy/) before running this example. Use the CLI for ordinary operations; use the SDK for typed TypeScript/JavaScript composition.
+The shared workflow resolves credentials and prerequisites, then deploys the manifest. See the [complete first-deploy files](https://docs.run402.com/start/first-deploy/) before running this example. The `run402.json` format, with a complete static-site example (a local directory, a subdomain, `noindex`, public paths), is the [run402.json manifest](/sdk/manifest/) page (MCP: `docs({ topic: "manifest" })`). Use the CLI for ordinary operations; use the SDK for typed TypeScript/JavaScript composition.

@@ -437,6 +437,8 @@ isomorphic entry's `r.sites` namespace is empty.
 deployDir(opts: { project, dir, target?, onEvent? }): Promise<SiteDeployResult>
 ```
 
+`deployDir` reads the filesystem, so it cannot run inside the MCP `run` sandbox. To ship a static directory, declare it in `run402.json` as `"site": { "replace": { "__source": "local-dir", "path": "public" } }` and deploy with `run402 up` or the MCP `up` tool; the [run402.json manifest](/sdk/manifest/) page has the complete example (MCP: `docs({ topic: "manifest" })`).
+
 ### `r.assets`
 
 The unified asset namespace. Isomorphic

@@ -189,6 +189,8 @@ function indexLines(c: Corpus): string[] {
     `\`sdk\` (the whole reference), ${topics.join(", ")}.`,
     "",
     "`docs({ search: \"words\" })` finds sections by content.",
+    "",
+    "Deploying from files: the `run402.json` manifest that `up` reads, with a complete static-site example (local directory, subdomain, noindex, public paths), is `docs({ topic: \"manifest\" })`.",
   ];
 }
 

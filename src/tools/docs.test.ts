@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DOCS_SEARCH_MAX_SECTIONS, DOCS_WINDOW_LINES, handleDocs } from "./docs.js";
 import { _resetResultStore, expandResult } from "../result-store.js";
+import { loadDeployManifest } from "../../sdk/dist/node/index.js";
 
 const root = join(import.meta.dirname, "..", "..");
 const originalFetch = globalThis.fetch;
@@ -90,6 +92,61 @@ describe("docs tool", () => {
     assert.match(text(result), /waitForMessages/);
     const none = await handleDocs({ search: "zzz-not-a-word-anywhere" });
     assert.match(header(none), /no section matches/);
+  });
+
+  it("serves the run402.json manifest as its own topic, with a verbatim static-site example", async () => {
+    const result = await handleDocs({ topic: "manifest" });
+    assert.equal(result.isError, undefined);
+    const body = text(result);
+    assert.match(body.split("\n")[2]!, /^## Manifest \(`run402\.json`\)$/);
+    for (const needle of [
+      "https://run402.com/schemas/release-spec.v1.json",
+      '"__source": "local-dir"',
+      '"subdomains"',
+      '"noindex": true',
+      '"public_paths"',
+    ]) {
+      assert.ok(body.includes(needle), `the manifest topic names ${needle}`);
+    }
+  });
+
+  it("the manifest topic's static-site example validates against the release-spec schema and loads", async () => {
+    const body = text(await handleDocs({ topic: "manifest" }));
+    const examples = [...body.matchAll(/```json\n([\s\S]*?)```/g)].map((m) => m[1]!);
+    assert.ok(examples.length >= 2, "a static-site example and a public_paths example");
+    const { default: Ajv2020 } = await import("ajv/dist/2020.js");
+    const schema = JSON.parse(readFileSync(join(root, "schemas", "release-spec.v1.json"), "utf8"));
+    const validate = new Ajv2020({ strict: false, validateFormats: false }).compile(schema);
+    for (const json of examples) assert.equal(validate(JSON.parse(json)), true, JSON.stringify(validate.errors));
+    const example = examples[0]!;
+    const manifest = JSON.parse(example) as { site: { replace: { path: string } } };
+    const dir = mkdtempSync(join(tmpdir(), "docs-manifest-"));
+    try {
+      mkdirSync(join(dir, manifest.site.replace.path));
+      writeFileSync(join(dir, manifest.site.replace.path, "index.html"), "<h1>hi</h1>");
+      writeFileSync(join(dir, "run402.json"), example);
+      const loaded = await loadDeployManifest(join(dir, "run402.json"), { project: "prj_docs_fixture" });
+      assert.deepEqual(loaded.spec.subdomains, { set: ["family"] });
+      assert.equal(loaded.spec.site && "noindex" in loaded.spec.site ? loaded.spec.site.noindex : undefined, true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("search matches run402.json and local-dir in the manifest topic", async () => {
+    for (const query of ["run402.json manifest site", "run402.json site dir subdomains", "local-dir", "run402.json noindex"]) {
+      const result = await handleDocs({ search: query });
+      assert.doesNotMatch(header(result), /no section matches/, `search "${query}"`);
+      const page = expandResult(refOf(result), { limit: 10000 });
+      assert.ok((page?.items as string[]).includes("(topic `manifest`)"), `search "${query}" returns the manifest topic`);
+    }
+  });
+
+  it("the deploy topics and the index point at the manifest topic", async () => {
+    for (const topic of ["bootstrap-and-deploy", "quick-start", "sites"]) {
+      assert.match(text(await handleDocs({ topic })), /docs\(\{ topic: "manifest" \}\)/, `topic ${topic}`);
+    }
+    assert.match(text(await handleDocs({})), /docs\(\{ topic: "manifest" \}\)/, "the index");
   });
 
   it("is packaged by the build: the MCP package copies both sources into dist/docs", () => {

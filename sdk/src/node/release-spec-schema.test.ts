@@ -122,4 +122,20 @@ describe("ReleaseSpec JSON Schema", () => {
     assert.equal(check.properties.expect.properties.status.maximum, 599);
     assert.ok(check.properties.expected_status, "snake alias expected_status declared");
   });
+
+  it("accepts a local-dir site directory (it is not also read as a file map)", async () => {
+    const { default: Ajv2020 } = await import("ajv/dist/2020.js");
+    const validate = new Ajv2020({ strict: false, validateFormats: false }).compile(readSchema());
+    const dirRef = { __source: "local-dir", path: "public" };
+    for (const site of [
+      { replace: dirRef, noindex: true },
+      { patch: { put: dirRef } },
+    ]) {
+      const manifest = { $schema: "https://run402.com/schemas/release-spec.v1.json", site, subdomains: { set: ["family"] } };
+      assert.equal(validate(manifest), true, JSON.stringify(validate.errors));
+    }
+    // A file map still validates, and a file map cannot smuggle a `__source` key.
+    assert.equal(validate({ site: { replace: { "index.html": { path: "public/index.html", content_type: "text/html" } } } }), true);
+    assert.equal(validate({ site: { replace: { __source: "fs-file", path: "public" } } }), false);
+  });
 });

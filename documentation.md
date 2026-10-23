@@ -196,6 +196,7 @@ Run `node scripts/documentation-inventory.mjs` to reject newly discovered unclas
 | public | [docs-site/src/content/docs/sdk/lifecycle.md](docs-site/src/content/docs/sdk/lifecycle.md) | reference / sdk | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [docs-site/src/content/docs/sdk/limits.md](docs-site/src/content/docs/sdk/limits.md) | reference / sdk | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [docs-site/src/content/docs/sdk/local-state.md](docs-site/src/content/docs/sdk/local-state.md) | reference / sdk | pending | pending |
+| public | [docs-site/src/content/docs/sdk/manifest.md](docs-site/src/content/docs/sdk/manifest.md) | reference / sdk | pending | pending |
 | public | [docs-site/src/content/docs/sdk/organizations.md](docs-site/src/content/docs/sdk/organizations.md) | reference / sdk | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [docs-site/src/content/docs/sdk/patterns.md](docs-site/src/content/docs/sdk/patterns.md) | reference / sdk | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [docs-site/src/content/docs/sdk/reference.md](docs-site/src/content/docs/sdk/reference.md) | reference / sdk | pending: source changed since editorial review | pending: source changed since publication evidence |
