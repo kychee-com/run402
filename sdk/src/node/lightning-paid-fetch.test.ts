@@ -136,11 +136,11 @@ describe("createLightningFetch", () => {
     await assert.rejects(() => createLightningFetch({ pairingUri: URI, baseFetch: big.fetch, wallet: wallet(), stack: async () => stack, fallback: async () => null })("https://api.example/tiers/v1/hobby", { method: "POST" }), /LIGHTNING_DEBIT_ABOVE_CAP|exceeds/);
   });
 
-  it("resolves an unknown outcome by lookup and never pays the same invoice twice", async () => {
+  for (const code of ["TIMEOUT", "RELAY_TIMEOUT", "RELAY_CLOSED"]) it(`resolves an unknown outcome (${code}) by lookup and never pays the same invoice twice`, async () => {
     const s = seller([() => new Response("{}", { status: 402, headers: { "www-authenticate": challengeHeader() } }), () => new Response("{}", { status: 200 })]);
     let payCalls = 0;
     const w = wallet({
-      async payInvoice() { payCalls += 1; throw new NwcError("TIMEOUT", "no reply"); },
+      async payInvoice() { payCalls += 1; throw new NwcError(code, "no reply"); },
       async lookupInvoice(hash) { return hash === HASH ? { state: "settled", preimage: PREIMAGE } : null; },
     });
     const fetch = createLightningFetch({ pairingUri: URI, baseFetch: s.fetch, wallet: w, stack: async () => stack, fallback: async () => null });

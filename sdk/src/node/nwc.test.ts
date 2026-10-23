@@ -9,20 +9,9 @@ import { describe, it } from "node:test";
 
 import { schnorr } from "@noble/curves/secp256k1.js";
 
-import {
-  NWC_REQUEST_KIND,
-  NWC_RESPONSE_KIND,
-  NwcError,
-  NwcWallet,
-  nip44ConversationKey,
-  nip44Decrypt,
-  nip44Encrypt,
-  nwcRequest,
-  parseNwcUri,
-  signNwcEvent,
-  type NwcNostrEvent,
-  type NwcTransport,
-} from "./nwc.js";
+import { NWC_REQUEST_KIND, NWC_RESPONSE_KIND, nip44ConversationKey, nip44Decrypt, nip44Encrypt, nwcRequest, signNwcEvent, type NwcNostrEvent } from "@run402/nwc";
+
+import { NwcError, NwcWallet, parseNwcUri, type NwcTransport } from "./nwc.js";
 
 const WALLET_SECRET = "0000000000000000000000000000000000000000000000000000000000000002";
 const WALLET_PUB = Buffer.from(schnorr.getPublicKey(Buffer.from(WALLET_SECRET, "hex"))).toString("hex");

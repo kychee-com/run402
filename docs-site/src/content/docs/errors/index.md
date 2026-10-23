@@ -1152,9 +1152,6 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="ORGANIZATION_SELECTION_REQUIRED"></a>
 [`ORGANIZATION_SELECTION_REQUIRED`](/errors/gateway/#ORGANIZATION_SELECTION_REQUIRED)
 
-<a id="OTHER"></a>
-[`OTHER`](/errors/client/#OTHER)
-
 <a id="OVERRIDE_NOT_AUTHORIZED"></a>
 [`OVERRIDE_NOT_AUTHORIZED`](/errors/gateway/#OVERRIDE_NOT_AUTHORIZED)
 

@@ -4305,16 +4305,6 @@
       "topic": "/errors/gateway/#ORGANIZATION_SELECTION_REQUIRED"
     },
     {
-      "code": "OTHER",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "sdk/src/node/nwc.ts"
-        }
-      ],
-      "topic": "/errors/client/#OTHER"
-    },
-    {
       "code": "OVERRIDE_NOT_AUTHORIZED",
       "owners": [
         {

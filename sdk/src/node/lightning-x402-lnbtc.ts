@@ -18,7 +18,7 @@ import { httpRequestBinding } from "./vendor/x402-lnbtc/binding.js";
 import { LnbtcError } from "./vendor/x402-lnbtc/constants.js";
 import { ExactLnbtcScheme } from "./vendor/x402-lnbtc/exact/client/scheme.js";
 import type { LightningPayer } from "./vendor/x402-lnbtc/types.js";
-import { NwcError } from "./nwc.js";
+import { NWC_TRANSPORT_ERROR_CODES, NwcError } from "./nwc.js";
 
 type FetchFn = typeof globalThis.fetch;
 
@@ -180,7 +180,7 @@ export async function payX402Lightning(options: PayX402LightningOptions): Promis
         preimage = (await wallet.payInvoice(invoice)).preimage;
       } catch (error) {
         // Unknown outcome: resolve by hash before ever paying again.
-        if (error instanceof NwcError && (error.code === "TIMEOUT" || error.code === "RELAY_CLOSED" || error.code === "RELAY_UNREACHABLE")) {
+        if (error instanceof NwcError && NWC_TRANSPORT_ERROR_CODES.has(error.code)) {
           const looked = await wallet.lookupInvoice(decoded.paymentHash).catch(() => null);
           if (!looked?.preimage) {
             throw fail("LIGHTNING_PAYMENT_OUTCOME_UNKNOWN", "The Lightning payment's outcome is unknown; check the wallet before paying again.", { payment_hash: decoded.paymentHash });

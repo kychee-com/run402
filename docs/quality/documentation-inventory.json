@@ -2887,7 +2887,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "ec7fc1a23f60fa78a7240c1c5f81f90a9b5f5d87d471aaa101f0cb36b6792b58",
+      "sha256": "ebdffe00d9f7437c09367bc5d7c170294d241beed9d2348ea669f4be4770739c",
       "outputs": [],
       "url": "https://docs.run402.com/errors/client/",
       "checks": [
@@ -2950,7 +2950,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "b53b284c4be23fbc50a1cf1f6e13b2e90718067f80d56e6cf77a77470473718a",
+      "sha256": "86b3ebde5980b6b115f72fb910fcf0788bbd6a3916280c8e8aeafd6631860ef9",
       "outputs": [],
       "url": "https://docs.run402.com/errors/",
       "checks": [
@@ -3321,7 +3321,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "fbec880e900cd184e6365d36bde8aa3b0945587317404fdcb56dbf8493829223",
+      "sha256": "87710e9eda7046ef4d7246763ad0f9dcb300246bd84bca186e77b7fe6920b1a0",
       "outputs": [],
       "url": "https://docs.run402.com/reference/error-codes/",
       "checks": [

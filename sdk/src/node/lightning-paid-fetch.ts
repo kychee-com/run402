@@ -38,7 +38,7 @@ import {
   x402LightningNetworks,
   type X402LnbtcPaid,
 } from "./lightning-x402-lnbtc.js";
-import { NwcError, NwcWallet } from "./nwc.js";
+import { NWC_TRANSPORT_ERROR_CODES, NwcError, NwcWallet } from "./nwc.js";
 
 /** The x402 network ids of Bitcoin mainnet and testnet3 (`lnbtc:` + the genesis hash prefix). */
 export const LNBTC_MAINNET = "lnbtc:000000000019d6689c085ae165831e93";
@@ -371,7 +371,7 @@ export function createLightningFetch(options: LightningFetchOptions): FetchFn {
       preimage = (await wallet.payInvoice(challenge.invoice)).preimage;
     } catch (error) {
       // Unknown outcome: resolve by hash before ever paying again.
-      if (error instanceof NwcError && (error.code === "TIMEOUT" || error.code === "RELAY_CLOSED" || error.code === "RELAY_UNREACHABLE")) {
+      if (error instanceof NwcError && NWC_TRANSPORT_ERROR_CODES.has(error.code)) {
         const looked = await wallet.lookupInvoice(challenge.paymentHash).catch(() => null);
         if (looked?.preimage) preimage = looked.preimage;
         else throw new LightningPaymentError("LIGHTNING_PAYMENT_OUTCOME_UNKNOWN", "The Lightning payment's outcome is unknown; the same request may be retried with the same Idempotency-Key once the wallet is reachable.", { payment_hash: challenge.paymentHash, idempotency_key: idempotencyKey });

@@ -1505,10 +1505,6 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="ORGANIZATION_SELECTION_REQUIRED"></a>
 [`ORGANIZATION_SELECTION_REQUIRED`](/errors/gateway/#ORGANIZATION_SELECTION_REQUIRED)
 
-<a id="other"></a>
-<a id="OTHER"></a>
-[`OTHER`](/errors/client/#OTHER)
-
 <a id="override_not_authorized"></a>
 <a id="OVERRIDE_NOT_AUTHORIZED"></a>
 [`OVERRIDE_NOT_AUTHORIZED`](/errors/gateway/#OVERRIDE_NOT_AUTHORIZED)
