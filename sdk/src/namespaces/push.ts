@@ -8,7 +8,9 @@
  * Exposed both unscoped (`r.push.status(projectId)`) and project-scoped
  * (`r.project(id).push.status()`), mirroring `r.events`. Accepted
  * credentials: the project's own service_key, a SIWX/control-plane principal
- * with `project.read`, or a grant key. An unknown message id, or another
+ * with `project.read`, or a grant key. A principal (grant key, wallet, or
+ * sign-in session) is sent when the credential provider has one; otherwise
+ * the project's locally cached service key. An unknown message id, or another
  * project's, is a 404 `ApiError` carrying the gateway's `code`.
  */
 
@@ -34,6 +36,7 @@ export class Push {
     }
     return this.client.request<PushStatus>(pushPath(projectId), {
       method: "GET",
+      projectKeyFallback: projectId,
       context: "reading push status",
     });
   }
@@ -51,6 +54,7 @@ export class Push {
     }
     return this.client.request<PushMessage>(`${pushPath(projectId)}/messages/${encodeURIComponent(messageId)}`, {
       method: "GET",
+      projectKeyFallback: projectId,
       context: "reading push message",
     });
   }

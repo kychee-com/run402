@@ -174,7 +174,10 @@ export class Projects {
    * release subdomains, tombstone mailbox, wipe secrets). Local keystore
    * is cleaned via the credential provider when supported.
    *
-   * @throws {ProjectCredentialNotFound} if local project credentials are absent.
+   * Uses the cached service key when this machine has one; otherwise the
+   * request goes as you (wallet or sign-in session), which the gateway
+   * authorizes as the owner-only `project.delete`. A cached key the gateway
+   * refuses is retried once as you, like {@link sql}.
    */
   async delete(id: string): Promise<void> {
     const segment = projectIdPathSegment(id, {
@@ -183,13 +186,14 @@ export class Projects {
       usage: 'r.projects.delete("prj_…")',
       context: "deleting project",
     });
-    const keys = await requireProjectCredentials(this.client, id, "deleting project");
+    const keys = await usableProjectKeys(this.client, id);
 
-    await this.client.request<unknown>(`/projects/v1/${segment}`, {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${keys.service_key}` },
-      context: "deleting project",
-    });
+    await withPrincipalFallback(this.client, id, keys, (k) =>
+      this.client.request<unknown>(`/projects/v1/${segment}`, {
+        method: "DELETE",
+        ...(k ? { headers: { Authorization: `Bearer ${k.service_key}` } } : {}),
+        context: "deleting project",
+      }));
 
     const creds = this.client.credentials;
     if (creds.removeProject) await creds.removeProject(id);

@@ -46,7 +46,9 @@ export class Events {
    * Read a page of a project's events feed
    * (`GET /projects/v1/:project_id/events`). Accepted credentials: the
    * project's own service_key, a SIWX/control-plane principal with
-   * `project.read`, or a grant key. `opts.source` / `opts.eventType`
+   * `project.read`, or a grant key. A principal (grant key, wallet, or
+   * sign-in session) is sent when the credential provider has one; otherwise
+   * the project's locally cached service key. `opts.source` / `opts.eventType`
    * filter to the app lane, the platform lane, or one-or-more event types;
    * both compose with `cursor`/`limit` unchanged.
    */
@@ -56,7 +58,7 @@ export class Events {
     }
     return this.client.request<ProjectEventFeedPage>(
       `/projects/v1/${encodeURIComponent(projectId)}/events${feedQuery(opts)}`,
-      { method: "GET", context: "reading project events feed" },
+      { method: "GET", projectKeyFallback: projectId, context: "reading project events feed" },
     );
   }
 

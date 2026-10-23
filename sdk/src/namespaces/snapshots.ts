@@ -42,6 +42,12 @@ export class Snapshots {
     });
   }
 
+  /**
+   * List a project's snapshots. The reads (`list`, `get`, `getRestore`) send
+   * your principal (grant key, wallet, or sign-in session) when the
+   * credential provider has one, and otherwise the project's locally cached
+   * service key, which the snapshot routes also accept.
+   */
   async list(projectId: string, opts: ProjectSnapshotsListOptions = {}): Promise<ProjectSnapshotsListResult> {
     assertProjectId(projectId, "listing project snapshots");
     const qs = new URLSearchParams();
@@ -57,6 +63,7 @@ export class Snapshots {
           capability: "project.snapshots.manage",
           target: { project_id: projectId },
         },
+        projectKeyFallback: projectId,
         context: "listing project snapshots",
       },
     );
@@ -71,6 +78,7 @@ export class Snapshots {
         capability: "project.snapshots.manage",
         target: { project_id: projectId },
       },
+      projectKeyFallback: projectId,
       context: "getting project snapshot",
     });
   }
@@ -217,6 +225,7 @@ export class Snapshots {
           capability: "project.snapshots.manage",
           target: { project_id: projectId },
         },
+        projectKeyFallback: projectId,
         context,
       },
     );

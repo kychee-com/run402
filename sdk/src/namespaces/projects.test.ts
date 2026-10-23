@@ -220,12 +220,14 @@ describe("projects.provision", () => {
 });
 
 describe("projects.delete", () => {
-  it("throws ProjectCredentialNotFound before any API call for missing local credentials", async () => {
-    const { fetch, calls } = mockFetch(() => jsonResponse({}, 200));
+  it("DELETEs as the caller's principal when no local credentials are cached", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({ status: "purged" }, 200));
     const creds = makeCreds();
     const sdk = makeSdk(creds, fetch);
-    await assert.rejects(sdk.projects.delete("prj_missing"), ProjectCredentialNotFound);
-    assert.equal(calls.length, 0);
+    await sdk.projects.delete("prj_missing");
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "test-siwx");
+    assert.equal(calls[0]!.headers["Authorization"], undefined);
   });
 
   it("DELETEs /projects/v1/:id with service key bearer auth and removes locally", async () => {

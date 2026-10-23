@@ -93,6 +93,15 @@ export interface RequestOptions {
   withAuth?: boolean;
   /** Optional write capability + target, passed to `getAuth` for write-approval matching. */
   authMeta?: AuthRequestMeta;
+  /**
+   * A project id whose locally cached service key authenticates the request
+   * when the credential provider has no principal to send (`getAuth` returned
+   * null: no grant key, wallet, or sign-in session). Precedence, highest
+   * first: the request's own auth headers, the provider's principal, this
+   * cached service key, nothing. Set it only on project routes whose gateway
+   * credential dispatch accepts the project's service key beside a principal.
+   */
+  projectKeyFallback?: string;
   /** Short verb phrase attached to thrown errors (e.g. "provisioning project"). */
   context: string;
   /**
@@ -332,6 +341,9 @@ export async function requestWithResponse<T>(
         if (requestOwnsAuth && AUTH_HEADER_NAMES.includes(k.toLowerCase())) continue;
         fetchHeaders[k] = v;
       }
+    } else if (opts.projectKeyFallback && !AUTH_HEADER_NAMES.some((h) => hasHeader(fetchHeaders, h))) {
+      const keys = await lookupProjectCredentials(credentials, opts.projectKeyFallback);
+      if (keys?.service_key) fetchHeaders.Authorization = `Bearer ${keys.service_key}`;
     }
   }
 
@@ -500,17 +512,21 @@ function envelopeCode(body: unknown): string | null {
   return typeof code === "string" ? code : null;
 }
 
+/** The provider's cached keys for a project, through the explicit name or the older `getProject` alias. */
+function lookupProjectCredentials(credentials: CredentialsProvider, id: string): Promise<ProjectKeys | null> {
+  return credentials.getProjectCredentials
+    ? credentials.getProjectCredentials(id)
+    // eslint-disable-next-line @typescript-eslint/no-deprecated -- older custom providers implement only getProject
+    : credentials.getProject?.(id) ?? Promise.resolve(null);
+}
+
 export function buildClient(kernel: KernelConfig): Client {
   // One stats accumulator per client: every request this `Run402` instance
   // makes (directly or through a namespace) mutates the SAME object, because
   // every closure below captures `kernelWithStats`, not the caller's `kernel`.
   const stats: ClientStats = kernel.stats ?? emptyClientStats();
   const kernelWithStats: KernelConfig = kernel.stats === stats ? kernel : { ...kernel, stats };
-  const getProjectCredentials = (id: string) =>
-    kernel.credentials.getProjectCredentials
-      ? kernel.credentials.getProjectCredentials(id)
-      // eslint-disable-next-line @typescript-eslint/no-deprecated -- older custom providers implement only getProject
-      : kernel.credentials.getProject?.(id) ?? Promise.resolve(null);
+  const getProjectCredentials = (id: string) => lookupProjectCredentials(kernel.credentials, id);
   const capabilities = Object.freeze(resolveClientCapabilities(kernel.capabilities));
   return {
     apiBase: kernel.apiBase,

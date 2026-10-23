@@ -1323,9 +1323,8 @@ async function checkResource(read, resourceName, countOf) {
 /**
  * D9's guard: a repo-only project has no materialized database schema, no
  * functions, no secrets, no subdomains, no mailbox, no custom domains. Every
- * read here uses the SAME service-key credential `projects.delete` itself
- * requires, so a credential that would make `delete` fail also makes this
- * guard fail the same way — never a silent pass on missing auth. A read
+ * read here fails closed on missing auth: a read the cached service key or
+ * your principal cannot make is reported `unknown`, never a silent pass. A read
  * that fails for a reason OTHER than "genuinely absent" (404) is reported
  * `unknown` and REFUSES delete too — D9 never guesses its way to yes.
  */

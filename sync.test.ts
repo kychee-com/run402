@@ -833,7 +833,7 @@ const SURFACE: Capability[] = [
   { id: "repos_rename", endpoint: "POST /projects/v1/:id/repo-name", cli: "repos:rename", openclaw: "repos:rename" },
   // Design D9: refuses PROJECT_HAS_NON_REPO_RESOURCES when the project holds
   // materialized database/functions/secrets/subdomains/mailbox — reads each
-  // via the SAME service-key credential `projects.delete` itself requires.
+  // and fails closed: a read no credential can make refuses as `unknown`.
   { id: "repos_delete", endpoint: "DELETE /projects/v1/:id (+ reads: GET /projects/v1/:id, /admin/:id/schema, /admin/:id/functions, secrets, subdomains)", cli: "repos:delete", openclaw: "repos:delete" },
   { id: "repos_capture", endpoint: "POST /vaults/v1/:vault_id/upload-sessions (+ admission)", cli: "repos:capture", openclaw: "repos:capture" },
   // kygit-handoff design D7/D10: a bearer secret is minted (`handoff`) and
