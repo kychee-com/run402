@@ -175,7 +175,7 @@ The client could not complete this operation. Inspect its typed error kind, mess
 
 <h2 id="BAD_PROJECT_ID">BAD_PROJECT_ID</h2>
 
-Owner: `public:cli/lib/argparse.mjs`.
+Owner: `public:sdk/src/project-id.ts`, `public:cli/lib/argparse.mjs`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
@@ -733,7 +733,7 @@ The client could not complete this operation. Inspect its typed error kind, mess
 
 <h2 id="ORG_REQUIRED">ORG_REQUIRED</h2>
 
-Owner: `public:sdk/src/node/org-context.ts`.
+Owner: `public:sdk/src/namespaces/rooms.ts`, `public:sdk/src/node/org-context.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
@@ -887,6 +887,24 @@ Owner: `public:sdk/src/namespaces/credentials.ts`, `public:cli/lib/credentials.m
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
+<h2 id="ROOM_CLAIM_ID_REQUIRED">ROOM_CLAIM_ID_REQUIRED</h2>
+
+Owner: `public:sdk/src/namespaces/rooms.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="ROOM_CLAIM_MODE_REQUIRED">ROOM_CLAIM_MODE_REQUIRED</h2>
+
+Owner: `public:sdk/src/namespaces/rooms.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="ROOM_CLAIM_RESOURCE_REQUIRED">ROOM_CLAIM_RESOURCE_REQUIRED</h2>
+
+Owner: `public:sdk/src/namespaces/rooms.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
 <h2 id="ROOM_INVITE_ID_MISMATCH">ROOM_INVITE_ID_MISMATCH</h2>
 
 Owner: `public:sdk/src/namespaces/rooms.ts`.
@@ -899,9 +917,33 @@ Owner: `public:sdk/src/namespaces/rooms.types.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
+<h2 id="ROOM_INVITE_KEY_REQUIRED">ROOM_INVITE_KEY_REQUIRED</h2>
+
+Owner: `public:sdk/src/namespaces/rooms.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="ROOM_MESSAGE_BODY_REQUIRED">ROOM_MESSAGE_BODY_REQUIRED</h2>
+
+Owner: `public:sdk/src/namespaces/rooms.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="ROOM_MESSAGE_ID_REQUIRED">ROOM_MESSAGE_ID_REQUIRED</h2>
+
+Owner: `public:sdk/src/namespaces/rooms.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
+<h2 id="ROOM_PRESENCE_ID_REQUIRED">ROOM_PRESENCE_ID_REQUIRED</h2>
+
+Owner: `public:sdk/src/namespaces/rooms.ts`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
 <h2 id="ROOM_REQUIRED">ROOM_REQUIRED</h2>
 
-Owner: `public:cli/lib/rooms-context.mjs`.
+Owner: `public:sdk/src/namespaces/rooms.ts`, `public:cli/lib/rooms-context.mjs`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 

@@ -731,6 +731,10 @@
       "owners": [
         {
           "owner": "public",
+          "source": "sdk/src/project-id.ts"
+        },
+        {
+          "owner": "public",
           "source": "cli/lib/argparse.mjs"
         }
       ],
@@ -4241,6 +4245,10 @@
       "owners": [
         {
           "owner": "public",
+          "source": "sdk/src/namespaces/rooms.ts"
+        },
+        {
+          "owner": "public",
           "source": "sdk/src/node/org-context.ts"
         }
       ],
@@ -6575,6 +6583,36 @@
       "topic": "/errors/gateway/#ROLE_FORBIDDEN"
     },
     {
+      "code": "ROOM_CLAIM_ID_REQUIRED",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/namespaces/rooms.ts"
+        }
+      ],
+      "topic": "/errors/client/#ROOM_CLAIM_ID_REQUIRED"
+    },
+    {
+      "code": "ROOM_CLAIM_MODE_REQUIRED",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/namespaces/rooms.ts"
+        }
+      ],
+      "topic": "/errors/client/#ROOM_CLAIM_MODE_REQUIRED"
+    },
+    {
+      "code": "ROOM_CLAIM_RESOURCE_REQUIRED",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/namespaces/rooms.ts"
+        }
+      ],
+      "topic": "/errors/client/#ROOM_CLAIM_RESOURCE_REQUIRED"
+    },
+    {
       "code": "ROOM_INVITE_ID_CONFLICT",
       "owners": [
         {
@@ -6635,6 +6673,16 @@
       "topic": "/errors/gateway/#ROOM_INVITE_KEY_INVALID"
     },
     {
+      "code": "ROOM_INVITE_KEY_REQUIRED",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/namespaces/rooms.ts"
+        }
+      ],
+      "topic": "/errors/client/#ROOM_INVITE_KEY_REQUIRED"
+    },
+    {
       "code": "ROOM_INVITE_KEY_REVOKED",
       "owners": [
         {
@@ -6665,8 +6713,42 @@
       "topic": "/errors/gateway/#ROOM_INVITE_REDEEM_REQUIRES_WALLET"
     },
     {
+      "code": "ROOM_MESSAGE_BODY_REQUIRED",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/namespaces/rooms.ts"
+        }
+      ],
+      "topic": "/errors/client/#ROOM_MESSAGE_BODY_REQUIRED"
+    },
+    {
+      "code": "ROOM_MESSAGE_ID_REQUIRED",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/namespaces/rooms.ts"
+        }
+      ],
+      "topic": "/errors/client/#ROOM_MESSAGE_ID_REQUIRED"
+    },
+    {
+      "code": "ROOM_PRESENCE_ID_REQUIRED",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/namespaces/rooms.ts"
+        }
+      ],
+      "topic": "/errors/client/#ROOM_PRESENCE_ID_REQUIRED"
+    },
+    {
       "code": "ROOM_REQUIRED",
       "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/namespaces/rooms.ts"
+        },
         {
           "owner": "public",
           "source": "cli/lib/rooms-context.mjs"

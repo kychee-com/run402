@@ -617,10 +617,13 @@ describe("rooms.forProject", () => {
     assert.equal(calls[0]!.url, "https://api.example.test/projects/v1/prj_1");
   });
 
-  it("URL-encodes the project id on the resolving read", async () => {
+  it("refuses a project id that is not path-safe before the resolving read", async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse({ org_id: ORG }));
-    await makeSdk(fetch).rooms.forProject("prj/odd");
-    assert.equal(calls[0]!.url, "https://api.example.test/projects/v1/prj%2Fodd");
+    await assert.rejects(
+      makeSdk(fetch).rooms.forProject("prj/odd"),
+      (err: unknown) => isLocalError(err) && err.code === "BAD_PROJECT_ID",
+    );
+    assert.equal(calls.length, 0);
   });
 
   it("rejects locally when the project read carries no org_id", async () => {

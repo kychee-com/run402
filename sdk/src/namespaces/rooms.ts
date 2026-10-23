@@ -32,6 +32,7 @@
 import { gateSecret } from "../secret-gate.js";
 import type { Client } from "../kernel.js";
 import { LocalError } from "../errors.js";
+import { projectIdPathSegment } from "../project-id.js";
 import { toBase64url } from "./vault.crypto.js";
 import type {
   AckRoomMessageOptions,
@@ -81,6 +82,80 @@ async function nodeOnlyBearerRedeemKey(verb: string): Promise<BearerRedeemKeyMod
       { code: "ROOMS_NODE_ONLY", details: { cause: e instanceof Error ? e.message : String(e) } },
     );
   }
+}
+
+/**
+ * The inputs a rooms call checks locally, each with its own error code and
+ * what the caller should pass instead. A missing one is refused before any
+ * request with that code and one `edit_request` next action naming the field.
+ */
+const ROOM_INPUTS = {
+  orgId: { code: "ORG_REQUIRED", expected: "the organization's id (`org_id`, a UUID)" },
+  roomKey: { code: "ROOM_REQUIRED", expected: "the room key (a project id names that project's default room)" },
+  presenceId: { code: "ROOM_PRESENCE_ID_REQUIRED", expected: "a presence id (`prs_…`, returned by registerPresence)" },
+  messageId: { code: "ROOM_MESSAGE_ID_REQUIRED", expected: "a message id (returned by sendMessage or listMessages)" },
+  body: { code: "ROOM_MESSAGE_BODY_REQUIRED", expected: "the message text as `{ body }`" },
+  resource: { code: "ROOM_CLAIM_RESOURCE_REQUIRED", expected: "the resource to claim as `{ resource }`, e.g. `repo:<area>/**`" },
+  mode: { code: "ROOM_CLAIM_MODE_REQUIRED", expected: "the claim mode as `{ mode }`: `exclusive` or `shared`" },
+  claimId: { code: "ROOM_CLAIM_ID_REQUIRED", expected: "a claim id (returned by createClaim or listClaims)" },
+  key: { code: "ROOM_INVITE_KEY_REQUIRED", expected: "the Room Invite Key (`kri1_…`)" },
+} as const;
+
+type RoomInput = keyof typeof ROOM_INPUTS;
+
+/** The call shape each rooms method shows in its input-check next action. */
+const ROOM_CALL_SHAPES = {
+  list: "r.rooms.list(orgId)",
+  get: "r.rooms.get(orgId, roomKey)",
+  leave: "r.rooms.leave(orgId, roomKey, presenceId)",
+  registerPresence: "r.rooms.registerPresence(orgId, roomKey, opts?)",
+  listPresences: "r.rooms.listPresences(orgId, roomKey, opts?)",
+  getPresence: "r.rooms.getPresence(orgId, roomKey, presenceId)",
+  sendMessage: 'r.rooms.sendMessage(orgId, roomKey, { body: "…" })',
+  listMessages: "r.rooms.listMessages(orgId, roomKey, opts?)",
+  waitForMessages: "r.rooms.waitForMessages(orgId, roomKey, opts?)",
+  getMessage: "r.rooms.getMessage(orgId, roomKey, messageId)",
+  ackMessage: "r.rooms.ackMessage(orgId, roomKey, messageId, opts?)",
+  createClaim: 'r.rooms.createClaim(orgId, roomKey, { resource: "repo:<area>/**", mode: "exclusive" })',
+  listClaims: "r.rooms.listClaims(orgId, roomKey, opts?)",
+  releaseClaim: "r.rooms.releaseClaim(orgId, roomKey, claimId)",
+  invite: "r.rooms.invite(orgId, roomKey, opts?)",
+  join: 'r.rooms.join("kri1_…")',
+  scoped: "r.rooms.scoped(orgId, roomKey)",
+} as const;
+
+type RoomMethod = keyof typeof ROOM_CALL_SHAPES;
+
+/** Field names of an options object, for naming what was passed instead (never values). */
+function receivedFields(input: unknown): string {
+  if (input === null || typeof input !== "object" || Array.isArray(input)) return "";
+  const keys = Object.keys(input);
+  return keys.length > 0 ? ` (received fields: ${keys.join(", ")})` : "";
+}
+
+/**
+ * Refuse a missing rooms input with its own code and one `edit_request`
+ * next action naming the expected field and showing the call shape.
+ */
+function requireRoomInput(
+  value: unknown,
+  field: RoomInput,
+  method: RoomMethod,
+  context: string,
+  input?: unknown,
+): void {
+  if (value) return;
+  const { code, expected } = ROOM_INPUTS[field];
+  const inInput = field === "body" || field === "resource" || field === "mode";
+  throw new LocalError(
+    `rooms.${method} requires ${inInput ? `{ ${field} }${receivedFields(input)}` : field}`,
+    context,
+    {
+      code,
+      details: { field, method: `rooms.${method}` },
+      next_actions: [{ type: "edit_request", why: `Pass ${field}, ${expected}: ${ROOM_CALL_SHAPES[method]}.` }],
+    },
+  );
 }
 
 function roomPath(orgId: string, roomKey: string): string {
@@ -133,9 +208,7 @@ export class Rooms {
    * service_key sees only its own.
    */
   async list(orgId: string): Promise<RoomList> {
-    if (!orgId) {
-      throw new LocalError("rooms.list requires an orgId", "listing rooms");
-    }
+    requireRoomInput(orgId, "orgId", "list", "listing rooms");
     return this.client.request<RoomList>(`/orgs/v1/${encodeURIComponent(orgId)}/rooms`, {
       context: "listing rooms",
     });
@@ -151,12 +224,8 @@ export class Rooms {
    * activity), never 404 — a room has no existence apart from its contents.
    */
   async get(orgId: string, roomKey: string): Promise<RoomSummary> {
-    if (!orgId) {
-      throw new LocalError("rooms.get requires an orgId", "reading room");
-    }
-    if (!roomKey) {
-      throw new LocalError("rooms.get requires a roomKey", "reading room");
-    }
+    requireRoomInput(orgId, "orgId", "get", "reading room");
+    requireRoomInput(roomKey, "roomKey", "get", "reading room");
     return this.client.request<RoomSummary>(roomPath(orgId, roomKey), { context: "reading room" });
   }
 
@@ -178,15 +247,9 @@ export class Rooms {
    * fail.
    */
   async leave(orgId: string, roomKey: string, presenceId: string): Promise<RoomLeaveResult> {
-    if (!orgId) {
-      throw new LocalError("rooms.leave requires an orgId", "leaving room");
-    }
-    if (!roomKey) {
-      throw new LocalError("rooms.leave requires a roomKey", "leaving room");
-    }
-    if (!presenceId) {
-      throw new LocalError("rooms.leave requires a presenceId", "leaving room");
-    }
+    requireRoomInput(orgId, "orgId", "leave", "leaving room");
+    requireRoomInput(roomKey, "roomKey", "leave", "leaving room");
+    requireRoomInput(presenceId, "presenceId", "leave", "leaving room");
     return this.client.request<RoomLeaveResult>(
       `${roomPath(orgId, roomKey)}/presences/${encodeURIComponent(presenceId)}`,
       { method: "DELETE", context: "leaving room" },
@@ -208,12 +271,8 @@ export class Rooms {
     roomKey: string,
     opts: RegisterPresenceOptions = {},
   ): Promise<PresenceRegistration> {
-    if (!orgId) {
-      throw new LocalError("rooms.registerPresence requires an orgId", "registering room presence");
-    }
-    if (!roomKey) {
-      throw new LocalError("rooms.registerPresence requires a roomKey", "registering room presence");
-    }
+    requireRoomInput(orgId, "orgId", "registerPresence", "registering room presence");
+    requireRoomInput(roomKey, "roomKey", "registerPresence", "registering room presence");
     const body: Record<string, unknown> = {};
     if (opts.requestedName !== undefined) body.requested_name = opts.requestedName;
     if (opts.task !== undefined) body.task = opts.task;
@@ -238,12 +297,8 @@ export class Rooms {
     roomKey: string,
     opts: ListPresencesOptions = {},
   ): Promise<RoomPresenceList> {
-    if (!orgId) {
-      throw new LocalError("rooms.listPresences requires an orgId", "listing room presences");
-    }
-    if (!roomKey) {
-      throw new LocalError("rooms.listPresences requires a roomKey", "listing room presences");
-    }
+    requireRoomInput(orgId, "orgId", "listPresences", "listing room presences");
+    requireRoomInput(roomKey, "roomKey", "listPresences", "listing room presences");
     return this.client.request<RoomPresenceList>(
       `${roomPath(orgId, roomKey)}/presences${presencesQuery(opts)}`,
       { method: "GET", context: "listing room presences" },
@@ -255,15 +310,9 @@ export class Rooms {
    * (`GET /orgs/v1/:org_id/rooms/:room_key/presences/:presence_id`).
    */
   async getPresence(orgId: string, roomKey: string, presenceId: string): Promise<RoomPresence> {
-    if (!orgId) {
-      throw new LocalError("rooms.getPresence requires an orgId", "reading room presence");
-    }
-    if (!roomKey) {
-      throw new LocalError("rooms.getPresence requires a roomKey", "reading room presence");
-    }
-    if (!presenceId) {
-      throw new LocalError("rooms.getPresence requires a presenceId", "reading room presence");
-    }
+    requireRoomInput(orgId, "orgId", "getPresence", "reading room presence");
+    requireRoomInput(roomKey, "roomKey", "getPresence", "reading room presence");
+    requireRoomInput(presenceId, "presenceId", "getPresence", "reading room presence");
     return this.client.request<RoomPresence>(
       `${roomPath(orgId, roomKey)}/presences/${encodeURIComponent(presenceId)}`,
       { method: "GET", context: "reading room presence" },
@@ -283,15 +332,9 @@ export class Rooms {
    * `messages_per_day` quota.
    */
   async sendMessage(orgId: string, roomKey: string, input: SendRoomMessageInput): Promise<SentRoomMessage> {
-    if (!orgId) {
-      throw new LocalError("rooms.sendMessage requires an orgId", "sending room message");
-    }
-    if (!roomKey) {
-      throw new LocalError("rooms.sendMessage requires a roomKey", "sending room message");
-    }
-    if (!input?.body) {
-      throw new LocalError("rooms.sendMessage requires { body }", "sending room message");
-    }
+    requireRoomInput(orgId, "orgId", "sendMessage", "sending room message");
+    requireRoomInput(roomKey, "roomKey", "sendMessage", "sending room message");
+    requireRoomInput(input?.body, "body", "sendMessage", "sending room message", input);
     const body: Record<string, unknown> = { body: input.body };
     if (input.to !== undefined) body.to = input.to;
     if (input.cc !== undefined) body.cc = input.cc;
@@ -326,12 +369,8 @@ export class Rooms {
     roomKey: string,
     opts: ListRoomMessagesOptions = {},
   ): Promise<RoomMessagePage> {
-    if (!orgId) {
-      throw new LocalError("rooms.listMessages requires an orgId", "listing room messages");
-    }
-    if (!roomKey) {
-      throw new LocalError("rooms.listMessages requires a roomKey", "listing room messages");
-    }
+    requireRoomInput(orgId, "orgId", "listMessages", "listing room messages");
+    requireRoomInput(roomKey, "roomKey", "listMessages", "listing room messages");
     return this.client.request<RoomMessagePage>(
       `${roomPath(orgId, roomKey)}/messages${messagesQuery(opts)}`,
       { method: "GET", context: "listing room messages" },
@@ -359,12 +398,8 @@ export class Rooms {
     roomKey: string,
     opts: WaitForRoomMessagesOptions = {},
   ): Promise<RoomMessageWaitResult> {
-    if (!orgId) {
-      throw new LocalError("rooms.waitForMessages requires an orgId", "waiting for room messages");
-    }
-    if (!roomKey) {
-      throw new LocalError("rooms.waitForMessages requires a roomKey", "waiting for room messages");
-    }
+    requireRoomInput(orgId, "orgId", "waitForMessages", "waiting for room messages");
+    requireRoomInput(roomKey, "roomKey", "waitForMessages", "waiting for room messages");
     const waitSeconds = Math.min(Math.max(Math.trunc(opts.waitSeconds ?? 25), 1), 25);
     const timeoutMs = opts.timeoutMs ?? 120_000;
     const fallbackPollMs = Math.max(opts.pollMs ?? 5000, 1000);
@@ -432,15 +467,9 @@ export class Rooms {
    * (`GET /orgs/v1/:org_id/rooms/:room_key/messages/:message_id`).
    */
   async getMessage(orgId: string, roomKey: string, messageId: string): Promise<RoomMessage> {
-    if (!orgId) {
-      throw new LocalError("rooms.getMessage requires an orgId", "reading room message");
-    }
-    if (!roomKey) {
-      throw new LocalError("rooms.getMessage requires a roomKey", "reading room message");
-    }
-    if (!messageId) {
-      throw new LocalError("rooms.getMessage requires a messageId", "reading room message");
-    }
+    requireRoomInput(orgId, "orgId", "getMessage", "reading room message");
+    requireRoomInput(roomKey, "roomKey", "getMessage", "reading room message");
+    requireRoomInput(messageId, "messageId", "getMessage", "reading room message");
     return this.client.request<RoomMessage>(
       `${roomPath(orgId, roomKey)}/messages/${encodeURIComponent(messageId)}`,
       { method: "GET", context: "reading room message" },
@@ -459,15 +488,9 @@ export class Rooms {
     messageId: string,
     opts: AckRoomMessageOptions = {},
   ): Promise<RoomAckResult> {
-    if (!orgId) {
-      throw new LocalError("rooms.ackMessage requires an orgId", "acknowledging room message");
-    }
-    if (!roomKey) {
-      throw new LocalError("rooms.ackMessage requires a roomKey", "acknowledging room message");
-    }
-    if (!messageId) {
-      throw new LocalError("rooms.ackMessage requires a messageId", "acknowledging room message");
-    }
+    requireRoomInput(orgId, "orgId", "ackMessage", "acknowledging room message");
+    requireRoomInput(roomKey, "roomKey", "ackMessage", "acknowledging room message");
+    requireRoomInput(messageId, "messageId", "ackMessage", "acknowledging room message");
     const body: Record<string, unknown> = {};
     if (opts.presenceId !== undefined) body.presence_id = opts.presenceId;
     if (opts.sessionKey !== undefined) body.session_key = opts.sessionKey;
@@ -487,18 +510,10 @@ export class Rooms {
    * claim — pass your stored `presenceId` to attribute it to this session.
    */
   async createClaim(orgId: string, roomKey: string, input: CreateRoomClaimInput): Promise<CreatedRoomClaim> {
-    if (!orgId) {
-      throw new LocalError("rooms.createClaim requires an orgId", "creating room claim");
-    }
-    if (!roomKey) {
-      throw new LocalError("rooms.createClaim requires a roomKey", "creating room claim");
-    }
-    if (!input?.resource) {
-      throw new LocalError("rooms.createClaim requires { resource }", "creating room claim");
-    }
-    if (!input?.mode) {
-      throw new LocalError("rooms.createClaim requires { mode }", "creating room claim");
-    }
+    requireRoomInput(orgId, "orgId", "createClaim", "creating room claim");
+    requireRoomInput(roomKey, "roomKey", "createClaim", "creating room claim");
+    requireRoomInput(input?.resource, "resource", "createClaim", "creating room claim", input);
+    requireRoomInput(input?.mode, "mode", "createClaim", "creating room claim", input);
     const body: Record<string, unknown> = { resource: input.resource, mode: input.mode };
     if (input.ttlSeconds !== undefined) body.ttl_seconds = input.ttlSeconds;
     if (input.note !== undefined) body.note = input.note;
@@ -518,12 +533,8 @@ export class Rooms {
    * `released_at`).
    */
   async listClaims(orgId: string, roomKey: string, opts: ListRoomClaimsOptions = {}): Promise<RoomClaimList> {
-    if (!orgId) {
-      throw new LocalError("rooms.listClaims requires an orgId", "listing room claims");
-    }
-    if (!roomKey) {
-      throw new LocalError("rooms.listClaims requires a roomKey", "listing room claims");
-    }
+    requireRoomInput(orgId, "orgId", "listClaims", "listing room claims");
+    requireRoomInput(roomKey, "roomKey", "listClaims", "listing room claims");
     return this.client.request<RoomClaimList>(
       `${roomPath(orgId, roomKey)}/claims${claimsQuery(opts)}`,
       { method: "GET", context: "listing room claims" },
@@ -537,15 +548,9 @@ export class Rooms {
    * `already_released: true` with the original time.
    */
   async releaseClaim(orgId: string, roomKey: string, claimId: string): Promise<RoomClaimReleaseResult> {
-    if (!orgId) {
-      throw new LocalError("rooms.releaseClaim requires an orgId", "releasing room claim");
-    }
-    if (!roomKey) {
-      throw new LocalError("rooms.releaseClaim requires a roomKey", "releasing room claim");
-    }
-    if (!claimId) {
-      throw new LocalError("rooms.releaseClaim requires a claimId", "releasing room claim");
-    }
+    requireRoomInput(orgId, "orgId", "releaseClaim", "releasing room claim");
+    requireRoomInput(roomKey, "roomKey", "releaseClaim", "releasing room claim");
+    requireRoomInput(claimId, "claimId", "releaseClaim", "releasing room claim");
     return this.client.request<RoomClaimReleaseResult>(
       `${roomPath(orgId, roomKey)}/claims/${encodeURIComponent(claimId)}`,
       { method: "DELETE", context: "releasing room claim" },
@@ -570,12 +575,8 @@ export class Rooms {
    */
   async invite(orgId: string, roomKey: string, opts: RoomInviteMintOptions = {}): Promise<RoomInviteMintResult> {
     gateSecret(this.client, "rooms.invite", orgId, roomKey, opts);
-    if (!orgId) {
-      throw new LocalError("rooms.invite requires an orgId", "minting a room invite");
-    }
-    if (!roomKey) {
-      throw new LocalError("rooms.invite requires a roomKey", "minting a room invite");
-    }
+    requireRoomInput(orgId, "orgId", "invite", "minting a room invite");
+    requireRoomInput(roomKey, "roomKey", "invite", "minting a room invite");
     const { assembleRoomInviteKey, deriveRoomInviteAuthSecret, computeRoomInviteAuthHash, randomRedeemId } = await nodeOnlyBearerRedeemKey("invite");
 
     const inviteId = randomRedeemId();
@@ -642,9 +643,7 @@ export class Rooms {
    */
   async join(key: string): Promise<RoomInviteJoinResult> {
     gateSecret(this.client, "rooms.join", key);
-    if (!key) {
-      throw new LocalError("rooms.join requires a key", "redeeming a room invite");
-    }
+    requireRoomInput(key, "key", "join", "redeeming a room invite");
     const { parseRoomInviteKey, deriveRoomInviteAuthSecret } = await nodeOnlyBearerRedeemKey("join");
     const parsed = parseRoomInviteKey(key); // throws ROOM_INVITE_KEY_WRONG_KIND/_KEY_INVALID synchronously — never contacts the gateway on a bad key
     const authSecret = deriveRoomInviteAuthSecret(parsed.invite_id_bytes, parsed.master_secret);
@@ -677,11 +676,14 @@ export class Rooms {
    * shared setup.
    */
   async forProject(projectId: string): Promise<ScopedRoom> {
-    if (!projectId) {
-      throw new LocalError("rooms.forProject requires a projectId", "resolving a project's default room");
-    }
+    const segment = projectIdPathSegment(projectId, {
+      method: "rooms.forProject",
+      argument: "projectId",
+      usage: 'r.rooms.forProject("prj_…")',
+      context: "resolving a project's default room",
+    });
     const project = await this.client.request<{ org_id?: string | null }>(
-      `/projects/v1/${encodeURIComponent(projectId)}`,
+      `/projects/v1/${segment}`,
       { method: "GET", context: "resolving a project's default room" },
     );
     const orgId = typeof project.org_id === "string" ? project.org_id : "";
@@ -738,12 +740,8 @@ export class ScopedRoom {
   readonly roomKey: string;
 
   constructor(private readonly rooms: Rooms, orgId: string, roomKey: string) {
-    if (!orgId) {
-      throw new LocalError("rooms.scoped requires an orgId", "scoping client to room");
-    }
-    if (!roomKey) {
-      throw new LocalError("rooms.scoped requires a roomKey", "scoping client to room");
-    }
+    requireRoomInput(orgId, "orgId", "scoped", "scoping client to room");
+    requireRoomInput(roomKey, "roomKey", "scoped", "scoping client to room");
     this.orgId = orgId;
     this.roomKey = roomKey;
   }

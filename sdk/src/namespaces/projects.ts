@@ -17,6 +17,7 @@ import { restDiagnostic } from "../rest-diagnostics.js";
 import type { Client } from "../kernel.js";
 import type { ProjectKeys } from "../credentials.js";
 import { LocalError } from "../errors.js";
+import { projectIdPathSegment } from "../project-id.js";
 import { requireProjectCredentials } from "../project-credentials.js";
 import { usableProjectKeys, withPrincipalFallback } from "../stale-project-key.js";
 import type { ExposeManifest } from "./deploy.types.js";
@@ -97,8 +98,15 @@ export class Projects {
     this.usage = this.getUsage.bind(this);
     this.quote = this.getQuote.bind(this);
     const role = async (id: string, email: string, action: "promote-user" | "demote-user", context: string) => {
+      const method = action === "promote-user" ? "promoteUser" : "demoteUser";
+      const segment = projectIdPathSegment(id, {
+        method: `projects.${method}`,
+        argument: "id",
+        usage: `r.projects.${method}("prj_…", email)`,
+        context,
+      });
       const keys = await requireProjectCredentials(this.client, id, context);
-      await this.client.request<unknown>(`/projects/v1/admin/${id}/${action}`, {
+      await this.client.request<unknown>(`/projects/v1/admin/${segment}/${action}`, {
         method: "POST",
         headers: { Authorization: `Bearer ${keys.service_key}` },
         body: { email },
@@ -169,9 +177,15 @@ export class Projects {
    * @throws {ProjectCredentialNotFound} if local project credentials are absent.
    */
   async delete(id: string): Promise<void> {
+    const segment = projectIdPathSegment(id, {
+      method: "projects.delete",
+      argument: "id",
+      usage: 'r.projects.delete("prj_…")',
+      context: "deleting project",
+    });
     const keys = await requireProjectCredentials(this.client, id, "deleting project");
 
-    await this.client.request<unknown>(`/projects/v1/${id}`, {
+    await this.client.request<unknown>(`/projects/v1/${segment}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${keys.service_key}` },
       context: "deleting project",
@@ -259,7 +273,13 @@ export class Projects {
    * @throws {ApiError} (HTTP 400) when the new name is invalid.
    */
   async rename(projectId: string, name: string): Promise<RenameProjectResult> {
-    return this.client.request<RenameProjectResult>(`/projects/v1/${projectId}`, {
+    const segment = projectIdPathSegment(projectId, {
+      method: "projects.rename",
+      argument: "projectId",
+      usage: 'r.projects.rename("prj_…", name)',
+      context: "renaming project",
+    });
+    return this.client.request<RenameProjectResult>(`/projects/v1/${segment}`, {
       method: "PATCH",
       body: { name },
       context: "renaming project",
@@ -276,7 +296,13 @@ export class Projects {
    * (`project.rename`).
    */
   async setRepoName(projectId: string, name: string): Promise<SetRepoNameResult> {
-    return this.client.request<SetRepoNameResult>(`/projects/v1/${projectId}/repo-name`, {
+    const segment = projectIdPathSegment(projectId, {
+      method: "projects.setRepoName",
+      argument: "projectId",
+      usage: 'r.projects.setRepoName("prj_…", name)',
+      context: "setting the project's repo name",
+    });
+    return this.client.request<SetRepoNameResult>(`/projects/v1/${segment}/repo-name`, {
       method: "POST",
       body: { name },
       context: "setting the project's repo name",
@@ -290,13 +316,19 @@ export class Projects {
    * project grant or grant key.
    */
   async listTenantPayments(projectId: string, opts: ListTenantPaymentsOptions = {}): Promise<TenantPaymentListResult> {
+    const segment = projectIdPathSegment(projectId, {
+      method: "projects.listTenantPayments",
+      argument: "projectId",
+      usage: 'r.projects.listTenantPayments("prj_…", opts?)',
+      context: "listing tenant payments",
+    });
     const qs = new URLSearchParams();
     if (opts.limit !== undefined) qs.set("limit", String(opts.limit));
     if (opts.after !== undefined) qs.set("after", opts.after);
     if (opts.status !== undefined) qs.set("status", opts.status);
     const query = qs.toString();
     return this.client.request<TenantPaymentListResult>(
-      `/projects/v1/${encodeURIComponent(projectId)}/tenant-payments${query ? `?${query}` : ""}`,
+      `/projects/v1/${segment}/tenant-payments${query ? `?${query}` : ""}`,
       { context: "listing tenant payments" },
     );
   }
@@ -306,9 +338,15 @@ export class Projects {
    * lease expiry.
    */
   async getUsage(id: string): Promise<UsageReport> {
+    const segment = projectIdPathSegment(id, {
+      method: "projects.getUsage",
+      argument: "id",
+      usage: 'r.projects.getUsage("prj_…")',
+      context: "fetching usage",
+    });
     const keys = await requireProjectCredentials(this.client, id, "fetching usage");
 
-    return this.client.request<UsageReport>(`/projects/v1/admin/${id}/usage`, {
+    return this.client.request<UsageReport>(`/projects/v1/admin/${segment}/usage`, {
       headers: { Authorization: `Bearer ${keys.service_key}` },
       context: "fetching usage",
     });
@@ -322,10 +360,16 @@ export class Projects {
    * gateway refuses is retried once as you, like {@link sql}.
    */
   async getSchema(id: string): Promise<SchemaReport> {
+    const segment = projectIdPathSegment(id, {
+      method: "projects.getSchema",
+      argument: "id",
+      usage: 'r.projects.getSchema("prj_…")',
+      context: "fetching schema",
+    });
     const keys = await usableProjectKeys(this.client, id);
 
     return withPrincipalFallback(this.client, id, keys, (k) =>
-      this.client.request<SchemaReport>(`/projects/v1/admin/${id}/schema`, {
+      this.client.request<SchemaReport>(`/projects/v1/admin/${segment}/schema`, {
         ...(k ? { headers: { Authorization: `Bearer ${k.service_key}` } } : {}),
         context: "fetching schema",
       }));
@@ -350,13 +394,19 @@ export class Projects {
    *  means a schema change on a released project belongs in a migration, and
    *  `MULTI_STATEMENT_TEXT_BODY` points at {@link sqlBatch}. */
   async sql(id: string, sql: string, params?: unknown[], opts: SqlOptions = {}): Promise<SqlResult> {
+    const segment = projectIdPathSegment(id, {
+      method: "projects.sql",
+      argument: "id",
+      usage: 'r.projects.sql("prj_…", sql, params?, opts?) (or r.project("prj_…").sql(sql))',
+      context: "running SQL",
+    });
     const keys = await usableProjectKeys(this.client, id);
 
     const useParams = Array.isArray(params) && params.length > 0;
     const readOnly = opts.readOnly === true;
     const json = useParams || readOnly;
     return withPrincipalFallback(this.client, id, keys, (k) =>
-      this.client.request<SqlResult>(`/projects/v1/${id}/sql`, {
+      this.client.request<SqlResult>(`/projects/v1/${segment}/sql`, {
         method: "POST",
         headers: {
           ...(k ? { Authorization: `Bearer ${k.service_key}` } : {}),
@@ -375,8 +425,14 @@ export class Projects {
    *  `"each"` every statement commits on its own and `results[i].status` says
    *  how each went. */
   async sqlBatch(id: string, statements: SqlBatchStatement[], opts: SqlBatchOptions = {}): Promise<SqlBatchResult> {
+    const segment = projectIdPathSegment(id, {
+      method: "projects.sqlBatch",
+      argument: "id",
+      usage: 'r.projects.sqlBatch("prj_…", statements, opts?)',
+      context: "running a SQL batch",
+    });
     const keys = await requireProjectCredentials(this.client, id, "running a SQL batch");
-    return this.client.request<SqlBatchResult>(`/projects/v1/${id}/sql/batch`, {
+    return this.client.request<SqlBatchResult>(`/projects/v1/${segment}/sql/batch`, {
       method: "POST",
       headers: { Authorization: `Bearer ${keys.service_key}` },
       body: { statements, transaction: opts.transaction ?? "all" },
@@ -390,7 +446,7 @@ export class Projects {
     table: string,
     options?: ProjectRestOptions,
   ): Promise<T> {
-    return (await this.restResponse<T>(id, table, options)).body;
+    return (await this.#restResponse<T>("rest", id, table, options)).body;
   }
 
   /** Query or mutate a project table through PostgREST and preserve HTTP status. */
@@ -399,8 +455,23 @@ export class Projects {
     table: string,
     options?: ProjectRestOptions,
   ): Promise<ProjectRestResponse<T>> {
+    return this.#restResponse<T>("restResponse", id, table, options);
+  }
+
+  async #restResponse<T>(
+    method: "rest" | "restResponse",
+    id: string,
+    table: string,
+    options?: ProjectRestOptions,
+  ): Promise<ProjectRestResponse<T>> {
+    const segment = projectIdPathSegment(id, {
+      method: `projects.${method}`,
+      argument: "id",
+      usage: `r.projects.${method}("prj_…", table, options?)`,
+      context: "querying REST",
+    });
     const opts: ProjectRestOptions = options ?? {};
-    const method = opts.method ?? "GET";
+    const httpMethod = opts.method ?? "GET";
     const query = formatRestQuery(opts.query);
     const serviceRequested = opts.keyType === "service";
     const keys = serviceRequested
@@ -422,17 +493,17 @@ export class Projects {
         headers.apikey = key;
         headers.Authorization = `Bearer ${key}`;
       }
-      if (method !== "GET") headers.Prefer = "return=representation";
+      if (httpMethod !== "GET") headers.Prefer = "return=representation";
 
       // The gateway rejects the service_role on the public PostgREST path
       // (/rest/v1/*), so service-key REST is routed through the project's
       // service REST route (/projects/v1/:project_id/rest/*). Anon keys use the
       // public path.
       const path = useService
-        ? `/projects/v1/${id}/rest/${encodeURIComponent(table)}${query}`
+        ? `/projects/v1/${segment}/rest/${encodeURIComponent(table)}${query}`
         : `/rest/v1/${encodeURIComponent(table)}${query}`;
       return this.client.requestWithResponse<T>(path, {
-        method, headers, body: opts.body, context: "querying REST", withAuth: asPrincipal,
+        method: httpMethod, headers, body: opts.body, context: "querying REST", withAuth: asPrincipal,
       });
     };
 
@@ -443,14 +514,20 @@ export class Projects {
         ? await withPrincipalFallback(this.client, id, resolved, send)
         : await send(resolved);
     } catch (error) {
-      throw restDiagnostic(error, method, table);
+      throw restDiagnostic(error, httpMethod, table);
     }
   }
 
   /** Apply the project's declarative expose manifest. */
   async applyExpose(id: string, manifest: ExposeManifest): Promise<unknown> {
+    const segment = projectIdPathSegment(id, {
+      method: "projects.applyExpose",
+      argument: "id",
+      usage: 'r.projects.applyExpose("prj_…", manifest)',
+      context: "applying expose manifest",
+    });
     const keys = await requireProjectCredentials(this.client, id, "applying expose manifest");
-    return this.client.request<unknown>(`/projects/v1/admin/${id}/expose`, {
+    return this.client.request<unknown>(`/projects/v1/admin/${segment}/expose`, {
       method: "POST",
       headers: { Authorization: `Bearer ${keys.service_key}` },
       body: manifest,
@@ -477,10 +554,16 @@ export class Projects {
     const body: Record<string, unknown> = { manifest: parsed.manifest };
     if (opts.migrationSql !== undefined) body.migration_sql = opts.migrationSql;
 
-    if (project) {
+    if (project !== undefined) {
+      const segment = projectIdPathSegment(project, {
+        method: "projects.validateExpose",
+        argument: "opts.project",
+        usage: 'r.projects.validateExpose(manifest, { project: "prj_…" })',
+        context: "validating expose manifest",
+      });
       const keys = await requireProjectCredentials(this.client, project, "validating expose manifest");
       const result = await this.client.request<ExposeManifestValidationResult | { has_errors?: boolean; errors?: ExposeManifestValidationIssue[]; warnings?: ExposeManifestValidationIssue[] }>(
-        `/projects/v1/admin/${project}/expose/validate`,
+        `/projects/v1/admin/${segment}/expose/validate`,
         {
           method: "POST",
           headers: { Authorization: `Bearer ${keys.service_key}` },
@@ -502,8 +585,14 @@ export class Projects {
 
   /** Fetch the project's current expose manifest. */
   async getExpose(id: string): Promise<ExposeManifest> {
+    const segment = projectIdPathSegment(id, {
+      method: "projects.getExpose",
+      argument: "id",
+      usage: 'r.projects.getExpose("prj_…")',
+      context: "getting expose manifest",
+    });
     const keys = await requireProjectCredentials(this.client, id, "getting expose manifest");
-    return this.client.request<ExposeManifest>(`/projects/v1/admin/${id}/expose`, {
+    return this.client.request<ExposeManifest>(`/projects/v1/admin/${segment}/expose`, {
       headers: { Authorization: `Bearer ${keys.service_key}` },
       context: "getting expose manifest",
     });
@@ -533,7 +622,13 @@ export class Projects {
    * For the local anon/service keys use {@link Projects.keys} instead.
    */
   async get(id: string): Promise<ProjectDetail> {
-    return this.client.request<ProjectDetail>(`/projects/v1/${id}`, {
+    const segment = projectIdPathSegment(id, {
+      method: "projects.get",
+      argument: "id",
+      usage: 'r.projects.get("prj_…")',
+      context: "getting project",
+    });
+    return this.client.request<ProjectDetail>(`/projects/v1/${segment}`, {
       context: "getting project",
     });
   }

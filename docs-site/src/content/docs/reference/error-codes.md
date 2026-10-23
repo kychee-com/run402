@@ -2305,6 +2305,18 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="ROLE_FORBIDDEN"></a>
 [`ROLE_FORBIDDEN`](/errors/gateway/#ROLE_FORBIDDEN)
 
+<a id="room_claim_id_required"></a>
+<a id="ROOM_CLAIM_ID_REQUIRED"></a>
+[`ROOM_CLAIM_ID_REQUIRED`](/errors/client/#ROOM_CLAIM_ID_REQUIRED)
+
+<a id="room_claim_mode_required"></a>
+<a id="ROOM_CLAIM_MODE_REQUIRED"></a>
+[`ROOM_CLAIM_MODE_REQUIRED`](/errors/client/#ROOM_CLAIM_MODE_REQUIRED)
+
+<a id="room_claim_resource_required"></a>
+<a id="ROOM_CLAIM_RESOURCE_REQUIRED"></a>
+[`ROOM_CLAIM_RESOURCE_REQUIRED`](/errors/client/#ROOM_CLAIM_RESOURCE_REQUIRED)
+
 <a id="room_invite_id_conflict"></a>
 <a id="ROOM_INVITE_ID_CONFLICT"></a>
 [`ROOM_INVITE_ID_CONFLICT`](/errors/gateway/#ROOM_INVITE_ID_CONFLICT)
@@ -2329,6 +2341,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="ROOM_INVITE_KEY_INVALID"></a>
 [`ROOM_INVITE_KEY_INVALID`](/errors/gateway/#ROOM_INVITE_KEY_INVALID)
 
+<a id="room_invite_key_required"></a>
+<a id="ROOM_INVITE_KEY_REQUIRED"></a>
+[`ROOM_INVITE_KEY_REQUIRED`](/errors/client/#ROOM_INVITE_KEY_REQUIRED)
+
 <a id="room_invite_key_revoked"></a>
 <a id="ROOM_INVITE_KEY_REVOKED"></a>
 [`ROOM_INVITE_KEY_REVOKED`](/errors/gateway/#ROOM_INVITE_KEY_REVOKED)
@@ -2340,6 +2356,18 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="room_invite_redeem_requires_wallet"></a>
 <a id="ROOM_INVITE_REDEEM_REQUIRES_WALLET"></a>
 [`ROOM_INVITE_REDEEM_REQUIRES_WALLET`](/errors/gateway/#ROOM_INVITE_REDEEM_REQUIRES_WALLET)
+
+<a id="room_message_body_required"></a>
+<a id="ROOM_MESSAGE_BODY_REQUIRED"></a>
+[`ROOM_MESSAGE_BODY_REQUIRED`](/errors/client/#ROOM_MESSAGE_BODY_REQUIRED)
+
+<a id="room_message_id_required"></a>
+<a id="ROOM_MESSAGE_ID_REQUIRED"></a>
+[`ROOM_MESSAGE_ID_REQUIRED`](/errors/client/#ROOM_MESSAGE_ID_REQUIRED)
+
+<a id="room_presence_id_required"></a>
+<a id="ROOM_PRESENCE_ID_REQUIRED"></a>
+[`ROOM_PRESENCE_ID_REQUIRED`](/errors/client/#ROOM_PRESENCE_ID_REQUIRED)
 
 <a id="room_required"></a>
 <a id="ROOM_REQUIRED"></a>

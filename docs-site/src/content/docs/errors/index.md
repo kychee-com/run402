@@ -1755,6 +1755,15 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="ROLE_FORBIDDEN"></a>
 [`ROLE_FORBIDDEN`](/errors/gateway/#ROLE_FORBIDDEN)
 
+<a id="ROOM_CLAIM_ID_REQUIRED"></a>
+[`ROOM_CLAIM_ID_REQUIRED`](/errors/client/#ROOM_CLAIM_ID_REQUIRED)
+
+<a id="ROOM_CLAIM_MODE_REQUIRED"></a>
+[`ROOM_CLAIM_MODE_REQUIRED`](/errors/client/#ROOM_CLAIM_MODE_REQUIRED)
+
+<a id="ROOM_CLAIM_RESOURCE_REQUIRED"></a>
+[`ROOM_CLAIM_RESOURCE_REQUIRED`](/errors/client/#ROOM_CLAIM_RESOURCE_REQUIRED)
+
 <a id="ROOM_INVITE_ID_CONFLICT"></a>
 [`ROOM_INVITE_ID_CONFLICT`](/errors/gateway/#ROOM_INVITE_ID_CONFLICT)
 
@@ -1773,6 +1782,9 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="ROOM_INVITE_KEY_INVALID"></a>
 [`ROOM_INVITE_KEY_INVALID`](/errors/gateway/#ROOM_INVITE_KEY_INVALID)
 
+<a id="ROOM_INVITE_KEY_REQUIRED"></a>
+[`ROOM_INVITE_KEY_REQUIRED`](/errors/client/#ROOM_INVITE_KEY_REQUIRED)
+
 <a id="ROOM_INVITE_KEY_REVOKED"></a>
 [`ROOM_INVITE_KEY_REVOKED`](/errors/gateway/#ROOM_INVITE_KEY_REVOKED)
 
@@ -1781,6 +1793,15 @@ The catalog records owning source locations and pinned external contributions. A
 
 <a id="ROOM_INVITE_REDEEM_REQUIRES_WALLET"></a>
 [`ROOM_INVITE_REDEEM_REQUIRES_WALLET`](/errors/gateway/#ROOM_INVITE_REDEEM_REQUIRES_WALLET)
+
+<a id="ROOM_MESSAGE_BODY_REQUIRED"></a>
+[`ROOM_MESSAGE_BODY_REQUIRED`](/errors/client/#ROOM_MESSAGE_BODY_REQUIRED)
+
+<a id="ROOM_MESSAGE_ID_REQUIRED"></a>
+[`ROOM_MESSAGE_ID_REQUIRED`](/errors/client/#ROOM_MESSAGE_ID_REQUIRED)
+
+<a id="ROOM_PRESENCE_ID_REQUIRED"></a>
+[`ROOM_PRESENCE_ID_REQUIRED`](/errors/client/#ROOM_PRESENCE_ID_REQUIRED)
 
 <a id="ROOM_REQUIRED"></a>
 [`ROOM_REQUIRED`](/errors/client/#ROOM_REQUIRED)
