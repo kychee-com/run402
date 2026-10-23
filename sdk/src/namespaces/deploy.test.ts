@@ -1581,6 +1581,54 @@ describe("Deploy.plan", () => {
       "/api/*",
     );
     assert.equal(plan.warnings[0]?.code, "FIRST_DEPLOY");
+    assert.equal("site_settings" in plan.diff, false);
+    assert.equal("public_paths" in plan.diff, false);
+  });
+
+  it("keeps the plan's site_settings and public_paths in plan.diff", async () => {
+    const w = makeWiring();
+    const siteSettings = {
+      effective: { noindex: false, embedding: null, sign_in_path: null },
+      changed: [{ key: "noindex", value_old: true, value_new: false }],
+    };
+    const publicPaths = {
+      mode_old: "explicit",
+      mode_new: "explicit",
+      added: [{ public_path: "/calendar", asset_path: "events.html" }],
+      removed: ["/events"],
+      changed: [],
+    };
+    w.setHandler(() => ({
+      kind: "plan_response",
+      schema_version: "agent-deploy-observability.v1",
+      plan_id: null,
+      operation_id: null,
+      base_release_id: "rel_base",
+      manifest_digest: "bead",
+      is_noop: false,
+      summary: "1 public path added, 1 public path removed, site.noindex set to false",
+      warnings: [],
+      missing_content: [],
+      payment_required: null,
+      migrations: { new: [], noop: [] },
+      site: { added: [], removed: [], changed: [] },
+      functions: { added: [], removed: [], changed: [] },
+      secrets: { added: [], removed: [] },
+      subdomains: { added: [], removed: [] },
+      routes: { added: [], removed: [], changed: [] },
+      public_paths: publicPaths,
+      site_settings: siteSettings,
+    }));
+
+    const deploy = new Deploy(w.client);
+    const { plan } = await deploy.plan(
+      { project_id: "prj_abc", site: { noindex: false } },
+      { dryRun: true },
+    );
+
+    assert.equal(plan.diff.is_noop, false);
+    assert.deepEqual(plan.diff.site_settings, siteSettings);
+    assert.deepEqual(plan.diff.public_paths, publicPaths);
   });
 
   it("adds a client warning for GET-only wildcard function routes", async () => {

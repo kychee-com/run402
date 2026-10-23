@@ -222,6 +222,32 @@ describe("summarizeDeployResult", () => {
     assert.deepEqual(summary.subdomains, { added: 1, removed: 0 });
   });
 
+  it("counts public path changes and names changed site settings", () => {
+    const summary = summarizeDeployResult(baseResult({
+      diff: {
+        is_noop: false,
+        public_paths: {
+          mode_old: "explicit",
+          mode_new: "implicit",
+          added: [{ public_path: "/calendar", asset_path: "events.html" }],
+          removed: ["/events"],
+          changed: [],
+        },
+        site_settings: {
+          effective: { noindex: false, embedding: null, sign_in_path: null },
+          changed: [{ key: "noindex", value_old: true, value_new: false }],
+        },
+      },
+    }));
+
+    assert.deepEqual(summary.public_paths, { added: 1, changed: 0, removed: 1, mode_changed: true });
+    assert.deepEqual(summary.site_settings_changed, ["noindex"]);
+    assert.equal(
+      summary.headline,
+      "2 public paths changed; public path mode changed; site noindex changed",
+    );
+  });
+
   it("does not expose timing or duration fields", () => {
     const summary = summarizeDeployResult(baseResult({
       diff: { is_noop: true },

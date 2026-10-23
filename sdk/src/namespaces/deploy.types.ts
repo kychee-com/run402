@@ -1169,6 +1169,17 @@ export function summarizeDeployResult(result: DeployResult): DeploySummary {
     };
   }
 
+  if (isPublicPathsDiff(diff.public_paths)) {
+    summary.public_paths = {
+      ...summarizeResourceCounts(diff.public_paths),
+      mode_changed: diff.public_paths.mode_old !== diff.public_paths.mode_new,
+    };
+  }
+
+  if (isSiteSettingsDiff(diff.site_settings) && diff.site_settings.changed.length > 0) {
+    summary.site_settings_changed = diff.site_settings.changed.map((entry) => entry.key);
+  }
+
   summary.headline = buildDeploySummaryHeadline(summary);
   return summary;
 }
@@ -1219,11 +1230,23 @@ function summarizeDeploySite(diff: DeployDiff): DeploySummarySite | undefined {
   return out.paths || out.cas ? out : undefined;
 }
 
-function summarizeResourceCounts(diff: RoutesDiff | SiteDiff): DeploySummaryResourceCounts {
+function summarizeResourceCounts(diff: RoutesDiff | SiteDiff | PublicPathsDiff): DeploySummaryResourceCounts {
   const added = diff.totals?.added ?? diff.added.length;
   const changed = diff.totals?.changed ?? diff.changed.length;
   const removed = diff.totals?.removed ?? diff.removed.length;
   return { added, changed, removed };
+}
+
+function isPublicPathsDiff(value: unknown): value is PublicPathsDiff {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const obj = value as PublicPathsDiff;
+  return Array.isArray(obj.added) && Array.isArray(obj.removed) && Array.isArray(obj.changed)
+    && typeof obj.mode_old === "string" && typeof obj.mode_new === "string";
+}
+
+function isSiteSettingsDiff(value: unknown): value is SiteSettingsDiff {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  return Array.isArray((value as SiteSettingsDiff).changed);
 }
 
 function isStaticAssetsDiff(value: unknown): value is StaticAssetsDiff {
@@ -1322,6 +1345,17 @@ function buildDeploySummaryHeadline(summary: DeploySummary): string {
   if (routes) {
     const count = routes.added + routes.changed + routes.removed;
     if (count > 0) parts.push(`${formatCount(count, "route")} changed`);
+  }
+
+  const publicPaths = summary.public_paths;
+  if (publicPaths) {
+    const count = publicPaths.added + publicPaths.changed + publicPaths.removed;
+    if (count > 0) parts.push(`${formatCount(count, "public path")} changed`);
+    if (publicPaths.mode_changed) parts.push("public path mode changed");
+  }
+
+  if (summary.site_settings_changed?.length) {
+    parts.push(`site ${summary.site_settings_changed.join(", ")} changed`);
   }
 
   if (parts.length > 0) return parts.join("; ");
@@ -1800,6 +1834,8 @@ export interface PlanResponse {
   subdomains?: SubdomainsDiff;
   routes?: RoutesDiff;
   static_assets?: StaticAssetsDiff;
+  public_paths?: PublicPathsDiff;
+  site_settings?: SiteSettingsDiff;
   /** v1.48 unified-apply: one entry per `assets.put` item, with the
    *  AssetRef envelope resolved at plan time (URLs are deterministic
    *  from `(project_public_id, key, content_sha256)` so they're
@@ -2346,10 +2382,33 @@ export interface DeployDiff {
   secrets?: SecretsDiff;
   routes?: RoutesDiff | Array<{ kind: "added" | "removed"; path: string }>;
   static_assets?: StaticAssetsDiff;
+  /** Which browser URLs serve which release asset, and the public path mode. */
+  public_paths?: PublicPathsDiff;
+  /** The gateway-owned site settings (`noindex`, `embedding`, `sign_in_path`). */
+  site_settings?: SiteSettingsDiff;
   subdomains?:
     | SubdomainsDiff
     | Array<{ kind: "added" | "removed"; subdomain: string }>;
   [key: string]: unknown;
+}
+
+export interface PublicPathsDiff {
+  mode_old: "implicit" | "explicit";
+  mode_new: "implicit" | "explicit";
+  added: Array<{ public_path: string; asset_path: string }>;
+  removed: string[];
+  changed: Array<{ public_path: string; asset_path_old: string; asset_path_new: string }>;
+  totals?: { added: number; removed: number; changed: number };
+}
+
+export interface SiteSettingsDiff {
+  /** What the host serves once the plan is committed. */
+  effective: {
+    noindex: boolean | null;
+    embedding: unknown;
+    sign_in_path: string | null;
+  };
+  changed: Array<{ key: "noindex" | "embedding" | "sign_in_path"; value_old: unknown; value_new: unknown }>;
 }
 
 export interface DeploySummarySitePaths {
@@ -2415,6 +2474,9 @@ export interface DeploySummary {
   routes?: DeploySummaryResourceCounts;
   secrets?: DeploySummaryKeyCounts;
   subdomains?: DeploySummaryKeyCounts;
+  public_paths?: DeploySummaryResourceCounts & { mode_changed: boolean };
+  /** Keys of the gateway-owned site settings this deploy changes. */
+  site_settings_changed?: Array<"noindex" | "embedding" | "sign_in_path">;
   warnings: DeploySummaryWarnings;
 }
 

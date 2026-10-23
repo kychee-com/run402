@@ -4199,6 +4199,8 @@ function normalizePlanResponse(plan: PlanResponse): PlanResponse {
       subdomains: raw.subdomains,
       routes: raw.routes,
       static_assets: raw.static_assets,
+      ...(raw.public_paths ? { public_paths: raw.public_paths } : {}),
+      ...(raw.site_settings ? { site_settings: raw.site_settings } : {}),
     };
     return {
       ...plan,
