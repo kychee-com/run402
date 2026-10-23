@@ -107,3 +107,33 @@ test("the deploy summary keeps the app's MCP connector URL beside the site and c
   const view = prepareWorkflowOutput({ mode: "apply", result: { deploy: { release_id: "rel_1", urls } } }, "/unused", { storeDetails: () => ({ ref: "detail", next_action: { type: "expand_result" } }) }) as any;
   assert.deepEqual(view.result.deploy.urls, { site: urls.site, console: urls.console, mcp: urls.mcp, deployment: urls.deployment, deployment_id: "dpl_1" });
 });
+
+test("step details keep their non-secret facts in both the stored detail and the summary", () => {
+  let stored: any;
+  const value = { action: "up", mode: "legacyDryRun", dry_run: true, steps: [
+    { id: "step_04", action: "wallets.faucet", description: "Faucet not needed: org has active team tier", state: "skipped", mutation: false, auto: true, details: { reason: "org has active team tier", current_tier: "team" } },
+    { id: "step_05", action: "tier.set", description: "Active team tier already satisfies the prototype requirement", state: "skipped", mutation: false, auto: true, details: { reason: "org has active team tier", current_tier: "team", desired_tier: "prototype", lease_perpetual: true, service_key: "sensitive-service", nested: { anon_key: "sensitive-anon" } } },
+    { id: "step_07", action: "projects.provision", description: "Provision project for workspace", state: "planned", mutation: true, auto: true, details: { tier: "prototype", name: "my-app" } },
+    { id: "step_08", action: "project.resolve", description: "Resolve project", state: "succeeded", mutation: false, auto: true, details: { linked_project_id: null } },
+  ], result: { project_id: null } };
+  const view = prepareWorkflowOutput(value, "/unused", { storeDetails: (detail) => { stored = detail; return { ref: "ref", next_action: { type: "expand_result" } }; } }) as any;
+  const tier = stored.steps.find((step: any) => step.action === "tier.set");
+  assert.equal(tier.details.current_tier, "team");
+  assert.equal(tier.details.desired_tier, "prototype");
+  assert.equal(tier.details.reason, "org has active team tier");
+  assert.equal(tier.details.service_key, "[redacted]");
+  assert.equal(tier.details.nested.anon_key, "[redacted]");
+  assert.doesNotMatch(JSON.stringify(stored), /sensitive-/);
+  // The summary keeps mutations, and readiness steps skipped with a reason.
+  const summary = Object.fromEntries(view.steps.map((step: any) => [step.action, step]));
+  assert.equal(summary["tier.set"].state, "skipped");
+  assert.equal(summary["tier.set"].reason, "org has active team tier");
+  assert.equal(summary["tier.set"].details.current_tier, "team");
+  assert.equal(summary["tier.set"].details.service_key, "[redacted]");
+  assert.equal(summary["tier.set"].details.nested, undefined, "the summary carries scalar facts only");
+  assert.equal(summary["wallets.faucet"].reason, "org has active team tier");
+  assert.equal(summary["projects.provision"].details.tier, "prototype");
+  assert.equal(summary["projects.provision"].description, "Provision project for workspace");
+  assert.equal(summary["project.resolve"], undefined);
+  assert.doesNotMatch(JSON.stringify(view), /sensitive-/);
+});

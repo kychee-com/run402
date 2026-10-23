@@ -343,7 +343,7 @@ export class NodeActions implements Run402Actions {
     }
     const tier = input.tier ?? DEFAULT_BOOTSTRAP_TIER;
     if (run.autoPrerequisites) {
-      await this.#ensureCloudTier(run, tier);
+      await this.#ensureCloudTier(run, tier, { explicitTier: input.tier !== undefined });
     }
     const idempotencyKey = input.idempotencyKey ?? run.rootIdempotencyKey;
     const step = run.addStep({
@@ -518,7 +518,7 @@ export class NodeActions implements Run402Actions {
         details: { mode: "plan" },
       });
     } else if (this.#targetKind() !== "core") {
-      await this.#ensureCloudTier(run, input.tier ?? DEFAULT_BOOTSTRAP_TIER);
+      await this.#ensureCloudTier(run, input.tier ?? DEFAULT_BOOTSTRAP_TIER, { explicitTier: input.tier !== undefined });
     } else {
       run.skipStep({
         action: Run402Action.TierSet,
@@ -1466,7 +1466,7 @@ export class NodeActions implements Run402Actions {
       });
     }
 
-    await this.#ensureCloudTier(run, input.tier ?? DEFAULT_BOOTSTRAP_TIER);
+    await this.#ensureCloudTier(run, input.tier ?? DEFAULT_BOOTSTRAP_TIER, { explicitTier: input.tier !== undefined });
     const resolved = await this.#resolveProject(input, manifest, workspaceDir, run);
     await this.#recordAppInstallState({
       projectId: resolved.projectId,
@@ -2133,8 +2133,18 @@ export class NodeActions implements Run402Actions {
     };
   }
 
-  async #ensureWallet(run: ActionRun, opts: { fund: boolean } = { fund: false }): Promise<boolean> {
+  /**
+   * Ensure a local wallet exists and, with `fund`, that it holds testnet USDC.
+   * Returns `funded` when this call dripped the faucet, and `planned` when a
+   * dry run planned a wallet that does not exist yet (so nothing about its
+   * organization can be read).
+   */
+  async #ensureWallet(
+    run: ActionRun,
+    opts: { fund: boolean; reason?: string } = { fund: false },
+  ): Promise<{ funded: boolean; planned: boolean }> {
     const status = await this.sdk.wallets.status();
+    let balanceUnknown = false;
     if (status.configured) {
       run.skipStep({
         action: "wallets.create",
@@ -2143,8 +2153,17 @@ export class NodeActions implements Run402Actions {
         auto: true,
         details: { address: status.address, path: status.path ?? null },
       });
-      if (!opts.fund) return false;
-      const balance = await prototypeBalance(status.address);
+      if (!opts.fund) return { funded: false, planned: false };
+      let balance: bigint;
+      try {
+        balance = await prototypeBalance(status.address);
+      } catch (err) {
+        // A dry run only describes; an unreadable balance plans the faucet
+        // instead of failing the plan. Execution still refuses to guess.
+        if (!run.dryRun) throw err;
+        balance = 0n;
+        balanceUnknown = true;
+      }
       if (balance > 0n) {
         run.skipStep({
           action: "wallets.faucet",
@@ -2153,7 +2172,7 @@ export class NodeActions implements Run402Actions {
           auto: true,
           details: { address: status.address, balance_usd_micros: balance.toString() },
         });
-        return false;
+        return { funded: false, planned: false };
       }
     } else {
       const createStep = run.addStep({
@@ -2165,7 +2184,7 @@ export class NodeActions implements Run402Actions {
       await run.approve(createStep, ["wallets.create"], "Create a local wallet.");
       if (run.dryRun) {
         run.setState(createStep, "planned");
-        return false;
+        return { funded: false, planned: true };
       }
       run.setState(createStep, "running");
       const created = await this.sdk.wallets.create();
@@ -2173,7 +2192,7 @@ export class NodeActions implements Run402Actions {
         address: created.address,
         path: created.path ?? null,
       });
-      if (!opts.fund) return false;
+      if (!opts.fund) return { funded: false, planned: false };
     }
 
     const faucetKey = run.childKey("wallets.faucet");
@@ -2182,12 +2201,16 @@ export class NodeActions implements Run402Actions {
       description: "Request testnet faucet funds for wallet",
       mutation: true,
       auto: true,
-      details: { idempotency_key: faucetKey ?? null },
+      details: {
+        idempotency_key: faucetKey ?? null,
+        ...(opts.reason ? { reason: opts.reason } : {}),
+        ...(balanceUnknown ? { balance: "unknown" } : {}),
+      },
     });
     await run.approve(faucetStep, ["wallets.faucet"], "Request testnet USDC for the local wallet.");
     if (run.dryRun) {
       run.setState(faucetStep, "planned");
-      return false;
+      return { funded: false, planned: false };
     }
     run.setState(faucetStep, "running");
     const faucet = await this.sdk.wallets.faucet(faucetKey ? { idempotencyKey: faucetKey } : {});
@@ -2196,83 +2219,181 @@ export class NodeActions implements Run402Actions {
       amount: faucet.amount,
       network: faucet.network,
     });
-    return true;
+    return { funded: true, planned: false };
   }
 
-  async #ensureCloudTier(run: ActionRun, desiredTier: TierName): Promise<void> {
-    await this.#ensureWallet(run, { fund: false });
-    if (run.dryRun) {
-      const faucetStep = run.addStep({
-        action: "wallets.faucet",
-        description: "Request testnet faucet funds if tier payment is needed",
-        mutation: true,
-        auto: true,
+  /**
+   * Bootstrap readiness: make sure the caller's organization holds a tier at
+   * least `desiredTier`. A dry run resolves this against the real organization
+   * exactly as execution does (one read of `GET /tiers/v1/status`), so a plan
+   * never lists a purchase that execution would skip. Bootstrap never buys a
+   * tier lower than the organization's current one unless the caller named
+   * that tier explicitly (`explicitTier`).
+   */
+  async #ensureCloudTier(run: ActionRun, desiredTier: TierName, opts: { explicitTier?: boolean } = {}): Promise<void> {
+    const wallet = await this.#ensureWallet(run, { fund: false });
+    const idempotencyKey = run.childKey("tier.set");
+
+    if (wallet.planned) {
+      // Dry run, no local wallet yet: a new wallet has no organization and no
+      // tier, so bootstrap would fund it and start the tier.
+      const reason = "new wallet has no tier";
+      await this.#planFaucet(run, reason);
+      await this.#planTierPurchase(run, desiredTier, {
+        description: `Start the ${desiredTier} tier`,
+        details: { tier: desiredTier, current_tier: null, active: false, reason, idempotency_key: idempotencyKey ?? null },
       });
-      await run.approve(faucetStep, ["wallets.faucet"], "Request testnet USDC if tier bootstrap needs payment.");
-      run.setState(faucetStep, "planned");
-      const step = run.addStep({
-        action: Run402Action.TierSet,
-        description: `Ensure active ${desiredTier} tier`,
-        mutation: true,
-        auto: true,
-        details: {
-          tier: desiredTier,
-          idempotency_key: run.childKey("tier.set") ?? null,
-          reason: "dry_run",
-        },
-      });
-      await run.approve(step, ["tier.set"], `Set the ${desiredTier} tier if no active tier exists.`);
-      run.setState(step, "planned");
       return;
     }
 
-    let status;
+    let status: Awaited<ReturnType<Run402["tier"]["status"]>> | null = null;
+    let statusError: unknown = null;
     try {
       status = await this.sdk.tier.status();
-    } catch {
-      status = null;
+    } catch (err) {
+      statusError = err;
     }
-    const current = normalizeTier(status?.tier);
-    if (status?.active && current && TIER_RANK[current] >= TIER_RANK[desiredTier]) {
+    if (!status) {
+      const error = statusError instanceof Error ? statusError.message : String(statusError);
+      if (run.dryRun) {
+        const reason = "tier status unavailable";
+        await this.#planFaucet(run, reason);
+        await this.#planTierPurchase(run, desiredTier, {
+          description: `Set the ${desiredTier} tier if the organization has no tier at least ${desiredTier} (current tier unknown)`,
+          details: { tier: desiredTier, current_tier: "unknown", reason, error, idempotency_key: idempotencyKey ?? null },
+        });
+        return;
+      }
+      // Paying blind could replace a higher tier the organization already holds.
+      throw run.error(
+        `Could not read the organization's tier (GET /tiers/v1/status failed: ${error}). Bootstrap does not buy a tier without knowing the current one.`,
+        "RUN402_TIER_STATUS_UNAVAILABLE",
+        {
+          desired_tier: desiredTier,
+          error,
+          next_actions: [{
+            type: "check_usage",
+            command: "run402 tier status",
+            argv: ["run402", "tier", "status"],
+            why: "Confirm the organization's current tier, then retry.",
+          }],
+        },
+      );
+    }
+
+    const current = normalizeTier(status.tier);
+    const facts = {
+      current_tier: current ?? status.tier ?? null,
+      desired_tier: desiredTier,
+      active: status.active,
+      lease_perpetual: status.lease_perpetual ?? null,
+      lease_expires_at: status.lease_expires_at ?? null,
+    };
+    if (status.active && current && TIER_RANK[current] >= TIER_RANK[desiredTier]) {
+      const reason = `org has active ${current} tier`;
       run.skipStep({
-        action: Run402Action.TierSet,
-        description: "Active tier already satisfies bootstrap requirement",
+        action: "wallets.faucet",
+        description: `Faucet not needed: ${reason}`,
         mutation: false,
         auto: true,
-        details: { current_tier: current, desired_tier: desiredTier },
+        details: { reason },
+      });
+      run.skipStep({
+        action: Run402Action.TierSet,
+        description: current === desiredTier
+          ? `Active ${current} tier already in place`
+          : `Active ${current} tier already satisfies the ${desiredTier} requirement`,
+        mutation: false,
+        auto: true,
+        details: { reason, ...facts },
       });
       return;
     }
-    if (status?.active && current && TIER_RANK[current] > TIER_RANK[desiredTier]) {
-      run.skipStep({
-        action: Run402Action.TierSet,
-        description: "Existing active tier is higher than bootstrap default",
-        mutation: false,
-        auto: true,
-        details: { current_tier: current, desired_tier: desiredTier },
-      });
+    if (current && TIER_RANK[current] > TIER_RANK[desiredTier] && !opts.explicitTier) {
+      // The organization's higher tier has lapsed. Buying the default lower
+      // tier would replace it; that takes an explicit choice.
+      const retryVerb = run.input.type === Run402Action.ProjectsProvision
+        ? ["run402", "projects", "provision"]
+        : ["run402", "up"];
+      throw run.error(
+        `The organization's ${current} tier is not active. Bootstrap will not replace it with the lower default ${desiredTier} tier. Renew ${current}, or pass the tier explicitly to accept ${desiredTier}.`,
+        "RUN402_TIER_DOWNGRADE_REFUSED",
+        {
+          ...facts,
+          next_actions: [
+            {
+              type: "renew_tier",
+              command: `run402 tier set ${current}`,
+              argv: ["run402", "tier", "set", current],
+              why: `Renew the organization's ${current} tier, then retry.`,
+            },
+            {
+              type: "retry",
+              command: `${retryVerb.join(" ")} --tier ${desiredTier}`,
+              argv: [...retryVerb, "--tier", desiredTier],
+              why: `Accept the lower ${desiredTier} tier explicitly.`,
+            },
+          ],
+        },
+      );
+    }
+
+    const description = !current
+      ? `Start the ${desiredTier} tier`
+      : current === desiredTier
+        ? `Renew the ${desiredTier} tier (current lease is not active)`
+        : TIER_RANK[current] < TIER_RANK[desiredTier]
+          ? `Upgrade tier from ${current} to ${desiredTier}`
+          : `Set the ${desiredTier} tier as requested (current ${current} tier is not active)`;
+    const reason = !current ? "org has no tier" : status.active ? `org has active ${current} tier` : `org's ${current} tier is not active`;
+    const details = { tier: desiredTier, ...facts, reason, idempotency_key: idempotencyKey ?? null };
+    if (run.dryRun) {
+      await this.#ensureWallet(run, { fund: true, reason: "tier payment may be needed" });
+      await this.#planTierPurchase(run, desiredTier, { description, details });
       return;
     }
 
-    const idempotencyKey = run.childKey("tier.set");
-    const justFunded = await this.#ensureWallet(run, { fund: true });
+    const { funded: justFunded } = await this.#ensureWallet(run, { fund: true });
     const step = run.addStep({
       action: Run402Action.TierSet,
-      description: `Ensure active ${desiredTier} tier`,
+      description,
       mutation: true,
       auto: true,
-      details: {
-        tier: desiredTier,
-        current_tier: current ?? null,
-        active: status?.active ?? null,
-        idempotency_key: idempotencyKey ?? null,
-      },
+      details,
     });
     await run.approve(step, ["tier.set"], `Set the ${desiredTier} tier (start, renew, or upgrade).`);
     run.setState(step, "running");
     const pay = () => this.sdk.tier.set(desiredTier, idempotencyKey ? { idempotencyKey } : {});
     const result = await (justFunded ? afterFaucet(pay) : pay());
     run.setState(step, "succeeded", { tier: result.tier, action: result.action });
+  }
+
+  async #planFaucet(run: ActionRun, reason: string): Promise<void> {
+    const step = run.addStep({
+      action: "wallets.faucet",
+      description: "Request testnet faucet funds if tier payment is needed",
+      mutation: true,
+      auto: true,
+      details: { reason },
+    });
+    await run.approve(step, ["wallets.faucet"], "Request testnet USDC if tier bootstrap needs payment.");
+    run.setState(step, "planned");
+  }
+
+  async #planTierPurchase(
+    run: ActionRun,
+    desiredTier: TierName,
+    plan: { description: string; details: Record<string, unknown> },
+  ): Promise<void> {
+    const step = run.addStep({
+      action: Run402Action.TierSet,
+      description: plan.description,
+      mutation: true,
+      auto: true,
+      details: plan.details,
+    });
+    await run.approve(step, ["tier.set"], `Set the ${desiredTier} tier (start, renew, or upgrade).`);
+    run.setState(step, "planned");
   }
 
   async #resolveProject(

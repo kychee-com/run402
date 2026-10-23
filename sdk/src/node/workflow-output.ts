@@ -8,6 +8,9 @@ const MAX_FILES = 32;
 const MAX_BYTES = 2 * 1024 * 1024;
 const PRIVATE_FIELDS = /(?:secret|password|token|authorization|cookie|signature|proof|credential|private.?key|api.?key|service.?key|anon.?key|key$)|^(?:env|headers|body|sql|custom_sql|spec|manifest|value|stdout|stderr|input|message|details)$/i;
 const object = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+/** An action-runner step: its `details` are facts the runner wrote (tiers, reasons, ids), not an authored payload. */
+const isActionStep = (v: Record<string, unknown>): boolean =>
+  typeof v.id === "string" && typeof v.action === "string" && typeof v.state === "string" && typeof v.mutation === "boolean";
 
 /** Authored payloads and credential-bearing fields never enter the diagnostic copy. */
 export function redactWorkflowDiagnostics(value: unknown): unknown {
@@ -17,7 +20,19 @@ export function redactWorkflowDiagnostics(value: unknown): unknown {
       try { const url = new URL(address); url.username = ""; url.password = ""; url.search = ""; url.hash = ""; return url.toString(); } catch { return "[redacted URL]"; }
     }).replace(/Bearer\s+[^\s"\x27]+/gi, "Bearer [redacted]").replace(/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, "[redacted]")
     : value;
-  return Object.fromEntries(Object.entries(value).map(([key, val]) => [key, PRIVATE_FIELDS.test(key) ? "[redacted]" : redactWorkflowDiagnostics(val)]));
+  const step = isActionStep(value);
+  return Object.fromEntries(Object.entries(value).map(([key, val]) => [key,
+    // A step's details are walked key by key (secret-named keys still redact) instead of hidden whole.
+    step && key === "details" && object(val) ? redactWorkflowDiagnostics(val)
+      : PRIVATE_FIELDS.test(key) ? "[redacted]" : redactWorkflowDiagnostics(val)]));
+}
+
+/** The summary view of a step's details: redacted scalar facts only. */
+function stepFacts(details: unknown): Record<string, unknown> | undefined {
+  if (!object(details)) return undefined;
+  const redacted = redactWorkflowDiagnostics(details) as Record<string, unknown>;
+  const facts = Object.fromEntries(Object.entries(redacted).filter(([, val]) => val === null || ["string", "number", "boolean"].includes(typeof val)));
+  return Object.keys(facts).length ? facts : undefined;
 }
 
 function diagnosticPath(dir: string, value: unknown): string | null {
@@ -110,9 +125,20 @@ export function prepareWorkflowOutput<T>(value: T, dir: string, options: { store
     for (const key of ["site", "functions", "routes", "assets", "missing_content"]) delete plan[key];
     result.plan = plan;
   }
-  const steps = Array.isArray(value.steps) ? value.steps.filter(step => object(step) && (step.mutation === true || step.state === "failed")).map((step) => {
+  // Mutations, failures, and steps skipped or blocked for a stated reason (a
+  // readiness purchase the run resolved as unnecessary) stay in the summary.
+  const steps = Array.isArray(value.steps) ? value.steps.filter(step => object(step) && (
+    step.mutation === true || step.state === "failed"
+    || ((step.state === "skipped" || step.state === "blocked") && object(step.details) && typeof step.details.reason === "string")
+  )).map((step) => {
     if (!object(step)) return step;
-    return pick(step, ["id", "action", "state", "mutation", "code", "reason", "next_actions"]);
+    const summary = pick(step, ["id", "action", "description", "state", "mutation", "code", "reason", "next_actions"]);
+    const facts = stepFacts(step.details);
+    if (facts) {
+      if (summary.reason === undefined && typeof facts.reason === "string") summary.reason = facts.reason;
+      summary.details = facts;
+    }
+    return summary;
   }) : value.steps;
   return {
     ...value, steps, step_count: Array.isArray(value.steps) ? value.steps.length : 0, result,

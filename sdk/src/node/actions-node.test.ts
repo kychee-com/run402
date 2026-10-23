@@ -448,6 +448,123 @@ test("up dry-run plans the tier purchase without a key when the caller supplied 
   }
 });
 
+function teamTierStatus(overrides: Record<string, unknown> = {}) {
+  return {
+    wallet: "0x0000000000000000000000000000000000000001",
+    tier: "team",
+    active: true,
+    lease_perpetual: true,
+    lease_started_at: "2026-01-01T00:00:00.000Z",
+    lease_expires_at: null,
+    ...overrides,
+  };
+}
+
+test("up dry-run on an org with an active higher tier skips the faucet and tier purchase with the reason", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "run402-up-dry-run-team-"));
+  writeFileSync(join(dir, "run402.deploy.json"), JSON.stringify({
+    site: { replace: { "index.html": { data: "<h1>hello</h1>" } } },
+  }));
+  const calls: string[] = [];
+  const sdk = fakeSdk({ calls, walletConfigured: true, tierActive: true, activeProject: null });
+  sdk.tier.status = async () => { calls.push("tier.status"); return teamTierStatus() as never; };
+
+  try {
+    const result = await new NodeActions(sdk, { targetKind: "cloud", cwd: dir }).run(
+      { type: Run402Action.Up, name: "my-app" },
+      { dryRun: true },
+    );
+    assert.ok(calls.includes("tier.status"), "the dry run reads the org's real tier");
+    assert.ok(!calls.some((c) => c.startsWith("tier.set:") || c.startsWith("wallets.faucet:")));
+    const faucet = result.steps.filter((step) => step.action === "wallets.faucet");
+    const tier = result.steps.filter((step) => step.action === Run402Action.TierSet);
+    assert.ok(faucet.length >= 1 && faucet.every((step) => step.state === "skipped" && step.mutation === false), JSON.stringify(faucet));
+    assert.equal(tier.length, 1);
+    assert.equal(tier[0]!.state, "skipped");
+    assert.equal(tier[0]!.mutation, false);
+    assert.equal(tier[0]!.details?.reason, "org has active team tier");
+    assert.equal(tier[0]!.details?.current_tier, "team");
+    assert.equal(tier[0]!.details?.desired_tier, "prototype");
+    assert.equal(tier[0]!.details?.lease_perpetual, true);
+    assert.doesNotMatch(tier[0]!.description, /Ensure active prototype tier/);
+    assert.ok(faucet.some((step) => step.details?.reason === "org has active team tier"));
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("up dry-run on an active lower tier describes the purchase as an upgrade with both tiers", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "run402-up-dry-run-upgrade-"));
+  writeFileSync(join(dir, "run402.deploy.json"), JSON.stringify({
+    site: { replace: { "index.html": { data: "<h1>hello</h1>" } } },
+  }));
+  const calls: string[] = [];
+  const sdk = fakeSdk({ calls, walletConfigured: true, tierActive: true, activeProject: null });
+  testBalance = 250_000n;
+  try {
+    const result = await new NodeActions(sdk, { targetKind: "cloud", cwd: dir }).run(
+      { type: Run402Action.Up, name: "my-app", tier: "team" },
+      { dryRun: true },
+    );
+    const tier = result.steps.find((step) => step.action === Run402Action.TierSet);
+    assert.equal(tier?.state, "planned");
+    assert.match(tier?.description ?? "", /prototype to team/);
+    assert.equal(tier?.details?.tier, "team");
+    assert.equal(tier?.details?.current_tier, "prototype");
+    assert.ok(!result.steps.some((step) => step.action === "wallets.faucet" && step.state === "planned"), "a funded wallet needs no faucet");
+    assert.ok(!calls.some((c) => c.startsWith("tier.set:") || c.startsWith("wallets.faucet:")));
+  } finally {
+    testBalance = 0n;
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("bootstrap never buys the default lower tier over an org's lapsed higher tier", async () => {
+  const calls: string[] = [];
+  const sdk = fakeSdk({ calls, walletConfigured: true, tierActive: false, activeProject: null });
+  sdk.tier.status = async () => {
+    calls.push("tier.status");
+    return teamTierStatus({ active: false, lease_perpetual: false, lease_expires_at: "2026-01-01T00:00:00.000Z" }) as never;
+  };
+  await assert.rejects(
+    new NodeActions(sdk, { targetKind: "cloud" }).run({ type: Run402Action.ProjectsProvision, name: "lapsed" }, { autoPrerequisites: true, approval: "yes" }),
+    (err: unknown) => (err as { code?: string }).code === "RUN402_TIER_DOWNGRADE_REFUSED",
+  );
+  assert.ok(!calls.some((c) => c.startsWith("tier.set:") || c.startsWith("wallets.faucet:")));
+});
+
+test("an explicit lower tier over a lapsed higher tier is honored", async () => {
+  const calls: string[] = [];
+  const sdk = fakeSdk({ calls, walletConfigured: true, tierActive: false, activeProject: null });
+  sdk.tier.status = async () => {
+    calls.push("tier.status");
+    return teamTierStatus({ active: false, lease_perpetual: false, lease_expires_at: "2026-01-01T00:00:00.000Z" }) as never;
+  };
+  testBalance = 250_000n;
+  try {
+    const result = await new NodeActions(sdk, { targetKind: "cloud" }).run(
+      { type: Run402Action.ProjectsProvision, name: "lapsed", tier: "prototype" },
+      { autoPrerequisites: true, approval: "yes" },
+    );
+    assert.equal(result.result?.project_id, "prj_new");
+    assert.ok(calls.some((c) => c.startsWith("tier.set:")));
+  } finally { testBalance = 0n; }
+});
+
+test("bootstrap refuses to buy a tier when the org's tier status cannot be read", async () => {
+  const calls: string[] = [];
+  const sdk = fakeSdk({ calls, walletConfigured: true, tierActive: false, activeProject: null });
+  sdk.tier.status = async () => { calls.push("tier.status"); throw new Error("gateway unavailable"); };
+  testBalance = 250_000n;
+  try {
+    await assert.rejects(
+      new NodeActions(sdk, { targetKind: "cloud" }).run({ type: Run402Action.ProjectsProvision, name: "blind" }, { autoPrerequisites: true, approval: "yes" }),
+      (err: unknown) => (err as { code?: string }).code === "RUN402_TIER_STATUS_UNAVAILABLE",
+    );
+    assert.ok(!calls.some((c) => c.startsWith("tier.set:") || c.startsWith("wallets.faucet:")));
+  } finally { testBalance = 0n; }
+});
+
 test("up app apply blocks remote build with explicit unsupported next action", async () => {
   const dir = mkdtempSync(join(tmpdir(), "run402-app-up-remote-build-"));
   writeFileSync(join(dir, "run402.json"), JSON.stringify(appManifest()));
