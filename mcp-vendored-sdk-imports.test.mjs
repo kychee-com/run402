@@ -66,3 +66,20 @@ test("the gate recognises the shape that shipped in 4.93.0", () => {
   const typeOnly = 'import type { NodeRun402 } from "@run402/sdk/node";\n';
   assert.equal([...typeOnly.matchAll(BARE_SDK)].length, 0);
 });
+
+// The same vendoring means run402-mcp and run402 must each declare every
+// runtime dependency of @run402/sdk: their tarballs ship sdk/dist, and npm
+// installs only what each package itself declares. The publish workflow
+// checks this against a real install of the packed tarballs; this is the
+// same comparison on the manifests, so a missing declaration fails CI
+// instead of a release. tsx is loaded behind a graceful fallback and only
+// run402 declares it (the workflow's OPTIONAL set).
+test("run402-mcp and run402 declare every runtime dependency the vendored SDK has", () => {
+  const read = (p) => JSON.parse(readFileSync(join(here, p), "utf8"));
+  const sdkDeps = Object.keys(read("sdk/package.json").dependencies ?? {}).filter((d) => d !== "tsx");
+  for (const manifest of ["package.json", "cli/package.json"]) {
+    const declared = read(manifest).dependencies ?? {};
+    const missing = sdkDeps.filter((d) => !(d in declared));
+    assert.deepEqual(missing, [], `${manifest} bundles sdk/dist but does not declare: ${missing.join(", ")}`);
+  }
+});
