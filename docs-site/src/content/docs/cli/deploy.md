@@ -526,6 +526,17 @@ Assets slice: top-level `ReleaseSpec.assets` stages content-addressed asset entr
 
 Additive batch: locally computed `sha256`; gateway dedupes CAS; only new shas upload through same S3 presign flow as `assets put`. Defaults `visibility: "public"`, `immutable: true`; other keys untouched.
 
+A manifest entry may name a local file instead of a precomputed digest: exactly one of `source` or `sha256` per entry. `source` takes the same file-entry forms as `site.replace` (`{ "path": "../photos/x.jpg" }` relative to the manifest, `{ "data", "encoding" }`, or a bare string for text); the CLI hashes the bytes, uploads only shas the gateway does not already hold, and ships the asset entries in the same apply as `site` and `functions`. An assets-only manifest is a valid deploy. Keys are per entry, so one manifest covers files from several local folders:
+
+```json
+"assets": {
+  "put": [
+    { "key": "photos/x.jpg", "source": { "path": "../photos/x.jpg" }, "visibility": "private" },
+    { "key": "books/scan-01.png", "source": { "path": "../books/scan-01.png" }, "visibility": "private" }
+  ]
+}
+```
+
 ```json
 "assets": {
   "put": [...],

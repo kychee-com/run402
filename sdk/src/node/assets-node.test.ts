@@ -13,6 +13,7 @@ import {
   dir,
   NodeAssets,
   PruneConfirmationRequired,
+  applyAssetEntryDefaults,
   entriesFromLocalDir,
 } from "./assets-node.js";
 
@@ -300,6 +301,32 @@ describe("NodeAssets.syncDir destructive guardrail (design D10)", () => {
     await assert.rejects(
       assets.syncDir(tempDir, { project: "prj_test", prune: true }),
       /requires an explicit prefix/,
+    );
+  });
+});
+
+describe("applyAssetEntryDefaults — per-call visibility for the bulk helpers", () => {
+  const entries = [
+    { key: "photos/a.jpg", source: new Uint8Array([1]) },
+    { key: "photos/b.jpg", source: new Uint8Array([2]), visibility: "public" as const },
+  ];
+
+  it("stamps a private default on every entry that does not set its own", () => {
+    const out = applyAssetEntryDefaults(entries, { visibility: "private" }, "test");
+    assert.equal(out[0]!.visibility, "private");
+    assert.equal(out[1]!.visibility, "public", "a per-entry visibility wins over the call default");
+  });
+
+  it("leaves entries untouched when no default is given (normalizer defaults to public)", () => {
+    const out = applyAssetEntryDefaults(entries, {}, "test");
+    assert.equal(out, entries);
+    assert.equal(out[0]!.visibility, undefined);
+  });
+
+  it("rejects an unknown visibility before any network call", () => {
+    assert.throws(
+      () => applyAssetEntryDefaults(entries, { visibility: "hidden" as never }, "test"),
+      /visibility must be "public" or "private"/,
     );
   });
 });

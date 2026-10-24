@@ -456,9 +456,9 @@ sign(projectId, key, opts?: { ttl_seconds? }): Promise<BlobSignResult>
 diagnoseUrl(projectId, url): Promise<BlobDiagnoseEnvelope>
 waitFresh(projectId, opts: { url, sha256, timeoutMs? }): Promise<BlobWaitFreshResult>
 // Node-only — @run402/sdk/node — bulk directory + batch:
-uploadDir(path, opts: { project, prefix?, ignore?, includeSensitive?, onEvent? }): Promise<AssetManifest>
-syncDir(path, opts: { project, prefix?, prune?, confirm?, ignore?, includeSensitive?, onEvent? }): Promise<AssetManifest>
-prepareDir(path, opts: { project, prefix?, ignore?, includeSensitive? }): Promise<{ manifest: AssetManifest, applySlice: AssetSpec }>
+uploadDir(path, opts: { project, prefix?, visibility?, ignore?, includeSensitive?, onEvent? }): Promise<AssetManifest>
+syncDir(path, opts: { project, prefix?, visibility?, prune?, confirm?, ignore?, includeSensitive?, onEvent? }): Promise<AssetManifest>
+prepareDir(path, opts: { project, prefix?, visibility?, ignore?, includeSensitive? }): Promise<{ manifest: AssetManifest, applySlice: AssetSpec }>
 putMany(items: PutManyItem[], opts: { project, onEvent? }): Promise<AssetManifest>
 
 // Node-only — input helper (synchronous; walk happens at apply submission):
@@ -492,7 +492,10 @@ throw `LocalError` directing callers to `r.assets.put` (single key) or
 `uploadDir` is **additive**: walks the directory, hashes every file with
 streaming SHA-256, and submits one apply transaction (`r.project(id).apply
 ({ assets: { put: [...] } })`). Existing keys not present in the directory
-are left untouched.
+are left untouched. Every bulk helper (`uploadDir`, `syncDir`, `prepareDir`)
+takes `visibility: "public" | "private"` and applies it to every walked
+file; the default is `"public"`, so a private directory must say so.
+`putMany` takes `visibility` per item.
 
 `syncDir` is **declarative**. Without `prune: true` it behaves identically
 to `uploadDir`. With `prune: true` it deletes keys under the supplied

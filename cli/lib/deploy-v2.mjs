@@ -1173,11 +1173,13 @@ async function deployCmd(args) {
   // was deployed.
   //
   // `deploy` is v2-only — only meaningful keys are the v2 ReleaseSpec
-  // shape (database, site, functions, secrets, subdomains, domains).
+  // shape (database, site, functions, secrets, subdomains, domains) plus
+  // the `assets` slice, which the Node manifest adapter accepts on its own
+  // (an assets-only manifest is a valid apply).
   // For object-typed sections the "container is non-empty" check isn't enough
   // — `site:{replace:{}}` has one key but ships nothing. We recurse one level
   // so any object whose own values are all empty containers is still empty.
-  const meaningful = ["database", "site", "functions", "secrets", "subdomains", "routes", "checks", "i18n"];
+  const meaningful = ["database", "site", "functions", "secrets", "subdomains", "routes", "checks", "i18n", "assets"];
   function hasContent(v) {
     if (v == null) return false;
     if (Array.isArray(v)) return v.length > 0;

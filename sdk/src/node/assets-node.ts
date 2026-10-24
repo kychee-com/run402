@@ -148,11 +148,12 @@ function applyPrefix(prefix: string | undefined, relPath: string): string {
  * merged onto each entry that does not already carry its own value (entry-
  * level values always win).
  */
-function applyAssetEntryDefaults(
+export function applyAssetEntryDefaults(
   entries: AssetPutEntryInput[],
   defaults: {
     metadata?: Record<string, string | number | boolean | string[]>;
     exifPolicy?: "keep" | "strip";
+    visibility?: "public" | "private";
   },
   context: string,
 ): AssetPutEntryInput[] {
@@ -162,7 +163,17 @@ function applyAssetEntryDefaults(
   if (defaults.exifPolicy !== undefined) {
     assertExifPolicy(defaults.exifPolicy, context);
   }
-  if (defaults.metadata === undefined && defaults.exifPolicy === undefined) {
+  if (defaults.visibility !== undefined && defaults.visibility !== "public" && defaults.visibility !== "private") {
+    throw new LocalError(
+      `visibility must be "public" or "private", got ${JSON.stringify(defaults.visibility)}`,
+      context,
+    );
+  }
+  if (
+    defaults.metadata === undefined &&
+    defaults.exifPolicy === undefined &&
+    defaults.visibility === undefined
+  ) {
     return entries;
   }
   return entries.map((e) => ({
@@ -172,6 +183,9 @@ function applyAssetEntryDefaults(
       : {}),
     ...(e.exifPolicy === undefined && defaults.exifPolicy !== undefined
       ? { exifPolicy: defaults.exifPolicy }
+      : {}),
+    ...(e.visibility === undefined && defaults.visibility !== undefined
+      ? { visibility: defaults.visibility }
       : {}),
   }));
 }
@@ -278,6 +292,10 @@ export interface PutManyItem {
 export interface UploadDirOptions extends DirOptions {
   /** Project id the apply targets. */
   project: string;
+  /** Visibility applied to every entry walked from the directory.
+   *  Defaults to `"public"` (served by the CDN); `"private"` keeps every
+   *  key behind the authenticated gateway read. */
+  visibility?: "public" | "private";
   /** Optional progress callback. */
   onEvent?: (event: DeployEvent) => void;
   /** v1.50: default metadata applied to every entry walked from the
@@ -304,6 +322,9 @@ export interface SyncDirOptions extends UploadDirOptions {
 export interface PrepareDirOptions extends DirOptions {
   /** Project id the apply targets. */
   project: string;
+  /** Visibility applied to every entry walked from the directory
+   *  (default `"public"`). */
+  visibility?: "public" | "private";
 }
 
 /**
@@ -365,6 +386,7 @@ export class NodeAssets extends Assets {
     const decoratedEntries = applyAssetEntryDefaults(entries, {
       metadata: opts.metadata,
       exifPolicy: opts.exifPolicy,
+      visibility: opts.visibility,
     }, "uploading asset directory");
     const result = await this.applyEngine().apply(
       { project_id: opts.project, assets: { put: decoratedEntries } },
@@ -394,7 +416,7 @@ export class NodeAssets extends Assets {
     });
     const entries = applyAssetEntryDefaults(
       await entriesFromLocalDir(ref),
-      { metadata: opts.metadata, exifPolicy: opts.exifPolicy },
+      { metadata: opts.metadata, exifPolicy: opts.exifPolicy, visibility: opts.visibility },
       "syncing asset directory",
     );
     if (!opts.prune) {
@@ -486,7 +508,11 @@ export class NodeAssets extends Assets {
       ignore: opts.ignore,
       includeSensitive: opts.includeSensitive,
     });
-    const entries = await entriesFromLocalDir(ref);
+    const entries = applyAssetEntryDefaults(
+      await entriesFromLocalDir(ref),
+      { visibility: opts.visibility },
+      "preparing asset directory",
+    );
     if (entries.length === 0) {
       throw new LocalError(
         `No files found under ${path} (after applying the ignore list)`,

@@ -2884,6 +2884,31 @@ describe("CLI e2e happy path", () => {
     assert.equal(parsed.code, "MANIFEST_EMPTY");
   });
 
+  it("deploy accepts an assets-only manifest as deployable content", async () => {
+    // The manifest adapter accepts `assets` on its own (an assets-only
+    // apply is a valid unified apply); the empty-manifest guard must not
+    // reject it before the adapter sees it.
+    const manifestPath = await writeDeployManifest("assets-only.json", {
+      project_id: "prj_test123",
+      assets: {
+        put: [{
+          key: "photos/x.jpg",
+          sha256: "a".repeat(64),
+          size_bytes: 3,
+          content_type: "image/jpeg",
+          visibility: "private",
+        }],
+      },
+    });
+    const { threw, deployCalled, planBodies } = await deployApplyAndCapture(
+      ["--manifest", manifestPath]);
+    assert.ok(!threw || !/MANIFEST_EMPTY/.test(threw.message),
+      `assets-only manifest must pass the empty-manifest guard, got: ${threw && threw.message}`);
+    assert.equal(deployCalled, true, "assets-only manifest must reach /apply/v1/plans");
+    assert.equal(planBodies[0]?.spec?.assets?.put?.[0]?.key, "photos/x.jpg");
+    assert.equal(planBodies[0]?.spec?.assets?.put?.[0]?.visibility, "private");
+  });
+
   it("deploy accepts routes.replace=[] as deployable content", async () => {
     const { threw, deployCalled } = await deployApplyAndCapture(
       ["--spec", JSON.stringify({ routes: { replace: [] } }), "--project", "prj_test123"]);
