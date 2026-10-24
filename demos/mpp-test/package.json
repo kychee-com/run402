@@ -1,0 +1,10 @@
+{
+  "name": "mpp-test",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "express": "^5.1.0",
+    "mppx": "^0.4.7",
+    "viem": "^2.47.1"
+  }
+}
