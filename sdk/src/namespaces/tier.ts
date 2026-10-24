@@ -37,9 +37,10 @@ export interface TierStatusProject {
   /**
    * v1.77 (org-owned control plane): owning org (organization) id and the
    * provisioning principal. A wallet authenticates; the org owns the project.
-   * Present on the canonical project object (`GET /projects/v1`); the
-   * tier-status list does not include them today, so both are optional and
-   * forward-compatible (preserved via the index signature regardless).
+   * The tier-status list carries `org_id` on every row: it lists every project
+   * the wallet can reach, so a row's owner need not be the wallet's own org.
+   * `created_by` is on the canonical project object (`GET /projects/v1`)
+   * only. Both stay optional for older gateways.
    */
   org_id?: string;
   created_by?: string;
