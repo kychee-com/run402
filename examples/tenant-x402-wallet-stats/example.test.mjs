@@ -56,6 +56,22 @@ describe("tenant x402 wallet-stats example", () => {
     assert.deepEqual(parsed.networks, ["testnet"]);
   });
 
+  it("loads and normalizes the real run402.deploy.ts (file() content type)", () => {
+    const output = execFileSync(process.execPath, [
+      "--import",
+      "tsx",
+      "--input-type=module",
+      "--eval",
+      `
+        import { loadExecutableDeployConfig, normalizeDeployManifest } from "../../sdk/src/node/deploy-manifest.ts";
+        const config = await loadExecutableDeployConfig("run402.deploy.ts");
+        const out = await normalizeDeployManifest({ ...config, project_id: "prj_test" }, { baseDir: process.cwd() });
+        console.log(JSON.stringify(out.spec.site.replace["index.html"].contentType));
+      `,
+    ], { cwd: ROOT, encoding: "utf8" });
+    assert.equal(JSON.parse(output), "text/html; charset=utf-8");
+  });
+
   it("sends settled wallet stats to the requested mailbox", () => {
     const fn = read("functions/wallet-stats.js");
     assert.match(fn, /major\.tal@gmail\.com/);
