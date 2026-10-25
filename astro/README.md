@@ -528,7 +528,7 @@ await project.apply({
 
 `buildAstroReleaseSlice` is the only supported way to map an Astro build to a `ReleaseSpec`. It:
 
-- roots the site at `dist/run402/client/` (the served output) — **not** `dist/`;
+- roots the site at `dist/run402/client/` (the served output) — **not** `dist/`; a build with no static output (every page server-rendered, no `public/`) leaves that directory empty, and the site is then the empty file set, so the release has no static files and every path reaches the `ssr` function;
 - sets `site.public_paths: { mode: "implicit" }` so prerendered pages are reachable by filename;
 - bundles the SSR entry into a single `class: "ssr"` function;
 - **omits `routes`** (it is not in the returned object) so base-release routes — e.g. a separately-declared `/api/*` function — carry forward instead of being cleared, and the slice stays safe to submit from a CI OIDC session that has no route scopes.

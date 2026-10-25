@@ -377,6 +377,47 @@ describe("buildAstroReleaseSlice — happy path", () => {
   });
 });
 
+describe("buildAstroReleaseSlice — server-rendered-only build", () => {
+  let root: string;
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), "r402-release-slice-ssr-only-"));
+  });
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it("emits an empty site.replace when the client dir is empty, so the release has no static files", async () => {
+    const { distDir } = writeFixture(root, { routes: [{ pattern: "/", prerender: false, type: "page" }] });
+    rmSync(join(distDir, "run402", "client", "index.html"));
+    writeClientFile(distDir, ".DS_Store", "");
+    const slice = await buildAstroReleaseSlice(distDir);
+    assert.deepEqual(slice.site, { replace: {}, public_paths: { mode: "implicit" } });
+    assert.ok(slice.functions.replace.ssr);
+  });
+
+  it("emits an empty site.replace when the client dir is absent", async () => {
+    const { distDir } = writeFixture(root, { routes: [{ pattern: "/", prerender: false, type: "page" }] });
+    rmSync(join(distDir, "run402", "client"), { recursive: true });
+    const slice = await buildAstroReleaseSlice(distDir);
+    assert.deepEqual((slice.site as { replace: unknown }).replace, {});
+  });
+
+  it("declares no public paths in explicit mode when cacheClass is set", async () => {
+    const { distDir } = writeFixture(root, { routes: [{ pattern: "/", prerender: false, type: "page" }] });
+    rmSync(join(distDir, "run402", "client", "index.html"));
+    const slice = await buildAstroReleaseSlice(distDir, { cacheClass: "revalidating_asset" });
+    assert.deepEqual(slice.site, { replace: {}, public_paths: { mode: "explicit", replace: {} } });
+  });
+
+  it("keeps the LocalDirRef when the client dir holds any file", async () => {
+    const { distDir } = writeFixture(root, { routes: [{ pattern: "/", prerender: false, type: "page" }] });
+    rmSync(join(distDir, "run402", "client", "index.html"));
+    writeClientFile(distDir, "robots.txt", "User-agent: *\n");
+    const slice = await buildAstroReleaseSlice(distDir);
+    assert.equal(((slice.site as { replace: { __source?: string } }).replace).__source, "local-dir");
+  });
+});
+
 describe("buildAstroReleaseSlice — explicit cacheClass option", () => {
   let root: string;
   beforeEach(() => {

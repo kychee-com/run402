@@ -21,7 +21,7 @@
  * idempotency key) from the same build output.
  */
 
-import { readFile, stat } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 
 import type {
@@ -349,7 +349,11 @@ export async function loadAstroAdapterManifest(
  *
  * - `site.replace.dir` points at `<distDir>/run402/client/` via a
  *   `LocalDirRef` so the SDK's deploy normalizer expands it into a content-
- *   addressed `FileSet` at submission time (no in-memory file slurp).
+ *   addressed `FileSet` at submission time (no in-memory file slurp). A
+ *   build with no static output (every page server-rendered, no `public/`)
+ *   leaves that directory empty; its `site.replace` is then the empty
+ *   `FileSet`, so the release has no static files and every path reaches
+ *   the `ssr` function.
  * - `functions.replace[functionName]` describes the SSR Lambda entry from
  *   `manifest.serverEntrypoint` and carries `class: "ssr"` (gateway v1.52+)
  *   so the gateway routes it through the ISR cache.
@@ -379,6 +383,7 @@ export async function buildAstroReleaseSlice(
   const cacheClass = opts.cacheClass ?? DEFAULT_HTML_CACHE_CLASS;
 
   const clientDirAbs = path.resolve(distDir, CLIENT_DIR_RELATIVE);
+  const hasStaticOutput = await hasClientFiles(clientDirAbs);
   const siteDir: LocalDirRef = {
     __source: "local-dir",
     path: clientDirAbs,
@@ -397,8 +402,10 @@ export async function buildAstroReleaseSlice(
   // the client dir), so implicit mode is semantically correct for an Astro
   // release. Consumers who need explicit per-path overrides pass `cacheClass`
   // and the helper switches to `mode: "explicit"` with a fully-declared map.
+  // An empty site replaces the base release's files too, so an SSR-only
+  // build never keeps serving a previous build's static pages.
   const site: SiteSpec = {
-    replace: siteDir,
+    replace: hasStaticOutput ? siteDir : {},
     public_paths: { mode: "implicit" },
   };
 
@@ -468,7 +475,7 @@ export async function buildAstroReleaseSlice(
   // pages carry `cacheClass`; the gateway infers every other class.
   if (opts.cacheClass !== undefined) {
     const { fileSetFromDir } = await import("@run402/sdk/node");
-    const files = Object.keys(await fileSetFromDir(clientDirAbs)).sort();
+    const files = hasStaticOutput ? Object.keys(await fileSetFromDir(clientDirAbs)).sort() : [];
     const uploaded = new Set(files);
 
     const prerendered = new Map<string, string>();
@@ -502,6 +509,23 @@ export async function buildAstroReleaseSlice(
   }
 
   return { site, functions };
+}
+
+/**
+ * Whether the build wrote any static file to the client directory. The SDK's
+ * directory walk refuses an empty directory (it guards a plain static deploy
+ * from a wrong path), but for an Astro build an empty or absent client
+ * directory is a server-rendered-only site.
+ */
+async function hasClientFiles(clientDirAbs: string): Promise<boolean> {
+  let entries;
+  try {
+    entries = await readdir(clientDirAbs, { recursive: true, withFileTypes: true });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw err;
+  }
+  return entries.some((e) => e.isFile() && e.name !== ".DS_Store");
 }
 
 /**
