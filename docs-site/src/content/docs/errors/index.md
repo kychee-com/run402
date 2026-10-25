@@ -405,6 +405,9 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="DESIRED_RECIPIENTS_NOT_RECONCILED"></a>
 [`DESIRED_RECIPIENTS_NOT_RECONCILED`](/errors/gateway/#DESIRED_RECIPIENTS_NOT_RECONCILED)
 
+<a id="DEV_SERVER_RESTART_FAILED"></a>
+[`DEV_SERVER_RESTART_FAILED`](/errors/client/#DEV_SERVER_RESTART_FAILED)
+
 <a id="DEVICE_CODE_NOT_FOUND"></a>
 [`DEVICE_CODE_NOT_FOUND`](/errors/gateway/#DEVICE_CODE_NOT_FOUND)
 

@@ -514,6 +514,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="DESIRED_RECIPIENTS_NOT_RECONCILED"></a>
 [`DESIRED_RECIPIENTS_NOT_RECONCILED`](/errors/gateway/#DESIRED_RECIPIENTS_NOT_RECONCILED)
 
+<a id="dev_server_restart_failed"></a>
+<a id="DEV_SERVER_RESTART_FAILED"></a>
+[`DEV_SERVER_RESTART_FAILED`](/errors/client/#DEV_SERVER_RESTART_FAILED)
+
 <a id="device_code_not_found"></a>
 <a id="DEVICE_CODE_NOT_FOUND"></a>
 [`DEVICE_CODE_NOT_FOUND`](/errors/gateway/#DEVICE_CODE_NOT_FOUND)

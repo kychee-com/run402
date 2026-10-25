@@ -40,7 +40,7 @@ The scaffolded project includes:
   - astro.config.mjs (one-line @run402/astro preset)
   - src/pages/index.astro (hello page)
   - src/pages/[slug].astro (DB-backed dynamic page template)
-  - .env.example (RUN402_PROJECT_ID + RUN402_SERVICE_KEY placeholders)
+  - .env.example (RUN402_PROJECT_ID + RUN402_SERVICE_KEY + RUN402_ANON_KEY placeholders)
 
 After scaffolding:
   cd <dir>
@@ -118,8 +118,10 @@ export default run402();
       path: ".env.example",
       content: `# Run402 project credentials. Copy to .env.local for 'run402 dev'.
 # In production, these are injected automatically.
+# Print the keys with: run402 credentials project-keys export --project <project_id> --reveal
 RUN402_PROJECT_ID=prj_...
 RUN402_SERVICE_KEY=...
+RUN402_ANON_KEY=...
 `,
     },
     {

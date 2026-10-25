@@ -8,7 +8,8 @@
 
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -17,7 +18,7 @@ const saved = { config: process.env.RUN402_CONFIG_DIR, api: process.env.RUN402_A
 process.env.RUN402_CONFIG_DIR = tempDir;
 process.env.RUN402_API_BASE = "https://api.example.test";
 
-const { mintDevTestSession } = await import("./cli/lib/dev.mjs");
+const { mintDevTestSession, restartRunningDevServer, runningAstroDevServer } = await import("./cli/lib/dev.mjs");
 
 const BUNDLE = {
   user: {
@@ -95,5 +96,53 @@ describe("mintDevTestSession", () => {
       /label must match/,
     );
     assert.equal(calls.length, before);
+  });
+});
+
+describe("a dev server Astro already runs is restarted, so the new identity applies", () => {
+  function projectWithLock(lock) {
+    const dir = mkdtempSync(join(tmpdir(), "run402-dev-lock-"));
+    if (lock !== undefined) {
+      mkdirSync(join(dir, ".astro"));
+      writeFileSync(join(dir, ".astro", "dev.json"), JSON.stringify(lock));
+    }
+    return dir;
+  }
+
+  it("reads a live server from Astro's lock file", () => {
+    const dir = projectWithLock({ pid: process.pid, url: "http://localhost:4321/", background: true });
+    assert.deepEqual(runningAstroDevServer(dir), { pid: process.pid, url: "http://localhost:4321/", background: true });
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("ignores a missing lock file, a dead pid and a malformed lock", () => {
+    const dead = spawnSync(process.execPath, ["-e", ""]).pid;
+    for (const lock of [undefined, { pid: dead }, { pid: "nope" }]) {
+      const dir = projectWithLock(lock);
+      assert.equal(runningAstroDevServer(dir), null);
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("stops the running server with astro dev stop and reports it", () => {
+    const dir = projectWithLock({ pid: process.pid, background: true });
+    const ran = [];
+    const stopped = restartRunningDevServer(dir, {
+      run: (cmd, args) => {
+        ran.push([cmd, ...args].join(" "));
+        rmSync(join(dir, ".astro", "dev.json"));
+      },
+    });
+    assert.deepEqual(ran, ["npx astro dev stop"]);
+    assert.equal(stopped.pid, process.pid);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("does nothing when no server is running", () => {
+    const dir = projectWithLock(undefined);
+    let called = false;
+    assert.equal(restartRunningDevServer(dir, { run: () => { called = true; } }), null);
+    assert.equal(called, false);
+    rmSync(dir, { recursive: true, force: true });
   });
 });

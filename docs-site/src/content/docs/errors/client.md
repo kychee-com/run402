@@ -269,6 +269,12 @@ Owner: `public:sdk/src/namespaces/deploy.ts`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
+<h2 id="DEV_SERVER_RESTART_FAILED">DEV_SERVER_RESTART_FAILED</h2>
+
+Owner: `public:cli/lib/dev.mjs`.
+
+The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
+
 <h2 id="DOCS_TOPIC_NOT_FOUND">DOCS_TOPIC_NOT_FOUND</h2>
 
 Owner: `public:src/tools/docs.ts`.

@@ -19,7 +19,7 @@
  * @run402/functions's default API_BASE.
  */
 
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fail, reportLocalOrSdkError } from "./sdk-errors.mjs";
@@ -47,7 +47,10 @@ The command:
   2. Verifies RUN402_PROJECT_ID and RUN402_SERVICE_KEY are set
   3. With --as, mints a 2-hour test session and passes it to the dev server
      (server-side only: the browser never holds the token or the service key)
-  4. Spawns 'astro dev' with the env inherited
+  4. Stops an Astro dev server already running for this project (it keeps
+     the environment it started with), then spawns 'astro dev' with the env
+     inherited. Under an AI agent Astro runs it in the background: stop it
+     with 'npx astro dev stop'
 
 SDK calls (db, getUser, cache.invalidate, assets.put) hit the LIVE
 project at https://api.run402.com — no local DB / S3 / KMS setup needed.
@@ -100,7 +103,7 @@ export async function run(sub, args = []) {
     fail({
       code: "BAD_USAGE",
       message: "Missing RUN402_SERVICE_KEY.",
-      hint: "Add it to .env.local. Get the service key from 'run402 projects list' or your Run402 dashboard.",
+      hint: "Add it to .env.local. Print the project's keys with 'run402 credentials project-keys export --project <project_id> --reveal'.",
     });
   }
 
@@ -122,7 +125,7 @@ export async function run(sub, args = []) {
       fail({
         code: "BAD_USAGE",
         message: "Missing RUN402_ANON_KEY.",
-        hint: "run402 dev --as signs db() calls in as the test user, which needs the anon key. Add it to .env.local; get it from 'run402 projects list'.",
+        hint: "run402 dev --as signs db() calls in as the test user, which needs the anon key. Add it to .env.local; print the project's keys with 'run402 credentials project-keys export --project <project_id> --reveal'.",
       });
     }
     try {
@@ -143,6 +146,12 @@ export async function run(sub, args = []) {
   console.log(`  env: .env.local ${existsSync(envFile) ? "loaded" : "not present (using process env)"}`);
   if (signedInAs) {
     console.log(`  signed in as: ${signedInAs.user.email} (test user, until ${signedInAs.expires_at})`);
+  }
+  // A dev server Astro already runs for this project keeps the environment it
+  // started with, so a new `run402 dev` would silently serve the old identity.
+  const running = restartRunningDevServer(process.cwd());
+  if (running) {
+    console.log(`  restarted: the dev server already running (pid ${running.pid}) kept its old environment`);
   }
   console.log("");
 
@@ -204,6 +213,44 @@ export async function mintDevTestSession({ projectId, label, keys, sdk }) {
     access_token: bundle.access_token,
     expires_at: new Date(Math.min(accessExpiresAt, Number.isNaN(sessionExpiresAt) ? accessExpiresAt : sessionExpiresAt)).toISOString(),
   };
+}
+
+/**
+ * The Astro dev server already running for the project in `cwd`, read from
+ * the lock file Astro 7.4+ writes (`.astro/dev.json`), or null. Astro starts
+ * `astro dev` in the background when it detects an agent, so such a server
+ * outlives the `run402 dev` that started it.
+ */
+export function runningAstroDevServer(cwd) {
+  const lockFile = resolve(cwd, ".astro", "dev.json");
+  if (!existsSync(lockFile)) return null;
+  try {
+    const lock = JSON.parse(readFileSync(lockFile, "utf-8"));
+    if (!Number.isInteger(lock.pid) || lock.pid <= 0) return null;
+    process.kill(lock.pid, 0); // throws when the process is gone
+    return { pid: lock.pid, url: typeof lock.url === "string" ? lock.url : null, background: lock.background === true };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Stop the running dev server (if any) with `astro dev stop`, so the one
+ * `run402 dev` starts next carries this invocation's environment. Returns
+ * the server it stopped, or null when none was running.
+ */
+export function restartRunningDevServer(cwd, { run = (cmd, args) => spawnSync(cmd, args, { cwd, stdio: "ignore" }) } = {}) {
+  const running = runningAstroDevServer(cwd);
+  if (!running) return null;
+  run("npx", ["astro", "dev", "stop"]);
+  if (runningAstroDevServer(cwd)) {
+    fail({
+      code: "DEV_SERVER_RESTART_FAILED",
+      message: `An Astro dev server is already running for this project (pid ${running.pid}) and could not be stopped; it would keep serving with its old environment.`,
+      hint: "Stop it with 'npx astro dev stop' (or end pid " + running.pid + "), then run 'run402 dev' again.",
+    });
+  }
+  return running;
 }
 
 function pickFlagValue(args, flag) {
