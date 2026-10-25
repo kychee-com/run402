@@ -135,6 +135,15 @@ export async function run(sub, args = []) {
         keys: { anon_key: process.env.RUN402_ANON_KEY, service_key: process.env.RUN402_SERVICE_KEY },
       });
     } catch (err) {
+      if (err?.code === "TEST_MODE_DISABLED") {
+        fail({
+          code: "TEST_MODE_DISABLED",
+          message: err.message,
+          hint: `Allow test sessions with 'run402 auth settings --test-mode true --project ${projectId}' (prototype projects have them on unless turned off), then run 'run402 dev --as ${label}' again.`,
+          details: err.body?.details,
+          next_actions: err.nextActions,
+        });
+      }
       reportLocalOrSdkError(err);
     }
     process.env[DEV_TEST_SESSION_ENV] = JSON.stringify(signedInAs);

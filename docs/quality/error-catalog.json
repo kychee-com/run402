@@ -7554,6 +7554,10 @@
       "code": "TEST_MODE_DISABLED",
       "owners": [
         {
+          "owner": "public",
+          "source": "cli/lib/dev.mjs"
+        },
+        {
           "owner": "gateway",
           "source": "packages/gateway/src/utils/error-envelope.ts"
         }

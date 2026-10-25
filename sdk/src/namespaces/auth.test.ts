@@ -113,6 +113,31 @@ describe("auth.settings", () => {
     assert.deepEqual(result.allowed_email_domains, ["kychee.com"]);
   });
 
+  it("PATCHes test_mode true, false and null (null = tier default)", async () => {
+    for (const value of [true, false, null]) {
+      const { fetch, calls } = mockFetch(() =>
+        jsonResponse({ test_mode: { value, effective: value ?? true, source: value === null ? "tier_default" : "explicit", default_for_tier: true } }),
+      );
+      const sdk = makeSdk(makeCreds(), fetch);
+      const result = await sdk.auth.settings("prj_known", { test_mode: value });
+      assert.deepEqual(JSON.parse(calls[0]!.body as string), { test_mode: value });
+      assert.equal(result.test_mode?.value, value);
+    }
+  });
+
+  it("rejects a non-boolean test_mode before requesting", async () => {
+    const { fetch, calls } = mockFetch(() => {
+      throw new Error("unexpected fetch for invalid test_mode");
+    });
+    const sdk = makeSdk(makeCreds(), fetch);
+    await assert.rejects(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      sdk.auth.settings("prj_known", { test_mode: "yes" as any }),
+      (err: unknown) => err instanceof LocalError && /test_mode must be true, false, or null/.test(err.message),
+    );
+    assert.equal(calls.length, 0);
+  });
+
   it("rejects a non-array allowed_email_domains before requesting", async () => {
     const { fetch, calls } = mockFetch(() => {
       throw new Error("unexpected fetch for invalid allowed_email_domains");

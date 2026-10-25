@@ -1265,7 +1265,8 @@ settings(projectId, opts: {
   allow_password_set?,
   preferred_sign_in_method?,
   public_signup?,
-  require_passkey_for_project_admin?
+  require_passkey_for_project_admin?,
+  test_mode?   // true | false | null (null = tier default: on for prototype)
 }): Promise<AuthSettingsResult>
 createPasskeyRegistrationOptions(projectId, opts: { accessToken, appOrigin }): Promise<PasskeyOptionsResult>
 verifyPasskeyRegistration(projectId, opts: { accessToken, challengeId, response, label? }): Promise<PasskeyRecord>
@@ -1287,7 +1288,7 @@ demoteUser(projectId, email): Promise<void>
 
 Magic-link tokens are single-use, expire in 15 min, rate-limited 5/email/hour. Google OAuth is on for all projects with zero config.
 
-`createTestSession` mints a 2-hour session (cookie value and bearer token) for the test user `<label>@<project_id>.test.invalid`, created on first use and reused by label; a test user is never a real member and carries `is_test: true` everywhere. It needs the service key and the project's test mode (on by default for prototype; otherwise `403 TEST_MODE_DISABLED` with the settings call that enables it). Because it returns a credential it refuses on the MCP `run` sandbox (`SECRET_REQUIRES_CLI`); `run402 dev --as <label>` is the CLI door.
+`createTestSession` mints a 2-hour session (cookie value and bearer token) for the test user `<label>@<project_id>.test.invalid`, created on first use and reused by label; a test user is never a real member and carries `is_test: true` everywhere. It needs the service key and the project's test mode (on by default for prototype; otherwise `403 TEST_MODE_DISABLED`; `r.auth.settings(projectId, { test_mode: true })` enables it). Because it returns a credential it refuses on the MCP `run` sandbox (`SECRET_REQUIRES_CLI`); `run402 dev --as <label>` is the CLI door.
 
 ### `r.apps`
 

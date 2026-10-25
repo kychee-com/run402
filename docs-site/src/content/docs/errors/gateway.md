@@ -2281,7 +2281,7 @@ The gateway rejected or could not complete the request. Its response carries the
 
 <h2 id="TEST_MODE_DISABLED">TEST_MODE_DISABLED</h2>
 
-Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
+Owner: `public:cli/lib/dev.mjs`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
 
 The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
 

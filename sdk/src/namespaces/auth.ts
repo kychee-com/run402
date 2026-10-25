@@ -96,6 +96,12 @@ export interface AuthSettings {
    * server-side; pass an explicit `[]` to clear an existing restriction.
    */
   allowed_email_domains?: string[];
+  /**
+   * Whether `createTestSession` may mint for this project: `true` / `false`
+   * set it explicitly, `null` returns to the tier default (on for prototype,
+   * off for hobby and team).
+   */
+  test_mode?: boolean | null;
 }
 
 export interface AuthSettingsResult {
@@ -105,6 +111,13 @@ export interface AuthSettingsResult {
   require_passkey_for_project_admin: boolean;
   /** Normalized email-domain allowlist for hosted Google sign-in; `[]` = unrestricted. */
   allowed_email_domains: string[];
+  /** Test-session minting: the stored setting, the value in force, and where it comes from. */
+  test_mode?: {
+    value: boolean | null;
+    effective: boolean;
+    source: "explicit" | "tier_default";
+    default_for_tier: boolean;
+  };
 }
 
 export interface CreateAuthUserOptions {
@@ -174,6 +187,7 @@ const AUTH_SETTINGS_FIELDS = [
   "public_signup",
   "require_passkey_for_project_admin",
   "allowed_email_domains",
+  "test_mode",
 ] as const;
 const SIGN_IN_METHODS = ["password", "magic_link", "oauth_google", "passkey"] as const;
 const PUBLIC_SIGNUP_POLICIES = ["open", "known_email", "invite_only"] as const;
@@ -199,6 +213,9 @@ function validateAuthSettings(settings: AuthSettings): void {
       "require_passkey_for_project_admin must be a boolean.",
       "updating auth settings",
     );
+  }
+  if (raw.test_mode !== undefined && raw.test_mode !== null && typeof raw.test_mode !== "boolean") {
+    throw new LocalError("test_mode must be true, false, or null.", "updating auth settings");
   }
   if (raw.preferred_sign_in_method !== undefined && raw.preferred_sign_in_method !== null) {
     assertStringInSet(
