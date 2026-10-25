@@ -31,6 +31,7 @@ import type {
   BlobWaitFreshOptions,
   BlobWaitFreshResult,
 } from "./assets.types.js";
+import { BLOB_SIGN_VARIANTS } from "./assets.types.js";
 import {
   appendAssetFilterTo,
   assertAssetFilter,
@@ -879,16 +880,21 @@ export class Assets {
     });
   }
 
-  /** Generate a time-boxed S3 presigned GET URL for a blob. Default TTL 1 hour, max 7 days. */
+  /** Generate a time-boxed S3 presigned GET URL for a blob, or for one of an
+   *  image's encoded variants with `variant`. Default TTL 1 hour, max 7 days. */
   async sign(projectId: string, key: string, opts: BlobSignOptions = {}): Promise<BlobSignResult> {
     if (opts.ttl_seconds !== undefined) {
       assertIntegerInRange(opts.ttl_seconds, "ttl_seconds", 60, 604800, "signing blob URL");
+    }
+    if (opts.variant !== undefined && !(BLOB_SIGN_VARIANTS as readonly string[]).includes(opts.variant)) {
+      throw new LocalError(`variant must be one of: ${BLOB_SIGN_VARIANTS.join(", ")}`, "signing blob URL");
     }
 
     const project = await requireProjectCredentials(this.client, projectId, "signing blob URL");
 
     const body: Record<string, unknown> = {};
     if (opts.ttl_seconds !== undefined) body.ttl_seconds = opts.ttl_seconds;
+    if (opts.variant !== undefined) body.variant = opts.variant;
 
     return this.client.request<BlobSignResult>(
       `/storage/v1/blob/${encodeKey(key)}/sign`,

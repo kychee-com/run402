@@ -711,6 +711,25 @@ The MediaPicker / admin upload flow already has the AssetRef in hand — it's th
 - **Immutable URLs are content-addressed.** Re-uploading to the same key while old refs remain embedded in rows will not refresh those rows — they continue serving old bytes. Either upload to a fresh key on each edit (the typical pattern), or rewrite the row at upload time so its embedded ref points at the new content.
 - **Migrating existing string-URL rows is one-shot and mechanical.** If you already use `assetsDir`, the build-time manifest already contains the canonical ref for every seeded image: a small script walks your rows, looks each URL up with `resolveVariants(manifest, key)`, and writes the ref back. After that runs once, the runtime manifest lookup is dead code. For URLs that aren't in the manifest (admin uploads from before this pattern landed), re-call `r.assets.put(key, source)` with the source bytes — CAS dedup makes this idempotent (same bytes → same ref) and you get the full AssetRef back without a duplicate upload.
 
+### Private images: sign the AssetRef
+
+An image uploaded with `visibility: "private"` gets the same variant ladder, but its `AssetRef` has every URL field `null`, so nothing above can render it. `signAssetRef(ref, sign)` signs the original and each variant in parallel (one `POST /storage/v1/blob/:key/sign` each, `variant` set for the variants) and returns an `AssetRef` with `url` / `cdn_url` / `display_url` and every `variants.<kind>` URL filled in, immutable URLs dropped. `<Run402Picture>`, `<Run402Image>` and `renderPicture` render it unchanged, srcset and HEIC `display_jpeg` fallback included:
+
+```astro
+---
+import { assets, auth } from "@run402/functions";
+import { signAssetRef } from "@run402/astro/manifest";
+import { Run402Picture } from "@run402/astro/components";
+
+await auth.requireUser();
+const photo = await signAssetRef(row.photo, (key, variant) =>
+  assets.sign(key, { variant, ttl_seconds: 3600 }).then((s) => s.signed_url));
+---
+<Run402Picture asset={photo} alt={row.caption} />
+```
+
+The page now carries URLs that expire, so render it per request (reading the session already keeps it out of the ISR cache) and pick a TTL longer than a visit. The signer is any `(key, variant) => Promise<string>`: outside a function, `r.assets.sign(projectId, key, { variant })` from `@run402/sdk` works the same way.
+
 ### Build-time manifest pattern
 
 Useful when:

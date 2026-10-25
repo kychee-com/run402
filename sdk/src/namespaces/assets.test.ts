@@ -509,6 +509,30 @@ describe("blobs.sign", () => {
     assert.equal(result.expires_in, 3600);
   });
 
+  it("sends variant and returns the variant signed", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      json({ signed_url: "https://s3.test/variant", expires_at: "2026-04-24T00:00:00Z", expires_in: 600, variant: "medium" }),
+    );
+    const sdk = makeSdk(fetch);
+    const result = await sdk.assets.sign("prj_known", "family/photo.jpg", { variant: "medium", ttl_seconds: 600 });
+    assert.equal(calls[0]!.url, "https://api.example.test/storage/v1/blob/family/photo.jpg/sign");
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), { ttl_seconds: 600, variant: "medium" });
+    assert.equal(result.variant, "medium");
+  });
+
+  it("rejects an unknown variant locally before request", async () => {
+    const { fetch, calls } = mockFetch(() => {
+      throw new Error("unexpected fetch");
+    });
+    const sdk = makeSdk(fetch);
+    await assert.rejects(
+      sdk.assets.sign("prj_known", "photo.jpg", { variant: "huge" as never }),
+      (err: unknown) =>
+        err instanceof LocalError && err.context === "signing blob URL" && /variant must be one of/.test(err.message),
+    );
+    assert.equal(calls.length, 0);
+  });
+
   it("rejects invalid ttl_seconds locally before request", async () => {
     const invalidTtls = [59, 604801, 1.5, Number.NaN, Number.MAX_SAFE_INTEGER + 1];
 

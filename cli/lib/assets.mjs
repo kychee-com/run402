@@ -6,7 +6,7 @@
  *   run402 assets get <key> --output <file> [--project <project_id>]
  *   run402 assets ls [--project <project_id>] [--prefix <p>] [--limit <n>]
  *   run402 assets rm <key> [--project <project_id>]
- *   run402 assets sign <key> [--project <project_id>] [--ttl <seconds>]
+ *   run402 assets sign <key> [--project <project_id>] [--ttl <seconds>] [--variant <kind>]
  *
  * For any file ≤ 5 GiB a single presigned PUT is used. Larger files use S3
  * multipart uploads with 16 MiB parts (640 parts at 10 GiB; up to 10 000
@@ -62,6 +62,8 @@ Options:
   --filter <k=v>      v1.50 ls only: media-picker filter (repeatable). Keys: uploaded_by, tag,
                       format, is_image, min_width, max_width, min_height, max_height.
   --ttl <seconds>     Signed-URL TTL (sign only; default 3600, min 60, max 604800)
+  --variant <kind>    Sign an image variant instead of the original (sign only;
+                      thumb | medium | large | display_jpeg)
 
 Examples:
   run402 assets put ./artifact.tgz --project prj_abc123
@@ -178,9 +180,13 @@ Arguments:
 Options:
   --project <project_id>      Project ID (defaults to active project)
   --ttl <seconds>     Signed-URL TTL (default 3600, min 60, max 604800)
+  --variant <kind>    Sign one of an image's encoded variants instead of the
+                      original: thumb | medium | large (WebP) or display_jpeg
+                      (HEIC sources). How a private image's variants are served.
 
 Examples:
   run402 assets sign reports/2025-q4.pdf --project prj_abc123 --ttl 600
+  run402 assets sign family/photo.jpg --variant medium --ttl 3600
 `,
   diagnose: `run402 assets diagnose — Inspect the live CDN state for a public blob URL
 
@@ -218,7 +224,7 @@ function parseArgs(rawArgs) {
   const args = normalizeArgv(rawArgs);
   const valueFlags = [
     "--project", "--key", "--content-type", "--concurrency", "--prefix",
-    "--limit", "--output", "-o", "--ttl",
+    "--limit", "--output", "-o", "--ttl", "--variant",
     "--meta", "--exif-policy", "--sort", "--filter",
   ];
   assertKnownFlags(args, [
@@ -236,6 +242,7 @@ function parseArgs(rawArgs) {
     "--output",
     "-o",
     "--ttl",
+    "--variant",
     "--meta",
     "--exif-policy",
     "--sort",
@@ -245,7 +252,7 @@ function parseArgs(rawArgs) {
   ], valueFlags);
   const out = { positional: [], project: null, key: null, private: false, immutable: false,
                  concurrency: 4, resume: true, stream: false, prefix: null, limit: null,
-                 output: null, ttl: null, contentType: null,
+                 output: null, ttl: null, variant: null, contentType: null,
                  metadata: null, exifPolicy: null, sort: null, filter: null };
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
@@ -265,6 +272,7 @@ function parseArgs(rawArgs) {
     else if (a === "--limit") out.limit = parseIntegerFlag("--limit", args[++i], { min: 1, max: 1000 });
     else if (a === "--output" || a === "-o") out.output = args[++i];
     else if (a === "--ttl") out.ttl = parseIntegerFlag("--ttl", args[++i], { min: 60, max: 604800 });
+    else if (a === "--variant") out.variant = parseVariantFlag(args[++i]);
     // Repeatable --meta key=value (number-coerce on pure digits,
     // comma-split into string[] when value contains ',', "true"/"false"
     // → boolean, else string). Multiple --meta flags accumulate into a
@@ -624,6 +632,7 @@ async function sign(argv) {
   try {
     const data = await getSdk().assets.sign(resolvedId, key, {
       ttl_seconds: opts.ttl ?? undefined,
+      variant: opts.variant ?? undefined,
     });
     console.log(JSON.stringify(data, null, 2));
   } catch (err) {
@@ -634,6 +643,19 @@ async function sign(argv) {
 // ---------------------------------------------------------------------------
 // Shared helpers
 // ---------------------------------------------------------------------------
+
+const SIGN_VARIANTS = ["thumb", "medium", "large", "display_jpeg"];
+
+function parseVariantFlag(value) {
+  if (!SIGN_VARIANTS.includes(value)) {
+    fail({
+      code: "BAD_FLAG",
+      message: `--variant must be one of ${SIGN_VARIANTS.join(", ")}, got: ${value ?? "(none)"}`,
+      details: { flag: "--variant", value: value ?? null, allowed: SIGN_VARIANTS },
+    });
+  }
+  return value;
+}
 
 function guessContentType(key) {
   const ext = key.slice(key.lastIndexOf(".") + 1).toLowerCase();

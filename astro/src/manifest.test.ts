@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { AssetManifest } from "./manifest.js";
-import { renderPicture, resolveVariants } from "./manifest.js";
+import type { AssetManifest, SignableAssetRef } from "./manifest.js";
+import { renderPicture, resolveVariants, signAssetRef } from "./manifest.js";
+import { buildRun402ImageRenderTree } from "./components/Run402Image/core.js";
+import { serializeRenderTree } from "./components/Run402Image/render-html.js";
 import type { AssetRef } from "./types.js";
 
 const webpVariant = (width: number, height: number) => ({
@@ -108,5 +110,82 @@ describe("renderPicture", () => {
       pictureAttrs: { "data-hero-picture": "", "data-hero-aspect": "21/9" },
     });
     assert.match(html, /^<picture data-hero-picture="" data-hero-aspect="21\/9">/);
+  });
+});
+
+describe("signAssetRef", () => {
+  const nullUrls = { url: null, cdn_url: null };
+  const privateRef: SignableAssetRef = {
+    key: "family/photo.jpg",
+    sha256: "a".repeat(64),
+    size_bytes: 100000,
+    content_type: "image/jpeg",
+    ...nullUrls,
+    display_url: null,
+    width_px: 1600,
+    height_px: 1200,
+    variant_spec_version: "v1",
+    variants: {
+      thumb: { ...webpVariant(320, 240), ...nullUrls },
+      medium: { ...webpVariant(800, 600), ...nullUrls },
+      large: { ...webpVariant(1920, 1440), ...nullUrls },
+    },
+  };
+  const signer = () => {
+    const calls: Array<[string, string | undefined]> = [];
+    const sign = async (key: string, variant: string | undefined) => {
+      calls.push([key, variant]);
+      return `https://s3.example.com/${variant ?? "original"}?X-Amz-Signature=sig`;
+    };
+    return { calls, sign };
+  };
+
+  it("signs the original and each variant, then renders a srcset of signed URLs", async () => {
+    const { calls, sign } = signer();
+    const signed = await signAssetRef(privateRef, sign);
+    assert.deepEqual(calls.map(([, v]) => v), [undefined, "thumb", "medium", "large"]);
+    assert.ok(calls.every(([k]) => k === "family/photo.jpg"));
+    assert.equal(signed.cdn_url, "https://s3.example.com/original?X-Amz-Signature=sig");
+    assert.equal(signed.display_url, signed.cdn_url);
+    assert.equal(signed.variants?.medium?.cdn_url, "https://s3.example.com/medium?X-Amz-Signature=sig");
+    assert.equal(signed.variants?.medium?.width_px, 800);
+    const html = renderPicture(signed, { alt: "Grandma" });
+    assert.match(html, /srcset="https:\/\/s3\.example\.com\/thumb\?X-Amz-Signature=sig 320w, https:\/\/s3\.example\.com\/medium\?X-Amz-Signature=sig 800w, https:\/\/s3\.example\.com\/large\?X-Amz-Signature=sig 1920w"/);
+    assert.match(html, /<img src="https:\/\/s3\.example\.com\/original\?X-Amz-Signature=sig"/);
+  });
+
+  it("feeds <Run402Image>'s core, which requires cdn_url", async () => {
+    const { sign } = signer();
+    const signed = await signAssetRef(privateRef, sign);
+    const { root } = buildRun402ImageRenderTree({ asset: signed, alt: "Grandma", sizes: "100vw" }, { isSSR: true });
+    const html = serializeRenderTree(root);
+    assert.match(html, /https:\/\/s3\.example\.com\/medium\?X-Amz-Signature=sig 800w/);
+  });
+
+  it("uses the signed display_jpeg as display_url for a HEIC source", async () => {
+    const { sign } = signer();
+    const heic: SignableAssetRef = {
+      ...privateRef,
+      content_type: "image/heic",
+      variants: { ...privateRef.variants, display_jpeg: { ...webpVariant(1600, 1200), format: "jpeg", ...nullUrls } },
+    };
+    const signed = await signAssetRef(heic, sign);
+    assert.equal(signed.display_url, "https://s3.example.com/display_jpeg?X-Amz-Signature=sig");
+    assert.equal(signed.cdn_url, "https://s3.example.com/original?X-Amz-Signature=sig");
+  });
+
+  it("signs only the original for a ref without variants, and drops immutable URLs", async () => {
+    const { calls, sign } = signer();
+    const { variants: _v, ...noVariants } = privateRef;
+    const signed = await signAssetRef({ ...noVariants, immutable_url: "https://x/i", cdn_immutable_url: "https://x/ci" }, sign);
+    assert.deepEqual(calls, [["family/photo.jpg", undefined]]);
+    assert.equal(signed.variants, undefined);
+    assert.equal(signed.immutable_url, undefined);
+    assert.equal(signed.cdn_immutable_url, undefined);
+  });
+
+  it("refuses a ref without a key", async () => {
+    const { sign } = signer();
+    await assert.rejects(() => signAssetRef({ ...privateRef, key: "" }, sign), /must be an AssetRef with a key/);
   });
 });

@@ -1434,6 +1434,15 @@ describe("numeric flag validation", () => {
     }
   });
 
+  it("blob sign validates --variant before network", async () => {
+    const { run } = await import("./cli/lib/assets.mjs");
+    calls = [];
+    const err = await expectExit1(() => run("sign", ["family/photo.jpg", "--project", "prj_test123", "--variant", "huge"]));
+    assert.equal(err.code, "BAD_FLAG");
+    assert.match(err.message, /--variant must be one of thumb, medium, large, display_jpeg/);
+    assert.equal(calls.length, 0, "bad --variant must not hit network");
+  });
+
   it("blob put validates --concurrency before upload init (GH-186)", async () => {
     const { run } = await import("./cli/lib/assets.mjs");
     const file = join(tempDir, "upload.txt");

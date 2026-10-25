@@ -715,13 +715,23 @@ export interface BlobLsResult {
   reset: boolean;
 }
 
+/** The encoded image variants `assets.sign` can sign. */
+export const BLOB_SIGN_VARIANTS = ["thumb", "medium", "large", "display_jpeg"] as const;
+
 export interface BlobSignOptions {
   /** URL lifetime in seconds. 60–604800 (7 days). Server default 3600. */
   ttl_seconds?: number;
+  /** Sign this encoded variant of an image instead of the original: the way
+   *  to deliver a private image's `variants` (whose URLs are `null`). The
+   *  URL answers with the variant's own content type. A key that was not
+   *  encoded with the variant answers 404 `RESOURCE_NOT_FOUND`. */
+  variant?: BlobListVariant["kind"];
 }
 
 export interface BlobSignResult {
   signed_url: string;
   expires_at: string;
   expires_in: number;
+  /** The variant signed; absent when the original was. */
+  variant?: BlobListVariant["kind"];
 }
