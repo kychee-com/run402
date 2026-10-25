@@ -79,7 +79,7 @@ Run `node scripts/documentation-inventory.mjs` to reject newly discovered unclas
 | public | [cli/lib/grants.mjs](cli/lib/grants.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/identity.mjs](cli/lib/identity.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | source published: 23751749; no separate hosted acceptance required |
 | public | [cli/lib/image.mjs](cli/lib/image.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
-| public | [cli/lib/init-astro.mjs](cli/lib/init-astro.mjs) | guide / cli | reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution | source published: 23751749; no separate hosted acceptance required |
+| public | [cli/lib/init-astro.mjs](cli/lib/init-astro.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/init.mjs](cli/lib/init.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/jobs.mjs](cli/lib/jobs.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/live.mjs](cli/lib/live.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
