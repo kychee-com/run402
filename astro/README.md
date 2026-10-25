@@ -104,6 +104,21 @@ The adapter also sorts the asset list in Astro's serialized server manifest (Ast
 
 A deploy whose `ssr` source exceeds the cap is refused when the plan is created, with `TIER_LIMIT_EXCEEDED` naming the cap and the size.
 
+### Memory and timeout of the `ssr` function
+
+Lambda gives a function CPU in proportion to its memory (1,769 MB is one vCPU), so the `ssr` function's memory is also how fast your pages render. An SSR function that sets no memory gets its tier's SSR cap: 1,769 MB on team, 256 MB on hobby, 128 MB on prototype. Its timeout defaults to the tier's cap (60 s on team).
+
+Set either one in the config:
+
+```js
+// astro.config.mjs
+export default run402({
+  ssr: { memoryMb: 1024, timeoutSeconds: 30 },
+});
+```
+
+`ssr: false` still turns the adapter off; an object turns it on with these settings. They are whole numbers (memory 128 to 10,240 MB, timeout 1 to 900 s, checked when the config loads), recorded in `dist/run402/adapter.json` and sent as the `ssr` function's `config` by `run402 deploy --dir dist`. A value above your tier's cap is refused when the plan is created, with `TIER_LIMIT_EXCEEDED`. From the SDK, `buildAstroReleaseSlice(dist, { memoryMb, timeoutSeconds })` overrides the build's values.
+
 ### Rendering-mode pattern matrix
 
 Astro supports four rendering modes; `auth.*` calls have different semantics in each. Pick the right mode per page and the rest follows.
@@ -952,6 +967,7 @@ run402({
   assetPrefix: 'astro/',       // key prefix for uploaded blobs
   dryRun: false,               // when true, log references but don't upload
   verbose: false,              // print per-image upload events to stderr
+  ssr: { memoryMb: 1024 },     // ssr function memory/timeout; false disables the adapter
 })
 ```
 

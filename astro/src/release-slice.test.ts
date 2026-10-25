@@ -317,6 +317,26 @@ describe("buildAstroReleaseSlice — happy path", () => {
     assert.equal(slice.routes, undefined);
   });
 
+  it("leaves config off the ssr function when neither the build nor the call sets one", async () => {
+    const { distDir } = writeFixture(root, { routes: [] });
+    const slice = await buildAstroReleaseSlice(distDir);
+    assert.equal(slice.functions.replace.ssr!.config, undefined);
+  });
+
+  it("puts the build's ssr settings in the ssr function's config", async () => {
+    const { distDir } = writeFixture(root, { routes: [], ssr: { memoryMb: 1769, timeoutSeconds: 30 } });
+    const slice = await buildAstroReleaseSlice(distDir);
+    assert.deepEqual(slice.functions.replace.ssr!.config, { memoryMb: 1769, timeoutSeconds: 30 });
+  });
+
+  it("lets memoryMb and timeoutSeconds options override the build's settings field by field", async () => {
+    const { distDir } = writeFixture(root, { routes: [], ssr: { memoryMb: 1769, timeoutSeconds: 30 } });
+    const slice = await buildAstroReleaseSlice(distDir, { memoryMb: 1024 });
+    assert.deepEqual(slice.functions.replace.ssr!.config, { memoryMb: 1024, timeoutSeconds: 30 });
+    const fromCall = await buildAstroReleaseSlice(writeFixture(root, { routes: [] }).distDir, { timeoutSeconds: 45 });
+    assert.deepEqual(fromCall.functions.replace.ssr!.config, { timeoutSeconds: 45 });
+  });
+
   it("passes requireAuth + requireRole through verbatim onto the ssr function", async () => {
     const { distDir } = writeFixture(root, { routes: [] });
     const slice = await buildAstroReleaseSlice(distDir, {

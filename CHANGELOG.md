@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **The deploy preflight knows the SSR function memory cap.** An SSR-class function (`class: "ssr"`, the Astro `ssr` function) may use up to 1,769 MB on team, against 512 MB for other functions; the local tier preflight checks it against that cap, and leaves a function that declares no class to the gateway up to it.
+
 - **Sign many private assets in one request.** `r.assets.signMany(projectId, items, { ttl_seconds? })` (and `r.project(id).assets.signMany(items)`) calls `POST /storage/v1/blobs/sign` with 1 to 1000 `{ key, variant? }` items and returns `BlobSignManyResult` (`{ items, expires_at, expires_in }`), the items in order, each with `signed_url` or with `error` (`RESOURCE_NOT_FOUND`, `details.available` for a missing variant) for a key or variant the project lacks; bad items, unknown variants and a bad TTL are refused locally before any request. `run402 assets sign` takes several keys and a comma-separated `--variant thumb,medium,large`, and signs every key times every variant in that one request; one key with at most one variant keeps the single-URL output.
 - **`run402 auth settings --test-mode <true|false|null>` turns test sessions on or off.** Hobby and team projects start with test mode off, so `run402 dev --as` and `r.auth.createTestSession` answered `TEST_MODE_DISABLED` with an HTTP-only remedy; the CLI flag and `r.auth.settings(projectId, { test_mode })` (`null` returns to the tier default) now set it, the settings result carries `test_mode` (`value`, `effective`, `source`, `default_for_tier`), and `run402 dev --as`'s refusal names the command.
 

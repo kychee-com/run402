@@ -165,18 +165,22 @@ const STATIC_FUNCTION_LIMITS_BY_TIER: Record<string, StaticTierFunctionLimits> =
   prototype: {
     maxTimeoutSeconds: 10,
     maxMemoryMb: 128,
+    maxSsrMemoryMb: 128,
     maxScheduledFunctions: 1,
     minCronIntervalMinutes: 15,
   },
   hobby: {
     maxTimeoutSeconds: 30,
     maxMemoryMb: 256,
+    maxSsrMemoryMb: 256,
     maxScheduledFunctions: 3,
     minCronIntervalMinutes: 5,
   },
   team: {
     maxTimeoutSeconds: 60,
     maxMemoryMb: 512,
+    // An SSR-class function (the Astro `ssr` function) may use one vCPU.
+    maxSsrMemoryMb: 1769,
     maxScheduledFunctions: 10,
     minCronIntervalMinutes: 1,
   },
@@ -1677,6 +1681,7 @@ type TierLimitSource = "tier_status" | "local_static_fallback";
 interface StaticTierFunctionLimits {
   maxTimeoutSeconds: number;
   maxMemoryMb: number;
+  maxSsrMemoryMb: number;
   maxScheduledFunctions: number;
   minCronIntervalMinutes: number;
 }
@@ -1690,6 +1695,7 @@ interface TierFunctionLimitSnapshot {
   tier: string;
   maxTimeoutSeconds?: TierLimitNumber;
   maxMemoryMb?: TierLimitNumber;
+  maxSsrMemoryMb?: TierLimitNumber;
   maxScheduledFunctions?: TierLimitNumber;
   minCronIntervalMinutes?: TierLimitNumber;
   currentScheduledFunctions?: TierLimitNumber;
@@ -1734,20 +1740,27 @@ async function preflightTierFunctionLimits(
     }
 
     const memory = entry.fn.config?.memoryMb;
+    // An SSR-class function has its own cap. With no class declared the
+    // function keeps its stored one, which only the gateway knows.
+    const memoryLimit = entry.fn.class === "ssr"
+      ? limits.maxSsrMemoryMb ?? limits.maxMemoryMb
+      : entry.fn.class === undefined
+        ? largerLimit(limits.maxMemoryMb, limits.maxSsrMemoryMb)
+        : limits.maxMemoryMb;
     if (
       memory !== undefined &&
-      limits.maxMemoryMb &&
-      memory > limits.maxMemoryMb.value
+      memoryLimit &&
+      memory > memoryLimit.value
     ) {
       throw tierLimitError(
-        `Function ${entry.name} memoryMb ${memory} exceeds the ${limits.tier} tier maximum of ${limits.maxMemoryMb.value}.`,
+        `Function ${entry.name} memoryMb ${memory} exceeds the ${limits.tier} tier maximum of ${memoryLimit.value}.`,
         `${entry.fieldPrefix}.config.memoryMb`,
         memory,
         limits,
-        limits.maxMemoryMb,
+        memoryLimit,
         {
-          tier_max: limits.maxMemoryMb.value,
-          max_function_memory_mb: limits.maxMemoryMb.value,
+          tier_max: memoryLimit.value,
+          max_function_memory_mb: memoryLimit.value,
         },
       );
     }
@@ -1792,6 +1805,15 @@ async function preflightTierFunctionLimits(
       );
     }
   }
+}
+
+function largerLimit(
+  a: TierLimitNumber | undefined,
+  b: TierLimitNumber | undefined,
+): TierLimitNumber | undefined {
+  if (!a) return b;
+  if (!b) return a;
+  return b.value > a.value ? b : a;
 }
 
 function hasFunctionTierPreflightInputs(functions: NormalizedFunctionsSpec | undefined): boolean {
@@ -1857,6 +1879,8 @@ async function readTierFunctionLimits(
     ],
     fallback?.maxMemoryMb,
   );
+  // tier status names no SSR memory cap, so it comes from the static table.
+  if (fallback) limits.maxSsrMemoryMb = { value: fallback.maxSsrMemoryMb, source: "local_static_fallback" };
   limits.maxScheduledFunctions = tierStatusLimitOrFallback(
     status,
     [

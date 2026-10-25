@@ -387,7 +387,9 @@ export type { AssetVariant, ImageProps, Run402AstroOptions } from "./types.js";
 // --------------------------------------------------------------------------
 
 import type { AstroIntegration as RealAstroIntegration, AstroUserConfig } from "astro";
-import { createRun402Adapter } from "./ssr-adapter.js";
+import { createRun402Adapter, type Run402SsrFunctionOptions } from "./ssr-adapter.js";
+
+export type { Run402SsrFunctionOptions } from "./ssr-adapter.js";
 
 /** v0.2.x compatibility alias — same as `run402Image`. */
 export { run402Image as run402 };
@@ -405,9 +407,12 @@ export interface Run402PresetOptions extends Run402AstroOptions {
   /** Disable the image integration. Default `true`. Useful when you
    *  want the SSR adapter without the build-time image pipeline. */
   images?: boolean;
-  /** Disable the SSR adapter. Default `true`. Useful when you want
-   *  the image integration as a standalone (matches v0.2.x behavior). */
-  ssr?: boolean;
+  /** The SSR adapter. Default `true`. `false` disables it, for the
+   *  image integration as a standalone (matches v0.2.x behavior). An
+   *  object enables it and sets the `ssr` function's Lambda settings:
+   *  `{ memoryMb?, timeoutSeconds? }`. Omitted values take the tier's
+   *  caps; on team an SSR function gets 1,769 MB (one vCPU). */
+  ssr?: boolean | Run402SsrFunctionOptions;
 }
 
 /**
@@ -445,7 +450,10 @@ function preset(options: Run402PresetOptions = {}): AstroUserConfig {
   const adapter =
     options.ssr === false
       ? undefined
-      : (createRun402Adapter({ projectId: options.projectId }) as RealAstroIntegration);
+      : (createRun402Adapter({
+          projectId: options.projectId,
+          ...(typeof options.ssr === "object" ? { ssr: options.ssr } : {}),
+        }) as RealAstroIntegration);
   return {
     output: options.output ?? "server",
     integrations,

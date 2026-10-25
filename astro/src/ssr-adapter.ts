@@ -37,9 +37,61 @@ import { detectDynamicImage, detectServerIslands, detectSessionsApi } from "./ss
 import { astroKeyWarning, normalizeServerOutput } from "./ssr-determinism.js";
 import { shouldInstallDevSession } from "./dev-session.js";
 
+/**
+ * Lambda settings for the `ssr` function the pages render in. Omitted
+ * values take the gateway default: the tier's SSR memory cap (on team,
+ * 1,769 MB, one vCPU) and the tier's timeout cap. Lambda gives CPU in
+ * proportion to memory, so memory is also how fast a page renders.
+ */
+export interface Run402SsrFunctionOptions {
+  /** Memory in MB, a whole number from 128 to the tier's SSR cap. */
+  memoryMb?: number;
+  /** Timeout in seconds, a whole number from 1 to the tier's cap. */
+  timeoutSeconds?: number;
+}
+
 export interface CreateRun402AdapterOptions {
   /** Project id override (normally read from `RUN402_PROJECT_ID`). */
   projectId?: string;
+  /** The `ssr` function's memory and timeout, recorded in `adapter.json`. */
+  ssr?: Run402SsrFunctionOptions;
+}
+
+/** Lambda's own bounds; the tier caps are the gateway's to enforce. */
+const SSR_MEMORY_MB_RANGE = [128, 10_240] as const;
+const SSR_TIMEOUT_SECONDS_RANGE = [1, 900] as const;
+
+/**
+ * Check `run402({ ssr: { ... } })` when the config loads and return the
+ * settings to record, or `undefined` when none are set. Throws a
+ * `TypeError` naming the field for anything but a whole number in range.
+ */
+export function normalizeSsrFunctionOptions(
+  ssr: Run402SsrFunctionOptions | undefined,
+): Run402SsrFunctionOptions | undefined {
+  if (ssr === undefined) return undefined;
+  if (ssr === null || typeof ssr !== "object" || Array.isArray(ssr)) {
+    throw new TypeError("@run402/astro: `ssr` must be true, false, or { memoryMb?, timeoutSeconds? }.");
+  }
+  for (const key of Object.keys(ssr)) {
+    if (key !== "memoryMb" && key !== "timeoutSeconds") {
+      throw new TypeError(`@run402/astro: unknown \`ssr.${key}\`; the ssr function takes memoryMb and timeoutSeconds.`);
+    }
+  }
+  const out: Run402SsrFunctionOptions = {};
+  const check = (field: "memoryMb" | "timeoutSeconds", [min, max]: readonly [number, number], unit: string): void => {
+    const value = ssr[field];
+    if (value === undefined) return;
+    if (typeof value !== "number" || !Number.isInteger(value) || value < min || value > max) {
+      throw new TypeError(
+        `@run402/astro: \`ssr.${field}\` must be a whole number of ${unit} from ${min} to ${max} (got ${String(value)}).`,
+      );
+    }
+    out[field] = value;
+  };
+  check("memoryMb", SSR_MEMORY_MB_RANGE, "MB");
+  check("timeoutSeconds", SSR_TIMEOUT_SECONDS_RANGE, "seconds");
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 /**
@@ -79,6 +131,10 @@ export interface Run402AdapterManifest {
     pathname?: string;
     type?: "page" | "endpoint" | "redirect" | "fallback";
   }>;
+  /** The `ssr` function's Lambda settings from `run402({ ssr: { ... } })`;
+   *  the release-slice helper puts them in its `config`. Absent when the
+   *  project set none (the gateway default applies). */
+  ssr?: Run402SsrFunctionOptions;
   /** `process.env.NODE_ENV` while Astro built the project. Astro sets
    *  `production` unless the environment already set a value; Vite
    *  compiles JSX for production only when it is `production`. The
@@ -107,6 +163,7 @@ function resolveAstroVersion(): string {
 }
 
 export function createRun402Adapter(options: CreateRun402AdapterOptions = {}): AstroIntegration {
+  const ssrFunction = normalizeSsrFunctionOptions(options.ssr);
   let manifest: Partial<Run402AdapterManifest> = {};
   let resolvedRoutes: ResolvedRoute[] | undefined;
   let buildOutputDir = "";
@@ -255,6 +312,7 @@ export function createRun402Adapter(options: CreateRun402AdapterOptions = {}): A
           mdx: true,
         };
         manifest.version = "1.0";
+        if (ssrFunction) manifest.ssr = ssrFunction;
 
         const outDir = path.join(buildOutputDir, "run402");
         await mkdir(outDir, { recursive: true });

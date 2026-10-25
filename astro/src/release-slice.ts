@@ -202,6 +202,19 @@ export interface BuildAstroReleaseSliceOptions {
    */
   requireRole?: RequireRoleSpec | null;
   /**
+   * Memory in MB for the SSR function, overriding `ssr.memoryMb` from
+   * `run402({ ssr })` in `adapter.json`. Flows to
+   * `functions.replace[functionName].config.memoryMb`. Omitted on both,
+   * the gateway gives an SSR function the tier's SSR cap.
+   */
+  memoryMb?: number;
+  /**
+   * Timeout in seconds for the SSR function, overriding
+   * `ssr.timeoutSeconds` from `adapter.json`. Flows to
+   * `functions.replace[functionName].config.timeoutSeconds`.
+   */
+  timeoutSeconds?: number;
+  /**
    * Minify the bundled SSR source. Defaults to `true`: the source counts
    * against the tier's per-function code-size cap and is parsed on every
    * cold start. Pass `false` for readable stack traces while debugging.
@@ -416,6 +429,18 @@ export async function buildAstroReleaseSlice(
     capabilities: [ASTRO_SSR_OUTPUT_CONTRACT_VERSION],
     source: bundle.code,
   };
+
+  // Lambda settings: the build's `run402({ ssr })`, then this call's
+  // overrides. Nothing set leaves `config` off, so the gateway default
+  // (the tier's SSR cap) applies.
+  const memoryMb = opts.memoryMb ?? manifest.ssr?.memoryMb;
+  const timeoutSeconds = opts.timeoutSeconds ?? manifest.ssr?.timeoutSeconds;
+  if (memoryMb !== undefined || timeoutSeconds !== undefined) {
+    functionSpec.config = {
+      ...(memoryMb !== undefined ? { memoryMb } : {}),
+      ...(timeoutSeconds !== undefined ? { timeoutSeconds } : {}),
+    };
+  }
 
   if (opts.requireAuth !== undefined) functionSpec.requireAuth = opts.requireAuth;
   if (opts.requireRole !== undefined) functionSpec.requireRole = opts.requireRole;

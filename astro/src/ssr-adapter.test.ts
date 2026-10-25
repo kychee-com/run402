@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { describe, it } from "node:test";
-import { createRun402Adapter, nodeEnvWarning } from "./ssr-adapter.js";
+import { createRun402Adapter, nodeEnvWarning, type Run402SsrFunctionOptions } from "./ssr-adapter.js";
 
 type CapturedAdapter = {
   name?: string;
@@ -219,5 +219,44 @@ describe("createRun402Adapter — adapter.json nodeEnv (kychee-com/run402-privat
     assert.equal(nodeEnvWarning("production"), null);
     assert.equal(nodeEnvWarning(undefined), null);
     assert.match(nodeEnvWarning("development") ?? "", /NODE_ENV is "development"/);
+  });
+});
+
+describe("createRun402Adapter — adapter.json ssr function settings", () => {
+  async function buildManifestWith(ssr: Run402SsrFunctionOptions | undefined): Promise<Record<string, unknown>> {
+    const root = mkdtempSync(path.join(tmpdir(), "r402-adapter-ssr-"));
+    try {
+      const integration = createRun402Adapter(ssr === undefined ? {} : { ssr });
+      const hooks = integration.hooks as Record<string, ((params: unknown) => unknown) | undefined>;
+      await hooks["astro:config:done"]!({
+        setAdapter() {},
+        config: { outDir: pathToFileURL(root + "/") },
+        logger: { info() {}, warn() {}, error() {} },
+      });
+      await hooks["astro:build:done"]!({ pages: [], logger: { warn() {} } });
+      return JSON.parse(readFileSync(path.join(root, "run402", "adapter.json"), "utf-8"));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }
+
+  it("records memoryMb and timeoutSeconds", async () => {
+    const manifest = await buildManifestWith({ memoryMb: 1769, timeoutSeconds: 30 });
+    assert.deepEqual(manifest.ssr, { memoryMb: 1769, timeoutSeconds: 30 });
+  });
+
+  it("omits ssr when nothing is set", async () => {
+    assert.equal("ssr" in (await buildManifestWith(undefined)), false);
+    assert.equal("ssr" in (await buildManifestWith({})), false);
+  });
+
+  it("refuses a value that is not a whole number in Lambda's range, naming the field", () => {
+    assert.throws(() => createRun402Adapter({ ssr: { memoryMb: 100 } }), /ssr\.memoryMb.*128 to 10240.*got 100/);
+    assert.throws(() => createRun402Adapter({ ssr: { memoryMb: 1024.5 } }), /ssr\.memoryMb/);
+    assert.throws(() => createRun402Adapter({ ssr: { timeoutSeconds: 0 } }), /ssr\.timeoutSeconds.*1 to 900/);
+    assert.throws(
+      () => createRun402Adapter({ ssr: { memory: 1024 } as unknown as { memoryMb: number } }),
+      /unknown `ssr\.memory`/,
+    );
   });
 });

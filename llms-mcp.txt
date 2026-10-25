@@ -633,6 +633,7 @@ Tools truncate the view, never the data: a `run` value, its logs, a `docs` answe
 | Functions | 5 | 25 | 100 |
 | Function timeout | 10s | 30s | 60s |
 | Function memory | 128 MB | 256 MB | 512 MB |
+| SSR function memory (`class: "ssr"`) | 128 MB | 256 MB | 1,769 MB |
 | Secrets | 10 | 50 | 200 |
 | Scheduled fns | 1 / 15min | 3 / 5min | 10 / 1min |
 

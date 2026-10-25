@@ -1508,6 +1508,49 @@ describe("Deploy.apply (tier function preflight)", () => {
   });
 });
 
+describe("Deploy.apply (SSR function memory preflight)", () => {
+  function teamWiring() {
+    const w = makeWiring();
+    w.setHandler((req) => {
+      if (req.path === "/tiers/v1/status") {
+        return { wallet: "0xtest", tier: "team", active: true };
+      }
+      // Reaching planning proves the preflight passed.
+      throw new Error("PLANNED");
+    });
+    return w;
+  }
+  const fnWith = (cls: "ssr" | "standard" | undefined, memoryMb: number) => ({
+    project_id: "prj_test",
+    functions: {
+      replace: {
+        ssr: {
+          source: "export default { fetch() { return new Response('ok') } };",
+          ...(cls ? { class: cls } : {}),
+          config: { memoryMb },
+        },
+      },
+    },
+  });
+  const tierMax = (spec: ReturnType<typeof fnWith>) => async () => {
+    const err = await new Deploy(teamWiring().client).apply(spec).then(() => null, (e: unknown) => e);
+    if (err instanceof Run402DeployError && err.code === "BAD_FIELD") return (err.details as { tier_max: number }).tier_max;
+    assert.match(String((err as Error)?.message), /PLANNED/);
+    return null;
+  };
+
+  it("lets an SSR function use the SSR cap and holds a standard function to the ordinary cap", async () => {
+    assert.equal(await tierMax(fnWith("ssr", 1769))(), null);
+    assert.equal(await tierMax(fnWith("ssr", 2048))(), 1769);
+    assert.equal(await tierMax(fnWith("standard", 1024))(), 512);
+  });
+
+  it("leaves a function that declares no class to the gateway up to the SSR cap", async () => {
+    assert.equal(await tierMax(fnWith(undefined, 1024))(), null);
+    assert.equal(await tierMax(fnWith(undefined, 2048))(), 1769);
+  });
+});
+
 describe("Deploy.plan", () => {
   it("passes dry_run=true and normalizes the v2 flat plan envelope", async () => {
     const w = makeWiring();
