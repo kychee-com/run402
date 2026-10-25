@@ -2488,7 +2488,7 @@ describe("Deploy.apply (validation)", () => {
       { project_id: "prj_test", base: { release: "empty" } },
       { project_id: "prj_test", database: { zero_downtime: true } },
       { project_id: "prj_test", database: { expose: {} } },
-      { project_id: "prj_test", site: { replace: {} } },
+      { project_id: "prj_test", site: {} },
       { project_id: "prj_test", site: { patch: { put: {}, delete: [] } } },
       { project_id: "prj_test", functions: { replace: {} } },
       { project_id: "prj_test", functions: { patch: { set: {}, delete: [] } } },
@@ -2512,6 +2512,16 @@ describe("Deploy.apply (validation)", () => {
       );
     }
     assert.equal(w.requests.length, 0);
+  });
+
+  it("plans an explicit empty site.replace: it takes the static files offline", async () => {
+    const w = makeWiring();
+    const deploy = new Deploy(w.client);
+    await deploy.apply({ project_id: "prj_test", site: { replace: {} } } as never).catch(() => {});
+    assert.ok(
+      w.requests.some((r) => r.path.startsWith("/apply/v1/plans")),
+      "an empty site.replace reaches the plan request",
+    );
   });
 
   it("rejects malformed site.public_paths shapes before issuing gateway calls", async () => {

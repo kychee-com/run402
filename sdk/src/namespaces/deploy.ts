@@ -4148,7 +4148,10 @@ function hasSiteContent(site: unknown): boolean {
     return true;
   }
   if (!isRecord(site)) return false;
-  if (hasRecordEntries(site.replace)) return true;
+  // An explicit `site.replace` is content even with no files: the release
+  // then serves none of the previous release's static files (the gateway
+  // asks to confirm ZERO_SITE_FILES_AFTER unless an ssr function serves them).
+  if (isRecord(site.replace)) return true;
   if (isRecord(site.patch)) {
     return hasRecordEntries(site.patch.put) || hasArrayEntries(site.patch.delete);
   }

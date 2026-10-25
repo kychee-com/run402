@@ -2934,14 +2934,22 @@ describe("CLI e2e happy path", () => {
     assert.equal(parsed.code, "MANIFEST_EMPTY");
   });
 
-  it("deploy rejects --spec with empty site.replace (GH-232)", async () => {
+  it("deploy rejects --spec with an empty site (GH-232)", async () => {
     const { threw, stderr, deployCalled } = await deployApplyAndCapture(
-      ["--spec", JSON.stringify({ site: { replace: {} } }), "--project", "prj_test123"]);
+      ["--spec", JSON.stringify({ site: {} }), "--project", "prj_test123"]);
     assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
       `should exit non-zero, got: ${threw && threw.message}`);
-    assert.equal(deployCalled, false, "must not POST to /apply/v1/plans on empty site.replace spec");
+    assert.equal(deployCalled, false, "must not POST to /apply/v1/plans on an empty site spec");
     const parsed = parseStderrEnvelope(stderr);
     assert.equal(parsed.code, "MANIFEST_EMPTY");
+  });
+
+  it("deploy accepts an explicit empty site.replace: it takes the static files offline", async () => {
+    const { threw, deployCalled } = await deployApplyAndCapture(
+      ["--spec", JSON.stringify({ site: { replace: {} } }), "--project", "prj_test123"]);
+    assert.ok(!threw || !/MANIFEST_EMPTY/.test(threw.message),
+      `site.replace={} must pass the empty-manifest guard, got: ${threw && threw.message}`);
+    assert.equal(deployCalled, true, "site.replace={} must reach /apply/v1/plans");
   });
 
   it("deploy accepts an assets-only manifest as deployable content", async () => {

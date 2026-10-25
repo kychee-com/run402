@@ -3665,6 +3665,10 @@ function workspaceLinkConflict(
 
 function hasDeployableContent(spec: ReleaseSpec): boolean {
   const meaningful = ["database", "site", "functions", "secrets", "subdomains", "routes", "checks", "i18n", "assets"] as const;
+  // An explicit `site.replace`, even with no files, takes the static files
+  // offline, so it is a deploy on its own (as in the SDK's validateSpec).
+  const site = spec.site as { replace?: unknown } | undefined;
+  if (site && typeof site.replace === "object" && site.replace !== null && !Array.isArray(site.replace)) return true;
   return meaningful.some((key) => hasContent(spec[key]));
 }
 

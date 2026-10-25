@@ -1228,8 +1228,9 @@ async function deployCmd(args) {
   // the `assets` slice, which the Node manifest adapter accepts on its own
   // (an assets-only manifest is a valid apply).
   // For object-typed sections the "container is non-empty" check isn't enough
-  // — `site:{replace:{}}` has one key but ships nothing. We recurse one level
-  // so any object whose own values are all empty containers is still empty.
+  // — `functions:{replace:{}}` has one key but ships nothing. We recurse one
+  // level so any object whose own values are all empty containers is still
+  // empty. `site.replace` is the exception: an empty one is a real deploy.
   const meaningful = ["database", "site", "functions", "secrets", "subdomains", "routes", "checks", "i18n", "assets"];
   function hasContent(v) {
     if (v == null) return false;
@@ -1249,6 +1250,11 @@ async function deployCmd(args) {
     }
     // `i18n: null` clears the slice — that's a valid deploy on its own.
     if (key === "i18n" && value === null) return true;
+    // An explicit `site.replace`, even `{}`, takes the static files offline.
+    if (key === "site" && value && typeof value === "object" && !Array.isArray(value) &&
+      value.replace && typeof value.replace === "object" && !Array.isArray(value.replace)) {
+      return true;
+    }
     return hasContent(value);
   }
   const hasMeaningfulContent = executableManifest || (
