@@ -749,7 +749,7 @@ Functions opt into the SSR class declaratively:
 }
 ```
 
-The gateway provisions SnapStart-enabled Lambda and reverse-validates the published version before activation. Failure ships the function anyway and surfaces `DEPLOY_FUNCTION_SSR_SNAPSTART_VALIDATION_FAILED` as a non-blocking warning.
+The SSR function runs on Lambda without SnapStart (Lambda offers none for Node.js). `@run402/astro` 2.8.0+ creates the Astro app and evaluates the middleware and every page module during Lambda init, so a cold request starts rendering at once; keep module scope free of request-scoped calls (`auth.*`, `cache.*`, payments).
 
 Cache is bypass-by-default. SSR responses only get cached when `Cache-Control` explicitly allows it AND no `Set-Cookie` AND no auth-taint flag — `auth.*` helpers automatically taint per-request caching so personalized renders never get stored.
 

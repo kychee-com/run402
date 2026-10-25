@@ -11,7 +11,7 @@ export default run402();
 That returns a complete `AstroUserConfig` with:
 
 - `output: 'server'` (per-route prerender via `export const prerender = true;`)
-- The Run402 SSR adapter — Lambda-backed with SnapStart, AsyncLocalStorage-wrapped request context, ISR cache layer with sub-second invalidation
+- The Run402 SSR adapter — Lambda-backed (cold starts: [Cold starts](#cold-starts)), AsyncLocalStorage-wrapped request context, ISR cache layer with sub-second invalidation
 - The build-time image integration — `<Image>` upload pipeline + WebP variant ladder + HEIC `display_jpeg` + blurhash + CDN-served immutable URLs
 - Build-time hard-fail detectors for unsupported Astro features (dynamic `<Image src={expr}>`, server islands, sessions API) with structured `R402_ASTRO_*` errors
 
@@ -100,6 +100,7 @@ The adapter also sorts the asset list in Astro's serialized server manifest (Ast
 `buildAstroReleaseSlice` (and `run402 up` / `run402 deploy --dir`) bundles Astro's server output into the single source of the `ssr` function. That source counts against your tier's per-function code-size cap, measured in uncompressed bytes before the platform bundles it, and it is parsed on every cold start.
 
 - **`NODE_ENV` follows the build.** The adapter records the `NODE_ENV` that `astro build` ran under in `dist/run402/adapter.json` (`nodeEnv`). The bundler defines `process.env.NODE_ENV` as that value, so packages that pick a build on it, such as react and react-dom, ship only the production build. Astro builds as `production` unless your environment sets `NODE_ENV`. Any other value compiles JSX for React's development runtime; the adapter logs a warning, and the bundle keeps the development builds to match.
+- **Text stays UTF-8.** Non-ASCII characters (a dataset in Hebrew, say) are written as themselves, not as six-byte `\uXXXX` escapes, which can nearly double the source of a non-English site.
 - **The bundle is minified.** Function and class names are kept, so stack traces still name your components. Pass `buildAstroReleaseSlice(dist, { minify: false })` when you need readable output while debugging.
 
 A deploy whose `ssr` source exceeds the cap is refused when the plan is created, with `TIER_LIMIT_EXCEEDED` naming the cap and the size.
@@ -118,6 +119,17 @@ export default run402({
 ```
 
 `ssr: false` still turns the adapter off; an object turns it on with these settings. They are whole numbers (memory 128 to 10,240 MB, timeout 1 to 900 s, checked when the config loads), recorded in `dist/run402/adapter.json` and sent as the `ssr` function's `config` by `run402 deploy --dir dist`. A value above your tier's cap is refused when the plan is created, with `TIER_LIMIT_EXCEEDED`. From the SDK, `buildAstroReleaseSlice(dist, { memoryMb, timeoutSeconds })` overrides the build's values.
+
+### Cold starts
+
+A cold request is one that starts a new Lambda instance: the first after a deploy, the first after about ten idle minutes, or one that arrives while every warm instance is busy. On a site with a handful of visitors nearly every visit is cold, and personal pages cannot come from the ISR cache, so the cold path is the one visitors wait for.
+
+Lambda has no SnapStart for Node.js, so a cold instance starts from nothing. Its init phase gets a much larger share of the CPU than an invocation does: at 512 MB, module work ran about four times faster during init than inside the first request. The runtime therefore does the first request's work during init. It creates the Astro app and evaluates your middleware and every page module before the first request arrives, so module scope runs once per instance, outside any request:
+
+- **Put one-time work at module scope.** Loading a dataset, building indexes, and creating clients cost the least there.
+- **Keep request-scoped calls in handlers.** `auth.*`, `cache.*` and payment helpers belong in frontmatter, endpoints and middleware. Called at module scope they throw `R402_SDK_OUTSIDE_REQUEST_CONTEXT`; the runtime logs `run402.ssr.warm_failed` with the module's name, and the pages that need that module fail.
+- **Size still costs.** Every byte of the bundle is loaded and parsed on each cold start, and data a page imports is parsed again when its module evaluates. On one site, dropping 2.3 MB of a 4.4 MB JSON dataset from the bundle cut init from 0.83 s to 0.59 s. Import what every page needs; fetch what only some pages need (from the database, or a private asset) when a page asks for it.
+- **Memory is CPU.** Lambda's CPU share grows with the function's memory, for init and invocation alike ([Memory and timeout of the `ssr` function](#memory-and-timeout-of-the-ssr-function)).
 
 ### Rendering-mode pattern matrix
 

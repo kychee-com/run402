@@ -310,6 +310,22 @@ describe("buildAstroReleaseSlice — happy path", () => {
     assert.equal(await runBundled(minified), "hello world");
   });
 
+  it("keeps non-ASCII text as UTF-8 instead of \\u escapes", async () => {
+    const { distDir, entryAbs } = writeFixture(root, { routes: [], nodeEnv: "production" });
+    writeFileSync(
+      entryAbs,
+      "const greeting = 'שלום עולם';\n" +
+        "export const handler = async () => new Response(greeting);\n" +
+        "export default handler;\n",
+    );
+
+    const source = (await buildAstroReleaseSlice(distDir)).functions.replace.ssr.source as string;
+
+    assert.ok(source.includes("שלום עולם"), "the literal stays UTF-8");
+    assert.doesNotMatch(source, /\\u05e9/i);
+    assert.equal(await runBundled(source), "שלום עולם");
+  });
+
   it("functionName option flows through to functions key", async () => {
     const { distDir } = writeFixture(root, { routes: [] });
     const slice = await buildAstroReleaseSlice(distDir, { functionName: "render" });

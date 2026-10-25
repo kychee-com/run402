@@ -352,7 +352,7 @@ export async function loadAstroAdapterManifest(
  *   addressed `FileSet` at submission time (no in-memory file slurp).
  * - `functions.replace[functionName]` describes the SSR Lambda entry from
  *   `manifest.serverEntrypoint` and carries `class: "ssr"` (gateway v1.52+)
- *   so the gateway enables SnapStart + ISR-cache routing.
+ *   so the gateway routes it through the ISR cache.
  * - `routes` is intentionally **omitted** from the returned slice (not
  *   `{ replace: [] }`). An Astro hybrid release needs no explicit route table:
  *   prerendered pages resolve through the static manifest (implicit

@@ -59,6 +59,11 @@ export interface Run402Locals {
  */
 type AstroApp = {
   render: (req: Request, opts?: { addCookieHeader?: boolean }) => Promise<Response>;
+  /** Astro's build manifest: the middleware and page loaders `warmApp` evaluates. */
+  manifest?: {
+    middleware?: () => Promise<unknown>;
+    pageMap?: Map<string, () => Promise<{ page?: () => Promise<unknown> }>>;
+  };
 };
 
 async function getAstroApp(): Promise<AstroApp | null> {
@@ -77,6 +82,37 @@ function app(): Promise<AstroApp | null> {
   if (!appPromise) appPromise = getAstroApp();
   return appPromise;
 }
+
+/**
+ * Do the first request's module work now. Astro creates the App, and
+ * evaluates the middleware and each page module, only when a request first
+ * needs them; on Lambda that work would run inside the first request, on an
+ * invocation's share of the CPU, which is a fraction of what the init phase
+ * gets. Called at module scope on Lambda, so it runs during init. A module
+ * that throws is logged and left to the request that loads it.
+ */
+export async function warmApp(): Promise<void> {
+  const appInstance = await app();
+  const manifest = appInstance?.manifest;
+  const loaders: Array<[string, () => Promise<unknown>]> = [];
+  if (manifest?.middleware) loaders.push(["middleware", manifest.middleware]);
+  for (const [component, load] of manifest?.pageMap ?? []) {
+    loaders.push([component, async () => (await load()).page?.()]);
+  }
+  for (const [module, load] of loaders) {
+    try {
+      await load();
+    } catch (err) {
+      console.warn(JSON.stringify({
+        event: "run402.ssr.warm_failed",
+        module,
+        message: err instanceof Error ? err.message : String(err),
+      }));
+    }
+  }
+}
+
+if (process.env.AWS_LAMBDA_FUNCTION_NAME) await warmApp();
 
 /**
  * Lambda handler — receives a Web `Request` from the gateway's

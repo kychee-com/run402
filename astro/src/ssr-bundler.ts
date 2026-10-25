@@ -29,6 +29,9 @@
  *   - minify: true by default — the function's source counts against
  *     the tier's code-size cap, and parsing less code shortens cold
  *     start. `minify: false` keeps the output readable for debugging.
+ *   - charset: 'utf8' — non-ASCII text (a dataset in Hebrew, say) stays
+ *     as UTF-8 instead of a six-byte \uXXXX escape per character, which
+ *     can nearly double the source a non-English site ships.
  *   - keepNames: true — preserves component / handler names in stack
  *     traces, minified or not.
  *   - banner: createRequire shim — esbuild's ESM wrapper can still
@@ -166,6 +169,7 @@ export async function bundleSsrEntry(
     external: externals,
     write: false,
     minify: opts.minify ?? true,
+    charset: "utf8",
     keepNames: true,
     ...(opts.nodeEnv !== undefined
       ? { define: { "process.env.NODE_ENV": JSON.stringify(opts.nodeEnv) } }
