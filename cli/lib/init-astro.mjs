@@ -331,6 +331,13 @@ without losing the zero-config default. Do NOT roll your own — the hosted
 routes handle CSRF, returnTo validation, OAuth provider bridges, and passkey
 ceremonies.
 
+Hosted Google sign-in ends on a platform page on your host that calls
+\`location.replace(returnTo)\`, so the tab's URL is your \`returnTo\`, never the
+one-time OAuth callback: a reload, Chrome on Android's "Desktop site" toggle,
+or a restored tab lands on your page instead of "invalid_or_expired_state".
+Do not add a \`/signed-in\` bounce page for this; point \`returnTo\` straight
+at the page the user should see.
+
 ## Rendering-mode quick map
 
 \`auth.*\` calls run at request time, so the page must be SSR or a
