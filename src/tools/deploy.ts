@@ -686,10 +686,6 @@ const ROUTE_WARNING_GUIDANCE: Record<string, { meaning: string; recovery: string
     meaning: "A prefix wildcard route shadows one or more static paths.",
     recovery: "Review affected paths, split exact routes if needed, and confirm only when intentional.",
   },
-  METHOD_SPECIFIC_ROUTE_ALLOWS_GET_STATIC_FALLBACK: {
-    meaning: "A method-specific route leaves GET/HEAD static fallback available.",
-    recovery: "Confirm that static fallback for unmatched methods is intended.",
-  },
   WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS: {
     meaning: "A wildcard function route only allows GET/HEAD.",
     recovery: "Add the mutation methods the function supports, omit methods for an API prefix that should accept all supported methods, or, when the prefix is intentionally read-only, acknowledge with allow_warning_codes: ['WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS'].",

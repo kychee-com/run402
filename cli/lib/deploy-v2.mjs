@@ -1704,13 +1704,6 @@ const ROUTE_WARNING_GUIDANCE = {
       retryAction("run402 deploy --allow-warnings", "Retry only when the wildcard shadowing is intentional."),
     ],
   },
-  METHOD_SPECIFIC_ROUTE_ALLOWS_GET_STATIC_FALLBACK: {
-    hint: "A method-specific route allows static fallback for unmatched methods such as GET.",
-    next_actions: [
-      nextAction("edit_request", { why: "Confirm that static fallback for GET/HEAD is intended." }),
-      nextAction("edit_request", { why: "Add method coverage or static files deliberately." }),
-    ],
-  },
   WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS: {
     hint: "A wildcard function route only allows GET/HEAD, so POST/PUT/PATCH/DELETE paths under that prefix will be rejected before the function runs.",
     next_actions: [

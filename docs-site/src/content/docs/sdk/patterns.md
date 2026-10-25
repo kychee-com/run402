@@ -314,7 +314,6 @@ Known route warning codes and recovery:
 | `ROUTE_TARGET_CARRIED_FORWARD` | A carried-forward route still points at a base-release function target. | Inspect active routes with release observability and deploy `routes.replace` if the target should change. |
 | `ROUTE_SHADOWS_STATIC_PATH` | A dynamic route shadows one static path. | Inspect warning details and active release routes; confirm only when intentional. |
 | `WILDCARD_ROUTE_SHADOWS_STATIC_PATHS` | A prefix route shadows static paths. | Review affected paths, split exact routes if needed, and confirm only when intentional. |
-| `METHOD_SPECIFIC_ROUTE_ALLOWS_GET_STATIC_FALLBACK` | Unmatched methods can fall back to static content. | Confirm static fallback is intended or add method coverage. |
 | `WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS` | A wildcard function route only allows `GET`/`HEAD`. | Add mutation methods e.g. `POST`, omit methods for an API prefix, or, when the GET/HEAD final-wildcard function route is intentionally read-only, acknowledge with `allowWarningCodes: ["WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS"]`; broad `allowWarnings` is last resort. |
 | `ROUTE_TABLE_NEAR_LIMIT` | The route table is near the gateway/project limit. | Consolidate or remove routes before adding more. |
 | `ROUTES_NOT_ENABLED` | Routes are not enabled for this project/environment. | Deploy without `routes` or request enablement; direct function invoke is not a browser-route substitute. |
