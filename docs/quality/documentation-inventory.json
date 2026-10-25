@@ -210,7 +210,7 @@
       "purpose": "runtime",
       "interface": "application",
       "exception": "Native runtime/Astro code remains; infrastructure operating examples use CLI.",
-      "sha256": "0f1d90c12deecd1140b5057d69f0538aa645ae12d2f50481b9533e8a73786cfc",
+      "sha256": "3ea3e5204896df54b897dfa644c589057bddd2f4afc667cb9e7f8e4f3468c9a3",
       "outputs": [],
       "url": null,
       "checks": [
@@ -1090,7 +1090,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "a6a9e1eaabc270fe1f25645e9d6a7b90debe2ba172c069c9a3f0ddc35490b254",
+      "sha256": "d3a6ed0395254c6c2f50be1b6c6fd7265ffbe398d1c5b78fed330e1938d6d339",
       "outputs": [],
       "url": null,
       "checks": [

@@ -832,7 +832,8 @@ export async function normalizeDeployManifest(
     spec.functions = mapFunctions(manifest.functions, opts);
   }
   if (manifest.site !== undefined) {
-    spec.site = mapSite(manifest.site, opts);
+    const site = mapSite(manifest.site, opts);
+    if (site) spec.site = site;
   }
   if (manifest.assets !== undefined) {
     spec.assets = mapAssets(manifest.assets, opts);
@@ -1395,13 +1396,16 @@ function assertNoUnsupportedTypeScriptFunctionSources(value: unknown, resource: 
 function mapSite(
   site: DeployManifestSiteSpec,
   opts: NormalizeDeployManifestOptions,
-): NonNullable<ReleaseSpec["site"]> {
+): NonNullable<ReleaseSpec["site"]> | undefined {
   assertPlainRecord(site, "Deploy manifest site");
   assertKnownFields(site, "Deploy manifest site", MANIFEST_SITE_FIELDS, {
     file: "Use `site.replace` or `site.patch.put` with a path-keyed file map.",
     files: "Use `site.replace` or `site.patch.put` with a path-keyed file map.",
   });
   const raw = site as Record<string, unknown>;
+  // `site: {}` declares nothing, the same as no `site`; a manifest with
+  // nothing else is then refused as MANIFEST_EMPTY like every empty spec.
+  if (Object.keys(raw).length === 0) return undefined;
   if (
     Object.prototype.hasOwnProperty.call(raw, "replace") &&
     Object.prototype.hasOwnProperty.call(raw, "patch")

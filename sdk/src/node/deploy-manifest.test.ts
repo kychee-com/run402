@@ -429,6 +429,13 @@ describe("Node deploy manifest helpers", () => {
     });
   });
 
+  it("drops an empty site, which declares nothing, and keeps an explicit empty site.replace", async () => {
+    const empty = await normalizeDeployManifest({ project_id: "prj_manifest", site: {}, routes: null });
+    assert.equal("site" in empty.spec, false);
+    const offline = await normalizeDeployManifest({ project_id: "prj_manifest", site: { replace: {} } });
+    assert.deepEqual(offline.spec.site, { replace: {} });
+  });
+
   it("preserves routes:null through manifest normalization", async () => {
     const normalized = await normalizeDeployManifest({
       project_id: "prj_manifest",
