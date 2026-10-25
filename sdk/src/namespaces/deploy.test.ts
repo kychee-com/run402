@@ -1631,7 +1631,9 @@ describe("Deploy.apply (preflight reads the project's org tier)", () => {
   };
   const outcome = async (w: ReturnType<typeof makeWiring>) =>
     new Deploy(w.client).apply(ssr1024).then(() => "planned", (err: unknown) => {
-      if (err instanceof Run402DeployError && err.code === "BAD_FIELD") return err.details as { tier: string; tier_max: number };
+      if (err instanceof Run402DeployError && err.code === "BAD_FIELD") {
+        return { ...(err.details as { tier: string; tier_max: number }), hint: (err.body as { hint?: string }).hint ?? "" };
+      }
       assert.match(String((err as Error)?.message), /PLANNED/);
       return "planned";
     });
@@ -1646,6 +1648,18 @@ describe("Deploy.apply (preflight reads the project's org tier)", () => {
       typeof result === "string" ? result : { tier: result.tier, tier_max: result.tier_max },
       { tier: "prototype", tier_max: 128 },
     );
+    // The hint gives the real reason: the project's organization is on another tier.
+    assert.ok(typeof result !== "string");
+    assert.match(result.hint, /project's organization is on the prototype tier/);
+    assert.match(result.hint, /wallet's own organization is on team/);
+    assert.doesNotMatch(result.hint, /did not expose function caps/);
+  });
+
+  it("says the wallet's own organization has no tier when that is the case", async () => {
+    const result = await outcome(wiring("", "prototype"));
+    assert.ok(typeof result !== "string");
+    assert.equal(result.tier, "prototype");
+    assert.match(result.hint, /wallet's own organization has no tier/);
   });
 
   it("falls back to the wallet's tier when the project cannot be read", async () => {
@@ -1654,6 +1668,8 @@ describe("Deploy.apply (preflight reads the project's org tier)", () => {
       typeof result === "string" ? result : { tier: result.tier, tier_max: result.tier_max },
       { tier: "prototype", tier_max: 128 },
     );
+    assert.ok(typeof result !== "string");
+    assert.match(result.hint, /did not expose function caps/);
   });
 });
 

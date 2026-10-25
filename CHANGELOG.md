@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **The deploy preflight's refusal names the real reason when the project's tier is not the wallet's.** It said the limits came from the SDK's static fallback because `tier status` exposed no function caps, and told you to refresh tier status; it now says the project's organization is on its tier, and names your wallet's own organization's tier (or that it has none).
+
 - **The deploy preflight checks the project's tier, not the wallet's.** It read the tier of the wallet's own organization, so a wallet on prototype deploying into a team organization's project was refused locally (`BAD_FIELD`, `tier_max: 128`) for a setting the gateway accepts, and a wallet with no tier of its own skipped the check entirely. It now reads the project (`GET /projects/v1/:project_id`) and checks against the tier of the organization that owns it, using `tier.status()`'s limits only when the tiers match; when the project cannot be read it uses the wallet's own tier as before.
 
 - **`run402 init astro` scaffolds `@run402/astro` ^3.0.0.** The scaffold pinned `^2.6.1`, which installs 2.7.0, so a new site missed 3.0.0's cold-start work: the SSR function loads your middleware and pages during Lambda init instead of inside the first request, and bundles keep non-ASCII text as UTF-8. The scaffold's `astro.config.mjs` comment no longer claims SnapStart, which Lambda does not offer for Node.js.
