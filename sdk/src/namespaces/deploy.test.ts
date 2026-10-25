@@ -35,6 +35,7 @@ import {
   ApiError,
   LocalError,
   NetworkError,
+  PaymentAttemptError,
   Run402DeployError,
   TransferFreezeError,
 } from "../errors.js";
@@ -1350,6 +1351,56 @@ describe("Deploy.apply (deploy commit lost to a transient failure)", () => {
     const result = await apply(w);
     assert.equal(result.release_id, "rel_lost");
     assert.equal(calls.commits(), 2);
+  });
+
+  // Node's fetch stops waiting for response headers after 300 s, and the
+  // Node SDK's paid fetch reports that as its pre-dispatch network failure:
+  // an image-heavy commit still activating on the gateway looked like a
+  // payment problem, retryable: false, and was never re-sent.
+  const headersTimeout = () => new PaymentAttemptError({
+    code: "X402_INITIAL_REQUEST_FAILED",
+    category: "network",
+    transportCode: "UND_ERR_HEADERS_TIMEOUT",
+    message: "The request got no response from the API (UND_ERR_HEADERS_TIMEOUT): the connection failed or timed out before any response arrived, so no payment was dispatched.",
+    phase: "initial_request",
+    paymentAttemptId: "pat_test",
+    providerStarted: false,
+    mutationState: "not_started",
+    safeToRetry: true,
+    cause: Object.assign(new Error("Headers Timeout Error"), { code: "UND_ERR_HEADERS_TIMEOUT" }),
+  });
+
+  it("re-sends a commit whose response never arrived and follows the operation still activating", async () => {
+    const w = makeWiring();
+    const calls = wire(w, (attempt) => {
+      if (attempt === 1) throw headersTimeout();
+      return { operation_id: "op_lost", status: "running" } satisfies CommitResponse;
+    }, ["activating", "ready"]);
+    const result = await apply(w);
+    assert.equal(result.release_id, "rel_lost");
+    assert.equal(calls.commits(), 2);
+  });
+
+  it("a commit that never gets a response says the deploy may still be running, safe to retry, and names the operation", async () => {
+    const w = makeWiring();
+    const calls = wire(w, () => { throw headersTimeout(); }, ["uploading"]);
+    await assert.rejects(apply(w), (err: unknown) => {
+      assert.ok(err instanceof Run402DeployError);
+      assert.equal(err.code, "NETWORK_ERROR");
+      assert.equal(err.phase, "commit");
+      assert.equal(err.retryable, true);
+      assert.equal(err.safeToRetry, true);
+      assert.equal(err.operationId, "op_lost");
+      assert.equal(err.attempts, 3);
+      assert.match(err.message, /no response from the API \(UND_ERR_HEADERS_TIMEOUT\)/);
+      assert.match(err.message, /may still be running on the gateway as operation op_lost/);
+      assert.doesNotMatch(err.message, /payment/i);
+      assert.equal((err.details as Record<string, unknown>).transport_code, "UND_ERR_HEADERS_TIMEOUT");
+      const poll = err.nextActions?.find((a) => a.type === "poll") as Record<string, unknown> | undefined;
+      assert.equal(poll?.command, "run402 deploy status op_lost");
+      return true;
+    });
+    assert.equal(calls.commits(), 3);
   });
 
   it("re-sends a commit answered 502 (kychee-com/run402#615)", async () => {

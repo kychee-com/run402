@@ -34,10 +34,10 @@ import {
 import {
   ApiError,
   LocalError,
-  NetworkError,
   PaymentRequired,
   Run402DeployError,
   Unauthorized,
+  isNoResponseError,
   isRun402Error,
   isTransferFreezeError,
   type Run402DeployErrorCode,
@@ -2463,7 +2463,7 @@ async function requestWithTransientRetry<T>(send: () => Promise<T>): Promise<T> 
 
 function isTransientGatewayFailure(err: unknown): boolean {
   if (!isRun402Error(err)) return false;
-  if (err.kind === "network_error") return true;
+  if (isNoResponseError(err)) return true;
   return err.status === 502 || err.status === 503 || err.status === 504;
 }
 
@@ -5695,15 +5695,8 @@ function translateDeployError(
       context: err.context,
     });
   }
-  if (err instanceof NetworkError) {
-    return new Run402DeployError(err.message, {
-      code: "NETWORK_ERROR",
-      phase,
-      retryable: true,
-      operationId,
-      planId,
-      context: phase,
-    });
+  if (isNoResponseError(err)) {
+    return noResponseDeployError(err as Run402Error, phase, planId, operationId);
   }
   // Re-throw other Run402Error subclasses (PaymentRequired, Unauthorized, etc.)
   // as-is — the consumer handles them at a different layer than
@@ -5729,6 +5722,74 @@ function translateDeployError(
     planId,
     context: phase,
   });
+}
+
+/**
+ * A deploy request that got no response: the connection failed or the client
+ * gave up waiting (Node's fetch stops waiting for response headers after
+ * 300 s). For a commit that is not a failed deploy: the gateway may still be
+ * running the operation, and committing the plan again is safe (a plan commits
+ * once), so the error says so and points at the operation.
+ */
+function noResponseDeployError(
+  err: Run402Error,
+  phase: string,
+  planId: string | null,
+  operationId: string | null,
+): Run402DeployError {
+  const transportCode = noResponseTransportCode(err);
+  const cause = transportCode ? ` (${transportCode})` : "";
+  const isCommit = phase === "commit";
+  const message = isCommit
+    ? `The deploy commit got no response from the API${cause}. The deploy may still be running on the gateway${operationId ? ` as operation ${operationId}` : ""}; nothing failed that is known. Check the operation, or commit the same plan again: a plan commits once, so a repeat follows the running deploy.`
+    : `The deploy request (${phase}) got no response from the API${cause}. Repeating it is safe.`;
+  const nextActions: Array<Record<string, unknown>> = [];
+  if (operationId) {
+    nextActions.push({
+      type: "poll",
+      method: "GET",
+      path: `/apply/v1/operations/${operationId}`,
+      command: `run402 deploy status ${operationId}`,
+      safe_to_auto_execute: true,
+      why: "Read the operation to learn whether the deploy is still running, finished, or failed.",
+    });
+  }
+  nextActions.push({
+    type: "retry",
+    safe_to_auto_execute: true,
+    why: isCommit
+      ? "Committing the same plan again cannot run the deploy twice: it attaches to the running operation or returns its stored result."
+      : "The request got no response; repeating it is safe.",
+  });
+  return new Run402DeployError(message, {
+    code: "NETWORK_ERROR",
+    phase,
+    retryable: true,
+    operationId,
+    planId,
+    context: phase,
+    body: {
+      code: "NETWORK_ERROR",
+      category: "network",
+      retryable: true,
+      safe_to_retry: true,
+      mutation_state: isCommit ? "unknown" : "none",
+      details: {
+        ...(transportCode ? { transport_code: transportCode } : {}),
+        ...(operationId ? { operation_id: operationId } : {}),
+      },
+      next_actions: nextActions,
+    },
+  });
+}
+
+function noResponseTransportCode(err: Run402Error): string | null {
+  const details = err.details;
+  if (details && typeof details === "object" && !Array.isArray(details)) {
+    const code = (details as Record<string, unknown>).transport_code;
+    if (typeof code === "string") return code;
+  }
+  return null;
 }
 
 function extractGatewayError(

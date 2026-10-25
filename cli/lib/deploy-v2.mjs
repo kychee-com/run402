@@ -196,16 +196,23 @@ const EXECUTABLE_MANIFEST_EXTENSIONS = new Set([".ts", ".mts", ".cts", ".js", ".
 const RESUME_HELP = `run402 deploy resume — Resume a stuck deploy operation
 
 Usage:
-  run402 deploy resume <operation_id> [--project <project_id>] [--quiet]
+  run402 deploy resume <operation_id> [--project <project_id>] [--quiet|--final-only]
 
-Used when a previous \`deploy\` ended in \`activation_pending\` or
-\`schema_settling\` (e.g. transient gateway failure between SQL commit and
-the pointer-swap activation). The gateway re-runs only the failed phase
-forward — SQL is never replayed.
+Used when \`run402 deploy status <operation_id>\` reports \`activation_pending\`
+or \`schema_settling\` with a \`resume_deploy\` next action: no request is
+running the operation (e.g. a transient failure between the SQL commit and the
+pointer-swap activation). The gateway re-runs only the paused phase forward —
+SQL is never replayed. While the deploy that started it is still running
+(status \`activating\`), nothing is resumed twice: the command follows that
+deploy until it is ready or failed. A failed operation is not resumable; run
+the deploy again.
+
+Options:
+  --quiet | --final-only  Suppress per-event stderr; only print the final result
 
 Output:
   stdout: { "release_id": "...", "operation_id": "...", "urls": {...} }
-  stderr: one JSON event per line (suppressed with --quiet)
+  stderr: one JSON event per line (suppressed with --quiet or --final-only)
 `;
 
 const STATUS_HELP = `run402 deploy status — Fetch one deploy operation's snapshot
@@ -1837,7 +1844,7 @@ async function resumeCmd(args) {
     command: "deploy resume",
     help: RESUME_HELP,
     valueFlags: ["--project"],
-    booleanFlags: ["--quiet"],
+    booleanFlags: ["--quiet", "--final-only"],
   });
   const [operationId] = expectPositionals(parsed.positionals, {
     command: "run402 deploy resume <operation_id>",
@@ -1848,7 +1855,7 @@ async function resumeCmd(args) {
   const opts = {
     operationId,
     project: parsed.flags["--project"] ?? null,
-    quiet: Boolean(parsed.flags["--quiet"]),
+    quiet: Boolean(parsed.flags["--quiet"] || parsed.flags["--final-only"]),
   };
   emitDeployUpdateNotice("resume", args, { quiet: opts.quiet });
   const project = resolveProjectId(opts.project);

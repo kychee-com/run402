@@ -2360,6 +2360,58 @@ describe("CLI e2e happy path", () => {
     assert.equal(body.release_id, "rel_resume_test");
   });
 
+  it("deploy resume --final-only follows a deploy still activating to ready and prints its result", async () => {
+    const { run } = await import("./cli/lib/deploy.mjs");
+    const { saveWallet } = await import("./cli/lib/config.mjs");
+    await seedTestProject();
+    saveWallet({
+      address: "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+      privateKey: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+      created: "2026-03-15T00:00:00.000Z",
+      funded: true,
+      rail: "x402",
+    });
+
+    const prevFetch = globalThis.fetch;
+    const reads = ["activating", "ready"];
+    globalThis.fetch = (input, init) => {
+      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+      if (url.includes("/apply/v1/operations/op_busy/resume")) {
+        // The commit that started the activation still holds the operation.
+        return Promise.resolve(json({
+          operation_id: "op_busy",
+          release_id: "rel_busy",
+          status: "resume_already_in_progress",
+          skipped: true,
+        }, 202));
+      }
+      if (url.includes("/apply/v1/operations/op_busy/events")) return Promise.resolve(json({ events: [] }));
+      if (url.includes("/apply/v1/operations/op_busy")) {
+        const status = reads.shift() ?? "ready";
+        return Promise.resolve(json({
+          operation_id: "op_busy",
+          plan_id: "plan_busy",
+          status,
+          release_id: status === "ready" ? "rel_busy" : null,
+          urls: status === "ready" ? { site: "https://busy.example.test" } : null,
+        }));
+      }
+      return prevFetch(input, init);
+    };
+
+    captureStart();
+    try {
+      await run(["resume", "op_busy", "--final-only"]);
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+
+    const body = JSON.parse(capturedStdout());
+    assert.equal(body.release_id, "rel_busy");
+    assert.equal(body.operation_id, "op_busy");
+  });
+
   it("deploy list rejects unknown flags before network (GH-328)", async () => {
     const result = await runBadDeployArgv(["list", "--project", TEST_PROJECT.project_id, "--wat"], /\/apply\/v1\/operations(?:\?|$)/);
     assert.equal(result.threw?.message, "process.exit(1)");

@@ -494,13 +494,15 @@ run402 deploy --dir ./dist --manifest run402.config.json --project prj_...
 
 CLI dynamically imports `@run402/astro/release-slice` from the consuming project. Requires `@run402/astro >=1.2.1` + `@run402/sdk >=2.18.0`; older SDKs reject `FunctionSpec.class: 'ssr'`, helper preflights `R402_ASTRO_SDK_VERSION_TOO_OLD` with upgrade command. Helper bundles SSR server with esbuild into single `source`, marks it with `class: "ssr"` and `capabilities: ["astro.ssr.v1"]`, roots site at `build.client` (`dist/run402/client/`, NOT `dist/`), omits `routes` so gateway's SSR catch-all works and base routes carry forward (also CI-safe without route scopes), defaults `site.public_paths: { mode: "implicit" }`, and colocates `_assets-manifest.json` inside `build.client`. Missing/incompatible manifest errors: `R402_ASTRO_ADAPTER_MANIFEST_MISSING` / `R402_ASTRO_ADAPTER_MANIFEST_VERSION_UNSUPPORTED` with `hint`+`docs`. SDK equivalent: `buildAstroReleaseSlice`. Do not hand-roll `site`/`public_paths`; shipping `run402/adapter.json` or `run402/server/**` as site content means source rooted at `dist/` instead of `dist/run402/client/`; SDK rejects `ASTRO_ADAPTER_TREE_IN_SITE`, gateway warns `SITE_NO_REACHABLE_HTML`.
 
-Stuck deploys: `activation_pending` (rare transient between SQL commit and pointer-swap) auto-resumes hourly. Static spec/config activation failures throw structured deploy errors promptly. Explicit resume:
+Long deploys: an image-heavy commit can outlast a client that stops waiting (Node `fetch`: 300 s). The deploy keeps running; the SDK re-sends the commit, which follows it, and on giving up reports `NETWORK_ERROR`, `safe_to_retry: true`, with the operation id.
+
+Stuck deploys: `run402 deploy status <operation_id>` says `activating` while a request runs the activation; `activation_pending` means nobody does and carries a `resume_deploy` next action. The gateway resumes it within about a minute. Static spec/config activation failures throw structured deploy errors promptly. Explicit resume:
 
 ```bash
-run402 deploy resume <operation_id> [--project prj_...]
+run402 deploy resume <operation_id> [--project prj_...] [--final-only]
 ```
 
-Gateway reruns only failed phase forward; SQL is never replayed.
+Gateway reruns only the paused phase forward; SQL is never replayed. Resuming a still-running operation follows it instead of running it twice. A `failed` operation is not resumable; deploy again.
 
 Destructive apply recovery: `run402 deploy promote <release_id>` re-points live release at a prior ready row without re-running apply (no bytes/bundling/migration), just `internal.projects.live_release_id` pointer swap + ssr_cache flush.
 
@@ -1062,7 +1064,7 @@ All admin subcommands require a staff wallet (or a staff OAuth session). Project
 
 ### deploy
 - `run402 deploy [--manifest app.json] [--project <project_id>] [--check|--print-spec|--print-manifest|--plan|--require-plan <plan_id>] [--no-rehearse] [--json] [--quiet|--final-only] [--allow-warning <code> ...] [--allow-warnings] [--allow-dirty] [-v|--verbose]` — the deploy itself (the unified apply primitive with `assets` slice support); `run402 up` does any missing setup and then runs this same deploy. Without `--manifest` / `--spec` / `--dir` / piped stdin it discovers `run402.json`, `run402.deploy.json`, `app.json` or an executable `run402.deploy.{ts,mts,js,mjs}` in the current directory and fails `MANIFEST_NOT_FOUND` when none is there; it accepts JSON data manifests and explicit executable typed configs through the same `--manifest` flag. Rehearsal against a contained branch is automatic when there is a live release to protect (`--no-rehearse` skips it); `--json` is accepted as a no-op because success output is always JSON. Against a `vault_policy: required` project, the deploy-lane capture applies the SAME dirty-tree rule `repos capture` does: a dirty work tree refuses `SNAPSHOT_DIRTY_TREE` before any capture, and `--allow-dirty` captures it as-is with the same `modified_captured`/`untracked_captured` disclosure (see the `repos` section above and [Observability](https://docs.run402.com/cli/reference/#observability)). The final result always carries a `stats` block; `-v`/`--verbose` also prints a one-line stderr summary.
-- `run402 deploy resume <operation_id> [--project <project_id>] [--quiet]` — re-run a stuck operation forward
+- `run402 deploy resume <operation_id> [--project <project_id>] [--quiet|--final-only]` — re-run a paused operation forward, or follow it when it is still running
 - `run402 deploy status <operation_id> [--project <project_id>]` — fetch one operation's snapshot (`status`, `release_id`, `urls`, `error`, rehearsal report)
 - `run402 deploy promote <release_id> [--project <project_id>] [--allow-warning <code>] [--allow-warnings]` — pointer-swap (re-point live release without re-running the apply pipeline)
 - `run402 deploy list [--project <project_id>] [--limit <n>]` — list recent deploy operations

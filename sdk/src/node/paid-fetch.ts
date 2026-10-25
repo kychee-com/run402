@@ -2579,7 +2579,7 @@ export function createTrackedX402Fetch(
               ? "The x402 payment was not dispatched because its durable attempt could not be recorded."
               : phase === "payment_signing"
                 ? "The x402 payment authorization could not be created; no payment was dispatched."
-                : context.transportFailure === cause ? `Network request failed${transportCode ? " (" + transportCode + ")" : ""} before payment dispatch. Check connectivity to the API; no payment was dispatched.` : "The initial request failed before an x402 payment was dispatched.",
+                : context.transportFailure === cause ? `The request got no response from the API${transportCode ? " (" + transportCode + ")" : ""}: the connection failed or timed out before any response arrived, so no payment was dispatched.` : "The initial request failed before an x402 payment was dispatched.",
           phase,
           paymentAttemptId: context.id,
           providerStarted,
@@ -2708,7 +2708,7 @@ function writeRecordBestEffort(
 
 /** Safe cause-code vocabulary only: never expose raw request/error text. */
 function initialTransportCode(cause: unknown): string | null {
-  const known = new Set(["ENOTFOUND", "EAI_AGAIN", "ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENETUNREACH", "EHOSTUNREACH", "UND_ERR_CONNECT_TIMEOUT", "UND_ERR_SOCKET"]);
+  const known = new Set(["ENOTFOUND", "EAI_AGAIN", "ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENETUNREACH", "EHOSTUNREACH", "UND_ERR_CONNECT_TIMEOUT", "UND_ERR_HEADERS_TIMEOUT", "UND_ERR_BODY_TIMEOUT", "UND_ERR_CLOSED", "UND_ERR_SOCKET"]);
   let current = cause;
   for (let i = 0; i < 5 && current && typeof current === "object"; i++) {
     const error = current as { code?: unknown; cause?: unknown };

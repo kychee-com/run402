@@ -1149,6 +1149,21 @@ export function isNetworkError(e: unknown): e is NetworkError {
   return isRun402Error(e) && e.kind === "network_error";
 }
 
+/**
+ * True if the request got no response at all: a {@link NetworkError}, or the
+ * Node paid fetch's `X402_INITIAL_REQUEST_FAILED` of category `network`
+ * (every Node SDK request rides that fetch, so a dropped connection or a
+ * client-side timeout on an ordinary, unpaid route arrives in that shape).
+ * The request may or may not have reached the server.
+ */
+export function isNoResponseError(e: unknown): boolean {
+  if (!isRun402Error(e)) return false;
+  if (e.kind === "network_error") return true;
+  return e.kind === "payment_attempt_error" &&
+    (e as PaymentAttemptError).code === "X402_INITIAL_REQUEST_FAILED" &&
+    e.toJSON().category === "network";
+}
+
 /** True if `e` is a phase-aware automatic x402 payment failure. */
 export function isPaymentAttemptError(e: unknown): e is PaymentAttemptError {
   return isRun402Error(e) && e.kind === "payment_attempt_error";

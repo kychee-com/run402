@@ -30,7 +30,7 @@
  * caller's own push/admission path is untouched — see the client-surface
  * doc's own D194 citation ("admission is irreducibly live-server").
  */
-import { isRun402Error } from "../errors.js";
+import { isNoResponseError, isRun402Error } from "../errors.js";
 import { VAULT_MIRROR_VALIDITY_NOT_FRESHNESS_STATEMENT } from "../namespaces/vault.crypto.js";
 import type { VaultHeadTarget } from "../namespaces/vault.types.js";
 import { readByoConfig } from "./vault-byo-config.js";
@@ -67,12 +67,9 @@ import type { VaultRetainedRefsReconcileResult } from "./vault-publication.js";
  */
 export function isNetworkClassVaultReadError(e: unknown): boolean {
   if (!isRun402Error(e)) return true;
-  if (e.kind === "network_error") return true;
-  // The payment-capable client (paid-fetch) reports a request that failed
-  // BEFORE any response existed as X402_INITIAL_REQUEST_FAILED — the same
-  // connection/DNS failure an unbranded TypeError carries, wrapped. No
-  // response, no status: network-class.
-  if (e.kind === "payment_attempt_error" && (e as { code?: string }).code === "X402_INITIAL_REQUEST_FAILED" && e.toJSON().category === "network") return true;
+  // No response, no status: network-class, whether it surfaced as a
+  // NetworkError or wrapped by the payment-capable client (paid-fetch).
+  if (isNoResponseError(e)) return true;
   const status = vaultReadErrorStatus(e);
   return typeof status === "number" && status >= 500;
 }

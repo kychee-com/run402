@@ -225,13 +225,15 @@ run402 deploy --dir ./dist --manifest run402.config.json --project prj_...
 
 CLI dynamically imports `@run402/astro/release-slice` from the consuming project. Requires `@run402/astro >=1.2.1` + `@run402/sdk >=2.18.0`; older SDKs reject `FunctionSpec.class: 'ssr'`, helper preflights `R402_ASTRO_SDK_VERSION_TOO_OLD` with upgrade command. Helper bundles SSR server with esbuild into single `source`, marks it with `class: "ssr"` and `capabilities: ["astro.ssr.v1"]`, roots site at `build.client` (`dist/run402/client/`, NOT `dist/`), omits `routes` so gateway's SSR catch-all works and base routes carry forward (also CI-safe without route scopes), defaults `site.public_paths: { mode: "implicit" }`, and colocates `_assets-manifest.json` inside `build.client`. Missing/incompatible manifest errors: `R402_ASTRO_ADAPTER_MANIFEST_MISSING` / `R402_ASTRO_ADAPTER_MANIFEST_VERSION_UNSUPPORTED` with `hint`+`docs`. SDK equivalent: `buildAstroReleaseSlice`. Do not hand-roll `site`/`public_paths`; shipping `run402/adapter.json` or `run402/server/**` as site content means source rooted at `dist/` instead of `dist/run402/client/`; SDK rejects `ASTRO_ADAPTER_TREE_IN_SITE`, gateway warns `SITE_NO_REACHABLE_HTML`.
 
-Stuck deploys: `activation_pending` (rare transient between SQL commit and pointer-swap) auto-resumes hourly. Static spec/config activation failures throw structured deploy errors promptly. Explicit resume:
+Long deploys: an image-heavy commit can outlast a client that stops waiting (Node `fetch`: 300 s). The deploy keeps running; the SDK re-sends the commit, which follows it, and on giving up reports `NETWORK_ERROR`, `safe_to_retry: true`, with the operation id.
+
+Stuck deploys: `run402 deploy status <operation_id>` says `activating` while a request runs the activation; `activation_pending` means nobody does and carries a `resume_deploy` next action. The gateway resumes it within about a minute. Static spec/config activation failures throw structured deploy errors promptly. Explicit resume:
 
 ```bash
-run402 deploy resume <operation_id> [--project prj_...]
+run402 deploy resume <operation_id> [--project prj_...] [--final-only]
 ```
 
-Gateway reruns only failed phase forward; SQL is never replayed.
+Gateway reruns only the paused phase forward; SQL is never replayed. Resuming a still-running operation follows it instead of running it twice. A `failed` operation is not resumable; deploy again.
 
 Destructive apply recovery: `run402 deploy promote <release_id>` re-points live release at a prior ready row without re-running apply (no bytes/bundling/migration), just `internal.projects.live_release_id` pointer swap + ssr_cache flush.
 
