@@ -93,10 +93,16 @@ const fetchpriority = priority ? "high" : undefined;
 const width = asset.width_px;
 const height = asset.height_px;
 
+// Each descriptor is the variant's own width: an image narrower than a
+// ladder step gets that step capped at its own width (a 1001 px source's
+// large is 1001 px). The ladder width stands in only for a ref that does
+// not record `width_px`.
+const descriptor = (v: AssetVariant | undefined, ladderWidth: number) =>
+  `${typeof v?.width_px === "number" && v.width_px > 0 ? v.width_px : ladderWidth}w`;
 const srcsetWebp = [
-  thumbUrl ? `${thumbUrl} 320w` : null,
-  mediumUrl ? `${mediumUrl} 800w` : null,
-  largeUrl ? `${largeUrl} 1920w` : null,
+  thumbUrl ? `${thumbUrl} ${descriptor(asset.variants?.thumb, 320)}` : null,
+  mediumUrl ? `${mediumUrl} ${descriptor(asset.variants?.medium, 800)}` : null,
+  largeUrl ? `${largeUrl} ${descriptor(asset.variants?.large, 1920)}` : null,
 ].filter(Boolean).join(", ");
 
 // Blurhash placeholder — emit as inline-styled wrapper. v1.5 may swap
