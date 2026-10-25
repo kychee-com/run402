@@ -1260,6 +1260,7 @@ verifyMagicLink(projectId, token): Promise<MagicLinkVerifyResult> // { access_to
 verifyEmailCode(projectId, { challengeId, code }): Promise<MagicLinkVerifyResult>
 createUser(projectId, opts: { email, isAdmin?, sendInvite?, redirectUrl?, clientState? }): Promise<AuthUserAdminResult>
 inviteUser(projectId, opts: { email, isAdmin?, redirectUrl, clientState? }): Promise<AuthUserAdminResult>
+getUser(projectId, opts: { email }): Promise<AuthUserRecord> // { id, email, is_admin, is_test, email_verified_at, created_at }; read-only
 createTestSession(projectId, opts: { label, isAdmin? }): Promise<TestSessionResult> // { user, session, access_token, expires_in, ... }
 setUserPassword(projectId, opts: { accessToken, newPassword, currentPassword? }): Promise<void>
 settings(projectId, opts: {
@@ -1288,6 +1289,8 @@ demoteUser(projectId, email): Promise<void>
 ```
 
 Magic-link tokens are single-use, expire in 15 min, rate-limited 5/email/hour. Google OAuth is on for all projects with zero config.
+
+`getUser` looks one project user up by email (case-insensitive) with the service key and changes nothing: a member or a test user (`is_test: true`), so a role table keyed by user id can be seeded. No match throws the gateway's 404 `AUTH_USER_NOT_FOUND`, whose `next_actions` name the create route.
 
 `createTestSession` mints a 2-hour session (cookie value and bearer token) for the test user `<label>@<project_id>.test.invalid`, created on first use and reused by label; a test user is never a real member and carries `is_test: true` everywhere. It needs the service key and the project's test mode (on by default for prototype; otherwise `403 TEST_MODE_DISABLED`; `r.auth.settings(projectId, { test_mode: true })` enables it). Because it returns a credential it refuses on the MCP `run` sandbox (`SECRET_REQUIRES_CLI`); `run402 dev --as <label>` is the CLI door.
 

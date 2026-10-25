@@ -46,7 +46,9 @@ The command:
   1. Loads .env.local from the current directory (if present)
   2. Verifies RUN402_PROJECT_ID and RUN402_SERVICE_KEY are set
   3. With --as, mints a 2-hour test session and passes it to the dev server
-     (server-side only: the browser never holds the token or the service key)
+     (server-side only: the browser never holds the token or the service key),
+     and prints the test user's id for your role table (any user's id:
+     run402 auth users get --email <addr>)
   4. Stops an Astro dev server already running for this project (it keeps
      the environment it started with), then spawns 'astro dev' with the env
      inherited. Under an AI agent Astro runs it in the background: stop it
@@ -149,12 +151,8 @@ export async function run(sub, args = []) {
     process.env[DEV_TEST_SESSION_ENV] = JSON.stringify(signedInAs);
   }
 
-  console.log(`run402 dev — Astro on http://${host}:${port}`);
-  console.log(`  project:  ${projectId}`);
-  console.log(`  api_base: ${apiBase()}`);
-  console.log(`  env: .env.local ${existsSync(envFile) ? "loaded" : "not present (using process env)"}`);
-  if (signedInAs) {
-    console.log(`  signed in as: ${signedInAs.user.email} (test user, until ${signedInAs.expires_at})`);
+  for (const line of devBanner({ host, port, projectId, apiBase: apiBase(), envLoaded: existsSync(envFile), signedInAs })) {
+    console.log(line);
   }
   // A dev server Astro already runs for this project keeps the environment it
   // started with, so a new `run402 dev` would silently serve the old identity.
@@ -188,6 +186,29 @@ export async function run(sub, args = []) {
       child.kill(sig);
     });
   }
+}
+
+/**
+ * The lines `run402 dev` prints before starting Astro. With `--as`, the test
+ * user's id rides beside its email with a role-row hint, because an app's
+ * role table is keyed by user id and nothing else shows it.
+ */
+export function devBanner({ host, port, projectId, apiBase, envLoaded, signedInAs }) {
+  const lines = [
+    `run402 dev — Astro on http://${host}:${port}`,
+    `  project:  ${projectId}`,
+    `  api_base: ${apiBase}`,
+    `  env: .env.local ${envLoaded ? "loaded" : "not present (using process env)"}`,
+  ];
+  if (signedInAs) {
+    const { id, email } = signedInAs.user;
+    lines.push(
+      `  signed in as: ${email} (test user, until ${signedInAs.expires_at})`,
+      `  user id:  ${id}`,
+      `  give it a role: run402 projects sql "INSERT INTO <role_table> (user_id, role) VALUES ('${id}', '<role>')"`,
+    );
+  }
+  return lines;
 }
 
 /**

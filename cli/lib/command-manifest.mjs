@@ -447,6 +447,7 @@ export const COMMAND_MANIFEST = [
   { path: ["auth", "magic-link"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["--email", "gate@example.com", "--redirect", "https://example.com/cb"] },
   { path: ["auth", "verify"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["--token", "tok_gate1"] },
   { path: ["auth", "create-user"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["--email", "gate@example.com"] },
+  { path: ["auth", "users", "get"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["--email", "gate@example.com"] },
   { path: ["auth", "invite-user"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["--email", "gate@example.com", "--redirect", "https://example.com/cb"] },
   { path: ["auth", "set-password"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["--token", "tok_gate1", "--new", "gate-password"] },
   { path: ["auth", "settings"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [] },

@@ -112,6 +112,7 @@ function parseCliCommands(): string[] {
   for (const action of parseOrgGroupActions("inviteAction")) cmds.push(`orgs:invite:${action}`);
   for (const action of parseOrgGroupActions("lightningReceiverAction")) cmds.push(`orgs:lightning-receiver:${action}`);
   for (const action of parseContractsTransferActions()) cmds.push(`contracts:transfers:${action}`);
+  for (const action of parseAuthUsersActions()) cmds.push(`auth:users:${action}`);
   for (const [group, varName] of STRIPE_GROUPS) {
     for (const action of parseStripeGroupActions(varName)) cmds.push(`stripe:${group}:${action}`);
   }
@@ -156,6 +157,7 @@ function parseOpenClawCommands(): string[] {
   for (const action of parseOrgGroupActions("inviteAction")) cmds.push(`orgs:invite:${action}`);
   for (const action of parseOrgGroupActions("lightningReceiverAction")) cmds.push(`orgs:lightning-receiver:${action}`);
   for (const action of parseContractsTransferActions()) cmds.push(`contracts:transfers:${action}`);
+  for (const action of parseAuthUsersActions()) cmds.push(`auth:users:${action}`);
   for (const [group, varName] of STRIPE_GROUPS) {
     for (const action of parseStripeGroupActions(varName)) cmds.push(`stripe:${group}:${action}`);
   }
@@ -246,6 +248,19 @@ function parseContractsTransferActions(): string[] {
   const src = readFileSync(filePath, "utf-8");
   const actions: string[] = [];
   const re = /transferAction\s*===\s*"([\w-]+)"/g;
+  let m;
+  while ((m = re.exec(src))) actions.push(m[1]);
+  return [...new Set(actions)].sort();
+}
+
+// `auth users <action>` dispatches with `usersAction === "..."` inside
+// cli/lib/auth.mjs (openclaw/scripts/auth.mjs re-exports it).
+function parseAuthUsersActions(): string[] {
+  const filePath = join(__dirname, "cli/lib/auth.mjs");
+  if (!existsSync(filePath)) return [];
+  const src = readFileSync(filePath, "utf-8");
+  const actions: string[] = [];
+  const re = /usersAction\s*===\s*"([\w-]+)"/g;
   let m;
   while ((m = re.exec(src))) actions.push(m[1]);
   return [...new Set(actions)].sort();
@@ -758,6 +773,7 @@ const SURFACE: Capability[] = [
   { id: "verify_magic_link",  endpoint: "POST /auth/v1/token?grant_type=magic_link|email_code", cli: "auth:verify", openclaw: "auth:verify" },
   { id: "create_auth_user",   endpoint: "POST /auth/v1/admin/users",          cli: "auth:create-user",  openclaw: "auth:create-user" },
   { id: "invite_auth_user",   endpoint: "POST /auth/v1/admin/users",          cli: "auth:invite-user",  openclaw: "auth:invite-user" },
+  { id: "get_auth_user",      endpoint: "GET /auth/v1/admin/users/lookup",    cli: "auth:users:get",    openclaw: "auth:users:get" },
   { id: "set_user_password",  endpoint: "PUT /auth/v1/user/password",         cli: "auth:set-password",  openclaw: "auth:set-password" },
   { id: "auth_settings",      endpoint: "PATCH /auth/v1/settings",            cli: "auth:settings",      openclaw: "auth:settings" },
   { id: "passkey_register_options", endpoint: "POST /auth/v1/passkeys/register/options", cli: "auth:passkey-register-options", openclaw: "auth:passkey-register-options" },
@@ -1319,6 +1335,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   verify_magic_link: "auth.verifyMagicLink",
   create_auth_user: "auth.createUser",
   invite_auth_user: "auth.inviteUser",
+  get_auth_user: "auth.getUser",
   create_test_session: "auth.createTestSession",
   set_user_password: "auth.setUserPassword",
   auth_settings: "auth.settings",

@@ -179,6 +179,12 @@ Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
 
 The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
 
+<h2 id="AUTH_USER_NOT_FOUND">AUTH_USER_NOT_FOUND</h2>
+
+Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
+
 <h2 id="AUTHORIZATION_EPOCH_STALE">AUTHORIZATION_EPOCH_STALE</h2>
 
 Owner: `public:sdk/src/node/vault-deploy.ts`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
@@ -2052,6 +2058,12 @@ Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
 The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
 
 <h2 id="ROTATION_ID_MISMATCH">ROTATION_ID_MISMATCH</h2>
+
+Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
+
+<h2 id="ROUTE_INPUT_INVALID">ROUTE_INPUT_INVALID</h2>
 
 Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
 

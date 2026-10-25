@@ -18,7 +18,7 @@ const saved = { config: process.env.RUN402_CONFIG_DIR, api: process.env.RUN402_A
 process.env.RUN402_CONFIG_DIR = tempDir;
 process.env.RUN402_API_BASE = "https://api.example.test";
 
-const { mintDevTestSession, restartRunningDevServer, runningAstroDevServer } = await import("./cli/lib/dev.mjs");
+const { devBanner, mintDevTestSession, restartRunningDevServer, runningAstroDevServer } = await import("./cli/lib/dev.mjs");
 
 const BUNDLE = {
   user: {
@@ -96,6 +96,27 @@ describe("mintDevTestSession", () => {
       /label must match/,
     );
     assert.equal(calls.length, before);
+  });
+});
+
+describe("the dev banner", () => {
+  const base = { host: "localhost", port: "4321", projectId: "prj_family", apiBase: "https://api.example.test", envLoaded: true };
+
+  it("prints the test user's id and a role-row hint naming it", () => {
+    const lines = devBanner({
+      ...base,
+      signedInAs: { user: { id: BUNDLE.user.id, email: BUNDLE.user.email }, expires_at: "2026-10-25T10:30:00.000Z" },
+    });
+    assert.ok(lines.includes(`  signed in as: ${BUNDLE.user.email} (test user, until 2026-10-25T10:30:00.000Z)`));
+    assert.ok(lines.includes(`  user id:  ${BUNDLE.user.id}`));
+    const hint = lines.find((l) => l.startsWith("  give it a role: "));
+    assert.ok(hint?.includes(`VALUES ('${BUNDLE.user.id}', '<role>')`), hint);
+  });
+
+  it("prints no identity lines without --as", () => {
+    const lines = devBanner({ ...base, signedInAs: null });
+    assert.equal(lines.length, 4);
+    assert.ok(!lines.some((l) => l.includes("user id")));
   });
 });
 

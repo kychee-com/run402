@@ -73,7 +73,9 @@ import type {
   AuthSettingsResult,
   AuthSessionResult,
   AuthUserAdminResult,
+  AuthUserRecord,
   CreateAuthUserOptions,
+  GetAuthUserOptions,
   CreateTestSessionOptions,
   MagicLinkOptions,
   MagicLinkRequestResult,
@@ -630,6 +632,9 @@ class ScopedAuth {
   }
   inviteUser(opts: Omit<CreateAuthUserOptions, "sendInvite">): Promise<AuthUserAdminResult> {
     return this.parent.auth.inviteUser(this.projectId, opts);
+  }
+  getUser(opts: GetAuthUserOptions): Promise<AuthUserRecord> {
+    return this.parent.auth.getUser(this.projectId, opts);
   }
   createTestSession(opts: CreateTestSessionOptions): Promise<TestSessionResult> {
     return this.parent.auth.createTestSession(this.projectId, opts);

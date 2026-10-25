@@ -574,6 +574,41 @@ describe("auth.createTestSession", () => {
   });
 });
 
+describe("auth.getUser", () => {
+  it("GETs /auth/v1/admin/users/lookup with the email and the service-key bearer", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({
+      id: "11111111-2222-4333-8444-555555555555",
+      email: "alice@prj_known.test.invalid",
+      is_admin: false,
+      is_test: true,
+      email_verified_at: "2026-10-01T00:00:00.000Z",
+      created_at: "2026-10-01T00:00:00.000Z",
+    }));
+    const sdk = makeSdk(makeCreds(), fetch);
+    const user = await sdk.auth.getUser("prj_known", { email: "alice+x@prj_known.test.invalid" });
+
+    assert.equal(user.id, "11111111-2222-4333-8444-555555555555");
+    assert.equal(user.is_test, true);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]!.url, "https://api.example.test/auth/v1/admin/users/lookup?email=alice%2Bx%40prj_known.test.invalid");
+    assert.equal(calls[0]!.method, "GET");
+    assert.equal(calls[0]!.headers["apikey"], "anon_xxx");
+    assert.equal(calls[0]!.headers["Authorization"], "Bearer service_xxx");
+  });
+
+  it("rejects a malformed email before requesting", async () => {
+    const { fetch, calls } = mockFetch(() => {
+      throw new Error("unexpected fetch for an invalid lookup");
+    });
+    const sdk = makeSdk(makeCreds(), fetch);
+    await assert.rejects(
+      sdk.auth.getUser("prj_known", { email: "not an email" }),
+      (err: unknown) => err instanceof LocalError && err.context === "looking up auth user",
+    );
+    assert.equal(calls.length, 0);
+  });
+});
+
 describe("auth.createUser", () => {
   it("POSTs /auth/v1/admin/users with service-key bearer", async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse({

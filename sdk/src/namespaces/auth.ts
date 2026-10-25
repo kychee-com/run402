@@ -137,6 +137,22 @@ export interface AuthUserAdminResult {
   invite_sent: boolean;
 }
 
+export interface GetAuthUserOptions {
+  /** The user's email; matched case-insensitively. */
+  email: string;
+}
+
+/** A project auth user from `GET /auth/v1/admin/users/lookup`. */
+export interface AuthUserRecord {
+  id: string;
+  email: string;
+  is_admin: boolean;
+  /** True for a watermarked test user (`<label>@<project_id>.test.invalid`). */
+  is_test: boolean;
+  email_verified_at: string | null;
+  created_at: string;
+}
+
 export interface CreateTestSessionOptions {
   /** Test-user label (`^[a-z0-9][a-z0-9-]{0,31}$`); the user's email is `<label>@<project_id>.test.invalid`. */
   label: string;
@@ -495,6 +511,34 @@ export class Auth {
       body,
       context: "creating auth user",
     });
+  }
+
+  /**
+   * Look up one project auth user by email (a member or a test user), for
+   * seeding a role table keyed by user id. Read-only. Requires service key.
+   * No match throws the gateway's 404 `AUTH_USER_NOT_FOUND`.
+   */
+  async getUser(projectId: string, opts: GetAuthUserOptions): Promise<AuthUserRecord> {
+    if (!opts || typeof opts !== "object" || Array.isArray(opts)) {
+      throw new LocalError(
+        "r.auth.getUser(projectId, opts) requires an opts object as the 2nd argument (e.g., { email })",
+        "looking up auth user",
+      );
+    }
+    assertEmailAddress(opts.email, "email", "looking up auth user");
+    const project = await requireProjectCredentials(this.client, projectId, "looking up auth user");
+
+    return this.client.request<AuthUserRecord>(
+      `/auth/v1/admin/users/lookup?email=${encodeURIComponent(opts.email)}`,
+      {
+        method: "GET",
+        headers: {
+          apikey: project.anon_key,
+          Authorization: `Bearer ${project.service_key}`,
+        },
+        context: "looking up auth user",
+      },
+    );
   }
 
   /**

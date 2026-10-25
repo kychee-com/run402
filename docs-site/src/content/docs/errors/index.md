@@ -168,6 +168,9 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="AUTH_REQUIRED"></a>
 [`AUTH_REQUIRED`](/errors/gateway/#AUTH_REQUIRED)
 
+<a id="AUTH_USER_NOT_FOUND"></a>
+[`AUTH_USER_NOT_FOUND`](/errors/gateway/#AUTH_USER_NOT_FOUND)
+
 <a id="AUTHORIZATION_EPOCH_STALE"></a>
 [`AUTHORIZATION_EPOCH_STALE`](/errors/gateway/#AUTHORIZATION_EPOCH_STALE)
 
@@ -1814,6 +1817,9 @@ The catalog records owning source locations and pinned external contributions. A
 
 <a id="ROTATION_ID_MISMATCH"></a>
 [`ROTATION_ID_MISMATCH`](/errors/gateway/#ROTATION_ID_MISMATCH)
+
+<a id="ROUTE_INPUT_INVALID"></a>
+[`ROUTE_INPUT_INVALID`](/errors/gateway/#ROUTE_INPUT_INVALID)
 
 <a id="ROUTE_RETIRED"></a>
 [`ROUTE_RETIRED`](/errors/gateway/#ROUTE_RETIRED)

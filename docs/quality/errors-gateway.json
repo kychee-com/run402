@@ -1,9 +1,9 @@
 {
   "owner": "gateway",
   "repository": "kychee-com/run402-private",
-  "revision": "3340dfb0aed07dd0502b5fa25b50526a07c85f29",
+  "revision": "b9ac89998ba41f5f0cd77b4750473464535fa39c",
   "source": "packages/gateway/src/utils/error-envelope.ts",
-  "sourceDigest": "bbdb6b9405395d90eac78d4c88940beafaafafe3bd8046005a84fbe3fc3c67c9",
+  "sourceDigest": "1ff719a27c9e413d672ccfd5c39b5ae016befb643d86c7264ff742ef83ed32d6",
   "codes": [
     "VALIDATION_FAILED",
     "AUTH_REQUIRED",
@@ -46,6 +46,7 @@
     "TENANT_MPP_PAYMENT_REFUSED",
     "TENANT_MPP_SETTLEMENT_UNCERTAIN",
     "PAYMENT_CREDENTIALS_AMBIGUOUS",
+    "ROUTE_INPUT_INVALID",
     "STRIPE_CONNECT_UNAVAILABLE",
     "STRIPE_ACCOUNT_REQUIRED",
     "STRIPE_ACCOUNT_NOT_FOUND",
@@ -144,6 +145,7 @@
     "PROJECT_HAS_NO_ORGANIZATION",
     "PROJECT_NOT_FOUND",
     "PRINCIPAL_NOT_FOUND",
+    "AUTH_USER_NOT_FOUND",
     "INVALID_DISPLAY_NAME",
     "UNKNOWN_FIELD",
     "REHEARSAL_CONTENT_MISSING",

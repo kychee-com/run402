@@ -21,6 +21,9 @@ Subcommands:
   invite-user --email <addr> --redirect <url> [--admin <true|false>] [--project <project_id>]
     Create/update a user and send a trusted invite magic link.
 
+  users get --email <addr> [--project <project_id>]
+    Look up a project user (a member or a test user) by email and print its id. Read-only.
+
   set-password --token <bearer> --new <password> [--current <password>] [--project <project_id>]
     Change, reset, or set a user's password. Requires the user's access_token.
 
@@ -55,6 +58,7 @@ Examples:
   run402 auth magic-link --email user@example.com --redirect https://myapp.run402.com/cb
   run402 auth verify --challenge-id 123e4567-e89b-42d3-a456-426614174000 --code 042731
   run402 auth invite-user --email admin@example.com --redirect https://myapp.run402.com/cb --admin true
+  run402 auth users get --email alice@<project_id>.test.invalid
   run402 auth set-password --token eyJ... --new "new-pass" --current "old-pass"
   run402 auth settings --preferred passkey --require-admin-passkey true
   run402 auth providers
@@ -101,6 +105,25 @@ Examples:
   run402 auth create-user --email user@example.com
   run402 auth create-user --email admin@example.com --admin true \\
     --invite --redirect https://myapp.run402.com/cb
+`,
+  users: `run402 auth users — Read project auth users
+
+Usage:
+  run402 auth users get --email <addr> [--project <project_id>]
+
+Options:
+  --email <addr>      Required: the user's email (matched case-insensitively)
+  --project <project_id>      Project ID (defaults to active project)
+
+Notes:
+  Prints { id, email, is_admin, is_test, email_verified_at, created_at } and changes nothing.
+  Use the id to give the user a row in a role table keyed by user id, e.g. the test user
+  'run402 dev --as <label>' signs in as (<label>@<project_id>.test.invalid).
+  No such user fails with AUTH_USER_NOT_FOUND. Uses the service key.
+
+Examples:
+  run402 auth users get --email member@example.com
+  run402 auth users get --email alice@<project_id>.test.invalid
 `,
   "invite-user": `run402 auth invite-user — Send a trusted auth invite
 
@@ -447,6 +470,27 @@ async function createUser(args) {
   }
 }
 
+async function users(args) {
+  const [usersAction, ...rest] = Array.isArray(args) ? args : [];
+  if (usersAction === "get") return await getUser(rest);
+  failUnknownSubcommand("auth users", usersAction);
+}
+
+async function getUser(args) {
+  assertKnownFlags(args, ["--email", "--project", "--help", "-h"], ["--email", "--project"]);
+  const email = parseFlag(args, "--email");
+  if (!email) {
+    fail({ code: "BAD_USAGE", message: "Missing --email" });
+  }
+  const projectId = resolveProjectId(parseFlag(args, "--project"));
+  try {
+    const data = await getSdk().auth.getUser(projectId, { email });
+    console.log(JSON.stringify(data));
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
 async function inviteUser(args) {
   const email = parseFlag(args, "--email");
   const redirectUrl = parseFlag(args, "--redirect");
@@ -756,7 +800,8 @@ CREATE TABLE IF NOT EXISTS ${table} (
   const gate = { table, idColumn: userCol, roleColumn: roleCol, allowed, cacheTtl };
   const bootstrap = `-- First-operator bootstrap: run ONCE with the SERVICE key (bypasses RLS).
 -- Replace <FIRST_OPERATOR_USER_ID> with the tenant user id (internal.users.id /
--- the JWT 'sub') of the first '${firstRole}' — NOT a wallet address.
+-- the JWT 'sub') of the first '${firstRole}' — NOT a wallet address. Find it
+-- with: run402 auth users get --email <addr>
 INSERT INTO ${table} (${userCol}, ${roleCol})
 VALUES ('<FIRST_OPERATOR_USER_ID>', '${firstRole}')
 ON CONFLICT (${userCol}) DO NOTHING;`;
@@ -771,6 +816,7 @@ ON CONFLICT (${userCol}) DO NOTHING;`;
         "requireRole(x) requires x in 'allowed'; for multi-role gates read auth.role() and branch instead of re-asserting.",
         "cacheTtl is the role-lookup cache in seconds; set it to 0 for instant revocation (fresh DB read per request).",
         "The gate keys on the tenant USER id (internal.users.id / JWT 'sub'), NOT a wallet address.",
+        "Find a user's id by email with 'run402 auth users get --email <addr>' (the test user of 'run402 dev --as <label>' is <label>@<project_id>.test.invalid).",
         `The gate accepts any table/columns — '${table}'(${userCol},${roleCol}) is the blessed default; point requireRole at your own table if you already have one.`,
       ],
     }),
@@ -784,6 +830,7 @@ export async function run(sub, args) {
     console.log(SUB_HELP[sub] || HELP);
     process.exit(0);
   }
+  if (sub === "users") { await users(args); return; }
   const flagSpec = AUTH_FLAGS[sub];
   if (flagSpec) {
     assertKnownFlags(args, flagSpec.known, flagSpec.values);

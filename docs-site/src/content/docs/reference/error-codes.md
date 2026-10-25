@@ -200,6 +200,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="AUTH_REQUIRED"></a>
 [`AUTH_REQUIRED`](/errors/gateway/#AUTH_REQUIRED)
 
+<a id="auth_user_not_found"></a>
+<a id="AUTH_USER_NOT_FOUND"></a>
+[`AUTH_USER_NOT_FOUND`](/errors/gateway/#AUTH_USER_NOT_FOUND)
+
 <a id="authorization_epoch_stale"></a>
 <a id="AUTHORIZATION_EPOCH_STALE"></a>
 [`AUTHORIZATION_EPOCH_STALE`](/errors/gateway/#AUTHORIZATION_EPOCH_STALE)
@@ -2384,6 +2388,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="rotation_id_mismatch"></a>
 <a id="ROTATION_ID_MISMATCH"></a>
 [`ROTATION_ID_MISMATCH`](/errors/gateway/#ROTATION_ID_MISMATCH)
+
+<a id="route_input_invalid"></a>
+<a id="ROUTE_INPUT_INVALID"></a>
+[`ROUTE_INPUT_INVALID`](/errors/gateway/#ROUTE_INPUT_INVALID)
 
 <a id="route_retired"></a>
 <a id="ROUTE_RETIRED"></a>

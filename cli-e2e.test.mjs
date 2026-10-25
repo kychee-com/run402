@@ -4278,6 +4278,64 @@ describe("CLI e2e happy path", () => {
     );
   });
 
+  it("auth users get --email prints the user record from the lookup route", async () => {
+    const { run } = await import("./cli/lib/auth.mjs");
+    let capturedUrl = null;
+    let capturedMethod = null;
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const url = typeof input === "string" ? input : input.url;
+      if (url.includes("/auth/v1/admin/users/lookup")) {
+        capturedUrl = url;
+        capturedMethod = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
+        return new Response(JSON.stringify({
+          id: "11111111-2222-4333-8444-555555555555",
+          email: "alice@prj_test123.test.invalid",
+          is_admin: false,
+          is_test: true,
+          email_verified_at: null,
+          created_at: "2026-10-25T09:00:00.000Z",
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      return prevFetch(input, init);
+    };
+    captureStart();
+    try {
+      await run("users", ["get", "--project", "prj_test123", "--email", "alice@prj_test123.test.invalid"]);
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(capturedMethod, "GET");
+    assert.ok(capturedUrl?.endsWith("/auth/v1/admin/users/lookup?email=alice%40prj_test123.test.invalid"), capturedUrl);
+    const out = JSON.parse(capturedStdout());
+    assert.equal(out.id, "11111111-2222-4333-8444-555555555555");
+    assert.equal(out.is_test, true);
+  });
+
+  it("auth users get rejects a missing --email and unknown flags before any request", async () => {
+    const { run } = await import("./cli/lib/auth.mjs");
+    for (const argv of [["get", "--project", "prj_test123"], ["get", "--project", "prj_test123", "--email", "a@b.co", "--bogus", "x"]]) {
+      let fetchCount = 0;
+      const prevFetch = globalThis.fetch;
+      globalThis.fetch = async () => { fetchCount++; throw new Error("unexpected fetch"); };
+      captureStart();
+      let threw = null;
+      try {
+        await run("users", argv);
+      } catch (err) {
+        threw = err;
+      } finally {
+        captureStop();
+        globalThis.fetch = prevFetch;
+      }
+      assert.equal(threw?.message, "process.exit(1)", argv.join(" "));
+      assert.equal(fetchCount, 0, argv.join(" "));
+      const env = JSON.parse(capturedStderr());
+      assert.ok(["BAD_FLAG", "BAD_USAGE", "UNKNOWN_FLAG"].includes(env.code), `${argv.join(" ")}: got ${env.code}`);
+    }
+  });
+
   it("auth settings --allow-password-set false succeeds (GH-204 regression guard)", async () => {
     const { run } = await import("./cli/lib/auth.mjs");
     let capturedBody = null;
