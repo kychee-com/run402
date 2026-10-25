@@ -2217,7 +2217,7 @@ describe("CLI JSON-only output contract (v3.x cleanup)", () => {
 
     const pkg = JSON.parse(readFileSync(join(scaffoldDir, "package.json"), "utf8"));
     assert.equal(pkg.dependencies.astro, "^7.4.2");
-    assert.equal(pkg.dependencies["@run402/astro"], "^2.6.1");
+    assert.equal(pkg.dependencies["@run402/astro"], "^3.0.0");
     assert.equal(pkg.dependencies["@run402/functions"], "^4.12.2");
     assert.notEqual(pkg.dependencies.astro, "^5.0.0");
     assert.notEqual(pkg.dependencies["@run402/astro"], "^1.0.0");

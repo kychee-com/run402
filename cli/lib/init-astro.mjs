@@ -95,7 +95,7 @@ export async function runInitAstro(args = []) {
           },
           dependencies: {
             astro: "^7.4.2",
-            "@run402/astro": "^2.6.1",
+            "@run402/astro": "^3.0.0",
             "@run402/functions": "^4.12.2",
           },
         },
@@ -106,7 +106,7 @@ export async function runInitAstro(args = []) {
     {
       path: "astro.config.mjs",
       content: `// Run402 Astro preset. One config line gets you:
-//   - SSR on Lambda with SnapStart
+//   - SSR on Lambda, with your pages loaded before the first request
 //   - ISR cache with cache.invalidate() admin-edit visibility
 //   - AsyncLocalStorage context so db()/auth.* helpers work natively
 //   - Build-time detectors for unsupported Astro features

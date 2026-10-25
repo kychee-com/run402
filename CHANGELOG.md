@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **`run402 init astro` scaffolds `@run402/astro` ^3.0.0.** The scaffold pinned `^2.6.1`, which installs 2.7.0, so a new site missed 3.0.0's cold-start work: the SSR function loads your middleware and pages during Lambda init instead of inside the first request, and bundles keep non-ASCII text as UTF-8. The scaffold's `astro.config.mjs` comment no longer claims SnapStart, which Lambda does not offer for Node.js.
+
 - **The deploy preflight knows the SSR function memory cap.** An SSR-class function (`class: "ssr"`, the Astro `ssr` function) may use up to 1,769 MB on team, against 512 MB for other functions; the local tier preflight checks it against that cap, and leaves a function that declares no class to the gateway up to it.
 
 - **Sign many private assets in one request.** `r.assets.signMany(projectId, items, { ttl_seconds? })` (and `r.project(id).assets.signMany(items)`) calls `POST /storage/v1/blobs/sign` with 1 to 1000 `{ key, variant? }` items and returns `BlobSignManyResult` (`{ items, expires_at, expires_in }`), the items in order, each with `signed_url` or with `error` (`RESOURCE_NOT_FOUND`, `details.available` for a missing variant) for a key or variant the project lacks; bad items, unknown variants and a bad TTL are refused locally before any request. `run402 assets sign` takes several keys and a comma-separated `--variant thumb,medium,large`, and signs every key times every variant in that one request; one key with at most one variant keeps the single-URL output.
