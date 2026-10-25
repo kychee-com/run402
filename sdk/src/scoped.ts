@@ -98,6 +98,9 @@ import type {
   BlobPutOptions,
   BlobPutResult,
   BlobPutSource,
+  BlobSignManyOptions,
+  BlobSignManyRequestItem,
+  BlobSignManyResult,
   BlobSignOptions,
   BlobSignResult,
   BlobUploadCompleteOptions,
@@ -689,6 +692,9 @@ class ScopedAssets {
   }
   sign(key: string, opts?: BlobSignOptions): Promise<BlobSignResult> {
     return this.parent.assets.sign(this.projectId, key, opts);
+  }
+  signMany(items: readonly BlobSignManyRequestItem[], opts?: BlobSignManyOptions): Promise<BlobSignManyResult> {
+    return this.parent.assets.signMany(this.projectId, items, opts);
   }
 }
 

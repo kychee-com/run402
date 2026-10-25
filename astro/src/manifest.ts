@@ -152,13 +152,26 @@ export function renderPicture(ref: AssetRef, options: RenderPictureOptions): str
 /** The encoded variants of a stored image, as `AssetRef.variants` names them. */
 export type AssetVariantKind = "thumb" | "medium" | "large" | "display_jpeg";
 
+/** One URL a signer mints: the original of `key`, or one encoded variant. */
+export interface AssetSignRequestItem {
+  key: string;
+  variant?: AssetVariantKind;
+}
+
+/** A signer's answer to one item: `signed_url`, or `error` when the
+ *  project has no such key or variant. */
+export interface AssetSignAnswer {
+  signed_url?: string | undefined;
+  error?: { code: string; message: string } | undefined;
+}
+
 /**
- * Mints one signed GET URL for `key`: the original when `variant` is
- * undefined, else that encoded variant. In a function this is
- * `(key, variant) => assets.sign(key, { variant }).then((s) => s.signed_url)`
- * from `@run402/functions`.
+ * Mints signed GET URLs for many items in one request and answers them in
+ * order. `assets.signMany` from `@run402/functions` is one as it stands;
+ * outside a function, `(items) => r.assets.signMany(projectId, items)` from
+ * `@run402/sdk`.
  */
-export type AssetUrlSigner = (key: string, variant: AssetVariantKind | undefined) => Promise<string>;
+export type AssetBatchSigner = (items: AssetSignRequestItem[]) => Promise<{ items: readonly AssetSignAnswer[] }>;
 
 /** An encoded variant whose URLs may be `null`, as they are for a private key. */
 export type SignableAssetVariant = Omit<AssetVariant, "url" | "cdn_url"> & {
@@ -175,14 +188,20 @@ export type SignableAssetRef = Omit<AssetRef, "url" | "cdn_url" | "display_url" 
   variants?: Partial<Record<AssetVariantKind, SignableAssetVariant>> | undefined;
 };
 
+/** Most items one signer call carries: the sign route's own limit. */
+const SIGN_BATCH_MAX_ITEMS = 1000;
+
+const SIGNABLE_KINDS = ["thumb", "medium", "large", "display_jpeg"] as const;
+
 /**
  * Fill a private `AssetRef`'s URL fields with signed URLs, so `renderPicture`,
  * `<Run402Picture>` and `<Run402Image>` render it exactly as they render a
- * public one: the original and every encoded variant are signed in parallel
- * through `sign`, `url` / `cdn_url` become the original's signed URL,
+ * public one. The original and every encoded variant are signed in ONE
+ * `signMany` call; `url` / `cdn_url` become the original's signed URL,
  * `display_url` the HEIC `display_jpeg`'s (else the original's), and each
  * `variants.<kind>.url` / `.cdn_url` its own signed URL. Immutable URLs stay
- * absent: a signed URL expires.
+ * absent: a signed URL expires. Throws when the signer could not sign one of
+ * them. For a page of images use `signAssetRefs`, one request for all.
  *
  * The page that renders the result carries short-lived URLs, so render it per
  * request (a members-only page already is: reading the session taints the ISR
@@ -194,32 +213,71 @@ export type SignableAssetRef = Omit<AssetRef, "url" | "cdn_url" | "display_url" 
  * import { assets } from "@run402/functions";
  * import { signAssetRef } from "@run402/astro/manifest";
  * import { Run402Picture } from "@run402/astro/components";
- * const photo = await signAssetRef(row.photo, (key, variant) =>
- *   assets.sign(key, { variant, ttl_seconds: 3600 }).then((s) => s.signed_url));
+ * const photo = await signAssetRef(row.photo, assets.signMany);
  * ---
  * <Run402Picture asset={photo} alt={row.caption} />
  * ```
  */
-export async function signAssetRef(ref: SignableAssetRef, sign: AssetUrlSigner): Promise<AssetRef> {
-  if (!ref || typeof ref !== "object" || typeof ref.key !== "string" || ref.key === "") {
-    throw new Error("signAssetRef: ref must be an AssetRef with a key");
-  }
-  const kinds = (["thumb", "medium", "large", "display_jpeg"] as const).filter((k) => ref.variants?.[k]);
-  const [original, ...signed] = await Promise.all([
-    sign(ref.key, undefined),
-    ...kinds.map((k) => sign(ref.key, k)),
-  ]);
-  const variants: NonNullable<AssetRef["variants"]> = {};
-  kinds.forEach((kind, i) => {
-    const url = signed[i]!;
-    variants[kind] = { ...ref.variants![kind]!, url, cdn_url: url };
+export async function signAssetRef(ref: SignableAssetRef, signMany: AssetBatchSigner): Promise<AssetRef> {
+  return (await signAssetRefs([ref], signMany))[0]!;
+}
+
+/**
+ * `signAssetRef` for many refs at once: every original and variant of every
+ * ref goes into one `signMany` call (more only past 1000 URLs), so a page of
+ * private photos costs one round trip. Returns the signed refs in order.
+ * Throws naming the first item the signer could not sign.
+ *
+ * @example
+ * ```astro
+ * ---
+ * const photos = await signAssetRefs(rows.map((r) => r.photo), (items) =>
+ *   assets.signMany(items, { ttl_seconds: 3600 }));
+ * ---
+ * {photos.map((p, i) => <Run402Picture asset={p} alt={rows[i].caption} />)}
+ * ```
+ */
+export async function signAssetRefs(refs: readonly SignableAssetRef[], signMany: AssetBatchSigner): Promise<AssetRef[]> {
+  const plans = refs.map((ref) => {
+    if (!ref || typeof ref !== "object" || typeof ref.key !== "string" || ref.key === "") {
+      throw new Error("signAssetRef: ref must be an AssetRef with a key");
+    }
+    return { ref, kinds: SIGNABLE_KINDS.filter((k) => ref.variants?.[k]) };
   });
-  const { immutable_url: _i, cdn_immutable_url: _ci, display_immutable_url: _di, ...rest } = ref;
-  return {
-    ...rest,
-    url: original!,
-    cdn_url: original!,
-    display_url: variants.display_jpeg?.cdn_url ?? original!,
-    ...(kinds.length > 0 ? { variants } : {}),
-  } as AssetRef;
+  const items: AssetSignRequestItem[] = plans.flatMap(({ ref, kinds }) => [
+    { key: ref.key },
+    ...kinds.map((variant) => ({ key: ref.key, variant })),
+  ]);
+  const chunks: AssetSignRequestItem[][] = [];
+  for (let i = 0; i < items.length; i += SIGN_BATCH_MAX_ITEMS) chunks.push(items.slice(i, i + SIGN_BATCH_MAX_ITEMS));
+  const answers = (await Promise.all(chunks.map(async (chunk) => {
+    const result = await signMany(chunk);
+    if (!result || !Array.isArray(result.items) || result.items.length !== chunk.length) {
+      throw new Error(`signAssetRef: the signer answered ${result?.items?.length ?? 0} items for ${chunk.length}`);
+    }
+    return result.items;
+  }))).flat();
+  const urls = answers.map((answer, i) => {
+    if (typeof answer.signed_url === "string") return answer.signed_url;
+    const item = items[i]!;
+    const why = answer.error ? `${answer.error.code}: ${answer.error.message}` : "no signed_url";
+    throw new Error(`signAssetRef: could not sign ${item.key}${item.variant ? ` (${item.variant})` : ""}: ${why}`);
+  });
+  let next = 0;
+  return plans.map(({ ref, kinds }) => {
+    const original = urls[next++]!;
+    const variants: NonNullable<AssetRef["variants"]> = {};
+    for (const kind of kinds) {
+      const url = urls[next++]!;
+      variants[kind] = { ...ref.variants![kind]!, url, cdn_url: url };
+    }
+    const { immutable_url: _i, cdn_immutable_url: _ci, display_immutable_url: _di, ...rest } = ref;
+    return {
+      ...rest,
+      url: original,
+      cdn_url: original,
+      display_url: variants.display_jpeg?.cdn_url ?? original,
+      ...(kinds.length > 0 ? { variants } : {}),
+    } as AssetRef;
+  });
 }

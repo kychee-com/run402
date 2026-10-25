@@ -554,6 +554,55 @@ describe("blobs.sign", () => {
   });
 });
 
+describe("assets.signMany", () => {
+  it("POSTs /storage/v1/blobs/sign once with every item and the ttl", async () => {
+    const answer = {
+      items: [
+        { key: "family/a.jpg", variant: "thumb", signed_url: "https://s3.test/t" },
+        { key: "gone.jpg", error: { code: "RESOURCE_NOT_FOUND", message: "Blob gone.jpg not found", details: { field: "key" } } },
+      ],
+      expires_at: "2026-04-24T00:00:00Z",
+      expires_in: 600,
+    };
+    const { fetch, calls } = mockFetch(() => json(answer));
+    const sdk = makeSdk(fetch);
+    const result = await sdk.assets.signMany(
+      "prj_known",
+      [{ key: "family/a.jpg", variant: "thumb" }, { key: "gone.jpg" }],
+      { ttl_seconds: 600 },
+    );
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]!.url, "https://api.example.test/storage/v1/blobs/sign");
+    assert.equal(calls[0]!.method, "POST");
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), {
+      items: [{ key: "family/a.jpg", variant: "thumb" }, { key: "gone.jpg" }],
+      ttl_seconds: 600,
+    });
+    assert.deepEqual(result, answer);
+  });
+
+  it("rejects empty, oversized, keyless, unknown-variant and bad-ttl requests locally", async () => {
+    const { fetch, calls } = mockFetch(() => {
+      throw new Error("unexpected fetch");
+    });
+    const sdk = makeSdk(fetch);
+    const cases: Array<[Parameters<typeof sdk.assets.signMany>[1], Parameters<typeof sdk.assets.signMany>[2], RegExp]> = [
+      [[], undefined, /1 to 1000 entries/],
+      [Array.from({ length: 1001 }, (_, i) => ({ key: `k${i}` })), undefined, /1 to 1000 entries/],
+      [[{ key: "" }], undefined, /items\[0\]\.key/],
+      [[{ key: "a.jpg", variant: "huge" as never }], undefined, /items\[0\]\.variant must be one of/],
+      [[{ key: "a.jpg" }], { ttl_seconds: 30 }, /ttl_seconds/],
+    ];
+    for (const [items, opts, pattern] of cases) {
+      await assert.rejects(
+        sdk.assets.signMany("prj_known", items, opts),
+        (err: unknown) => err instanceof LocalError && err.context === "signing blob URLs" && pattern.test(err.message),
+      );
+    }
+    assert.equal(calls.length, 0);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // v1.45 — AssetRef widened return + diagnoseUrl + waitFresh
 // ---------------------------------------------------------------------------

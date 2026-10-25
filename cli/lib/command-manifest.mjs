@@ -362,7 +362,7 @@ export const COMMAND_MANIFEST = [
   { path: ["assets", "get"], positionals: [p("key")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["gate.txt", "--output", "__OUT_FILE__"] },
   { path: ["assets", "ls"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [] },
   { path: ["assets", "rm"], positionals: [p("key")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["gate.txt"] },
-  { path: ["assets", "sign"], positionals: [p("key")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["gate.txt"] },
+  { path: ["assets", "sign"], positionals: [p("key", { variadic: true })], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["gate.txt"] },
   { path: ["assets", "diagnose"], positionals: [p("url")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["https://app.run402.com/_blob/gate.txt"] },
 
   // ── cdn ──────────────────────────────────────────────────────────────────

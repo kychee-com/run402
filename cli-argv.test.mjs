@@ -535,13 +535,6 @@ describe("2026-05 CLI bug backlog argv validation", () => {
     },
     {
       issue: "GH-318",
-      name: "blob sign rejects extra positional keys",
-      module: "./cli/lib/assets.mjs",
-      call: (run) => run("sign", ["a.txt", "b.txt", "--project", "prj_test123"]),
-      code: "BAD_USAGE",
-    },
-    {
-      issue: "GH-318",
       name: "blob diagnose rejects extra positional URLs",
       module: "./cli/lib/assets.mjs",
       call: (run) => run("diagnose", ["https://app.run402.com/_blob/a.txt", "https://app.run402.com/_blob/b.txt", "--project", "prj_test123"]),
@@ -1440,6 +1433,14 @@ describe("numeric flag validation", () => {
     const err = await expectExit1(() => run("sign", ["family/photo.jpg", "--project", "prj_test123", "--variant", "huge"]));
     assert.equal(err.code, "BAD_FLAG");
     assert.match(err.message, /--variant must be one of thumb, medium, large, display_jpeg/);
+    assert.equal(calls.length, 0, "bad --variant must not hit network");
+  });
+
+  it("blob sign validates every comma-separated --variant before network", async () => {
+    const { run } = await import("./cli/lib/assets.mjs");
+    calls = [];
+    const err = await expectExit1(() => run("sign", ["family/photo.jpg", "--project", "prj_test123", "--variant", "thumb,huge"]));
+    assert.equal(err.code, "BAD_FLAG");
     assert.equal(calls.length, 0, "bad --variant must not hit network");
   });
 

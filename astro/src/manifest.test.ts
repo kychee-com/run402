@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { AssetManifest, SignableAssetRef } from "./manifest.js";
-import { renderPicture, resolveVariants, signAssetRef } from "./manifest.js";
+import { renderPicture, resolveVariants, signAssetRef, signAssetRefs } from "./manifest.js";
 import { buildRun402ImageRenderTree } from "./components/Run402Image/core.js";
 import { serializeRenderTree } from "./components/Run402Image/render-html.js";
 import type { AssetRef } from "./types.js";
@@ -131,18 +131,26 @@ describe("signAssetRef", () => {
       large: { ...webpVariant(1920, 1440), ...nullUrls },
     },
   };
-  const signer = () => {
+  const signer = (fail?: (item: { key: string; variant?: string }) => boolean) => {
     const calls: Array<[string, string | undefined]> = [];
-    const sign = async (key: string, variant: string | undefined) => {
-      calls.push([key, variant]);
-      return `https://s3.example.com/${variant ?? "original"}?X-Amz-Signature=sig`;
+    const batches: number[] = [];
+    const sign = async (items: Array<{ key: string; variant?: string }>) => {
+      batches.push(items.length);
+      return {
+        items: items.map((item) => {
+          calls.push([item.key, item.variant]);
+          if (fail?.(item)) return { error: { code: "RESOURCE_NOT_FOUND", message: `Blob ${item.key} not found` } };
+          return { signed_url: `https://s3.example.com/${item.variant ?? "original"}?X-Amz-Signature=sig` };
+        }),
+      };
     };
-    return { calls, sign };
+    return { calls, batches, sign };
   };
 
-  it("signs the original and each variant, then renders a srcset of signed URLs", async () => {
-    const { calls, sign } = signer();
+  it("signs the original and each variant in one call, then renders a srcset of signed URLs", async () => {
+    const { calls, batches, sign } = signer();
     const signed = await signAssetRef(privateRef, sign);
+    assert.deepEqual(batches, [4]);
     assert.deepEqual(calls.map(([, v]) => v), [undefined, "thumb", "medium", "large"]);
     assert.ok(calls.every(([k]) => k === "family/photo.jpg"));
     assert.equal(signed.cdn_url, "https://s3.example.com/original?X-Amz-Signature=sig");
@@ -187,5 +195,39 @@ describe("signAssetRef", () => {
   it("refuses a ref without a key", async () => {
     const { sign } = signer();
     await assert.rejects(() => signAssetRef({ ...privateRef, key: "" }, sign), /must be an AssetRef with a key/);
+  });
+
+  it("signs a page of refs in one call and returns them in order", async () => {
+    const { calls, batches, sign } = signer();
+    const second = { ...privateRef, key: "family/second.jpg" };
+    const signed = await signAssetRefs([privateRef, second], sign);
+    assert.deepEqual(batches, [8]);
+    assert.deepEqual(calls.slice(4, 5), [["family/second.jpg", undefined]]);
+    assert.equal(signed.length, 2);
+    assert.equal(signed[1]!.key, "family/second.jpg");
+    assert.equal(signed[1]!.variants?.large?.cdn_url, "https://s3.example.com/large?X-Amz-Signature=sig");
+  });
+
+  it("splits past 1000 URLs into several calls", async () => {
+    const { batches, sign } = signer();
+    const refs = Array.from({ length: 300 }, (_, i) => ({ ...privateRef, key: `family/p${i}.jpg` }));
+    const signed = await signAssetRefs(refs, sign);
+    assert.deepEqual(batches, [1000, 200]);
+    assert.equal(signed[299]!.key, "family/p299.jpg");
+  });
+
+  it("throws naming the item the signer could not sign", async () => {
+    const { sign } = signer((item) => item.variant === "medium");
+    await assert.rejects(
+      () => signAssetRef(privateRef, sign),
+      /could not sign family\/photo\.jpg \(medium\): RESOURCE_NOT_FOUND: Blob family\/photo\.jpg not found/,
+    );
+  });
+
+  it("throws when the signer answers the wrong number of items", async () => {
+    await assert.rejects(
+      () => signAssetRef(privateRef, async () => ({ items: [{ signed_url: "https://x" }] })),
+      /answered 1 items for 4/,
+    );
   });
 });

@@ -1759,6 +1759,9 @@ describe("SDK surface alignment", () => {
       "orgs.owningOrgOf",
       // The local wallet read behind `wallets current` (wallets.current).
       "wallets.status",
+      // `assets sign` with several keys or variants (assets_sign) signs them
+      // in one request through assets.signMany.
+      "assets.signMany",
       // `run402 doctor --buzz` rides the doctor capability; the preflight
       // measures origins with diagnostics.probeOrigin.
       "buzz.doctor",

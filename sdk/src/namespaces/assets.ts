@@ -21,6 +21,9 @@ import type {
   BlobPutOptions,
   BlobPutResult,
   BlobPutSource,
+  BlobSignManyOptions,
+  BlobSignManyRequestItem,
+  BlobSignManyResult,
   BlobSignOptions,
   BlobSignResult,
   BlobUploadCompleteOptions,
@@ -31,7 +34,7 @@ import type {
   BlobWaitFreshOptions,
   BlobWaitFreshResult,
 } from "./assets.types.js";
-import { BLOB_SIGN_VARIANTS } from "./assets.types.js";
+import { BLOB_SIGN_MANY_MAX_ITEMS, BLOB_SIGN_VARIANTS } from "./assets.types.js";
 import {
   appendAssetFilterTo,
   assertAssetFilter,
@@ -908,5 +911,49 @@ export class Assets {
         context: "signing blob URL",
       },
     );
+  }
+
+  /** Generate presigned GET URLs for many keys and variants in one request
+   *  (`POST /storage/v1/blobs/sign`): 1 to 1000 `{ key, variant? }` items,
+   *  answered in order, each with `signed_url` or with `error`
+   *  (`RESOURCE_NOT_FOUND`) for a key or variant the project lacks. One
+   *  `ttl_seconds` covers every URL. */
+  async signMany(
+    projectId: string,
+    items: readonly BlobSignManyRequestItem[],
+    opts: BlobSignManyOptions = {},
+  ): Promise<BlobSignManyResult> {
+    const context = "signing blob URLs";
+    if (!Array.isArray(items) || items.length === 0 || items.length > BLOB_SIGN_MANY_MAX_ITEMS) {
+      throw new LocalError(`items must be an array of 1 to ${BLOB_SIGN_MANY_MAX_ITEMS} entries`, context);
+    }
+    const wireItems = items.map((item, i) => {
+      if (!item || typeof item.key !== "string" || item.key === "") {
+        throw new LocalError(`items[${i}].key must be a non-empty string`, context);
+      }
+      if (item.variant === undefined) return { key: item.key };
+      if (!(BLOB_SIGN_VARIANTS as readonly string[]).includes(item.variant)) {
+        throw new LocalError(`items[${i}].variant must be one of: ${BLOB_SIGN_VARIANTS.join(", ")}`, context);
+      }
+      return { key: item.key, variant: item.variant };
+    });
+    if (opts.ttl_seconds !== undefined) {
+      assertIntegerInRange(opts.ttl_seconds, "ttl_seconds", 60, 604800, context);
+    }
+
+    const project = await requireProjectCredentials(this.client, projectId, context);
+
+    const body: Record<string, unknown> = { items: wireItems };
+    if (opts.ttl_seconds !== undefined) body.ttl_seconds = opts.ttl_seconds;
+
+    return this.client.request<BlobSignManyResult>("/storage/v1/blobs/sign", {
+      method: "POST",
+      headers: {
+        apikey: project.service_key,
+        Authorization: `Bearer ${project.service_key}`,
+      },
+      body,
+      context,
+    });
   }
 }

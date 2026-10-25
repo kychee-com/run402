@@ -735,3 +735,38 @@ export interface BlobSignResult {
   /** The variant signed; absent when the original was. */
   variant?: BlobListVariant["kind"];
 }
+
+/** Most items one `assets.signMany` call may carry. */
+export const BLOB_SIGN_MANY_MAX_ITEMS = 1000;
+
+/** One URL to mint with `assets.signMany`: the original of `key`, or one of
+ *  its encoded variants. */
+export interface BlobSignManyRequestItem {
+  key: string;
+  variant?: BlobListVariant["kind"];
+}
+
+export interface BlobSignManyOptions {
+  /** Lifetime of every URL in seconds. 60–604800 (7 days). Server default 3600. */
+  ttl_seconds?: number;
+}
+
+/** Why one `assets.signMany` item was not signed. */
+export interface BlobSignItemError {
+  /** `RESOURCE_NOT_FOUND` when the project has no such key or variant. */
+  code: string;
+  message: string;
+  /** `{ field: "key" }`, or `{ field: "variant", variant, available }`. */
+  details?: Record<string, unknown>;
+}
+
+/** One answer of `assets.signMany`, in request order: `signed_url` or `error`. */
+export type BlobSignManyItem =
+  | { key: string; variant?: BlobListVariant["kind"]; signed_url: string; error?: undefined }
+  | { key: string; variant?: BlobListVariant["kind"]; signed_url?: undefined; error: BlobSignItemError };
+
+export interface BlobSignManyResult {
+  items: BlobSignManyItem[];
+  expires_at: string;
+  expires_in: number;
+}

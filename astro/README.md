@@ -722,7 +722,7 @@ The MediaPicker / admin upload flow already has the AssetRef in hand — it's th
 
 ### Private images: sign the AssetRef
 
-An image uploaded with `visibility: "private"` gets the same variant ladder, but its `AssetRef` has every URL field `null`, so nothing above can render it. `signAssetRef(ref, sign)` signs the original and each variant in parallel (one `POST /storage/v1/blob/:key/sign` each, `variant` set for the variants) and returns an `AssetRef` with `url` / `cdn_url` / `display_url` and every `variants.<kind>` URL filled in, immutable URLs dropped. `<Run402Picture>`, `<Run402Image>` and `renderPicture` render it unchanged, srcset and HEIC `display_jpeg` fallback included:
+An image uploaded with `visibility: "private"` gets the same variant ladder, but its `AssetRef` has every URL field `null`, so nothing above can render it. `signAssetRef(ref, signMany)` signs the original and each variant in one request (`POST /storage/v1/blobs/sign`) and returns an `AssetRef` with `url` / `cdn_url` / `display_url` and every `variants.<kind>` URL filled in, immutable URLs dropped. `<Run402Picture>`, `<Run402Image>` and `renderPicture` render it unchanged, srcset and HEIC `display_jpeg` fallback included:
 
 ```astro
 ---
@@ -731,13 +731,22 @@ import { signAssetRef } from "@run402/astro/manifest";
 import { Run402Picture } from "@run402/astro/components";
 
 await auth.requireUser();
-const photo = await signAssetRef(row.photo, (key, variant) =>
-  assets.sign(key, { variant, ttl_seconds: 3600 }).then((s) => s.signed_url));
+const photo = await signAssetRef(row.photo, assets.signMany);
 ---
 <Run402Picture asset={photo} alt={row.caption} />
 ```
 
-The page now carries URLs that expire, so render it per request (reading the session already keeps it out of the ISR cache) and pick a TTL longer than a visit. The signer is any `(key, variant) => Promise<string>`: outside a function, `r.assets.sign(projectId, key, { variant })` from `@run402/sdk` works the same way.
+A page of photos signs every ref in one request with `signAssetRefs(refs, signMany)`, which returns the signed refs in order (a gallery of 57 photos is one round trip, not 228):
+
+```astro
+---
+const photos = await signAssetRefs(rows.map((r) => r.photo), (items) =>
+  assets.signMany(items, { ttl_seconds: 3600 }));
+---
+{photos.map((photo, i) => <Run402Picture asset={photo} alt={rows[i].caption} />)}
+```
+
+The page now carries URLs that expire, so render it per request (reading the session already keeps it out of the ISR cache) and pick a TTL longer than a visit. The signer is any `(items) => Promise<{ items }>` that answers `{ key, variant? }` items in order with `signed_url`: `assets.signMany` from `@run402/functions` as it stands, and outside a function `(items) => r.assets.signMany(projectId, items)` from `@run402/sdk`. An item the signer could not sign (a key deleted since the row was written) throws, naming the key and variant.
 
 ### Build-time manifest pattern
 

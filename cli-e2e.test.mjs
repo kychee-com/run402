@@ -443,6 +443,14 @@ async function mockFetch(input, init) {
   }
 
   // Blob (direct-to-S3)
+  if (pathNoQuery === "/storage/v1/blobs/sign" && method === "POST") {
+    const body = JSON.parse(String(rawBody ?? "{}"));
+    return Promise.resolve(json({
+      items: body.items.map((item) => ({ ...item, signed_url: `https://s3.test/${item.key}/${item.variant ?? "original"}` })),
+      expires_at: "2030-01-01T01:00:00.000Z",
+      expires_in: body.ttl_seconds ?? 3600,
+    }));
+  }
   if (pathNoQuery === "/storage/v1/blobs" && method === "GET") {
     return Promise.resolve(json({ blobs: [{ key: "defaults/file.txt", size: 13, last_modified: "2026-03-15T12:00:00Z" }] }));
   }
@@ -3528,6 +3536,25 @@ describe("CLI e2e happy path", () => {
     }
     assert.equal(threw, null, `should not throw, got: ${threw?.message}\nout: ${captured()}`);
     assert.ok(captured().includes("defaults/file.txt"), `should list blobs; got: ${captured()}`);
+  });
+
+  it("blob sign with several keys and variants signs every pair in one request", async () => {
+    const { run } = await import("./cli/lib/assets.mjs");
+    captureStart();
+    try {
+      await run("sign", ["family/a.jpg", "family/b.jpg", "--variant", "thumb,medium", "--ttl", "600", "--project", "prj_test123"]);
+    } finally {
+      captureStop();
+    }
+    const out = JSON.parse(capturedStdout());
+    assert.equal(out.expires_in, 600);
+    assert.deepEqual(out.items.map((i) => `${i.key}:${i.variant}`), [
+      "family/a.jpg:thumb",
+      "family/a.jpg:medium",
+      "family/b.jpg:thumb",
+      "family/b.jpg:medium",
+    ]);
+    assert.equal(out.items[0].signed_url, "https://s3.test/family/a.jpg/thumb");
   });
 
   it("blob ls errors cleanly when no project and no active project (GH-40)", async () => {

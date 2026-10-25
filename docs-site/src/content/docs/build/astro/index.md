@@ -25,7 +25,7 @@ The native component API includes `SignIn`, `SignUp`, `UserButton`, `AccountSecu
 
 ## Data and images
 
-Use caller-context `db()` for app data subject to row policies. Reserve `adminDb()` for deliberately privileged backend work. Keep full AssetRef objects in data rows when rendering uploaded variants. `Run402Picture` and `Run402Image` consume those references; dynamic source scanning is not a substitute for stored variant metadata. A private image's AssetRef has every URL `null`: pass it through `signAssetRef(ref, (key, variant) => assets.sign(key, { variant }).then((s) => s.signed_url))` from `@run402/astro/manifest` (with `assets` from `@run402/functions`) and render the result; the page then holds short-lived URLs, so render it per request.
+Use caller-context `db()` for app data subject to row policies. Reserve `adminDb()` for deliberately privileged backend work. Keep full AssetRef objects in data rows when rendering uploaded variants. `Run402Picture` and `Run402Image` consume those references; dynamic source scanning is not a substitute for stored variant metadata. A private image's AssetRef has every URL `null`: pass it through `signAssetRef(ref, assets.signMany)` from `@run402/astro/manifest` (with `assets` from `@run402/functions`), or a page of them through `signAssetRefs(refs, assets.signMany)`, one request for every URL, and render the result; the page then holds short-lived URLs, so render it per request.
 
 ## Cache and secrets
 

@@ -6,7 +6,7 @@
  *   run402 assets get <key> --output <file> [--project <project_id>]
  *   run402 assets ls [--project <project_id>] [--prefix <p>] [--limit <n>]
  *   run402 assets rm <key> [--project <project_id>]
- *   run402 assets sign <key> [--project <project_id>] [--ttl <seconds>] [--variant <kind>]
+ *   run402 assets sign <key> [keys...] [--project <project_id>] [--ttl <seconds>] [--variant <kind>[,<kind>...]]
  *
  * For any file ≤ 5 GiB a single presigned PUT is used. Larger files use S3
  * multipart uploads with 16 MiB parts (640 parts at 10 GiB; up to 10 000
@@ -41,7 +41,7 @@ Usage:
   run402 assets get <key> --output <file> [options]
   run402 assets ls [options]
   run402 assets rm <key> [options]
-  run402 assets sign <key> [options]
+  run402 assets sign <key> [keys...] [options]
   run402 assets diagnose <url> [options]
 
 Options:
@@ -62,8 +62,8 @@ Options:
   --filter <k=v>      v1.50 ls only: media-picker filter (repeatable). Keys: uploaded_by, tag,
                       format, is_image, min_width, max_width, min_height, max_height.
   --ttl <seconds>     Signed-URL TTL (sign only; default 3600, min 60, max 604800)
-  --variant <kind>    Sign an image variant instead of the original (sign only;
-                      thumb | medium | large | display_jpeg)
+  --variant <kinds>   Sign image variants instead of the original (sign only;
+                      comma-separated thumb | medium | large | display_jpeg)
 
 Examples:
   run402 assets put ./artifact.tgz --project prj_abc123
@@ -169,24 +169,34 @@ Options:
 Examples:
   run402 assets rm images/logo.png --project prj_abc123
 `,
-  sign: `run402 assets sign — Create a presigned download URL for a blob
+  sign: `run402 assets sign — Create presigned download URLs for blobs
 
 Usage:
-  run402 assets sign <key> [options]
+  run402 assets sign <key> [keys...] [options]
 
 Arguments:
-  <key>               Blob key to sign
+  <key>               Blob key to sign; several keys are signed in one request
 
 Options:
   --project <project_id>      Project ID (defaults to active project)
   --ttl <seconds>     Signed-URL TTL (default 3600, min 60, max 604800)
-  --variant <kind>    Sign one of an image's encoded variants instead of the
+  --variant <kinds>   Sign an image's encoded variants instead of the
                       original: thumb | medium | large (WebP) or display_jpeg
-                      (HEIC sources). How a private image's variants are served.
+                      (HEIC sources), comma-separated for several. How a
+                      private image's variants are served.
+
+Output:
+  One key and at most one variant prints { signed_url, expires_at,
+  expires_in, variant? }. Several keys or variants are signed in one
+  request (POST /storage/v1/blobs/sign, up to 1000 URLs, every key times
+  every variant) and print { items, expires_at, expires_in }: items in
+  order, each { key, variant?, signed_url } or { key, variant?, error }
+  for a key or variant the project lacks.
 
 Examples:
   run402 assets sign reports/2025-q4.pdf --project prj_abc123 --ttl 600
   run402 assets sign family/photo.jpg --variant medium --ttl 3600
+  run402 assets sign family/a.jpg family/b.jpg --variant thumb,medium,large
 `,
   diagnose: `run402 assets diagnose — Inspect the live CDN state for a public blob URL
 
@@ -272,7 +282,7 @@ function parseArgs(rawArgs) {
     else if (a === "--limit") out.limit = parseIntegerFlag("--limit", args[++i], { min: 1, max: 1000 });
     else if (a === "--output" || a === "-o") out.output = args[++i];
     else if (a === "--ttl") out.ttl = parseIntegerFlag("--ttl", args[++i], { min: 60, max: 604800 });
-    else if (a === "--variant") out.variant = parseVariantFlag(args[++i]);
+    else if (a === "--variant") out.variants = parseVariantFlag(args[++i]);
     // Repeatable --meta key=value (number-coerce on pure digits,
     // comma-split into string[] when value contains ',', "true"/"false"
     // → boolean, else string). Multiple --meta flags accumulate into a
@@ -626,14 +636,21 @@ async function sign(argv) {
   const opts = parseArgs(argv);
   const resolvedId = resolveProjectIdAllowingLegacyEnv(opts.project);
   if (opts.positional.length === 0) die("Key required");
-  if (opts.positional.length > 1) die("blob sign expects exactly one key");
-  const key = opts.positional[0];
+  const keys = opts.positional;
+  const variants = opts.variants ?? [undefined];
 
   try {
-    const data = await getSdk().assets.sign(resolvedId, key, {
-      ttl_seconds: opts.ttl ?? undefined,
-      variant: opts.variant ?? undefined,
-    });
+    // One URL keeps the single-key route and its shape; more go in one batch.
+    const data = keys.length === 1 && variants.length === 1
+      ? await getSdk().assets.sign(resolvedId, keys[0], {
+        ttl_seconds: opts.ttl ?? undefined,
+        variant: variants[0],
+      })
+      : await getSdk().assets.signMany(
+        resolvedId,
+        keys.flatMap((key) => variants.map((variant) => (variant ? { key, variant } : { key }))),
+        { ttl_seconds: opts.ttl ?? undefined },
+      );
     console.log(JSON.stringify(data, null, 2));
   } catch (err) {
     reportSdkError(err);
@@ -647,14 +664,15 @@ async function sign(argv) {
 const SIGN_VARIANTS = ["thumb", "medium", "large", "display_jpeg"];
 
 function parseVariantFlag(value) {
-  if (!SIGN_VARIANTS.includes(value)) {
+  const kinds = typeof value === "string" ? value.split(",").map((v) => v.trim()) : [];
+  if (kinds.length === 0 || kinds.some((kind) => !SIGN_VARIANTS.includes(kind))) {
     fail({
       code: "BAD_FLAG",
       message: `--variant must be one of ${SIGN_VARIANTS.join(", ")}, got: ${value ?? "(none)"}`,
       details: { flag: "--variant", value: value ?? null, allowed: SIGN_VARIANTS },
     });
   }
-  return value;
+  return [...new Set(kinds)];
 }
 
 function guessContentType(key) {
