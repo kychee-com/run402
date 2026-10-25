@@ -42,6 +42,14 @@ All notable changes to `@run402/astro`.
 
 ### Added
 
+- **Preview a members-only site signed in under `astro dev`.** With
+  `run402 dev --as <label>` (CLI 4.128+), the adapter registers a
+  dev-only middleware that runs each request as the test user
+  `<label>@<project_id>.test.invalid`, so `auth.user()`,
+  `auth.role({ from })` and `db()` see a signed-in visitor. It is added
+  only when Astro's command is `dev` and `RUN402_DEV_TEST_SESSION` is
+  set; builds never contain it.
+
 - `<SignIn methods={["magic_link"]} />` now supports
   `emailDelivery="link" | "code" | "both"`. When the prop is omitted, managed
   SSR checks provider discovery and chooses both only when advertised,

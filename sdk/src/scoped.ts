@@ -74,6 +74,7 @@ import type {
   AuthSessionResult,
   AuthUserAdminResult,
   CreateAuthUserOptions,
+  CreateTestSessionOptions,
   MagicLinkOptions,
   MagicLinkRequestResult,
   MagicLinkVerifyResult,
@@ -87,6 +88,7 @@ import type {
   PasskeyRegistrationOptions,
   PasskeyRegistrationVerifyOptions,
   SetPasswordOptions,
+  TestSessionResult,
 } from "./namespaces/auth.js";
 import type {
   BlobDiagnoseEnvelope,
@@ -625,6 +627,9 @@ class ScopedAuth {
   }
   inviteUser(opts: Omit<CreateAuthUserOptions, "sendInvite">): Promise<AuthUserAdminResult> {
     return this.parent.auth.inviteUser(this.projectId, opts);
+  }
+  createTestSession(opts: CreateTestSessionOptions): Promise<TestSessionResult> {
+    return this.parent.auth.createTestSession(this.projectId, opts);
   }
   setUserPassword(opts: SetPasswordOptions): Promise<void> {
     return this.parent.auth.setUserPassword(this.projectId, opts);

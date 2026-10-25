@@ -105,6 +105,7 @@ const SAMPLE_ARGS: Record<SecretReturningMethod, unknown[]> = {
   "auth.verifyMagicLink": [PROJECT, "magic_link_token_secret"],
   "auth.verify": [PROJECT, "magic_link_token_secret"],
   "auth.verifyEmailCode": [PROJECT, { challengeId: "ch_1", code: "042731" }],
+  "auth.createTestSession": [PROJECT, { label: "alice" }],
   "auth.setUserPassword": [PROJECT, { accessToken: "user_access_token_secret", newPassword: "p" }],
   "auth.setPassword": [PROJECT, { accessToken: "user_access_token_secret", newPassword: "p" }],
   "auth.createPasskeyRegistrationOptions": [PROJECT, { accessToken: "user_access_token_secret", appOrigin: "https://a.test" }],

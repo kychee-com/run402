@@ -9,7 +9,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import { Run402 } from "../index.js";
-import { ApiError, LocalError, ProjectCredentialNotFound } from "../errors.js";
+import { ApiError, LocalError, ProjectCredentialNotFound, Run402Error } from "../errors.js";
 import type { CredentialsProvider } from "../credentials.js";
 import type {
   CreateAuthUserOptions,
@@ -497,6 +497,55 @@ describe("auth.verifyEmailCode", () => {
       await assert.rejects(sdk.auth.verifyEmailCode("prj_known", opts), LocalError);
       assert.equal(calls.length, 0);
     }
+  });
+});
+
+describe("auth.createTestSession", () => {
+  it("POSTs /auth/v1/test-sessions with the label and the service-key bearer, no wallet auth", async () => {
+    const bundle = {
+      user: { id: "u_1", label: "alice", email: "alice@prj_known.test.invalid", is_test: true },
+      session: { session_id: "s_1", amr: ["test_session"] },
+      access_token: "access.jwt",
+      token_type: "bearer",
+      expires_in: 7200,
+    };
+    const { fetch, calls } = mockFetch(() => jsonResponse(bundle, 201));
+    const sdk = makeSdk(makeCreds(), fetch);
+    const result = await sdk.auth.createTestSession("prj_known", { label: "alice", isAdmin: true });
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]!.url, "https://api.example.test/auth/v1/test-sessions");
+    assert.equal(calls[0]!.method, "POST");
+    assert.equal(calls[0]!.headers["apikey"], "anon_xxx");
+    assert.equal(calls[0]!.headers["Authorization"], "Bearer service_xxx");
+    assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], undefined);
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), { label: "alice", is_admin: true });
+    assert.deepEqual(result, bundle);
+  });
+
+  for (const label of ["Alice", "alice@example.com", "-alice", "", "a".repeat(33)]) {
+    it(`refuses label ${JSON.stringify(label)} before requesting`, async () => {
+      const { fetch, calls } = mockFetch(() => {
+        throw new Error("unexpected fetch for an invalid label");
+      });
+      const sdk = makeSdk(makeCreds(), fetch);
+      await assert.rejects(
+        sdk.auth.createTestSession("prj_known", { label }),
+        (err: unknown) => err instanceof LocalError && err.context === "minting test session",
+      );
+      assert.equal(calls.length, 0);
+    });
+  }
+
+  it("passes TEST_MODE_DISABLED through with its code", async () => {
+    const { fetch } = mockFetch(() =>
+      jsonResponse({ code: "TEST_MODE_DISABLED", message: "Test mode is off for this project." }, 403),
+    );
+    const sdk = makeSdk(makeCreds(), fetch);
+    await assert.rejects(
+      sdk.auth.createTestSession("prj_known", { label: "alice" }),
+      (err: unknown) => err instanceof Run402Error && err.status === 403 && err.code === "TEST_MODE_DISABLED",
+    );
   });
 });
 

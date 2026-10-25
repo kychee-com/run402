@@ -767,6 +767,9 @@ const SURFACE: Capability[] = [
   { id: "list_passkeys",            endpoint: "GET /auth/v1/passkeys",                   cli: "auth:passkeys",                 openclaw: "auth:passkeys" },
   { id: "delete_passkey",           endpoint: "DELETE /auth/v1/passkeys/:id",             cli: "auth:delete-passkey",           openclaw: "auth:delete-passkey" },
   { id: "auth_providers",    endpoint: "GET /auth/v1/providers",              cli: "auth:providers",     openclaw: "auth:providers" },
+  // A test session carries a cookie value and a bearer token, so it refuses on
+  // the sandbox surface; the `dev` row owns the CLI door (`run402 dev --as <label>`).
+  { id: "create_test_session", endpoint: "POST /auth/v1/test-sessions",       cli: null,                 openclaw: null },
   { id: "auth_scaffold_roles", endpoint: "(local)",                           cli: "auth:scaffold-roles", openclaw: "auth:scaffold-roles" },
 
   // ── Email organizations + org checkout ─────────────────────────────
@@ -1316,6 +1319,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   verify_magic_link: "auth.verifyMagicLink",
   create_auth_user: "auth.createUser",
   invite_auth_user: "auth.inviteUser",
+  create_test_session: "auth.createTestSession",
   set_user_password: "auth.setUserPassword",
   auth_settings: "auth.settings",
   passkey_register_options: "auth.createPasskeyRegistrationOptions",

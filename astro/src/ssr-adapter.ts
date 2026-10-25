@@ -35,6 +35,7 @@ import type { AstroIntegration } from "astro";
 
 import { detectDynamicImage, detectServerIslands, detectSessionsApi } from "./ssr-detectors.js";
 import { astroKeyWarning, normalizeServerOutput } from "./ssr-determinism.js";
+import { shouldInstallDevSession } from "./dev-session.js";
 
 export interface CreateRun402AdapterOptions {
   /** Project id override (normally read from `RUN402_PROJECT_ID`). */
@@ -111,12 +112,20 @@ export function createRun402Adapter(options: CreateRun402AdapterOptions = {}): A
   let buildOutputDir = "";
   let serverDir = "";
   const runtimeServerEntrypoint = fileURLToPath(new URL("./runtime/server.js", import.meta.url));
+  const devSessionMiddlewareEntrypoint = fileURLToPath(new URL("./dev-session-middleware.js", import.meta.url));
 
   return {
     name: "@run402/astro/adapter",
     hooks: {
-      "astro:config:setup": ({ config, addRenderer, updateConfig, logger }) => {
+      "astro:config:setup": ({ config, addRenderer, updateConfig, addMiddleware, command, logger }) => {
         logger.info("Run402 adapter active (output=" + (config.output ?? "static") + ")");
+
+        // `run402 dev --as <label>`: serve every request signed in as the
+        // test user it minted. `astro dev` only, so no build contains it.
+        if (shouldInstallDevSession(command, process.env)) {
+          addMiddleware({ entrypoint: devSessionMiddlewareEntrypoint, order: "pre" });
+          logger.info("Run402 dev: requests run signed in as the `run402 dev --as` test user");
+        }
 
         // Tell Astro to use a server build. The actual adapter
         // registration happens in astro:config:done because that's

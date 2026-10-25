@@ -239,6 +239,15 @@ export const onRequest = defineMiddleware(async (context, next) => {
 ```
 
 Pages then read `Astro.locals.member` without checking again. Cookies set in middleware through `context.cookies` reach the browser like those set in a page. Prerendered pages are built ahead of time and never pass through the gate, so keep members-only content off them.
+### Previewing signed in during `astro dev`
+
+Under plain `astro dev` there is no session, so `auth.user()` is `null` and a members-only site shows only its signed-out side. Don't fake a member under `import.meta.env.DEV`; run:
+
+```bash
+run402 dev --as alice
+```
+
+`run402 dev` mints a 2-hour test session for `alice@<project_id>.test.invalid` (a watermarked test user, never a real member) and the Run402 adapter runs each `astro dev` request as that user: `auth.user()` returns it with `is_test: true`, `auth.requireUser()` and `auth.role({ from })` pass through your real gate, and `db()` reads under its row-level security. Give `alice` a role the way you give any member one (a row in your role table, e.g. with `run402 projects sql`). Needs `RUN402_ANON_KEY` in `.env.local` beside `RUN402_PROJECT_ID` and `RUN402_SERVICE_KEY`, and the project's test mode (on by default for prototype). The token never reaches the browser, `astro build` output never contains the dev middleware, and after two hours requests are served signed out until you restart the command.
 
 `auth.user()` is the minimal per-request actor (`id`, `email`, `sessionId`, `authTime`, `amr`, …). For the rich *settings* read — the ownership-qualified account state your account UI branches on — use `auth.account.getSecurity()` (below). Don't call `getSecurity()` on every request; `auth.user()` is the hot-path read.
 

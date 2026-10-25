@@ -278,6 +278,10 @@ export const SECRET_RETURNING_METHODS = {
     },
     why: "The end user's access token is returned once.",
   },
+  "auth.createTestSession": {
+    command: (projectId: unknown, opts: unknown) => `run402 dev --as ${arg(obj(opts).label, "<label>")}${projectFlag(projectId)}`,
+    why: "A test session carries a session cookie and a bearer token; `run402 dev --as` hands them to the local dev server without printing them.",
+  },
   "auth.setUserPassword": { command: (projectId: unknown) => `run402 auth set-password --token <bearer> --new <password>${projectFlag(projectId)}`, why: "An end user's access token is a bearer credential." },
   "auth.setPassword": { command: (projectId: unknown) => `run402 auth set-password --token <bearer> --new <password>${projectFlag(projectId)}`, why: "An end user's access token is a bearer credential." },
   "auth.createPasskeyRegistrationOptions": { command: (projectId: unknown) => `run402 auth passkey-register-options --token <bearer> --app-origin <origin>${projectFlag(projectId)}`, why: "An end user's access token is a bearer credential." },

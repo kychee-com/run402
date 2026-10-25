@@ -124,6 +124,41 @@ export interface AuthUserAdminResult {
   invite_sent: boolean;
 }
 
+export interface CreateTestSessionOptions {
+  /** Test-user label (`^[a-z0-9][a-z0-9-]{0,31}$`); the user's email is `<label>@<project_id>.test.invalid`. */
+  label: string;
+  isAdmin?: boolean;
+}
+
+/** The test-session bundle from `POST /auth/v1/test-sessions`, returned unchanged. */
+export interface TestSessionResult {
+  user: {
+    id: string;
+    label: string;
+    email: string;
+    is_test: true;
+    is_admin: boolean;
+    created: boolean;
+    created_at: string;
+    email_verified_at: string | null;
+  };
+  session: {
+    cookie_name: string;
+    cookie_value: string;
+    session_id: string;
+    amr: string[];
+    auth_time: string;
+    expires_at: string;
+    hard_expires_at: string;
+  };
+  access_token: string;
+  token_type: "bearer";
+  expires_in: number;
+  app_origins: string[];
+  examples: { ssr: string; rest: string };
+  test_mode: Record<string, unknown>;
+}
+
 export interface AuthSessionResult extends MagicLinkVerifyResult {
   elevation_required?: boolean;
   required_method?: "passkey";
@@ -132,6 +167,7 @@ export interface AuthSessionResult extends MagicLinkVerifyResult {
 }
 
 const MAGIC_LINK_INTENTS = ["signin", "invite", "claim", "recovery"] as const;
+const TEST_SESSION_LABEL = /^[a-z0-9][a-z0-9-]{0,31}$/;
 const AUTH_SETTINGS_FIELDS = [
   "allow_password_set",
   "preferred_sign_in_method",
@@ -441,6 +477,45 @@ export class Auth {
       },
       body,
       context: "creating auth user",
+    });
+  }
+
+  /**
+   * Mint a session for a watermarked test user (`<label>@<project_id>.test.invalid`,
+   * never a real user). Requires service key and the project's test mode.
+   * The bundle carries a session cookie value and a bearer token.
+   */
+  async createTestSession(projectId: string, opts: CreateTestSessionOptions): Promise<TestSessionResult> {
+    gateSecret(this.client, "auth.createTestSession", projectId, opts);
+    if (!opts || typeof opts !== "object" || Array.isArray(opts)) {
+      throw new LocalError(
+        "r.auth.createTestSession(projectId, opts) requires an opts object as the 2nd argument (e.g., { label: \"alice\" })",
+        "minting test session",
+      );
+    }
+    if (typeof opts.label !== "string" || !TEST_SESSION_LABEL.test(opts.label)) {
+      throw new LocalError(
+        "label must match ^[a-z0-9][a-z0-9-]{0,31}$ (lowercase letters, digits and dashes; a test-user label, not an email or user id).",
+        "minting test session",
+      );
+    }
+    if (opts.isAdmin !== undefined && typeof opts.isAdmin !== "boolean") {
+      throw new LocalError("isAdmin must be a boolean when provided.", "minting test session");
+    }
+    const project = await requireProjectCredentials(this.client, projectId, "minting test session");
+
+    const body: Record<string, unknown> = { label: opts.label };
+    if (typeof opts.isAdmin === "boolean") body.is_admin = opts.isAdmin;
+
+    return this.client.request<TestSessionResult>("/auth/v1/test-sessions", {
+      method: "POST",
+      headers: {
+        apikey: project.anon_key,
+        Authorization: `Bearer ${project.service_key}`,
+      },
+      body,
+      context: "minting test session",
+      withAuth: false,
     });
   }
 
