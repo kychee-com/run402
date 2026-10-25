@@ -381,7 +381,7 @@ Defaults:
 - allowed events: fixed to `push` and `workflow_dispatch`
 - allowed action: fixed to `deploy`
 
-The command fetches GitHub's numeric repository id using `GITHUB_TOKEN` or `GH_TOKEN` when available. If lookup fails, pass `--repository-id <numeric_id>` explicitly. The subject is generated from `--branch` as `repo:<owner/repo>:ref:refs/heads/<branch>`, or from `--environment` as `repo:<owner/repo>:environment:<environment>`.
+The command reads GitHub's numeric repository id with `GITHUB_TOKEN` or `GH_TOKEN`; without one, pass `--repository-id <numeric_id>`. The subject is `repo:<owner/repo>:ref:refs/heads/<branch>` from `--branch`, or `repo:<owner/repo>:environment:<environment>` from `--environment`. The immutable subject `repo:<owner>@<id>/<repo>@<id>:...` matches it too.
 
 Generated workflow shape:
 
