@@ -1693,6 +1693,11 @@ interface TierLimitNumber {
 
 interface TierFunctionLimitSnapshot {
   tier: string;
+  /**
+   * The wallet's own organization's tier (`""` for none), set only when the
+   * project belongs to an organization on a different tier.
+   */
+  walletTier?: string;
   maxTimeoutSeconds?: TierLimitNumber;
   maxMemoryMb?: TierLimitNumber;
   maxSsrMemoryMb?: TierLimitNumber;
@@ -1860,7 +1865,9 @@ async function readTierFunctionLimits(
   }
 
   const projectTier = await readProjectTier(client, projectId);
+  let walletTier: string | undefined;
   if (projectTier && projectTier.toLowerCase() !== String(status.tier ?? "").toLowerCase()) {
+    walletTier = typeof status.tier === "string" ? status.tier : "";
     status = { tier: projectTier } as TierStatusResult;
   }
 
@@ -1871,6 +1878,7 @@ async function readTierFunctionLimits(
   const tierKey = status.tier.toLowerCase();
   const fallback = STATIC_FUNCTION_LIMITS_BY_TIER[tierKey];
   const limits: TierFunctionLimitSnapshot = { tier: status.tier };
+  if (walletTier !== undefined) limits.walletTier = walletTier;
 
   limits.maxTimeoutSeconds = tierStatusLimitOrFallback(
     status,
@@ -2123,9 +2131,11 @@ function tierLimitError(
   limit: TierLimitNumber,
   extraDetails: Record<string, unknown>,
 ): Run402DeployError {
-  const hint = limit.source === "local_static_fallback"
-    ? "Tier limits came from the SDK's static fallback because /tiers/v1/status did not expose function caps. Run `run402 tier status` to refresh, lower the function setting, upgrade the tier, or retry and let gateway validation decide if this seems stale."
-    : "Lower the function setting or upgrade the tier before deploying.";
+  const hint = limits.walletTier !== undefined
+    ? `The project's organization is on the ${limits.tier} tier (your wallet's own organization ${limits.walletTier ? `is on ${limits.walletTier}` : "has no tier"}), and a deploy is held to the limits of the organization that owns the project. Lower the function setting or upgrade that organization's tier.`
+    : limit.source === "local_static_fallback"
+      ? "Tier limits came from the SDK's static fallback because /tiers/v1/status did not expose function caps. Run `run402 tier status` to refresh, lower the function setting, upgrade the tier, or retry and let gateway validation decide if this seems stale."
+      : "Lower the function setting or upgrade the tier before deploying.";
   const details = {
     field,
     value,
