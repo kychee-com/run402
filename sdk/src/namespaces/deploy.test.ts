@@ -1602,6 +1602,61 @@ describe("Deploy.apply (SSR function memory preflight)", () => {
   });
 });
 
+describe("Deploy.apply (preflight reads the project's org tier)", () => {
+  function wiring(walletTier: string, projectTier: string | null) {
+    const w = makeWiring();
+    w.setHandler((req) => {
+      if (req.path === "/tiers/v1/status") {
+        return { wallet: "0xtest", tier: walletTier, active: true };
+      }
+      if (req.path === "/projects/v1/prj_test") {
+        if (projectTier === null) throw new ApiError("forbidden", 403, { code: "FORBIDDEN" }, "getting project");
+        return { project_id: "prj_test", org_id: "org_other", tier: projectTier };
+      }
+      throw new Error("PLANNED");
+    });
+    return w;
+  }
+  const ssr1024 = {
+    project_id: "prj_test",
+    functions: {
+      replace: {
+        ssr: {
+          source: "export default { fetch() { return new Response('ok') } };",
+          class: "ssr" as const,
+          config: { memoryMb: 1024 },
+        },
+      },
+    },
+  };
+  const outcome = async (w: ReturnType<typeof makeWiring>) =>
+    new Deploy(w.client).apply(ssr1024).then(() => "planned", (err: unknown) => {
+      if (err instanceof Run402DeployError && err.code === "BAD_FIELD") return err.details as { tier: string; tier_max: number };
+      assert.match(String((err as Error)?.message), /PLANNED/);
+      return "planned";
+    });
+
+  it("lets a prototype wallet deploy within a team project's caps", async () => {
+    assert.equal(await outcome(wiring("prototype", "team")), "planned");
+  });
+
+  it("holds a team wallet's deploy into a prototype project to prototype's caps", async () => {
+    const result = await outcome(wiring("team", "prototype"));
+    assert.deepEqual(
+      typeof result === "string" ? result : { tier: result.tier, tier_max: result.tier_max },
+      { tier: "prototype", tier_max: 128 },
+    );
+  });
+
+  it("falls back to the wallet's tier when the project cannot be read", async () => {
+    const result = await outcome(wiring("prototype", null));
+    assert.deepEqual(
+      typeof result === "string" ? result : { tier: result.tier, tier_max: result.tier_max },
+      { tier: "prototype", tier_max: 128 },
+    );
+  });
+});
+
 describe("Deploy.plan", () => {
   it("passes dry_run=true and normalizes the v2 flat plan envelope", async () => {
     const w = makeWiring();

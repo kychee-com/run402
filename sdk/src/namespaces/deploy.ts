@@ -1715,7 +1715,7 @@ async function preflightTierFunctionLimits(
   if (ciCredentials) return;
   if (!hasFunctionTierPreflightInputs(spec.functions)) return;
 
-  const limits = await readTierFunctionLimits(client);
+  const limits = await readTierFunctionLimits(client, spec.project_id);
   if (!limits) return;
 
   const entries = collectFunctionPreflightEntries(spec.functions);
@@ -1839,8 +1839,16 @@ function collectFunctionPreflightEntries(
   return entries;
 }
 
+/**
+ * The function caps of the tier the deploy is judged by: the tier of the
+ * organization that owns the project. `/tiers/v1/status` describes the
+ * wallet's own organization, so its caps count only when the project's tier
+ * is the same; otherwise the static table for the project's tier applies.
+ * When the project cannot be read, the wallet's own tier is used.
+ */
 async function readTierFunctionLimits(
   client: Client,
+  projectId: string,
 ): Promise<TierFunctionLimitSnapshot | null> {
   let status: TierStatusResult;
   try {
@@ -1849,6 +1857,11 @@ async function readTierFunctionLimits(
     });
   } catch {
     return null;
+  }
+
+  const projectTier = await readProjectTier(client, projectId);
+  if (projectTier && projectTier.toLowerCase() !== String(status.tier ?? "").toLowerCase()) {
+    status = { tier: projectTier } as TierStatusResult;
   }
 
   if (typeof status.tier !== "string" || status.tier.length === 0) {
@@ -1912,6 +1925,18 @@ async function readTierFunctionLimits(
   );
 
   return hasAnyTierFunctionLimit(limits) ? limits : null;
+}
+
+async function readProjectTier(client: Client, projectId: string): Promise<string | null> {
+  try {
+    const project = await client.request<{ tier?: unknown }>(`/projects/v1/${encodeURIComponent(projectId)}`, {
+      method: "GET",
+      context: "checking the project's tier for deploy preflight",
+    });
+    return typeof project.tier === "string" && project.tier.length > 0 ? project.tier : null;
+  } catch {
+    return null;
+  }
 }
 
 function tierStatusLimitOrFallback(
