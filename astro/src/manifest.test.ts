@@ -77,6 +77,17 @@ describe("resolveVariants", () => {
 });
 
 describe("renderPicture", () => {
+  it("lists a width once when a capped medium and large share it", () => {
+    const small: AssetRef = {
+      ...jpegRef,
+      width_px: 500,
+      height_px: 375,
+      variants: { thumb: webpVariant(320, 240), medium: webpVariant(500, 375), large: webpVariant(500, 375) },
+    };
+    const html = renderPicture(small, { alt: "small" });
+    assert.match(html, /srcset="https:\/\/cdn\.example\.com\/v320\.webp 320w, https:\/\/cdn\.example\.com\/v500\.webp 500w"/);
+  });
+
   it("emits the same shape as the <Image> component", () => {
     const html = renderPicture(jpegRef, { alt: "test alt", sizes: "100vw" });
     assert.match(html, /^<picture>/);

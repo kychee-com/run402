@@ -185,6 +185,26 @@ describe("happy path — full v1.54 AssetRef", () => {
     assert.deepEqual(widths, [320, 800, 1920]);
   });
 
+  it("lists a width once when a capped medium and large share it", () => {
+    const full = makeFullAssetRef();
+    const asset = {
+      ...full,
+      width_px: 500,
+      height_px: 375,
+      variants: {
+        ...full.variants,
+        medium: { ...full.variants!.medium!, width_px: 500 },
+        large: { ...full.variants!.large!, width_px: 500 },
+      },
+    };
+    const { root } = build({ asset });
+    if (root.kind !== "picture") throw new Error("expected a picture");
+    const source = root.children.find((c) => c.kind === "source")!;
+    if (source.kind !== "source") throw new Error("expected a source");
+    const widths = source.attrs.srcset.split(", ").map((s) => s.split(" ")[1]);
+    assert.deepEqual(widths, ["320w", "500w"]);
+  });
+
   it("emits `data-run402-image=\"1\"` on the outermost element (picture)", () => {
     const { root } = build({});
     const attrs = pictureAttrs(root);

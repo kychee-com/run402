@@ -99,11 +99,14 @@ const height = asset.height_px;
 // not record `width_px`.
 const descriptor = (v: AssetVariant | undefined, ladderWidth: number) =>
   `${typeof v?.width_px === "number" && v.width_px > 0 ? v.width_px : ladderWidth}w`;
+// Capped steps can share a width, and a srcset may list a width once.
 const srcsetWebp = [
   thumbUrl ? `${thumbUrl} ${descriptor(asset.variants?.thumb, 320)}` : null,
   mediumUrl ? `${mediumUrl} ${descriptor(asset.variants?.medium, 800)}` : null,
   largeUrl ? `${largeUrl} ${descriptor(asset.variants?.large, 1920)}` : null,
-].filter(Boolean).join(", ");
+].filter((entry, i, all): entry is string =>
+  entry !== null && all.findIndex((e) => e?.split(" ").pop() === entry.split(" ").pop()) === i,
+).join(", ");
 
 // Blurhash placeholder — emit as inline-styled wrapper. v1.5 may swap
 // to a server-rendered decoded data-URI; for now we emit the raw hash

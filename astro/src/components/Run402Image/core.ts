@@ -373,7 +373,8 @@ interface OrderedVariant {
 
 /**
  * Collect the AssetRef's `thumb` / `medium` / `large` variants, drop any
- * with a missing URL, and return them ordered ASCENDING by `width_px`.
+ * with a missing URL, and return them ordered ASCENDING by `width_px`, each
+ * width once (the smaller kind wins a tie).
  *
  * Spec §"Variant ordering" (2.12): order by width, not by hardcoded
  * `["thumb", "medium", "large"]`. This keeps tests stable when the
@@ -404,7 +405,9 @@ function collectOrderedVariants(asset: Run402ImageAsset): OrderedVariant[] {
     });
   }
   lineup.sort((a, b) => a.width_px - b.width_px);
-  return lineup;
+  // A source narrower than a ladder step caps that step at its own width, so
+  // two variants can share a width; a srcset may list a width once.
+  return lineup.filter((v, i) => i === 0 || v.width_px !== lineup[i - 1]!.width_px);
 }
 
 // =============================================================================

@@ -89,11 +89,16 @@ export function buildPictureHtml(input: BuildPictureInput): BuildPictureOutput {
     };
   }
 
-  // Build the WebP srcset from whichever variants the gateway returned.
+  // Build the WebP srcset from whichever variants the gateway returned. A
+  // source narrower than a ladder step caps that step at its own width, so
+  // two variants can share a width; a srcset may list a width once.
   const srcsetEntries: string[] = [];
+  const listedWidths = new Set<number>();
   for (const kind of ["thumb", "medium", "large"] as const) {
     const v = variants[kind];
-    if (v) srcsetEntries.push(`${escapeAttr(v.cdn_url)} ${v.width_px}w`);
+    if (!v || listedWidths.has(v.width_px)) continue;
+    listedWidths.add(v.width_px);
+    srcsetEntries.push(`${escapeAttr(v.cdn_url)} ${v.width_px}w`);
   }
   const srcsetAttr = srcsetEntries.join(", ");
 

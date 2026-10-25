@@ -65,6 +65,23 @@ describe("<Run402Picture> srcset", () => {
     assert.equal(srcset(html), "https://x.test/t.webp 320w, https://x.test/m.webp 800w, https://x.test/l.webp 1001w");
   });
 
+  it("lists a width once when a capped medium and large share it", async () => {
+    const html = await render({
+      alt: "a photo",
+      asset: {
+        cdn_url: "https://x.test/o.jpg",
+        width_px: 500,
+        height_px: 333,
+        variants: {
+          thumb: variant("https://x.test/t.webp", 320),
+          medium: variant("https://x.test/m.webp", 500),
+          large: variant("https://x.test/l.webp", 500),
+        },
+      },
+    });
+    assert.equal(srcset(html), "https://x.test/t.webp 320w, https://x.test/m.webp 500w");
+  });
+
   it("falls back to the ladder width for a variant without width_px", async () => {
     const html = await render({
       alt: "a photo",
