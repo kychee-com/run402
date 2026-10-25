@@ -25,7 +25,6 @@
 
 import path from "node:path";
 import { BuildCache } from "./cache.js";
-import { MissingProjectIdError } from "./errors.js";
 import { loadAliasConfig } from "./resolver.js";
 import type { VitePluginState } from "./vite-plugin.js";
 import { createVitePlugin } from "./vite-plugin.js";
@@ -140,11 +139,10 @@ export function run402Image(options: Run402AstroOptions = {}): AstroIntegration 
   return {
     name: "@run402/astro",
     hooks: {
+      // No project id is needed until the build has images to upload: a
+      // checkout without one still runs `astro dev` and `astro build`, and
+      // the Vite plugin raises MissingProjectIdError only at that upload.
       "astro:config:setup": ({ config, updateConfig }) => {
-        if (!projectId && !dryRun) {
-          throw new MissingProjectIdError();
-        }
-
         const projectRoot = configRootToPath(config.root);
 
         state = {

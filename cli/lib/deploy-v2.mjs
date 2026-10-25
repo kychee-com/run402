@@ -26,7 +26,8 @@
  */
 
 import { existsSync, fstatSync, readFileSync } from "node:fs";
-import { resolve, dirname, extname, isAbsolute } from "node:path";
+import { resolve, dirname, extname, isAbsolute, join } from "node:path";
+import { pathToFileURL } from "node:url";
 import {
   applyWithVault,
   assertLocalFileReferencesExist,
@@ -940,20 +941,63 @@ export function resolveApplySource(opts, stdinPresent) {
   };
 }
 
+/** The Astro project a `--dir` build belongs to: the nearest directory at or
+ *  above the build's parent that holds a package.json (Astro writes
+ *  `<root>/dist` by default). Falls back to the build's parent. */
+export function astroAppRoot(distDirAbs) {
+  for (let dir = dirname(distDirAbs); ; dir = dirname(dir)) {
+    if (existsSync(join(dir, "package.json"))) return dir;
+    if (dirname(dir) === dir) return dirname(distDirAbs);
+  }
+}
+
+/** The application directory the pre-deploy source scan reads. A `--dir`
+ *  build is generated output (the bundled adapter and dependencies, with the
+ *  author's comments stripped), so the scan reads the Astro app's own
+ *  source instead. */
+export function deployScanAppRoot({ manifestPath, dir }) {
+  if (manifestPath) return dirname(manifestPath);
+  if (dir) return astroAppRoot(resolve(dir));
+  return process.cwd();
+}
+
+/** Import `@run402/astro/release-slice` from the app's own install. A
+ *  globally installed CLI must not resolve it next to itself, so this walks
+ *  `node_modules` up from the app root and follows the package's export
+ *  map; only an app with no copy falls back to the CLI's own resolution. */
+export async function importAppAstroReleaseSlice(appRoot) {
+  for (let dir = appRoot; ; dir = dirname(dir)) {
+    const pkgDir = join(dir, "node_modules", "@run402", "astro");
+    const pkgJson = join(pkgDir, "package.json");
+    if (existsSync(pkgJson)) {
+      const pkg = JSON.parse(readFileSync(pkgJson, "utf8"));
+      const entry = pkg.exports?.["./release-slice"];
+      const target = typeof entry === "string" ? entry : entry?.import ?? entry?.default;
+      if (typeof target !== "string") {
+        throw new Error(`@run402/astro ${pkg.version ?? "(unknown version)"} at ${pkgDir} has no release-slice export; upgrade it.`);
+      }
+      return import(pathToFileURL(join(pkgDir, target)).href);
+    }
+    if (dirname(dir) === dir) break;
+  }
+  return import("@run402/astro/release-slice");
+}
+
 async function mergeAstroReleaseSlice(spec, dirArg) {
+  const distDirAbs = isAbsolute(dirArg) ? dirArg : resolve(process.cwd(), dirArg);
+  const appRoot = astroAppRoot(distDirAbs);
+
   let buildAstroReleaseSlice;
   try {
-    ({ buildAstroReleaseSlice } = await import("@run402/astro/release-slice"));
+    ({ buildAstroReleaseSlice } = await importAppAstroReleaseSlice(appRoot));
   } catch (err) {
     fail({
       code: "BAD_USAGE",
       message:
         "--dir requires @run402/astro to be installed in this project. Add it as a dependency (e.g., `npm install -D @run402/astro`).",
-      details: { flag: "--dir", import_error: err?.message ?? String(err) },
+      details: { flag: "--dir", app_root: appRoot, import_error: err?.message ?? String(err) },
     });
   }
-
-  const distDirAbs = isAbsolute(dirArg) ? dirArg : resolve(process.cwd(), dirArg);
 
   let slice;
   try {
@@ -1273,7 +1317,7 @@ async function deployCmd(args) {
   }
 
   if (process.env.RUN402_DEPLOY_SKIP_SCAN !== "1") {
-    const scan = scanDeploymentSources(releaseSpec, manifestPath ? dirname(manifestPath) : resolve(opts.dir || process.cwd()), opts.dir ? resolve(opts.dir) : undefined);
+    const scan = scanDeploymentSources(releaseSpec, deployScanAppRoot({ manifestPath, dir: opts.dir }));
     if (scan.errors.length) fail({ code: "R402_AUTH_PREFLIGHT_FAILED", message: "Source scan blocked this application. Fix the reported findings, or explicitly override with RUN402_DEPLOY_SKIP_SCAN=1.", details: scan });
   }
 

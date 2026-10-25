@@ -130,10 +130,13 @@ const BROWSER_ONLY_PATTERNS = [
 ];
 
 /** Scan a single file's content. Returns the array of findings (zero
- *  or more). Pure / no I/O — tests pass strings directly. */
-export function scanFileContent(content: string, opts: ScanOptions = {}) {
+ *  or more). Pure / no I/O — tests pass strings directly. Patterns match
+ *  code only: comments are blanked first, so a doc comment that names
+ *  `getUser()` is not a call. Allow-comments are read from the original. */
+export function scanFileContent(source: string, opts: ScanOptions = {}) {
   const filePath = opts.filePath ?? "<inline>";
   const findings: SourceScanFinding[] = [];
+  const content = blankComments(source, { html: filePath.endsWith(".astro") });
 
   // 1) Hallucinated bare names — import { getSession } from ... OR
   //    bare call sites `await getSession(...)`.
@@ -298,7 +301,7 @@ export function scanFileContent(content: string, opts: ScanOptions = {}) {
   //    fires on the shape, and the author either annotates or fixes.
   const redundantFilterRegex =
     /\.eq\s*\(\s*['"]user_id['"]\s*,\s*([a-zA-Z_$][\w$]*)\.id\s*\)/g;
-  const lines = content.split(/\r?\n/);
+  const lines = source.split(/\r?\n/);
   const cumulativeOffsets = (() => {
     const offsets = [0];
     for (let i = 0; i < lines.length; i++) {
@@ -508,6 +511,74 @@ function walk(dir: string, visitor: (path: string) => void) {
       visitor(join(dir, entry.name));
     }
   }
+}
+
+/** Replace every comment with spaces, keeping newlines, so offsets and line
+ *  numbers still match the original. Strings and template literals are
+ *  skipped so `"https://…"` is not read as a comment; `${…}` inside a
+ *  template is code again. `html` also blanks `<!-- … -->` (Astro
+ *  templates). Regex literals are not tracked: a quote inside one only stops
+ *  blanking until the end of that line, never blanks code. */
+export function blankComments(content: string, opts: { html?: boolean } = {}) {
+  const out = content.split("");
+  const blank = (from: number, to: number) => {
+    for (let k = from; k < to; k++) if (out[k] !== "\n" && out[k] !== "\r") out[k] = " ";
+  };
+  // Each entry is the brace depth at which a template's `${` opened.
+  const templates: number[] = [];
+  let depth = 0;
+  let i = 0;
+  const n = content.length;
+  const scanTemplate = () => {
+    // At the character after a backtick (or after a closing `}`).
+    while (i < n) {
+      const ch = content[i];
+      if (ch === "\\") { i += 2; continue; }
+      if (ch === "`") { i++; return; }
+      if (ch === "$" && content[i + 1] === "{") { templates.push(depth); depth++; i += 2; return; }
+      i++;
+    }
+  };
+  while (i < n) {
+    const ch = content[i];
+    const next = content[i + 1];
+    if (ch === "/" && next === "/") {
+      const end = content.indexOf("\n", i);
+      const stop = end === -1 ? n : end;
+      blank(i, stop);
+      i = stop;
+    } else if (ch === "/" && next === "*") {
+      const end = content.indexOf("*/", i + 2);
+      const stop = end === -1 ? n : end + 2;
+      blank(i, stop);
+      i = stop;
+    } else if (opts.html && ch === "<" && content.startsWith("<!--", i)) {
+      const end = content.indexOf("-->", i + 4);
+      const stop = end === -1 ? n : end + 3;
+      blank(i, stop);
+      i = stop;
+    } else if (ch === "'" || ch === "\"") {
+      i++;
+      while (i < n && content[i] !== ch && content[i] !== "\n") i += content[i] === "\\" ? 2 : 1;
+      i++;
+    } else if (ch === "`") {
+      i++;
+      scanTemplate();
+    } else if (ch === "{") {
+      depth++;
+      i++;
+    } else if (ch === "}") {
+      depth--;
+      i++;
+      if (templates.length > 0 && templates[templates.length - 1] === depth) {
+        templates.pop();
+        scanTemplate();
+      }
+    } else {
+      i++;
+    }
+  }
+  return out.join("");
 }
 
 function lineNumberFor(content: string, index: number) {

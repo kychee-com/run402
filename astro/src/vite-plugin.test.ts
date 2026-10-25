@@ -213,3 +213,29 @@ describe("assetMapKey", () => {
     assert.equal(assetMapKey("/a/b", "/a/shared/x.jpg"), "../shared/x.jpg");
   });
 });
+
+describe("project id", () => {
+  it("builds a site with no images and no project id", async () => {
+    const root = mkdtempSync(join(tmpdir(), "run402-astro-noproject-"));
+    tempDirs.push(root);
+    mkdirSync(join(root, "src", "pages"), { recursive: true });
+    writeFileSync(join(root, PAGE_REL), "---\n---\n<p>hello</p>\n");
+    const state = { ...makeState(root, "forward"), client: null, assetsDirs: [], projectId: "(unset)" };
+    const plugin = createVitePlugin(state);
+    plugin.configResolved?.({ root });
+    await plugin.buildStart?.();
+    assert.equal(state.virtualEntries.size, 0);
+  });
+
+  it("names the missing project id once the build has images to upload", async () => {
+    const root = makeFixture();
+    const state = { ...makeState(root, "forward"), client: null, projectId: "(unset)" };
+    const plugin = createVitePlugin(state);
+    plugin.configResolved?.({ root });
+    await assert.rejects(plugin.buildStart?.() ?? Promise.resolve(), (err: Error & { code?: string }) => {
+      assert.equal(err.code, "RUN402_ASTRO_MISSING_PROJECT_ID");
+      assert.match(err.message, /^4 images need uploading/);
+      return true;
+    });
+  });
+});

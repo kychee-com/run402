@@ -548,3 +548,56 @@ describe("scanFileContent — the service key inside a user's request (SERVICE_K
     assert.ok(!scanFileContent(content).some((x) => x.code === "SERVICE_KEY_IN_USER_REQUEST"));
   });
 });
+
+describe("scanFileContent — comments are not code", () => {
+  it("ignores a name inside a doc comment (the @run402/astro server entry)", () => {
+    const content = [
+      "/**",
+      " *   2. Established the AsyncLocalStorage request context via",
+      " *      `runWithContext` (so `getUser()` / `db()` / `cache.*` etc. work",
+      " *      inside the render).",
+      " */",
+      "export async function handler(request) { return app.render(request); }",
+    ].join("\n");
+    assert.deepEqual(scanFileContent(content, { filePath: "entry.mjs" }), []);
+  });
+
+  it("ignores line comments, block comments and Astro HTML comments", () => {
+    const content = [
+      "---",
+      "// we used to call getSession() here",
+      "const user = await auth.user(); /* not auth.protect() */",
+      "---",
+      "<!-- auth.signIn() lives on the hosted page -->",
+      "<p>{user?.email}</p>",
+    ].join("\n");
+    assert.deepEqual(scanFileContent(content, { filePath: "src/pages/index.astro" }), []);
+  });
+
+  it("still flags a call that follows a URL in a string on the same line", () => {
+    const content = 'const docs = "https://example.com"; const s = await getSession();';
+    const f = scanFileContent(content).filter((x) => x.code === "R402_AUTH_UNKNOWN_EXPORT");
+    assert.equal(f.length, 1);
+    assert.equal(f[0].attempted_name, "getSession");
+  });
+
+  it("still flags code inside a template literal's ${…} and keeps line numbers", () => {
+    const content = ["/* header", "   comment */", "const s = `${await getSession()}`;"].join("\n");
+    const f = scanFileContent(content).filter((x) => x.code === "R402_AUTH_UNKNOWN_EXPORT");
+    assert.equal(f.length, 1);
+    assert.equal(f[0].line, 3);
+  });
+
+  it("does not read `//` inside a template literal as a comment", () => {
+    const content = "const u = `https://x.test/${id}`; await getSession();";
+    assert.equal(scanFileContent(content).filter((x) => x.code === "R402_AUTH_UNKNOWN_EXPORT").length, 1);
+  });
+
+  it("still honours allow-comments, which are read from the original source", () => {
+    const content = [
+      "const user = await auth.user();",
+      'const role = await adminDb().sql("SELECT role FROM members WHERE user_id = $1", [user.id]); // run402-allow-admin-db: membership check',
+    ].join("\n");
+    assert.ok(!scanFileContent(content).some((x) => x.code === "SERVICE_KEY_IN_USER_REQUEST"));
+  });
+});

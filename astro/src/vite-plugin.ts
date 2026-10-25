@@ -23,6 +23,7 @@ import { existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
 import { dirname, extname, join, relative, resolve as pathResolve, sep } from "node:path";
 import { BuildCache } from "./cache.js";
+import { MissingProjectIdError } from "./errors.js";
 import type { AliasConfig } from "./resolver.js";
 import { loadAliasConfig, resolveImageSrc } from "./resolver.js";
 import { setAssetRef } from "./registry.js";
@@ -136,12 +137,6 @@ export function createVitePlugin(state: VitePluginState): MinimalVitePlugin {
     },
 
     async buildStart() {
-      if (state.client === null && !state.dryRun) {
-        // The integration's `astro:build:setup` should have populated this.
-        // Bail out — the integration will surface the real error.
-        return;
-      }
-
       const files = await walkSourceFiles(state.projectRoot);
       const discovery: ImageReference[] = [];
       for (const file of files) {
@@ -205,7 +200,7 @@ export function createVitePlugin(state: VitePluginState): MinimalVitePlugin {
         return;
       }
 
-      if (state.client === null) return;
+      if (state.client === null) throw new MissingProjectIdError(uniquePaths.size);
 
       const summary = await uploadAll(uniquePaths, state.client, state.cache, {
         prefix: state.prefix,

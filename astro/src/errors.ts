@@ -63,9 +63,10 @@ export class SourceNotFoundError extends Error {
 export class MissingProjectIdError extends Error {
   readonly code = "RUN402_ASTRO_MISSING_PROJECT_ID";
 
-  constructor() {
+  constructor(imageCount: number) {
     super(
-      "RUN402_PROJECT_ID is unset; set it in your environment or pass `projectId` to `run402()`.",
+      `${imageCount} image${imageCount === 1 ? "" : "s"} need uploading to a Run402 project, and RUN402_PROJECT_ID is unset; ` +
+        "set it in your environment or pass `projectId` to `run402()`.",
     );
     this.name = "MissingProjectIdError";
   }

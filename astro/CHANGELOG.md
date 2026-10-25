@@ -2,6 +2,12 @@
 
 All notable changes to `@run402/astro`.
 
+## Unreleased
+
+- **Cookies set through `Astro.cookies` reach the browser.** The SSR entry rendered with `app.render(request)`, which leaves cookies set in a page, endpoint or middleware off the `Response`, so every `Astro.cookies.set()` was dropped without a warning. It now renders with `addCookieHeader: true`, and each cookie arrives as its own `Set-Cookie` header. A response that sets a cookie is never stored in the ISR cache.
+- **`astro dev` and `astro build` run without a project id until there are images to upload.** `RUN402_ASTRO_MISSING_PROJECT_ID` was thrown from `astro:config:setup` whenever `RUN402_PROJECT_ID` and `projectId` were both unset, so a fresh checkout could not preview or build. It is now raised by the image upload, only when `<Image>` references or an `assetsDir` give the build images to upload, and its message says how many.
+- **Docs: gate every page in `src/middleware.ts`.** The README shows a members-only gate with `auth.user()` and `auth.role({ from: { table, idColumn, roleColumn } })`, and says `R402_ASTRO_MIDDLEWARE_UNSUPPORTED` is reserved and never raised.
+
 ## 2.0.0 (paired with `@run402/functions` v3.0 + gateway v1.60/v1.61 — `auth-aware-ssr`)
 
 ### Added

@@ -94,9 +94,9 @@ export async function runInitAstro(args = []) {
             preview: "astro preview",
           },
           dependencies: {
-            astro: "^7.0.0",
-            "@run402/astro": "^2.4.2",
-            "@run402/functions": "^3.0.0",
+            astro: "^7.4.2",
+            "@run402/astro": "^2.6.1",
+            "@run402/functions": "^4.12.2",
           },
         },
         null,

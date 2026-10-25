@@ -16,7 +16,9 @@
  *      inside the render).
  *
  * The adapter's job is the minimal: call `app.render(request)` and
- * return the `Response`. The wrapper translates the Response back into
+ * return the `Response`, with every cookie set through `Astro.cookies` /
+ * `context.cookies` written onto it as `Set-Cookie` (`addCookieHeader`;
+ * Astro leaves them off the `Response` by default). The wrapper translates the Response back into
  * the routed-function envelope shape the gateway expects and attaches
  * the SSR metadata (cache-bypass taint, runtime error envelope).
  *
@@ -55,7 +57,9 @@ export interface Run402Locals {
  * time and emitted next to this file. In dev/test (no Astro bundle), the
  * dynamic import throws and `handler` falls back to a stub.
  */
-type AstroApp = { render: (req: Request) => Promise<Response> };
+type AstroApp = {
+  render: (req: Request, opts?: { addCookieHeader?: boolean }) => Promise<Response>;
+};
 
 async function getAstroApp(): Promise<AstroApp | null> {
   try {
@@ -86,7 +90,7 @@ export async function handler(request: Request): Promise<Response> {
     return new Response("Astro app not loaded (dev/test stub)", { status: 500 });
   }
   try {
-    return await appInstance.render(request);
+    return await appInstance.render(request, { addCookieHeader: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const requestId = request.headers.get("x-run402-request-id") ?? null;

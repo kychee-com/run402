@@ -2206,9 +2206,9 @@ describe("CLI JSON-only output contract (v3.x cleanup)", () => {
     assert.match(err, /Scaffolded Astro project/, "progress lines should be on stderr");
 
     const pkg = JSON.parse(readFileSync(join(scaffoldDir, "package.json"), "utf8"));
-    assert.equal(pkg.dependencies.astro, "^7.0.0");
-    assert.equal(pkg.dependencies["@run402/astro"], "^2.4.2");
-    assert.equal(pkg.dependencies["@run402/functions"], "^3.0.0");
+    assert.equal(pkg.dependencies.astro, "^7.4.2");
+    assert.equal(pkg.dependencies["@run402/astro"], "^2.6.1");
+    assert.equal(pkg.dependencies["@run402/functions"], "^4.12.2");
     assert.notEqual(pkg.dependencies.astro, "^5.0.0");
     assert.notEqual(pkg.dependencies["@run402/astro"], "^1.0.0");
     assert.notEqual(pkg.dependencies["@run402/functions"], "^2.5.0");
@@ -2488,6 +2488,60 @@ describe("deploy manifest source precedence", () => {
     const r = resolveApplySource({ manifest: null, spec: null, dir: null }, false);
     assert.equal(r.error.code, "BAD_USAGE");
     assert.match(r.error.message, /No deploy manifest provided/);
+  });
+});
+
+describe("deploy --dir finds the Astro app", () => {
+  function astroApp() {
+    const root = mkdtempSync(join(tmpdir(), "run402-astro-app-"));
+    writeFileSync(join(root, "package.json"), "{\"name\":\"app\"}\n");
+    mkdirSync(join(root, "src", "pages"), { recursive: true });
+    mkdirSync(join(root, "dist", "run402", "server"), { recursive: true });
+    return root;
+  }
+
+  it("resolves @run402/astro from the app's node_modules, not the CLI's install", async () => {
+    const { importAppAstroReleaseSlice } = await import("./cli/lib/deploy-v2.mjs");
+    const root = astroApp();
+    const pkgDir = join(root, "node_modules", "@run402", "astro");
+    mkdirSync(join(pkgDir, "dist"), { recursive: true });
+    writeFileSync(join(pkgDir, "package.json"), JSON.stringify({
+      name: "@run402/astro",
+      type: "module",
+      exports: { "./release-slice": { types: "./dist/release-slice.d.ts", import: "./dist/release-slice.js" } },
+    }));
+    writeFileSync(join(pkgDir, "dist", "release-slice.js"), "export const buildAstroReleaseSlice = () => \"from-app\";\n");
+    const mod = await importAppAstroReleaseSlice(join(root, "packages", "site"));
+    assert.equal(mod.buildAstroReleaseSlice(), "from-app");
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it("names an installed @run402/astro that predates the release-slice export", async () => {
+    const { importAppAstroReleaseSlice } = await import("./cli/lib/deploy-v2.mjs");
+    const root = astroApp();
+    const pkgDir = join(root, "node_modules", "@run402", "astro");
+    mkdirSync(pkgDir, { recursive: true });
+    writeFileSync(join(pkgDir, "package.json"), JSON.stringify({ name: "@run402/astro", version: "1.0.0", exports: {} }));
+    await assert.rejects(importAppAstroReleaseSlice(root), /@run402\/astro 1\.0\.0 .* has no release-slice export/);
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it("scans the app's source, never the built dist bundle", async () => {
+    const { astroAppRoot, deployScanAppRoot } = await import("./cli/lib/deploy-v2.mjs");
+    const { scanDeploymentSources } = await import("./cli/sdk/dist/node/index.js");
+    const root = astroApp();
+    const dist = join(root, "dist");
+    // A bundled dependency that legitimately calls a name the scanner bans.
+    writeFileSync(join(dist, "run402", "server", "chunk.mjs"), "function getAuth(){return 1}\nexport const a = getAuth();\n");
+    writeFileSync(join(root, "src", "pages", "index.astro"), "---\nconst user = await auth.user();\n---\n<p>{user?.email}</p>\n");
+    assert.equal(astroAppRoot(dist), root);
+    const appRoot = deployScanAppRoot({ manifestPath: null, dir: dist });
+    assert.equal(appRoot, root);
+    const scan = scanDeploymentSources({}, appRoot);
+    assert.equal(scan.scan_root, join(root, "src"));
+    assert.deepEqual(scan.errors, []);
+    assert.equal(deployScanAppRoot({ manifestPath: join(root, "run402.json"), dir: dist }), root);
+    rmSync(root, { recursive: true, force: true });
   });
 });
 

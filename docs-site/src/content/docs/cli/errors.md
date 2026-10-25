@@ -14,7 +14,7 @@ Stable error codes for the Astro SSR runtime. Each carries `code`, `message`, `s
 
 - `R402_ASTRO_BUILD_FAILED` — Astro's own compiler threw an unrecovered error. Suggested fix: read the build log + address the underlying compiler error.
 - `R402_ASTRO_UNSUPPORTED_OUTPUT` — `output: '...'` is not supported. Use `output: 'server'` (default) and opt-in per route via `export const prerender = true;`.
-- `R402_ASTRO_MIDDLEWARE_UNSUPPORTED` — middleware ran but a specific pattern hit a snag. Move auth-gating to page frontmatter or API endpoints.
+- `R402_ASTRO_MIDDLEWARE_UNSUPPORTED` — reserved; nothing raises it. `src/middleware.ts` is supported and is the place for an auth or membership gate (`auth.user()` + `auth.role({ from })`).
 - `R402_ASTRO_SERVER_ISLAND_UNSUPPORTED` — `server:defer` / `server:only` detected. Use client islands (`client:load`, `client:idle`, `client:visible`) instead; server islands are unsupported.
 - `R402_ASTRO_SESSIONS_UNSUPPORTED` — `Astro.session.*` or `experimental.session` detected. Use signed cookies via `Astro.cookies` or DB-backed sessions.
 - `R402_ASTRO_DYNAMIC_IMAGE_UNSUPPORTED` — `<Image src={expr}>` where `expr` is a runtime value (DB row, function call, env var). Use `<Run402Picture asset={page.hero_asset}>` for CMS images; static-import binding `<Image src={hero}>` is allowed.

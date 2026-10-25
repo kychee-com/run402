@@ -214,6 +214,32 @@ const user = await auth.user();          // Actor | null — the cheap per-reque
 {user ? <p>Hello, {user.email}</p> : <a href="/auth/sign-in">Sign in</a>}
 ```
 
+### Gating every page: `src/middleware.ts`
+
+Astro middleware runs on Run402 inside the same request context as the page, so `auth.*` works there. Put a members-only gate in one place instead of repeating it in every page and endpoint. `auth.role({ from })` resolves the signed-in user from the session cookie and reads their role from your own table (`null` when they have no row):
+
+```ts
+// src/middleware.ts
+import { defineMiddleware } from "astro:middleware";
+import { auth } from "@run402/functions";
+
+const MEMBERS = { table: "members", idColumn: "user_id", roleColumn: "role" };
+const OPEN = ["/auth/", "/not-invited"];
+
+export const onRequest = defineMiddleware(async (context, next) => {
+  const path = context.url.pathname;
+  if (context.isPrerendered || OPEN.some((p) => path.startsWith(p))) return next();
+  const user = await auth.user();
+  if (!user) return context.redirect(`/auth/sign-in?returnTo=${encodeURIComponent(path)}`, 303);
+  const role = await auth.role({ from: MEMBERS });
+  if (!role) return context.rewrite("/not-invited");
+  context.locals.member = { user, role };
+  return next();
+});
+```
+
+Pages then read `Astro.locals.member` without checking again. Cookies set in middleware through `context.cookies` reach the browser like those set in a page. Prerendered pages are built ahead of time and never pass through the gate, so keep members-only content off them.
+
 `auth.user()` is the minimal per-request actor (`id`, `email`, `sessionId`, `authTime`, `amr`, …). For the rich *settings* read — the ownership-qualified account state your account UI branches on — use `auth.account.getSecurity()` (below). Don't call `getSecurity()` on every request; `auth.user()` is the hot-path read.
 
 > **Authority-aware reality.** Credential ownership is not just "is there a session." There are three distinct concerns: a **browser session** (the cookie that says who's signed in), **account-security** state (Run402-OWNED credentials — the user's Run402 password, Run402 passkeys, Run402-verified OAuth identities), and **app-vouched assertions** (a subject your *app* vouched for via `createResponseFromTenantAssertion`, which Run402 did NOT itself verify). `getSecurity()` keeps these separate by construction.
@@ -500,6 +526,8 @@ The 17 reserved codes for the SSR runtime:
 
 Every code has a `suggestedFix` field that an AI coding agent can act on directly.
 
+`R402_ASTRO_MIDDLEWARE_UNSUPPORTED` is reserved and nothing raises it: `src/middleware.ts` is supported, and it is the recommended place for an auth or membership gate (see "Gating every page" above).
+
 ---
 
 ## Image integration only
@@ -519,6 +547,8 @@ export RUN402_PROJECT_ID="prj_..."
 # Or pass via the integration:
 # astro.config.mjs → run402({ projectId: 'prj_...' })
 ```
+
+The project ID is needed only when the build has images to upload: a site with no `<Image>` references and no `assetsDir` runs `astro dev` and `astro build` without one, and a build that does have images fails with `RUN402_ASTRO_MISSING_PROJECT_ID` naming how many.
 
 ### 2. Auth path matches your environment
 
