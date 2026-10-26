@@ -711,6 +711,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="GITHUB_REPO_REQUIRED"></a>
 [`GITHUB_REPO_REQUIRED`](/errors/client/#GITHUB_REPO_REQUIRED)
 
+<a id="github_repository_id_conflict"></a>
+<a id="GITHUB_REPOSITORY_ID_CONFLICT"></a>
+[`GITHUB_REPOSITORY_ID_CONFLICT`](/errors/client/#GITHUB_REPOSITORY_ID_CONFLICT)
+
 <a id="github_repository_id_required"></a>
 <a id="GITHUB_REPOSITORY_ID_REQUIRED"></a>
 [`GITHUB_REPOSITORY_ID_REQUIRED`](/errors/client/#GITHUB_REPOSITORY_ID_REQUIRED)

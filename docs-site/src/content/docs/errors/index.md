@@ -555,6 +555,9 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="GITHUB_REPO_REQUIRED"></a>
 [`GITHUB_REPO_REQUIRED`](/errors/client/#GITHUB_REPO_REQUIRED)
 
+<a id="GITHUB_REPOSITORY_ID_CONFLICT"></a>
+[`GITHUB_REPOSITORY_ID_CONFLICT`](/errors/client/#GITHUB_REPOSITORY_ID_CONFLICT)
+
 <a id="GITHUB_REPOSITORY_ID_REQUIRED"></a>
 [`GITHUB_REPOSITORY_ID_REQUIRED`](/errors/client/#GITHUB_REPOSITORY_ID_REQUIRED)
 

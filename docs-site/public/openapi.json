@@ -22231,7 +22231,7 @@
             }
           },
           "403": {
-            "description": "Valid JWT but no usable binding. Error codes: `access_denied` (no matching binding, OR revoked/expired between SELECT and atomic UPDATE; `details` carries the token's own `subject`, `subject_format` (`default` | `customized`), `repository` and `repository_id`, and `next_actions` the step that links it, built from the token alone), `event_not_allowed` (event_name not in binding.allowed_events), `repository_id_mismatch` (binding has non-NULL github_repository_id and JWT's repository_id differs), `ambiguous_binding` (multiple bindings match with equal specificity).",
+            "description": "Valid JWT but no usable binding. Error codes: `access_denied` (no matching binding, OR revoked/expired between SELECT and atomic UPDATE), `event_not_allowed` (event_name not in binding.allowed_events), `repository_id_mismatch` (binding has non-NULL github_repository_id and JWT's repository_id differs), `ambiguous_binding` (multiple bindings match with equal specificity).",
             "content": {
               "application/json": {
                 "schema": {

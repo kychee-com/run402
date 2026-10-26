@@ -2243,6 +2243,16 @@
       "topic": "/errors/client/#GITHUB_REPO_REQUIRED"
     },
     {
+      "code": "GITHUB_REPOSITORY_ID_CONFLICT",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "cli/lib/ci.mjs"
+        }
+      ],
+      "topic": "/errors/client/#GITHUB_REPOSITORY_ID_CONFLICT"
+    },
+    {
       "code": "GITHUB_REPOSITORY_ID_REQUIRED",
       "owners": [
         {

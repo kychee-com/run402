@@ -316,7 +316,7 @@
     "line": 361,
     "language": "bash",
     "kind": "commands",
-    "sha256": "35c1c7c6067c49edd7ac81d25c03151fe8e4afbb7d14421492d3407375b780f8",
+    "sha256": "47b75f09f0b6e30c5cd73fddb83b48f84bc40aa53367fea15d2b38363ad539c1",
     "validation": "cli-help-output-sync"
   },
   {
