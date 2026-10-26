@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **`assets.ls` filters are applied.** `r.assets.ls(projectId, { filter })` and `run402 assets ls --filter k=v` sent the filter as `filter[<key>]` query parameters, which the gateway does not read, so every filter was silently dropped and the listing came back unfiltered (`--filter is_image=true` listed text files). They now send the documented `filter_<key>`.
 - **`site.replace: {}` on its own takes a site's static files offline.** The SDK (`validateSpec`), `run402 up` and `run402 deploy --spec` refused a spec whose only content is an explicit empty `site.replace` as `MANIFEST_EMPTY` (with a hint asking whether you meant to write a `site.replace` block). Since the gateway stages an empty site as a deployment with no files, that spec is a real deploy: the release serves none of the previous release's static files, behind the plan's `ZERO_SITE_FILES_AFTER` confirmation (`--allow-warning ZERO_SITE_FILES_AFTER`), which a release with an `ssr` function does not need. `site: {}`, an empty `site.patch` and the other empty containers still fail locally.
 - **The deploy preflight's refusal names the real reason when the project's tier is not the wallet's.** It said the limits came from the SDK's static fallback because `tier status` exposed no function caps, and told you to refresh tier status; it now says the project's organization is on its tier, and names your wallet's own organization's tier (or that it has none).
 

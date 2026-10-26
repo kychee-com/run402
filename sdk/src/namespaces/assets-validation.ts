@@ -168,9 +168,10 @@ export function assertAssetFilter(
 
 /**
  * v1.50: serialize a validated filter bag as query parameters. The wire
- * convention is `filter[<key>]=<value>` per design D-filter (see private
- * gateway docs). Booleans render as `"true"` / `"false"`; numbers
- * render verbatim; string arrays are not allowed on filter values.
+ * convention is `filter_<key>=<value>` (openapi.json `GET /storage/v1/blobs`);
+ * the gateway ignores `filter[<key>]` and rejects `filter.<key>`. Booleans
+ * render as `"true"` / `"false"`; numbers render verbatim; string arrays are
+ * not allowed on filter values.
  */
 export function appendAssetFilterTo(
   qs: URLSearchParams,
@@ -178,8 +179,8 @@ export function appendAssetFilterTo(
 ): void {
   for (const [k, v] of Object.entries(filter)) {
     if (v === undefined) continue;
-    if (typeof v === "boolean") qs.set(`filter[${k}]`, v ? "true" : "false");
-    else qs.set(`filter[${k}]`, String(v));
+    if (typeof v === "boolean") qs.set(`filter_${k}`, v ? "true" : "false");
+    else qs.set(`filter_${k}`, String(v));
   }
 }
 

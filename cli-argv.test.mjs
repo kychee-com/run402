@@ -1754,9 +1754,9 @@ describe("v1.50 assets — --meta / --exif-policy / --sort / --filter argv (issu
     assert.ok(lsCall, "ls call should hit /storage/v1/blobs");
     const u = new URL(lsCall.url);
     assert.equal(u.searchParams.get("sort"), "createdAt:desc");
-    assert.equal(u.searchParams.get("filter[is_image]"), "true");
-    assert.equal(u.searchParams.get("filter[min_width]"), "320");
-    assert.equal(u.searchParams.get("filter[format]"), "webp");
+    assert.equal(u.searchParams.get("filter_is_image"), "true");
+    assert.equal(u.searchParams.get("filter_min_width"), "320");
+    assert.equal(u.searchParams.get("filter_format"), "webp");
   });
 
   it("assets ls rejects invalid --sort before any network call", async () => {

@@ -1334,10 +1334,10 @@ describe("assets.ls — v1.50 sort + filter surface", () => {
     const u = new URL(calls[0]!.url);
     assert.equal(u.pathname, "/storage/v1/blobs");
     assert.equal(u.searchParams.get("sort"), "createdAt:desc");
-    assert.equal(u.searchParams.get("filter[uploaded_by]"), "agent_abc");
-    assert.equal(u.searchParams.get("filter[is_image]"), "true");
-    assert.equal(u.searchParams.get("filter[min_width]"), "320");
-    assert.equal(u.searchParams.get("filter[format]"), "webp");
+    assert.equal(u.searchParams.get("filter_uploaded_by"), "agent_abc");
+    assert.equal(u.searchParams.get("filter_is_image"), "true");
+    assert.equal(u.searchParams.get("filter_min_width"), "320");
+    assert.equal(u.searchParams.get("filter_format"), "webp");
   });
 
   it("rejects unknown filter keys with INVALID_FILTER_KEY before any HTTP call", async () => {

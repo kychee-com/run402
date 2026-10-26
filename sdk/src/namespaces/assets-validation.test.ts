@@ -193,7 +193,7 @@ describe("assertAssetFilter", () => {
 });
 
 describe("appendAssetFilterTo", () => {
-  it("serializes filters as filter[<key>] query params", () => {
+  it("serializes filters as filter_<key> query params", () => {
     const qs = new URLSearchParams();
     appendAssetFilterTo(qs, {
       uploaded_by: "agent_abc",
@@ -201,16 +201,16 @@ describe("appendAssetFilterTo", () => {
       is_image: true,
       min_width: 320,
     });
-    assert.equal(qs.get("filter[uploaded_by]"), "agent_abc");
-    assert.equal(qs.get("filter[tag]"), "hero");
-    assert.equal(qs.get("filter[is_image]"), "true");
-    assert.equal(qs.get("filter[min_width]"), "320");
+    assert.equal(qs.get("filter_uploaded_by"), "agent_abc");
+    assert.equal(qs.get("filter_tag"), "hero");
+    assert.equal(qs.get("filter_is_image"), "true");
+    assert.equal(qs.get("filter_min_width"), "320");
   });
 
   it("renders booleans as 'true' / 'false'", () => {
     const qs = new URLSearchParams();
     appendAssetFilterTo(qs, { is_image: false });
-    assert.equal(qs.get("filter[is_image]"), "false");
+    assert.equal(qs.get("filter_is_image"), "false");
   });
 
   it("skips undefined values", () => {
