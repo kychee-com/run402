@@ -315,6 +315,53 @@ describe("deploy GitHub Actions OIDC", () => {
     assert.match(actionText, /set-asset-scopes/);
   });
 
+  it("passes an access_denied refusal's subject and link command through, with a hint that names the subject", async () => {
+    process.env.GITHUB_ACTIONS = "true";
+    process.env.ACTIONS_ID_TOKEN_REQUEST_URL = OIDC_URL;
+    process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN = "github-request-token";
+
+    const subject = "repo:tal@1009089/myapp@892341:ref:refs/heads/feature";
+    const command = "run402 ci link github --project prj_ci_manifest --repo tal/myapp --repository-id 892341 --branch feature --no-workflow";
+    const previousFetch = globalThis.fetch;
+    globalThis.fetch = (input, init) => {
+      const url = typeof input === "string" ? input : input instanceof Request ? input.url : String(input);
+      if (url === `${API}/ci/v1/token-exchange`) {
+        return Promise.resolve(json({
+          error: "access_denied",
+          code: "FORBIDDEN",
+          message: `no active binding on this project matches this token's subject \`${subject}\``,
+          details: { subject, subject_format: "default", repository: "tal/myapp", repository_id: "892341" },
+          next_actions: [{ type: "run_cli_command", command, why: "Bind this repository's branch `feature` to the project." }],
+        }, 403));
+      }
+      return mockFetch(input, init);
+    };
+
+    captureStart();
+    let threw = null;
+    try {
+      await runDeployV2("deploy", [
+        "--spec",
+        JSON.stringify({ project_id: "prj_ci_manifest", site: { replace: { "index.html": { data: "hello" } } } }),
+        "--quiet",
+      ]);
+    } catch (err) {
+      threw = err;
+    } finally {
+      captureStop();
+      globalThis.fetch = previousFetch;
+    }
+
+    assert.equal(threw?.message, "process.exit(1)");
+    const parsedStderr = JSON.parse(stderr.join("\n"));
+    assert.equal(parsedStderr.error, "access_denied");
+    assert.equal(parsedStderr.details.subject, subject);
+    assert.equal(parsedStderr.details.subject_format, "default");
+    assert.equal(parsedStderr.next_actions[0].command, command);
+    assert.match(parsedStderr.hint, /matches this workflow's OIDC subject/);
+    assert.doesNotMatch(parsedStderr.hint, /allowed this workflow/);
+  });
+
   it("passes route specs through CI deploy manifests for gateway scope authorization", async () => {
     process.env.GITHUB_ACTIONS = "true";
     process.env.ACTIONS_ID_TOKEN_REQUEST_URL = OIDC_URL;

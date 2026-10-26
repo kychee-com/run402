@@ -437,6 +437,8 @@ run402 ci list --project prj_...
 run402 ci revoke cib_...
 ```
 
+`--repo` takes `owner/repo`, `owner@<id>/repo@<id>` (an immutable OIDC subject's spelling) or a github.com URL; `--no-workflow` creates the binding only, for a repository whose workflow already deploys. A refused exchange (`access_denied`) names the token's subject and the link command in `next_actions`.
+
 V1 intentionally keeps the shape narrow: `push` and `workflow_dispatch` only, no PR deploy flags, no raw subject or wildcard flags, and no soft repository-id binding. Without `--route-scope`, CI cannot deploy `routes`; with repeatable route scopes, it may deploy only matching exact paths e.g. `/admin` or final-wildcard prefixes e.g. `/api/*`. If CI returns `CI_ROUTE_SCOPE_DENIED`, re-link with covering scopes or run the route-changing deploy locally. Revocation stops future CI gateway requests but does not undo already-deployed code, stop in-flight deploy operations, rotate exfiltrated keys, or remove deployed functions.
 
 ## Authorization — the expose manifest

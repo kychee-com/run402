@@ -299,6 +299,85 @@ describe("run402 ci", () => {
     assert.equal(calls.some((c) => c.url === `${API}/ci/v1/bindings`), false);
   });
 
+  async function linkExpectingFailure(args) {
+    captureStart();
+    let threw = null;
+    try {
+      await run("link", args);
+    } catch (err) {
+      threw = err;
+    } finally {
+      captureStop();
+    }
+    assert.equal(threw?.message, "process.exit(1)");
+    return JSON.parse(stderr.join("\n"));
+  }
+
+  it("takes --repo as owner/repo, the immutable owner@id/repo@id spelling or a github.com URL, and writes the name form", async () => {
+    for (const repo of [
+      "tal/myapp",
+      "https://github.com/tal/myapp",
+      "https://github.com/tal/myapp.git",
+      "git@github.com:tal/myapp.git",
+    ]) {
+      calls = [];
+      captureStart();
+      await run("link", ["github", "--project", "prj_ci", "--repo", repo, "--force"]);
+      captureStop();
+      const create = calls.find((c) => c.url === `${API}/ci/v1/bindings`);
+      assert.equal(create.body.subject_match, "repo:tal/myapp:ref:refs/heads/main", repo);
+      assert.equal(create.body.github_repository_id, "892341", repo);
+    }
+
+    // The spelling of a token's immutable subject: the id comes from it, with no GitHub lookup.
+    calls = [];
+    captureStart();
+    await run("link", ["github", "--project", "prj_ci", "--repo", "tal@1009089/myapp@892341", "--force"]);
+    captureStop();
+    const create = calls.find((c) => c.url === `${API}/ci/v1/bindings`);
+    assert.equal(create.body.subject_match, "repo:tal/myapp:ref:refs/heads/main");
+    assert.equal(create.body.github_repository_id, "892341");
+    assert.equal(calls.some((c) => c.url.startsWith("https://api.github.com/")), false);
+    assert.equal(JSON.parse(stdout.join("\n")).github_repository_id_status, "provided");
+  });
+
+  it("refuses an immutable --repo whose id disagrees with --repository-id, and a malformed --repo", async () => {
+    const conflict = await linkExpectingFailure([
+      "github", "--project", "prj_ci", "--repo", "tal@1009089/myapp@892341", "--repository-id", "3", "--force",
+    ]);
+    assert.equal(conflict.code, "GITHUB_REPOSITORY_ID_CONFLICT");
+    assert.deepEqual(conflict.details, { repo: "tal/myapp", repo_id_in_repo: "892341", repository_id: "3" });
+    for (const repo of ["tal", "tal@1/myapp", "tal/my app", "https://gitlab.com/tal/myapp"]) {
+      assert.equal((await linkExpectingFailure(["github", "--project", "prj_ci", "--repo", repo])).code, "GITHUB_REPO_REQUIRED", repo);
+    }
+    assert.equal(calls.some((c) => c.url === `${API}/ci/v1/bindings`), false);
+  });
+
+  it("--no-workflow creates the binding only, for a repository whose workflow already deploys", async () => {
+    const workflowPath = join(repoDir, ".github/workflows/run402-deploy.yml");
+    mkdirSync(join(repoDir, ".github/workflows"), { recursive: true });
+    writeFileSync(workflowPath, "name: existing\n");
+
+    captureStart();
+    await run("link", [
+      "github", "--project", "prj_ci", "--repo", "tal/myapp", "--repository-id", "892341", "--branch", "feature", "--no-workflow",
+    ]);
+    captureStop();
+
+    const create = calls.find((c) => c.url === `${API}/ci/v1/bindings`);
+    assert.equal(create.body.subject_match, "repo:tal/myapp:ref:refs/heads/feature");
+    assert.equal(readFileSync(workflowPath, "utf8"), "name: existing\n");
+    const output = JSON.parse(stdout.join("\n"));
+    assert.equal(output.workflow_path, null);
+    assert.equal(output.manifest_path, null);
+    assert.match(output.bootstrap_caveat, /existing workflow/);
+
+    for (const extra of [["--workflow", "x.yml"], ["--force"], ["--manifest", "m.json"]]) {
+      const usage = await linkExpectingFailure(["github", "--project", "prj_ci", "--repository-id", "892341", "--no-workflow", ...extra]);
+      assert.equal(usage.code, "BAD_USAGE", extra.join(" "));
+    }
+  });
+
   it("lists and revokes bindings", async () => {
     captureStart();
     await run("list", ["--project", "prj_ci"]);

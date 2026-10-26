@@ -160,7 +160,7 @@ Inside GitHub Actions, `deploy` automatically uses OIDC credentials when `GITHUB
 - `run402 live --tables <a,b> --once [--cursor <cursor>] [--wait <1..25>]` — one held read: hints since the cursor, or hold up to `--wait` seconds for the first one
 
 ### ci
-- `run402 ci link github [--project <project_id>] [--manifest <path>] [--repo <owner/repo>] [--branch <name> | --environment <name>] [--repository-id <repository_id>] [--workflow <path>] [--expires-at <iso>] [--route-scope <pattern> ...] [--force]` — create a GitHub Actions OIDC deploy binding and write a workflow
+- `run402 ci link github [--project <project_id>] [--manifest <path>] [--repo <owner/repo>] [--branch <name> | --environment <name>] [--repository-id <repository_id>] [--workflow <path> | --no-workflow] [--expires-at <iso>] [--route-scope <pattern> ...] [--force]` — create a GitHub Actions OIDC deploy binding and write a workflow (`--no-workflow`: the binding only)
 - `run402 ci list [--project <project_id>]` — list CI bindings for a project
 - `run402 ci revoke <binding_id>` — revoke a binding
 

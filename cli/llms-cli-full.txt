@@ -612,7 +612,7 @@ Migration registry: key = `(id, checksum)`. There are two authoring kinds. Versi
 ---
 ### GitHub Actions OIDC Deploys
 
-Use this when the same repo should deploy itself from GitHub Actions without storing Run402 service keys, wallet files, or API keys in GitHub secrets. KISS rule: link once locally, then CI runs the same `run402 deploy` command agents already know.
+Use this when the same repo should deploy itself from GitHub Actions without storing Run402 service keys, wallet files, or API keys in GitHub secrets. Link once locally; CI then runs the same `run402 deploy` agents already know.
 
 Local setup:
 
@@ -630,7 +630,7 @@ run402 ci link github \
   [--repo <owner/repo>] \
   [--branch <name> | --environment <name>] \
   [--repository-id <numeric_id>] \
-  [--workflow <path>] \
+  [--workflow <path> | --no-workflow] \
   [--expires-at <iso_timestamp>] \
   [--route-scope <pattern> ...] \
   [--force]
@@ -639,14 +639,14 @@ run402 ci link github \
 Defaults:
 - `--project`: active project
 - `--manifest`: `run402.deploy.json`
-- `--repo`: inferred from `git remote get-url origin`
+- `--repo`: inferred from `git remote get-url origin`; also `owner@<id>/repo@<id>` (gives the id) or a github.com URL
 - `--branch`: current branch from `git branch --show-current`
 - `--workflow`: `.github/workflows/run402-deploy.yml`
 - `--route-scope`: omitted by default, which means no CI route-declaration authority; repeat for exact paths like `/admin` or final wildcard prefixes like `/api/*`
 - allowed events: fixed to `push` and `workflow_dispatch`
 - allowed action: fixed to `deploy`
 
-The command reads GitHub's numeric repository id with `GITHUB_TOKEN` or `GH_TOKEN`; without one, pass `--repository-id <numeric_id>`. The subject is `repo:<owner/repo>:ref:refs/heads/<branch>` from `--branch`, or `repo:<owner/repo>:environment:<environment>` from `--environment`. The immutable subject `repo:<owner>@<id>/<repo>@<id>:...` matches it too.
+The command reads GitHub's numeric repository id with `GITHUB_TOKEN` or `GH_TOKEN`; without one, pass `--repository-id <numeric_id>`. The subject is `repo:<owner/repo>:ref:refs/heads/<branch>` from `--branch`, or `repo:<owner/repo>:environment:<environment>` from `--environment`. Either spelling of a binding (`repo:<owner>@<id>/<repo>@<id>:...` too) matches either spelling of a token. `--no-workflow` writes only the binding.
 
 Generated workflow shape:
 
@@ -704,14 +704,14 @@ run402 ci revoke <binding_id>
 `list` prints `{ "project_id": "...", "bindings": [...] }`.
 `revoke` prints `{ "binding": {...}, "revoked": true, "revocation_residuals": [...] }`.
 
-Intentional omissions in v1: no raw `--subject`, no wildcard flag, no `--allow-event`, no PR deploy flags, and no `--no-repository-id`. Use `--branch` or `--environment`; create a follow-up design before broadening trust.
+Not in v1: raw `--subject`, wildcards, `--allow-event`, PR deploy flags, `--no-repository-id`; use `--branch` or `--environment`.
 
 CI deploy restrictions: when `run402 deploy` runs inside GitHub Actions with OIDC env vars present, it uses the GitHub subject token, exchanges it for a Run402 CI session, and skips the local wallet preflight. CI manifests may include only `project_id`, `database`, `functions`, `site`, absent/current `base`, and route declarations covered by the binding's `route_scopes`. Without `--route-scope`, CI cannot ship `routes`. CI cannot ship `secrets`, `subdomains`, `checks`, unknown future top-level fields, non-current base, or oversized manifests that require `manifest_ref`.
 
 Common CI error codes:
 - `invalid_token`: check `permissions: id-token: write` and the workflow's OIDC environment
-- `access_denied`: no active binding matched this repo/branch/environment
-- `binding_revoked`: a matching binding existed but was revoked (most often the project was transferred/handed off, which suspends the prior org's CI bindings) — re-run `run402 ci link github` to re-create it; do NOT run `set-asset-scopes` (it 409s on a revoked binding)
+- `access_denied`: no binding matched `details.subject` (`subject_format: customized` = non-default template); `next_actions` links it
+- `binding_revoked`: the matching binding was revoked (usually a project transfer) — re-run `run402 ci link github`, not `set-asset-scopes` (409 on a revoked binding)
 - `event_not_allowed`: v1 allows only `push` and `workflow_dispatch`
 - `repository_id_mismatch`: re-link from the current repo or pass the correct numeric `--repository-id`
 - `forbidden_spec_field` / `forbidden_plan`: remove disallowed CI manifest fields or run the deploy locally
@@ -1085,7 +1085,7 @@ Inside GitHub Actions, `deploy` automatically uses OIDC credentials when `GITHUB
 - `run402 live --tables <a,b> --once [--cursor <cursor>] [--wait <1..25>]` — one held read: hints since the cursor, or hold up to `--wait` seconds for the first one
 
 ### ci
-- `run402 ci link github [--project <project_id>] [--manifest <path>] [--repo <owner/repo>] [--branch <name> | --environment <name>] [--repository-id <repository_id>] [--workflow <path>] [--expires-at <iso>] [--route-scope <pattern> ...] [--force]` — create a GitHub Actions OIDC deploy binding and write a workflow
+- `run402 ci link github [--project <project_id>] [--manifest <path>] [--repo <owner/repo>] [--branch <name> | --environment <name>] [--repository-id <repository_id>] [--workflow <path> | --no-workflow] [--expires-at <iso>] [--route-scope <pattern> ...] [--force]` — create a GitHub Actions OIDC deploy binding and write a workflow (`--no-workflow`: the binding only)
 - `run402 ci list [--project <project_id>]` — list CI bindings for a project
 - `run402 ci revoke <binding_id>` — revoke a binding
 

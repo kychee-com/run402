@@ -1501,7 +1501,7 @@ const CI_DEPLOY_ERROR_GUIDANCE = {
     ],
   },
   access_denied: {
-    hint: "The OIDC token was valid, but no active Run402 CI binding allowed this workflow.",
+    hint: "No active binding on this project matches this workflow's OIDC subject (details.subject); next_actions names the command that links it.",
     next_actions: [
       editRequestAction("run402 ci list --project <prj_...>", "Inspect active CI bindings for this project."),
       editRequestAction("run402 ci link github", "Link this repository, branch, and environment to Run402."),

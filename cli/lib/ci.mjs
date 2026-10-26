@@ -21,7 +21,7 @@ const { version: RUN402_VERSION } = JSON.parse(
 const HELP = `run402 ci — Manage CI/OIDC deploy bindings
 
 Usage:
-  run402 ci link github [--project <project_id>] [--manifest <path>] [--repo <owner/repo>] [--branch <name> | --environment <name>] [--repository-id <repository_id>] [--workflow <path>] [--expires-at <iso>] [--route-scope <pattern> ...] [--force]
+  run402 ci link github [--project <project_id>] [--manifest <path>] [--repo <owner/repo>] [--branch <name> | --environment <name>] [--repository-id <repository_id>] [--workflow <path> | --no-workflow] [--expires-at <iso>] [--route-scope <pattern> ...] [--force]
   run402 ci list [--project <project_id>]
   run402 ci revoke <binding_id>
   run402 ci set-asset-scopes <binding_id> <scope1> [<scope2> ...]
@@ -37,16 +37,19 @@ const SUB_HELP = {
   link: `run402 ci link github — Link GitHub Actions OIDC for run402 deploy
 
 Usage:
-  run402 ci link github [--project <project_id>] [--manifest <path>] [--repo <owner/repo>] [--branch <name> | --environment <name>] [--repository-id <repository_id>] [--workflow <path>] [--expires-at <iso>] [--route-scope <pattern> ...] [--force]
+  run402 ci link github [--project <project_id>] [--manifest <path>] [--repo <owner/repo>] [--branch <name> | --environment <name>] [--repository-id <repository_id>] [--workflow <path> | --no-workflow] [--expires-at <iso>] [--route-scope <pattern> ...] [--force]
 
 Options:
   --project <project_id>          Project ID (defaults to the active project)
   --manifest <path>       Manifest path used by the generated workflow (default: run402.deploy.json)
-  --repo <owner/repo>     GitHub repo (default: inferred from origin remote)
+  --repo <owner/repo>     GitHub repo as owner/repo, owner@<id>/repo@<id> (the spelling of an immutable
+                          OIDC subject, which also gives the repository id) or a github.com URL
+                          (default: inferred from origin remote)
   --branch <name>         Branch subject and push trigger (default: current branch)
   --environment <name>    GitHub environment subject; adds job.environment
   --repository-id <repository_id>    Numeric GitHub repository id when API lookup is unavailable
   --workflow <path>       Workflow path (default: .github/workflows/run402-deploy.yml)
+  --no-workflow           Create the binding only, for a repository whose workflow already runs run402 deploy
   --expires-at <iso>      Optional binding expiration timestamp
   --route-scope <pattern> Optional exact path or final wildcard route scope, repeatable (examples: /admin, /api/*)
   --force                 Overwrite an existing workflow file
@@ -107,8 +110,8 @@ function parseFlags(args, allowed, { repeatable = new Set() } = {}) {
         details: { flag: arg },
       });
     }
-    if (arg === "--force") {
-      flags.force = true;
+    if (arg === "--force" || arg === "--no-workflow") {
+      flags[arg.slice(2).replace(/-/g, "_")] = true;
       continue;
     }
     if (!args[i + 1] || args[i + 1].startsWith("--")) {
@@ -179,6 +182,21 @@ function parseGithubRemote(remote) {
   const sshUrl = cleaned.match(/^ssh:\/\/git@github\.com\/([^/]+)\/(.+)$/);
   if (sshUrl) return `${sshUrl[1]}/${sshUrl[2]}`;
   return null;
+}
+
+// `@` and `:` cannot appear in a GitHub owner or repository name.
+const GITHUB_REPO_NAME = /^[^/\s@:]+\/[^/\s@:]+$/;
+const GITHUB_REPO_IMMUTABLE = /^([^/\s@:]+)@(\d+)\/([^/\s@:]+)@(\d+)$/;
+
+// --repo takes the repository however the owner has it: owner/repo, the
+// owner@<owner_id>/repo@<repo_id> spelling of GitHub's immutable OIDC subject
+// (which also carries the repository id), or a github.com URL. The binding is
+// always written in the name form; the gateway matches either spelling.
+function resolveRepo(value) {
+  const immutable = GITHUB_REPO_IMMUTABLE.exec(value);
+  if (immutable) return { repo: `${immutable[1]}/${immutable[3]}`, repoId: immutable[4] };
+  const repo = parseGithubRemote(value) || value;
+  return GITHUB_REPO_NAME.test(repo) ? { repo, repoId: null } : null;
 }
 
 function inferBranch() {
@@ -259,6 +277,7 @@ async function linkGithub(args) {
     "--environment",
     "--repository-id",
     "--workflow",
+    "--no-workflow",
     "--expires-at",
     "--route-scope",
     "--force",
@@ -277,18 +296,41 @@ async function linkGithub(args) {
     });
   }
 
+  if (flags.no_workflow) {
+    const clash = ["--workflow", "--manifest", "--force"].find((flag) => flags[flag.slice(2)] !== undefined);
+    if (clash) {
+      fail({
+        code: "BAD_USAGE",
+        message: `--no-workflow writes no workflow, so ${clash} has nothing to apply to.`,
+        details: { flag: clash },
+      });
+    }
+  }
+
   const projectId = resolveProjectId(flags.project);
-  const repo = flags.repo || inferRepo();
-  if (!repo || !/^[^/\s]+\/[^/\s]+$/.test(repo)) {
+  const resolved = resolveRepo(flags.repo || inferRepo() || "");
+  if (!resolved) {
     fail({
       code: "GITHUB_REPO_REQUIRED",
-      message: "Could not infer GitHub owner/repo from git remote origin.",
+      message: flags.repo
+        ? `--repo must be owner/repo, owner@<id>/repo@<id> or a github.com URL; got ${JSON.stringify(flags.repo)}.`
+        : "Could not infer GitHub owner/repo from git remote origin.",
       hint: "Pass --repo <owner/repo>.",
+    });
+  }
+  const { repo } = resolved;
+  if (resolved.repoId && flags.repository_id && resolved.repoId !== flags.repository_id) {
+    fail({
+      code: "GITHUB_REPOSITORY_ID_CONFLICT",
+      message: `--repo names repository id ${resolved.repoId}, but --repository-id is ${flags.repository_id}.`,
+      hint: "Drop --repository-id, or pass the --repo of the repository it names.",
+      details: { repo, repo_id_in_repo: resolved.repoId, repository_id: flags.repository_id },
     });
   }
   const branch = flags.environment ? (flags.branch || inferBranch() || null) : (flags.branch || inferBranch());
   const subject = buildSubject(repo, { branch, environment: flags.environment });
-  const repositoryId = flags.repository_id || await fetchGithubRepositoryId(repo);
+  const repositoryIdProvided = flags.repository_id || resolved.repoId;
+  const repositoryId = repositoryIdProvided || await fetchGithubRepositoryId(repo);
   if (!repositoryId) {
     fail({
       code: "GITHUB_REPOSITORY_ID_REQUIRED",
@@ -298,9 +340,9 @@ async function linkGithub(args) {
     });
   }
 
-  const workflowPath = flags.workflow || ".github/workflows/run402-deploy.yml";
-  const absWorkflowPath = resolve(process.cwd(), workflowPath);
-  if (existsSync(absWorkflowPath) && !flags.force) {
+  const workflowPath = flags.no_workflow ? null : flags.workflow || ".github/workflows/run402-deploy.yml";
+  const absWorkflowPath = workflowPath && resolve(process.cwd(), workflowPath);
+  if (absWorkflowPath && existsSync(absWorkflowPath) && !flags.force) {
     fail({
       code: "WORKFLOW_EXISTS",
       message: `Workflow already exists: ${workflowPath}`,
@@ -309,7 +351,7 @@ async function linkGithub(args) {
     });
   }
 
-  const manifest = flags.manifest || "run402.deploy.json";
+  const manifest = flags.no_workflow ? null : flags.manifest || "run402.deploy.json";
   const routeScopes = Array.isArray(flags.route_scope) ? flags.route_scope : [];
   const nonce = randomBytes(16).toString("hex");
   const values = {
@@ -334,7 +376,7 @@ async function linkGithub(args) {
     });
   }
 
-  const workflow = generateWorkflow({
+  const workflow = workflowPath && generateWorkflow({
     branch,
     environment: flags.environment || null,
     manifest,
@@ -348,8 +390,10 @@ async function linkGithub(args) {
       signed_delegation: signedDelegation,
     });
     const outputRouteScopes = Array.isArray(binding.route_scopes) ? binding.route_scopes : [];
-    mkdirSync(dirname(absWorkflowPath), { recursive: true });
-    writeFileSync(absWorkflowPath, workflow, { encoding: "utf8", mode: 0o644 });
+    if (absWorkflowPath) {
+      mkdirSync(dirname(absWorkflowPath), { recursive: true });
+      writeFileSync(absWorkflowPath, workflow, { encoding: "utf8", mode: 0o644 });
+    }
     console.log(JSON.stringify({
       binding_id: binding.id,
       project_id: projectId,
@@ -359,12 +403,14 @@ async function linkGithub(args) {
       allowed_actions: [...V1_CI_ALLOWED_ACTIONS],
       route_scopes: outputRouteScopes,
       github_repository_id: repositoryId,
-      github_repository_id_status: flags.repository_id ? "provided" : "verified",
+      github_repository_id_status: repositoryIdProvided ? "provided" : "verified",
       workflow_path: workflowPath,
       manifest_path: manifest,
       run402_version: RUN402_VERSION,
       delegation_chain_id: DEFAULT_CI_DELEGATION_CHAIN_ID,
-      bootstrap_caveat: "Commit the generated workflow and manifest before expecting GitHub Actions deploys.",
+      bootstrap_caveat: workflowPath
+        ? "Commit the generated workflow and manifest before expecting GitHub Actions deploys."
+        : "No workflow was written (--no-workflow): the repository's existing workflow deploys once it runs run402 deploy with permissions: id-token: write; re-run it.",
       consent_summary: [
         "This binding lets matching GitHub Actions workflows deploy site, function, and database changes to the project.",
         outputRouteScopes.length > 0
