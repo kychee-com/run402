@@ -1764,7 +1764,7 @@ describe("v1.50 assets — --meta / --exif-policy / --sort / --filter argv (issu
     const err = await expectExit1(() => run("ls", [
       "--project", "prj_test123", "--sort", "size:asc",
     ]));
-    assert.equal(err.code, "BAD_FLAG");
+    assert.equal(err.code, "INVALID_SORT");
     assert.match(err.message, /--sort must be one of/);
     assert.equal(calls.length, 0);
   });
@@ -1774,7 +1774,7 @@ describe("v1.50 assets — --meta / --exif-policy / --sort / --filter argv (issu
     const err = await expectExit1(() => run("ls", [
       "--project", "prj_test123", "--filter", "uploadedBy=agent_abc",
     ]));
-    assert.equal(err.code, "BAD_FLAG");
+    assert.equal(err.code, "INVALID_FILTER_KEY");
     assert.match(err.message, /uploadedBy/);
     assert.equal(calls.length, 0);
   });
@@ -1784,7 +1784,7 @@ describe("v1.50 assets — --meta / --exif-policy / --sort / --filter argv (issu
     const err = await expectExit1(() => run("ls", [
       "--project", "prj_test123", "--filter", "is_image=yes",
     ]));
-    assert.equal(err.code, "BAD_FLAG");
+    assert.equal(err.code, "INVALID_FILTER_KEY");
     assert.match(err.message, /is_image must be 'true' or 'false'/);
     assert.equal(calls.length, 0);
   });

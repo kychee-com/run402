@@ -70,7 +70,7 @@
       "purpose": "history",
       "interface": "historical",
       "exception": "Dated release records; add current entries without rewriting history.",
-      "sha256": "81ee9b574217663f1b6c34410c8bd57becf612db6ba44700aca41879e6808088",
+      "sha256": "967143ec410917337c65110ee9601d2d8235e905b0feb0d8ff9d1e76716f9e92",
       "outputs": [],
       "url": null,
       "checks": [
@@ -550,7 +550,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "a9ffbd79b2efadbe5a60d8c9f03b63b88f0c7135f6b63dfdae48eef6b81753fc",
+      "sha256": "f4cc3c403607d9bf45ba23834e33f2b158a39a0bbb133eb57a6da2fdb020c8a5",
       "outputs": [],
       "url": null,
       "checks": [
@@ -2929,7 +2929,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "ff49955885bee984aedbae3bedfcdfc8646258234ad6330b712985eeb9402baa",
+      "sha256": "6ffea327b04522cac4db808f3bfff97b6241f74e4be5f28d8a98444e9cb5404b",
       "outputs": [],
       "url": "https://docs.run402.com/errors/gateway/",
       "checks": [

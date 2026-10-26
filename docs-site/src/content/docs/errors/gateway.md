@@ -1033,7 +1033,7 @@ The gateway rejected or could not complete the request. Its response carries the
 
 <h2 id="INVALID_FILTER_KEY">INVALID_FILTER_KEY</h2>
 
-Owner: `public:sdk/src/namespaces/assets-validation.ts`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
+Owner: `public:sdk/src/namespaces/assets-validation.ts`, `public:cli/lib/assets.mjs`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
 
 The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
 
@@ -1135,7 +1135,7 @@ The gateway rejected or could not complete the request. Its response carries the
 
 <h2 id="INVALID_SORT">INVALID_SORT</h2>
 
-Owner: `public:sdk/src/namespaces/assets-validation.ts`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
+Owner: `public:sdk/src/namespaces/assets-validation.ts`, `public:cli/lib/assets.mjs`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
 
 The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
 

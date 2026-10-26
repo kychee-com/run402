@@ -362,7 +362,7 @@ const VALID_SORTS = new Set(["key:asc", "createdAt:asc", "createdAt:desc"]);
 function parseSortFlag(raw) {
   if (typeof raw !== "string" || !VALID_SORTS.has(raw)) {
     fail({
-      code: "BAD_FLAG",
+      code: "INVALID_SORT",
       message: `--sort must be one of: ${[...VALID_SORTS].join(", ")} — got: ${raw}`,
       details: { flag: "--sort", value: raw },
     });
@@ -390,7 +390,7 @@ function applyFilterFlag(filter, raw) {
   const value = raw.slice(eq + 1);
   if (!VALID_FILTER_KEYS.has(key)) {
     fail({
-      code: "BAD_FLAG",
+      code: "INVALID_FILTER_KEY",
       message: `--filter key ${key} not in: ${[...VALID_FILTER_KEYS].join(", ")}`,
       details: { flag: "--filter", key },
     });
@@ -398,7 +398,7 @@ function applyFilterFlag(filter, raw) {
   if (key === "is_image") {
     if (value !== "true" && value !== "false") {
       fail({
-        code: "BAD_FLAG",
+        code: "INVALID_FILTER_KEY",
         message: `--filter is_image must be 'true' or 'false', got: ${value}`,
       });
     }
@@ -407,7 +407,7 @@ function applyFilterFlag(filter, raw) {
     const n = Number(value);
     if (!Number.isSafeInteger(n) || n < 0) {
       fail({
-        code: "BAD_FLAG",
+        code: "INVALID_FILTER_KEY",
         message: `--filter ${key} must be a non-negative integer, got: ${value}`,
       });
     }
@@ -415,7 +415,7 @@ function applyFilterFlag(filter, raw) {
   } else {
     if (value.length === 0) {
       fail({
-        code: "BAD_FLAG",
+        code: "INVALID_FILTER_KEY",
         message: `--filter ${key} must be a non-empty string`,
       });
     }
