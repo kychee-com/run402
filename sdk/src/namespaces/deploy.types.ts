@@ -420,7 +420,23 @@ export interface FunctionEmailTriggerSpec {
   run: FunctionTriggerRunSpec;
 }
 
-export type FunctionTriggerSpec = FunctionScheduleTriggerSpec | FunctionEmailTriggerSpec;
+/**
+ * One durable function run per commit to app repo `repo` that changes a path
+ * starting with one of `paths` (every path when omitted), with the
+ * `app_repo_committed` event under `payload.event`. A repo that does not
+ * exist yet is accepted and fires once it is created.
+ */
+export interface FunctionAppRepoTriggerSpec {
+  id: string;
+  type: "app_repo";
+  /** App repo name, e.g. `"default"`. */
+  repo: string;
+  /** Path prefixes, e.g. `["people/"]`; omit for every commit. */
+  paths?: string[];
+  run: FunctionTriggerRunSpec;
+}
+
+export type FunctionTriggerSpec = FunctionScheduleTriggerSpec | FunctionEmailTriggerSpec | FunctionAppRepoTriggerSpec;
 
 /**
  * v1.51+: declarative role-gate descriptor for `FunctionSpec.requireRole`.
@@ -673,7 +689,25 @@ export interface StaticRouteTarget {
   file: string;
 }
 
-export type RouteTarget = FunctionRouteTarget | StaticRouteTarget;
+/**
+ * Serves a file from an app repo's latest `main` commit, resolved per request
+ * (a commit is live on the next request, with no deploy). With a prefix
+ * pattern (`/data/*`) the part matched by `*` is joined to `path` (default:
+ * the repo root); with an exact pattern `path` names the file. GET/HEAD only,
+ * never priced. `requireAuth` / `requireRole` gate it exactly as they gate a
+ * function route. A missing file, a directory, or an empty repo is a 404.
+ */
+export interface RepoRouteTarget {
+  type: "repo";
+  /** App repo name, e.g. `"default"`. */
+  repo: string;
+  /** Directory prefix (prefix pattern) or file path (exact pattern) in the repo. */
+  path?: string;
+  requireAuth?: boolean;
+  requireRole?: RequireRoleSpec | null;
+}
+
+export type RouteTarget = FunctionRouteTarget | StaticRouteTarget | RepoRouteTarget;
 
 /** One apply-v1 web route entry. */
 export interface RouteSpec {

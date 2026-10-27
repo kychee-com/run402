@@ -57,6 +57,9 @@ it('current schema snapshots preserve embedding, sign_in_path, and live-table fi
  for(const bad of ['//evil.example','/join?x=1','/_run402/x','/auth/sign-in','join'])assert.equal(validate({site:{sign_in_path:bad}}),false,bad);
  for(const ok of [true,false,null])assert.equal(validate({site:{noindex:ok}}),true,JSON.stringify(validate.errors));
  for(const bad of ['true',1])assert.equal(validate({site:{noindex:bad}}),false,String(bad));
+ assert.equal(validate({routes:{replace:[{pattern:'/data/*',target:{type:'repo',repo:'default',path:'public/',requireAuth:true}}]}}),true,JSON.stringify(validate.errors));
+ assert.equal(validate({routes:{replace:[{pattern:'/data/*',target:{type:'repo',path:'public/'}}]}}),false);
+ assert.equal(validate({routes:{replace:[{pattern:'/data/*',target:{type:'repo',repo:'default'},pricing:{mode:'always',amount_usd_micros:1,pay_to:'org_default_payout'}}]}}),false);
  const exposure=JSON.parse(readFileSync(new URL('../docs/quality/manifest.v1.json',import.meta.url),'utf8'));
  const expose=new Ajv({strict:false,validateFormats:false}).compile(exposure);
  assert.equal(expose({version:'1',tables:[{name:'notes',expose:true,policy:'user_owns_rows',owner_column:'user_id',live:true}]}),true,JSON.stringify(expose.errors));

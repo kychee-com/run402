@@ -378,6 +378,16 @@ Use `run402 up --check` for local validation and `run402 up --plan` for gateway 
 | `type` | `schema` | yes | See the downloadable schema for constraints. |
 | `file` | `string` | yes | Relative materialized release static asset path, not a public path. |
 
+<h3 id="release-repoRouteTarget">repoRouteTarget</h3>
+
+| Property | Shape | Required | Description |
+|---|---|---|---|
+| `type` | `schema` | yes | See the downloadable schema for constraints. |
+| `repo` | `string` | yes | App repo name, e.g. default. |
+| `path` | `string` | no | Directory prefix (prefix pattern) or file path (exact pattern) in the repo; default the repo root. |
+| `requireAuth` | `boolean` | no | See the downloadable schema for constraints. |
+| `requireRole` | `object,null` | no | The role gate a function route takes (table, idColumn, roleColumn, allowed, cacheTtl?, onDeny?, signInPath?). |
+
 <h3 id="release-smokeCheck">smokeCheck</h3>
 
 ```json

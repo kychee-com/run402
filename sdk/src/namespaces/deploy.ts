@@ -3189,7 +3189,7 @@ const FUNCTION_SPEC_FIELDS = new Set([
   "capabilities",
 ]);
 const FUNCTION_CONFIG_FIELDS = new Set(["timeoutSeconds", "memoryMb"]);
-const FUNCTION_TRIGGER_FIELDS = new Set(["id", "type", "cron", "timezone", "misfire_policy", "overlap_policy", "mailbox", "events", "run"]);
+const FUNCTION_TRIGGER_FIELDS = new Set(["id", "type", "cron", "timezone", "misfire_policy", "overlap_policy", "mailbox", "events", "repo", "paths", "run"]);
 const FUNCTION_TRIGGER_RUN_FIELDS = new Set(["event_type", "payload", "retry", "expires_after_seconds"]);
 const SITE_SPEC_FIELDS = new Set(["replace", "patch", "public_paths", "embedding", "sign_in_path", "noindex"]);
 const SITE_PATCH_FIELDS = new Set(["put", "delete"]);
@@ -3200,6 +3200,7 @@ const ROUTES_SPEC_FIELDS = new Set(["replace"]);
 const ROUTE_ENTRY_FIELDS = new Set(["pattern", "methods", "target", "pricing"]);
 const FUNCTION_ROUTE_TARGET_FIELDS = new Set(["type", "name"]);
 const STATIC_ROUTE_TARGET_FIELDS = new Set(["type", "file"]);
+const REPO_ROUTE_TARGET_FIELDS = new Set(["type", "repo", "path", "requireAuth", "requireRole"]);
 const ROUTE_METHOD_SET = new Set<string>(ROUTE_HTTP_METHODS);
 const ROUTE_PRICING_FIELDS = new Set([
   "mode",
@@ -3409,6 +3410,9 @@ function validateFunctionTriggers(value: unknown, resource: string): void {
     }
     if (seen.has(obj.id)) throw invalidSpec(`ReleaseSpec.${path}.id duplicates ${JSON.stringify(obj.id)}`, `${path}.id`);
     seen.add(obj.id);
+    if (obj.type !== "app_repo" && (obj.repo !== undefined || obj.paths !== undefined)) {
+      throw invalidSpec(`ReleaseSpec.${path} ${String(obj.type)} triggers cannot include repo or paths`, path);
+    }
     if (obj.type === "schedule") {
       if (obj.mailbox !== undefined || obj.events !== undefined) {
         throw invalidSpec(`ReleaseSpec.${path} schedule triggers cannot include mailbox or events`, path);
@@ -3448,8 +3452,32 @@ function validateFunctionTriggers(value: unknown, resource: string): void {
           );
         }
       }
+    } else if (obj.type === "app_repo") {
+      if (
+        obj.cron !== undefined ||
+        obj.timezone !== undefined ||
+        obj.misfire_policy !== undefined ||
+        obj.overlap_policy !== undefined ||
+        obj.mailbox !== undefined ||
+        obj.events !== undefined
+      ) {
+        throw invalidSpec(`ReleaseSpec.${path} app_repo triggers take only repo, paths and run`, path);
+      }
+      if (typeof obj.repo !== "string" || obj.repo.trim() === "") {
+        throw invalidSpec(`ReleaseSpec.${path}.repo is required (an app repo name, e.g. "default")`, `${path}.repo`);
+      }
+      if (obj.paths !== undefined) {
+        if (!Array.isArray(obj.paths) || obj.paths.length === 0) {
+          throw invalidSpec(`ReleaseSpec.${path}.paths must be a non-empty array of path prefixes; omit it for every commit`, `${path}.paths`);
+        }
+        for (const [pathIndex, prefix] of obj.paths.entries()) {
+          if (typeof prefix !== "string" || prefix === "") {
+            throw invalidSpec(`ReleaseSpec.${path}.paths.${pathIndex} must be a non-empty string`, `${path}.paths.${pathIndex}`);
+          }
+        }
+      }
     } else {
-      throw invalidSpec(`ReleaseSpec.${path}.type must be "schedule" or "email"`, `${path}.type`);
+      throw invalidSpec(`ReleaseSpec.${path}.type must be "schedule", "email" or "app_repo"`, `${path}.type`);
     }
     const run = requireObject(obj.run, `${path}.run`);
     validateKnownFields(run, `${path}.run`, FUNCTION_TRIGGER_RUN_FIELDS);
@@ -3759,12 +3787,28 @@ function validateRouteEntry(route: unknown, resource: string): void {
   if (targetType === "static") {
     validateStaticRouteEntry(entry, resource);
   }
+  if (targetType === "repo") {
+    validateRepoRouteEntry(entry, resource);
+  }
+}
+
+/** Shape only: the gateway checks that the repo exists and the path is valid. */
+function validateRepoRouteEntry(entry: Record<string, unknown>, resource: string): void {
+  if (entry.methods === undefined) return;
+  const methodSet = new Set(entry.methods as unknown[]);
+  const valid = methodSet.has("GET") && (methodSet.size === 1 || (methodSet.size === 2 && methodSet.has("HEAD")));
+  if (!valid) {
+    throw invalidRouteSpec(
+      `ReleaseSpec.${resource}.methods for repo route targets must be ["GET"] or ["GET", "HEAD"] (or omitted); a repo target serves GET and HEAD only`,
+      `${resource}.methods`,
+    );
+  }
 }
 
 function validateRoutePricing(
   pricing: unknown,
   resource: string,
-  targetType: "function" | "static",
+  targetType: "function" | "static" | "repo",
 ): void {
   if (pricing === undefined) return;
   if (targetType !== "function") {
@@ -3877,7 +3921,7 @@ function validateRoutePricingNetworks(networks: unknown, resource: string): stri
   return [...seen];
 }
 
-function validateRouteTarget(target: unknown, resource: string): "function" | "static" {
+function validateRouteTarget(target: unknown, resource: string): "function" | "static" | "repo" {
   const obj = requireObject(target, resource);
   if ((hasOwn(obj, "function") || hasOwn(obj, "static")) && !hasOwn(obj, "type")) {
     throw invalidRouteSpec(
@@ -3903,8 +3947,24 @@ function validateRouteTarget(target: unknown, resource: string): "function" | "s
     validateStaticTargetFile(obj.file, `${resource}.file`);
     return "static";
   }
+  if (obj.type === "repo") {
+    validateKnownFields(obj, resource, REPO_ROUTE_TARGET_FIELDS);
+    if (typeof obj.repo !== "string" || obj.repo.length === 0) {
+      throw invalidRouteSpec(`ReleaseSpec.${resource}.repo is required for repo route targets (an app repo name, e.g. "default")`, `${resource}.repo`);
+    }
+    if (obj.path !== undefined && typeof obj.path !== "string") {
+      throw invalidRouteSpec(`ReleaseSpec.${resource}.path must be a string`, `${resource}.path`);
+    }
+    if (obj.requireAuth !== undefined && typeof obj.requireAuth !== "boolean") {
+      throw invalidRouteSpec(`ReleaseSpec.${resource}.requireAuth must be a boolean`, `${resource}.requireAuth`);
+    }
+    if (obj.requireRole !== undefined && obj.requireRole !== null) {
+      requireObject(obj.requireRole, `${resource}.requireRole`);
+    }
+    return "repo";
+  }
   throw invalidRouteSpec(
-    `Unsupported route target type ${JSON.stringify(obj.type)} at ReleaseSpec.${resource}.type; route targets support "function" and "static"`,
+    `Unsupported route target type ${JSON.stringify(obj.type)} at ReleaseSpec.${resource}.type; route targets support "function", "static" and "repo"`,
     `${resource}.type`,
   );
 }
@@ -4811,6 +4871,15 @@ function normalizeFunctionTriggers(
           type: "email" as const,
           mailbox: trigger.mailbox,
           events: [...trigger.events].sort(),
+          run,
+        };
+      }
+      if (trigger.type === "app_repo") {
+        return {
+          id: trigger.id,
+          type: "app_repo" as const,
+          repo: trigger.repo,
+          ...(trigger.paths !== undefined ? { paths: [...trigger.paths] } : {}),
           run,
         };
       }

@@ -373,6 +373,7 @@ const MANIFEST_ROUTES_FIELDS = new Set(["replace"]);
 const MANIFEST_ROUTE_ENTRY_FIELDS = new Set(["pattern", "methods", "target", "pricing"]);
 const MANIFEST_FUNCTION_ROUTE_TARGET_FIELDS = new Set(["type", "name"]);
 const MANIFEST_STATIC_ROUTE_TARGET_FIELDS = new Set(["type", "file"]);
+const MANIFEST_REPO_ROUTE_TARGET_FIELDS = new Set(["type", "repo", "path", "requireAuth", "require_auth", "requireRole", "require_role"]);
 const ROUTE_METHOD_SET = new Set<string>(ROUTE_HTTP_METHODS);
 const DATA_MANIFEST_EXTENSIONS = new Set([".json"]);
 const EXECUTABLE_MANIFEST_EXTENSIONS = new Set([".ts", ".mts", ".cts", ".js", ".mjs", ".cjs"]);
@@ -1739,7 +1740,26 @@ function mapRoutes(routes: unknown): ReleaseRoutesSpec {
     throw new LocalError("Deploy manifest routes.replace must be an array", CONTEXT);
   }
   replace.forEach((route, index) => validateManifestRouteEntry(route, index));
-  return routes as ReleaseRoutesSpec;
+  return {
+    ...routes,
+    replace: replace.map((route: Record<string, unknown>) => {
+      const target = route.target as Record<string, unknown>;
+      return target.type === "repo" ? { ...route, target: mapRepoRouteTarget(target) } : route;
+    }),
+  } as unknown as ReleaseRoutesSpec;
+}
+
+/** A repo route target in the SDK's camelCase, accepting the manifest's snake_case gate names too. */
+function mapRepoRouteTarget(target: Record<string, unknown>): Record<string, unknown> {
+  const requireAuth = target.requireAuth ?? target.require_auth;
+  const requireRole = target.requireRole ?? target.require_role;
+  return {
+    type: "repo",
+    repo: target.repo,
+    ...(target.path !== undefined ? { path: target.path } : {}),
+    ...(requireAuth !== undefined ? { requireAuth } : {}),
+    ...(requireRole !== undefined ? { requireRole: requireRole === null ? null : mapRequireRole(requireRole) } : {}),
+  };
 }
 
 function routeShapeHints(obj: Record<string, unknown>): Record<string, string> {
@@ -1786,7 +1806,7 @@ function validateManifestRouteEntry(route: unknown, index: number): void {
   if (targetType === "static") validateManifestStaticRouteEntry(route, label);
 }
 
-function validateManifestRouteTarget(target: unknown, label: string): "function" | "static" {
+function validateManifestRouteTarget(target: unknown, label: string): "function" | "static" | "repo" {
   assertPlainRecord(target, label);
   if (
     (Object.prototype.hasOwnProperty.call(target, "function") ||
@@ -1813,7 +1833,14 @@ function validateManifestRouteTarget(target: unknown, label: string): "function"
     validateManifestStaticTargetFile(target.file, `${label}.file`);
     return "static";
   }
-  throw new LocalError(`${label}.type must be "function" or "static"; got ${JSON.stringify(target.type)}`, CONTEXT);
+  if (target.type === "repo") {
+    assertKnownFields(target, label, MANIFEST_REPO_ROUTE_TARGET_FIELDS);
+    if (typeof target.repo !== "string" || target.repo.length === 0) {
+      throw new LocalError(`${label}.repo is required for repo route targets (an app repo name, e.g. "default")`, CONTEXT);
+    }
+    return "repo";
+  }
+  throw new LocalError(`${label}.type must be "function", "static" or "repo"; got ${JSON.stringify(target.type)}`, CONTEXT);
 }
 
 function validateManifestStaticRouteEntry(route: Record<string, unknown>, label: string): void {

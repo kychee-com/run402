@@ -49,6 +49,7 @@ Run `node scripts/documentation-inventory.mjs` to reject newly discovered unclas
 | public | [cli/lib/admin.mjs](cli/lib/admin.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/agent.mjs](cli/lib/agent.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/ai.mjs](cli/lib/ai.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
+| public | [cli/lib/app-repos.mjs](cli/lib/app-repos.mjs) | guide / cli | pending | pending |
 | public | [cli/lib/approve.mjs](cli/lib/approve.mjs) | guide / cli | pending | pending |
 | public | [cli/lib/apps.mjs](cli/lib/apps.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/archives.mjs](cli/lib/archives.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
@@ -139,6 +140,7 @@ Run `node scripts/documentation-inventory.mjs` to reject newly discovered unclas
 | public | [docs-site/src/content/docs/auth/rendering-modes.md](docs-site/src/content/docs/auth/rendering-modes.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | hosted verified: 2026-09-17; portal 23751749 |
 | public | [docs-site/src/content/docs/auth/sdk.md](docs-site/src/content/docs/auth/sdk.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | hosted verified: 2026-09-17; portal 23751749 |
 | public | [docs-site/src/content/docs/auth/tenant-assertion.md](docs-site/src/content/docs/auth/tenant-assertion.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | hosted verified: 2026-09-17; portal 23751749 |
+| public | [docs-site/src/content/docs/build/app-repos.md](docs-site/src/content/docs/build/app-repos.md) | guide / cli | pending | pending |
 | public | [docs-site/src/content/docs/build/astro/index.md](docs-site/src/content/docs/build/astro/index.md) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [docs-site/src/content/docs/build/auth.md](docs-site/src/content/docs/build/auth.md) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [docs-site/src/content/docs/build/database.md](docs-site/src/content/docs/build/database.md) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |

@@ -637,6 +637,9 @@
             },
             {
               "$ref": "#/$defs/staticRouteTarget"
+            },
+            {
+              "$ref": "#/$defs/repoRouteTarget"
             }
           ]
         },
@@ -652,7 +655,10 @@
                 "type": "object",
                 "properties": {
                   "type": {
-                    "const": "static"
+                    "enum": [
+                      "static",
+                      "repo"
+                    ]
                   }
                 },
                 "required": [
@@ -790,6 +796,39 @@
         "file": {
           "type": "string",
           "description": "Relative materialized release static asset path, not a public path."
+        }
+      }
+    },
+    "repoRouteTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Serves a file from an app repo's latest main commit, resolved per request (live on commit, no deploy). A prefix pattern (/data/*) joins the part matched by * to path; an exact pattern names the file with path. GET/HEAD only; never priced. requireAuth/requireRole gate it as they gate a function route.",
+      "required": [
+        "type",
+        "repo"
+      ],
+      "properties": {
+        "type": {
+          "const": "repo"
+        },
+        "repo": {
+          "type": "string",
+          "minLength": 1,
+          "description": "App repo name, e.g. default."
+        },
+        "path": {
+          "type": "string",
+          "description": "Directory prefix (prefix pattern) or file path (exact pattern) in the repo; default the repo root."
+        },
+        "requireAuth": {
+          "type": "boolean"
+        },
+        "requireRole": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "The role gate a function route takes (table, idColumn, roleColumn, allowed, cacheTtl?, onDeny?, signInPath?)."
         }
       }
     },

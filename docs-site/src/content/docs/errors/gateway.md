@@ -137,6 +137,78 @@ Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
 
 The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
 
+<h2 id="APP_REPO_CONFLICT">APP_REPO_CONFLICT</h2>
+
+Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+A commit or revert did not land (409): with `parent`, the head moved past it; without `parent`, a path it changes was also changed between its `base` and the head. `details` carries `head`, `base` and `conflicting_paths`; nothing was written.
+
+**Suggested fix:** re-read the conflicting paths at `details.head`, reapply the change, and commit again with that head as the base.
+
+
+<h2 id="APP_REPO_DEFAULT_UNDELETABLE">APP_REPO_DEFAULT_UNDELETABLE</h2>
+
+Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+Every project keeps its `default` app repo, so it cannot be deleted (403).
+
+**Suggested fix:** to undo content, revert the commits (a revert is a new commit); delete only named repos.
+
+
+<h2 id="APP_REPO_EXISTS">APP_REPO_EXISTS</h2>
+
+Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+`POST /projects/v1/:project_id/app-repos` (or `repos.create` in a function) named an app repo that already exists in the project (409).
+
+**Suggested fix:** use the existing repo (`run402 app-repos list`), or pick another name.
+
+
+<h2 id="APP_REPO_FILE_TOO_LARGE">APP_REPO_FILE_TOO_LARGE</h2>
+
+Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+A commit or push carried a file over the 4 MiB per-file cap (`APP_REPO_MAX_FILE_BYTES`, 422); `details` names the path and the cap, and nothing was committed.
+
+**Suggested fix:** store the bytes with `assets.put` (media belongs in assets) and commit the returned reference, such as its URL or SHA-256, in the repo instead.
+
+
+<h2 id="APP_REPO_LFS_UNSUPPORTED">APP_REPO_LFS_UNSUPPORTED</h2>
+
+Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+App repos do not support Git LFS: an LFS pointer file or the LFS batch endpoint was refused.
+
+**Suggested fix:** remove the LFS tracking for the path, store large files with `assets.put`, and commit a reference to them.
+
+
+<h2 id="APP_REPO_NOT_FOUND">APP_REPO_NOT_FOUND</h2>
+
+Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+The named app repo does not exist in this project (404). Only `default` exists without creation; a read, commit or push never creates a repo.
+
+**Suggested fix:** follow the `create_app_repo` next action (`run402 app-repos create <name>`, or `repos.create(name)` in a function), or check the name with `run402 app-repos list`.
+
+
+<h2 id="APP_REPO_PATH_NOT_FOUND">APP_REPO_PATH_NOT_FOUND</h2>
+
+Owner: `public:cli/lib/app-repos.mjs`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+No file exists at that path in the commit read (404); a directory read as a file, and any path in an empty repo, answer the same. `r.appRepos.readFile` and the functions `repo.read*` helpers return `null` for it instead of throwing.
+
+**Suggested fix:** list the directory (`run402 app-repos ls [<name>] [<dir>]`) or read at another commit with `--at`.
+
+
+<h2 id="APP_REPOS_UNSUPPORTED">APP_REPOS_UNSUPPORTED</h2>
+
+Owner: `core:packages/functions/src/repo.ts`.
+
+The `repo` / `repos` helpers of `@run402/functions` ran on a host without app repos (Run402 Core). App repos are a Run402 Cloud capability.
+
+**Suggested fix:** deploy the function to Run402 Cloud, or keep the content in the database or assets on Core.
+
+
 <h2 id="ARCHIVE_BLOB_MISSING">ARCHIVE_BLOB_MISSING</h2>
 
 Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.

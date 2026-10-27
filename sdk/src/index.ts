@@ -42,6 +42,7 @@ import { Grants } from "./namespaces/grants.js";
 import { Events } from "./namespaces/events.js";
 import { Live } from "./namespaces/live.js";
 import { Push } from "./namespaces/push.js";
+import { AppRepos } from "./namespaces/app-repos.js";
 import { Rooms } from "./namespaces/rooms.js";
 import { Escalations } from "./namespaces/escalations.js";
 import { Errors } from "./namespaces/errors.js";
@@ -167,6 +168,14 @@ export class Run402 {
    * Also project-scoped as `r.project(id).push`.
    */
   readonly push: Push;
+  /**
+   * App repos: plain (unencrypted) git repositories owned by a project and
+   * written by its app. `list`, `create`, `get`, `delete`, `log`, `readFile`,
+   * `tree`, `diff`, `commit`, `revert`; clone with `run402 app-repos clone`.
+   * Not a KyGit vault (that is `r.repos`). Also project-scoped as
+   * `r.project(id).appRepos`.
+   */
+  readonly appRepos: AppRepos;
   /**
    * Agent-messaging coordination rooms — presence, room-visible addressed
    * messages, advisory claims. Org-scoped; a project id names its default
@@ -296,6 +305,7 @@ export class Run402 {
     this.events = new Events(client);
     this.live = new Live(client);
     this.push = new Push(client);
+    this.appRepos = new AppRepos(client);
     this.rooms = new Rooms(client);
     this.escalations = new Escalations(client);
     this.pay = new Pay(client, opts.payExecutor);
@@ -666,6 +676,8 @@ export type * from "./namespaces/events.types.js";
 export type * from "./namespaces/live.types.js";
 export { Push } from "./namespaces/push.js";
 export type * from "./namespaces/push.types.js";
+export { AppRepos } from "./namespaces/app-repos.js";
+export type * from "./namespaces/app-repos.types.js";
 export { Rooms, ScopedRoom } from "./namespaces/rooms.js";
 export { Escalations } from "./namespaces/escalations.js";
 export { waitFor, type WaitForOptions, type WaitForResult } from "./wait.js";

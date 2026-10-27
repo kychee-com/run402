@@ -210,6 +210,22 @@ import type {
 } from "./namespaces/events.types.js";
 import type { PushMessage, PushStatus } from "./namespaces/push.types.js";
 import type {
+  AppRepo,
+  AppRepoCommitOptions,
+  AppRepoCommitResult,
+  AppRepoCreateOptions,
+  AppRepoDeleteOptions,
+  AppRepoDeleteResult,
+  AppRepoDiff,
+  AppRepoFile,
+  AppRepoList,
+  AppRepoLogOptions,
+  AppRepoLogPage,
+  AppRepoReadOptions,
+  AppRepoRevertOptions,
+  AppRepoTree,
+} from "./namespaces/app-repos.types.js";
+import type {
   ErrorFingerprintDetail,
   ErrorsPage,
   ListErrorsOptions,
@@ -526,6 +542,51 @@ class ScopedPush {
   /** One message: what was sent, to whom, and each delivery's state. */
   getMessage(messageId: string): Promise<PushMessage> {
     return this.parent.push.getMessage(this.projectId, messageId);
+  }
+}
+
+class ScopedAppRepos {
+  constructor(private readonly parent: Run402, private readonly projectId: string) {}
+
+  /** Every app repo of the project; `default` is always listed. */
+  list(): Promise<AppRepoList> {
+    return this.parent.appRepos.list(this.projectId);
+  }
+  /** Create a repo, optionally `from` another repo of the project. */
+  create(opts: AppRepoCreateOptions): Promise<AppRepo> {
+    return this.parent.appRepos.create(this.projectId, opts);
+  }
+  /** One repo, with its head and `clone_url`. */
+  get(repoName: string): Promise<AppRepo> {
+    return this.parent.appRepos.get(this.projectId, repoName);
+  }
+  /** Delete a repo; `confirm` must equal its name, and `default` cannot be deleted. */
+  delete(repoName: string, opts: AppRepoDeleteOptions): Promise<AppRepoDeleteResult> {
+    return this.parent.appRepos.delete(this.projectId, repoName, opts);
+  }
+  /** Commits on `main`, newest first, optionally only those that changed `path`. */
+  log(repoName: string, opts?: AppRepoLogOptions): Promise<AppRepoLogPage> {
+    return this.parent.appRepos.log(this.projectId, repoName, opts);
+  }
+  /** One file at the head or `at`; `null` when absent. */
+  readFile(repoName: string, path: string, opts?: AppRepoReadOptions): Promise<AppRepoFile | null> {
+    return this.parent.appRepos.readFile(this.projectId, repoName, path, opts);
+  }
+  /** A directory listing at the head or `at`. */
+  tree(repoName: string, path?: string, opts?: AppRepoReadOptions): Promise<AppRepoTree> {
+    return this.parent.appRepos.tree(this.projectId, repoName, path, opts);
+  }
+  /** The paths that changed between two commits. */
+  diff(repoName: string, from: string, to: string): Promise<AppRepoDiff> {
+    return this.parent.appRepos.diff(this.projectId, repoName, from, to);
+  }
+  /** Commit files to `main`. */
+  commit(repoName: string, opts: AppRepoCommitOptions): Promise<AppRepoCommitResult> {
+    return this.parent.appRepos.commit(this.projectId, repoName, opts);
+  }
+  /** Commit the inverse of `commit`'s changes. */
+  revert(repoName: string, commit: string, opts?: AppRepoRevertOptions): Promise<AppRepoCommitResult> {
+    return this.parent.appRepos.revert(this.projectId, repoName, commit, opts);
   }
 }
 
@@ -1175,6 +1236,8 @@ export class ScopedRun402 {
   readonly live: ScopedLive;
   /** Web push notification status and per-message delivery outcomes, project-id pre-bound. */
   readonly push: ScopedPush;
+  /** App repos (plain git repositories the app owns), project-id pre-bound. */
+  readonly appRepos: ScopedAppRepos;
   /** Release-error-rollup query surface (list / get / watch), project-id pre-bound. */
   readonly errors: ScopedErrors;
   readonly archives: ScopedArchives;
@@ -1200,6 +1263,7 @@ export class ScopedRun402 {
     this.events = new ScopedEvents(parent, projectId);
     this.live = new ScopedLive(parent, projectId);
     this.push = new ScopedPush(parent, projectId);
+    this.appRepos = new ScopedAppRepos(parent, projectId);
     this.errors = new ScopedErrors(parent, projectId);
     this.archives = new ScopedArchives(parent, projectId);
     this.snapshots = new ScopedSnapshots(parent, projectId);

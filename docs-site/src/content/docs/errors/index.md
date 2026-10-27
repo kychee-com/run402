@@ -90,6 +90,30 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="APP_INSTALL_STATE_NOT_FOUND"></a>
 [`APP_INSTALL_STATE_NOT_FOUND`](/errors/gateway/#APP_INSTALL_STATE_NOT_FOUND)
 
+<a id="APP_REPO_CONFLICT"></a>
+[`APP_REPO_CONFLICT`](/errors/gateway/#APP_REPO_CONFLICT)
+
+<a id="APP_REPO_DEFAULT_UNDELETABLE"></a>
+[`APP_REPO_DEFAULT_UNDELETABLE`](/errors/gateway/#APP_REPO_DEFAULT_UNDELETABLE)
+
+<a id="APP_REPO_EXISTS"></a>
+[`APP_REPO_EXISTS`](/errors/gateway/#APP_REPO_EXISTS)
+
+<a id="APP_REPO_FILE_TOO_LARGE"></a>
+[`APP_REPO_FILE_TOO_LARGE`](/errors/gateway/#APP_REPO_FILE_TOO_LARGE)
+
+<a id="APP_REPO_LFS_UNSUPPORTED"></a>
+[`APP_REPO_LFS_UNSUPPORTED`](/errors/gateway/#APP_REPO_LFS_UNSUPPORTED)
+
+<a id="APP_REPO_NOT_FOUND"></a>
+[`APP_REPO_NOT_FOUND`](/errors/gateway/#APP_REPO_NOT_FOUND)
+
+<a id="APP_REPO_PATH_NOT_FOUND"></a>
+[`APP_REPO_PATH_NOT_FOUND`](/errors/gateway/#APP_REPO_PATH_NOT_FOUND)
+
+<a id="APP_REPOS_UNSUPPORTED"></a>
+[`APP_REPOS_UNSUPPORTED`](/errors/gateway/#APP_REPOS_UNSUPPORTED)
+
 <a id="APP_SPEC_INVALID"></a>
 [`APP_SPEC_INVALID`](/errors/client/#APP_SPEC_INVALID)
 
@@ -537,11 +561,17 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="GENERATION_REGRESSION"></a>
 [`GENERATION_REGRESSION`](/errors/gateway/#GENERATION_REGRESSION)
 
+<a id="GIT_CLONE_FAILED"></a>
+[`GIT_CLONE_FAILED`](/errors/client/#GIT_CLONE_FAILED)
+
 <a id="GIT_COMMAND_FAILED"></a>
 [`GIT_COMMAND_FAILED`](/errors/client/#GIT_COMMAND_FAILED)
 
 <a id="GIT_CWD_MISSING"></a>
 [`GIT_CWD_MISSING`](/errors/client/#GIT_CWD_MISSING)
+
+<a id="GIT_NOT_FOUND"></a>
+[`GIT_NOT_FOUND`](/errors/client/#GIT_NOT_FOUND)
 
 <a id="GIT_OBJECT_FORMAT_UNSUPPORTED"></a>
 [`GIT_OBJECT_FORMAT_UNSUPPORTED`](/errors/gateway/#GIT_OBJECT_FORMAT_UNSUPPORTED)

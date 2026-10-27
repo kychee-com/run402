@@ -92,7 +92,7 @@ function readCommandSource(filePath: string): string | null {
 /** Parse CLI commands as "module:subcommand" pairs */
 function parseCliCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["admin", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "stripe", "apps", "email", "feedback", "agent", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "orgs", "identity", "buzz", "grants", "deliveries", "contacts", "subscriptions", "webhook-secret", "archives", "rooms", "messages", "claims", "escalations", "repos", "events", "errors", "push"]) {
+  for (const mod of ["admin", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "stripe", "apps", "email", "feedback", "agent", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "orgs", "identity", "buzz", "grants", "deliveries", "contacts", "subscriptions", "webhook-secret", "archives", "rooms", "messages", "claims", "escalations", "repos", "events", "errors", "push", "app-repos"]) {
     for (const sub of parseSubcommands(join(__dirname, "cli/lib", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -137,7 +137,7 @@ function parseCliCommands(): string[] {
 /** Parse OpenClaw commands as "module:subcommand" pairs */
 function parseOpenClawCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["admin", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "stripe", "apps", "email", "feedback", "agent", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "orgs", "identity", "buzz", "grants", "deliveries", "contacts", "subscriptions", "webhook-secret", "archives", "rooms", "messages", "claims", "escalations", "repos", "events", "errors", "push"]) {
+  for (const mod of ["admin", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "stripe", "apps", "email", "feedback", "agent", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "orgs", "identity", "buzz", "grants", "deliveries", "contacts", "subscriptions", "webhook-secret", "archives", "rooms", "messages", "claims", "escalations", "repos", "events", "errors", "push", "app-repos"]) {
     for (const sub of parseSubcommands(join(__dirname, "openclaw/scripts", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -613,6 +613,19 @@ const SURFACE: Capability[] = [
   // `push status --message <id>` is the per-message read; the SDK's
   // push.getMessage is tracked in SDK_ONLY_METHODS.
   { id: "push_status",                  endpoint: "GET /projects/v1/:project_id/push (+ /push/messages/:message_id)", cli: "push:status", openclaw: "push:status" },
+  // App repos: plain git repositories the app owns (never the `repos` vault
+  // family). Writes from agents go through git (`clone` + `git push`) or a
+  // function's `repo.commit`; the SDK's get/diff/commit/revert are tracked in
+  // SDK_ONLY_METHODS. `credential` is git's credential-helper protocol, which
+  // `clone` installs and git invokes; it has no SDK method.
+  { id: "list_app_repos",               endpoint: "GET /projects/v1/:project_id/app-repos",                      cli: "app-repos:list",       openclaw: "app-repos:list" },
+  { id: "create_app_repo",              endpoint: "POST /projects/v1/:project_id/app-repos",                     cli: "app-repos:create",     openclaw: "app-repos:create" },
+  { id: "delete_app_repo",              endpoint: "DELETE /projects/v1/:project_id/app-repos/:repo_name",        cli: "app-repos:delete",     openclaw: "app-repos:delete" },
+  { id: "app_repo_log",                 endpoint: "GET /projects/v1/:project_id/app-repos/:repo_name/commits",   cli: "app-repos:log",        openclaw: "app-repos:log" },
+  { id: "app_repo_read_file",           endpoint: "GET /projects/v1/:project_id/app-repos/:repo_name/files/*",   cli: "app-repos:cat",        openclaw: "app-repos:cat" },
+  { id: "app_repo_tree",                endpoint: "GET /projects/v1/:project_id/app-repos/:repo_name/tree[/*]",  cli: "app-repos:ls",         openclaw: "app-repos:ls" },
+  { id: "clone_app_repo",               endpoint: "git smart HTTP /projects/v1/:project_id/app-repos/:repo_name.git", cli: "app-repos:clone", openclaw: "app-repos:clone" },
+  { id: "app_repo_credential_helper",   endpoint: "(local git credential helper)",                               cli: "app-repos:credential", openclaw: "app-repos:credential" },
 
   // ── Agent messaging — coordination rooms (add-agent-messaging) ──────────
   // One CLI family per resource: `rooms` (the room itself: list/get/join/
@@ -1231,6 +1244,16 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   // read `live.changes` is the polling-friendly shape and the mapped method.
   live_changes: "live.changes",
   push_status: "push.status",
+  list_app_repos: "appRepos.list",
+  create_app_repo: "appRepos.create",
+  delete_app_repo: "appRepos.delete",
+  app_repo_log: "appRepos.log",
+  app_repo_read_file: "appRepos.readFile",
+  app_repo_tree: "appRepos.tree",
+  // clone is CLI-only (it writes a working tree and hands git a credential);
+  // the CLI resolves the repo with appRepos.get first.
+  clone_app_repo: null,
+  app_repo_credential_helper: null,
   join_room: "rooms.registerPresence",
   send_room_message: "rooms.sendMessage",
   read_room_messages: "rooms.listMessages",
@@ -1940,6 +1963,14 @@ describe("SDK surface alignment", () => {
       // ─── Web push — one message's deliveries ───────────────────────────
       // Shares the `push status` CLI command (--message); no dedicated verb of its own.
       "push.getMessage",
+      // ─── App repos — reads and writes with no verb of their own ────────
+      // `clone` resolves the repo with appRepos.get; agents write through git
+      // (clone + push) or a function's repo.commit, so commit/revert/diff are
+      // SDK calls (MCP `run`) without a CLI verb.
+      "appRepos.get",
+      "appRepos.diff",
+      "appRepos.commit",
+      "appRepos.revert",
       // Agent messaging: join_room folds presence-listing + claim-listing into
       // the arrival call and read_room_messages folds get-one (message_id
       // param); scoped()/forProject() are addressing sugar the CLI uses

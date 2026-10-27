@@ -487,6 +487,50 @@ describe("Node deploy manifest helpers", () => {
     });
   });
 
+  it("maps repo route targets, accepting snake_case gate names", async () => {
+    const normalized = await normalizeDeployManifest({
+      project_id: "prj_manifest",
+      routes: {
+        replace: [
+          { pattern: "/data/*", target: { type: "repo", repo: "default", path: "public/" } },
+          {
+            pattern: "/members/*",
+            methods: ["GET"],
+            target: {
+              type: "repo",
+              repo: "members",
+              require_auth: true,
+              require_role: { table: "members", id_column: "user_id", role_column: "role", allowed: ["member"] },
+            },
+          },
+        ],
+      },
+    });
+
+    assert.deepEqual(normalized.spec.routes, {
+      replace: [
+        { pattern: "/data/*", target: { type: "repo", repo: "default", path: "public/" } },
+        {
+          pattern: "/members/*",
+          methods: ["GET"],
+          target: {
+            type: "repo",
+            repo: "members",
+            requireAuth: true,
+            requireRole: { table: "members", idColumn: "user_id", roleColumn: "role", allowed: ["member"] },
+          },
+        },
+      ],
+    });
+  });
+
+  it("refuses a repo route target without a repo name", async () => {
+    await assert.rejects(
+      () => normalizeDeployManifest({ project_id: "prj_manifest", routes: { replace: [{ pattern: "/data/*", target: { type: "repo" } }] } }),
+      /repo is required for repo route targets/,
+    );
+  });
+
   it("preserves a full i18n slice through manifest normalization", async () => {
     const normalized = await normalizeDeployManifest({
       project_id: "prj_manifest",

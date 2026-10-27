@@ -158,6 +158,7 @@ const MATRIX = {
   events: { shared: ["list"], specific: [] },
   live: { shared: [], specific: [] },
   push: { shared: ["status"], specific: [] },
+  "app-repos": { shared: ["list", "create", "delete", "log", "cat", "ls", "clone"], specific: [] },
   rooms: { shared: [], specific: [] },
   claims: { shared: [], specific: [] },
   // Every `repos` subcommand falls back to the module-level help (no

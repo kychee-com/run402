@@ -34,6 +34,7 @@ const GROUPED_COMMANDS = [
   "admin",
   "agent",
   "ai",
+  "app-repos",
   "apps",
   "archives",
   "assets",

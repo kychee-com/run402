@@ -2,8 +2,8 @@
   "version": 1,
   "contributions": {
     "gateway": {
-      "revision": "285af8feede03be8164a307a0f433e44f1aee18b",
-      "sourceDigest": "7b5c71da76779915abc5a749099959b09b92b9064e99e393b1191d84b909508d"
+      "revision": "fa41e429660719afe90b052916edde75f3a69663",
+      "sourceDigest": "63c92cf0f6fd307be0b18edf832ce8d98d174a2e7d8ae2de05d66d95b48a2bb2"
     },
     "core": {
       "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7"
@@ -243,6 +243,90 @@
         }
       ],
       "topic": "/errors/gateway/#APP_INSTALL_STATE_NOT_FOUND"
+    },
+    {
+      "code": "APP_REPO_CONFLICT",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#APP_REPO_CONFLICT"
+    },
+    {
+      "code": "APP_REPO_DEFAULT_UNDELETABLE",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#APP_REPO_DEFAULT_UNDELETABLE"
+    },
+    {
+      "code": "APP_REPO_EXISTS",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#APP_REPO_EXISTS"
+    },
+    {
+      "code": "APP_REPO_FILE_TOO_LARGE",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#APP_REPO_FILE_TOO_LARGE"
+    },
+    {
+      "code": "APP_REPO_LFS_UNSUPPORTED",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#APP_REPO_LFS_UNSUPPORTED"
+    },
+    {
+      "code": "APP_REPO_NOT_FOUND",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#APP_REPO_NOT_FOUND"
+    },
+    {
+      "code": "APP_REPO_PATH_NOT_FOUND",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "cli/lib/app-repos.mjs"
+        },
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#APP_REPO_PATH_NOT_FOUND"
+    },
+    {
+      "code": "APP_REPOS_UNSUPPORTED",
+      "owners": [
+        {
+          "owner": "core",
+          "source": "packages/functions/src/repo.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#APP_REPOS_UNSUPPORTED"
     },
     {
       "code": "APP_SPEC_INVALID",
@@ -804,6 +888,10 @@
         {
           "owner": "public",
           "source": "cli/lib/ai.mjs"
+        },
+        {
+          "owner": "public",
+          "source": "cli/lib/app-repos.mjs"
         },
         {
           "owner": "public",
@@ -1497,7 +1585,15 @@
       "owners": [
         {
           "owner": "public",
+          "source": "sdk/src/namespaces/app-repos.ts"
+        },
+        {
+          "owner": "public",
           "source": "sdk/src/node/wallets.ts"
+        },
+        {
+          "owner": "public",
+          "source": "cli/lib/app-repos.mjs"
         },
         {
           "owner": "public",
@@ -2183,6 +2279,16 @@
       "topic": "/errors/gateway/#GENERATION_REGRESSION"
     },
     {
+      "code": "GIT_CLONE_FAILED",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "cli/lib/app-repos.mjs"
+        }
+      ],
+      "topic": "/errors/client/#GIT_CLONE_FAILED"
+    },
+    {
       "code": "GIT_COMMAND_FAILED",
       "owners": [
         {
@@ -2201,6 +2307,16 @@
         }
       ],
       "topic": "/errors/client/#GIT_CWD_MISSING"
+    },
+    {
+      "code": "GIT_NOT_FOUND",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "cli/lib/app-repos.mjs"
+        }
+      ],
+      "topic": "/errors/client/#GIT_NOT_FOUND"
     },
     {
       "code": "GIT_OBJECT_FORMAT_UNSUPPORTED",

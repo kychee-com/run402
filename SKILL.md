@@ -992,6 +992,18 @@ run402 push status --message pmsg_123    # one message's per-phone deliveries: a
 
 The cap counts deliveries per organization per UTC day (100 prototype, 1,000 hobby, 10,000 team); a message that does not fit is refused whole: `403 QUOTA_EXCEEDED` with an upgrade next action, or on team (no higher tier) `429 RATE_LIMITED` with `Retry-After` until the UTC day resets. Push needs Run402 Cloud (`PUSH_UNSUPPORTED` on Core). Guide: <https://docs.run402.com/build/push/>.
 
+## App repos — content your app's users edit
+
+An app repo is a plain git repository the project owns and its app writes. It is not encrypted and is not a KyGit vault (keep source in `run402 repos`). Every project has `default` with no setup; create others explicitly (`run402 app-repos create user-42 --from template`), since a read, commit or push never creates one (`APP_REPO_NOT_FOUND`). In a function, `repo` (default) and `repos.open(name)` from `@run402/functions` read (`read`, `readJson`, `list`; `null` when absent) and commit (`repo.commit({ "people/a.json": person })`). One request reads one commit and sees its own writes; edits to different paths never conflict, and a real conflict is `409 APP_REPO_CONFLICT` naming the paths. The signed-in end user is the author (with a verified `Run402-Actor` trailer), the app the committer. Files are at most 4 MiB: put media in `assets.put` and commit the reference.
+
+```bash
+run402 app-repos log --path people/p-x.json   # who changed it, newest first
+run402 app-repos cat site.json                # one file at the head (--at <commit> for history)
+run402 app-repos clone default ./content      # plain git clone; git push is live on the next request
+```
+
+Serve the latest commit with a route target `{ "type": "repo", "repo": "default", "path": "public/" }` on a prefix pattern such as `/data/*` (GET/HEAD, no deploy on edit; `requireAuth` / `requireRole` gate it like a function), and run a function on each commit with a trigger `{ "id": "bundle", "type": "app_repo", "repo": "default", "paths": ["people/"], "run": { "event_type": "content.changed" } }`. `main` is the only branch and pushes must fast-forward: undo is a revert. Forks and snapshots leave app repos out and say so. Guide: <https://docs.run402.com/build/app-repos/>.
+
 ## On-chain — signers (your app's wallet)
 
 A signer is an Ethereum wallet Run402 keeps for your project: its key is created in and never leaves the platform's key custody, so an app sends money and signs contract calls without holding a private key. $0.04/day wallet rent + $0.000005 signing fee per signature. Signer creation requires $1.20 in allowance (30 days of rent). Non-custodial — see <https://run402.com/humans/terms.html#non-custodial-kms-wallets>. A signer sends USDC with no ETH on it (`transfers create`: the platform's facilitator settles the signed authorization and pays the gas), and an org can make a signer its payout address (`run402 orgs payout-wallet --signer <signer_id>`) so what priced routes earn is what the app pays out from.

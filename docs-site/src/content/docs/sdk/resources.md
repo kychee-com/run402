@@ -818,6 +818,46 @@ if (latest) {
 
 `removed` means the push service said the phone is gone and the platform deleted its subscription. Accepted credentials: the project's service_key, a wallet/control-plane principal with `project.read`, or a grant key; the SDK sends your principal when the credential provider has one, else the locally cached service key. An unknown message id, or another project's, is a 404 `ApiError` carrying the gateway's `code`. Neither read carries a subscription's endpoint or keys, so both run on the MCP `run` sandbox. The daily cap counts deliveries per organization per UTC day (100 / 1,000 / 10,000 on prototype / hobby / team); `push.send` refuses a message that does not fit whole with `403 QUOTA_EXCEEDED`. Push needs Run402 Cloud.
 
+### `r.appRepos`
+
+App repos: plain git repositories a project owns and its app writes (not encrypted, not a KyGit vault; that is `r.repos`). A deployed function reads and commits through `repo` / `repos` from `@run402/functions`; these calls are the agent side. Every project has `default`, which needs no creation and reads as empty (`head: null`) until its first commit. Also project-scoped as `r.project(id).appRepos.*` with the project id dropped. There is no clone method: `run402 app-repos clone` writes a working tree and hands git a credential.
+
+```
+list(projectId): Promise<{ app_repos: AppRepo[] }>                       // GET /projects/v1/:project_id/app-repos
+create(projectId, { repo_name, from? }): Promise<AppRepo>                 // POST …/app-repos (409 APP_REPO_EXISTS)
+get(projectId, repoName): Promise<AppRepo>                                // GET …/app-repos/:repo_name
+delete(projectId, repoName, { confirm: repoName }): Promise<{ deleted: true, repo_name }>   // default: 403 APP_REPO_DEFAULT_UNDELETABLE
+log(projectId, repoName, { path?, cursor?, limit? }): Promise<AppRepoLogPage>   // newest first; limit 1-100 (default 50)
+readFile(projectId, repoName, path, { at? }): Promise<AppRepoFile | null>        // null on APP_REPO_PATH_NOT_FOUND
+tree(projectId, repoName, path?, { at? }): Promise<AppRepoTree>
+diff(projectId, repoName, from, to): Promise<AppRepoDiff>
+commit(projectId, repoName, { files, message?, author?, parent?, base? }): Promise<AppRepoCommitResult>
+revert(projectId, repoName, commit, { message? }): Promise<AppRepoCommitResult>
+// AppRepo = { repo_name, head: string | null, seq: number | null, commit_count, size_bytes, size, clone_url, created_at, updated_at }
+// AppRepoLogPage = { commits: AppRepoCommit[], head, has_more, next_cursor }
+// AppRepoCommit = { commit, parent, seq, author: { name, email }, committer: { name, email }, message, committed_at,
+//   paths (≤100), paths_total, actor_user_id: string | null }
+// AppRepoFile = { repo_name, path, commit, oid, content_type, size_bytes, bytes: Uint8Array, text: string | null }
+// AppRepoTree = { commit: string | null, path, entries: [{ name, path, type: "file" | "dir", size, oid }] }
+// AppRepoDiff = { from, to, changes: [{ path, status: "added" | "modified" | "deleted", old_oid, new_oid }] }
+// files: Record<path, string | Uint8Array | { text } | { base64 } | { json } | null>   (null deletes)
+// AppRepoCommitResult = { committed: true, commit, parent, head, seq, paths, author } | { committed: false, head }
+```
+
+```ts
+const p = r.project(projectId);
+const site = await p.appRepos.readFile("default", "site.json");
+const config = site?.text ? JSON.parse(site.text) : {};
+const result = await p.appRepos.commit("default", {
+  files: { "site.json": { json: { ...config, title: "Kiwi family" } } },
+  message: "Rename the site",
+  base: site?.commit ?? undefined,
+});
+console.log(result.committed ? result.commit : "nothing changed");
+```
+
+A commit without `parent` is built on `base` (default: the head) and lands on a newer head when none of its paths changed since `base`; otherwise it throws an `ApiError` with `code: "APP_REPO_CONFLICT"` and `details: { head, base, conflicting_paths }`, and nothing is written. With `parent`, it lands only if `parent` is still the head. A commit made through these calls names the app as committer and author (pass `author` to name someone else); a function's commit names its signed-in end user. Each file is at most 4 MiB (`APP_REPO_FILE_TOO_LARGE`: store the bytes with `r.assets.put` and commit the reference). Accepted credentials: your principal (wallet, sign-in session, or grant key), else the project's locally cached service key; reads need `project.app_repos.read` (viewer), writes `project.app_repos.write` (developer, or a grant with `deploy`). No call returns a secret, so all of them run on the MCP `run` sandbox. App repos need Run402 Cloud.
+
 ### `r.rooms`
 
 Org-scoped agent coordination rooms — session presence ("who's here, doing what"), durable room-visible messages, and advisory work claims for the agents working on the same project. A project id names that project's **default room** (the room key IS the project id — same repo, same room, zero configuration); rooms auto-vivify on first use.

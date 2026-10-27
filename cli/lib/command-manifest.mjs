@@ -252,6 +252,19 @@ export const COMMAND_MANIFEST = [
   { path: ["live"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["--tables", "cells", "--once"], runStyle: "merged" },
   // ── push ─────────────────────────────────────────────────────────────────
   { path: ["push", "status"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
+  // ── app repos (plain git repositories the app owns; not the `repos` vaults) ──
+  // `credential` (git's credential-helper protocol on stdin) is installed by
+  // `clone` and invoked by git, never by a person, so it has no entry here.
+  { path: ["app-repos", "list"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
+  { path: ["app-repos", "create"], positionals: [p("repo_name")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["user-42"], runStyle: "sub" },
+  { path: ["app-repos", "delete"], positionals: [p("repo_name")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["user-42", "--confirm", "user-42"], runStyle: "sub" },
+  { path: ["app-repos", "log"], positionals: [p("repo_name", { required: false })], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
+  // A leading repo name is sugar for --repo; the canonical form names only the path.
+  { path: ["app-repos", "cat"], positionals: [p("path")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["site.json"], runStyle: "sub" },
+  // A second positional directory is sugar for --path.
+  { path: ["app-repos", "ls"], positionals: [p("repo_name", { required: false })], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
+  // A second positional directory is sugar for --dir.
+  { path: ["app-repos", "clone"], positionals: [p("repo_name", { required: false })], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "runs git clone and writes a working tree" },
   { path: ["deliveries", "list"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
   { path: ["deliveries", "get"], positionals: [p("notification_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["n_1"], runStyle: "sub" },
   { path: ["contacts", "list"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },

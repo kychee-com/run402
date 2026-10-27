@@ -53,6 +53,8 @@ export interface ProjectSnapshotDto {
   };
   /** Set on a `pre_restore` snapshot: the restore that caused it. */
   restore_of: { snapshot_id: string; restore_id: string } | null;
+  /** What the snapshot does not capture; a restore leaves these as they are. */
+  excluded?: string[];
   next_actions: SnapshotNextAction[];
 }
 

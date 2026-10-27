@@ -97,6 +97,38 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="APP_INSTALL_STATE_NOT_FOUND"></a>
 [`APP_INSTALL_STATE_NOT_FOUND`](/errors/gateway/#APP_INSTALL_STATE_NOT_FOUND)
 
+<a id="app_repo_conflict"></a>
+<a id="APP_REPO_CONFLICT"></a>
+[`APP_REPO_CONFLICT`](/errors/gateway/#APP_REPO_CONFLICT)
+
+<a id="app_repo_default_undeletable"></a>
+<a id="APP_REPO_DEFAULT_UNDELETABLE"></a>
+[`APP_REPO_DEFAULT_UNDELETABLE`](/errors/gateway/#APP_REPO_DEFAULT_UNDELETABLE)
+
+<a id="app_repo_exists"></a>
+<a id="APP_REPO_EXISTS"></a>
+[`APP_REPO_EXISTS`](/errors/gateway/#APP_REPO_EXISTS)
+
+<a id="app_repo_file_too_large"></a>
+<a id="APP_REPO_FILE_TOO_LARGE"></a>
+[`APP_REPO_FILE_TOO_LARGE`](/errors/gateway/#APP_REPO_FILE_TOO_LARGE)
+
+<a id="app_repo_lfs_unsupported"></a>
+<a id="APP_REPO_LFS_UNSUPPORTED"></a>
+[`APP_REPO_LFS_UNSUPPORTED`](/errors/gateway/#APP_REPO_LFS_UNSUPPORTED)
+
+<a id="app_repo_not_found"></a>
+<a id="APP_REPO_NOT_FOUND"></a>
+[`APP_REPO_NOT_FOUND`](/errors/gateway/#APP_REPO_NOT_FOUND)
+
+<a id="app_repo_path_not_found"></a>
+<a id="APP_REPO_PATH_NOT_FOUND"></a>
+[`APP_REPO_PATH_NOT_FOUND`](/errors/gateway/#APP_REPO_PATH_NOT_FOUND)
+
+<a id="app_repos_unsupported"></a>
+<a id="APP_REPOS_UNSUPPORTED"></a>
+[`APP_REPOS_UNSUPPORTED`](/errors/gateway/#APP_REPOS_UNSUPPORTED)
+
 <a id="app_spec_invalid"></a>
 <a id="APP_SPEC_INVALID"></a>
 [`APP_SPEC_INVALID`](/errors/client/#APP_SPEC_INVALID)
@@ -687,6 +719,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="GENERATION_REGRESSION"></a>
 [`GENERATION_REGRESSION`](/errors/gateway/#GENERATION_REGRESSION)
 
+<a id="git_clone_failed"></a>
+<a id="GIT_CLONE_FAILED"></a>
+[`GIT_CLONE_FAILED`](/errors/client/#GIT_CLONE_FAILED)
+
 <a id="git_command_failed"></a>
 <a id="GIT_COMMAND_FAILED"></a>
 [`GIT_COMMAND_FAILED`](/errors/client/#GIT_COMMAND_FAILED)
@@ -694,6 +730,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="git_cwd_missing"></a>
 <a id="GIT_CWD_MISSING"></a>
 [`GIT_CWD_MISSING`](/errors/client/#GIT_CWD_MISSING)
+
+<a id="git_not_found"></a>
+<a id="GIT_NOT_FOUND"></a>
+[`GIT_NOT_FOUND`](/errors/client/#GIT_NOT_FOUND)
 
 <a id="git_object_format_unsupported"></a>
 <a id="GIT_OBJECT_FORMAT_UNSUPPORTED"></a>

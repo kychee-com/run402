@@ -102,6 +102,13 @@
       "codes": [
         "project_not_found"
       ]
+    },
+    {
+      "source": "packages/functions/src/repo.ts",
+      "sourceDigest": "d2280024fd2548e7287172ecd1e12a9508dd94f6fa80864171eafbf967f410b5",
+      "codes": [
+        "APP_REPOS_UNSUPPORTED"
+      ]
     }
   ]
 }

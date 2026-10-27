@@ -1199,6 +1199,67 @@ describe("Deploy.apply (happy path)", () => {
       },
     ]);
   });
+
+  it("normalizes app_repo triggers and passes repo route targets through", async () => {
+    const w = makeWiring();
+    const fnSha = "c".repeat(64);
+    w.setHandler((req) => {
+      if (req.path === "/content/v1/plans") {
+        return { plan_id: "cplan_app_repo", expires_at: "2026-10-27T13:00:00.000Z", missing: [], entries: [{ sha256: fnSha, missing: false }] };
+      }
+      if (req.path === "/apply/v1/plans") {
+        return { plan_id: "plan_app_repo", base_release_id: null, manifest_digest: "digest", missing_content: [], diff: {} } satisfies PlanResponse;
+      }
+      throw new Error(`unexpected ${req.path}`);
+    });
+
+    const deploy = new Deploy(w.client);
+    await deploy.plan({
+      project_id: "prj_test",
+      functions: {
+        replace: {
+          bundle: {
+            runtime: "node22",
+            source: { sha256: fnSha, size: 10 },
+            triggers: [{ id: "bundle", type: "app_repo", repo: "default", paths: ["people/"], run: { event_type: "content.changed" } }],
+          },
+        },
+      },
+      routes: {
+        replace: [{ pattern: "/data/*", target: { type: "repo", repo: "default", path: "public/", requireAuth: true } }],
+      },
+    });
+
+    const planReq = w.requests.find((req) => req.path === "/apply/v1/plans");
+    assert(planReq);
+    const body = planReq.body as { spec: { functions?: { replace?: Record<string, { triggers?: unknown }> }; routes?: unknown } };
+    assert.deepEqual(body.spec.functions?.replace?.bundle.triggers, [
+      { id: "bundle", type: "app_repo", repo: "default", paths: ["people/"], run: { event_type: "content.changed", payload: {} } },
+    ]);
+    assert.deepEqual(body.spec.routes, {
+      replace: [{ pattern: "/data/*", target: { type: "repo", repo: "default", path: "public/", requireAuth: true } }],
+    });
+  });
+
+  it("refuses an app_repo trigger without a repo, and repo fields on other triggers", async () => {
+    const deploy = new Deploy(makeWiring().client);
+    const fn = (trigger: Record<string, unknown>) => ({
+      project_id: "prj_test",
+      functions: { replace: { worker: { runtime: "node22" as const, source: { sha256: "d".repeat(64), size: 1 }, triggers: [trigger as never] } } },
+    });
+    await assert.rejects(
+      () => deploy.plan(fn({ id: "t", type: "app_repo", run: { event_type: "x" } })),
+      /repo is required/,
+    );
+    await assert.rejects(
+      () => deploy.plan(fn({ id: "t", type: "app_repo", repo: "default", paths: [], run: { event_type: "x" } })),
+      /paths must be a non-empty array/,
+    );
+    await assert.rejects(
+      () => deploy.plan(fn({ id: "t", type: "schedule", cron: "* * * * *", repo: "default", run: { event_type: "x" } })),
+      /cannot include repo or paths/,
+    );
+  });
 });
 
 describe("Deploy.apply (content commit transient failures)", () => {
@@ -3034,6 +3095,26 @@ describe("Deploy.apply (validation)", () => {
         { replace: [{ pattern: "/events", methods: ["GET"], target: { type: "static", file: "events.html" }, pricing: { mode: "always", amount_usd_micros: 250000, pay_to: "org_default_payout" } }] },
         "routes.replace.0.pricing",
         /only supported on function route targets/,
+      ],
+      [
+        { replace: [{ pattern: "/data/*", target: { type: "repo", repo: "default" }, pricing: { mode: "always", amount_usd_micros: 250000, pay_to: "org_default_payout" } }] },
+        "routes.replace.0.pricing",
+        /only supported on function route targets/,
+      ],
+      [
+        { replace: [{ pattern: "/data/*", methods: ["POST"], target: { type: "repo", repo: "default" } }] },
+        "routes.replace.0.methods",
+        /repo route targets must be/,
+      ],
+      [
+        { replace: [{ pattern: "/data/*", target: { type: "repo", path: "public/" } }] },
+        "routes.replace.0.target.repo",
+        /repo is required/,
+      ],
+      [
+        { replace: [{ pattern: "/data/*", target: { type: "repo", repo: "default", branch: "main" } }] },
+        "routes.replace.0.target.branch",
+        /Unknown ReleaseSpec field/,
       ],
       [
         { replace: [{ pattern: "/share/*", methods: ["GET"], target: { type: "function", name: "share" }, acknowledge_readonly: true }] },

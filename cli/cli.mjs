@@ -42,6 +42,7 @@ BUILD & SHIP — the app and everything it serves
   up          Provision/link/deploy the current app with SDK orchestration
   projects    Manage projects (provision, list, get, sql, delete)
   repos       Host-blind encrypted git repos: create/view/list, snapshot/mirror/recover, fsck/gc/access/policy (repo aliases repos)
+  app-repos   Plain git repos the app owns (list, create, log, cat, ls, clone); not encrypted, not a vault
   deploy      Deploy a release; subcommands inspect and steer deploys (requires active tier)
   functions   Manage serverless functions (deploy, invoke, logs, list, delete)
   secrets     Manage project secrets (set, list, delete)
@@ -298,6 +299,11 @@ switch (cmd) {
   }
   case "push": {
     const { run } = await import("./lib/push.mjs");
+    await run(sub, rest);
+    break;
+  }
+  case "app-repos": {
+    const { run } = await import("./lib/app-repos.mjs");
     await run(sub, rest);
     break;
   }
