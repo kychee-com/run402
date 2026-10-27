@@ -13,14 +13,14 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 import { apiBase, activeProfile, findProject, getProject, resolveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 import { assertKnownFlags, flagValue, normalizeArgv, positionalArgs, parseIntegerFlag, failUnknownSubcommand } from "./argparse.mjs";
-import { isExecutableOnPath } from "./path-lookup.mjs";
+import { resolveOnPath } from "./path-lookup.mjs";
 
 const DEFAULT_REPO = "default";
 const CLI_ENTRY = fileURLToPath(new URL("../cli.mjs", import.meta.url));
@@ -249,12 +249,27 @@ export function appRepoGitUrl(base, projectId, repoName) {
   return `${base.replace(/\/+$/, "")}/projects/v1/${encodeURIComponent(projectId)}/app-repos/${encodeURIComponent(repoName)}.git`;
 }
 
+/**
+ * True when `run402` on PATH is this very CLI. The helper must run the CLI
+ * that ran the clone: another install on PATH may be older and lack
+ * `app-repos`, and git would get "Unknown command" instead of a key.
+ */
+function pathRun402IsThisCli() {
+  const found = resolveOnPath("run402");
+  if (!found) return false;
+  try {
+    return realpathSync(found) === realpathSync(CLI_ENTRY);
+  } catch {
+    return false;
+  }
+}
+
 /** The `!…` credential-helper command persisted in the clone. */
-function helperCommand() {
+function helperCommand(byName) {
   const parts = [];
   if (process.env.RUN402_API_BASE) parts.push(`RUN402_API_BASE=${shellQuote(process.env.RUN402_API_BASE)}`);
   if (process.env.RUN402_CONFIG_DIR) parts.push(`RUN402_CONFIG_DIR=${shellQuote(process.env.RUN402_CONFIG_DIR)}`);
-  parts.push(isExecutableOnPath("run402") ? "run402" : `${shellQuote(process.execPath)} ${shellQuote(CLI_ENTRY)}`);
+  parts.push(byName ? "run402" : `${shellQuote(process.execPath)} ${shellQuote(CLI_ENTRY)}`);
   const profile = activeProfile();
   if (profile && profile !== "default") parts.push("--wallet", shellQuote(profile));
   parts.push("app-repos", "credential");
@@ -308,7 +323,8 @@ async function clone(args) {
   }
 
   const url = appRepoGitUrl(apiBase(), projectId, repoName);
-  const helper = helperCommand();
+  const byName = pathRun402IsThisCli();
+  const helper = helperCommand(byName);
   // URL-scoped: the empty value clears any helper a global config would ask
   // (so no keychain ever stores the key), then ours answers; useHttpPath
   // hands it the path so it can name the project. `git clone --config`
@@ -331,11 +347,11 @@ async function clone(args) {
     });
   }
   const out = { project_id: projectId, repo_name: repoName, dir, clone_url: url, credential_helper: "run402 app-repos credential" };
-  if (!isExecutableOnPath("run402")) {
+  if (!byName) {
     out.next_actions = [{
       type: "install_cli",
       command: "npm i -g run402",
-      why: "the clone's credential helper runs this CLI by its current path; install run402 globally so git pull and git push keep finding it",
+      why: "the clone's credential helper runs this CLI by its current path, because run402 on PATH is missing or a different install; install this run402 globally so git pull and git push keep finding it",
     }];
   }
   console.log(JSON.stringify(out, null, 2));

@@ -1,6 +1,6 @@
 import { after, before, beforeEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { once } from "node:events";
 import { spawn, spawnSync } from "node:child_process";
@@ -465,6 +465,50 @@ fs.mkdirSync(args[args.length - 1], { recursive: true });
     } finally {
       rmSync(bin, { recursive: true, force: true });
     }
+  });
+
+  // The helper must run the CLI that ran the clone: a stale global run402
+  // without app-repos would answer git with "Unknown command".
+  async function cloneHelperWith(run402OnPath) {
+    const bin = mkdtempSync(join(tmpdir(), "run402-fake-git-"));
+    const record = join(bin, "args.json");
+    writeFileSync(join(bin, "git"), `#!${process.execPath}
+const fs = require("node:fs");
+const args = process.argv.slice(2);
+if (args[0] === "--version") { console.log("git version 2.45.0"); process.exit(0); }
+fs.writeFileSync(${JSON.stringify(record)}, JSON.stringify(args));
+fs.mkdirSync(args[args.length - 1], { recursive: true });
+`);
+    chmodSync(join(bin, "git"), 0o755);
+    run402OnPath(join(bin, "run402"));
+    try {
+      const { code, out, err } = await runCli(["app-repos", "clone", "default", join(bin, "content"), "--project", "prj_kiwi"], {
+        env: subEnv({ PATH: `${bin}${delimiter}${process.env.PATH}` }),
+      });
+      assert.equal(code, 0, err);
+      const url = `${apiBase}/projects/v1/prj_kiwi/app-repos/default.git`;
+      const helper = JSON.parse(readFileSync(record, "utf8")).find((a) => a.startsWith(`credential.${url}.helper=!`));
+      return { helper, printed: JSON.parse(out) };
+    } finally {
+      rmSync(bin, { recursive: true, force: true });
+    }
+  }
+
+  it("clone's helper runs this CLI, not a different run402 on PATH", async () => {
+    const { helper, printed } = await cloneHelperWith((path) => {
+      writeFileSync(path, "#!/bin/sh\necho stale\n");
+      chmodSync(path, 0o755);
+    });
+    assert.ok(helper.includes(CLI_PATH), helper);
+    assert.ok(!/[! ]run402 app-repos credential$/.test(helper), helper);
+    assert.equal(printed.next_actions?.[0]?.type, "install_cli");
+  });
+
+  it("clone's helper names run402 when run402 on PATH is this CLI", async () => {
+    const { helper, printed } = await cloneHelperWith((path) => symlinkSync(CLI_PATH, path));
+    assert.ok(/[! ]run402 app-repos credential$/.test(helper), helper);
+    assert.ok(!helper.includes(CLI_PATH), helper);
+    assert.equal(printed.next_actions, undefined);
   });
 
   it("clone refuses an existing destination before running git", async () => {

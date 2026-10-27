@@ -106,7 +106,7 @@ A route target `{ type: "repo", repo, path?, requireAuth?, requireRole? }` serve
 }
 ```
 
-With a prefix pattern such as `/data/*`, the part matched by `*` is joined to `path` (default: the repo root): `GET /data/people.json` serves `public/people.json`. With an exact pattern, `path` names the file. A repo target serves `GET` and `HEAD` only and cannot be priced. The response carries `Content-Type` from the extension, an `ETag` of the file's git object id, and `Cache-Control: public, max-age=0, must-revalidate` (`private` when the target is gated). A missing file, a directory, or an empty repo is a 404. `requireAuth` and `requireRole` behave exactly as on a function route, including the redirect to sign-in. A plan whose repo target names a repo that does not exist fails validation.
+With a prefix pattern such as `/data/*`, the part matched by `*` is joined to `path` (default: the repo root): `GET /data/people.json` serves `public/people.json`. With an exact pattern, `path` names the file. A repo target serves `GET` and `HEAD` only and cannot be priced. The response carries `Content-Type` from the extension, an `ETag` of the file's git object id, and `Cache-Control: public, max-age=0, must-revalidate` (`private` when the target is gated). A missing file, a directory, or an empty repo is a 404. `requireAuth` and `requireRole` behave exactly as on a function route, including the redirect to sign-in. The repo need not exist when you deploy: until it does, the route answers 404, like an empty repo.
 
 ## Run a function on each commit
 

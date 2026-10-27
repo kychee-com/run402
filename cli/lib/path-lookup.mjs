@@ -7,18 +7,23 @@
 import {accessSync, constants, readFileSync } from "node:fs";
 import { delimiter, join } from "node:path";
 
-/** True iff `name` resolves to an executable file somewhere on `PATH`. Windows `PATHEXT` is out of scope — this CLI targets POSIX (`engines.node` + the hardened-git doc comments assume it) — so no `.exe`/`.cmd` suffix search. */
-export function isExecutableOnPath(name, env = process.env) {
+/** The first executable file named `name` on `PATH`, or null. */
+export function resolveOnPath(name, env = process.env) {
   const dirs = (env.PATH ?? "").split(delimiter).filter(Boolean);
   for (const dir of dirs) {
     try {
       accessSync(join(dir, name), constants.X_OK);
-      return true;
+      return join(dir, name);
     } catch {
       // not here — keep looking
     }
   }
-  return false;
+  return null;
+}
+
+/** True iff `name` resolves to an executable file somewhere on `PATH`. Windows `PATHEXT` is out of scope — this CLI targets POSIX (`engines.node` + the hardened-git doc comments assume it) — so no `.exe`/`.cmd` suffix search. */
+export function isExecutableOnPath(name, env = process.env) {
+  return resolveOnPath(name, env) !== null;
 }
 
 /**
