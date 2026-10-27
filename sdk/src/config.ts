@@ -133,15 +133,13 @@ export function dir(path: string, options: Run402DirConfigOptions = {}): LocalDi
 }
 
 export function file(path: string, options: Run402FileConfigOptions = {}): Run402FileConfigSource {
+  // A deploy config is a wire document: emit the one manifest spelling,
+  // `content_type`. Both option spellings are accepted for convenience.
+  const contentType = options.content_type ?? options.contentType;
   return {
     __source: "fs-file",
     path,
-    ...(options.contentType !== undefined
-      ? { contentType: options.contentType }
-      : options.content_type !== undefined
-        ? { contentType: options.content_type }
-        : {}),
-    ...(options.content_type !== undefined ? { content_type: options.content_type } : {}),
+    ...(contentType !== undefined ? { content_type: contentType } : {}),
   };
 }
 
