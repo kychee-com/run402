@@ -593,3 +593,133 @@ describe("billing.setAutoRecharge", () => {
     });
   });
 });
+
+// ─── prepaid-metered-usage ──────────────────────────────────────────────────
+
+const METERING_BLOCK = {
+  enabled: true,
+  cap_usd_micros: 50_000_000,
+  suspended_at: null,
+  suspended_reason: null,
+  month: { started_at: "2026-10-01T00:00:00.000Z", ends_at: "2026-11-01T00:00:00.000Z" },
+  month_spent_usd_micros: 1_250_000,
+  month_charged_usd_micros: 1_250_000,
+  today_estimate_usd_micros: 40_000,
+  included: { storage_bytes: 1_000_000_000, storage: "1 GB", source_bytes: 10_000_000_000, source: "10 GB", api_calls: 5_000_000 },
+  headroom: { storage_bytes: 4_000_000_000, storage: "4 GB", source_bytes: 12_000_000_000, source: "12 GB", api_calls: 9_000_000 },
+  prices: { storage_gb_month_usd_micros: 100_000, source_gb_month_usd_micros: 100_000, api_calls_per_million_usd_micros: 500_000 },
+  standing_order: {
+    enabled: false,
+    threshold_usd_micros: 10_000_000,
+    recharge_usd_micros: 20_000_000,
+    disabled_reason: null,
+    failure_count: 0,
+    payment_method: null,
+  },
+};
+
+describe("billing.setMetering", () => {
+  it("PATCHes the metering route with the snake_case body and returns the block", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({ org_id: "org_123", metering: METERING_BLOCK }));
+    const sdk = makeSdk(fetch);
+
+    const result = await sdk.billing.setMetering({
+      organizationId: "org/../x",
+      enabled: true,
+      capUsdMicros: 50_000_000,
+      standingOrder: { enabled: true, thresholdUsdMicros: 10_000_000, rechargeUsdMicros: 20_000_000 },
+    });
+
+    assert.equal(calls[0]!.url, "https://api.example.test/orgs/v1/org%2F..%2Fx/billing/metering");
+    assert.equal(calls[0]!.method, "PATCH");
+    assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "test-siwx");
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), {
+      enabled: true,
+      cap_usd_micros: 50_000_000,
+      standing_order: { enabled: true, threshold_usd_micros: 10_000_000, recharge_usd_micros: 20_000_000 },
+    });
+    assert.equal(result.metering?.cap_usd_micros, 50_000_000);
+    assert.equal(result.metering?.standing_order.payment_method, null);
+  });
+
+  it("sends only what was named (disable keeps the cap and the card)", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({ org_id: "org_123", metering: { ...METERING_BLOCK, enabled: false } }));
+    const sdk = makeSdk(fetch);
+    await sdk.billing.metering({ organizationId: "org_123", enabled: false });
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), { enabled: false });
+  });
+
+  it("refuses a cap under $1 and a standing-order amount under $5 before requesting", async () => {
+    const { fetch, calls } = mockFetch(() => {
+      throw new Error("unexpected fetch for an invalid metering body");
+    });
+    const sdk = makeSdk(fetch);
+    const isLocal = (err: unknown) => err instanceof LocalError && err.context === "setting metering";
+
+    await assert.rejects(sdk.billing.setMetering({ organizationId: "org_123", enabled: true, capUsdMicros: 999_999 }), isLocal);
+    await assert.rejects(sdk.billing.setMetering({ organizationId: "org_123", enabled: true, capUsdMicros: 1.5 }), isLocal);
+    await assert.rejects(
+      sdk.billing.setMetering({ organizationId: "org_123", enabled: true, standingOrder: { enabled: true, thresholdUsdMicros: 4_999_999 } }),
+      isLocal,
+    );
+    await assert.rejects(
+      sdk.billing.setMetering({ organizationId: "org_123", enabled: true, standingOrder: { enabled: true, rechargeUsdMicros: -1 } }),
+      isLocal,
+    );
+    await assert.rejects(sdk.billing.setMetering({ organizationId: "", enabled: true }), isLocal);
+    assert.equal(calls.length, 0);
+  });
+});
+
+describe("billing.getMetering", () => {
+  it("reads the organization by id and returns its metering block", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({ org_id: "00000000-0000-4000-8000-000000000001", allowance_usd_micros: 0, email_credits_remaining: 0, tier: "hobby", lease_expires_at: null, auto_recharge_enabled: false, auto_recharge_threshold: 0, metering: METERING_BLOCK }),
+    );
+    const sdk = makeSdk(fetch);
+    const block = await sdk.billing.getMetering("00000000-0000-4000-8000-000000000001");
+    assert.equal(calls[0]!.url, "https://api.example.test/orgs/v1/00000000-0000-4000-8000-000000000001/billing");
+    assert.equal(block?.headroom.api_calls, 9_000_000);
+  });
+
+  it("resolves a wallet through the lookup and returns null when the field is null or absent", async () => {
+    const { fetch, calls } = mockFetch((call) =>
+      jsonResponse(call.url.includes("lookup")
+        ? { org_id: "org_1", allowance_usd_micros: 0, email_credits_remaining: 0, tier: null, lease_expires_at: null, auto_recharge_enabled: false, auto_recharge_threshold: 0 }
+        : { org_id: "org_1", metering: null }),
+    );
+    const sdk = makeSdk(fetch);
+    assert.equal(await sdk.billing.getMetering(WALLET_LOWER), null);
+    assert.ok(calls[0]!.url.startsWith("https://api.example.test/orgs/v1/lookup?wallet="));
+  });
+});
+
+describe("billing.createCardSetup", () => {
+  it("POSTs the setup route with return_url when given and returns the one-time link", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({ org_id: "org_123", setup_url: "https://checkout.example.test/setup", expires_at: "2026-10-28T12:00:00.000Z" }, 201),
+    );
+    const sdk = makeSdk(fetch);
+
+    const first = await sdk.billing.createCardSetup("org_123");
+    assert.equal(calls[0]!.url, "https://api.example.test/orgs/v1/org_123/billing/payment-methods/setup");
+    assert.equal(calls[0]!.method, "POST");
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), {});
+    assert.equal(first.setup_url, "https://checkout.example.test/setup");
+
+    await sdk.billing.createCardSetup("org_123", { returnUrl: "http://localhost:3000/billing" });
+    assert.deepEqual(JSON.parse(calls[1]!.body as string), { return_url: "http://localhost:3000/billing" });
+  });
+
+  it("rejects a non-http return URL before requesting", async () => {
+    const { fetch, calls } = mockFetch(() => {
+      throw new Error("unexpected fetch for an invalid return URL");
+    });
+    const sdk = makeSdk(fetch);
+    await assert.rejects(
+      sdk.billing.createCardSetup("org_123", { returnUrl: "javascript:alert(1)" }),
+      (err: unknown) => err instanceof LocalError && err.context === "creating card setup",
+    );
+    assert.equal(calls.length, 0);
+  });
+});

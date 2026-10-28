@@ -1,6 +1,6 @@
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
-import { assertKnownFlags, flagValue, normalizeArgv, parseIntegerFlag, positionalArgs, failUnknownSubcommand } from "./argparse.mjs";
+import { assertAllowedValue, assertKnownFlags, flagValue, normalizeArgv, parseIntegerFlag, positionalArgs, failUnknownSubcommand } from "./argparse.mjs";
 import { takeOrgPositional, requireRest } from "./org-context.mjs";
 
 const HELP = `run402 billing — Email organizations and org checkouts
@@ -14,6 +14,9 @@ Subcommands:
   checkout <identifier> --product <p>      Create an org checkout
   topup <identifier> --sats <n> [--wait] [--qr <file.png>]   Top up the allowance over Lightning (a bolt11 invoice; --qr also writes a scannable PNG)
   auto-recharge [<org_id>] <on|off> [--threshold <n>]
+  metering [<org_id>] [--enable --cap <usd> | --disable] [--standing-order <on|off>] [--threshold <usd>] [--recharge <usd>]
+                                           Metered usage under one monthly cap (no flags: show it)
+  card setup [<org_id>] [--return-url <url>]   A one-time link to save a card for the standing order
   balance <identifier>                     The allowance, by organization id (UUID), wallet (0x...), or email
   history <identifier> [--limit <n>]       Ledger history by organization id (UUID), wallet, or email
 
@@ -25,6 +28,8 @@ Examples:
   run402 billing topup 0x1234... --sats 2000 --wait
   run402 billing topup 0x1234... --sats 2000 --qr /tmp/invoice.png   # also write the invoice as a scannable PNG
   run402 billing auto-recharge org_abc on --threshold 2000
+  run402 billing metering --enable --cap 50                 # metered usage, at most $50 this month
+  run402 billing card setup                                 # then: metering --standing-order on
   run402 billing balance user@example.com
 `;
 
@@ -63,6 +68,62 @@ Options:
 Examples:
   run402 billing auto-recharge org_abc on --threshold 2000
   run402 billing auto-recharge org_abc off
+`,
+  metering: `run402 billing metering — Metered usage under one monthly cap
+
+Usage:
+  run402 billing metering [<org_id>]                                  Show the metering block
+  run402 billing metering [<org_id>] --enable --cap <usd> [options]   Turn metered usage on
+  run402 billing metering [<org_id>] --disable                        Turn it off (keeps the cap and the card)
+
+Arguments:
+  <org_id>                Organization ID (optional; else --org, RUN402_ORG, the .run402.json binding, orgs use)
+
+Options:
+  --enable                Turn metered usage on (needs a live hobby or team lease)
+  --disable               Turn metered usage off
+  --cap <usd>             The monthly cap in US dollars (at least 1; required the first time)
+  --standing-order <on|off>   The card standing order that refills the allowance under the same cap
+  --threshold <usd>       Refill when the allowance falls below this (at least 5; default 10)
+  --recharge <usd>        How much each refill adds (at least 5; default 20)
+
+Notes:
+  - Storage and vault bytes above the lease's included pools cost a published price
+    per GB-month (prorated by the UTC day), API calls above the included amount a
+    price per million, charged daily from the allowance and never past the cap in a
+    UTC month. Prices: run402 projects quote (the "metered" block).
+  - When the allowance or the cap cannot cover a day, metering suspends: nothing is
+    deleted, everything keeps serving, the flat pool applies again. Fund the
+    allowance, raise the cap, or save a card, and it resumes.
+  - --standing-order on needs a saved card: run402 billing card setup.
+  - Dollar flags take whole or decimal dollars (--cap 50, --threshold 12.50).
+
+Examples:
+  run402 billing metering
+  run402 billing metering --enable --cap 50
+  run402 billing metering --standing-order on --threshold 10 --recharge 20
+  run402 billing metering 00000000-0000-4000-8000-000000000001 --disable
+`,
+  card: `run402 billing card — The saved card behind the standing order
+
+Usage:
+  run402 billing card setup [<org_id>] [--return-url <url>]
+
+Arguments:
+  <org_id>                Organization ID (optional; else --org, RUN402_ORG, the .run402.json binding, orgs use)
+
+Options:
+  --return-url <url>      Where the browser lands after the card is saved (a run402.com or localhost URL)
+
+Notes:
+  - Prints { org_id, setup_url, expires_at }. A person opens setup_url in a browser
+    and saves a card; the card is stored by the payment processor and never reaches
+    Run402 or this CLI. Then: run402 billing metering --standing-order on.
+  - Billing role or higher on the organization; a grant key is refused.
+
+Examples:
+  run402 billing card setup
+  run402 billing card setup 00000000-0000-4000-8000-000000000001 --return-url http://localhost:3000/billing
 `,
   history: `run402 billing history — Show ledger history for a organization
 
@@ -362,6 +423,97 @@ async function autoRecharge(args) {
   }
 }
 
+// prepaid-metered-usage: whole or decimal US dollars → micro-dollars, exactly
+// (string arithmetic, so `--cap 0.1` is 100000 and never 99999.999…).
+function parseUsdFlag(name, raw) {
+  if (raw === null || raw === undefined) {
+    fail({ code: "BAD_FLAG", message: `${name} requires a US-dollar amount (for example ${name} 50 or ${name} 12.50)`, details: { flag: name } });
+  }
+  const text = String(raw).trim().replace(/^\$/, "");
+  const m = /^(\d+)(?:\.(\d{1,6}))?$/.exec(text);
+  if (!m) {
+    fail({ code: "BAD_FLAG", message: `${name} must be whole or decimal US dollars (up to 6 decimals), got: ${raw}`, details: { flag: name, value: String(raw) } });
+  }
+  const micros = Number(m[1]) * 1_000_000 + Number((m[2] ?? "").padEnd(6, "0"));
+  if (!Number.isSafeInteger(micros) || micros <= 0) {
+    fail({ code: "BAD_FLAG", message: `${name} must be a positive US-dollar amount, got: ${raw}`, details: { flag: name, value: String(raw) } });
+  }
+  return micros;
+}
+
+async function metering(args) {
+  const parsedArgs = normalizeArgv(args);
+  const valueFlags = ["--org", "--cap", "--standing-order", "--threshold", "--recharge"];
+  assertKnownFlags(parsedArgs, [...valueFlags, "--enable", "--disable", "--help", "-h"], valueFlags);
+  const enable = parsedArgs.includes("--enable");
+  const disable = parsedArgs.includes("--disable");
+  if (enable && disable) {
+    fail({ code: "BAD_USAGE", message: "Pass --enable or --disable, not both.", hint: "run402 billing metering [<org_id>] [--enable --cap <usd> | --disable]" });
+  }
+  // Local validation FIRST — a malformed dollar amount is refused before any
+  // org resolution or network hop.
+  const capUsdMicros = parsedArgs.includes("--cap") ? parseUsdFlag("--cap", flagValue(parsedArgs, "--cap")) : undefined;
+  const thresholdUsdMicros = parsedArgs.includes("--threshold") ? parseUsdFlag("--threshold", flagValue(parsedArgs, "--threshold")) : undefined;
+  const rechargeUsdMicros = parsedArgs.includes("--recharge") ? parseUsdFlag("--recharge", flagValue(parsedArgs, "--recharge")) : undefined;
+  const standingRaw = flagValue(parsedArgs, "--standing-order");
+  if (standingRaw !== null) assertAllowedValue(standingRaw, ["on", "off"], "--standing-order");
+  const { orgId: organizationId, rest } = await takeOrgPositional(parsedArgs, valueFlags, { cmd: "billing" });
+  requireRest(rest, {
+    min: 0, max: 0,
+    command: "run402 billing metering [<org_id>] [--enable --cap <usd> | --disable] [--standing-order <on|off>] [--threshold <usd>] [--recharge <usd>]",
+  });
+  const touchesStandingOrder = standingRaw !== null || thresholdUsdMicros !== undefined || rechargeUsdMicros !== undefined;
+  const writes = enable || disable || capUsdMicros !== undefined || touchesStandingOrder;
+  try {
+    const sdk = getSdk();
+    // A setting flag without --enable/--disable (or a standing-order amount
+    // without on|off) keeps the current state for the part it does not name,
+    // so `--standing-order on` alone never turns metering off.
+    const needsCurrent = !writes || !(enable || disable) || (touchesStandingOrder && standingRaw === null);
+    const current = needsCurrent ? await sdk.billing.getMetering(organizationId) : null;
+    if (!writes) {
+      console.log(JSON.stringify({ org_id: organizationId, metering: current }, null, 2));
+      return;
+    }
+    const enabled = enable ? true : disable ? false : (current?.enabled ?? false);
+    const standingOrder = touchesStandingOrder
+      ? {
+          enabled: standingRaw !== null ? standingRaw === "on" : (current?.standing_order?.enabled ?? false),
+          thresholdUsdMicros,
+          rechargeUsdMicros,
+        }
+      : undefined;
+    const data = await sdk.billing.setMetering({ organizationId, enabled, capUsdMicros, standingOrder });
+    console.log(JSON.stringify(data, null, 2));
+    if (data?.metering?.suspended_reason) {
+      console.error(`Metering is suspended (${data.metering.suspended_reason}): fund the allowance, raise the cap, or save a card; it resumes on the next daily pass.`);
+    }
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+// prepaid-metered-usage: `billing card <action>`; the one action is `setup`.
+async function card(args) {
+  const action = Array.isArray(args) ? args[0] : undefined;
+  if (action !== "setup") {
+    failUnknownSubcommand("billing card", action, { label: "billing card" });
+  }
+  const parsedArgs = normalizeArgv(args.slice(1));
+  const valueFlags = ["--org", "--return-url"];
+  assertKnownFlags(parsedArgs, [...valueFlags, "--help", "-h"], valueFlags);
+  const returnUrl = flagValue(parsedArgs, "--return-url");
+  const { orgId: organizationId, rest } = await takeOrgPositional(parsedArgs, valueFlags, { cmd: "billing" });
+  requireRest(rest, { min: 0, max: 0, command: "run402 billing card setup [<org_id>] [--return-url <url>]" });
+  try {
+    const data = await getSdk().billing.createCardSetup(organizationId, { returnUrl: returnUrl ?? undefined });
+    console.log(JSON.stringify(data, null, 2));
+    console.error(`Open setup_url in a browser to save a card for this organization (the link expires ${data.expires_at}); then run402 billing metering --standing-order on.`);
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
 async function balance(args) {
   const parsedArgs = normalizeArgv(args);
   assertKnownFlags(parsedArgs, ["--help", "-h"]);
@@ -422,6 +574,8 @@ export async function run(sub, args) {
     case "checkout": await checkout(args); break;
     case "topup": await topup(args); break;
     case "auto-recharge": await autoRecharge(args); break;
+    case "metering": await metering(args); break;
+    case "card": await card(args); break;
     case "balance": await balance(args); break;
     case "history": await history(args); break;
     default:

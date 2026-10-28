@@ -330,7 +330,7 @@ The `CredentialsProvider` interface has two required methods (`getAuth`, `getPro
 | `auth` | `requestMagicLink` (link/code/both), `verifyMagicLink`, `verifyEmailCode`, `createUser`, `inviteUser`, `setUserPassword`, `settings`, passkey registration/login/list/delete helpers, typed `providers`, `promote`, `demote` |
 | `apps` | `browse`, `getApp`, `fork`, `publish`, `listVersions`, `updateVersion`, `deleteVersion` |
 | `tier` | `set`, `status` (tier pricing lives on `r.projects.getQuote()`) |
-| `billing` | `createEmailOrganization`, `linkWallet`, `createCheckout`, `setAutoRecharge`, `checkBalance`, `getOrganization`, `lookupOrganization`, `getHistory`, `balance`, `history` |
+| `billing` | `createEmailOrganization`, `linkWallet`, `createCheckout`, `setAutoRecharge`, `setMetering`, `getMetering`, `createCardSetup`, `checkBalance`, `getOrganization`, `lookupOrganization`, `getHistory`, `balance`, `history` |
 | `vouchers` | `redeem` (promo code → the organization's allowance; safe to retry) |
 | `contracts` | `provisionSigner`, `getSigner`, `listSigners`, `setRecovery`, `setLowBalanceAlert`, `call`, `read`, `callStatus`, `drain`, `deleteSigner` |
 | `ai` | `translate`, `moderate`, `usage`, `generateImage` |

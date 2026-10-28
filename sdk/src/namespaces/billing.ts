@@ -16,6 +16,7 @@ import { LocalError } from "../errors.js";
 import {
   assertEmailAddress,
   assertEvmAddress,
+  assertHttpUrl,
   assertNonEmptyString,
   assertPositiveSafeInteger,
   assertStringInSet,
@@ -34,7 +35,124 @@ export interface OrganizationDetail {
   lease_expires_at: string | null;
   auto_recharge_enabled: boolean;
   auto_recharge_threshold: number;
+  /**
+   * prepaid-metered-usage: the organization's metered usage and card standing
+   * order; `null` when it never enabled metering and holds no saved card.
+   * Absent on gateways that predate the field.
+   */
+  metering?: MeteringBlock | null;
 }
+
+// ─── prepaid-metered-usage ───────────────────────────────────────────────
+
+/** Why metering is not charging right now. */
+export type MeteringSuspendedReason = "allowance" | "cap" | "lease";
+
+/** The saved card, display fields only; never a processor id. */
+export interface StandingOrderPaymentMethod {
+  brand: string;
+  last4: string;
+  exp_month: number;
+  exp_year: number;
+}
+
+/**
+ * The card standing order: a card saved once through a setup link, a
+ * threshold, and a recharge amount. When the allowance falls below the
+ * threshold the card refills it, never past the metering cap in a UTC month.
+ * Three declines disable the order (`disabled_reason: "card_failed"`).
+ */
+export interface StandingOrderBlock {
+  enabled: boolean;
+  threshold_usd_micros: number;
+  recharge_usd_micros: number;
+  disabled_reason: "card_failed" | "card_removed" | null;
+  failure_count: number;
+  payment_method: StandingOrderPaymentMethod | null;
+}
+
+/** The published prices for usage above the lease's included pools, in micro-dollars. */
+export interface MeteredPrices {
+  /** Per GB-month of storage above the included pool, prorated by the UTC day. */
+  storage_gb_month_usd_micros: number;
+  /** Per GB-month of vault bytes above the included pool, prorated by the UTC day. */
+  source_gb_month_usd_micros: number;
+  /** Per million API calls above the included amount. */
+  api_calls_per_million_usd_micros: number;
+}
+
+/** A pool amount under metering: every byte count beside its human string. */
+export interface MeteringPools {
+  storage_bytes: number;
+  storage: string;
+  source_bytes: number;
+  source: string;
+  api_calls: number;
+}
+
+/**
+ * An organization's metered usage, on `GET /orgs/v1/:org_id/billing` and
+ * `GET /tiers/v1/status`. One monthly cap bounds both the daily metered
+ * charges and what the card standing order may charge. While suspended
+ * (`suspended_reason`: the allowance or the cap cannot cover a day, or the
+ * lease lapsed) nothing is deleted and everything keeps serving; the flat
+ * pool applies again and new writes past it are refused.
+ */
+export interface MeteringBlock {
+  enabled: boolean;
+  cap_usd_micros: number | null;
+  suspended_at: string | null;
+  suspended_reason: MeteringSuspendedReason | null;
+  /** The current UTC month the cap applies to. */
+  month: { started_at: string; ends_at: string };
+  month_spent_usd_micros: number;
+  month_charged_usd_micros: number;
+  today_estimate_usd_micros: number;
+  /** The lease's included pools. */
+  included: MeteringPools;
+  /** What the cap and the allowance still pay for above the included pools. */
+  headroom: MeteringPools;
+  prices: MeteredPrices;
+  standing_order: StandingOrderBlock;
+}
+
+/** Options for {@link Billing.setMetering}. Amounts are micro-dollars. */
+export interface SetMeteringOptions {
+  organizationId: string;
+  /** Turn metered usage on or off. Off keeps the cap and the card for next time. */
+  enabled: boolean;
+  /** The monthly cap, at least `1_000_000` ($1). Required the first time metering is enabled. */
+  capUsdMicros?: number;
+  /** The card standing order. Enabling it needs a saved card ({@link Billing.createCardSetup}). */
+  standingOrder?: {
+    enabled: boolean;
+    /** Refill when the allowance falls below this, at least `5_000_000` ($5); default $10. */
+    thresholdUsdMicros?: number;
+    /** How much each refill adds, at least `5_000_000` ($5); default $20. */
+    rechargeUsdMicros?: number;
+  };
+}
+
+export interface SetMeteringResult {
+  org_id: string;
+  metering: MeteringBlock | null;
+}
+
+export interface CreateCardSetupOptions {
+  /** Where the browser lands after the card is saved: a run402.com or localhost URL. */
+  returnUrl?: string;
+}
+
+/** A one-time setup link for a person's browser; the card never reaches Run402. */
+export interface CreateCardSetupResult {
+  org_id: string;
+  setup_url: string;
+  expires_at: string;
+}
+
+/** The gateway's floors, mirrored so a bad amount is refused before the request. */
+const METERING_CAP_MIN_USD_MICROS = 1_000_000;
+const STANDING_ORDER_MIN_USD_MICROS = 5_000_000;
 
 export interface BillingHistoryEntry {
   id: string;
@@ -280,6 +398,48 @@ function assertUsdMicrosAmount(
   }
 }
 
+function assertUsdMicrosAtLeast(
+  value: unknown,
+  min: number,
+  name: string,
+  context: string,
+): asserts value is number {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < min) {
+    throw new LocalError(
+      `${name} must be a safe integer USD-micros amount of at least ${min}.`,
+      context,
+    );
+  }
+}
+
+function meteringRequestBody(opts: SetMeteringOptions, context: string): Record<string, unknown> {
+  if (typeof opts.enabled !== "boolean") {
+    throw new LocalError("enabled must be a boolean.", context);
+  }
+  const body: Record<string, unknown> = { enabled: opts.enabled };
+  if (opts.capUsdMicros !== undefined) {
+    assertUsdMicrosAtLeast(opts.capUsdMicros, METERING_CAP_MIN_USD_MICROS, "capUsdMicros", context);
+    body.cap_usd_micros = opts.capUsdMicros;
+  }
+  if (opts.standingOrder !== undefined) {
+    const so = opts.standingOrder;
+    if (!so || typeof so !== "object" || Array.isArray(so) || typeof so.enabled !== "boolean") {
+      throw new LocalError("standingOrder must be an object with a boolean enabled.", context);
+    }
+    const standing: Record<string, unknown> = { enabled: so.enabled };
+    if (so.thresholdUsdMicros !== undefined) {
+      assertUsdMicrosAtLeast(so.thresholdUsdMicros, STANDING_ORDER_MIN_USD_MICROS, "standingOrder.thresholdUsdMicros", context);
+      standing.threshold_usd_micros = so.thresholdUsdMicros;
+    }
+    if (so.rechargeUsdMicros !== undefined) {
+      assertUsdMicrosAtLeast(so.rechargeUsdMicros, STANDING_ORDER_MIN_USD_MICROS, "standingOrder.rechargeUsdMicros", context);
+      standing.recharge_usd_micros = so.rechargeUsdMicros;
+    }
+    body.standing_order = standing;
+  }
+  return body;
+}
+
 function checkoutRequestBody(
   request: CreateCheckoutOptions,
   context: string,
@@ -328,11 +488,13 @@ export class Billing {
   readonly balance: (identifier: OrganizationIdentifier) => Promise<OrganizationDetail>;
   readonly createEmail: (email: string) => Promise<EmailOrganization>;
   readonly autoRecharge: (opts: AutoRechargeOptions) => Promise<void>;
+  readonly metering: (opts: SetMeteringOptions) => Promise<SetMeteringResult>;
 
   constructor(private readonly client: Client) {
     this.balance = this.checkBalance.bind(this);
     this.createEmail = this.createEmailOrganization.bind(this);
     this.autoRecharge = this.setAutoRecharge.bind(this);
+    this.metering = this.setMetering.bind(this);
   }
 
   /** Check a organization by organization id (UUID), wallet, or email. */
@@ -516,5 +678,59 @@ export class Billing {
       body,
       context: "setting auto-recharge",
     });
+  }
+
+  /**
+   * prepaid-metered-usage: read the organization's metered usage and card
+   * standing order, by organization id (UUID), wallet, or email (resolved like
+   * {@link getOrganization}). `null` when the organization never enabled
+   * metering and holds no saved card.
+   */
+  async getMetering(identifier: OrganizationIdentifier): Promise<MeteringBlock | null> {
+    const detail = await resolveOrganizationDetail(this.client, identifier, "reading metering");
+    return detail.metering ?? null;
+  }
+
+  /**
+   * prepaid-metered-usage: turn metered usage on or off under one monthly cap,
+   * and set the card standing order that refills the allowance under the same
+   * cap: `PATCH /orgs/v1/:org_id/billing/metering`. Needs a live hobby or team
+   * lease (`METERING_REQUIRES_LEASE` otherwise) and the billing role or
+   * higher; a grant key is refused. `capUsdMicros` is required the first time
+   * metering is enabled; enabling the standing order needs a saved card
+   * (`STANDING_ORDER_REQUIRES_CARD`, see {@link createCardSetup}). Returns the
+   * organization's metering block as every read prints it.
+   */
+  async setMetering(opts: SetMeteringOptions): Promise<SetMeteringResult> {
+    assertNonEmptyString(opts.organizationId, "organizationId", "setting metering");
+    const body = meteringRequestBody(opts, "setting metering");
+    return this.client.request<SetMeteringResult>(`/orgs/v1/${encodeURIComponent(opts.organizationId)}/billing/metering`, {
+      method: "PATCH",
+      body,
+      context: "setting metering",
+    });
+  }
+
+  /**
+   * prepaid-metered-usage: mint a one-time setup link that saves a card on the
+   * organization for the standing order:
+   * `POST /orgs/v1/:org_id/billing/payment-methods/setup`. A person opens
+   * `setup_url` in a browser; the card is stored by the payment processor and
+   * never reaches Run402 or this client. Billing role or higher.
+   */
+  async createCardSetup(
+    organizationId: string,
+    opts: CreateCardSetupOptions = {},
+  ): Promise<CreateCardSetupResult> {
+    assertNonEmptyString(organizationId, "organizationId", "creating card setup");
+    const body: Record<string, unknown> = {};
+    if (opts.returnUrl !== undefined) {
+      assertHttpUrl(opts.returnUrl, "returnUrl", "creating card setup");
+      body.return_url = opts.returnUrl;
+    }
+    return this.client.request<CreateCardSetupResult>(
+      `/orgs/v1/${encodeURIComponent(organizationId)}/billing/payment-methods/setup`,
+      { method: "POST", body, context: "creating card setup" },
+    );
   }
 }

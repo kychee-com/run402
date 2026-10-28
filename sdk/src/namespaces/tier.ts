@@ -5,6 +5,7 @@
  */
 
 import type { Client } from "../kernel.js";
+import type { MeteringBlock } from "./billing.js";
 
 export type TierName = "prototype" | "hobby" | "team";
 
@@ -120,8 +121,24 @@ export interface TierStatusResult {
     /** The vault pool's own limit, separate from `storage_bytes_limit`. */
     source_bytes_limit: number;
     source_limit: string;
+    /**
+     * prepaid-metered-usage: on a metered, non-suspended organization the
+     * `*_limit` fields above are the effective headroom (what the cap and the
+     * allowance still pay for) and these carry the tier's own amounts. Absent
+     * when the organization is not metered.
+     */
+    api_calls_included?: number;
+    storage_bytes_included?: number;
+    storage_included?: string;
+    source_bytes_included?: number;
+    source_included?: string;
     [key: string]: unknown;
   };
+  /**
+   * prepaid-metered-usage: the organization's metered usage and card standing
+   * order; `null` when it never enabled metering. Absent on older gateways.
+   */
+  metering?: MeteringBlock | null;
   /**
    * Per-project summary across all projects on the wallet's organization.
    * Always present on v1.46+ gateways. Pre-v1.59 entries lack

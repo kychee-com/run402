@@ -1220,6 +1220,47 @@ describe("CLI billing validation regressions", () => {
       assert.equal(parsed.details?.flag, "--threshold");
     });
   }
+
+  // prepaid-metered-usage: dollar flags are whole or decimal US dollars,
+  // refused locally before any org resolution or network hop.
+  for (const cap of ["abc", "-1", "0", "1.2345678", "5,00"]) {
+    it(`billing metering rejects malformed --cap ${cap} locally`, async () => {
+      const parsed = await runBillingExpectingValidationError("metering", [
+        "11111111-2222-3333-4444-555555555555",
+        "--enable",
+        "--cap",
+        cap,
+      ]);
+
+      assert.equal(parsed.code, "BAD_FLAG");
+      assert.equal(parsed.details?.flag, "--cap");
+    });
+  }
+
+  it("billing metering refuses --enable with --disable locally", async () => {
+    const parsed = await runBillingExpectingValidationError("metering", [
+      "11111111-2222-3333-4444-555555555555",
+      "--enable",
+      "--disable",
+    ]);
+    assert.equal(parsed.code, "BAD_USAGE");
+  });
+
+  it("billing metering refuses a standing-order value other than on|off locally", async () => {
+    const parsed = await runBillingExpectingValidationError("metering", [
+      "11111111-2222-3333-4444-555555555555",
+      "--standing-order",
+      "maybe",
+    ]);
+    assert.equal(parsed.code, "BAD_FLAG");
+    assert.equal(parsed.details?.field, "--standing-order");
+  });
+
+  it("billing card reports an unknown action as a JSON envelope naming setup", async () => {
+    const parsed = await runBillingExpectingValidationError("card", ["remove"]);
+    assert.equal(parsed.code, "UNKNOWN_SUBCOMMAND");
+    assert.deepEqual(parsed.details?.known_subcommands, ["setup"]);
+  });
 });
 
 describe("CLI e2e happy path", () => {

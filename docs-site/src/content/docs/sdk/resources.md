@@ -1399,6 +1399,9 @@ createEmailOrganization(email): Promise<EmailOrganization>
 linkWallet(organizationId, wallet): Promise<LinkWalletResult>  // organizationId = UUID; POST /orgs/v1/:org_id/wallets
 createCheckout(organizationId, checkout: { product: "balance_topup", amountUsdMicros: number } | { product: "tier", tier: "prototype" | "hobby" | "team" } | { product: "email_pack" }): Promise<CreateCheckoutResult>
 setAutoRecharge(opts: { organizationId: string, enabled: boolean, threshold? }): Promise<void>
+setMetering(opts: { organizationId: string, enabled: boolean, capUsdMicros?: number, standingOrder?: { enabled: boolean, thresholdUsdMicros?: number, rechargeUsdMicros?: number } }): Promise<{ org_id: string, metering: MeteringBlock | null }>  // PATCH /orgs/v1/:org_id/billing/metering
+getMetering(identifier): Promise<MeteringBlock | null>  // the `metering` block of the organization read; null when never enabled and no card saved
+createCardSetup(organizationId, opts?: { returnUrl?: string }): Promise<{ org_id: string, setup_url: string, expires_at: string }>  // POST /orgs/v1/:org_id/billing/payment-methods/setup
 checkBalance(identifier): Promise<OrganizationDetail>  // identifier = organization id (UUID) | wallet | email
 getOrganization(identifier): Promise<OrganizationDetail>
 lookupOrganization(identifier): Promise<OrganizationDetail>  // resolve wallet/email → organization (incl. org_id)
@@ -1409,7 +1412,10 @@ getHistory(identifier, limit?: number): Promise<BillingHistoryResult>
 // CLI-style aliases:
 createEmail(email): Promise<EmailOrganization>
 autoRecharge(opts): Promise<void>
+metering(opts): Promise<{ org_id, metering }>  // alias of setMetering
 ```
+
+**Metered usage** (`setMetering` / `getMetering` / `createCardSetup`). An organization on a paid lease (hobby or team) can turn on metered usage under ONE monthly cap: storage and vault bytes above the lease's included pools cost a published price per GB-month (prorated by the UTC day), API calls above the included amount a price per million (`r.projects.getQuote()` carries the prices as `metered`), charged daily from the allowance and never past the cap in a UTC month. The same cap bounds the card standing order: a card saved once through the `setup_url` a person opens in a browser, a threshold, a recharge amount; when the allowance falls below the threshold the card refills it under the cap. `capUsdMicros` (at least `1_000_000`) is required the first time metering is enabled; `thresholdUsdMicros` / `rechargeUsdMicros` are at least `5_000_000`. When the allowance or the cap cannot cover a day, metering suspends (`suspended_reason: "allowance" | "cap" | "lease"`): nothing is deleted, everything keeps serving, the flat pool applies again and new writes past it are refused with `fund_allowance` / `raise_metering_cap` / `save_card` next actions. The `MeteringBlock` also rides `r.tier.status()` as `metering`, where a metered organization's `pool_usage.*_limit` is the effective headroom and `pool_usage.*_included` the tier's amounts. Errors: `403 METERING_REQUIRES_LEASE` (prototype or lapsed lease), `403 STANDING_ORDER_REQUIRES_CARD`; a grant key is refused. Owner events: `metering_cap_nearing`, `metering_suspended`, `metering_resumed`, `standing_order_failed`. The setup link is for a person's browser, not a secret, so all three methods stay available from an MCP `run` snippet.
 
 Organizations are addressed by their canonical `org_id` (UUID).
 `getOrganization` / `checkBalance` / `history` accept an organization id, wallet, or email:

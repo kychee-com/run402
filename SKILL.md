@@ -1047,9 +1047,13 @@ run402 billing checkout <org_id> --product tier --tier hobby
 run402 billing checkout <org_id> --product email-pack           # $5 / 10k emails (never expire)
 run402 billing checkout <org_id> --product balance-topup --amount 5000000
 run402 billing auto-recharge <org_id> on --threshold 2000
+run402 billing metering <org_id> --enable --cap 50               # metered usage above the lease's pools, at most $50 a month
+run402 billing card setup <org_id>                               # one-time browser link to save a card; then metering --standing-order on
 run402 billing balance <org_id | wallet | email>   # wallet/email resolved to the organization; SIWX must be linked to it (email lookups admin-only)
 run402 billing history <org_id | wallet | email>
 ```
+
+Metered usage is a setting of a paid lease (hobby or team): storage and vault bytes above the included pools cost a published price per GB-month and API calls above the included amount a price per million, charged daily from the allowance and never past ONE monthly cap, which also bounds the card standing order that refills the allowance. When the allowance or the cap cannot cover a day, metering suspends — nothing is deleted, everything keeps serving, the flat pool applies again — and resumes once the allowance is funded, the cap raised, or a card saved (`metering_suspended` / `metering_resumed` events; `run402 billing metering` with no flags shows the block).
 
 `run402 tier set` refetches `/tiers/v1/status` after the call and includes the refreshed organization-pool snapshot as `status_after` in the JSON output, so the new pooled `api_calls` / `storage_bytes` totals come back in one step.
 

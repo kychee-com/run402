@@ -805,6 +805,11 @@ const SURFACE: Capability[] = [
   { id: "create_email_organization", endpoint: "POST /orgs/v1/email",                   cli: "billing:create-email",   openclaw: "billing:create-email" },
   { id: "link_wallet_to_organization",       endpoint: "POST /orgs/v1/:org_id/wallets",   cli: "billing:link-wallet",    openclaw: "billing:link-wallet" },
   { id: "set_auto_recharge",            endpoint: "PATCH /orgs/v1/:org_id/billing/auto-recharge",  cli: "billing:auto-recharge",  openclaw: "billing:auto-recharge" },
+  // prepaid-metered-usage: metered usage under one monthly cap, the card
+  // standing order under the same cap, and the saved card behind it.
+  { id: "set_metering",                 endpoint: "PATCH /orgs/v1/:org_id/billing/metering",       cli: "billing:metering",       openclaw: "billing:metering" },
+  { id: "get_metering",                 endpoint: "GET /orgs/v1/:org_id/billing (metering)",       cli: null,                     openclaw: null },
+  { id: "create_card_setup",            endpoint: "POST /orgs/v1/:org_id/billing/payment-methods/setup", cli: "billing:card",     openclaw: "billing:card" },
   { id: "billing_balance",              endpoint: "GET /orgs/v1/:org_id/billing",        cli: "billing:balance",        openclaw: "billing:balance" },
   { id: "billing_history_cli",          endpoint: "GET /orgs/v1/:org_id/billing/history",        cli: "billing:history",        openclaw: "billing:history" },
 
@@ -1200,6 +1205,9 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   create_email_organization: "billing.createEmailOrganization",
   link_wallet_to_organization: "billing.linkWallet",
   set_auto_recharge: "billing.setAutoRecharge",
+  set_metering: "billing.setMetering",
+  get_metering: "billing.getMetering",
+  create_card_setup: "billing.createCardSetup",
   billing_balance: "billing.getOrganization",
   billing_history_cli: "billing.getHistory",
 

@@ -478,6 +478,9 @@ export const COMMAND_MANIFEST = [
   { path: ["billing", "checkout"], positionals: [p("identifier")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["00000000-0000-4000-8000-000000000001", "--product", "email-pack"] },
   { path: ["billing", "topup"], positionals: [p("identifier")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["00000000-0000-4000-8000-000000000001", "--sats", "2000"] },
   { path: ["billing", "auto-recharge"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG, "--state", "on"] },
+  // prepaid-metered-usage: the metering setting and the saved card.
+  { path: ["billing", "metering"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG] },
+  { path: ["billing", "card", "setup"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG] },
   { path: ["billing", "balance"], positionals: [p("identifier")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["gate@example.com"] },
   { path: ["billing", "history"], positionals: [p("identifier")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["gate@example.com"] },
 

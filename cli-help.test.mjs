@@ -128,7 +128,7 @@ const MATRIX = {
   },
   billing: {
     shared: [],
-    specific: ["checkout", "auto-recharge", "history", "create-email", "link-wallet", "balance"],
+    specific: ["checkout", "auto-recharge", "metering", "card", "history", "create-email", "link-wallet", "balance"],
   },
   contracts: {
     shared: [],

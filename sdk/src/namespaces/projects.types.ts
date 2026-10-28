@@ -556,8 +556,27 @@ export interface TierQuote {
   description: string;
 }
 
+/**
+ * prepaid-metered-usage: what usage above a leased organization's included
+ * pools costs once it enables metering under a monthly cap. Each
+ * `_usd_micros` number sits beside its `$0.10`-style label.
+ */
+export interface MeteredTierPricing {
+  /** The tiers that can enable metering (a paid lease: hobby, team). */
+  tiers: string[];
+  cap_min_usd_micros: number;
+  storage_gb_month_usd_micros: number;
+  storage_gb_month: string;
+  source_gb_month_usd_micros: number;
+  source_gb_month: string;
+  api_calls_per_million_usd_micros: number;
+  api_calls_per_million: string;
+}
+
 export interface QuoteResult {
   tiers: Record<string, TierQuote>;
+  /** Absent on gateways that predate metered usage. */
+  metered?: MeteredTierPricing;
   auth?: Record<string, unknown>;
 }
 
