@@ -66,7 +66,7 @@ const OPEN_OUTCOMES: Record<string, string> = {
   "http_binding/url-port-zero": "bind",
   "mcp_binding/integer-2-53-plus-1": "bind_as_double",
   "mcp_binding/integer-2-64": "bind_as_double",
-  "client/invoice-at-end": "reject",
+  "client/invoice-at-end": "pay",
 };
 
 function applyPatch<T>(base: Json, ops: PatchOp[]): T {

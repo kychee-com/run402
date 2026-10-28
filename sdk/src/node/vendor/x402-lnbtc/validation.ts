@@ -129,8 +129,9 @@ export function validateInvoice(
  *
  * @param invoice - Decoded invoice
  * @param options - Validation time and skew
- * @param policy - `unexpired`: the invoice must not have expired at `now`
- *   (client, server). `settlement`: the paid-but-expired window, valid through
+ * @param policy - `unexpired`: valid through `invoice_end` inclusive, since
+ *   BOLT11 expires an invoice once that time has passed (client, server).
+ *   `settlement`: the paid-but-expired window, valid through
  *   `invoice_end + skew` inclusive (facilitator).
  */
 export function checkExpiry(
@@ -139,7 +140,7 @@ export function checkExpiry(
   policy: "unexpired" | "settlement",
 ): void {
   const end = invoice.timestamp + invoice.expirySeconds;
-  const expired = policy === "settlement" ? options.now > end + options.skew : options.now >= end;
+  const expired = policy === "settlement" ? options.now > end + options.skew : options.now > end;
   if (expired) reject(Errors.invoiceExpired);
 }
 

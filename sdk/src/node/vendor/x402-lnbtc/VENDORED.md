@@ -2,7 +2,7 @@
 
 - Source: https://github.com/x402-foundation/x402, pull request #3688
   (`typescript/packages/mechanisms/lnbtc/src`)
-- Commit: `896a7bd0ce3093d8ae5a4401b96468e37c4a6204`
+- Commit: `09b948c02f9d0b52eae8163e127afb67d1f11997`
 - License: Apache-2.0 (`LICENSE` in this directory)
 
 `@x402/lnbtc` is not on npm yet, so the Node SDK carries the part its Lightning
