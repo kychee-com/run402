@@ -336,6 +336,62 @@ describe("email.updateMailbox", () => {
     assert.equal(result.footer_policy_locked_reason, "prototype_tier");
   });
 
+  it("PATCHes inbound_policy and inbound_allowlist without a footer_policy", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({
+        ...mailboxRecord("support", "mbx_support"),
+        inbound_policy: "allowlist",
+        inbound_allowlist: ["*@kysigned.com", "partner@example.com"],
+      }),
+    );
+    const sdk = makeSdk(makeCreds(), fetch);
+    const result = await sdk.email.updateMailbox("prj_known", {
+      mailbox: "mbx_support",
+      inbound_policy: "allowlist",
+      inbound_allowlist: ["*@kysigned.com", "partner@example.com"],
+    });
+
+    assert.equal(calls[0]!.method, "PATCH");
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), {
+      inbound_policy: "allowlist",
+      inbound_allowlist: ["*@kysigned.com", "partner@example.com"],
+    });
+    assert.equal(result.inbound_policy, "allowlist");
+    assert.deepEqual(result.inbound_allowlist, ["*@kysigned.com", "partner@example.com"]);
+  });
+
+  it("rejects an invalid inbound_policy before requesting", async () => {
+    const { fetch, calls } = mockFetch(() => {
+      throw new Error("unexpected fetch for invalid inbound policy");
+    });
+    const sdk = makeSdk(makeCreds(), fetch);
+
+    await assert.rejects(
+      // @ts-expect-error — exercising runtime validation of a bad value
+      sdk.email.updateMailbox("prj_known", { mailbox: "mbx_support", inbound_policy: "everyone" }),
+      (err: unknown) =>
+        err instanceof LocalError &&
+        err.context === "updating mailbox" &&
+        /reply_only/.test(err.message),
+    );
+    assert.equal(calls.length, 0);
+  });
+
+  it("rejects an update that names no setting", async () => {
+    const { fetch, calls } = mockFetch(() => {
+      throw new Error("unexpected fetch for an empty update");
+    });
+    const sdk = makeSdk(makeCreds(), fetch);
+
+    await assert.rejects(
+      sdk.email.updateMailbox("prj_known", { mailbox: "mbx_support" }),
+      (err: unknown) =>
+        err instanceof LocalError &&
+        /footer_policy, inbound_policy, and\/or inbound_allowlist/.test(err.message),
+    );
+    assert.equal(calls.length, 0);
+  });
+
   it("rejects invalid footer policies before requesting", async () => {
     const { fetch, calls } = mockFetch(() => {
       throw new Error("unexpected fetch for invalid footer policy");

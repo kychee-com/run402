@@ -80,7 +80,9 @@ Subcommands:
   defaults [--outbound <slug|id>] [--auth-sender <slug|id>] [--project <project_id>]
                                       Show or set mailbox defaults. With no
                                       flags, prints current settings/candidates.
-  update [<slug|id>] --footer-policy <run402_transparency|none> [--project <project_id>]
+  update [<slug|id>] [--footer-policy <run402_transparency|none>]
+         [--inbound-policy <reply_only|allowlist|open>] [--inbound-allowlist <entry,...>]
+         [--project <project_id>]
                                       Update per-mailbox settings
   info   [--project <project_id>]            Show mailbox info, including footer policy
   status [--project <project_id>]            Alias for 'info' (prefer 'info')
@@ -117,7 +119,7 @@ Webhook subcommands:
 Send modes:
   Template:  --template <name> --var key=value [--var ...]  OR --vars '{"k":"v",...}'
   Raw HTML:  --subject "..." --html "..." [--text "..."]    (both --subject and --html required)
-  Raw HTML also supports: --attach <path>[:content-type] (repeatable; max 5, 7 MB total)
+  Raw HTML also supports: --attach <path>[:content-type] (repeatable; max 100, 15 MB total)
   Both modes support: --from-name "Display Name" --project <project_id>
 
 Choosing a mailbox:
@@ -139,6 +141,7 @@ Examples:
   run402 email mailboxes
   run402 email defaults --outbound my-app --auth-sender my-app
   run402 email update my-app --footer-policy none
+  run402 email update my-app --inbound-policy allowlist --inbound-allowlist "*@example.com"
   run402 email send --template project_invite --to user@example.com \\
     --var project_name="My App" --var invite_url="https://example.com/invite/abc"
   run402 email send --to user@example.com --subject "Welcome!" \\
@@ -158,6 +161,9 @@ Notes:
     relying on omitted --mailbox sends
   - Footer policy: prototype is locked to run402_transparency; hobby/team can
     set none. Tier locks surface as FOOTER_POLICY_TIER_REQUIRED.
+  - Inbound policy: reply_only (default) accepts only replies to mail the
+    mailbox sent; allowlist also accepts first contact from --inbound-allowlist
+    entries; open accepts first contact from anyone.
   - Single recipient per send (no CC/BCC)
   - Slug: 3-63 chars, lowercase alphanumeric + hyphens, no consecutive hyphens
   - --project defaults to the active project
@@ -181,8 +187,9 @@ Options:
   --html "..."        HTML body (raw HTML mode; required with --subject)
   --text "..."        Plain-text body (raw HTML mode; optional)
   --attach <path>[:content-type]  Attach a file (raw HTML mode only; repeatable;
-                      max 5, ≤ 7 MB total). Content-type is inferred from the
-                      extension when the :content-type suffix is omitted.
+                      max 100, each and all together ≤ 15 MB). Content-type is
+                      inferred from the extension when the :content-type
+                      suffix is omitted.
   --from-name "..."   Display name for the From header
   --mailbox <slug|id> Target mailbox. Omit to use default_outbound_mailbox_id.
   --project <project_id>      Project ID (defaults to the active project)
@@ -278,15 +285,31 @@ Options:
   update: `run402 email update — Update per-mailbox settings
 
 Usage:
-  run402 email update [<slug|mbx_id>] --footer-policy <run402_transparency|none> [--project <project_id>]
-  run402 email update --mailbox <slug|mbx_id> --footer-policy <run402_transparency|none> [--project <project_id>]
+  run402 email update [<slug|mbx_id>] [--footer-policy <run402_transparency|none>]
+    [--inbound-policy <reply_only|allowlist|open>] [--inbound-allowlist <entry,...>]
+    [--project <project_id>]
+  run402 email update --mailbox <slug|mbx_id> <settings...> [--project <project_id>]
+
+Pass at least one setting; the others stay as they are.
 
 Options:
   --footer-policy <policy>  Outbound footer policy. Use run402_transparency or none.
                             Prototype projects are locked to run402_transparency;
                             attempts to set none return FOOTER_POLICY_TIER_REQUIRED.
+  --inbound-policy <policy> Who may write to the mailbox first: reply_only
+                            (default; only replies to mail it sent), allowlist
+                            (also first contact from --inbound-allowlist), or open
+                            (first contact from anyone).
+  --inbound-allowlist <entry,...>
+                            Comma-separated exact addresses or *@domain wildcards;
+                            replaces the whole list. "" clears it.
   --mailbox <slug|id>       Target mailbox; omit only when the project has one mailbox.
   --project <project_id>            Project ID (defaults to the active project)
+
+Examples:
+  run402 email update support --inbound-policy allowlist \\
+    --inbound-allowlist "*@example.com,partner@example.org"
+  run402 email update support --inbound-policy open
 `,
   get: `run402 email get — Get a message with replies
 
@@ -358,6 +381,8 @@ function mailboxInfoPayload(m) {
     footer_policy: m.footer_policy,
     effective_footer_policy: m.effective_footer_policy,
     footer_policy_locked_reason: m.footer_policy_locked_reason,
+    inbound_policy: m.inbound_policy,
+    inbound_allowlist: m.inbound_allowlist,
   };
 }
 
@@ -512,11 +537,13 @@ async function defaults(args) {
 }
 
 async function updateMailbox(args) {
-  const valueFlags = ["--project", "--mailbox", "--footer-policy"];
+  const valueFlags = ["--project", "--mailbox", "--footer-policy", "--inbound-policy", "--inbound-allowlist"];
   validateArgs(args, valueFlags);
   const projectId = resolveProjectId(strictFlagValue(args, "--project"));
   const mailboxFlag = strictFlagValue(args, "--mailbox");
   const footerPolicy = strictFlagValue(args, "--footer-policy");
+  const inboundPolicy = strictFlagValue(args, "--inbound-policy");
+  const inboundAllowlistFlag = strictFlagValue(args, "--inbound-allowlist");
   const positional = positionalArgs(args, valueFlags);
   const target = positional[0] ?? null;
 
@@ -532,25 +559,36 @@ async function updateMailbox(args) {
       message: "Use either positional <slug|id> or --mailbox, not both.",
     });
   }
-  if (!footerPolicy) {
+  if (footerPolicy == null && inboundPolicy == null && inboundAllowlistFlag == null) {
     fail({
       code: "BAD_USAGE",
-      message: "Missing --footer-policy <run402_transparency|none>.",
-      hint: "run402 email update <slug|id> --footer-policy none",
+      message: "Pass --footer-policy, --inbound-policy, and/or --inbound-allowlist.",
+      hint: "run402 email update <slug|id> --inbound-policy allowlist --inbound-allowlist \"*@example.com\"",
     });
   }
-  if (!["run402_transparency", "none"].includes(footerPolicy)) {
+  if (footerPolicy != null && !["run402_transparency", "none"].includes(footerPolicy)) {
     fail({
       code: "BAD_USAGE",
       message: "--footer-policy must be one of: run402_transparency, none.",
       details: { footer_policy: footerPolicy },
     });
   }
+  if (inboundPolicy != null && !["reply_only", "allowlist", "open"].includes(inboundPolicy)) {
+    fail({
+      code: "BAD_USAGE",
+      message: "--inbound-policy must be one of: reply_only, allowlist, open.",
+      details: { inbound_policy: inboundPolicy },
+    });
+  }
 
   try {
     const data = await getSdk().email.updateMailbox(projectId, {
       mailbox: target ?? mailboxFlag ?? undefined,
-      footer_policy: footerPolicy,
+      footer_policy: footerPolicy ?? undefined,
+      inbound_policy: inboundPolicy ?? undefined,
+      inbound_allowlist: inboundAllowlistFlag == null
+        ? undefined
+        : inboundAllowlistFlag.split(",").map((entry) => entry.trim()).filter(Boolean),
     });
     console.log(JSON.stringify(mailboxInfoPayload(data), null, 2));
   } catch (err) {

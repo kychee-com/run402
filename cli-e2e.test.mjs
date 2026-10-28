@@ -5359,6 +5359,60 @@ describe("CLI e2e happy path", () => {
     assert.equal(stdout.effective_footer_policy, "none");
   });
 
+  it("email update PATCHes inbound policy and allowlist", async () => {
+    await seedTestProject();
+    const { run } = await import("./cli/lib/email.mjs");
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildEmailFetch(calls, {
+      "PATCH /mailboxes/v1/mbx_test_1": ({ body }) => json({
+        mailbox_id: "mbx_test_1",
+        address: "test@mail.run402.com",
+        slug: "test",
+        status: "active",
+        inbound_policy: body.inbound_policy,
+        inbound_allowlist: body.inbound_allowlist,
+      }),
+    });
+    let threw = null;
+    captureStart();
+    try {
+      await run("update", ["test", "--inbound-policy", "allowlist", "--inbound-allowlist", "*@example.com, partner@example.org"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw, null, `should succeed, got: ${threw?.message || ""} / ${capturedStderr()}`);
+    const patch = calls.find(c => c.method === "PATCH" && c.pathNoQuery === "/mailboxes/v1/mbx_test_1");
+    assert.ok(patch, "must PATCH the resolved mailbox");
+    assert.deepEqual(patch.body, {
+      inbound_policy: "allowlist",
+      inbound_allowlist: ["*@example.com", "partner@example.org"],
+    });
+    const stdout = JSON.parse(capturedStdout());
+    assert.equal(stdout.inbound_policy, "allowlist");
+    assert.deepEqual(stdout.inbound_allowlist, ["*@example.com", "partner@example.org"]);
+  });
+
+  it("email update refuses an unknown --inbound-policy before any request", async () => {
+    await seedTestProject();
+    const { run } = await import("./cli/lib/email.mjs");
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildEmailFetch(calls);
+    let threw = null;
+    captureStart();
+    try {
+      await run("update", ["test", "--inbound-policy", "everyone"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.ok(threw, "must refuse");
+    assert.match(capturedStderr(), /--inbound-policy must be one of: reply_only, allowlist, open/);
+    assert.equal(calls.length, 0);
+  });
+
   it("email delete without --confirm refuses to mutate (GH-87)", async () => {
     await seedTestProject();
     const { run } = await import("./cli/lib/email.mjs");

@@ -19,6 +19,7 @@ const WEBHOOK_EVENTS = ["delivery", "bounced", "complained", "reply_received", "
 const MESSAGE_DIRECTIONS = ["inbound", "outbound"] as const;
 const DELIVERY_STATUSES = ["pending", "in_flight", "delivered", "failed_permanent"] as const;
 const MAILBOX_FOOTER_POLICIES = ["run402_transparency", "none"] as const;
+const MAILBOX_INBOUND_POLICIES = ["reply_only", "allowlist", "open"] as const;
 
 /** Direction filter for `email.list`. Omit to list both sent + received. */
 export type MessageDirection = (typeof MESSAGE_DIRECTIONS)[number];
@@ -26,6 +27,12 @@ export type MessageDirection = (typeof MESSAGE_DIRECTIONS)[number];
 export type WebhookDeliveryStatus = (typeof DELIVERY_STATUSES)[number];
 /** Outbound footer policy configured on a mailbox. */
 export type MailboxFooterPolicy = (typeof MAILBOX_FOOTER_POLICIES)[number];
+/**
+ * Who may write to a mailbox first. `reply_only` (the default) accepts only
+ * replies to mail the mailbox sent; `allowlist` also accepts first contact from
+ * the `inbound_allowlist` entries; `open` accepts first contact from anyone.
+ */
+export type MailboxInboundPolicy = (typeof MAILBOX_INBOUND_POLICIES)[number];
 
 export interface MailboxRecord {
   mailbox_id: string;
@@ -64,6 +71,10 @@ export interface MailboxRecord {
   effective_footer_policy?: MailboxFooterPolicy;
   /** Present when the requested footer policy is locked by tier or platform policy. */
   footer_policy_locked_reason?: string | null;
+  /** Who may write to this mailbox first. */
+  inbound_policy?: MailboxInboundPolicy;
+  /** First-contact senders accepted under `inbound_policy: "allowlist"` (normalized, lowercase). */
+  inbound_allowlist?: string[];
 }
 
 export interface MailboxSettings {
@@ -117,6 +128,14 @@ export interface UpdateMailboxOptions {
   mailbox?: MailboxSelector;
   /** Outbound footer policy. Prototype projects are locked to `run402_transparency`. */
   footer_policy?: MailboxFooterPolicy;
+  /** Who may write to the mailbox first: `reply_only` (default), `allowlist`, or `open`. */
+  inbound_policy?: MailboxInboundPolicy;
+  /**
+   * Replaces the first-contact allowlist used under `inbound_policy: "allowlist"`.
+   * Entries are exact addresses (`partner@example.com`) or `*@domain` wildcards;
+   * the gateway normalizes them to lowercase and refuses anything else.
+   */
+  inbound_allowlist?: string[];
 }
 
 export type UpdateMailboxResult = MailboxInfo;
@@ -156,8 +175,8 @@ export interface SendEmailOptions {
   from_name?: string;
   /**
    * Binary attachments — RAW MODE ONLY (with `subject` + `html`, not `template`).
-   * At most 5; each ≤ 7 MB and ≤ 7 MB total (decoded). The platform sends a
-   * multipart/mixed MIME when present.
+   * At most 100; each ≤ 15 MB and ≤ 15 MB total (decoded): the byte cap is the
+   * real bound. The platform sends one multipart/mixed MIME when present.
    */
   attachments?: EmailAttachment[];
   in_reply_to?: string;
@@ -671,8 +690,9 @@ export class Email {
   }
 
   /**
-   * Update per-mailbox settings. Currently supports the outbound
-   * `footer_policy` field accepted by PATCH /mailboxes/v1/:mailbox_id.
+   * Update per-mailbox settings through PATCH /mailboxes/v1/:mailbox_id: the
+   * outbound `footer_policy`, and the first-contact `inbound_policy` and
+   * `inbound_allowlist`. Pass at least one; omitted settings stay as they are.
    */
   async updateMailbox(projectId: string, opts: UpdateMailboxOptions): Promise<UpdateMailboxResult> {
     if (!opts || typeof opts !== "object" || Array.isArray(opts)) {
@@ -681,20 +701,33 @@ export class Email {
         "updating mailbox",
       );
     }
-    const hasFooterPolicy = Object.prototype.hasOwnProperty.call(opts, "footer_policy");
-    if (!hasFooterPolicy) {
+    const body: { footer_policy?: MailboxFooterPolicy; inbound_policy?: MailboxInboundPolicy; inbound_allowlist?: string[] } = {};
+    if (opts.footer_policy !== undefined) {
+      assertStringInSet(opts.footer_policy, MAILBOX_FOOTER_POLICIES, "footer_policy", "updating mailbox");
+      body.footer_policy = opts.footer_policy;
+    }
+    if (opts.inbound_policy !== undefined) {
+      assertStringInSet(opts.inbound_policy, MAILBOX_INBOUND_POLICIES, "inbound_policy", "updating mailbox");
+      body.inbound_policy = opts.inbound_policy;
+    }
+    if (opts.inbound_allowlist !== undefined) {
+      if (!Array.isArray(opts.inbound_allowlist) || opts.inbound_allowlist.some((e) => typeof e !== "string")) {
+        throw new LocalError("inbound_allowlist must be an array of addresses or *@domain entries.", "updating mailbox");
+      }
+      body.inbound_allowlist = opts.inbound_allowlist;
+    }
+    if (Object.keys(body).length === 0) {
       throw new LocalError(
-        "Provide footer_policy.",
+        "Provide footer_policy, inbound_policy, and/or inbound_allowlist.",
         "updating mailbox",
       );
     }
-    assertStringInSet(opts.footer_policy, MAILBOX_FOOTER_POLICIES, "footer_policy", "updating mailbox");
 
     const { id, serviceKey } = await this.resolveMailbox(projectId, opts.mailbox, "unique", "updating mailbox");
     return this.client.request<UpdateMailboxResult>(`/mailboxes/v1/${id}`, {
       method: "PATCH",
       headers: { Authorization: `Bearer ${serviceKey}` },
-      body: { footer_policy: opts.footer_policy },
+      body,
       context: "updating mailbox",
     });
   }

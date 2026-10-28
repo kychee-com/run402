@@ -878,6 +878,7 @@ run402 email create my-app                          # not idempotent
 run402 email mailboxes                              # candidates + mailbox_settings + next_actions
 run402 email defaults --outbound my-app --auth-sender my-app
 run402 email update my-app --footer-policy none     # hobby/team only; prototype is locked
+run402 email update my-app --inbound-policy allowlist --inbound-allowlist "*@example.com"  # who may write first
 run402 email send --to user@example.com \
   --template notification \
   --var project_name="My App" --var message="Hello"
