@@ -86,7 +86,7 @@ Subcommands:
                                       Update per-mailbox settings
   info   [--project <project_id>]            Show mailbox info, including footer policy
   status [--project <project_id>]            Alias for 'info' (prefer 'info')
-  send   --to <email> [mode flags]   Send an email (template or raw HTML)
+  send   --to <email> [--bcc <email>] [mode flags]   Send an email (template or raw HTML)
   list   [--limit <n>] [--after <cursor>] [--direction <inbound|outbound>] [--project <project_id>]
                                       List messages (paginated). Returns BOTH
                                       sent + received by default; --direction
@@ -164,7 +164,8 @@ Notes:
   - Inbound policy: reply_only (default) accepts only replies to mail the
     mailbox sent; allowlist also accepts first contact from --inbound-allowlist
     entries; open accepts first contact from anyone.
-  - Single recipient per send (no CC/BCC)
+  - One --to recipient per send, plus up to 5 --bcc blind copies (no CC);
+    each blind copy counts as one send against the email limits
   - Slug: 3-63 chars, lowercase alphanumeric + hyphens, no consecutive hyphens
   - --project defaults to the active project
 `;
@@ -176,9 +177,12 @@ Usage:
   run402 email send --to <email> --template <name> --var key=value [--var ...]
   run402 email send --to <email> --template <name> --vars '{"k":"v",...}'
   run402 email send --to <email> --subject "..." --html "..." [--text "..."] [--attach <path> ...]
+  run402 email send --to <email> --bcc <email> [--bcc <email> ...] [mode flags]
 
 Options:
   --to <email>        Recipient email address (required; single recipient)
+  --bcc <email>       Blind copy (repeatable, up to 5; both modes). No header of
+                      any copy names it; each counts as one send.
   --template <name>   Template name (template mode): project_invite, magic_link,
                       notification
   --var key=value     Template variable (repeatable)
@@ -424,6 +428,15 @@ function validateArgs(args, knownFlags, flagsWithValues = knownFlags) {
   }
 }
 
+/** Every `--bcc <email>` value, in order; the gateway validates them. */
+function parseBcc(args) {
+  const out = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--bcc") out.push(args[++i]);
+  }
+  return out;
+}
+
 function parseVars(args) {
   const vars = {};
   for (let i = 0; i < args.length; i++) {
@@ -597,7 +610,7 @@ async function updateMailbox(args) {
 }
 
 async function send(args) {
-  const valueFlags = ["--template", "--to", "--subject", "--html", "--text", "--from-name", "--project", "--vars", "--var", "--mailbox", "--attach"];
+  const valueFlags = ["--template", "--to", "--bcc", "--subject", "--html", "--text", "--from-name", "--project", "--vars", "--var", "--mailbox", "--attach"];
   validateArgs(args, valueFlags);
   const template = strictFlagValue(args, "--template");
   const to = strictFlagValue(args, "--to");
@@ -609,6 +622,7 @@ async function send(args) {
   const projectId = resolveProjectId(strictFlagValue(args, "--project"));
   const variables = parseVars(args);
   const attachments = parseAttachments(args);
+  const bcc = parseBcc(args);
 
   if (!to) {
     fail({ code: "BAD_USAGE", message: "Missing --to <email>" });
@@ -617,6 +631,7 @@ async function send(args) {
   try {
     const data = await getSdk().email.send(projectId, {
       to,
+      bcc: bcc.length ? bcc : undefined,
       template: template ?? undefined,
       variables: template ? variables : undefined,
       subject: subject ?? undefined,
@@ -629,6 +644,7 @@ async function send(args) {
     console.log(JSON.stringify({
       message_id: data.message_id,
       to: data.to,
+      ...(data.bcc ? { bcc: data.bcc } : {}),
       template: data.template,
       subject: data.subject,
       status: data.status,

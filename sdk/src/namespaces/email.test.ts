@@ -535,6 +535,30 @@ describe("email.send", () => {
     assert.deepEqual(JSON.parse(calls[0]!.body as string).attachments, attachments);
   });
 
+  it("passes bcc through unchanged in raw and template mode and returns the echo", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({ message_id: "msg_1", to: "user@example.invalid", bcc: [{ address: "archive@example.invalid", status: "sent", bounce_type: null }], template: null, subject: "test", status: "sent", sent_at: "2026-05-01T18:30:14.904Z" }),
+    );
+    const sdk = makeSdk(makeCreds(), fetch);
+    const result = await sdk.email.send("prj_known", {
+      to: "user@example.invalid",
+      bcc: "Archive@example.invalid",
+      subject: "test",
+      html: "<p>hi</p>",
+      mailbox: "mbx_known",
+    });
+    await sdk.email.send("prj_known", {
+      to: "user@example.invalid",
+      bcc: ["a@example.invalid", "b@example.invalid"],
+      template: "notification",
+      variables: { project_name: "X", message: "hi" },
+      mailbox: "mbx_known",
+    });
+    assert.equal(JSON.parse(calls[0]!.body as string).bcc, "Archive@example.invalid");
+    assert.deepEqual(JSON.parse(calls[1]!.body as string).bcc, ["a@example.invalid", "b@example.invalid"]);
+    assert.deepEqual(result.bcc, [{ address: "archive@example.invalid", status: "sent", bounce_type: null }]);
+  });
+
   it("rejects attachments in template mode before requesting", async () => {
     const { fetch, calls } = mockFetch(() => {
       throw new Error("unexpected fetch for template+attachments");

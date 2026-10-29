@@ -15,7 +15,7 @@ run402 email list --project prj_example --limit 20
 
 A successful queued/accepted response is not proof that the recipient received a message. Retain returned identifiers and inspect delivery status through the supported workflow. Domain verification and sender restrictions are part of setup; do not describe an unverified address as ready.
 
-For app-triggered transactional mail, use the server-side `email.send` helper in [the function reference](/cli/functions/). Protect the app endpoint and bound recipients/rate; never expose mailbox authority or provider credentials in a browser. Deploy the application with `run402 up` after its mailbox and required runtime configuration are ready.
+For app-triggered transactional mail, use the server-side `email.send` helper in [the function reference](/cli/functions/). Protect the app endpoint and bound recipients/rate; never expose mailbox authority or provider credentials in a browser. A quiet copy (an archive, an overseer) is `bcc` on the same send, up to five addresses: one message, no header names them, each counts against the email limits, and a blind copy's bounce never marks the message failed. Deploy the application with `run402 up` after its mailbox and required runtime configuration are ready.
 
 For an authorized message to a real intended recipient, use `run402 email send --to <address> --subject <subject> --html <html> --project <project_id>`. The recipient placeholders are not test destinations. Inspect a returned message with `run402 email get <message_id> --project <project_id>`; mailbox visibility and delivery evidence are distinct.
 

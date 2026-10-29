@@ -158,6 +158,13 @@ export interface EmailAttachment {
   content_type: string;
 }
 
+/** One blind copy of an outbound message and its own delivery outcome. */
+export interface EmailBccRecipient {
+  address: string;
+  status: "sent" | "delivered" | "bounced" | "complained";
+  bounce_type: string | null;
+}
+
 /** Attachment metadata recorded on a sent message (names/types/sizes — never the bytes). */
 export interface EmailAttachmentMeta {
   filename: string;
@@ -167,6 +174,13 @@ export interface EmailAttachmentMeta {
 
 export interface SendEmailOptions {
   to: string;
+  /**
+   * Blind copies, in raw and template mode: one address or up to 5, distinct,
+   * none equal to `to`. One message reaches every address; no header of any
+   * copy names a blind copy, and each counts as one send against the
+   * project's email limits. The gateway validates them; `cc` is refused.
+   */
+  bcc?: string | string[];
   template?: EmailTemplate;
   variables?: Record<string, string>;
   subject?: string;
@@ -197,6 +211,8 @@ export interface SendEmailResult {
   message_id: string;
   status: string;
   to: string;
+  /** The blind copies the message went to (lower-cased, each `status: "sent"`); absent when it had none. */
+  bcc?: EmailBccRecipient[];
   template: string | null;
   subject: string | null;
   sent_at: string;
@@ -218,6 +234,8 @@ export interface EmailSummary {
   created_at: string;
   /** Present (non-null) when the send carried attachments; names/types/sizes only. */
   attachments_meta?: EmailAttachmentMeta[] | null;
+  /** Each blind copy of an outbound message with its own outcome; absent when there were none. The message `status` is the `to` recipient's. */
+  bcc?: EmailBccRecipient[];
 }
 
 export interface EmailDetail {
@@ -239,6 +257,8 @@ export interface EmailDetail {
   sent_at?: string | null;
   /** Present (non-null) when the send carried attachments; names/types/sizes only. */
   attachments_meta?: EmailAttachmentMeta[] | null;
+  /** Each blind copy of an outbound message with its own outcome; absent when there were none. The message `status` is the `to` recipient's. */
+  bcc?: EmailBccRecipient[];
   replies?: Array<{
     id: string;
     from: string;
@@ -819,6 +839,7 @@ export class Email {
       "sending email",
     );
     const body: Record<string, unknown> = { to: opts.to };
+    if (opts.bcc !== undefined) body.bcc = opts.bcc;
     if (isTemplate) {
       body.template = opts.template;
       body.variables = opts.variables;

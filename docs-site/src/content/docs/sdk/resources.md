@@ -1254,6 +1254,10 @@ send(projectId, opts: SendEmailOptions): Promise<SendEmailResult>
   // opts.attachments?: { filename, content_base64, content_type }[] — RAW MODE
   // ONLY (subject + html, not template). Max 100; each and all together ≤ 15 MB
   // decoded. Sent as one multipart/mixed MIME. Sent messages echo attachments_meta (names/types/sizes).
+  // opts.bcc?: string | string[] — blind copies, both modes, up to 5. One message;
+  // no header names them; each counts as one send. The result and EmailSummary /
+  // EmailDetail carry bcc: { address, status, bounce_type }[]; a blind copy's
+  // bounce never changes the message status. No cc (gateway 400).
 list(projectId, opts?: { limit?, after?, direction? }): Promise<EmailSummary[]>
   // direction?: "inbound" | "outbound" — omit for BOTH. direction:"inbound" lists
   // received replies (each EmailSummary carries `direction`) and is the
@@ -1288,7 +1292,7 @@ delete(projectId, mailboxId?): Promise<void>
 
 `MailboxRecord` includes default/readiness/footer-policy metadata when the gateway provides it: `is_default_outbound`, `is_auth_sender`, `can_send`, `send_blocked_reason`, `domain_kind`, `footer_policy`, `effective_footer_policy`, `footer_policy_locked_reason`, `inbound_policy`, and `inbound_allowlist`. `updateMailbox` PATCHes `/mailboxes/v1/:mailbox_id` for `footer_policy`, `inbound_policy`, and `inbound_allowlist`. `inbound_policy` decides who may write to the mailbox first: `reply_only` (the default) accepts only replies to mail it sent, `allowlist` also accepts first contact from `inbound_allowlist` entries (exact addresses or `*@domain`), and `open` accepts first contact from anyone. `footer_policy: "none"` requires hobby/team, while prototype projects are locked to `run402_transparency` and return the typed gateway error `FOOTER_POLICY_TIER_REQUIRED`. `MailboxListResult` and create/settings responses may include `mailbox_settings` and `next_actions`; the happy path is create → list → set missing defaults → optionally update footer policy → send.
 
-Templates: `project_invite`, `magic_link`, `notification`. Or pass `subject` + `html` for raw mode. Raw mode also accepts `attachments` (max 100, each and all together ≤ 15 MB decoded) — one multipart/mixed MIME is sent. Tier rate limits: prototype 10/day, hobby 50/day, team 500/day.
+Templates: `project_invite`, `magic_link`, `notification`. Or pass `subject` + `html` for raw mode. Raw mode also accepts `attachments` (max 100, each and all together ≤ 15 MB decoded) — one multipart/mixed MIME is sent. Both modes accept `bcc` (one address or up to 5): every blind copy counts as one send against these limits, and a suppressed one refuses the whole send (`RECIPIENT_SUPPRESSED`, `details.field: "bcc"`). Tier rate limits: prototype 10/day, hobby 50/day, team 500/day.
 
 ### `r.auth`
 
