@@ -123,6 +123,7 @@ import type {
 import type {
   ProjectDomain,
   ProjectDomainConnectInput,
+  ProjectDomainDisconnectResult,
   ProjectDomainListResult,
   ProjectDomainTestReceiveResult,
   ProjectDomainWaitOptions,
@@ -1009,7 +1010,7 @@ class ScopedDomains {
   activate(domain: string): Promise<ProjectDomain> {
     return this.parent.domains.activate(this.projectId, domain);
   }
-  disconnect(domain: string): Promise<{ status: string; domain: string }> {
+  disconnect(domain: string): Promise<ProjectDomainDisconnectResult> {
     return this.parent.domains.disconnect(this.projectId, domain);
   }
   wait(domain: string, opts?: ProjectDomainWaitOptions): Promise<ProjectDomain> {

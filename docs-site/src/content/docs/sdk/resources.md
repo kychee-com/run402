@@ -709,7 +709,7 @@ repair(projectId, domain): Promise<ProjectDomain>
 wait(projectId, domain, { until?, timeoutMs?, intervalMs? }): Promise<ProjectDomain>
 testReceive(projectId, domain, to): Promise<ProjectDomainTestReceiveResult>
 activate(projectId, domain): Promise<ProjectDomain>
-disconnect(projectId, domain): Promise<{ status, domain }>
+disconnect(projectId, domain): Promise<ProjectDomainDisconnectResult>   // { status, domain, hosted_zone_released?, hosted_zone_retained?, warning? }
 ```
 
 `desired` carries `web`, `email`, and an optional `authority`:
@@ -728,7 +728,7 @@ await r.domains.wait(projectId, "example.com", { until: "active" });
 await r.domains.connect(projectId, { domain: "app.example.com", desired: { web: { enabled: true } } });
 ```
 
-`authority: "hosted_dns_zone"` is the only workable path for a ROOT domain at most registrars (a root CNAME is illegal without flattening/ALIAS support) and collapses setup to one registrar step: Run402 applies every in-zone record, verifies ownership, and issues TLS once delegation is observed. Existing MX/TXT are imported into the hosted zone before the nameserver change is recommended, so mail keeps working. `hosted_zone` reports `{ dns_hosting, status, ns_assigned, imported_records }`; disconnecting tears the zone down (DNS stops resolving until nameservers are re-pointed).
+`authority: "hosted_dns_zone"` is the only workable path for a ROOT domain at most registrars (a root CNAME is illegal without flattening/ALIAS support) and collapses setup to one registrar step: Run402 applies every in-zone record, verifies ownership, and issues TLS once delegation is observed. Existing MX/TXT are imported into the hosted zone before the nameserver change is recommended, so mail keeps working. `hosted_zone` reports `{ dns_hosting, status, ns_assigned, imported_records }`. The zone belongs to the project's organization: another project of it can `ensure` a name under the domain (`barry.example.com`), and Run402 serves it from the same zone, writing only that name's records on `apply` and `repair`. Disconnecting a name removes its binding and records; the zone is torn down only with the organization's last name under it (`hosted_zone_released: true`; DNS stops resolving until nameservers are re-pointed), and otherwise stays (`hosted_zone_retained: true`). A name in another organization's hosted zone is `409 HOSTED_DNS_ZONE_CONFLICT`.
 
 Every response carries `next_actions[]` (ordered; `[0]` is the recommended step).
 

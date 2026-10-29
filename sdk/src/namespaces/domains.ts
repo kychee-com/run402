@@ -113,8 +113,20 @@ export interface ProjectDomainHostedZone {
   status: "provisioning" | "awaiting_delegation" | "delegated" | "releasing";
   /** The nameserver pair to set at the registrar — the one customer-side step. */
   ns_assigned: string[];
-  /** Pre-existing MX/TXT copied into the zone before the change was recommended. */
+  /** Pre-existing MX/TXT copied into the zone before the change was recommended, named at or under this domain. */
   imported_records: Array<{ type: string; name: string; value: string; priority?: number }>;
+}
+
+/** What `disconnect` did. The hosted-zone fields appear only for a domain a Run402-hosted DNS zone served. */
+export interface ProjectDomainDisconnectResult {
+  status: string;
+  domain: string;
+  /** `true`: the zone is being deleted with the organization's last domain under it, and DNS stops resolving until nameservers are re-pointed. `false`: the zone stays. */
+  hosted_zone_released?: boolean;
+  /** The zone stays because other domains of the organization are still connected under it. */
+  hosted_zone_retained?: true;
+  /** What happened to the zone, in words. */
+  warning?: string;
 }
 
 export interface ProjectDomain {
@@ -132,7 +144,7 @@ export interface ProjectDomain {
   checks: ProjectDomainCheck[];
   /** Ordered follow-ups; `next_actions[0]` is the recommended action. */
   next_actions: ProjectDomainNextAction[];
-  /** Present only for a domain on a Run402-hosted DNS zone. */
+  /** Present only for a domain served by a Run402-hosted DNS zone of the project's organization. */
   hosted_zone?: ProjectDomainHostedZone | null;
   provenance: {
     project: "server_control_plane";
@@ -264,8 +276,8 @@ export class Domains {
     });
   }
 
-  async disconnect(projectId: string, domain: string): Promise<{ status: string; domain: string }> {
-    return this.client.request<{ status: string; domain: string }>(domainPath(projectId, domain), {
+  async disconnect(projectId: string, domain: string): Promise<ProjectDomainDisconnectResult> {
+    return this.client.request<ProjectDomainDisconnectResult>(domainPath(projectId, domain), {
       method: "DELETE",
       authMeta: authMeta("domains.disconnect", projectId),
       context: "disconnecting project domain",
