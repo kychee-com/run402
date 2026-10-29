@@ -70,7 +70,7 @@
       "purpose": "history",
       "interface": "historical",
       "exception": "Dated release records; add current entries without rewriting history.",
-      "sha256": "8ecc775b0152dc093e07dfc756a5bdd19e56348e3151214103e67100b9df340b",
+      "sha256": "b54c279e682e9371d3f55723c684d19f7074bc97392e724d262bb06c3aac2d28",
       "outputs": [],
       "url": null,
       "checks": [
