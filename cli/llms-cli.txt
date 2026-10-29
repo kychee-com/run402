@@ -126,7 +126,7 @@ Primitives, for when you want the pieces: `run402 deploy rehearse <plan_id>` reh
 
 ## Runtime config on every host (`/_run402/config.js`)
 
-Every host that serves a project's site — managed subdomain, branch's host, custom domain — answers `GET /_run402/config.js` with `window.RUN402 = { project_id, api_base, anon_key };` and `GET /_run402/config.json` with the same object, for the project that host resolves to at request time. A branch's host answers for the branch; a transferred project answers with its rotated anon key; the HTML never changes. `Cache-Control: public, max-age=60`. The service key is never served.
+Every host that serves a project's site — managed subdomain, branch's host, custom domain — answers `GET /_run402/config.js` with `window.RUN402 = { project_id, api_base, anon_key };` and `GET /_run402/config.json` with the same object, for the project that host resolves to at request time. A branch's host answers for the branch; a transferred project keeps its anon key, since an ownership change supersedes only the service key; the HTML never changes. `Cache-Control: public, max-age=60`. The service key is never served.
 
 ```html
 <script src="/_run402/config.js"></script>
