@@ -701,6 +701,10 @@ export interface BlobRmResult {
     paths: string[];
     invalidation_id: string | null;
   } | null;
+  /** Edge revocation of the key's unexpired signed URLs: `submitted` (they
+   *  answer 403 within seconds) or `queued` (retried every minute); `null`
+   *  when no signed URL was outstanding. */
+  signed_url_revocation: { status: "submitted" | "queued" } | null;
 }
 
 export interface BlobLsResult {
@@ -729,6 +733,10 @@ export interface BlobSignOptions {
 }
 
 export interface BlobSignResult {
+  /** A CloudFront link signed for this one object (an S3 presigned GET for an
+   *  original over 50 GB): readable from any origin, `Range` answers 206,
+   *  and it answers 403 once edited, expired, or revoked by deleting or
+   *  overwriting the key. */
   signed_url: string;
   expires_at: string;
   expires_in: number;

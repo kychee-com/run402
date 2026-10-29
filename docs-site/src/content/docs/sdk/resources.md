@@ -451,8 +451,8 @@ directory helpers.
 put(projectId, key, source, opts?: BlobPutOptions): Promise<AssetRef>
 get(projectId, key): Promise<Response>
 ls(projectId, opts?: { prefix?, limit?, cursor?, sort?, filter? }): Promise<BlobLsResult>  // rows carry url, immutable_url, cdn_url, cdn_immutable_url, variants
-rm(projectId, key): Promise<BlobRmResult>  // { deleted, key, revoked_immutable_refs, cache_invalidation }
-sign(projectId, key, opts?: { ttl_seconds?, variant? }): Promise<BlobSignResult>  // variant: "thumb" | "medium" | "large" | "display_jpeg" signs that encoded variant; result echoes variant
+rm(projectId, key): Promise<BlobRmResult>  // { deleted, key, revoked_immutable_refs, cache_invalidation, signed_url_revocation }
+sign(projectId, key, opts?: { ttl_seconds?, variant? }): Promise<BlobSignResult>  // signed_url: a CloudFront link for one object, readable from any origin, revoked on delete/overwrite; variant: "thumb" | "medium" | "large" | "display_jpeg" signs that encoded variant; result echoes variant
 signMany(projectId, items: { key, variant? }[], opts?: { ttl_seconds? }): Promise<BlobSignManyResult>  // one request, 1–1000 items; { items, expires_at, expires_in }, items in order with signed_url or error (RESOURCE_NOT_FOUND)
 diagnoseUrl(projectId, url): Promise<BlobDiagnoseEnvelope>
 waitFresh(projectId, opts: { url, sha256, timeoutMs? }): Promise<BlobWaitFreshResult>

@@ -169,7 +169,7 @@ Options:
 Examples:
   run402 assets rm images/logo.png --project prj_abc123
 `,
-  sign: `run402 assets sign — Create presigned download URLs for blobs
+  sign: `run402 assets sign — Create signed download URLs for blobs
 
 Usage:
   run402 assets sign <key> [keys...] [options]
@@ -192,6 +192,10 @@ Output:
   every variant) and print { items, expires_at, expires_in }: items in
   order, each { key, variant?, signed_url } or { key, variant?, error }
   for a key or variant the project lacks.
+
+  Each signed_url is a CloudFront link signed for that one object: any
+  web page can read it, it answers Range requests, and deleting or
+  overwriting the blob revokes it within a minute.
 
 Examples:
   run402 assets sign reports/2025-q4.pdf --project prj_abc123 --ttl 600

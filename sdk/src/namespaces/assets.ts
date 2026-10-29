@@ -868,8 +868,9 @@ export class Assets {
   }
 
   /** Delete a blob and decrement the project's storage_bytes. Revokes the
-   *  key's immutable URLs (including image variants) and queues a CDN
-   *  invalidation for a public key. */
+   *  key's immutable URLs (including image variants), queues a CDN
+   *  invalidation for a public key, and revokes the key's unexpired signed
+   *  URLs at the edge (`signed_url_revocation`). */
   async rm(projectId: string, key: string): Promise<BlobRmResult> {
     const project = await requireProjectCredentials(this.client, projectId, "deleting blob");
 
@@ -883,8 +884,12 @@ export class Assets {
     });
   }
 
-  /** Generate a time-boxed S3 presigned GET URL for a blob, or for one of an
-   *  image's encoded variants with `variant`. Default TTL 1 hour, max 7 days. */
+  /** Generate a time-boxed signed GET URL for a blob, or for one of an
+   *  image's encoded variants with `variant`. Default TTL 1 hour, max 7 days.
+   *  The URL is a CloudFront link signed for that one object: any origin can
+   *  read it (WebGL, canvas, `fetch`), it answers `Range` with 206, viewers
+   *  of the same blob share the edge cache, and deleting or overwriting the
+   *  blob revokes it within a minute. */
   async sign(projectId: string, key: string, opts: BlobSignOptions = {}): Promise<BlobSignResult> {
     if (opts.ttl_seconds !== undefined) {
       assertIntegerInRange(opts.ttl_seconds, "ttl_seconds", 60, 604800, "signing blob URL");
@@ -913,7 +918,8 @@ export class Assets {
     );
   }
 
-  /** Generate presigned GET URLs for many keys and variants in one request
+  /** Generate signed GET URLs (the CDN links `sign` returns) for many keys
+   *  and variants in one request
    *  (`POST /storage/v1/blobs/sign`): 1 to 1000 `{ key, variant? }` items,
    *  answered in order, each with `signed_url` or with `error`
    *  (`RESOURCE_NOT_FOUND`) for a key or variant the project lacks. One
