@@ -149,7 +149,7 @@ export interface ProjectDomain {
   provenance: {
     project: "server_control_plane";
     desired: "server_control_plane";
-    observed_dns: "public_dns_resolvers";
+    observed_dns: "authoritative_nameservers";
     effective: "run402_control_plane";
     local_cache: "not_used";
   };
