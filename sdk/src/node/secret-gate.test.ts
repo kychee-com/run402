@@ -117,6 +117,23 @@ const SAMPLE_ARGS: Record<SecretReturningMethod, unknown[]> = {
   "live.subscribe": [PROJECT, { tables: ["todos"], as: "user", accessToken: "user_access_token_secret" }, () => {}],
   "escalations.ackWithToken": ["ack_token_secret"],
   "ci.exchangeToken": [{ project_id: PROJECT, subject_token: "github_oidc_token_secret" }],
+  "assets.uploadDir": ["./public", { project: PROJECT }],
+  "assets.syncDir": ["./public", { project: PROJECT }],
+  "assets.prepareDir": ["./public", { project: PROJECT }],
+  "sites.deployDir": [{ project: PROJECT, dir: "./dist" }],
+  "archives.inspect": ["./project.r402ar"],
+  "archives.verify": ["./project.r402ar"],
+  "archives.importToCore": [{ archivePath: "./project.r402ar" }],
+  "doctor": [{ manifest: "./run402.config.ts" }],
+  "wallets.use": ["ci"],
+  "wallets.rename": ["ci", "build"],
+  "wallets.bind": ["ci", {}],
+  "wallets.unbind": [{}],
+  "wallets.remove": ["ci", { confirm: true }],
+  "orgs.use": ["57035b1e-ec41-4ce6-a7a5-a5b2560efdd7"],
+  "orgs.clear": [],
+  "orgs.bind": ["57035b1e-ec41-4ce6-a7a5-a5b2560efdd7", { room: "run402-dev" }],
+  "orgs.unbind": [{}],
 };
 
 const noCreds: CredentialsProvider = {

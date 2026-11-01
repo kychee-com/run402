@@ -16,6 +16,7 @@ import { Assets } from "../namespaces/assets.js";
 import { Deploy } from "../namespaces/deploy.js";
 import { LocalError } from "../errors.js";
 import type { Client } from "../kernel.js";
+import { gateSecret } from "../secret-gate.js";
 import type {
   AssetPutEntryInput,
   AssetSpec,
@@ -364,6 +365,7 @@ export class NodeAssets extends Assets {
    * D10. Wraps `r._applyEngine.apply({ project, assets: { put: ... } })`.
    */
   async uploadDir(path: string, opts: UploadDirOptions): Promise<AssetManifest> {
+    gateSecret((this as unknown as { client: Client }).client, "assets.uploadDir", path, opts);
     const start = Date.now();
     const ref = dir(path, {
       prefix: opts.prefix,
@@ -408,6 +410,7 @@ export class NodeAssets extends Assets {
    *   mutates between commit and activation.
    */
   async syncDir(path: string, opts: SyncDirOptions): Promise<AssetManifest> {
+    gateSecret((this as unknown as { client: Client }).client, "assets.syncDir", path, opts);
     const start = Date.now();
     const ref = dir(path, {
       prefix: opts.prefix,
@@ -502,6 +505,7 @@ export class NodeAssets extends Assets {
     path: string,
     opts: PrepareDirOptions,
   ): Promise<{ manifest: AssetManifest; applySlice: AssetSpec }> {
+    gateSecret((this as unknown as { client: Client }).client, "assets.prepareDir", path, opts);
     const start = Date.now();
     const ref = dir(path, {
       prefix: opts.prefix,

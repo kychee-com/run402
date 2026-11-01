@@ -15,6 +15,7 @@
 import { Sites, type SiteDeployResult } from "../namespaces/sites.js";
 import { Deploy } from "../namespaces/deploy.js";
 import type { Client } from "../kernel.js";
+import { gateSecret } from "../secret-gate.js";
 import type {
   ContentRef,
   DeployEvent as UnifiedDeployEvent,
@@ -49,6 +50,7 @@ export class NodeSites extends Sites {
    * the new release atomically, and polls the operation until terminal.
    */
   async deployDir(opts: DeployDirOptions): Promise<SiteDeployResult> {
+    gateSecret((this as unknown as { client: Client }).client, "sites.deployDir", opts);
     const fileSet = await fileSetFromDir(opts.dir);
     const deploy = new Deploy(
       (this as unknown as { client: Client }).client,

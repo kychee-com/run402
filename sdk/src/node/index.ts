@@ -20,6 +20,7 @@
  * are uploaded. Re-deploying an unchanged tree issues no S3 PUTs.
  */
 
+import { gateSecret } from "../secret-gate.js";
 import { readFileSync } from "node:fs";
 export { fundingRecovery, fundingBlocksBootstrap, type FundingRecovery } from "./funding-recovery.js";
 export {
@@ -256,7 +257,10 @@ export function run402(opts: NodeRun402Options = {}): NodeRun402 {
   });
   (base as unknown as { actions: NodeActions }).actions = actions;
   (base as unknown as { up: NodeActions["up"] }).up = actions.up.bind(actions);
-  (base as unknown as { doctor: NodeRun402["doctor"] }).doctor = (doctorOpts) => runDoctor(base, doctorOpts);
+  (base as unknown as { doctor: NodeRun402["doctor"] }).doctor = async (doctorOpts) => {
+    gateSecret(client, "doctor", doctorOpts);
+    return runDoctor(base, doctorOpts);
+  };
   (base as unknown as { init: (o?: InitOptions) => Promise<InitSummary | InitTargetSummary> }).init = async (initOpts = {}) => {
     if (initOpts.apiBase) {
       return initApiTarget(

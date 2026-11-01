@@ -165,6 +165,8 @@ The snippet's client is built with the `sandbox` surface. Every SDK method whose
 
 Hand the command to the person; the CLI prints the secret to them once. `run_cli_command` is the one next-action type the CLI itself never emits. The rule lives in the SDK method, not in this server, so nothing secret can reach a result or `expand_result`.
 
+The same refusal covers the methods that work on the machine the server runs on rather than through the API: reading a local directory or archive (`assets.uploadDir`, `syncDir`, `prepareDir`, `sites.deployDir`, `archives.inspect`, `verify`, `importToCore`), `doctor` given a `manifest`, `dir`, `scanDir` or `cwd`, and changing which wallet or organization the machine acts as (`wallets.use`, `rename`, `bind`, `unbind`, `remove`; `orgs.use`, `clear`, `bind`, `unbind`). A snippet cannot read a local file, a wallet key among them, into its result or an upload.
+
 ## Examples
 
 Which projects have no site yet:

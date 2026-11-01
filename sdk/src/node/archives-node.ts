@@ -5,6 +5,7 @@ import path from "node:path";
 
 import { LocalError, NetworkError } from "../errors.js";
 import type { Client } from "../kernel.js";
+import { gateSecret } from "../secret-gate.js";
 import { Archives } from "../namespaces/archives.js";
 import type {
   ArchiveDiagnostic,
@@ -57,15 +58,18 @@ export class NodeArchives extends Archives {
     super(client);
   }
 
-  inspect(archivePath: string): Promise<ArchiveVerifyResult> {
+  async inspect(archivePath: string): Promise<ArchiveVerifyResult> {
+    gateSecret((this as unknown as { client: Client }).client, "archives.inspect", archivePath);
     return inspectArchive(archivePath);
   }
 
-  verify(archivePath: string): Promise<ArchiveVerifyResult> {
+  async verify(archivePath: string): Promise<ArchiveVerifyResult> {
+    gateSecret((this as unknown as { client: Client }).client, "archives.verify", archivePath);
     return verifyArchive(archivePath);
   }
 
-  importToCore(opts: ArchiveImportToCoreOptions): Promise<ArchiveImportResult> {
+  async importToCore(opts: ArchiveImportToCoreOptions): Promise<ArchiveImportResult> {
+    gateSecret((this as unknown as { client: Client }).client, "archives.importToCore", opts);
     return importArchiveToCore(opts);
   }
 }

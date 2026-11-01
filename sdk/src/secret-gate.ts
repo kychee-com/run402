@@ -69,6 +69,8 @@ const walletName = (v: unknown): string => {
   return s && s.length <= 40 && /^[a-z0-9][a-z0-9_-]*$/.test(s) ? s : "<name>";
 };
 
+const LOCAL_WHY = "This reads files on the machine the MCP server runs on; a snippet works only through the Run402 API.";
+const LOCAL_STATE_WHY = "This changes which wallet or organization this machine acts as; a person does that from the CLI.";
 const SIGN_IN_WHY = "A sign-in session token is a person's credential; the CLI holds it for them.";
 const PROJECT_KEYS_WHY = "Project keys are credentials; the CLI stores them in the local key cache without handing them to a snippet.";
 
@@ -222,6 +224,48 @@ export const SECRET_RETURNING_METHODS = {
     why: "up and project provisioning hand back project keys; run them from the CLI or the MCP up tool.",
   },
   "actions.up": { command: () => "run402 up", why: "up provisions projects and handles their keys; run it from the CLI or the MCP up tool." },
+
+  // ── local files and local state ───────────────────────────────────────────
+  // A snippet runs against the API only: a method that reads a path, runs a
+  // local module, or changes this machine's wallet or
+  // org selection belongs to the CLI, so a prompt-injected snippet cannot read
+  // local files (a wallet key among them) into its result or an upload.
+  "assets.uploadDir": { command: (dir: unknown) => `run402 assets put ${arg(dir, "<dir>")}/*`, why: LOCAL_WHY },
+  "assets.syncDir": { command: (dir: unknown) => `run402 assets put ${arg(dir, "<dir>")}/*`, why: LOCAL_WHY },
+  "assets.prepareDir": { command: (dir: unknown) => `run402 assets put ${arg(dir, "<dir>")}/*`, why: LOCAL_WHY },
+  "sites.deployDir": {
+    command: (opts: unknown) => `run402 sites deploy-dir ${arg(obj(opts).dir, "<path>")}${projectFlag(obj(opts).project)}`,
+    why: LOCAL_WHY,
+  },
+  "archives.inspect": { command: (file: unknown) => `run402 archives inspect ${arg(file, "<archive_path>")}`, why: LOCAL_WHY },
+  "archives.verify": { command: (file: unknown) => `run402 archives verify ${arg(file, "<archive_path>")}`, why: LOCAL_WHY },
+  "archives.importToCore": {
+    command: (opts: unknown) => `run402 archives import ${arg(obj(opts).archivePath, "<archive_path>")} --target core --name <project_name>`,
+    why: LOCAL_WHY,
+  },
+  "doctor": {
+    when: (opts: unknown) => ["manifest", "dir", "scanDir", "cwd"].some((k) => str(obj(opts)[k]) !== null),
+    command: () => "run402 doctor",
+    why: "doctor with a path reads, and may run, files on this machine; run it from the CLI.",
+  },
+  "wallets.use": { command: (name: unknown) => `run402 wallets use ${walletName(name)}`, why: LOCAL_STATE_WHY },
+  "wallets.rename": { command: (from: unknown, to: unknown) => `run402 wallets rename ${walletName(from)} --to ${walletName(to)}`, why: LOCAL_STATE_WHY },
+  "wallets.bind": { command: (name: unknown) => `run402 wallets bind${str(name) ? ` ${walletName(name)}` : ""}`, why: LOCAL_STATE_WHY },
+  "wallets.unbind": { command: () => "run402 wallets unbind", why: LOCAL_STATE_WHY },
+  "wallets.remove": {
+    command: (name: unknown) => `run402 wallets rm ${walletName(name)} --yes`,
+    why: "Removing a wallet destroys its private key; a person does that from the CLI.",
+  },
+  "orgs.use": { command: (orgId: unknown) => `run402 orgs use ${arg(orgId, "<org_id>")}`, why: LOCAL_STATE_WHY },
+  "orgs.clear": { command: () => "run402 orgs clear", why: LOCAL_STATE_WHY },
+  "orgs.bind": {
+    command: (orgId: unknown, opts: unknown) => {
+      const room = str(obj(opts).room);
+      return `run402 orgs bind${orgFlag(orgId)}${room ? ` --room ${word(room)}` : ""}`;
+    },
+    why: LOCAL_STATE_WHY,
+  },
+  "orgs.unbind": { command: () => "run402 orgs unbind", why: LOCAL_STATE_WHY },
 
   // ── a person's sign-in session and write approvals ───────────────────────
   "session.exchangeCliToken": { command: () => "run402 login", why: SIGN_IN_WHY },

@@ -38,6 +38,7 @@ import {
 import { getActiveProjectId, getProject, updateProject } from "../../core-dist/keystore.js";
 import { LocalError, type NextAction } from "../errors.js";
 import type { Client } from "../kernel.js";
+import { gateSecret } from "../secret-gate.js";
 import { Orgs } from "../namespaces/org.js";
 import { Rooms } from "../namespaces/rooms.js";
 import { Projects } from "../namespaces/projects.js";
@@ -341,6 +342,7 @@ export class NodeOrgs extends Orgs {
 
   /** Select the current organization for the active wallet profile (`orgs use`). */
   async use(orgId: string): Promise<{ org_id: string; selected: true; scope: "wallet_profile" }> {
+    gateSecret(this.#client, "orgs.use", orgId);
     setActiveOrgId(assertOrgIdShape(orgId, "orgs use"));
     return { org_id: orgId, selected: true, scope: "wallet_profile" };
   }
@@ -363,6 +365,7 @@ export class NodeOrgs extends Orgs {
 
   /** Clear the profile's selected organization. */
   async clear(): Promise<{ org_id: null; selected: false; previous_org_id: string | null }> {
+    gateSecret(this.#client, "orgs.clear");
     const previous = this.selected();
     clearActiveOrgId();
     return { org_id: null, selected: false, previous_org_id: previous ?? null };
@@ -374,6 +377,7 @@ export class NodeOrgs extends Orgs {
    * act, unlike the chain, which never infers. Two or more memberships refuse.
    */
   async bind(orgId?: string | null, opts: { room?: string | null; cwd?: string } = {}): Promise<OrgBindResult> {
+    gateSecret(this.#client, "orgs.bind", orgId, opts);
     const cwd = opts.cwd ?? process.cwd();
     let chosen = orgId || null;
     let picked: "flag" | "sole_membership" = "flag";
@@ -417,6 +421,7 @@ export class NodeOrgs extends Orgs {
 
   /** Remove the `org` and `room` keys from `./.run402.json`; the file goes when nothing else is left. */
   async unbind(opts: { cwd?: string } = {}): Promise<OrgUnbindResult> {
+    gateSecret(this.#client, "orgs.unbind", opts);
     const cwd = opts.cwd ?? process.cwd();
     const previous = readBindingFile(cwd);
     const { contents, removed } = updateBindingFile(cwd, { org: null, room: null });

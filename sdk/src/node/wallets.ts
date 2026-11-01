@@ -507,6 +507,7 @@ export class NodeWallets extends Wallets {
 
   /** Set the global default wallet (`wallets use`). */
   async use(name: string): Promise<{ local_label: string; active: true }> {
+    gateSecret(this.#client, "wallets.use", name);
     const label = requireName(name);
     if (label !== DEFAULT && !profileExists(label)) throw walletNotFound(label);
     setDefaultWallet(label);
@@ -515,6 +516,7 @@ export class NodeWallets extends Wallets {
 
   /** Rename a wallet; renaming `default` moves it under `profiles/`. */
   async rename(oldName: string, newName: string): Promise<{ from: string; to: string; renamed: true }> {
+    gateSecret(this.#client, "wallets.rename", oldName, newName);
     const from = requireName(oldName, "old wallet name");
     const to = requireName(newName, "new wallet name");
     if (to === DEFAULT) {
@@ -543,6 +545,7 @@ export class NodeWallets extends Wallets {
 
   /** Bind a directory (default cwd) to a wallet by writing its name into `./.run402.json`. */
   async bind(name?: string, opts: { cwd?: string } = {}): Promise<WalletBindResult> {
+    gateSecret(this.#client, "wallets.bind", name, opts);
     const label = name ? requireName(name) : this.#selection().name;
     // MERGE, never clobber: the same file carries `org`/`room` from `orgs bind`.
     const { contents } = updateBindingFile(opts.cwd ?? process.cwd(), { wallet: label });
@@ -562,6 +565,7 @@ export class NodeWallets extends Wallets {
 
   /** Remove only the `wallet` key from `./.run402.json`; the file goes when nothing else is left in it. */
   async unbind(opts: { cwd?: string } = {}): Promise<WalletUnbindResult> {
+    gateSecret(this.#client, "wallets.unbind", opts);
     const dir = opts.cwd ?? process.cwd();
     const had = readBindingFile(dir).wallet !== undefined;
     const { contents, removed } = updateBindingFile(dir, { wallet: null });
@@ -665,6 +669,7 @@ export class NodeWallets extends Wallets {
 
   /** Delete a named wallet and its keys. Requires `{ confirm: true }`; `default` is protected. */
   async remove(name: string, opts: { confirm?: boolean } = {}): Promise<{ local_label: string; removed: true }> {
+    gateSecret(this.#client, "wallets.remove", name, opts);
     const label = requireName(name);
     if (label === DEFAULT) {
       throw new LocalError("Refusing to remove the reserved 'default' wallet.", CONTEXT, { code: "WALLET_PROTECTED", details: { name: label } });
