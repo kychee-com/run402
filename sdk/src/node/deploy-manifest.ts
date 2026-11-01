@@ -3,8 +3,10 @@ import {
   dirname,
   extname,
   isAbsolute,
+  join,
   resolve as resolvePath,
 } from "node:path";
+import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import type {
   Run402ConfigContext,
@@ -668,6 +670,7 @@ export async function loadExecutableDeployConfig(
   try {
     mod = await importConfigModule(manifestPath, extension);
   } catch (err) {
+    if (err instanceof LocalError && err.code === "EXECUTABLE_CONFIG_TS_LOADER_UNAVAILABLE") throw err;
     let message = `Failed to load executable deploy config '${path}': ${(err as Error).message}`;
     // a .ts manifest in a project whose nearest package.json lacks
     // `"type": "module"` is compiled as CommonJS by the tsx loader, so its
@@ -1272,41 +1275,114 @@ async function importConfigModule(
   extension: string,
 ): Promise<Record<string, unknown>> {
   const url = pathToFileURL(manifestPath).href;
-  if (TYPESCRIPT_MANIFEST_EXTENSIONS.has(extension)) {
-    let tsx: typeof import("tsx/esm/api");
+  if (!TYPESCRIPT_MANIFEST_EXTENSIONS.has(extension)) {
+    return await import(`${url}?run402_config=${Date.now()}`) as Record<string, unknown>;
+  }
+  // Node's own type stripping (unflagged from Node 22.18) loads an ordinary
+  // config with no extra dependency. A config that needs more than erasable
+  // types (an enum, an extensionless or `.js`-spelled import of another .ts
+  // file, a tsconfig path) falls back to tsx when it is installed. A .ts
+  // config in a project without `"type": "module"` goes to tsx first when it
+  // is installed: Node would load it only after a module-type warning.
+  const tsxFirst = extension === ".cts" || (extension === ".ts" && !(await isEsmPackageScope(manifestPath)));
+  const preloaded = tsxFirst ? await loadTsx(manifestPath) : null;
+  let nativeError: unknown;
+  if (!preloaded && nativeTypeScriptAvailable()) {
     try {
-      tsx = (await import("tsx/esm/api")) as typeof import("tsx/esm/api");
+      return await import(`${url}?run402_config=${Date.now()}`) as Record<string, unknown>;
     } catch (err) {
-      throw new LocalError(
-        "TypeScript deploy configs require the bundled tsx loader.",
-        "loading executable deploy config",
-        {
-          cause: err,
-          code: "EXECUTABLE_CONFIG_TS_LOADER_UNAVAILABLE",
-          details: { manifest_path: manifestPath },
-        },
-      );
-    }
-    try {
-      return await tsx.tsImport(url, { parentURL: import.meta.url }) as Record<string, unknown>;
-    } catch (err) {
-      // tsx picks the module format from the manifest's
-      // NEAREST package.json. In a project without `"type": "module"` (the
-      // `npm init` default) a .ts manifest compiles to CommonJS, so its
-      // imports resolve with require conditions — and an import-only exports
-      // map (any @run402/sdk before 4.11.1, and plenty of other packages)
-      // fails with "Package subpath ... is not defined by exports" even
-      // though the subpath exists. Retry once through a sibling .mts file:
-      // the .mts extension forces ESM regardless of package.json, and living
-      // in the SAME directory keeps relative imports and node_modules
-      // resolution identical. Only this exact failure is retried.
-      if (!isExportsConditionFailure(err)) throw err;
-      const retried = await importAsEsmSibling(manifestPath);
-      if (retried) return retried;
-      throw err;
+      if (!needsTypeScriptTranspiler(err)) throw err;
+      nativeError = err;
     }
   }
-  return await import(`${url}?run402_config=${Date.now()}`) as Record<string, unknown>;
+  const tsx = preloaded ?? await loadTsx(manifestPath);
+  if (!tsx) {
+    const reason = nativeError
+      ? `Node's type stripping could not load it (${(nativeError as Error).message})`
+      : `this Node (${process.version}) has no built-in type stripping`;
+    throw new LocalError(
+      `TypeScript deploy config '${manifestPath}' needs a TypeScript loader: ${reason}. Install tsx in the project (npm install --save-dev tsx), or use Node 22.18 or later with a config that only uses erasable types.`,
+      "loading executable deploy config",
+      {
+        cause: nativeError,
+        code: "EXECUTABLE_CONFIG_TS_LOADER_UNAVAILABLE",
+        details: { manifest_path: manifestPath, node_version: process.version },
+        next_actions: [{
+          type: "run_command",
+          command: "npm install --save-dev tsx",
+          why: "Install tsx in the config's project, then re-run: it loads what Node's type stripping cannot.",
+        }],
+      },
+    );
+  }
+  try {
+    return await tsx.tsImport(url, { parentURL: import.meta.url }) as Record<string, unknown>;
+  } catch (err) {
+    // tsx picks the module format from the manifest's
+    // NEAREST package.json. In a project without `"type": "module"` (the
+    // `npm init` default) a .ts manifest compiles to CommonJS, so its
+    // imports resolve with require conditions — and an import-only exports
+    // map (any @run402/sdk before 4.11.1, and plenty of other packages)
+    // fails with "Package subpath ... is not defined by exports" even
+    // though the subpath exists. Retry once through a sibling .mts file:
+    // the .mts extension forces ESM regardless of package.json, and living
+    // in the SAME directory keeps relative imports and node_modules
+    // resolution identical. Only this exact failure is retried.
+    if (!isExportsConditionFailure(err)) throw err;
+    const retried = await importAsEsmSibling(manifestPath, tsx);
+    if (retried) return retried;
+    throw err;
+  }
+}
+
+type TsxApi = typeof import("tsx/esm/api");
+
+/** Whether the nearest package.json above the config declares `"type": "module"`. */
+async function isEsmPackageScope(manifestPath: string): Promise<boolean> {
+  for (let dir = dirname(manifestPath); ; dir = dirname(dir)) {
+    try {
+      const pkg = JSON.parse(await readFile(join(dir, "package.json"), "utf8")) as { type?: unknown };
+      return pkg.type === "module";
+    } catch (err) {
+      if ((err as { code?: unknown }).code !== "ENOENT") return false;
+    }
+    if (dirname(dir) === dir) return false;
+  }
+}
+
+function nativeTypeScriptAvailable(): boolean {
+  return typeof (process.features as { typescript?: unknown }).typescript === "string";
+}
+
+/** Loader failures tsx can get past; anything else (the config's own throw, a missing package) is final. */
+const TRANSPILER_FALLBACK_CODES = new Set([
+  "ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX",
+  "ERR_INVALID_TYPESCRIPT_SYNTAX",
+  "ERR_MODULE_NOT_FOUND",
+  "ERR_UNKNOWN_FILE_EXTENSION",
+  "ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING",
+  "ERR_UNSUPPORTED_DIR_IMPORT",
+  "ERR_REQUIRE_ESM",
+]);
+
+function needsTypeScriptTranspiler(err: unknown): boolean {
+  const code = (err as { code?: unknown } | null)?.code;
+  return (typeof code === "string" && TRANSPILER_FALLBACK_CODES.has(code)) || err instanceof SyntaxError;
+}
+
+/** tsx from beside this SDK (the CLI ships it), else from the config's own project. */
+async function loadTsx(manifestPath: string): Promise<TsxApi | null> {
+  try {
+    return (await import("tsx/esm/api")) as TsxApi;
+  } catch {
+    // fall through to the project's own copy
+  }
+  try {
+    const resolved = createRequire(manifestPath).resolve("tsx/esm/api");
+    return (await import(pathToFileURL(resolved).href)) as TsxApi;
+  } catch {
+    return null;
+  }
 }
 
 /** Node's signature for "no exports condition matched" (ERR_PACKAGE_PATH_NOT_EXPORTED). */
@@ -1324,7 +1400,7 @@ function isExportsConditionFailure(err: unknown): boolean {
  * read-only checkout — so the caller can surface the ORIGINAL error, which
  * names the real fix.
  */
-async function importAsEsmSibling(manifestPath: string): Promise<Record<string, unknown> | null> {
+async function importAsEsmSibling(manifestPath: string, tsx: TsxApi): Promise<Record<string, unknown> | null> {
   const suffix = Math.random().toString(36).slice(2, 10);
   const sibling = `${manifestPath}.run402-esm-${suffix}.mts`;
   try {
@@ -1333,7 +1409,6 @@ async function importAsEsmSibling(manifestPath: string): Promise<Record<string, 
     return null;
   }
   try {
-    const tsx = (await import("tsx/esm/api")) as typeof import("tsx/esm/api");
     return await tsx.tsImport(pathToFileURL(sibling).href, {
       parentURL: import.meta.url,
     }) as Record<string, unknown>;

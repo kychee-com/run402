@@ -49,13 +49,11 @@
     "@scure/base": "1.2.6",
     "ipaddr.js": "1.9.1",
     "json-canonicalize": "2.0.0",
-    "tsx": "^4.21.0",
     "undici": "^7.29.0"
   },
   "peerDependencies": {
     "@aws-sdk/client-kms": "^3.1147.0",
     "@x402/evm": "2.29.0",
-    "@x402/extensions": "2.29.0",
     "@x402/fetch": "2.29.0",
     "mppx": "^0.13.1",
     "viem": "^2.57.1"
@@ -65,9 +63,6 @@
       "optional": true
     },
     "@x402/evm": {
-      "optional": true
-    },
-    "@x402/extensions": {
       "optional": true
     },
     "@x402/fetch": {

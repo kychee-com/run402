@@ -11,8 +11,12 @@
  * also widens what consumers must install to enable paid fetch. Keep this
  * list minimal. When a symbol is small enough to inline (e.g. the
  * `viem/chains` constants are ~5-line objects), prefer inlining over
- * adding a new dependency edge.
+ * adding a new dependency edge. The x402 offer-receipt verification is
+ * inlined that way (`vendor/x402-offer-receipt`): `@x402/extensions` is not
+ * a dependency.
  */
+
+import * as offerReceipt from "./vendor/x402-offer-receipt/index.js";
 
 type FetchFn = typeof globalThis.fetch;
 
@@ -112,10 +116,8 @@ export async function loadX402Stack(): Promise<X402Stack> {
   const x402Fetch = await c.load("@x402/fetch", () => import("@x402/fetch"));
   const x402EvmClient = await c.load("@x402/evm", () => import("@x402/evm/exact/client"));
   const x402Evm = await c.load("@x402/evm", () => import("@x402/evm"));
-  const offerReceipt = await c.load("@x402/extensions", () =>
-    import("@x402/extensions/offer-receipt")
-  );
   c.throwIfFailed();
+  const verifiers = offerReceipt.offerReceiptVerifiers(viemMod!.recoverTypedDataAddress as offerReceipt.RecoverTypedDataAddress);
   return {
     privateKeyToAccount: accounts!.privateKeyToAccount as (pk: `0x${string}`) => unknown,
     createPublicClient: viemMod!.createPublicClient as never,
@@ -127,19 +129,14 @@ export async function loadX402Stack(): Promise<X402Stack> {
     ExactEvmScheme: x402EvmClient!.ExactEvmScheme as never,
     toClientEvmSigner: x402Evm!.toClientEvmSigner as never,
     offerReceipt: {
-      extractOffersFromPaymentRequired:
-        offerReceipt!.extractOffersFromPaymentRequired as never,
-      decodeSignedOffers: offerReceipt!.decodeSignedOffers as never,
-      findAcceptsObjectFromSignedOffer:
-        offerReceipt!.findAcceptsObjectFromSignedOffer as never,
-      isEIP712SignedOffer: offerReceipt!.isEIP712SignedOffer as never,
-      isEIP712SignedReceipt: offerReceipt!.isEIP712SignedReceipt as never,
-      verifyOfferSignatureEIP712:
-        offerReceipt!.verifyOfferSignatureEIP712 as never,
-      verifyReceiptSignatureEIP712:
-        offerReceipt!.verifyReceiptSignatureEIP712 as never,
-      extractReceiptFromResponse:
-        offerReceipt!.extractReceiptFromResponse as never,
+      extractOffersFromPaymentRequired: offerReceipt.extractOffersFromPaymentRequired,
+      decodeSignedOffers: offerReceipt.decodeSignedOffers,
+      findAcceptsObjectFromSignedOffer: offerReceipt.findAcceptsObjectFromSignedOffer,
+      isEIP712SignedOffer: offerReceipt.isEIP712SignedOffer,
+      isEIP712SignedReceipt: offerReceipt.isEIP712SignedReceipt,
+      verifyOfferSignatureEIP712: verifiers.verifyOfferSignatureEIP712,
+      verifyReceiptSignatureEIP712: verifiers.verifyReceiptSignatureEIP712,
+      extractReceiptFromResponse: offerReceipt.extractReceiptFromResponse,
     },
   };
 }

@@ -308,8 +308,8 @@ async function topup(args) {
     if (qrPath) {
       // Uppercase bolt11 in a `LIGHTNING:` URI is what wallets and the BOLT11
       // spec recommend for QR: alphanumeric mode, a third fewer modules.
-      const { toFile } = await import("qrcode");
-      await toFile(qrPath, `LIGHTNING:${created.bolt11.toUpperCase()}`, { type: "png", width: 512, margin: 2, errorCorrectionLevel: "M" });
+      const { writeQrPng } = await import("./qr-png.mjs");
+      await writeQrPng(qrPath, `LIGHTNING:${created.bolt11.toUpperCase()}`, { width: 512, margin: 2 });
       console.error(`QR written to ${qrPath} — post the image where the payer can scan it.`);
     }
     if (!parsedArgs.includes("--wait")) {

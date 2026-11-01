@@ -192,14 +192,7 @@ jobs:
             echo "[$label] checking vendored SDK deps against a real install..."
             (cd "$dir" && SDK_MANIFEST="$SDK_MANIFEST" node -e "
               const fs = require('fs'), path = require('path');
-              // Lazily imported behind a graceful fallback, so omitting it
-              // costs a feature rather than crashing on load. tsx is loaded by
-              // deploy-manifest via await import() inside a try/catch that
-              // reports 'TypeScript deploy configs require the bundled tsx
-              // loader'. run402 declares it, run402-mcp does not.
-              const OPTIONAL = new Set(['tsx']);
-              const need = Object.keys(require(process.env.SDK_MANIFEST).dependencies || {})
-                .filter(function (d) { return !OPTIONAL.has(d); });
+              const need = Object.keys(require(process.env.SDK_MANIFEST).dependencies || {});
               const missing = need.filter(function (d) {
                 return !fs.existsSync(path.join(process.cwd(), 'node_modules', d, 'package.json'));
               });

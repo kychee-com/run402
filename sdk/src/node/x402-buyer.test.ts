@@ -5,7 +5,7 @@ import {
   createOfferEIP712,
   createReceiptEIP712,
 } from "@x402/extensions/offer-receipt";
-import * as offerReceiptRuntime from "@x402/extensions/offer-receipt";
+import { recoverTypedDataAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
 import {
@@ -17,10 +17,18 @@ import {
   X402BalanceError,
   type X402BuyerClient,
 } from "./paid-fetch.js";
+import * as vendoredOfferReceipt from "./vendor/x402-offer-receipt/index.js";
 import type {
   PaymentAttemptRecord,
   PaymentAttemptStore,
 } from "./payment-attempts.js";
+
+// Offers and receipts are signed by upstream @x402/extensions and verified by
+// the SDK's vendored copy, so these tests also hold the two interoperable.
+const offerReceiptRuntime = {
+  ...vendoredOfferReceipt,
+  ...vendoredOfferReceipt.offerReceiptVerifiers(recoverTypedDataAddress),
+};
 
 const PAID_URL = "https://ancestor.run402.app/tribute/1c";
 const USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
