@@ -9,7 +9,7 @@ Usage:
   run402 auth <subcommand> [args...]
 
 Subcommands:
-  magic-link --email <addr> [--delivery link|code|both] [--redirect <url>] [--project <project_id>]
+  magic-link --email <addr> [--delivery link|code|both] [--redirect <url>] [--locale <tag>] [--project <project_id>]
     Request passwordless email authentication. Link remains the default.
 
   verify (--token <token> | --challenge-id <challenge_id> --code <6 digits>) [--project <project_id>]
@@ -77,6 +77,7 @@ Options:
   --redirect <url>    Required for link/both; optional for code
   --intent <intent>   signin (default), invite, claim, or recovery
   --state <value>     Optional client_state preserved through verification
+  --locale <tag>      Email language: en, he (right to left), ru; others get English
   --project <project_id>      Project ID (defaults to active project)
 
 Notes:
@@ -299,8 +300,8 @@ Notes:
 
 const AUTH_FLAGS = {
   "magic-link": {
-    known: ["--email", "--delivery", "--redirect", "--intent", "--state", "--project", "--help", "-h"],
-    values: ["--email", "--delivery", "--redirect", "--intent", "--state", "--project"],
+    known: ["--email", "--delivery", "--redirect", "--intent", "--state", "--locale", "--project", "--help", "-h"],
+    values: ["--email", "--delivery", "--redirect", "--intent", "--state", "--locale", "--project"],
   },
   "create-user": {
     known: ["--email", "--admin", "--invite", "--redirect", "--state", "--project", "--help", "-h"],
@@ -419,12 +420,14 @@ async function magicLink(args) {
       fail({ code: "BAD_FLAG", message: "--intent must be signin, invite, claim, or recovery" });
     }
     const state = parseFlag(args, "--state");
+    const locale = parseFlag(args, "--locale");
     const result = await getSdk().auth.requestMagicLink(projectId, {
       email,
       delivery,
       redirectUrl: redirect ?? undefined,
       intent: intent ?? undefined,
       clientState: state ?? undefined,
+      locale: locale ?? undefined,
     });
     console.log(JSON.stringify({
       email,

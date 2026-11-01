@@ -324,6 +324,23 @@ describe("auth.requestMagicLink", () => {
     });
   });
 
+  it("passes locale through for the gateway to pick its own translation", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({ message: "Email authentication request accepted." }));
+    const sdk = makeSdk(makeCreds(), fetch);
+
+    await sdk.auth.requestMagicLink("prj_known", { email: "user@example.com", delivery: "code", locale: "he" });
+
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), {
+      email: "user@example.com",
+      delivery: "code",
+      locale: "he",
+    });
+    await assert.rejects(
+      sdk.auth.requestMagicLink("prj_known", { email: "user@example.com", delivery: "code", locale: 5 as unknown as string }),
+      /locale must be a string/,
+    );
+  });
+
   it("preserves the canonical RATE_LIMITED recovery envelope", async () => {
     const envelope = {
       status: "error",

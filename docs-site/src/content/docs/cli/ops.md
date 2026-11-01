@@ -11,7 +11,7 @@ This slice serves customer people working within their own projects and organiza
 ### auth
 Manage project user authentication: passwordless email links/codes, trusted invites, passwords, passkeys, and auth settings.
 
-- `run402 auth magic-link --email <addr> [--delivery link|code|both] [--redirect <url>] [--intent signin|invite|claim|recovery] [--state <value>] [--project <project_id>]` — request passwordless email auth. Link is the wire default; redirect is required for link/both. JSON says `accepted:true`, preserves `message`/`warnings`, and returns opaque `challenge_id` for code/both without claiming delivery.
+- `run402 auth magic-link --email <addr> [--delivery link|code|both] [--redirect <url>] [--intent signin|invite|claim|recovery] [--state <value>] [--locale <tag>] [--project <project_id>]` — request passwordless email auth. Link is the wire default; redirect is required for link/both. `--locale` picks the email language (`en`, `he` right to left, `ru`; anything else English). JSON says `accepted:true`, preserves `message`/`warnings`, and returns opaque `challenge_id` for code/both without claiming delivery.
 - `run402 auth verify --token <token> [--project <project_id>]` — exchange a magic-link token
 - `run402 auth verify --challenge-id <challenge_id> --code <six-digits> [--project <project_id>]` — exchange an email code. Token and challenge/code modes are mutually exclusive; the code is secret and is never retried or persisted by the CLI.
 - `run402 auth create-user --email <addr> [--admin <true|false>] [--invite] [--redirect <url>] [--project <project_id>]` — service-key create/update auth user

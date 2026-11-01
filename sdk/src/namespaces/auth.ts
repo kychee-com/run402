@@ -23,6 +23,12 @@ interface MagicLinkOptionsBase {
   email: string;
   intent?: "signin" | "invite" | "claim" | "recovery";
   clientState?: unknown;
+  /**
+   * Language of the email, as a BCP 47 tag (the page's language). The gateway
+   * renders its own translation for `en`, `he` (right to left) and `ru`, and
+   * English for anything else.
+   */
+  locale?: string;
 }
 
 export type MagicLinkOptions =
@@ -343,6 +349,9 @@ export class Auth {
     if (opts.intent !== undefined) {
       assertStringInSet(opts.intent, MAGIC_LINK_INTENTS, "intent", "requesting magic link");
     }
+    if (opts.locale !== undefined && typeof opts.locale !== "string") {
+      throw new LocalError("locale must be a string such as \"he\"", "requesting magic link");
+    }
     const project = await requireProjectCredentials(this.client, projectId, "requesting magic link");
 
     const body: Record<string, unknown> = {
@@ -352,6 +361,7 @@ export class Auth {
     if (opts.delivery !== undefined) body.delivery = opts.delivery;
     if (opts.intent) body.intent = opts.intent;
     if (opts.clientState !== undefined) body.client_state = opts.clientState;
+    if (opts.locale !== undefined) body.locale = opts.locale;
 
     const result = await this.client.request<{
       message: string;

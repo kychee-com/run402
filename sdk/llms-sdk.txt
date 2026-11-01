@@ -2689,10 +2689,10 @@ Templates: `project_invite`, `magic_link`, `notification`. Or pass `subject` + `
 
 ```
 requestMagicLink(projectId, opts:
-  | { email, delivery?: "link", redirectUrl, intent?, clientState? }
-  | { email, delivery: "both", redirectUrl, intent?, clientState? }
-  | { email, delivery: "code", redirectUrl?, intent?, clientState? }
-): Promise<MagicLinkRequestResult> // { message, warnings?, challengeId? }
+  | { email, delivery?: "link", redirectUrl, intent?, clientState?, locale? }
+  | { email, delivery: "both", redirectUrl, intent?, clientState?, locale? }
+  | { email, delivery: "code", redirectUrl?, intent?, clientState?, locale? }
+): Promise<MagicLinkRequestResult> // { message, warnings?, challengeId? }; locale: en | he (rtl) | ru, else English; a redirectUrl on a custom domain names the app by that domain
 verifyMagicLink(projectId, token): Promise<MagicLinkVerifyResult> // { access_token, refresh_token, ... }
 verifyEmailCode(projectId, { challengeId, code }): Promise<MagicLinkVerifyResult>
 createUser(projectId, opts: { email, isAdmin?, sendInvite?, redirectUrl?, clientState? }): Promise<AuthUserAdminResult>
