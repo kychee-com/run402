@@ -238,8 +238,8 @@ export interface BaseMigrationSpec {
   /** Pre-uploaded SQL CAS reference. */
   sql_ref?: ContentRef;
   /** Default `"required"` — runs in a single advisory-locked transaction.
-   *  `"none"` opts out (and on failure, sends the operation to
-   *  `needs_repair` rather than rolling back). */
+   *  `"none"` opts out: on failure the operation is `failed` and the
+   *  statements that already ran are not rolled back. */
   transaction?: "required" | "none";
 }
 
@@ -2614,10 +2614,8 @@ export type OperationStatus =
   | "schema_settling"
   | "activating"
   | "activation_pending"
-  | "needs_repair"
   | "ready"
-  | "failed"
-  | "rolled_back";
+  | "failed";
 
 /** Status returned by the synchronous commit response (a subset of
  *  OperationStatus — the commit endpoint never returns mid-phase states like

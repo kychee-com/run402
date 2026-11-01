@@ -189,12 +189,7 @@ const STATIC_FUNCTION_LIMITS_BY_TIER: Record<string, StaticTierFunctionLimits> =
 const MANIFEST_CONTENT_TYPE =
   "application/vnd.run402.deploy-manifest+json";
 
-const TERMINAL_STATUSES: OperationStatus[] = [
-  "ready",
-  "failed",
-  "rolled_back",
-  "needs_repair",
-];
+const TERMINAL_STATUSES: OperationStatus[] = ["ready", "failed"];
 const SUCCESS_STATUS: OperationStatus = "ready";
 type DeployTarget = "cloud" | "core";
 
