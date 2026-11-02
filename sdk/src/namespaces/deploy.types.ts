@@ -406,9 +406,19 @@ export interface FunctionScheduleTriggerSpec {
  * the suspension as a durable function run — no public callback URL, no
  * polling. The run payload carries `{event: {mailbox_id, suspended_reason,
  * suspended_at, evidence, recovery_actions}}` and executes independently of
- * the suspended mailbox's send capability.
+ * the suspended mailbox's send capability. `sender_suspended` fires when one
+ * sending address of a catch-all mailbox is suspended (payload `{mailbox_id,
+ * address, suspended_reason, suspended_at, evidence, recovery_actions}`); the
+ * mailbox keeps sending as its other addresses. A `reply_received` payload
+ * carries `delivered_to`, every address the message was delivered to.
  */
-export type EmailTriggerEvent = "reply_received" | "delivery" | "bounced" | "complained" | "mailbox_suspended";
+export type EmailTriggerEvent =
+  | "reply_received"
+  | "delivery"
+  | "bounced"
+  | "complained"
+  | "mailbox_suspended"
+  | "sender_suspended";
 
 export interface FunctionEmailTriggerSpec {
   id: string;

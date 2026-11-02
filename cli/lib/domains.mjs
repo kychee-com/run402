@@ -32,6 +32,14 @@ Examples:
   run402 domains connect kysigned.com --project prj_123 --email-send --email-receive --mailbox-addresses primary --addresses info
   run402 domains connect example.com --project prj_123 --web --web-target production
   run402 domains connect example.com --project prj_123 --web --authority hosted-zone
+  run402 domains connect example.com --project prj_123 --email-send --email-receive --receive-strategy full-mx --catch-all letters
+
+--catch-all <slug> on connect:
+  Names the mailbox that receives mail for every local part no other mailbox
+  owns and may send as any of them ('run402 email send --from <address>').
+  Compiles to mailbox_addresses { mode: primary, all_mailboxes: true,
+  catch_all: <slug>, addresses: <--addresses or []> }. Needs a domain-wide
+  receive strategy (full-mx or subdomain), never forwarding.
 
 --authority on connect:
   hosted-zone   Run402 hosts the domain's DNS zone; the owner makes ONE nameserver
@@ -98,6 +106,7 @@ const CONNECT_VALUE_FLAGS = [
   "--mail-subdomain",
   "--mailbox-addresses",
   "--addresses",
+  "--catch-all",
   "--activation",
   "--authority",
   "--confirm-mx-takeover",
@@ -183,6 +192,21 @@ function parseMailboxAddressMode(value) {
   return value;
 }
 
+const MAILBOX_SLUG_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
+
+function parseCatchAll(value) {
+  if (value === undefined || value === null) return null;
+  if (!MAILBOX_SLUG_RE.test(value)) {
+    fail({
+      code: "BAD_FLAG",
+      message: "--catch-all must be a mailbox slug (lowercase letters, digits, hyphens).",
+      hint: "Use the slug of an active mailbox of the project, e.g. --catch-all letters.",
+      details: { flag: "--catch-all", value },
+    });
+  }
+  return value;
+}
+
 function parseAddresses(value) {
   if (!value) return [];
   return value.split(",").map((part) => part.trim()).filter(Boolean);
@@ -224,7 +248,19 @@ function desiredFromConnectFlags(domain, parsed) {
 
   const emailSend = parsed.includes("--email-send");
   const emailReceive = parsed.includes("--email-receive");
-  const mailboxMode = parseMailboxAddressMode(flagValue(parsed, "--mailbox-addresses"));
+  const catchAll = parseCatchAll(flagValue(parsed, "--catch-all"));
+  let mailboxMode = parseMailboxAddressMode(flagValue(parsed, "--mailbox-addresses"));
+  if (catchAll) {
+    if (mailboxMode && mailboxMode !== "primary") {
+      fail({
+        code: "BAD_FLAG",
+        message: "--catch-all needs --mailbox-addresses primary (or no --mailbox-addresses).",
+        hint: "A catch-all receives beside all mailboxes at their slugs; drop --mailbox-addresses or set it to primary.",
+        details: { flag: "--catch-all", conflicting_flag: "--mailbox-addresses", value: mailboxMode },
+      });
+    }
+    mailboxMode = "primary";
+  }
   if (emailSend || emailReceive || mailboxMode) {
     const email = {};
     if (emailSend) email.send = { enabled: true };
@@ -241,7 +277,7 @@ function desiredFromConnectFlags(domain, parsed) {
     }
     if (mailboxMode) {
       const locals = parseAddresses(flagValue(parsed, "--addresses"));
-      if ((mailboxMode === "primary" || mailboxMode === "alias") && locals.length === 0) {
+      if ((mailboxMode === "primary" || mailboxMode === "alias") && locals.length === 0 && !catchAll) {
         fail({
           code: "BAD_FLAG",
           message: "--addresses is required when --mailbox-addresses is primary or alias.",
@@ -253,6 +289,7 @@ function desiredFromConnectFlags(domain, parsed) {
         : parsed.includes("--no-create-mailboxes") ? false : false;
       email.mailbox_addresses = {
         mode: mailboxMode,
+        ...(catchAll ? { all_mailboxes: true, catch_all: catchAll } : {}),
         addresses: locals.map((local) => ({
           local_part: local,
           mailbox_slug: local,
@@ -278,7 +315,7 @@ function desiredFromConnectFlags(domain, parsed) {
     fail({
       code: "BAD_USAGE",
       message: "No desired domain capability selected.",
-      hint: "Use --web, --email-send, --email-receive, and/or --mailbox-addresses.",
+      hint: "Use --web, --email-send, --email-receive, --mailbox-addresses, and/or --catch-all.",
     });
   }
   return desired;

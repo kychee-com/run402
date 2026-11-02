@@ -105,6 +105,30 @@ describe("ProjectDomain SDK", () => {
     assert.equal(calls.length, 1);
   });
 
+  it("sends a catch-all mailbox beside all_mailboxes in desired state", async () => {
+    const desired = {
+      email: {
+        send: { enabled: true },
+        receive: { enabled: true, strategy: "full_receive_takeover" as const },
+        mailbox_addresses: {
+          mode: "primary" as const,
+          all_mailboxes: true,
+          catch_all: "letters",
+          addresses: [],
+        },
+      },
+    };
+    const { fetch, calls } = mockFetch((call) => {
+      assert.deepEqual(JSON.parse(call.body as string), { domain: "kinvestigator.com", desired });
+      return jsonResponse(projectDomain({ desired }));
+    });
+
+    const sdk = makeSdk(principalCreds(), fetch);
+    const result = await sdk.domains.connect("prj_visible", { domain: "kinvestigator.com", desired });
+    assert.equal(result.desired.email?.mailbox_addresses?.catch_all, "letters");
+    assert.equal(calls.length, 1);
+  });
+
   it("lists and checks domains without local project credential lookup", async () => {
     const { fetch, calls } = mockFetch((call) => {
       if (call.url.endsWith("/projects/v1/prj_visible/domains")) {

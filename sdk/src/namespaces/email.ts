@@ -15,7 +15,7 @@ import {
 } from "../validation.js";
 
 const SLUG_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
-const WEBHOOK_EVENTS = ["delivery", "bounced", "complained", "reply_received", "mailbox_suspended"] as const;
+const WEBHOOK_EVENTS = ["delivery", "bounced", "complained", "reply_received", "mailbox_suspended", "sender_suspended"] as const;
 const MESSAGE_DIRECTIONS = ["inbound", "outbound"] as const;
 const DELIVERY_STATUSES = ["pending", "in_flight", "delivered", "failed_permanent"] as const;
 const MAILBOX_FOOTER_POLICIES = ["run402_transparency", "none"] as const;
@@ -75,6 +75,26 @@ export interface MailboxRecord {
   inbound_policy?: MailboxInboundPolicy;
   /** First-contact senders accepted under `inbound_policy: "allowlist"` (normalized, lowercase). */
   inbound_allowlist?: string[];
+  /**
+   * Domains where this mailbox is the effective catch-all: it receives mail for
+   * every local part no other mailbox owns and may send as any of them with
+   * `from_address`. `[]` when it is not a catch-all.
+   */
+  catch_all_for?: string[];
+  /**
+   * Sending addresses of a catch-all suspended on their own (bounces or a
+   * complaint); present only on a catch-all that has any. A sender
+   * suspension never changes the mailbox `status`.
+   */
+  suspended_senders?: MailboxSuspendedSender[];
+}
+
+/** One sending address of a catch-all mailbox, suspended on its own. */
+export interface MailboxSuspendedSender {
+  address: string;
+  reason: "bounce_threshold" | "complaint";
+  suspended_at: string;
+  recovery_actions: Array<Record<string, unknown>>;
 }
 
 export interface MailboxSettings {
@@ -188,6 +208,16 @@ export interface SendEmailOptions {
   text?: string;
   from_name?: string;
   /**
+   * Send as another address on a custom domain. Only the domain's effective
+   * catch-all mailbox may send as a local part no mailbox owns; the mailbox's
+   * own address is accepted on any mailbox. Refusals: 400
+   * `VALIDATION_FAILED` (malformed or reserved local part), 403
+   * `FROM_ADDRESS_NOT_ALLOWED`, `FROM_ADDRESS_NOT_EFFECTIVE` (custom
+   * addressing demoted) or `SENDER_SUSPENDED`. The result reports the
+   * address used in `from_address`.
+   */
+  from_address?: string;
+  /**
    * Binary attachments — RAW MODE ONLY (with `subject` + `html`, not `template`).
    * At most 100; each ≤ 15 MB and ≤ 15 MB total (decoded): the byte cap is the
    * real bound. The platform sends one multipart/mixed MIME when present.
@@ -236,6 +266,8 @@ export interface EmailSummary {
   attachments_meta?: EmailAttachmentMeta[] | null;
   /** Each blind copy of an outbound message with its own outcome; absent when there were none. The message `status` is the `to` recipient's. */
   bcc?: EmailBccRecipient[];
+  /** Inbound only: every envelope recipient address the message was delivered to in this mailbox (a catch-all may list several). */
+  delivered_to?: string[];
 }
 
 export interface EmailDetail {
@@ -259,6 +291,8 @@ export interface EmailDetail {
   attachments_meta?: EmailAttachmentMeta[] | null;
   /** Each blind copy of an outbound message with its own outcome; absent when there were none. The message `status` is the `to` recipient's. */
   bcc?: EmailBccRecipient[];
+  /** Inbound only: every envelope recipient address the message was delivered to in this mailbox (a catch-all may list several). */
+  delivered_to?: string[];
   replies?: Array<{
     id: string;
     from: string;
@@ -850,6 +884,7 @@ export class Email {
       if (hasAttachments) body.attachments = opts.attachments;
     }
     if (opts.from_name !== undefined) body.from_name = opts.from_name;
+    if (opts.from_address !== undefined) body.from_address = opts.from_address;
     if (opts.in_reply_to !== undefined) body.in_reply_to = opts.in_reply_to;
 
     return this.client.request<SendEmailResult>(`/mailboxes/v1/${id}/messages`, {

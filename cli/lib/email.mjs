@@ -97,7 +97,7 @@ Subcommands:
                                       --output is required: bytes are written
                                       to the file; stdout receives a JSON
                                       envelope { message_id, bytes, output }.
-  reply  <message_id> --html "..." [--text "..."] [--subject "..."] [--from-name "..."] [--project <project_id>]
+  reply  <message_id> --html "..." [--text "..."] [--subject "..."] [--from-name "..."] [--from <address>] [--project <project_id>]
                                       Reply to an inbound message (threads via In-Reply-To)
   delete [<slug|mailbox_id>] --confirm [--project <project_id>]
                                       Delete the project's mailbox (irreversible)
@@ -120,7 +120,9 @@ Send modes:
   Template:  --template <name> --var key=value [--var ...]  OR --vars '{"k":"v",...}'
   Raw HTML:  --subject "..." --html "..." [--text "..."]    (both --subject and --html required)
   Raw HTML also supports: --attach <path>[:content-type] (repeatable; max 100, 15 MB total)
-  Both modes support: --from-name "Display Name" --project <project_id>
+  Both modes support: --from-name "Display Name" --from <address> --project <project_id>
+  --from <address> sends as another local part of a custom domain; only that
+  domain's catch-all mailbox may use it (see 'run402 domains connect --catch-all').
 
 Choosing a mailbox:
   --mailbox <slug|id>  Target a specific mailbox. Accepted by send, list, get,
@@ -195,6 +197,10 @@ Options:
                       inferred from the extension when the :content-type
                       suffix is omitted.
   --from-name "..."   Display name for the From header
+  --from <address>    Send as this address (sent as from_address). Only the
+                      domain's catch-all mailbox may send as a local part no
+                      mailbox owns; refusals are FROM_ADDRESS_NOT_ALLOWED,
+                      FROM_ADDRESS_NOT_EFFECTIVE, SENDER_SUSPENDED.
   --mailbox <slug|id> Target mailbox. Omit to use default_outbound_mailbox_id.
   --project <project_id>      Project ID (defaults to the active project)
 `,
@@ -610,7 +616,7 @@ async function updateMailbox(args) {
 }
 
 async function send(args) {
-  const valueFlags = ["--template", "--to", "--bcc", "--subject", "--html", "--text", "--from-name", "--project", "--vars", "--var", "--mailbox", "--attach"];
+  const valueFlags = ["--template", "--to", "--bcc", "--subject", "--html", "--text", "--from-name", "--from", "--project", "--vars", "--var", "--mailbox", "--attach"];
   validateArgs(args, valueFlags);
   const template = strictFlagValue(args, "--template");
   const to = strictFlagValue(args, "--to");
@@ -618,6 +624,7 @@ async function send(args) {
   const html = strictFlagValue(args, "--html");
   const text = strictFlagValue(args, "--text");
   const fromName = strictFlagValue(args, "--from-name");
+  const fromAddress = strictFlagValue(args, "--from");
   const mailbox = strictFlagValue(args, "--mailbox");
   const projectId = resolveProjectId(strictFlagValue(args, "--project"));
   const variables = parseVars(args);
@@ -638,6 +645,7 @@ async function send(args) {
       html: html ?? undefined,
       text: text ?? undefined,
       from_name: fromName ?? undefined,
+      from_address: fromAddress ?? undefined,
       mailbox: mailbox ?? undefined,
       attachments: attachments.length ? attachments : undefined,
     });
@@ -735,13 +743,14 @@ async function getRaw(args) {
 }
 
 async function reply(args) {
-  const valueFlags = ["--project", "--html", "--text", "--subject", "--from-name", "--mailbox"];
+  const valueFlags = ["--project", "--html", "--text", "--subject", "--from-name", "--from", "--mailbox"];
   validateArgs(args, valueFlags);
   const messageId = positionalArgs(args, valueFlags)[0] ?? null;
   const html = strictFlagValue(args, "--html");
   const text = strictFlagValue(args, "--text");
   const subjectOverride = strictFlagValue(args, "--subject");
   const fromName = strictFlagValue(args, "--from-name");
+  const fromAddress = strictFlagValue(args, "--from");
   const mailbox = strictFlagValue(args, "--mailbox");
   const projectId = resolveProjectId(strictFlagValue(args, "--project"));
 
@@ -782,6 +791,7 @@ async function reply(args) {
       html: html ?? undefined,
       text: text ?? undefined,
       from_name: fromName ?? undefined,
+      from_address: fromAddress ?? undefined,
       in_reply_to: messageId,
       mailbox: mailbox ?? undefined,
     });

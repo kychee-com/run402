@@ -730,6 +730,8 @@ await r.domains.connect(projectId, { domain: "app.example.com", desired: { web: 
 
 `authority: "hosted_dns_zone"` is the only workable path for a ROOT domain at most registrars (a root CNAME is illegal without flattening/ALIAS support) and collapses setup to one registrar step: Run402 applies every in-zone record, verifies ownership, and issues TLS once delegation is observed. Existing MX/TXT are imported into the hosted zone before the nameserver change is recommended, so mail keeps working. `hosted_zone` reports `{ dns_hosting, status, ns_assigned, imported_records }`. The zone belongs to the project's organization: another project of it can `ensure` a name under the domain (`barry.example.com`), and Run402 serves it from the same zone, writing only that name's records on `apply` and `repair`. Disconnecting a name removes its binding and records; the zone is torn down only with the organization's last name under it (`hosted_zone_released: true`; DNS stops resolving until nameservers are re-pointed), and otherwise stays (`hosted_zone_retained: true`). A name in another organization's hosted zone is `409 HOSTED_DNS_ZONE_CONFLICT`.
 
+A catch-all mailbox is a domain setting: `desired.email.mailbox_addresses: { mode: "primary", all_mailboxes: true, catch_all: "letters", addresses: [] }` on a `full_receive_takeover` or `subdomain_mode` domain makes the active mailbox `letters` receive every local part no binding or mailbox owns, and send as any of them with `r.email.send(projectId, { ..., from_address: "tal@example.com" })`. `catch_all` is accepted only beside `all_mailboxes: true`; `null` clears it.
+
 Every response carries `next_actions[]` (ordered; `[0]` is the recommended step).
 
 ### `r.events`
@@ -1258,10 +1260,19 @@ send(projectId, opts: SendEmailOptions): Promise<SendEmailResult>
   // no header names them; each counts as one send. The result and EmailSummary /
   // EmailDetail carry bcc: { address, status, bounce_type }[]; a blind copy's
   // bounce never changes the message status. No cc (gateway 400).
+  // opts.from_address?: string — send as another address on a custom domain.
+  // Only the domain's effective catch-all mailbox may send as a local part no
+  // mailbox owns; the mailbox's own address works on any mailbox. Refusals:
+  // 400 VALIDATION_FAILED, 403 FROM_ADDRESS_NOT_ALLOWED,
+  // FROM_ADDRESS_NOT_EFFECTIVE (addressing demoted), SENDER_SUSPENDED. The
+  // result's from_address is the address used.
 list(projectId, opts?: { limit?, after?, direction? }): Promise<EmailSummary[]>
   // direction?: "inbound" | "outbound" — omit for BOTH. direction:"inbound" lists
   // received replies (each EmailSummary carries `direction`) and is the
   // reconciliation backstop if a reply_received webhook is ever lost.
+  // Inbound EmailSummary / EmailDetail carry delivered_to: string[] — every
+  // address the message was delivered to (a catch-all may list several); the
+  // reply_received webhook and email-trigger payloads carry it too.
 get(projectId, messageId): Promise<EmailDetail>
 getRaw(projectId, messageId): Promise<RawEmailResult> // bytes + content_type
 
@@ -1281,6 +1292,11 @@ webhooks.listDeliveries(projectId, opts?: { status?, limit?, after? }): Promise<
   // webhooks are unsigned (verifyWebhook is for owner notifications only).
 webhooks.redriveDelivery(projectId, deliveryId): Promise<RedriveDeliveryResult>
   // Re-queue a dead-lettered delivery for another attempt (after fixing the consumer).
+  // Events: delivery, bounced, complained, reply_received, mailbox_suspended,
+  // sender_suspended (one sending address of a catch-all suspended; the
+  // mailbox keeps sending as its other addresses).
+  // Mailbox reads carry catch_all_for: string[] and, when non-empty,
+  // suspended_senders: { address, reason, suspended_at, recovery_actions }[].
 
 // CLI-style aliases:
 create(projectId, slug): Promise<CreateMailboxResult>

@@ -17,7 +17,7 @@ Actions:
   deliveries [--status <s>] [--mailbox <slug|id>] [--project <project_id>]  List durable delivery rows (DLQ visibility)
   redrive    <delivery_id> [--mailbox <slug|id>] [--project <project_id>]   Re-queue a dead-lettered delivery
 
-Valid events: delivery, bounced, complained, reply_received, mailbox_suspended
+Valid events: delivery, bounced, complained, reply_received, mailbox_suspended, sender_suspended
 Delivery statuses: pending, in_flight, delivered, failed_permanent (the DLQ)
 
 Webhook delivery is durable + at-least-once: failures retry with backoff, then
@@ -194,7 +194,7 @@ async function register(args) {
     fail({
       code: "BAD_USAGE",
       message: "Missing --events.",
-      hint: "Valid events: delivery, bounced, complained, reply_received, mailbox_suspended",
+      hint: "Valid events: delivery, bounced, complained, reply_received, mailbox_suspended, sender_suspended",
     });
   }
 

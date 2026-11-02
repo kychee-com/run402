@@ -5260,6 +5260,56 @@ describe("CLI e2e happy path", () => {
     assert.equal(calls.filter(c => c.method === "POST" && c.pathNoQuery.endsWith("/messages")).length, 0, "must not attempt to send");
   });
 
+  it("email send --from maps to from_address in the send body", async () => {
+    await seedTestProject();
+    const { run } = await import("./cli/lib/email.mjs");
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildEmailFetch(calls);
+    let threw = null;
+    captureStart();
+    try {
+      await run("send", [
+        "--to", "records@archive.example",
+        "--subject", "Records request",
+        "--html", "<p>hi</p>",
+        "--from-name", "Tal Weiss",
+        "--from", "tal@kinvestigator.com",
+      ]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw, null, `should succeed, got: ${threw?.message || "(no throw)"} / ${capturedStderr()}`);
+    const send = calls.find(c => c.method === "POST" && c.pathNoQuery.endsWith("/messages"));
+    assert.ok(send, "must POST to messages");
+    assert.equal(send.body.from_address, "tal@kinvestigator.com");
+    assert.equal(send.body.from_name, "Tal Weiss");
+  });
+
+  it("email reply --from maps to from_address and omits it otherwise", async () => {
+    await seedTestProject();
+    const { run } = await import("./cli/lib/email.mjs");
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildEmailFetch(calls);
+    let threw = null;
+    captureStart();
+    try {
+      await run("reply", ["msg_in_1", "--html", "<p>thanks</p>", "--from", "tal@kinvestigator.com"]);
+      await run("send", ["--to", "user@example.com", "--subject", "Hi", "--html", "<p>hi</p>"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw, null, `should succeed, got: ${threw?.message || "(no throw)"} / ${capturedStderr()}`);
+    const sends = calls.filter(c => c.method === "POST" && c.pathNoQuery.endsWith("/messages"));
+    assert.equal(sends.length, 2);
+    assert.equal(sends[0].body.from_address, "tal@kinvestigator.com");
+    assert.equal(sends[0].body.in_reply_to, "msg_in_1");
+    assert.equal("from_address" in sends[1].body, false);
+  });
+
   it("email send --vars JSON populates template variables (GH-87)", async () => {
     await seedTestProject();
     const { run } = await import("./cli/lib/email.mjs");
@@ -6177,6 +6227,108 @@ describe("CLI domains list --project", () => {
       `'domains list' (no args) should resolve via active project, got: ${threw?.message || ""} / stderr: ${capturedStderr()}`);
     const get = calls.find(c => c.method === "GET" && c.path === `/projects/v1/${TEST_PROJECT.project_id}/domains`);
     assert.ok(get, `must still issue GET /projects/v1/:project_id/domains, calls: ${JSON.stringify(calls)}`);
+  });
+});
+
+// ── domains connect --catch-all ─────────────────────────────────────────────
+
+describe("CLI domains connect --catch-all", () => {
+  async function seedActiveProject() {
+    const { saveProject, setActiveProjectId } = await import("./cli/lib/config.mjs");
+    saveProject(TEST_PROJECT.project_id, {
+      anon_key: TEST_PROJECT.anon_key,
+      service_key: TEST_PROJECT.service_key,
+    });
+    setActiveProjectId(TEST_PROJECT.project_id);
+  }
+
+  function buildConnectSpyFetch(calls) {
+    const apiOrigin = new URL(API).origin;
+    return async (input, init) => {
+      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+      const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
+      let path = url;
+      try {
+        const parsed = new URL(url);
+        if (parsed.origin === apiOrigin) path = parsed.pathname + parsed.search;
+      } catch {
+        // non-URL input — leave as raw
+      }
+      let body = null;
+      let rawBody = init?.body;
+      if (rawBody === undefined && input instanceof Request) {
+        try { rawBody = await input.clone().text(); } catch { rawBody = undefined; }
+      }
+      if (typeof rawBody === "string" && rawBody) {
+        try { body = JSON.parse(rawBody); } catch { body = rawBody; }
+      }
+      calls.push({ method, path, body });
+      if (method === "POST" && /^\/projects\/v1\/[^/]+\/domains$/.test(path.split("?")[0])) {
+        return Promise.resolve(json({ project_id: TEST_PROJECT.project_id, domain: body?.domain, status: "action_required", desired: body?.desired, observed: {}, effective: {}, dns_records: [], checks: [], next_actions: [] }));
+      }
+      return Promise.resolve(new Response("Not Found", { status: 404 }));
+    };
+  }
+
+  async function runConnect(args) {
+    await seedActiveProject();
+    const { run } = await import("./cli/lib/domains.mjs");
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildConnectSpyFetch(calls);
+    let threw = null;
+    captureStart();
+    try {
+      await run("connect", args);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    return { threw, calls, post: calls.find(c => c.method === "POST" && /\/domains$/.test(c.path.split("?")[0])) };
+  }
+
+  it("compiles --catch-all to primary mode with all_mailboxes and no addresses", async () => {
+    const { threw, post } = await runConnect([
+      "kinvestigator.com", "--email-send", "--email-receive", "--receive-strategy", "full-mx", "--catch-all", "letters",
+    ]);
+    assert.equal(threw, null, `should succeed, got: ${threw?.message || ""} / ${capturedStderr()}`);
+    assert.ok(post, "must POST the domain");
+    assert.deepEqual(post.body.desired.email.mailbox_addresses, {
+      mode: "primary",
+      all_mailboxes: true,
+      catch_all: "letters",
+      addresses: [],
+    });
+    assert.equal(post.body.desired.email.receive.strategy, "full_receive_takeover");
+  });
+
+  it("keeps --addresses bindings beside --catch-all and accepts an explicit primary mode", async () => {
+    const { threw, post } = await runConnect([
+      "kinvestigator.com", "--email-receive", "--mailbox-addresses", "primary", "--addresses", "info", "--catch-all", "letters",
+    ]);
+    assert.equal(threw, null, `should succeed, got: ${threw?.message || ""} / ${capturedStderr()}`);
+    assert.deepEqual(post.body.desired.email.mailbox_addresses, {
+      mode: "primary",
+      all_mailboxes: true,
+      catch_all: "letters",
+      addresses: [{ local_part: "info", mailbox_slug: "info", create_mailbox: false }],
+    });
+  });
+
+  it("refuses --catch-all with a --mailbox-addresses other than primary", async () => {
+    const { threw, calls } = await runConnect([
+      "kinvestigator.com", "--email-receive", "--mailbox-addresses", "alias", "--addresses", "info", "--catch-all", "letters",
+    ]);
+    assert.equal(threw?.message, "process.exit(1)");
+    assert.match(capturedStderr(), /--catch-all needs --mailbox-addresses primary/);
+    assert.equal(calls.length, 0, "must not call the gateway");
+  });
+
+  it("refuses a --catch-all that is not a mailbox slug", async () => {
+    const { threw, calls } = await runConnect(["kinvestigator.com", "--email-receive", "--catch-all", "Letters@x"]);
+    assert.equal(threw?.message, "process.exit(1)");
+    assert.match(capturedStderr(), /--catch-all must be a mailbox slug/);
+    assert.equal(calls.length, 0, "must not call the gateway");
   });
 });
 

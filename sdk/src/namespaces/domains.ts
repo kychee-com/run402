@@ -48,6 +48,15 @@ export interface ProjectDomainDesired {
     mailbox_addresses?: {
       mode: ProjectDomainMailboxAddressMode;
       addresses: ProjectDomainMailboxAddressBinding[];
+      /** Every active mailbox of the project receives at its slug on this domain (domain-wide receive strategies only). */
+      all_mailboxes?: boolean;
+      /**
+       * Slug of the mailbox that catches every local part no binding or mailbox
+       * owns, and may send as any of them (`from_address`). Only beside
+       * `all_mailboxes: true` on `full_receive_takeover` or `subdomain_mode`;
+       * `null` clears it.
+       */
+      catch_all?: string | null;
     };
     activation?: ProjectDomainActivationMode;
   };

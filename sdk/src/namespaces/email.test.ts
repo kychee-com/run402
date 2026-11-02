@@ -464,6 +464,47 @@ describe("email.send", () => {
     assert.equal(result.from_address, "known@prj-known.mail.run402.com");
   });
 
+  it("passes from_address through to the send body only when set", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({
+        message_id: "msg_1",
+        to: "records@archive.example",
+        template: null,
+        subject: "Records request",
+        status: "sent",
+        sent_at: "2026-11-02T10:00:00.000Z",
+        mailbox_id: "mbx_letters",
+        from_address: "tal@kinvestigator.com",
+      }),
+    );
+    const sdk = makeSdk(makeCreds(), fetch);
+
+    const result = await sdk.email.send("prj_known", {
+      to: "records@archive.example",
+      subject: "Records request",
+      html: "<p>hi</p>",
+      from_name: "Tal Weiss",
+      from_address: "tal@kinvestigator.com",
+      mailbox: "mbx_letters",
+    });
+    await sdk.email.send("prj_known", {
+      to: "records@archive.example",
+      subject: "Records request",
+      html: "<p>hi</p>",
+      mailbox: "mbx_letters",
+    });
+
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), {
+      to: "records@archive.example",
+      subject: "Records request",
+      html: "<p>hi</p>",
+      from_name: "Tal Weiss",
+      from_address: "tal@kinvestigator.com",
+    });
+    assert.equal("from_address" in JSON.parse(calls[1]!.body as string), false);
+    assert.equal(result.from_address, "tal@kinvestigator.com");
+  });
+
   it("preserves explicit empty optional fields in the send body", async () => {
     const { fetch, calls } = mockFetch(() =>
       jsonResponse({
@@ -690,6 +731,26 @@ describe("email.webhooks", () => {
       calls[2]!.url,
       "https://api.example.test/mailboxes/v1/mbx_known/webhooks/whk_1%2F..%2F..%2Fmessages",
     );
+  });
+
+  it("accepts sender_suspended as a webhook event", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({
+        webhook_id: "whk_1",
+        url: "https://hooks.example.com/run402",
+        events: ["sender_suspended"],
+        created_at: "2026-11-02T00:00:00.000Z",
+      }),
+    );
+    const sdk = makeSdk(makeCreds(), fetch);
+
+    await sdk.email.webhooks.register("prj_known", {
+      url: "https://hooks.example.com/run402",
+      events: ["sender_suspended", "mailbox_suspended"],
+      mailbox: "mbx_known",
+    });
+
+    assert.deepEqual(JSON.parse(calls[0]!.body as string).events, ["sender_suspended", "mailbox_suspended"]);
   });
 
   it("validates webhook URLs and events before requesting", async () => {

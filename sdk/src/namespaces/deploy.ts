@@ -148,7 +148,7 @@ const APPLY_TRANSIENT_RETRY_MAX_DELAY_MS = 15_000;
 /** A read or an idempotent request lost to a 502/503/504 or a dropped connection. */
 const TRANSIENT_REQUEST_MAX_ATTEMPTS = 3;
 const TRANSIENT_REQUEST_RETRY_BASE_DELAY_MS = 500;
-const EMAIL_TRIGGER_EVENTS = new Set(["reply_received", "delivery", "bounced", "complained", "mailbox_suspended"]);
+const EMAIL_TRIGGER_EVENTS = new Set(["reply_received", "delivery", "bounced", "complained", "mailbox_suspended", "sender_suspended"]);
 const STATIC_ACTIVATION_FAILURE_CODES = new Set<string>([
   "BAD_FIELD",
   "INVALID_SPEC",
@@ -3442,7 +3442,7 @@ function validateFunctionTriggers(value: unknown, resource: string): void {
       for (const [eventIndex, event] of obj.events.entries()) {
         if (typeof event !== "string" || !EMAIL_TRIGGER_EVENTS.has(event)) {
           throw invalidSpec(
-            `ReleaseSpec.${path}.events.${eventIndex} must be one of reply_received, delivery, bounced, complained`,
+            `ReleaseSpec.${path}.events.${eventIndex} must be one of reply_received, delivery, bounced, complained, mailbox_suspended, sender_suspended`,
             `${path}.events.${eventIndex}`,
           );
         }
