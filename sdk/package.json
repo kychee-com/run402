@@ -55,8 +55,8 @@
     "@aws-sdk/client-kms": "^3.1147.0",
     "@x402/evm": "2.29.0",
     "@x402/fetch": "2.29.0",
-    "mppx": "^0.13.1",
-    "viem": "^2.57.1"
+    "mppx": "^0.13.6",
+    "viem": ">=2.57.1 <2.57.16"
   },
   "peerDependenciesMeta": {
     "@aws-sdk/client-kms": {
