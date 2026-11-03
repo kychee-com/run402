@@ -5376,6 +5376,33 @@ describe("CLI e2e happy path", () => {
     assert.ok(stdout.includes("test@mail.run402.com"), `stdout should include address, got: ${stdout}`);
   });
 
+  it("email info prints a catch-all's catch_all_for and suspended_senders", async () => {
+    await seedTestProject();
+    const { run } = await import("./cli/lib/email.mjs");
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    const suspended = [{ address: "tal@kinvestigator.com", reason: "bounce_threshold", suspended_at: "2026-11-03T00:00:00.000Z" }];
+    globalThis.fetch = buildEmailFetch(calls, {
+      "GET /mailboxes/v1": json({ mailboxes: [{
+        mailbox_id: "mbx_test_1", address: "test@mail.run402.com", slug: "test", status: "active",
+        catch_all_for: ["kinvestigator.com"], suspended_senders: suspended,
+      }] }),
+    });
+    let threw = null;
+    captureStart();
+    try {
+      await run("info", []);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw, null, `should succeed, got: ${threw?.message || ""} / ${capturedStderr()}`);
+    const stdout = JSON.parse(capturedStdout());
+    const mailbox = stdout.mailbox ?? stdout.mailboxes?.[0] ?? stdout;
+    assert.deepEqual(mailbox.catch_all_for, ["kinvestigator.com"]);
+    assert.deepEqual(mailbox.suspended_senders, suspended);
+  });
+
   it("email update PATCHes mailbox footer policy", async () => {
     await seedTestProject();
     const { run } = await import("./cli/lib/email.mjs");

@@ -393,6 +393,8 @@ function mailboxInfoPayload(m) {
     footer_policy_locked_reason: m.footer_policy_locked_reason,
     inbound_policy: m.inbound_policy,
     inbound_allowlist: m.inbound_allowlist,
+    ...(m.catch_all_for !== undefined ? { catch_all_for: m.catch_all_for } : {}),
+    ...(m.suspended_senders !== undefined ? { suspended_senders: m.suspended_senders } : {}),
   };
 }
 
