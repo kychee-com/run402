@@ -930,7 +930,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "fac06ba1e836f1aafb558c5d7281752f0de1a00fa261501be30af28e00969f04",
+      "sha256": "67895a37876407a0d1b8a8282823d8b7ed59c0138f73615ca63924e5e8ad0fc2",
       "outputs": [],
       "url": null,
       "checks": [
