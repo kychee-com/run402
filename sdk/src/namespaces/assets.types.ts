@@ -294,6 +294,11 @@ export interface AssetRef {
     display_jpeg?: AssetVariant;
   };
 
+  /** A video uploaded through a function-delegated upload that declared
+   *  `video`, once run402 prepared it: the web copy, poster and transcript,
+   *  each signed with `variant: "video_web" | "video_poster" | "video_transcript"`. */
+  video?: AssetVideo;
+
   // ---- v1.49+ SDK convenience fields --------------------------------------
   // Computed during enhancement. Undefined for non-image AssetRefs so
   // TypeScript narrows correctly and a non-image ref can't accidentally be
@@ -671,6 +676,8 @@ export interface BlobSummary {
     large?: BlobListVariant;
     display_jpeg?: BlobListVariant;
   };
+  /** A prepared video's outputs (see `AssetRef.video`). */
+  video?: AssetVideo;
   blurhash_data_url?: string | null;
   asset_schema?: "v1.49" | "v1.50" | "v1.54" | null;
 }
@@ -719,17 +726,42 @@ export interface BlobLsResult {
   reset: boolean;
 }
 
-/** The encoded image variants `assets.sign` can sign. */
-export const BLOB_SIGN_VARIANTS = ["thumb", "medium", "large", "display_jpeg"] as const;
+/** What `assets.sign` can sign instead of the original: an encoded image
+ *  variant, or one of a prepared video's outputs. */
+export const BLOB_SIGN_VARIANTS = ["thumb", "medium", "large", "display_jpeg", "video_web", "video_poster", "video_transcript"] as const;
+export type BlobSignVariant = (typeof BLOB_SIGN_VARIANTS)[number];
+
+/** One output of a prepared video (asset-video-processing). */
+export interface AssetVideoOutput {
+  kind: "video_web" | "video_poster" | "video_transcript";
+  content_type: string;
+  size_bytes: number;
+  sha256: string;
+}
+
+/** `AssetRef.video` / `BlobSummary.video`: an uploaded video run402 prepared. */
+export interface AssetVideo {
+  spec_version: string;
+  duration_seconds: number;
+  width: number;
+  height: number;
+  /** H.264/AAC MP4, faststart, square pixels, long side at most 1280 px. */
+  web: AssetVideoOutput;
+  /** A JPEG frame at the web copy's size. */
+  poster: AssetVideoOutput;
+  /** `run402.transcript.v1` JSON in the spoken language; null when not declared. */
+  transcript: AssetVideoOutput | null;
+}
 
 export interface BlobSignOptions {
   /** URL lifetime in seconds. 60–604800 (7 days). Server default 3600. */
   ttl_seconds?: number;
-  /** Sign this encoded variant of an image instead of the original: the way
-   *  to deliver a private image's `variants` (whose URLs are `null`). The
-   *  URL answers with the variant's own content type. A key that was not
-   *  encoded with the variant answers 404 `RESOURCE_NOT_FOUND`. */
-  variant?: BlobListVariant["kind"];
+  /** Sign this encoded variant of an image, or this output of a prepared
+   *  video, instead of the original: the way to deliver a private image's
+   *  `variants` (whose URLs are `null`) or a video's web copy, poster and
+   *  transcript. The URL answers with that object's own content type. A key
+   *  without it answers 404 `RESOURCE_NOT_FOUND`. */
+  variant?: BlobSignVariant;
 }
 
 export interface BlobSignResult {
@@ -741,7 +773,7 @@ export interface BlobSignResult {
   expires_at: string;
   expires_in: number;
   /** The variant signed; absent when the original was. */
-  variant?: BlobListVariant["kind"];
+  variant?: BlobSignVariant;
 }
 
 /** Most items one `assets.signMany` call may carry. */
@@ -751,7 +783,7 @@ export const BLOB_SIGN_MANY_MAX_ITEMS = 1000;
  *  its encoded variants. */
 export interface BlobSignManyRequestItem {
   key: string;
-  variant?: BlobListVariant["kind"];
+  variant?: BlobSignVariant;
 }
 
 export interface BlobSignManyOptions {
@@ -770,8 +802,8 @@ export interface BlobSignItemError {
 
 /** One answer of `assets.signMany`, in request order: `signed_url` or `error`. */
 export type BlobSignManyItem =
-  | { key: string; variant?: BlobListVariant["kind"]; signed_url: string; error?: undefined }
-  | { key: string; variant?: BlobListVariant["kind"]; signed_url?: undefined; error: BlobSignItemError };
+  | { key: string; variant?: BlobSignVariant; signed_url: string; error?: undefined }
+  | { key: string; variant?: BlobSignVariant; signed_url?: undefined; error: BlobSignItemError };
 
 export interface BlobSignManyResult {
   items: BlobSignManyItem[];

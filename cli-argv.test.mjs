@@ -1432,7 +1432,7 @@ describe("numeric flag validation", () => {
     calls = [];
     const err = await expectExit1(() => run("sign", ["family/photo.jpg", "--project", "prj_test123", "--variant", "huge"]));
     assert.equal(err.code, "BAD_FLAG");
-    assert.match(err.message, /--variant must be one of thumb, medium, large, display_jpeg/);
+    assert.match(err.message, /--variant must be one of thumb, medium, large, display_jpeg, video_web, video_poster, video_transcript/);
     assert.equal(calls.length, 0, "bad --variant must not hit network");
   });
 

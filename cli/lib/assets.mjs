@@ -62,8 +62,9 @@ Options:
   --filter <k=v>      v1.50 ls only: media-picker filter (repeatable). Keys: uploaded_by, tag,
                       format, is_image, min_width, max_width, min_height, max_height.
   --ttl <seconds>     Signed-URL TTL (sign only; default 3600, min 60, max 604800)
-  --variant <kinds>   Sign image variants instead of the original (sign only;
-                      comma-separated thumb | medium | large | display_jpeg)
+  --variant <kinds>   Sign image variants or a prepared video's outputs instead
+                      of the original (sign only; comma-separated thumb | medium |
+                      large | display_jpeg | video_web | video_poster | video_transcript)
 
 Examples:
   run402 assets put ./artifact.tgz --project prj_abc123
@@ -182,8 +183,9 @@ Options:
   --ttl <seconds>     Signed-URL TTL (default 3600, min 60, max 604800)
   --variant <kinds>   Sign an image's encoded variants instead of the
                       original: thumb | medium | large (WebP) or display_jpeg
-                      (HEIC sources), comma-separated for several. How a
-                      private image's variants are served.
+                      (HEIC sources); or a prepared video's video_web |
+                      video_poster | video_transcript. Comma-separated for
+                      several. How a private image's variants are served.
 
 Output:
   One key and at most one variant prints { signed_url, expires_at,
@@ -665,7 +667,7 @@ async function sign(argv) {
 // Shared helpers
 // ---------------------------------------------------------------------------
 
-const SIGN_VARIANTS = ["thumb", "medium", "large", "display_jpeg"];
+const SIGN_VARIANTS = ["thumb", "medium", "large", "display_jpeg", "video_web", "video_poster", "video_transcript"];
 
 function parseVariantFlag(value) {
   const kinds = typeof value === "string" ? value.split(",").map((v) => v.trim()) : [];
