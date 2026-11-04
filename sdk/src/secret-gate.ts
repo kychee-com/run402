@@ -102,6 +102,12 @@ export const SECRET_RETURNING_METHODS = {
     command: (projectId: unknown) => `run402 stripe account onboarding-link${projectFlag(projectId)}`,
     why: "A Stripe onboarding link is one-time and meant for the account holder; the CLI prints it once to the person who will pass it on.",
   },
+  // ── app repos: a token prints once ──────────────────────────────────────
+  "appRepos.createToken": {
+    command: (projectId: unknown, repoName: unknown, opts: unknown) =>
+      `run402 app-repos tokens create ${arg(repoName, "<repo_name>")} --access ${arg(obj(opts).access, "read")}${projectFlag(projectId)}`,
+    why: "An app repo token is returned once; the CLI prints it to the person who will hand it on.",
+  },
   "grants.rotateKey": {
     command: (projectId: unknown, keyId: unknown) => `run402 grants rotate-key ${arg(keyId, "<key_id>")}${projectFlag(projectId)}`,
     why: "The rotated grant key's bearer is returned once; the CLI prints it to the person who will hand it on.",

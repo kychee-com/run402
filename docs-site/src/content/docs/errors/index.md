@@ -111,6 +111,12 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="APP_REPO_PATH_NOT_FOUND"></a>
 [`APP_REPO_PATH_NOT_FOUND`](/errors/gateway/#APP_REPO_PATH_NOT_FOUND)
 
+<a id="APP_REPO_TOKEN_NOT_FOUND"></a>
+[`APP_REPO_TOKEN_NOT_FOUND`](/errors/gateway/#APP_REPO_TOKEN_NOT_FOUND)
+
+<a id="APP_REPO_TOKEN_SCOPE"></a>
+[`APP_REPO_TOKEN_SCOPE`](/errors/gateway/#APP_REPO_TOKEN_SCOPE)
+
 <a id="APP_REPOS_UNSUPPORTED"></a>
 [`APP_REPOS_UNSUPPORTED`](/errors/gateway/#APP_REPOS_UNSUPPORTED)
 
@@ -539,6 +545,12 @@ The catalog records owning source locations and pinned external contributions. A
 
 <a id="FREE_ORG_OWNER_LIMIT_EXCEEDED"></a>
 [`FREE_ORG_OWNER_LIMIT_EXCEEDED`](/errors/gateway/#FREE_ORG_OWNER_LIMIT_EXCEEDED)
+
+<a id="FROM_ADDRESS_NOT_ALLOWED"></a>
+[`FROM_ADDRESS_NOT_ALLOWED`](/errors/gateway/#FROM_ADDRESS_NOT_ALLOWED)
+
+<a id="FROM_ADDRESS_NOT_EFFECTIVE"></a>
+[`FROM_ADDRESS_NOT_EFFECTIVE`](/errors/gateway/#FROM_ADDRESS_NOT_EFFECTIVE)
 
 <a id="FUNCTION_BODY_INVALID_JSON"></a>
 [`FUNCTION_BODY_INVALID_JSON`](/errors/client/#FUNCTION_BODY_INVALID_JSON)
@@ -1079,6 +1091,9 @@ The catalog records owning source locations and pinned external contributions. A
 
 <a id="MESSAGE_TOO_LONG"></a>
 [`MESSAGE_TOO_LONG`](/errors/client/#MESSAGE_TOO_LONG)
+
+<a id="METERING_REQUIRES_LEASE"></a>
+[`METERING_REQUIRES_LEASE`](/errors/gateway/#METERING_REQUIRES_LEASE)
 
 <a id="METHOD_NOT_ALLOWED"></a>
 [`METHOD_NOT_ALLOWED`](/errors/gateway/#METHOD_NOT_ALLOWED)
@@ -1956,6 +1971,9 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="SEND_REVERTED"></a>
 [`SEND_REVERTED`](/errors/client/#SEND_REVERTED)
 
+<a id="SENDER_SUSPENDED"></a>
+[`SENDER_SUSPENDED`](/errors/gateway/#SENDER_SUSPENDED)
+
 <a id="SERVICE_KEY_IN_USER_REQUEST"></a>
 [`SERVICE_KEY_IN_USER_REQUEST`](/errors/client/#SERVICE_KEY_IN_USER_REQUEST)
 
@@ -2018,6 +2036,9 @@ The catalog records owning source locations and pinned external contributions. A
 
 <a id="STAGE_CANDIDATE_RESERVED"></a>
 [`STAGE_CANDIDATE_RESERVED`](/errors/gateway/#STAGE_CANDIDATE_RESERVED)
+
+<a id="STANDING_ORDER_REQUIRES_CARD"></a>
+[`STANDING_ORDER_REQUIRES_CARD`](/errors/gateway/#STANDING_ORDER_REQUIRES_CARD)
 
 <a id="STEP_UP_REQUIRED"></a>
 [`STEP_UP_REQUIRED`](/errors/gateway/#STEP_UP_REQUIRED)
@@ -2198,6 +2219,15 @@ The catalog records owning source locations and pinned external contributions. A
 
 <a id="UPGRADE_REQUIRED"></a>
 [`UPGRADE_REQUIRED`](/errors/gateway/#UPGRADE_REQUIRED)
+
+<a id="UPLOAD_IN_PROGRESS"></a>
+[`UPLOAD_IN_PROGRESS`](/errors/gateway/#UPLOAD_IN_PROGRESS)
+
+<a id="UPLOAD_INCOMPLETE"></a>
+[`UPLOAD_INCOMPLETE`](/errors/gateway/#UPLOAD_INCOMPLETE)
+
+<a id="UPLOAD_NOT_ACTIVE"></a>
+[`UPLOAD_NOT_ACTIVE`](/errors/gateway/#UPLOAD_NOT_ACTIVE)
 
 <a id="UPSTREAM_UNAVAILABLE"></a>
 [`UPSTREAM_UNAVAILABLE`](/errors/gateway/#UPSTREAM_UNAVAILABLE)

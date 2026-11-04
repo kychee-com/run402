@@ -224,6 +224,9 @@ import type {
   AppRepoLogPage,
   AppRepoReadOptions,
   AppRepoRevertOptions,
+  AppRepoToken,
+  AppRepoTokenOptions,
+  AppRepoTokenRevocation,
   AppRepoTree,
 } from "./namespaces/app-repos.types.js";
 import type {
@@ -588,6 +591,14 @@ class ScopedAppRepos {
   /** Commit the inverse of `commit`'s changes. */
   revert(repoName: string, commit: string, opts?: AppRepoRevertOptions): Promise<AppRepoCommitResult> {
     return this.parent.appRepos.revert(this.projectId, repoName, commit, opts);
+  }
+  /** Mint a credential for one repo, read or write, that expires by itself. `token` is returned only here. */
+  createToken(repoName: string, opts: AppRepoTokenOptions): Promise<AppRepoToken> {
+    return this.parent.appRepos.createToken(this.projectId, repoName, opts);
+  }
+  /** Stop a token at once; repeating it answers the same. */
+  revokeToken(repoName: string, tokenId: string): Promise<AppRepoTokenRevocation> {
+    return this.parent.appRepos.revokeToken(this.projectId, repoName, tokenId);
   }
 }
 

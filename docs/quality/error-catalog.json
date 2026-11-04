@@ -2,8 +2,8 @@
   "version": 1,
   "contributions": {
     "gateway": {
-      "revision": "fa41e429660719afe90b052916edde75f3a69663",
-      "sourceDigest": "63c92cf0f6fd307be0b18edf832ce8d98d174a2e7d8ae2de05d66d95b48a2bb2"
+      "revision": "021abc7b4157e49c592e0c4ff3caa4dfa87e700a",
+      "sourceDigest": "d7823c9f86ca7f6b70784b0cd5e71b8750682bcf82778085f721d1b82ce99024"
     },
     "core": {
       "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7"
@@ -317,6 +317,26 @@
         }
       ],
       "topic": "/errors/gateway/#APP_REPO_PATH_NOT_FOUND"
+    },
+    {
+      "code": "APP_REPO_TOKEN_NOT_FOUND",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#APP_REPO_TOKEN_NOT_FOUND"
+    },
+    {
+      "code": "APP_REPO_TOKEN_SCOPE",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#APP_REPO_TOKEN_SCOPE"
     },
     {
       "code": "APP_REPOS_UNSUPPORTED",
@@ -888,6 +908,10 @@
         {
           "owner": "public",
           "source": "cli/lib/ai.mjs"
+        },
+        {
+          "owner": "public",
+          "source": "cli/lib/app-repo-tokens.mjs"
         },
         {
           "owner": "public",
@@ -2207,6 +2231,26 @@
         }
       ],
       "topic": "/errors/gateway/#FREE_ORG_OWNER_LIMIT_EXCEEDED"
+    },
+    {
+      "code": "FROM_ADDRESS_NOT_ALLOWED",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#FROM_ADDRESS_NOT_ALLOWED"
+    },
+    {
+      "code": "FROM_ADDRESS_NOT_EFFECTIVE",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#FROM_ADDRESS_NOT_EFFECTIVE"
     },
     {
       "code": "FUNCTION_BODY_INVALID_JSON",
@@ -4067,6 +4111,16 @@
         }
       ],
       "topic": "/errors/client/#MESSAGE_TOO_LONG"
+    },
+    {
+      "code": "METERING_REQUIRES_LEASE",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#METERING_REQUIRES_LEASE"
     },
     {
       "code": "METHOD_NOT_ALLOWED",
@@ -7297,6 +7351,16 @@
       "topic": "/errors/client/#SEND_REVERTED"
     },
     {
+      "code": "SENDER_SUSPENDED",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#SENDER_SUSPENDED"
+    },
+    {
       "code": "SERVICE_KEY_IN_USER_REQUEST",
       "owners": [
         {
@@ -7509,6 +7573,16 @@
         }
       ],
       "topic": "/errors/gateway/#STAGE_CANDIDATE_RESERVED"
+    },
+    {
+      "code": "STANDING_ORDER_REQUIRES_CARD",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#STANDING_ORDER_REQUIRES_CARD"
     },
     {
       "code": "STEP_UP_REQUIRED",
@@ -8125,6 +8199,36 @@
         }
       ],
       "topic": "/errors/gateway/#UPGRADE_REQUIRED"
+    },
+    {
+      "code": "UPLOAD_IN_PROGRESS",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#UPLOAD_IN_PROGRESS"
+    },
+    {
+      "code": "UPLOAD_INCOMPLETE",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#UPLOAD_INCOMPLETE"
+    },
+    {
+      "code": "UPLOAD_NOT_ACTIVE",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#UPLOAD_NOT_ACTIVE"
     },
     {
       "code": "UPSTREAM_UNAVAILABLE",

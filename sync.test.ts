@@ -102,6 +102,8 @@ function parseCliCommands(): string[] {
   // `buzz notifications` dispatches out of buzz.mjs via `if (sub === "notifications")`
   // into its own module, so its leaves surface here.
   for (const action of parseSubcommands(join(__dirname, "cli/lib/buzz-notifications.mjs"))) cmds.push(`buzz:notifications:${action}`);
+  // `app-repos tokens` dispatches out of app-repos.mjs the same way.
+  for (const action of parseSubcommands(join(__dirname, "cli/lib/app-repo-tokens.mjs"))) cmds.push(`app-repos:tokens:${action}`);
   for (const action of parseDeployReleasesActions()) {
     cmds.push(`deploy:releases:${action}`);
   }
@@ -147,6 +149,8 @@ function parseOpenClawCommands(): string[] {
   // openclaw/scripts/buzz.mjs re-exports cli/lib/buzz.mjs, so the notifications
   // group is the same module on both surfaces.
   for (const action of parseSubcommands(join(__dirname, "cli/lib/buzz-notifications.mjs"))) cmds.push(`buzz:notifications:${action}`);
+  // `app-repos tokens` dispatches out of app-repos.mjs the same way.
+  for (const action of parseSubcommands(join(__dirname, "cli/lib/app-repo-tokens.mjs"))) cmds.push(`app-repos:tokens:${action}`);
   for (const action of parseDeployReleasesActions()) {
     cmds.push(`deploy:releases:${action}`);
   }
@@ -626,6 +630,8 @@ const SURFACE: Capability[] = [
   { id: "app_repo_tree",                endpoint: "GET /projects/v1/:project_id/app-repos/:repo_name/tree[/*]",  cli: "app-repos:ls",         openclaw: "app-repos:ls" },
   { id: "clone_app_repo",               endpoint: "git smart HTTP /projects/v1/:project_id/app-repos/:repo_name.git", cli: "app-repos:clone", openclaw: "app-repos:clone" },
   { id: "app_repo_credential_helper",   endpoint: "(local git credential helper)",                               cli: "app-repos:credential", openclaw: "app-repos:credential" },
+  { id: "create_app_repo_token",        endpoint: "POST /projects/v1/:project_id/app-repos/:repo_name/tokens",   cli: "app-repos:tokens:create", openclaw: "app-repos:tokens:create" },
+  { id: "revoke_app_repo_token",        endpoint: "DELETE /projects/v1/:project_id/app-repos/:repo_name/tokens/:token_id", cli: "app-repos:tokens:revoke", openclaw: "app-repos:tokens:revoke" },
 
   // ── Agent messaging — coordination rooms (add-agent-messaging) ──────────
   // One CLI family per resource: `rooms` (the room itself: list/get/join/
@@ -1258,6 +1264,8 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   app_repo_log: "appRepos.log",
   app_repo_read_file: "appRepos.readFile",
   app_repo_tree: "appRepos.tree",
+  create_app_repo_token: "appRepos.createToken",
+  revoke_app_repo_token: "appRepos.revokeToken",
   // clone is CLI-only (it writes a working tree and hands git a credential);
   // the CLI resolves the repo with appRepos.get first.
   clone_app_repo: null,

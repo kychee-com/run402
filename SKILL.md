@@ -1001,7 +1001,11 @@ An app repo is a plain git repository the project owns and its app writes. It is
 run402 app-repos log --path people/p-x.json   # who changed it, newest first
 run402 app-repos cat site.json                # one file at the head (--at <commit> for history)
 run402 app-repos clone default ./content      # plain git clone; git push is live on the next request
+run402 app-repos tokens create notes --access write --ttl 600   # one repo, expires by itself; printed once
+run402 app-repos tokens revoke <token_id> --repo notes
 ```
+
+An app repo token (`art1_`) is for handing someone git over one repo: it is the git password (any username) and works on that repo's app-repo routes, and nothing else. It never goes in a clone URL; pass it through a credential helper. Only the project's service key mints or revokes one.
 
 Serve the latest commit with a route target `{ "type": "repo", "repo": "default", "path": "public/" }` on a prefix pattern such as `/data/*` (GET/HEAD, no deploy on edit; `requireAuth` / `requireRole` gate it like a function), and run a function on each commit with a trigger `{ "id": "bundle", "type": "app_repo", "repo": "default", "paths": ["people/"], "run": { "event_type": "content.changed" } }`. `main` is the only branch and pushes must fast-forward: undo is a revert. Forks and snapshots leave app repos out and say so. Guide: <https://docs.run402.com/build/app-repos/>.
 

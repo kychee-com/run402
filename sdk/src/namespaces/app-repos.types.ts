@@ -58,6 +58,33 @@ export interface AppRepoDeleteResult {
   repo_name: string;
 }
 
+export type AppRepoTokenAccess = "read" | "write";
+
+export interface AppRepoTokenOptions {
+  /** `read` fetches; `write` also commits and pushes. Required: there is no default. */
+  access: AppRepoTokenAccess;
+  /** 60-86400, default 3600. The token never outlives the credential that minted it. */
+  ttl_seconds?: number;
+}
+
+/** A credential for one repo. `token` is returned only here; `expires_in` is the actual lifetime. */
+export interface AppRepoToken {
+  token_id: string;
+  token: string;
+  repo_name: string;
+  access: AppRepoTokenAccess;
+  clone_url: string;
+  expires_at: string;
+  expires_in: number;
+  next_actions: Array<Record<string, unknown>>;
+}
+
+export interface AppRepoTokenRevocation {
+  revoked: true;
+  token_id: string;
+  revoked_at: string;
+}
+
 /** One commit on `main`, as the log records it. */
 export interface AppRepoCommit {
   commit: string;

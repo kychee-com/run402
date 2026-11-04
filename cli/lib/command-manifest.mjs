@@ -265,6 +265,8 @@ export const COMMAND_MANIFEST = [
   { path: ["app-repos", "ls"], positionals: [p("repo_name", { required: false })], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
   // A second positional directory is sugar for --dir.
   { path: ["app-repos", "clone"], positionals: [p("repo_name", { required: false })], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "runs git clone and writes a working tree" },
+  { path: ["app-repos", "tokens", "create"], positionals: [p("repo_name")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["user-42", "--access", "read"], runStyle: "sub" },
+  { path: ["app-repos", "tokens", "revoke"], positionals: [p("token_id")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["tok_1", "--repo", "user-42"], runStyle: "sub" },
   { path: ["deliveries", "list"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
   { path: ["deliveries", "get"], positionals: [p("notification_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["n_1"], runStyle: "sub" },
   { path: ["contacts", "list"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },

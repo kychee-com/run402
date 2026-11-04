@@ -20,6 +20,7 @@
  */
 
 import type { Client } from "../kernel.js";
+import { gateSecret } from "../secret-gate.js";
 import { ApiError, LocalError, NetworkError, NotAuthorizedError, PaymentRequired, Unauthorized } from "../errors.js";
 import type {
   AppRepo,
@@ -37,6 +38,9 @@ import type {
   AppRepoLogPage,
   AppRepoReadOptions,
   AppRepoRevertOptions,
+  AppRepoToken,
+  AppRepoTokenOptions,
+  AppRepoTokenRevocation,
   AppRepoTree,
 } from "./app-repos.types.js";
 
@@ -135,6 +139,18 @@ function throwFileError(status: number, body: unknown, context: string): never {
   }
   if (status === 401 || status === 403) throw new Unauthorized(`${message} while ${context} (HTTP ${status})`, status, body, context);
   throw new ApiError(`${message} while ${context} (HTTP ${status})`, status, body, context);
+}
+
+/**
+ * Only the project's service key manages tokens, so these calls send it even
+ * when the credential provider has a principal, and fail locally without it.
+ */
+async function serviceKeyHeaders(client: Client, projectId: string, context: string): Promise<Record<string, string>> {
+  const project = await client.getProjectCredentials(projectId);
+  if (!project?.service_key) {
+    throw new LocalError(`appRepos: no service key for project ${projectId} on this machine; only the service key manages app repo tokens`, context);
+  }
+  return { Authorization: `Bearer ${project.service_key}` };
 }
 
 export class AppRepos {
@@ -330,6 +346,41 @@ export class AppRepos {
       body,
       authMeta: authMeta("revert", projectId),
       projectKeyFallback: projectId,
+      context,
+    });
+  }
+
+  /**
+   * Mint a credential for one repo: the git password, and a Bearer on its read
+   * and commit routes, that expires by itself. `token` is returned only here.
+   */
+  async createToken(projectId: string, repoName: string, opts: AppRepoTokenOptions): Promise<AppRepoToken> {
+    gateSecret(this.client, "appRepos.createToken", projectId, repoName, opts);
+    const context = "minting app repo token";
+    requireArg(projectId, "projectId", context);
+    requireArg(repoName, "repoName", context);
+    requireArg(opts?.access, "access", context);
+    const body: Record<string, unknown> = { access: opts.access };
+    if (opts.ttl_seconds !== undefined) body.ttl_seconds = opts.ttl_seconds;
+    return this.client.request<AppRepoToken>(`${repoPath(projectId, repoName)}/tokens`, {
+      method: "POST",
+      body,
+      headers: await serviceKeyHeaders(this.client, projectId, context),
+      authMeta: authMeta("createToken", projectId),
+      context,
+    });
+  }
+
+  /** Stop a token at once; repeating it answers the same. */
+  async revokeToken(projectId: string, repoName: string, tokenId: string): Promise<AppRepoTokenRevocation> {
+    const context = "revoking app repo token";
+    requireArg(projectId, "projectId", context);
+    requireArg(repoName, "repoName", context);
+    requireArg(tokenId, "tokenId", context);
+    return this.client.request<AppRepoTokenRevocation>(`${repoPath(projectId, repoName)}/tokens/${encodeURIComponent(tokenId)}`, {
+      method: "DELETE",
+      headers: await serviceKeyHeaders(this.client, projectId, context),
+      authMeta: authMeta("revokeToken", projectId),
       context,
     });
   }

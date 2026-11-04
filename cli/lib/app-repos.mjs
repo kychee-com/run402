@@ -35,6 +35,8 @@ Usage:
   run402 app-repos cat [<name>] <path> [--at <commit>] [--project <project_id>]
   run402 app-repos ls [<name>] [<dir>] [--at <commit>] [--project <project_id>]
   run402 app-repos clone [<name>] [<dir>] [--project <project_id>]
+  run402 app-repos tokens create <name> --access read|write [--ttl <seconds>] [--project <project_id>]
+  run402 app-repos tokens revoke <token_id> --repo <name> [--project <project_id>]
 
 <name> defaults to "default", the repo every project has without creating it.
 --repo <name> may replace the leading <name> wherever it is optional; --path
@@ -49,6 +51,8 @@ Options:
   --cursor <cursor>       log: next_cursor from the previous page
   --limit <n>             log: 1-100 commits (default 50)
   --at <commit>           cat / ls: read at this commit instead of the head
+  --access read|write     tokens create: what the token may do (required)
+  --ttl <seconds>         tokens create: 60-86400, default 3600
 
 Prints:
   list    { app_repos: [{ repo_name, head, seq, commit_count, size_bytes, size,
@@ -61,6 +65,13 @@ Prints:
           APP_REPO_PATH_NOT_FOUND (exit 1)
   ls      { commit, path, entries: [{ name, path, type: "file" | "dir", size, oid }] }
   clone   { project_id, repo_name, dir, clone_url, credential_helper }
+  tokens create  { token_id, token, repo_name, access, clone_url, expires_at,
+                   expires_in, next_actions }; token is shown only here
+  tokens revoke  { revoked, token_id, revoked_at }
+
+A token reaches one repo and expires by itself: give it to whatever should reach
+that repo and no other. It is the git password (any username), and it never goes
+in the remote URL. Only the project's service key mints or revokes one.
 
 clone runs git clone with a credential helper (run402 app-repos credential) that
 gives git the project's service key from this machine's keystore, or
@@ -81,6 +92,7 @@ Examples:
   run402 app-repos cat site.json
   run402 app-repos ls default people
   run402 app-repos clone default ./content
+  run402 app-repos tokens create user-42 --access read --ttl 900
 `;
 
 export async function run(sub, args) {
@@ -91,6 +103,11 @@ export async function run(sub, args) {
   if (sub === undefined || sub === null || sub === "--help" || sub === "-h" || rest.includes("--help") || rest.includes("-h")) {
     console.log(HELP);
     process.exit(0);
+  }
+  // `app-repos tokens <verb>` dispatches to its own module, as `buzz notifications` does.
+  if (sub === "tokens") {
+    const { run: runTokens } = await import("./app-repo-tokens.mjs");
+    return runTokens(rest[0], rest.slice(1));
   }
   switch (sub) {
     case "list": return list(rest);
@@ -107,13 +124,13 @@ export async function run(sub, args) {
 }
 
 /** Parse flags, refuse unknown ones, and return the normalized argv with its positionals. */
-function parse(args, valueFlags, boolFlags = []) {
+export function parse(args, valueFlags, boolFlags = []) {
   const a = normalizeArgv(args);
   assertKnownFlags(a, [...valueFlags, ...boolFlags, "--help", "-h"], valueFlags);
   return { a, pos: positionalArgs(a, valueFlags) };
 }
 
-function tooMany(command, extra) {
+export function tooMany(command, extra) {
   fail({
     code: "BAD_USAGE",
     message: `Unexpected argument for app-repos ${command}: ${extra}`,
@@ -134,7 +151,7 @@ function repoNameFrom(a, positional, command) {
   return flag || positional || DEFAULT_REPO;
 }
 
-async function call(fn) {
+export async function call(fn) {
   try {
     const result = await fn(getSdk().appRepos);
     console.log(JSON.stringify(result, null, 2));

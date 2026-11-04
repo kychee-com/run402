@@ -78,6 +78,32 @@ git push
 
 A push is live on the next read, with no deploy. `main` is the only branch: a push to any other ref, a ref deletion and a non-fast-forward push are refused (`git push --force` included), because history is never rewritten. Undo a commit with a revert, which is a new commit (`git revert <commit>` then `git push`, or `repo.revert(commit)` in a function). A push needs `project.app_repos.write` (developer, or a grant with `deploy`); a clone needs `project.app_repos.read` (viewer). Shallow and partial clones are not supported.
 
+## Give one repo to something you do not fully trust
+
+A service key reaches the whole project. When a sandbox, a research session or a customer's agent should reach one repo and nothing else, mint a token for it. In a function:
+
+```ts
+import { repos } from "@run402/functions";
+
+const { token, clone_url, token_id } = await repos.open("c-42-dataset").createToken({ access: "write", ttlSeconds: 3600 });
+```
+
+From a machine with the project's service key: `run402 app-repos tokens create c-42-dataset --access write --ttl 3600`.
+
+`access` is required, `read` or `write`. The lifetime is 60 to 86400 seconds, an hour by default, and never longer than the credential that minted it. Only the project's service key mints or revokes. The token is shown once.
+
+The token is the git password, with any username. Keep it out of the remote URL, where it would land in `.git/config`, and hand it to git from a credential helper:
+
+```bash
+git -c credential.helper= -c credential.helper='!f() { echo username=x; echo "password=$TOKEN"; }; f' clone "$CLONE_URL"
+```
+
+A helper that asks your app for a fresh token each time recovers from an expired one on the next git command. The token also works as a Bearer on that repo's read and commit routes, and it is no credential anywhere else: not on another repo, not on the project's database, files or functions, and not for creating, deleting or listing repos.
+
+It stops by itself. It also stops when you revoke it (`revokeToken(token_id)`, or `run402 app-repos tokens revoke <token_id> --repo c-42-dataset`), when the service credential that minted it is revoked, when the repo is deleted, and when the project changes owner.
+
+Used on another repo, or used to push when it is read-only, it answers `403 APP_REPO_TOKEN_SCOPE`. Expired or revoked, it answers `401 CREDENTIAL_REVOKED`. Git prints every refusal as `remote:` lines, with what to do next.
+
 ## Keep media in assets
 
 Each file in an app repo is at most 4 MiB. A commit or push carrying a larger file fails with `422 APP_REPO_FILE_TOO_LARGE`, naming the path and the cap, and nothing is committed. Put photos, video and other media in assets and commit the reference:

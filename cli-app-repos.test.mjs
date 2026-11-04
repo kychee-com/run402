@@ -104,6 +104,12 @@ async function mockFetch(input, init) {
   if (url.startsWith(`${BASE}/default/tree`) || url.startsWith(`${BASE}/notes/tree`)) {
     return json({ commit: HEAD, path: "people", entries: [{ name: "p-x.json", path: "people/p-x.json", type: "file", size: 20, oid: "b3" }] });
   }
+  if (url === `${BASE}/user-42/tokens` && method === "POST") {
+    return json({ token_id: "t1", token: "art1_x", repo_name: "user-42", access: body.access, clone_url: `${BASE}/user-42.git`, expires_at: "2026-11-04T12:00:00.000Z", expires_in: body.ttl_seconds ?? 3600, next_actions: [] }, 201);
+  }
+  if (url === `${BASE}/user-42/tokens/t1` && method === "DELETE") {
+    return json({ revoked: true, token_id: "t1", revoked_at: "2026-11-04T12:00:00.000Z" });
+  }
   if (url.startsWith(`${BASE}/nope`)) {
     return json({ code: "APP_REPO_NOT_FOUND", message: "No app repo nope in this project.", next_actions: [{ type: "create_app_repo" }] }, 404);
   }
@@ -209,6 +215,32 @@ describe("run402 app-repos (control plane)", () => {
     assert.ok(/APP_REPO_DEFAULT_UNDELETABLE/.test(err), err);
   });
 
+  it("tokens create POSTs access and ttl with the service key, and prints the token", async () => {
+    const { threw, out, err } = await runCaptured("tokens", ["create", "user-42", "--access", "read", "--ttl", "900", "--project", "prj_kiwi"]);
+    assert.equal(threw, null, err);
+    assert.equal(calls[0].url, `${BASE}/user-42/tokens`);
+    assert.deepEqual(calls[0].body, { access: "read", ttl_seconds: 900 });
+    assert.equal(calls[0].headers.authorization, `Bearer ${SERVICE_KEY}`);
+    assert.equal(JSON.parse(out).token, "art1_x");
+  });
+
+  it("tokens create needs a name and an access, before any request", async () => {
+    for (const args of [["create", "--access", "read"], ["create", "user-42"], ["create", "user-42", "--access", "admin"], ["create", "user-42", "--access", "read", "--ttl", "soon"]]) {
+      const { threw, err } = await runCaptured("tokens", [...args, "--project", "prj_kiwi"]);
+      assert.notEqual(threw, null, args.join(" "));
+      assert.match(err, /BAD_USAGE/);
+    }
+    assert.equal(calls.length, 0);
+  });
+
+  it("tokens revoke DELETEs by id, and an unknown verb is refused", async () => {
+    const { threw, out, err } = await runCaptured("tokens", ["revoke", "t1", "--repo", "user-42", "--project", "prj_kiwi"]);
+    assert.equal(threw, null, err);
+    assert.equal(calls[0].method, "DELETE");
+    assert.equal(JSON.parse(out).revoked, true);
+    assert.notEqual((await runCaptured("tokens", ["list", "--project", "prj_kiwi"])).threw, null);
+  });
+
   it("log defaults to the default repo and passes --path/--cursor/--limit", async () => {
     const { threw, out } = await runCaptured("log", ["--path", "people/p-x.json", "--cursor", "cur_1", "--limit", "5", "--project", "prj_kiwi"]);
     assert.equal(threw, null);
@@ -279,7 +311,7 @@ describe("run402 app-repos (control plane)", () => {
     assert.equal(threw?.message, "process.exit(1)");
     const envelope = JSON.parse(err.split("\n").find((line) => line.startsWith("{")));
     assert.equal(envelope.code, "UNKNOWN_SUBCOMMAND");
-    assert.deepEqual(envelope.details.known_subcommands, ["cat", "clone", "create", "delete", "list", "log", "ls"]);
+    assert.deepEqual(envelope.details.known_subcommands, ["cat", "clone", "create", "delete", "list", "log", "ls", "tokens"]);
   });
 
   it("rejects an unknown flag before calling the gateway", async () => {

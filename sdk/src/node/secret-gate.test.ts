@@ -38,6 +38,7 @@ const PROOFS = { siwx: "siwx-proof", token: "cp_session_token_secret" };
  * registry entry; the coverage test below keeps the two in step.
  */
 const SAMPLE_ARGS: Record<SecretReturningMethod, unknown[]> = {
+  "appRepos.createToken": [PROJECT, "notes", { access: "read" }],
   "grants.create": [PROJECT, { wallet: WALLET, capability: "deploy", key: {} }],
   "grants.createKey": [PROJECT, "grant_1", {}],
   "grants.rotateKey": [PROJECT, "key_1"],

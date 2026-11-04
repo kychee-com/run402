@@ -2226,7 +2226,10 @@ tree(projectId, repoName, path?, { at? }): Promise<AppRepoTree>
 diff(projectId, repoName, from, to): Promise<AppRepoDiff>
 commit(projectId, repoName, { files, message?, author?, parent?, base? }): Promise<AppRepoCommitResult>
 revert(projectId, repoName, commit, { message? }): Promise<AppRepoCommitResult>
+createToken(projectId, repoName, { access, ttl_seconds? }): Promise<AppRepoToken>   // service key only; refuses in MCP's run (SECRET_REQUIRES_CLI)
+revokeToken(projectId, repoName, tokenId): Promise<AppRepoTokenRevocation>         // service key only
 // AppRepo = { repo_name, head: string | null, seq: number | null, commit_count, size_bytes, size, clone_url, created_at, updated_at }
+// AppRepoToken = { token_id, token, repo_name, access, clone_url, expires_at, expires_in, next_actions }; token is returned only here
 // AppRepoLogPage = { commits: AppRepoCommit[], head, has_more, next_cursor }
 // AppRepoCommit = { commit, parent, seq, author: { name, email }, committer: { name, email }, message, committed_at,
 //   paths (≤100), paths_total, actor_user_id: string | null }

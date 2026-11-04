@@ -125,6 +125,14 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="APP_REPO_PATH_NOT_FOUND"></a>
 [`APP_REPO_PATH_NOT_FOUND`](/errors/gateway/#APP_REPO_PATH_NOT_FOUND)
 
+<a id="app_repo_token_not_found"></a>
+<a id="APP_REPO_TOKEN_NOT_FOUND"></a>
+[`APP_REPO_TOKEN_NOT_FOUND`](/errors/gateway/#APP_REPO_TOKEN_NOT_FOUND)
+
+<a id="app_repo_token_scope"></a>
+<a id="APP_REPO_TOKEN_SCOPE"></a>
+[`APP_REPO_TOKEN_SCOPE`](/errors/gateway/#APP_REPO_TOKEN_SCOPE)
+
 <a id="app_repos_unsupported"></a>
 <a id="APP_REPOS_UNSUPPORTED"></a>
 [`APP_REPOS_UNSUPPORTED`](/errors/gateway/#APP_REPOS_UNSUPPORTED)
@@ -690,6 +698,14 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="free_org_owner_limit_exceeded"></a>
 <a id="FREE_ORG_OWNER_LIMIT_EXCEEDED"></a>
 [`FREE_ORG_OWNER_LIMIT_EXCEEDED`](/errors/gateway/#FREE_ORG_OWNER_LIMIT_EXCEEDED)
+
+<a id="from_address_not_allowed"></a>
+<a id="FROM_ADDRESS_NOT_ALLOWED"></a>
+[`FROM_ADDRESS_NOT_ALLOWED`](/errors/gateway/#FROM_ADDRESS_NOT_ALLOWED)
+
+<a id="from_address_not_effective"></a>
+<a id="FROM_ADDRESS_NOT_EFFECTIVE"></a>
+[`FROM_ADDRESS_NOT_EFFECTIVE`](/errors/gateway/#FROM_ADDRESS_NOT_EFFECTIVE)
 
 <a id="function_body_invalid_json"></a>
 <a id="FUNCTION_BODY_INVALID_JSON"></a>
@@ -1409,6 +1425,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="message_too_long"></a>
 <a id="MESSAGE_TOO_LONG"></a>
 [`MESSAGE_TOO_LONG`](/errors/client/#MESSAGE_TOO_LONG)
+
+<a id="metering_requires_lease"></a>
+<a id="METERING_REQUIRES_LEASE"></a>
+[`METERING_REQUIRES_LEASE`](/errors/gateway/#METERING_REQUIRES_LEASE)
 
 <a id="method_not_allowed"></a>
 <a id="METHOD_NOT_ALLOWED"></a>
@@ -2573,6 +2593,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="SEND_REVERTED"></a>
 [`SEND_REVERTED`](/errors/client/#SEND_REVERTED)
 
+<a id="sender_suspended"></a>
+<a id="SENDER_SUSPENDED"></a>
+[`SENDER_SUSPENDED`](/errors/gateway/#SENDER_SUSPENDED)
+
 <a id="service_key_in_user_request"></a>
 <a id="SERVICE_KEY_IN_USER_REQUEST"></a>
 [`SERVICE_KEY_IN_USER_REQUEST`](/errors/client/#SERVICE_KEY_IN_USER_REQUEST)
@@ -2656,6 +2680,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="stage_candidate_reserved"></a>
 <a id="STAGE_CANDIDATE_RESERVED"></a>
 [`STAGE_CANDIDATE_RESERVED`](/errors/gateway/#STAGE_CANDIDATE_RESERVED)
+
+<a id="standing_order_requires_card"></a>
+<a id="STANDING_ORDER_REQUIRES_CARD"></a>
+[`STANDING_ORDER_REQUIRES_CARD`](/errors/gateway/#STANDING_ORDER_REQUIRES_CARD)
 
 <a id="step_up_required"></a>
 <a id="STEP_UP_REQUIRED"></a>
@@ -2895,6 +2923,18 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="upgrade_required"></a>
 <a id="UPGRADE_REQUIRED"></a>
 [`UPGRADE_REQUIRED`](/errors/gateway/#UPGRADE_REQUIRED)
+
+<a id="upload_in_progress"></a>
+<a id="UPLOAD_IN_PROGRESS"></a>
+[`UPLOAD_IN_PROGRESS`](/errors/gateway/#UPLOAD_IN_PROGRESS)
+
+<a id="upload_incomplete"></a>
+<a id="UPLOAD_INCOMPLETE"></a>
+[`UPLOAD_INCOMPLETE`](/errors/gateway/#UPLOAD_INCOMPLETE)
+
+<a id="upload_not_active"></a>
+<a id="UPLOAD_NOT_ACTIVE"></a>
+[`UPLOAD_NOT_ACTIVE`](/errors/gateway/#UPLOAD_NOT_ACTIVE)
 
 <a id="upstream_unavailable"></a>
 <a id="UPSTREAM_UNAVAILABLE"></a>

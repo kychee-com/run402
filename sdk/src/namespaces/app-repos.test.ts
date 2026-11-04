@@ -72,6 +72,42 @@ const COMMIT = {
   actor_user_id: "u_1",
 };
 
+describe("appRepos tokens", () => {
+  const minted = { token_id: "t1", token: "art1_x", repo_name: "notes", access: "read", clone_url: "https://x/notes.git", expires_at: "2026-11-04T12:00:00.000Z", expires_in: 900, next_actions: [] };
+
+  it("createToken sends the service key even when a principal is configured", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse(minted, 201));
+    const sdk = makeSdk(fetch);
+    assert.deepEqual(await sdk.appRepos.createToken("p1", "notes", { access: "read", ttl_seconds: 900 }), minted);
+    assert.equal(calls[0].method, "POST");
+    assert.equal(calls[0].url, "https://api.example.test/projects/v1/p1/app-repos/notes/tokens");
+    assert.deepEqual(calls[0].body, { access: "read", ttl_seconds: 900 });
+    assert.equal(calls[0].headers.Authorization, "Bearer svc-p1");
+    assert.equal(calls[0].headers["SIGN-IN-WITH-X"], undefined);
+  });
+
+  it("revokeToken sends the service key, and the scoped client passes through", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({ revoked: true, token_id: "t1", revoked_at: "2026-11-04T12:00:00.000Z" }));
+    const sdk = makeSdk(fetch);
+    assert.equal((await sdk.project("p1").appRepos.revokeToken("notes", "t1")).revoked, true);
+    assert.equal(calls[0].method, "DELETE");
+    assert.equal(calls[0].url, "https://api.example.test/projects/v1/p1/app-repos/notes/tokens/t1");
+    assert.equal(calls[0].headers.Authorization, "Bearer svc-p1");
+  });
+
+  it("refuses locally without a service key or an access", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse(minted, 201));
+    const sdk = new Run402({
+      apiBase: "https://api.example.test",
+      fetch,
+      credentials: { async getAuth() { return { "SIGN-IN-WITH-X": "s" }; }, async getProjectCredentials() { return null; } },
+    });
+    await assert.rejects(sdk.appRepos.createToken("p1", "notes", { access: "read" }), (err) => isLocalError(err));
+    await assert.rejects(makeSdk(fetch).appRepos.createToken("p1", "notes", {} as never), (err) => isLocalError(err));
+    assert.equal(calls.length, 0);
+  });
+});
+
 describe("appRepos SDK", () => {
   it("list GETs the collection with the caller's principal", async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse({ app_repos: [REPO] }));
