@@ -268,6 +268,8 @@ export interface EmailSummary {
   bcc?: EmailBccRecipient[];
   /** Inbound only: every envelope recipient address the message was delivered to in this mailbox (a catch-all may list several). */
   delivered_to?: string[];
+  /** Inbound only: the message of this mailbox it answers, by its thread; null when it is in no known thread. */
+  in_reply_to_id?: string | null;
 }
 
 export interface EmailDetail {
@@ -293,6 +295,8 @@ export interface EmailDetail {
   bcc?: EmailBccRecipient[];
   /** Inbound only: every envelope recipient address the message was delivered to in this mailbox (a catch-all may list several). */
   delivered_to?: string[];
+  /** Inbound only: the message of this mailbox it answers, by its thread; null when it is in no known thread. */
+  in_reply_to_id?: string | null;
   replies?: Array<{
     id: string;
     from: string;
