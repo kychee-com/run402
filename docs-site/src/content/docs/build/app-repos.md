@@ -100,7 +100,7 @@ git -c credential.helper= -c credential.helper='!f() { echo username=x; echo "pa
 
 A helper that asks your app for a fresh token each time recovers from an expired one on the next git command. The token also works as a Bearer on that repo's read and commit routes, and it is no credential anywhere else: not on another repo, not on the project's database, files or functions, and not for creating, deleting or listing repos.
 
-It stops by itself. It also stops when you revoke it (`revokeToken(token_id)`, or `run402 app-repos tokens revoke <token_id> --repo c-42-dataset`), when the service credential that minted it is revoked, when the repo is deleted, and when the project changes owner.
+It stops by itself. It also stops when you revoke it (`revokeToken(token_id)`, or `run402 app-repos tokens revoke <token_id> --repo c-42-dataset`), when the service credential that minted it is revoked, when the repo is deleted, and when the project changes owner. A commit or push made with a token cannot name a `Run402-Actor`; only the gateway writes that line.
 
 Used on another repo, or used to push when it is read-only, it answers `403 APP_REPO_TOKEN_SCOPE`. Expired or revoked, it answers `401 CREDENTIAL_REVOKED`. Git prints every refusal as `remote:` lines, with what to do next.
 

@@ -2318,7 +2318,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "e098bbd1ba3cc4ef71725b63c346580ee8eb1931451c9f7e044aeda3a8aa6546",
+      "sha256": "5c7982f3d56438f3af1682af9c1aae73d77427169628162d856b5caba3025bd8",
       "outputs": [],
       "url": "https://docs.run402.com/build/app-repos/",
       "checks": [
