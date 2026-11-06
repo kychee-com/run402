@@ -93,11 +93,12 @@ export const SECRET_RETURNING_METHODS = {
     command: (projectId: unknown) => `run402 grants create <wallet> --capability <capability> --key${projectFlag(projectId)}`,
     why: "A grant key's bearer is returned once; the CLI mints keys by issuing the grant with --key.",
   },
-  // ── projects.stripe: a one-time Stripe onboarding link for the account holder ──
+  // ── push: a Firebase service-account key for the project's phone apps ──
   "push.setFcmCredential": {
     command: (projectId: unknown) => `run402 push fcm set --service-account <path>${projectFlag(projectId)}`,
     why: "A Firebase service-account key is a credential; the CLI reads it from its file and sends it without passing it through a snippet.",
   },
+  // ── projects.stripe: a one-time Stripe onboarding link for the account holder ──
   "projects.stripe.account.connect": {
     command: (projectId: unknown) => `run402 stripe account connect${projectFlag(projectId)}`,
     why: "Connecting hands out a one-time Stripe onboarding link for the account holder; the CLI prints it once to the person who will pass it on.",
