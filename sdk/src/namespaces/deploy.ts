@@ -3459,7 +3459,7 @@ function validateFunctionTriggers(value: unknown, resource: string): void {
         throw invalidSpec(`ReleaseSpec.${path} app_repo triggers take only repo, paths and run`, path);
       }
       if (typeof obj.repo !== "string" || obj.repo.trim() === "") {
-        throw invalidSpec(`ReleaseSpec.${path}.repo is required (an app repo name, e.g. "default")`, `${path}.repo`);
+        throw invalidSpec(`ReleaseSpec.${path}.repo is required (an app repo name, e.g. "default", or "*" for every repo of the project)`, `${path}.repo`);
       }
       if (obj.paths !== undefined) {
         if (!Array.isArray(obj.paths) || obj.paths.length === 0) {

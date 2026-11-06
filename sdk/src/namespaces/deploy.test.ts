@@ -1249,7 +1249,7 @@ describe("Deploy.apply (happy path)", () => {
     });
     await assert.rejects(
       () => deploy.plan(fn({ id: "t", type: "app_repo", run: { event_type: "x" } })),
-      /repo is required/,
+      /repo is required \(an app repo name, e\.g\. "default", or "\*" for every repo of the project\)/,
     );
     await assert.rejects(
       () => deploy.plan(fn({ id: "t", type: "app_repo", repo: "default", paths: [], run: { event_type: "x" } })),

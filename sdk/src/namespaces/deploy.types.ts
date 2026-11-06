@@ -439,7 +439,7 @@ export interface FunctionEmailTriggerSpec {
 export interface FunctionAppRepoTriggerSpec {
   id: string;
   type: "app_repo";
-  /** App repo name, e.g. `"default"`. */
+  /** An app repo's name, or `"*"` for every repo of the project, those created later included. */
   repo: string;
   /** Path prefixes, e.g. `["people/"]`; omit for every commit. */
   paths?: string[];
