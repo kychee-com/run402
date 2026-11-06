@@ -154,6 +154,8 @@ A function trigger `{ id, type: "app_repo", repo, paths?, run: { event_type } }`
 
 `"repo": "*"` watches every repo of the project, including repos created after the deploy, with `paths` applied inside each one; read `payload.event.repo_name` to see which repo was committed to. It is the only pattern `repo` accepts. A function that commits to a repo its own trigger watches runs again on that commit, so filter with `paths` or stop when there is nothing left to do.
 
+A function's triggers are what its latest deploy declares: send the function again with a different `triggers` and the plan names `triggers` as changed, even when the code is the same, and leaving `triggers` out removes them.
+
 A push that adds several commits queues one run per matching commit, and a commit touching only `stories/` starts none. Use it to rebuild a derived file (an index, a bundle) from the commit in `payload.event.commit`. Every advance of `main` also emits the project event `app_repo_committed` (`{ repo_name, ref, commit, parent, seq, author, actor_user_id, paths, paths_total }`), which `run402 events list` shows.
 
 ## What app repos leave out

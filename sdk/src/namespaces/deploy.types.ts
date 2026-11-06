@@ -2109,7 +2109,6 @@ export interface ReleaseFunctionEntry {
   timeout_seconds: number;
   memory_mb: number;
   schedule: string | null;
-  triggers?: FunctionTriggerSpec[];
   /** Present when the function's source exports a static `tool` declaration:
    *  the app serves it as an MCP tool at `https://<host>/_run402/mcp`. */
   tool?: ReleaseFunctionTool;
@@ -2329,6 +2328,8 @@ export interface FunctionsDiff {
       | "timeout_seconds"
       | "memory_mb"
       | "schedule"
+      | "deps"
+      | "triggers"
     >;
   }>;
 }
