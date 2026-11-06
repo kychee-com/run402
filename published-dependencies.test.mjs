@@ -12,6 +12,10 @@
  *   ipaddr.js              -> sdk/src/node/ip-range.ts
  *   tsx                    -> Node's own type stripping; a config that needs
  *                             a transpiler asks for `npm install --save-dev tsx`
+ *   @modelcontextprotocol/sdk -> src/mcp-server.ts (the stdio MCP server); the
+ *                             SDK stays a devDependency, as the independent
+ *                             client mcp-integration.test.ts drives
+ *   zod                    -> src/schema.ts (the tools' schema builder)
  *
  * Adding one back fails here, on purpose: own the code instead.
  */
@@ -21,7 +25,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 
 const root = import.meta.dirname;
-const REPLACED = ["json-canonicalize", "@humanwhocodes/momoa", "ipaddr.js", "tsx"];
+const REPLACED = ["json-canonicalize", "@humanwhocodes/momoa", "ipaddr.js", "tsx", "@modelcontextprotocol/sdk", "zod"];
 const PACKAGES = [
   { label: "run402-mcp", path: "package.json" },
   { label: "run402", path: "cli/package.json" },

@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z, type Infer } from "../schema.js";
 import { getSdk } from "../sdk.js";
 import { formatCanonicalErrorContext, mapSdkError, projectNotFound } from "../errors.js";
 import { jsonBlock, toolErrorFrom, type ToolResult } from "../structured.js";
@@ -410,13 +410,13 @@ export const deploySchema = {
     ),
 };
 
-type FileMapInput = z.infer<typeof fileMap>;
-type FunctionSpecInput = z.infer<typeof functionSpec>;
+type FileMapInput = Infer<typeof fileMap>;
+type FunctionSpecInput = Infer<typeof functionSpec>;
 type DeployArgs = {
   project_id: string;
   base?: ReleaseSpec["base"];
   database?: {
-    migrations?: Array<z.infer<typeof migrationEntry>>;
+    migrations?: Array<Infer<typeof migrationEntry>>;
     expose?: Record<string, unknown>;
     zero_downtime?: boolean;
   };
@@ -438,7 +438,7 @@ type DeployArgs = {
   assets?: {
     put?: Array<{
       key: string;
-      source?: z.infer<typeof fileEntry>;
+      source?: Infer<typeof fileEntry>;
       sha256?: string;
       size_bytes?: number;
       content_type?: string;

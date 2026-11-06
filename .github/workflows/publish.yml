@@ -225,8 +225,8 @@ jobs:
           echo "CLI archive smoke OK"
 
           # MCP: extract, install, verify getSdk resolves AND every tool module
-          # loads from the packed install (don't boot the stdio server via
-          # dist/index.js — it connects at import and doesn't exit). Resolving
+          # loads from the packed install (the stdio handshake below then boots
+          # the server itself). Resolving
           # getSdk alone is not enough: 4.93.0 shipped dist/tools/app-up.js
           # importing the bare "@run402/sdk/node" specifier, which resolves in
           # the monorepo (workspace hoist) and nowhere else; dist/sdk.js loaded
@@ -249,6 +249,30 @@ jobs:
             })).then(function () { console.log('MCP tool-module smoke OK: ' + files.length + ' modules load from the packed install'); })
               .catch(function (e) { console.error('Tool module failed to load from the packed tarball: ' + e.message); process.exit(1); });
           ")
+          # The server speaks MCP itself, so a customer's install carries no MCP
+          # library and no express. Checked as a customer installs it (a
+          # dependency of a fresh project): installed in place, the package is
+          # the root project, and its devDependency on the MCP SDK (the test
+          # client) satisfies mppx's optional peer and pulls it in. zod stays:
+          # @x402/core, viem and mppx need it.
+          mkdir "$SMOKE/mcp-consumer" && (cd "$SMOKE/mcp-consumer" && npm init -y >/dev/null && npm install "$SMOKE/run402-mcp-$NEW.tgz" && for absent in @modelcontextprotocol/sdk express; do
+            if [ -e "node_modules/$absent/package.json" ]; then echo "a customer's run402-mcp install carries $absent; nothing it ships may depend on it"; npm explain "$absent"; exit 1; fi
+          done)
+          # And it exits when stdin ends, so the smoke can boot it: initialize +
+          # tools/list over stdio must answer the eight tools.
+          (cd "$SMOKE/mcp/package" && printf '%s\n' \
+            '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"publish-smoke","version":"0"}}}' \
+            '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+            '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
+            | RUN402_CONFIG_DIR="$SMOKE/mcp-config" timeout 60 node dist/index.js > "$SMOKE/mcp-handshake.jsonl")
+          node -e "
+            const lines = require('fs').readFileSync(process.argv[1], 'utf8').trim().split('\n').map(function (l) { return JSON.parse(l); });
+            const init = lines.find(function (l) { return l.id === 1; }), list = lines.find(function (l) { return l.id === 2; });
+            if (!init || init.result.serverInfo.version !== process.argv[2]) { console.error('initialize did not answer with version ' + process.argv[2] + ': ' + JSON.stringify(init)); process.exit(1); }
+            const names = list ? list.result.tools.map(function (t) { return t.name; }).sort().join(',') : '';
+            if (names !== 'deploy,docs,doctor,expand_result,run,status,up,whoami') { console.error('tools/list answered: ' + names); process.exit(1); }
+            console.log('MCP stdio handshake smoke OK: eight tools');
+          " "$SMOKE/mcp-handshake.jsonl" "$NEW"
 
           # SDK: extract, install, verify both entry points.
           mkdir "$SMOKE/sdk" && tar xzf "$SMOKE/run402-sdk-$NEW.tgz" -C "$SMOKE/sdk"

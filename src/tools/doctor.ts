@@ -6,7 +6,7 @@
  * `warnings[]` and never change it.
  */
 
-import { z } from "zod";
+import { z } from "../schema.js";
 import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
 import { jsonBlock, okResult, type ToolResult } from "../structured.js";

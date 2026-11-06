@@ -26,7 +26,7 @@
  */
 
 import { randomBytes } from "node:crypto";
-import { z } from "zod";
+import { z } from "../schema.js";
 import { isRun402Error } from "../../sdk/dist/index.js";
 import { getActiveProfile } from "../config.js";
 import { readWallet } from "../wallet.js";

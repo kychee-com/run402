@@ -19,7 +19,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { z } from "zod";
+import { z } from "../schema.js";
 import { storeResult } from "../result-store.js";
 
 /** Lines shown inline; the index fits inside one window. */

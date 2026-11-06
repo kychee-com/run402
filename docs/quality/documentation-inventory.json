@@ -50,7 +50,7 @@
       "purpose": "maintainer",
       "interface": "mixed",
       "exception": "Repository development and implementation instructions; product operations still prefer CLI.",
-      "sha256": "9259f31f8ff53dec67dd10bc38aac18482b54705f5eb54c91d69531376bf18e2",
+      "sha256": "df2528449f0fd65f6279d22c2172ba828e7370c82f89b8e95d3b96c54ba11cc5",
       "outputs": [],
       "url": null,
       "checks": [
@@ -70,7 +70,7 @@
       "purpose": "history",
       "interface": "historical",
       "exception": "Dated release records; add current entries without rewriting history.",
-      "sha256": "085f592a5ba2713b22212ac3f9d798060dc6453e869087b0deb2016b6cd26aa4",
+      "sha256": "f123e46ed805d5c4306fde3c20721092adea04c1a36457a5575ed33f4c6f2cf1",
       "outputs": [],
       "url": null,
       "checks": [

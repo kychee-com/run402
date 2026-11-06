@@ -7,9 +7,11 @@
 
 import { afterEach, beforeEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
+import type { JSONRPCMessage } from "@modelcontextprotocol/sdk/types.js";
+import { McpServer } from "./mcp-server.js";
+import { strictInput } from "./input-guard.js";
 import {
   ApiError,
   NetworkError,
@@ -134,6 +136,19 @@ function closedPaths(schema: unknown, path = "$"): string[] {
   return out;
 }
 
+/** The MCP SDK's reference client, talking to this package's server without a process in between. */
+function bridge(server: McpServer): Transport {
+  const transport: Transport = {
+    start: async () => {},
+    close: async () => { transport.onclose?.(); },
+    send: async (message: JSONRPCMessage) => {
+      const response = await server.handle(message);
+      if (response) queueMicrotask(() => transport.onmessage?.(response as JSONRPCMessage));
+    },
+  };
+  return transport;
+}
+
 describe("output schemas through an MCP client", () => {
   let client: Client;
 
@@ -142,17 +157,15 @@ describe("output schemas through an MCP client", () => {
     const server = new McpServer({ name: "structured-test", version: "0.0.0" });
     for (const name of MCP_TOOLS) {
       if (name === "expand_result") {
-        server.registerTool(name, { description: name, inputSchema: expandResultSchema, outputSchema: OUTPUT_SCHEMAS[name] }, async (args) => handleExpandResult(args));
+        server.registerTool(name, { description: name, inputSchema: strictInput(expandResultSchema), outputSchema: OUTPUT_SCHEMAS[name] }, async (args) => handleExpandResult(args));
       } else if (name === "docs") {
-        server.registerTool(name, { description: name, inputSchema: docsSchema, outputSchema: OUTPUT_SCHEMAS[name] }, async (args) => handleDocs(args));
+        server.registerTool(name, { description: name, inputSchema: strictInput(docsSchema), outputSchema: OUTPUT_SCHEMAS[name] }, async (args) => handleDocs(args));
       } else {
-        server.registerTool(name, { description: name, inputSchema: {}, outputSchema: OUTPUT_SCHEMAS[name] }, async () => ({ content: [{ type: "text" as const, text: "" }], structuredContent: { status: "ok" } }));
+        server.registerTool(name, { description: name, inputSchema: strictInput({}), outputSchema: OUTPUT_SCHEMAS[name] }, async () => ({ content: [{ type: "text" as const, text: "" }], structuredContent: { status: "ok" } }));
       }
     }
-    const [serverSide, clientSide] = InMemoryTransport.createLinkedPair();
-    await server.connect(serverSide);
     client = new Client({ name: "structured-test-client", version: "0.0.0" });
-    await client.connect(clientSide);
+    await client.connect(bridge(server));
   });
 
   afterEach(async () => {

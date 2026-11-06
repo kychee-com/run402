@@ -11,7 +11,7 @@
  * refusing to look.
  */
 
-import { z } from "zod";
+import { z } from "../schema.js";
 import {
   RESULT_STORE_DEFAULT_EXPAND_LIMIT,
   RESULT_STORE_MAX_ENTRIES,

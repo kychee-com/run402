@@ -13,7 +13,7 @@
  * skips validation on `isError`; the tests validate error results too.
  */
 
-import { z } from "zod";
+import { z, type RawShape } from "./schema.js";
 import {
   NetworkError,
   ProjectCredentialNotFound,
@@ -196,10 +196,10 @@ export function errorResult(text: string, error: ToolError, extra: Record<string
 // ---------------------------------------------------------------------------
 
 const status = z.enum(["ok", "error"]);
-const open = <T extends z.ZodRawShape>(shape: T) => z.object(shape).loose();
+const open = <T extends RawShape>(shape: T) => z.object(shape).loose();
 
 /** The fields every envelope shares; each tool adds its payload. */
-function envelope<T extends z.ZodRawShape>(shape: T) {
+function envelope<T extends RawShape>(shape: T) {
   return open({ status, error: toolErrorSchema.optional(), ...shape });
 }
 

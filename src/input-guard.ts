@@ -3,27 +3,23 @@
  * never silently dropped.
  *
  * Every tool is registered with its strict schema (`strictInput`), so the
- * published JSON Schema says `additionalProperties: false` and the MCP SDK
- * itself refuses an unknown key. The SDK reports its refusal as plain text,
- * though, and every run402-mcp error carries `structuredContent`. So the
- * guard below validates a `tools/call` against the same strict schema before
- * the SDK sees it, and answers a failure itself with the structured error:
+ * published JSON Schema says `additionalProperties: false`, and the server
+ * (`mcp-server.ts`) checks each `tools/call` against the same schema before
+ * the handler runs, answering a failure with the structured error:
  * `UNKNOWN_ARGUMENT` (with the closest declared names) or `INVALID_ARGUMENTS`.
- * A valid call passes through untouched.
  */
 
-import { z } from "zod";
-import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import type { JSONRPCMessage } from "@modelcontextprotocol/sdk/types.js";
+import { z, type ObjectSchema, type RawShape } from "./schema.js";
 import { closestMembers } from "./sandbox-proxy.js";
 import type { ToolError } from "./structured.js";
 
 /** A tool's input shape as a strict object: unknown keys fail. */
-export function strictInput<T extends z.ZodRawShape>(shape: T) {
+export function strictInput<T extends RawShape>(shape: T) {
   return z.object(shape).strict();
 }
 
-type StrictSchema = z.ZodObject<z.ZodRawShape, z.core.$strict>;
+/** A tool's strict input schema, whatever its shape (`any`: `refine` makes schemas invariant). */
+export type StrictSchema = ObjectSchema<any, "strict">;
 
 /** The structured refusal for arguments that fail a tool's strict schema, or null when they pass. */
 export function argumentError(tool: string, schema: StrictSchema, args: unknown): ToolError | null {
@@ -32,8 +28,8 @@ export function argumentError(tool: string, schema: StrictSchema, args: unknown)
   const declared = Object.keys(schema.shape);
   const unknown: string[] = [];
   const issues: Array<{ path: string; message: string }> = [];
-  for (const issue of parsed.error.issues) {
-    if (issue.code === "unrecognized_keys") unknown.push(...issue.keys);
+  for (const issue of parsed.issues) {
+    if (issue.code === "unrecognized_keys") unknown.push(...(issue.keys ?? []));
     else issues.push({ path: issue.path.join(".") || "(arguments)", message: issue.message });
   }
   if (unknown.length > 0) {
@@ -61,39 +57,5 @@ export function argumentError(tool: string, schema: StrictSchema, args: unknown)
     message: `${tool}: ${issues.map((i) => `${i.path}: ${i.message}`).join("; ")}`,
     next_actions: [{ type: "edit_request", why: "Fix the arguments named in details.issues, then call the tool again.", tool }],
     details: { issues },
-  };
-}
-
-function isToolCall(message: JSONRPCMessage): message is JSONRPCMessage & { id: string | number; method: "tools/call"; params: { name: string; arguments?: unknown } } {
-  const m = message as { method?: unknown; id?: unknown; params?: { name?: unknown } };
-  return m.method === "tools/call" && (typeof m.id === "string" || typeof m.id === "number") && typeof m.params?.name === "string";
-}
-
-/**
- * Refuse invalid tool arguments with a structured result before the server
- * dispatches the call. Install after `server.connect(transport)`, which sets
- * the transport's `onmessage`.
- */
-export function guardToolArguments(transport: Transport, schemas: Record<string, StrictSchema>): void {
-  const dispatch = transport.onmessage;
-  if (!dispatch) throw new Error("guardToolArguments: install after server.connect(transport)");
-  transport.onmessage = (message, extra) => {
-    if (isToolCall(message)) {
-      const schema = schemas[message.params.name];
-      const error = schema ? argumentError(message.params.name, schema, message.params.arguments) : null;
-      if (error) {
-        void transport.send({
-          jsonrpc: "2.0",
-          id: message.id,
-          result: {
-            content: [{ type: "text", text: `Error: ${error.message}` }],
-            structuredContent: { status: "error", error },
-            isError: true,
-          },
-        });
-        return;
-      }
-    }
-    dispatch.call(transport, message, extra);
   };
 }

@@ -1,6 +1,6 @@
 import { storeResult } from "../result-store.js";
 import { prepareWorkflowOutput } from "../../sdk/dist/node/index.js";
-import { z } from "zod";
+import { z } from "../schema.js";
 import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
 import { okResult, type ToolResult } from "../structured.js";

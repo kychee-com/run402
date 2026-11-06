@@ -1,0 +1,2390 @@
+[
+  {
+    "name": "up",
+    "description": "Plan or run the canonical app-aware `run402 up` workflow from a local path or repo URL: any missing setup (wallet, tier, project, workspace link), then the deploy. Delegates to the SDK and returns the shared up result envelope with graph steps, resources, diagnostics, and next_actions. `deploy` only deploys.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "type": "string",
+          "description": "Local app directory or public Git repository URL. Defaults to the current directory."
+        },
+        "name": {
+          "type": "string",
+          "description": "Project/app instance name, for example kysigned2."
+        },
+        "project_id": {
+          "type": "string",
+          "description": "Existing project id to install into."
+        },
+        "manifest": {
+          "type": "string",
+          "description": "Explicit manifest path. Defaults to run402.json, then advanced release-only manifests."
+        },
+        "dir": {
+          "type": "string",
+          "description": "Workspace directory to inspect when source is omitted."
+        },
+        "tier": {
+          "type": "string",
+          "enum": [
+            "prototype",
+            "hobby",
+            "team"
+          ],
+          "description": "Bootstrap tier if account readiness is needed."
+        },
+        "dry_run": {
+          "type": "boolean",
+          "description": "Plan only. No gateway mutation, build execution, release commit, local link write, or prune."
+        },
+        "yes": {
+          "type": "boolean",
+          "description": "Approve non-interactive prerequisite, spend, and local-write prompts."
+        },
+        "allow_prune": {
+          "type": "boolean",
+          "description": "Approve destructive managed-resource prune steps."
+        },
+        "max_spend_usd": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Maximum spend up may approve for readiness steps."
+        },
+        "build_mode": {
+          "type": "string",
+          "enum": [
+            "local",
+            "remote",
+            "sandbox"
+          ],
+          "description": "Override app build mode."
+        },
+        "allow_shell_build": {
+          "type": "boolean",
+          "description": "Approve shell-string build commands after review."
+        },
+        "idempotency_key": {
+          "type": "string",
+          "description": "Root idempotency key for resumable app-up graph mutations."
+        },
+        "no_rehearse": {
+          "type": "boolean",
+          "description": "Skip the automatic rehearsal. By default a migration-bearing deploy against a project with a live release is rehearsed on a contained branch and committed only on a passing report; a first deploy has nothing to protect and commits directly, and a plan whose migrations are all already applied with an identical checksum is not rehearsed either (result.deploy.rehearsal says which: no_live_release / migrations_unchanged / no_migrations)."
+        },
+        "display_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "Display name to set on this principal (promotion credit and room presence use it); overrides an existing name. Omitted: RUN402_AGENT_NAME when set (same effect); else, only when the principal has no name yet, the detected client name (claude-code, codex, cursor, or grok; RUN402_CLIENT=<name> declares one that is not auto-detected) is set and reported as identity.source \"detected\"; otherwise nothing is written (identity.source \"undetected\", room presence 'agent' for coordination only). A detected client that was not applied is still reported under identity.detected / identity.detection."
+        }
+      },
+      "additionalProperties": false,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "ok",
+            "error"
+          ]
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "next_actions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              }
+            },
+            "category": {
+              "type": "string"
+            },
+            "retryable": {
+              "type": "boolean"
+            },
+            "safe_to_retry": {
+              "type": "boolean"
+            },
+            "http_status": {
+              "type": "integer"
+            },
+            "mutation_state": {
+              "type": "string"
+            },
+            "trace_id": {
+              "type": "string"
+            },
+            "details": {},
+            "line": {
+              "type": "integer"
+            },
+            "column": {
+              "type": "integer"
+            },
+            "diagnostics": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "line": {
+                    "type": "integer"
+                  },
+                  "column": {
+                    "type": "integer"
+                  },
+                  "code": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "line",
+                  "column",
+                  "code",
+                  "message"
+                ],
+                "additionalProperties": true
+              }
+            },
+            "diagnostics_total": {
+              "type": "integer"
+            },
+            "diagnostics_ref": {
+              "type": "string"
+            },
+            "phase": {
+              "type": "string"
+            },
+            "resource": {
+              "type": "string"
+            },
+            "operation_id": {
+              "type": "string"
+            },
+            "plan_id": {
+              "type": "string"
+            },
+            "fix": {},
+            "logs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "code",
+            "message",
+            "next_actions"
+          ],
+          "additionalProperties": true
+        },
+        "result": {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string"
+            },
+            "mode": {
+              "type": "string"
+            },
+            "dry_run": {
+              "type": "boolean"
+            },
+            "steps": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": true
+              }
+            },
+            "result": {}
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "additionalProperties": true,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "deploy",
+    "description": "Unified apply primitive. Accepts a structured ReleaseSpec — database (migrations + expose), value-free secrets.require/delete declarations, functions, site, site.public_paths, site.embedding (framing opt-in by catalog key, e.g. { frame_ancestors: ['localhost'] }; null = deny), site.sign_in_path (the app's own same-origin sign-in page for MCP authorization, e.g. '/join'; null = hosted page), site.noindex (true = X-Robots-Tag: noindex, nofollow, nosnippet on every response of the host; false or null = indexable), subdomains, and routes.replace web routes — with explicit replace vs patch semantics per resource. Migration entries use id for immutable versioned SQL or name for generated/idempotent content-tracked SQL; name compiles client-side to <name>_<sha256(sql)[0:16]>. Use site.public_paths for clean static URLs such as /events backed by release asset events.html; explicit mode does not expose /events.html unless separately declared, while mode: 'implicit' restores filename-derived reachability and can widen access. Route entries map exact/final-wildcard browser paths like /admin and /admin/* to Node 22 Fetch Request -> Response functions, or exact GET/HEAD method-aware static aliases such as /events to { type: 'static', file: 'events.html' }; acknowledge an intentionally read-only GET/HEAD wildcard function route with allow_warning_codes: ['WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS']. Direct /functions/v1/:name remains API-key protected. Secret values are set first with `r.secrets.set` (a `run` snippet) or `run402 secrets set`, never placed in deploy specs. All bytes ride through CAS (no inline-body cap). Returns release_id, URLs, warnings, and a structured progress-event log. Stops before upload/commit on confirmation-required warnings unless reviewed codes are passed with allow_warning_codes or allow_warnings is true.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "project_id": {
+          "type": "string",
+          "description": "Project ID to deploy to (from provision)."
+        },
+        "base": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "release": {
+                  "type": "string",
+                  "enum": [
+                    "current",
+                    "empty"
+                  ]
+                }
+              },
+              "required": [
+                "release"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "release_id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "release_id"
+              ],
+              "additionalProperties": false
+            }
+          ],
+          "description": "Diff base. Default `{ release: 'current' }`. Use `{ release: 'empty' }` for a fresh deploy that fails if a release already exists."
+        },
+        "database": {
+          "type": "object",
+          "properties": {
+            "migrations": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "description": "Stable versioned migration id (e.g. '001_init'). Same id+checksum across re-deploys is a registry noop; same id+different checksum is a hard error. Use name instead for generated/idempotent SQL."
+                  },
+                  "name": {
+                    "type": "string",
+                    "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$",
+                    "description": "Content-tracked migration name for generated/idempotent SQL. The SDK compiles this to <name>_<sha256(sql)[0:16]>; changed content applies once under a new id and identical re-deploys noop. SQL declared with name MUST be idempotent."
+                  },
+                  "sql": {
+                    "type": "string",
+                    "description": "Inline SQL (UTF-8). Either sql or sql_ref is required."
+                  },
+                  "sql_ref": {
+                    "type": "object",
+                    "properties": {
+                      "sha256": {
+                        "type": "string"
+                      },
+                      "size": {
+                        "type": "number"
+                      },
+                      "content_type": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "sha256",
+                      "size"
+                    ],
+                    "additionalProperties": false,
+                    "description": "Pre-uploaded CAS reference. Mutually exclusive with sql."
+                  },
+                  "checksum": {
+                    "type": "string",
+                    "description": "Lowercase hex SHA-256 of the migration SQL. Computed from `sql` if omitted."
+                  },
+                  "transaction": {
+                    "type": "string",
+                    "enum": [
+                      "required",
+                      "none"
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "expose": {
+              "type": "object",
+              "additionalProperties": {},
+              "description": "Declarative authorization manifest (see https://run402.com/schemas/manifest.v1.json)."
+            },
+            "zero_downtime": {
+              "type": "boolean",
+              "description": "Skip the migrate-gate phase. Only safe when migrations are declared backward-compatible."
+            }
+          },
+          "additionalProperties": false
+        },
+        "secrets": {
+          "type": "object",
+          "properties": {
+            "require": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Secret keys that must already exist. Set values first with `set_secret`; never put secret values in deploy specs."
+            },
+            "delete": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "functions": {
+          "type": "object",
+          "properties": {
+            "replace": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "runtime": {
+                    "type": "string",
+                    "const": "node22"
+                  },
+                  "source": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "data": {
+                            "type": "string"
+                          },
+                          "encoding": {
+                            "type": "string",
+                            "enum": [
+                              "utf-8",
+                              "base64"
+                            ]
+                          },
+                          "content_type": {
+                            "type": "string",
+                            "description": "MIME type override (snake_case, like every wire field). Auto-detected from the path's extension when omitted."
+                          }
+                        },
+                        "required": [
+                          "data"
+                        ],
+                        "additionalProperties": false
+                      }
+                    ],
+                    "description": "Single-file function source. The SDK uploads it to CAS and references it in the release."
+                  },
+                  "files": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "$ref": "#/properties/functions/properties/replace/additionalProperties/properties/source"
+                    },
+                    "description": "Multi-file function. Provide `entrypoint` to designate the entry path."
+                  },
+                  "entrypoint": {
+                    "type": "string"
+                  },
+                  "config": {
+                    "type": "object",
+                    "properties": {
+                      "timeoutSeconds": {
+                        "type": "number"
+                      },
+                      "memoryMb": {
+                        "type": "number"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "schedule": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Cron expression (5-field). Pass null to remove an existing schedule; omit in patch mode to leave it unchanged."
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "patch": {
+              "type": "object",
+              "properties": {
+                "set": {
+                  "$ref": "#/properties/functions/properties/replace"
+                },
+                "delete": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "site": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "replace": {
+                  "$ref": "#/properties/functions/properties/replace/additionalProperties/properties/files"
+                },
+                "public_paths": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "mode": {
+                          "type": "string",
+                          "const": "implicit",
+                          "description": "Restore filename-derived public reachability for static assets."
+                        }
+                      },
+                      "required": [
+                        "mode"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "mode": {
+                          "type": "string",
+                          "const": "explicit",
+                          "description": "Use only the complete replace table as direct public static URLs."
+                        },
+                        "replace": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "object",
+                            "properties": {
+                              "asset": {
+                                "type": "string",
+                                "description": "Release static asset path, such as events.html. This is not a public URL."
+                              },
+                              "cache_class": {
+                                "type": "string",
+                                "description": "Optional static cache class, for example html, immutable_versioned, or revalidating_asset."
+                              }
+                            },
+                            "required": [
+                              "asset"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "description": "Complete map from public browser paths such as /events to release static asset paths such as events.html."
+                        }
+                      },
+                      "required": [
+                        "mode",
+                        "replace"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "embedding": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "frame_ancestors": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "minItems": 1,
+                          "description": "Platform embedding catalog KEYS (never raw origins). `localhost` expands to http://localhost:* and http://127.0.0.1:*; the gateway rejects unknown keys with INVALID_SPEC naming the valid ones."
+                        }
+                      },
+                      "required": [
+                        "frame_ancestors"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "tenant-site-embedding: who may put the site in an iframe. The gateway then sends `Content-Security-Policy: frame-ancestors <expanded origins>` and drops X-Frame-Options on every response of the host. Omit to carry the previous release's declaration forward; null returns to the default deny."
+                },
+                "sign_in_path": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "The app's own same-origin sign-in page (e.g. \"/join\") that MCP authorization (/_run402/oauth/authorize) sends a signed-out user to, with returnTo appended, instead of the hosted /auth/sign-in. Single leading /, at most 512 chars, no query/fragment, not under /_run402/ or /auth/ (the gateway refuses with INVALID_SPEC on site.sign_in_path). Omit to carry the previous release's value forward; null returns to the hosted page."
+                },
+                "noindex": {
+                  "type": [
+                    "boolean",
+                    "null"
+                  ],
+                  "description": "true adds `X-Robots-Tag: noindex, nofollow, nosnippet` to every response of the host (gateway INVALID_SPEC on site.noindex for anything but a boolean or null). Omit to carry the previous release's value forward; false or null makes the host indexable again (the default)."
+                }
+              },
+              "required": [
+                "replace"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "patch": {
+                  "type": "object",
+                  "properties": {
+                    "put": {
+                      "$ref": "#/properties/functions/properties/replace/additionalProperties/properties/files"
+                    },
+                    "delete": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "public_paths": {
+                  "$ref": "#/properties/site/anyOf/0/properties/public_paths"
+                },
+                "embedding": {
+                  "$ref": "#/properties/site/anyOf/0/properties/embedding",
+                  "description": "tenant-site-embedding: who may put the site in an iframe. The gateway then sends `Content-Security-Policy: frame-ancestors <expanded origins>` and drops X-Frame-Options on every response of the host. Omit to carry the previous release's declaration forward; null returns to the default deny."
+                },
+                "sign_in_path": {
+                  "$ref": "#/properties/site/anyOf/0/properties/sign_in_path",
+                  "description": "The app's own same-origin sign-in page (e.g. \"/join\") that MCP authorization (/_run402/oauth/authorize) sends a signed-out user to, with returnTo appended, instead of the hosted /auth/sign-in. Single leading /, at most 512 chars, no query/fragment, not under /_run402/ or /auth/ (the gateway refuses with INVALID_SPEC on site.sign_in_path). Omit to carry the previous release's value forward; null returns to the hosted page."
+                },
+                "noindex": {
+                  "$ref": "#/properties/site/anyOf/0/properties/noindex",
+                  "description": "true adds `X-Robots-Tag: noindex, nofollow, nosnippet` to every response of the host (gateway INVALID_SPEC on site.noindex for anything but a boolean or null). Omit to carry the previous release's value forward; false or null makes the host indexable again (the default)."
+                }
+              },
+              "required": [
+                "patch"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "public_paths": {
+                  "$ref": "#/properties/site/anyOf/0/properties/public_paths"
+                },
+                "embedding": {
+                  "$ref": "#/properties/site/anyOf/0/properties/embedding",
+                  "description": "tenant-site-embedding: who may put the site in an iframe. The gateway then sends `Content-Security-Policy: frame-ancestors <expanded origins>` and drops X-Frame-Options on every response of the host. Omit to carry the previous release's declaration forward; null returns to the default deny."
+                },
+                "sign_in_path": {
+                  "$ref": "#/properties/site/anyOf/0/properties/sign_in_path",
+                  "description": "The app's own same-origin sign-in page (e.g. \"/join\") that MCP authorization (/_run402/oauth/authorize) sends a signed-out user to, with returnTo appended, instead of the hosted /auth/sign-in. Single leading /, at most 512 chars, no query/fragment, not under /_run402/ or /auth/ (the gateway refuses with INVALID_SPEC on site.sign_in_path). Omit to carry the previous release's value forward; null returns to the hosted page."
+                },
+                "noindex": {
+                  "$ref": "#/properties/site/anyOf/0/properties/noindex",
+                  "description": "true adds `X-Robots-Tag: noindex, nofollow, nosnippet` to every response of the host (gateway INVALID_SPEC on site.noindex for anything but a boolean or null). Omit to carry the previous release's value forward; false or null makes the host indexable again (the default)."
+                }
+              },
+              "required": [
+                "public_paths"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "embedding": {
+                  "$ref": "#/properties/site/anyOf/0/properties/embedding"
+                },
+                "sign_in_path": {
+                  "$ref": "#/properties/site/anyOf/0/properties/sign_in_path",
+                  "description": "The app's own same-origin sign-in page (e.g. \"/join\") that MCP authorization (/_run402/oauth/authorize) sends a signed-out user to, with returnTo appended, instead of the hosted /auth/sign-in. Single leading /, at most 512 chars, no query/fragment, not under /_run402/ or /auth/ (the gateway refuses with INVALID_SPEC on site.sign_in_path). Omit to carry the previous release's value forward; null returns to the hosted page."
+                },
+                "noindex": {
+                  "$ref": "#/properties/site/anyOf/0/properties/noindex",
+                  "description": "true adds `X-Robots-Tag: noindex, nofollow, nosnippet` to every response of the host (gateway INVALID_SPEC on site.noindex for anything but a boolean or null). Omit to carry the previous release's value forward; false or null makes the host indexable again (the default)."
+                }
+              },
+              "required": [
+                "embedding"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "sign_in_path": {
+                  "$ref": "#/properties/site/anyOf/0/properties/sign_in_path"
+                },
+                "noindex": {
+                  "$ref": "#/properties/site/anyOf/0/properties/noindex",
+                  "description": "true adds `X-Robots-Tag: noindex, nofollow, nosnippet` to every response of the host (gateway INVALID_SPEC on site.noindex for anything but a boolean or null). Omit to carry the previous release's value forward; false or null makes the host indexable again (the default)."
+                }
+              },
+              "required": [
+                "sign_in_path"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "noindex": {
+                  "$ref": "#/properties/site/anyOf/0/properties/noindex"
+                }
+              },
+              "required": [
+                "noindex"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "assets": {
+          "type": "object",
+          "properties": {
+            "put": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "key": {
+                    "type": "string",
+                    "description": "Asset key (path under the project's asset namespace, no leading slash)."
+                  },
+                  "source": {
+                    "$ref": "#/properties/functions/properties/replace/additionalProperties/properties/source",
+                    "description": "Source bytes (SDK-input form). Mutually exclusive with sha256."
+                  },
+                  "sha256": {
+                    "type": "string",
+                    "description": "Pre-uploaded CAS reference (wire form). Mutually exclusive with source."
+                  },
+                  "size_bytes": {
+                    "type": "integer",
+                    "description": "Required when using the wire form (sha256)."
+                  },
+                  "content_type": {
+                    "type": "string"
+                  },
+                  "visibility": {
+                    "type": "string",
+                    "enum": [
+                      "public",
+                      "private"
+                    ]
+                  },
+                  "immutable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "key"
+                ],
+                "additionalProperties": false
+              },
+              "description": "Per-key asset puts. Pass either { source } for the SDK to hash/upload, or { sha256, size_bytes } when bytes are already in CAS."
+            },
+            "delete": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Asset keys to remove in the activation transaction."
+            },
+            "sync": {
+              "type": "object",
+              "properties": {
+                "prefix": {
+                  "type": "string",
+                  "description": "Prefix under which sync operates. Required."
+                },
+                "prune": {
+                  "type": "boolean",
+                  "const": true,
+                  "description": "Must be true to declare destructive sync intent."
+                },
+                "confirm": {
+                  "type": "object",
+                  "properties": {
+                    "base_revision": {
+                      "type": "string"
+                    },
+                    "delete_set_digest": {
+                      "type": "string"
+                    },
+                    "expected_delete_count": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "base_revision",
+                    "delete_set_digest",
+                    "expected_delete_count"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Confirmation token echoed back from a prior plan; required to commit a destructive sync."
+                }
+              },
+              "required": [
+                "prefix",
+                "prune"
+              ],
+              "additionalProperties": false,
+              "description": "Declarative sync. With prune: true and no confirm, the plan returns an asset_sync block with the values to echo back."
+            }
+          },
+          "additionalProperties": false,
+          "description": "v1.48 unified-apply assets slice. Asset writes promote inside the same activation transaction as functions/site/secrets so a release flips atomically."
+        },
+        "subdomains": {
+          "type": "object",
+          "properties": {
+            "set": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "add": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "remove": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "description": "At most one subdomain per project — multi-element `set` is rejected with SUBDOMAIN_MULTI_NOT_SUPPORTED."
+        },
+        "routes": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "replace": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "pattern": {
+                        "type": "string",
+                        "description": "Route pattern such as /api, /api/*, or /login. Prefix wildcards only use a final /*."
+                      },
+                      "methods": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "GET",
+                            "HEAD",
+                            "POST",
+                            "PUT",
+                            "PATCH",
+                            "DELETE",
+                            "OPTIONS"
+                          ]
+                        },
+                        "minItems": 1,
+                        "description": "Optional method allowlist. Omit to allow all supported methods; do not pass an empty array."
+                      },
+                      "target": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "const": "function"
+                              },
+                              "name": {
+                                "type": "string",
+                                "description": "Materialized release function name, not a file name or handler export."
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "name"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "const": "static"
+                              },
+                              "file": {
+                                "type": "string",
+                                "description": "Materialized static-site file path, relative to the site root. No leading slash, query, fragment, traversal, or directory shorthand."
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "file"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "pattern",
+                      "target"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "replace"
+              ],
+              "additionalProperties": false
+            }
+          ],
+          "description": "Apply-v1 web routes. Omit or pass null to carry forward base routes; pass { replace: [] } to clear routes; pass { replace: [{ pattern, methods?, target: { type: 'function', name } }] } for functions or exact GET/HEAD { target: { type: 'static', file } } entries for method-aware static route aliases. Prefer site.public_paths for ordinary clean static URLs."
+        },
+        "i18n": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "defaultLocale": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
+                  "description": "Default locale tag. MUST be byte-identical to one entry in locales[]. The platform does NOT silently canonicalize."
+                },
+                "locales": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+                  },
+                  "minItems": 1,
+                  "maxItems": 50,
+                  "description": "Supported locale tags. Non-empty, max 50 entries. Tags are opaque — only the safety regex is enforced. Negotiation returns canonical casing from this array, not the request's casing."
+                },
+                "detect": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^(accept-language|cookie:[!#$%&'*+\\-.^_`|~0-9A-Za-z]+)$",
+                    "description": "Detect source: 'accept-language' or 'cookie:<name>' (RFC 6265 cookie-name grammar)."
+                  },
+                  "maxItems": 10,
+                  "description": "Walked in order; first match wins. Defaults to ['accept-language'] when omitted, max 10 entries; [] is allowed and means 'always default'."
+                }
+              },
+              "required": [
+                "defaultLocale",
+                "locales"
+              ],
+              "additionalProperties": false
+            }
+          ],
+          "description": "Routed-locale-context release slice. Omit to carry forward from base release; pass null to clear the slice; pass { defaultLocale, locales, detect? } to replace. Drives the negotiated locale that the gateway surfaces to routed HTTP function invocations via x-run402-locale and x-run402-default-locale request headers (omitted entirely when the active release has no i18n slice). Static-route hits do NOT receive locale negotiation."
+        },
+        "idempotency_key": {
+          "type": "string",
+          "description": "Optional client idempotency key. Combined with the project id and gateway-computed manifest digest to deduplicate retries."
+        },
+        "allow_warnings": {
+          "type": "boolean",
+          "description": "Continue past plan warnings that require confirmation. Default false: the tool stops before upload/commit so an agent can set missing secrets or inspect warnings."
+        },
+        "allow_warning_codes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Continue past specific reviewed plan warning codes. Prefer this to allow_warnings when only one known warning class is intentional."
+        }
+      },
+      "required": [
+        "project_id"
+      ],
+      "additionalProperties": false,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "ok",
+            "error"
+          ]
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "next_actions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              }
+            },
+            "category": {
+              "type": "string"
+            },
+            "retryable": {
+              "type": "boolean"
+            },
+            "safe_to_retry": {
+              "type": "boolean"
+            },
+            "http_status": {
+              "type": "integer"
+            },
+            "mutation_state": {
+              "type": "string"
+            },
+            "trace_id": {
+              "type": "string"
+            },
+            "details": {},
+            "line": {
+              "type": "integer"
+            },
+            "column": {
+              "type": "integer"
+            },
+            "diagnostics": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "line": {
+                    "type": "integer"
+                  },
+                  "column": {
+                    "type": "integer"
+                  },
+                  "code": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "line",
+                  "column",
+                  "code",
+                  "message"
+                ],
+                "additionalProperties": true
+              }
+            },
+            "diagnostics_total": {
+              "type": "integer"
+            },
+            "diagnostics_ref": {
+              "type": "string"
+            },
+            "phase": {
+              "type": "string"
+            },
+            "resource": {
+              "type": "string"
+            },
+            "operation_id": {
+              "type": "string"
+            },
+            "plan_id": {
+              "type": "string"
+            },
+            "fix": {},
+            "logs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "code",
+            "message",
+            "next_actions"
+          ],
+          "additionalProperties": true
+        },
+        "result": {
+          "type": "object",
+          "properties": {
+            "release_id": {
+              "type": "string"
+            },
+            "operation_id": {
+              "type": "string"
+            },
+            "urls": {
+              "type": "object",
+              "additionalProperties": {}
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              }
+            },
+            "next_actions": {
+              "type": "array",
+              "items": {
+                "$ref": "#/properties/error/properties/next_actions/items"
+              }
+            }
+          },
+          "required": [
+            "release_id",
+            "operation_id",
+            "urls"
+          ],
+          "additionalProperties": true
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/properties/result/properties/warnings/items"
+          }
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "additionalProperties": true,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "status",
+    "description": "The organization's state as this server's wallet sees it (r.status()): the wallet's local_label, server_label, and address, the tier and its lease, the allowance, the projects, and the active project. Never key material. Any other operation is a `run` snippet against `r`, the Node SDK client; `docs` is its reference.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "ok",
+            "error"
+          ]
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "next_actions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              }
+            },
+            "category": {
+              "type": "string"
+            },
+            "retryable": {
+              "type": "boolean"
+            },
+            "safe_to_retry": {
+              "type": "boolean"
+            },
+            "http_status": {
+              "type": "integer"
+            },
+            "mutation_state": {
+              "type": "string"
+            },
+            "trace_id": {
+              "type": "string"
+            },
+            "details": {},
+            "line": {
+              "type": "integer"
+            },
+            "column": {
+              "type": "integer"
+            },
+            "diagnostics": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "line": {
+                    "type": "integer"
+                  },
+                  "column": {
+                    "type": "integer"
+                  },
+                  "code": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "line",
+                  "column",
+                  "code",
+                  "message"
+                ],
+                "additionalProperties": true
+              }
+            },
+            "diagnostics_total": {
+              "type": "integer"
+            },
+            "diagnostics_ref": {
+              "type": "string"
+            },
+            "phase": {
+              "type": "string"
+            },
+            "resource": {
+              "type": "string"
+            },
+            "operation_id": {
+              "type": "string"
+            },
+            "plan_id": {
+              "type": "string"
+            },
+            "fix": {},
+            "logs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "code",
+            "message",
+            "next_actions"
+          ],
+          "additionalProperties": true
+        },
+        "result": {
+          "type": "object",
+          "properties": {
+            "wallet": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "local_label": {
+                      "type": "string"
+                    },
+                    "server_label": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "address": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "local_label",
+                    "address"
+                  ],
+                  "additionalProperties": true
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "projects": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "project_id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "project_id"
+                ],
+                "additionalProperties": true
+              }
+            },
+            "active_project": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "tier": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "expires": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "status",
+                    "expires"
+                  ],
+                  "additionalProperties": true
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "wallet",
+            "projects",
+            "active_project"
+          ],
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "additionalProperties": true,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "whoami",
+    "description": "The remote identity (r.orgs.whoami()): the control-plane principal this server's wallet resolves to, its active authenticator and linked identities, its org memberships, and the sign-in session grade (none for a wallet). For the local wallet use status. Any other operation is a `run` snippet against `r`, the Node SDK client; `docs` is its reference.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "ok",
+            "error"
+          ]
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "next_actions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              }
+            },
+            "category": {
+              "type": "string"
+            },
+            "retryable": {
+              "type": "boolean"
+            },
+            "safe_to_retry": {
+              "type": "boolean"
+            },
+            "http_status": {
+              "type": "integer"
+            },
+            "mutation_state": {
+              "type": "string"
+            },
+            "trace_id": {
+              "type": "string"
+            },
+            "details": {},
+            "line": {
+              "type": "integer"
+            },
+            "column": {
+              "type": "integer"
+            },
+            "diagnostics": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "line": {
+                    "type": "integer"
+                  },
+                  "column": {
+                    "type": "integer"
+                  },
+                  "code": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "line",
+                  "column",
+                  "code",
+                  "message"
+                ],
+                "additionalProperties": true
+              }
+            },
+            "diagnostics_total": {
+              "type": "integer"
+            },
+            "diagnostics_ref": {
+              "type": "string"
+            },
+            "phase": {
+              "type": "string"
+            },
+            "resource": {
+              "type": "string"
+            },
+            "operation_id": {
+              "type": "string"
+            },
+            "plan_id": {
+              "type": "string"
+            },
+            "fix": {},
+            "logs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "code",
+            "message",
+            "next_actions"
+          ],
+          "additionalProperties": true
+        },
+        "result": {
+          "type": "object",
+          "properties": {
+            "principal": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id"
+              ],
+              "additionalProperties": true
+            },
+            "memberships": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "org_id": {
+                    "type": "string"
+                  },
+                  "role": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "org_id"
+                ],
+                "additionalProperties": true
+              }
+            },
+            "session": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "grade": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": true
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "principal",
+            "memberships"
+          ],
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "additionalProperties": true,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "doctor",
+    "description": "Local health and configuration diagnostics (r.doctor()): { ok, blocking[], warnings[], checks[] }, the same report as `run402 doctor`. ok is false only on a blocking finding. Any other operation is a `run` snippet against `r`, the Node SDK client; `docs` is its reference.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "project_id": {
+          "type": "string",
+          "description": "Target this project's vault check. Omitted: the repository's own remote, else the active project."
+        }
+      },
+      "additionalProperties": false,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "ok",
+            "error"
+          ]
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "next_actions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              }
+            },
+            "category": {
+              "type": "string"
+            },
+            "retryable": {
+              "type": "boolean"
+            },
+            "safe_to_retry": {
+              "type": "boolean"
+            },
+            "http_status": {
+              "type": "integer"
+            },
+            "mutation_state": {
+              "type": "string"
+            },
+            "trace_id": {
+              "type": "string"
+            },
+            "details": {},
+            "line": {
+              "type": "integer"
+            },
+            "column": {
+              "type": "integer"
+            },
+            "diagnostics": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "line": {
+                    "type": "integer"
+                  },
+                  "column": {
+                    "type": "integer"
+                  },
+                  "code": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "line",
+                  "column",
+                  "code",
+                  "message"
+                ],
+                "additionalProperties": true
+              }
+            },
+            "diagnostics_total": {
+              "type": "integer"
+            },
+            "diagnostics_ref": {
+              "type": "string"
+            },
+            "phase": {
+              "type": "string"
+            },
+            "resource": {
+              "type": "string"
+            },
+            "operation_id": {
+              "type": "string"
+            },
+            "plan_id": {
+              "type": "string"
+            },
+            "fix": {},
+            "logs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "code",
+            "message",
+            "next_actions"
+          ],
+          "additionalProperties": true
+        },
+        "result": {
+          "type": "object",
+          "properties": {
+            "ok": {
+              "type": "boolean"
+            },
+            "blocking": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": true
+              }
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": true
+              }
+            },
+            "checks": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "status"
+                ],
+                "additionalProperties": true
+              }
+            }
+          },
+          "required": [
+            "ok",
+            "blocking",
+            "warnings",
+            "checks"
+          ],
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "additionalProperties": true,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "docs",
+    "description": "The SDK reference for `run` snippets, from the copy shipped in this package, so it matches the SDK the snippet runs against. No arguments: the run primer, the r namespace table, and the topics. topic: one namespace or section (assets, project.apply, rooms, local-state) or sdk for all of it; search: sections containing every word. Long answers are a window plus a ref for expand_result. Any other operation is a `run` snippet against `r`, the Node SDK client; `docs` is its reference.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "topic": {
+          "type": "string",
+          "description": "`index` (default: the run primer, the r namespace table, the topics), `sdk` (the whole SDK reference), or one section: a namespace such as `projects`, `assets`, `project.apply`, `rooms`, or a section slug from the index."
+        },
+        "search": {
+          "type": "string",
+          "description": "Words to look for; returns up to 8 SDK reference sections whose heading or body contain all of them."
+        }
+      },
+      "additionalProperties": false,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "ok",
+            "error"
+          ]
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "next_actions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              }
+            },
+            "category": {
+              "type": "string"
+            },
+            "retryable": {
+              "type": "boolean"
+            },
+            "safe_to_retry": {
+              "type": "boolean"
+            },
+            "http_status": {
+              "type": "integer"
+            },
+            "mutation_state": {
+              "type": "string"
+            },
+            "trace_id": {
+              "type": "string"
+            },
+            "details": {},
+            "line": {
+              "type": "integer"
+            },
+            "column": {
+              "type": "integer"
+            },
+            "diagnostics": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "line": {
+                    "type": "integer"
+                  },
+                  "column": {
+                    "type": "integer"
+                  },
+                  "code": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "line",
+                  "column",
+                  "code",
+                  "message"
+                ],
+                "additionalProperties": true
+              }
+            },
+            "diagnostics_total": {
+              "type": "integer"
+            },
+            "diagnostics_ref": {
+              "type": "string"
+            },
+            "phase": {
+              "type": "string"
+            },
+            "resource": {
+              "type": "string"
+            },
+            "operation_id": {
+              "type": "string"
+            },
+            "plan_id": {
+              "type": "string"
+            },
+            "fix": {},
+            "logs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "code",
+            "message",
+            "next_actions"
+          ],
+          "additionalProperties": true
+        },
+        "kind": {
+          "type": "string"
+        },
+        "ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "shown": {
+          "type": "integer"
+        },
+        "total": {
+          "type": "integer"
+        },
+        "lines": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "additionalProperties": true,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "run",
+    "description": "Run a TypeScript snippet against the SDK in a sandbox. `r` is the Node SDK client (@run402/sdk/node); call `docs` for its reference. The code is the body of an async function: await r chains, and the value of the last expression (or a return) is the result, e.g. `(await r.projects.list()).projects.map((p) => p.id)`. It is type-checked against the SDK before anything runs: a type error comes back with its line and TypeScript's message, and makes no call. No filesystem, process, fetch, timers, or imports; console is captured. Returns { status, value, value_ref, shown, total, logs, logs_ref, calls, duration_ms, wallet, error? }; a large value is stored whole and expand_result pages it. Operations that return or consume a one-time secret (grant keys, Handoff and Invite Keys, project credentials, wallet keys) refuse with SECRET_REQUIRES_CLI naming the exact CLI command to hand the person. Any other operation is a run snippet against r.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1,
+          "description": "TypeScript or JavaScript, run as the body of an async function: top-level await works, and the value of an explicit return or of the last expression statement is the result. `r` is the Node SDK client (`@run402/sdk/node`): await any chain, e.g. `(await r.projects.list()).projects.map(p => p.id)` or `await r.project(\"prj_…\").functions.list()`. The snippet is type-checked against the SDK before anything runs, and a type error makes no call; then types are stripped: no enum, no parameter properties. No filesystem, process, fetch, timers, or imports; `console` is captured."
+        },
+        "timeout_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 300,
+          "description": "Deadline for the whole run, 60 s by default and at most 300. An SDK call in flight at the deadline completes on its own; the result lists every call that completed."
+        }
+      },
+      "required": [
+        "code"
+      ],
+      "additionalProperties": false,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "ok",
+            "error"
+          ]
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "next_actions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              }
+            },
+            "category": {
+              "type": "string"
+            },
+            "retryable": {
+              "type": "boolean"
+            },
+            "safe_to_retry": {
+              "type": "boolean"
+            },
+            "http_status": {
+              "type": "integer"
+            },
+            "mutation_state": {
+              "type": "string"
+            },
+            "trace_id": {
+              "type": "string"
+            },
+            "details": {},
+            "line": {
+              "type": "integer"
+            },
+            "column": {
+              "type": "integer"
+            },
+            "diagnostics": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "line": {
+                    "type": "integer"
+                  },
+                  "column": {
+                    "type": "integer"
+                  },
+                  "code": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "line",
+                  "column",
+                  "code",
+                  "message"
+                ],
+                "additionalProperties": true
+              }
+            },
+            "diagnostics_total": {
+              "type": "integer"
+            },
+            "diagnostics_ref": {
+              "type": "string"
+            },
+            "phase": {
+              "type": "string"
+            },
+            "resource": {
+              "type": "string"
+            },
+            "operation_id": {
+              "type": "string"
+            },
+            "plan_id": {
+              "type": "string"
+            },
+            "fix": {},
+            "logs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "code",
+            "message",
+            "next_actions"
+          ],
+          "additionalProperties": true
+        },
+        "value": {},
+        "value_kind": {
+          "type": "string",
+          "const": "undefined"
+        },
+        "value_window": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "items": {
+              "type": "array",
+              "items": {}
+            },
+            "rest": {
+              "type": "object",
+              "properties": {},
+              "additionalProperties": true
+            }
+          },
+          "required": [
+            "path",
+            "items"
+          ],
+          "additionalProperties": true
+        },
+        "value_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "shown": {
+          "type": "integer"
+        },
+        "total": {
+          "type": "integer"
+        },
+        "logs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "level": {
+                "type": "string",
+                "enum": [
+                  "log",
+                  "info",
+                  "warn",
+                  "error"
+                ]
+              },
+              "line": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "level",
+              "line"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "logs_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "logs_dropped": {
+          "type": "integer"
+        },
+        "calls": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "duration_ms": {
+                "type": "number"
+              },
+              "ok": {
+                "type": "boolean"
+              },
+              "code": {
+                "type": "string"
+              },
+              "payment_attempt_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "duration_ms",
+              "ok"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "calls_dropped": {
+          "type": "integer"
+        },
+        "duration_ms": {
+          "type": "number"
+        },
+        "wallet": {
+          "type": "object",
+          "properties": {
+            "local_label": {
+              "type": "string"
+            },
+            "address": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "local_label",
+            "address"
+          ],
+          "additionalProperties": true
+        },
+        "type_check": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string",
+              "const": "skipped"
+            },
+            "reason": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "reason"
+          ],
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "additionalProperties": true,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "expand_result",
+    "description": "Fetch more of a result a previous tool showed you only a window of. Tools on this surface truncate the VIEW, never the DATA: when one prints a ref together with shown and total, the full result is held behind that ref and this is how you read the rest of it. Pass the ref plus offset and limit to page through it. Refs live in this server process only — they expire after 30 minutes and only the most recent handful are kept, so re-run the producing tool rather than storing a ref across sessions. A result that carried a secret is never retained and never has a ref, so nothing here can hand one back.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "type": "string",
+          "description": "The opaque handle a tool printed alongside its bounded view (res_ followed by 16 hex). Refs are per-process and short-lived — do not store one across sessions."
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Index of the first item to return. Defaults to 0. Page by adding the previous window's shown count."
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000,
+          "description": "How many items to return, 100 by default and at most 1000. The window stays bounded even when expanded — page with offset rather than asking for everything at once."
+        }
+      },
+      "required": [
+        "ref"
+      ],
+      "additionalProperties": false,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "ok",
+            "error"
+          ]
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "next_actions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              }
+            },
+            "category": {
+              "type": "string"
+            },
+            "retryable": {
+              "type": "boolean"
+            },
+            "safe_to_retry": {
+              "type": "boolean"
+            },
+            "http_status": {
+              "type": "integer"
+            },
+            "mutation_state": {
+              "type": "string"
+            },
+            "trace_id": {
+              "type": "string"
+            },
+            "details": {},
+            "line": {
+              "type": "integer"
+            },
+            "column": {
+              "type": "integer"
+            },
+            "diagnostics": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "line": {
+                    "type": "integer"
+                  },
+                  "column": {
+                    "type": "integer"
+                  },
+                  "code": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "line",
+                  "column",
+                  "code",
+                  "message"
+                ],
+                "additionalProperties": true
+              }
+            },
+            "diagnostics_total": {
+              "type": "integer"
+            },
+            "diagnostics_ref": {
+              "type": "string"
+            },
+            "phase": {
+              "type": "string"
+            },
+            "resource": {
+              "type": "string"
+            },
+            "operation_id": {
+              "type": "string"
+            },
+            "plan_id": {
+              "type": "string"
+            },
+            "fix": {},
+            "logs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "code",
+            "message",
+            "next_actions"
+          ],
+          "additionalProperties": true
+        },
+        "ref": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "offset": {
+          "type": "integer"
+        },
+        "shown": {
+          "type": "integer"
+        },
+        "total": {
+          "type": "integer"
+        },
+        "items": {
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "additionalProperties": true,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  }
+]

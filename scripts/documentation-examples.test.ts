@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync,mkdtempSync,writeFileSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {z} from 'zod';
+import {z} from '../src/schema.js';
 import {upSchema} from '../src/tools/up.js';
 import {loadDeployManifest,findMissingLocalFileReferences} from '../sdk/src/node/deploy-manifest.js';
 import {checkCli} from './check-doc-examples.mjs';

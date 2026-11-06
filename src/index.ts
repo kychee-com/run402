@@ -12,8 +12,7 @@
  * (`src/structured.ts`).
  */
 import { readFileSync } from "node:fs";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { McpServer } from "./mcp-server.js";
 import { selectWallet } from "../sdk/dist/node/index.js";
 
 import { upSchema, handleUp } from "./tools/up.js";
@@ -25,7 +24,7 @@ import { docsSchema, handleDocs } from "./tools/docs.js";
 import { runSchema, handleRun } from "./tools/run.js";
 import { expandResultSchema, handleExpandResult } from "./tools/expand-result.js";
 import { OUTPUT_SCHEMAS } from "./structured.js";
-import { guardToolArguments, strictInput } from "./input-guard.js";
+import { strictInput } from "./input-guard.js";
 import { closeSnippetChecker } from "./snippet-check.js";
 
 function currentPackageVersion(): string {
@@ -147,8 +146,7 @@ server.registerTool(
   async (args) => handleExpandResult(args),
 );
 
-const transport = new StdioServerTransport();
-await server.connect(transport);
-guardToolArguments(transport, INPUT_SCHEMAS);
-// The type checker is a child process; stop it when the host goes away, so it never keeps this server alive.
-process.stdin.once("end", () => void closeSnippetChecker());
+// Serve until the host closes stdin; then, with every call in flight answered, stop the type checker
+// (a child process), so it never keeps this server alive.
+await server.listen(process.stdin, process.stdout);
+await closeSnippetChecker();

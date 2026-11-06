@@ -1,8 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import type { JSONRPCMessage } from "@modelcontextprotocol/sdk/types.js";
-import { argumentError, guardToolArguments, strictInput } from "./input-guard.js";
+import { argumentError, strictInput } from "./input-guard.js";
 import { upSchema } from "./tools/up.js";
 import { runSchema } from "./tools/run.js";
 import { toolErrorSchema } from "./structured.js";
@@ -35,40 +33,5 @@ describe("argumentError", () => {
     toolErrorSchema.parse(error);
     assert.equal(error.code, "INVALID_ARGUMENTS");
     assert.deepEqual((error.details as { issues: Array<{ path: string }> }).issues.map((i) => i.path), ["code"]);
-  });
-});
-
-describe("guardToolArguments", () => {
-  function fakeTransport() {
-    const sent: JSONRPCMessage[] = [];
-    const dispatched: JSONRPCMessage[] = [];
-    const transport = {
-      start: async () => {},
-      close: async () => {},
-      send: async (m: JSONRPCMessage) => { sent.push(m); },
-      onmessage: (m: JSONRPCMessage) => { dispatched.push(m); },
-    } as unknown as Transport;
-    guardToolArguments(transport, { up: strictInput(upSchema) });
-    return { transport, sent, dispatched };
-  }
-
-  it("answers an unknown argument with a structured error and does not dispatch", () => {
-    const { transport, sent, dispatched } = fakeTransport();
-    transport.onmessage!({ jsonrpc: "2.0", id: 7, method: "tools/call", params: { name: "up", arguments: { bogus: true } } });
-    assert.equal(dispatched.length, 0);
-    const reply = sent[0] as { id: number; result: { isError: boolean; structuredContent: { status: string; error: { code: string } } } };
-    assert.equal(reply.id, 7);
-    assert.equal(reply.result.isError, true);
-    assert.equal(reply.result.structuredContent.status, "error");
-    assert.equal(reply.result.structuredContent.error.code, "UNKNOWN_ARGUMENT");
-  });
-
-  it("passes valid calls and other messages through", () => {
-    const { transport, sent, dispatched } = fakeTransport();
-    transport.onmessage!({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "up", arguments: {} } });
-    transport.onmessage!({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} });
-    transport.onmessage!({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "unregistered", arguments: { x: 1 } } });
-    assert.equal(sent.length, 0);
-    assert.equal(dispatched.length, 3);
   });
 });

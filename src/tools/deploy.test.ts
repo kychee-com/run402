@@ -53,7 +53,7 @@ mock.module("../sdk.js", {
 const { handleDeploy, deploySchema } = await import("./deploy.js");
 const { Run402DeployError, PaymentRequired } = await import("../../sdk/dist/index.js");
 const { deployOutputSchema, toolErrorSchema } = await import("../structured.js");
-const { z } = await import("zod");
+const { z } = await import("../schema.js");
 
 let tempDir: string;
 
