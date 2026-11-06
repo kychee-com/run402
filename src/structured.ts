@@ -7,7 +7,7 @@
  * tool computed, never parsed back from text, and the text block's fenced JSON
  * is that same object serialized, so the two channels cannot diverge.
  *
- * Every schema object is open (`.passthrough()`): the schema names the fields a
+ * Every schema object is open (`.loose()`): the schema names the fields a
  * host branches on, and anything else the SDK or gateway adds passes through.
  * The MCP SDK validates `structuredContent` against the schema on success and
  * skips validation on `isError`; the tests validate error results too.
@@ -67,7 +67,7 @@ export interface ToolError {
   logs?: string[];
 }
 
-const nextActionSchema = z.object({ type: z.string().optional() }).passthrough();
+const nextActionSchema = z.object({ type: z.string().optional() }).loose();
 
 export const toolErrorSchema = z
   .object({
@@ -83,7 +83,7 @@ export const toolErrorSchema = z
     details: z.unknown().optional(),
     line: z.number().int().optional(),
     column: z.number().int().optional(),
-    diagnostics: z.array(z.object({ line: z.number().int(), column: z.number().int(), code: z.string(), message: z.string() }).passthrough()).optional(),
+    diagnostics: z.array(z.object({ line: z.number().int(), column: z.number().int(), code: z.string(), message: z.string() }).loose()).optional(),
     diagnostics_total: z.number().int().optional(),
     diagnostics_ref: z.string().optional(),
     phase: z.string().optional(),
@@ -93,7 +93,7 @@ export const toolErrorSchema = z
     fix: z.unknown().optional(),
     logs: z.array(z.string()).optional(),
   })
-  .passthrough();
+  .loose();
 
 /** At most this many deploy log lines ride in an error, as the text shows. */
 export const DEPLOY_ERROR_LOG_LINES = 50;
@@ -196,7 +196,7 @@ export function errorResult(text: string, error: ToolError, extra: Record<string
 // ---------------------------------------------------------------------------
 
 const status = z.enum(["ok", "error"]);
-const open = <T extends z.ZodRawShape>(shape: T) => z.object(shape).passthrough();
+const open = <T extends z.ZodRawShape>(shape: T) => z.object(shape).loose();
 
 /** The fields every envelope shares; each tool adds its payload. */
 function envelope<T extends z.ZodRawShape>(shape: T) {
@@ -251,7 +251,7 @@ export const deployOutputSchema = envelope({
     release_id: z.string(),
     operation_id: z.string(),
     // Values are URLs today; the schema does not reject a null or a future shape.
-    urls: z.record(z.unknown()),
+    urls: z.record(z.string(), z.unknown()),
     warnings: z.array(warningSchema).optional(),
     next_actions: z.array(nextActionSchema).optional(),
   }).optional(),

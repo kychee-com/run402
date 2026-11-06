@@ -23,7 +23,7 @@ export function strictInput<T extends z.ZodRawShape>(shape: T) {
   return z.object(shape).strict();
 }
 
-type StrictSchema = z.ZodObject<z.ZodRawShape, "strict">;
+type StrictSchema = z.ZodObject<z.ZodRawShape, z.core.$strict>;
 
 /** The structured refusal for arguments that fail a tool's strict schema, or null when they pass. */
 export function argumentError(tool: string, schema: StrictSchema, args: unknown): ToolError | null {

@@ -49,7 +49,7 @@ const fileEntry = z.union([
     .strict(),
 ]);
 
-const fileMap = z.record(fileEntry);
+const fileMap = z.record(z.string(), fileEntry);
 const publicStaticPathSpec = z
   .object({
     asset: z
@@ -93,7 +93,7 @@ const sitePublicPaths = z.union([
         .literal("explicit")
         .describe("Use only the complete replace table as direct public static URLs."),
       replace: z
-        .record(publicStaticPathSpec)
+        .record(z.string(), publicStaticPathSpec)
         .describe("Complete map from public browser paths such as /events to release static asset paths such as events.html."),
     })
     .strict(),
@@ -167,7 +167,7 @@ const functionSpec = z
   })
   .strict();
 
-const functionMap = z.record(functionSpec);
+const functionMap = z.record(z.string(), functionSpec);
 const routeMethod = z.enum(
   ROUTE_HTTP_METHODS as unknown as [RouteHttpMethod, ...RouteHttpMethod[]],
 );
@@ -219,7 +219,7 @@ export const deploySchema = {
     .object({
       migrations: z.array(migrationEntry).optional(),
       expose: z
-        .record(z.unknown())
+        .record(z.string(), z.unknown())
         .optional()
         .describe(
           "Declarative authorization manifest (see https://run402.com/schemas/manifest.v1.json).",

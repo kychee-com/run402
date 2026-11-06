@@ -18,6 +18,9 @@
   },
   "overrides": {
     "@ai-sdk/provider-utils": "^4.0.33",
-    "postcss-selector-parser": "^7.1.6"
+    "postcss-selector-parser": "^7.1.6",
+    "@scalar/json-magic": {
+      "undici": "7.30.1"
+    }
   }
 }
