@@ -209,7 +209,7 @@ import type {
   ListEventsOptions,
   ProjectEventFeedPage,
 } from "./namespaces/events.types.js";
-import type { PushMessage, PushStatus } from "./namespaces/push.types.js";
+import type { PushFcmCredential, PushFcmRemoval, PushMessage, PushStatus } from "./namespaces/push.types.js";
 import type {
   AppRepo,
   AppRepoCommitOptions,
@@ -546,6 +546,14 @@ class ScopedPush {
   /** One message: what was sent, to whom, and each delivery's state. */
   getMessage(messageId: string): Promise<PushMessage> {
     return this.parent.push.getMessage(this.projectId, messageId);
+  }
+  /** Give Run402 the project's Firebase service-account key (checked with Google, never returned). */
+  setFcmCredential(serviceAccount: Record<string, unknown>): Promise<PushFcmCredential> {
+    return this.parent.push.setFcmCredential(this.projectId, serviceAccount);
+  }
+  /** Remove the project's Firebase key and the devices registered under it. */
+  removeFcmCredential(): Promise<PushFcmRemoval> {
+    return this.parent.push.removeFcmCredential(this.projectId);
   }
 }
 
@@ -1246,7 +1254,7 @@ export class ScopedRun402 {
   /** Cursored project events feed, project-id pre-bound. */
   readonly events: ScopedEvents;
   readonly live: ScopedLive;
-  /** Web push notification status and per-message delivery outcomes, project-id pre-bound. */
+  /** Push notification status, per-message delivery outcomes, and the Firebase key, project-id pre-bound. */
   readonly push: ScopedPush;
   /** App repos (plain git repositories the app owns), project-id pre-bound. */
   readonly appRepos: ScopedAppRepos;

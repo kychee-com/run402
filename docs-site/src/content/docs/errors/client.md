@@ -337,7 +337,7 @@ The client could not complete this operation. Inspect its typed error kind, mess
 
 <h2 id="FILE_NOT_FOUND">FILE_NOT_FOUND</h2>
 
-Owner: `public:cli/lib/argparse.mjs`, `public:cli/lib/wallets.mjs`.
+Owner: `public:cli/lib/argparse.mjs`, `public:cli/lib/push.mjs`, `public:cli/lib/wallets.mjs`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 

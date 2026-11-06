@@ -788,22 +788,33 @@ sub.close(); await sub.done;
 
 ### `r.push`
 
-Web push notifications, the agent-side check. A deployed function sends with `push.send({ title, body?, url?, tag?, to? })` from `@run402/functions`; a signed-in user signs a phone up from the app's page through `/_run402/push.js` (`Run402Push.subscribe({ accessToken })`). These two reads show who is signed up, how much of the organization's daily delivery cap is used, and what happened to each message. Also project-scoped as `r.project(id).push.status()` / `.getMessage(messageId)`.
+Push notifications, the agent-side check, and the Firebase key for the app's own phone app. A deployed function sends with `push.send({ title, body?, url?, tag?, data?, to? })` from `@run402/functions`; a signed-in user signs a phone up from the app's page through `/_run402/push.js` (`Run402Push.subscribe({ accessToken })`), and the app's phone app registers its device with its native session (`POST /_run402/push/devices`). The two reads show who is signed up, how much of the organization's daily delivery cap is used, and what happened to each message. Also project-scoped as `r.project(id).push.status()` / `.getMessage(messageId)` / `.setFcmCredential(serviceAccount)` / `.removeFcmCredential()`.
 
 ```
 status(projectId): Promise<PushStatus>                          // GET /projects/v1/:project_id/push
 // PushStatus = { project_id,
+//   providers: { fcm: { configured: false } | { configured: true, provider: "fcm", firebase_project_id, client_email,
+//     key_id, set_at, last_error: string | null, last_error_at: string | null } },
 //   subscriptions: { total, users: [{ user_id, phones: PushPhone[] }], users_shown, users_total, has_more },
+//   devices: { total, users: [{ user_id, devices: PushDevice[] }], users_shown, users_total, has_more },
 //   usage: { deliveries_today, limit, resets_at, scope: "organization", org_id },
 //   messages: PushMessageSummary[] }      ← the latest 10
 // PushPhone = { subscription_id, push_service, created_at, last_confirmed_at, last_accepted_at: string | null }
+// PushDevice = { device_id, provider: "fcm", created_at, last_confirmed_at, last_accepted_at: string | null }
 // PushMessageSummary = { message_id, created_at, status: "no_subscribers" | "queued" | "sending" | "completed",
 //   devices, outcomes: { queued, retrying, accepted, removed, failed } }
 getMessage(projectId, messageId): Promise<PushMessage>           // GET …/push/messages/:message_id
-// PushMessage = PushMessageSummary & { project_id, title, body, url, tag, to: { user_id } | null,
-//   deliveries: PushDelivery[], deliveries_shown, has_more }
-// PushDelivery = { subscription_id, user_id, push_service, status: "queued" | "retrying" | "accepted" | "removed" | "failed",
-//   attempts, last_status: number | null, last_error: string | null, updated_at }
+// PushMessage = PushMessageSummary & { project_id, title: string | null, body, url, tag, data: Record<string, string> | null,
+//   to: { user_id } | null, deliveries: PushDelivery[], deliveries_shown, has_more }
+// PushDelivery = { kind: "web" | "native", subscription_id? (web), device_id? and provider? (native), user_id, push_service,
+//   status: "queued" | "retrying" | "accepted" | "removed" | "failed", attempts, last_status: number | null,
+//   last_error: string | null, updated_at }
+setFcmCredential(projectId, serviceAccount): Promise<PushFcmCredential>   // POST …/push/providers/fcm
+// serviceAccount: the JSON object Firebase downloads for a service account. Checked with Google first.
+// PushFcmCredential = { provider: "fcm", firebase_project_id, client_email, key_id, set_at, last_error, last_error_at,
+//   devices_removed }   ← never the key
+removeFcmCredential(projectId): Promise<PushFcmRemoval>         // DELETE …/push/providers/fcm
+// PushFcmRemoval = { provider: "fcm", status: "removed", devices_removed }
 ```
 
 ```ts
@@ -818,7 +829,7 @@ if (latest) {
 }
 ```
 
-`removed` means the push service said the phone is gone and the platform deleted its subscription. Accepted credentials: the project's service_key, a wallet/control-plane principal with `project.read`, or a grant key; the SDK sends your principal when the credential provider has one, else the locally cached service key. An unknown message id, or another project's, is a 404 `ApiError` carrying the gateway's `code`. Neither read carries a subscription's endpoint or keys, so both run on the MCP `run` sandbox. The daily cap counts deliveries per organization per UTC day (100 / 1,000 / 10,000 on prototype / hobby / team); `push.send` refuses a message that does not fit whole with `403 QUOTA_EXCEEDED`. Push needs Run402 Cloud.
+`removed` means the push service said the phone is gone and the platform deleted its subscription. Accepted credentials: the project's service_key, a wallet/control-plane principal with `project.read`, or a grant key; the SDK sends your principal when the credential provider has one, else the locally cached service key. An unknown message id, or another project's, is a 404 `ApiError` carrying the gateway's `code`. Neither read carries a subscription's endpoint, a device's token or the Firebase key, so both run on the MCP `run` sandbox. `setFcmCredential` takes a key, so the sandbox refuses it with `SECRET_REQUIRES_CLI` naming `run402 push fcm set --service-account <path>`; a key Google refuses is a 422 `ApiError` (`details.reason: "provider_rejected"`), and one for another Firebase project removes the devices registered under the old one (`devices_removed`). The daily cap counts deliveries per organization per UTC day (100 / 1,000 / 10,000 on prototype / hobby / team); `push.send` refuses a message that does not fit whole with `403 QUOTA_EXCEEDED`. Push needs Run402 Cloud.
 
 ### `r.appRepos`
 

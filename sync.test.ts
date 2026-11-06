@@ -104,6 +104,7 @@ function parseCliCommands(): string[] {
   for (const action of parseSubcommands(join(__dirname, "cli/lib/buzz-notifications.mjs"))) cmds.push(`buzz:notifications:${action}`);
   // `app-repos tokens` dispatches out of app-repos.mjs the same way.
   for (const action of parseSubcommands(join(__dirname, "cli/lib/app-repo-tokens.mjs"))) cmds.push(`app-repos:tokens:${action}`);
+  for (const action of parsePushFcmActions()) cmds.push(`push:fcm:${action}`);
   for (const action of parseDeployReleasesActions()) {
     cmds.push(`deploy:releases:${action}`);
   }
@@ -151,6 +152,7 @@ function parseOpenClawCommands(): string[] {
   for (const action of parseSubcommands(join(__dirname, "cli/lib/buzz-notifications.mjs"))) cmds.push(`buzz:notifications:${action}`);
   // `app-repos tokens` dispatches out of app-repos.mjs the same way.
   for (const action of parseSubcommands(join(__dirname, "cli/lib/app-repo-tokens.mjs"))) cmds.push(`app-repos:tokens:${action}`);
+  for (const action of parsePushFcmActions()) cmds.push(`push:fcm:${action}`);
   for (const action of parseDeployReleasesActions()) {
     cmds.push(`deploy:releases:${action}`);
   }
@@ -284,6 +286,18 @@ function parseStripeGroupActions(varName: string): string[] {
   const src = readFileSync(filePath, "utf-8");
   const actions: string[] = [];
   const re = new RegExp(`${varName}\\s*===\\s*"([\\w-]+)"`, "g");
+  let m;
+  while ((m = re.exec(src))) actions.push(m[1]);
+  return [...new Set(actions)].sort();
+}
+
+/** `push fcm <action>`: the nested group dispatches on `fcmAction === "<action>"`. */
+function parsePushFcmActions(): string[] {
+  const filePath = join(__dirname, "cli/lib/push.mjs");
+  if (!existsSync(filePath)) return [];
+  const src = readFileSync(filePath, "utf-8");
+  const actions: string[] = [];
+  const re = /fcmAction\s*===\s*"([\w-]+)"/g;
   let m;
   while ((m = re.exec(src))) actions.push(m[1]);
   return [...new Set(actions)].sort();
@@ -617,6 +631,9 @@ const SURFACE: Capability[] = [
   // `push status --message <id>` is the per-message read; the SDK's
   // push.getMessage is tracked in SDK_ONLY_METHODS.
   { id: "push_status",                  endpoint: "GET /projects/v1/:project_id/push (+ /push/messages/:message_id)", cli: "push:status", openclaw: "push:status" },
+  // tenant native push: the project's Firebase key for its phone app's devices.
+  { id: "push_fcm_set",                 endpoint: "POST /projects/v1/:project_id/push/providers/fcm",   cli: "push:fcm:set",    openclaw: "push:fcm:set" },
+  { id: "push_fcm_remove",              endpoint: "DELETE /projects/v1/:project_id/push/providers/fcm", cli: "push:fcm:remove", openclaw: "push:fcm:remove" },
   // App repos: plain git repositories the app owns (never the `repos` vault
   // family). Writes from agents go through git (`clone` + `git push`) or a
   // function's `repo.commit`; the SDK's get/diff/commit/revert are tracked in
@@ -1258,6 +1275,8 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   // read `live.changes` is the polling-friendly shape and the mapped method.
   live_changes: "live.changes",
   push_status: "push.status",
+  push_fcm_set: "push.setFcmCredential",
+  push_fcm_remove: "push.removeFcmCredential",
   list_app_repos: "appRepos.list",
   create_app_repo: "appRepos.create",
   delete_app_repo: "appRepos.delete",

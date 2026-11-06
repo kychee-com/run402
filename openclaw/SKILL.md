@@ -989,9 +989,10 @@ The phone shows the notification (a web standard); Run402 keeps each signed-in u
 ```bash
 run402 push status                       # phones by user, today's deliveries vs the daily cap, the latest 10 messages
 run402 push status --message pmsg_123    # one message's per-phone deliveries: accepted | retrying | failed | removed
+run402 push fcm set --service-account ./firebase-key.json   # the app's Firebase key, for its own phone app's devices
 ```
 
-The cap counts deliveries per organization per UTC day (100 prototype, 1,000 hobby, 10,000 team); a message that does not fit is refused whole: `403 QUOTA_EXCEEDED` with an upgrade next action, or on team (no higher tier) `429 RATE_LIMITED` with `Retry-After` until the UTC day resets. Push needs Run402 Cloud (`PUSH_UNSUPPORTED` on Core). Guide: <https://docs.run402.com/build/push/>.
+The cap counts deliveries per organization per UTC day (100 prototype, 1,000 hobby, 10,000 team); a message that does not fit is refused whole: `403 QUOTA_EXCEEDED` with an upgrade next action, or on team (no higher tier) `429 RATE_LIMITED` with `Retry-After` until the UTC day resets. Push needs Run402 Cloud (`PUSH_UNSUPPORTED` on Core). A phone app of its own (Android, or iPhone with Firebase), signed in with native sign-in, registers its Firebase token at `POST /_run402/push/devices` with its session's Bearer; the same `push.send` reaches it, and with `data` it gets only that data (never the title or body), so the app fetches the words itself. A device stops receiving the moment its session ends. Guide: <https://docs.run402.com/build/push/>.
 
 ## App repos — content your app's users edit
 

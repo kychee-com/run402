@@ -42,6 +42,7 @@ const SAMPLE_ARGS: Record<SecretReturningMethod, unknown[]> = {
   "grants.create": [PROJECT, { wallet: WALLET, capability: "deploy", key: {} }],
   "grants.createKey": [PROJECT, "grant_1", {}],
   "grants.rotateKey": [PROJECT, "key_1"],
+  "push.setFcmCredential": [PROJECT, { type: "service_account", private_key: "pem_secret" }],
   "projects.stripe.account.connect": [PROJECT, { country: "DE" }],
   "projects.stripe.onboardingLinks.create": [PROJECT, {}],
   "repos.handoff": [{ project_id: PROJECT, note: { summary: "x" } }],

@@ -22,6 +22,7 @@ const originalExit = process.exit;
 const originalCwd = process.cwd();
 
 let calls = [];
+let lastBody = null;
 let stdout = [];
 let stderr = [];
 let run;
@@ -83,6 +84,11 @@ async function mockFetch(input, init) {
   }
   calls.push({ url, method, headers });
   if (url === BASE && method === "GET") return json(STATUS);
+  if (url === `${BASE}/providers/fcm` && method === "POST") {
+    lastBody = JSON.parse(isRequest ? await input.text() : String(init?.body ?? "null"));
+    return json({ provider: "fcm", firebase_project_id: "kiwi-app", client_email: "push@kiwi-app.iam.gserviceaccount.com", key_id: "abc", set_at: "2026-11-06T12:00:00.000Z", last_error: null, last_error_at: null, devices_removed: 0 }, 201);
+  }
+  if (url === `${BASE}/providers/fcm` && method === "DELETE") return json({ provider: "fcm", status: "removed", devices_removed: 2 });
   if (url === `${BASE}/messages/pmsg_1` && method === "GET") return json(MESSAGE);
   if (url === `${BASE}/messages/pmsg_gone` && method === "GET") {
     return json({ error: "RESOURCE_NOT_FOUND", code: "RESOURCE_NOT_FOUND", message: "No such push message in this project." }, 404);
@@ -196,7 +202,47 @@ describe("run402 push status", () => {
     assert.equal(threw?.message, "process.exit(1)");
     const envelope = JSON.parse(err.split("\n").find((line) => line.startsWith("{")));
     assert.equal(envelope.code, "UNKNOWN_SUBCOMMAND");
-    assert.deepEqual(envelope.details.known_subcommands, ["status"]);
+    assert.deepEqual(envelope.details.known_subcommands, ["fcm", "status"]);
     assert.deepEqual(envelope.details.closest, ["status"]);
+  });
+});
+
+describe("run402 push fcm", () => {
+  it("set reads the key file and sends it as service_account, printing only the public fields", async () => {
+    const keyFile = join(tempDir, "firebase-key.json");
+    const account = { type: "service_account", project_id: "kiwi-app", private_key_id: "abc", private_key: "-----BEGIN PRIVATE KEY-----\\nx\\n-----END PRIVATE KEY-----\\n", client_email: "push@kiwi-app.iam.gserviceaccount.com" };
+    writeFileSync(keyFile, JSON.stringify(account));
+    const { threw, out, err } = await runCaptured("fcm", ["set", "--service-account", keyFile, "--project", "prj_kiwi"]);
+    assert.equal(threw, null, err);
+    assert.equal(calls[0].url, `${BASE}/providers/fcm`);
+    assert.equal(calls[0].method, "POST");
+    assert.deepEqual(lastBody, { service_account: account });
+    const printed = JSON.parse(out);
+    assert.equal(printed.firebase_project_id, "kiwi-app");
+    assert.ok(!out.includes("PRIVATE KEY"), "the key is never printed");
+  });
+
+  it("set without --service-account, or with a file that is not JSON, fails before any request", async () => {
+    const missing = await runCaptured("fcm", ["set", "--project", "prj_kiwi"]);
+    assert.equal(missing.threw?.message, "process.exit(1)");
+    assert.ok(/--service-account/.test(missing.err));
+    const notJson = join(tempDir, "not.json");
+    writeFileSync(notJson, "hello");
+    const bad = await runCaptured("fcm", ["set", "--service-account", notJson, "--project", "prj_kiwi"]);
+    assert.equal(bad.threw?.message, "process.exit(1)");
+    assert.equal(calls.length, 0);
+  });
+
+  it("remove deletes the key and prints how many devices went with it", async () => {
+    const { threw, out } = await runCaptured("fcm", ["remove", "--project", "prj_kiwi"]);
+    assert.equal(threw, null);
+    assert.equal(calls[0].method, "DELETE");
+    assert.deepEqual(JSON.parse(out), { provider: "fcm", status: "removed", devices_removed: 2 });
+  });
+
+  it("an unknown fcm action is UNKNOWN_SUBCOMMAND", async () => {
+    const { threw, err } = await runCaptured("fcm", ["rotate", "--project", "prj_kiwi"]);
+    assert.equal(threw?.message, "process.exit(1)");
+    assert.ok(/UNKNOWN_SUBCOMMAND/.test(err), err);
   });
 });

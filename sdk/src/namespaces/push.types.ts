@@ -1,7 +1,9 @@
 /**
  * Response types for the `push` namespace — the agent-side check on a
- * project's web push notifications (`GET /projects/v1/:project_id/push` and
- * `GET /projects/v1/:project_id/push/messages/:message_id`).
+ * project's push notifications (`GET /projects/v1/:project_id/push` and
+ * `GET /projects/v1/:project_id/push/messages/:message_id`), and the Firebase
+ * key its phone app's devices are reached with
+ * (`/projects/v1/:project_id/push/providers/fcm`).
  *
  * A deployed function sends with `push.send(...)` from `@run402/functions`;
  * a signed-in end user signs a phone up from the app's own page. These reads
@@ -37,6 +39,65 @@ export interface PushSubscriptionsSummary {
   users_total: number;
   /** true when `users` is a leading page of `users_total`. */
   has_more: boolean;
+}
+
+/** One device a phone app registered with its native session. Never carries the token. */
+export interface PushDevice {
+  /** `pdev_…`. */
+  device_id: string;
+  /** `fcm` (Firebase Cloud Messaging). */
+  provider: "fcm";
+  created_at: string;
+  /** When the app last registered this token. */
+  last_confirmed_at: string;
+  /** When Firebase last accepted a delivery to it; null until one is. */
+  last_accepted_at: string | null;
+}
+
+/** A user and the devices their phone app registered (up to 10). */
+export interface PushDeviceUser {
+  user_id: string;
+  devices: PushDevice[];
+}
+
+/** Phone-app devices whose native session is live. */
+export interface PushDevicesSummary {
+  total: number;
+  users: PushDeviceUser[];
+  users_shown: number;
+  users_total: number;
+  has_more: boolean;
+}
+
+/** The project's Firebase key, by its public fields. Never the key. */
+export interface PushFcmCredentialView {
+  provider: "fcm";
+  firebase_project_id: string;
+  client_email: string | null;
+  key_id: string;
+  set_at: string;
+  /** What Google last said when it refused the key; null while it works. */
+  last_error: string | null;
+  last_error_at: string | null;
+}
+
+/** `providers` in the status read: `configured: false` until a key is set. */
+export interface PushProviders {
+  fcm: ({ configured: true } & PushFcmCredentialView) | { configured: false };
+}
+
+/** `POST /projects/v1/:project_id/push/providers/fcm`. */
+export interface PushFcmCredential extends PushFcmCredentialView {
+  /** Devices removed because the key names another Firebase project. */
+  devices_removed: number;
+  next_actions?: Array<{ type: string; method?: string; path?: string; why?: string }>;
+}
+
+/** `DELETE /projects/v1/:project_id/push/providers/fcm`. */
+export interface PushFcmRemoval {
+  provider: "fcm";
+  status: "removed";
+  devices_removed: number;
 }
 
 /** Today's deliveries against the organization's daily cap (one UTC day). */
@@ -86,15 +147,25 @@ export interface PushMessageSummary {
 /** `GET /projects/v1/:project_id/push`. */
 export interface PushStatus {
   project_id: string;
+  /** The Firebase key for the phone app's devices. */
+  providers: PushProviders;
   subscriptions: PushSubscriptionsSummary;
+  /** The phone app's devices. */
+  devices: PushDevicesSummary;
   usage: PushUsage;
   /** The latest 10 messages, newest first. */
   messages: PushMessageSummary[];
 }
 
-/** One message's delivery to one subscription. */
+/** One message's delivery to one browser (`kind: "web"`) or phone-app device (`kind: "native"`). */
 export interface PushDelivery {
-  subscription_id: string;
+  kind: "web" | "native";
+  /** Set on a web delivery. */
+  subscription_id?: string;
+  /** Set on a native delivery. */
+  device_id?: string;
+  /** Set on a native delivery: `fcm`. */
+  provider?: "fcm";
   user_id: string;
   push_service: string;
   status: PushDeliveryStatus;
@@ -108,8 +179,11 @@ export interface PushDelivery {
 /** `GET /projects/v1/:project_id/push/messages/:message_id`. */
 export interface PushMessage extends PushMessageSummary {
   project_id: string;
-  title: string;
+  /** Null for a message that carried only `data`. */
+  title: string | null;
   body: string | null;
+  /** What phone apps' devices received; null when none was sent. */
+  data: Record<string, string> | null;
   url: string | null;
   tag: string | null;
   /** The addressed user; null when the message went to every signed-up phone. */

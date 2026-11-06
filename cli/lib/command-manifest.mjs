@@ -252,6 +252,8 @@ export const COMMAND_MANIFEST = [
   { path: ["live"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["--tables", "cells", "--once"], runStyle: "merged" },
   // ── push ─────────────────────────────────────────────────────────────────
   { path: ["push", "status"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
+  { path: ["push", "fcm", "set"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["--service-account", "__FIXTURE_FILE__"], runStyle: "sub" },
+  { path: ["push", "fcm", "remove"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
   // ── app repos (plain git repositories the app owns; not the `repos` vaults) ──
   // `credential` (git's credential-helper protocol on stdin) is installed by
   // `clone` and invoked by git, never by a person, so it has no entry here.

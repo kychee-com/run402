@@ -1,6 +1,6 @@
 ---
 title: Push notifications
-description: Sign a signed-in user's phone up from the app's page, send from a function, and check delivery from the CLI.
+description: Sign a signed-in user's phone up from the app's page or your own phone app, send from a function, and check delivery from the CLI.
 ---
 
 A Run402 app can put a notification on its users' phones. The notification itself is a web standard (the Push API and a service worker): the phone's browser shows it, even when the app is closed. What Run402 adds is the server side: it keeps each phone's subscription against the signed-in user, encrypts every message for each phone, delivers it to the phone's push service, and drops subscriptions the push service says are gone. **The server decides when to notify, never the phone.** Something on your side has to notice a condition and call `push.send`, usually a scheduled function.
@@ -10,7 +10,7 @@ run402 push status --project prj_example
 run402 push status --message pmsg_123 --project prj_example
 ```
 
-Use the [push command reference](/cli/functions/) for the output fields and the [SDK namespace](/sdk/resources/) for the typed reads (`r.push.status`, `r.push.getMessage`). Push needs Run402 Cloud: on self-hosted Run402 Core, `push.send` throws `PUSH_UNSUPPORTED`.
+Use the [push command reference](/cli/functions/) for the output fields and the [SDK namespace](/sdk/resources/) for the typed reads (`r.push.status`, `r.push.getMessage`). Push needs Run402 Cloud: on self-hosted Run402 Core, `push.send` throws `PUSH_UNSUPPORTED`. An app with its own Android app (or an iPhone app built with Firebase) reaches it through the same `push.send`: see [Your own phone app](#your-own-phone-app).
 
 ## Sign a phone up (the browser side)
 
@@ -99,6 +99,47 @@ export default async () => {
 
 Logging a walk sets `last_walk_at` past `alerted_at`, which re-arms the next gap. Deploy with `run402 deploy --manifest run402.json`.
 
+## Your own phone app
+
+A phone app signed in with [native sign-in](/build/auth/) gets the same notifications through Firebase Cloud Messaging. The app's Firebase project is yours; Run402 holds its key and does the sending.
+
+1. **Give Run402 the Firebase key, once.** In the Firebase console, Project settings, Service accounts, generate a private key for a service account allowed to send messages, then:
+
+   ```bash
+   run402 push fcm set --service-account ./firebase-key.json --project prj_example
+   ```
+
+   Run402 checks the key with Google before storing it (`422 VALIDATION_FAILED` with `details.reason: "provider_rejected"` when Google refuses it), keeps it encrypted, and answers only its public fields (`firebase_project_id`, `client_email`, `key_id`). `run402 push fcm remove` takes it away again, with every device registered under it. A key for a different Firebase project removes the devices registered under the old one (`devices_removed`).
+
+2. **Register the device from the app**, at start-up and whenever Firebase rotates the token (`onNewToken`), with the native session's access token:
+
+   ```http
+   POST https://<app host>/_run402/push/devices
+   Authorization: Bearer r402native_at_v1.…
+   Content-Type: application/json
+
+   { "provider": "fcm", "token": "<FirebaseMessaging.getToken()>" }
+   ```
+
+   The answer is `201 { device_id, user_id, provider: "fcm", status: "registered", replaced_device_id }` (`200` when this session already had that token). A session holds one device, so a rotated token replaces the old one; a user keeps up to 10. Only the native session's token is accepted: a cookie or a project JWT is `401 AUTH_REQUIRED`, an expired access token `401 R402_AUTH_SESSION_EXPIRED` (refresh, then register again). Before the key is set the answer is `403 PUSH_PROVIDER_NOT_CONFIGURED`. `DELETE /_run402/push/devices/<device_id>` removes one of the caller's devices. When the member signs out (or signs out everywhere, or the session is revoked), the device stops receiving at once, with no call from the app.
+
+3. **Send as before.** One `push.send` reaches the user's browsers and devices, counted against the same daily cap. Add `data` when the app should handle the message itself:
+
+   ```ts
+   await push.send({
+     to: { user_id: member.id },
+     title: "Tal", // browsers show this; it is end-to-end encrypted to the browser
+     body: "Abba, what was Saba's school called?",
+     url: `/threads/${threadId}`,
+     data: { thread_id: String(threadId), message_id: String(messageId) },
+   });
+   // 202: { message_id, status: "queued", devices: 2, web_devices: 1, native_devices: 1 }
+   ```
+
+   **With `data`**, the device gets a Firebase data message: your keys plus `run402_message_id`, `run402_url` and `run402_tag`, and never the title or body. Google's servers see only what you put in `data`; the app fetches the rest with the member's session and shows its own notification. **Without `data`**, the phone shows `title` and `body` by itself, and a tap opens the app with the same `run402_*` keys in the launch intent's extras. Browsers always get the title and body and never `data`; a message with only `data` (no `title`) reaches phone apps only. `data` holds string values, at most 2,048 bytes as JSON; keys start with a letter and may not start with `run402_`, `google` or `gcm`.
+
+`run402 push status` lists the devices under `devices.users[].devices[]` and the key under `providers.fcm` (with `last_error` when Google refused it); in `--message`, each delivery has `kind: "web"` or `kind: "native"`. A native delivery reads `removed` when Firebase says the app was uninstalled (`UNREGISTERED`) or the token belongs to another Firebase project, and when the device's session ended before the send.
+
 ## Read the result and recover
 
 `run402 push status` shows who is signed up (`subscriptions.users[].phones[]`, with each phone's `push_service`), today's `usage` against the cap, and the latest 10 messages with their `status` (`no_subscribers`, `queued`, `sending`, `completed`) and `outcomes` counts. `run402 push status --message <message_id>` lists every delivery: `accepted` (the push service took it), `retrying`, `failed` (with `last_status` and `last_error`), or `removed` (the push service said the phone is gone, so the platform deleted its subscription; that user signs up again from the app). An unknown message id, or another project's, is a 404.
@@ -106,3 +147,4 @@ Logging a walk sets `last_walk_at` past `alerted_at`, which re-arms the next gap
 - No phones listed: the user never completed `subscribe`, or signed up while signed out. On an iPhone, check that they opened the Home Screen app, not Safari.
 - `accepted` but nothing on screen: the phone's own notification settings or focus mode hold it; the platform's part is done.
 - `QUOTA_EXCEEDED`: wait for `resets_at`, or upgrade the organization's tier.
+- Every native delivery `failed` and `providers.fcm.last_error` is set: Google refused the key (deleted, or not allowed to send); set a new one with `run402 push fcm set`.

@@ -2183,6 +2183,10 @@
         },
         {
           "owner": "public",
+          "source": "cli/lib/push.mjs"
+        },
+        {
+          "owner": "public",
           "source": "cli/lib/wallets.mjs"
         }
       ],

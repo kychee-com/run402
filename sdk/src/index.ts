@@ -162,10 +162,11 @@ export class Run402 {
    */
   readonly live: Live;
   /**
-   * Web push notifications: who is signed up, today's deliveries against the
-   * organization's daily cap, and each message's delivery outcomes. A
-   * deployed function sends with `push.send(...)` from `@run402/functions`.
-   * Also project-scoped as `r.project(id).push`.
+   * Push notifications: who is signed up (browsers and phone-app devices),
+   * today's deliveries against the organization's daily cap, each message's
+   * delivery outcomes, and the Firebase key the phone app's devices are
+   * reached with. A deployed function sends with `push.send(...)` from
+   * `@run402/functions`. Also project-scoped as `r.project(id).push`.
    */
   readonly push: Push;
   /**
