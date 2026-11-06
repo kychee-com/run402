@@ -184,7 +184,7 @@ describe("MCP server end to end (stdio, mock gateway)", { timeout: 120_000 }, ()
     const before = requests.length;
     const result = await client.callTool({
       name: "run",
-      arguments: { code: `await r.project("${PROJECT}").grants.create({ wallet: "0x1111111111111111111111111111111111111111", capability: "deploy", key: true })` },
+      arguments: { code: `await r.project("${PROJECT}").grants.create({ wallet: "0x1111111111111111111111111111111111111111", capability: "deploy", key: {} })` },
     });
     assert.equal((result as { isError?: boolean }).isError, true);
     const run3 = envelopeOf(result);
