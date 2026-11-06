@@ -27,7 +27,7 @@ Subcommands:
   set-password --token <bearer> --new <password> [--current <password>] [--project <project_id>]
     Change, reset, or set a user's password. Requires the user's access_token.
 
-  settings [--allow-password-set <true|false>] [--preferred <method|null>] [--public-signup <policy>] [--require-admin-passkey <true|false>] [--allowed-email-domains <csv|none>] [--test-mode <true|false|null>] [--project <project_id>]
+  settings [--allow-password-set <true|false>] [--preferred <method|null>] [--public-signup <policy>] [--require-admin-passkey <true|false>] [--allowed-email-domains <csv|none>] [--google-client-ids <csv|none>] [--test-mode <true|false|null>] [--project <project_id>]
     Update project auth settings (requires service_key).
 
   passkey-register-options --token <bearer> --app-origin <origin> [--project <project_id>]
@@ -183,6 +183,7 @@ Options:
   --public-signup <policy>              open, known_email, or invite_only
   --require-admin-passkey <true|false>  Require passkey auth for project_admin sessions
   --allowed-email-domains <csv|none>    Restrict hosted Google sign-in to these domains; 'none' clears (unrestricted)
+  --google-client-ids <csv|none>        Google OAuth client IDs your phone apps sign in with; 'none' turns native sign-in off
   --test-mode <true|false|null>         Allow test sessions (run402 dev --as); null = tier default (on for prototype)
   --project <project_id>                        Project ID (defaults to active project)
 
@@ -191,11 +192,15 @@ Notes:
   --allowed-email-domains is comma-separated (e.g. kychee.com,example.com); pass 'none' to clear.
   Domains are normalized + validated server-side; hosted Google sign-in from any
   other domain is rejected at token issuance (R402_AUTH_DOMAIN_NOT_ALLOWED).
+  --google-client-ids lists the web client ID your app passes to Google and each
+  Android or iOS client ID (one per signing certificate), from your own Google
+  Cloud project; phone apps then sign in at POST /auth/v1/native-sessions.
 
 Examples:
   run402 auth settings --allow-password-set true
   run402 auth settings --preferred passkey --require-admin-passkey true
   run402 auth settings --allowed-email-domains kychee.com,example.com
+  run402 auth settings --google-client-ids <web-client-id>,<android-client-id>
   run402 auth settings --test-mode true
 `,
   "passkey-register-options": `run402 auth passkey-register-options — Create passkey registration options
@@ -320,8 +325,8 @@ const AUTH_FLAGS = {
     values: ["--token", "--new", "--current", "--project"],
   },
   settings: {
-    known: ["--allow-password-set", "--preferred", "--public-signup", "--require-admin-passkey", "--allowed-email-domains", "--test-mode", "--project", "--help", "-h"],
-    values: ["--allow-password-set", "--preferred", "--public-signup", "--require-admin-passkey", "--allowed-email-domains", "--test-mode", "--project"],
+    known: ["--allow-password-set", "--preferred", "--public-signup", "--require-admin-passkey", "--allowed-email-domains", "--google-client-ids", "--test-mode", "--project", "--help", "-h"],
+    values: ["--allow-password-set", "--preferred", "--public-signup", "--require-admin-passkey", "--allowed-email-domains", "--google-client-ids", "--test-mode", "--project"],
   },
   "passkey-register-options": {
     known: ["--token", "--app-origin", "--project", "--help", "-h"],
@@ -581,6 +586,7 @@ async function settings(args) {
   const preferredRaw = parseFlag(args, "--preferred");
   const publicSignup = parseFlag(args, "--public-signup");
   const domainsRaw = parseFlag(args, "--allowed-email-domains");
+  const clientIdsRaw = parseFlag(args, "--google-client-ids");
   const testModeRaw = parseFlag(args, "--test-mode");
   if (testModeRaw === null && args.includes("--test-mode")) {
     fail({ code: "BAD_USAGE", message: "Missing --test-mode <true|false|null>" });
@@ -599,6 +605,7 @@ async function settings(args) {
     preferredRaw === null &&
     publicSignup === null &&
     domainsRaw === null &&
+    clientIdsRaw === null &&
     testModeRaw === null
   ) {
     fail({
@@ -632,6 +639,16 @@ async function settings(args) {
         : domainsRaw.split(",").map((d) => d.trim()).filter((d) => d.length > 0);
   }
 
+  // --google-client-ids: comma-separated list; `none` clears it (native Google
+  // sign-in off); omitted preserves. Server validates each entry.
+  let googleClientIds;
+  if (clientIdsRaw !== null) {
+    googleClientIds =
+      clientIdsRaw.trim().toLowerCase() === "none"
+        ? []
+        : clientIdsRaw.split(",").map((d) => d.trim()).filter((d) => d.length > 0);
+  }
+
   try {
     const patch = {
       allow_password_set: allow,
@@ -639,6 +656,7 @@ async function settings(args) {
       public_signup: publicSignup ?? undefined,
       require_passkey_for_project_admin: requireAdminPasskey,
       allowed_email_domains: allowedEmailDomains,
+      google_client_ids: googleClientIds,
       test_mode: testModeRaw === null ? undefined : testModeRaw === "null" ? null : testModeRaw === "true",
     };
     const data = await getSdk().auth.settings(projectId, patch);

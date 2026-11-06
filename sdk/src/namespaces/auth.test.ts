@@ -113,6 +113,28 @@ describe("auth.settings", () => {
     assert.deepEqual(result.allowed_email_domains, ["kychee.com"]);
   });
 
+  it("PATCHes google_client_ids through to the body and returns them (native Google sign-in)", async () => {
+    const ids = ["123456789012-abcdefghijklmnopqrstuvwxyz012345.apps.googleusercontent.com"];
+    const { fetch, calls } = mockFetch(() => jsonResponse({ google_client_ids: ids }));
+    const sdk = makeSdk(makeCreds(), fetch);
+    const result = await sdk.auth.settings("prj_known", { google_client_ids: ids });
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), { google_client_ids: ids });
+    assert.deepEqual(result.google_client_ids, ids);
+  });
+
+  it("rejects google_client_ids that are not a string array before requesting", async () => {
+    const { fetch, calls } = mockFetch(() => {
+      throw new Error("unexpected fetch for invalid google_client_ids");
+    });
+    const sdk = makeSdk(makeCreds(), fetch);
+    await assert.rejects(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      sdk.auth.settings("prj_known", { google_client_ids: "one-client" as any }),
+      (err: unknown) => err instanceof LocalError && /google_client_ids must be an array/.test(err.message),
+    );
+    assert.equal(calls.length, 0);
+  });
+
   it("PATCHes test_mode true, false and null (null = tier default)", async () => {
     for (const value of [true, false, null]) {
       const { fetch, calls } = mockFetch(() =>

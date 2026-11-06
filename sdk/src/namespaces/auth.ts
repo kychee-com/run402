@@ -103,6 +103,14 @@ export interface AuthSettings {
    */
   allowed_email_domains?: string[];
   /**
+   * The Google OAuth client IDs this project's phone apps sign in with: the
+   * web client ID the app passes to Google as its server client ID, and each
+   * Android or iOS client ID its builds are registered under, from the app
+   * owner's own Google Cloud project. At most 10; `[]` turns native Google
+   * sign-in off. Phone apps then sign in at `POST /auth/v1/native-sessions`.
+   */
+  google_client_ids?: string[];
+  /**
    * Whether `createTestSession` may mint for this project: `true` / `false`
    * set it explicitly, `null` returns to the tier default (on for prototype,
    * off for hobby and team).
@@ -117,6 +125,8 @@ export interface AuthSettingsResult {
   require_passkey_for_project_admin: boolean;
   /** Normalized email-domain allowlist for hosted Google sign-in; `[]` = unrestricted. */
   allowed_email_domains: string[];
+  /** Google OAuth client IDs for native sign-in; `[]` = native Google sign-in off. */
+  google_client_ids: string[];
   /** Test-session minting: the stored setting, the value in force, and where it comes from. */
   test_mode?: {
     value: boolean | null;
@@ -209,6 +219,7 @@ const AUTH_SETTINGS_FIELDS = [
   "public_signup",
   "require_passkey_for_project_admin",
   "allowed_email_domains",
+  "google_client_ids",
   "test_mode",
 ] as const;
 const SIGN_IN_METHODS = ["password", "magic_link", "oauth_google", "passkey"] as const;
@@ -262,6 +273,17 @@ function validateAuthSettings(settings: AuthSettings): void {
     ) {
       throw new LocalError(
         'allowed_email_domains must be an array of strings (e.g., ["example.com"]); pass [] to clear.',
+        "updating auth settings",
+      );
+    }
+  }
+  if (raw.google_client_ids !== undefined) {
+    if (
+      !Array.isArray(raw.google_client_ids) ||
+      !raw.google_client_ids.every((d) => typeof d === "string")
+    ) {
+      throw new LocalError(
+        'google_client_ids must be an array of Google OAuth client IDs (e.g., ["<project_number>-<client_suffix>.apps.googleusercontent.com"]); pass [] to clear.',
         "updating auth settings",
       );
     }
