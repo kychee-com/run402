@@ -79,7 +79,9 @@ while [ "$attempt" -lt "$max_attempts" ]; do
   fi
 
   echo "[$label] npm publish $spec (attempt $attempt/$max_attempts)"
-  npm publish --access public --provenance 2>&1 | tee "$log"
+  # --ignore-scripts=false: .npmrc refuses dependency install scripts, which
+  # would also skip the cli and sdk prepack that stages the tarball contents.
+  npm publish --ignore-scripts=false --access public --provenance 2>&1 | tee "$log"
   rc=${PIPESTATUS[0]}
 
   if [ "$rc" -eq 0 ]; then

@@ -26,7 +26,7 @@
  * under an id (retries read-and-compare).
  */
 
-import { parse, evaluate, type Node, type DocumentNode, type ObjectNode, type ArrayNode } from "@humanwhocodes/momoa";
+import { parse, evaluate, type Node, type DocumentNode, type ObjectNode, type ArrayNode } from "../strict-json.js";
 import { ed25519, x25519 } from "@noble/curves/ed25519.js";
 import { xchacha20poly1305 } from "@noble/ciphers/chacha.js";
 import { sha256 } from "@noble/hashes/sha2.js";
@@ -34,7 +34,7 @@ import { hkdf } from "@noble/hashes/hkdf.js";
 import { hmac } from "@noble/hashes/hmac.js";
 import { bytesToHex, hexToBytes, utf8ToBytes, concatBytes } from "@noble/hashes/utils.js";
 import { base64urlnopad } from "@scure/base";
-import { canonicalize } from "json-canonicalize";
+import { canonicalize } from "../jcs.js";
 import { CipherSuite, DhkemX25519HkdfSha256, HkdfSha256 } from "@hpke/core";
 import { Chacha20Poly1305 } from "@hpke/chacha20poly1305";
 import { LocalError } from "../errors.js";
@@ -395,7 +395,7 @@ function inspectStrict(node: Node, path: string): void {
     case "Object": {
       const seen = new Set<string>();
       for (const member of (node as ObjectNode).members) {
-        const name = member.name.type === "String" ? member.name.value : member.name.name;
+        const name = member.name.value;
         if (seen.has(name)) {
           fail("VAULT_STRICT_PARSE", `duplicate member ${name} at ${path}`, "strict-parsing r402s/v0 object", { reason: "duplicate-member", path: `${path}.${name}` });
         }
@@ -421,7 +421,7 @@ function inspectStrict(node: Node, path: string): void {
 export function parseVaultStrict(text: string): unknown {
   let ast: DocumentNode;
   try {
-    ast = parse(text, { mode: "json", allowTrailingCommas: false });
+    ast = parse(text);
   } catch {
     fail("VAULT_STRICT_PARSE", "invalid JSON", "strict-parsing r402s/v0 object", { reason: "invalid-json" });
   }

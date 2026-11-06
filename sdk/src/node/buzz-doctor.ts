@@ -21,7 +21,7 @@ import { accessSync, constants as fsConstants, existsSync, realpathSync } from "
 import { lookup as dnsLookup } from "node:dns/promises";
 import { request as httpsRequest } from "node:https";
 import { delimiter, extname, join } from "node:path";
-import ipaddr from "ipaddr.js";
+import { isIpLiteralHostname, isPublicUnicastAddress } from "./ip-range.js";
 import { bech32 } from "@scure/base";
 import { getActiveProfile as coreGetActiveProfile, getApiBase } from "../../core-dist/config.js";
 import { profileExists, readMeta } from "../../core-dist/profiles.js";
@@ -480,11 +480,7 @@ export function defaultPinnedRelayRead(relay: any, record: any, { timeoutMs = BU
 }
 
 export function isPublicAddress(address: any) {
-  try {
-    return ipaddr.parse(address).range() === "unicast";
-  } catch {
-    return false;
-  }
+  return isPublicUnicastAddress(address);
 }
 
 export function pinnedLookup(record: any, expectedHostname: any) {
@@ -542,7 +538,7 @@ function parseRelayOrigin(raw: any) {
   try {
     const url = new URL(raw);
     if (url.protocol !== "wss:" || url.username || url.password || url.pathname !== "/" || url.search || url.hash) return null;
-    if (url.hostname === "localhost" || ipaddr.isValid(url.hostname)) return null;
+    if (url.hostname === "localhost" || isIpLiteralHostname(url.hostname)) return null;
     return { origin: url.origin, hostname: url.hostname, port: url.port ? Number(url.port) : 443 };
   } catch {
     return null;

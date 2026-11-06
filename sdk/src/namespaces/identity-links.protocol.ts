@@ -1,9 +1,9 @@
-import { parse, evaluate, type Node, type DocumentNode, type ObjectNode, type ArrayNode, type StringNode } from "@humanwhocodes/momoa";
+import { parse, evaluate, type Node, type DocumentNode, type ObjectNode, type ArrayNode, type StringNode } from "../strict-json.js";
 import { schnorr, secp256k1 } from "@noble/curves/secp256k1.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex, hexToBytes, utf8ToBytes } from "@noble/hashes/utils.js";
 import { bech32 } from "@scure/base";
-import { canonicalize } from "json-canonicalize";
+import { canonicalize } from "../jcs.js";
 import { LocalError } from "../errors.js";
 import type { NostrEventV1 } from "./identity-links.types.js";
 
@@ -42,7 +42,7 @@ function inspect(node: Node, path = "$"): void {
   if (node.type === "Object") {
     const seen = new Set<string>();
     for (const member of (node as ObjectNode).members) {
-      const name = member.name.type === "String" ? member.name.value : member.name.name;
+      const name = member.name.value;
       if (seen.has(name)) fail(`Duplicate JSON field: ${name}`, "IDENTITY_LINK_DUPLICATE_FIELD", { field: `${path}.${name}` });
       if (SECRET_FIELD.test(name)) fail("Secret-bearing identity-link fields are forbidden", "IDENTITY_LINK_SECRET_INPUT_FORBIDDEN", { field: `${path}.${name}` });
       seen.add(name);
@@ -57,7 +57,7 @@ function inspect(node: Node, path = "$"): void {
 export function parseStrictJson(text: string): unknown {
   if (text.startsWith("\ufeff")) fail("UTF-8 BOM is forbidden", "IDENTITY_LINK_INVALID_JSON");
   let ast;
-  try { ast = parse(text, { mode: "json", allowTrailingCommas: false }); }
+  try { ast = parse(text); }
   catch { fail("Invalid JSON", "IDENTITY_LINK_INVALID_JSON"); }
   inspect(ast!);
   return evaluate(ast!);

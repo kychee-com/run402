@@ -172,9 +172,12 @@ jobs:
           rm -rf "$SMOKE" && mkdir "$SMOKE"
 
           # Pack all three tarballs into the same scratch dir.
-          npm pack --pack-destination "$SMOKE"                # run402-mcp
-          (cd cli && npm pack --pack-destination "$SMOKE")    # run402
-          (cd sdk && npm pack --pack-destination "$SMOKE")    # @run402/sdk
+          # --ignore-scripts=false: .npmrc refuses dependency install scripts,
+          # which would also skip the cli and sdk prepack that stages
+          # core-dist and sdk/dist into the tarball.
+          npm pack --ignore-scripts=false --pack-destination "$SMOKE"                # run402-mcp
+          (cd cli && npm pack --ignore-scripts=false --pack-destination "$SMOKE")    # run402
+          (cd sdk && npm pack --ignore-scripts=false --pack-destination "$SMOKE")    # @run402/sdk
           ls -la "$SMOKE"
 
           # run402 and run402-mcp VENDOR sdk/dist - they bundle the built SDK
