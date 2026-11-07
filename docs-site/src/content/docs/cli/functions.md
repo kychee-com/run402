@@ -9,7 +9,7 @@ summary: "functions (deploy, invoke, runs, logs), secrets, jobs, push, app-repos
 ### functions
 Node 22 runtime. Must export `default async (req: Request) => Response`.
 Built-in helper: `import { auth, db, adminDb, email, ai, assets, push, repo, repos, getRoutedPaymentContext } from '@run402/functions'`
-- `auth.user()` — `Actor | null`; taints cache bypass. `Actor` = `{ id, projectId, sessionId, email, emailVerified, authTime, amr, amrTimes }`; `id`, not `userId`. Hallucinated names (`getUser`, `getSession`, `currentUser`, `getServerSession`, `auth.protect`, `auth.signIn`, `auth.logout`, …) throw `R402_AUTH_UNKNOWN_EXPORT` and fail `run402 doctor` deploy scan.
+- `auth.user()` — `Actor | null`; taints cache bypass. `Actor` = `{ id, projectId, sessionId, email, emailVerified, authTime, amr, amrTimes, is_test? }`; `id`, not `userId`; `is_test` is `true` only for a test-session user (`run402 dev --as`, `POST /auth/v1/test-sessions`) and absent otherwise. Hallucinated names (`getUser`, `getSession`, `currentUser`, `getServerSession`, `auth.protect`, `auth.signIn`, `auth.logout`, …) throw `R402_AUTH_UNKNOWN_EXPORT` and fail `run402 doctor` deploy scan.
 - `auth.requireUser()` — `Actor`. 303 → `/auth/sign-in?returnTo=` (HTML) or 401 envelope (JSON) on anonymous. Don't catch — the platform handles redirect-vs-envelope automatically.
 - `auth.requireRole<const R>(role: R)` / `auth.requireMembership<const M>(m: M)` — gate helpers; imply `requireUser`; return `{ user, role }` / `{ user, membership }`. Always read fresh server-side grant state (no positive cache, so revocation is instant across tasks).
 - `auth.requireFresh({ maxAge, amr? })` — per-AMR step-up. Reads `Actor.amrTimes`; a recent password proof does NOT satisfy `{amr: ["passkey"]}`.
