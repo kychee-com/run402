@@ -2735,7 +2735,9 @@ settings(projectId, opts: {
   preferred_sign_in_method?,
   public_signup?,
   require_passkey_for_project_admin?,
-  test_mode?   // true | false | null (null = tier default: on for prototype)
+  test_mode?,  // true | false | null (null = tier default: on for prototype)
+  browser_session_idle_seconds?, // how long a website sign-in may go unused: 3600..7776000, null = 43200 (12 hours)
+  browser_session_max_seconds?   // its longest life from signing in: 3600..7776000, null = 2592000 (30 days)
 }): Promise<AuthSettingsResult>
 createPasskeyRegistrationOptions(projectId, opts: { accessToken, appOrigin }): Promise<PasskeyOptionsResult>
 verifyPasskeyRegistration(projectId, opts: { accessToken, challengeId, response, label? }): Promise<PasskeyRecord>

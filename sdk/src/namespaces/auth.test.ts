@@ -122,6 +122,27 @@ describe("auth.settings", () => {
     assert.deepEqual(result.google_client_ids, ids);
   });
 
+  it("PATCHes the browser session windows through, null included, and returns them", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({ browser_session_idle_seconds: 2_592_000, browser_session_max_seconds: 2_592_000 }));
+    const sdk = makeSdk(makeCreds(), fetch);
+    const result = await sdk.auth.settings("prj_known", { browser_session_idle_seconds: 2_592_000, browser_session_max_seconds: null });
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), { browser_session_idle_seconds: 2_592_000, browser_session_max_seconds: null });
+    assert.equal(result.browser_session_idle_seconds, 2_592_000);
+  });
+
+  it("rejects a browser session window that is not a whole number before requesting", async () => {
+    const { fetch, calls } = mockFetch(() => {
+      throw new Error("unexpected fetch for an invalid window");
+    });
+    const sdk = makeSdk(makeCreds(), fetch);
+    await assert.rejects(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      sdk.auth.settings("prj_known", { browser_session_idle_seconds: "30d" as any }),
+      (err: unknown) => err instanceof LocalError && /browser_session_idle_seconds must be a whole number of seconds/.test(err.message),
+    );
+    assert.equal(calls.length, 0);
+  });
+
   it("rejects google_client_ids that are not a string array before requesting", async () => {
     const { fetch, calls } = mockFetch(() => {
       throw new Error("unexpected fetch for invalid google_client_ids");

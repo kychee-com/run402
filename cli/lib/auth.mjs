@@ -27,7 +27,7 @@ Subcommands:
   set-password --token <bearer> --new <password> [--current <password>] [--project <project_id>]
     Change, reset, or set a user's password. Requires the user's access_token.
 
-  settings [--allow-password-set <true|false>] [--preferred <method|null>] [--public-signup <policy>] [--require-admin-passkey <true|false>] [--allowed-email-domains <csv|none>] [--google-client-ids <csv|none>] [--test-mode <true|false|null>] [--project <project_id>]
+  settings [--allow-password-set <true|false>] [--preferred <method|null>] [--public-signup <policy>] [--require-admin-passkey <true|false>] [--allowed-email-domains <csv|none>] [--google-client-ids <csv|none>] [--test-mode <true|false|null>] [--browser-session-idle-seconds <n|default>] [--browser-session-max-seconds <n|default>] [--project <project_id>]
     Update project auth settings (requires service_key).
 
   passkey-register-options --token <bearer> --app-origin <origin> [--project <project_id>]
@@ -185,6 +185,10 @@ Options:
   --allowed-email-domains <csv|none>    Restrict hosted Google sign-in to these domains; 'none' clears (unrestricted)
   --google-client-ids <csv|none>        Google OAuth client IDs your phone apps sign in with; 'none' turns native sign-in off
   --test-mode <true|false|null>         Allow test sessions (run402 dev --as); null = tier default (on for prototype)
+  --browser-session-idle-seconds <n|default>
+                                        How long a website sign-in may go unused before it ends (3600-7776000; default 43200, 12 hours)
+  --browser-session-max-seconds <n|default>
+                                        A website sign-in's longest life from signing in (3600-7776000; default 2592000, 30 days)
   --project <project_id>                        Project ID (defaults to active project)
 
 Notes:
@@ -202,6 +206,7 @@ Examples:
   run402 auth settings --allowed-email-domains kychee.com,example.com
   run402 auth settings --google-client-ids <web-client-id>,<android-client-id>
   run402 auth settings --test-mode true
+  run402 auth settings --browser-session-idle-seconds 2592000 --browser-session-max-seconds 7776000
 `,
   "passkey-register-options": `run402 auth passkey-register-options — Create passkey registration options
 
@@ -325,8 +330,8 @@ const AUTH_FLAGS = {
     values: ["--token", "--new", "--current", "--project"],
   },
   settings: {
-    known: ["--allow-password-set", "--preferred", "--public-signup", "--require-admin-passkey", "--allowed-email-domains", "--google-client-ids", "--test-mode", "--project", "--help", "-h"],
-    values: ["--allow-password-set", "--preferred", "--public-signup", "--require-admin-passkey", "--allowed-email-domains", "--google-client-ids", "--test-mode", "--project"],
+    known: ["--allow-password-set", "--preferred", "--public-signup", "--require-admin-passkey", "--allowed-email-domains", "--google-client-ids", "--test-mode", "--browser-session-idle-seconds", "--browser-session-max-seconds", "--project", "--help", "-h"],
+    values: ["--allow-password-set", "--preferred", "--public-signup", "--require-admin-passkey", "--allowed-email-domains", "--google-client-ids", "--test-mode", "--browser-session-idle-seconds", "--browser-session-max-seconds", "--project"],
   },
   "passkey-register-options": {
     known: ["--token", "--app-origin", "--project", "--help", "-h"],
@@ -598,6 +603,21 @@ async function settings(args) {
       hint: "null returns test mode to the tier default (on for prototype, off for hobby and team).",
     });
   }
+  // The two browser session windows: whole seconds, or `default` (null); the server judges the range.
+  const windowFlag = (flag) => {
+    const raw = parseFlag(args, flag);
+    if (raw === null) {
+      if (args.includes(flag)) fail({ code: "BAD_USAGE", message: `Missing ${flag} <seconds|default>` });
+      return undefined;
+    }
+    if (raw === "default") return null;
+    if (!/^[0-9]+$/.test(raw)) {
+      fail({ code: "BAD_FLAG", message: `${flag} must be a whole number of seconds, or default`, hint: "3600 (an hour) to 7776000 (90 days); 2592000 is 30 days." });
+    }
+    return Number(raw);
+  };
+  const idleSeconds = windowFlag("--browser-session-idle-seconds");
+  const maxSeconds = windowFlag("--browser-session-max-seconds");
 
   if (
     allow === undefined &&
@@ -606,7 +626,9 @@ async function settings(args) {
     publicSignup === null &&
     domainsRaw === null &&
     clientIdsRaw === null &&
-    testModeRaw === null
+    testModeRaw === null &&
+    idleSeconds === undefined &&
+    maxSeconds === undefined
   ) {
     fail({
       code: "BAD_USAGE",
@@ -658,6 +680,8 @@ async function settings(args) {
       allowed_email_domains: allowedEmailDomains,
       google_client_ids: googleClientIds,
       test_mode: testModeRaw === null ? undefined : testModeRaw === "null" ? null : testModeRaw === "true",
+      browser_session_idle_seconds: idleSeconds,
+      browser_session_max_seconds: maxSeconds,
     };
     const data = await getSdk().auth.settings(projectId, patch);
     console.log(JSON.stringify({ ...patch, ...data }));

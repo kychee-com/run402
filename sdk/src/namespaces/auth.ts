@@ -116,6 +116,19 @@ export interface AuthSettings {
    * off for hobby and team).
    */
   test_mode?: boolean | null;
+  /**
+   * How long a browser sign-in may go unused before it ends, in whole
+   * seconds (3600 to 7776000); `null` restores the default, 43200 (12 hours).
+   * May not exceed `browser_session_max_seconds`. A shorter value applies at
+   * once to people already signed in.
+   */
+  browser_session_idle_seconds?: number | null;
+  /**
+   * A browser sign-in's longest life from signing in, in whole seconds (3600
+   * to 7776000); `null` restores the default, 2592000 (30 days). A longer value
+   * applies to sign-ins from then on.
+   */
+  browser_session_max_seconds?: number | null;
 }
 
 export interface AuthSettingsResult {
@@ -127,6 +140,10 @@ export interface AuthSettingsResult {
   allowed_email_domains: string[];
   /** Google OAuth client IDs for native sign-in; `[]` = native Google sign-in off. */
   google_client_ids: string[];
+  /** How long a browser sign-in may go unused, in seconds, in effect. */
+  browser_session_idle_seconds?: number;
+  /** A browser sign-in's longest life from signing in, in seconds, in effect. */
+  browser_session_max_seconds?: number;
   /** Test-session minting: the stored setting, the value in force, and where it comes from. */
   test_mode?: {
     value: boolean | null;
@@ -221,6 +238,8 @@ const AUTH_SETTINGS_FIELDS = [
   "allowed_email_domains",
   "google_client_ids",
   "test_mode",
+  "browser_session_idle_seconds",
+  "browser_session_max_seconds",
 ] as const;
 const SIGN_IN_METHODS = ["password", "magic_link", "oauth_google", "passkey"] as const;
 const PUBLIC_SIGNUP_POLICIES = ["open", "known_email", "invite_only"] as const;
@@ -249,6 +268,13 @@ function validateAuthSettings(settings: AuthSettings): void {
   }
   if (raw.test_mode !== undefined && raw.test_mode !== null && typeof raw.test_mode !== "boolean") {
     throw new LocalError("test_mode must be true, false, or null.", "updating auth settings");
+  }
+  // The range and the idle-within-max rule are the server's to judge; the SDK checks the shape.
+  for (const key of ["browser_session_idle_seconds", "browser_session_max_seconds"] as const) {
+    const v = raw[key];
+    if (v !== undefined && v !== null && !(typeof v === "number" && Number.isInteger(v))) {
+      throw new LocalError(`${key} must be a whole number of seconds, or null for the default.`, "updating auth settings");
+    }
   }
   if (raw.preferred_sign_in_method !== undefined && raw.preferred_sign_in_method !== null) {
     assertStringInSet(
