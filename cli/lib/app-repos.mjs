@@ -314,8 +314,8 @@ async function clone(args) {
 
   // The helper needs a credential on this machine: a grant key in the
   // environment, the project's service key in the keystore, or a wallet, whose
-  // signature git sends with the username siwx (specs/run402/app-repos.md
-  // D-app-repos-36). With none, findProject fails with the import next action.
+  // signature git sends with the username siwx. With none, findProject fails
+  // with the import next action.
   if (!grantKeyFromEnv() && !hasWallet()) findProject(projectId);
 
   if (existsSync(dir)) {
