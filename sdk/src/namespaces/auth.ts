@@ -8,7 +8,7 @@
 
 import { gateSecret } from "../secret-gate.js";
 import type { Client } from "../kernel.js";
-import { LocalError } from "../errors.js";
+import { LocalError, type NextAction } from "../errors.js";
 import { requireProjectCredentials } from "../project-credentials.js";
 import {
   assertEmailAddress,
@@ -216,9 +216,16 @@ export interface TestSessionResult {
   access_token: string;
   token_type: "bearer";
   expires_in: number;
+  /** The origins that serve the project's routes: each managed subdomain as
+   *  `https://<name>.run402.app` then `https://<name>.run402.com`, then custom
+   *  domains whose web serving is effective. Empty when the project has no host yet. */
   app_origins: string[];
-  examples: { ssr: string; rest: string };
+  /** `ssr` curls `app_origins[0]` with the cookie; null when there is no origin. */
+  examples: { ssr: string | null; rest: string };
   test_mode: Record<string, unknown>;
+  /** Present only when `app_origins` is empty: one `deploy` action saying how
+   *  a release claims a subdomain. */
+  next_actions?: NextAction[];
 }
 
 export interface AuthSessionResult extends MagicLinkVerifyResult {
