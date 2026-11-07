@@ -376,7 +376,7 @@ describe("run402 app-repos credential (git's credential-helper protocol)", () =>
 
   before(async () => {
     server = createServer((req, res) => {
-      if (req.url === "/projects/v1/prj_kiwi/app-repos/default") {
+      if (req.url === "/projects/v1/prj_kiwi/app-repos/default" || req.url === "/projects/v1/prj_other/app-repos/default") {
         res.setHeader("content-type", "application/json");
         res.end(JSON.stringify(repo("default")));
         return;
@@ -430,13 +430,41 @@ describe("run402 app-repos credential (git's credential-helper protocol)", () =>
     assert.equal(other.code, 0);
     assert.equal(other.out, "");
     const host = new URL(apiBase).host;
-    const unknown = await runCli(["app-repos", "credential", "get"], {
+    const bare = mkdtempSync(join(tmpdir(), "run402-app-repos-bare-"));
+    try {
+      const unknown = await runCli(["app-repos", "credential", "get"], {
+        env: subEnv({ RUN402_CONFIG_DIR: bare, HOME: bare }),
+        input: `protocol=http\nhost=${host}\npath=projects/v1/prj_other/app-repos/default.git\n\n`,
+      });
+      assert.equal(unknown.code, 0);
+      assert.equal(unknown.out, "");
+      assert.match(unknown.err, /no key or wallet for project prj_other/);
+    } finally {
+      rmSync(bare, { recursive: true, force: true });
+    }
+  });
+
+  it("get signs with the wallet, username siwx, when there is no key for the project", async () => {
+    const host = new URL(apiBase).host;
+    const { code, out, err } = await runCli(["app-repos", "credential", "get"], {
       env: subEnv(),
       input: `protocol=http\nhost=${host}\npath=projects/v1/prj_other/app-repos/default.git\n\n`,
     });
-    assert.equal(unknown.code, 0);
-    assert.equal(unknown.out, "");
-    assert.ok(/no key for project prj_other/.test(unknown.err));
+    assert.equal(code, 0, err);
+    const lines = out.split("\n");
+    assert.equal(lines[0], "username=siwx");
+    assert.ok(lines[1].startsWith("password="));
+    assert.equal(lines.length, 3, "two lines and the final newline, nothing else");
+    const payload = JSON.parse(Buffer.from(lines[1].slice("password=".length), "base64").toString("utf8"));
+    assert.equal(payload.address.toLowerCase(), TEST_ADDRESS.toLowerCase());
+    assert.equal(payload.uri, `${apiBase}/projects/v1/prj_other/app-repos/default.git`);
+    assert.ok(payload.signature, "signed");
+    assert.ok(Date.parse(payload.expirationTime) > Date.now(), "fresh");
+    const again = await runCli(["app-repos", "credential", "get"], {
+      env: subEnv(),
+      input: `protocol=http\nhost=${host}\npath=projects/v1/prj_other/app-repos/default.git\n\n`,
+    });
+    assert.notEqual(again.out, out, "each get signs afresh");
   });
 
   it("store and erase are no-ops", async () => {
@@ -496,6 +524,32 @@ fs.mkdirSync(args[args.length - 1], { recursive: true });
       assert.ok(!out.includes(SERVICE_KEY) && !err.includes(SERVICE_KEY));
     } finally {
       rmSync(bin, { recursive: true, force: true });
+    }
+  });
+
+  it("clone needs no key when a wallet is configured, and refuses with neither", async () => {
+    const bin = mkdtempSync(join(tmpdir(), "run402-fake-git-"));
+    writeFileSync(join(bin, "git"), `#!${process.execPath}
+const fs = require("node:fs");
+const args = process.argv.slice(2);
+if (args[0] === "--version") { console.log("git version 2.45.0"); process.exit(0); }
+fs.mkdirSync(args[args.length - 1], { recursive: true });
+`);
+    chmodSync(join(bin, "git"), 0o755);
+    const bare = mkdtempSync(join(tmpdir(), "run402-app-repos-bare-"));
+    try {
+      const env = subEnv({ PATH: `${bin}${delimiter}${process.env.PATH}` });
+      const ok = await runCli(["app-repos", "clone", "default", join(bin, "content"), "--project", "prj_other"], { env });
+      assert.equal(ok.code, 0, ok.err);
+      assert.equal(JSON.parse(ok.out).clone_url, `${apiBase}/projects/v1/prj_other/app-repos/default.git`);
+      const none = await runCli(["app-repos", "clone", "default", join(bin, "other"), "--project", "prj_other"], {
+        env: { ...env, RUN402_CONFIG_DIR: bare, HOME: bare },
+      });
+      assert.equal(none.code, 1);
+      assert.match(none.err, /PROJECT_CREDENTIAL_NOT_FOUND/);
+    } finally {
+      rmSync(bin, { recursive: true, force: true });
+      rmSync(bare, { recursive: true, force: true });
     }
   });
 

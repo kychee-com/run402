@@ -16,7 +16,9 @@ import { spawnSync } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
 import { resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
-import { apiBase, activeProfile, findProject, getProject, resolveProjectId } from "./config.mjs";
+import { apiBase, activeProfile, findProject, getProject, readWallet, resolveProjectId, walletFile } from "./config.mjs";
+import { getWalletAuthHeadersAsync } from "../core-dist/wallet-auth.js";
+import { personalMessageSignerFor } from "#sdk/node";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 import { assertKnownFlags, flagValue, normalizeArgv, positionalArgs, parseIntegerFlag, failUnknownSubcommand } from "./argparse.mjs";
@@ -74,10 +76,12 @@ that repo and no other. It is the git password (any username), and it never goes
 in the remote URL. Only the project's service key mints or revokes one.
 
 clone runs git clone with a credential helper (run402 app-repos credential) that
-gives git the project's service key from this machine's keystore, or
-RUN402_GRANT_KEY when it is set; the key is never written into the remote URL
-or .git/config, and the helper is kept in the clone so git pull and git push
-keep working. main is the only branch and only fast-forward pushes land: undo a
+gives git RUN402_GRANT_KEY when it is set, else the project's service key from
+this machine's keystore, else a fresh signature of your wallet (username siwx),
+which works for any member of the project's organization with the role for it:
+run402 --wallet <name> app-repos clone keeps that wallet for git pull and git
+push. Nothing is written into the remote URL or .git/config, and the helper is
+kept in the clone so git pull and git push keep working. main is the only branch and only fast-forward pushes land: undo a
 commit with a revert. Each file is at most 4 MiB: put media in assets and
 commit a reference to it.
 
@@ -308,10 +312,11 @@ async function clone(args) {
   const dir = resolvePath(dirFlag || pos[1] || repoName);
   const projectId = resolveProjectId(flagValue(a, "--project"));
 
-  // The helper needs a key on this machine: a grant key in the environment,
-  // or the project's service key in the keystore (findProject fails with the
-  // import next action when it is missing).
-  if (!grantKeyFromEnv()) findProject(projectId);
+  // The helper needs a credential on this machine: a grant key in the
+  // environment, the project's service key in the keystore, or a wallet, whose
+  // signature git sends with the username siwx (specs/run402/app-repos.md
+  // D-app-repos-36). With none, findProject fails with the import next action.
+  if (!grantKeyFromEnv() && !hasWallet()) findProject(projectId);
 
   if (existsSync(dir)) {
     fail({
@@ -429,13 +434,36 @@ export function credentialTarget(input, base) {
   }
 }
 
+/** True when this CLI has a wallet (its active profile's) that can sign for git. */
+function hasWallet() {
+  try {
+    return !!readWallet()?.address;
+  } catch {
+    return false;
+  }
+}
+
+/** The username that tells the gateway the git password is a wallet's SIGN-IN-WITH-X payload (D-app-repos-36). */
+export const GIT_SIWX_USERNAME = "siwx";
+
+/** A fresh SIGN-IN-WITH-X payload of this CLI's wallet for the repo's git URL, or null with no wallet. */
+async function walletGitPassword(target) {
+  if (!hasWallet()) return null;
+  const path = `/projects/v1/${encodeURIComponent(target.projectId)}/app-repos/${encodeURIComponent(target.repoName)}.git`;
+  const headers = await getWalletAuthHeadersAsync(path, walletFile(), (w) => personalMessageSignerFor(w));
+  return headers?.["SIGN-IN-WITH-X"] ?? null;
+}
+
 /**
  * `run402 app-repos credential <get|store|erase>` — git's credential-helper
  * protocol (gitcredentials(7)). Not for people: `clone` installs it. On `get`
  * for an app repo on the configured API base it prints `username` and
- * `password` (RUN402_GRANT_KEY when set, else the project's service key from
- * the local keystore) and nothing else; it prints nothing for any other URL.
- * `store` and `erase` are no-ops. The key is written only to git, on stdout.
+ * `password` and nothing else: RUN402_GRANT_KEY when set, else the project's
+ * service key from the local keystore, else a fresh signature of the CLI's
+ * wallet with the username `siwx`, which the gateway authorizes by the
+ * wallet's membership or grant on every request (D-app-repos-36). It prints
+ * nothing for any other URL. `store` and `erase` are no-ops, so nothing is
+ * persisted. The credential is written only to git, on stdout.
  */
 async function credential(args) {
   const op = args[0];
@@ -450,12 +478,17 @@ async function credential(args) {
   }
   const target = credentialTarget(input, apiBase());
   if (!target) return;
-  const password = grantKeyFromEnv() ?? getProject(target.projectId)?.service_key ?? null;
-  if (!password) {
-    process.stderr.write(
-      `run402: no key for project ${target.projectId} on this machine; import one with \`run402 credentials project-keys import --project ${target.projectId} --service-key-stdin\`, or set RUN402_GRANT_KEY.\n`,
-    );
+  const key = grantKeyFromEnv() ?? getProject(target.projectId)?.service_key ?? null;
+  if (key) {
+    process.stdout.write(`username=run402\npassword=${key}\n`);
     return;
   }
-  process.stdout.write(`username=run402\npassword=${password}\n`);
+  const signature = await walletGitPassword(target);
+  if (signature) {
+    process.stdout.write(`username=${GIT_SIWX_USERNAME}\npassword=${signature}\n`);
+    return;
+  }
+  process.stderr.write(
+    `run402: no key or wallet for project ${target.projectId} on this machine; run402 --wallet <name> app-repos clone uses a wallet that is a member of the project's organization, or import a key with \`run402 credentials project-keys import --project ${target.projectId} --service-key-stdin\`, or set RUN402_GRANT_KEY.\n`,
+  );
 }

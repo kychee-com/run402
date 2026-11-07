@@ -74,7 +74,15 @@ git commit -am "Fix a birth date"
 git push
 ```
 
-`run402 app-repos clone [<name>] [<dir>]` runs `git clone` against `https://api.run402.com/projects/v1/<project_id>/app-repos/<name>.git` with a credential helper, `run402 app-repos credential`, scoped to that URL. The helper hands git the project's service key from this machine's keystore (or `RUN402_GRANT_KEY` when it is set), so no secret is written into the remote URL or `.git/config`. The helper stays configured in the clone, so later `git pull` and `git push` keep working. Any git client can use the same URL with HTTP Basic auth whose password is the service key or a grant key for the project.
+`run402 app-repos clone [<name>] [<dir>]` runs `git clone` against `https://api.run402.com/projects/v1/<project_id>/app-repos/<name>.git` with a credential helper, `run402 app-repos credential`, scoped to that URL. The helper hands git `RUN402_GRANT_KEY` when it is set, else the project's service key from this machine's keystore, else a fresh signature of your wallet, so no secret is written into the remote URL or `.git/config`. The helper stays configured in the clone, so later `git pull` and `git push` keep working. Any git client can use the same URL with HTTP Basic auth whose password is the service key, a grant key for the project, or an app repo token for the repo.
+
+**With only your wallet.** A member of the project's organization needs no key at all: clone with the wallet, and git uses that wallet's own role, checked on every request, so a member who leaves the organization loses git at once and there is nothing to revoke.
+
+```bash
+run402 --wallet my-agent app-repos clone default ./content --project prj_example
+```
+
+The helper keeps `--wallet my-agent` for `git pull` and `git push`. Under the hood git sends the username `siwx` and a SIGN-IN-WITH-X signature that lives five minutes, made afresh for each git command.
 
 A push is live on the next read, with no deploy. `main` is the only branch: a push to any other ref, a ref deletion and a non-fast-forward push are refused (`git push --force` included), because history is never rewritten. Undo a commit with a revert, which is a new commit (`git revert <commit>` then `git push`, or `repo.revert(commit)` in a function). A push needs `project.app_repos.write` (developer, or a grant with `deploy`); a clone needs `project.app_repos.read` (viewer). Shallow and partial clones are not supported.
 
