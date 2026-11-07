@@ -1,0 +1,86 @@
+name: Deploy Demos
+
+# Continuously deploys the example demos (demos/*) to their run402 projects via
+# keyless GitHub OIDC → run402 CI-session exchange — NO standing run402 credential
+# in CI. Each leg exchanges the GitHub OIDC token for a short-lived, deploy-scoped
+# run402 CI session. Only PROVISIONED demos (a project_id in app.json) deploy.
+# See demos/README.md.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - demos/**
+      - .github/workflows/deploy-demos.yml
+  workflow_dispatch:
+    inputs:
+      app:
+        description: Deploy a single demo by name (skips change-detection)
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.detect.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - name: Compute the deploy matrix
+        id: detect
+        env:
+          DISPATCH_APP: ${{ github.event.inputs.app }}
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.sha }}
+        run: |
+          if [ -n "$DISPATCH_APP" ]; then
+            printf 'matrix=["%s"]\n' "$DISPATCH_APP" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          BEFORE="$BEFORE_SHA"
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            BEFORE="$(git rev-parse HEAD~1 2>/dev/null || git rev-parse HEAD)"
+          fi
+          git diff --name-only "$BEFORE" "$AFTER_SHA" | node demos/_deploy/detect.mjs
+
+  deploy:
+    needs: detect
+    if: needs.detect.outputs.matrix != '' && needs.detect.outputs.matrix != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJson(needs.detect.outputs.matrix) }}
+    runs-on: ubuntu-latest
+    # The GitHub Environment scopes the OIDC subject to environment:demos, which
+    # each demo's run402 CI binding pins.
+    environment: demos
+    concurrency:
+      group: demos-deploy-${{ matrix.app }}
+      cancel-in-progress: false
+    permissions:
+      id-token: write # exchange a GitHub OIDC token for a run402 CI session
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: demos registry check
+        run: node demos/_deploy/check-registry.mjs
+      - name: Exchange GitHub OIDC → run402 CI session
+        env:
+          APP: ${{ matrix.app }}
+        run: node demos/_deploy/exchange-oidc.mjs "$APP"
+      - name: Deploy
+        env:
+          APP: ${{ matrix.app }}
+        run: npx tsx demos/_deploy/deploy.mjs "$APP"
