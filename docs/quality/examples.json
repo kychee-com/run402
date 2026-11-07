@@ -33,7 +33,15 @@
   },
   {
     "file": "docs-site/src/content/docs//build/app-repos.md",
-    "line": 85,
+    "line": 81,
+    "language": "bash",
+    "kind": "commands",
+    "sha256": "e3867073382e5caa0e801c962b710081c91a921cebe9532d804cc350d01a4f4f",
+    "validation": "cli-command-source"
+  },
+  {
+    "file": "docs-site/src/content/docs//build/app-repos.md",
+    "line": 93,
     "language": "ts",
     "kind": "application-or-sdk",
     "sha256": "330c5fc2ac20d3a5bebb8f4f4a9b931d06fb315e1e3de783e752a3e93419eafe",
@@ -41,7 +49,7 @@
   },
   {
     "file": "docs-site/src/content/docs//build/app-repos.md",
-    "line": 97,
+    "line": 105,
     "language": "bash",
     "kind": "commands",
     "sha256": "20b8b8bb17154fba35aaa134830242c68ba108cfeb1fc053bca8c215eb6b2259",
@@ -49,7 +57,7 @@
   },
   {
     "file": "docs-site/src/content/docs//build/app-repos.md",
-    "line": 111,
+    "line": 119,
     "language": "ts",
     "kind": "application-or-sdk",
     "sha256": "6ab850bbf4b484dbb92024496ed619e7061106d044f1e56f3b897d257ac7b548",
@@ -57,7 +65,7 @@
   },
   {
     "file": "docs-site/src/content/docs//build/app-repos.md",
-    "line": 124,
+    "line": 132,
     "language": "json",
     "kind": "configuration",
     "sha256": "861e074f896d32d6f35ffdc368d6f57fae291ab32760f49c90870abcd05dc865",
@@ -65,7 +73,7 @@
   },
   {
     "file": "docs-site/src/content/docs//build/app-repos.md",
-    "line": 141,
+    "line": 149,
     "language": "json",
     "kind": "configuration",
     "sha256": "f426630ea8a3189029e8e1bf08ae151d78632f465d1ad27782e0445ff6dbf2cc",
