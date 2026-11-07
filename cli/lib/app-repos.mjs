@@ -443,7 +443,7 @@ function hasWallet() {
   }
 }
 
-/** The username that tells the gateway the git password is a wallet's SIGN-IN-WITH-X payload (D-app-repos-36). */
+/** The username that tells the gateway the git password is a wallet's SIGN-IN-WITH-X payload. */
 export const GIT_SIWX_USERNAME = "siwx";
 
 /** A fresh SIGN-IN-WITH-X payload of this CLI's wallet for the repo's git URL, or null with no wallet. */
@@ -461,7 +461,7 @@ async function walletGitPassword(target) {
  * `password` and nothing else: RUN402_GRANT_KEY when set, else the project's
  * service key from the local keystore, else a fresh signature of the CLI's
  * wallet with the username `siwx`, which the gateway authorizes by the
- * wallet's membership or grant on every request (D-app-repos-36). It prints
+ * wallet's membership or grant on every request. It prints
  * nothing for any other URL. `store` and `erase` are no-ops, so nothing is
  * persisted. The credential is written only to git, on stdout.
  */
