@@ -98,6 +98,11 @@ export const SECRET_RETURNING_METHODS = {
     command: (projectId: unknown) => `run402 push fcm set --service-account <path>${projectFlag(projectId)}`,
     why: "A Firebase service-account key is a credential; the CLI reads it from its file and sends it without passing it through a snippet.",
   },
+  // ── auth: the project's Sign in with Apple key (the .p8) ──
+  "auth.setAppleKey": {
+    command: (projectId: unknown) => `run402 auth apple-key set --team-id <team_id> --key-id <key_id> --p8 <path>${projectFlag(projectId)}`,
+    why: "A Sign in with Apple key is a credential; the CLI reads the .p8 file from disk and sends it without passing it through a snippet.",
+  },
   // ── projects.stripe: a one-time Stripe onboarding link for the account holder ──
   "projects.stripe.account.connect": {
     command: (projectId: unknown) => `run402 stripe account connect${projectFlag(projectId)}`,

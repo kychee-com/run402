@@ -132,7 +132,8 @@ const APPLY_SAFE_RETRY_CODES = new Set<Run402DeployErrorCode>([
 /**
  * Transient platform conditions the gateway marks `safe_to_retry: true`: the
  * task running the deploy was replaced mid-commit, an image encode ran out of
- * wall clock or queue under load, or an archive export briefly paused writes.
+ * wall clock or queue under load, or a snapshot or archive export briefly paused
+ * writes (PROJECT_WRITES_PAUSED).
  * Nothing was activated, so the whole apply re-plans and runs again — content
  * is addressed by hash, so already-uploaded bytes are not sent twice
  * (kychee-com/run402#628, #616). These wait longer than a release-race replan.
@@ -141,7 +142,7 @@ const APPLY_TRANSIENT_RETRY_CODES = new Set<string>([
   "OPERATION_INTERRUPTED",
   "IMAGE_ENCODE_TIMEOUT",
   "TOO_MANY_ENCODES_QUEUED",
-  "EXPORT_CONSISTENCY_UNAVAILABLE",
+  "PROJECT_WRITES_PAUSED",
 ]);
 const APPLY_TRANSIENT_RETRY_BASE_DELAY_MS = 2_000;
 const APPLY_TRANSIENT_RETRY_MAX_DELAY_MS = 15_000;

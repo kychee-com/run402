@@ -247,6 +247,7 @@ function mergeStructuredErrorFields(payload, err) {
   setIfAbsent(payload, "logs", err.logs);
   setIfAbsent(payload, "rolled_back", err.rolledBack);
   setIfAbsent(payload, "attempts", err.attempts);
+  setIfAbsent(payload, "waited_ms", err.waitedMs);
   setIfAbsent(payload, "max_retries", err.maxRetries);
   setIfAbsent(payload, "last_retry_code", err.lastRetryCode);
 }

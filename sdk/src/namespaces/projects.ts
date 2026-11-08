@@ -16,7 +16,7 @@ import { ProjectStripe } from "./stripe.js";
 import { restDiagnostic } from "../rest-diagnostics.js";
 import type { Client } from "../kernel.js";
 import type { ProjectKeys } from "../credentials.js";
-import { LocalError } from "../errors.js";
+import { LocalError, isRun402Error } from "../errors.js";
 import { projectIdPathSegment } from "../project-id.js";
 import { requireProjectCredentials } from "../project-credentials.js";
 import { usableProjectKeys, withPrincipalFallback } from "../stale-project-key.js";
@@ -27,6 +27,7 @@ import type {
   SqlBatchStatement,
   SqlOptions,
   SqlResult,
+  SqlRetryInfo,
   ExposeManifestValidationInput,
   ExposeManifestValidationIssue,
   ExposeManifestValidationResult,
@@ -48,6 +49,42 @@ import type {
   UsageReport,
   ValidateExposeOptions,
 } from "./projects.types.js";
+
+/** How long `sql` / `sqlBatch` wait out a retryable refusal (a deploy's write
+ *  pause): project-sql-endpoint "First-party SQL clients wait out a retryable refusal". */
+const SQL_WAIT_BUDGET_MS = 20_000;
+
+/** The wait before attempt `attempt + 1`: the gateway's hint, at least 0.5 s growing to 2 s. */
+function sqlRetryWaitMs(details: unknown, attempt: number): number {
+  const hint = details && typeof details === "object" ? (details as { retry_after_seconds?: unknown }).retry_after_seconds : undefined;
+  const hintMs = typeof hint === "number" && Number.isFinite(hint) && hint > 0 ? hint * 1000 : 0;
+  return Math.max(hintMs, Math.min(500 * attempt, 2_000));
+}
+
+/**
+ * Send, repeating while the gateway marks the refusal retryable and safe to
+ * retry and the budget still covers the wait; the last refusal is thrown with
+ * `attempts` and `waitedMs` when the client waited at all.
+ */
+async function sendWaitingOutRetryable<T>(send: () => Promise<T>, onRetry: ((info: SqlRetryInfo) => void) | undefined): Promise<T> {
+  const startedAt = Date.now();
+  let waitedMs = 0;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await send();
+    } catch (err) {
+      if (!isRun402Error(err) || err.retryable !== true || err.safeToRetry !== true) throw err;
+      const waitMs = sqlRetryWaitMs(err.details, attempt);
+      if (Date.now() - startedAt + waitMs > SQL_WAIT_BUDGET_MS) {
+        if (attempt > 1) Object.assign(err, { attempts: attempt, waitedMs });
+        throw err;
+      }
+      onRetry?.({ code: err.code, attempt, waitMs, details: err.details });
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
+      waitedMs += waitMs;
+    }
+  }
+}
 
 type WireProjectSummary = Omit<ProjectSummary, "id"> & {
   project_id?: string;
@@ -396,7 +433,11 @@ export class Projects {
    *  statement's `{ command, row_count }` for a multi-statement text.
    *  `warnings[]` never changes the result: `SCHEMA_CHANGE_OUTSIDE_MIGRATION`
    *  means a schema change on a released project belongs in a migration, and
-   *  `MULTI_STATEMENT_TEXT_BODY` points at {@link sqlBatch}. */
+   *  `MULTI_STATEMENT_TEXT_BODY` points at {@link sqlBatch}. While a deploy's
+   *  snapshot holds the project's write pause, a read answers as usual and a
+   *  write meets `PROJECT_WRITES_PAUSED`; this waits any retryable,
+   *  safe-to-retry refusal out for up to 20 s (`opts.onRetry` is told before
+   *  each wait), then throws it with `attempts` and `waitedMs`. */
   async sql(id: string, sql: string, params?: unknown[], opts: SqlOptions = {}): Promise<SqlResult> {
     const segment = projectIdPathSegment(id, {
       method: "projects.sql",
@@ -409,7 +450,7 @@ export class Projects {
     const useParams = Array.isArray(params) && params.length > 0;
     const readOnly = opts.readOnly === true;
     const json = useParams || readOnly;
-    return withPrincipalFallback(this.client, id, keys, (k) =>
+    return sendWaitingOutRetryable(() => withPrincipalFallback(this.client, id, keys, (k) =>
       this.client.request<SqlResult>(`/projects/v1/${segment}/sql`, {
         method: "POST",
         headers: {
@@ -419,7 +460,7 @@ export class Projects {
         body: json ? { sql, ...(useParams ? { params } : {}), ...(readOnly ? { read_only: true } : {}) } : undefined,
         rawBody: json ? undefined : sql,
         context: "running SQL",
-      }));
+      })), opts.onRetry);
   }
 
   /** Run several statements (1 to 100, one statement each) with an explicit
@@ -427,7 +468,8 @@ export class Projects {
    *  `transaction: "all"` (default) the first failure rolls back the batch and
    *  throws `SQL_BATCH_STATEMENT_FAILED` naming the statement's index; with
    *  `"each"` every statement commits on its own and `results[i].status` says
-   *  how each went. */
+   *  how each went. Waits out a retryable refusal (a deploy's write pause)
+   *  for up to 20 s, as {@link sql} does. */
   async sqlBatch(id: string, statements: SqlBatchStatement[], opts: SqlBatchOptions = {}): Promise<SqlBatchResult> {
     const segment = projectIdPathSegment(id, {
       method: "projects.sqlBatch",
@@ -436,12 +478,12 @@ export class Projects {
       context: "running a SQL batch",
     });
     const keys = await requireProjectCredentials(this.client, id, "running a SQL batch");
-    return this.client.request<SqlBatchResult>(`/projects/v1/${segment}/sql/batch`, {
+    return sendWaitingOutRetryable(() => this.client.request<SqlBatchResult>(`/projects/v1/${segment}/sql/batch`, {
       method: "POST",
       headers: { Authorization: `Bearer ${keys.service_key}` },
       body: { statements, transaction: opts.transaction ?? "all" },
       context: "running a SQL batch",
-    });
+    }), opts.onRetry);
   }
 
   /** Query or mutate a project table through PostgREST. */

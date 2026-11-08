@@ -4,7 +4,7 @@
  * headers, body composition, and response parsing per method.
  */
 
-import { describe, it } from "node:test";
+import { describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 
 import { Run402 } from "../index.js";
@@ -1217,6 +1217,88 @@ describe("projects database calls with a stale cached service key", () => {
     const { fetch, calls } = mockFetch(() => jsonResponse(forbidden, 403));
     const sdk = makeSdk(makeCreds(), fetch);
     await assert.rejects(sdk.projects.sql("prj_known", "SELECT 1"), Unauthorized);
+    assert.equal(calls.length, 1);
+  });
+});
+
+// project-sql-endpoint "First-party SQL clients wait out a retryable refusal".
+describe("projects.sql / sqlBatch wait out a retryable refusal (a deploy's write pause)", () => {
+  const paused = () =>
+    jsonResponse(
+      {
+        error: "Project writes are paused",
+        code: "PROJECT_WRITES_PAUSED",
+        retryable: true,
+        safe_to_retry: true,
+        mutation_state: "none",
+        details: { holder_kind: "snapshot", snapshot_kind: "pre_migration", retry_after_seconds: 1 },
+        next_actions: [{ type: "retry" }],
+      },
+      503,
+    );
+  const sqlOk = () => jsonResponse({ status: "ok", schema: "p0001", rows: [{ id: 1 }], row_count: 1, fields: [], statements: [], warnings: [] });
+
+  // Advance the mocked clock until the call settles, letting each fetch resolve between ticks.
+  async function drive<T>(p: Promise<T>, stepMs = 250, maxSteps = 400): Promise<T> {
+    let settled = false;
+    p.then(() => { settled = true; }, () => { settled = true; });
+    for (let i = 0; i < maxSteps && !settled; i++) {
+      await new Promise((r) => setImmediate(r));
+      mock.timers.tick(stepMs);
+    }
+    return p;
+  }
+
+  it("repeats after the hint, tells onRetry before each wait, and returns the answer", async () => {
+    mock.timers.enable({ apis: ["setTimeout", "Date"] });
+    try {
+      const answers = [paused(), paused(), sqlOk()];
+      const { fetch } = mockFetch(() => answers.shift()!);
+      const sdk = makeSdk(makeCreds(), fetch);
+      const waits: Array<{ code: string | undefined; attempt: number; waitMs: number }> = [];
+      const result = await drive(sdk.projects.sql("prj_known", "INSERT INTO t VALUES (1)", undefined, {
+        onRetry: ({ code, attempt, waitMs }) => waits.push({ code, attempt, waitMs }),
+      }));
+      assert.deepEqual(result.rows, [{ id: 1 }]);
+      assert.deepEqual(waits, [
+        { code: "PROJECT_WRITES_PAUSED", attempt: 1, waitMs: 1000 },
+        { code: "PROJECT_WRITES_PAUSED", attempt: 2, waitMs: 1000 },
+      ]);
+    } finally {
+      mock.timers.reset();
+    }
+  });
+
+  it("gives up within 20 seconds, throwing the last refusal with attempts and waitedMs", async () => {
+    mock.timers.enable({ apis: ["setTimeout", "Date"] });
+    try {
+      const { fetch, calls } = mockFetch(() => paused());
+      const sdk = makeSdk(makeCreds(), fetch);
+      const startedAt = Date.now();
+      const err = await drive(sdk.projects.sqlBatch("prj_known", [{ sql: "UPDATE t SET n = 1" }]).then(
+        () => { throw new Error("expected a throw"); },
+        (e: unknown) => e,
+      ));
+      assert.ok(err instanceof Run402Error);
+      assert.equal(err.code, "PROJECT_WRITES_PAUSED");
+      assert.equal(err.attempts, calls.length);
+      assert.ok(calls.length > 2);
+      assert.ok((err.waitedMs ?? 0) > 0);
+      assert.ok(Date.now() - startedAt <= 20_000);
+      assert.equal((err.toJSON() as { attempts?: number }).attempts, calls.length);
+    } finally {
+      mock.timers.reset();
+    }
+  });
+
+  it("throws at once on an error that is not safe to retry", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({ error: "bad", code: "VALIDATION_FAILED", retryable: false, safe_to_retry: true }, 400));
+    const sdk = makeSdk(makeCreds(), fetch);
+    await assert.rejects(sdk.projects.sql("prj_known", "SELEC 1"), (err: unknown) => {
+      assert.ok(err instanceof Run402Error);
+      assert.equal(err.attempts, undefined);
+      return true;
+    });
     assert.equal(calls.length, 1);
   });
 });

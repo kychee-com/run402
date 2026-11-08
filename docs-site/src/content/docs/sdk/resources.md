@@ -47,18 +47,21 @@ delete(id: string): Promise<void>
 list(wallet?: string): Promise<ListProjectsResult>
 getUsage(id: string): Promise<UsageReport>
 getSchema(id: string): Promise<SchemaReport>
-sql(id: string, sql: string, params?: unknown[], opts?: { readOnly?: boolean }): Promise<SqlResult>   // POST /projects/v1/:project_id/sql → { status, schema, rows, row_count, fields, statements, warnings }; readOnly: engine-enforced, one statement
+sql(id: string, sql: string, params?: unknown[], opts?: { readOnly?: boolean; onRetry?: (info: SqlRetryInfo) => void }): Promise<SqlResult>   // POST /projects/v1/:project_id/sql → { status, schema, rows, row_count, fields, statements, warnings }; readOnly: engine-enforced, one statement
 // getSchema/sql/rest use the cached service key when present, otherwise your own authority:
 //   project.database.read (org role viewer+, or a database:read grant / grant key) runs read-only, enforced by PostgreSQL
 //     (a write answers DATABASE_READ_ONLY); project.database.write (developer+, or database:write) can write.
 //   rest without a cached key goes to /projects/v1/:project_id/rest/* with database authority (like keyType "service");
 //   an explicit keyType "anon" still needs the cached anon key. A denial is FORBIDDEN with next_actions.
-sqlBatch(id: string, statements: { sql: string; params?: unknown[] }[], opts?: { transaction?: "all" | "each" }): Promise<SqlBatchResult>   // one statement per entry; "all" (default) rolls back on the first failure (SQL_BATCH_STATEMENT_FAILED, details.index); "each" commits each and reports results[i].status
+sqlBatch(id: string, statements: { sql: string; params?: unknown[] }[], opts?: { transaction?: "all" | "each"; onRetry?: (info: SqlRetryInfo) => void }): Promise<SqlBatchResult>   // one statement per entry; "all" (default) rolls back on the first failure (SQL_BATCH_STATEMENT_FAILED, details.index); "each" commits each and reports results[i].status
 // sql/sqlBatch results carry warnings[] that never change the result:
 //   SCHEMA_CHANGE_OUTSIDE_MIGRATION: CREATE/ALTER/DROP/COMMENT on a project with a live release,
 //     which the release no longer describes; write it as a migration (spec.database.migrations).
 //     Schema changes on released projects will be refused outside migrations in a later release.
 //   MULTI_STATEMENT_TEXT_BODY: several statements in one text; use sqlBatch.
+// sql/sqlBatch wait out a retryable, safe-to-retry refusal for up to 20 s (opts.onRetry({ code, attempt, waitMs, details })
+//   is called before each wait), then throw it with attempts and waitedMs. While a deploy's snapshot holds the
+//   project's write pause, reads answer as usual and a write meets PROJECT_WRITES_PAUSED, which this waits out.
 rest<T = unknown>(id: string, table: string, queryOrOptions?: string | ProjectRestOptions): Promise<T>
 restResponse<T = unknown>(id: string, table: string, queryOrOptions?: string | ProjectRestOptions): Promise<ProjectRestResponse<T>>
 validateExpose(manifest: ExposeManifest | string, opts?: { project?: string; project_id?: string; migrationSql?: string }): Promise<ExposeManifestValidationResult>
@@ -1344,6 +1347,8 @@ settings(projectId, opts: {
   preferred_sign_in_method?,
   public_signup?,
   require_passkey_for_project_admin?,
+  google_client_ids?, // the Google clients a phone app signs in with; [] = off
+  apple_client_ids?,  // the iPhone apps' bundle IDs for native Sign in with Apple; [] = off
   test_mode?,  // true | false | null (null = tier default: on for prototype)
   browser_session_idle_seconds?, // how long a website sign-in may go unused: 3600..7776000, null = 43200 (12 hours)
   browser_session_max_seconds?   // its longest life from signing in: 3600..7776000, null = 2592000 (30 days)
@@ -1355,6 +1360,9 @@ verifyPasskeyLogin(projectId, opts: { challengeId, response }): Promise<AuthSess
 listPasskeys(projectId, opts: { accessToken }): Promise<{ passkeys: PasskeyRecord[] }>
 deletePasskey(projectId, opts: { accessToken, passkeyId }): Promise<void>
 providers(projectId): Promise<AuthProvidersResult> // magic_link.deliveryModes; absent wire field → ["link"]
+setAppleKey(projectId, { teamId, keyId, p8 }): Promise<AppleSignInKey> // the .p8; never returned; SECRET_REQUIRES_CLI in the MCP sandbox
+appleKeyStatus(projectId): Promise<AppleSignInStatus> // { configured, team_id?, key_id?, client_ids, notification_url, missing }
+removeAppleKey(projectId): Promise<{ removed }>
 promote(projectId, email): Promise<void>
 demote(projectId, email): Promise<void>
 
@@ -1367,6 +1375,8 @@ demoteUser(projectId, email): Promise<void>
 ```
 
 Magic-link tokens are single-use, expire in 15 min, rate-limited 5/email/hour. Google OAuth is on for all projects with zero config.
+
+Native Sign in with Apple (an iPhone app's own sheet) needs the app's bundle ID in `apple_client_ids` and the app's Sign in with Apple key from `setAppleKey` (CLI: `run402 auth apple-key set`). The phone app then signs in over HTTP at `POST /auth/v1/native-sessions` with `{ provider: "apple", id_token, authorization_code, display_name? }`, after passing Apple the SHA-256 of a nonce from `POST /auth/v1/native-sessions/nonces`, and gets the same native session a Google sign-in gets. `appleKeyStatus` gives the notification URL to set as the App ID's server-to-server notification endpoint: when a person removes the app from their Apple ID or deletes their Apple account, Run402 ends their Apple sign-in and emits the project event `auth_apple_sign_in_revoked`, so the app can delete what it holds about them. When an Apple identity is removed (unlinked, its user or the project deleted), Run402 revokes the person's Apple authorization.
 
 `getUser` looks one project user up by email (case-insensitive) with the service key and changes nothing: a member or a test user (`is_test: true`), so a role table keyed by user id can be seeded. No match throws the gateway's 404 `AUTH_USER_NOT_FOUND`, whose `next_actions` name the create route.
 

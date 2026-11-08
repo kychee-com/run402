@@ -69,6 +69,9 @@ import type {
   TranslateResult,
 } from "./namespaces/ai.js";
 import type {
+  AppleSignInKey,
+  AppleSignInKeyInput,
+  AppleSignInStatus,
   AuthSettings,
   AuthSettingsResult,
   AuthSessionResult,
@@ -725,6 +728,18 @@ class ScopedAuth {
   }
   settings(settings: AuthSettings): Promise<AuthSettingsResult> {
     return this.parent.auth.settings(this.projectId, settings);
+  }
+  /** Give Run402 the project's Sign in with Apple key (never returned). */
+  setAppleKey(key: AppleSignInKeyInput): Promise<AppleSignInKey> {
+    return this.parent.auth.setAppleKey(this.projectId, key);
+  }
+  /** Native Apple sign-in on this project: the key's public fields, the apps, the notification URL, what is missing. */
+  appleKeyStatus(): Promise<AppleSignInStatus> {
+    return this.parent.auth.appleKeyStatus(this.projectId);
+  }
+  /** Remove the project's Sign in with Apple key. */
+  removeAppleKey(): Promise<{ removed: boolean }> {
+    return this.parent.auth.removeAppleKey(this.projectId);
   }
   createPasskeyRegistrationOptions(opts: PasskeyRegistrationOptions): Promise<PasskeyOptionsResult> {
     return this.parent.auth.createPasskeyRegistrationOptions(this.projectId, opts);

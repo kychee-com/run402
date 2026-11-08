@@ -7575,7 +7575,9 @@ describe("Deploy.apply (transient platform conditions, kychee-com/run402#628)", 
     assert.equal(planCalls, 1);
   });
 
-  it("retries a whole apply whose content plan hit an archive-export write pause (kychee-com/run402#616)", async () => {
+  // A 503 content plan repeats in place first (requestWithTransientRetry); a
+  // pause that outlasts those attempts re-plans the whole apply on the code.
+  it("retries a whole apply whose content plan outlasted a capture's write pause (kychee-com/run402#616)", async () => {
     const w = makeWiring();
     const html = "<p>paused</p>";
     const sha = shaHex(html);
@@ -7588,11 +7590,11 @@ describe("Deploy.apply (transient platform conditions, kychee-com/run402#628)", 
       }
       if (req.path === "/content/v1/plans") {
         contentPlans += 1;
-        if (contentPlans === 1) {
+        if (contentPlans <= 3) {
           throw new ApiError(
-            "Project mutations are temporarily paused while a portable archive export captures a consistent slice",
-            409,
-            { code: "EXPORT_CONSISTENCY_UNAVAILABLE", retryable: true, safe_to_retry: true, mutation_state: "not_started" },
+            "Project writes are paused for a moment while a deploy's pre-migration snapshot captures a consistent copy",
+            503,
+            { code: "PROJECT_WRITES_PAUSED", retryable: true, safe_to_retry: true, mutation_state: "none" },
             "planning content upload",
           );
         }
@@ -7620,7 +7622,7 @@ describe("Deploy.apply (transient platform conditions, kychee-com/run402#628)", 
     const result = await new Deploy(w.client).apply({ project_id: "prj_test", site: { replace: { "index.html": html } } });
     assert.equal(result.release_id, "rel_2");
     assert.equal(planCalls, 2);
-    assert.equal(contentPlans, 2);
+    assert.equal(contentPlans, 4);
   });
 
   it("repeats a content plan lost to a 503 instead of failing the apply", async () => {

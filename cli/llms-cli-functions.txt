@@ -105,6 +105,7 @@ Returns `{ status, schema, rows, row_count, fields, statements, warnings }` (typ
 - INSERT/UPDATE/DELETE with `RETURNING`: `rows` = the returned rows
 - `fields` = column metadata: `[{ name, type }]` (Postgres type names, e.g. `int4`, `timestamptz`)
 - Parameterized: `adminDb().sql('SELECT * FROM t WHERE id = $1', [42])`
+- During a deploy: a deploy that runs a migration takes a snapshot, which pauses writes for a moment. Reads answer as usual; a write meets `503 PROJECT_WRITES_PAUSED`, and `adminDb().sql()` waits it out (any refusal the gateway marks retryable and safe to retry) for up to 8 seconds before throwing it as an `R402DbError` with `attempts` and `waited_ms`. Do not wrap it in a retry loop of your own.
 
 ```
 const result = await adminDb().sql('SELECT * FROM users WHERE active = true');
