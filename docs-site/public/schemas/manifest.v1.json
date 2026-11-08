@@ -83,6 +83,7 @@
             "public_read_authenticated_write",
             "public_read_append_only",
             "public_read_write_UNRESTRICTED",
+            "group_owns_rows",
             "custom"
           ]
         },
@@ -91,6 +92,17 @@
         },
         "force_owner_on_insert": {
           "type": "boolean"
+        },
+        "group_column": {
+          "$ref": "#/definitions/identifier",
+          "description": "group_owns_rows: the column naming the row's group."
+        },
+        "membership": {
+          "$ref": "#/definitions/membership"
+        },
+        "force_group_on_insert": {
+          "type": "boolean",
+          "description": "group_owns_rows: a BEFORE INSERT trigger fills a NULL group column from the request's Run402-Group and raises when no group is named."
         },
         "live": {
           "type": "boolean"
@@ -139,6 +151,28 @@
           "then": {
             "required": [
               "owner_column"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "expose": {
+                "const": true
+              },
+              "policy": {
+                "const": "group_owns_rows"
+              }
+            },
+            "required": [
+              "expose",
+              "policy"
+            ]
+          },
+          "then": {
+            "required": [
+              "group_column",
+              "membership"
             ]
           }
         },
@@ -211,6 +245,25 @@
         {
           "if": {
             "properties": {
+              "force_group_on_insert": {
+                "const": true
+              }
+            },
+            "required": [
+              "force_group_on_insert"
+            ]
+          },
+          "then": {
+            "properties": {
+              "policy": {
+                "const": "group_owns_rows"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
               "live": {
                 "const": true
               }
@@ -233,13 +286,35 @@
                   "user_owns_rows",
                   "public_read_authenticated_write",
                   "public_read_append_only",
-                  "public_read_write_UNRESTRICTED"
+                  "public_read_write_UNRESTRICTED",
+                  "group_owns_rows"
                 ]
               }
             }
           }
         }
       ]
+    },
+    "membership": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "group_owns_rows: the table that says which users are in which group. It must be declared in the same manifest with expose: true and policy user_owns_rows on user_column, so the policy reads only the caller's own memberships.",
+      "required": [
+        "table",
+        "group_column",
+        "user_column"
+      ],
+      "properties": {
+        "table": {
+          "$ref": "#/definitions/identifier"
+        },
+        "group_column": {
+          "$ref": "#/definitions/identifier"
+        },
+        "user_column": {
+          "$ref": "#/definitions/identifier"
+        }
+      }
     },
     "view": {
       "type": "object",
