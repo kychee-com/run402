@@ -3447,7 +3447,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "efdc62118526826d423a9ef8a454fd93707547e89c0203d4ba17efd212f826c6",
+      "sha256": "8d94aae740416c8a3aab01cdc247db0a566cc23c2d11a2e244d3fec7c6a8dd0b",
       "outputs": [],
       "url": "https://docs.run402.com/reference/schemas/",
       "checks": [

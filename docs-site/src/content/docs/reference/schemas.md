@@ -766,9 +766,20 @@ Use `run402 up --check` for local validation and `run402 up --plan` for gateway 
 | `policy` | `schema` | no | See the downloadable schema for constraints. |
 | `owner_column` | `#/definitions/identifier` | no | See the downloadable schema for constraints. |
 | `force_owner_on_insert` | `boolean` | no | See the downloadable schema for constraints. |
+| `group_column` | `#/definitions/identifier` | no | group_owns_rows: the column naming the row's group. |
+| `membership` | `#/definitions/membership` | no | See the downloadable schema for constraints. |
+| `force_group_on_insert` | `boolean` | no | group_owns_rows: a BEFORE INSERT trigger fills a NULL group column from the request's Run402-Group and raises when no group is named. |
 | `live` | `boolean` | no | See the downloadable schema for constraints. |
 | `i_understand_this_is_unrestricted` | `boolean` | no | See the downloadable schema for constraints. |
 | `custom_sql` | `string` | no | See the downloadable schema for constraints. |
+
+<h3 id="exposure-membership">membership</h3>
+
+| Property | Shape | Required | Description |
+|---|---|---|---|
+| `table` | `#/definitions/identifier` | yes | See the downloadable schema for constraints. |
+| `group_column` | `#/definitions/identifier` | yes | See the downloadable schema for constraints. |
+| `user_column` | `#/definitions/identifier` | yes | See the downloadable schema for constraints. |
 
 <h3 id="exposure-view">view</h3>
 
