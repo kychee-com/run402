@@ -153,7 +153,7 @@ run402 projects apply-expose    <project_id> --file manifest.json
 run402 projects get-expose   <project_id>
 ```
 
-Built-in policies: `user_owns_rows` (rows where `owner_column = auth.uid()`; with `force_owner_on_insert: true` a BEFORE INSERT trigger sets it), `public_read_authenticated_write` (anyone reads, any authenticated user writes), `public_read_write_UNRESTRICTED` (fully open; requires `i_understand_this_is_unrestricted: true`), and `custom` (escape hatch: your own `CREATE POLICY` SQL).
+Built-in policies: `user_owns_rows` (rows where `owner_column = auth.uid()`; with `force_owner_on_insert: true` a BEFORE INSERT trigger sets it), `group_owns_rows` (rows whose `group_column` is one of the groups the user belongs to, read from `membership: { table, group_column, user_column }`, itself declared `user_owns_rows`; a request's `Run402-Group` header narrows to one group and never widens, and `force_group_on_insert: true` fills a NULL group from it), `public_read_authenticated_write` (anyone reads, any authenticated user writes), `public_read_append_only` (anyone reads and inserts; update/delete denied), `public_read_write_UNRESTRICTED` (fully open; requires `i_understand_this_is_unrestricted: true`), and `custom` (escape hatch: your own `CREATE POLICY` SQL).
 
 Use `run402 projects validate-expose`  for a non-mutating feedback loop before applying. Optional migration SQL is used only to check manifest references; it is not executed as a PostgreSQL dry run, and this does not validate deploy manifests.
 
@@ -294,7 +294,7 @@ export default async (req: Request) => {
 };
 ```
 
-`adminDb().sql(query, params?)` runs raw parameterized SQL and always bypasses RLS. The current runtime returns the gateway envelope, including `rows` and `row_count`; read `result.rows`, not `result[0]`. Older helper typings incorrectly described a bare array. See the [owning runtime reference](https://github.com/kychee-com/run402-core/tree/main/packages/functions#admindbsqlquery-params--raw-sql-bypassrls) and match local helper types to the runtime version used by your deploy.
+`db(req).sql(query, params?)` runs SQL as the request's end user under row-level security (the gateway runs it with `as_actor`; the answer names the `actor` and `role`, `anon` when there is no visitor), with the `group` option of `db()` naming the request's current group for `group_owns_rows` tables. `adminDb().sql(query, params?)` runs raw parameterized SQL and always bypasses RLS. The current runtime returns the gateway envelope, including `rows` and `row_count`; read `result.rows`, not `result[0]`. Older helper typings incorrectly described a bare array. See the [owning runtime reference](https://github.com/kychee-com/run402-core/tree/main/packages/functions#admindbsqlquery-params--raw-sql-bypassrls) and match local helper types to the runtime version used by your deploy.
 
 `@run402/functions` is auto-bundled into deployed code; install it in your editor for full TypeScript autocomplete (also works at build time for static-site generation with `RUN402_SERVICE_KEY` + `RUN402_PROJECT_ID` set).
 

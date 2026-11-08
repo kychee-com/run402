@@ -111,6 +111,7 @@ Run `node scripts/documentation-inventory.mjs` to reject newly discovered unclas
 | public | [cli/lib/webhooks.mjs](cli/lib/webhooks.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/whoami.mjs](cli/lib/whoami.mjs) | guide / cli | pending | pending |
 | public | [cli/llms-cli-assets.txt](cli/llms-cli-assets.txt) | generated / mixed | pending: source changed since editorial review | pending: source changed since publication evidence |
+| public | [cli/llms-cli-authorization.txt](cli/llms-cli-authorization.txt) | generated / mixed | pending | pending |
 | public | [cli/llms-cli-commands.txt](cli/llms-cli-commands.txt) | generated / mixed | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/llms-cli-deploy.txt](cli/llms-cli-deploy.txt) | generated / mixed | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/llms-cli-errors.txt](cli/llms-cli-errors.txt) | generated / mixed | pending: source changed since editorial review | pending: source changed since publication evidence |
@@ -152,6 +153,7 @@ Run `node scripts/documentation-inventory.mjs` to reject newly discovered unclas
 | public | [docs-site/src/content/docs/build/stripe.md](docs-site/src/content/docs/build/stripe.md) | guide / cli | pending | pending |
 | public | [docs-site/src/content/docs/cache/concepts.md](docs-site/src/content/docs/cache/concepts.md) | guide / cli | reviewed CLI defaults, prerequisites, application-code exceptions and result/recovery claims; live acceptance separate | hosted verified: 2026-09-17; portal 23751749 |
 | public | [docs-site/src/content/docs/cli/assets.md](docs-site/src/content/docs/cli/assets.md) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
+| public | [docs-site/src/content/docs/cli/authorization.md](docs-site/src/content/docs/cli/authorization.md) | guide / cli | pending | pending |
 | public | [docs-site/src/content/docs/cli/commands.md](docs-site/src/content/docs/cli/commands.md) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [docs-site/src/content/docs/cli/deploy.md](docs-site/src/content/docs/cli/deploy.md) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [docs-site/src/content/docs/cli/errors.md](docs-site/src/content/docs/cli/errors.md) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |

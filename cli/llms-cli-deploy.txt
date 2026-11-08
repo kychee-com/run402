@@ -568,45 +568,7 @@ EXCEPTION WHEN duplicate_column THEN NULL;
 END $$;
 ```
 
-Authorization manifest (`https://run402.com/schemas/manifest.v1.json`): new tables are dark until declared with `expose: true`. Prefer `database.expose` or a `manifest.json` in bundle `files[]`; platform validates against migration SQL, applies it, and strips `manifest.json` before site deploy so it is never public. Success includes `manifest_applied: true`; missing migration table -> HTTP 400 with structured `errors[]`. Dry feedback: `run402 projects validate-expose [project_id] --file manifest.json [--migration-file setup.sql]`; validates auth/expose manifest only, does not execute SQL, exits 0 even with `has_errors: true`.
-
-Built-in table policies:
-
-- `user_owns_rows` — owner column matches `auth.uid()`; requires `owner_column`. With `force_owner_on_insert: true`, per-table trigger fills owner only when `NEW.<owner_column>` is `NULL`; explicit different owners still fail `WITH CHECK`. `service_key` bypasses RLS but trigger still runs; admin writes should set owner if no JWT. Best for user-scoped data. `uuid` owner columns get index-friendly policies; other types use `::text` cast with warning; btree index auto-created.
-- `public_read_authenticated_write` — anyone reads; any authenticated user can INSERT/UPDATE/DELETE any row (not just their own). For collaborative content (shared boards, announcements).
-- `public_read_write_UNRESTRICTED` — ⚠ fully open; `anon_key` can read AND write any row. For intentionally public tables only (guestbooks, waitlists, feedback forms). Requires `"i_understand_this_is_unrestricted": true` on the table entry.
-- `custom` — escape hatch. Provide `custom_sql` containing `CREATE POLICY` statements; they run inside the apply transaction after RLS is enabled + forced.
-
-| Policy | anon SELECT | anon writes | auth SELECT | auth writes |
-|---|:---:|:---:|:---:|:---:|
-| (omitted from manifest) | — | — | — | — |
-| `user_owns_rows` | — | — | own rows | own rows |
-| `public_read_authenticated_write` | all | — | all | all rows |
-| `public_read_write_UNRESTRICTED` | all | yes | all | yes |
-
-`—` = denied. `service_key` bypasses all policies. Views are always created with `security_invoker=true` — they inherit the underlying table's RLS. RPCs require an entry in `rpcs[*]` with `grant_to` to be callable as `/rest/v1/rpc/<fn>` — `CREATE FUNCTION` revokes PUBLIC EXECUTE automatically.
-
-Worked example covering all three slices (drop in as `manifest.json` or under `database.expose` in a deploy manifest):
-
-```json
-{
-  "$schema": "https://run402.com/schemas/manifest.v1.json",
-  "version": "1",
-  "tables": [
-    { "name": "posts", "expose": true, "policy": "public_read_authenticated_write" },
-    { "name": "notes", "expose": true, "policy": "user_owns_rows", "owner_column": "user_id", "force_owner_on_insert": true }
-  ],
-  "views": [
-    { "name": "posts_public", "base": "posts", "select": ["id", "title", "published_at"], "expose": true }
-  ],
-  "rpcs": [
-    { "name": "increment_counter", "signature": "(counter_name text)", "grant_to": ["authenticated"] },
-    { "name": "now_utc", "signature": "()", "grant_to": ["anon", "authenticated"] }
-  ]
-}
-```
-
-`rpcs[*].signature`: parenthesized args (`"()"` for none), regex `^\([^;]*\)$`; `grant_to` non-empty roles (`anon`, `authenticated`, `service_role`, `project_admin`). Function must exist in migration SQL; manifest grants EXECUTE only. Views require `base` + non-empty `select`, are `security_invoker=true`, inherit base RLS. Ad-hoc: `projects apply-expose <project_id> --file manifest.json`; inspect with `projects get-expose <project_id>` (`source: "applied" | "introspected"`). Manifest is convergent; removed items revoke policies/grants/triggers/views, so include full desired exposed surface each apply.
+Authorization manifest (`database.expose`, or a `manifest.json` in bundle `files[]`): new tables are dark until declared with `expose: true`. The manifest shape, the built-in table policies (`user_owns_rows`, `group_owns_rows`, `public_read_authenticated_write`, `public_read_append_only`, `public_read_write_UNRESTRICTED`, `custom`), views, rpcs, a worked example and `run402 projects validate-expose` are the authorization slice: https://docs.run402.com/llms-cli-authorization.txt.
 
 Deploy:
 

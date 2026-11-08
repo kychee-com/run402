@@ -386,9 +386,10 @@ export function scanFileContent(source: string, opts: ScanOptions = {}) {
   //    current user (`auth.user()`, `auth.requireUser()`, …) and then calls
   //    `adminDb()` answers that user's request with a key that bypasses row-
   //    level security, so a bug in the handler's own checks exposes every row.
-  //    `db(req)` runs as the user and lets RLS decide. Advisory: some handlers
-  //    do need the service key after an explicit check (an admin action), and
-  //    say so with: // run402-allow-admin-db: <reason>
+  //    `db(req)` runs as the user and lets RLS decide: `db(req).from()` for a
+  //    REST query, `db(req).sql()` for SQL (the gateway runs it as the user).
+  //    Advisory: some handlers do need the service key after an explicit
+  //    check (an admin action), and say so with: // run402-allow-admin-db: <reason>
   if (/\bauth\s*\.\s*(?:user|requireUser|requireRole|requireMembership)\s*\(|\brequireUser\s*\(/.test(content)) {
     const adminDbRegex = /\badminDb\s*\(\s*\)/g;
     let adminMatch;
@@ -406,8 +407,9 @@ export function scanFileContent(source: string, opts: ScanOptions = {}) {
           "adminDb() uses the project service key, which bypasses row-level security, in a file that reads the current user. " +
           "A request made for that user should run as that user: db(req) lets RLS decide which rows it sees.",
         fix:
-          "Use db(req) for the user's reads and writes. If this handler needs the service key after its own check (an admin action), " +
-          "silence with: // run402-allow-admin-db: <reason>",
+          "Use db(req) for the user's reads and writes: db(req).from(table) for a REST query, db(req).sql(query, params) for SQL " +
+          "(the gateway runs it as the user; adminDb().sql(...) becomes db(req).sql(...)). " +
+          "If this handler needs the service key after its own check (an admin action), silence with: // run402-allow-admin-db: <reason>",
         docs: "https://run402.com/errors/#SERVICE_KEY_IN_USER_REQUEST",
       });
     }

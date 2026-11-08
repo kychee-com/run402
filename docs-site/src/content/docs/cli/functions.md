@@ -19,8 +19,8 @@ Built-in helper: `import { auth, db, adminDb, email, ai, assets, push, repo, rep
 - `auth.sessions.endResponse()` — sign-out: revokes the active session row + returns Set-Cookie clear.
 - `auth.grants.list()` / `auth.grants.revoke(id)` (`@run402/functions` 4.7+) — the signed-in person's connected AI assistants (MCP clients that went through the app's OAuth consent). `list()` → `[{ id, client_id, client_name, verified_host, created_at, last_used_at, expires_at, scopes }]` (`verified_host: null` means `client_name` is self-declared: label it unverified); `revoke(id)` → `{ revoked }`, false for an id that is not a live grant of this person. Only the caller's own grants in this project; `AuthRequiredError` when anonymous. A revoked client's next MCP call answers 401 with `WWW-Authenticate`. No page needed: link to the hosted `/_run402/account/connections`.
 - `auth.identities.link({ provider, subject, proof })` — atomic nonce consumption + identity INSERT; 409 R402_AUTH_IDENTITY_LINK_CONFLICT on duplicate.
-- `db(req?)` — caller-context DB client. In SSR with verified actor, mints 60s actor JWT (`sub`, `project_id`, `session_id`, `authz_version`) so `run402.current_user_id()` works in RLS. Routes `/rest/v1/*`. Default choice; RLS handles current-user filters. `.eq("user_id", user.id)` deploy-fails with `R402_AUTH_REDUNDANT_USER_FILTER` unless annotated `// run402-allow-user-filter:`.
-- `adminDb()` — BYPASSRLS using `service_key`; routes `/projects/v1/:project_id/rest/*`, and `adminDb().sql()` routes `/projects/v1/:project_id/sql` (gateway rejects `role=service_role` on `/rest/v1/*`). In a handler that reads the current user, `run402 doctor` flags it (`SERVICE_KEY_IN_USER_REQUEST`): use `db(req)` there. Use only when function acts as platform: audit logs, webhooks, cron cleanup.
+- `db(req?)`, or `db(opts)` with `opts.request` and `opts.group` — caller-context DB client. In SSR with verified actor, forwards the gateway-minted 60s actor JWT (`sub`, `project_id`, `session_id`, `authz_version`) so `run402.current_user_id()` works in RLS. `from()` routes `/rest/v1/*`; `sql(query, params?)` runs SQL as the same user (below). `group` names the request's current group for `group_owns_rows` tables: `Run402-Group` on `from()`, the body's `group` on `sql()`; it narrows and never widens. Default choice; RLS handles current-user filters. `.eq("user_id", user.id)` deploy-fails with `R402_AUTH_REDUNDANT_USER_FILTER` unless annotated `// run402-allow-user-filter:`.
+- `adminDb()` — BYPASSRLS using `service_key`; routes `/projects/v1/:project_id/rest/*`, and `adminDb().sql()` routes `/projects/v1/:project_id/sql` (gateway rejects `role=service_role` on `/rest/v1/*`). In a handler that reads the current user, `run402 doctor` flags it (`SERVICE_KEY_IN_USER_REQUEST`): use `db(req).from()` or `db(req).sql()` there. Use only when function acts as platform: audit logs, webhooks, cron cleanup.
 - `getUserId(req)` / `getRole(req)` — function-level gate header readers (`x-run402-user-id` / `x-run402-user-role`), distinct from `auth.*` cookie sessions. Not exported: importing either from `@run402/functions` throws `R402_AUTH_UNKNOWN_EXPORT`. Use `auth.*` or read headers manually.
 - `getRoutedPaymentContext(req)` (`@run402/functions` 3.7+) — confirmed x402 payment context for priced routed function requests. Returns `{ scheme, paymentId, amountUsdMicros, amountMsat?, payer, network, asset, payTo, transaction, settledAt }` or `null`; key app-side idempotency by `payment.paymentId`. A Lightning payment (`network` `lnbtc:…`, `@run402/functions` 4.10+) carries `amountMsat`, the invoice amount in millisatoshis, and a `null` `payer`.
 - `email.send(opts)` — send email from the project's mailbox (see email section below); `opts.bcc` (one address or up to 5) adds blind copies in raw and template mode, each counted as one send, never named in any header
@@ -86,9 +86,24 @@ await adminDb().from('audit_log').insert({ event: 'payment_succeeded', user_id: 
 await adminDb().from('sessions').delete().lt('expires_at', new Date().toISOString());
 ```
 
+#### db(req).sql(query, params?) — SQL as the caller
+
+Runs one statement as the request's end user, under the same row-level security `db(req).from()` gets: joins and aggregates a REST query cannot express, without the service key. It posts the project's service key with `as_actor: true` and the request's forwarded actor token (`x-run402-actor-token`) to `POST /projects/v1/:project_id/sql`; the gateway verifies the token and runs the statement as that user (role `authenticated`), or as `anon` when the request carries no actor (an anonymous visitor, a scheduled function), never silently as the service key.
+
+```
+const { rows, actor, role } = await db().sql(
+  "SELECT t.*, count(r.id)::int AS replies FROM threads t LEFT JOIN replies r ON r.thread_id = t.id GROUP BY t.id",
+);
+// actor: { user_id: "…" }, role: "authenticated" — or actor: null, role: "anon" with no signed-in visitor
+```
+
+Same `AdminSqlResult` envelope as `adminDb().sql()` plus `actor: { user_id } | null` and `role: "authenticated" | "anon"`; same errors (`R402_DB_SQL_ERROR`, `R402_DB_SQL_RESULT_SHAPE`), so a call moves off `adminDb().sql()` by changing one identifier. Reads return only the rows the user's policies allow; a write a policy refuses throws `R402DbError` with `status: 403` and `remote_code: "REST_PERMISSION_DENIED"`. With the `group` option, `sql()` sends it as the body's `group`. Needs `RUN402_SERVICE_KEY` in the environment (the gateway injects it); without it the call throws before any request. `run402 dev --as <user>` runs it as that test user.
+
 #### adminDb().sql(query, params?) — raw SQL, always BYPASSRLS
 
-Returns `{ status, schema, rows, row_count, fields }` (typed as `AdminSqlResult` in `@run402/functions` 3.10+). Field names are snake_case — the wire contract, NOT camelCase (`rowCount` was a docs error; it never existed at runtime).
+For a statement on behalf of the request's visitor, use `db(req).sql()` above; this one runs as the service role and sees every row.
+
+Returns `{ status, schema, rows, row_count, fields, statements, warnings }` (typed as `AdminSqlResult` in `@run402/functions` 3.10+; `statements` lists each statement's command and count, `warnings` the gateway's result-preserving warnings). Field names are snake_case — the wire contract, NOT camelCase (`rowCount` was a docs error; it never existed at runtime).
 - SELECT: `rows` = matching rows, `row_count` = row count
 - INSERT/UPDATE/DELETE: `rows` = `[]`, `row_count` = affected rows
 - INSERT/UPDATE/DELETE with `RETURNING`: `rows` = the returned rows
@@ -102,7 +117,7 @@ const result = await adminDb().sql('SELECT * FROM users WHERE active = true');
 const rows = result.rows;
 ```
 
-`db` is a request-scoped function. Use `db(req).from(...)` for caller-context RLS or `adminDb().from(...)` / `adminDb().sql(...)` for service-key work.
+`db` is a request-scoped function. Use `db(req).from(...)` / `db(req).sql(...)` for caller-context RLS or `adminDb().from(...)` / `adminDb().sql(...)` for service-key work.
 
 #### Calling functions from the browser
 

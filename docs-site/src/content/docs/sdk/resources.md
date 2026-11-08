@@ -784,7 +784,7 @@ const sub = p.live.subscribe({ tables: ["cells"] }, (e) => {
 sub.close(); await sub.done;
 ```
 
-`LiveEvent` is `ready` (`cursor`, `tables`), `change`, `resync` (`tables`, `reason`), `reconnect` (the server closed at its 300 s lifetime; the loop resumes from the last cursor) or `disconnected` (a retryable failure; `retry_in_ms`). Audience: `{ as: "anon" }` (default; the project anon key, public-policy tables), `{ as: "user", accessToken }` (adds a user Bearer; receives that user's `user_owns_rows` hints), `{ as: "service" }` (service key; every hint). A non-retryable refusal (`TABLE_NOT_LIVE`, `AUTH_REQUIRED`, `VALIDATION_FAILED`) rejects `done` with the gateway's error envelope; `LIVE_CONNECTION_LIMIT` and 5xx back off and retry. The tenant-host stream (`/_run402/live`) needs no SDK at all: `new EventSource("/_run402/live?tables=cells")`.
+`LiveEvent` is `ready` (`cursor`, `tables`), `change`, `resync` (`tables`, `reason`), `reconnect` (the server closed at its 300 s lifetime; the loop resumes from the last cursor) or `disconnected` (a retryable failure; `retry_in_ms`). Audience: `{ as: "anon" }` (default; the project anon key, public-policy tables), `{ as: "user", accessToken }` (adds a user Bearer; receives that user's `user_owns_rows` hints and, on a `group_owns_rows` table, the hints of the groups it belongs to, membership re-read at most every 60 s), `{ as: "service" }` (service key; every hint). A non-retryable refusal (`TABLE_NOT_LIVE`, `AUTH_REQUIRED`, `VALIDATION_FAILED`) rejects `done` with the gateway's error envelope; `LIVE_CONNECTION_LIMIT` and 5xx back off and retry. The tenant-host stream (`/_run402/live`) needs no SDK at all: `new EventSource("/_run402/live?tables=cells")`.
 
 ### `r.push`
 

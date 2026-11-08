@@ -262,7 +262,17 @@ export interface ContentTrackedMigrationSpec extends BaseMigrationSpec {
   id?: never;
 }
 
-export type ExposePolicy = "user_owns_rows" | "public_read_authenticated_write" | "public_read_append_only" | "public_read_write_UNRESTRICTED" | "custom";
+/** A manifest table's built-in policy (`database.expose.tables[*].policy`).
+ *  `user_owns_rows` needs `owner_column` (and takes `force_owner_on_insert`);
+ *  `group_owns_rows` needs `group_column` (the column naming the row's group)
+ *  and `membership: { table, group_column, user_column }` (the table that says
+ *  which users are in which group, itself declared `user_owns_rows` on
+ *  `membership.user_column`), and takes `force_group_on_insert`, which fills a
+ *  NULL group from the request's `Run402-Group` header and raises when none is
+ *  named; a request's `Run402-Group` narrows the rows to that group and never
+ *  widens them. `public_read_write_UNRESTRICTED` needs
+ *  `i_understand_this_is_unrestricted: true`; `custom` needs `custom_sql`. */
+export type ExposePolicy = "user_owns_rows" | "group_owns_rows" | "public_read_authenticated_write" | "public_read_append_only" | "public_read_write_UNRESTRICTED" | "custom";
 export interface EffectiveAccessPreview {
   table: string;
   role: "anon" | "authenticated";

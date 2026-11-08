@@ -95,10 +95,15 @@ Notes:
        "rpcs":[]}
     Per-table policies: user_owns_rows (requires owner_column;
     force_owner_on_insert sets it from auth.uid() automatically),
-    public_read_authenticated_write (anyone reads, any auth'd user writes any
-    row), public_read_write_UNRESTRICTED (fully open; requires
-    "i_understand_this_is_unrestricted": true on the entry), custom (provide
-    custom_sql with CREATE POLICY statements).
+    group_owns_rows (rows of the groups the user is a member of; requires
+    group_column and membership: {table, group_column, user_column}, the
+    membership table declared user_owns_rows on its user_column; a request's
+    Run402-Group header narrows to one group; force_group_on_insert fills a
+    NULL group from that header), public_read_authenticated_write (anyone
+    reads, any auth'd user writes any row), public_read_append_only (anyone
+    reads and inserts; update/delete denied), public_read_write_UNRESTRICTED
+    (fully open; requires "i_understand_this_is_unrestricted": true on the
+    entry), custom (provide custom_sql with CREATE POLICY statements).
   - 'validate-expose' checks the same auth/expose manifest shape without
     applying it. Optional migration SQL is used only for reference checks; it is
     not executed as a PostgreSQL dry run.

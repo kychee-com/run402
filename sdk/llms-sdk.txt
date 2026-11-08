@@ -1338,7 +1338,17 @@ The manifest itself is a JSON object:
 }
 ```
 
-Built-in policies: `user_owns_rows` (rows where `owner_column = auth.uid()`), `public_read_authenticated_write` (anyone reads, any auth user writes), `public_read_append_only` (anyone reads and inserts; update/delete denied), `public_read_write_UNRESTRICTED` (fully open; requires `i_understand_this_is_unrestricted: true`), `custom` (provide `custom_sql`).
+Built-in policies: `user_owns_rows` (rows where `owner_column = auth.uid()`), `group_owns_rows` (rows whose `group_column` is one of the groups the user belongs to, read from `membership: { table, group_column, user_column }`; the membership table is declared in the same manifest as `user_owns_rows` on its `user_column`, and a request's `Run402-Group` header narrows to one group and never widens), `public_read_authenticated_write` (anyone reads, any auth user writes), `public_read_append_only` (anyone reads and inserts; update/delete denied), `public_read_write_UNRESTRICTED` (fully open; requires `i_understand_this_is_unrestricted: true`), `custom` (provide `custom_sql`).
+
+A `group_owns_rows` table compiles four permissive policies (SELECT, INSERT `WITH CHECK`, UPDATE, DELETE) over one predicate, read as the caller (the membership subselect sees only the caller's own membership rows, so no privileged helper exists):
+
+```sql
+"<group_column>" IN (SELECT m."<membership.group_column>" FROM "<membership.table>" m WHERE m."<membership.user_column>" = auth.uid())
+AND (current_setting('request.headers', true)::json->>'run402-group' IS NULL
+     OR "<group_column>"::text = current_setting('request.headers', true)::json->>'run402-group')
+```
+
+A `Run402-Group` the caller is not a member of yields no rows. The two group columns are introspected like `owner_column` (equality when their types agree, a text cast with a warning otherwise) and `group_column` is indexed. Validation refuses a `membership.table` that is not declared `user_owns_rows` on `membership.user_column` (`membership-not-user-owned`, whose `fix` names the declaration to add) or that is itself `group_owns_rows`; `force_group_on_insert` with any other policy, and `force_owner_on_insert` with `group_owns_rows`, are errors. The service role bypasses the policy as it bypasses every policy.
 
 For `user_owns_rows`, `force_owner_on_insert: true` creates an idempotent per-table trigger named `<table>_set_owner` backed by `<table>_set_owner_fn`. The generated shape is:
 
@@ -1359,6 +1369,34 @@ CREATE TRIGGER "<table>_set_owner"
 ```
 
 The trigger only fills omitted or explicit `null` owner values; it does not overwrite a non-null owner. Ordinary authenticated inserts still pass through the `WITH CHECK (owner_column = auth.uid())` policy, so an explicit different owner is rejected. `service_key` / service-role writes bypass RLS, but the trigger still runs; if the request has no JWT subject, `auth.uid()` is null, so admin writes should set `owner_column` explicitly when the row needs an owner.
+
+For `group_owns_rows`, `force_group_on_insert: true` creates the sibling trigger `<table>_set_group` backed by `<table>_set_group_fn`:
+
+```sql
+CREATE OR REPLACE FUNCTION "<table>_set_group_fn"() RETURNS trigger
+LANGUAGE plpgsql AS $body$
+DECLARE
+  current_group text;
+BEGIN
+  IF NEW."<group_column>" IS NULL THEN
+    current_group := (NULLIF(current_setting('request.headers', true), '')::json->>'run402-group');
+    IF current_group IS NULL THEN
+      RAISE EXCEPTION 'Run402-Group header required: this insert into % names no group (column %)', TG_TABLE_NAME, '<group_column>'
+        USING ERRCODE = 'P0001',
+              HINT = 'Send Run402-Group: <group> naming a group you belong to, or set the column explicitly.';
+    END IF;
+    NEW."<group_column>" := current_group;
+  END IF;
+  RETURN NEW;
+END;
+$body$;
+
+CREATE TRIGGER "<table>_set_group"
+  BEFORE INSERT ON "<table>"
+  FOR EACH ROW EXECUTE FUNCTION "<table>_set_group_fn"();
+```
+
+It fills only a NULL group, from the request's `Run402-Group` (the body's `group` on the SQL route); an explicit value is kept and still faces the policy's `WITH CHECK`, so a group the user is not a member of is refused. When the group is NULL and no group is named, the insert raises an error naming the `Run402-Group` header and nothing is written, instead of failing later in `WITH CHECK` or a `NOT NULL` with a message that does not say what to send. A service-role write bypasses the policy but the trigger still runs: a service-key insert with a NULL group and no `Run402-Group` raises the same error, so platform writes set the group column explicitly.
 
 **Preferred path: put the manifest object under `database.expose` in a v2 `ReleaseSpec`.** The gateway validates it against migration SQL and applies it atomically with the rest of the release.
 
@@ -1384,9 +1422,10 @@ export default async (req: Request) => {
 };
 ```
 
-- `db(req)` — caller-context. Forwards Authorization header. RLS applies.
-- `adminDb()` — bypass RLS. Routes to `/projects/v1/:project_id/rest/*` (and `adminDb().sql()` to `/projects/v1/:project_id/sql`).
-- `adminDb().sql(query, params?)` — raw parameterized SQL.
+- `db(req)` — caller-context. Forwards Authorization header. RLS applies. `db(opts)` with `opts.request` / `opts.group` is the option form: `group` names the request's current group for `group_owns_rows` tables (`Run402-Group` on `from()`, the body's `group` on `sql()`).
+- `db().sql(query, params?)` — SQL as the request's end user: posts the service key with `as_actor: true` and the forwarded actor token to `/projects/v1/:project_id/sql`; the gateway runs the statement under row-level security as that user (`role: "authenticated"`), or as `anon` with no actor (a scheduled function), never silently as the service key. Answers the same envelope as `adminDb().sql()` plus `actor: { user_id } | null` and `role`; a write a policy refuses is `R402DbError` with `status: 403`, `remote_code: "REST_PERMISSION_DENIED"`.
+- `adminDb()` — bypass RLS. Routes to `/projects/v1/:project_id/rest/*` (and `adminDb().sql()` to `/projects/v1/:project_id/sql`). For platform work (audit logs, cron, webhooks), not a visitor's request.
+- `adminDb().sql(query, params?)` — raw parameterized SQL, always bypass RLS.
 - `auth.user()` / `auth.requireUser()` — read the verified actor from the SSR runtime context. `auth.user()` returns `Actor | null`; `auth.requireUser()` returns `Actor` and throws (303 redirect for HTML / 401 envelope for JSON, decided by the gateway from the `Accept` header). `Actor` has `id`, `projectId`, `sessionId`, `email`, `emailVerified`, `authTime`, `amr`, `amrTimes`, and `is_test: true` only for a test-session user (absent for a real one). Calling either taints the SSR ISR cache (the response now depends on per-request actor state). Do NOT catch the throw from `auth.requireUser()` — the platform decides response shape. Bare `getUser` / `getUserId` / `getRole` / `getSession` / `currentUser` / `getCurrentUser` / `getServerSession` exports throw `R402_AUTH_UNKNOWN_EXPORT` at runtime AND fail `run402 doctor` source scan at deploy.
 - For per-user gating in functions OUTSIDE the cookie-session flow (a `requireAuth` / `requireRole` deploy-spec gate, not the SSR auth namespace), read the gateway-injected headers directly: `req.headers.get("x-run402-user-id")` / `req.headers.get("x-run402-user-role")`. The gateway strips inbound `x-run402-*` headers before injection, so the values are trustworthy. Returns `null` when no corresponding gate ran (function has no gate, only `requireAuth` declared without `requireRole`, or local-invoke outside the gateway).
 - `getRoutedPaymentContext(req)` (`@run402/functions` 3.7+) — confirmed x402 payment context for priced routed function requests. Returns `{ scheme, paymentId, amountUsdMicros, amountMsat?, payer, network, asset, payTo, transaction, settledAt }` or `null` for unpriced/direct/malformed calls. Use `payment.paymentId` for app-side idempotency. A Lightning payment (`network` `lnbtc:…`, `@run402/functions` 4.10+) carries `amountMsat`, the invoice amount in millisatoshis, and a `null` `payer`.
@@ -2175,7 +2214,7 @@ const sub = p.live.subscribe({ tables: ["cells"] }, (e) => {
 sub.close(); await sub.done;
 ```
 
-`LiveEvent` is `ready` (`cursor`, `tables`), `change`, `resync` (`tables`, `reason`), `reconnect` (the server closed at its 300 s lifetime; the loop resumes from the last cursor) or `disconnected` (a retryable failure; `retry_in_ms`). Audience: `{ as: "anon" }` (default; the project anon key, public-policy tables), `{ as: "user", accessToken }` (adds a user Bearer; receives that user's `user_owns_rows` hints), `{ as: "service" }` (service key; every hint). A non-retryable refusal (`TABLE_NOT_LIVE`, `AUTH_REQUIRED`, `VALIDATION_FAILED`) rejects `done` with the gateway's error envelope; `LIVE_CONNECTION_LIMIT` and 5xx back off and retry. The tenant-host stream (`/_run402/live`) needs no SDK at all: `new EventSource("/_run402/live?tables=cells")`.
+`LiveEvent` is `ready` (`cursor`, `tables`), `change`, `resync` (`tables`, `reason`), `reconnect` (the server closed at its 300 s lifetime; the loop resumes from the last cursor) or `disconnected` (a retryable failure; `retry_in_ms`). Audience: `{ as: "anon" }` (default; the project anon key, public-policy tables), `{ as: "user", accessToken }` (adds a user Bearer; receives that user's `user_owns_rows` hints and, on a `group_owns_rows` table, the hints of the groups it belongs to, membership re-read at most every 60 s), `{ as: "service" }` (service key; every hint). A non-retryable refusal (`TABLE_NOT_LIVE`, `AUTH_REQUIRED`, `VALIDATION_FAILED`) rejects `done` with the gateway's error envelope; `LIVE_CONNECTION_LIMIT` and 5xx back off and retry. The tenant-host stream (`/_run402/live`) needs no SDK at all: `new EventSource("/_run402/live?tables=cells")`.
 
 ### `r.push`
 
@@ -3338,7 +3377,7 @@ OpenClaw skill packaging follows the CLI release train. `@run402/functions` and 
 
 - Never paste a key into HTML. Every Run402 host serves `/_run402/config.js` (`window.RUN402 = { project_id, api_base, anon_key }`) for the project it resolves to at request time; load that instead. The `anon_key` is public by design.
 - Use the manifest for access control, never raw `GRANT/REVOKE`.
-- `user_owns_rows` is the default for user-scoped data. Reach for `public_read_write_UNRESTRICTED` only on intentionally-public tables.
+- `user_owns_rows` is the default for user-scoped data; `group_owns_rows` for rows that belong to a group its members share (a family, a club, a team), with the `group` option of `db()` naming the request's current group. Reach for `public_read_write_UNRESTRICTED` only on intentionally-public tables.
 - Use immutable `cdnUrl` from `r.assets.put`. It's correct from the moment of upload — no `waitFresh` needed.
 - Don't bake unconditional `r.wallets.faucet()` into deploy scripts — the faucet rate-limits and breaks already-funded flows.
 - Per-project rate limit is 100 req/sec. On 429, back off using `retry_after`.

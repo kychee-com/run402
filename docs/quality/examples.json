@@ -248,6 +248,14 @@
     "validation": "cli-help-output-sync"
   },
   {
+    "file": "docs-site/src/content/docs//cli/authorization.md",
+    "line": 33,
+    "language": "json",
+    "kind": "configuration",
+    "sha256": "5c35d5f38f17afcfdf3f705cc831f627d7081512a8ff6f0a590f28d95046a93a",
+    "validation": "cli-help-output-sync"
+  },
+  {
     "file": "docs-site/src/content/docs//cli/commands.md",
     "line": 26,
     "language": "bash",
@@ -481,15 +489,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/deploy.md",
-    "line": 595,
-    "language": "json",
-    "kind": "configuration",
-    "sha256": "5c35d5f38f17afcfdf3f705cc831f627d7081512a8ff6f0a590f28d95046a93a",
-    "validation": "cli-help-output-sync"
-  },
-  {
-    "file": "docs-site/src/content/docs//cli/deploy.md",
-    "line": 617,
+    "line": 579,
     "language": "bash",
     "kind": "commands",
     "sha256": "d4fd75386ea165a5f4e4650c8593b102894c3b9a4bf29ece4aede9a14f497263",
@@ -497,7 +497,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/deploy.md",
-    "line": 627,
+    "line": 589,
     "language": "bash",
     "kind": "commands",
     "sha256": "5f1a89cd231076711841c67d4cd8a2fbf2e0bd03212d378f6ba7f023082b6a8d",
@@ -593,7 +593,15 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/functions.md",
-    "line": 98,
+    "line": 93,
+    "language": "",
+    "kind": "output-or-pseudocode",
+    "sha256": "d62ef8730b9f84ee924d1f13bf7b34fb2c63d5da883021e76b187ac6d49ed2a0",
+    "validation": "cli-help-output-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//cli/functions.md",
+    "line": 113,
     "language": "",
     "kind": "output-or-pseudocode",
     "sha256": "d3354bc83361a6acf81926c31d3bf4b8b33f84a5f3b5faf11eb44d08af7d1a07",
@@ -601,7 +609,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/functions.md",
-    "line": 111,
+    "line": 126,
     "language": "javascript",
     "kind": "output-or-pseudocode",
     "sha256": "8b325cb7437f6e538b06c6ce7aa6e9ee5287e937f42c498721b20a1a3b292df1",
@@ -609,7 +617,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/functions.md",
-    "line": 173,
+    "line": 188,
     "language": "ts",
     "kind": "application-or-sdk",
     "sha256": "427a22da24434cbd70cb5a408c599245ebde29378c60e65a5e43e105e736c5fd",
@@ -617,7 +625,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/functions.md",
-    "line": 202,
+    "line": 217,
     "language": "json",
     "kind": "configuration",
     "sha256": "8defc9faf6e1dc0800b18f8054342ac842b521168b09082b64dfc43e57fb1b5c",
@@ -905,7 +913,7 @@
   },
   {
     "file": "docs-site/src/content/docs//mcp/patterns.md",
-    "line": 85,
+    "line": 86,
     "language": "json",
     "kind": "configuration",
     "sha256": "07e4333b5c5aa68eb689ff6f0b18e9754ab1650ca58701eaa03bd5116b8dd894",
@@ -913,7 +921,7 @@
   },
   {
     "file": "docs-site/src/content/docs//mcp/patterns.md",
-    "line": 154,
+    "line": 155,
     "language": "json",
     "kind": "configuration",
     "sha256": "eb46910ebee4d7015a9d8dbb8185c72e7c913b06e2d1fa0856ce00baa0f60094",
@@ -921,7 +929,7 @@
   },
   {
     "file": "docs-site/src/content/docs//mcp/patterns.md",
-    "line": 178,
+    "line": 179,
     "language": "ts",
     "kind": "application-or-sdk",
     "sha256": "408a4c4d08a47f93bc5564fc0a796d36b8484c1894673d7099a299be4fc23f64",
@@ -929,7 +937,7 @@
   },
   {
     "file": "docs-site/src/content/docs//mcp/patterns.md",
-    "line": 191,
+    "line": 192,
     "language": "ts",
     "kind": "application-or-sdk",
     "sha256": "c6fad610c460eda5b51b64a5effa16ef74a3d9fe87397ad3034339fdf9919ba4",
@@ -937,7 +945,7 @@
   },
   {
     "file": "docs-site/src/content/docs//mcp/patterns.md",
-    "line": 209,
+    "line": 210,
     "language": "ts",
     "kind": "application-or-sdk",
     "sha256": "a680e5ac4eb0ebe339f8a69bc15a3771c5bef3c05f82031737334952c977b396",
@@ -945,7 +953,7 @@
   },
   {
     "file": "docs-site/src/content/docs//mcp/patterns.md",
-    "line": 255,
+    "line": 257,
     "language": "json",
     "kind": "configuration",
     "sha256": "36ca941314536b5501f364dee34cf2bb98f53b1d04840f728066847daa518422",
@@ -1492,12 +1500,28 @@
     "line": 423,
     "language": "sql",
     "kind": "application-or-sdk",
+    "sha256": "e3e98edc2aa58dec10be245823283a6338114c7f50d7ee99e6aeb19c0f64840c",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/patterns.md",
+    "line": 433,
+    "language": "sql",
+    "kind": "application-or-sdk",
     "sha256": "3cf07f54853e92e037be8c9277de19fdbce3197ab79102c050155a422dd31d4a",
     "validation": "sdk-snippets"
   },
   {
     "file": "docs-site/src/content/docs//sdk/patterns.md",
-    "line": 451,
+    "line": 453,
+    "language": "sql",
+    "kind": "application-or-sdk",
+    "sha256": "2a27fac55ed1d14cac4285767f370ae956c7225a4a08ca21d8f147e2fae06210",
+    "validation": "sdk-snippets"
+  },
+  {
+    "file": "docs-site/src/content/docs//sdk/patterns.md",
+    "line": 489,
     "language": "ts",
     "kind": "application-or-sdk",
     "sha256": "9a6309c9448c1c27c32cdd1573ca37f2c07c58199243567dea0759633517b86a",

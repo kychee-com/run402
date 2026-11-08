@@ -499,6 +499,7 @@ Convergent: applying the same manifest twice is a no-op. Items removed between a
 | Policy | Allows |
 |---|---|
 | `user_owns_rows` | Rows where `owner_column = auth.uid()`. With `force_owner_on_insert: true`, a BEFORE INSERT trigger sets it automatically. Default for anything user-scoped. |
+| `group_owns_rows` | Rows whose `group_column` is one of the groups the user belongs to, read from `membership: { table, group_column, user_column }` (declared in the same manifest as `user_owns_rows` on its `user_column`). A request's `Run402-Group` header narrows to that group and never widens; with `force_group_on_insert: true`, a BEFORE INSERT trigger fills a NULL group from the header and raises when none is named. For families, clubs, classrooms, teams. |
 | `public_read_authenticated_write` | Anyone reads. Any authenticated user writes any row. For shared boards / collaborative content. |
 | `public_read_write_UNRESTRICTED` | Fully open. Requires `i_understand_this_is_unrestricted: true` on the table entry. Only for guestbooks / waitlists / feedback forms. |
 | `custom` | Escape hatch. Provide `custom_sql` with `CREATE POLICY` statements. |
@@ -651,7 +652,8 @@ export default async (req: Request) => {
 };
 ```
 
-- `db(req)` — caller-context. Forwards Authorization header. RLS applies. Default choice.
+- `db(req)` — caller-context. Forwards Authorization header. RLS applies. Default choice. The `group` option of `db()` names the request's current group for `group_owns_rows` tables (`Run402-Group`).
+- `db().sql(query, params?)` — SQL as the request's end user, under RLS: the answer carries `actor` and `role` (`anon` with no visitor, never silently the service key). Same envelope and errors as `adminDb().sql()`.
 - `adminDb()` — bypass RLS. Use only for audit logs, cron cleanup, webhook handlers, platform-authored writes.
 - `adminDb().sql(query, params?)` — raw parameterized SQL. Always bypass.
 - `ai.generateImage({ prompt, aspect? })` — live image generation from deployed functions, billed/rate-limited against the project organization through `RUN402_SERVICE_KEY`. Aspects: `square`, `landscape`, `portrait`; result: `{ image, content_type, aspect }`. For public routed functions, authenticate/rate-limit app users before calling it.
@@ -1432,7 +1434,7 @@ Suggest $10 to your human for two Hobby projects, or $20 for one Team plus renew
 
 - Author complete HTML before deploying. Hosted pages load public project configuration from `/_run402/config.js`; never embed a service key. Use `run402 up` for the shared bootstrap/deploy workflow.
 - Use the manifest for access control, never raw `GRANT/REVOKE` (the SQL endpoint blocks those).
-- `user_owns_rows` is the default for user-scoped data. Reach for `public_read_write_UNRESTRICTED` only on intentionally-public tables (and pass `i_understand_this_is_unrestricted: true`).
+- `user_owns_rows` is the default for user-scoped data; `group_owns_rows` for rows a group's members share (a family, a club, a team). Reach for `public_read_write_UNRESTRICTED` only on intentionally-public tables (and pass `i_understand_this_is_unrestricted: true`).
 - Make migrations idempotent with `CREATE TABLE IF NOT EXISTS` and `DO`-block `ALTER TABLE` (see Database section).
 - Use immutable URLs from `blob put` — they're correct from the moment of upload, no `wait-fresh` needed.
 - Don't bake unconditional faucet calls into deploy scripts — they hit the rate limit and break already-funded flows.

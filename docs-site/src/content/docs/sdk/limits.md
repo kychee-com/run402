@@ -52,7 +52,7 @@ OpenClaw skill packaging follows the CLI release train. `@run402/functions` and 
 
 - Never paste a key into HTML. Every Run402 host serves `/_run402/config.js` (`window.RUN402 = { project_id, api_base, anon_key }`) for the project it resolves to at request time; load that instead. The `anon_key` is public by design.
 - Use the manifest for access control, never raw `GRANT/REVOKE`.
-- `user_owns_rows` is the default for user-scoped data. Reach for `public_read_write_UNRESTRICTED` only on intentionally-public tables.
+- `user_owns_rows` is the default for user-scoped data; `group_owns_rows` for rows that belong to a group its members share (a family, a club, a team), with the `group` option of `db()` naming the request's current group. Reach for `public_read_write_UNRESTRICTED` only on intentionally-public tables.
 - Use immutable `cdnUrl` from `r.assets.put`. It's correct from the moment of upload — no `waitFresh` needed.
 - Don't bake unconditional `r.wallets.faucet()` into deploy scripts — the faucet rate-limits and breaks already-funded flows.
 - Per-project rate limit is 100 req/sec. On 429, back off using `retry_after`.

@@ -532,6 +532,30 @@ describe("scanFileContent — the service key inside a user's request (SERVICE_K
     assert.equal(f.severity, SCAN_SEVERITY.WARN);
     assert.equal(f.line, 3);
     assert.match(f.fix, /db\(req\)/);
+    assert.match(f.fix, /db\(req\)\.sql\(/, "the fix names db(req).sql() as the remedy for SQL");
+    assert.match(f.fix, /run402-allow-admin-db/, "the fix keeps the allow marker");
+  });
+
+  it("flags adminDb().sql() in a file that reads the current user and names db(req).sql() as the remedy", () => {
+    const content = [
+      'import { adminDb, auth } from "@run402/functions";',
+      "const user = await auth.user();",
+      'const { rows } = await adminDb().sql("SELECT * FROM threads WHERE circle_id = $1", [circleId]);',
+    ].join("\n");
+    const f = scanFileContent(content).find((x) => x.code === "SERVICE_KEY_IN_USER_REQUEST");
+    assert.ok(f, "expected a SERVICE_KEY_IN_USER_REQUEST finding");
+    assert.equal(f.line, 3);
+    assert.match(f.fix, /db\(req\)\.sql\(query, params\)/);
+  });
+
+  it("does not flag db(req).sql() or db().sql(): they run as the user", () => {
+    const content = [
+      'import { db, auth } from "@run402/functions";',
+      "const user = await auth.requireUser();",
+      'const { rows } = await db(req).sql("SELECT * FROM threads");',
+      'const mine = await db({ group: circleId }).sql("SELECT * FROM threads");',
+    ].join("\n");
+    assert.ok(!scanFileContent(content).some((x) => x.code === "SERVICE_KEY_IN_USER_REQUEST"));
   });
 
   it("does not flag adminDb() in a file that never reads a user", () => {
