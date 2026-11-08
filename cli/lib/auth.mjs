@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { resolveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
@@ -27,8 +28,17 @@ Subcommands:
   set-password --token <bearer> --new <password> [--current <password>] [--project <project_id>]
     Change, reset, or set a user's password. Requires the user's access_token.
 
-  settings [--allow-password-set <true|false>] [--preferred <method|null>] [--public-signup <policy>] [--require-admin-passkey <true|false>] [--allowed-email-domains <csv|none>] [--google-client-ids <csv|none>] [--test-mode <true|false|null>] [--browser-session-idle-seconds <n|default>] [--browser-session-max-seconds <n|default>] [--project <project_id>]
+  settings [--allow-password-set <true|false>] [--preferred <method|null>] [--public-signup <policy>] [--require-admin-passkey <true|false>] [--allowed-email-domains <csv|none>] [--google-client-ids <csv|none>] [--apple-client-ids <csv|none>] [--test-mode <true|false|null>] [--browser-session-idle-seconds <n|default>] [--browser-session-max-seconds <n|default>] [--project <project_id>]
     Update project auth settings (requires service_key).
+
+  apple-key set --team-id <team_id> --key-id <key_id> --p8 <file> [--project <project_id>]
+    Give Run402 the project's Sign in with Apple key (the .p8 file); it is never returned.
+
+  apple-key status [--project <project_id>]
+    Show native Apple sign-in: the key's public fields, the apps, the notification URL to give Apple, what is missing.
+
+  apple-key rm [--project <project_id>]
+    Remove the project's Sign in with Apple key.
 
   passkey-register-options --token <bearer> --app-origin <origin> [--project <project_id>]
     Create WebAuthn registration options for the authenticated user.
@@ -61,6 +71,8 @@ Examples:
   run402 auth users get --email alice@<project_id>.test.invalid
   run402 auth set-password --token eyJ... --new "new-pass" --current "old-pass"
   run402 auth settings --preferred passkey --require-admin-passkey true
+  run402 auth settings --apple-client-ids com.example.app
+  run402 auth apple-key set --team-id ABCDE12345 --key-id KEY1234567 --p8 ./AuthKey_KEY1234567.p8
   run402 auth providers
   run402 auth scaffold-roles --roles operator,editor | jq -r .migration
 `;
@@ -106,6 +118,26 @@ Examples:
   run402 auth create-user --email user@example.com
   run402 auth create-user --email admin@example.com --admin true \\
     --invite --redirect https://myapp.run402.com/cb
+`,
+  "apple-key": `run402 auth apple-key — The project's Sign in with Apple key
+
+Usage:
+  run402 auth apple-key set --team-id <team_id> --key-id <key_id> --p8 <file> [--project <project_id>]
+  run402 auth apple-key status [--project <project_id>]
+  run402 auth apple-key rm [--project <project_id>]
+
+Native Sign in with Apple needs two things on the project: the iPhone app's
+bundle ID (run402 auth settings --apple-client-ids <bundle-id>) and the app's
+Sign in with Apple key, created in your Apple Developer account (Certificates,
+Identifiers & Profiles, Keys, with Sign in with Apple enabled for the app's App
+ID). Run402 keeps the key encrypted and never returns it; it signs a short
+client secret from it for each call to Apple. "status" also prints the
+notification URL to set as the app's server-to-server notification endpoint,
+so Run402 hears when a person stops using their Apple ID with the app.
+
+Examples:
+  run402 auth apple-key set --team-id ABCDE12345 --key-id KEY1234567 --p8 ./AuthKey_KEY1234567.p8
+  run402 auth apple-key status
 `,
   users: `run402 auth users — Read project auth users
 
@@ -184,6 +216,7 @@ Options:
   --require-admin-passkey <true|false>  Require passkey auth for project_admin sessions
   --allowed-email-domains <csv|none>    Restrict hosted Google sign-in to these domains; 'none' clears (unrestricted)
   --google-client-ids <csv|none>        Google OAuth client IDs your phone apps sign in with; 'none' turns native sign-in off
+  --apple-client-ids <csv|none>         Apple bundle IDs (or Services IDs) your iPhone apps sign in with; 'none' turns native Apple sign-in off
   --test-mode <true|false|null>         Allow test sessions (run402 dev --as); null = tier default (on for prototype)
   --browser-session-idle-seconds <n|default>
                                         How long a website sign-in may go unused before it ends (3600-7776000; default 43200, 12 hours)
@@ -199,12 +232,15 @@ Notes:
   --google-client-ids lists the web client ID your app passes to Google and each
   Android or iOS client ID (one per signing certificate), from your own Google
   Cloud project; phone apps then sign in at POST /auth/v1/native-sessions.
+  --apple-client-ids lists each iPhone app's bundle ID; native Apple sign-in also
+  needs the app's Sign in with Apple key (run402 auth apple-key set).
 
 Examples:
   run402 auth settings --allow-password-set true
   run402 auth settings --preferred passkey --require-admin-passkey true
   run402 auth settings --allowed-email-domains kychee.com,example.com
   run402 auth settings --google-client-ids <web-client-id>,<android-client-id>
+  run402 auth settings --apple-client-ids com.example.app
   run402 auth settings --test-mode true
   run402 auth settings --browser-session-idle-seconds 2592000 --browser-session-max-seconds 7776000
 `,
@@ -330,8 +366,8 @@ const AUTH_FLAGS = {
     values: ["--token", "--new", "--current", "--project"],
   },
   settings: {
-    known: ["--allow-password-set", "--preferred", "--public-signup", "--require-admin-passkey", "--allowed-email-domains", "--google-client-ids", "--test-mode", "--browser-session-idle-seconds", "--browser-session-max-seconds", "--project", "--help", "-h"],
-    values: ["--allow-password-set", "--preferred", "--public-signup", "--require-admin-passkey", "--allowed-email-domains", "--google-client-ids", "--test-mode", "--browser-session-idle-seconds", "--browser-session-max-seconds", "--project"],
+    known: ["--allow-password-set", "--preferred", "--public-signup", "--require-admin-passkey", "--allowed-email-domains", "--google-client-ids", "--apple-client-ids", "--test-mode", "--browser-session-idle-seconds", "--browser-session-max-seconds", "--project", "--help", "-h"],
+    values: ["--allow-password-set", "--preferred", "--public-signup", "--require-admin-passkey", "--allowed-email-domains", "--google-client-ids", "--apple-client-ids", "--test-mode", "--browser-session-idle-seconds", "--browser-session-max-seconds", "--project"],
   },
   "passkey-register-options": {
     known: ["--token", "--app-origin", "--project", "--help", "-h"],
@@ -483,6 +519,59 @@ async function createUser(args) {
   }
 }
 
+async function appleKey(args) {
+  const [appleKeyAction, ...rest] = Array.isArray(args) ? args : [];
+  if (appleKeyAction === "set") return await appleKeySet(rest);
+  if (appleKeyAction === "status") return await appleKeyStatus(rest);
+  if (appleKeyAction === "rm") return await appleKeyRemove(rest);
+  failUnknownSubcommand("auth apple-key", appleKeyAction);
+}
+
+async function appleKeySet(args) {
+  assertKnownFlags(args, ["--team-id", "--key-id", "--p8", "--project", "--help", "-h"], ["--team-id", "--key-id", "--p8", "--project"]);
+  const teamId = parseFlag(args, "--team-id");
+  const keyId = parseFlag(args, "--key-id");
+  const path = parseFlag(args, "--p8");
+  if (!teamId) fail({ code: "BAD_USAGE", message: "Missing --team-id <team_id>", hint: "Your Apple Developer team ID: 10 characters, in the Membership details of developer.apple.com." });
+  if (!keyId) fail({ code: "BAD_USAGE", message: "Missing --key-id <key_id>", hint: "The Sign in with Apple key's ID: 10 characters, shown beside the key in Certificates, Identifiers & Profiles, Keys." });
+  if (!path) fail({ code: "BAD_USAGE", message: "Missing --p8 <file>", hint: "The AuthKey_<key_id>.p8 file Apple let you download once when you created the key." });
+  const projectId = resolveProjectId(parseFlag(args, "--project"));
+  let p8;
+  try {
+    p8 = readFileSync(path, "utf8");
+  } catch (err) {
+    fail({ code: "FILE_NOT_FOUND", message: `Cannot read ${path}: ${err.message}`, hint: "Pass the .p8 file Apple downloaded: --p8 <file>." });
+  }
+  try {
+    const data = await getSdk().auth.setAppleKey(projectId, { teamId, keyId, p8 });
+    console.log(JSON.stringify({ project_id: projectId, ...data }));
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+async function appleKeyStatus(args) {
+  assertKnownFlags(args, ["--project", "--help", "-h"], ["--project"]);
+  const projectId = resolveProjectId(parseFlag(args, "--project"));
+  try {
+    const data = await getSdk().auth.appleKeyStatus(projectId);
+    console.log(JSON.stringify({ project_id: projectId, ...data }));
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+async function appleKeyRemove(args) {
+  assertKnownFlags(args, ["--project", "--help", "-h"], ["--project"]);
+  const projectId = resolveProjectId(parseFlag(args, "--project"));
+  try {
+    const data = await getSdk().auth.removeAppleKey(projectId);
+    console.log(JSON.stringify({ project_id: projectId, ...data }));
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
 async function users(args) {
   const [usersAction, ...rest] = Array.isArray(args) ? args : [];
   if (usersAction === "get") return await getUser(rest);
@@ -592,6 +681,7 @@ async function settings(args) {
   const publicSignup = parseFlag(args, "--public-signup");
   const domainsRaw = parseFlag(args, "--allowed-email-domains");
   const clientIdsRaw = parseFlag(args, "--google-client-ids");
+  const appleIdsRaw = parseFlag(args, "--apple-client-ids");
   const testModeRaw = parseFlag(args, "--test-mode");
   if (testModeRaw === null && args.includes("--test-mode")) {
     fail({ code: "BAD_USAGE", message: "Missing --test-mode <true|false|null>" });
@@ -626,6 +716,7 @@ async function settings(args) {
     publicSignup === null &&
     domainsRaw === null &&
     clientIdsRaw === null &&
+    appleIdsRaw === null &&
     testModeRaw === null &&
     idleSeconds === undefined &&
     maxSeconds === undefined
@@ -670,6 +761,14 @@ async function settings(args) {
         ? []
         : clientIdsRaw.split(",").map((d) => d.trim()).filter((d) => d.length > 0);
   }
+  // --apple-client-ids: the same shape; bundle IDs keep their case.
+  let appleClientIds;
+  if (appleIdsRaw !== null) {
+    appleClientIds =
+      appleIdsRaw.trim().toLowerCase() === "none"
+        ? []
+        : appleIdsRaw.split(",").map((d) => d.trim()).filter((d) => d.length > 0);
+  }
 
   try {
     const patch = {
@@ -679,6 +778,7 @@ async function settings(args) {
       require_passkey_for_project_admin: requireAdminPasskey,
       allowed_email_domains: allowedEmailDomains,
       google_client_ids: googleClientIds,
+      apple_client_ids: appleClientIds,
       test_mode: testModeRaw === null ? undefined : testModeRaw === "null" ? null : testModeRaw === "true",
       browser_session_idle_seconds: idleSeconds,
       browser_session_max_seconds: maxSeconds,
@@ -876,6 +976,7 @@ export async function run(sub, args) {
     process.exit(0);
   }
   if (sub === "users") { await users(args); return; }
+  if (sub === "apple-key") { await appleKey(args); return; }
   const flagSpec = AUTH_FLAGS[sub];
   if (flagSpec) {
     assertKnownFlags(args, flagSpec.known, flagSpec.values);

@@ -2183,6 +2183,10 @@
         },
         {
           "owner": "public",
+          "source": "cli/lib/auth.mjs"
+        },
+        {
+          "owner": "public",
           "source": "cli/lib/push.mjs"
         },
         {

@@ -116,6 +116,7 @@ function parseCliCommands(): string[] {
   for (const action of parseOrgGroupActions("lightningReceiverAction")) cmds.push(`orgs:lightning-receiver:${action}`);
   for (const action of parseContractsTransferActions()) cmds.push(`contracts:transfers:${action}`);
   for (const action of parseAuthUsersActions()) cmds.push(`auth:users:${action}`);
+  for (const action of parseAuthAppleKeyActions()) cmds.push(`auth:apple-key:${action}`);
   for (const [group, varName] of STRIPE_GROUPS) {
     for (const action of parseStripeGroupActions(varName)) cmds.push(`stripe:${group}:${action}`);
   }
@@ -164,6 +165,7 @@ function parseOpenClawCommands(): string[] {
   for (const action of parseOrgGroupActions("lightningReceiverAction")) cmds.push(`orgs:lightning-receiver:${action}`);
   for (const action of parseContractsTransferActions()) cmds.push(`contracts:transfers:${action}`);
   for (const action of parseAuthUsersActions()) cmds.push(`auth:users:${action}`);
+  for (const action of parseAuthAppleKeyActions()) cmds.push(`auth:apple-key:${action}`);
   for (const [group, varName] of STRIPE_GROUPS) {
     for (const action of parseStripeGroupActions(varName)) cmds.push(`stripe:${group}:${action}`);
   }
@@ -267,6 +269,18 @@ function parseAuthUsersActions(): string[] {
   const src = readFileSync(filePath, "utf-8");
   const actions: string[] = [];
   const re = /usersAction\s*===\s*"([\w-]+)"/g;
+  let m;
+  while ((m = re.exec(src))) actions.push(m[1]);
+  return [...new Set(actions)].sort();
+}
+
+// `auth apple-key set|status|rm` dispatch on `appleKeyAction` (native-apple-sign-in).
+function parseAuthAppleKeyActions(): string[] {
+  const filePath = join(__dirname, "cli/lib/auth.mjs");
+  if (!existsSync(filePath)) return [];
+  const src = readFileSync(filePath, "utf-8");
+  const actions: string[] = [];
+  const re = /appleKeyAction\s*===\s*"([\w-]+)"/g;
   let m;
   while ((m = re.exec(src))) actions.push(m[1]);
   return [...new Set(actions)].sort();
@@ -812,6 +826,10 @@ const SURFACE: Capability[] = [
   { id: "get_auth_user",      endpoint: "GET /auth/v1/admin/users/lookup",    cli: "auth:users:get",    openclaw: "auth:users:get" },
   { id: "set_user_password",  endpoint: "PUT /auth/v1/user/password",         cli: "auth:set-password",  openclaw: "auth:set-password" },
   { id: "auth_settings",      endpoint: "PATCH /auth/v1/settings",            cli: "auth:settings",      openclaw: "auth:settings" },
+  // native-apple-sign-in: the project's Sign in with Apple key (set is secret-gated in the sandbox).
+  { id: "auth_apple_key_set",    endpoint: "POST /projects/v1/:project_id/auth/providers/apple",   cli: "auth:apple-key:set",    openclaw: "auth:apple-key:set" },
+  { id: "auth_apple_key_status", endpoint: "GET /projects/v1/:project_id/auth/providers/apple",    cli: "auth:apple-key:status", openclaw: "auth:apple-key:status" },
+  { id: "auth_apple_key_remove", endpoint: "DELETE /projects/v1/:project_id/auth/providers/apple", cli: "auth:apple-key:rm",     openclaw: "auth:apple-key:rm" },
   { id: "passkey_register_options", endpoint: "POST /auth/v1/passkeys/register/options", cli: "auth:passkey-register-options", openclaw: "auth:passkey-register-options" },
   { id: "passkey_register_verify",  endpoint: "POST /auth/v1/passkeys/register/verify",  cli: "auth:passkey-register-verify",  openclaw: "auth:passkey-register-verify" },
   { id: "passkey_login_options",    endpoint: "POST /auth/v1/passkeys/login/options",    cli: "auth:passkey-login-options",    openclaw: "auth:passkey-login-options" },
@@ -1397,6 +1415,9 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   create_test_session: "auth.createTestSession",
   set_user_password: "auth.setUserPassword",
   auth_settings: "auth.settings",
+  auth_apple_key_set: "auth.setAppleKey",
+  auth_apple_key_status: "auth.appleKeyStatus",
+  auth_apple_key_remove: "auth.removeAppleKey",
   passkey_register_options: "auth.createPasskeyRegistrationOptions",
   passkey_register_verify: "auth.verifyPasskeyRegistration",
   passkey_login_options: "auth.createPasskeyLoginOptions",

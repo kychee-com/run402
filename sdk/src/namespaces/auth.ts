@@ -111,6 +111,14 @@ export interface AuthSettings {
    */
   google_client_ids?: string[];
   /**
+   * The Apple client IDs this project's native Sign in with Apple accepts:
+   * each iPhone app's bundle ID (and, for web sign-in, a Services ID), as
+   * registered in the owner's Apple Developer account. At most 10; `[]` turns
+   * native Apple sign-in off. Native Apple sign-in also needs the app's Sign in
+   * with Apple key: `r.auth.setAppleKey` (CLI: `run402 auth apple-key set`).
+   */
+  apple_client_ids?: string[];
+  /**
    * Whether `createTestSession` may mint for this project: `true` / `false`
    * set it explicitly, `null` returns to the tier default (on for prototype,
    * off for hobby and team).
@@ -140,6 +148,8 @@ export interface AuthSettingsResult {
   allowed_email_domains: string[];
   /** Google OAuth client IDs for native sign-in; `[]` = native Google sign-in off. */
   google_client_ids: string[];
+  /** Apple client IDs (bundle IDs, Services IDs) for native Sign in with Apple; `[]` = off. */
+  apple_client_ids?: string[];
   /** How long a browser sign-in may go unused, in seconds, in effect. */
   browser_session_idle_seconds?: number;
   /** A browser sign-in's longest life from signing in, in seconds, in effect. */
@@ -244,6 +254,7 @@ const AUTH_SETTINGS_FIELDS = [
   "require_passkey_for_project_admin",
   "allowed_email_domains",
   "google_client_ids",
+  "apple_client_ids",
   "test_mode",
   "browser_session_idle_seconds",
   "browser_session_max_seconds",
@@ -321,6 +332,59 @@ function validateAuthSettings(settings: AuthSettings): void {
       );
     }
   }
+  if (raw.apple_client_ids !== undefined) {
+    if (
+      !Array.isArray(raw.apple_client_ids) ||
+      !raw.apple_client_ids.every((d) => typeof d === "string")
+    ) {
+      throw new LocalError(
+        'apple_client_ids must be an array of Apple bundle IDs or Services IDs (e.g., ["com.example.app"]); pass [] to clear.',
+        "updating auth settings",
+      );
+    }
+  }
+}
+
+/** The project's Sign in with Apple key (`team_id`, `key_id`, the `.p8` file's text). */
+export interface AppleSignInKeyInput {
+  teamId: string;
+  keyId: string;
+  /** The text of the `.p8` file Apple downloads once for the key: a PKCS#8 PEM of a P-256 private key. */
+  p8: string;
+}
+
+export type AppleSignInMissing = "key" | "client_ids";
+
+/** The key's public fields; the key itself is never returned. */
+export interface AppleSignInKey {
+  team_id: string;
+  key_id: string;
+  set_at: string;
+  last_error: string | null;
+  last_error_at: string | null;
+  /** The URL to give Apple for server-to-server notifications. */
+  notification_url: string;
+  /** What native Apple sign-in still lacks; `[]` when it is on. */
+  missing: AppleSignInMissing[];
+  next_actions?: unknown[];
+}
+
+/** Native Apple sign-in on a project: the key's public fields when set, the apps, the notification URL, what is missing. */
+export interface AppleSignInStatus {
+  configured: boolean;
+  team_id?: string;
+  key_id?: string;
+  set_at?: string;
+  last_error?: string | null;
+  last_error_at?: string | null;
+  client_ids: string[];
+  notification_url: string;
+  missing: AppleSignInMissing[];
+  next_actions?: unknown[];
+}
+
+function appleKeyPath(projectId: string): string {
+  return `/projects/v1/${encodeURIComponent(projectId)}/auth/providers/apple`;
 }
 
 export interface PasskeyOptionsResult {
@@ -794,6 +858,49 @@ export class Auth {
         Authorization: `Bearer ${opts.accessToken}`,
       },
       context: "deleting passkey",
+    });
+  }
+
+  /**
+   * Give Run402 the project's Sign in with Apple key, replacing any
+   * (`POST /projects/v1/:project_id/auth/providers/apple`). Run402 holds it
+   * encrypted, signs a short client secret from it for each call to Apple,
+   * and never returns it. It consumes a secret, so the MCP sandbox refuses it
+   * with `SECRET_REQUIRES_CLI` naming `run402 auth apple-key set`.
+   */
+  async setAppleKey(projectId: string, key: AppleSignInKeyInput): Promise<AppleSignInKey> {
+    gateSecret(this.client, "auth.setAppleKey", projectId);
+    if (!projectId) throw new LocalError("auth.setAppleKey requires a projectId", "setting the Sign in with Apple key");
+    if (!key || typeof key.teamId !== "string" || typeof key.keyId !== "string" || typeof key.p8 !== "string") {
+      throw new LocalError(
+        "auth.setAppleKey requires { teamId, keyId, p8 } (p8 is the .p8 file's text)",
+        "setting the Sign in with Apple key",
+      );
+    }
+    return this.client.request<AppleSignInKey>(appleKeyPath(projectId), {
+      method: "POST",
+      body: { team_id: key.teamId, key_id: key.keyId, private_key: key.p8 },
+      projectKeyFallback: projectId,
+      context: "setting the Sign in with Apple key",
+    });
+  }
+
+  /** Native Apple sign-in on a project: the key's public fields, the apps, the notification URL, what is missing. */
+  async appleKeyStatus(projectId: string): Promise<AppleSignInStatus> {
+    if (!projectId) throw new LocalError("auth.appleKeyStatus requires a projectId", "reading Sign in with Apple");
+    return this.client.request<AppleSignInStatus>(appleKeyPath(projectId), {
+      projectKeyFallback: projectId,
+      context: "reading Sign in with Apple",
+    });
+  }
+
+  /** Remove the project's Sign in with Apple key. `{ removed: false }` when none was set. */
+  async removeAppleKey(projectId: string): Promise<{ removed: boolean }> {
+    if (!projectId) throw new LocalError("auth.removeAppleKey requires a projectId", "removing the Sign in with Apple key");
+    return this.client.request<{ removed: boolean }>(appleKeyPath(projectId), {
+      method: "DELETE",
+      projectKeyFallback: projectId,
+      context: "removing the Sign in with Apple key",
     });
   }
 
