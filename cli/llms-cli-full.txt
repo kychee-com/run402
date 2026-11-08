@@ -1497,7 +1497,7 @@ Returns `{ status, schema, rows, row_count, fields, statements, warnings }` (typ
 - INSERT/UPDATE/DELETE with `RETURNING`: `rows` = the returned rows
 - `fields` = column metadata: `[{ name, type }]` (Postgres type names, e.g. `int4`, `timestamptz`)
 - Parameterized: `adminDb().sql('SELECT * FROM t WHERE id = $1', [42])`
-- During a deploy: a deploy that runs a migration takes a snapshot, which pauses writes for a moment. Reads answer as usual; a write meets `503 PROJECT_WRITES_PAUSED`, and `adminDb().sql()` waits it out (any refusal the gateway marks retryable and safe to retry, `503 PROJECT_DATABASE_BUSY` included) before throwing it as an `R402DbError` with `attempts` and `waited_ms`. The whole call, attempts and waits together, stays within 8 seconds, so the wait never carries a prototype function past its 10-second timeout. Do not wrap it in a retry loop of your own.
+- During a deploy: a deploy that runs a migration takes a snapshot, which pauses writes for a moment. Reads answer as usual; a write meets `503 PROJECT_WRITES_PAUSED`, and `adminDb().sql()` waits it out (any refusal the gateway marks retryable and safe to retry, `503 PROJECT_DATABASE_BUSY` included) before throwing it as an `R402DbError` with `attempts` and `waited_ms`. The whole call, attempts and waits together, stays within 8 seconds: each attempt sends `Run402-Connection-Wait-Ms` with what is left of the budget, so the gateway answers busy in time and the wait never carries a prototype function past its 10-second timeout. Do not wrap it in a retry loop of your own.
 
 ```
 const result = await adminDb().sql('SELECT * FROM users WHERE active = true');

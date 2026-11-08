@@ -82,9 +82,9 @@ export abstract class Run402Error extends Error {
   readonly safeToRetry?: boolean;
   /** Gateway-known mutation progress for failed mutating operations. */
   readonly mutationState?: string;
-  /** Requests sent, set when a client waited out a retryable refusal before giving up (e.g. `projects.sql`). */
+  /** Requests sent, set when a retryable refusal outlasted a client's wait budget (e.g. `projects.sql`). */
   attempts?: number;
-  /** Milliseconds a client spent waiting out a retryable refusal before giving up. */
+  /** Milliseconds a client spent waiting out a retryable refusal before giving up (0 when there was no time to repeat it). */
   waitedMs?: number;
   /** Trace id suitable for support/debugging. */
   readonly traceId?: string;

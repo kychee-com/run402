@@ -1067,6 +1067,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="INVALID_CAPABILITY"></a>
 [`INVALID_CAPABILITY`](/errors/gateway/#INVALID_CAPABILITY)
 
+<a id="invalid_connection_wait"></a>
+<a id="INVALID_CONNECTION_WAIT"></a>
+[`INVALID_CONNECTION_WAIT`](/errors/gateway/#INVALID_CONNECTION_WAIT)
+
 <a id="invalid_content"></a>
 <a id="INVALID_CONTENT"></a>
 [`INVALID_CONTENT`](/errors/gateway/#INVALID_CONTENT)

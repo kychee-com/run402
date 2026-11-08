@@ -822,6 +822,9 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="INVALID_CAPABILITY"></a>
 [`INVALID_CAPABILITY`](/errors/gateway/#INVALID_CAPABILITY)
 
+<a id="INVALID_CONNECTION_WAIT"></a>
+[`INVALID_CONNECTION_WAIT`](/errors/gateway/#INVALID_CONNECTION_WAIT)
+
 <a id="INVALID_CONTENT"></a>
 [`INVALID_CONTENT`](/errors/gateway/#INVALID_CONTENT)
 

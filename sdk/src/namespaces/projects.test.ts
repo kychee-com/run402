@@ -1291,12 +1291,33 @@ describe("projects.sql / sqlBatch wait out a retryable refusal (a deploy's write
     }
   });
 
-  it("slow attempts count against the budget: the whole call ends within 20 seconds", async () => {
+  const busy = () =>
+    jsonResponse(
+      {
+        error: "The project's database had no free connection",
+        code: "PROJECT_DATABASE_BUSY",
+        retryable: true,
+        safe_to_retry: true,
+        mutation_state: "none",
+        details: { retry_after_seconds: 1 },
+        next_actions: [{ type: "retry" }],
+      },
+      503,
+    );
+  // The gateway's side of Run402-Connection-Wait-Ms: it waits for a connection
+  // at most what the header says, and never past its 5-second ceiling.
+  const offered = (headers: Record<string, string>): number => {
+    const value = headers["Run402-Connection-Wait-Ms"];
+    assert.ok(value !== undefined, "every attempt says how long the gateway may wait for a connection");
+    return Number(value);
+  };
+
+  it("every attempt bounds the gateway's connection wait to the budget left, so busy answers end the call by 20 seconds", async () => {
     mock.timers.enable({ apis: ["setTimeout", "Date"] });
     try {
-      const { fetch, calls } = mockFetch(async () => {
-        await new Promise((r) => setTimeout(r, 8_000));
-        return paused();
+      const { fetch, calls } = mockFetch(async (call) => {
+        await new Promise((r) => setTimeout(r, Math.min(offered(call.headers), 5_000)));
+        return busy();
       });
       const sdk = makeSdk(makeCreds(), fetch);
       const startedAt = Date.now();
@@ -1306,10 +1327,40 @@ describe("projects.sql / sqlBatch wait out a retryable refusal (a deploy's write
       ));
       const elapsed = Date.now() - startedAt;
       assert.ok(err instanceof Run402Error);
-      assert.equal(err.code, "PROJECT_WRITES_PAUSED");
-      assert.equal(calls.length, 2, "a third 8-second attempt would end past the budget");
-      assert.equal(err.attempts, 2);
+      assert.equal(err.code, "PROJECT_DATABASE_BUSY");
       assert.ok(elapsed <= 20_000, `the call ended within the budget (${elapsed} ms)`);
+      const sent = calls.map((c) => offered(c.headers));
+      assert.equal(sent[0], 19_000, "the first attempt offers the budget less the statement allowance");
+      assert.ok(sent.every((v, i) => i === 0 || v < sent[i - 1]!), `each attempt offers less: ${sent.join(", ")}`);
+      assert.equal(err.attempts, calls.length);
+    } finally {
+      mock.timers.reset();
+    }
+  });
+
+  it("a batch offers the connection wait too", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({ status: "ok", schema: "p0001", transaction: "all", results: [] }));
+    const sdk = makeSdk(makeCreds(), fetch);
+    await sdk.projects.sqlBatch("prj_known", [{ sql: "SELECT 1" }]);
+    assert.equal(offered(calls[0]!.headers), 19_000);
+  });
+
+  it("a refusal the budget cannot repeat still says attempts 1 and waitedMs 0", async () => {
+    mock.timers.enable({ apis: ["setTimeout", "Date"] });
+    try {
+      const { fetch, calls } = mockFetch(async () => {
+        await new Promise((r) => setTimeout(r, 18_000));
+        return paused();
+      });
+      const sdk = makeSdk(makeCreds(), fetch);
+      const err = await drive(sdk.projects.sql("prj_known", "INSERT INTO t VALUES (1)").then(
+        () => { throw new Error("expected a throw"); },
+        (e: unknown) => e,
+      ));
+      assert.ok(err instanceof Run402Error);
+      assert.equal(calls.length, 1);
+      assert.equal(err.attempts, 1);
+      assert.equal(err.waitedMs, 0);
     } finally {
       mock.timers.reset();
     }

@@ -55,6 +55,16 @@ import type {
  *  project-sql-endpoint "First-party SQL clients wait out a retryable refusal". */
 const SQL_WAIT_BUDGET_MS = 20_000;
 
+/** Each attempt tells the gateway how long it may wait for a database
+ *  connection: what is left of the budget, less this allowance for the
+ *  statement and the round trip. The gateway answers
+ *  `503 PROJECT_DATABASE_BUSY` when that wait runs out, so no attempt's
+ *  connection wait carries the call past the budget. */
+const CONNECTION_WAIT_HEADER = "Run402-Connection-Wait-Ms";
+const SQL_STATEMENT_ALLOWANCE_MS = 1_000;
+/** A retry starts only when at least this much budget is left after its wait. */
+const SQL_MIN_ATTEMPT_MS = 1_500;
+
 /** The wait before attempt `attempt + 1`: the gateway's hint, at least 0.5 s growing to 2 s. */
 function sqlRetryWaitMs(details: unknown, attempt: number): number {
   const hint = details && typeof details === "object" ? (details as { retry_after_seconds?: unknown }).retry_after_seconds : undefined;
@@ -64,25 +74,23 @@ function sqlRetryWaitMs(details: unknown, attempt: number): number {
 
 /**
  * Send, repeating while the gateway marks the refusal retryable and safe to
- * retry and the budget still covers the wait; the last refusal is thrown with
- * `attempts` and `waitedMs` when the client waited at all.
+ * retry and the budget still covers the wait plus a useful attempt. `send`
+ * gets the connection wait to offer the gateway (`Run402-Connection-Wait-Ms`),
+ * what the budget has left. A retryable refusal the budget ends is thrown with
+ * `attempts` and `waitedMs` (1 and 0 when there was no time to repeat it).
  */
-async function sendWaitingOutRetryable<T>(send: () => Promise<T>, onRetry: ((info: SqlRetryInfo) => void) | undefined): Promise<T> {
+async function sendWaitingOutRetryable<T>(send: (connectionWaitMs: number) => Promise<T>, onRetry: ((info: SqlRetryInfo) => void) | undefined): Promise<T> {
   const startedAt = Date.now();
+  const remaining = (): number => SQL_WAIT_BUDGET_MS - (Date.now() - startedAt);
   let waitedMs = 0;
-  // The budget bounds the whole call, so a retry starts only when it still
-  // covers the wait plus an attempt as slow as the slowest one so far.
-  let slowestAttemptMs = 0;
   for (let attempt = 1; ; attempt++) {
-    const attemptStartedAt = Date.now();
     try {
-      return await send();
+      return await send(Math.max(0, remaining() - SQL_STATEMENT_ALLOWANCE_MS));
     } catch (err) {
       if (!isRun402Error(err) || err.retryable !== true || err.safeToRetry !== true) throw err;
-      slowestAttemptMs = Math.max(slowestAttemptMs, Date.now() - attemptStartedAt);
       const waitMs = sqlRetryWaitMs(err.details, attempt);
-      if (Date.now() - startedAt + waitMs + slowestAttemptMs > SQL_WAIT_BUDGET_MS) {
-        if (attempt > 1) Object.assign(err, { attempts: attempt, waitedMs });
+      if (remaining() - waitMs < SQL_MIN_ATTEMPT_MS) {
+        Object.assign(err, { attempts: attempt, waitedMs });
         throw err;
       }
       onRetry?.({ code: err.code, attempt, waitMs, details: err.details });
@@ -456,12 +464,13 @@ export class Projects {
     const useParams = Array.isArray(params) && params.length > 0;
     const readOnly = opts.readOnly === true;
     const json = useParams || readOnly;
-    return sendWaitingOutRetryable(() => withPrincipalFallback(this.client, id, keys, (k) =>
+    return sendWaitingOutRetryable((connectionWaitMs) => withPrincipalFallback(this.client, id, keys, (k) =>
       this.client.request<SqlResult>(`/projects/v1/${segment}/sql`, {
         method: "POST",
         headers: {
           ...(k ? { Authorization: `Bearer ${k.service_key}` } : {}),
           "Content-Type": json ? "application/json" : "text/plain",
+          [CONNECTION_WAIT_HEADER]: String(connectionWaitMs),
         },
         body: json ? { sql, ...(useParams ? { params } : {}), ...(readOnly ? { read_only: true } : {}) } : undefined,
         rawBody: json ? undefined : sql,
@@ -484,9 +493,9 @@ export class Projects {
       context: "running a SQL batch",
     });
     const keys = await requireProjectCredentials(this.client, id, "running a SQL batch");
-    return sendWaitingOutRetryable(() => this.client.request<SqlBatchResult>(`/projects/v1/${segment}/sql/batch`, {
+    return sendWaitingOutRetryable((connectionWaitMs) => this.client.request<SqlBatchResult>(`/projects/v1/${segment}/sql/batch`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${keys.service_key}` },
+      headers: { Authorization: `Bearer ${keys.service_key}`, [CONNECTION_WAIT_HEADER]: String(connectionWaitMs) },
       body: { statements, transaction: opts.transaction ?? "all" },
       context: "running a SQL batch",
     }), opts.onRetry);
