@@ -416,7 +416,7 @@ The manifest itself is a JSON object:
 }
 ```
 
-Built-in policies: `user_owns_rows` (rows where `owner_column = auth.uid()`), `group_owns_rows` (rows whose `group_column` is one of the groups the user belongs to, read from `membership: { table, group_column, user_column }`; the membership table is declared in the same manifest either as `user_owns_rows` on its `user_column`, so a member sees only their own memberships, or as `group_owns_rows` on the same `group_column` naming itself, so members of a group see each other; a request's `Run402-Group` header narrows to one group and never widens), `public_read_authenticated_write` (anyone reads, any auth user writes), `public_read_append_only` (anyone reads and inserts; update/delete denied), `public_read_write_UNRESTRICTED` (fully open; requires `i_understand_this_is_unrestricted: true`), `custom` (provide `custom_sql`).
+Built-in policies: `user_owns_rows` (rows where `owner_column = auth.uid()`), `group_owns_rows` (rows whose `group_column` is one of the groups the user belongs to, read from `membership: { table, group_column, user_column }`; the membership table is declared in the same manifest either as `user_owns_rows` on its `user_column`, so a member sees only their own memberships, or as `group_owns_rows` on the same `group_column` naming itself, so members of a group see each other; a request's `Run402-Group` header narrows to one group and never widens; `member_writes: false` makes the table read-only for members, so only the service key writes it), `public_read_authenticated_write` (anyone reads, any auth user writes), `public_read_append_only` (anyone reads and inserts; update/delete denied), `public_read_write_UNRESTRICTED` (fully open; requires `i_understand_this_is_unrestricted: true`), `custom` (provide `custom_sql`).
 
 A `group_owns_rows` table compiles four permissive policies (SELECT, INSERT `WITH CHECK`, UPDATE, DELETE) over one predicate. With a `user_owns_rows` membership table the caller's groups are a subselect read as the caller (it sees only the caller's own membership rows, so no privileged helper is involved):
 
@@ -439,6 +439,16 @@ GRANT EXECUTE ON FUNCTION "<table>_groups_of"(uuid) TO anon, authenticated;
 ```
 
 The helper is owned by the project's own database role, is dropped when the table leaves the manifest or changes policy, and its grants are re-issued on every deploy. A member of a self-owned membership table reads every member of their groups and may insert, update or delete memberships of groups they already belong to (inviting a relative); the first membership of a new group is a service-key write, where a group is created anyway.
+
+A `group_owns_rows` table may instead be read-only for members with `member_writes: false` (boolean, default `true`). The deploy then compiles only the SELECT policy, over the same predicate, with the same index and (on a self-owned membership table) the same helper; with row-level security forced and no permissive write policy, a member's `INSERT` is refused by the database (`42501`, `403 REST_PERMISSION_DENIED` naming `INSERT` and the table) and a member's `UPDATE` or `DELETE` touches no row, while the service key writes as always. This is the shape for a group's constitution: its membership table and the group's own row, which every member reads and only the app, acting for an admin behind `auth.requireRole` on the service key, changes:
+
+```json
+{ "name": "members", "expose": true, "policy": "group_owns_rows", "group_column": "circle_id",
+  "membership": { "table": "members", "group_column": "circle_id", "user_column": "user_id" },
+  "member_writes": false }
+```
+
+`member_writes` is refused with any other policy, and `member_writes: false` is refused beside `force_group_on_insert: true` (the trigger fills a group for an insert members may not make; a service-key insert sets the group column explicitly). `run402 projects get-expose <project_id>` reads `member_writes: false` back from a group table holding only the SELECT policy.
 
 A `Run402-Group` the caller is not a member of yields no rows. The two group columns are introspected like `owner_column` (equality when their types agree, a text cast with a warning otherwise) and `group_column` is indexed. Validation refuses a `membership.table` that is declared neither `user_owns_rows` on `membership.user_column` nor `group_owns_rows` on itself (`membership-not-user-owned`, whose `fix` names both declarations), and a `group_owns_rows` membership table naming another table; `force_group_on_insert` with any other policy, and `force_owner_on_insert` with `group_owns_rows`, are errors. The service role bypasses the policy as it bypasses every policy.
 

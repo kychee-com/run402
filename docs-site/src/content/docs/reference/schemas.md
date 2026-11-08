@@ -769,6 +769,7 @@ Use `run402 up --check` for local validation and `run402 up --plan` for gateway 
 | `group_column` | `#/definitions/identifier` | no | group_owns_rows: the column naming the row's group. |
 | `membership` | `#/definitions/membership` | no | See the downloadable schema for constraints. |
 | `force_group_on_insert` | `boolean` | no | group_owns_rows: a BEFORE INSERT trigger fills a NULL group column from the request's Run402-Group and raises when no group is named. |
+| `member_writes` | `boolean` | no | group_owns_rows: false compiles only the SELECT policy, so members read their groups' rows and only the service key writes them (a member's INSERT is refused by the database, an UPDATE or DELETE touches no row). Defaults to true. Refused with any other policy, and false is refused beside force_group_on_insert: true. |
 | `live` | `boolean` | no | See the downloadable schema for constraints. |
 | `i_understand_this_is_unrestricted` | `boolean` | no | See the downloadable schema for constraints. |
 | `custom_sql` | `string` | no | See the downloadable schema for constraints. |

@@ -104,6 +104,10 @@
           "type": "boolean",
           "description": "group_owns_rows: a BEFORE INSERT trigger fills a NULL group column from the request's Run402-Group and raises when no group is named."
         },
+        "member_writes": {
+          "type": "boolean",
+          "description": "group_owns_rows: false compiles only the SELECT policy, so members read their groups' rows and only the service key writes them (a member's INSERT is refused by the database, an UPDATE or DELETE touches no row). Defaults to true. Refused with any other policy, and false is refused beside force_group_on_insert: true."
+        },
         "live": {
           "type": "boolean"
         },
@@ -257,6 +261,39 @@
             "properties": {
               "policy": {
                 "const": "group_owns_rows"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "member_writes"
+            ]
+          },
+          "then": {
+            "properties": {
+              "policy": {
+                "const": "group_owns_rows"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "member_writes": {
+                "const": false
+              }
+            },
+            "required": [
+              "member_writes"
+            ]
+          },
+          "then": {
+            "properties": {
+              "force_group_on_insert": {
+                "const": false
               }
             }
           }
