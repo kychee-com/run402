@@ -706,11 +706,24 @@ async function sqlCmd(projectId, args = []) {
     }
   }
   try {
-    const data = await getSdk().projects.sql(projectId, sql, params, readOnly ? { readOnly: true } : undefined);
+    const data = await getSdk().projects.sql(projectId, sql, params, { ...(readOnly ? { readOnly: true } : {}), onRetry: reportSqlWait });
     console.log(JSON.stringify(toCliSqlResult(data), null, 2));
   } catch (err) {
     reportSdkError(err);
   }
+}
+
+/** One stderr line per wait while the SDK waits out a retryable refusal
+ *  (a deploy's write pause); stdout keeps only the final result. */
+function reportSqlWait({ code, attempt, waitMs, details }) {
+  const kind = details && typeof details === "object" ? details.snapshot_kind : undefined;
+  const holder = typeof kind === "string"
+    ? `a ${kind.replace(/_/g, "-")} snapshot`
+    : details && typeof details === "object" && details.holder_kind === "archive_export"
+      ? "an archive export"
+      : null;
+  const why = code === "PROJECT_WRITES_PAUSED" && holder ? `writes are paused while ${holder} captures` : `${code ?? "retryable refusal"}`;
+  console.error(`Waiting ${(waitMs / 1000).toFixed(1)}s: ${why} (attempt ${attempt})`);
 }
 
 async function sqlBatchCmd(projectId, batchFile, transaction, others) {
@@ -737,7 +750,7 @@ async function sqlBatchCmd(projectId, batchFile, transaction, others) {
   }
   const tx = transaction ?? (Array.isArray(parsed) ? undefined : parsed?.transaction);
   try {
-    const data = await getSdk().projects.sqlBatch(projectId, statements, tx ? { transaction: tx } : {});
+    const data = await getSdk().projects.sqlBatch(projectId, statements, { ...(tx ? { transaction: tx } : {}), onRetry: reportSqlWait });
     console.log(JSON.stringify(data, null, 2));
     if (data && data.status === "partial") process.exitCode = 1;
   } catch (err) {

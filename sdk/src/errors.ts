@@ -82,6 +82,10 @@ export abstract class Run402Error extends Error {
   readonly safeToRetry?: boolean;
   /** Gateway-known mutation progress for failed mutating operations. */
   readonly mutationState?: string;
+  /** Requests sent, set when a client waited out a retryable refusal before giving up (e.g. `projects.sql`). */
+  attempts?: number;
+  /** Milliseconds a client spent waiting out a retryable refusal before giving up. */
+  waitedMs?: number;
   /** Trace id suitable for support/debugging. */
   readonly traceId?: string;
   /** Canonical structured context. Preserved by reference from the response body. */
@@ -156,6 +160,8 @@ export abstract class Run402Error extends Error {
       retryable: this.retryable,
       safeToRetry: this.safeToRetry,
       mutationState: this.mutationState,
+      attempts: this.attempts,
+      waitedMs: this.waitedMs,
       traceId: this.traceId,
       context: this.context,
       details: this.details,
@@ -677,7 +683,7 @@ export type Run402DeployErrorCode =
   | "OPERATION_INTERRUPTED"
   | "IMAGE_ENCODE_TIMEOUT"
   | "TOO_MANY_ENCODES_QUEUED"
-  | "EXPORT_CONSISTENCY_UNAVAILABLE"
+  | "PROJECT_WRITES_PAUSED"
   | (string & {});
 
 export interface Run402DeployErrorFix {
@@ -697,7 +703,6 @@ export class Run402DeployError extends Run402Error {
   readonly fix: Run402DeployErrorFix | null;
   readonly logs: string[] | null;
   readonly rolledBack: boolean;
-  readonly attempts?: number;
   readonly maxRetries?: number;
   readonly lastRetryCode?: Run402DeployErrorCode;
 

@@ -1428,6 +1428,9 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="PROJECT_SCOPE_MISMATCH"></a>
 [`PROJECT_SCOPE_MISMATCH`](/errors/gateway/#PROJECT_SCOPE_MISMATCH)
 
+<a id="PROJECT_WRITES_PAUSED"></a>
+[`PROJECT_WRITES_PAUSED`](/errors/gateway/#PROJECT_WRITES_PAUSED)
+
 <a id="PROMO_LIMIT_REACHED"></a>
 [`PROMO_LIMIT_REACHED`](/errors/gateway/#PROMO_LIMIT_REACHED)
 
@@ -1445,6 +1448,9 @@ The catalog records owning source locations and pinned external contributions. A
 
 <a id="PUBLIC_MINT_NOT_ENABLED"></a>
 [`PUBLIC_MINT_NOT_ENABLED`](/errors/gateway/#PUBLIC_MINT_NOT_ENABLED)
+
+<a id="PUSH_PROVIDER_NOT_CONFIGURED"></a>
+[`PUSH_PROVIDER_NOT_CONFIGURED`](/errors/gateway/#PUSH_PROVIDER_NOT_CONFIGURED)
 
 <a id="QUOTA_EXCEEDED"></a>
 [`QUOTA_EXCEEDED`](/errors/gateway/#QUOTA_EXCEEDED)
@@ -1551,6 +1557,9 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="R402_AUTH_FRESHNESS_REQUIRED"></a>
 [`R402_AUTH_FRESHNESS_REQUIRED`](/errors/auth/#R402_AUTH_FRESHNESS_REQUIRED)
 
+<a id="R402_AUTH_ID_TOKEN_INVALID"></a>
+[`R402_AUTH_ID_TOKEN_INVALID`](/errors/auth/#R402_AUTH_ID_TOKEN_INVALID)
+
 <a id="R402_AUTH_IDENTITY_LINK_CONFLICT"></a>
 [`R402_AUTH_IDENTITY_LINK_CONFLICT`](/errors/auth/#R402_AUTH_IDENTITY_LINK_CONFLICT)
 
@@ -1571,6 +1580,9 @@ The catalog records owning source locations and pinned external contributions. A
 
 <a id="R402_AUTH_MEMBERSHIP_GATE_NOT_WIRED"></a>
 [`R402_AUTH_MEMBERSHIP_GATE_NOT_WIRED`](/errors/auth/#R402_AUTH_MEMBERSHIP_GATE_NOT_WIRED)
+
+<a id="R402_AUTH_NATIVE_SIGN_IN_NOT_CONFIGURED"></a>
+[`R402_AUTH_NATIVE_SIGN_IN_NOT_CONFIGURED`](/errors/auth/#R402_AUTH_NATIVE_SIGN_IN_NOT_CONFIGURED)
 
 <a id="R402_AUTH_OAUTH_BRIDGE_INVALID"></a>
 [`R402_AUTH_OAUTH_BRIDGE_INVALID`](/errors/auth/#R402_AUTH_OAUTH_BRIDGE_INVALID)

@@ -2,8 +2,8 @@
   "version": 1,
   "contributions": {
     "gateway": {
-      "revision": "021abc7b4157e49c592e0c4ff3caa4dfa87e700a",
-      "sourceDigest": "d7823c9f86ca7f6b70784b0cd5e71b8750682bcf82778085f721d1b82ce99024"
+      "revision": "a0dfb12d09cb12be9992db5547a31a7b62f0d385",
+      "sourceDigest": "0bd8b5a5d4d418f7f4f979ba53a258a73126ebd5779349f700460a599c8a5265"
     },
     "core": {
       "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7"
@@ -5329,6 +5329,16 @@
       "topic": "/errors/gateway/#PROJECT_SCOPE_MISMATCH"
     },
     {
+      "code": "PROJECT_WRITES_PAUSED",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#PROJECT_WRITES_PAUSED"
+    },
+    {
       "code": "PROMO_LIMIT_REACHED",
       "owners": [
         {
@@ -5391,6 +5401,16 @@
         }
       ],
       "topic": "/errors/gateway/#PUBLIC_MINT_NOT_ENABLED"
+    },
+    {
+      "code": "PUSH_PROVIDER_NOT_CONFIGURED",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#PUSH_PROVIDER_NOT_CONFIGURED"
     },
     {
       "code": "QUOTA_EXCEEDED",
@@ -5819,6 +5839,16 @@
       "topic": "/errors/auth/#R402_AUTH_FRESHNESS_REQUIRED"
     },
     {
+      "code": "R402_AUTH_ID_TOKEN_INVALID",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/auth/#R402_AUTH_ID_TOKEN_INVALID"
+    },
+    {
       "code": "R402_AUTH_IDENTITY_LINK_CONFLICT",
       "owners": [
         {
@@ -5903,6 +5933,16 @@
         }
       ],
       "topic": "/errors/auth/#R402_AUTH_MEMBERSHIP_GATE_NOT_WIRED"
+    },
+    {
+      "code": "R402_AUTH_NATIVE_SIGN_IN_NOT_CONFIGURED",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/auth/#R402_AUTH_NATIVE_SIGN_IN_NOT_CONFIGURED"
     },
     {
       "code": "R402_AUTH_OAUTH_BRIDGE_INVALID",

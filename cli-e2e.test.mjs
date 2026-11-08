@@ -2120,6 +2120,38 @@ describe("CLI e2e happy path", () => {
     assert.ok(captured().includes("tables"), "should show schema for active project");
   });
 
+  it("projects sql waits out a deploy's write pause, one stderr line per wait, the result alone on stdout", async () => {
+    const { run } = await import("./cli/lib/projects.mjs");
+    const prevFetch = globalThis.fetch;
+    let sqlCalls = 0;
+    globalThis.fetch = (input, init) => {
+      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+      const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
+      if (/\/sql$/.test(url) && method === "POST" && sqlCalls++ === 0) {
+        return Promise.resolve(json({
+          error: "Project writes are paused",
+          code: "PROJECT_WRITES_PAUSED",
+          retryable: true,
+          safe_to_retry: true,
+          mutation_state: "none",
+          details: { holder_kind: "snapshot", snapshot_kind: "pre_migration", retry_after_seconds: 0.5 },
+        }, 503));
+      }
+      return prevFetch(input, init);
+    };
+    captureStart();
+    try {
+      await run("sql", ["prj_test123", "INSERT INTO t VALUES (1)"]);
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(sqlCalls, 2, "the write was sent again after the wait");
+    assert.equal(stderrLines.length, 1, `one wait line, got: ${stderrLines.join(" | ")}`);
+    assert.match(stderrLines[0], /^Waiting 0\.5s: writes are paused while a pre-migration snapshot captures \(attempt 1\)$/);
+    assert.ok(stdoutLines.every((l) => !/Waiting/.test(l)), "stdout carries only the result");
+  });
+
   it("projects sql \"SELECT 1\" treats query as query, defaults to active (GH-102)", async () => {
     const { run } = await import("./cli/lib/projects.mjs");
     const { setActiveProjectId } = await import("./cli/lib/config.mjs");

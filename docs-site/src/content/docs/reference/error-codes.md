@@ -1871,6 +1871,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="PROJECT_SCOPE_MISMATCH"></a>
 [`PROJECT_SCOPE_MISMATCH`](/errors/gateway/#PROJECT_SCOPE_MISMATCH)
 
+<a id="project_writes_paused"></a>
+<a id="PROJECT_WRITES_PAUSED"></a>
+[`PROJECT_WRITES_PAUSED`](/errors/gateway/#PROJECT_WRITES_PAUSED)
+
 <a id="promo_limit_reached"></a>
 <a id="PROMO_LIMIT_REACHED"></a>
 [`PROMO_LIMIT_REACHED`](/errors/gateway/#PROMO_LIMIT_REACHED)
@@ -1894,6 +1898,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="public_mint_not_enabled"></a>
 <a id="PUBLIC_MINT_NOT_ENABLED"></a>
 [`PUBLIC_MINT_NOT_ENABLED`](/errors/gateway/#PUBLIC_MINT_NOT_ENABLED)
+
+<a id="push_provider_not_configured"></a>
+<a id="PUSH_PROVIDER_NOT_CONFIGURED"></a>
+[`PUSH_PROVIDER_NOT_CONFIGURED`](/errors/gateway/#PUSH_PROVIDER_NOT_CONFIGURED)
 
 <a id="quota_exceeded"></a>
 <a id="QUOTA_EXCEEDED"></a>
@@ -2035,6 +2043,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="R402_AUTH_FRESHNESS_REQUIRED"></a>
 [`R402_AUTH_FRESHNESS_REQUIRED`](/errors/auth/#R402_AUTH_FRESHNESS_REQUIRED)
 
+<a id="r402_auth_id_token_invalid"></a>
+<a id="R402_AUTH_ID_TOKEN_INVALID"></a>
+[`R402_AUTH_ID_TOKEN_INVALID`](/errors/auth/#R402_AUTH_ID_TOKEN_INVALID)
+
 <a id="r402_auth_identity_link_conflict"></a>
 <a id="R402_AUTH_IDENTITY_LINK_CONFLICT"></a>
 [`R402_AUTH_IDENTITY_LINK_CONFLICT`](/errors/auth/#R402_AUTH_IDENTITY_LINK_CONFLICT)
@@ -2062,6 +2074,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="r402_auth_membership_gate_not_wired"></a>
 <a id="R402_AUTH_MEMBERSHIP_GATE_NOT_WIRED"></a>
 [`R402_AUTH_MEMBERSHIP_GATE_NOT_WIRED`](/errors/auth/#R402_AUTH_MEMBERSHIP_GATE_NOT_WIRED)
+
+<a id="r402_auth_native_sign_in_not_configured"></a>
+<a id="R402_AUTH_NATIVE_SIGN_IN_NOT_CONFIGURED"></a>
+[`R402_AUTH_NATIVE_SIGN_IN_NOT_CONFIGURED`](/errors/auth/#R402_AUTH_NATIVE_SIGN_IN_NOT_CONFIGURED)
 
 <a id="r402_auth_oauth_bridge_invalid"></a>
 <a id="R402_AUTH_OAUTH_BRIDGE_INVALID"></a>

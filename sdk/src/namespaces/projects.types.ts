@@ -425,6 +425,21 @@ export interface SqlOptions {
   /** Run read-only, enforced by PostgreSQL (one statement; a write answers
    *  DATABASE_READ_ONLY). Honored for every caller, service key included. */
   readOnly?: boolean;
+  /** Called before each wait when the gateway answers a retryable refusal
+   *  (a deploy's write pause answers `PROJECT_WRITES_PAUSED`). */
+  onRetry?: (info: SqlRetryInfo) => void;
+}
+
+/** What {@link SqlOptions.onRetry} is told before a wait. */
+export interface SqlRetryInfo {
+  /** The refusal's code, e.g. `PROJECT_WRITES_PAUSED`. */
+  code: string | undefined;
+  /** The attempt that was refused (1 for the first request). */
+  attempt: number;
+  /** How long the client waits before the next attempt. */
+  waitMs: number;
+  /** The refusal's `details` (for `PROJECT_WRITES_PAUSED`: `holder_kind`, `snapshot_kind`). */
+  details: unknown;
 }
 
 /** The result of {@link Projects.sql}, in the wire shape. */
@@ -454,6 +469,8 @@ export interface SqlBatchOptions {
    *  `each`: every statement in its own transaction; failures are reported
    *  per statement and later statements still run. */
   transaction?: "all" | "each";
+  /** Called before each wait when the gateway answers a retryable refusal. */
+  onRetry?: (info: SqlRetryInfo) => void;
 }
 
 export type SqlBatchStatementResult =
