@@ -1,9 +1,9 @@
 {
   "owner": "gateway",
   "repository": "kychee-com/run402-private",
-  "revision": "a0dfb12d09cb12be9992db5547a31a7b62f0d385",
+  "revision": "0a01a3256e711c5a1278c972940a1a634addf3ee",
   "source": "packages/gateway/src/utils/error-envelope.ts",
-  "sourceDigest": "0bd8b5a5d4d418f7f4f979ba53a258a73126ebd5779349f700460a599c8a5265",
+  "sourceDigest": "b110129948b4dbdaa09c5496145354dd6bc47279551dc6c3b673f030b77484ac",
   "codes": [
     "VALIDATION_FAILED",
     "AUTH_REQUIRED",
@@ -161,6 +161,7 @@
     "PROJECT_DORMANT",
     "MIGRATE_GATE_ACTIVE",
     "PROJECT_WRITES_PAUSED",
+    "PROJECT_DATABASE_BUSY",
     "PLAN_NOT_FOUND",
     "OPERATION_NOT_FOUND",
     "INVALID_STATE",

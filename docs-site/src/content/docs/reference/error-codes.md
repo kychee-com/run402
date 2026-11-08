@@ -1824,6 +1824,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="PROJECT_CREDENTIAL_PROJECT_MISMATCH"></a>
 [`PROJECT_CREDENTIAL_PROJECT_MISMATCH`](/errors/gateway/#PROJECT_CREDENTIAL_PROJECT_MISMATCH)
 
+<a id="project_database_busy"></a>
+<a id="PROJECT_DATABASE_BUSY"></a>
+[`PROJECT_DATABASE_BUSY`](/errors/gateway/#PROJECT_DATABASE_BUSY)
+
 <a id="project_dormant"></a>
 <a id="PROJECT_DORMANT"></a>
 [`PROJECT_DORMANT`](/errors/gateway/#PROJECT_DORMANT)

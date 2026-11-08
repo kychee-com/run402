@@ -1291,6 +1291,30 @@ describe("projects.sql / sqlBatch wait out a retryable refusal (a deploy's write
     }
   });
 
+  it("slow attempts count against the budget: the whole call ends within 20 seconds", async () => {
+    mock.timers.enable({ apis: ["setTimeout", "Date"] });
+    try {
+      const { fetch, calls } = mockFetch(async () => {
+        await new Promise((r) => setTimeout(r, 8_000));
+        return paused();
+      });
+      const sdk = makeSdk(makeCreds(), fetch);
+      const startedAt = Date.now();
+      const err = await drive(sdk.projects.sql("prj_known", "INSERT INTO t VALUES (1)").then(
+        () => { throw new Error("expected a throw"); },
+        (e: unknown) => e,
+      ));
+      const elapsed = Date.now() - startedAt;
+      assert.ok(err instanceof Run402Error);
+      assert.equal(err.code, "PROJECT_WRITES_PAUSED");
+      assert.equal(calls.length, 2, "a third 8-second attempt would end past the budget");
+      assert.equal(err.attempts, 2);
+      assert.ok(elapsed <= 20_000, `the call ended within the budget (${elapsed} ms)`);
+    } finally {
+      mock.timers.reset();
+    }
+  });
+
   it("throws at once on an error that is not safe to retry", async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse({ error: "bad", code: "VALIDATION_FAILED", retryable: false, safe_to_retry: true }, 400));
     const sdk = makeSdk(makeCreds(), fetch);

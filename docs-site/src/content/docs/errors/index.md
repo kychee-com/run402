@@ -1392,6 +1392,9 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="PROJECT_CREDENTIAL_PROJECT_MISMATCH"></a>
 [`PROJECT_CREDENTIAL_PROJECT_MISMATCH`](/errors/gateway/#PROJECT_CREDENTIAL_PROJECT_MISMATCH)
 
+<a id="PROJECT_DATABASE_BUSY"></a>
+[`PROJECT_DATABASE_BUSY`](/errors/gateway/#PROJECT_DATABASE_BUSY)
+
 <a id="PROJECT_DORMANT"></a>
 [`PROJECT_DORMANT`](/errors/gateway/#PROJECT_DORMANT)
 

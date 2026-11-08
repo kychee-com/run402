@@ -50,8 +50,9 @@ import type {
   ValidateExposeOptions,
 } from "./projects.types.js";
 
-/** How long `sql` / `sqlBatch` wait out a retryable refusal (a deploy's write
- *  pause): project-sql-endpoint "First-party SQL clients wait out a retryable refusal". */
+/** How long one `sql` / `sqlBatch` call may take, attempts and waits together,
+ *  while it waits out a retryable refusal (a deploy's write pause):
+ *  project-sql-endpoint "First-party SQL clients wait out a retryable refusal". */
 const SQL_WAIT_BUDGET_MS = 20_000;
 
 /** The wait before attempt `attempt + 1`: the gateway's hint, at least 0.5 s growing to 2 s. */
@@ -69,13 +70,18 @@ function sqlRetryWaitMs(details: unknown, attempt: number): number {
 async function sendWaitingOutRetryable<T>(send: () => Promise<T>, onRetry: ((info: SqlRetryInfo) => void) | undefined): Promise<T> {
   const startedAt = Date.now();
   let waitedMs = 0;
+  // The budget bounds the whole call, so a retry starts only when it still
+  // covers the wait plus an attempt as slow as the slowest one so far.
+  let slowestAttemptMs = 0;
   for (let attempt = 1; ; attempt++) {
+    const attemptStartedAt = Date.now();
     try {
       return await send();
     } catch (err) {
       if (!isRun402Error(err) || err.retryable !== true || err.safeToRetry !== true) throw err;
+      slowestAttemptMs = Math.max(slowestAttemptMs, Date.now() - attemptStartedAt);
       const waitMs = sqlRetryWaitMs(err.details, attempt);
-      if (Date.now() - startedAt + waitMs > SQL_WAIT_BUDGET_MS) {
+      if (Date.now() - startedAt + waitMs + slowestAttemptMs > SQL_WAIT_BUDGET_MS) {
         if (attempt > 1) Object.assign(err, { attempts: attempt, waitedMs });
         throw err;
       }

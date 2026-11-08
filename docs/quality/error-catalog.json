@@ -2,8 +2,8 @@
   "version": 1,
   "contributions": {
     "gateway": {
-      "revision": "a0dfb12d09cb12be9992db5547a31a7b62f0d385",
-      "sourceDigest": "0bd8b5a5d4d418f7f4f979ba53a258a73126ebd5779349f700460a599c8a5265"
+      "revision": "0a01a3256e711c5a1278c972940a1a634addf3ee",
+      "sourceDigest": "b110129948b4dbdaa09c5496145354dd6bc47279551dc6c3b673f030b77484ac"
     },
     "core": {
       "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7"
@@ -5183,6 +5183,16 @@
         }
       ],
       "topic": "/errors/gateway/#PROJECT_CREDENTIAL_PROJECT_MISMATCH"
+    },
+    {
+      "code": "PROJECT_DATABASE_BUSY",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#PROJECT_DATABASE_BUSY"
     },
     {
       "code": "PROJECT_DORMANT",
