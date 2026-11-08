@@ -1338,9 +1338,9 @@ The manifest itself is a JSON object:
 }
 ```
 
-Built-in policies: `user_owns_rows` (rows where `owner_column = auth.uid()`), `group_owns_rows` (rows whose `group_column` is one of the groups the user belongs to, read from `membership: { table, group_column, user_column }`; the membership table is declared in the same manifest as `user_owns_rows` on its `user_column`, and a request's `Run402-Group` header narrows to one group and never widens), `public_read_authenticated_write` (anyone reads, any auth user writes), `public_read_append_only` (anyone reads and inserts; update/delete denied), `public_read_write_UNRESTRICTED` (fully open; requires `i_understand_this_is_unrestricted: true`), `custom` (provide `custom_sql`).
+Built-in policies: `user_owns_rows` (rows where `owner_column = auth.uid()`), `group_owns_rows` (rows whose `group_column` is one of the groups the user belongs to, read from `membership: { table, group_column, user_column }`; the membership table is declared in the same manifest either as `user_owns_rows` on its `user_column`, so a member sees only their own memberships, or as `group_owns_rows` on the same `group_column` naming itself, so members of a group see each other; a request's `Run402-Group` header narrows to one group and never widens), `public_read_authenticated_write` (anyone reads, any auth user writes), `public_read_append_only` (anyone reads and inserts; update/delete denied), `public_read_write_UNRESTRICTED` (fully open; requires `i_understand_this_is_unrestricted: true`), `custom` (provide `custom_sql`).
 
-A `group_owns_rows` table compiles four permissive policies (SELECT, INSERT `WITH CHECK`, UPDATE, DELETE) over one predicate, read as the caller (the membership subselect sees only the caller's own membership rows, so no privileged helper exists):
+A `group_owns_rows` table compiles four permissive policies (SELECT, INSERT `WITH CHECK`, UPDATE, DELETE) over one predicate. With a `user_owns_rows` membership table the caller's groups are a subselect read as the caller (it sees only the caller's own membership rows, so no privileged helper is involved):
 
 ```sql
 "<group_column>" IN (SELECT m."<membership.group_column>" FROM "<membership.table>" m WHERE m."<membership.user_column>" = auth.uid())
@@ -1348,7 +1348,21 @@ AND (current_setting('request.headers', true)::json->>'run402-group' IS NULL
      OR "<group_column>"::text = current_setting('request.headers', true)::json->>'run402-group')
 ```
 
-A `Run402-Group` the caller is not a member of yields no rows. The two group columns are introspected like `owner_column` (equality when their types agree, a text cast with a warning otherwise) and `group_column` is indexed. Validation refuses a `membership.table` that is not declared `user_owns_rows` on `membership.user_column` (`membership-not-user-owned`, whose `fix` names the declaration to add) or that is itself `group_owns_rows`; `force_group_on_insert` with any other policy, and `force_owner_on_insert` with `group_owns_rows`, are errors. The service role bypasses the policy as it bypasses every policy.
+A membership table may instead be declared `group_owns_rows` on its own `group_column` with `membership` naming itself, so members of a group see each other's memberships (the member list a group app shows on every page). A policy whose subselect read the table it protects would recurse, so the deploy creates a helper beside the table and the table's own policies, and every table naming it, read through it:
+
+```sql
+CREATE OR REPLACE FUNCTION "<table>_groups_of"("<user_column>" uuid) RETURNS SETOF <group column type>
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = "<project schema>", pg_temp
+AS $body$ SELECT "<group_column>" FROM "<table>" WHERE "<user_column>" = $1 $body$;
+REVOKE ALL ON FUNCTION "<table>_groups_of"(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION "<table>_groups_of"(uuid) TO anon, authenticated;
+-- the predicate's membership half becomes:
+"<group_column>" IN (SELECT "<table>_groups_of"(auth.uid()))
+```
+
+The helper is owned by the project's own database role, is dropped when the table leaves the manifest or changes policy, and its grants are re-issued on every deploy. A member of a self-owned membership table reads every member of their groups and may insert, update or delete memberships of groups they already belong to (inviting a relative); the first membership of a new group is a service-key write, where a group is created anyway.
+
+A `Run402-Group` the caller is not a member of yields no rows. The two group columns are introspected like `owner_column` (equality when their types agree, a text cast with a warning otherwise) and `group_column` is indexed. Validation refuses a `membership.table` that is declared neither `user_owns_rows` on `membership.user_column` nor `group_owns_rows` on itself (`membership-not-user-owned`, whose `fix` names both declarations), and a `group_owns_rows` membership table naming another table; `force_group_on_insert` with any other policy, and `force_owner_on_insert` with `group_owns_rows`, are errors. The service role bypasses the policy as it bypasses every policy.
 
 For `user_owns_rows`, `force_owner_on_insert: true` creates an idempotent per-table trigger named `<table>_set_owner` backed by `<table>_set_owner_fn`. The generated shape is:
 
@@ -1489,10 +1503,9 @@ sqlBatch(id: string, statements: { sql: string; params?: unknown[] }[], opts?: {
 //     which the release no longer describes; write it as a migration (spec.database.migrations).
 //     Schema changes on released projects will be refused outside migrations in a later release.
 //   MULTI_STATEMENT_TEXT_BODY: several statements in one text; use sqlBatch.
-// sql/sqlBatch wait out a retryable, safe-to-retry refusal, the whole call within 20 s (opts.onRetry({ code, attempt,
-//   waitMs, details }) is called before each wait), then throw it with attempts and waitedMs. While a deploy's snapshot
-//   holds the project's write pause, reads answer as usual and a write meets PROJECT_WRITES_PAUSED; a call that gets no
-//   database connection meets PROJECT_DATABASE_BUSY. Both are waited out.
+// sql/sqlBatch wait out a retryable, safe-to-retry refusal for up to 20 s (opts.onRetry({ code, attempt, waitMs, details })
+//   is called before each wait), then throw it with attempts and waitedMs. While a deploy's snapshot holds the
+//   project's write pause, reads answer as usual and a write meets PROJECT_WRITES_PAUSED, which this waits out.
 rest<T = unknown>(id: string, table: string, queryOrOptions?: string | ProjectRestOptions): Promise<T>
 restResponse<T = unknown>(id: string, table: string, queryOrOptions?: string | ProjectRestOptions): Promise<ProjectRestResponse<T>>
 validateExpose(manifest: ExposeManifest | string, opts?: { project?: string; project_id?: string; migrationSql?: string }): Promise<ExposeManifestValidationResult>
