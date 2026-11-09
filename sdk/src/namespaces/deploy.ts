@@ -875,7 +875,7 @@ async function rehearseBeforeCommit(
   });
   if (report.status !== "passed") {
     throw new Run402DeployError(
-      `Rehearsal failed on a contained branch; nothing was committed. ${describeRehearsalFailure(report)}`,
+      `${report.branch_project_id ? "Rehearsal failed on a contained branch" : "Rehearsal failed"}; nothing was committed. ${describeRehearsalFailure(report)}`,
       {
         code: "REHEARSAL_FAILED",
         phase: "rehearsal",
@@ -1019,7 +1019,11 @@ function describeRehearsalFailure(report: ApplyRehearsalReport): string {
   if (failedMigration) return `Migration ${failedMigration.id} failed${failedMigration.error ? `: ${failedMigration.error}` : ""}.`;
   const failedCheck = report.checks.find((c) => c.status === "failed");
   if (failedCheck) return `Check ${failedCheck.name} failed${failedCheck.error ? `: ${failedCheck.error}` : ""}.`;
-  return report.error?.message ? `${report.error.message}.` : "";
+  // A rehearsal that made no branch (its capture was refused) says so in its
+  // own error, with next actions the thrown error carries in `body`.
+  const message = report.error?.message?.trim();
+  if (!message) return "";
+  return /[.!?]$/.test(message) ? message : `${message}.`;
 }
 
 async function applyOnce(

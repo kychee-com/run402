@@ -2463,6 +2463,39 @@ describe("Deploy rehearsal runs as an operation the SDK polls", () => {
     assert.equal(countRequests(w, "/apply/v1/plans/plan_rh/commit"), 0);
   });
 
+  it("passes on the ways forward of a rehearsal that could not capture the project, and claims no branch", async () => {
+    const nextActions = [
+      { type: "commit_plan", message: "Commit this plan without a rehearsal.", command: "run402 deploy --require-plan plan_rh --plan-fingerprint pfp_rh", body: { required_plan: { plan_id: "plan_rh", plan_fingerprint: "pfp_rh" } } },
+      { type: "shrink_database", method: "POST", path: "/projects/v1/prj_test/sql", message: "Or delete or move rows." },
+    ];
+    const refused = {
+      ...report("failed"),
+      branch_project_id: null,
+      teardown: { policy: "on_pass", action: "skipped" },
+      next_actions: nextActions,
+      error: {
+        code: "CAPTURE_SIZE_LIMIT_EXCEEDED",
+        phase: "rehearsal",
+        message: "The rehearsal could not capture the project, so it made no branch and rehearsed nothing. The project's table data (133.5 MiB of row text) is over the 128 MiB a capture can hold; nothing was paused or written.",
+        details: { database_bytes: 140_008_703, database_bytes_limit: 134_217_728, database_limit: "128 MiB" },
+      },
+    };
+    const { w, run } = await applyAgainst([snapshot("failed", { rehearsal_report: refused, error: refused.error })]);
+
+    await assert.rejects(run, (err: unknown) => {
+      assert(err instanceof Run402DeployError);
+      assert.equal(err.code, "REHEARSAL_FAILED");
+      assert.doesNotMatch(err.message, /contained branch/);
+      assert.match(err.message, /nothing was committed/);
+      assert.match(err.message, /133\.5 MiB of row text/);
+      const body = err.body as { next_actions?: unknown; rehearsal?: { error?: { code?: string } } };
+      assert.deepEqual(body.next_actions, nextActions);
+      assert.equal(body.rehearsal?.error?.code, "CAPTURE_SIZE_LIMIT_EXCEEDED");
+      return true;
+    });
+    assert.equal(countRequests(w, "/apply/v1/plans/plan_rh/commit"), 0);
+  });
+
   it("uses an inline report as is (a gateway that answers synchronously)", async () => {
     const w = makeWiring();
     w.setHandler((req) => {
