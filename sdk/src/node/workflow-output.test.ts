@@ -108,6 +108,21 @@ test("the deploy summary keeps the app's MCP connector URL beside the site and c
   assert.deepEqual(view.result.deploy.urls, { site: urls.site, console: urls.console, mcp: urls.mcp, deployment: urls.deployment, deployment_id: "dpl_1" });
 });
 
+test("the deploy summary keeps a migration's restore point and a snapshot skip reason", () => {
+  const store = { storeDetails: () => ({ ref: "detail", next_action: { type: "expand_result" } }) };
+  const restorePoint = { snapshot_id: "snap_1", restore_url: "/projects/v1/prj_1/snapshots/snap_1/restore" };
+  const captured = prepareWorkflowOutput({ mode: "apply", result: { deploy: { release_id: "rel_1", restore_point: restorePoint } } }, "/unused", store) as any;
+  assert.deepEqual(captured.result.deploy.restore_point, restorePoint);
+  assert.equal(captured.result.deploy.snapshot_skipped_reason, undefined);
+  const skipped = prepareWorkflowOutput({ mode: "apply", result: {
+    deploy: { release_id: "rel_2", snapshot_skipped_reason: "capture_size_limit_exceeded", warnings: [{ code: "AUTO_SNAPSHOT_SKIPPED_OVERSIZED" }] },
+    app_result: { release: { release_id: "rel_2", snapshot_skipped_reason: "migrations_unchanged" } },
+  } }, "/unused", store) as any;
+  assert.equal(skipped.result.deploy.snapshot_skipped_reason, "capture_size_limit_exceeded");
+  assert.equal(skipped.result.deploy.warnings[0].code, "AUTO_SNAPSHOT_SKIPPED_OVERSIZED");
+  assert.equal(skipped.result.app_result.release.snapshot_skipped_reason, "migrations_unchanged");
+});
+
 test("step details keep their non-secret facts in both the stored detail and the summary", () => {
   let stored: any;
   const value = { action: "up", mode: "legacyDryRun", dry_run: true, steps: [

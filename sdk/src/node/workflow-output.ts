@@ -75,7 +75,8 @@ function verification(value: unknown): unknown {
 }
 function deployment(value: unknown): unknown {
   if (!object(value)) return value;
-  const summary = pick(value, [...OUTCOME, "release_id", "operation_id", "release_generation", "urls", "rehearsal", "static_continuity"]);
+  // A migration's undo (or why it has none) is recovery evidence, kept like the outcome.
+  const summary = pick(value, [...OUTCOME, "release_id", "operation_id", "release_generation", "urls", "rehearsal", "static_continuity", "restore_point", "snapshot_skipped_reason"]);
   if (object(value.urls)) summary.urls = pick(value.urls, ["site", "console", "mcp", "deployment", "deployment_id"]);
   if (object(value.diff)) summary.diff = pick(value.diff, ["is_noop", "summary"]);
   return summary;
