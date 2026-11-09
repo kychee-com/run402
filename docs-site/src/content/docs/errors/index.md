@@ -378,6 +378,9 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="CLIENT_VERSION_UNSUPPORTED"></a>
 [`CLIENT_VERSION_UNSUPPORTED`](/errors/gateway/#CLIENT_VERSION_UNSUPPORTED)
 
+<a id="COMMIT_CONTENT_MISSING"></a>
+[`COMMIT_CONTENT_MISSING`](/errors/gateway/#COMMIT_CONTENT_MISSING)
+
 <a id="CONFIG_ENV_REQUIRED"></a>
 [`CONFIG_ENV_REQUIRED`](/errors/client/#CONFIG_ENV_REQUIRED)
 

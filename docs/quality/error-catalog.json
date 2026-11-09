@@ -2,8 +2,8 @@
   "version": 1,
   "contributions": {
     "gateway": {
-      "revision": "772d11ab7dc125f845115f727521b43bd4bd34c6",
-      "sourceDigest": "651932b065ac8fdc256a20a014a0302b8d732436f7f5acf4521b8503e6b01630"
+      "revision": "9e26f6235f1117faeb89e3c67b766f056249aab8",
+      "sourceDigest": "9c29616a44c5d5b4e8b2a036874889852e5e3981a5a99302a6857a442a8ae576"
     },
     "core": {
       "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7"
@@ -1603,6 +1603,16 @@
         }
       ],
       "topic": "/errors/gateway/#CLIENT_VERSION_UNSUPPORTED"
+    },
+    {
+      "code": "COMMIT_CONTENT_MISSING",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#COMMIT_CONTENT_MISSING"
     },
     {
       "code": "CONFIG_ENV_REQUIRED",

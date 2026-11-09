@@ -1,9 +1,9 @@
 {
   "owner": "gateway",
   "repository": "kychee-com/run402-private",
-  "revision": "772d11ab7dc125f845115f727521b43bd4bd34c6",
+  "revision": "9e26f6235f1117faeb89e3c67b766f056249aab8",
   "source": "packages/gateway/src/utils/error-envelope.ts",
-  "sourceDigest": "651932b065ac8fdc256a20a014a0302b8d732436f7f5acf4521b8503e6b01630",
+  "sourceDigest": "9c29616a44c5d5b4e8b2a036874889852e5e3981a5a99302a6857a442a8ae576",
   "codes": [
     "VALIDATION_FAILED",
     "AUTH_REQUIRED",
@@ -151,6 +151,7 @@
     "INVALID_DISPLAY_NAME",
     "UNKNOWN_FIELD",
     "REHEARSAL_CONTENT_MISSING",
+    "COMMIT_CONTENT_MISSING",
     "PROJECT_CREDENTIAL_PROJECT_MISMATCH",
     "CREDENTIAL_NAME_TAKEN",
     "CREDENTIAL_NOT_FOUND",

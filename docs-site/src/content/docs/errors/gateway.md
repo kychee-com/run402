@@ -495,6 +495,12 @@ Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
 
 The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
 
+<h2 id="COMMIT_CONTENT_MISSING">COMMIT_CONTENT_MISSING</h2>
+
+Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
+
 <h2 id="CONTACT_EMAIL_NOT_VERIFIED">CONTACT_EMAIL_NOT_VERIFIED</h2>
 
 Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.

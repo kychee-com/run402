@@ -480,6 +480,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="CLIENT_VERSION_UNSUPPORTED"></a>
 [`CLIENT_VERSION_UNSUPPORTED`](/errors/gateway/#CLIENT_VERSION_UNSUPPORTED)
 
+<a id="commit_content_missing"></a>
+<a id="COMMIT_CONTENT_MISSING"></a>
+[`COMMIT_CONTENT_MISSING`](/errors/gateway/#COMMIT_CONTENT_MISSING)
+
 <a id="config_env_required"></a>
 <a id="CONFIG_ENV_REQUIRED"></a>
 [`CONFIG_ENV_REQUIRED`](/errors/client/#CONFIG_ENV_REQUIRED)
