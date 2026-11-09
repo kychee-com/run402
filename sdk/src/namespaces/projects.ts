@@ -245,9 +245,10 @@ export class Projects {
       usage: 'r.projects.delete("prj_…")',
       context: "deleting project",
     });
+    // Owner-only: always the caller's principal, never a project key, which
+    // the gateway refuses for an owner action.
     await this.client.request<unknown>(`/projects/v1/${segment}`, {
       method: "DELETE",
-      projectKeyFallback: id,
       context: "deleting project",
     });
 

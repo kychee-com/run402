@@ -64,9 +64,11 @@ Global options (any command):
                     'run402 wallets use' default > 'default'. See 'run402 wallets'.
 
 Notes:
-  - sql, schema and rest use this machine's cached service key when it has one,
-    and otherwise your own authority: any org member with the viewer role (or a
-    database:read grant) reads, read-only; developer and above can also write.
+  - sql and schema go as you (wallet or sign-in session); this machine's cached
+    service key is sent only with no wallet or session, or with
+    --use-service-key. Any org member with the viewer role (or a database:read
+    grant) reads, read-only; developer and above can also write.
+  - delete is owner-only and always goes as you: a service key never deletes.
   - <project_id> is the project_id shown in 'run402 projects list' (prefix: 'prj_')
   - Most commands that take <project_id> default to the active project when omitted
     (set it with 'run402 projects use <project_id>'). Project IDs start with 'prj_';
@@ -237,10 +239,10 @@ Options:
                       With --batch: "all" (default) rolls back every statement
                       on the first failure; "each" commits each on its own
 
-Auth: the project's cached service key when this machine has one; otherwise
-your own authority (wallet or sign-in session). An org member with the viewer
-role (or a database:read grant) reads, read-only; developer and above (or
-database:write) can also write. No key to import.
+Auth: your own authority (wallet or sign-in session); the project's cached
+service key only on a machine with neither, or with --use-service-key. An org
+member with the viewer role (or a database:read grant) reads, read-only;
+developer and above (or database:write) can also write. No key to import.
 
 Result: { rows, row_count, fields, statements, warnings }. warnings[] never
 changes the result: SCHEMA_CHANGE_OUTSIDE_MIGRATION means a schema change on

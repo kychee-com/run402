@@ -1036,7 +1036,7 @@ Authority split: `issue`/`rotate`/`revoke` require owner membership on the proje
 - `run402 projects promote-user <project_id> <email>` — promote a user to project_admin role
 - `run402 projects demote-user <project_id> <email>` — demote a user from project_admin role
 - `run402 projects <usage|schema> <project_id>`
-- `run402 projects delete <project_id> --confirm` — cascade deletes all project resources: Lambda functions, subdomains, S3 site files, releases, secrets, and published releases. The schema slot is dropped and recreated. This is irreversible. `--confirm` is required.
+- `run402 projects delete <project_id> --confirm` — cascade deletes all project resources: Lambda functions, subdomains, S3 site files, releases, secrets, and published releases. The schema slot is dropped and recreated. This is irreversible. `--confirm` is required. Owner-only: it goes as your wallet or sign-in session, never a project service key (the gateway refuses a key with `403 FORBIDDEN`), and `--use-service-key` does not change that.
 - `run402 projects validate-expose [id] <manifest_json>` — validate an auth/expose manifest without applying it
 - `run402 projects validate-expose [id] --file manifest.json [--migration-file setup.sql]` — validate file input with optional migration-reference SQL
 - `run402 projects apply-expose <project_id> <manifest_json>` — apply a declarative authorization manifest

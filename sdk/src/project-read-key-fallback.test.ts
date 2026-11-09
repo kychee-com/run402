@@ -2,9 +2,8 @@
  * Project reads whose gateway routes accept the project's own service key
  * (push status, the project events feed, snapshot reads) authenticate as the
  * caller's principal when the credential provider has one, and otherwise with
- * the locally cached service key. `projects.delete` does the inverse: the
- * cached service key when present, otherwise the owner's principal, instead of
- * refusing locally.
+ * the locally cached service key. `projects.delete` is owner-only and always
+ * goes as the principal: a project key never acts as an owner.
  */
 
 import { describe, it } from "node:test";
@@ -105,7 +104,7 @@ describe("project reads: cached service key fallback", () => {
   });
 });
 
-describe("projects.delete: principal when no cached service key", () => {
+describe("projects.delete: always the principal", () => {
   it("DELETEs as the owner's principal when this machine holds no key for the project", async () => {
     const removed: string[] = [];
     const { fetch, calls } = mockFetch(() => jsonResponse({ status: "purged", project_id: "prj_2" }));
@@ -126,10 +125,9 @@ describe("projects.delete: principal when no cached service key", () => {
     assert.equal(calls[0]!.headers["Authorization"], undefined);
   });
 
-  it("uses the cached key on a machine with no principal", async () => {
-    const { fetch, calls } = mockFetch(() => jsonResponse({ status: "purged", project_id: "prj_1" }));
-    await makeSdk(fetch, { principal: false, cachedKey: true }).projects.delete("prj_1");
-    assert.equal(calls.length, 1);
-    assert.equal(calls[0]!.headers["Authorization"], "Bearer service_cached");
+  it("never sends the cached key, even on a machine with no principal", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({ code: "AUTH_REQUIRED" }, 401));
+    await makeSdk(fetch, { principal: false, cachedKey: true }).projects.delete("prj_1").catch(() => undefined);
+    for (const c of calls) assert.equal(c.headers["Authorization"], undefined);
   });
 });
