@@ -6,7 +6,7 @@
  * defaults (keystore + wallet + x402), use `@run402/sdk/node` instead.
  */
 
-import { buildClient, type Client, type ClientCapabilities, type ClientStats, type KernelConfig, type Run402ClientMetadata } from "./kernel.js";
+import { buildClient, type Client, type ClientCapabilities, type ClientStats, type KernelConfig, type ProjectAuthMode, type Run402ClientMetadata } from "./kernel.js";
 import type { CredentialsProvider } from "./credentials.js";
 import { Projects } from "./namespaces/projects.js";
 import { Assets } from "./namespaces/assets.js";
@@ -81,6 +81,14 @@ export interface Run402Options {
    * `returnSecrets: false` for the `sandbox` surface.
    */
   capabilities?: Partial<ClientCapabilities>;
+  /**
+   * How project operations that accept both a principal and the project's
+   * service key authenticate. `"principal"` (default) sends the provider's
+   * principal and the cached service key only when there is no principal;
+   * `"service_key"` sends the cached service key (the CLI's
+   * `--use-service-key`).
+   */
+  projectAuth?: ProjectAuthMode;
 }
 
 export class Run402 {
@@ -264,6 +272,7 @@ export class Run402 {
       credentials: opts.credentials,
       clientMetadata: opts.clientMetadata,
       capabilities: opts.capabilities,
+      ...(opts.projectAuth ? { projectAuth: opts.projectAuth } : {}),
     };
     this.apiBase = opts.apiBase;
     const client: Client = buildClient(kernel);
@@ -511,7 +520,7 @@ export function run402(opts: Run402Options): Run402 {
   return new Run402(opts);
 }
 
-export type { ClientCapabilities, Run402ClientMetadata } from "./kernel.js";
+export type { ClientCapabilities, Run402ClientMetadata, ProjectAuthMode } from "./kernel.js";
 export { DEFAULT_CLIENT_CAPABILITIES } from "./kernel.js";
 
 export {

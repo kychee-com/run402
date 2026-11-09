@@ -88,6 +88,12 @@ export abstract class Run402Error extends Error {
   waitedMs?: number;
   /** Trace id suitable for support/debugging. */
   readonly traceId?: string;
+  /**
+   * Which credential the refused request went as, from the gateway's
+   * `X-Run402-Acted-As` (e.g. `credential=siwx_eoa; principal=prn_…; role=viewer`
+   * or `credential=project_service_key`). Set by the request kernel.
+   */
+  actedAs?: string;
   /** Canonical structured context. Preserved by reference from the response body. */
   readonly details?: unknown;
   /** Advisory next actions (gateway-authored or SDK-synthesized). Rendering them must not execute them. */

@@ -19,7 +19,6 @@ import type { ProjectKeys } from "../credentials.js";
 import { LocalError, isRun402Error } from "../errors.js";
 import { projectIdPathSegment } from "../project-id.js";
 import { requireProjectCredentials } from "../project-credentials.js";
-import { usableProjectKeys, withPrincipalFallback } from "../stale-project-key.js";
 import type { ExposeManifest } from "./deploy.types.js";
 import type {
   SqlBatchOptions,
@@ -234,10 +233,10 @@ export class Projects {
    * release subdomains, tombstone mailbox, wipe secrets). Local keystore
    * is cleaned via the credential provider when supported.
    *
-   * Uses the cached service key when this machine has one; otherwise the
-   * request goes as you (wallet or sign-in session), which the gateway
-   * authorizes as the owner-only `project.delete`. A cached key the gateway
-   * refuses is retried once as you, like {@link sql}.
+   * Goes as you (wallet or sign-in session), which the gateway authorizes as
+   * the owner-only `project.delete`; the cached service key is used only when
+   * this machine has no principal, or when the client was built with
+   * `projectAuth: "service_key"`.
    */
   async delete(id: string): Promise<void> {
     const segment = projectIdPathSegment(id, {
@@ -246,14 +245,11 @@ export class Projects {
       usage: 'r.projects.delete("prj_…")',
       context: "deleting project",
     });
-    const keys = await usableProjectKeys(this.client, id);
-
-    await withPrincipalFallback(this.client, id, keys, (k) =>
-      this.client.request<unknown>(`/projects/v1/${segment}`, {
-        method: "DELETE",
-        ...(k ? { headers: { Authorization: `Bearer ${k.service_key}` } } : {}),
-        context: "deleting project",
-      }));
+    await this.client.request<unknown>(`/projects/v1/${segment}`, {
+      method: "DELETE",
+      projectKeyFallback: id,
+      context: "deleting project",
+    });
 
     const creds = this.client.credentials;
     if (creds.removeProject) await creds.removeProject(id);
@@ -418,10 +414,9 @@ export class Projects {
 
   /**
    * Introspect the project's database schema — tables, columns, types,
-   * constraints, and RLS policies. Uses the cached service key when this
-   * machine has one, otherwise your own authority (`project.database.read`:
-   * org role viewer or higher, or a `database:read` grant). A cached key the
-   * gateway refuses is retried once as you, like {@link sql}.
+   * constraints, and RLS policies. Goes as you (`project.database.read`:
+   * org role viewer or higher, or a `database:read` grant); the cached service
+   * key is used only with no principal, or with `projectAuth: "service_key"`.
    */
   async getSchema(id: string): Promise<SchemaReport> {
     const segment = projectIdPathSegment(id, {
@@ -430,25 +425,21 @@ export class Projects {
       usage: 'r.projects.getSchema("prj_…")',
       context: "fetching schema",
     });
-    const keys = await usableProjectKeys(this.client, id);
-
-    return withPrincipalFallback(this.client, id, keys, (k) =>
-      this.client.request<SchemaReport>(`/projects/v1/admin/${segment}/schema`, {
-        ...(k ? { headers: { Authorization: `Bearer ${k.service_key}` } } : {}),
-        context: "fetching schema",
-      }));
+    return this.client.request<SchemaReport>(`/projects/v1/admin/${segment}/schema`, {
+      projectKeyFallback: id,
+      context: "fetching schema",
+    });
   }
 
   /** Run SQL against the project's database (`POST /projects/v1/:project_id/sql`).
-   *  Uses the cached service key when this machine has one; otherwise the
-   *  request goes as you (wallet, sign-in session, or grant key) and the
-   *  gateway authorizes it by your role: `project.database.read` (viewer or
-   *  higher, or `database:read`) runs read-only, enforced by PostgreSQL;
+   *  Goes as you (wallet, sign-in session, or grant key) and the gateway
+   *  authorizes it by your role: `project.database.read` (viewer or higher, or
+   *  `database:read`) runs read-only, enforced by PostgreSQL;
    *  `project.database.write` (developer or higher, or `database:write`) can
-   *  write. A cached key the gateway refuses (expired, revoked, unknown) is
-   *  retried once as you; with no principal to retry as, the refusal names
-   *  `run402 credentials project-keys delete --project <id>` as its first next
-   *  action. `{ readOnly: true }` runs the call read-only for any caller (one
+   *  write. The cached service key is used only when this machine has no
+   *  principal, or when the client was built with `projectAuth: "service_key"`
+   *  (the CLI's `--use-service-key`); a refused credential is surfaced, never
+   *  retried as another. `{ readOnly: true }` runs the call read-only for any caller (one
    *  statement, a write answers `DATABASE_READ_ONLY`). Returns the gateway envelope
    *  verbatim: `{ status, schema, rows, row_count, fields, statements,
    *  warnings }`. `rows` and `fields` come from the last statement and
@@ -470,23 +461,21 @@ export class Projects {
       usage: 'r.projects.sql("prj_…", sql, params?, opts?) (or r.project("prj_…").sql(sql))',
       context: "running SQL",
     });
-    const keys = await usableProjectKeys(this.client, id);
-
     const useParams = Array.isArray(params) && params.length > 0;
     const readOnly = opts.readOnly === true;
     const json = useParams || readOnly;
-    return sendWaitingOutRetryable((connectionWaitMs) => withPrincipalFallback(this.client, id, keys, (k) =>
+    return sendWaitingOutRetryable((connectionWaitMs) =>
       this.client.request<SqlResult>(`/projects/v1/${segment}/sql`, {
         method: "POST",
         headers: {
-          ...(k ? { Authorization: `Bearer ${k.service_key}` } : {}),
           "Content-Type": json ? "application/json" : "text/plain",
           ...sqlWaitHeaders(connectionWaitMs),
         },
         body: json ? { sql, ...(useParams ? { params } : {}), ...(readOnly ? { read_only: true } : {}) } : undefined,
         rawBody: json ? undefined : sql,
+        projectKeyFallback: id,
         context: "running SQL",
-      })), opts.onRetry);
+      }), opts.onRetry);
   }
 
   /** Run several statements (1 to 100, one statement each) with an explicit
@@ -546,8 +535,13 @@ export class Projects {
     const httpMethod = opts.method ?? "GET";
     const query = formatRestQuery(opts.query);
     const serviceRequested = opts.keyType === "service";
+    // An explicit service read sends the cached service key (missing:
+    // PROJECT_CREDENTIAL_NOT_FOUND). Otherwise the default stays the end-user
+    // data plane: the cached anon key on /rest/v1 (row-level security as an
+    // anonymous visitor), and with no cached key the caller's principal on the
+    // project REST route.
     const keys = serviceRequested
-      ? await usableProjectKeys(this.client, id)
+      ? await requireProjectCredentials(this.client, id, "querying REST")
       : await this.client.getProjectCredentials(id);
     // No cached key and no explicit anon request: go as yourself on the
     // project REST route, authorized by your role (GET needs
@@ -580,11 +574,7 @@ export class Projects {
     };
 
     try {
-      // A refused cached service key falls back to your principal on the same
-      // project REST route; an anon read has no principal equivalent.
-      return serviceRequested && resolved
-        ? await withPrincipalFallback(this.client, id, resolved, send)
-        : await send(resolved);
+      return await send(resolved);
     } catch (error) {
       throw restDiagnostic(error, httpMethod, table);
     }

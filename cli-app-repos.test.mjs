@@ -401,15 +401,42 @@ describe("run402 app-repos credential (git's credential-helper protocol)", () =>
     return { RUN402_CONFIG_DIR: subConfig, RUN402_API_BASE: apiBase, HOME: subConfig, RUN402_GRANT_KEY: "", ...extra };
   }
 
-  it("get prints the project's service key for its app-repo URL, and nothing else", async () => {
+  it("get prefers the clone's wallet over a cached service key (principal-first)", async () => {
     const host = new URL(apiBase).host;
     const { code, out, err } = await runCli(["app-repos", "credential", "get"], {
       env: subEnv(),
       input: `protocol=http\nhost=${host}\npath=projects/v1/prj_kiwi/app-repos/default.git\n\n`,
     });
     assert.equal(code, 0, err);
+    assert.ok(out.startsWith("username=siwx\npassword="), out);
+    assert.ok(!out.includes(SERVICE_KEY), "a cached key never outranks the wallet");
+  });
+
+  it("get prints the cached service key on a machine with no wallet, and nothing else", async () => {
+    const host = new URL(apiBase).host;
+    const keyOnly = mkdtempSync(join(tmpdir(), "run402-app-repos-keyonly-"));
+    try {
+      writeKeystore(keyOnly);
+      const { code, out, err } = await runCli(["app-repos", "credential", "get"], {
+        env: subEnv({ RUN402_CONFIG_DIR: keyOnly, HOME: keyOnly }),
+        input: `protocol=http\nhost=${host}\npath=projects/v1/prj_kiwi/app-repos/default.git\n\n`,
+      });
+      assert.equal(code, 0, err);
+      assert.equal(out, `username=run402\npassword=${SERVICE_KEY}\n`);
+      assert.ok(!err.includes(SERVICE_KEY));
+    } finally {
+      rmSync(keyOnly, { recursive: true, force: true });
+    }
+  });
+
+  it("get with --use-service-key prints the cached key even with a wallet", async () => {
+    const host = new URL(apiBase).host;
+    const { code, out, err } = await runCli(["--use-service-key", "app-repos", "credential", "get"], {
+      env: subEnv(),
+      input: `protocol=http\nhost=${host}\npath=projects/v1/prj_kiwi/app-repos/default.git\n\n`,
+    });
+    assert.equal(code, 0, err);
     assert.equal(out, `username=run402\npassword=${SERVICE_KEY}\n`);
-    assert.ok(!err.includes(SERVICE_KEY));
   });
 
   it("get prefers RUN402_GRANT_KEY when it is set", async () => {
@@ -475,7 +502,7 @@ describe("run402 app-repos credential (git's credential-helper protocol)", () =>
     }
   });
 
-  it("git credential fill reaches the key through the URL-scoped helper", { skip: !gitAvailable && "git is not installed" }, () => {
+  it("git credential fill reaches the wallet's signature through the URL-scoped helper", { skip: !gitAvailable && "git is not installed" }, () => {
     const url = `${apiBase}/projects/v1/prj_kiwi/app-repos/default.git`;
     const helper = `!"${process.execPath}" "${CLI_PATH}" app-repos credential`;
     const result = spawnSync("git", [
@@ -490,7 +517,8 @@ describe("run402 app-repos credential (git's credential-helper protocol)", () =>
       env: { ...process.env, ...subEnv(), GIT_TERMINAL_PROMPT: "0", GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null" },
     });
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, new RegExp(`password=${SERVICE_KEY}`));
+    assert.match(result.stdout, /username=siwx/);
+    assert.doesNotMatch(result.stdout, new RegExp(`password=${SERVICE_KEY}`));
   });
 
   it("clone runs git with the helper scoped to the repo URL and no secret in the URL", async () => {

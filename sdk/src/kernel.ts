@@ -14,6 +14,7 @@
 import {
   ApiError,
   NetworkError,
+  ProjectCredentialNotFound,
   NotAuthorizedError,
   WriteApprovalRequiredError,
   PaymentRequired,
@@ -22,6 +23,8 @@ import {
   TransferFreezeError,
   Unauthorized,
   isRun402Error,
+  type NextAction,
+  type Run402Error,
 } from "./errors.js";
 
 /** Gateway codes that mean "a passkey write approval is needed for this (capability, target)". */
@@ -49,7 +52,20 @@ export interface KernelConfig {
    * @internal
    */
   stats?: ClientStats;
+  /**
+   * How a project operation that accepts both a principal and the project's
+   * service key authenticates (`RequestOptions.projectKeyFallback`).
+   * `"principal"` (default): the credential provider's principal (grant key,
+   * wallet, or sign-in session), and the cached service key only when there is
+   * none. `"service_key"`: the caller asked for the project's service key; a
+   * missing cached key is `PROJECT_CREDENTIAL_NOT_FOUND`, never a silent
+   * principal call.
+   */
+  projectAuth?: ProjectAuthMode;
 }
+
+/** How a project operation authenticates; see {@link KernelConfig.projectAuth}. */
+export type ProjectAuthMode = "principal" | "service_key";
 
 /**
  * What a client is allowed to hand back to its caller. Carried on every
@@ -98,12 +114,21 @@ export interface RequestOptions {
    * when the credential provider has no principal to send (`getAuth` returned
    * null: no grant key, wallet, or sign-in session). Precedence, highest
    * first: the request's own auth headers, the provider's principal, this
-   * cached service key, nothing. Set it only on project routes whose gateway
-   * credential dispatch accepts the project's service key beside a principal.
+   * cached service key, nothing — or, when the client was built with
+   * `projectAuth: "service_key"`, the cached service key alone. Set it only on
+   * project routes whose gateway credential dispatch accepts the project's
+   * service key beside a principal. One credential per request, never a retry
+   * on another (`docs/style.md` "Auth").
    */
   projectKeyFallback?: string;
   /** Short verb phrase attached to thrown errors (e.g. "provisioning project"). */
   context: string;
+  /**
+   * Hand back a 2xx `Response` unread (for streaming a download). A non-2xx
+   * is still read and thrown as the usual typed error.
+   * @internal Set by {@link Client.requestRaw}.
+   */
+  raw?: boolean;
   /**
    * Logical retry attempt number, surfaced verbatim in the `RUN402_TRACE`
    * line's `attempt=<n>` field. Default 1 — the kernel itself never retries
@@ -220,6 +245,8 @@ export interface PaymentSettlement {
 export interface ResponseEnvelope<T = unknown> {
   status: number;
   body: T;
+  /** The unread `Response`, only for {@link Client.requestRaw}. */
+  response?: Response;
   /**
    * Present only when the response carried an x402 settlement receipt, i.e.
    * this request actually moved money. Absent/`null` means no payment was made
@@ -266,6 +293,12 @@ export interface Client {
   readonly apiBase: string;
   request<T>(path: string, opts: RequestOptions): Promise<T>;
   requestWithResponse<T>(path: string, opts: RequestOptions): Promise<ResponseEnvelope<T>>;
+  /**
+   * Like {@link requestWithResponse}, with the same credential resolution and
+   * error mapping, but a 2xx answers with the unread `Response` (a download
+   * the caller streams).
+   */
+  requestRaw(path: string, opts: Omit<RequestOptions, "raw" | "body" | "rawBody">): Promise<{ status: number; response: Response }>;
   getProjectCredentials(id: string): Promise<ProjectKeys | null>;
   /** @deprecated Use getProjectCredentials. */
   getProject(id: string): Promise<ProjectKeys | null>;
@@ -281,6 +314,8 @@ export interface Client {
   stats(): ClientStats;
   /** What this client may hand back to its caller. See {@link ClientCapabilities}. */
   readonly capabilities: Readonly<ClientCapabilities>;
+  /** How project operations authenticate; see {@link KernelConfig.projectAuth}. */
+  readonly projectAuth: ProjectAuthMode;
   /**
    * Refuse, before any request, an operation whose result or input is a
    * one-time secret when this client may not return secrets
@@ -315,10 +350,54 @@ function hasHeader(headers: Record<string, string>, name: string): boolean {
   return false;
 }
 
+/** The header the gateway sets on every response its project authority graph guarded. */
+const ACTED_AS_HEADER = "x-run402-acted-as";
+
+/**
+ * Send one request. A gateway refusal carries `actedAs` (the credential that
+ * was refused, from `X-Run402-Acted-As`) so the caller sees which identity a
+ * request went as without reading headers.
+ */
 export async function requestWithResponse<T>(
   kernel: KernelConfig,
   path: string,
   opts: RequestOptions,
+): Promise<ResponseEnvelope<T>> {
+  const seen: { actedAs?: string } = {};
+  try {
+    return await sendRequest<T>(kernel, path, opts, seen);
+  } catch (err) {
+    if (seen.actedAs && isRun402Error(err) && err.actedAs === undefined) err.actedAs = seen.actedAs;
+    if (isRun402Error(err) && err.status === 403) await offerCachedServiceKey(kernel, opts, err);
+    throw err;
+  }
+}
+
+/**
+ * A principal refused on a project route that also takes the project's
+ * service key, on a machine that holds that key: name the explicit request
+ * as a next action. Never a retry (one credential per request).
+ */
+async function offerCachedServiceKey(kernel: KernelConfig, opts: RequestOptions, err: Run402Error): Promise<void> {
+  const projectId = opts.projectKeyFallback;
+  if (projectId === undefined || kernel.projectAuth === "service_key") return;
+  if (!err.actedAs || err.actedAs.includes("credential=project_service_key")) return;
+  const keys = await lookupProjectCredentials(kernel.credentials, projectId).catch(() => null);
+  if (!keys?.service_key) return;
+  const offer: NextAction = {
+    type: "run_cli_command",
+    command: "run402 --use-service-key <the same command>",
+    why: `Your own identity was refused, and this machine holds project ${projectId}'s service key; repeat the command with --use-service-key (SDK: projectAuth: "service_key") to send the key instead.`,
+  };
+  const existing = Array.isArray(err.nextActions) ? err.nextActions : [];
+  Object.defineProperty(err, "nextActions", { value: [...existing, offer], enumerable: true, configurable: true, writable: false });
+}
+
+async function sendRequest<T>(
+  kernel: KernelConfig,
+  path: string,
+  opts: RequestOptions,
+  seen: { actedAs?: string },
 ): Promise<ResponseEnvelope<T>> {
   const { apiBase, fetch, credentials } = kernel;
   const { method = "GET", headers = {}, body, rawBody, withAuth = true, context, attempt = 1 } = opts;
@@ -329,7 +408,16 @@ export async function requestWithResponse<T>(
     if (!hasHeader(fetchHeaders, k)) fetchHeaders[k] = v;
   }
 
-  if (withAuth) {
+  const serviceKeyRequested = withAuth && opts.projectKeyFallback !== undefined && kernel.projectAuth === "service_key"
+    && !AUTH_HEADER_NAMES.some((h) => hasHeader(fetchHeaders, h));
+  if (serviceKeyRequested) {
+    const keys = await lookupProjectCredentials(credentials, opts.projectKeyFallback!);
+    if (!keys?.service_key) {
+      const info = credentials.getProjectCredentialCacheInfo?.();
+      throw new ProjectCredentialNotFound(opts.projectKeyFallback!, context, (info ?? {}) as unknown as Record<string, unknown>);
+    }
+    fetchHeaders.Authorization = `Bearer ${keys.service_key}`;
+  } else if (withAuth) {
     const auth = await credentials.getAuth(path, opts.authMeta);
     if (auth) {
       // Credential-family atomicity: if the request already set any auth header
@@ -393,6 +481,13 @@ export async function requestWithResponse<T>(
     );
   }
 
+  if (opts.raw && res.ok) {
+    const actedAsRaw = res.headers.get(ACTED_AS_HEADER);
+    if (actedAsRaw) seen.actedAs = actedAsRaw;
+    recordClientStats(kernel.stats, { ms: nowMs() - startedAt, up: upBytes, down: 0 });
+    traceLine(method, path, res.status, nowMs() - startedAt, attempt);
+    return { status: res.status, body: undefined as T, response: res };
+  }
   const ct = res.headers.get("content-type") ?? "";
   let resBody: unknown;
   if (ct.includes("application/json")) {
@@ -401,6 +496,8 @@ export async function requestWithResponse<T>(
     resBody = await res.text();
   }
 
+  const actedAs = res.headers.get(ACTED_AS_HEADER);
+  if (actedAs) seen.actedAs = actedAs;
   const elapsed = nowMs() - startedAt;
   const downBytes = measureDownBytes(res, resBody, ct);
   recordClientStats(kernel.stats, { ms: elapsed, up: upBytes, down: downBytes });
@@ -531,12 +628,17 @@ export function buildClient(kernel: KernelConfig): Client {
   return {
     apiBase: kernel.apiBase,
     capabilities,
+    projectAuth: kernel.projectAuth ?? "principal",
     assertSecretReturn: ({ command, why }) => {
       if (!capabilities.returnSecrets) throw new SecretRequiresCliError(command, why);
     },
     request: <T>(path: string, opts: RequestOptions) => request<T>(kernelWithStats, path, opts),
     requestWithResponse: <T>(path: string, opts: RequestOptions) =>
       requestWithResponse<T>(kernelWithStats, path, opts),
+    requestRaw: async (path: string, opts: Omit<RequestOptions, "raw" | "body" | "rawBody">) => {
+      const env = await requestWithResponse<undefined>(kernelWithStats, path, { ...opts, raw: true });
+      return { status: env.status, response: env.response! };
+    },
     getProjectCredentials,
     getProject: getProjectCredentials,
     credentials: kernel.credentials,

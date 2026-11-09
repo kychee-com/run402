@@ -55,14 +55,15 @@ export const PROJECT_OPERATION_AUTH_CLASSIFICATIONS = [
     mayUseLocalCredentialCache: true,
     localCredentialMissCode: "PROJECT_CREDENTIAL_NOT_FOUND",
   },
-  // A cached service key is used when present; otherwise the call goes as
-  // the caller's principal (project.database.read / project.database.write).
+  // The caller's principal (project.database.read / project.database.write);
+  // the cached service key only on a machine with no principal, or when the
+  // caller asked for it (`projectAuth: "service_key"`).
   {
     operation: "projects.sql",
     scope: "project",
     plane: "data",
-    authModes: ["service_key", "principal", "grant_key"],
-    defaultAuthMode: "project_credential",
+    authModes: ["principal", "grant_key", "service_key"],
+    defaultAuthMode: "principal",
     requiresProjectId: true,
     mayUseLocalCredentialCache: true,
   },
@@ -70,8 +71,8 @@ export const PROJECT_OPERATION_AUTH_CLASSIFICATIONS = [
     operation: "projects.getSchema",
     scope: "project",
     plane: "data",
-    authModes: ["service_key", "principal", "grant_key"],
-    defaultAuthMode: "project_credential",
+    authModes: ["principal", "grant_key", "service_key"],
+    defaultAuthMode: "principal",
     requiresProjectId: true,
     mayUseLocalCredentialCache: true,
   },
@@ -136,11 +137,12 @@ export const PROJECT_OPERATION_AUTH_CLASSIFICATIONS = [
     operation: "assets.*",
     scope: "project",
     plane: "data",
-    authModes: ["service_key"],
-    defaultAuthMode: "project_credential",
+    // project-storage-access: project.storage.read / project.storage.write by
+    // the caller's role, or the project's own service key.
+    authModes: ["principal", "grant_key", "service_key"],
+    defaultAuthMode: "principal",
     requiresProjectId: true,
     mayUseLocalCredentialCache: true,
-    localCredentialMissCode: "PROJECT_CREDENTIAL_NOT_FOUND",
   },
   {
     operation: "jobs.*",

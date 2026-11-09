@@ -50,7 +50,7 @@ import {
   getActiveProfile,
   getApiTargetKind,
 } from "../../core-dist/config.js";
-import { Run402, type PayExecutor, type Run402Options } from "../index.js";
+import { Run402, type PayExecutor, type ProjectAuthMode, type Run402Options } from "../index.js";
 import { installNodeVaultAeadBackend, installNodeVaultHashBackend } from "./vault-native-crypto.js";
 import { sdkFetch } from "./http-dispatcher.js";
 
@@ -129,6 +129,13 @@ export interface NodeRun402Options {
    * tests or when the caller pre-wraps fetch with a custom scheme.
    */
   disablePaidFetch?: boolean;
+  /**
+   * How project operations that accept a principal or the project's service
+   * key authenticate: `"principal"` (default, the selected wallet or session;
+   * the cached key only with neither) or `"service_key"` (the cached key; the
+   * CLI's `--use-service-key`).
+   */
+  projectAuth?: ProjectAuthMode;
   /** Fully custom fetch implementation. Takes precedence over `disablePaidFetch`. */
   fetch?: typeof globalThis.fetch;
   /** Override the arbitrary-URL x402 buyer used by `pay.fetch`. */
@@ -227,6 +234,7 @@ export function run402(opts: NodeRun402Options = {}): NodeRun402 {
     payExecutor: opts.payExecutor ?? lazyPaidFetch?.pay,
     clientMetadata: nodeClientMetadata(opts),
     capabilities: { returnSecrets: opts.surface !== "sandbox" },
+    ...(opts.projectAuth ? { projectAuth: opts.projectAuth } : {}),
   };
   const base = new Run402(runOpts);
 

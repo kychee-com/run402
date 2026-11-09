@@ -109,6 +109,8 @@ PLATFORM — everything else, and the things still finding a home
 Global options (any command):
   --wallet <name>   Select a named wallet for this command (see 'run402 wallets')
                     Also: RUN402_WALLET env, or a ./.run402.json directory binding.
+  --use-service-key Send the project's cached service key instead of your wallet
+                    or sign-in session (project commands go as you by default).
 
 Run 'run402 <command> --help' for detailed usage of each command.
 
@@ -154,7 +156,12 @@ if (first === undefined || first === '--help' || first === '-h') {
 // subcommand (whose config.mjs snapshots credential paths). splitWalletFlag
 // also strips the global flag so subcommands never see it.
 const { splitWalletFlag, applyWalletSelection } = await import("./lib/wallet-context.mjs");
-const { argv, walletFlag } = splitWalletFlag(rawArgv);
+const { argv: walletArgv, walletFlag } = splitWalletFlag(rawArgv);
+// --use-service-key: an explicit request for the project's cached service key
+// (project-credential-cache-client-surface, "Auth Resolution Is
+// Deterministic"). Without it, project commands go as the caller's principal.
+const useServiceKey = walletArgv.includes("--use-service-key");
+const argv = walletArgv.filter((a) => a !== "--use-service-key");
 const [cmd, sub, ...rest] = argv;
 
 try {
@@ -165,6 +172,7 @@ try {
     env: process.env,
     quiet: rawArgv.includes("--quiet"),
   });
+  if (useServiceKey) (await import("./lib/sdk.mjs")).setProjectAuth("service_key");
   await dispatch();
 } catch (err) {
   // Surface env/config errors (e.g. invalid RUN402_API_BASE, bad RUN402_WALLET)

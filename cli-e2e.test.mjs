@@ -443,7 +443,7 @@ async function mockFetch(input, init) {
   }
 
   // Blob (direct-to-S3)
-  if (pathNoQuery === "/storage/v1/blobs/sign" && method === "POST") {
+  if (/^\/projects\/v1\/[^/]+\/storage\/blobs\/sign$/.test(pathNoQuery) && method === "POST") {
     const body = JSON.parse(String(rawBody ?? "{}"));
     return Promise.resolve(json({
       items: body.items.map((item) => ({ ...item, signed_url: `https://s3.test/${item.key}/${item.variant ?? "original"}` })),
@@ -451,7 +451,7 @@ async function mockFetch(input, init) {
       expires_in: body.ttl_seconds ?? 3600,
     }));
   }
-  if (pathNoQuery === "/storage/v1/blobs" && method === "GET") {
+  if (/^\/projects\/v1\/[^/]+\/storage\/blobs$/.test(pathNoQuery) && method === "GET") {
     return Promise.resolve(json({ blobs: [{ key: "defaults/file.txt", size: 13, last_modified: "2026-03-15T12:00:00Z" }] }));
   }
 
@@ -6004,17 +6004,17 @@ describe("CLI canonical error envelope (GH-215, GH-174)", () => {
     assert.deepEqual(bodies, [{ name: "foo", release_id: "rel_abc" }]);
   });
 
-  it("blob put with unknown local project emits PROJECT_CREDENTIAL_NOT_FOUND with details.source: local_cache", async () => {
+  it("--use-service-key with no cached key emits PROJECT_CREDENTIAL_NOT_FOUND with details.source: local_cache", async () => {
     const { run } = await import("./cli/lib/assets.mjs");
-    const tmpFile = join(tempDir, "blob-put-canary.bin");
-    const { writeFileSync: wf } = await import("node:fs");
-    wf(tmpFile, "x");
+    const { setProjectAuth } = await import("./cli/lib/sdk.mjs");
     let threw = null;
+    setProjectAuth("service_key");
     captureStart();
     try {
-      await run("put", [tmpFile, "--project", "prj_xxx_unknown"]);
+      await run("ls", ["--project", "prj_xxx_unknown"]);
     } catch (e) { threw = e; } finally {
       captureStop();
+      setProjectAuth("principal");
     }
     assert.equal(threw?.message, "process.exit(1)");
     const parsed = parseStderrJson();

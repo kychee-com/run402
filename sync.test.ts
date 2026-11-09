@@ -1306,7 +1306,8 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   // clone is CLI-only (it writes a working tree and hands git a credential);
   // the CLI resolves the repo with appRepos.get first.
   clone_app_repo: null,
-  app_repo_credential_helper: null,
+  // The helper prints what the SDK resolves (principal-first, one credential).
+  app_repo_credential_helper: "appRepos.gitCredential",
   join_room: "rooms.registerPresence",
   send_room_message: "rooms.sendMessage",
   read_room_messages: "rooms.listMessages",

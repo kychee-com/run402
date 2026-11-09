@@ -10,6 +10,18 @@
 import { run402 } from "#sdk/node";
 import { walletFile, profileStateFile, projectCredentialsFile } from "./config.mjs";
 
+let projectAuth = "principal";
+
+/** `--use-service-key`: send the project's cached service key on project commands. */
+export function setProjectAuth(mode) {
+  projectAuth = mode;
+}
+
+/** The current project-auth mode (the git helper persists `--use-service-key` from it). */
+export function getProjectAuth() {
+  return projectAuth;
+}
+
 export function getSdk(opts = {}) {
   // surface: "cli" opts the default credential resolution into `auto` — wallet
   // if present, else the sign-in session + a matched write approval.
@@ -18,6 +30,7 @@ export function getSdk(opts = {}) {
     walletPath: walletFile(),
     keystorePath: projectCredentialsFile(),
     profileStatePath: profileStateFile(),
+    ...(projectAuth === "service_key" ? { projectAuth } : {}),
     ...opts,
   });
 }

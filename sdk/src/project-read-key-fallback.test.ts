@@ -118,22 +118,18 @@ describe("projects.delete: principal when no cached service key", () => {
     assert.deepEqual(removed, ["prj_2"]);
   });
 
-  it("prefers the cached service key when one exists", async () => {
+  it("goes as the principal even when a key is cached (principal-first)", async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse({ status: "purged", project_id: "prj_1" }));
     await makeSdk(fetch, { principal: true, cachedKey: true }).projects.delete("prj_1");
     assert.equal(calls.length, 1);
-    assert.equal(calls[0]!.headers["Authorization"], "Bearer service_cached");
-    assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], undefined);
+    assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "test-siwx");
+    assert.equal(calls[0]!.headers["Authorization"], undefined);
   });
 
-  it("retries once as the principal when the gateway refuses the cached key", async () => {
-    const { fetch, calls } = mockFetch((call) =>
-      call.headers["Authorization"]
-        ? jsonResponse({ code: "CREDENTIAL_REVOKED", message: "revoked" }, 401)
-        : jsonResponse({ status: "purged", project_id: "prj_1" }));
-    await makeSdk(fetch, { principal: true, cachedKey: true }).projects.delete("prj_1");
-    assert.equal(calls.length, 2);
-    assert.equal(calls[1]!.headers["SIGN-IN-WITH-X"], "test-siwx");
-    assert.equal(calls[1]!.headers["Authorization"], undefined);
+  it("uses the cached key on a machine with no principal", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({ status: "purged", project_id: "prj_1" }));
+    await makeSdk(fetch, { principal: false, cachedKey: true }).projects.delete("prj_1");
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]!.headers["Authorization"], "Bearer service_cached");
   });
 });

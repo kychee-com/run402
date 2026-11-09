@@ -39,6 +39,7 @@ const PROOFS = { siwx: "siwx-proof", token: "cp_session_token_secret" };
  */
 const SAMPLE_ARGS: Record<SecretReturningMethod, unknown[]> = {
   "appRepos.createToken": [PROJECT, "notes", { access: "read" }],
+  "appRepos.gitCredential": [PROJECT, "notes"],
   "auth.setAppleKey": [PROJECT, { teamId: "ABCDE12345", keyId: "KEY1234567", p8: "pem_secret" }],
   "grants.create": [PROJECT, { wallet: WALLET, capability: "deploy", key: {} }],
   "grants.createKey": [PROJECT, "grant_1", {}],

@@ -417,14 +417,16 @@ describe("assets.put (v2.1.0 — routes through apply hero)", () => {
 });
 
 describe("blobs.get", () => {
-  it("GETs /storage/v1/blob/:key and returns the raw Response", async () => {
+  it("GETs the project's storage blob route and returns the raw Response", async () => {
     const { fetch, calls } = mockFetch(() =>
       new Response("hello", { status: 200, headers: { "content-type": "text/plain" } })
     );
     const sdk = makeSdk(fetch);
     const res = await sdk.assets.get("prj_known", "hello.txt");
-    assert.equal(calls[0]!.url, "https://api.example.test/storage/v1/blob/hello.txt");
-    assert.equal(calls[0]!.headers["apikey"], "svc_k");
+    assert.equal(calls[0]!.url, "https://api.example.test/projects/v1/prj_known/storage/blob/hello.txt");
+    // The caller's principal goes, not the cached service key (principal-first).
+    assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "test");
+    assert.equal(calls[0]!.headers["Authorization"], undefined);
     assert.equal(res.status, 200);
     assert.equal(await res.text(), "hello");
   });
@@ -433,7 +435,7 @@ describe("blobs.get", () => {
     const { fetch, calls } = mockFetch(() => new Response("x", { status: 200 }));
     const sdk = makeSdk(fetch);
     await sdk.assets.get("prj_known", "foo/a b.png");
-    assert.equal(calls[0]!.url, "https://api.example.test/storage/v1/blob/foo/a%20b.png");
+    assert.equal(calls[0]!.url, "https://api.example.test/projects/v1/prj_known/storage/blob/foo/a%20b.png");
   });
 
   it("throws ApiError on 404", async () => {
@@ -447,12 +449,12 @@ describe("blobs.get", () => {
 });
 
 describe("blobs.ls", () => {
-  it("GETs /storage/v1/blobs with prefix/limit/cursor", async () => {
+  it("GETs the project's blob listing with prefix/limit/cursor", async () => {
     const { fetch, calls } = mockFetch(() => json({ blobs: [], next_cursor: null }));
     const sdk = makeSdk(fetch);
     await sdk.assets.ls("prj_known", { prefix: "images/", limit: 50, cursor: "c1" });
     const u = new URL(calls[0]!.url);
-    assert.equal(u.pathname, "/storage/v1/blobs");
+    assert.equal(u.pathname, "/projects/v1/prj_known/storage/blobs");
     assert.equal(u.searchParams.get("prefix"), "images/");
     assert.equal(u.searchParams.get("limit"), "50");
     assert.equal(u.searchParams.get("cursor"), "c1");
@@ -462,7 +464,7 @@ describe("blobs.ls", () => {
     const { fetch, calls } = mockFetch(() => json({ blobs: [], next_cursor: null }));
     const sdk = makeSdk(fetch);
     await sdk.assets.ls("prj_known");
-    assert.equal(calls[0]!.url, "https://api.example.test/storage/v1/blobs");
+    assert.equal(calls[0]!.url, "https://api.example.test/projects/v1/prj_known/storage/blobs");
   });
 
   it("throws LocalError and does not request for invalid limits", async () => {
@@ -487,23 +489,23 @@ describe("blobs.ls", () => {
 });
 
 describe("blobs.rm", () => {
-  it("DELETEs /storage/v1/blob/:key", async () => {
+  it("DELETEs the project's storage blob route", async () => {
     const { fetch, calls } = mockFetch(() => json({ status: "ok" }));
     const sdk = makeSdk(fetch);
     await sdk.assets.rm("prj_known", "old.txt");
-    assert.equal(calls[0]!.url, "https://api.example.test/storage/v1/blob/old.txt");
+    assert.equal(calls[0]!.url, "https://api.example.test/projects/v1/prj_known/storage/blob/old.txt");
     assert.equal(calls[0]!.method, "DELETE");
   });
 });
 
 describe("blobs.sign", () => {
-  it("POSTs /storage/v1/blob/:key/sign with optional ttl_seconds", async () => {
+  it("POSTs the project's blob sign route with optional ttl_seconds", async () => {
     const { fetch, calls } = mockFetch(() =>
       json({ signed_url: "https://s3.test/signed", expires_at: "2026-04-24T00:00:00Z", expires_in: 3600 }),
     );
     const sdk = makeSdk(fetch);
     const result = await sdk.assets.sign("prj_known", "secret.bin", { ttl_seconds: 900 });
-    assert.equal(calls[0]!.url, "https://api.example.test/storage/v1/blob/secret.bin/sign");
+    assert.equal(calls[0]!.url, "https://api.example.test/projects/v1/prj_known/storage/blob/secret.bin/sign");
     assert.equal(calls[0]!.method, "POST");
     assert.deepEqual(JSON.parse(calls[0]!.body as string), { ttl_seconds: 900 });
     assert.equal(result.expires_in, 3600);
@@ -515,7 +517,7 @@ describe("blobs.sign", () => {
     );
     const sdk = makeSdk(fetch);
     const result = await sdk.assets.sign("prj_known", "family/photo.jpg", { variant: "medium", ttl_seconds: 600 });
-    assert.equal(calls[0]!.url, "https://api.example.test/storage/v1/blob/family/photo.jpg/sign");
+    assert.equal(calls[0]!.url, "https://api.example.test/projects/v1/prj_known/storage/blob/family/photo.jpg/sign");
     assert.deepEqual(JSON.parse(calls[0]!.body as string), { ttl_seconds: 600, variant: "medium" });
     assert.equal(result.variant, "medium");
   });
@@ -555,7 +557,7 @@ describe("blobs.sign", () => {
 });
 
 describe("assets.signMany", () => {
-  it("POSTs /storage/v1/blobs/sign once with every item and the ttl", async () => {
+  it("POSTs the project's blobs/sign once with every item and the ttl", async () => {
     const answer = {
       items: [
         { key: "family/a.jpg", variant: "thumb", signed_url: "https://s3.test/t" },
@@ -572,7 +574,7 @@ describe("assets.signMany", () => {
       { ttl_seconds: 600 },
     );
     assert.equal(calls.length, 1);
-    assert.equal(calls[0]!.url, "https://api.example.test/storage/v1/blobs/sign");
+    assert.equal(calls[0]!.url, "https://api.example.test/projects/v1/prj_known/storage/blobs/sign");
     assert.equal(calls[0]!.method, "POST");
     assert.deepEqual(JSON.parse(calls[0]!.body as string), {
       items: [{ key: "family/a.jpg", variant: "thumb" }, { key: "gone.jpg" }],
@@ -802,7 +804,7 @@ describe("blobs.put — AssetRef widening (v1.45)", () => {
 });
 
 describe("blobs.diagnoseUrl", () => {
-  it("GETs /storage/v1/blobs/diagnose with the URL query-encoded", async () => {
+  it("GETs the project's blobs/diagnose with the URL query-encoded", async () => {
     const { fetch, calls } = mockFetch(() =>
       json({
         project_id: "prj_known",
@@ -835,17 +837,25 @@ describe("blobs.diagnoseUrl", () => {
     assert.equal(env.cache.cacheKind, "mutable");
     assert.match(
       calls[0]!.url,
-      /\/storage\/v1\/blobs\/diagnose\?url=https%3A%2F%2Fapp\.run402\.com%2F_blob%2Favatar\.png/,
+      /\/projects\/v1\/prj_known\/storage\/blobs\/diagnose\?url=https%3A%2F%2Fapp\.run402\.com%2F_blob%2Favatar\.png/,
     );
   });
 
-  it("throws ProjectCredentialNotFound for missing local credentials", async () => {
-    const { fetch } = mockFetch(() => json({}));
+  it("goes as the caller's principal with no cached key", async () => {
+    const { fetch, calls } = mockFetch(() => json({ url: "x", project_id: "prj_missing" }));
     const sdk = makeSdk(fetch);
+    await sdk.assets.diagnoseUrl("prj_missing", "https://app.run402.com/_blob/x");
+    assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "test");
+  });
+
+  it("an explicit service-key request with no cached key is ProjectCredentialNotFound, before any request", async () => {
+    const { fetch, calls } = mockFetch(() => json({}));
+    const sdk = new Run402({ apiBase: "https://api.example.test", credentials: makeCreds(), fetch, projectAuth: "service_key" });
     await assert.rejects(
       sdk.assets.diagnoseUrl("prj_missing", "https://app.run402.com/_blob/x"),
       ProjectCredentialNotFound,
     );
+    assert.equal(calls.length, 0);
   });
 });
 
@@ -901,13 +911,14 @@ describe("blobs.waitFresh", () => {
     assert.ok(result.elapsedMs >= 250 - 50);
   });
 
-  it("throws ProjectCredentialNotFound for missing local credentials", async () => {
-    const { fetch } = mockFetch(() => json({}));
-    const sdk = makeSdk(fetch);
+  it("an explicit service-key request with no cached key throws ProjectCredentialNotFound at once, sending nothing", async () => {
+    const { fetch, calls } = mockFetch(() => json({}));
+    const sdk = new Run402({ apiBase: "https://api.example.test", credentials: makeCreds(), fetch, projectAuth: "service_key" });
     await assert.rejects(
-      sdk.assets.waitFresh("prj_missing", { url: "https://app.run402.com/_blob/k", sha256: "ff" }),
+      sdk.assets.waitFresh("prj_missing", { url: "https://app.run402.com/_blob/k", sha256: "ff", timeoutMs: 5000 }),
       ProjectCredentialNotFound,
     );
+    assert.equal(calls.length, 0);
   });
 
   it("throws LocalError and does not diagnose for invalid timeoutMs", async () => {
@@ -1332,7 +1343,7 @@ describe("assets.ls — v1.50 sort + filter surface", () => {
       },
     });
     const u = new URL(calls[0]!.url);
-    assert.equal(u.pathname, "/storage/v1/blobs");
+    assert.equal(u.pathname, "/projects/v1/prj_known/storage/blobs");
     assert.equal(u.searchParams.get("sort"), "createdAt:desc");
     assert.equal(u.searchParams.get("filter_uploaded_by"), "agent_abc");
     assert.equal(u.searchParams.get("filter_is_image"), "true");
@@ -1712,5 +1723,19 @@ describe("AssetRef alias consistency (never-regress gate)", () => {
     assert.equal(ref.cdnMutableUrl, ref.url);
     assert.equal(ref.thumbUrl, undefined);
     assert.equal(ref.displayUrl, undefined);
+  });
+});
+
+describe("assets — the actedAs of a refusal", () => {
+  it("lifts X-Run402-Acted-As onto the thrown error", async () => {
+    const { fetch } = mockFetch(() => new Response(JSON.stringify({ code: "FORBIDDEN", message: "Not authorized for this project action", details: { caller_role: "viewer" } }), {
+      status: 403,
+      headers: { "content-type": "application/json", "x-run402-acted-as": "credential=siwx_eoa; principal=prn_1; role=viewer" },
+    }));
+    const sdk = makeSdk(fetch);
+    await assert.rejects(sdk.assets.rm("prj_known", "a.png"), (err: unknown) => {
+      assert.equal((err as { actedAs?: string }).actedAs, "credential=siwx_eoa; principal=prn_1; role=viewer");
+      return true;
+    });
   });
 });

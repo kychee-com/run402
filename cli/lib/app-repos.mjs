@@ -16,10 +16,8 @@ import { spawnSync } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
 import { resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
-import { apiBase, activeProfile, findProject, getProject, readWallet, resolveProjectId, walletFile } from "./config.mjs";
-import { getWalletAuthHeadersAsync } from "../core-dist/wallet-auth.js";
-import { personalMessageSignerFor } from "#sdk/node";
-import { getSdk } from "./sdk.mjs";
+import { apiBase, activeProfile, findProject, readWallet, resolveProjectId } from "./config.mjs";
+import { getSdk, getProjectAuth } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 import { assertKnownFlags, flagValue, normalizeArgv, positionalArgs, parseIntegerFlag, failUnknownSubcommand } from "./argparse.mjs";
 import { resolveOnPath } from "./path-lookup.mjs";
@@ -293,6 +291,7 @@ function helperCommand(byName) {
   parts.push(byName ? "run402" : `${shellQuote(process.execPath)} ${shellQuote(CLI_ENTRY)}`);
   const profile = activeProfile();
   if (profile && profile !== "default") parts.push("--wallet", shellQuote(profile));
+  if (getProjectAuth() === "service_key") parts.push("--use-service-key");
   parts.push("app-repos", "credential");
   return `!${parts.join(" ")}`;
 }
@@ -446,22 +445,16 @@ function hasWallet() {
 /** The username that tells the gateway the git password is a wallet's SIGN-IN-WITH-X payload. */
 export const GIT_SIWX_USERNAME = "siwx";
 
-/** A fresh SIGN-IN-WITH-X payload of this CLI's wallet for the repo's git URL, or null with no wallet. */
-async function walletGitPassword(target) {
-  if (!hasWallet()) return null;
-  const path = `/projects/v1/${encodeURIComponent(target.projectId)}/app-repos/${encodeURIComponent(target.repoName)}.git`;
-  const headers = await getWalletAuthHeadersAsync(path, walletFile(), (w) => personalMessageSignerFor(w));
-  return headers?.["SIGN-IN-WITH-X"] ?? null;
-}
 
 /**
  * `run402 app-repos credential <get|store|erase>` — git's credential-helper
  * protocol (gitcredentials(7)). Not for people: `clone` installs it. On `get`
  * for an app repo on the configured API base it prints `username` and
- * `password` and nothing else: RUN402_GRANT_KEY when set, else the project's
- * service key from the local keystore, else a fresh signature of the CLI's
- * wallet with the username `siwx`, which the gateway authorizes by the
- * wallet's membership or grant on every request. It prints
+ * `password` and nothing else, from `r.appRepos.gitCredential`:
+ * RUN402_GRANT_KEY when set, else a fresh signature of the CLI's wallet with
+ * the username `siwx` (authorized by the wallet's membership or grant on
+ * every request), else the project's cached service key only on a machine
+ * with no wallet, or with `--use-service-key`. It prints
  * nothing for any other URL. `store` and `erase` are no-ops, so nothing is
  * persisted. The credential is written only to git, on stdout.
  */
@@ -478,14 +471,17 @@ async function credential(args) {
   }
   const target = credentialTarget(input, apiBase());
   if (!target) return;
-  const key = grantKeyFromEnv() ?? getProject(target.projectId)?.service_key ?? null;
-  if (key) {
-    process.stdout.write(`username=run402\npassword=${key}\n`);
-    return;
+  // The SDK resolves the credential (project-credential-cache-client-surface):
+  // RUN402_GRANT_KEY, else this CLI's wallet, else a cached key only with no
+  // wallet. The helper only writes git's lines.
+  let cred = null;
+  try {
+    cred = await getSdk().appRepos.gitCredential(target.projectId, target.repoName);
+  } catch {
+    cred = null;
   }
-  const signature = await walletGitPassword(target);
-  if (signature) {
-    process.stdout.write(`username=${GIT_SIWX_USERNAME}\npassword=${signature}\n`);
+  if (cred) {
+    process.stdout.write(`username=${cred.username}\npassword=${cred.password}\n`);
     return;
   }
   process.stderr.write(

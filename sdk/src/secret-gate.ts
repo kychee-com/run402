@@ -118,6 +118,11 @@ export const SECRET_RETURNING_METHODS = {
       `run402 app-repos tokens create ${arg(repoName, "<repo_name>")} --access ${arg(obj(opts).access, "read")}${projectFlag(projectId)}`,
     why: "An app repo token is returned once; the CLI prints it to the person who will hand it on.",
   },
+  "appRepos.gitCredential": {
+    command: (projectId: unknown, repoName: unknown) =>
+      `run402 app-repos clone ${arg(repoName, "<repo_name>")}${projectFlag(projectId)}`,
+    why: "The git credential can be the project's service key; the CLI hands it only to git, through the clone's credential helper.",
+  },
   "grants.rotateKey": {
     command: (projectId: unknown, keyId: unknown) => `run402 grants rotate-key ${arg(keyId, "<key_id>")}${projectFlag(projectId)}`,
     why: "The rotated grant key's bearer is returned once; the CLI prints it to the person who will hand it on.",

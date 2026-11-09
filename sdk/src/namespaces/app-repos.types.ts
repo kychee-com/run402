@@ -228,3 +228,15 @@ export interface AppRepoNotCommitted {
 }
 
 export type AppRepoCommitResult = AppRepoCommitted | AppRepoNotCommitted;
+
+/**
+ * What git sends for one app repo, from the SDK's one credential resolution
+ * (`r.appRepos.gitCredential`): the clone's own identity first. `username`
+ * `siwx` marks the password as a wallet's `SIGN-IN-WITH-X` payload.
+ */
+export interface AppRepoGitCredential {
+  username: string;
+  password: string;
+  /** Which credential this is: a wallet signature, a grant key, or the project's cached service key. */
+  credential: "siwx_eoa" | "grant_key" | "project_service_key";
+}

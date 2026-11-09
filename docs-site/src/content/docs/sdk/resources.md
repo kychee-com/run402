@@ -48,10 +48,11 @@ list(wallet?: string): Promise<ListProjectsResult>
 getUsage(id: string): Promise<UsageReport>
 getSchema(id: string): Promise<SchemaReport>
 sql(id: string, sql: string, params?: unknown[], opts?: { readOnly?: boolean; onRetry?: (info: SqlRetryInfo) => void }): Promise<SqlResult>   // POST /projects/v1/:project_id/sql → { status, schema, rows, row_count, fields, statements, warnings }; readOnly: engine-enforced, one statement
-// getSchema/sql/rest use the cached service key when present, otherwise your own authority:
+// getSchema/sql go as your own authority first (the cached service key only with no principal, or projectAuth: "service_key"):
 //   project.database.read (org role viewer+, or a database:read grant / grant key) runs read-only, enforced by PostgreSQL
 //     (a write answers DATABASE_READ_ONLY); project.database.write (developer+, or database:write) can write.
-//   rest without a cached key goes to /projects/v1/:project_id/rest/* with database authority (like keyType "service");
+//   rest keeps the end-user default: the cached anon key on /rest/v1, or with none your authority on /projects/v1/:project_id/rest/*;
+//   keyType "service" sends the cached service key;
 //   an explicit keyType "anon" still needs the cached anon key. A denial is FORBIDDEN with next_actions.
 sqlBatch(id: string, statements: { sql: string; params?: unknown[] }[], opts?: { transaction?: "all" | "each"; onRetry?: (info: SqlRetryInfo) => void }): Promise<SqlBatchResult>   // one statement per entry; "all" (default) rolls back on the first failure (SQL_BATCH_STATEMENT_FAILED, details.index); "each" commits each and reports results[i].status
 // sql/sqlBatch results carry warnings[] that never change the result:

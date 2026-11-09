@@ -67,7 +67,7 @@ function mockFetch(input, init) {
     return Promise.resolve(json({ version: CURRENT_CLI_VERSION }));
   }
 
-  if (pathNoQuery === "/storage/v1/blobs" && info.method === "GET") {
+  if (/^\/projects\/v1\/[^/]+\/storage\/blobs$/.test(pathNoQuery) && info.method === "GET") {
     return Promise.resolve(json({ blobs: [{ key: "file.txt" }] }));
   }
   if (/\/functions\/hello\/logs$/.test(pathNoQuery) && info.method === "GET") {
@@ -866,7 +866,7 @@ describe("--flag=value", () => {
     await run("ls", ["--project=prj_test123", "--limit=500"]);
     captureStop();
 
-    const call = calls.find((c) => c.path.startsWith("/storage/v1/blobs?"));
+    const call = calls.find((c) => /^\/projects\/v1\/[^/]+\/storage\/blobs\?/.test(c.path));
     assert.ok(call, `expected blob list request, got ${JSON.stringify(calls)}`);
     assert.match(call.url, /limit=500/);
     assert.ok(stdout.join("\n").includes("file.txt"));
@@ -1750,8 +1750,8 @@ describe("v1.50 assets — --meta / --exif-policy / --sort / --filter argv (issu
       captureStop();
       globalThis.fetch = prevFetch;
     }
-    const lsCall = calls.find((c) => c.path.startsWith("/storage/v1/blobs"));
-    assert.ok(lsCall, "ls call should hit /storage/v1/blobs");
+    const lsCall = calls.find((c) => /^\/projects\/v1\/[^/]+\/storage\/blobs/.test(c.path));
+    assert.ok(lsCall, "ls call should hit /projects/v1/:project_id/storage/blobs");
     const u = new URL(lsCall.url);
     assert.equal(u.searchParams.get("sort"), "createdAt:desc");
     assert.equal(u.searchParams.get("filter_is_image"), "true");

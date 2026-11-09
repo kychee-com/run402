@@ -21,7 +21,8 @@
 
 import type { Client } from "../kernel.js";
 import { gateSecret } from "../secret-gate.js";
-import { ApiError, LocalError, NetworkError, NotAuthorizedError, PaymentRequired, Unauthorized } from "../errors.js";
+import { ApiError, LocalError, NetworkError, NotAuthorizedError, PaymentRequired, ProjectCredentialNotFound, Unauthorized } from "../errors.js";
+import { isGrantKeyCredentials } from "../grant-key-credentials.js";
 import type {
   AppRepo,
   AppRepoCommitFiles,
@@ -38,6 +39,7 @@ import type {
   AppRepoLogPage,
   AppRepoReadOptions,
   AppRepoRevertOptions,
+  AppRepoGitCredential,
   AppRepoToken,
   AppRepoTokenOptions,
   AppRepoTokenRevocation,
@@ -348,6 +350,44 @@ export class AppRepos {
       projectKeyFallback: projectId,
       context,
     });
+  }
+
+  /**
+   * The credential git sends for one app repo, by the same resolution as every
+   * project call (project-credential-cache-client-surface, "Auth Resolution Is
+   * Deterministic"): a grant key named in the environment, else the selected
+   * wallet's fresh `SIGN-IN-WITH-X` signature for the repo's git URL, else the
+   * cached service key only on a machine with no principal (or when the client
+   * asked for it with `projectAuth: "service_key"`). A sign-in session is not
+   * a git password, so a session-only machine falls to the cached key. Null
+   * when nothing applies. The CLI's git credential helper prints it and keeps
+   * no order of its own.
+   */
+  async gitCredential(projectId: string, repoName: string): Promise<AppRepoGitCredential | null> {
+    gateSecret(this.client, "appRepos.gitCredential", projectId, repoName);
+    const context = "resolving the git credential";
+    requireArg(projectId, "projectId", context);
+    requireArg(repoName, "repoName", context);
+    const cachedKey = async (): Promise<AppRepoGitCredential | null> => {
+      const keys = await this.client.getProjectCredentials(projectId);
+      return keys?.service_key ? { username: "run402", password: keys.service_key, credential: "project_service_key" } : null;
+    };
+    if (this.client.projectAuth === "service_key") {
+      const key = await cachedKey();
+      if (!key) {
+        const info = this.client.credentials.getProjectCredentialCacheInfo?.();
+        throw new ProjectCredentialNotFound(projectId, context, (info ?? {}) as unknown as Record<string, unknown>);
+      }
+      return key;
+    }
+    const auth = await this.client.credentials.getAuth(`${repoPath(projectId, repoName)}.git`);
+    const siwx = auth?.["SIGN-IN-WITH-X"];
+    if (siwx) return { username: "siwx", password: siwx, credential: "siwx_eoa" };
+    const bearer = auth?.Authorization ?? auth?.authorization;
+    if (bearer?.startsWith("Bearer ") && isGrantKeyCredentials(this.client.credentials)) {
+      return { username: "run402", password: bearer.slice("Bearer ".length), credential: "grant_key" };
+    }
+    return cachedKey();
   }
 
   /**

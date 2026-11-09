@@ -227,6 +227,7 @@ import type {
   AppRepoLogPage,
   AppRepoReadOptions,
   AppRepoRevertOptions,
+  AppRepoGitCredential,
   AppRepoToken,
   AppRepoTokenOptions,
   AppRepoTokenRevocation,
@@ -602,6 +603,10 @@ class ScopedAppRepos {
   /** Commit the inverse of `commit`'s changes. */
   revert(repoName: string, commit: string, opts?: AppRepoRevertOptions): Promise<AppRepoCommitResult> {
     return this.parent.appRepos.revert(this.projectId, repoName, commit, opts);
+  }
+  /** The credential git sends for one repo, by the SDK's one resolution (principal first). */
+  gitCredential(repoName: string): Promise<AppRepoGitCredential | null> {
+    return this.parent.appRepos.gitCredential(this.projectId, repoName);
   }
   /** Mint a credential for one repo, read or write, that expires by itself. `token` is returned only here. */
   createToken(repoName: string, opts: AppRepoTokenOptions): Promise<AppRepoToken> {

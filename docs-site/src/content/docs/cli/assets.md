@@ -13,6 +13,8 @@ Direct-to-S3 asset storage, 1 byte to 5 TiB. Flat key namespace per project.
 Bulk directories: use `deploy` with `assets` slice: additive `assets: { put: [...] }`; declarative sync `assets: { put: [...], sync: { prefix, prune: true, confirm? } }`. No `run402 assets sync`; apply is canonical so HTML + asset URLs stage atomically.
 
 - `run402 assets put <file> [files...] [--project <project_id>] [--key <dest>] [--content-type <mime>] [--private] [--immutable] [--meta <k=v>] [--exif-policy keep|strip] [--concurrency N] [--no-resume] [--stream]` — without `--stream`, stdout is the final results array (JSON). With `--stream`, stdout is NDJSON per-file progress events. `--json` is a deprecated alias for `--stream` (writes a deprecation warning to stderr). Stdout carries the canonical snake_case wire shape only (see the `assets put` output example below); the SDK's camelCase `AssetRef` conveniences never appear on CLI stdout.
+Every `assets` command but `put` calls `/projects/v1/:project_id/storage/*` as you: a member of the project's organization with the viewer role (or a `read` grant) lists, downloads, signs and diagnoses, private blobs included; `rm` needs developer (or a `deploy` grant). No project key on the machine is needed; `--use-service-key` sends the cached one instead. `put` goes through deploy, which authorizes you the same way.
+
 - `run402 assets get <key> --output <file> [--project <project_id>]`
 - `run402 assets ls [--project <project_id>] [--prefix <p>] [--limit <n>] [--sort key:asc|createdAt:asc|createdAt:desc] [--filter <k=v> ...]`
 - `run402 assets rm <key> [--project <project_id>]`
@@ -135,7 +137,7 @@ Mutable URL loop only: `run402 cdn wait-fresh <mutable-url> --sha <new-sha>` blo
 
 Resume removed in v2.1.0. CLI delegates to `sdk.assets.put` via unified apply (`apply/v1/plans -> content/v1/plans -> S3 PUT -> commit`). `--concurrency` / `--no-resume` accepted but ignored; resume semantics live at apply-plan level (24h TTL).
 
-Private blobs (`--private`): no CDN URL returned; read via authenticated gateway path `GET /storage/v1/blob/<key>` with apikey, or via `run402 assets sign` for time-boxed sharing (`--variant medium` for an image's encoded variant): a CloudFront link signed for one object that any web page can read, answering Range requests, and revoked within a minute when the blob is deleted or overwritten.
+Private blobs (`--private`): no CDN URL returned; read via `run402 assets get` (`GET /projects/v1/:project_id/storage/blob/<key>`, as you), or via `run402 assets sign` for time-boxed sharing (`--variant medium` for an image's encoded variant): a CloudFront link signed for one object that any web page can read, answering Range requests, and revoked within a minute when the blob is deleted or overwritten.
 
 Content-Type: infers MIME from destination key extension; use `--content-type <mime>` for extensionless/uncommon/override; applies to every file in invocation.
 

@@ -237,6 +237,7 @@ function mergeStructuredErrorFields(payload, err) {
   setIfAbsent(payload, "safe_to_retry", err.safeToRetry);
   setIfAbsent(payload, "mutation_state", err.mutationState);
   setIfAbsent(payload, "trace_id", err.traceId);
+  setIfAbsent(payload, "acted_as", err.actedAs);
   setIfAbsent(payload, "details", err.details);
   setIfAbsent(payload, "next_actions", err.nextActions);
   setIfAbsent(payload, "phase", err.phase);

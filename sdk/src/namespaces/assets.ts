@@ -8,8 +8,8 @@
  */
 
 import type { Client } from "../kernel.js";
-import { ApiError, LocalError } from "../errors.js";
-import { requireProjectCredentials } from "../project-credentials.js";
+import { LocalError, ProjectCredentialNotFound } from "../errors.js";
+import { projectIdPathSegment } from "../project-id.js";
 import { assertPositiveSafeInteger, isKnownBinaryContent } from "../validation.js";
 import type {
   BlobCacheKind,
@@ -533,6 +533,21 @@ function buildAssetRef(
   };
 }
 
+/**
+ * The project's storage routes, `/projects/v1/:project_id/storage`
+ * (project-storage-access). A principal (wallet, sign-in session, grant key)
+ * is authorized by its role there; the project's service key works too.
+ */
+function storagePath(projectId: string, context: string): string {
+  const segment = projectIdPathSegment(projectId, {
+    method: "assets",
+    argument: "projectId",
+    usage: 'r.assets.ls("prj_…") (or r.project("prj_…").assets.ls())',
+    context,
+  });
+  return `/projects/v1/${segment}/storage`;
+}
+
 export class Assets {
   constructor(private readonly client: Client) {}
 
@@ -615,9 +630,9 @@ export class Assets {
       assertExifPolicy(opts.exifPolicy, "uploading asset");
     }
 
-    // Check credentials early so callers get ProjectNotFound rather than a
-    // generic error from inside the apply flow.
-    const projectKeys = await requireProjectCredentials(this.client, projectId, "uploading asset");
+    // No local key check: the apply hero authorizes the caller itself (a
+    // principal, or the project's service key when the machine has no
+    // principal), so a member uploads with its own identity.
 
     // v1.48 unified-apply: route through the apply hero. Bytes upload via
     // /content/v1/plans (CAS substrate) and the asset slice promotes in the
@@ -725,14 +740,9 @@ export class Assets {
    *   if (diag.observedSha256 !== diag.expectedSha256) console.log(diag.hint);
    */
   async diagnoseUrl(projectId: string, url: string): Promise<BlobDiagnoseEnvelope> {
-    const project = await requireProjectCredentials(this.client, projectId, "diagnosing blob URL");
-
-    const path = `/storage/v1/blobs/diagnose?url=${encodeURIComponent(url)}`;
+    const path = `${storagePath(projectId, "diagnosing blob URL")}/blobs/diagnose?url=${encodeURIComponent(url)}`;
     const env = await this.client.request<WireBlobDiagnoseEnvelope>(path, {
-      headers: {
-        apikey: project.service_key,
-        Authorization: `Bearer ${project.service_key}`,
-      },
+      projectKeyFallback: projectId,
       context: "diagnosing blob URL",
     });
     return normalizeBlobDiagnoseEnvelope(env);
@@ -763,8 +773,6 @@ export class Assets {
     const timeoutMs = opts.timeoutMs ?? 60_000;
     assertPositiveSafeInteger(timeoutMs, "timeoutMs", "waiting for CDN freshness");
 
-    const project = await requireProjectCredentials(this.client, projectId, "waiting for CDN freshness");
-
     const expected = opts.sha256.toLowerCase();
     const start = Date.now();
 
@@ -785,7 +793,9 @@ export class Assets {
             vantage: "gateway-us-east-1",
           };
         }
-      } catch {
+      } catch (err) {
+        // A missing local credential is not transient: report it at once.
+        if (err instanceof ProjectCredentialNotFound) throw err;
         // Swallow & retry — `diagnoseUrl` can fail on transient gateway
         // hiccups (e.g. ALB cycling). The next poll re-attempts.
       }
@@ -812,25 +822,12 @@ export class Assets {
    * @throws {ApiError} on non-2xx (includes the error text from the response body).
    */
   async get(projectId: string, key: string): Promise<Response> {
-    const project = await requireProjectCredentials(this.client, projectId, "downloading blob");
-
-    const url = `${this.client.apiBase}/storage/v1/blob/${encodeKey(key)}`;
-    const res = await this.client.fetch(url, {
-      headers: {
-        apikey: project.service_key,
-        Authorization: `Bearer ${project.service_key}`,
-      },
+    const path = `${storagePath(projectId, "downloading blob")}/blob/${encodeKey(key)}`;
+    const { response } = await this.client.requestRaw(path, {
+      projectKeyFallback: projectId,
+      context: "downloading blob",
     });
-    if (!res.ok) {
-      const errText = await res.text().catch(() => "");
-      throw new ApiError(
-        `Downloading blob failed (HTTP ${res.status})`,
-        res.status,
-        errText,
-        "downloading blob",
-      );
-    }
-    return res;
+    return response;
   }
 
   /** List blobs with optional prefix + pagination + (v1.50) sort + filter.
@@ -847,8 +844,6 @@ export class Assets {
       assertAssetFilter(opts.filter, "listing blobs");
     }
 
-    const project = await requireProjectCredentials(this.client, projectId, "listing blobs");
-
     const qs = new URLSearchParams();
     if (opts.prefix) qs.set("prefix", opts.prefix);
     if (opts.limit !== undefined) qs.set("limit", String(opts.limit));
@@ -856,13 +851,10 @@ export class Assets {
     if (opts.sort) qs.set("sort", opts.sort);
     if (opts.filter) appendAssetFilterTo(qs, opts.filter);
     const query = qs.toString();
-    const path = `/storage/v1/blobs${query ? "?" + query : ""}`;
+    const path = `${storagePath(projectId, "listing blobs")}/blobs${query ? "?" + query : ""}`;
 
     return this.client.request<BlobLsResult>(path, {
-      headers: {
-        apikey: project.service_key,
-        Authorization: `Bearer ${project.service_key}`,
-      },
+      projectKeyFallback: projectId,
       context: "listing blobs",
     });
   }
@@ -872,14 +864,9 @@ export class Assets {
    *  invalidation for a public key, and revokes the key's unexpired signed
    *  URLs at the edge (`signed_url_revocation`). */
   async rm(projectId: string, key: string): Promise<BlobRmResult> {
-    const project = await requireProjectCredentials(this.client, projectId, "deleting blob");
-
-    return this.client.request<BlobRmResult>(`/storage/v1/blob/${encodeKey(key)}`, {
+    return this.client.request<BlobRmResult>(`${storagePath(projectId, "deleting blob")}/blob/${encodeKey(key)}`, {
       method: "DELETE",
-      headers: {
-        apikey: project.service_key,
-        Authorization: `Bearer ${project.service_key}`,
-      },
+      projectKeyFallback: projectId,
       context: "deleting blob",
     });
   }
@@ -898,20 +885,15 @@ export class Assets {
       throw new LocalError(`variant must be one of: ${BLOB_SIGN_VARIANTS.join(", ")}`, "signing blob URL");
     }
 
-    const project = await requireProjectCredentials(this.client, projectId, "signing blob URL");
-
     const body: Record<string, unknown> = {};
     if (opts.ttl_seconds !== undefined) body.ttl_seconds = opts.ttl_seconds;
     if (opts.variant !== undefined) body.variant = opts.variant;
 
     return this.client.request<BlobSignResult>(
-      `/storage/v1/blob/${encodeKey(key)}/sign`,
+      `${storagePath(projectId, "signing blob URL")}/blob/${encodeKey(key)}/sign`,
       {
         method: "POST",
-        headers: {
-          apikey: project.service_key,
-          Authorization: `Bearer ${project.service_key}`,
-        },
+        projectKeyFallback: projectId,
         body,
         context: "signing blob URL",
       },
@@ -920,7 +902,7 @@ export class Assets {
 
   /** Generate signed GET URLs (the CDN links `sign` returns) for many keys
    *  and variants in one request
-   *  (`POST /storage/v1/blobs/sign`): 1 to 1000 `{ key, variant? }` items,
+   *  (`POST /projects/v1/:project_id/storage/blobs/sign`): 1 to 1000 `{ key, variant? }` items,
    *  answered in order, each with `signed_url` or with `error`
    *  (`RESOURCE_NOT_FOUND`) for a key or variant the project lacks. One
    *  `ttl_seconds` covers every URL. */
@@ -947,17 +929,12 @@ export class Assets {
       assertIntegerInRange(opts.ttl_seconds, "ttl_seconds", 60, 604800, context);
     }
 
-    const project = await requireProjectCredentials(this.client, projectId, context);
-
     const body: Record<string, unknown> = { items: wireItems };
     if (opts.ttl_seconds !== undefined) body.ttl_seconds = opts.ttl_seconds;
 
-    return this.client.request<BlobSignManyResult>("/storage/v1/blobs/sign", {
+    return this.client.request<BlobSignManyResult>(`${storagePath(projectId, context)}/blobs/sign`, {
       method: "POST",
-      headers: {
-        apikey: project.service_key,
-        Authorization: `Bearer ${project.service_key}`,
-      },
+      projectKeyFallback: projectId,
       body,
       context,
     });
