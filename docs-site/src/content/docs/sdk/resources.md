@@ -61,9 +61,10 @@ sqlBatch(id: string, statements: { sql: string; params?: unknown[] }[], opts?: {
 //   MULTI_STATEMENT_TEXT_BODY: several statements in one text; use sqlBatch.
 // sql/sqlBatch wait out a retryable, safe-to-retry refusal, the whole call within 20 s (opts.onRetry({ code, attempt,
 //   waitMs, details }) is called before each wait), then throw it with attempts and waitedMs. While a deploy's snapshot
-//   holds the project's write pause, reads answer as usual and a write meets PROJECT_WRITES_PAUSED; a call that gets no
-//   database connection meets PROJECT_DATABASE_BUSY. Both are waited out: each attempt sends Run402-Connection-Wait-Ms
-//   with what is left of the budget, so the gateway answers busy before the budget runs out.
+//   holds the project's write pause, reads answer as usual and the gateway holds a write until the pause lifts, then
+//   runs it. A pause longer than the budget answers PROJECT_WRITES_PAUSED; a call that gets no database connection
+//   meets PROJECT_DATABASE_BUSY. Both are waited out: each attempt sends Prefer: wait and Run402-Connection-Wait-Ms
+//   with what is left of the budget, so the gateway answers before the budget runs out.
 rest<T = unknown>(id: string, table: string, queryOrOptions?: string | ProjectRestOptions): Promise<T>
 restResponse<T = unknown>(id: string, table: string, queryOrOptions?: string | ProjectRestOptions): Promise<ProjectRestResponse<T>>
 validateExpose(manifest: ExposeManifest | string, opts?: { project?: string; project_id?: string; migrationSql?: string }): Promise<ExposeManifestValidationResult>

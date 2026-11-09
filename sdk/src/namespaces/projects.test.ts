@@ -1343,6 +1343,29 @@ describe("projects.sql / sqlBatch wait out a retryable refusal (a deploy's write
     const sdk = makeSdk(makeCreds(), fetch);
     await sdk.projects.sqlBatch("prj_known", [{ sql: "SELECT 1" }]);
     assert.equal(offered(calls[0]!.headers), 19_000);
+    assert.equal(calls[0]!.headers["Prefer"], "wait=19", "the gateway's hold ends inside the budget too");
+  });
+
+  it("every attempt says how long the gateway may hold a write through a pause, in whole seconds of the budget left", async () => {
+    mock.timers.enable({ apis: ["setTimeout", "Date"] });
+    try {
+      let n = 0;
+      const { fetch, calls } = mockFetch(async () => {
+        n++;
+        if (n === 1) {
+          await new Promise((r) => setTimeout(r, 4_500));
+          return paused();
+        }
+        return jsonResponse({ status: "ok", schema: "p0001", rows: [], row_count: 1, fields: [], statements: [], warnings: [] });
+      });
+      const sdk = makeSdk(makeCreds(), fetch);
+      await drive(sdk.projects.sql("prj_known", "INSERT INTO t VALUES (1)"));
+      assert.equal(calls[0]!.headers["Prefer"], "wait=19");
+      const second = Number(/^wait=(\d+)$/.exec(calls[1]!.headers["Prefer"]!)![1]);
+      assert.ok(second < 19 && second >= 13, `the retry offers what is left: wait=${second}`);
+    } finally {
+      mock.timers.reset();
+    }
   });
 
   it("a refusal the budget cannot repeat still says attempts 1 and waitedMs 0", async () => {

@@ -62,6 +62,15 @@ const SQL_WAIT_BUDGET_MS = 20_000;
  *  connection wait carries the call past the budget. */
 const CONNECTION_WAIT_HEADER = "Run402-Connection-Wait-Ms";
 const SQL_STATEMENT_ALLOWANCE_MS = 1_000;
+
+/** The wait an attempt offers the gateway: `Prefer: wait` bounds how long a
+ *  write is held through a deploy's write pause, `Run402-Connection-Wait-Ms`
+ *  how long it waits for a connection (project-sql-endpoint "A write pause
+ *  holds writes briefly, never reads"). Both end inside the budget, so the
+ *  retry here is only the fallback for a 503 that still comes back. */
+function sqlWaitHeaders(waitMs: number): Record<string, string> {
+  return { Prefer: `wait=${Math.floor(waitMs / 1000)}`, [CONNECTION_WAIT_HEADER]: String(waitMs) };
+}
 /** A retry starts only when at least this much budget is left after its wait. */
 const SQL_MIN_ATTEMPT_MS = 1_500;
 
@@ -448,10 +457,12 @@ export class Projects {
    *  `warnings[]` never changes the result: `SCHEMA_CHANGE_OUTSIDE_MIGRATION`
    *  means a schema change on a released project belongs in a migration, and
    *  `MULTI_STATEMENT_TEXT_BODY` points at {@link sqlBatch}. While a deploy's
-   *  snapshot holds the project's write pause, a read answers as usual and a
-   *  write meets `PROJECT_WRITES_PAUSED`; this waits any retryable,
-   *  safe-to-retry refusal out for up to 20 s (`opts.onRetry` is told before
-   *  each wait), then throws it with `attempts` and `waitedMs`. */
+   *  snapshot holds the project's write pause, a read answers as usual and the
+   *  gateway holds a write until the pause lifts, within what is left of a
+   *  20 s budget (sent as `Prefer: wait`). A retryable, safe-to-retry refusal
+   *  that still comes back is waited out within the same budget
+   *  (`opts.onRetry` is told before each wait), then thrown with `attempts`
+   *  and `waitedMs`. */
   async sql(id: string, sql: string, params?: unknown[], opts: SqlOptions = {}): Promise<SqlResult> {
     const segment = projectIdPathSegment(id, {
       method: "projects.sql",
@@ -470,7 +481,7 @@ export class Projects {
         headers: {
           ...(k ? { Authorization: `Bearer ${k.service_key}` } : {}),
           "Content-Type": json ? "application/json" : "text/plain",
-          [CONNECTION_WAIT_HEADER]: String(connectionWaitMs),
+          ...sqlWaitHeaders(connectionWaitMs),
         },
         body: json ? { sql, ...(useParams ? { params } : {}), ...(readOnly ? { read_only: true } : {}) } : undefined,
         rawBody: json ? undefined : sql,
@@ -495,7 +506,7 @@ export class Projects {
     const keys = await requireProjectCredentials(this.client, id, "running a SQL batch");
     return sendWaitingOutRetryable((connectionWaitMs) => this.client.request<SqlBatchResult>(`/projects/v1/${segment}/sql/batch`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${keys.service_key}`, [CONNECTION_WAIT_HEADER]: String(connectionWaitMs) },
+      headers: { Authorization: `Bearer ${keys.service_key}`, ...sqlWaitHeaders(connectionWaitMs) },
       body: { statements, transaction: opts.transaction ?? "all" },
       context: "running a SQL batch",
     }), opts.onRetry);
