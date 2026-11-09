@@ -1262,6 +1262,143 @@ describe("Deploy.apply (happy path)", () => {
   });
 });
 
+describe("Deploy.apply (the commit's pre-migration snapshot outcome)", () => {
+  const MIGRATION_SPEC = {
+    project_id: "prj_test",
+    database: { migrations: [{ id: "001_init", sql: "CREATE TABLE t (id int);" }] },
+  };
+  const OVERSIZED_WARNING = {
+    code: "AUTO_SNAPSHOT_SKIPPED_OVERSIZED",
+    severity: "warn",
+    requires_confirmation: false,
+    affected: ["prj_test"],
+    message: "Automatic pre-migration snapshot was skipped because the project's table data is over the capture size limit.",
+    details: {
+      reason: "capture_size_limit_exceeded",
+      database_bytes: 200_000_000,
+      database_bytes_limit: 134_217_728,
+      database_limit: "128 MiB",
+    },
+  } as const;
+
+  function plan(id: string): PlanResponse {
+    return {
+      plan_id: `plan_${id}`,
+      operation_id: `op_${id}`,
+      base_release_id: null,
+      manifest_digest: id,
+      missing_content: [],
+      diff: {},
+    };
+  }
+
+  function readySnapshot(id: string, pollCount: number): OperationSnapshot {
+    const ready = pollCount >= 2;
+    return {
+      operation_id: `op_${id}`,
+      project_id: "prj_test",
+      plan_id: `plan_${id}`,
+      status: ready ? "ready" : "schema_settling",
+      base_release_id: null,
+      target_release_id: `rel_${id}`,
+      release_id: ready ? `rel_${id}` : null,
+      urls: ready ? { site: "https://prj.run402.test" } : null,
+      payment_required: null,
+      error: null,
+      activate_attempts: 0,
+      last_activate_attempt_at: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+  }
+
+  async function applyAgainst(id: string, commit: CommitResponse) {
+    const w = makeWiring();
+    let pollCount = 0;
+    w.setHandler((req) => {
+      if (req.path === "/apply/v1/plans") return plan(id);
+      if (req.path === `/apply/v1/plans/plan_${id}/commit`) return commit;
+      if (req.path === `/apply/v1/operations/op_${id}`) {
+        pollCount += 1;
+        return readySnapshot(id, pollCount);
+      }
+      throw new Error(`unexpected path ${req.path}`);
+    });
+    const result = await new Deploy(w.client).apply(MIGRATION_SPEC, { noRehearse: true });
+    return { result, pollCount };
+  }
+
+  it("carries a synchronous ready commit's restore_point", async () => {
+    const restore_point = {
+      snapshot_id: "snap_pre",
+      restore_url: "/projects/v1/prj_test/snapshots/snap_pre/restore",
+    };
+    const { result } = await applyAgainst("rp_sync", {
+      operation_id: "op_rp_sync",
+      status: "ready",
+      release_id: "rel_rp_sync",
+      urls: { site: "https://prj.run402.test" },
+      restore_point,
+    });
+    assert.deepEqual(result.restore_point, restore_point);
+    assert.equal(result.snapshot_skipped_reason, undefined);
+  });
+
+  it("carries a synchronous ready commit's snapshot_skipped_reason and its warning", async () => {
+    const { result } = await applyAgainst("skip_sync", {
+      operation_id: "op_skip_sync",
+      status: "ready",
+      release_id: "rel_skip_sync",
+      urls: { site: "https://prj.run402.test" },
+      snapshot_skipped_reason: "capture_size_limit_exceeded",
+      warnings: [OVERSIZED_WARNING],
+    });
+    assert.equal(result.snapshot_skipped_reason, "capture_size_limit_exceeded");
+    assert.equal(result.restore_point, undefined);
+    assert.deepEqual(result.warnings.map((w) => w.code), ["AUTO_SNAPSHOT_SKIPPED_OVERSIZED"]);
+  });
+
+  it("keeps a deferred commit's restore_point and warnings when polled to ready", async () => {
+    const restore_point = {
+      snapshot_id: "snap_deferred",
+      restore_url: "/projects/v1/prj_test/snapshots/snap_deferred/restore",
+    };
+    const { result, pollCount } = await applyAgainst("rp_deferred", {
+      operation_id: "op_rp_deferred",
+      status: "schema_settling",
+      release_id: "rel_rp_deferred",
+      restore_point,
+      warnings: [OVERSIZED_WARNING],
+    });
+    assert.ok(pollCount >= 2, "the deferred commit was polled to ready");
+    assert.equal(result.release_id, "rel_rp_deferred");
+    assert.deepEqual(result.restore_point, restore_point);
+    assert.deepEqual(result.warnings.map((w) => w.code), ["AUTO_SNAPSHOT_SKIPPED_OVERSIZED"]);
+  });
+
+  it("keeps a deferred commit's snapshot_skipped_reason when polled to ready", async () => {
+    const { result } = await applyAgainst("skip_deferred", {
+      operation_id: "op_skip_deferred",
+      status: "activation_pending",
+      release_id: "rel_skip_deferred",
+      snapshot_skipped_reason: "migrations_unchanged",
+    });
+    assert.equal(result.snapshot_skipped_reason, "migrations_unchanged");
+    assert.equal(result.restore_point, undefined);
+  });
+
+  it("leaves both fields absent when the commit sent neither", async () => {
+    const { result } = await applyAgainst("none", {
+      operation_id: "op_none",
+      status: "ready",
+      release_id: "rel_none",
+      urls: { site: "https://prj.run402.test" },
+    });
+    assert.equal("restore_point" in result, false);
+    assert.equal("snapshot_skipped_reason" in result, false);
+  });
+});
+
 describe("Deploy.apply (content commit transient failures)", () => {
   const ALB_502_BODY = "<html>\r\n<head><title>502 Bad Gateway</title></head>\r\n</html>\r\n";
 

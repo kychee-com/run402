@@ -2225,6 +2225,64 @@ describe("CLI e2e happy path", () => {
     assert.equal(body.urls.deployment_id, "dpl_test456");
   });
 
+  async function deployPrinting(commitExtra) {
+    const { run } = await import("./cli/lib/deploy.mjs");
+    const manifestPath = join(tempDir, "manifest-migrate.json");
+    const { writeFileSync: wf } = await import("node:fs");
+    wf(manifestPath, JSON.stringify({
+      database: { migrations: [{ id: "001_init", sql: "CREATE TABLE t (id int);" }] },
+    }));
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = (input, init) => {
+      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+      if (/\/apply\/v1\/plans\/[^/]+\/commit$/.test(new URL(url).pathname)) {
+        return Promise.resolve(json({
+          operation_id: "op_v2_test",
+          status: "ready",
+          release_id: "rel_v2_test",
+          urls: { site: "https://dpl_test456.sites.run402.com", deployment_id: "dpl_test456" },
+          ...commitExtra,
+        }));
+      }
+      return prevFetch(input, init);
+    };
+    captureStart();
+    try {
+      await run(["--manifest", manifestPath, "--project", "prj_test123", "--no-rehearse", "--json"]);
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    return JSON.parse(capturedStdout());
+  }
+
+  it("deploy --json prints the commit's restore_point", async () => {
+    const restore_point = {
+      snapshot_id: "snap_pre",
+      restore_url: "/projects/v1/prj_test123/snapshots/snap_pre/restore",
+    };
+    const body = await deployPrinting({ restore_point });
+    assert.deepEqual(body.restore_point, restore_point);
+    assert.equal(body.snapshot_skipped_reason, undefined);
+  });
+
+  it("deploy --json prints the commit's snapshot_skipped_reason and warning", async () => {
+    const body = await deployPrinting({
+      snapshot_skipped_reason: "capture_size_limit_exceeded",
+      warnings: [{
+        code: "AUTO_SNAPSHOT_SKIPPED_OVERSIZED",
+        severity: "warn",
+        requires_confirmation: false,
+        affected: ["prj_test123"],
+        message: "Automatic pre-migration snapshot was skipped because the project's table data is over the capture size limit.",
+        details: { reason: "capture_size_limit_exceeded", database_bytes: 200000000, database_bytes_limit: 134217728, database_limit: "128 MiB" },
+      }],
+    });
+    assert.equal(body.snapshot_skipped_reason, "capture_size_limit_exceeded");
+    assert.equal(body.restore_point, undefined);
+    assert.ok(body.warnings.some((w) => w.code === "AUTO_SNAPSHOT_SKIPPED_OVERSIZED"));
+  });
+
   async function runDeployListLimit(limitValue) {
     const { run } = await import("./cli/lib/deploy.mjs");
     const { saveWallet } = await import("./cli/lib/config.mjs");

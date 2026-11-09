@@ -150,6 +150,8 @@ Options:
 
 Output:
   stdout: { "release_id": "rel_...", "operation_id": "op_...", "urls": {...}, "warnings": [...], "stats": {...} }
+          plus "restore_point": { "snapshot_id", "restore_url" } when a migration's
+          pre-migration snapshot was taken, or "snapshot_skipped_reason" when it was not
   stderr: one JSON event per line (suppressed with --quiet or --final-only)
 
 Secrets:

@@ -2682,7 +2682,8 @@ async function pollUntilReady(
       operation_id: commit.operation_id,
       urls: commit.urls,
       diff,
-      warnings: [...warnings.filter(w => !commit.warnings?.some(updated => updated.code === w.code)), ...(commit.warnings ?? [])],
+      warnings: mergeWarningsByCode(warnings, commit.warnings),
+      ...commitSnapshotOutcome(commit),
       ...(commit.subdomain_bindings ? { subdomain_bindings: commit.subdomain_bindings } : {}),
       ...(commit.static_continuity ? { static_continuity: commit.static_continuity } : {}),
       ...(commit.edge ? { edge: commit.edge } : {}),
@@ -2700,7 +2701,38 @@ async function pollUntilReady(
     `/apply/v1/operations/${encodeURIComponent(commit.operation_id)}`,
     { headers: opHeaders, context: "fetching deploy operation" },
   );
-  return await pollSnapshotUntilReady(client, initialSnapshot, diff, warnings, emit, projectId, sliceKinds);
+  // A deferred commit (schema_settling / activation_pending) already said
+  // what happened to its pre-migration snapshot and which warnings it raised;
+  // the operation snapshot repeats neither, so they ride across the poll.
+  return await pollSnapshotUntilReady(
+    client,
+    initialSnapshot,
+    diff,
+    mergeWarningsByCode(warnings, commit.warnings),
+    emit,
+    projectId,
+    sliceKinds,
+    commitSnapshotOutcome(commit),
+  );
+}
+
+/** Later warnings replace earlier ones with the same code (plan → commit → snapshot). */
+function mergeWarningsByCode(
+  earlier: PlanResponse["warnings"],
+  later: PlanResponse["warnings"] | undefined,
+): PlanResponse["warnings"] {
+  if (!later || later.length === 0) return [...earlier];
+  return [...earlier.filter(w => !later.some(updated => updated.code === w.code)), ...later];
+}
+
+/** The commit's pre-migration snapshot outcome, as `DeployResult` carries it. */
+function commitSnapshotOutcome(
+  commit: CommitResponse,
+): Pick<DeployResult, "restore_point" | "snapshot_skipped_reason"> {
+  return {
+    ...(commit.restore_point ? { restore_point: commit.restore_point } : {}),
+    ...(commit.snapshot_skipped_reason ? { snapshot_skipped_reason: commit.snapshot_skipped_reason } : {}),
+  };
 }
 
 async function pollSnapshotUntilReady(
@@ -2711,6 +2743,7 @@ async function pollSnapshotUntilReady(
   emit: (event: DeployEvent) => void,
   projectId: string | undefined,
   sliceKinds: ("release" | "asset")[] = [],
+  snapshotOutcome: Pick<DeployResult, "restore_point" | "snapshot_skipped_reason"> = {},
 ): Promise<DeployResult> {
   // Helper to spread slice_kinds onto every commit.phase / ready emit so
   // agents grouping per-slice telemetry don't need to track the apply's
@@ -2821,7 +2854,8 @@ async function pollSnapshotUntilReady(
         operation_id: snapshot.operation_id,
         urls: snapshot.urls,
         diff,
-        warnings: [...warnings.filter(w => !snapshot.warnings?.some(updated => updated.code === w.code)), ...(snapshot.warnings ?? [])],
+        warnings: mergeWarningsByCode(warnings, snapshot.warnings),
+        ...snapshotOutcome,
         ...(snapshot.subdomain_bindings ? { subdomain_bindings: snapshot.subdomain_bindings } : {}),
         ...(snapshot.static_continuity ? { static_continuity: snapshot.static_continuity } : {}),
         ...(snapshot.edge ? { edge: snapshot.edge } : {}),

@@ -3061,7 +3061,18 @@ export interface DeployResult {
    *  app installers can distinguish fresh propagation misses from real verify
    *  failures. */
   subdomain_bindings?: SubdomainBindingFreshness[];
+  /** The pre-migration snapshot a migration-bearing commit captured: the undo
+   *  for this deploy's migrations (`run402 snapshots restore <project_id>
+   *  <snapshot_id>`). Copied from the commit response, on a synchronous ready
+   *  commit and on a deferred one polled to ready. Absent when the commit took
+   *  no snapshot. */
   restore_point?: CommitRestorePoint;
+  /** Why a migration-bearing commit went on without a snapshot:
+   *  `explicit_skip_requested` (`snapshot: "skip"`),
+   *  `capture_size_limit_exceeded` (with an `AUTO_SNAPSHOT_SKIPPED_OVERSIZED`
+   *  warning), or `migrations_unchanged` (every migration already applied, so
+   *  no migration SQL ran). Copied from the commit response like
+   *  {@link restore_point}. */
   snapshot_skipped_reason?: string;
   /** v1.48 unified-apply: present when the spec carried an `assets` slice.
    *  Built from the plan response's `asset_entries[].asset_ref` (gateway-
