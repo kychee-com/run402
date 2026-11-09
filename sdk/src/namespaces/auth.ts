@@ -369,14 +369,14 @@ export interface AppleSignInKey {
   next_actions?: unknown[];
 }
 
-/** Native Apple sign-in on a project: the key's public fields when set, the apps, the notification URL, what is missing. */
+/** Native Apple sign-in on a project: the key's public fields (each null when no key is set), the apps, the notification URL, what is missing. */
 export interface AppleSignInStatus {
   configured: boolean;
-  team_id?: string;
-  key_id?: string;
-  set_at?: string;
-  last_error?: string | null;
-  last_error_at?: string | null;
+  team_id: string | null;
+  key_id: string | null;
+  set_at: string | null;
+  last_error: string | null;
+  last_error_at: string | null;
   client_ids: string[];
   notification_url: string;
   missing: AppleSignInMissing[];

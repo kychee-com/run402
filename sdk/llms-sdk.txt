@@ -2819,7 +2819,7 @@ listPasskeys(projectId, opts: { accessToken }): Promise<{ passkeys: PasskeyRecor
 deletePasskey(projectId, opts: { accessToken, passkeyId }): Promise<void>
 providers(projectId): Promise<AuthProvidersResult> // magic_link.deliveryModes; absent wire field → ["link"]
 setAppleKey(projectId, { teamId, keyId, p8 }): Promise<AppleSignInKey> // the .p8; never returned; SECRET_REQUIRES_CLI in the MCP sandbox
-appleKeyStatus(projectId): Promise<AppleSignInStatus> // { configured, team_id?, key_id?, client_ids, notification_url, missing }
+appleKeyStatus(projectId): Promise<AppleSignInStatus> // { configured, team_id, key_id (null with no key), client_ids, notification_url, missing }
 removeAppleKey(projectId): Promise<{ removed }>
 promote(projectId, email): Promise<void>
 demote(projectId, email): Promise<void>
@@ -2834,7 +2834,7 @@ demoteUser(projectId, email): Promise<void>
 
 Magic-link tokens are single-use, expire in 15 min, rate-limited 5/email/hour. Google OAuth is on for all projects with zero config.
 
-Native Sign in with Apple (an iPhone app's own sheet) needs the app's bundle ID in `apple_client_ids` and the app's Sign in with Apple key from `setAppleKey` (CLI: `run402 auth apple-key set`). The phone app then signs in over HTTP at `POST /auth/v1/native-sessions` with `{ provider: "apple", id_token, authorization_code, display_name? }`, after passing Apple the SHA-256 of a nonce from `POST /auth/v1/native-sessions/nonces`, and gets the same native session a Google sign-in gets. `appleKeyStatus` gives the notification URL to set as the App ID's server-to-server notification endpoint: when a person removes the app from their Apple ID or deletes their Apple account, Run402 ends their Apple sign-in and emits the project event `auth_apple_sign_in_revoked`, so the app can delete what it holds about them. When an Apple identity is removed (unlinked, its user or the project deleted), Run402 revokes the person's Apple authorization.
+Native Sign in with Apple (an iPhone app's own sheet) needs the app's bundle ID in `apple_client_ids` and the app's Sign in with Apple key from `setAppleKey` (CLI: `run402 auth apple-key set`). The phone app then signs in over HTTP at `POST /auth/v1/native-sessions` with `{ provider: "apple", id_token, authorization_code, display_name? }`, after passing Apple the SHA-256 of a nonce from `POST /auth/v1/native-sessions/nonces`, and gets the same native session a Google sign-in gets. `appleKeyStatus` gives the notification URL to set as the App ID's server-to-server notification endpoint: when a person removes the app from their Apple ID or deletes their Apple account, Run402 ends their Apple sign-in and emits the project event `auth_apple_sign_in_revoked`. A person who removed the app returns to the same user on their next Apple sign-in; for a deleted Apple account the app can delete what it holds about them. When an Apple identity is removed (unlinked, its user or the project deleted), Run402 revokes the person's Apple authorization.
 
 `getUser` looks one project user up by email (case-insensitive) with the service key and changes nothing: a member or a test user (`is_test: true`), so a role table keyed by user id can be seeded. No match throws the gateway's 404 `AUTH_USER_NOT_FOUND`, whose `next_actions` name the create route.
 
