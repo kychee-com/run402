@@ -518,7 +518,10 @@ export class NodeActions implements Run402Actions {
         details: { mode: "plan" },
       });
     } else if (this.#targetKind() !== "core") {
-      await this.#ensureCloudTier(run, input.tier ?? DEFAULT_BOOTSTRAP_TIER, { explicitTier: input.tier !== undefined });
+      await this.#ensureCloudTier(run, input.tier ?? DEFAULT_BOOTSTRAP_TIER, {
+        explicitTier: input.tier !== undefined,
+        projectId: target?.project_id ?? null,
+      });
     } else {
       run.skipStep({
         action: Run402Action.TierSet,
@@ -1466,7 +1469,10 @@ export class NodeActions implements Run402Actions {
       });
     }
 
-    await this.#ensureCloudTier(run, input.tier ?? DEFAULT_BOOTSTRAP_TIER, { explicitTier: input.tier !== undefined });
+    await this.#ensureCloudTier(run, input.tier ?? DEFAULT_BOOTSTRAP_TIER, {
+      explicitTier: input.tier !== undefined,
+      projectId: input.projectId ?? null,
+    });
     const resolved = await this.#resolveProject(input, manifest, workspaceDir, run);
     await this.#recordAppInstallState({
       projectId: resolved.projectId,
@@ -2230,9 +2236,47 @@ export class NodeActions implements Run402Actions {
    * tier lower than the organization's current one unless the caller named
    * that tier explicitly (`explicitTier`).
    */
-  async #ensureCloudTier(run: ActionRun, desiredTier: TierName, opts: { explicitTier?: boolean } = {}): Promise<void> {
+  async #ensureCloudTier(
+    run: ActionRun,
+    desiredTier: TierName,
+    opts: { explicitTier?: boolean; projectId?: string | null } = {},
+  ): Promise<void> {
     const wallet = await this.#ensureWallet(run, { fund: false });
     const idempotencyKey = run.childKey("tier.set");
+
+    // Deploying to an existing project: its owning organization's tier is the
+    // one that matters, and it need not be the wallet's own (a member of a team
+    // org deploys there). Satisfied there, nothing is funded or bought.
+    if (!wallet.planned && opts.projectId) {
+      const owning = await this.#owningOrganizationTier(opts.projectId);
+      if (owning && TIER_RANK[owning.tier] >= TIER_RANK[desiredTier]) {
+        const reason = `project's org has active ${owning.tier} tier`;
+        const details = {
+          reason,
+          project_id: opts.projectId,
+          org_id: owning.orgId,
+          current_tier: owning.tier,
+          desired_tier: desiredTier,
+        };
+        run.skipStep({
+          action: "wallets.faucet",
+          description: `Faucet not needed: ${reason}`,
+          mutation: false,
+          auto: true,
+          details,
+        });
+        run.skipStep({
+          action: Run402Action.TierSet,
+          description: owning.tier === desiredTier
+            ? `The project's org already holds an active ${owning.tier} tier`
+            : `The project's org's active ${owning.tier} tier already satisfies the ${desiredTier} requirement`,
+          mutation: false,
+          auto: true,
+          details,
+        });
+        return;
+      }
+    }
 
     if (wallet.planned) {
       // Dry run, no local wallet yet: a new wallet has no organization and no
@@ -2366,6 +2410,23 @@ export class NodeActions implements Run402Actions {
     const pay = () => this.sdk.tier.set(desiredTier, idempotencyKey ? { idempotencyKey } : {});
     const result = await (justFunded ? afterFaucet(pay) : pay());
     run.setState(step, "succeeded", { tier: result.tier, action: result.action });
+  }
+
+  /**
+   * The tier of the organization that owns an existing project, when that
+   * organization is in good standing; null when the project cannot be read
+   * (not yet created, or not visible) or its organization is not active, so
+   * bootstrap falls back to the wallet's own organization.
+   */
+  async #owningOrganizationTier(projectId: string): Promise<{ tier: TierName; orgId: string | null } | null> {
+    try {
+      const project = await this.sdk.projects.get(projectId);
+      const tier = normalizeTier(project.tier);
+      if (!tier || project.organization_lifecycle_state !== "active") return null;
+      return { tier, orgId: typeof project.org_id === "string" ? project.org_id : null };
+    } catch {
+      return null;
+    }
   }
 
   async #planFaucet(run: ActionRun, reason: string): Promise<void> {

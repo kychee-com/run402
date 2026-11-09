@@ -493,6 +493,63 @@ test("up dry-run on an org with an active higher tier skips the faucet and tier 
   }
 });
 
+test("up on an existing project whose org holds an active tier funds and buys nothing, even when the wallet's own org has none", async () => {
+  const dir = mkdtempSync(join(process.cwd(), ".tmp-run402-up-project-org-tier-"));
+  writeFileSync(join(dir, "run402.deploy.json"), JSON.stringify({
+    site: { replace: { "index.html": { data: "<h1>hello</h1>" } } },
+  }));
+  const calls: string[] = [];
+  const sdk = fakeSdk({ calls, walletConfigured: true, tierActive: false, activeProject: null });
+  (sdk.projects as Record<string, unknown>).get = async (id: string) => {
+    calls.push(`projects.get:${id}`);
+    return { project_id: id, org_id: "org_team", tier: "prototype", organization_lifecycle_state: "active" };
+  };
+
+  try {
+    const result = await new NodeActions(sdk, { targetKind: "cloud", cwd: dir }).up(
+      { projectId: "prj_member" },
+      { approval: "yes" },
+    );
+    assert.ok(calls.includes("projects.get:prj_member"), "reads the target project's owning org");
+    assert.ok(!calls.some((c) => c.startsWith("wallets.faucet:") || c.startsWith("tier.set:")), JSON.stringify(calls));
+    assert.ok(!calls.includes("tier.status"), "the wallet's own org is not consulted");
+    const faucet = result.steps.find((step) => step.action === "wallets.faucet");
+    const tier = result.steps.find((step) => step.action === Run402Action.TierSet);
+    assert.equal(faucet?.state, "skipped");
+    assert.equal(tier?.state, "skipped");
+    assert.equal(tier?.details?.reason, "project's org has active prototype tier");
+    assert.equal(tier?.details?.org_id, "org_team");
+    assert.ok(calls.includes("project.apply:prj_member"));
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("up on an existing project it cannot read falls back to the wallet's own org tier", async () => {
+  const dir = mkdtempSync(join(process.cwd(), ".tmp-run402-up-project-unreadable-"));
+  writeFileSync(join(dir, "run402.deploy.json"), JSON.stringify({
+    site: { replace: { "index.html": { data: "<h1>hello</h1>" } } },
+  }));
+  const calls: string[] = [];
+  const sdk = fakeSdk({ calls, walletConfigured: true, tierActive: true, activeProject: null });
+  (sdk.projects as Record<string, unknown>).get = async (id: string) => {
+    calls.push(`projects.get:${id}`);
+    throw new Error("forbidden");
+  };
+
+  try {
+    const result = await new NodeActions(sdk, { targetKind: "cloud", cwd: dir }).up(
+      { projectId: "prj_member" },
+      { approval: "yes" },
+    );
+    assert.ok(calls.includes("tier.status"));
+    const tier = result.steps.find((step) => step.action === Run402Action.TierSet);
+    assert.equal(tier?.details?.reason, "org has active prototype tier");
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
 test("up dry-run on an active lower tier describes the purchase as an upgrade with both tiers", async () => {
   const dir = mkdtempSync(join(tmpdir(), "run402-up-dry-run-upgrade-"));
   writeFileSync(join(dir, "run402.deploy.json"), JSON.stringify({
