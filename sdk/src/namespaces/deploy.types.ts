@@ -2693,6 +2693,15 @@ export interface OperationSnapshot {
   updated_at: string;
   rehearsal_report?: ApplyRehearsalReport;
   actor?: OperationActorSnapshot | null;
+  /** The commit's pre-migration restore point, once the snapshot phase
+   *  captured one, on any status: the same value the commit response carried.
+   *  The operation's record, not a liveness claim. */
+  restore_point?: CommitRestorePoint;
+  /** Once the snapshot phase finished without a snapshot: the commit's reason
+   *  (`explicit_skip_requested`, `capture_size_limit_exceeded`,
+   *  `migrations_unchanged`), with its `AUTO_SNAPSHOT_SKIPPED_*` warning in
+   *  `warnings` when the commit raised one. */
+  snapshot_skipped_reason?: string;
   /** Present on a `ready` snapshot only: the same gateway riders a synchronous
    *  ready commit carries (`poll`, `watch_errors`, `hand_to_member`). A
    *  polled deploy is never a weaker contract than the commit response. */

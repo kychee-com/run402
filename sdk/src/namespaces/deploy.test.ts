@@ -1292,9 +1292,10 @@ describe("Deploy.apply (the commit's pre-migration snapshot outcome)", () => {
     };
   }
 
-  function readySnapshot(id: string, pollCount: number): OperationSnapshot {
+  function readySnapshot(id: string, pollCount: number, extra: Partial<OperationSnapshot> = {}): OperationSnapshot {
     const ready = pollCount >= 2;
     return {
+      ...extra,
       operation_id: `op_${id}`,
       project_id: "prj_test",
       plan_id: `plan_${id}`,
@@ -1312,7 +1313,7 @@ describe("Deploy.apply (the commit's pre-migration snapshot outcome)", () => {
     };
   }
 
-  async function applyAgainst(id: string, commit: CommitResponse) {
+  async function applyAgainst(id: string, commit: CommitResponse, snapshotExtra: Partial<OperationSnapshot> = {}) {
     const w = makeWiring();
     let pollCount = 0;
     w.setHandler((req) => {
@@ -1320,7 +1321,7 @@ describe("Deploy.apply (the commit's pre-migration snapshot outcome)", () => {
       if (req.path === `/apply/v1/plans/plan_${id}/commit`) return commit;
       if (req.path === `/apply/v1/operations/op_${id}`) {
         pollCount += 1;
-        return readySnapshot(id, pollCount);
+        return readySnapshot(id, pollCount, snapshotExtra);
       }
       throw new Error(`unexpected path ${req.path}`);
     });
@@ -1385,6 +1386,39 @@ describe("Deploy.apply (the commit's pre-migration snapshot outcome)", () => {
     });
     assert.equal(result.snapshot_skipped_reason, "migrations_unchanged");
     assert.equal(result.restore_point, undefined);
+  });
+
+  it("a commit answering running takes the restore_point from the operation snapshot it polls", async () => {
+    const restore_point = {
+      snapshot_id: "snap_running",
+      restore_url: "/projects/v1/prj_test/snapshots/snap_running/restore",
+    };
+    const { result, pollCount } = await applyAgainst(
+      "rp_running",
+      { operation_id: "op_rp_running", status: "running", release_id: "rel_rp_running" },
+      { restore_point },
+    );
+    assert.ok(pollCount >= 2, "the running commit was polled to ready");
+    assert.deepEqual(result.restore_point, restore_point);
+  });
+
+  it("the operation snapshot's outcome wins over the one carried from the commit", async () => {
+    const fromSnapshot = {
+      snapshot_id: "snap_server",
+      restore_url: "/projects/v1/prj_test/snapshots/snap_server/restore",
+    };
+    const { result } = await applyAgainst(
+      "rp_prefer",
+      {
+        operation_id: "op_rp_prefer",
+        status: "schema_settling",
+        release_id: "rel_rp_prefer",
+        snapshot_skipped_reason: "migrations_unchanged",
+      },
+      { restore_point: fromSnapshot },
+    );
+    assert.deepEqual(result.restore_point, fromSnapshot);
+    assert.equal(result.snapshot_skipped_reason, undefined);
   });
 
   it("leaves both fields absent when the commit sent neither", async () => {
@@ -5108,6 +5142,74 @@ describe("Deploy.resume (input validation + error wrapping)", () => {
         err instanceof Run402DeployError &&
         (err as Run402DeployError).code === "OPERATION_NOT_FOUND",
     );
+  });
+});
+
+describe("Deploy.resume (the commit's pre-migration snapshot outcome)", () => {
+  const OP: OperationSnapshot = {
+    operation_id: "op_resume_snap",
+    project_id: "prj_test",
+    plan_id: "plan_resume_snap",
+    status: "ready",
+    base_release_id: null,
+    target_release_id: "rel_resume_snap",
+    release_id: "rel_resume_snap",
+    urls: { site: "https://prj.run402.test" },
+    payment_required: null,
+    error: null,
+    activate_attempts: 1,
+    last_activate_attempt_at: null,
+    created_at: "2026-11-09T12:00:00.000Z",
+    updated_at: "2026-11-09T12:01:00.000Z",
+  };
+  const EXPLICIT_WARNING = {
+    code: "AUTO_SNAPSHOT_SKIPPED_EXPLICIT",
+    severity: "warn",
+    requires_confirmation: false,
+    affected: ["prj_test"],
+    message: "Automatic pre-migration snapshot was explicitly skipped for this commit.",
+    details: { reason: "explicit_skip_requested", migration_count: 1 },
+  } as const;
+
+  it("a resume that answers ready returns the operation's restore_point", async () => {
+    const restore_point = {
+      snapshot_id: "snap_resumed",
+      restore_url: "/projects/v1/prj_test/snapshots/snap_resumed/restore",
+    };
+    const w = makeWiring();
+    w.setHandler((req) => {
+      if (req.path === "/apply/v1/operations/op_resume_snap/resume") return { ...OP, restore_point };
+      if (req.path === "/apply/v1/operations/op_resume_snap/events") return { events: [] };
+      throw new Error(`unexpected path ${req.path}`);
+    });
+    const result = await new Deploy(w.client).resume("op_resume_snap", { project: "prj_test" });
+    assert.deepEqual(result.restore_point, restore_point);
+    assert.equal(result.snapshot_skipped_reason, undefined);
+  });
+
+  it("a resume polled to ready returns the skip reason and its warning", async () => {
+    const w = makeWiring();
+    let polls = 0;
+    w.setHandler((req) => {
+      if (req.path === "/apply/v1/operations/op_resume_snap/resume") {
+        return { ...OP, status: "activating", release_id: null, urls: null };
+      }
+      if (req.path === "/apply/v1/operations/op_resume_snap/events") return { events: [] };
+      if (req.path === "/apply/v1/operations/op_resume_snap") {
+        polls += 1;
+        return {
+          ...OP,
+          snapshot_skipped_reason: "explicit_skip_requested",
+          warnings: [EXPLICIT_WARNING],
+        };
+      }
+      throw new Error(`unexpected path ${req.path}`);
+    });
+    const result = await new Deploy(w.client).resume("op_resume_snap", { project: "prj_test" });
+    assert.ok(polls >= 1, "the resumed operation was polled");
+    assert.equal(result.snapshot_skipped_reason, "explicit_skip_requested");
+    assert.equal(result.restore_point, undefined);
+    assert.deepEqual(result.warnings.map((warning) => warning.code), ["AUTO_SNAPSHOT_SKIPPED_EXPLICIT"]);
   });
 });
 

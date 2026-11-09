@@ -2758,7 +2758,8 @@ async function pollUntilReady(
   );
   // A deferred commit (schema_settling / activation_pending) already said
   // what happened to its pre-migration snapshot and which warnings it raised;
-  // the operation snapshot repeats neither, so they ride across the poll.
+  // they ride across the poll for a gateway whose operation snapshot does not
+  // repeat them. A `running` commit says neither: the snapshot does.
   return await pollSnapshotUntilReady(
     client,
     initialSnapshot,
@@ -2782,12 +2783,24 @@ function mergeWarningsByCode(
 
 /** The commit's pre-migration snapshot outcome, as `DeployResult` carries it. */
 function commitSnapshotOutcome(
-  commit: CommitResponse,
+  commit: Pick<CommitResponse, "restore_point" | "snapshot_skipped_reason">,
 ): Pick<DeployResult, "restore_point" | "snapshot_skipped_reason"> {
   return {
     ...(commit.restore_point ? { restore_point: commit.restore_point } : {}),
     ...(commit.snapshot_skipped_reason ? { snapshot_skipped_reason: commit.snapshot_skipped_reason } : {}),
   };
+}
+
+/**
+ * The operation snapshot's own snapshot outcome when it states one (the
+ * gateway's record of the commit), else the one carried from the commit.
+ */
+function preferSnapshotOutcome(
+  snapshot: OperationSnapshot,
+  carried: Pick<DeployResult, "restore_point" | "snapshot_skipped_reason">,
+): Pick<DeployResult, "restore_point" | "snapshot_skipped_reason"> {
+  const own = commitSnapshotOutcome(snapshot);
+  return own.restore_point || own.snapshot_skipped_reason ? own : carried;
 }
 
 async function pollSnapshotUntilReady(
@@ -2910,7 +2923,7 @@ async function pollSnapshotUntilReady(
         urls: snapshot.urls,
         diff,
         warnings: mergeWarningsByCode(warnings, snapshot.warnings),
-        ...snapshotOutcome,
+        ...preferSnapshotOutcome(snapshot, snapshotOutcome),
         ...(snapshot.subdomain_bindings ? { subdomain_bindings: snapshot.subdomain_bindings } : {}),
         ...(snapshot.static_continuity ? { static_continuity: snapshot.static_continuity } : {}),
         ...(snapshot.edge ? { edge: snapshot.edge } : {}),

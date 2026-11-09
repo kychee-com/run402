@@ -213,7 +213,10 @@ Options:
   --quiet | --final-only  Suppress per-event stderr; only print the final result
 
 Output:
-  stdout: { "release_id": "...", "operation_id": "...", "urls": {...} }
+  stdout: { "release_id": "...", "operation_id": "...", "urls": {...}, "warnings": [...] }
+          plus the commit's "restore_point": { "snapshot_id", "restore_url" } when a
+          migration's pre-migration snapshot was taken, or "snapshot_skipped_reason"
+          when it was not
   stderr: one JSON event per line (suppressed with --quiet or --final-only)
 `;
 
