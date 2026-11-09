@@ -1,9 +1,9 @@
 {
   "owner": "gateway",
   "repository": "kychee-com/run402-private",
-  "revision": "81535bc4c34961b898b1f78b43ef719534daee9a",
+  "revision": "772d11ab7dc125f845115f727521b43bd4bd34c6",
   "source": "packages/gateway/src/utils/error-envelope.ts",
-  "sourceDigest": "8c3bbd2080f5a903a3bb5a2f0372e5427c54d38f8b5dc8bc5a8f50096a81992c",
+  "sourceDigest": "651932b065ac8fdc256a20a014a0302b8d732436f7f5acf4521b8503e6b01630",
   "codes": [
     "VALIDATION_FAILED",
     "AUTH_REQUIRED",
