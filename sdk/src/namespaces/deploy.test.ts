@@ -1399,13 +1399,18 @@ describe("Deploy.apply (the commit's pre-migration snapshot outcome)", () => {
   });
 });
 
-describe("Deploy.apply (content commit transient failures)", () => {
+describe("Deploy.apply (content commit follows the gateway's answer)", () => {
   const ALB_502_BODY = "<html>\r\n<head><title>502 Bad Gateway</title></head>\r\n</html>\r\n";
 
-  function wireUpload(w: FakeWiring, onContentCommit: (attempt: number) => unknown): () => number {
+  function wireUpload(
+    w: FakeWiring,
+    onContentCommit: (attempt: number) => unknown,
+    onPlanRead: (read: number) => unknown = () => { throw new Error("unexpected plan read"); },
+  ): { commits: () => number; reads: () => number } {
     const html = "<html><body>retry</body></html>";
     const sha = shaHex(html);
     let commits = 0;
+    let reads = 0;
     w.setHandler((req) => {
       if (req.path === "/apply/v1/plans") {
         return { ...noContentPlan("plan_r", "op_r"), missing_content: [{ sha256: sha, size: html.length, present: false }] };
@@ -1428,10 +1433,11 @@ describe("Deploy.apply (content commit transient failures)", () => {
         };
       }
       if (req.path === "/content/v1/plans/cplan_r/commit") return onContentCommit(++commits);
+      if (req.path === "/content/v1/plans/cplan_r" && req.method === "GET") return onPlanRead(++reads);
       if (req.path === "/apply/v1/plans/plan_r/commit") return readyCommit("op_r", "rel_r");
       throw new Error(`unexpected path ${req.path}`);
     });
-    return () => commits;
+    return { commits: () => commits, reads: () => reads };
   }
 
   async function applyRetrySite(w: FakeWiring) {
@@ -1441,51 +1447,82 @@ describe("Deploy.apply (content commit transient failures)", () => {
     });
   }
 
-  it("retries a content commit that the load balancer answered 502", async () => {
+  it("a 200 committed answer is done: one commit, no read", async () => {
     const w = makeWiring();
-    const commits = wireUpload(w, (attempt) => {
-      if (attempt === 1) throw new ApiError("API error", 502, ALB_502_BODY, "committing content upload");
-      return {};
-    });
+    const counts = wireUpload(w, () => ({ plan_id: "cplan_r", status: "committed", committed: true, promoted: 1 }));
     const result = await applyRetrySite(w);
     assert.equal(result.release_id, "rel_r");
-    assert.equal(commits(), 2);
+    assert.equal(counts.commits(), 1);
+    assert.equal(counts.reads(), 0);
+    const commitReq = w.requests.find((r) => r.path === "/content/v1/plans/cplan_r/commit");
+    assert.equal(commitReq?.headers?.Prefer, "respond-async, wait=20", "asks for the bounded answer it follows");
   });
 
-  it("treats PLAN_ALREADY_COMMITTED on the retry as success (the lost attempt had committed)", async () => {
+  it("follows a 202 committing by reading the plan until it is committed, never committing twice", async () => {
     const w = makeWiring();
-    const commits = wireUpload(w, (attempt) => {
-      if (attempt === 1) throw new NetworkError("socket hang up", null, "committing content upload");
-      throw new ApiError("plan already committed", 409, { code: "PLAN_ALREADY_COMMITTED" }, "committing content upload");
-    });
+    const counts = wireUpload(
+      w,
+      () => ({ plan_id: "cplan_r", status: "committing", next_actions: [{ type: "poll", method: "GET", path: "/content/v1/plans/cplan_r" }] }),
+      () => ({ plan_id: "cplan_r", status: "committed" }),
+    );
     const result = await applyRetrySite(w);
     assert.equal(result.release_id, "rel_r");
-    assert.equal(commits(), 2);
+    assert.equal(counts.commits(), 1);
+    assert.equal(counts.reads(), 1);
   });
 
-  it("does not retry a refusal, and does not swallow PLAN_ALREADY_COMMITTED on the first attempt", async () => {
-    const refused = makeWiring();
-    const refusedCommits = wireUpload(refused, () => {
+  it("a commit the load balancer answered 502 becomes a read of the plan, not a second commit", async () => {
+    const w = makeWiring();
+    const counts = wireUpload(
+      w,
+      () => { throw new ApiError("API error", 502, ALB_502_BODY, "committing content upload"); },
+      () => ({ plan_id: "cplan_r", status: "committed" }),
+    );
+    const result = await applyRetrySite(w);
+    assert.equal(result.release_id, "rel_r");
+    assert.equal(counts.commits(), 1);
+    assert.equal(counts.reads(), 1);
+  });
+
+  it("a commit lost before it arrived reads pending and commits as the read says", async () => {
+    const w = makeWiring();
+    const counts = wireUpload(
+      w,
+      (attempt) => {
+        if (attempt === 1) throw new NetworkError("socket hang up", null, "committing content upload");
+        return { plan_id: "cplan_r", status: "committed" };
+      },
+      () => ({ plan_id: "cplan_r", status: "pending", next_actions: [{ type: "commit", method: "POST", path: "/content/v1/plans/cplan_r/commit" }] }),
+    );
+    const result = await applyRetrySite(w);
+    assert.equal(result.release_id, "rel_r");
+    assert.equal(counts.commits(), 2);
+    assert.equal(counts.reads(), 1);
+  });
+
+  it("a failed commit read throws CONTENT_UPLOAD_FAILED with the plan id and the gateway's code", async () => {
+    const w = makeWiring();
+    wireUpload(
+      w,
+      () => ({ plan_id: "cplan_r", status: "committing" }),
+      () => ({ plan_id: "cplan_r", status: "failed", error: { code: "size_mismatch", message: "Actual size 1 does not match declared 2", retryable: false } }),
+    );
+    await assert.rejects(applyRetrySite(w), (err: Run402DeployError) => {
+      assert.equal(err.code, "CONTENT_UPLOAD_FAILED");
+      assert.equal(err.planId, "cplan_r");
+      assert.equal(err.retryable, false);
+      assert.match(err.message, /size_mismatch/);
+      return true;
+    });
+  });
+
+  it("a refusal of the commit is thrown as the gateway answered it, without a repeat", async () => {
+    const w = makeWiring();
+    const counts = wireUpload(w, () => {
       throw new ApiError("plan expired", 409, { code: "PLAN_EXPIRED" }, "committing content upload");
     });
-    await assert.rejects(applyRetrySite(refused), (err: ApiError) => err.status === 409);
-    assert.equal(refusedCommits(), 1);
-
-    const first = makeWiring();
-    const firstCommits = wireUpload(first, () => {
-      throw new ApiError("plan already committed", 409, { code: "PLAN_ALREADY_COMMITTED" }, "committing content upload");
-    });
-    await assert.rejects(applyRetrySite(first), (err: ApiError) => err.status === 409);
-    assert.equal(firstCommits(), 1);
-  });
-
-  it("gives up after three 502s and surfaces the last one", async () => {
-    const w = makeWiring();
-    const commits = wireUpload(w, () => {
-      throw new ApiError("API error", 502, ALB_502_BODY, "committing content upload");
-    });
-    await assert.rejects(applyRetrySite(w), (err: ApiError) => err.status === 502);
-    assert.equal(commits(), 3);
+    await assert.rejects(applyRetrySite(w), (err: ApiError) => err.status === 409);
+    assert.equal(counts.commits(), 1);
   });
 });
 

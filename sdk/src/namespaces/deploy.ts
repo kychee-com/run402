@@ -120,10 +120,15 @@ const APPLY_RETRY_DEFAULT_MAX_RETRIES = 2;
 const APPLY_RETRY_BASE_DELAY_MS = 250;
 const APPLY_RETRY_MAX_DELAY_MS = 2_000;
 const APPLY_RETRY_JITTER_MS = 100;
-const CONTENT_COMMIT_MAX_ATTEMPTS = 3;
 const DEPLOY_COMMIT_MAX_ATTEMPTS = 3;
 const DEPLOY_COMMIT_RETRY_BASE_DELAY_MS = 1_000;
-const CONTENT_COMMIT_RETRY_BASE_DELAY_MS = 500;
+/** A content commit the gateway answered 202 is read back on this schedule. */
+const CONTENT_COMMIT_POLL_INITIAL_MS = 1_000;
+const CONTENT_COMMIT_POLL_MAX_MS = 10_000;
+const CONTENT_COMMIT_POLL_TIMEOUT_MS = 60 * 60 * 1000;
+/** The commit answers within 20 s (200 when done, else 202 with a poll) instead
+ *  of holding the request for as long as a large promote takes (RFC 7240). */
+const CONTENT_COMMIT_PREFER = "respond-async, wait=20";
 const URL_REFRESH_AT_MS = 50 * 60 * 1000;
 const SECRET_KEY_RE = /^[A-Z_][A-Z0-9_]{0,127}$/;
 const APPLY_SAFE_RETRY_CODES = new Set<Run402DeployErrorCode>([
@@ -2403,7 +2408,7 @@ async function uploadMissing(
   // Plan-level finalize — marks the plan committed in the deploy_plans
   // table. Per-session promotion to CAS already happened in the loop
   // above; this call is the plan-level idempotency anchor.
-  await commitContentPlanWithRetry(client, planRes.plan_id, headers);
+  await commitContentPlan(client, planRes.plan_id, headers);
 }
 
 async function uploadCoreContent(
@@ -2453,31 +2458,81 @@ interface UploadedPart {
   etag: string;
 }
 
+/** A content plan's commit state, as the commit (200/202) and `GET /content/v1/plans/:plan_id` answer it. */
+interface ContentPlanCommitState {
+  plan_id?: string;
+  status?: "pending" | "committing" | "committed" | "failed" | "expired";
+  error?: { code?: string; message?: string; retryable?: boolean } | null;
+}
+
 /**
- * Finalize a content plan, riding out a transient gateway failure. A 502/503/504
- * or a dropped connection means the load balancer or the network lost the
- * request, not that the gateway refused it, and the commit is safe to repeat: the
- * gateway re-promotes the same staged sessions. If a lost attempt had in fact
- * committed, the repeat answers 409 PLAN_ALREADY_COMMITTED, which is success.
+ * Finalize a content plan by following the gateway's answer. The gateway runs
+ * one commit per plan, detached from the request, and with
+ * `Prefer: respond-async, wait=20` answers its state within 20 s: 200
+ * is done; 202 `committing` is followed by reading the plan (its `poll` next
+ * action) until the commit is terminal; a read that says `pending` (the commit
+ * never reached the gateway) is followed by the commit it names. A 502/503/504
+ * or a dropped connection on the commit becomes a read of the plan, never a
+ * second commit. `failed` and `expired` throw with the plan id.
  */
-async function commitContentPlanWithRetry(
+async function commitContentPlan(
   client: Client,
   planId: string,
   headers: Record<string, string>,
 ): Promise<void> {
-  for (let attempt = 1; ; attempt++) {
+  const planPath = `/content/v1/plans/${encodeURIComponent(planId)}`;
+  const postCommit = async (): Promise<ContentPlanCommitState | null> => {
     try {
-      await client.request<unknown>(
-        `/content/v1/plans/${encodeURIComponent(planId)}/commit`,
-        { method: "POST", headers, body: {}, context: "committing content upload" },
-      );
-      return;
+      return await client.request<ContentPlanCommitState>(`${planPath}/commit`, {
+        method: "POST",
+        headers: { ...headers, Prefer: CONTENT_COMMIT_PREFER },
+        body: {},
+        context: "committing content upload",
+      });
     } catch (err) {
-      if (attempt > 1 && isRun402Error(err) && err.status === 409 && err.code === "PLAN_ALREADY_COMMITTED") return;
-      if (!isTransientGatewayFailure(err) || attempt >= CONTENT_COMMIT_MAX_ATTEMPTS) throw err;
-      await sleep(CONTENT_COMMIT_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1));
+      if (isTransientGatewayFailure(err)) return null;
+      throw err;
     }
+  };
+  const deadline = Date.now() + CONTENT_COMMIT_POLL_TIMEOUT_MS;
+  let delay = CONTENT_COMMIT_POLL_INITIAL_MS;
+  let state = await postCommit();
+  for (;;) {
+    const status = state?.status;
+    if (state && status !== "committing" && status !== "pending") {
+      if (status === "failed" || status === "expired") throw contentCommitStateError(planId, state);
+      return;
+    }
+    if (Date.now() >= deadline) {
+      throw new Run402DeployError(
+        `Content commit for plan ${planId} was still running after ${CONTENT_COMMIT_POLL_TIMEOUT_MS / 60_000} minutes; read GET ${planPath} for its state`,
+        { code: "CONTENT_UPLOAD_FAILED", phase: "upload", retryable: true, planId, context: "committing content upload" },
+      );
+    }
+    if (status === "pending") {
+      state = await postCommit();
+      continue;
+    }
+    await sleep(delay);
+    delay = Math.min(delay * 2, CONTENT_COMMIT_POLL_MAX_MS);
+    state = await requestWithTransientRetry(() =>
+      client.request<ContentPlanCommitState>(planPath, { method: "GET", headers, context: "reading the content commit" }),
+    );
   }
+}
+
+function contentCommitStateError(planId: string, state: ContentPlanCommitState): Run402DeployError {
+  const reason = state.status === "expired"
+    ? "the plan expired before it was committed"
+    : `${state.error?.code ?? "failed"}: ${state.error?.message ?? "the commit failed"}`;
+  return new Run402DeployError(`Content commit for plan ${planId} failed (${reason})`, {
+    code: "CONTENT_UPLOAD_FAILED",
+    phase: "upload",
+    retryable: state.status === "failed" && state.error?.retryable === true,
+    planId,
+    body: state,
+    context: "committing content upload",
+  });
 }
 
 /** Repeat a read or an idempotent request lost to a 502/503/504 or a dropped connection. */
@@ -5538,7 +5593,7 @@ async function uploadInlineCas(
     await uploadOne(client.fetch, session, bytes);
     // v1.48 unified-apply: per-session /storage/v1/uploads/:id/complete is
     // gone (404). The plan-level commit below promotes the session to CAS.
-    await commitContentPlanWithRetry(client, planRes.plan_id, headers);
+    await commitContentPlan(client, planRes.plan_id, headers);
   }
   return { sha256, size: bytes.byteLength, contentType };
 }

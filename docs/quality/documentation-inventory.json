@@ -50,7 +50,7 @@
       "purpose": "maintainer",
       "interface": "mixed",
       "exception": "Repository development and implementation instructions; product operations still prefer CLI.",
-      "sha256": "a559b49e2f39af6da5bcd508e16ef00f4962e2fcc21ecc003dfd2054c3375170",
+      "sha256": "d14c1f4ad761ac04f9e50ea86708caf90d30b920472c499014b11bf8b1c38899",
       "outputs": [],
       "url": null,
       "checks": [
@@ -3013,7 +3013,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "65ae46347afa3905184280af9476a17b022659a9db5d938eeb18821c073c044b",
+      "sha256": "bddc950e99140161f83dba460ae4c4c32b55af677cf55b342c1487d3ca108316",
       "outputs": [],
       "url": "https://docs.run402.com/errors/gateway/",
       "checks": [
@@ -3034,7 +3034,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "138ea65010047c334957c67d1c3071fc888f0f4c49fba9c5925b649e89e68e7d",
+      "sha256": "683107c74f68d11de68dc997d6dd6bef165345f3bf40154172a8fa2664591803",
       "outputs": [],
       "url": "https://docs.run402.com/errors/",
       "checks": [
@@ -3405,7 +3405,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "7997f30fe0ee25314d20ecc43cb46203225fef7728106a871a8a897b181f6c4b",
+      "sha256": "5a65db94b3d3852b314fc193efa535ba03aad529ec39a2c05e66547520c62920",
       "outputs": [],
       "url": "https://docs.run402.com/reference/error-codes/",
       "checks": [

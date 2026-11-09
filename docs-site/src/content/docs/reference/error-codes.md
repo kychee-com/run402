@@ -1772,10 +1772,6 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="PIN_MANIFEST_STORAGE_INTEGRITY_FAILURE"></a>
 [`PIN_MANIFEST_STORAGE_INTEGRITY_FAILURE`](/errors/gateway/#PIN_MANIFEST_STORAGE_INTEGRITY_FAILURE)
 
-<a id="plan_already_committed"></a>
-<a id="PLAN_ALREADY_COMMITTED"></a>
-[`PLAN_ALREADY_COMMITTED`](/errors/gateway/#PLAN_ALREADY_COMMITTED)
-
 <a id="plan_expired"></a>
 <a id="PLAN_EXPIRED"></a>
 [`PLAN_EXPIRED`](/errors/gateway/#PLAN_EXPIRED)

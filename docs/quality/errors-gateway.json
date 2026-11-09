@@ -1,9 +1,9 @@
 {
   "owner": "gateway",
   "repository": "kychee-com/run402-private",
-  "revision": "e0e6eaadf8dede23101fe062da62d0d3cd17dd42",
+  "revision": "81535bc4c34961b898b1f78b43ef719534daee9a",
   "source": "packages/gateway/src/utils/error-envelope.ts",
-  "sourceDigest": "f601aec807eb68ec9b9cf480890f695d234cdb37337f79ca38718b1566a0c481",
+  "sourceDigest": "8c3bbd2080f5a903a3bb5a2f0372e5427c54d38f8b5dc8bc5a8f50096a81992c",
   "codes": [
     "VALIDATION_FAILED",
     "AUTH_REQUIRED",
@@ -336,7 +336,6 @@
     "INVALID_REHEARSAL_OPTIONS",
     "INVALID_SNAPSHOT_OPTION",
     "NO_ACTIVE_RELEASE",
-    "PLAN_ALREADY_COMMITTED",
     "PLAN_EXPIRED",
     "PLAN_REQUIRES_INLINE_SPEC",
     "PROMOTE_PROJECT_MISMATCH",

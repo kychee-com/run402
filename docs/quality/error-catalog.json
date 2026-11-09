@@ -2,8 +2,8 @@
   "version": 1,
   "contributions": {
     "gateway": {
-      "revision": "e0e6eaadf8dede23101fe062da62d0d3cd17dd42",
-      "sourceDigest": "f601aec807eb68ec9b9cf480890f695d234cdb37337f79ca38718b1566a0c481"
+      "revision": "81535bc4c34961b898b1f78b43ef719534daee9a",
+      "sourceDigest": "8c3bbd2080f5a903a3bb5a2f0372e5427c54d38f8b5dc8bc5a8f50096a81992c"
     },
     "core": {
       "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7"
@@ -5029,16 +5029,6 @@
         }
       ],
       "topic": "/errors/gateway/#PIN_MANIFEST_STORAGE_INTEGRITY_FAILURE"
-    },
-    {
-      "code": "PLAN_ALREADY_COMMITTED",
-      "owners": [
-        {
-          "owner": "gateway",
-          "source": "packages/gateway/src/utils/error-envelope.ts"
-        }
-      ],
-      "topic": "/errors/gateway/#PLAN_ALREADY_COMMITTED"
     },
     {
       "code": "PLAN_EXPIRED",

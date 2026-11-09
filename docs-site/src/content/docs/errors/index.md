@@ -1353,9 +1353,6 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="PIN_MANIFEST_STORAGE_INTEGRITY_FAILURE"></a>
 [`PIN_MANIFEST_STORAGE_INTEGRITY_FAILURE`](/errors/gateway/#PIN_MANIFEST_STORAGE_INTEGRITY_FAILURE)
 
-<a id="PLAN_ALREADY_COMMITTED"></a>
-[`PLAN_ALREADY_COMMITTED`](/errors/gateway/#PLAN_ALREADY_COMMITTED)
-
 <a id="PLAN_EXPIRED"></a>
 [`PLAN_EXPIRED`](/errors/gateway/#PLAN_EXPIRED)
 
