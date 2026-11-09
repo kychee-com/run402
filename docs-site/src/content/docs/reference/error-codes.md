@@ -432,6 +432,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="CANNOT_REBUILD_UNLOCKED_DEPS"></a>
 [`CANNOT_REBUILD_UNLOCKED_DEPS`](/errors/client/#CANNOT_REBUILD_UNLOCKED_DEPS)
 
+<a id="capture_size_limit_exceeded"></a>
+<a id="CAPTURE_SIZE_LIMIT_EXCEEDED"></a>
+[`CAPTURE_SIZE_LIMIT_EXCEEDED`](/errors/gateway/#CAPTURE_SIZE_LIMIT_EXCEEDED)
+
 <a id="chain_broken"></a>
 <a id="CHAIN_BROKEN"></a>
 [`CHAIN_BROKEN`](/errors/gateway/#CHAIN_BROKEN)

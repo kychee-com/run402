@@ -435,6 +435,12 @@ Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
 
 The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
 
+<h2 id="CAPTURE_SIZE_LIMIT_EXCEEDED">CAPTURE_SIZE_LIMIT_EXCEEDED</h2>
+
+Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
+
 <h2 id="CHAIN_BROKEN">CHAIN_BROKEN</h2>
 
 Owner: `public:sdk/src/namespaces/repos.ts`, `gateway:packages/gateway/src/utils/error-envelope.ts`.

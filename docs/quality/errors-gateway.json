@@ -1,9 +1,9 @@
 {
   "owner": "gateway",
   "repository": "kychee-com/run402-private",
-  "revision": "9512c840938f0b137c547870c98759227313a2cb",
+  "revision": "e0e6eaadf8dede23101fe062da62d0d3cd17dd42",
   "source": "packages/gateway/src/utils/error-envelope.ts",
-  "sourceDigest": "bf89f01213bf5022ca46b98eeb6336c94b37fe7867e88a4795b1a9687dba9e03",
+  "sourceDigest": "f601aec807eb68ec9b9cf480890f695d234cdb37337f79ca38718b1566a0c481",
   "codes": [
     "VALIDATION_FAILED",
     "AUTH_REQUIRED",
@@ -64,6 +64,7 @@
     "AUTH_CREDENTIALS_AMBIGUOUS",
     "SNAPSHOT_AUTH_RESTORE_REQUIRES_PRINCIPAL",
     "SNAPSHOT_KIND_NOT_DELETABLE_BY_SERVICE_KEY",
+    "CAPTURE_SIZE_LIMIT_EXCEEDED",
     "AUTHORIZATION_UNSUPPORTED",
     "LIGHTNING_BEARER_INELIGIBLE",
     "CONTENT_DIGEST_MISMATCH",
