@@ -2242,7 +2242,7 @@ describe("Deploy.apply (rehearsal decision)", () => {
     };
   }
 
-  async function applyWith(plan: PlanResponse) {
+  async function applyWith(plan: PlanResponse, extra: { noSnapshot?: boolean; requiredPlan?: { planId: string; planFingerprint?: string } } = {}) {
     const w = makeWiring();
     const events: DeployEvent[] = [];
     w.setHandler((req) => {
@@ -2258,10 +2258,28 @@ describe("Deploy.apply (rehearsal decision)", () => {
         site: { replace: { "index.html": "<h1>hi</h1>" } },
         database: { migrations: [{ id: "001_init", sql: "select 1" }] },
       },
-      { onEvent: (event) => events.push(event) },
+      { onEvent: (event) => events.push(event), ...extra },
     );
     return { w, events, result };
   }
+
+  it("sends snapshot: \"skip\" on the bound commit when asked (noSnapshot), and never otherwise", async () => {
+    const plan = migrationPlan(
+      { new: [{ id: "003_more", checksum_hex: "c".repeat(64), transaction: "default" }], noop: [] },
+      { available: true, rehearse_url: "/apply/v1/plans/plan_rh/rehearse", reason: null },
+    );
+    const skipped = await applyWith(plan, { noSnapshot: true, requiredPlan: { planId: "plan_rh", planFingerprint: "pfp_rh" } });
+    assert.equal(countRequests(skipped.w, "/apply/v1/plans/plan_rh/rehearse"), 0, "a reviewed plan is not rehearsed again");
+    const skippedCommit = skipped.w.requests.find((r) => r.path === "/apply/v1/plans/plan_rh/commit");
+    assert.deepEqual(skippedCommit?.body, {
+      required_plan: { plan_id: "plan_rh", plan_fingerprint: "pfp_rh" },
+      snapshot: "skip",
+    });
+
+    const plain = await applyWith(plan);
+    const plainCommit = plain.w.requests.find((r) => r.path === "/apply/v1/plans/plan_rh/commit");
+    assert.equal((plainCommit?.body as Record<string, unknown>).snapshot, undefined);
+  });
 
   it("skips rehearsal when every named migration is a checksum-identical noop (older gateway says available)", async () => {
     const { w, events, result } = await applyWith(migrationPlan(

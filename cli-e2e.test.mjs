@@ -2225,7 +2225,7 @@ describe("CLI e2e happy path", () => {
     assert.equal(body.urls.deployment_id, "dpl_test456");
   });
 
-  async function deployPrinting(commitExtra) {
+  async function deployPrinting(commitExtra, extraArgs = [], seenCommitBodies = []) {
     const { run } = await import("./cli/lib/deploy.mjs");
     const manifestPath = join(tempDir, "manifest-migrate.json");
     const { writeFileSync: wf } = await import("node:fs");
@@ -2236,25 +2236,42 @@ describe("CLI e2e happy path", () => {
     globalThis.fetch = (input, init) => {
       const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
       if (/\/apply\/v1\/plans\/[^/]+\/commit$/.test(new URL(url).pathname)) {
-        return Promise.resolve(json({
+        const rawBody = init?.body ?? (input instanceof Request ? input.clone().text() : null);
+        return Promise.resolve(rawBody).then((text) => {
+          seenCommitBodies.push(text ? JSON.parse(String(text)) : null);
+          return json({
           operation_id: "op_v2_test",
           status: "ready",
           release_id: "rel_v2_test",
           urls: { site: "https://dpl_test456.sites.run402.com", deployment_id: "dpl_test456" },
           ...commitExtra,
-        }));
+          });
+        });
       }
       return prevFetch(input, init);
     };
     captureStart();
     try {
-      await run(["--manifest", manifestPath, "--project", "prj_test123", "--no-rehearse", "--json"]);
+      await run(["--manifest", manifestPath, "--project", "prj_test123", "--no-rehearse", "--json", ...extraArgs]);
     } finally {
       captureStop();
       globalThis.fetch = prevFetch;
     }
     return JSON.parse(capturedStdout());
   }
+
+  it("deploy --no-snapshot commits with snapshot: \"skip\", and a plain deploy sends no snapshot field", async () => {
+    const skipBodies = [];
+    const skipped = await deployPrinting({ snapshot_skipped_reason: "explicit_skip_requested" }, ["--no-snapshot"], skipBodies);
+    assert.equal(skipBodies.length, 1);
+    assert.equal(skipBodies[0].snapshot, "skip");
+    assert.equal(skipped.snapshot_skipped_reason, "explicit_skip_requested");
+
+    const plainBodies = [];
+    await deployPrinting({}, [], plainBodies);
+    assert.equal(plainBodies.length, 1);
+    assert.equal(plainBodies[0].snapshot, undefined);
+  });
 
   it("deploy --json prints the commit's restore_point", async () => {
     const restore_point = {

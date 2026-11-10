@@ -345,11 +345,13 @@ export class Deploy {
        * commit that carries neither.
        */
       vault?: VaultCommitDeclaration;
+      /** Commit without the automatic pre-migration snapshot (`snapshot: "skip"`); the migrations then have no restore point. */
+      noSnapshot?: boolean;
     } = {},
   ): Promise<DeployResult> {
     const emit = makeEmitter(opts.onEvent);
     const commit = requireCloudCommitResponse(
-      await commitInternal(this.client, planId, opts.idempotencyKey, opts.project, opts.requiredPlan, opts.vault),
+      await commitInternal(this.client, planId, opts.idempotencyKey, opts.project, opts.requiredPlan, opts.vault, undefined, opts.noSnapshot),
       "committing deploy",
     );
     return await pollUntilReady(this.client, commit, {}, [], emit, opts.project);
@@ -1077,7 +1079,7 @@ async function applyOnce(
       ...(sliceKinds.length > 0 ? { slice_kinds: sliceKinds } : {}),
     });
     const planId = requirePlanId(plan, "applying deploy to Core");
-    const commit = await commitInternal(client, planId, opts.idempotencyKey, spec.project_id, opts.requiredPlan);
+    const commit = await commitInternal(client, planId, opts.idempotencyKey, spec.project_id, opts.requiredPlan, undefined, undefined, opts.noSnapshot);
     if (!isCoreCommitResponse(commit)) {
       return await pollUntilReady(client, commit, plan.diff, plan.warnings, emit, spec.project_id, sliceKinds);
     }
@@ -1115,7 +1117,7 @@ async function applyOnce(
       })
     : undefined;
   const commit = requireCloudCommitResponse(
-    await commitInternal(client, planId, opts.idempotencyKey, spec.project_id, requiredPlan, vaultCommit, operationId),
+    await commitInternal(client, planId, opts.idempotencyKey, spec.project_id, requiredPlan, vaultCommit, operationId, opts.noSnapshot),
     "applying deploy",
   );
   const result = await pollUntilReady(client, commit, plan.diff, plan.warnings, emit, spec.project_id, sliceKinds);
@@ -2253,6 +2255,7 @@ async function commitInternal(
   requiredPlan?: { planId: string; planFingerprint?: string },
   vault?: VaultCommitDeclaration,
   operationId?: string,
+  noSnapshot?: boolean,
 ): Promise<CommitResponse | CoreCommitResponse> {
   const tries = { attempts: 0 };
   try {
@@ -2260,6 +2263,9 @@ async function commitInternal(
     if (idempotencyKey) body.idempotency_key = idempotencyKey;
     if (requiredPlan) body.required_plan = requiredPlanToWire(requiredPlan);
     if (vault) body.vault = vault;
+    // The commit takes no pre-migration snapshot; the result then carries
+    // `snapshot_skipped_reason: "explicit_skip_requested"`.
+    if (noSnapshot) body.snapshot = "skip";
     const send = () => client.request<CommitResponse>(
       `/apply/v1/plans/${encodeURIComponent(planId)}/commit`,
       {
@@ -3117,7 +3123,7 @@ async function startInternal(
     });
     const { planId, operationId } = requirePersistedPlan(plan, "starting deploy");
     const commit = requireCloudCommitResponse(
-      await commitInternal(client, planId, opts.idempotencyKey, spec.project_id, opts.requiredPlan, undefined, operationId),
+      await commitInternal(client, planId, opts.idempotencyKey, spec.project_id, opts.requiredPlan, undefined, operationId, opts.noSnapshot),
       "starting deploy",
     );
     return await pollUntilReady(client, commit, plan.diff, plan.warnings, emit, spec.project_id, sliceKinds);

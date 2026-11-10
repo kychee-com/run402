@@ -3197,6 +3197,13 @@ export interface ApplyOptions {
    *  `rehearsal.available` is true the plan is rehearsed on a contained
    *  branch and committed only on a passing report. */
   noRehearse?: boolean;
+  /** Commit without the automatic pre-migration snapshot (the commit body's
+   *  `snapshot: "skip"`). Default false: a migration-bearing commit captures
+   *  the project first so it has a restore point. With it the migrations run
+   *  with no restore point and the result carries
+   *  `snapshot_skipped_reason: "explicit_skip_requested"`. A rehearsal, when
+   *  one runs, still captures the project. */
+  noSnapshot?: boolean;
   /** Bind this apply to a reviewed plan returned by `plan(..., { mode: "reviewedPlan" })`. */
   requiredPlan?: {
     planId: string;
@@ -3244,6 +3251,8 @@ export interface StartOptions {
   allowWarnings?: boolean;
   /** Continue past specific confirmation-required warning codes. */
   allowWarningCodes?: string[];
+  /** Commit without the automatic pre-migration snapshot; see `ApplyOptions.noSnapshot`. */
+  noSnapshot?: boolean;
   requiredPlan?: {
     planId: string;
     planFingerprint?: string;

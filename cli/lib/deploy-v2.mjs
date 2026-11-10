@@ -56,7 +56,7 @@ import { sdkStats, printVerboseStats } from "./stats.mjs";
 const DEPLOY_HELP = `run402 deploy — Deploy a release from a manifest (the unified deploy primitive)
 
 Usage:
-  run402 deploy [--project <project_id>] [--check|--print-spec|--print-manifest|--plan|--require-plan <plan_id>] [--no-rehearse] [--quiet|--final-only] [--json]
+  run402 deploy [--project <project_id>] [--check|--print-spec|--print-manifest|--plan|--require-plan <plan_id>] [--no-rehearse] [--no-snapshot] [--quiet|--final-only] [--json]
   run402 deploy --manifest <path> [--project <project_id>] [...same options]
   run402 deploy --spec '<json>' [--project <project_id>] [...same options]
   run402 deploy --dir <build-output> [--manifest <path>] [--project <project_id>]
@@ -134,6 +134,10 @@ Options:
                           against a project with a live release is rehearsed on a contained
                           branch and committed only on a passing report (result.rehearsal);
                           a first deploy has nothing to protect and commits directly.
+  --no-snapshot           Commit without the automatic pre-migration snapshot, so the
+                          migrations run with no restore point
+                          (result.snapshot_skipped_reason: "explicit_skip_requested").
+                          A rehearsal still captures the project.
   --require-plan <plan_id> Deploy only if this reviewed plan still matches.
   --json                  No-op compatibility flag; success output is always JSON.
   --quiet                 Suppress per-event JSON-line stderr (final result still on stdout)
@@ -809,10 +813,11 @@ function parseDeployArgs(args) {
     mode: null,
     planFingerprint: null,
     noRehearse: false,
+    noSnapshot: false,
     allowDirty: false,
     verbose: false,
   };
-  const allowedFlags = ["--manifest", "--spec", "--dir", "--project", "--quiet", "--final-only", "--json", "--allow-warning", "--allow-warnings", "--check", "--print-spec", "--print-manifest", "--plan", "--no-rehearse", "--require-plan", "--plan-fingerprint", "--allow-dirty", "-v", "--verbose", "--help", "-h"];
+  const allowedFlags = ["--manifest", "--spec", "--dir", "--project", "--quiet", "--final-only", "--json", "--allow-warning", "--allow-warnings", "--check", "--print-spec", "--print-manifest", "--plan", "--no-rehearse", "--no-snapshot", "--require-plan", "--plan-fingerprint", "--allow-dirty", "-v", "--verbose", "--help", "-h"];
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -878,6 +883,7 @@ function parseDeployArgs(args) {
     if (arg === "--print-manifest") { setApplyMode(opts, "printManifest", "--print-manifest"); continue; }
     if (arg === "--plan") { setApplyMode(opts, "plan", "--plan"); continue; }
     if (arg === "--no-rehearse") { opts.noRehearse = true; continue; }
+    if (arg === "--no-snapshot") { opts.noSnapshot = true; continue; }
     if (typeof arg === "string" && arg.startsWith("-")) {
       fail({
         code: "BAD_USAGE",
@@ -1408,6 +1414,7 @@ async function deployCmd(args) {
           allowWarnings: opts.allowWarnings,
           allowWarningCodes: opts.allowWarningCodes,
           ...(opts.noRehearse ? { noRehearse: true } : {}),
+          ...(opts.noSnapshot ? { noSnapshot: true } : {}),
           ...(requiredPlan ? { requiredPlan } : {}),
         },
         target: isCoreApiTarget() ? "core" : "cloud",

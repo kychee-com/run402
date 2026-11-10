@@ -327,6 +327,7 @@ describe("CLI --help contract", () => {
     });
     assert.match(result.stdout, /run402 up/, "deploy --help states how it differs from up");
     assert.match(result.stdout, /--no-rehearse/);
+    assert.match(result.stdout, /--no-snapshot/);
     assert.doesNotMatch(result.stdout, /\s--rehearse\s/);
     assert.match(result.stdout, /<plan_id>/);
     assert.match(result.stdout, /<operation_id>/);
