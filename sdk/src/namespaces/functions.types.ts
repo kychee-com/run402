@@ -134,13 +134,17 @@ export interface FunctionLogsOptions {
   tail?: number;
   /** Only return logs at or after this ISO 8601 timestamp or epoch ms. */
   since?: string;
+  /**
+   * Only return logs before this ISO 8601 timestamp or epoch ms (exclusive),
+   * to read an earlier window that newer lines would push out of `tail`.
+   */
+  until?: string;
   /** Only return logs correlated to this routed request id, function run id, or attempt id. */
   requestId?: string;
   /**
-   * Client-side origin filter. Default `all`. `app` hides Lambda runtime
-   * lines (`INIT_START` / `REPORT` …); `platform` shows only those. The
-   * filter runs on the page the gateway returned, so `tail` bounds the
-   * unfiltered read, not the filtered result.
+   * Origin filter. Default `all`. `app` hides Lambda runtime lines
+   * (`INIT_START` / `REPORT` …); `platform` shows only those. The gateway
+   * applies it while reading, so `tail` counts the lines kept.
    */
   origin?: FunctionLogOriginFilter;
 }
@@ -158,7 +162,9 @@ export interface FunctionLogsByRequestIdOptions {
   tail?: number;
   /** Only return logs at or after this ISO 8601 timestamp or epoch ms. */
   since?: string;
-  /** Client-side origin filter. Default `all`. */
+  /** Only return logs before this ISO 8601 timestamp or epoch ms (exclusive). */
+  until?: string;
+  /** Origin filter, applied by the gateway while reading. Default `all`. */
   origin?: FunctionLogOriginFilter;
   /** Limit the search to one function instead of every function in the project. */
   functionName?: string;

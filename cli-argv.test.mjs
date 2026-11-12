@@ -1035,7 +1035,13 @@ describe("function log origin filter + request-id fan-out (app-first logs)", () 
     assert.match(out.logs[0].message, /Processing webhook/);
     assert.equal(out.hint, undefined, "no hint when app lines were found");
     const logCall = calls.find((c) => /\/logs\?/.test(c.path));
-    assert.equal(new URL(logCall.url).searchParams.has("origin"), false, "origin is client-side only");
+    assert.equal(new URL(logCall.url).searchParams.get("origin"), "app", "the gateway filters while it reads, so --tail counts app lines");
+  });
+
+  it("functions logs --until sends the window end", async () => {
+    await withLogsFetch(() => runCaptured("./cli/lib/functions.mjs", "logs", ["prj_test123", "hello", "--since", "2026-11-12T08:00:00Z", "--until", "2026-11-12T08:10:00Z"]));
+    const logCall = calls.find((c) => /\/logs\?/.test(c.path));
+    assert.equal(new URL(logCall.url).searchParams.get("until"), String(Date.parse("2026-11-12T08:10:00Z")));
   });
 
   it("functions logs --app is the explicit spelling of the default", async () => {

@@ -616,10 +616,11 @@ deploy(projectId, opts: {
   deps?: string[], schedule?: string | null,
 }): Promise<FunctionDeployResult> // routes through unified apply (functions.patch.set). result: { name, url, status, runtime, schedule, warnings }; runtime_version & deps_resolved are null via this path - read r.functions.list() for resolved versions
 invoke(projectId, name, opts?: { method?, body?, headers?, idempotencyKey?, wait? }): Promise<FunctionInvokeResult> // paid calls require a stable idempotencyKey; wait polls a 202 run handle and replays the same key for the retained result
-logs(projectId, name, opts?: { tail?, since?, requestId?, origin? }): Promise<FunctionLogsResult>
+logs(projectId, name, opts?: { tail?, since?, until?, requestId?, origin? }): Promise<FunctionLogsResult>
   // every entry carries origin: "app" | "platform" (computed client-side by the exported classifyFunctionLogLine);
-  // origin filters client-side (default "all") and the result reports origin + hidden: { platform, app } when filtered
-logsByRequestId(projectId, requestId, opts?: { tail?, since?, origin?, functionName? }): Promise<FunctionLogsByRequestIdResult>
+  // origin (default "all") is applied by the gateway while it reads, so tail counts kept lines; the result reports
+  // origin + hidden: { platform, app } when filtered. until (exclusive) reads an earlier window than the newest tail
+logsByRequestId(projectId, requestId, opts?: { tail?, since?, until?, origin?, functionName? }): Promise<FunctionLogsByRequestIdResult>
   // project-wide request-id search (the x-run402-request-id response header; fnrun_/fnatt_ ids too): lists the project's
   // functions (or just functionName), reads each with the request_id filter, returns { request_id, scanned, entries (each
   // with function), errors (each with function, message, code?), origin, hidden? } merged oldest-first. Also r.project(id).functions.logsByRequestId(...)

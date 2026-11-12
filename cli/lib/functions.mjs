@@ -12,8 +12,8 @@ export const FUNCTION_LOG_TAIL_MAX = 1000;
 // Shared by `run402 functions logs` and the top-level `run402 logs` shortcut
 // (cli/lib/logs.mjs) so the two commands validate identically.
 
-/** `--since <iso|epoch_ms>` → ISO string, or a BAD_USAGE exit. */
-export function parseLogSinceFlag(since) {
+/** `--since <iso|epoch_ms>` (or `--until`, with flag) → ISO string, or a BAD_USAGE exit. */
+export function parseLogSinceFlag(since, flag = "--since") {
   if (since === undefined || since === null) return undefined;
   const raw = String(since).trim();
   const ms = /^\d+$/.test(raw)
@@ -24,8 +24,8 @@ export function parseLogSinceFlag(since) {
   if (!Number.isSafeInteger(ms) || ms < 0) {
     fail({
       code: "BAD_USAGE",
-      message: `Invalid --since value: ${since}`,
-      details: { flag: "--since", value: since },
+      message: `Invalid ${flag} value: ${since}`,
+      details: { flag, value: since },
     });
   }
   return new Date(ms).toISOString();
@@ -85,7 +85,7 @@ Subcommands:
                                        --raw prints the response body verbatim
                                        (string body → text + newline, JSON
                                        body → pretty-printed JSON).
-  logs   [<name>] [--project <project_id>] [--tail <n>] [--since <ts>] [--request-id <request_id>] [--app|--platform|--all] [--follow]
+  logs   [<name>] [--project <project_id>] [--tail <n>] [--since <ts>] [--until <ts>] [--request-id <request_id>] [--app|--platform|--all] [--follow]
                                        Get function logs (app output by default;
                                        omit <name> with --request-id to search
                                        every function)
@@ -245,9 +245,12 @@ Arguments:
 
 Options:
   --project <project_id>      Target project ID (defaults to the active project)
-  --tail <n>          Number of most-recent entries (default 50, max 1000).
-                      Bounds the read BEFORE the origin filter below.
+  --tail <n>          Number of most-recent entries (default 50, max 1000),
+                      counted after the origin filter below.
   --since <ts>        ISO timestamp or epoch ms; only entries after this
+  --until <ts>        ISO timestamp or epoch ms; only entries before this, to
+                      read an earlier window that newer entries push out of --tail.
+                      Not with --follow.
   --request-id <request_id>   Only entries correlated to this req_ (the
                       x-run402-request-id response header), fnrun_, or fnatt_ id
   --app               Only the function's own output (default). Lambda runtime
@@ -535,20 +538,22 @@ function validateInvokeJsonBody(value, source, projectId, name) {
 }
 
 async function logs(projectId, name, args) {
-  const usage = "run402 functions logs <name> [--project <project_id>] [--tail <n>] [--since <ts>] [--request-id <request_id>] [--app|--platform|--all] [--follow]  |  run402 functions logs --request-id <request_id> [--project <project_id>]";
+  const usage = "run402 functions logs <name> [--project <project_id>] [--tail <n>] [--since <ts>] [--until <ts>] [--request-id <request_id>] [--app|--platform|--all] [--follow]  |  run402 functions logs --request-id <request_id> [--project <project_id>]";
   assertRequiredProject(projectId, usage);
   assertKnownFlags(
     args,
-    ["--tail", "--since", "--request-id", "--follow", "--app", "--platform", "--all", "--help", "-h"],
-    ["--tail", "--since", "--request-id"],
+    ["--tail", "--since", "--until", "--request-id", "--follow", "--app", "--platform", "--all", "--help", "-h"],
+    ["--tail", "--since", "--until", "--request-id"],
   );
   let tail = 50;
   let since = undefined;
+  let until = undefined;
   let requestId = undefined;
   let follow = false;
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--tail") tail = parseIntegerFlag("--tail", args[++i], { min: 1, max: FUNCTION_LOG_TAIL_MAX });
     if (args[i] === "--since" && args[i + 1]) since = args[++i];
+    if (args[i] === "--until" && args[i + 1]) until = args[++i];
     if (args[i] === "--request-id" && args[i + 1]) requestId = args[++i];
     if (args[i] === "--follow") follow = true;
   }
@@ -557,7 +562,11 @@ async function logs(projectId, name, args) {
   // Keep CLI-side validation so a bad `--since` / `--request-id` errors with
   // a clear message before any network call.
   let sinceIso = parseLogSinceFlag(since);
+  const untilIso = parseLogSinceFlag(until, "--until");
   assertLogRequestIdFlag(requestId);
+  if (follow && untilIso !== undefined) {
+    fail({ code: "BAD_USAGE", message: "--until reads a past window; --follow streams new entries. Pass one.", details: { flag: "--until" } });
+  }
 
   if (!name) {
     if (!requestId) {
@@ -575,7 +584,7 @@ async function logs(projectId, name, args) {
       });
     }
     try {
-      const result = await getSdk().functions.logsByRequestId(projectId, requestId, { tail, since: sinceIso, origin });
+      const result = await getSdk().functions.logsByRequestId(projectId, requestId, { tail, since: sinceIso, until: untilIso, origin });
       const hint = platformHiddenHint(result.entries, result.hidden);
       console.log(JSON.stringify({
         logs: result.entries,
@@ -597,6 +606,7 @@ async function logs(projectId, name, args) {
       return await getSdk().functions.logs(projectId, name, {
         tail,
         since: sinceIso,
+        until: untilIso,
         requestId,
         origin,
       });

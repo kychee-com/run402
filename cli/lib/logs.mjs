@@ -46,8 +46,10 @@ Required (one of):
 
 Optional:
   --project <project_id>          Project id (default: \$RUN402_PROJECT_ID, else the active project)
-  --tail <n>              Max entries per function BEFORE the origin filter (default 100, max 1000)
+  --tail <n>              Max entries per function, counted after the origin filter (default 100, max 1000)
   --since <ts>            ISO timestamp or epoch ms; only entries at or after this
+  --until <ts>            ISO timestamp or epoch ms; only entries before this, to read
+                          an earlier window that newer entries push out of --tail
   --app                   Only the function's own output (default). Lambda runtime
                           lines (INIT_START, START/END/REPORT RequestId, billed
                           duration) are hidden; "hidden.platform" counts them and a
@@ -72,6 +74,7 @@ Examples:
   run402 logs ssr --request-id req_abc123 --all
   run402 logs --request-id fnrun_abc123 --project prj_xyz
   run402 logs --function checkout --tail 20
+  run402 logs --function ssr --since 2026-11-12T08:00:00Z --until 2026-11-12T08:10:00Z
 
 Tip: the request id appears in:
   - The 'x-run402-request-id' response header on every function response
@@ -80,7 +83,7 @@ Tip: the request id appears in:
   - The 'samples' of 'run402 errors list' (each sample names a runnable logs command)
 `;
 
-const VALUE_FLAGS = ["--request-id", "--function", "--project", "--tail", "--since"];
+const VALUE_FLAGS = ["--request-id", "--function", "--project", "--tail", "--since", "--until"];
 const KNOWN_FLAGS = [...VALUE_FLAGS, "--app", "--platform", "--all", "--help", "-h"];
 
 export async function run(sub, args = []) {
@@ -96,6 +99,7 @@ export async function run(sub, args = []) {
   const projectIdArg = flagValue(all, "--project") ?? undefined;
   const tailArg = flagValue(all, "--tail") ?? undefined;
   const sinceArg = flagValue(all, "--since") ?? undefined;
+  const untilArg = flagValue(all, "--until") ?? undefined;
   const origin = resolveLogOriginFlag(all);
 
   const positionals = positionalArgs(all, VALUE_FLAGS);
@@ -136,6 +140,7 @@ export async function run(sub, args = []) {
 
   const tail = parseIntegerFlag("--tail", tailArg, { min: 1, max: FUNCTION_LOG_TAIL_MAX, def: 100 });
   const since = parseLogSinceFlag(sinceArg);
+  const until = parseLogSinceFlag(untilArg, "--until");
 
   const sdk = getSdk();
   try {
@@ -143,6 +148,7 @@ export async function run(sub, args = []) {
       const result = await sdk.functions.logsByRequestId(projectId, requestId, {
         tail,
         since,
+        until,
         origin,
         ...(fnName !== undefined && { functionName: fnName }),
       });
@@ -160,7 +166,7 @@ export async function run(sub, args = []) {
     }
 
     // --function alone: that function's recent tail, same envelope.
-    const result = await sdk.functions.logs(projectId, fnName, { tail, since, origin });
+    const result = await sdk.functions.logs(projectId, fnName, { tail, since, until, origin });
     emit({
       ok: true,
       request_id: null,

@@ -305,24 +305,35 @@ export class Functions {
     validatePositiveJsonInteger(tail, "tail", "fetching function logs", { max: FUNCTION_LOG_TAIL_MAX });
     const origin = validateFunctionLogOriginFilter(opts.origin, "fetching function logs");
     const search = new URLSearchParams({ tail: String(tail) });
-    if (opts.since !== undefined) {
-      search.set("since", String(parseLogSince(opts.since)));
+    const sinceMs = opts.since !== undefined ? parseLogSince(opts.since) : undefined;
+    if (sinceMs !== undefined) search.set("since", String(sinceMs));
+    if (opts.until !== undefined) {
+      const untilMs = parseLogSince(opts.until, "until");
+      if (sinceMs !== undefined && untilMs <= sinceMs) {
+        throw new LocalError(`Invalid functions.logs until: ${opts.until} is not after since`, "fetching function logs");
+      }
+      search.set("until", String(untilMs));
     }
     if (opts.requestId !== undefined) {
       validateFunctionLogRequestId(opts.requestId, "requestId", "fetching function logs");
       search.set("request_id", opts.requestId);
     }
+    // The gateway filters while it reads, so `tail` counts the lines kept; the client filter below is then a no-op
+    if (origin !== "all") search.set("origin", origin);
     const path = `/projects/v1/admin/${projectId}/functions/${encodeURIComponent(name)}/logs?${search.toString()}`;
 
-    const wire = await this.client.request<{ logs?: FunctionLogEntry[] }>(path, {
+    const wire = await this.client.request<{ logs?: FunctionLogEntry[]; hidden?: FunctionLogsHiddenCounts }>(path, {
       ...(project ? { headers: { Authorization: `Bearer ${project.service_key}` }, withAuth: false } : { withAuth: true }),
       context: "fetching function logs",
     });
     const filtered = applyFunctionLogOrigin(wire?.logs, origin);
+    const hidden = filtered.hidden && wire?.hidden
+      ? { platform: filtered.hidden.platform + wire.hidden.platform, app: filtered.hidden.app + wire.hidden.app }
+      : filtered.hidden;
     return {
       logs: filtered.logs,
       origin,
-      ...(filtered.hidden ? { hidden: filtered.hidden } : {}),
+      ...(hidden ? { hidden } : {}),
     };
   }
 
@@ -345,6 +356,7 @@ export class Functions {
     validatePositiveJsonInteger(tail, "tail", context, { max: FUNCTION_LOG_TAIL_MAX });
     const origin = validateFunctionLogOriginFilter(opts.origin, context);
     if (opts.since !== undefined) parseLogSince(opts.since);
+    if (opts.until !== undefined) parseLogSince(opts.until, "until");
 
     let names: string[];
     if (opts.functionName !== undefined) {
@@ -357,7 +369,7 @@ export class Functions {
 
     const results = await Promise.allSettled(
       names.map((name) =>
-        this.logs(projectId, name, { tail, since: opts.since, requestId, origin }).then((result) => ({ name, result })),
+        this.logs(projectId, name, { tail, since: opts.since, until: opts.until, requestId, origin }).then((result) => ({ name, result })),
       ),
     );
 
@@ -681,8 +693,8 @@ export class FunctionRuns {
   }
 }
 
-function parseLogSince(since: string): number {
-  const raw = since.trim();
+function parseLogSince(since: string, field: "since" | "until" = "since"): number {
+  const raw = String(since).trim();
   const ms = /^\d+$/.test(raw)
     ? Number(raw)
     : ISO_DATE_TIME_RE.test(raw)
@@ -690,7 +702,7 @@ function parseLogSince(since: string): number {
       : Number.NaN;
   if (!Number.isSafeInteger(ms) || ms < 0) {
     throw new LocalError(
-      `Invalid functions.logs since timestamp: ${since}`,
+      `Invalid functions.logs ${field} timestamp: ${since}`,
       "fetching function logs",
     );
   }

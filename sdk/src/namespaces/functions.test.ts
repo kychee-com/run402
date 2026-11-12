@@ -494,8 +494,27 @@ describe("functions.logs", () => {
     assert.equal(result.hidden, undefined);
     assert.deepEqual(result.logs.map((e) => e.origin), ["platform", "platform", "app", "platform", "platform"]);
     assert.equal(result.logs.length, 5);
-    // origin is client-side only: nothing new on the wire.
+    // all is the gateway's default: nothing new on the wire
     assert.equal(new URL(calls[0]!.url).searchParams.has("origin"), false);
+  });
+
+  it("origin: app adds the gateway's own hidden counts to what the client filter dropped", async () => {
+    const { fetch } = mockFetch(() => json({ logs: MIXED_STREAM.filter((e) => !/RequestId:|INIT_START/.test(e.message)), origin: "app", hidden: { platform: 120, app: 0 } }));
+    const sdk = makeSdk(fetch);
+    const result = await sdk.functions.logs("prj_known", "hello", { origin: "app" });
+    assert.deepEqual(result.hidden, { platform: 120, app: 0 });
+    assert.equal(result.logs.length, 1);
+  });
+
+  it("until is sent as epoch ms, and refused locally when it is not after since", async () => {
+    const { fetch, calls } = mockFetch(() => json({ logs: [] }));
+    const sdk = makeSdk(fetch);
+    await sdk.functions.logs("prj_known", "hello", { since: "2026-11-12T08:00:00Z", until: "2026-11-12T08:10:00Z" });
+    const search = new URL(calls[0]!.url).searchParams;
+    assert.equal(search.get("until"), String(Date.parse("2026-11-12T08:10:00Z")));
+    assert.equal(search.has("origin"), false, "all is the gateway's default and is not sent");
+    await assert.rejects(() => sdk.functions.logs("prj_known", "hello", { since: "2026-11-12T08:10:00Z", until: "2026-11-12T08:00:00Z" }), /until/);
+    await assert.rejects(() => sdk.functions.logs("prj_known", "hello", { until: "yesterday" }), /until timestamp/);
   });
 
   it("origin: app hides Lambda runtime lines and counts them in hidden", async () => {
@@ -508,7 +527,27 @@ describe("functions.logs", () => {
     assert.equal(result.logs[0]!.origin, "app");
     assert.match(result.logs[0]!.message, /Processing webhook/);
     assert.equal(result.logs[0]!.request_id, "req_abc123", "wire fields survive tagging");
-    assert.equal(new URL(calls[0]!.url).searchParams.has("origin"), false);
+    // Sent to the gateway, which filters while it reads; an older gateway ignores it and the client filter still applies
+    assert.equal(new URL(calls[0]!.url).searchParams.get("origin"), "app");
+  });
+
+  it("origin: app adds the gateway's own hidden counts to what the client filter dropped", async () => {
+    const { fetch } = mockFetch(() => json({ logs: MIXED_STREAM.filter((e) => !/RequestId:|INIT_START/.test(e.message)), origin: "app", hidden: { platform: 120, app: 0 } }));
+    const sdk = makeSdk(fetch);
+    const result = await sdk.functions.logs("prj_known", "hello", { origin: "app" });
+    assert.deepEqual(result.hidden, { platform: 120, app: 0 });
+    assert.equal(result.logs.length, 1);
+  });
+
+  it("until is sent as epoch ms, and refused locally when it is not after since", async () => {
+    const { fetch, calls } = mockFetch(() => json({ logs: [] }));
+    const sdk = makeSdk(fetch);
+    await sdk.functions.logs("prj_known", "hello", { since: "2026-11-12T08:00:00Z", until: "2026-11-12T08:10:00Z" });
+    const search = new URL(calls[0]!.url).searchParams;
+    assert.equal(search.get("until"), String(Date.parse("2026-11-12T08:10:00Z")));
+    assert.equal(search.has("origin"), false, "all is the gateway's default and is not sent");
+    await assert.rejects(() => sdk.functions.logs("prj_known", "hello", { since: "2026-11-12T08:10:00Z", until: "2026-11-12T08:00:00Z" }), /until/);
+    await assert.rejects(() => sdk.functions.logs("prj_known", "hello", { until: "yesterday" }), /until timestamp/);
   });
 
   it("origin: platform keeps only the runtime lines", async () => {
