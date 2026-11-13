@@ -15,7 +15,9 @@ import { runSchema } from "./tools/run.js";
 import { expandResultSchema } from "./tools/expand-result.js";
 
 // The tools/list run402-mcp 4.142.0 published (zod 3 through
-// zod-to-json-schema), recorded before the builder replaced zod.
+// zod-to-json-schema), recorded before the builder replaced zod. A deliberate
+// schema change updates its tool's entry: `deploy`'s function spec dropped the
+// removed `schedule` field for `triggers` (one way to schedule).
 type Published = { name: string; inputSchema: unknown; outputSchema: unknown };
 const PUBLISHED = JSON.parse(readFileSync(new URL("./fixtures/tools-list-4.142.0.json", import.meta.url), "utf8")) as Published[];
 

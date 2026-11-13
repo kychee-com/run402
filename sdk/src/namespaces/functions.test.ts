@@ -1,6 +1,6 @@
 /**
  * Unit tests for the `functions` namespace. Covers deploy, invoke, logs,
- * list, delete, update — including schedule handling and the `since`
+ * list, delete, update, schedule / unschedule and the `since`
  * ISO→epoch conversion.
  */
 
@@ -69,10 +69,19 @@ function json(body: unknown, status = 200): Response {
  * function tier preflight bails (no extra endpoints to mock). The `functions`
  * deploy re-point rides this path instead of the deleted legacy admin route.
  */
-function applyOkFetch(opts: { planId: string; warnings?: unknown[] }) {
+function applyOkFetch(opts: { planId: string; warnings?: unknown[]; lists?: unknown[][] }) {
   const { planId, warnings = [] } = opts;
+  // Successive answers of the service-key function list (before, after);
+  // the last one repeats.
+  const lists = opts.lists ?? [[]];
+  let listCalls = 0;
   return mockFetch((call) => {
     if (call.url.endsWith("/tiers/v1/status")) return json({ tier: "" });
+    if (call.method === "GET" && call.url.endsWith("/projects/v1/admin/prj_known/functions")) {
+      const functions = lists[Math.min(listCalls, lists.length - 1)];
+      listCalls++;
+      return json({ functions });
+    }
     if (call.url.endsWith("/apply/v1/plans")) {
       return json({
         plan_id: planId,
@@ -112,7 +121,7 @@ describe("functions.deploy", () => {
     assert(planCall, "posted an /apply/v1/plans plan");
     assert.equal(planCall!.method, "POST");
     assert(
-      !calls.some((c) => c.url.includes("/projects/v1/admin/")),
+      !calls.some((c) => c.method !== "GET" && c.url.includes("/projects/v1/admin/")),
       "must not POST the deleted /projects/v1/admin/:id/functions route",
     );
     assert.notEqual(planCall!.headers["Authorization"], "Bearer svc_k");
@@ -149,21 +158,64 @@ describe("functions.deploy", () => {
     assert.deepEqual(fn.config, { timeout_seconds: 20, memory_mb: 256 });
   });
 
-  it("forwards schedule: null into the spec and omits config/deps when not provided", async () => {
-    const { fetch, calls } = applyOkFetch({ planId: "plan_sch" });
+  // D-scheduled-functions-7: a deploy declares its schedule as a schedule
+  // trigger and keeps the function's other triggers; there is no `schedule` field.
+  const EMAIL = { id: "inbox", type: "email", mailbox: "support", events: ["reply_received"], run: { event_type: "mail", payload: {} } };
+  const OLD_SCHEDULE = {
+    id: "sched_aaaaaaaaaaaa", type: "schedule", cron: "0 8 * * *", timezone: "UTC",
+    misfire_policy: "skip", overlap_policy: "allow", run: { event_type: "sch.schedule", payload: {} },
+    schedule_meta: { run_count: 3 },
+  };
+  const listed = (triggers: unknown[]) => [{ name: "sch", url: "u", runtime: "node22", timeout: 10, memory: 128, triggers, created_at: "t", updated_at: "t" }];
+
+  it("declares schedule as a schedule trigger beside the function's other triggers, and returns the stored triggers", async () => {
+    const stored = { ...OLD_SCHEDULE, id: "sched_bbbbbbbbbbbb", cron: "0 9 * * 1", timezone: "Asia/Jerusalem" };
+    const { fetch, calls } = applyOkFetch({ planId: "plan_sch", lists: [listed([EMAIL, OLD_SCHEDULE]), listed([EMAIL, stored])] });
     const sdk = makeSdk(fetch);
     const result = await sdk.functions.deploy("prj_known", {
       name: "sch",
       code: "export default async () => new Response('ok')",
-      schedule: null,
+      schedule: "0 9 * * 1",
+      timezone: "Asia/Jerusalem",
     });
     const planCall = calls.find((c) => c.url.endsWith("/apply/v1/plans"))!;
     const fn = (JSON.parse(planCall.body as string) as { spec: Record<string, any> }).spec.functions.patch.set.sch;
-    assert.equal(Object.prototype.hasOwnProperty.call(fn, "schedule"), true);
-    assert.equal(fn.schedule, null);
+    assert.equal(Object.prototype.hasOwnProperty.call(fn, "schedule"), false);
+    const types = (fn.triggers as Array<Record<string, unknown>>).map((t) => [t.type, t.id ?? null, t.cron ?? null, t.timezone ?? null]);
+    assert.deepEqual(types.sort(), [["email", "inbox", null, null], ["schedule", null, "0 9 * * 1", "Asia/Jerusalem"]].sort());
     assert.equal(fn.config, undefined);
     assert.equal(fn.deps, undefined);
-    assert.equal(result.schedule, null);
+    assert.deepEqual(result.triggers, [EMAIL, stored]);
+  });
+
+  it("schedule: null removes every schedule trigger and keeps the rest", async () => {
+    const { fetch, calls } = applyOkFetch({ planId: "plan_sch", lists: [listed([EMAIL, OLD_SCHEDULE]), listed([EMAIL])] });
+    const sdk = makeSdk(fetch);
+    await sdk.functions.deploy("prj_known", { name: "sch", code: "export default async () => new Response('ok')", schedule: null });
+    const planCall = calls.find((c) => c.url.endsWith("/apply/v1/plans"))!;
+    const fn = (JSON.parse(planCall.body as string) as { spec: Record<string, any> }).spec.functions.patch.set.sch;
+    assert.deepEqual((fn.triggers as Array<{ id: string }>).map((t) => t.id), ["inbox"]);
+  });
+
+  it("an omitted schedule keeps the function's triggers (a deploy replaces the function), without their schedule_meta", async () => {
+    const { fetch, calls } = applyOkFetch({ planId: "plan_sch", lists: [listed([OLD_SCHEDULE])] });
+    const sdk = makeSdk(fetch);
+    await sdk.functions.deploy("prj_known", { name: "sch", code: "export default async () => new Response('ok')" });
+    const planCall = calls.find((c) => c.url.endsWith("/apply/v1/plans"))!;
+    const fn = (JSON.parse(planCall.body as string) as { spec: Record<string, any> }).spec.functions.patch.set.sch;
+    assert.equal(fn.triggers.length, 1);
+    assert.equal(fn.triggers[0].id, "sched_aaaaaaaaaaaa");
+    assert.equal(fn.triggers[0].schedule_meta, undefined);
+  });
+
+  it("refuses timezone without a schedule before calling the gateway", async () => {
+    const { fetch, calls } = mockFetch(() => { throw new Error("unexpected fetch"); });
+    const sdk = makeSdk(fetch);
+    await assert.rejects(
+      sdk.functions.deploy("prj_known", { name: "x", code: "export default 1", timezone: "UTC" }),
+      (err: unknown) => err instanceof LocalError && /timezone/.test(err.message),
+    );
+    assert.equal(calls.length, 0);
   });
 
   it("rejects invalid config values before calling the gateway", async () => {
@@ -942,44 +994,25 @@ describe("functions.delete", () => {
 });
 
 describe("functions.update", () => {
-  it("PATCHes with schedule and collapsed config", async () => {
+  it("PATCHes collapsed config only", async () => {
     const { fetch, calls } = mockFetch(() =>
-      json({
-        name: "hello", runtime: "node22", timeout: 30, memory: 512,
-        schedule: "0 * * * *", schedule_meta: null,
-        updated_at: "2026-04-23T00:00:00Z",
-      }),
+      json({ name: "hello", runtime: "node22", timeout: 30, memory: 512, updated_at: "2026-04-23T00:00:00Z" }),
     );
     const sdk = makeSdk(fetch);
-    await sdk.functions.update("prj_known", "hello", {
-      schedule: "0 * * * *",
-      timeout: 30,
-      memory: 512,
-    });
+    await sdk.functions.update("prj_known", "hello", { timeout: 30, memory: 512 });
     const body = JSON.parse(calls[0]!.body as string);
-    assert.equal(body.schedule, "0 * * * *");
+    assert.equal(body.schedule, undefined);
     assert.deepEqual(body.config, { timeout: 30, memory: 512 });
   });
 
-  it("forwards schedule: null to remove schedule", async () => {
-    const { fetch, calls } = mockFetch(() =>
-      json({ name: "x", runtime: "node22", timeout: 15, memory: 128, schedule: null, schedule_meta: null, updated_at: "2026-04-23T00:00:00Z" }),
-    );
+  it("refuses the removed schedule option, naming functions.schedule", async () => {
+    const { fetch, calls } = mockFetch(() => { throw new Error("unexpected fetch"); });
     const sdk = makeSdk(fetch);
-    await sdk.functions.update("prj_known", "x", { schedule: null });
-    const body = JSON.parse(calls[0]!.body as string);
-    assert.equal(body.schedule, null);
-    assert.equal(body.config, undefined);
-  });
-
-  it("omits config when neither timeout nor memory is set", async () => {
-    const { fetch, calls } = mockFetch(() =>
-      json({ name: "x", runtime: "node22", timeout: 15, memory: 128, schedule: null, schedule_meta: null, updated_at: "2026-04-23T00:00:00Z" }),
+    await assert.rejects(
+      sdk.functions.update("prj_known", "x", { schedule: "0 0 * * *" } as never),
+      (err: unknown) => err instanceof LocalError && /functions\.schedule/.test(err.message),
     );
-    const sdk = makeSdk(fetch);
-    await sdk.functions.update("prj_known", "x", { schedule: "0 0 * * *" });
-    const body = JSON.parse(calls[0]!.body as string);
-    assert.equal(body.config, undefined);
+    assert.equal(calls.length, 0);
   });
 
   it("rejects invalid config updates before calling the gateway", async () => {
@@ -1008,20 +1041,83 @@ describe("functions.update", () => {
     );
     assert.equal(calls.length, 0);
   });
+});
 
-  it("rejects invalid schedule updates before calling the gateway", async () => {
-    const invalidValues = ["", "  ", "* * * *", "* * * * * *", 42];
-    for (const value of invalidValues) {
-      const { fetch, calls } = mockFetch(() => {
-        throw new Error(`unexpected fetch for ${JSON.stringify(value)}`);
-      });
-      const sdk = makeSdk(fetch);
-      await assert.rejects(
-        sdk.functions.update("prj_known", "x", { schedule: value as never }),
-        (err: unknown) => err instanceof LocalError && /schedule/.test(err.message),
-      );
-      assert.equal(calls.length, 0);
+describe("functions.schedule / unschedule", () => {
+  const EMAIL = { id: "inbox", type: "email", mailbox: "support", events: ["reply_received"], run: { event_type: "mail", payload: {} } };
+  const sched = (id: string, cron: string) => ({
+    id, type: "schedule", cron, timezone: "UTC", misfire_policy: "skip", overlap_policy: "allow",
+    run: { event_type: "digest.schedule", payload: {} }, schedule_meta: {},
+  });
+  const listed = (triggers: unknown[]) => [{ name: "digest", url: "u", runtime: "node22", timeout: 10, memory: 128, triggers, created_at: "t", updated_at: "t" }];
+  const planned = (calls: FetchCall[]) => {
+    const planCall = calls.find((c) => c.url.endsWith("/apply/v1/plans"));
+    assert.ok(planCall, "planned");
+    return (JSON.parse(planCall!.body as string) as { spec: Record<string, any> }).spec;
+  };
+
+  it("applies a source-less patch entry that replaces every schedule trigger and keeps the others", async () => {
+    const { fetch, calls } = applyOkFetch({
+      planId: "plan_s",
+      lists: [listed([EMAIL, sched("sched_old000000000", "0 8 * * *"), sched("nightly", "0 2 * * *")]), listed([EMAIL, sched("sched_new000000000", "0 9 * * *")])],
+    });
+    const sdk = makeSdk(fetch);
+    const result = await sdk.functions.schedule("prj_known", "digest", "0 9 * * *", { timezone: "Asia/Jerusalem" });
+    const spec = planned(calls);
+    const entry = spec.functions.patch.set.digest;
+    assert.equal(entry.source, undefined, "no source: the gateway keeps the deployed function");
+    assert.equal(entry.files, undefined);
+    assert.equal(entry.config, undefined);
+    const schedules = (entry.triggers as Array<Record<string, unknown>>).filter((t) => t.type === "schedule");
+    assert.equal(schedules.length, 1);
+    assert.equal(schedules[0]!.cron, "0 9 * * *");
+    assert.equal(schedules[0]!.timezone, "Asia/Jerusalem");
+    assert.equal(schedules[0]!.id, undefined, "the gateway derives the id");
+    assert.ok((entry.triggers as Array<{ id?: string }>).some((t) => t.id === "inbox"));
+    assert.deepEqual(result.schedule_triggers.map((t) => t.id), ["sched_new000000000"]);
+    assert.deepEqual(result.removed.sort(), ["nightly", "sched_old000000000"]);
+    assert.equal(result.release_id, "rel_fn");
+  });
+
+  it("with an id adds or replaces only that schedule trigger", async () => {
+    const { fetch, calls } = applyOkFetch({ planId: "plan_s", lists: [listed([sched("nightly", "0 2 * * *"), sched("schedule", "0 8 * * *")])] });
+    const sdk = makeSdk(fetch);
+    await sdk.functions.schedule("prj_known", "digest", "*/30 * * * *", { id: "schedule" });
+    const triggers = planned(calls).functions.patch.set.digest.triggers as Array<{ id?: string; cron?: string }>;
+    assert.deepEqual(triggers.map((t) => [t.id, t.cron]).sort(), [["nightly", "0 2 * * *"], ["schedule", "*/30 * * * *"]]);
+  });
+
+  it("unschedule removes every schedule trigger, or the one named, and keeps the others", async () => {
+    {
+      const { fetch, calls } = applyOkFetch({ planId: "plan_u", lists: [listed([EMAIL, sched("a", "0 1 * * *"), sched("b", "0 2 * * *")]), listed([EMAIL])] });
+      const result = await makeSdk(fetch).functions.unschedule("prj_known", "digest");
+      assert.deepEqual((planned(calls).functions.patch.set.digest.triggers as Array<{ id: string }>).map((t) => t.id), ["inbox"]);
+      assert.deepEqual(result.removed.sort(), ["a", "b"]);
+      assert.deepEqual(result.schedule_triggers, []);
     }
+    {
+      const { fetch, calls } = applyOkFetch({ planId: "plan_u", lists: [listed([sched("a", "0 1 * * *"), sched("b", "0 2 * * *")]), listed([sched("b", "0 2 * * *")])] });
+      const result = await makeSdk(fetch).functions.unschedule("prj_known", "digest", { id: "a" });
+      assert.deepEqual((planned(calls).functions.patch.set.digest.triggers as Array<{ id: string }>).map((t) => t.id), ["b"]);
+      assert.deepEqual(result.removed, ["a"]);
+    }
+  });
+
+  it("unschedule of a function with no schedule applies nothing", async () => {
+    const { fetch, calls } = applyOkFetch({ planId: "plan_u", lists: [listed([EMAIL])] });
+    const result = await makeSdk(fetch).functions.unschedule("prj_known", "digest");
+    assert.equal(calls.some((c) => c.url.endsWith("/apply/v1/plans")), false);
+    assert.deepEqual(result.removed, []);
+  });
+
+  it("rejects a bad cron, id or timezone before calling the gateway", async () => {
+    const { fetch, calls } = mockFetch(() => { throw new Error("unexpected fetch"); });
+    const sdk = makeSdk(fetch);
+    for (const [cron, opts] of [["* * * *", {}], ["", {}], ["0 9 * * *", { id: "-bad" }], ["0 9 * * *", { timezone: "" }]] as const) {
+      await assert.rejects(sdk.functions.schedule("prj_known", "digest", cron, opts), LocalError);
+    }
+    await assert.rejects(sdk.functions.unschedule("prj_known", "digest", { id: "bad id" }), LocalError);
+    assert.equal(calls.length, 0);
   });
 });
 

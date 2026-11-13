@@ -1376,6 +1376,61 @@ describe("function update argv validation", () => {
     assert.match(err.message, /mutually exclusive/);
     assert.equal(calls.length, 0, "conflicting schedule flags must not hit the network");
   });
+
+  it("functions update rejects --timezone without --schedule before network", async () => {
+    const { run } = await import("./cli/lib/functions.mjs");
+    const err = await expectExit1(() =>
+      run("update", ["prj_test123", "hello", "--timezone", "Asia/Jerusalem", "--timeout", "10"]));
+    assert.equal(err.code, "BAD_USAGE");
+    assert.match(err.message, /--timezone is only accepted with --schedule/);
+    assert.equal(calls.length, 0);
+  });
+
+  // D-scheduled-functions-7: --schedule is the SDK's functions.schedule, a
+  // source-less functions.patch.set entry carrying the schedule trigger.
+  for (const [label, argv, check] of [
+    [
+      "--schedule <cron> --timezone <iana> plans a schedule trigger and no code",
+      ["prj_test123", "hello", "--schedule", "0 9 * * 1", "--timezone", "Asia/Jerusalem"],
+      (entry) => {
+        assert.equal(entry.source, undefined);
+        assert.deepEqual(
+          entry.triggers.filter((t) => t.type === "schedule").map((t) => [t.cron, t.timezone, t.id]),
+          [["0 9 * * 1", "Asia/Jerusalem", undefined]],
+        );
+      },
+    ],
+    [
+      "--schedule-remove plans the function with no schedule trigger",
+      ["prj_test123", "hello", "--schedule-remove"],
+      (entry) => assert.deepEqual(entry.triggers, []),
+    ],
+  ]) {
+    it(`functions update ${label}`, async () => {
+      const { run } = await import("./cli/lib/functions.mjs");
+      let planned = null;
+      const apply = applyMockFetch({ onPlanBody: (body) => { planned = body; } });
+      const existing = { id: "sched_aaaaaaaaaaaa", type: "schedule", cron: "0 8 * * *", timezone: "UTC", misfire_policy: "skip", overlap_policy: "allow", run: { event_type: "hello.schedule", payload: {} }, schedule_meta: {} };
+      globalThis.fetch = (input, init) => {
+        const info = requestInfo(input, init);
+        if (info.path === "/projects/v1/admin/prj_test123/functions" && info.method === "GET") {
+          calls.push(info);
+          return Promise.resolve(json({ functions: [{ name: "hello", url: "u", runtime: "node22", timeout: 10, memory: 128, triggers: [existing], created_at: "t", updated_at: "t" }] }));
+        }
+        return apply(input, init);
+      };
+      captureStart();
+      try {
+        await run("update", argv);
+      } finally {
+        captureStop();
+        globalThis.fetch = mockFetch;
+      }
+      assert.ok(planned, "planned a release");
+      check(planned.spec.functions.patch.set.hello);
+      assert.equal(calls.some((c) => c.method === "PATCH"), false, "a schedule change never PATCHes the function");
+    });
+  }
 });
 
 describe("function list/delete argv validation", () => {

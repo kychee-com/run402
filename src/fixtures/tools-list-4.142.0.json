@@ -428,12 +428,35 @@
                     },
                     "additionalProperties": false
                   },
-                  "schedule": {
-                    "type": [
-                      "string",
-                      "null"
-                    ],
-                    "description": "Cron expression (5-field). Pass null to remove an existing schedule; omit in patch mode to leave it unchanged."
+                  "triggers": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "enum": [
+                            "schedule",
+                            "email",
+                            "app_repo"
+                          ]
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "cron": {
+                          "type": "string"
+                        },
+                        "timezone": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type"
+                      ],
+                      "additionalProperties": true
+                    },
+                    "description": "Function triggers. A schedule is { type: \"schedule\", cron: \"0 9 * * *\" } (timezone optional, default UTC); the gateway derives its id and default run, and each tick creates a durable function run. An omitted triggers means none."
                   }
                 },
                 "additionalProperties": false

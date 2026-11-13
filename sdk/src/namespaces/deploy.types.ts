@@ -333,10 +333,14 @@ export interface FunctionSpec {
    * apply/deploy result.
    */
   deps?: string[];
-  /** Durable function triggers. Schedule triggers create durable function runs. */
+  /**
+   * Durable function triggers. A schedule is a schedule trigger, and its
+   * shortest form is `{ type: "schedule", cron: "0 9 * * *" }` (the gateway
+   * fills the id, timezone, policies and run). In `functions.patch.set`, an
+   * entry without `source` keeps the deployed function and replaces only the
+   * fields it names, so `{ triggers: [...] }` changes a schedule without code.
+   */
   triggers?: FunctionTriggerSpec[];
-  /** Legacy direct schedule field. Prefer `triggers[]` schedule entries for new manifests. */
-  schedule?: string | null;
   /**
    * v1.52+: function class. When `"ssr"`, the gateway provisions the
    * Lambda with SnapStart enabled and routes invocations through the
@@ -401,13 +405,24 @@ export interface FunctionTriggerRunSpec {
 }
 
 export interface FunctionScheduleTriggerSpec {
-  id: string;
+  /**
+   * Stable trigger id. Omitted, the gateway derives one from the cron and
+   * timezone (`sched_` + 12 hex), so the same schedule redeployed is the same
+   * trigger and a cron or timezone change is a new one. Name it to keep its
+   * identity across cron edits.
+   */
+  id?: string;
   type: "schedule";
+  /** 5-field cron expression, read in `timezone`. */
   cron: string;
+  /** IANA time zone. Default `UTC`. */
   timezone?: string;
+  /** Default `skip`. */
   misfire_policy?: "skip";
+  /** Default `allow`. */
   overlap_policy?: "allow";
-  run: FunctionTriggerRunSpec;
+  /** Default `{ event_type: "<function_name>.schedule", payload: {} }`; `event_type` defaults the same way inside a given `run`. */
+  run?: Omit<FunctionTriggerRunSpec, "event_type"> & { event_type?: string };
 }
 
 /**
@@ -2118,7 +2133,6 @@ export interface ReleaseFunctionEntry {
   runtime: string;
   timeout_seconds: number;
   memory_mb: number;
-  schedule: string | null;
   /** Present when the function's source exports a static `tool` declaration:
    *  the app serves it as an MCP tool at `https://<host>/_run402/mcp`. */
   tool?: ReleaseFunctionTool;
@@ -2337,7 +2351,6 @@ export interface FunctionsDiff {
       | "runtime"
       | "timeout_seconds"
       | "memory_mb"
-      | "schedule"
       | "deps"
       | "triggers"
     >;
@@ -2923,7 +2936,6 @@ export interface NormalizedFunctionSpec {
   /** Capability `apply-v1-function-deps` — see `FunctionSpec.deps`. */
   deps?: string[];
   triggers?: FunctionTriggerSpec[];
-  schedule?: string | null;
   /** v1.51+ — see `FunctionSpec.requireAuth`. */
   requireAuth?: boolean;
   /** v1.51+ — see `FunctionSpec.requireRole`. */

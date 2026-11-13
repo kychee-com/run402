@@ -836,7 +836,7 @@ const res = await fetch("https://api.run402.com/functions/v1/my-fn", {
 
 ### Scheduled functions
 
-Pass a 5-field cron expression. To remove a schedule: `--schedule-remove`. Tier limits:
+A schedule is a schedule trigger: each tick is a durable function run (`X-Run402-Trigger: function_run`) with retries and run history. Pass a 5-field cron to `--schedule` (and `--timezone <iana>`, default UTC); `run402 functions update <project_id> my-fn --schedule '0 9 * * 1' --timezone Asia/Jerusalem` changes it without redeploying the code, and `--schedule-remove` removes it. In a manifest, `{ "type": "schedule", "cron": "0 9 * * *" }` under `functions.<set>.<name>.triggers` is a complete trigger: the gateway derives its id and default run, and the plan shows them under `schedule_triggers`. Tier limits:
 
 | Tier | Max scheduled | Min interval |
 |---|---|---|

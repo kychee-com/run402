@@ -157,12 +157,20 @@ const functionSpec = z
         memoryMb: z.number().optional(),
       })
       .optional(),
-    schedule: z
-      .string()
-      .nullable()
+    triggers: z
+      .array(
+        z
+          .object({
+            type: z.enum(["schedule", "email", "app_repo"]),
+            id: z.string().optional(),
+            cron: z.string().optional(),
+            timezone: z.string().optional(),
+          })
+          .loose(),
+      )
       .optional()
       .describe(
-        "Cron expression (5-field). Pass null to remove an existing schedule; omit in patch mode to leave it unchanged.",
+        "Function triggers. A schedule is { type: \"schedule\", cron: \"0 9 * * *\" } (timezone optional, default UTC); the gateway derives its id and default run, and each tick creates a durable function run. An omitted triggers means none.",
       ),
   })
   .strict();

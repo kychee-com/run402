@@ -77,7 +77,7 @@ Usage:
   run402 functions <subcommand> [args...]
 
 Subcommands:
-  deploy <name> --file <file> [--project <project_id>] [--timeout <s>] [--memory <mb>] [--deps <pkg,...>] [--schedule <cron>]
+  deploy <name> --file <file> [--project <project_id>] [--timeout <s>] [--memory <mb>] [--deps <pkg,...>] [--schedule <cron> [--timezone <iana>]]
                                        Deploy a function to a project
   invoke <name> [--project <project_id>] [--method <M>] [--body <json> | --body-file <path>] [--idempotency-key <key>] [--wait] [--timeout-ms <ms>] [--poll-interval-ms <ms>] [--raw]
                                        Invoke a deployed function. Default
@@ -91,8 +91,8 @@ Subcommands:
                                        every function)
   runs   <action> ...                  Create, inspect, cancel, redrive, and
                                        wait for durable function runs
-  update <name> [--project <project_id>] [--schedule <cron>] [--schedule-remove] [--timeout <s>] [--memory <mb>]
-                                       Update function schedule or config without re-deploying
+  update <name> [--project <project_id>] [--schedule <cron> [--timezone <iana>] | --schedule-remove] [--timeout <s>] [--memory <mb>]
+                                       Change a function's schedule or config without re-deploying its code
   rebuild [<name>] [--all] [--project <project_id>]
                                        Refresh function(s) onto the current platform
                                        runtime (re-bundles from stored source; no
@@ -107,7 +107,7 @@ e.g. run402 functions deploy prj_abc123 stripe-webhook --file handler.ts
 Examples:
   run402 functions deploy stripe-webhook --file handler.ts --project prj_abc123
   run402 functions deploy send-reminders --file remind.ts --schedule '*/15 * * * *'
-  run402 functions deploy send-reminders --file remind.ts --schedule ''   # remove schedule
+  run402 functions deploy send-reminders --file remind.ts --schedule '0 9 * * 1' --timezone Asia/Jerusalem
   run402 functions invoke stripe-webhook --project prj_abc123 --body-file request.json
   run402 functions logs stripe-webhook --tail 100
   run402 functions logs stripe-webhook --since 2026-03-29T14:00:00Z
@@ -129,6 +129,9 @@ Notes:
   - --project defaults to the active project ('run402 projects use')
   - Code must export a default async function: export default async (req: Request) => Response
   - Deploy may require payment if the project lease has expired
+  - A schedule is a schedule trigger in the release: each tick is a durable
+    function run (X-Run402-Trigger: function_run), with retries and run history.
+    --schedule replaces the function's schedule; its other triggers stay.
   - 'rebuild' is opt-in and never changes your source: it re-bundles the stored
     source against the current platform runtime so a gateway-side wrapper fix
     reaches an already-deployed function. 'run402 doctor' flags stale functions.
@@ -160,7 +163,10 @@ Options:
                       rejected. Max 30 entries, max 200 chars per spec.
                       Native binary modules (sharp, canvas, native bcrypt)
                       are rejected.
-  --schedule <cron>   Cron schedule; pass '' to clear an existing schedule
+  --schedule <cron>   The function's schedule (a 5-field cron), declared as a
+                      schedule trigger; '' removes it. Omitted, the function
+                      keeps the triggers it has.
+  --timezone <iana>   Time zone the --schedule cron is read in (default UTC)
 
 Notes:
   Code must export a default async function:
@@ -179,6 +185,7 @@ Examples:
   run402 functions deploy prj_abc123 send-reminders --file remind.ts \\
     --schedule '*/15 * * * *'
   run402 functions deploy prj_abc123 send-reminders --file remind.ts --schedule ''
+  run402 functions deploy prj_abc123 digest --file digest.ts --schedule '0 9 * * 1' --timezone Asia/Jerusalem
 `,
   invoke: `run402 functions invoke — Invoke a deployed function
 
@@ -313,7 +320,7 @@ Examples:
   run402 functions runs logs prj_abc123 fnrun_abc123 --tail 100
   run402 functions runs redrive prj_abc123 fnrun_abc123 --wait
 `,
-  update: `run402 functions update — Update function config without re-deploying
+  update: `run402 functions update — Change a function's schedule or config without re-deploying
 
 Usage:
   run402 functions update <name> [--project <project_id>] [options]
@@ -326,17 +333,23 @@ Arguments:
 
 Options:
   --project <project_id>      Target project ID (defaults to the active project)
-  --schedule <cron>   New cron schedule (pass '' to clear)
-  --schedule-remove   Explicitly remove the schedule
+  --schedule <cron>   Schedule the function (a 5-field cron): replaces its
+                      schedule trigger and keeps its code and other triggers
+                      (pass '' to remove)
+  --timezone <iana>   Time zone the --schedule cron is read in (default UTC)
+  --schedule-remove   Remove the function's schedule
   --timeout <s>       Runtime timeout in seconds
   --memory <mb>       Memory in MB
 
 Notes:
-  Must provide at least one of the options above.
+  Must provide at least one of the options above. A schedule change is a
+  release (r.functions.schedule / unschedule in the SDK); each tick creates a
+  durable function run. The result lists the stored schedule_triggers.
 
 Examples:
   run402 functions update prj_abc123 send-reminders --schedule '0 */4 * * *'
   run402 functions update prj_abc123 send-reminders --schedule-remove
+  run402 functions update prj_abc123 digest --schedule '0 9 * * 1' --timezone Asia/Jerusalem
   run402 functions update prj_abc123 my-func --timeout 15 --memory 256
 `,
   rebuild: `run402 functions rebuild — Refresh function(s) onto the current platform runtime
@@ -417,14 +430,15 @@ Examples:
 
 async function deploy(projectId, name, args) {
   assertRequiredProjectAndName(projectId, name, "run402 functions deploy <project_id> <name> --file <file>");
-  assertKnownFlags(args, ["--file", "--timeout", "--memory", "--deps", "--schedule", "--help", "-h"], ["--file", "--timeout", "--memory", "--deps", "--schedule"]);
-  const opts = { file: null, timeout: undefined, memory: undefined, deps: undefined, schedule: undefined };
+  assertKnownFlags(args, ["--file", "--timeout", "--memory", "--deps", "--schedule", "--timezone", "--help", "-h"], ["--file", "--timeout", "--memory", "--deps", "--schedule", "--timezone"]);
+  const opts = { file: null, timeout: undefined, memory: undefined, deps: undefined, schedule: undefined, timezone: undefined };
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--file" && args[i + 1]) opts.file = args[++i];
     if (args[i] === "--timeout") opts.timeout = parseIntegerFlag("--timeout", args[++i], { min: 1 });
     if (args[i] === "--memory") opts.memory = parseIntegerFlag("--memory", args[++i], { min: 1 });
     if (args[i] === "--deps" && args[i + 1]) opts.deps = parseDepsFlag(args[++i]);
     if (args[i] === "--schedule" && i + 1 < args.length) opts.schedule = args[++i];
+    if (args[i] === "--timezone" && args[i + 1]) opts.timezone = args[++i];
   }
   if (!opts.file) {
     fail({ code: "BAD_USAGE", message: "Missing --file <file>" });
@@ -440,6 +454,7 @@ async function deploy(projectId, name, args) {
   }
   if (opts.deps !== undefined) deployOpts.deps = opts.deps;
   if (opts.schedule !== undefined) deployOpts.schedule = opts.schedule === "" ? null : opts.schedule;
+  if (opts.timezone !== undefined) deployOpts.timezone = opts.timezone;
 
   try {
     const data = await getSdk().functions.deploy(projectId, deployOpts);
@@ -889,13 +904,19 @@ function parseJsonObjectFlag(flag, value) {
 
 async function update(projectId, name, args) {
   assertRequiredProjectAndName(projectId, name, "run402 functions update <project_id> <name> [options]");
-  assertKnownFlags(args, ["--schedule", "--schedule-remove", "--timeout", "--memory", "--help", "-h"], ["--schedule", "--timeout", "--memory"]);
+  assertKnownFlags(
+    args,
+    ["--schedule", "--timezone", "--schedule-remove", "--timeout", "--memory", "--help", "-h"],
+    ["--schedule", "--timezone", "--timeout", "--memory"],
+  );
   let schedule = undefined;
+  let timezone = undefined;
   let scheduleRemove = false;
   let timeout = undefined;
   let memory = undefined;
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--schedule" && i + 1 < args.length) schedule = args[++i];
+    if (args[i] === "--timezone" && args[i + 1]) timezone = args[++i];
     if (args[i] === "--schedule-remove") scheduleRemove = true;
     if (args[i] === "--timeout") timeout = parseIntegerFlag("--timeout", args[++i], { min: 1 });
     if (args[i] === "--memory") memory = parseIntegerFlag("--memory", args[++i], { min: 1 });
@@ -907,17 +928,20 @@ async function update(projectId, name, args) {
       details: { flags: ["--schedule", "--schedule-remove"] },
     });
   }
-
-  const updateOpts = {};
-  if (scheduleRemove || schedule === "") {
-    updateOpts.schedule = null;
-  } else if (schedule !== undefined) {
-    updateOpts.schedule = schedule;
+  const removeSchedule = scheduleRemove || schedule === "";
+  const setSchedule = !removeSchedule && schedule !== undefined;
+  if (timezone !== undefined && !setSchedule) {
+    fail({
+      code: "BAD_USAGE",
+      message: "--timezone is only accepted with --schedule <cron>",
+      details: { flags: ["--timezone", "--schedule"] },
+    });
   }
-  if (timeout !== undefined) updateOpts.timeout = timeout;
-  if (memory !== undefined) updateOpts.memory = memory;
-
-  if (Object.keys(updateOpts).length === 0) {
+  const configOpts = {};
+  if (timeout !== undefined) configOpts.timeout = timeout;
+  if (memory !== undefined) configOpts.memory = memory;
+  const hasConfig = Object.keys(configOpts).length > 0;
+  if (!setSchedule && !removeSchedule && !hasConfig) {
     fail({
       code: "BAD_USAGE",
       message: "Provide at least one of: --schedule, --schedule-remove, --timeout, --memory",
@@ -925,8 +949,16 @@ async function update(projectId, name, args) {
   }
 
   try {
-    const data = await getSdk().functions.update(projectId, name, updateOpts);
-    console.log(JSON.stringify(data, null, 2));
+    const sdk = getSdk();
+    const out = {};
+    if (hasConfig) out.config = await sdk.functions.update(projectId, name, configOpts);
+    if (setSchedule) {
+      out.schedule = await sdk.functions.schedule(projectId, name, schedule, timezone !== undefined ? { timezone } : {});
+    } else if (removeSchedule) {
+      out.schedule = await sdk.functions.unschedule(projectId, name);
+    }
+    const keys = Object.keys(out);
+    console.log(JSON.stringify(keys.length === 1 ? out[keys[0]] : out, null, 2));
   } catch (err) {
     reportSdkError(err);
   }

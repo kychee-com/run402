@@ -3,6 +3,8 @@
  * Maps to `/projects/v1/admin/:id/functions*` and `/functions/v1/:name`.
  */
 
+import type { FunctionAppRepoTriggerSpec, FunctionEmailTriggerSpec, FunctionScheduleTriggerSpec, FunctionTriggerRunSpec } from "./deploy.types.js";
+
 export interface FunctionConfig {
   /** Timeout in seconds. Tier limits apply. */
   timeout?: number;
@@ -31,8 +33,16 @@ export interface FunctionDeployOptions {
    * {@link FunctionDeployResult.deps_resolved}.
    */
   deps?: string[];
-  /** Cron schedule (5-field). Omit to deploy without a schedule. */
+  /**
+   * The function's schedule, a 5-field cron: declared as a schedule trigger
+   * (`{ type: "schedule", cron }`) beside the function's other triggers.
+   * `null` or `""` removes every schedule trigger. Omitted, the function keeps
+   * the triggers it has (a deploy replaces the function, so the SDK re-sends
+   * them).
+   */
   schedule?: string | null;
+  /** IANA time zone the schedule's cron is read in (default `UTC`). Only with `schedule`. */
+  timezone?: string;
 }
 
 export interface FunctionDeployResult {
@@ -42,7 +52,8 @@ export interface FunctionDeployResult {
   runtime: string;
   timeout: number;
   memory: number;
-  schedule?: string | null;
+  /** The function's triggers as stored after the deploy, schedule triggers with their resolved id. */
+  triggers: FunctionTriggerRecord[];
   created_at: string;
   /**
    * The version of `@run402/functions` bundled into the function at deploy
@@ -301,12 +312,54 @@ export interface FunctionRunWaitOptions {
   throwOnFailure?: boolean;
 }
 
+/** A schedule trigger's run bookkeeping. */
 export interface FunctionScheduleMeta {
   last_run_at?: string;
-  last_status?: number;
-  next_run_at?: string;
+  /** The `fnrun_` id of the last run the schedule started. */
+  last_run_id?: string | null;
+  /** The last run's status (`queued`, `succeeded`, `failed`, `blocked`, `error`, …). */
+  last_status?: string;
+  next_run_at?: string | null;
   run_count?: number;
   last_error?: string | null;
+}
+
+/**
+ * A deployed trigger as the function list reports it: the release-spec shape
+ * (an email trigger names its mailbox by slug), a schedule trigger with every
+ * default resolved and its `schedule_meta`.
+ */
+export type FunctionTriggerRecord =
+  | (Required<Omit<FunctionScheduleTriggerSpec, "run">> & { run: FunctionTriggerRunSpec; schedule_meta?: FunctionScheduleMeta })
+  | FunctionEmailTriggerSpec
+  | FunctionAppRepoTriggerSpec;
+
+export interface FunctionScheduleOptions {
+  /** IANA time zone the cron is read in. Default `UTC`. */
+  timezone?: string;
+  /**
+   * A stable trigger id. Omitted, the gateway derives one from the cron and
+   * timezone (`sched_…`) and this schedule replaces every schedule trigger the
+   * function has; given, only the trigger with that id is added or replaced,
+   * and the id survives later cron edits.
+   */
+  id?: string;
+}
+
+export interface FunctionUnscheduleOptions {
+  /** Remove only the schedule trigger with this id. Omitted, every schedule trigger is removed. */
+  id?: string;
+}
+
+export interface FunctionScheduleResult {
+  name: string;
+  /** The function's schedule triggers as stored after the change. */
+  schedule_triggers: Extract<FunctionTriggerRecord, { type: "schedule" }>[];
+  /** Ids of the schedule triggers this call removed. */
+  removed: string[];
+  release_id: string;
+  operation_id: string;
+  warnings?: string[];
 }
 
 export interface FunctionSummary {
@@ -315,8 +368,8 @@ export interface FunctionSummary {
   runtime: string;
   timeout: number;
   memory: number;
-  schedule?: string | null;
-  schedule_meta?: FunctionScheduleMeta | null;
+  /** Every deployed trigger of the function, ordered by id; schedule triggers carry `schedule_meta`. */
+  triggers?: FunctionTriggerRecord[];
   created_at: string;
   updated_at: string;
   /**
@@ -410,8 +463,6 @@ export interface DeleteFunctionResult {
 }
 
 export interface FunctionUpdateOptions {
-  /** Pass `null` to remove an existing schedule. `undefined` leaves the schedule unchanged. */
-  schedule?: string | null;
   timeout?: number;
   memory?: number;
 }
@@ -421,8 +472,6 @@ export interface FunctionUpdateResult {
   runtime: string;
   timeout: number;
   memory: number;
-  schedule: string | null;
-  schedule_meta: Record<string, unknown> | null;
   updated_at: string;
   /** See `FunctionSummary.runtime_version`. */
   runtime_version?: string | null;

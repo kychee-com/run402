@@ -67,6 +67,8 @@ import type {
   EdgeCoherenceWaitOptions,
   EdgeCoherenceWaitResult,
   FileSet,
+  FunctionTriggerRunSpec,
+  FunctionTriggerSpec,
   FsFileSource,
   GatewayDeployError,
   VaultCommitDeclaration,
@@ -1354,7 +1356,6 @@ function functionToCoreSpec(fn: NormalizedFunctionSpec): Record<string, unknown>
     ...(fn.config !== undefined ? { config: fn.config } : {}),
     ...(fn.deps !== undefined ? { deps: fn.deps } : {}),
     ...(fn.triggers !== undefined ? { triggers: fn.triggers } : {}),
-    ...(fn.schedule !== undefined ? { schedule: fn.schedule } : {}),
     ...(fn.requireAuth !== undefined ? { requireAuth: fn.requireAuth } : {}),
     ...(fn.requireRole !== undefined ? { requireRole: fn.requireRole } : {}),
     ...(fn.class !== undefined ? { class: fn.class } : {}),
@@ -1378,7 +1379,6 @@ function functionToWire(fn: NormalizedFunctionSpec): Record<string, unknown> {
       : {}),
     ...(fn.deps !== undefined ? { deps: fn.deps } : {}),
     ...(fn.triggers !== undefined ? { triggers: fn.triggers } : {}),
-    ...(fn.schedule !== undefined ? { schedule: fn.schedule } : {}),
     ...(fn.requireAuth !== undefined ? { require_auth: fn.requireAuth } : {}),
     ...(fn.requireRole !== undefined
       ? { require_role: fn.requireRole === null ? null : requireRoleToWire(fn.requireRole) }
@@ -1784,7 +1784,7 @@ async function preflightTierFunctionLimits(
         intervalMinutes !== null &&
         intervalMinutes < limits.minCronIntervalMinutes.value
       ) {
-        const triggerLabel = trigger.id === "__legacy__" ? "schedule" : `trigger ${trigger.id}`;
+        const triggerLabel = trigger.id ? `trigger ${trigger.id}` : "schedule trigger";
         throw tierLimitError(
           `Function ${entry.name} ${triggerLabel} runs every ${intervalMinutes} minute(s), below the ${limits.tier} tier minimum interval of ${limits.minCronIntervalMinutes.value} minutes.`,
           `${entry.fieldPrefix}.${trigger.fieldSuffix}`,
@@ -2053,8 +2053,7 @@ function applyScheduledFunctionPatch(
     scheduled.delete(name);
   }
   for (const [name, fn] of Object.entries(patch?.set ?? {})) {
-    if (fn.schedule === null) scheduled.delete(name);
-    else if (scheduleTriggersForFunction(fn).length > 0) scheduled.add(name);
+    if (scheduleTriggersForFunction(fn).length > 0) scheduled.add(name);
   }
 }
 
@@ -2077,7 +2076,7 @@ async function readActiveScheduledFunctionNames(
 
   const scheduled = new Set<string>();
   for (const fn of inventory.functions ?? []) {
-    if (isScheduledCron(fn.schedule) || scheduleTriggersForFunction(fn as NormalizedFunctionSpec).length > 0) scheduled.add(fn.name);
+    if (scheduleTriggersForFunction(fn as NormalizedFunctionSpec).length > 0) scheduled.add(fn.name);
   }
   return scheduled;
 }
@@ -2087,27 +2086,14 @@ type ScheduleTriggerForPreflight = Extract<NormalizedTriggerSpec, { type: "sched
   fieldSuffix: string;
 };
 
-function scheduleTriggersForFunction(fn: Pick<NormalizedFunctionSpec, "triggers" | "schedule">): ScheduleTriggerForPreflight[] {
-  if (fn.triggers && fn.triggers.length > 0) {
-    return fn.triggers
-      .filter((trigger): trigger is Extract<NormalizedTriggerSpec, { type: "schedule" }> => trigger.type === "schedule")
-      .map((trigger) => ({
-        ...trigger,
-        fieldSuffix: `triggers.${trigger.id}.cron`,
-      }));
-  }
-  return isScheduledCron(fn.schedule)
-    ? [{
-        id: "__legacy__",
-        type: "schedule",
-        cron: fn.schedule,
-        timezone: "UTC",
-        misfire_policy: "skip",
-        overlap_policy: "allow",
-        run: { event_type: "legacy.schedule", payload: {} },
-        fieldSuffix: "schedule",
-      }]
-    : [];
+function scheduleTriggersForFunction(fn: Pick<NormalizedFunctionSpec, "triggers">): ScheduleTriggerForPreflight[] {
+  return (fn.triggers ?? [])
+    .map((trigger, index) => ({ trigger, index }))
+    .filter((entry): entry is { trigger: Extract<NormalizedTriggerSpec, { type: "schedule" }>; index: number } => entry.trigger.type === "schedule")
+    .map(({ trigger, index }) => ({
+      ...trigger,
+      fieldSuffix: `triggers[${index}].cron`,
+    }));
 }
 
 function scheduledCountTierLimitError(
@@ -2166,10 +2152,6 @@ function tierLimitError(
     body,
     context: "validating deploy tier limits",
   });
-}
-
-function isScheduledCron(value: unknown): value is string {
-  return typeof value === "string" && value.trim().length > 0;
 }
 
 function estimateCronMinimumIntervalMinutes(expression: string): number | null {
@@ -3513,11 +3495,16 @@ function validateFunctionTriggers(value: unknown, resource: string): void {
     validateKnownFields(obj, path, FUNCTION_TRIGGER_FIELDS, {
       delivery: "Remove delivery; schedule triggers always start durable function runs.",
     });
-    if (typeof obj.id !== "string" || obj.id.trim() === "") {
-      throw invalidSpec(`ReleaseSpec.${path}.id is required for function triggers`, `${path}.id`);
+    // A schedule trigger may omit its id (the gateway derives one from the
+    // cron and timezone) and its run (D-scheduled-functions-5).
+    const isSchedule = obj.type === "schedule";
+    if (!(isSchedule && obj.id === undefined)) {
+      if (typeof obj.id !== "string" || obj.id.trim() === "") {
+        throw invalidSpec(`ReleaseSpec.${path}.id is required for ${String(obj.type)} triggers`, `${path}.id`);
+      }
+      if (seen.has(obj.id)) throw invalidSpec(`ReleaseSpec.${path}.id duplicates ${JSON.stringify(obj.id)}`, `${path}.id`);
+      seen.add(obj.id);
     }
-    if (seen.has(obj.id)) throw invalidSpec(`ReleaseSpec.${path}.id duplicates ${JSON.stringify(obj.id)}`, `${path}.id`);
-    seen.add(obj.id);
     if (obj.type !== "app_repo" && (obj.repo !== undefined || obj.paths !== undefined)) {
       throw invalidSpec(`ReleaseSpec.${path} ${String(obj.type)} triggers cannot include repo or paths`, path);
     }
@@ -3587,9 +3574,10 @@ function validateFunctionTriggers(value: unknown, resource: string): void {
     } else {
       throw invalidSpec(`ReleaseSpec.${path}.type must be "schedule", "email" or "app_repo"`, `${path}.type`);
     }
+    if (isSchedule && obj.run === undefined) continue;
     const run = requireObject(obj.run, `${path}.run`);
     validateKnownFields(run, `${path}.run`, FUNCTION_TRIGGER_RUN_FIELDS);
-    if (typeof run.event_type !== "string" || run.event_type.trim() === "") {
+    if (!(isSchedule && run.event_type === undefined) && (typeof run.event_type !== "string" || run.event_type.trim() === "")) {
       throw invalidSpec(`ReleaseSpec.${path}.run.event_type is required`, `${path}.run.event_type`);
     }
     if (run.payload !== undefined) requireObject(run.payload, `${path}.run.payload`);
@@ -4943,7 +4931,6 @@ async function normalizeFunction(
   if (fn.config) out.config = fn.config;
   if (fn.deps !== undefined) out.deps = fn.deps;
   if (fn.triggers !== undefined) out.triggers = normalizeFunctionTriggers(fn.triggers);
-  if (fn.schedule !== undefined) out.schedule = fn.schedule;
   if (fn.entrypoint) out.entrypoint = fn.entrypoint;
   if (fn.requireAuth !== undefined) out.requireAuth = fn.requireAuth;
   if (fn.requireRole !== undefined) out.requireRole = fn.requireRole;
@@ -4963,23 +4950,23 @@ async function normalizeFunction(
 function normalizeFunctionTriggers(
   triggers: NonNullable<FunctionSpecInput["triggers"]>,
 ): NonNullable<NormalizedFunctionSpec["triggers"]> {
+  const runOf = (run: { event_type?: string; payload?: Record<string, unknown>; retry?: Record<string, unknown>; expires_after_seconds?: number }) => ({
+    ...(run.event_type !== undefined ? { event_type: run.event_type } : {}),
+    payload: run.payload ?? {},
+    ...(run.retry !== undefined ? { retry: { ...run.retry } } : {}),
+    ...(run.expires_after_seconds !== undefined
+      ? { expires_after_seconds: run.expires_after_seconds }
+      : {}),
+  });
   return triggers
-    .map((trigger) => {
-      const run = {
-        event_type: trigger.run.event_type,
-        payload: trigger.run.payload ?? {},
-        ...(trigger.run.retry !== undefined ? { retry: { ...trigger.run.retry } } : {}),
-        ...(trigger.run.expires_after_seconds !== undefined
-          ? { expires_after_seconds: trigger.run.expires_after_seconds }
-          : {}),
-      };
+    .map((trigger): FunctionTriggerSpec => {
       if (trigger.type === "email") {
         return {
           id: trigger.id,
           type: "email" as const,
           mailbox: trigger.mailbox,
           events: [...trigger.events].sort(),
-          run,
+          run: runOf(trigger.run) as FunctionTriggerRunSpec,
         };
       }
       if (trigger.type === "app_repo") {
@@ -4988,20 +4975,22 @@ function normalizeFunctionTriggers(
           type: "app_repo" as const,
           repo: trigger.repo,
           ...(trigger.paths !== undefined ? { paths: [...trigger.paths] } : {}),
-          run,
+          run: runOf(trigger.run) as FunctionTriggerRunSpec,
         };
       }
+      // A schedule trigger's id and run are the gateway's to default
+      // (D-scheduled-functions-5): an omitted one is sent omitted.
       return {
-        id: trigger.id,
+        ...(trigger.id !== undefined ? { id: trigger.id } : {}),
         type: "schedule" as const,
         cron: trigger.cron,
         timezone: trigger.timezone ?? "UTC",
         misfire_policy: trigger.misfire_policy ?? "skip",
         overlap_policy: trigger.overlap_policy ?? "allow",
-        run,
+        ...(trigger.run !== undefined ? { run: runOf(trigger.run) } : {}),
       };
     })
-    .sort((a, b) => a.id.localeCompare(b.id));
+    .sort((a, b) => (a.id ?? "").localeCompare(b.id ?? ""));
 }
 
 async function normalizeFileSet(

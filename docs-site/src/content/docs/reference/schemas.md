@@ -110,7 +110,6 @@ Use `run402 up --check` for local validation and `run402 up --plan` for gateway 
 | `files` | `#/$defs/fileSet` | no | See the downloadable schema for constraints. |
 | `entrypoint` | `string` | no | See the downloadable schema for constraints. |
 | `config` | `object` | no | See the downloadable schema for constraints. |
-| `schedule` | `oneOf` | no | See the downloadable schema for constraints. |
 | `deps` | `array` | no | See the downloadable schema for constraints. |
 | `triggers` | `array` | no | See the downloadable schema for constraints. |
 | `requireAuth` | `boolean` | no | See the downloadable schema for constraints. |
@@ -124,8 +123,11 @@ Use `run402 up --check` for local validation and `run402 up --plan` for gateway 
 
 | Property | Shape | Required | Description |
 |---|---|---|---|
-| `id` | `string` | yes | See the downloadable schema for constraints. |
-| `type` | `string` | yes | See the downloadable schema for constraints. |
+| `id` | `string` | no | Stable trigger id. Optional for schedule triggers (derived from the cron and timezone when omitted); required for email and app_repo triggers. |
+| `type` | `schema` | yes | See the downloadable schema for constraints. |
+| `cron` | `string` | no | Schedule triggers: a 5-field cron expression. |
+| `timezone` | `string` | no | Schedule triggers: the IANA time zone the cron is read in. Default UTC. |
+| `run` | `object` | no | The durable run each firing creates: event_type (for a schedule trigger, defaults to <function_name>.schedule), payload, retry, expires_after_seconds. |
 
 <h3 id="release-functionRequireRole">functionRequireRole</h3>
 

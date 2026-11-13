@@ -36,7 +36,8 @@ describe("ReleaseSpec JSON Schema", () => {
     assert.ok(functionSpec.properties.entrypoint);
     assert.ok(functionSpec.properties.config.properties.timeoutSeconds);
     assert.ok(functionSpec.properties.config.properties.memoryMb);
-    assert.ok(functionSpec.properties.schedule);
+    assert.equal(functionSpec.properties.schedule, undefined);
+    assert.deepEqual(schema.$defs.functionTrigger.required, ["type"]);
     assert.equal(functionSpec.additionalProperties, false);
     assert.equal(functionSpec.properties.deps.items.type, "string");
     assert.ok(functionSpec.properties.triggers.items.$ref);

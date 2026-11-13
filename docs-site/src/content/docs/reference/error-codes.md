@@ -2585,6 +2585,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="RUN402_WORKSPACE_LINK_SYMLINK"></a>
 [`RUN402_WORKSPACE_LINK_SYMLINK`](/errors/client/#RUN402_WORKSPACE_LINK_SYMLINK)
 
+<a id="schedule_field_removed"></a>
+<a id="SCHEDULE_FIELD_REMOVED"></a>
+[`SCHEDULE_FIELD_REMOVED`](/errors/gateway/#SCHEDULE_FIELD_REMOVED)
+
 <a id="secret_requires_cli"></a>
 <a id="SECRET_REQUIRES_CLI"></a>
 [`SECRET_REQUIRES_CLI`](/errors/client/#SECRET_REQUIRES_CLI)

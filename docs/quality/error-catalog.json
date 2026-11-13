@@ -2,8 +2,8 @@
   "version": 1,
   "contributions": {
     "gateway": {
-      "revision": "7d56e8ebf606e992bb994bd2be977a4fe93ffa0b",
-      "sourceDigest": "26529bd5f9ae883d538cb18a7fe1835c7b318c07f127201e228e29b8c32116b3"
+      "revision": "9dddba3a961013d1777254b3017a09e67a1dfe0e",
+      "sourceDigest": "f5c67a04c91138307f689e308552237e1c0d1ded67df32bae3eabe3de22e0f42"
     },
     "core": {
       "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7"
@@ -7337,6 +7337,16 @@
         }
       ],
       "topic": "/errors/client/#RUN402_WORKSPACE_LINK_SYMLINK"
+    },
+    {
+      "code": "SCHEDULE_FIELD_REMOVED",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#SCHEDULE_FIELD_REMOVED"
     },
     {
       "code": "SECRET_REQUIRES_CLI",

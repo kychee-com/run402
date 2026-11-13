@@ -3202,7 +3202,7 @@ describe("CLI e2e happy path", () => {
           replace: {
             digest: {
               source: { data: "export default { scheduled() {} };" },
-              schedule: "*/5 * * * *",
+              triggers: [{ type: "schedule", cron: "*/5 * * * *" }],
             },
           },
         },
@@ -3213,7 +3213,7 @@ describe("CLI e2e happy path", () => {
     assert.equal(deployCalled, false, "schedule interval cap must fail before /apply/v1/plans");
     const parsed = parseStderrEnvelope(stderr);
     assert.equal(parsed.code, "BAD_FIELD");
-    assert.equal(parsed.details.field, "functions.digest.schedule");
+    assert.equal(parsed.details.field, "functions.digest.triggers[0].cron");
     assert.equal(parsed.details.value, "*/5 * * * *");
     assert.equal(parsed.details.interval_minutes, 5);
     assert.equal(parsed.details.min_interval_minutes, 15);
@@ -3227,11 +3227,11 @@ describe("CLI e2e happy path", () => {
           replace: {
             first: {
               source: { data: "export default { scheduled() {} };" },
-              schedule: "0 * * * *",
+              triggers: [{ type: "schedule", cron: "0 * * * *" }],
             },
             second: {
               source: { data: "export default { scheduled() {} };" },
-              schedule: "30 * * * *",
+              triggers: [{ type: "schedule", cron: "30 * * * *" }],
             },
           },
         },

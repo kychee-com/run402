@@ -189,6 +189,9 @@ import type {
   FunctionRebuildResult,
   FunctionUpdateOptions,
   FunctionUpdateResult,
+  FunctionScheduleOptions,
+  FunctionScheduleResult,
+  FunctionUnscheduleOptions,
 } from "./namespaces/functions.types.js";
 import type {
   ManagedJobLogsOptions,
@@ -1175,6 +1178,12 @@ class ScopedFunctions {
   }
   update(name: string, opts: FunctionUpdateOptions): Promise<FunctionUpdateResult> {
     return this.parent.functions.update(this.projectId, name, opts);
+  }
+  schedule(name: string, cron: string, opts?: FunctionScheduleOptions): Promise<FunctionScheduleResult> {
+    return this.parent.functions.schedule(this.projectId, name, cron, opts);
+  }
+  unschedule(name: string, opts?: FunctionUnscheduleOptions): Promise<FunctionScheduleResult> {
+    return this.parent.functions.unschedule(this.projectId, name, opts);
   }
   rebuild(name: string): Promise<FunctionRebuildResult> {
     return this.parent.functions.rebuild(this.projectId, name);

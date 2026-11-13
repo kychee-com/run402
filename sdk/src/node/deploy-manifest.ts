@@ -328,7 +328,6 @@ const MANIFEST_FUNCTION_FIELDS = new Set([
   "config",
   "deps",
   "triggers",
-  "schedule",
   "requireAuth",
   "requireRole",
   "require_auth",
@@ -1252,7 +1251,6 @@ function mapFunction(
   if (raw.config !== undefined) out.config = mapFunctionConfig(raw.config);
   if (raw.deps !== undefined) out.deps = [...raw.deps];
   if (raw.triggers !== undefined) out.triggers = raw.triggers;
-  if (raw.schedule !== undefined) out.schedule = raw.schedule;
   const rawRecord = raw as Record<string, unknown>;
   const requireAuth = rawRecord.requireAuth ?? rawRecord.require_auth;
   const requireRole = rawRecord.requireRole ?? rawRecord.require_role;

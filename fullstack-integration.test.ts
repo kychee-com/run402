@@ -120,7 +120,7 @@ async function buildInitialSpec(): Promise<Record<string, unknown>> {
           runtime: "node22",
           source: readFunction("fullstack-scheduled.mjs"),
           config: { timeoutSeconds: 30, memoryMb: 256 },
-          schedule: "0 0 1 1 *",
+          triggers: [{ type: "schedule", cron: "0 0 1 1 *" }],
         },
       },
     },
@@ -338,7 +338,8 @@ function assertInventory(name: string, inventory: Record<string, any>): void {
   const functions = new Map((inventory.functions ?? []).map((entry: any) => [entry.name, entry]));
   assert.ok(functions.has("fullstack-direct"), `${name} inventory should include direct function`);
   assert.ok(functions.has("fullstack-public"), `${name} inventory should include routed function`);
-  assert.equal(functions.get("fullstack-scheduled")?.schedule, "0 0 1 1 *");
+  // Release reads never carry triggers (they accept the anon key) or a function-level schedule.
+  assert.equal(functions.get("fullstack-scheduled")?.schedule, undefined);
 
   assert.ok((inventory.subdomains?.names ?? []).includes(SUBDOMAIN), `${name} inventory should include subdomain`);
   const routes = inventory.routes?.entries ?? [];
@@ -1004,7 +1005,10 @@ describe("Run402 full-stack integration (live API, no mocks)", { timeout: 900_00
 
     const functionList = await r.functions.list(projectId);
     const scheduled = (functionList.functions ?? functionList).find((fn: any) => fn.name === "fullstack-scheduled");
-    assert.equal(scheduled?.schedule, "0 0 1 1 *");
+    const schedule = (scheduled?.triggers ?? []).find((t: any) => t.type === "schedule");
+    assert.equal(schedule?.cron, "0 0 1 1 *");
+    assert.match(String(schedule?.id), /^sched_[0-9a-f]{12}$/);
+    assert.equal(schedule?.run?.event_type, "fullstack-scheduled.schedule");
 
     const manual = await r.functions.invoke(projectId, "fullstack-scheduled");
     assert.equal(manual.status, 200);

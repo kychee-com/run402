@@ -474,6 +474,8 @@ const SURFACE: Capability[] = [
   { id: "get_function_logs", endpoint: "GET /projects/v1/admin/:id/functions/:name/logs",    cli: "functions:logs",   openclaw: "functions:logs" },
   { id: "list_functions",    endpoint: "GET /projects/v1/admin/:id/functions",                cli: "functions:list",   openclaw: "functions:list" },
   { id: "delete_function",   endpoint: "DELETE /projects/v1/admin/:id/functions/:name",      cli: "functions:delete", openclaw: "functions:delete" },
+  // `functions update` changes config through the PATCH route and the
+  // schedule through functions.schedule / unschedule (a release).
   { id: "update_function",   endpoint: "PATCH /projects/v1/admin/:id/functions/:name",     cli: "functions:update", openclaw: "functions:update" },
   // function-runtime-rebuild (v1.69): opt-in refresh onto the current platform
   // runtime. The CLI `functions rebuild [name] [--all]` collapses the single
@@ -2188,6 +2190,12 @@ describe("SDK surface alignment", () => {
       // shares the `run402 functions rebuild --all` CLI verb, so it has no
       // dedicated leaf command.
       "functions.rebuildAll",
+      // One way to schedule: a schedule trigger applied as a source-less
+      // functions.patch.set entry. Both ride `run402 functions update`
+      // (`--schedule <cron> [--timezone]`, `--schedule-remove`) and
+      // `functions deploy --schedule`, so neither has a leaf command.
+      "functions.schedule",
+      "functions.unschedule",
       // Durable runs expose waiting as an option on create/redrive in the CLI,
       // backed by the SDK polling helper rather than a separate surface noun.
       "functions.runs.wait",
@@ -2902,7 +2910,7 @@ describe("agent deploy-friction docs stay visible", () => {
       file: "sdk/llms-sdk.txt",
       patterns: [
         [/FunctionSpec/, "FunctionSpec docs"],
-        [/required-id `triggers\[\]`/s, "schedule trigger placement"],
+        [/\{ type: "schedule", cron: "0 9 \* \* \*" \}` is a complete one/s, "minimal schedule trigger"],
         [/Each scheduled tick creates a durable function run/s, "schedule trigger durable run behavior"],
         [/allowWarningCodes/, "SDK warning-code acknowledgement"],
         [/Run402-Client/, "SDK client metadata header"],

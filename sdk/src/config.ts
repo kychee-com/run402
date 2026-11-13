@@ -173,7 +173,6 @@ export function nodeFunction(
     ...(options.config !== undefined ? { config: options.config } : {}),
     ...(options.deps !== undefined ? { deps: [...options.deps] } : {}),
     ...(options.triggers !== undefined ? { triggers: options.triggers.map((trigger) => ({ ...trigger })) } : {}),
-    ...(options.schedule !== undefined ? { schedule: options.schedule } : {}),
     ...(options.class !== undefined ? { class: options.class } : {}),
     ...(options.capabilities !== undefined ? { capabilities: [...options.capabilities] } : {}),
     ...(options.requireAuth !== undefined ? { requireAuth: options.requireAuth } : {}),

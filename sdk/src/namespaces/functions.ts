@@ -15,7 +15,7 @@ import type { Client } from "../kernel.js";
 import { LocalError } from "../errors.js";
 import { requireProjectCredentials } from "../project-credentials.js";
 import { Deploy } from "./deploy.js";
-import type { FunctionSpec, ReleaseSpec, WarningEntry } from "./deploy.types.js";
+import type { FunctionScheduleTriggerSpec, FunctionSpec, FunctionTriggerSpec, ReleaseSpec, WarningEntry } from "./deploy.types.js";
 import type {
   DeleteFunctionResult,
   FunctionDeployOptions,
@@ -44,6 +44,10 @@ import type {
   FunctionRunWaitOptions,
   FunctionRebuildBatchResult,
   FunctionRebuildResult,
+  FunctionScheduleOptions,
+  FunctionScheduleResult,
+  FunctionTriggerRecord,
+  FunctionUnscheduleOptions,
   FunctionUpdateOptions,
   FunctionUpdateResult,
 } from "./functions.types.js";
@@ -193,6 +197,7 @@ export class Functions {
     validateFunctionConfig(opts.config, "config", "deploying function");
     validateFunctionDeps(opts.deps, "deps", "deploying function");
     validateFunctionSchedule(opts.schedule, "schedule", "deploying function");
+    validateScheduleTimezone(opts.timezone, opts.schedule, "deploying function");
 
     // Fast-fail on an unknown project id before planning (and the spec needs
     // the id). The deploy authorizes via the apply credential, not the
@@ -207,7 +212,13 @@ export class Functions {
       fn.config = { timeoutSeconds: opts.config.timeout, memoryMb: opts.config.memory };
     }
     if (opts.deps !== undefined) fn.deps = opts.deps;
-    if (opts.schedule !== undefined) fn.schedule = opts.schedule;
+    // A deploy replaces the function, triggers included: keep the ones it
+    // has, and declare `schedule` as a schedule trigger beside them.
+    const current = await currentTriggers(this, projectId, opts.name);
+    const triggers = opts.schedule === undefined
+      ? current.map(toTriggerSpec)
+      : withSchedule(current, opts.schedule === null || opts.schedule === "" ? null : opts.schedule, { timezone: opts.timezone }).triggers;
+    if (triggers.length > 0) fn.triggers = triggers;
 
     const spec: ReleaseSpec = {
       project_id: projectId,
@@ -215,6 +226,7 @@ export class Functions {
     };
 
     const result = await new Deploy(this.client).apply(spec, {});
+    const stored = await currentTriggers(this, projectId, opts.name);
 
     // Map the release-level `DeployResult` back to the stable
     // `FunctionDeployResult`. The apply result carries urls + warnings, not
@@ -229,7 +241,7 @@ export class Functions {
       runtime: "node22",
       timeout: opts.config?.timeout ?? 15,
       memory: opts.config?.memory ?? 128,
-      schedule: opts.schedule ?? null,
+      triggers: stored,
       created_at: new Date().toISOString(),
       runtime_version: null,
       deps_resolved: null,
@@ -435,9 +447,9 @@ export class Functions {
   }
 
   /**
-   * Update a function's schedule / timeout / memory without re-deploying.
-   * Pass `schedule: null` to remove an existing schedule; `undefined`
-   * leaves it unchanged.
+   * Update a function's timeout / memory without re-deploying. A schedule is
+   * a trigger in the release: use {@link Functions.schedule} /
+   * {@link Functions.unschedule}.
    */
   async update(
     projectId: string,
@@ -446,11 +458,16 @@ export class Functions {
   ): Promise<FunctionUpdateResult> {
     validatePositiveJsonInteger(opts.timeout, "timeout", "updating function");
     validatePositiveJsonInteger(opts.memory, "memory", "updating function");
-    validateFunctionSchedule(opts.schedule, "schedule", "updating function");
-
-    if (opts.schedule === undefined && opts.timeout === undefined && opts.memory === undefined) {
+    if (Object.prototype.hasOwnProperty.call(opts, "schedule")) {
       throw new LocalError(
-        "Provide at least one supported update field: schedule, timeout, or memory",
+        "functions.update no longer takes schedule: use functions.schedule(projectId, name, cron) or functions.unschedule(projectId, name)",
+        "updating function",
+      );
+    }
+
+    if (opts.timeout === undefined && opts.memory === undefined) {
+      throw new LocalError(
+        "Provide at least one supported update field: timeout or memory",
         "updating function",
       );
     }
@@ -458,7 +475,6 @@ export class Functions {
     const project = await requireProjectCredentials(this.client, projectId, "updating function");
 
     const body: Record<string, unknown> = {};
-    if (opts.schedule !== undefined) body.schedule = opts.schedule;
     if (opts.timeout !== undefined || opts.memory !== undefined) {
       const config: Record<string, number> = {};
       if (opts.timeout !== undefined) config.timeout = opts.timeout;
@@ -475,6 +491,70 @@ export class Functions {
         context: "updating function",
       },
     );
+  }
+
+  /**
+   * Schedule a deployed function: declare a schedule trigger
+   * (`{ type: "schedule", cron, timezone?, id? }`) and apply it as a
+   * `functions.patch.set` entry without source, which keeps the function's
+   * code, settings and other triggers (the gateway carries them forward).
+   * Each tick creates a durable function run (`X-Run402-Trigger:
+   * function_run`, `source.type: "schedule"`).
+   *
+   * Without `id`, this schedule replaces every schedule trigger the function
+   * has and the gateway derives its id from the cron and timezone; with `id`,
+   * only that trigger is added or replaced. Returns the function's schedule
+   * triggers as stored after the change.
+   *
+   * @throws {LocalError} on a cron that is not 5 fields or an empty id.
+   * @throws {Run402DeployError} when the function is not deployed, or the
+   *   gateway refuses the trigger (tier interval, invalid timezone).
+   */
+  async schedule(
+    projectId: string,
+    name: string,
+    cron: string,
+    opts: FunctionScheduleOptions = {},
+  ): Promise<FunctionScheduleResult> {
+    validateFunctionName(name, "name", "scheduling function");
+    validateFunctionSchedule(cron, "cron", "scheduling function");
+    if (typeof cron !== "string" || cron.trim() === "") {
+      throw new LocalError("cron must be a 5-field cron string", "scheduling function");
+    }
+    validateScheduleTriggerId(opts.id, "scheduling function");
+    if (opts.timezone !== undefined && (typeof opts.timezone !== "string" || opts.timezone.trim() === "")) {
+      throw new LocalError("timezone must be an IANA time zone name such as \"UTC\"", "scheduling function");
+    }
+    const current = await currentTriggers(this, projectId, name);
+    const next = withSchedule(current, cron, { timezone: opts.timezone, id: opts.id });
+    return applyTriggers(this.client, this, projectId, name, next.triggers, current);
+  }
+
+  /**
+   * Remove a function's schedule: every schedule trigger, or only the one
+   * named by `id`. The function's code, settings and other triggers stay.
+   * Removing a schedule the function does not have changes nothing and
+   * returns `removed: []`.
+   */
+  async unschedule(
+    projectId: string,
+    name: string,
+    opts: FunctionUnscheduleOptions = {},
+  ): Promise<FunctionScheduleResult> {
+    validateFunctionName(name, "name", "unscheduling function");
+    validateScheduleTriggerId(opts.id, "unscheduling function");
+    const current = await currentTriggers(this, projectId, name);
+    const next = withSchedule(current, null, { id: opts.id });
+    if (next.removed.length === 0) {
+      return {
+        name,
+        schedule_triggers: current.filter(isScheduleRecord),
+        removed: [],
+        release_id: "",
+        operation_id: "",
+      };
+    }
+    return applyTriggers(this.client, this, projectId, name, next.triggers, current);
   }
 
   /**
@@ -906,6 +986,98 @@ function depPackageName(spec: string): string {
   }
   const versionAt = spec.indexOf("@");
   return versionAt === -1 ? spec : spec.slice(0, versionAt);
+}
+
+/** The function's deployed triggers from the service-key list; `[]` when it is not deployed. */
+async function currentTriggers(fns: Functions, projectId: string, name: string): Promise<FunctionTriggerRecord[]> {
+  const { functions } = await fns.list(projectId);
+  return (functions ?? []).find((fn) => fn.name === name)?.triggers ?? [];
+}
+
+/** Apply one function's triggers as a source-less patch entry (D-unified-apply-15) and read back what was stored. */
+async function applyTriggers(
+  client: Client,
+  fns: Functions,
+  projectId: string,
+  name: string,
+  triggers: FunctionTriggerSpec[],
+  before: FunctionTriggerRecord[],
+): Promise<FunctionScheduleResult> {
+  await requireProjectCredentials(client, projectId, "scheduling function");
+  const spec: ReleaseSpec = {
+    project_id: projectId,
+    functions: { patch: { set: { [name]: { triggers } } } },
+  };
+  const result = await new Deploy(client).apply(spec, {});
+  const stored = await currentTriggers(fns, projectId, name);
+  const storedIds = new Set(stored.map((trigger) => trigger.id));
+  const warnings = result.warnings.map((w: WarningEntry) => w.message);
+  return {
+    name,
+    schedule_triggers: stored.filter(isScheduleRecord),
+    removed: before.filter((trigger) => isScheduleRecord(trigger) && !storedIds.has(trigger.id)).map((trigger) => trigger.id),
+    release_id: result.release_id,
+    operation_id: result.operation_id,
+    ...(warnings.length > 0 ? { warnings } : {}),
+  };
+}
+
+const SCHEDULE_TRIGGER_ID_RE = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
+
+function validateScheduleTriggerId(id: unknown, context: string): void {
+  if (id === undefined) return;
+  if (typeof id !== "string" || !SCHEDULE_TRIGGER_ID_RE.test(id)) {
+    throw new LocalError(
+      "id must start with a letter or digit and contain only letters, digits, underscore, dot, colon, or dash",
+      context,
+    );
+  }
+}
+
+function validateScheduleTimezone(timezone: unknown, schedule: unknown, context: string): void {
+  if (timezone === undefined) return;
+  if (typeof timezone !== "string" || timezone.trim() === "") {
+    throw new LocalError("timezone must be an IANA time zone name such as \"UTC\"", context);
+  }
+  if (typeof schedule !== "string" || schedule === "") {
+    throw new LocalError("timezone is only accepted with a schedule", context);
+  }
+}
+
+function isScheduleRecord(
+  trigger: FunctionTriggerRecord,
+): trigger is Extract<FunctionTriggerRecord, { type: "schedule" }> {
+  return trigger.type === "schedule";
+}
+
+/** A listed trigger as a release-spec entry: the list's read-only `schedule_meta` dropped. */
+function toTriggerSpec(trigger: FunctionTriggerRecord): FunctionTriggerSpec {
+  const { schedule_meta: _meta, ...spec } = trigger as FunctionTriggerRecord & { schedule_meta?: unknown };
+  return spec as FunctionTriggerSpec;
+}
+
+/**
+ * The function's triggers with its schedule set (`cron`) or removed (`null`).
+ * Without `id` every schedule trigger is replaced or removed; with `id` only
+ * that one. Non-schedule triggers are always kept.
+ */
+function withSchedule(
+  current: FunctionTriggerRecord[],
+  cron: string | null,
+  opts: { timezone?: string; id?: string },
+): { triggers: FunctionTriggerSpec[]; removed: string[] } {
+  const replaced = (trigger: FunctionTriggerRecord): boolean =>
+    trigger.type === "schedule" && (opts.id === undefined || trigger.id === opts.id);
+  const kept = current.filter((trigger) => !replaced(trigger)).map(toTriggerSpec);
+  const removed = current.filter(replaced).map((trigger) => trigger.id);
+  if (cron === null) return { triggers: kept, removed };
+  const schedule: FunctionScheduleTriggerSpec = {
+    ...(opts.id !== undefined ? { id: opts.id } : {}),
+    type: "schedule",
+    cron,
+    ...(opts.timezone !== undefined ? { timezone: opts.timezone } : {}),
+  };
+  return { triggers: [...kept, schedule], removed };
 }
 
 function validateFunctionSchedule(value: unknown, resource: string, context: string): void {

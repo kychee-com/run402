@@ -236,7 +236,7 @@
     "functionSpec": {
       "type": "object",
       "additionalProperties": false,
-      "description": "FunctionSpec. schedule is a sibling of runtime/source/files/config, not config.schedule.",
+      "description": "FunctionSpec. A schedule is a `type: \"schedule\"` entry of `triggers`; there is no `schedule` field. In `functions.patch.set`, an entry without `source` or `files` keeps the deployed function and replaces only the fields it names.",
       "properties": {
         "runtime": {
           "enum": [
@@ -265,18 +265,6 @@
               "minimum": 1
             }
           }
-        },
-        "schedule": {
-          "oneOf": [
-            {
-              "type": "string",
-              "description": "5-field cron expression."
-            },
-            {
-              "type": "null",
-              "description": "Remove an existing schedule in patch mode."
-            }
-          ]
         },
         "deps": {
           "type": "array",
@@ -330,20 +318,56 @@
     "functionTrigger": {
       "type": "object",
       "additionalProperties": true,
+      "description": "A function trigger. A schedule trigger's minimal form is { \"type\": \"schedule\", \"cron\": \"0 9 * * *\" }: id defaults to sched_ + 12 hex derived from the cron and timezone, timezone to UTC, misfire_policy to skip, overlap_policy to allow, and run to { event_type: \"<function_name>.schedule\", payload: {} }. Email and app_repo triggers require id.",
       "required": [
-        "id",
         "type"
       ],
       "properties": {
         "id": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "Stable trigger id. Optional for schedule triggers (derived from the cron and timezone when omitted); required for email and app_repo triggers."
         },
         "type": {
+          "enum": [
+            "schedule",
+            "email",
+            "app_repo"
+          ]
+        },
+        "cron": {
           "type": "string",
-          "minLength": 1
+          "description": "Schedule triggers: a 5-field cron expression."
+        },
+        "timezone": {
+          "type": "string",
+          "description": "Schedule triggers: the IANA time zone the cron is read in. Default UTC."
+        },
+        "run": {
+          "type": "object",
+          "description": "The durable run each firing creates: event_type (for a schedule trigger, defaults to <function_name>.schedule), payload, retry, expires_after_seconds."
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "enum": [
+                  "email",
+                  "app_repo"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "id",
+              "type"
+            ]
+          }
+        }
+      ]
     },
     "functionRequireRole": {
       "type": "object",
