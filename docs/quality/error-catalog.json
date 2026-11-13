@@ -2,8 +2,8 @@
   "version": 1,
   "contributions": {
     "gateway": {
-      "revision": "9dddba3a961013d1777254b3017a09e67a1dfe0e",
-      "sourceDigest": "f5c67a04c91138307f689e308552237e1c0d1ded67df32bae3eabe3de22e0f42"
+      "revision": "8f86bf4f7ab7c2a36bd5d7954d654d2125baa291",
+      "sourceDigest": "20ea3c2c25a0534876901883a2cfc08c630d33da30653cacb84a5baa710e3910"
     },
     "core": {
       "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7"
