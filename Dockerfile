@@ -1,4 +1,4 @@
-FROM node:22-slim AS build
+FROM node:22-slim@sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY cli/package.json cli/package.json
@@ -12,7 +12,7 @@ COPY src/ src/
 COPY docs-site/src/content/docs/mcp/run.md docs-site/src/content/docs/mcp/run.md
 RUN npm run build
 
-FROM node:22-slim
+FROM node:22-slim@sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee
 WORKDIR /app
 ENV npm_config_loglevel=silent
 COPY package.json package-lock.json ./
