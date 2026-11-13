@@ -1269,6 +1269,25 @@ describe("allowance shortfall on a 402 (allowance-settlement)", () => {
     });
   });
 
+  it("names a sub-cent shortfall exactly instead of $0.00", async () => {
+    const challenge = { allowance: { allowance_usd_micros: 25_500, price_usd_micros: 30_000, shortfall_usd_micros: 4_500 } };
+    const fetchFn = createTrackedX402Fetch(
+      (baseFetch) => async (input, init) => {
+        await baseFetch(input, init);
+        throw new X402BalanceError("X402_INSUFFICIENT_FUNDS", "insufficient USDC", {});
+      },
+      {},
+      { store: memoryStore().store, createAttemptId: () => attemptId, fetch: async () => new Response(JSON.stringify(challenge), { status: 402 }) },
+    );
+    await assert.rejects(fetchFn("https://api.run402.com/generate-image/v1", { method: "POST" }), (err) => {
+      assert.ok(err instanceof X402BalanceError);
+      assert.ok(err.message.includes("allowance ($0.0255)"), err.message);
+      assert.ok(err.message.includes("this ($0.03)"), err.message);
+      assert.ok(err.message.includes("$0.0045 shortfall"), err.message);
+      return true;
+    });
+  });
+
   it("leaves a 402 without an allowance block, and an RPC failure, exactly as they were", async () => {
     const make = (code: "X402_INSUFFICIENT_FUNDS" | "X402_RPC_UNAVAILABLE", body: unknown) =>
       createTrackedX402Fetch(

@@ -235,6 +235,19 @@ export class PaymentBuyerCapError extends Run402Error {
  * closes the gap without any on-chain funds. Only an insufficient-funds verdict
  * is reshaped; an RPC failure stays an RPC failure.
  */
+/**
+ * An exact dollar label for an integer micro amount: at least two decimals,
+ * up to six, no trailing zeros past the second (`2_000_000` -> `$2.00`,
+ * `4_500` -> `$0.0045`). Mirrors the gateway's `formatUsdMicros`, so a
+ * sub-cent shortfall never reads as `$0.00`.
+ */
+function formatUsdMicrosExact(micros: number): string {
+  const abs = Math.round(Math.abs(micros));
+  let fraction = String(abs % 1_000_000).padStart(6, "0");
+  while (fraction.length > 2 && fraction.endsWith("0")) fraction = fraction.slice(0, -1);
+  return `${micros < 0 && abs > 0 ? "-" : ""}$${Math.floor(abs / 1_000_000)}.${fraction}`;
+}
+
 function withAllowanceShortfall(error: X402BalanceError, challengeBody: Record<string, unknown> | null): X402BalanceError {
   const block = challengeBody?.allowance;
   if (error.code !== "X402_INSUFFICIENT_FUNDS" || !block || typeof block !== "object") return error;
@@ -246,7 +259,7 @@ function withAllowanceShortfall(error: X402BalanceError, challengeBody: Record<s
   const priorDetails = (error.body as { details?: Record<string, unknown> } | null)?.details ?? {};
   return new X402BalanceError(
     "X402_INSUFFICIENT_FUNDS",
-    `The organization's allowance ($${(allowance / 1_000_000).toFixed(2)}) does not cover this ($${(price / 1_000_000).toFixed(2)}), and the wallet holds no USDC for the $${(shortfall / 1_000_000).toFixed(2)} shortfall.`,
+    `The organization's allowance (${formatUsdMicrosExact(allowance)}) does not cover this (${formatUsdMicrosExact(price)}), and the wallet holds no USDC for the ${formatUsdMicrosExact(shortfall)} shortfall.`,
     {
       ...priorDetails,
       allowance: { allowance_usd_micros: allowance, price_usd_micros: price, shortfall_usd_micros: shortfall },
