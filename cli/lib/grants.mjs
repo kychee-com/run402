@@ -66,12 +66,16 @@ Options:
                           key takes the same expiry.
   --key                   Also mint the grant's first grant key in the same
                           transaction. Its token is printed ONCE.
-  --kind <kind>           Key kind (with --key). Default run402_agent_key, the
-                          only kind that returns a bearer token.
+  --kind <kind>           Key kind (with --key). Only run402_agent_key, the
+                          default (a CI binding is 'run402 ci link').
   --scope <json>          Key scope (with --key), e.g. {"v":1,"capabilities":["deploy"]}.
                           Defaults to the grant's own capability; never wider.
   --spend-cap <json>      Key spend cap (with --key), e.g.
                           {"v":1,"currency":"usd_micros","per_period":5000000,"period":"month"}
+                          It bounds what the key and every token it mints
+                          spend. Without one they spend nothing. Code the key
+                          deploys runs with the project's service key and is
+                          not capped by it.
 
 Requires you to be an owner of the project's org.
 `,
@@ -153,6 +157,13 @@ async function create(args) {
         hint: "run402 grants create <wallet> --capability <cap> --key [--kind <kind>] [--scope <json>] [--spend-cap <json>]",
       });
     }
+  }
+  if (kind && kind !== "run402_agent_key") {
+    fail({
+      code: "BAD_USAGE",
+      message: `--kind ${kind} is not a kind a grant key can be minted as. The only kind is run402_agent_key (the default).`,
+      hint: "Drop --kind. For a CI binding use: run402 ci link",
+    });
   }
   const policy = policyRaw != null ? parseFlagJson("--policy", policyRaw) : undefined;
   let key;

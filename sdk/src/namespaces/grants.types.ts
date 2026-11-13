@@ -14,13 +14,12 @@
  * caller to be an active owner of the project's org.
  */
 
-/** Grant-key kinds. Only `run402_agent_key` returns a bearer `token`. */
-export type GrantKeyKind =
-  | "run402_agent_key"
-  | "ci_oidc"
-  | "tempo_access_key"
-  | "base_disposable_eoa"
-  | "erc7710";
+/**
+ * Grant-key kinds. `run402_agent_key` is the bearer an agent holds and the
+ * only kind these routes mint; a `ci_oidc` key is a CI binding
+ * (`run402 ci link`).
+ */
+export type GrantKeyKind = "run402_agent_key" | "ci_oidc";
 
 /**
  * Grant-key scope (`scope` JSONB). Always a subset of the grant: a key never
@@ -36,7 +35,12 @@ export interface GrantKeyScope {
   [key: string]: unknown;
 }
 
-/** Spend cap (`spend_cap` JSONB). Required for the payment-rail kinds; enforced at send time. */
+/**
+ * Spend cap (`spend_cap` JSONB), in USD micros. Enforced when the key or a
+ * token it minted spends: a managed job, a signer provision, transfer, call or
+ * deploy, an image. A key with no cap spends nothing
+ * (`403 GRANT_KEY_NO_SPEND_CAP`). Code the key deploys is not capped by it.
+ */
 export interface GrantKeySpendCap {
   v: 1;
   currency: "usd_micros";
@@ -52,11 +56,11 @@ export interface GrantKeyInput {
   kind?: GrantKeyKind;
   /** Defaults to the grant's own capability. */
   scope?: GrantKeyScope;
-  /** Spend cap (payment-rail kinds). */
+  /** Spend cap. Omit and the key, and every token it mints, spends nothing. */
   spendCap?: GrantKeySpendCap | null;
   /** ISO-8601 expiry; omit or `null` for none beyond the grant's. */
   expiresAt?: string | null;
-  /** Rail-specific public subject. */
+  /** Kind-specific public subject. */
   publicSubject?: string;
 }
 
@@ -111,6 +115,10 @@ export interface GrantKey {
   expires_at: string | null;
   revoked_at: string | null;
   created_at: string;
+  /** On a capped key: what it and the tokens it minted spent this period (USD micros). */
+  spent_usd_micros?: number;
+  /** On a capped key: when the current period ends (ISO-8601). */
+  resets_at?: string;
   [key: string]: unknown;
 }
 
